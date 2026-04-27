@@ -1,0 +1,12 @@
+<a href="@Href" class="nav-item @(IsActive ? "active" : "")" @onclick="OnClick" @onclick:preventDefault>
+    <span class="nav-icon">@Icon</span>
+    <span class="nav-label">@Label</span>
+</a>
+
+@code {
+    [Parameter] public string Href { get; set; } = "#";
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public MarkupString Icon { get; set; }
+    [Parameter] public bool IsActive { get; set; }
+    [Parameter] public EventCallback OnClick { get; set; }
+}

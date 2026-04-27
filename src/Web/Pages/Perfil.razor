@@ -1,0 +1,257 @@
+@page "/perfil"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject NavigationManager Navigation
+
+<div class="view-header">
+    <h2>Mi Perfil</h2>
+    <p class="view-subtitle">Edita tus datos personales y contrasena</p>
+</div>
+
+<div class="profile-grid">
+    <div class="card">
+        <div class="card-header">
+            <h3>Datos Personales</h3>
+        </div>
+        <div class="card-body">
+            @if (isLoading)
+            {
+                <p class="text-muted">Cargando...</p>
+            }
+            else
+            {
+                @if (!string.IsNullOrEmpty(profileMessage))
+                {
+                    <div class="@(profileSuccess ? "form-success" : "form-error")">@profileMessage</div>
+                }
+
+                <div class="form-group">
+                    <label class="form-label">Usuario</label>
+                    <input class="form-input" value="@profile?.Username" disabled />
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Nombre</label>
+                        <input class="form-input" @bind="firstName" placeholder="Tu nombre" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Apellido</label>
+                        <input class="form-input" @bind="lastName" placeholder="Tu apellido" />
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <input class="form-input" type="email" @bind="email" placeholder="correo@ejemplo.com" />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Telefono</label>
+                    <input class="form-input" @bind="phone" placeholder="+54 11 1234-5678" />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Rol</label>
+                    <input class="form-input" value="@profile?.Role" disabled />
+                </div>
+
+                <div class="form-actions">
+                    <button class="btn btn-primary" @onclick="SaveProfile" disabled="@isSavingProfile">
+                        @(isSavingProfile ? "Guardando..." : "Guardar Cambios")
+                    </button>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h3>Cambiar Contrasena</h3>
+        </div>
+        <div class="card-body">
+            @if (!string.IsNullOrEmpty(passwordMessage))
+            {
+                <div class="@(passwordSuccess ? "form-success" : "form-error")">@passwordMessage</div>
+            }
+
+            <div class="form-group">
+                <label class="form-label">Contrasena actual</label>
+                <input class="form-input" type="password" @bind="currentPassword" placeholder="Tu contrasena actual" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Nueva contrasena</label>
+                <input class="form-input" type="password" @bind="newPassword" placeholder="Minimo 6 caracteres" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Confirmar nueva contrasena</label>
+                <input class="form-input" type="password" @bind="confirmPassword" placeholder="Repetir nueva contrasena" />
+            </div>
+
+            <div class="form-actions">
+                <button class="btn btn-primary" @onclick="ChangePassword" disabled="@isSavingPassword">
+                    @(isSavingPassword ? "Cambiando..." : "Cambiar Contrasena")
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private ProfileDto? profile;
+    private bool isLoading = true;
+
+    // Profile form
+    private string firstName = "";
+    private string lastName = "";
+    private string email = "";
+    private string phone = "";
+    private bool isSavingProfile;
+    private string? profileMessage;
+    private bool profileSuccess;
+
+    // Password form
+    private string currentPassword = "";
+    private string newPassword = "";
+    private string confirmPassword = "";
+    private bool isSavingPassword;
+    private string? passwordMessage;
+    private bool passwordSuccess;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadProfile();
+    }
+
+    private async Task LoadProfile()
+    {
+        isLoading = true;
+        try
+        {
+            profile = await Api.GetProfileAsync();
+            if (profile is not null)
+            {
+                firstName = profile.FirstName ?? "";
+                lastName = profile.LastName ?? "";
+                email = profile.Email;
+                phone = profile.Phone ?? "";
+            }
+        }
+        catch
+        {
+            ToastService.Error("Error al cargar el perfil");
+        }
+        isLoading = false;
+    }
+
+    private async Task SaveProfile()
+    {
+        profileMessage = null;
+        isSavingProfile = true;
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                profileMessage = "El email es obligatorio";
+                profileSuccess = false;
+                isSavingProfile = false;
+                return;
+            }
+
+            var request = new UpdateProfileRequest
+            {
+                FirstName = firstName,
+                LastName = lastName,
+                Email = email,
+                Phone = phone
+            };
+
+            var result = await Api.UpdateProfileAsync(request);
+            if (result is not null)
+            {
+                profile = result;
+                profileMessage = "Perfil actualizado correctamente";
+                profileSuccess = true;
+                ToastService.Success("Perfil actualizado");
+            }
+            else
+            {
+                profileMessage = "Error al actualizar. Verifica que el email no este en uso.";
+                profileSuccess = false;
+            }
+        }
+        catch
+        {
+            profileMessage = "Error al guardar los cambios";
+            profileSuccess = false;
+        }
+
+        isSavingProfile = false;
+    }
+
+    private async Task ChangePassword()
+    {
+        passwordMessage = null;
+        isSavingPassword = true;
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(currentPassword) || string.IsNullOrWhiteSpace(newPassword))
+            {
+                passwordMessage = "Completa todos los campos";
+                passwordSuccess = false;
+                isSavingPassword = false;
+                return;
+            }
+
+            if (newPassword.Length < 6)
+            {
+                passwordMessage = "La nueva contrasena debe tener al menos 6 caracteres";
+                passwordSuccess = false;
+                isSavingPassword = false;
+                return;
+            }
+
+            if (newPassword != confirmPassword)
+            {
+                passwordMessage = "Las contrasenas no coinciden";
+                passwordSuccess = false;
+                isSavingPassword = false;
+                return;
+            }
+
+            var request = new ChangePasswordRequest
+            {
+                CurrentPassword = currentPassword,
+                NewPassword = newPassword
+            };
+
+            var result = await Api.ChangePasswordAsync(request);
+            if (result)
+            {
+                passwordMessage = "Contrasena cambiada correctamente";
+                passwordSuccess = true;
+                currentPassword = "";
+                newPassword = "";
+                confirmPassword = "";
+                ToastService.Success("Contrasena actualizada");
+            }
+            else
+            {
+                passwordMessage = "La contrasena actual es incorrecta";
+                passwordSuccess = false;
+            }
+        }
+        catch
+        {
+            passwordMessage = "Error al cambiar la contrasena";
+            passwordSuccess = false;
+        }
+
+        isSavingPassword = false;
+    }
+}

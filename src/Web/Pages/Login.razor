@@ -1,0 +1,83 @@
+@page "/login"
+@layout LoginLayout
+@inject AuthService AuthService
+@inject NavigationManager Navigation
+@inject ToastService ToastService
+
+<div class="login-card" role="main">
+    <div class="login-header">
+        <div class="login-logo" aria-hidden="true">
+            @SvgIcons.Brand
+        </div>
+        <h1>Tu Marca</h1>
+        <p>Panel de administracion</p>
+    </div>
+
+    <div class="login-body">
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="login-error visible" role="alert">
+                @SvgIcons.AlertCircle
+                <span>@errorMessage</span>
+            </div>
+        }
+
+        <EditForm Model="@loginModel" OnValidSubmit="HandleLogin" FormName="loginForm">
+            <div class="form-group">
+                <label class="form-label" for="username">Usuario</label>
+                <InputText class="form-input" id="username" @bind-Value="loginModel.Username"
+                           placeholder="Ingresa tu usuario" autocomplete="username" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="password">Contrasena</label>
+                <InputText class="form-input" id="password" @bind-Value="loginModel.Password"
+                           type="password" placeholder="Ingresa tu contrasena" autocomplete="current-password" />
+            </div>
+
+            <button type="submit" class="login-btn" disabled="@isLoading">
+                @(isLoading ? "Ingresando..." : "Iniciar Sesion")
+            </button>
+        </EditForm>
+    </div>
+
+</div>
+
+@code {
+    private LoginRequest loginModel = new();
+    private string? errorMessage;
+    private bool isLoading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Redirect if already authenticated
+        if (await AuthService.IsSessionValidAsync())
+        {
+            Navigation.NavigateTo("/");
+        }
+    }
+
+    private async Task HandleLogin()
+    {
+        errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(loginModel.Username) || string.IsNullOrWhiteSpace(loginModel.Password))
+        {
+            errorMessage = "Completa todos los campos";
+            return;
+        }
+
+        isLoading = true;
+
+        try
+        {
+            await AuthService.LoginAsync(loginModel.Username, loginModel.Password);
+            Navigation.NavigateTo("/", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+            isLoading = false;
+        }
+    }
+}

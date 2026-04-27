@@ -1,0 +1,78 @@
+@page "/meli-callback"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject NavigationManager Navigation
+@inject ToastService ToastService
+
+<div class="view-header">
+    <h2>Conectando con MercadoLibre...</h2>
+    <p class="view-subtitle">@message</p>
+</div>
+
+@if (hasError)
+{
+    <div class="card">
+        <div class="card-body">
+            <div class="form-error">@message</div>
+            <div class="form-actions">
+                <button class="btn btn-primary" @onclick="GoBack">Volver a Integraciones</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string message = "Procesando autorizacion...";
+    private bool hasError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var uri = new Uri(Navigation.Uri);
+        var code = GetQueryParam(uri.Query, "code");
+
+        if (string.IsNullOrEmpty(code))
+        {
+            message = "No se recibio el codigo de autorizacion de MercadoLibre.";
+            hasError = true;
+            return;
+        }
+
+        try
+        {
+            var account = await Api.MeliCallbackAsync(code);
+            if (account is not null)
+            {
+                ToastService.Success($"Cuenta {account.Nickname} conectada exitosamente");
+                Navigation.NavigateTo("/integraciones");
+            }
+            else
+            {
+                message = "No se pudo conectar la cuenta. Intenta de nuevo.";
+                hasError = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            message = "Error al conectar la cuenta: " + ex.Message;
+            hasError = true;
+        }
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo("/integraciones");
+    }
+
+    private static string? GetQueryParam(string query, string key)
+    {
+        if (string.IsNullOrEmpty(query)) return null;
+        var q = query.TrimStart('?');
+        foreach (var part in q.Split('&'))
+        {
+            var kv = part.Split('=', 2);
+            if (kv.Length == 2 && kv[0] == key)
+                return Uri.UnescapeDataString(kv[1]);
+        }
+        return null;
+    }
+}

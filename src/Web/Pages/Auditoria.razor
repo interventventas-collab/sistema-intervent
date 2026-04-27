@@ -1,0 +1,534 @@
+@page "/auditoria"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <h3>Registro de Auditoria (@total)</h3>
+        <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+            <input type="date" class="form-input" style="width: auto; font-size: 0.85rem;" @bind="dateFrom" />
+            <input type="date" class="form-input" style="width: auto; font-size: 0.85rem;" @bind="dateTo" />
+            <select class="form-input" style="width: auto; font-size: 0.85rem;" @bind="filterEntityType">
+                <option value="">Todos</option>
+                <option value="MeliItem">Publicaciones</option>
+                <option value="Sync">Sincronizaciones</option>
+            </select>
+            <button class="btn btn-primary" @onclick="LoadLogs" disabled="@isLoading">
+                @(isLoading ? "Cargando..." : "Buscar")
+            </button>
+        </div>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        @if (isLoading)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">Cargando registros...</p>
+        }
+        else if (logs is null || !logs.Any())
+        {
+            <p class="text-muted" style="padding: 1.5rem;">No hay registros de auditoria en el periodo seleccionado.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="min-width: 140px;">Fecha</th>
+                            <th>Tipo</th>
+                            <th>ID</th>
+                            <th>Accion</th>
+                            <th style="min-width: 280px;">Cambios</th>
+                            <th>Usuario</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var log in logs)
+                        {
+                            <tr class="clickable-row" @onclick="() => OpenDetail(log)">
+                                <td>@log.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                                <td><span class="audit-type-badge @GetTypeBadgeClass(log.EntityType)">@GetTypeLabel(log.EntityType)</span></td>
+                                <td class="audit-entity-id">@log.EntityId</td>
+                                <td><span class="audit-action-badge @GetActionBadgeClass(log.Action)">@GetActionLabel(log.Action)</span></td>
+                                <td>@((MarkupString)RenderChanges(log))</td>
+                                <td>@(log.UserName ?? "Sistema")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            @if (totalPages > 1)
+            {
+                <div class="audit-pagination">
+                    <button class="btn btn-secondary btn-sm" disabled="@(currentPage <= 1)" @onclick="PrevPage"><i class="fa-solid fa-chevron-left"></i> Anterior</button>
+                    <span class="audit-page-info">Pagina @currentPage de @totalPages</span>
+                    <button class="btn btn-secondary btn-sm" disabled="@(currentPage >= totalPages)" @onclick="NextPage">Siguiente <i class="fa-solid fa-chevron-right"></i></button>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@if (showDetailModal && selectedLog != null)
+{
+    <div class="modal-overlay" @onclick="CloseDetail">
+        <div class="modal-card" style="max-width: 700px;" @onclick:stopPropagation>
+            <div class="modal-header">
+                <h3>Detalle de Auditoria</h3>
+                <button class="btn-close" @onclick="CloseDetail">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 1.25rem;">
+                <div class="audit-detail-grid">
+                    <div class="audit-detail-row">
+                        <span class="audit-detail-label">Fecha:</span>
+                        <span>@selectedLog.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</span>
+                    </div>
+                    <div class="audit-detail-row">
+                        <span class="audit-detail-label">Tipo:</span>
+                        <span class="audit-type-badge @GetTypeBadgeClass(selectedLog.EntityType)">@GetTypeLabel(selectedLog.EntityType)</span>
+                    </div>
+                    <div class="audit-detail-row">
+                        <span class="audit-detail-label">ID Entidad:</span>
+                        <span class="audit-entity-id">@selectedLog.EntityId</span>
+                    </div>
+                    <div class="audit-detail-row">
+                        <span class="audit-detail-label">Accion:</span>
+                        <span class="audit-action-badge @GetActionBadgeClass(selectedLog.Action)">@GetActionLabel(selectedLog.Action)</span>
+                    </div>
+                    <div class="audit-detail-row">
+                        <span class="audit-detail-label">Usuario:</span>
+                        <span>@(selectedLog.UserName ?? "Sistema")</span>
+                    </div>
+                </div>
+                <div style="margin-top: 1rem;">
+                    <span class="audit-detail-label" style="display: block; margin-bottom: 0.5rem;">Cambios / Detalle:</span>
+                    <div class="audit-detail-changes-container">
+                        @((MarkupString)RenderFullChanges(selectedLog))
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .clickable-row {
+        cursor: pointer;
+    }
+    .clickable-row:hover {
+        background: #f0f4ff;
+    }
+
+    .audit-type-badge {
+        display: inline-block;
+        padding: 0.2rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    .audit-type-item { background: #eff6ff; color: #3b82f6; }
+    .audit-type-sync { background: #f0fdf4; color: #16a34a; }
+    .audit-type-order { background: #fefce8; color: #ca8a04; }
+
+    .audit-action-badge {
+        display: inline-block;
+        padding: 0.2rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    .audit-action-update { background: #fef3c7; color: #d97706; }
+    .audit-action-sync { background: #dbeafe; color: #2563eb; }
+    .audit-action-create { background: #dcfce7; color: #16a34a; }
+
+    .audit-entity-id {
+        font-family: monospace;
+        font-size: 0.8rem;
+        color: #6b7280;
+    }
+
+    .audit-change-chip {
+        display: inline-block;
+        background: #f3f4f6;
+        border-radius: 4px;
+        padding: 0.15rem 0.4rem;
+        font-size: 0.75rem;
+        margin: 0.1rem 0.15rem;
+        color: #374151;
+    }
+    .audit-change-chip .change-field {
+        font-weight: 600;
+        color: #4f46e5;
+    }
+    .audit-change-chip .change-arrow {
+        color: #9ca3af;
+        margin: 0 0.2rem;
+    }
+    .audit-change-chip .change-old {
+        text-decoration: line-through;
+        color: #ef4444;
+    }
+    .audit-change-chip .change-new {
+        color: #059669;
+    }
+
+    .audit-sync-text {
+        font-size: 0.8rem;
+        color: #6b7280;
+    }
+
+    .audit-pagination {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 1rem;
+        padding: 0.75rem;
+        border-top: 1px solid #e5e7eb;
+    }
+    .audit-page-info {
+        font-size: 0.85rem;
+        color: #6b7280;
+    }
+    .btn-sm {
+        padding: 0.3rem 0.75rem;
+        font-size: 0.8rem;
+    }
+
+    .audit-detail-grid {
+        display: grid;
+        gap: 0.6rem;
+    }
+    .audit-detail-row {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+    .audit-detail-label {
+        font-weight: 600;
+        color: #374151;
+        min-width: 90px;
+        font-size: 0.9rem;
+    }
+
+    .audit-detail-changes-container {
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 6px;
+        padding: 1rem;
+        max-height: 400px;
+        overflow-y: auto;
+    }
+
+    .audit-detail-pre {
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 0.82rem;
+        font-family: 'Consolas', 'Monaco', monospace;
+        color: #1f2937;
+        line-height: 1.5;
+    }
+
+    .audit-detail-changes-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.85rem;
+    }
+    .audit-detail-changes-table th {
+        background: #f3f4f6;
+        padding: 0.4rem 0.6rem;
+        text-align: left;
+        font-weight: 600;
+        color: #374151;
+        border-bottom: 2px solid #e5e7eb;
+    }
+    .audit-detail-changes-table td {
+        padding: 0.4rem 0.6rem;
+        border-bottom: 1px solid #e5e7eb;
+        vertical-align: top;
+    }
+    .change-field-name {
+        font-weight: 600;
+        color: #4f46e5;
+    }
+    .change-old-val {
+        color: #ef4444;
+        text-decoration: line-through;
+    }
+    .change-new-val {
+        color: #059669;
+    }
+
+    .audit-sync-summary {
+        margin-bottom: 0.75rem;
+        font-size: 0.9rem;
+        color: #1f2937;
+    }
+    .audit-sync-stats {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1rem;
+        flex-wrap: wrap;
+    }
+    .stat-ok {
+        color: #059669;
+        font-weight: 600;
+        font-size: 0.85rem;
+    }
+    .stat-err {
+        color: #dc2626;
+        font-weight: 600;
+        font-size: 0.85rem;
+    }
+    .stat-filter {
+        color: #6b7280;
+        font-size: 0.85rem;
+    }
+    .audit-errors-section {
+        margin-top: 0.5rem;
+    }
+    .audit-errors-section strong {
+        color: #dc2626;
+        font-size: 0.9rem;
+    }
+    .audit-error-list {
+        list-style: none;
+        padding: 0;
+        margin: 0.5rem 0 0 0;
+    }
+    .audit-error-item {
+        background: #fef2f2;
+        border-left: 3px solid #ef4444;
+        padding: 0.5rem 0.75rem;
+        margin-bottom: 0.4rem;
+        border-radius: 0 4px 4px 0;
+        font-size: 0.82rem;
+        font-family: 'Consolas', 'Monaco', monospace;
+        color: #991b1b;
+        word-break: break-word;
+    }
+    .audit-no-errors {
+        margin-top: 0.5rem;
+        color: #059669;
+        font-size: 0.85rem;
+    }
+</style>
+
+@code {
+    private List<AuditLogDto>? logs;
+    private bool isLoading = true;
+    private int total;
+    private int currentPage = 1;
+    private int pageSize = 50;
+    private int totalPages => (int)Math.Ceiling((double)total / pageSize);
+
+    private DateTime dateFrom = DateTime.Now.AddDays(-30);
+    private DateTime dateTo = DateTime.Now;
+    private string filterEntityType = "";
+    private AuditLogDto? selectedLog;
+    private bool showDetailModal = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadLogs();
+    }
+
+    private async Task LoadLogs()
+    {
+        isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            var entityType = string.IsNullOrEmpty(filterEntityType) ? null : filterEntityType;
+            var response = await Api.GetAuditLogsAsync(dateFrom, dateTo.AddDays(1), entityType, currentPage);
+            if (response is not null)
+            {
+                logs = response.Logs;
+                total = response.Total;
+            }
+        }
+        catch
+        {
+            ToastService.Error("Error al cargar los registros de auditoria");
+            logs = new();
+        }
+
+        isLoading = false;
+    }
+
+    private async Task PrevPage()
+    {
+        if (currentPage > 1)
+        {
+            currentPage--;
+            await LoadLogs();
+        }
+    }
+
+    private async Task NextPage()
+    {
+        if (currentPage < totalPages)
+        {
+            currentPage++;
+            await LoadLogs();
+        }
+    }
+
+    private void OpenDetail(AuditLogDto log)
+    {
+        selectedLog = log;
+        showDetailModal = true;
+    }
+
+    private void CloseDetail()
+    {
+        showDetailModal = false;
+        selectedLog = null;
+    }
+
+    private string RenderFullChanges(AuditLogDto log)
+    {
+        if (string.IsNullOrEmpty(log.Changes))
+            return "<span class=\"text-muted\">Sin cambios registrados</span>";
+
+        try
+        {
+            var doc = System.Text.Json.JsonDocument.Parse(log.Changes);
+            var root = doc.RootElement;
+
+            // Sync audit log with new JSON format (has "resumen" and "errores")
+            if (log.EntityType == "Sync" && root.TryGetProperty("resumen", out var resumen))
+            {
+                var sb = new System.Text.StringBuilder();
+
+                // Summary section
+                sb.Append("<div class=\"audit-sync-summary\">");
+                sb.Append($"<strong>Resumen:</strong> {System.Net.WebUtility.HtmlEncode(resumen.GetString() ?? "")}");
+                sb.Append("</div>");
+
+                // Stats
+                if (root.TryGetProperty("totalSincronizados", out var synced) && root.TryGetProperty("totalErrores", out var errs))
+                {
+                    sb.Append("<div class=\"audit-sync-stats\">");
+                    sb.Append($"<span class=\"stat-ok\"><i class='fa-solid fa-circle-check'></i> Sincronizados: {synced.GetInt32()}</span>");
+                    sb.Append($"<span class=\"stat-err\"><i class='fa-solid fa-circle-xmark'></i> Errores: {errs.GetInt32()}</span>");
+                    if (root.TryGetProperty("filtro", out var filtro) && filtro.ValueKind != System.Text.Json.JsonValueKind.Null)
+                        sb.Append($"<span class=\"stat-filter\"><i class='fa-solid fa-filter'></i> Filtro: {System.Net.WebUtility.HtmlEncode(filtro.GetString() ?? "")}</span>");
+                    sb.Append("</div>");
+                }
+
+                // Error details
+                if (root.TryGetProperty("errores", out var errores) && errores.GetArrayLength() > 0)
+                {
+                    sb.Append("<div class=\"audit-errors-section\">");
+                    sb.Append("<strong>Detalle de errores:</strong>");
+                    sb.Append("<ul class=\"audit-error-list\">");
+                    foreach (var error in errores.EnumerateArray())
+                    {
+                        sb.Append($"<li class=\"audit-error-item\">{System.Net.WebUtility.HtmlEncode(error.GetString() ?? "")}</li>");
+                    }
+                    sb.Append("</ul>");
+                    sb.Append("</div>");
+                }
+                else
+                {
+                    sb.Append("<div class=\"audit-no-errors\"><i class='fa-solid fa-circle-check'></i> Sin errores</div>");
+                }
+
+                return sb.ToString();
+            }
+
+            // Sync audit log with old plain text format (legacy)
+            if (log.EntityType == "Sync")
+                return $"<pre class=\"audit-detail-pre\">{System.Net.WebUtility.HtmlEncode(log.Changes)}</pre>";
+
+            // MeliItem changes - old/new values table
+            var tableSb = new System.Text.StringBuilder();
+            tableSb.Append("<table class=\"audit-detail-changes-table\">");
+            tableSb.Append("<thead><tr><th>Campo</th><th>Valor anterior</th><th>Valor nuevo</th></tr></thead>");
+            tableSb.Append("<tbody>");
+            foreach (var prop in root.EnumerateObject())
+            {
+                var oldVal = prop.Value.TryGetProperty("old", out var o) ? o.ToString() : "—";
+                var newVal = prop.Value.TryGetProperty("new", out var n) ? n.ToString() : "—";
+                tableSb.Append("<tr>");
+                tableSb.Append($"<td class=\"change-field-name\">{System.Net.WebUtility.HtmlEncode(prop.Name)}</td>");
+                tableSb.Append($"<td class=\"change-old-val\">{System.Net.WebUtility.HtmlEncode(oldVal)}</td>");
+                tableSb.Append($"<td class=\"change-new-val\">{System.Net.WebUtility.HtmlEncode(newVal)}</td>");
+                tableSb.Append("</tr>");
+            }
+            tableSb.Append("</tbody></table>");
+            return tableSb.ToString();
+        }
+        catch
+        {
+            return $"<pre class=\"audit-detail-pre\">{System.Net.WebUtility.HtmlEncode(log.Changes)}</pre>";
+        }
+    }
+
+    private string GetTypeLabel(string entityType) => entityType switch
+    {
+        "MeliItem" => "Publicacion",
+        "MeliOrder" => "Orden",
+        "Sync" => "Sincronizacion",
+        _ => entityType
+    };
+
+    private string GetTypeBadgeClass(string entityType) => entityType switch
+    {
+        "MeliItem" => "audit-type-item",
+        "MeliOrder" => "audit-type-order",
+        "Sync" => "audit-type-sync",
+        _ => ""
+    };
+
+    private string GetActionLabel(string action) => action switch
+    {
+        "UPDATE" => "Edicion",
+        "SYNC" => "Sincronizacion",
+        "CREATE" => "Creacion",
+        _ => action
+    };
+
+    private string GetActionBadgeClass(string action) => action switch
+    {
+        "UPDATE" => "audit-action-update",
+        "SYNC" => "audit-action-sync",
+        "CREATE" => "audit-action-create",
+        _ => ""
+    };
+
+    private string RenderChanges(AuditLogDto log)
+    {
+        if (string.IsNullOrEmpty(log.Changes))
+            return "-";
+
+        if (log.EntityType == "Sync")
+            return $"<span class=\"audit-sync-text\">{System.Net.WebUtility.HtmlEncode(log.Changes)}</span>";
+
+        try
+        {
+            var doc = System.Text.Json.JsonDocument.Parse(log.Changes);
+            var sb = new System.Text.StringBuilder();
+            foreach (var prop in doc.RootElement.EnumerateObject())
+            {
+                var oldVal = prop.Value.TryGetProperty("old", out var o) ? o.ToString() : "?";
+                var newVal = prop.Value.TryGetProperty("new", out var n) ? n.ToString() : "?";
+
+                sb.Append("<span class=\"audit-change-chip\">");
+                sb.Append($"<span class=\"change-field\">{System.Net.WebUtility.HtmlEncode(prop.Name)}</span>: ");
+                sb.Append($"<span class=\"change-old\">{System.Net.WebUtility.HtmlEncode(oldVal)}</span>");
+                sb.Append("<span class=\"change-arrow\"><i class='fa-solid fa-arrow-right'></i></span>");
+                sb.Append($"<span class=\"change-new\">{System.Net.WebUtility.HtmlEncode(newVal)}</span>");
+                sb.Append("</span> ");
+            }
+            return sb.ToString();
+        }
+        catch
+        {
+            return System.Net.WebUtility.HtmlEncode(log.Changes);
+        }
+    }
+}

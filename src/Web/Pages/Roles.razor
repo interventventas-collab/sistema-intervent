@@ -1,0 +1,351 @@
+@page "/roles"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3>Roles (@(roles?.Count ?? 0))</h3>
+        <button class="btn btn-primary" @onclick="ShowCreateForm">+ Nuevo Rol</button>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        @if (isLoading)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">Cargando...</p>
+        }
+        else if (roles is null || !roles.Any())
+        {
+            <p class="text-muted" style="padding: 1.5rem;">No hay roles registrados</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>Descripcion</th>
+                            <th>Usuarios</th>
+                            <th>Permisos</th>
+                            <th>Creado</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var role in roles)
+                        {
+                            <tr>
+                                <td><strong>@role.Name</strong></td>
+                                <td>@(role.Description ?? "-")</td>
+                                <td><span class="role-badge">@role.UserCount</span></td>
+                                <td>
+                                    @if (role.Name == "admin")
+                                    {
+                                        <span class="stock-badge stock-healthy">Todos</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="role-badge">@role.Permissions.Count</span>
+                                    }
+                                </td>
+                                <td>@role.CreatedAt.ToString("dd/MM/yyyy")</td>
+                                <td class="actions-cell">
+                                    <button class="btn-icon btn-edit" @onclick="() => ShowEditForm(role)" title="Editar">
+                                        @SvgIcons.Settings
+                                    </button>
+                                    @if (role.UserCount == 0 && role.Name != "admin")
+                                    {
+                                        <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(role)" title="Eliminar">
+                                            @SvgIcons.AlertCircle
+                                        </button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@if (showForm)
+{
+    <div class="modal-overlay" @onclick="CloseForm">
+        <div class="modal-card modal-medium" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>@(isEditing ? "Editar Rol" : "Nuevo Rol")</h3>
+                <button class="btn-close" @onclick="CloseForm">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(formError))
+                {
+                    <div class="form-error">@formError</div>
+                }
+
+                <div class="form-group">
+                    <label class="form-label">Nombre del rol</label>
+                    <input class="form-input" @bind="formName" placeholder="Ej: supervisor" disabled="@(isEditing && editingRoleName == "admin")" />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Descripcion</label>
+                    <input class="form-input" @bind="formDescription" placeholder="Que puede hacer este rol" />
+                </div>
+
+                @if (editingRoleName != "admin")
+                {
+                    <div class="form-group">
+                        <label class="form-label">Permisos de menu</label>
+                        <div class="permission-tree">
+                            @foreach (var group in menuTree)
+                            {
+                                <div class="permission-group">
+                                    <label class="permission-group-header">
+                                        <input type="checkbox"
+                                               checked="@IsGroupChecked(group)"
+                                               @onchange="(e) => ToggleGroup(group, (bool)e.Value!)" />
+                                        <strong>@group.Label</strong>
+                                        <span class="permission-group-count">(@group.Items.Count(i => selectedPermissions.Contains(i.Key))/@group.Items.Count)</span>
+                                    </label>
+                                    <div class="permission-group-items">
+                                        @foreach (var item in group.Items)
+                                        {
+                                            <label class="permission-item">
+                                                <input type="checkbox"
+                                                       checked="@selectedPermissions.Contains(item.Key)"
+                                                       @onchange="(e) => TogglePermission(item.Key, (bool)e.Value!)" />
+                                                <span>@item.Label</span>
+                                            </label>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="form-group">
+                        <label class="form-label">Permisos de menu</label>
+                        <div class="permission-admin-notice">
+                            <span><i class="fa-solid fa-unlock"></i></span>
+                            <span>El rol <strong>admin</strong> siempre tiene acceso a todos los puntos del menu.</span>
+                        </div>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseForm">Cancelar</button>
+                <button class="btn btn-primary" @onclick="SaveRole" disabled="@isSaving">
+                    @(isSaving ? "Guardando..." : "Guardar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showDeleteConfirm)
+{
+    <div class="modal-overlay" @onclick="() => showDeleteConfirm = false">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>Confirmar eliminacion</h3>
+            </div>
+            <div class="modal-body">
+                <p>Estas seguro que queres eliminar el rol <strong>@roleToDelete?.Name</strong>?</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showDeleteConfirm = false">Cancelar</button>
+                <button class="btn btn-danger" @onclick="DeleteRole">Eliminar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<RoleDto>? roles;
+    private List<MenuTreeDto> menuTree = new();
+    private bool isLoading = true;
+    private bool showForm;
+    private bool isEditing;
+    private bool isSaving;
+    private string? formError;
+
+    // Form fields
+    private int? editingRoleId;
+    private string editingRoleName = "";
+    private string formName = "";
+    private string formDescription = "";
+    private HashSet<string> selectedPermissions = new();
+
+    // Delete
+    private bool showDeleteConfirm;
+    private RoleDto? roleToDelete;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        isLoading = true;
+        try
+        {
+            var rolesTask = Api.GetRolesAsync();
+            var menuTask = Api.GetMenuTreeAsync();
+            await Task.WhenAll(rolesTask, menuTask);
+
+            roles = rolesTask.Result;
+            menuTree = menuTask.Result ?? new();
+        }
+        catch
+        {
+            ToastService.Error("Error al cargar los roles");
+        }
+        isLoading = false;
+    }
+
+    private void ShowCreateForm()
+    {
+        isEditing = false;
+        editingRoleId = null;
+        editingRoleName = "";
+        formName = "";
+        formDescription = "";
+        selectedPermissions = new HashSet<string> { "dashboard" }; // dashboard siempre por defecto
+        formError = null;
+        showForm = true;
+    }
+
+    private void ShowEditForm(RoleDto role)
+    {
+        isEditing = true;
+        editingRoleId = role.Id;
+        editingRoleName = role.Name;
+        formName = role.Name;
+        formDescription = role.Description ?? "";
+        selectedPermissions = new HashSet<string>(role.Permissions);
+        formError = null;
+        showForm = true;
+    }
+
+    private void CloseForm()
+    {
+        showForm = false;
+        formError = null;
+    }
+
+    // --- Permission tree helpers ---
+    private bool IsGroupChecked(MenuTreeDto group)
+    {
+        return group.Items.All(i => selectedPermissions.Contains(i.Key));
+    }
+
+    private void ToggleGroup(MenuTreeDto group, bool isChecked)
+    {
+        foreach (var item in group.Items)
+        {
+            if (isChecked)
+                selectedPermissions.Add(item.Key);
+            else
+                selectedPermissions.Remove(item.Key);
+        }
+    }
+
+    private void TogglePermission(string key, bool isChecked)
+    {
+        if (isChecked)
+            selectedPermissions.Add(key);
+        else
+            selectedPermissions.Remove(key);
+    }
+
+    private async Task SaveRole()
+    {
+        formError = null;
+        isSaving = true;
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(formName))
+            {
+                formError = "El nombre del rol es obligatorio";
+                isSaving = false;
+                return;
+            }
+
+            if (isEditing && editingRoleId.HasValue)
+            {
+                var update = new UpdateRoleRequest
+                {
+                    Name = formName,
+                    Description = formDescription,
+                    Permissions = editingRoleName == "admin" ? null : selectedPermissions.ToList()
+                };
+
+                var result = await Api.UpdateRoleAsync(editingRoleId.Value, update);
+                if (result is null)
+                {
+                    formError = "Ya existe un rol con ese nombre";
+                    isSaving = false;
+                    return;
+                }
+                ToastService.Success("Rol actualizado");
+            }
+            else
+            {
+                var create = new CreateRoleRequest
+                {
+                    Name = formName,
+                    Description = formDescription,
+                    Permissions = selectedPermissions.ToList()
+                };
+
+                var result = await Api.CreateRoleAsync(create);
+                if (result is null)
+                {
+                    formError = "Ya existe un rol con ese nombre";
+                    isSaving = false;
+                    return;
+                }
+                ToastService.Success("Rol creado");
+            }
+
+            showForm = false;
+            await LoadData();
+        }
+        catch
+        {
+            formError = "Error al guardar el rol";
+        }
+
+        isSaving = false;
+    }
+
+    private void ConfirmDelete(RoleDto role)
+    {
+        roleToDelete = role;
+        showDeleteConfirm = true;
+    }
+
+    private async Task DeleteRole()
+    {
+        if (roleToDelete is null) return;
+
+        var result = await Api.DeleteRoleAsync(roleToDelete.Id);
+        if (result)
+        {
+            ToastService.Success("Rol eliminado");
+            await LoadData();
+        }
+        else
+        {
+            ToastService.Error("No se puede eliminar un rol con usuarios asignados");
+        }
+
+        showDeleteConfirm = false;
+        roleToDelete = null;
+    }
+}

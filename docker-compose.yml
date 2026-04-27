@@ -1,0 +1,117 @@
+services:
+  # --- Fix de permisos del volume de backups (mssql corre como UID 10001) ---
+  backups-init:
+    image: alpine:3
+    container_name: aiml-backups-init
+    command: sh -c "mkdir -p /backup && chown -R 10001:10001 /backup && chmod 770 /backup"
+    volumes:
+      - backups_data:/backup
+    restart: "no"
+
+  # --- Base de datos ---
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: aiml-sqlserver
+    depends_on:
+      backups-init:
+        condition: service_completed_successfully
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=${SQL_SA_PASSWORD:?SQL_SA_PASSWORD no definido en .env}
+      - MSSQL_PID=Express
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+      - backups_data:/var/opt/mssql/backup
+    networks:
+      - aiml-net
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$SA_PASSWORD" -C -Q "SELECT 1" || exit 1
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  # --- Inicializacion de la DB (corre una vez y termina) ---
+  sqlserver-init:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: aiml-sqlserver-init
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    environment:
+      - SA_PASSWORD=${SQL_SA_PASSWORD}
+    volumes:
+      - ./db/init.sql:/init.sql
+    networks:
+      - aiml-net
+    entrypoint: ["sh", "-c", "/opt/mssql-tools18/bin/sqlcmd -S sqlserver -U sa -P \"$$SA_PASSWORD\" -C -i /init.sql"]
+    restart: "no"
+
+  # --- Backend API (.NET 8) ---
+  api:
+    build:
+      context: ./src/Api
+      dockerfile: Dockerfile
+    container_name: aiml-api
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:80
+      - ConnectionStrings__DefaultConnection=Server=sqlserver;Database=AIml;User Id=sa;Password=${SQL_SA_PASSWORD};TrustServerCertificate=True;
+      - Jwt__Secret=${JWT_SECRET:?JWT_SECRET no definido en .env}
+      - DEFAULT_ADMIN_PASSWORD=${DEFAULT_ADMIN_PASSWORD:-}
+      - PLAYWRIGHT_URL=http://playwright:3001
+      # Origenes permitidos para CORS (lista separada por coma).
+      # En desarrollo, si esta vacio, la API permite localhost:3000 por default.
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-}
+    volumes:
+      - ./.git:/repo/.git:ro
+      - files_data:/data/files
+      - backups_data:/data/backups
+    networks:
+      - aiml-net
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # --- Playwright (WhatsApp Web automation) ---
+  playwright:
+    build:
+      context: ./src/Playwright
+      dockerfile: Dockerfile
+    container_name: aiml-playwright
+    environment:
+      - NODE_ENV=production
+    volumes:
+      - playwright_data:/data
+    networks:
+      - aiml-net
+    restart: unless-stopped
+
+  # --- Frontend (Blazor WASM + Nginx) ---
+  web:
+    build:
+      context: ./src/Web
+      dockerfile: Dockerfile
+    container_name: aiml-web
+    ports:
+      - "3000:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - aiml-net
+    depends_on:
+      - api
+    restart: unless-stopped
+
+
+networks:
+  aiml-net:
+    driver: bridge
+
+volumes:
+  sqlserver_data:
+  playwright_data:
+  files_data:
+  backups_data:

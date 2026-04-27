@@ -1,0 +1,353 @@
+@inherits LayoutComponentBase
+@inject AuthService AuthService
+@inject NavigationManager Navigation
+@inject ToastService ToastService
+@inject SyncProgressTracker SyncProgress
+@inject UploadProgressService UploadProgress
+@inject BrandSettingsService BrandSettings
+@inject IJSRuntime JS
+@inject ApiClient Api
+@implements IDisposable
+
+<aside class="sidebar @(sidebarOpen ? "open" : "") @(sidebarCollapsed ? "collapsed" : "")" id="sidebar">
+    <div class="sidebar-brand">
+        @if (BrandSettings.HasCustomLogo)
+        {
+            <img src="@BrandSettings.BrandLogo" alt="Logo" class="sidebar-brand-logo" />
+        }
+        else
+        {
+            <span class="sidebar-brand-icon">@SvgIcons.GetByName(BrandSettings.BrandIcon)</span>
+        }
+        <span class="sidebar-brand-text">@BrandSettings.BrandName</span>
+        <button class="sidebar-collapse-btn" @onclick="ToggleCollapse" title="@(sidebarCollapsed ? "Expandir menu" : "Colapsar menu")">
+            <span class="sidebar-collapse-icon">@(sidebarCollapsed ? SvgIcons.ChevronRight : SvgIcons.ChevronLeft)</span>
+        </button>
+    </div>
+    <nav class="sidebar-nav" role="navigation" aria-label="Menu principal">
+        @if (HasPerm("dashboard"))
+        {
+            <NavItem Href="/" Label="Dashboard" Icon="@SvgIcons.Dashboard"
+                     IsActive="@IsActive("/")" OnClick="@(() => NavigateTo("/"))" />
+        }
+
+        @if (HasPerm("publicaciones") || HasPerm("ordenes"))
+        {
+            <NavGroup Label="MercadoLibre" Icon="@SvgIcons.Store"
+                      HasActiveChild="@(IsActive("/publicaciones") || IsActive("/ordenes"))">
+                @if (HasPerm("publicaciones"))
+                {
+                    <NavItem Href="/publicaciones" Label="Publicaciones" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive("/publicaciones")" OnClick="@(() => NavigateTo("/publicaciones"))" />
+                }
+                @if (HasPerm("ordenes"))
+                {
+                    <NavItem Href="/ordenes" Label="Ordenes" Icon="@SvgIcons.ShoppingBag"
+                             IsActive="@IsActive("/ordenes")" OnClick="@(() => NavigateTo("/ordenes"))" />
+                }
+            </NavGroup>
+        }
+
+        @if (HasPerm("productos"))
+        {
+            <NavGroup Label="Inventario" Icon="@SvgIcons.Inventory"
+                      HasActiveChild="@IsActive("/productos")">
+                <NavItem Href="/productos" Label="Productos" Icon="@SvgIcons.Package"
+                         IsActive="@IsActive("/productos")" OnClick="@(() => NavigateTo("/productos"))" />
+            </NavGroup>
+        }
+
+        @if (HasPerm("usuarios") || HasPerm("roles") || HasPerm("integraciones") || HasPerm("procesos") || HasPerm("archivos") || HasPerm("auditoria") || HasPerm("backups"))
+        {
+            <NavGroup Label="Administracion" Icon="@SvgIcons.Admin"
+                      HasActiveChild="@(IsActive("/usuarios") || IsActive("/roles") || IsActive("/integraciones") || IsActive("/procesos") || IsActive("/archivos") || IsActive("/auditoria") || IsActive("/backups") || IsActive("/config"))">
+                @if (HasPerm("usuarios"))
+                {
+                    <NavItem Href="/usuarios" Label="Usuarios" Icon="@SvgIcons.Users"
+                             IsActive="@IsActive("/usuarios")" OnClick="@(() => NavigateTo("/usuarios"))" />
+                }
+                @if (HasPerm("roles"))
+                {
+                    <NavItem Href="/roles" Label="Roles" Icon="@SvgIcons.Shield"
+                             IsActive="@IsActive("/roles")" OnClick="@(() => NavigateTo("/roles"))" />
+                }
+                @if (HasPerm("integraciones"))
+                {
+                    <NavItem Href="/integraciones" Label="Integraciones" Icon="@SvgIcons.Link"
+                             IsActive="@IsActive("/integraciones")" OnClick="@(() => NavigateTo("/integraciones"))" />
+                }
+                @if (HasPerm("procesos"))
+                {
+                    <NavItem Href="/procesos" Label="Procesos" Icon="@SvgIcons.Timer"
+                             IsActive="@IsActive("/procesos")" OnClick="@(() => NavigateTo("/procesos"))" />
+                }
+                @if (HasPerm("archivos"))
+                {
+                    <NavItem Href="/archivos" Label="Archivos" Icon="@SvgIcons.Folder"
+                             IsActive="@IsActive("/archivos")" OnClick="@(() => NavigateTo("/archivos"))" />
+                }
+                @if (HasPerm("auditoria"))
+                {
+                    <NavItem Href="/auditoria" Label="Auditoria" Icon="@SvgIcons.History"
+                             IsActive="@IsActive("/auditoria")" OnClick="@(() => NavigateTo("/auditoria"))" />
+                }
+                @if (HasPerm("backups"))
+                {
+                    <NavItem Href="/backups" Label="Backups" Icon="@SvgIcons.Backup"
+                             IsActive="@IsActive("/backups")" OnClick="@(() => NavigateTo("/backups"))" />
+                }
+                @if (HasPerm("config"))
+                {
+                    <NavItem Href="/config" Label="Configuracion" Icon="@SvgIcons.Settings"
+                             IsActive="@IsActive("/config")" OnClick="@(() => NavigateTo("/config"))" />
+                }
+            </NavGroup>
+        }
+    </nav>
+    <div class="sidebar-user">
+        <div class="sidebar-user-avatar">@SvgIcons.User</div>
+        <div class="sidebar-user-info">
+            <span class="sidebar-user-name">@username</span>
+            <span class="sidebar-user-role">@role</span>
+        </div>
+        <button class="sidebar-menu-btn" @onclick="ToggleUserMenu" @onclick:stopPropagation="true" title="Menu">
+            <span class="sidebar-menu-icon @(userMenuOpen ? "rotated" : "")">@SvgIcons.ChevronUp</span>
+        </button>
+        @if (userMenuOpen)
+        {
+            <div class="sidebar-user-dropdown">
+                <button class="sidebar-dropdown-item" @onclick="GoToProfile">
+                    <span class="sidebar-dropdown-icon">@SvgIcons.Edit</span>
+                    <span class="sidebar-dropdown-text">Editar Perfil</span>
+                </button>
+                <button class="sidebar-dropdown-item sidebar-dropdown-danger" @onclick="Logout">
+                    <span class="sidebar-dropdown-icon">@SvgIcons.Logout</span>
+                    <span class="sidebar-dropdown-text">Cerrar Sesion</span>
+                </button>
+            </div>
+        }
+    </div>
+</aside>
+
+<main class="main-wrapper @(sidebarCollapsed ? "main-collapsed" : "")">
+    <header class="topbar">
+        <div class="topbar-left">
+            <button class="topbar-menu-btn" @onclick="ToggleSidebar" aria-label="Abrir menu">
+                @SvgIcons.Menu
+            </button>
+            <h1 class="topbar-title">@BrandSettings.BrandName</h1>
+        </div>
+        <div class="topbar-actions">
+            @if (UploadProgress.IsUploading)
+            {
+                <div class="topbar-upload-indicator" @onclick="() => UploadProgress.RequestReopen()" title="Ver detalle de subida">
+                    <span class="topbar-upload-spinner"></span>
+                    <span class="topbar-upload-text">Subiendo @UploadProgress.DoneCount/@UploadProgress.TotalCount</span>
+                    <div class="topbar-upload-bar">
+                        <div class="topbar-upload-bar-fill" style="width: @(UploadProgress.Percentage)%"></div>
+                    </div>
+                    <button class="topbar-upload-cancel" @onclick="CancelUpload" @onclick:stopPropagation="true" title="Cancelar subida"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+            }
+            @if (SyncProgress.State.IsActive && !SyncProgress.State.ShowModal)
+            {
+                <div class="topbar-sync-indicator @(SyncProgress.State.Status)" @onclick="OpenSyncModal" title="@SyncProgress.State.Description">
+                    @if (SyncProgress.State.Status == "running")
+                    {
+                        <span class="topbar-sync-spinner"></span>
+                        <span class="topbar-sync-text">@SyncProgress.State.Percentage%</span>
+                        <div class="topbar-sync-bar">
+                            <div class="topbar-sync-bar-fill" style="width: @(SyncProgress.State.Percentage)%"></div>
+                        </div>
+                    }
+                    else if (SyncProgress.State.Status == "completed")
+                    {
+                        <span class="topbar-sync-text"><i class="fa-solid fa-circle-check"></i> Sincronizado</span>
+                        <button class="topbar-sync-dismiss" @onclick="DismissSync" @onclick:stopPropagation="true" title="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+                    }
+                    else if (SyncProgress.State.Status == "error")
+                    {
+                        <span class="topbar-sync-text"><i class="fa-solid fa-circle-xmark"></i> Error</span>
+                        <button class="topbar-sync-dismiss" @onclick="DismissSync" @onclick:stopPropagation="true" title="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+                    }
+                </div>
+            }
+        </div>
+    </header>
+    <div class="content">
+        @Body
+    </div>
+</main>
+
+@if (sidebarOpen)
+{
+    <div class="sidebar-overlay visible" @onclick="CloseSidebar"></div>
+}
+
+<ToastContainer />
+
+@code {
+    private bool sidebarOpen;
+    private bool sidebarCollapsed;
+    private bool userMenuOpen;
+    private string username = "usuario";
+    private string role = "user";
+    private List<string> permissions = new();
+
+    private static readonly Dictionary<string, string> RouteToMenuKey = new()
+    {
+        { "", "dashboard" },
+        { "publicaciones", "publicaciones" },
+        { "ordenes", "ordenes" },
+        { "productos", "productos" },
+        { "usuarios", "usuarios" },
+        { "roles", "roles" },
+        { "integraciones", "integraciones" },
+        { "procesos", "procesos" },
+        { "auditoria", "auditoria" },
+        { "config", "config" },
+        { "perfil", "" } // perfil always allowed
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        SyncProgress.OnChange += OnSyncProgressChanged;
+        UploadProgress.OnChanged += OnUploadProgressChanged;
+        var user = await AuthService.GetUserAsync();
+        if (user is not null)
+        {
+            username = user.Username;
+            role = user.Role;
+            permissions = user.Permissions ?? new();
+        }
+
+        // Load brand settings
+        try
+        {
+            var settings = await Api.GetSettingsAsync();
+            if (settings is not null)
+            {
+                BrandSettings.LoadFromSettings(settings);
+                await JS.InvokeVoidAsync("applyBrandColors", BrandSettings.PrimaryColor, BrandSettings.SidebarBgColor);
+                await JS.InvokeVoidAsync("updatePageTitle", BrandSettings.BrandName);
+            }
+        }
+        catch { }
+
+        BrandSettings.OnChange += OnBrandChanged;
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            Navigation.LocationChanged += OnLocationChanged;
+            CheckRoutePermission();
+        }
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        CheckRoutePermission();
+        _ = InvokeAsync(async () => await JS.InvokeVoidAsync("updatePageTitle", BrandSettings.BrandName));
+    }
+
+    private void CheckRoutePermission()
+    {
+        if (permissions.Count == 0) return; // permissions not loaded yet
+
+        var relativePath = Navigation.ToBaseRelativePath(Navigation.Uri).TrimStart('/').Split('?')[0].Split('#')[0];
+
+        if (RouteToMenuKey.TryGetValue(relativePath, out var menuKey))
+        {
+            // Empty menuKey means always allowed (like /perfil)
+            if (!string.IsNullOrEmpty(menuKey) && !permissions.Contains(menuKey))
+            {
+                Navigation.NavigateTo("/");
+            }
+        }
+    }
+
+    private bool HasPerm(string key) => permissions.Contains(key);
+
+    private void OnSyncProgressChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OpenSyncModal()
+    {
+        if (SyncProgress.State.Status == "running")
+        {
+            SyncProgress.State.ShowModal = true;
+            Navigation.NavigateTo("/publicaciones");
+        }
+    }
+
+    private void DismissSync()
+    {
+        SyncProgress.Dismiss();
+    }
+
+    private async void OnBrandChanged()
+    {
+        await InvokeAsync(async () =>
+        {
+            await JS.InvokeVoidAsync("applyBrandColors", BrandSettings.PrimaryColor, BrandSettings.SidebarBgColor);
+            await JS.InvokeVoidAsync("updatePageTitle", BrandSettings.BrandName);
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        SyncProgress.OnChange -= OnSyncProgressChanged;
+        UploadProgress.OnChanged -= OnUploadProgressChanged;
+        Navigation.LocationChanged -= OnLocationChanged;
+        BrandSettings.OnChange -= OnBrandChanged;
+    }
+
+    private void OnUploadProgressChanged() => InvokeAsync(StateHasChanged);
+
+    private async Task CancelUpload()
+    {
+        await UploadProgress.RequestCancelAsync();
+    }
+
+    private bool IsActive(string href)
+    {
+        var relativePath = Navigation.ToBaseRelativePath(Navigation.Uri);
+        if (href == "/")
+            return string.IsNullOrEmpty(relativePath) || relativePath == "/" || relativePath.Equals("index.html", StringComparison.OrdinalIgnoreCase);
+        return relativePath.StartsWith(href.TrimStart('/'), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void NavigateTo(string url)
+    {
+        CloseSidebar();
+        Navigation.NavigateTo(url);
+    }
+
+    private void ToggleSidebar() => sidebarOpen = !sidebarOpen;
+    private void CloseSidebar() => sidebarOpen = false;
+    private void ToggleCollapse()
+    {
+        sidebarCollapsed = !sidebarCollapsed;
+        userMenuOpen = false;
+    }
+    private void ToggleUserMenu() => userMenuOpen = !userMenuOpen;
+
+    private void GoToProfile()
+    {
+        userMenuOpen = false;
+        CloseSidebar();
+        Navigation.NavigateTo("/perfil");
+    }
+
+    private async Task Logout()
+    {
+        userMenuOpen = false;
+        await AuthService.LogoutAsync();
+        Navigation.NavigateTo("/login", forceLoad: true);
+    }
+}

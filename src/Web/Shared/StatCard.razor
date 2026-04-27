@@ -1,0 +1,16 @@
+<div class="stat-card @CssVariant">
+    <div class="stat-card-icon">@Icon</div>
+    <div class="stat-card-body">
+        <span class="stat-card-value">@Value</span>
+        <span class="stat-card-label">@Label</span>
+    </div>
+</div>
+
+@code {
+    [Parameter] public MarkupString Icon { get; set; }
+    [Parameter] public string Value { get; set; } = "--";
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string Variant { get; set; } = "primary";
+
+    private string CssVariant => $"stat-card--{Variant}";
+}

@@ -1,0 +1,59 @@
+@inject ToastService ToastService
+@implements IDisposable
+
+<div class="toast-container">
+    @foreach (var toast in _toasts)
+    {
+        <div class="toast toast-@toast.TypeCss @(toast.Visible ? "visible" : "")">
+            @toast.Message
+        </div>
+    }
+</div>
+
+@code {
+    private readonly List<ToastItem> _toasts = new();
+
+    protected override void OnInitialized()
+    {
+        ToastService.OnShow += ShowToast;
+    }
+
+    private async void ShowToast(string message, ToastType type)
+    {
+        var toast = new ToastItem
+        {
+            Message = message,
+            TypeCss = type.ToString().ToLower(),
+            Visible = false
+        };
+
+        _toasts.Add(toast);
+        await InvokeAsync(StateHasChanged);
+
+        // Small delay to trigger CSS transition
+        await Task.Delay(50);
+        toast.Visible = true;
+        await InvokeAsync(StateHasChanged);
+
+        // Auto-remove after 3 seconds
+        await Task.Delay(3000);
+        toast.Visible = false;
+        await InvokeAsync(StateHasChanged);
+
+        await Task.Delay(300);
+        _toasts.Remove(toast);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        ToastService.OnShow -= ShowToast;
+    }
+
+    private class ToastItem
+    {
+        public string Message { get; set; } = "";
+        public string TypeCss { get; set; } = "info";
+        public bool Visible { get; set; }
+    }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "aiml-playwright-whatsapp",
+  "version": "1.0.0",
+  "description": "WhatsApp Web automation via Playwright",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "4.18.2",
+    "playwright": "1.42.0"
+  }
+}

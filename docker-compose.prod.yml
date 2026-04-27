@@ -1,0 +1,156 @@
+services:
+  # --- Fix de permisos del volume de backups (mssql corre como UID 10001) ---
+  backups-init-prod:
+    image: alpine:3
+    container_name: aiml-backups-init-prod
+    command: sh -c "mkdir -p /backup && chown -R 10001:10001 /backup && chmod 770 /backup"
+    volumes:
+      - backups_prod_data:/backup
+    restart: "no"
+
+  # --- Base de datos PRODUCCION ---
+  sqlserver-prod:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: aiml-sqlserver-prod
+    depends_on:
+      backups-init-prod:
+        condition: service_completed_successfully
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=${SQL_SA_PASSWORD:?SQL_SA_PASSWORD no definido en .env}
+      - MSSQL_PID=Express
+    volumes:
+      - sqlserver_prod_data:/var/opt/mssql
+      - backups_prod_data:/var/opt/mssql/backup
+    networks:
+      - aiml-prod-net
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$SA_PASSWORD" -C -Q "SELECT 1" || exit 1
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  # --- Inicializacion de la DB PRODUCCION ---
+  sqlserver-init-prod:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: aiml-sqlserver-init-prod
+    depends_on:
+      sqlserver-prod:
+        condition: service_healthy
+    environment:
+      - SA_PASSWORD=${SQL_SA_PASSWORD}
+    volumes:
+      - ./db/init.sql:/init.sql
+    networks:
+      - aiml-prod-net
+    entrypoint: ["sh", "-c", "/opt/mssql-tools18/bin/sqlcmd -S sqlserver-prod -U sa -P \"$$SA_PASSWORD\" -C -i /init.sql"]
+    restart: "no"
+
+  # --- Backend API PRODUCCION ---
+  api-prod:
+    build:
+      context: ./src/Api
+      dockerfile: Dockerfile
+    container_name: aiml-api-prod
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:80
+      - ConnectionStrings__DefaultConnection=Server=sqlserver-prod;Database=AIml;User Id=sa;Password=${SQL_SA_PASSWORD};TrustServerCertificate=True;
+      - Jwt__Secret=${JWT_SECRET:?JWT_SECRET no definido en .env}
+      - DEFAULT_ADMIN_PASSWORD=${DEFAULT_ADMIN_PASSWORD:-}
+      - PLAYWRIGHT_URL=http://playwright-prod:3001
+      # Origenes permitidos para CORS en produccion (lista separada por coma).
+      # Ej: CORS_ALLOWED_ORIGINS=https://midominio.com
+      # Si esta vacio, CORS queda cerrado y solo funcionan los requests del mismo
+      # origen (a traves del reverse proxy Caddy), que es el caso normal.
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-}
+    volumes:
+      - files_prod_data:/data/files
+      - backups_prod_data:/data/backups
+    networks:
+      - aiml-prod-net
+    depends_on:
+      sqlserver-prod:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # --- Playwright PRODUCCION ---
+  playwright-prod:
+    build:
+      context: ./src/Playwright
+      dockerfile: Dockerfile
+    container_name: aiml-playwright-prod
+    environment:
+      - NODE_ENV=production
+    volumes:
+      - playwright_prod_data:/data
+    networks:
+      - aiml-prod-net
+    restart: unless-stopped
+
+  # --- Frontend PRODUCCION ---
+  web-prod:
+    build:
+      context: ./src/Web
+      dockerfile: Dockerfile
+    container_name: aiml-web-prod
+    expose:
+      - "80"
+    volumes:
+      - ./nginx/nginx.prod.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - aiml-prod-net
+    depends_on:
+      - api-prod
+    restart: unless-stopped
+
+  # --- Caddy (reverse proxy + HTTPS automatico) ---
+  # Si DOMAIN esta definido -> pide certificado real a Let's Encrypt.
+  # Si DOMAIN esta vacio      -> sirve por IP con certificado autofirmado (tls internal).
+  caddy:
+    image: caddy:2-alpine
+    container_name: aiml-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Defaults aplicados aca (no en el Caddyfile) porque Caddy v2 solo aplica
+      # el default {$VAR:default} si la variable NO esta seteada. Si la env
+      # esta seteada pero vacia (caso tipico de .env con DOMAIN= vacio),
+      # el reemplazo es "" y rompe el parser del Caddyfile.
+      # Default a "localhost": Caddy emite cert interno para localhost sin
+      # contactar Let's Encrypt, asi que cuando el cliente no configura un
+      # dominio real, el bloque queda dormido (nadie pide localhost en prod)
+      # y el catch-all :443 con tls internal sirve a todos los requests por IP.
+      - DOMAIN=${DOMAIN:-localhost}
+      - ACME_EMAIL=${ACME_EMAIL:-noreply@example.com}
+      # PUBLIC_IP: misma logica que DOMAIN. Si el cliente la deja vacia en
+      # .env, defaulteamos a 127.0.0.1 (siempre apunta al loopback de la
+      # maquina, no expone nada extra). El Caddyfile genera un bloque
+      # "https://{$PUBLIC_IP}" con cert interno y un default_sni que apunta
+      # a esa IP, lo que permite que el browser entrando por IP literal
+      # (sin SNI) reciba el cert correcto en vez de un handshake roto.
+      - PUBLIC_IP=${PUBLIC_IP:-127.0.0.1}
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - aiml-prod-net
+    depends_on:
+      - web-prod
+    restart: unless-stopped
+
+networks:
+  aiml-prod-net:
+    driver: bridge
+
+volumes:
+  sqlserver_prod_data:
+  playwright_prod_data:
+  files_prod_data:
+  backups_prod_data:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "mercadolibre": {
+      "command": "bash",
+      "args": ["scripts/meli-mcp-launcher.sh"]
+    }
+  }
+}

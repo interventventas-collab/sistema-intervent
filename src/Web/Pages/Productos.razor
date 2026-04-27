@@ -1,0 +1,1625 @@
+@page "/productos"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3>Productos (@GetFilteredProducts().Count de @totalProducts)</h3>
+        <button class="btn btn-primary" @onclick="ShowCreateForm">+ Nuevo Producto</button>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        @if (isLoading)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">Cargando productos...</p>
+        }
+        else if (products is null || !products.Any())
+        {
+            <p class="text-muted" style="padding: 1.5rem;">No hay productos cargados. Usa el boton "+ Nuevo Producto" para agregar el primero.</p>
+        }
+        else
+        {
+            @if (selectedItems.Count > 0)
+            {
+                <div class="bulk-actions-bar">
+                    <span><strong>@selectedItems.Count</strong> productos seleccionados</span>
+                    <button class="btn btn-primary btn-sm" @onclick="BulkActivate">
+                        Activar
+                    </button>
+                    <button class="btn btn-secondary btn-sm" @onclick="BulkDeactivate">
+                        Desactivar
+                    </button>
+                    <button class="btn btn-primary btn-sm" @onclick="ShowBulkPublishModal" style="background: #FFE600; color: #333; border-color: #FFE600;">
+                        Publicar en MeLi
+                    </button>
+                    <button class="btn btn-danger btn-sm" @onclick="ShowBulkDeleteModal">
+                        Eliminar
+                    </button>
+                    <button class="btn btn-secondary btn-sm" @onclick="ClearSelection">
+                        Deseleccionar
+                    </button>
+                </div>
+            }
+
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th class="th-checkbox"><input type="checkbox" @onchange="ToggleSelectAll" checked="@IsAllSelected()" title="Seleccionar todos" /></th>
+                            <th style="width: 50px;">Foto</th>
+                            <!-- Titulo: text filter + sort -->
+                            <th class="th-filterable" style="min-width: 200px;">
+                                <div class="th-filter-inner">
+                                    <input type="text" class="th-filter-input @(IsFilterActive("titulo") ? "has-filter" : "")" placeholder="Titulo..."
+                                           value='@GetTextFilter("titulo")' @oninput='(e) => SetTextFilter("titulo", e.Value?.ToString() ?? "")' />
+                                    <span class="sort-icon" @onclick='() => ToggleSort("titulo")' title="Ordenar">
+                                        <span class="@(sortColumn == "titulo" && sortAsc ? "sort-up-active" : "")">&#9650;</span>
+                                        <span class="@(sortColumn == "titulo" && !sortAsc ? "sort-down-active" : "")">&#9660;</span>
+                                    </span>
+                                </div>
+                            </th>
+                            <!-- SKU: text filter + sort -->
+                            <th class="th-filterable" style="min-width: 100px;">
+                                <div class="th-filter-inner">
+                                    <input type="text" class="th-filter-input @(IsFilterActive("sku") ? "has-filter" : "")" placeholder="SKU..."
+                                           value='@GetTextFilter("sku")' @oninput='(e) => SetTextFilter("sku", e.Value?.ToString() ?? "")' />
+                                    <span class="sort-icon" @onclick='() => ToggleSort("sku")' title="Ordenar">
+                                        <span class="@(sortColumn == "sku" && sortAsc ? "sort-up-active" : "")">&#9650;</span>
+                                        <span class="@(sortColumn == "sku" && !sortAsc ? "sort-down-active" : "")">&#9660;</span>
+                                    </span>
+                                </div>
+                            </th>
+                            <!-- Publicaciones: checkbox dropdown -->
+                            <th class="th-dropdown @(activeFilterColumn == "publicaciones" ? "filter-open" : "")" style="min-width: 120px;">
+                                <div class="th-inner">
+                                    <span class="th-label">Publicaciones</span>
+                                    <span class="th-icons">
+                                        <button class="filter-btn @(IsCheckboxFilterActive("publicaciones") ? "filter-active" : "")" @onclick='() => ToggleDropdownFilter("publicaciones")' @onclick:stopPropagation="true" title="Filtrar">
+                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+                                        </button>
+                                    </span>
+                                </div>
+                                @if (activeFilterColumn == "publicaciones")
+                                {
+                                    <div class="column-filter-dropdown" @onclick:stopPropagation="true">
+                                        <div class="filter-checkbox-list">
+                                            @foreach (var val in GetUniqueValues("publicaciones"))
+                                            {
+                                                var v = val;
+                                                <label class="filter-checkbox-item">
+                                                    <input type="checkbox" checked="@IsCheckboxChecked("publicaciones", v)" @onchange='() => ToggleCheckboxValue("publicaciones", v)' />
+                                                    @v
+                                                </label>
+                                            }
+                                        </div>
+                                        @if (IsCheckboxFilterActive("publicaciones"))
+                                        {
+                                            <div class="filter-actions"><button class="filter-clear-btn" @onclick='() => ClearCheckboxFilter("publicaciones")'>Limpiar</button></div>
+                                        }
+                                    </div>
+                                }
+                            </th>
+                            <!-- Costo: sort only -->
+                            <th class="th-sortable" @onclick='() => ToggleSort("costo")'>
+                                <div class="th-inner">
+                                    <span class="th-label">Costo</span>
+                                    <span class="sort-icon">
+                                        <span class="@(sortColumn == "costo" && sortAsc ? "sort-up-active" : "")">&#9650;</span>
+                                        <span class="@(sortColumn == "costo" && !sortAsc ? "sort-down-active" : "")">&#9660;</span>
+                                    </span>
+                                </div>
+                            </th>
+                            <!-- PVP: sort only -->
+                            <th class="th-sortable" @onclick='() => ToggleSort("pvp")'>
+                                <div class="th-inner">
+                                    <span class="th-label">PVP</span>
+                                    <span class="sort-icon">
+                                        <span class="@(sortColumn == "pvp" && sortAsc ? "sort-up-active" : "")">&#9650;</span>
+                                        <span class="@(sortColumn == "pvp" && !sortAsc ? "sort-down-active" : "")">&#9660;</span>
+                                    </span>
+                                </div>
+                            </th>
+                            <!-- Stock: sort only -->
+                            <th class="th-sortable" @onclick='() => ToggleSort("stock")'>
+                                <div class="th-inner">
+                                    <span class="th-label">Stock</span>
+                                    <span class="sort-icon">
+                                        <span class="@(sortColumn == "stock" && sortAsc ? "sort-up-active" : "")">&#9650;</span>
+                                        <span class="@(sortColumn == "stock" && !sortAsc ? "sort-down-active" : "")">&#9660;</span>
+                                    </span>
+                                </div>
+                            </th>
+                            <!-- Estado: checkbox dropdown -->
+                            <th class="th-dropdown @(activeFilterColumn == "estado" ? "filter-open" : "")">
+                                <div class="th-inner">
+                                    <span class="th-label" @onclick='() => ToggleSort("estado")'>Estado</span>
+                                    <span class="th-icons">
+                                        <span class="sort-icon" @onclick='() => ToggleSort("estado")'>
+                                            <span class="@(sortColumn == "estado" && sortAsc ? "sort-up-active" : "")">&#9650;</span>
+                                            <span class="@(sortColumn == "estado" && !sortAsc ? "sort-down-active" : "")">&#9660;</span>
+                                        </span>
+                                        <button class="filter-btn @(IsCheckboxFilterActive("estado") ? "filter-active" : "")" @onclick='() => ToggleDropdownFilter("estado")' @onclick:stopPropagation="true" title="Filtrar">
+                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+                                        </button>
+                                    </span>
+                                </div>
+                                @if (activeFilterColumn == "estado")
+                                {
+                                    <div class="column-filter-dropdown" @onclick:stopPropagation="true">
+                                        <div class="filter-checkbox-list">
+                                            @foreach (var val in GetUniqueValues("estado"))
+                                            {
+                                                var v = val;
+                                                <label class="filter-checkbox-item">
+                                                    <input type="checkbox" checked="@IsCheckboxChecked("estado", v)" @onchange='() => ToggleCheckboxValue("estado", v)' />
+                                                    @v
+                                                </label>
+                                            }
+                                        </div>
+                                        @if (IsCheckboxFilterActive("estado"))
+                                        {
+                                            <div class="filter-actions"><button class="filter-clear-btn" @onclick='() => ClearCheckboxFilter("estado")'>Limpiar</button></div>
+                                        }
+                                    </div>
+                                }
+                            </th>
+                            <th style="width: 120px;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var product in GetFilteredProducts())
+                        {
+                            <tr class="@(selectedItems.Contains(product.Id) ? "row-selected" : "")">
+                                <td class="td-checkbox" @onclick:stopPropagation="true"><input type="checkbox" checked="@selectedItems.Contains(product.Id)" @onchange="() => ToggleSelectItem(product.Id)" /></td>
+                                <td>
+                                    @if (!string.IsNullOrEmpty(product.Photo1))
+                                    {
+                                        <img src="@product.Photo1" class="product-thumb" alt="@product.Title" />
+                                    }
+                                    else
+                                    {
+                                        <div class="product-thumb-placeholder">
+                                            @SvgIcons.Package
+                                        </div>
+                                    }
+                                </td>
+                                <td><strong>@product.Title</strong></td>
+                                <td style="font-size: 0.85rem; color: #6b7280;">@(product.Sku ?? "")</td>
+                                <td>
+                                    @{
+                                        var links = product.LinkedAccounts;
+                                    }
+                                    @if (links.Count == 0)
+                                    {
+                                        <span style="color: #9ca3af;">-</span>
+                                    }
+                                    else
+                                    {
+                                        <div class="pub-link-wrapper">
+                                            <span class="pub-link-badge">
+                                                @links[0].Nickname
+                                                @if (links.Count > 1)
+                                                {
+                                                    <span class="pub-link-extra">(+@(links.Count - 1))</span>
+                                                }
+                                            </span>
+                                            <div class="pub-link-tooltip">
+                                                @foreach (var link in links)
+                                                {
+                                                    <div class="pub-link-tooltip-row">
+                                                        @link.Nickname
+                                                        @if (link.Count > 1)
+                                                        {
+                                                            <span class="pub-link-count">(@link.Count)</span>
+                                                        }
+                                                    </div>
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+                                </td>
+                                <td style="text-align: right;">$@FormatPrice(product.CostPrice)</td>
+                                <td style="text-align: right;">$@FormatPrice(product.RetailPrice)</td>
+                                <td style="text-align: center; font-weight: 700;">
+                                    @if (product.CriticalStock > 0 && product.Stock <= product.CriticalStock)
+                                    {
+                                        <span class="stock-badge @(product.Stock < product.CriticalStock ? "stock-critical" : "stock-warning")">@product.Stock</span>
+                                    }
+                                    else if (product.CriticalStock > 0 && product.Stock > product.CriticalStock)
+                                    {
+                                        <span class="stock-badge stock-healthy">@product.Stock</span>
+                                    }
+                                    else
+                                    {
+                                        @product.Stock
+                                    }
+                                </td>
+                                <td style="text-align: center;">
+                                    <span class="status-badge @(product.IsActive ? "status-active" : "status-inactive")">
+                                        @(product.IsActive ? "Activo" : "Inactivo")
+                                    </span>
+                                </td>
+                                <td class="actions-cell">
+                                    <button class="btn-publish" @onclick="() => StartPublishWizard(product)" title="Publicar en MeLi">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+                                    </button>
+                                    <button class="btn-icon btn-edit" @onclick="() => ShowEditForm(product)" title="Editar">
+                                        @SvgIcons.Edit
+                                    </button>
+                                    <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(product)" title="Eliminar">
+                                        @SvgIcons.AlertCircle
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@* ===== BULK DELETE CONFIRM MODAL ===== *@
+@if (showBulkDeleteConfirm)
+{
+    <div class="modal-overlay" @onclick="() => showBulkDeleteConfirm = false">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3>Confirmar eliminacion masiva</h3>
+                <button class="btn-close" @onclick="() => showBulkDeleteConfirm = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Estas seguro que queres eliminar <strong>@selectedItems.Count</strong> productos?</p>
+                <p class="text-muted" style="font-size: 0.85rem;">Esta accion no se puede deshacer.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showBulkDeleteConfirm = false">Cancelar</button>
+                <button class="btn btn-danger" @onclick="BulkDelete">Eliminar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ===== CREATE/EDIT PRODUCT MODAL ===== *@
+@if (showForm)
+{
+    <div class="modal-overlay" @onclick="CloseForm">
+        <div class="modal-card modal-wide" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3>@(isEditing ? "Editar Producto" : "Nuevo Producto")</h3>
+                <button class="btn-close" @onclick="CloseForm">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(formError))
+                {
+                    <div class="form-error">@formError</div>
+                }
+                <div class="form-group">
+                    <label class="form-label">Titulo *</label>
+                    <input class="form-input" @bind="formTitle" placeholder="Nombre del producto" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">SKU</label>
+                    <input class="form-input" @bind="formSku" placeholder="Codigo SKU" style="max-width: 250px;" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Descripcion</label>
+                    <textarea class="form-input" @bind="formDescription" rows="3" placeholder="Descripcion del producto"></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Marca</label>
+                        <input class="form-input" @bind="formBrand" placeholder="Marca" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Modelo</label>
+                        <input class="form-input" @bind="formModel" placeholder="Modelo" />
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Precio de Costo</label>
+                        <div style="position: relative;">
+                            <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 1.1rem; font-weight: 700; color: #333;">$</span>
+                            <input type="text" class="form-input" style="font-size: 1.1rem; font-weight: 700; text-align: right; padding-left: 28px;" value="@formCostPriceFormatted" @oninput="OnFormCostPriceInput" inputmode="decimal" />
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">PVP (Precio de Venta)</label>
+                        <div style="position: relative;">
+                            <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 1.1rem; font-weight: 700; color: #333;">$</span>
+                            <input type="text" class="form-input" style="font-size: 1.1rem; font-weight: 700; text-align: right; padding-left: 28px;" value="@formRetailPriceFormatted" @oninput="OnFormRetailPriceInput" inputmode="decimal" />
+                        </div>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Stock</label>
+                        <input class="form-input" type="number" min="0" style="font-size: 1.1rem; font-weight: 700; text-align: right;" @bind="formStock" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Stock Critico</label>
+                        <input class="form-input" type="number" min="0" style="font-size: 1.1rem; font-weight: 700; text-align: right;" @bind="formCriticalStock" />
+                    </div>
+                </div>
+                <div class="form-row">
+                    @if (isEditing)
+                    {
+                        <div class="form-group">
+                            <label class="form-label">Estado</label>
+                            <select class="form-input" @bind="formIsActive">
+                                <option value="true">Activo</option>
+                                <option value="false">Inactivo</option>
+                            </select>
+                        </div>
+                    }
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Fotos (maximo 2MB cada una)</label>
+                    <div class="photo-upload-grid">
+                        @for (int i = 0; i < 3; i++)
+                        {
+                            var index = i;
+                            var photo = GetPhoto(index);
+                            <div class="photo-upload-slot @(!string.IsNullOrEmpty(photo) ? "has-photo" : "")">
+                                @if (!string.IsNullOrEmpty(photo))
+                                {
+                                    <img src="@photo" class="photo-preview" alt="Foto @(index + 1)" />
+                                    <button class="photo-remove-btn" type="button" @onclick="() => RemovePhoto(index)" title="Quitar foto">&times;</button>
+                                }
+                                else
+                                {
+                                    <label class="photo-upload-label">
+                                        <InputFile OnChange="(e) => OnPhotoSelected(e, index)" accept="image/*" />
+                                        <span class="photo-upload-placeholder">+ Foto @(index + 1)</span>
+                                    </label>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseForm">Cancelar</button>
+                <button class="btn btn-primary" @onclick="SaveProduct" disabled="@isSaving">
+                    @(isSaving ? "Guardando..." : "Guardar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ===== DELETE CONFIRM MODAL ===== *@
+@if (showDeleteConfirm)
+{
+    <div class="modal-overlay" @onclick="() => showDeleteConfirm = false">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3>Confirmar eliminacion</h3>
+                <button class="btn-close" @onclick="() => showDeleteConfirm = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Estas seguro que queres eliminar el producto <strong>@productToDelete?.Title</strong>?</p>
+                <p class="text-muted" style="font-size: 0.85rem;">Esta accion no se puede deshacer.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showDeleteConfirm = false">Cancelar</button>
+                <button class="btn btn-danger" @onclick="DeleteProduct">Eliminar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ===== PUBLISH WIZARD MODAL ===== *@
+@if (showPublishWizard)
+{
+    <div class="modal-overlay" @onclick="ClosePublishWizard">
+        <div class="modal-card modal-wide" @onclick:stopPropagation="true" style="max-width: 720px;">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3>Publicar en MercadoLibre</h3>
+                <button class="btn-close" @onclick="ClosePublishWizard">&times;</button>
+            </div>
+            <div style="padding: 16px 20px 0;">
+                <div class="publish-wizard-steps">
+                    <div class="publish-step @(publishStep == 1 ? "active" : publishStep > 1 ? "completed" : "")">
+                        <span class="step-number">@(publishStep > 1 ? "\u2713" : "1")</span>
+                        <span>Datos</span>
+                    </div>
+                    <div class="publish-step-connector @(publishStep > 1 ? "completed" : "")"></div>
+                    <div class="publish-step @(publishStep == 2 ? "active" : publishStep > 2 ? "completed" : "")">
+                        <span class="step-number">@(publishStep > 2 ? "\u2713" : "2")</span>
+                        <span>Categoria</span>
+                    </div>
+                    <div class="publish-step-connector @(publishStep > 2 ? "completed" : "")"></div>
+                    <div class="publish-step @(publishStep == 3 ? "active" : "")">
+                        <span class="step-number">3</span>
+                        <span>Publicar</span>
+                    </div>
+                </div>
+            </div>
+            <div class="publish-wizard-body">
+                @if (!string.IsNullOrEmpty(publishError))
+                {
+                    <div class="form-error">@publishError</div>
+                }
+                @if (publishStep == 1)
+                {
+                    <div class="form-group">
+                        <label class="form-label">Cuenta MercadoLibre *</label>
+                        <select class="form-input" @bind="pubAccountId">
+                            <option value="0">-- Seleccionar cuenta --</option>
+                            @if (meliAccounts != null)
+                            {
+                                @foreach (var acc in meliAccounts.Where(a => a.TokenValid))
+                                {
+                                    <option value="@acc.Id">@acc.Nickname</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Titulo *</label>
+                        <input class="form-input" @bind="pubTitle" placeholder="Titulo de la publicacion" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Descripcion</label>
+                        <textarea class="form-input" @bind="pubDescription" rows="3" placeholder="Descripcion del producto"></textarea>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Precio *</label>
+                            <div style="position: relative;">
+                                <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 1.1rem; font-weight: 700; color: #333;">$</span>
+                                <input type="text" class="form-input" style="font-size: 1.1rem; font-weight: 700; text-align: right; padding-left: 28px;" value="@pubPriceFormatted" @oninput="OnPubPriceInput" inputmode="decimal" />
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Stock *</label>
+                            <input class="form-input" type="number" min="1" style="font-size: 1.1rem; font-weight: 700; text-align: right;" @bind="pubStock" />
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Condicion</label>
+                        <div class="condition-selector">
+                            <div class="condition-option @(pubCondition == "new" ? "selected" : "")" @onclick='() => pubCondition = "new"'>Nuevo</div>
+                            <div class="condition-option @(pubCondition == "used" ? "selected" : "")" @onclick='() => pubCondition = "used"'>Usado</div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Tipo de publicacion</label>
+                        <div class="listing-type-selector">
+                            <div class="listing-type-option @(pubListingType == "gold_special" ? "selected" : "")" @onclick='() => pubListingType = "gold_special"'>
+                                <div class="lt-name">Premium</div>
+                                <div class="lt-desc">Mayor exposicion</div>
+                            </div>
+                            <div class="listing-type-option @(pubListingType == "gold_pro" ? "selected" : "")" @onclick='() => pubListingType = "gold_pro"'>
+                                <div class="lt-name">Clasica</div>
+                                <div class="lt-desc">Menor comision</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" @bind="pubFreeShipping" />
+                            <span class="form-label" style="margin: 0;">Envio gratis</span>
+                        </label>
+                    </div>
+                    @if (pubPhotos.Any())
+                    {
+                        <div class="form-group">
+                            <label class="form-label">Fotos del producto</label>
+                            <div class="publish-photos-preview">
+                                @foreach (var photo in pubPhotos)
+                                {
+                                    <img src="@photo" alt="Foto producto" />
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+                @if (publishStep == 2)
+                {
+                    <div class="form-group">
+                        <label class="form-label" style="font-weight: 700;">Categoria</label>
+                        @if (isLoadingCategories)
+                        {
+                            <p class="text-muted">Prediciendo categoria...</p>
+                        }
+                        else if (categoryPredictions != null && categoryPredictions.Any())
+                        {
+                            <div class="category-predictions-list">
+                                @foreach (var cat in categoryPredictions)
+                                {
+                                    <div class="category-option @(pubCategoryId == cat.CategoryId ? "selected" : "")" @onclick="() => SelectCategory(cat)">
+                                        <div class="cat-name">@cat.CategoryName</div>
+                                        <div class="cat-path">@cat.CategoryPath</div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="text-muted">No se pudo predecir la categoria. Verifica el titulo.</p>
+                        }
+                    </div>
+                    @if (!string.IsNullOrEmpty(pubCategoryId))
+                    {
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                            <label class="form-label" style="font-weight: 700; margin: 0;">Atributos de la ficha tecnica</label>
+                            <button class="btn-ai-suggest" @onclick="SuggestAttributesWithAI" disabled="@isSuggestingAttributes">
+                                @if (isSuggestingAttributes)
+                                {
+                                    <span class="spinner-small"></span>
+                                    <span>Sugiriendo...</span>
+                                }
+                                else
+                                {
+                                    <span>&#10024; Sugerir con IA</span>
+                                }
+                            </button>
+                        </div>
+                        @if (isLoadingAttributes)
+                        {
+                            <p class="text-muted">Cargando atributos...</p>
+                        }
+                        else if (categoryAttributes != null && categoryAttributes.Any())
+                        {
+                            <div class="attribute-grid">
+                                @foreach (var attr in categoryAttributes)
+                                {
+                                    var attrId = attr.Id;
+                                    <div class="attribute-item">
+                                        <label>
+                                            @attr.Name
+                                            @if (attr.Required) { <span class="attr-required">*</span> }
+                                        </label>
+                                        @if (attr.Values.Any())
+                                        {
+                                            <select value="@GetAttributeValue(attrId)" @onchange="(e) => SetAttributeValue(attrId, e)">
+                                                <option value="">-- Seleccionar --</option>
+                                                @foreach (var val in attr.Values)
+                                                {
+                                                    <option value="@val.Id">@val.Name</option>
+                                                }
+                                            </select>
+                                        }
+                                        else
+                                        {
+                                            <input type="text" value="@GetAttributeTextValue(attrId)" @onchange="(e) => SetAttributeTextValue(attrId, e)" placeholder="@attr.Name" />
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+                    }
+                }
+                @if (publishStep == 3)
+                {
+                    @if (publishResult != null)
+                    {
+                        @if (publishResult.Success)
+                        {
+                            <div class="publish-success">
+                                <div class="success-icon">&#9989;</div>
+                                <h3>Publicacion creada</h3>
+                                <p>Tu producto fue publicado exitosamente en MercadoLibre.</p>
+                                @if (!string.IsNullOrEmpty(publishResult.Permalink))
+                                {
+                                    <a href="@publishResult.Permalink" target="_blank">Ver publicacion &#8599;</a>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="form-error">Error: @publishResult.Error</div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="publish-review">
+                            <div class="review-section">
+                                <h4>Datos de la publicacion</h4>
+                                <div class="review-row"><span class="review-label">Cuenta</span><span class="review-value">@(meliAccounts?.FirstOrDefault(a => a.Id == pubAccountId)?.Nickname ?? "-")</span></div>
+                                <div class="review-row"><span class="review-label">Titulo</span><span class="review-value">@pubTitle</span></div>
+                                <div class="review-row"><span class="review-label">Precio</span><span class="review-value">$@pubPriceFormatted</span></div>
+                                <div class="review-row"><span class="review-label">Stock</span><span class="review-value">@pubStock</span></div>
+                                <div class="review-row"><span class="review-label">Condicion</span><span class="review-value">@(pubCondition == "new" ? "Nuevo" : "Usado")</span></div>
+                                <div class="review-row"><span class="review-label">Tipo</span><span class="review-value">@(pubListingType == "gold_special" ? "Premium" : "Clasica")</span></div>
+                                <div class="review-row"><span class="review-label">Envio gratis</span><span class="review-value">@(pubFreeShipping ? "Si" : "No")</span></div>
+                            </div>
+                            <div class="review-section">
+                                <h4>Categoria</h4>
+                                <div class="review-row"><span class="review-label">Categoria</span><span class="review-value">@(categoryPredictions?.FirstOrDefault(c => c.CategoryId == pubCategoryId)?.CategoryName ?? pubCategoryId)</span></div>
+                            </div>
+                            @if (attributeValues.Any())
+                            {
+                                <div class="review-section">
+                                    <h4>Atributos (@attributeValues.Count completados)</h4>
+                                    @foreach (var kv in attributeValues.Take(10))
+                                    {
+                                        var attrName = categoryAttributes?.FirstOrDefault(a => a.Id == kv.Key)?.Name ?? kv.Key;
+                                        <div class="review-row"><span class="review-label">@attrName</span><span class="review-value">@(GetDisplayValueForAttribute(kv.Key))</span></div>
+                                    }
+                                    @if (attributeValues.Count > 10)
+                                    {
+                                        <p class="text-muted" style="font-size: 0.8rem; margin-top: 6px;">... y @(attributeValues.Count - 10) atributos mas</p>
+                                    }
+                                </div>
+                            }
+                            @if (pubPhotos.Any())
+                            {
+                                <div class="review-section">
+                                    <h4>Fotos (@pubPhotos.Count)</h4>
+                                    <div class="publish-photos-preview">
+                                        @foreach (var photo in pubPhotos) { <img src="@photo" alt="Foto" /> }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: space-between;">
+                <div>
+                    @if (publishStep > 1 && (publishResult == null || !publishResult.Success))
+                    {
+                        <button class="btn btn-secondary" @onclick="PreviousStep">Anterior</button>
+                    }
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    @if (publishResult != null && publishResult.Success)
+                    {
+                        <button class="btn btn-primary" @onclick="ClosePublishWizard">Cerrar</button>
+                    }
+                    else if (publishStep < 3)
+                    {
+                        <button class="btn btn-primary" @onclick="NextStep">Siguiente</button>
+                    }
+                    else
+                    {
+                        <button class="btn btn-primary" @onclick="ExecutePublish" disabled="@isPublishing">
+                            @(isPublishing ? "Publicando..." : "Publicar en MercadoLibre")
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ===== BULK PUBLISH MODAL ===== *@
+@if (showBulkPublish)
+{
+    <div class="modal-overlay" @onclick="CloseBulkPublish">
+        <div class="modal-card modal-wide" @onclick:stopPropagation="true" style="max-width: 640px;">
+            <div class="modal-header" style="background: #FFE600;">
+                <h3>Publicar @selectedItems.Count productos en MercadoLibre</h3>
+                <button class="btn-close" @onclick="CloseBulkPublish">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (bulkPublishResult != null)
+                {
+                    <div style="margin-bottom: 16px;">
+                        <div style="display: flex; gap: 12px; margin-bottom: 12px;">
+                            <div style="flex: 1; padding: 12px; background: #f0fdf4; border-radius: 8px; text-align: center;">
+                                <div style="font-size: 1.5rem; font-weight: 700; color: #16a34a;">@bulkPublishResult.Successful</div>
+                                <div style="font-size: 0.8rem; color: #666;">Publicados</div>
+                            </div>
+                            <div style="flex: 1; padding: 12px; background: #fef2f2; border-radius: 8px; text-align: center;">
+                                <div style="font-size: 1.5rem; font-weight: 700; color: #dc2626;">@bulkPublishResult.Failed</div>
+                                <div style="font-size: 0.8rem; color: #666;">Errores</div>
+                            </div>
+                            @if (bulkPublishResult.Skipped > 0)
+                            {
+                                <div style="flex: 1; padding: 12px; background: #fffbeb; border-radius: 8px; text-align: center;">
+                                    <div style="font-size: 1.5rem; font-weight: 700; color: #d97706;">@bulkPublishResult.Skipped</div>
+                                    <div style="font-size: 0.8rem; color: #666;">Omitidos</div>
+                                </div>
+                            }
+                        </div>
+                        <div style="max-height: 300px; overflow-y: auto;">
+                            <table class="data-table" style="font-size: 0.85rem;">
+                                <thead><tr><th>Producto</th><th style="width: 90px;">Estado</th></tr></thead>
+                                <tbody>
+                                    @foreach (var r in bulkPublishResult.Results)
+                                    {
+                                        <tr>
+                                            <td>
+                                                @r.ProductTitle
+                                                @if (!string.IsNullOrEmpty(r.Permalink))
+                                                {
+                                                    <a href="@r.Permalink" target="_blank" style="margin-left: 4px; font-size: 0.75rem;">ver &#8599;</a>
+                                                }
+                                                @if (!r.Success && !r.Skipped && !string.IsNullOrEmpty(r.Error))
+                                                {
+                                                    @foreach (var errLine in GetErrorLines(r.Error))
+                                                    {
+                                                        @if (errLine.isWarning)
+                                                        {
+                                                            <div style="margin-top: 4px; font-size: 0.78rem; color: #92400e; background: #fffbeb; padding: 4px 8px; border-radius: 4px; word-break: break-word;">
+                                                                <i class="fa-solid fa-triangle-exclamation"></i> @errLine.text
+                                                            </div>
+                                                        }
+                                                        else
+                                                        {
+                                                            <div style="margin-top: 4px; font-size: 0.78rem; color: #dc2626; background: #fef2f2; padding: 4px 8px; border-radius: 4px; word-break: break-word;">
+                                                                <i class="fa-solid fa-circle-xmark"></i> @errLine.text
+                                                            </div>
+                                                        }
+                                                    }
+                                                }
+                                                @if (r.Skipped && !string.IsNullOrEmpty(r.SkipReason))
+                                                {
+                                                    <div style="margin-top: 4px; font-size: 0.78rem; color: #92400e; background: #fffbeb; padding: 4px 8px; border-radius: 4px;">
+                                                        @r.SkipReason
+                                                    </div>
+                                                }
+                                            </td>
+                                            <td style="text-align: center;">
+                                                @if (r.Success)
+                                                {
+                                                    <span class="status-badge status-active">OK</span>
+                                                }
+                                                else if (r.Skipped)
+                                                {
+                                                    <span class="status-badge" style="background: #fef3c7; color: #92400e;">Omitido</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="status-badge status-inactive">Error</span>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                }
+                else if (isBulkPublishing)
+                {
+                    @* ===== PROGRESS BAR ===== *@
+                    <div style="text-align: center; padding: 20px 0;">
+                        <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 16px;">
+                            Publicando producto @bulkPublishCurrent de @bulkPublishTotal...
+                        </div>
+                        <div style="background: #e5e7eb; border-radius: 8px; height: 24px; overflow: hidden; margin-bottom: 12px;">
+                            <div style="background: linear-gradient(90deg, #FFE600, #f59e0b); height: 100%; border-radius: 8px; transition: width 0.3s ease; width: @(bulkPublishTotal > 0 ? (int)(bulkPublishCurrent * 100.0 / bulkPublishTotal) : 0)%;">
+                            </div>
+                        </div>
+                        <div style="font-size: 0.85rem; color: #666;">
+                            @if (bulkPublishCurrentTitle != null)
+                            {
+                                <span>@bulkPublishCurrentTitle</span>
+                            }
+                        </div>
+                        <div style="display: flex; gap: 16px; justify-content: center; margin-top: 12px; font-size: 0.85rem;">
+                            @if (bulkPublishOkCount > 0)
+                            {
+                                <span style="color: #16a34a; font-weight: 600;">@bulkPublishOkCount OK</span>
+                            }
+                            @if (bulkPublishErrCount > 0)
+                            {
+                                <span style="color: #dc2626; font-weight: 600;">@bulkPublishErrCount errores</span>
+                            }
+                            @if (bulkPublishSkipCount > 0)
+                            {
+                                <span style="color: #d97706; font-weight: 600;">@bulkPublishSkipCount omitidos</span>
+                            }
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    @if (!string.IsNullOrEmpty(bulkPublishError))
+                    {
+                        <div class="form-error">@bulkPublishError</div>
+                    }
+                    <div class="form-group">
+                        <label class="form-label">Cuenta MercadoLibre *</label>
+                        <select class="form-input" @bind="bulkPubAccountId">
+                            <option value="0">-- Seleccionar cuenta --</option>
+                            @if (meliAccounts != null)
+                            {
+                                @foreach (var acc in meliAccounts.Where(a => a.TokenValid))
+                                {
+                                    <option value="@acc.Id">@acc.Nickname</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Tipo de publicacion</label>
+                            <select class="form-input" @bind="bulkPubListingType">
+                                <option value="gold_special">Premium - Mayor exposicion</option>
+                                <option value="gold_pro">Clasica - Menor comision</option>
+                                <option value="gold_special_6">Premium - 6 cuotas sin interes</option>
+                                <option value="gold_special_12">Premium - 12 cuotas sin interes</option>
+                                <option value="gold_special_18">Premium - 18 cuotas sin interes</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Envio</label>
+                            <select class="form-input" @bind="bulkPubFreeShipping">
+                                <option value="false">A cargo del comprador</option>
+                                <option value="true">Envio gratis</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Precio de venta</label>
+                        <div class="listing-type-selector">
+                            <div class="listing-type-option @(bulkPubPriceMode == "markup" ? "selected" : "")" @onclick='() => bulkPubPriceMode = "markup"'>
+                                <div class="lt-name">% sobre costo</div>
+                            </div>
+                            <div class="listing-type-option @(bulkPubPriceMode == "pvp" ? "selected" : "")" @onclick='() => bulkPubPriceMode = "pvp"'>
+                                <div class="lt-name">Precio de venta (PVP)</div>
+                            </div>
+                        </div>
+                    </div>
+                    @if (bulkPubPriceMode == "markup")
+                    {
+                        <div class="form-group">
+                            <label class="form-label">% Aumento sobre precio de costo *</label>
+                            <div style="position: relative; max-width: 200px;">
+                                <input type="number" class="form-input" style="font-size: 1.1rem; font-weight: 700; text-align: right; padding-right: 36px;" @bind="bulkPubMarkup" min="0" max="999" step="1" />
+                                <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 1.1rem; font-weight: 700; color: #333;">%</span>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="background: #f0fdf4; padding: 10px 14px; border-radius: 8px; font-size: 0.85rem; color: #15803d;">
+                            Se usara el <strong>Precio de venta</strong> cargado en cada producto.
+                        </div>
+                    }
+                    <div style="background: #f8fafc; padding: 12px; border-radius: 8px; font-size: 0.85rem; color: #666; margin-top: 8px;">
+                        <strong>@selectedItems.Count productos</strong> seran publicados.
+                        Los que ya esten publicados en la cuenta seleccionada seran omitidos.
+                        Si un producto ya tiene publicacion en otra cuenta, se copiaran los datos automaticamente.
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                @if (bulkPublishResult != null)
+                {
+                    <button class="btn btn-primary" @onclick="CloseBulkPublishAndReload">Cerrar</button>
+                }
+                else if (!isBulkPublishing)
+                {
+                    <button class="btn btn-secondary" @onclick="CloseBulkPublish">Cancelar</button>
+                    <button class="btn btn-primary" @onclick="ExecuteBulkPublish" style="background: #FFE600; color: #333; border-color: #FFE600;">
+                        Publicar @selectedItems.Count productos
+                    </button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<ProductDto>? products;
+    private int totalProducts;
+    private bool isLoading = true;
+    private bool showForm;
+    private bool isEditing;
+    private bool isSaving;
+    private string? formError;
+    private int? editingProductId;
+    private string formTitle = "";
+    private string formDescription = "";
+    private string formSku = "";
+    private string formBrand = "";
+    private string formModel = "";
+    private decimal formCostPrice;
+    private decimal formRetailPrice;
+    private int formStock;
+    private int formCriticalStock;
+    private string formCostPriceFormatted = "";
+    private string formRetailPriceFormatted = "";
+    private bool formIsActive = true;
+    private string? formPhoto1;
+    private string? formPhoto2;
+    private string? formPhoto3;
+    private bool showDeleteConfirm;
+    private ProductDto? productToDelete;
+    private const long MaxFileSize = 2 * 1024 * 1024;
+
+    // Filter & sort state
+    private Dictionary<string, string> textFilters = new();
+    private Dictionary<string, HashSet<string>> checkboxFilters = new();
+    private string? activeFilterColumn;
+    private string sortColumn = "";
+    private bool sortAsc = true;
+    private bool _filterDirty = true;
+    private List<ProductDto>? _cachedFiltered;
+
+    // Selection
+    private HashSet<int> selectedItems = new();
+    private bool showBulkDeleteConfirm;
+
+    // Publish wizard state
+    private bool showPublishWizard;
+    private int publishStep = 1;
+    private string? publishError;
+    private ProductDto? publishingProduct;
+    private List<MeliAccountDto>? meliAccounts;
+    private int pubAccountId;
+    private string pubTitle = "";
+    private string? pubDescription;
+    private decimal pubPrice;
+    private string pubPriceFormatted = "";
+    private int pubStock = 1;
+    private string pubCondition = "new";
+    private string pubListingType = "gold_special";
+    private bool pubFreeShipping = true;
+    private List<string> pubPhotos = new();
+    private bool isLoadingCategories;
+    private List<CategoryPredictionDto>? categoryPredictions;
+    private string pubCategoryId = "";
+    private bool isLoadingAttributes;
+    private List<CategoryAttributeDto>? categoryAttributes;
+    private bool isSuggestingAttributes;
+    private Dictionary<string, (string? valueId, string? valueName)> attributeValues = new();
+    private bool isPublishing;
+    private PublishItemResponse? publishResult;
+
+    // Bulk publish state
+    private bool showBulkPublish;
+    private int bulkPubAccountId;
+    private string bulkPubListingType = "gold_special";
+    private string bulkPubPriceMode = "markup";
+    private decimal bulkPubMarkup = 50;
+    private bool bulkPubFreeShipping;
+    private bool isBulkPublishing;
+    private string? bulkPublishError;
+    private BulkPublishResponse? bulkPublishResult;
+    // Progress
+    private int bulkPublishCurrent;
+    private int bulkPublishTotal;
+    private string? bulkPublishCurrentTitle;
+    private int bulkPublishOkCount;
+    private int bulkPublishErrCount;
+    private int bulkPublishSkipCount;
+
+    protected override async Task OnInitializedAsync() { await LoadData(); }
+
+    private async Task LoadData()
+    {
+        isLoading = true;
+        try
+        {
+            products = await Api.GetProductsAsync();
+            totalProducts = products?.Count ?? 0;
+            _filterDirty = true;
+        }
+        catch { ToastService.Error("Error al cargar los productos"); }
+        isLoading = false;
+    }
+
+    // ===== FILTER & SORT METHODS =====
+
+    private void SetTextFilter(string column, string value)
+    {
+        textFilters[column] = value;
+        _filterDirty = true;
+    }
+
+    private string GetTextFilter(string column) => textFilters.TryGetValue(column, out var val) ? val : "";
+
+    private bool IsFilterActive(string column) => textFilters.TryGetValue(column, out var tv) && !string.IsNullOrEmpty(tv);
+
+    private void ToggleSort(string column)
+    {
+        if (sortColumn == column) sortAsc = !sortAsc;
+        else { sortColumn = column; sortAsc = true; }
+        _filterDirty = true;
+    }
+
+    private void ToggleDropdownFilter(string column)
+    {
+        activeFilterColumn = activeFilterColumn == column ? null : column;
+    }
+
+    private void ToggleCheckboxValue(string column, string value)
+    {
+        if (!checkboxFilters.ContainsKey(column))
+            checkboxFilters[column] = new HashSet<string>();
+        if (!checkboxFilters[column].Remove(value))
+            checkboxFilters[column].Add(value);
+        _filterDirty = true;
+    }
+
+    private bool IsCheckboxChecked(string column, string value)
+        => checkboxFilters.TryGetValue(column, out var set) && set.Contains(value);
+
+    private bool IsCheckboxFilterActive(string column)
+        => checkboxFilters.TryGetValue(column, out var cv) && cv.Count > 0;
+
+    private IEnumerable<string> GetUniqueValues(string column)
+    {
+        if (products is null) return Enumerable.Empty<string>();
+        return column switch
+        {
+            "estado" => products.Select(p => p.IsActive ? "Activo" : "Inactivo").Distinct().OrderBy(x => x),
+            "publicaciones" => GetPublicacionesFilterValues(),
+            _ => Enumerable.Empty<string>()
+        };
+    }
+
+    private void ClearCheckboxFilter(string column)
+    {
+        checkboxFilters.Remove(column);
+        _filterDirty = true;
+        activeFilterColumn = null;
+    }
+
+    private List<ProductDto> GetFilteredProducts()
+    {
+        if (_filterDirty || _cachedFiltered is null)
+        {
+            _cachedFiltered = ApplyFiltersAndSort();
+            _filterDirty = false;
+        }
+        return _cachedFiltered;
+    }
+
+    private List<ProductDto> ApplyFiltersAndSort()
+    {
+        if (products is null) return new();
+        IEnumerable<ProductDto> result = products;
+
+        // Text filters
+        foreach (var kv in textFilters.Where(f => !string.IsNullOrEmpty(f.Value)))
+        {
+            var search = kv.Value.ToLower();
+            result = kv.Key switch
+            {
+                "titulo" => result.Where(p => p.Title.ToLower().Contains(search)),
+                "sku" => result.Where(p => (p.Sku ?? "").ToLower().Contains(search)),
+                _ => result
+            };
+        }
+
+        // Checkbox filters
+        foreach (var kv in checkboxFilters.Where(f => f.Value.Count > 0))
+        {
+            result = kv.Key switch
+            {
+                "estado" => result.Where(p => kv.Value.Contains(p.IsActive ? "Activo" : "Inactivo")),
+                "publicaciones" => ApplyPublicacionesFilter(result, kv.Value),
+                _ => result
+            };
+        }
+
+        // Sort
+        if (!string.IsNullOrEmpty(sortColumn))
+        {
+            result = sortColumn switch
+            {
+                "titulo" => sortAsc ? result.OrderBy(p => p.Title) : result.OrderByDescending(p => p.Title),
+                "sku" => sortAsc ? result.OrderBy(p => p.Sku ?? "") : result.OrderByDescending(p => p.Sku ?? ""),
+                "costo" => sortAsc ? result.OrderBy(p => p.CostPrice) : result.OrderByDescending(p => p.CostPrice),
+                "pvp" => sortAsc ? result.OrderBy(p => p.RetailPrice) : result.OrderByDescending(p => p.RetailPrice),
+                "stock" => sortAsc ? result.OrderBy(p => p.Stock) : result.OrderByDescending(p => p.Stock),
+                "estado" => sortAsc ? result.OrderBy(p => p.IsActive) : result.OrderByDescending(p => p.IsActive),
+                _ => result
+            };
+        }
+
+        return result.ToList();
+    }
+
+    // ===== SELECTION METHODS =====
+
+    private void ToggleSelectItem(int id)
+    {
+        if (!selectedItems.Remove(id))
+            selectedItems.Add(id);
+    }
+
+    private void ToggleSelectAll(ChangeEventArgs e)
+    {
+        var filtered = GetFilteredProducts();
+        if (IsAllSelected())
+            selectedItems.Clear();
+        else
+            foreach (var p in filtered)
+                selectedItems.Add(p.Id);
+    }
+
+    private bool IsAllSelected()
+    {
+        var filtered = GetFilteredProducts();
+        return filtered.Count > 0 && filtered.All(p => selectedItems.Contains(p.Id));
+    }
+
+    private void ClearSelection() => selectedItems.Clear();
+
+    // ===== BULK ACTIONS =====
+
+    private async Task BulkActivate()
+    {
+        if (selectedItems.Count == 0) return;
+        try
+        {
+            var updated = await Api.BulkToggleProductStatusAsync(selectedItems.ToList(), true);
+            ToastService.Success($"{updated} productos activados");
+            selectedItems.Clear();
+            await LoadData();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task BulkDeactivate()
+    {
+        if (selectedItems.Count == 0) return;
+        try
+        {
+            var updated = await Api.BulkToggleProductStatusAsync(selectedItems.ToList(), false);
+            ToastService.Success($"{updated} productos desactivados");
+            selectedItems.Clear();
+            await LoadData();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private void ShowBulkDeleteModal() { showBulkDeleteConfirm = true; }
+
+    private async Task BulkDelete()
+    {
+        if (selectedItems.Count == 0) return;
+        try
+        {
+            var deleted = await Api.BulkDeleteProductsAsync(selectedItems.ToList());
+            ToastService.Success($"{deleted} productos eliminados");
+            selectedItems.Clear();
+            showBulkDeleteConfirm = false;
+            await LoadData();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    // ===== FORM METHODS =====
+
+    private string? GetPhoto(int index) => index switch { 0 => formPhoto1, 1 => formPhoto2, 2 => formPhoto3, _ => null };
+
+    private void SetPhoto(int index, string? value)
+    {
+        switch (index) { case 0: formPhoto1 = value; break; case 1: formPhoto2 = value; break; case 2: formPhoto3 = value; break; }
+    }
+
+    private void RemovePhoto(int index) { SetPhoto(index, null); StateHasChanged(); }
+
+    private async Task OnPhotoSelected(InputFileChangeEventArgs e, int index)
+    {
+        var file = e.File;
+        if (file.Size > MaxFileSize) { ToastService.Error("La foto supera los 2MB permitidos"); return; }
+        try
+        {
+            var buffer = new byte[file.Size];
+            await file.OpenReadStream(MaxFileSize).ReadAsync(buffer);
+            var base64 = Convert.ToBase64String(buffer);
+            var dataUri = $"data:{file.ContentType};base64,{base64}";
+            SetPhoto(index, dataUri);
+            StateHasChanged();
+        }
+        catch { ToastService.Error("Error al cargar la foto"); }
+    }
+
+    private void ShowCreateForm()
+    {
+        isEditing = false; editingProductId = null;
+        formTitle = ""; formDescription = ""; formSku = ""; formBrand = ""; formModel = "";
+        formCostPrice = 0; formRetailPrice = 0; formStock = 0; formCriticalStock = 0;
+        formCostPriceFormatted = FormatPrice(0); formRetailPriceFormatted = FormatPrice(0);
+        formIsActive = true; formPhoto1 = null; formPhoto2 = null; formPhoto3 = null;
+        formError = null; showForm = true;
+    }
+
+    private void ShowEditForm(ProductDto product)
+    {
+        isEditing = true; editingProductId = product.Id;
+        formTitle = product.Title; formDescription = product.Description ?? "";
+        formSku = product.Sku ?? ""; formBrand = product.Brand ?? ""; formModel = product.Model ?? "";
+        formCostPrice = product.CostPrice; formRetailPrice = product.RetailPrice;
+        formStock = product.Stock; formCriticalStock = product.CriticalStock;
+        formCostPriceFormatted = FormatPrice(formCostPrice);
+        formRetailPriceFormatted = FormatPrice(formRetailPrice);
+        formIsActive = product.IsActive;
+        formPhoto1 = product.Photo1; formPhoto2 = product.Photo2; formPhoto3 = product.Photo3;
+        formError = null; showForm = true;
+    }
+
+    private void CloseForm() { showForm = false; formError = null; }
+
+    private async Task SaveProduct()
+    {
+        formError = null;
+        if (string.IsNullOrWhiteSpace(formTitle)) { formError = "El titulo es obligatorio"; return; }
+        isSaving = true;
+        try
+        {
+            if (isEditing && editingProductId.HasValue)
+            {
+                var update = new UpdateProductRequest { Title = formTitle, Description = formDescription, Sku = formSku, Brand = formBrand, Model = formModel, CostPrice = formCostPrice, RetailPrice = formRetailPrice, Stock = formStock, CriticalStock = formCriticalStock, IsActive = formIsActive, Photo1 = formPhoto1 ?? "", Photo2 = formPhoto2 ?? "", Photo3 = formPhoto3 ?? "" };
+                var result = await Api.UpdateProductAsync(editingProductId.Value, update);
+                if (result is null) { formError = "Error al actualizar el producto"; return; }
+                ToastService.Success("Producto actualizado");
+            }
+            else
+            {
+                var create = new CreateProductRequest { Title = formTitle, Description = formDescription, Sku = formSku, Brand = formBrand, Model = formModel, CostPrice = formCostPrice, RetailPrice = formRetailPrice, Stock = formStock, CriticalStock = formCriticalStock, Photo1 = formPhoto1, Photo2 = formPhoto2, Photo3 = formPhoto3 };
+                var result = await Api.CreateProductAsync(create);
+                if (result is null) { formError = "Error al crear el producto"; return; }
+                ToastService.Success("Producto creado");
+            }
+            showForm = false; await LoadData();
+        }
+        catch (Exception ex) { formError = "Error al guardar: " + ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private void ConfirmDelete(ProductDto product) { productToDelete = product; showDeleteConfirm = true; }
+
+    private async Task DeleteProduct()
+    {
+        if (productToDelete is null) return;
+        try
+        {
+            var result = await Api.DeleteProductAsync(productToDelete.Id);
+            if (result) { ToastService.Success("Producto eliminado"); await LoadData(); }
+            else { ToastService.Error("Error al eliminar el producto"); }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        showDeleteConfirm = false; productToDelete = null;
+    }
+
+    // ===== PUBLISH WIZARD METHODS =====
+    private async Task StartPublishWizard(ProductDto product)
+    {
+        publishingProduct = product; publishStep = 1; publishError = null; publishResult = null;
+        pubTitle = product.Title; pubDescription = product.Description;
+        pubPrice = product.RetailPrice; pubPriceFormatted = FormatPrice(product.RetailPrice);
+        pubStock = product.Stock > 0 ? product.Stock : 1;
+        pubCondition = "new"; pubListingType = "gold_special"; pubFreeShipping = true;
+        pubAccountId = 0; pubCategoryId = "";
+        categoryPredictions = null; categoryAttributes = null; attributeValues = new();
+        pubPhotos = new List<string>();
+        if (!string.IsNullOrEmpty(product.Photo1)) pubPhotos.Add(product.Photo1);
+        if (!string.IsNullOrEmpty(product.Photo2)) pubPhotos.Add(product.Photo2);
+        if (!string.IsNullOrEmpty(product.Photo3)) pubPhotos.Add(product.Photo3);
+        try
+        {
+            meliAccounts = await Api.GetMeliAccountsAsync();
+            if (meliAccounts != null && meliAccounts.Any(a => a.TokenValid))
+                pubAccountId = meliAccounts.First(a => a.TokenValid).Id;
+        }
+        catch { ToastService.Error("Error al cargar cuentas de MercadoLibre"); }
+        showPublishWizard = true;
+    }
+
+    private void ClosePublishWizard() { showPublishWizard = false; publishingProduct = null; publishResult = null; }
+    private async Task NextStep()
+    {
+        publishError = null;
+        if (publishStep == 1)
+        {
+            if (pubAccountId == 0) { publishError = "Selecciona una cuenta de MercadoLibre"; return; }
+            if (string.IsNullOrWhiteSpace(pubTitle)) { publishError = "El titulo es obligatorio"; return; }
+            if (pubPrice <= 0) { publishError = "El precio debe ser mayor a 0"; return; }
+            if (pubStock <= 0) { publishError = "El stock debe ser mayor a 0"; return; }
+            publishStep = 2;
+            if (categoryPredictions == null) await PredictCategory();
+        }
+        else if (publishStep == 2)
+        {
+            if (string.IsNullOrEmpty(pubCategoryId)) { publishError = "Selecciona una categoria"; return; }
+            publishStep = 3;
+        }
+    }
+
+    private void PreviousStep() { publishError = null; publishResult = null; if (publishStep > 1) publishStep--; }
+
+    private async Task PredictCategory()
+    {
+        isLoadingCategories = true; StateHasChanged();
+        try
+        {
+            categoryPredictions = await Api.PredictCategoryAsync(pubTitle, pubAccountId);
+            if (categoryPredictions != null && categoryPredictions.Any())
+                await SelectCategory(categoryPredictions.First());
+        }
+        catch { ToastService.Error("Error al predecir categoria"); }
+        isLoadingCategories = false; StateHasChanged();
+    }
+
+    private async Task SelectCategory(CategoryPredictionDto cat)
+    {
+        pubCategoryId = cat.CategoryId; attributeValues = new();
+        await LoadCategoryAttributes();
+    }
+
+    private async Task LoadCategoryAttributes()
+    {
+        isLoadingAttributes = true; StateHasChanged();
+        try { categoryAttributes = await Api.GetCategoryAttributesAsync(pubCategoryId); }
+        catch { ToastService.Error("Error al cargar atributos"); }
+        isLoadingAttributes = false; StateHasChanged();
+    }
+
+    private async Task SuggestAttributesWithAI()
+    {
+        if (categoryAttributes == null || !categoryAttributes.Any()) return;
+        isSuggestingAttributes = true; StateHasChanged();
+        try
+        {
+            var request = new { title = pubTitle, description = pubDescription, brand = publishingProduct?.Brand, model = publishingProduct?.Model, categoryId = pubCategoryId, categoryName = categoryPredictions?.FirstOrDefault(c => c.CategoryId == pubCategoryId)?.CategoryName ?? "", attributes = categoryAttributes };
+            var suggestions = await Api.SuggestAttributesAsync(request);
+            if (suggestions != null)
+            {
+                foreach (var s in suggestions) attributeValues[s.AttributeId] = (s.ValueId, s.ValueName);
+                ToastService.Success("Se sugirieron " + suggestions.Count + " atributos");
+            }
+        }
+        catch { ToastService.Error("Error al obtener sugerencias de IA"); }
+        isSuggestingAttributes = false; StateHasChanged();
+    }
+
+    private string GetAttributeValue(string attrId) => attributeValues.TryGetValue(attrId, out var val) ? (val.valueId ?? "") : "";
+    private string GetAttributeTextValue(string attrId) => attributeValues.TryGetValue(attrId, out var val) ? (val.valueName ?? "") : "";
+
+    private void SetAttributeValue(string attrId, ChangeEventArgs e)
+    {
+        var valueId = e.Value?.ToString() ?? "";
+        if (string.IsNullOrEmpty(valueId)) { attributeValues.Remove(attrId); return; }
+        var attr = categoryAttributes?.FirstOrDefault(a => a.Id == attrId);
+        var valueName = attr?.Values.FirstOrDefault(v => v.Id == valueId)?.Name ?? valueId;
+        attributeValues[attrId] = (valueId, valueName);
+    }
+
+    private void SetAttributeTextValue(string attrId, ChangeEventArgs e)
+    {
+        var text = e.Value?.ToString() ?? "";
+        if (string.IsNullOrEmpty(text)) { attributeValues.Remove(attrId); return; }
+        attributeValues[attrId] = (null, text);
+    }
+
+    private string GetDisplayValueForAttribute(string attrId)
+    {
+        if (!attributeValues.TryGetValue(attrId, out var val)) return "-";
+        return val.valueName ?? val.valueId ?? "-";
+    }
+    private async Task ExecutePublish()
+    {
+        publishError = null; isPublishing = true; StateHasChanged();
+        try
+        {
+            var request = new PublishItemRequest
+            {
+                ProductId = publishingProduct!.Id, MeliAccountId = pubAccountId, CategoryId = pubCategoryId,
+                Title = pubTitle, Description = pubDescription, Price = pubPrice, AvailableQuantity = pubStock,
+                Condition = pubCondition, ListingTypeId = pubListingType, FreeShipping = pubFreeShipping,
+                PictureUrls = pubPhotos,
+                Attributes = attributeValues.Select(kv => new PublishAttributeDto { Id = kv.Key, ValueId = kv.Value.valueId, ValueName = kv.Value.valueName }).ToList()
+            };
+            publishResult = await Api.PublishItemAsync(request);
+            if (publishResult != null && publishResult.Success) ToastService.Success("Publicacion creada en MercadoLibre");
+            else publishError = publishResult?.Error ?? "Error desconocido al publicar";
+        }
+        catch (Exception ex) { publishError = "Error: " + ex.Message; }
+        isPublishing = false; StateHasChanged();
+    }
+
+    // ===== BULK PUBLISH METHODS =====
+    private async Task ShowBulkPublishModal()
+    {
+        bulkPublishError = null; bulkPublishResult = null;
+        bulkPubAccountId = 0; bulkPubListingType = "gold_special";
+        bulkPubPriceMode = "markup"; bulkPubMarkup = 50; bulkPubFreeShipping = false;
+        isBulkPublishing = false;
+        bulkPublishCurrent = 0; bulkPublishTotal = 0;
+        bulkPublishOkCount = 0; bulkPublishErrCount = 0; bulkPublishSkipCount = 0;
+        try
+        {
+            meliAccounts = await Api.GetMeliAccountsAsync();
+        }
+        catch { ToastService.Error("Error al cargar cuentas de MercadoLibre"); }
+        showBulkPublish = true;
+    }
+
+    private void CloseBulkPublish() { showBulkPublish = false; bulkPublishResult = null; }
+
+    private async Task CloseBulkPublishAndReload()
+    {
+        showBulkPublish = false; bulkPublishResult = null;
+        selectedItems.Clear();
+        await LoadData();
+    }
+
+    private async Task ExecuteBulkPublish()
+    {
+        bulkPublishError = null;
+        if (bulkPubAccountId == 0) { bulkPublishError = "Selecciona una cuenta"; return; }
+        if (bulkPubPriceMode == "markup" && bulkPubMarkup < 0) { bulkPublishError = "El % de aumento no puede ser negativo"; return; }
+
+        // Resolver listing type real (cuotas = gold_special + configuracion)
+        var realListingType = bulkPubListingType;
+        if (realListingType.StartsWith("gold_special_")) realListingType = "gold_special";
+
+        isBulkPublishing = true;
+        var allProductIds = selectedItems.ToList();
+        bulkPublishTotal = allProductIds.Count;
+        bulkPublishCurrent = 0;
+        bulkPublishOkCount = 0; bulkPublishErrCount = 0; bulkPublishSkipCount = 0;
+        bulkPublishCurrentTitle = null;
+        StateHasChanged();
+
+        var allResults = new List<BulkPublishItemResult>();
+
+        // Publicar de a 1 producto para mostrar progreso
+        foreach (var productId in allProductIds)
+        {
+            bulkPublishCurrent++;
+            var prod = products?.FirstOrDefault(p => p.Id == productId);
+            bulkPublishCurrentTitle = prod?.Title ?? "Producto #" + productId;
+            StateHasChanged();
+            await Task.Delay(1); // Dar tiempo al render
+
+            try
+            {
+                var request = new BulkPublishRequest
+                {
+                    ProductIds = new List<int> { productId },
+                    MeliAccountId = bulkPubAccountId,
+                    ListingTypeId = realListingType,
+                    PriceMode = bulkPubPriceMode,
+                    MarkupPercent = bulkPubMarkup,
+                    Condition = "new",
+                    FreeShipping = bulkPubFreeShipping
+                };
+                var result = await Api.BulkPublishAsync(request);
+                if (result?.Results != null)
+                {
+                    allResults.AddRange(result.Results);
+                    bulkPublishOkCount += result.Successful;
+                    bulkPublishErrCount += result.Failed;
+                    bulkPublishSkipCount += result.Skipped;
+                }
+            }
+            catch (Exception ex)
+            {
+                allResults.Add(new BulkPublishItemResult
+                {
+                    ProductId = productId,
+                    ProductTitle = bulkPublishCurrentTitle,
+                    Error = ex.Message
+                });
+                bulkPublishErrCount++;
+            }
+            StateHasChanged();
+        }
+
+        bulkPublishResult = new BulkPublishResponse
+        {
+            Total = allProductIds.Count,
+            Successful = bulkPublishOkCount,
+            Failed = bulkPublishErrCount,
+            Skipped = bulkPublishSkipCount,
+            Results = allResults
+        };
+        if (bulkPublishOkCount > 0)
+            ToastService.Success(bulkPublishOkCount + " productos publicados en MercadoLibre");
+        if (bulkPublishErrCount > 0)
+            ToastService.Error(bulkPublishErrCount + " productos fallaron al publicar");
+        isBulkPublishing = false;
+        StateHasChanged();
+    }
+
+    private IEnumerable<string> GetPublicacionesFilterValues()
+    {
+        if (products is null) return Enumerable.Empty<string>();
+        var accountNames = products
+            .SelectMany(p => p.LinkedAccounts.Select(a => a.Nickname))
+            .Distinct().OrderBy(x => x).ToList();
+        var values = new List<string>();
+        foreach (var name in accountNames)
+            values.Add(name);
+        foreach (var name in accountNames)
+            values.Add("Sin " + name);
+        values.Add("Sin publicar");
+        return values;
+    }
+
+    private IEnumerable<ProductDto> ApplyPublicacionesFilter(IEnumerable<ProductDto> source, HashSet<string> selected)
+    {
+        return source.Where(p =>
+        {
+            // Positivos: cuentas donde SI esta publicado
+            if (p.LinkedAccounts.Any(a => selected.Contains(a.Nickname)))
+                return true;
+            // "Sin publicar" = sin ninguna cuenta
+            if (selected.Contains("Sin publicar") && p.LinkedAccounts.Count == 0)
+                return true;
+            // Negativos: "Sin X" = NO esta publicado en X
+            foreach (var val in selected.Where(v => v.StartsWith("Sin ") && v != "Sin publicar"))
+            {
+                var accountName = val.Substring(4);
+                if (!p.LinkedAccounts.Any(a => a.Nickname == accountName))
+                    return true;
+            }
+            return false;
+        });
+    }
+
+    private List<(string text, bool isWarning)> GetErrorLines(string error)
+    {
+        var lines = error.Split("|||", StringSplitOptions.RemoveEmptyEntries);
+        var errors = new List<(string text, bool isWarning)>();
+        var warnings = new List<(string text, bool isWarning)>();
+        foreach (var line in lines)
+        {
+            var trimmed = line.Trim();
+            if (trimmed.StartsWith("[WARN]"))
+                warnings.Add((trimmed.Replace("[WARN] ", ""), true));
+            else
+                errors.Add((trimmed.Replace("[ERROR] ", ""), false));
+        }
+        errors.AddRange(warnings);
+        return errors;
+    }
+
+    private string FormatPrice(decimal value)
+    {
+        var parts = value.ToString("F2").Split('.');
+        var intPart = parts[0]; var decPart = parts.Length > 1 ? parts[1] : "00";
+        var formatted = new System.Text.StringBuilder();
+        for (int i = 0; i < intPart.Length; i++)
+        {
+            if (i > 0 && (intPart.Length - i) % 3 == 0) formatted.Append('.');
+            formatted.Append(intPart[i]);
+        }
+        return formatted + "," + decPart;
+    }
+
+    private decimal ParseFormattedPrice(string formatted)
+    {
+        if (string.IsNullOrWhiteSpace(formatted)) return 0;
+        var clean = formatted.Replace(".", "").Replace(",", ".");
+        return decimal.TryParse(clean, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var val) ? val : 0;
+    }
+
+    private string FormatPriceInput(string raw)
+    {
+        if (raw.EndsWith(".") && !raw.Contains(',')) raw = raw[..^1] + ",";
+        else if (!raw.Contains(',') && raw.Count(c => c == '.') == 1)
+        {
+            var dotIdx = raw.IndexOf('.'); var afterDot = raw[(dotIdx + 1)..];
+            if (afterDot.Length <= 2 && afterDot.All(char.IsDigit)) raw = raw[..dotIdx] + "," + afterDot;
+        }
+        var cleaned = new string(raw.Where(c => char.IsDigit(c) || c == ',').ToArray());
+        var commaIdx = cleaned.IndexOf(',');
+        string intPart, decPart;
+        if (commaIdx >= 0)
+        {
+            intPart = cleaned[..commaIdx];
+            decPart = new string(cleaned[(commaIdx + 1)..].Where(char.IsDigit).ToArray());
+            if (decPart.Length > 2) decPart = decPart[..2];
+        }
+        else { intPart = cleaned; decPart = ""; }
+        intPart = intPart.TrimStart('0');
+        if (string.IsNullOrEmpty(intPart)) intPart = "0";
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < intPart.Length; i++)
+        {
+            if (i > 0 && (intPart.Length - i) % 3 == 0) sb.Append('.');
+            sb.Append(intPart[i]);
+        }
+        return commaIdx >= 0 ? sb + "," + decPart : sb.ToString();
+    }
+
+    private void OnFormCostPriceInput(ChangeEventArgs e) { formCostPriceFormatted = FormatPriceInput(e.Value?.ToString() ?? ""); formCostPrice = ParseFormattedPrice(formCostPriceFormatted); }
+    private void OnFormRetailPriceInput(ChangeEventArgs e) { formRetailPriceFormatted = FormatPriceInput(e.Value?.ToString() ?? ""); formRetailPrice = ParseFormattedPrice(formRetailPriceFormatted); }
+    private void OnPubPriceInput(ChangeEventArgs e) { pubPriceFormatted = FormatPriceInput(e.Value?.ToString() ?? ""); pubPrice = ParseFormattedPrice(pubPriceFormatted); }
+}

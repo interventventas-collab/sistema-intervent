@@ -1,0 +1,1751 @@
+@page "/ordenes"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3>Ordenes de MercadoLibre (@totalOrders)</h3>
+        <button class="btn btn-primary" @onclick="SyncOrders" disabled="@isSyncing">
+            @(isSyncing ? "Sincronizando..." : "Sincronizar")
+        </button>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        @if (isLoading)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">Cargando ordenes...</p>
+        }
+        else if (orders is null || !orders.Any())
+        {
+            <p class="text-muted" style="padding: 1.5rem;">No hay ordenes en el rango seleccionado. Hace clic en "Sincronizar" para traer las ordenes de MercadoLibre.</p>
+        }
+        else
+        {
+            @if (HasActiveFilters())
+            {
+                <div class="active-filters-bar">
+                    <span>Filtros activos:</span>
+                    @foreach (var kv in textFilters.Where(f => !string.IsNullOrEmpty(f.Value)))
+                    {
+                        <span class="filter-tag">
+                            @GetColumnLabel(kv.Key): "@kv.Value"
+                            <button @onclick="() => ClearTextFilter(kv.Key)">&times;</button>
+                        </span>
+                    }
+                    @foreach (var kv in checkboxFilters.Where(f => f.Value.Count > 0))
+                    {
+                        <span class="filter-tag">
+                            @GetColumnLabel(kv.Key): @string.Join(", ", kv.Value)
+                            <button @onclick="() => ClearCheckboxFilter(kv.Key)">&times;</button>
+                        </span>
+                    }
+                    <button class="btn-clear-all" @onclick="ClearAllFilters">Limpiar todos</button>
+                </div>
+            }
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <!-- Orden: text input -->
+                            <th class="th-filterable">
+                                <div class="th-filter-inner">
+                                    <input type="text" class="th-filter-input @(IsFilterActive("orden") ? "has-filter" : "")" placeholder="Orden"
+                                           value='@GetTextFilter("orden")' @oninput='(e) => SetTextFilter("orden", e.Value?.ToString() ?? "")' />
+                                    <span class="sort-icon" @onclick='() => ToggleSort("orden")' title="Ordenar">
+                                        <span class="@(sortColumn == "orden" && sortAsc ? "sort-up-active" : "")">&#9650;</span>
+                                        <span class="@(sortColumn == "orden" && !sortAsc ? "sort-down-active" : "")">&#9660;</span>
+                                    </span>
+                                </div>
+                            </th>
+                            <!-- Fecha: label + sort + date dropdown -->
+                            <th class="th-dropdown @(showDateFilter ? "filter-open" : "")">
+                                <div class="th-inner">
+                                    <span class="th-label" @onclick='() => ToggleSort("fecha")'>Fecha</span>
+                                    <span class="th-icons">
+                                        <span class="sort-icon" @onclick='() => ToggleSort("fecha")'>
+                                            <span class="@(sortColumn == "fecha" && sortAsc ? "sort-up-active" : "")">&#9650;</span>
+                                            <span class="@(sortColumn == "fecha" && !sortAsc ? "sort-down-active" : "")">&#9660;</span>
+                                        </span>
+                                        <button class="filter-btn @(dateFilterActive ? "filter-active" : "")" @onclick="ToggleDateFilter" @onclick:stopPropagation="true" title="Filtrar por fecha">
+                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+                                        </button>
+                                    </span>
+                                </div>
+                                @if (showDateFilter)
+                                {
+                                    <div class="column-filter-dropdown date-filter-dropdown" @onclick:stopPropagation="true">
+                                        <div class="date-filter-field">
+                                            <label>DESDE:</label>
+                                            <input type="date" class="form-input" @bind="dateFrom" />
+                                        </div>
+                                        <div class="date-filter-field">
+                                            <label>HASTA:</label>
+                                            <input type="date" class="form-input" @bind="dateTo" />
+                                        </div>
+                                        <div class="date-quick-buttons">
+                                            <button class="date-quick-btn" @onclick='() => SetDatePreset("hoy")'>Hoy</button>
+                                            <button class="date-quick-btn" @onclick='() => SetDatePreset("ayer")'>Ayer</button>
+                                            <button class="date-quick-btn" @onclick='() => SetDatePreset("7dias")'>7 dias</button>
+                                            <button class="date-quick-btn" @onclick='() => SetDatePreset("30dias")'>30 dias</button>
+                                            <button class="date-quick-btn" @onclick='() => SetDatePreset("estemes")'>Este mes</button>
+                                            <button class="date-quick-btn" @onclick='() => SetDatePreset("mespasado")'>Mes pasado</button>
+                                        </div>
+                                        <div class="date-filter-actions">
+                                            <button class="btn btn-primary btn-sm" @onclick="ApplyDateFilter">Aplicar</button>
+                                            <button class="btn btn-secondary btn-sm" @onclick="ClearDateFilter">Limpiar</button>
+                                        </div>
+                                    </div>
+                                }
+                            </th>
+                            <!-- Cuenta: label + sort + checkbox dropdown -->
+                            <th class="th-dropdown @(activeFilterColumn == "cuenta" ? "filter-open" : "")">
+                                <div class="th-inner">
+                                    <span class="th-label" @onclick='() => ToggleSort("cuenta")'>Cuenta</span>
+                                    <span class="th-icons">
+                                        <span class="sort-icon" @onclick='() => ToggleSort("cuenta")'>
+                                            <span class="@(sortColumn == "cuenta" && sortAsc ? "sort-up-active" : "")">&#9650;</span>
+                                            <span class="@(sortColumn == "cuenta" && !sortAsc ? "sort-down-active" : "")">&#9660;</span>
+                                        </span>
+                                        <button class="filter-btn @(IsCheckboxFilterActive("cuenta") ? "filter-active" : "")" @onclick='() => ToggleDropdownFilter("cuenta")' @onclick:stopPropagation="true" title="Filtrar">
+                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+                                        </button>
+                                    </span>
+                                </div>
+                                @if (activeFilterColumn == "cuenta")
+                                {
+                                    <div class="column-filter-dropdown" @onclick:stopPropagation="true">
+                                        <input type="text" class="filter-search-input" placeholder="Buscar..." @bind="checkboxSearchText" @bind:event="oninput" />
+                                        <div class="filter-checkbox-list">
+                                            @foreach (var val in GetUniqueValues("cuenta"))
+                                            {
+                                                var v = val;
+                                                <label class="filter-checkbox-item">
+                                                    <input type="checkbox" checked="@IsCheckboxChecked("cuenta", v)" @onchange='() => ToggleCheckboxValue("cuenta", v)' />
+                                                    @v
+                                                </label>
+                                            }
+                                        </div>
+                                        @if (IsCheckboxFilterActive("cuenta"))
+                                        {
+                                            <div class="filter-actions"><button class="filter-clear-btn" @onclick='() => ClearCheckboxFilter("cuenta")'>Limpiar</button></div>
+                                        }
+                                    </div>
+                                }
+                            </th>
+                            <!-- Comprador: text input -->
+                            <th class="th-filterable">
+                                <div class="th-filter-inner">
+                                    <input type="text" class="th-filter-input @(IsFilterActive("comprador") ? "has-filter" : "")" placeholder="Comprador"
+                                           value='@GetTextFilter("comprador")' @oninput='(e) => SetTextFilter("comprador", e.Value?.ToString() ?? "")' />
+                                    <span class="sort-icon" @onclick='() => ToggleSort("comprador")' title="Ordenar">
+                                        <span class="@(sortColumn == "comprador" && sortAsc ? "sort-up-active" : "")">&#9650;</span>
+                                        <span class="@(sortColumn == "comprador" && !sortAsc ? "sort-down-active" : "")">&#9660;</span>
+                                    </span>
+                                </div>
+                            </th>
+                            <!-- Foto: no sort/filter -->
+                            <th style="width: 50px; text-align: center;">
+                                <div class="th-inner"><span class="th-label">Foto</span></div>
+                            </th>
+                            <!-- Producto: text input -->
+                            <th class="th-filterable">
+                                <div class="th-filter-inner">
+                                    <input type="text" class="th-filter-input @(IsFilterActive("producto") ? "has-filter" : "")" placeholder="Producto"
+                                           value='@GetTextFilter("producto")' @oninput='(e) => SetTextFilter("producto", e.Value?.ToString() ?? "")' />
+                                    <span class="sort-icon" @onclick='() => ToggleSort("producto")' title="Ordenar">
+                                        <span class="@(sortColumn == "producto" && sortAsc ? "sort-up-active" : "")">&#9650;</span>
+                                        <span class="@(sortColumn == "producto" && !sortAsc ? "sort-down-active" : "")">&#9660;</span>
+                                    </span>
+                                </div>
+                            </th>
+                            <!-- Cant: sort only -->
+                            <th class="th-sortable" @onclick='() => ToggleSort("cantidad")'>
+                                <div class="th-inner">
+                                    <span class="th-label">Cant.</span>
+                                    <span class="sort-icon">
+                                        <span class="@(sortColumn == "cantidad" && sortAsc ? "sort-up-active" : "")">&#9650;</span>
+                                        <span class="@(sortColumn == "cantidad" && !sortAsc ? "sort-down-active" : "")">&#9660;</span>
+                                    </span>
+                                </div>
+                            </th>
+                            <!-- Precio: sort only -->
+                            <th class="th-sortable" @onclick='() => ToggleSort("precio")'>
+                                <div class="th-inner">
+                                    <span class="th-label">Precio U.</span>
+                                    <span class="sort-icon">
+                                        <span class="@(sortColumn == "precio" && sortAsc ? "sort-up-active" : "")">&#9650;</span>
+                                        <span class="@(sortColumn == "precio" && !sortAsc ? "sort-down-active" : "")">&#9660;</span>
+                                    </span>
+                                </div>
+                            </th>
+                            <!-- Total: sort only -->
+                            <th class="th-sortable" @onclick='() => ToggleSort("total")'>
+                                <div class="th-inner">
+                                    <span class="th-label">Total</span>
+                                    <span class="sort-icon">
+                                        <span class="@(sortColumn == "total" && sortAsc ? "sort-up-active" : "")">&#9650;</span>
+                                        <span class="@(sortColumn == "total" && !sortAsc ? "sort-down-active" : "")">&#9660;</span>
+                                    </span>
+                                </div>
+                            </th>
+                            <!-- Estado: label + sort + checkbox dropdown -->
+                            <th class="th-dropdown @(activeFilterColumn == "estado" ? "filter-open" : "")">
+                                <div class="th-inner">
+                                    <span class="th-label" @onclick='() => ToggleSort("estado")'>Estado</span>
+                                    <span class="th-icons">
+                                        <span class="sort-icon" @onclick='() => ToggleSort("estado")'>
+                                            <span class="@(sortColumn == "estado" && sortAsc ? "sort-up-active" : "")">&#9650;</span>
+                                            <span class="@(sortColumn == "estado" && !sortAsc ? "sort-down-active" : "")">&#9660;</span>
+                                        </span>
+                                        <button class="filter-btn @(IsCheckboxFilterActive("estado") ? "filter-active" : "")" @onclick='() => ToggleDropdownFilter("estado")' @onclick:stopPropagation="true" title="Filtrar">
+                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+                                        </button>
+                                    </span>
+                                </div>
+                                @if (activeFilterColumn == "estado")
+                                {
+                                    <div class="column-filter-dropdown" @onclick:stopPropagation="true">
+                                        <input type="text" class="filter-search-input" placeholder="Buscar..." @bind="checkboxSearchText" @bind:event="oninput" />
+                                        <div class="filter-checkbox-list">
+                                            @foreach (var val in GetUniqueValues("estado"))
+                                            {
+                                                var v = val;
+                                                <label class="filter-checkbox-item">
+                                                    <input type="checkbox" checked="@IsCheckboxChecked("estado", v)" @onchange='() => ToggleCheckboxValue("estado", v)' />
+                                                    @v
+                                                </label>
+                                            }
+                                        </div>
+                                        @if (IsCheckboxFilterActive("estado"))
+                                        {
+                                            <div class="filter-actions"><button class="filter-clear-btn" @onclick='() => ClearCheckboxFilter("estado")'>Limpiar</button></div>
+                                        }
+                                    </div>
+                                }
+                            </th>
+                            <!-- Envio: label + sort + checkbox dropdown -->
+                            <th class="th-dropdown @(activeFilterColumn == "envio" ? "filter-open" : "")">
+                                <div class="th-inner">
+                                    <span class="th-label" @onclick='() => ToggleSort("envio")'>Envio</span>
+                                    <span class="th-icons">
+                                        <span class="sort-icon" @onclick='() => ToggleSort("envio")'>
+                                            <span class="@(sortColumn == "envio" && sortAsc ? "sort-up-active" : "")">&#9650;</span>
+                                            <span class="@(sortColumn == "envio" && !sortAsc ? "sort-down-active" : "")">&#9660;</span>
+                                        </span>
+                                        <button class="filter-btn @(IsCheckboxFilterActive("envio") ? "filter-active" : "")" @onclick='() => ToggleDropdownFilter("envio")' @onclick:stopPropagation="true" title="Filtrar">
+                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+                                        </button>
+                                    </span>
+                                </div>
+                                @if (activeFilterColumn == "envio")
+                                {
+                                    <div class="column-filter-dropdown" @onclick:stopPropagation="true">
+                                        <input type="text" class="filter-search-input" placeholder="Buscar..." @bind="checkboxSearchText" @bind:event="oninput" />
+                                        <div class="filter-checkbox-list">
+                                            @foreach (var val in GetUniqueValues("envio"))
+                                            {
+                                                var v = val;
+                                                <label class="filter-checkbox-item">
+                                                    <input type="checkbox" checked="@IsCheckboxChecked("envio", v)" @onchange='() => ToggleCheckboxValue("envio", v)' />
+                                                    @v
+                                                </label>
+                                            }
+                                        </div>
+                                        @if (IsCheckboxFilterActive("envio"))
+                                        {
+                                            <div class="filter-actions"><button class="filter-clear-btn" @onclick='() => ClearCheckboxFilter("envio")'>Limpiar</button></div>
+                                        }
+                                    </div>
+                                }
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var group in GetFilteredAndSortedOrders())
+                        {
+                            @if (group.IsPack)
+                            {
+                                <tr class="pack-header-row clickable-row" @onclick="() => ShowPackDetail(group.PackId!.Value)">
+                                    <td><strong>Pack @group.PackId</strong></td>
+                                    <td>@group.Orders.First().DateCreated.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                                    <td>@group.Orders.First().AccountNickname</td>
+                                    <td>@group.Orders.First().BuyerNickname</td>
+                                    <td></td>
+                                    <td><em>@group.Orders.Count productos</em></td>
+                                    <td>@group.Orders.Sum(o => o.Quantity)</td>
+                                    <td></td>
+                                    <td><strong>@group.Orders.First().CurrencyId @(group.Orders.Sum(o => o.UnitPrice * o.Quantity).ToString("N2"))</strong></td>
+                                    <td>
+                                        <span class="status-badge @GetStatusClass(group.Orders.First().Status)">
+                                            @GetStatusLabel(group.Orders.First().Status)
+                                        </span>
+                                    </td>
+                                    <td class="td-shipping-status">
+                                        @{ var gFirst = group.Orders.First(); }
+                                        @if (!string.IsNullOrEmpty(gFirst.ShippingStatus))
+                                        {
+                                            <span class="status-badge @GetShippingStatusClass(gFirst.ShippingStatus, gFirst.ShippingSubstatus)">
+                                                @GetShippingDisplayLabel(gFirst.ShippingStatus, gFirst.ShippingSubstatus)
+                                            </span>
+                                        }
+                                    </td>
+                                </tr>
+                                @foreach (var order in group.Orders)
+                                {
+                                    <tr class="pack-item-row clickable-row" @onclick="() => ShowPackDetail(group.PackId!.Value)">
+                                        <td class="pack-indent">@order.MeliOrderId</td>
+                                        <td></td>
+                                        <td></td>
+                                        <td></td>
+                                        <td class="td-thumbnail">
+                                            @if (!string.IsNullOrEmpty(order.ItemThumbnailUrl))
+                                            {
+                                                <img src="@order.ItemThumbnailUrl" alt="" class="order-thumbnail" />
+                                            }
+                                        </td>
+                                        <td title="@order.ItemId">@Truncate(order.ItemTitle, 40)</td>
+                                        <td>@order.Quantity</td>
+                                        <td>
+                                            @if (order.FullUnitPrice.HasValue && order.FullUnitPrice.Value > order.UnitPrice)
+                                            {
+                                                <span class="price-original">@order.CurrencyId @order.FullUnitPrice.Value.ToString("N2")</span>
+                                            }
+                                            <span>@order.CurrencyId @order.UnitPrice.ToString("N2")</span>
+                                        </td>
+                                        <td>@order.CurrencyId @((order.UnitPrice * order.Quantity).ToString("N2"))</td>
+                                        <td></td>
+                                        <td></td>
+                                    </tr>
+                                }
+                            }
+                            else
+                            {
+                                var order = group.Orders.First();
+                                <tr class="clickable-row" @onclick="() => ShowOrderDetail(order.MeliOrderId)">
+                                    <td><strong>@order.MeliOrderId</strong></td>
+                                    <td>@order.DateCreated.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                                    <td>@order.AccountNickname</td>
+                                    <td>@order.BuyerNickname</td>
+                                    <td class="td-thumbnail">
+                                        @if (!string.IsNullOrEmpty(order.ItemThumbnailUrl))
+                                        {
+                                            <img src="@order.ItemThumbnailUrl" alt="" class="order-thumbnail" />
+                                        }
+                                    </td>
+                                    <td title="@order.ItemId">@Truncate(order.ItemTitle, 40)</td>
+                                    <td>@order.Quantity</td>
+                                    <td>
+                                        @if (order.FullUnitPrice.HasValue && order.FullUnitPrice.Value > order.UnitPrice)
+                                        {
+                                            <span class="price-original">@order.CurrencyId @order.FullUnitPrice.Value.ToString("N2")</span>
+                                        }
+                                        <span>@order.CurrencyId @order.UnitPrice.ToString("N2")</span>
+                                    </td>
+                                    <td><strong>@order.CurrencyId @order.TotalAmount.ToString("N2")</strong></td>
+                                    <td>
+                                        <span class="status-badge @GetStatusClass(order.Status)">
+                                            @GetStatusLabel(order.Status)
+                                        </span>
+                                    </td>
+                                    <td class="td-shipping-status">
+                                        @if (!string.IsNullOrEmpty(order.ShippingStatus))
+                                        {
+                                            <span class="status-badge @GetShippingStatusClass(order.ShippingStatus, order.ShippingSubstatus)">
+                                                @GetShippingDisplayLabel(order.ShippingStatus, order.ShippingSubstatus)
+                                            </span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@if (activeFilterColumn is not null || showDateFilter)
+{
+    <div class="filter-overlay" @onclick="CloseAllDropdowns"></div>
+}
+
+@if (showDetailModal && orderDetail is not null)
+{
+    <div class="modal-overlay" @onclick="CloseDetailModal">
+        <div class="modal-content" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>
+                    @if (orderDetail.Orders.Count > 1)
+                    {
+                        <span>Pack - @orderDetail.Orders.Count ordenes</span>
+                    }
+                    else
+                    {
+                        <span>Orden #@orderDetail.Orders.First().MeliOrderId</span>
+                    }
+                </h3>
+                <button class="modal-close" @onclick="CloseDetailModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (isLoadingDetail)
+                {
+                    <p class="text-muted">Cargando detalle...</p>
+                }
+                else
+                {
+                    @foreach (var od in orderDetail.Orders)
+                    {
+                        <div class="detail-order-section @(orderDetail.Orders.Count > 1 ? "multi-order" : "")">
+                            @if (orderDetail.Orders.Count > 1)
+                            {
+                                <div class="detail-order-title">Orden #@od.MeliOrderId</div>
+                            }
+
+                            <!-- Order info header -->
+                            <div class="detail-info-grid">
+                                <div class="detail-info-item">
+                                    <span class="detail-label">Fecha</span>
+                                    <span class="detail-value">@od.DateCreated.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</span>
+                                </div>
+                                <div class="detail-info-item">
+                                    <span class="detail-label">Estado</span>
+                                    <span class="status-badge @GetStatusClass(od.Status)">@GetStatusLabel(od.Status)</span>
+                                </div>
+                                <div class="detail-info-item">
+                                    <span class="detail-label">Comprador</span>
+                                    <span class="detail-value">
+                                        @if (!string.IsNullOrEmpty(od.BuyerFirstName) || !string.IsNullOrEmpty(od.BuyerLastName))
+                                        {
+                                            @($"{od.BuyerFirstName} {od.BuyerLastName}".Trim())
+                                            <small style="color: #6b7280;"> (@od.BuyerNickname)</small>
+                                        }
+                                        else
+                                        {
+                                            @od.BuyerNickname
+                                        }
+                                    </span>
+                                </div>
+                                <div class="detail-info-item">
+                                    <span class="detail-label">N° Operacion</span>
+                                    <span class="detail-value">@od.MeliOrderId</span>
+                                </div>
+                            </div>
+
+                            <!-- Products -->
+                            <div class="detail-section">
+                                <h4>Productos</h4>
+                                @foreach (var item in od.Items)
+                                {
+                                    <div class="detail-product">
+                                        <div class="detail-product-thumb">
+                                            @if (!string.IsNullOrEmpty(item.ThumbnailUrl))
+                                            {
+                                                <img src="@item.ThumbnailUrl" alt="@item.Title" />
+                                            }
+                                            else
+                                            {
+                                                <div class="thumb-placeholder">
+                                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="#9ca3af"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+                                                </div>
+                                            }
+                                        </div>
+                                        <div class="detail-product-info">
+                                            <div class="detail-product-title">@item.Title</div>
+                                            <div class="detail-product-id">ID: @item.ItemId</div>
+                                            <div class="detail-product-qty">Cantidad: @item.Quantity x @od.CurrencyId @item.UnitPrice.ToString("N2")</div>
+                                        </div>
+                                        <div class="detail-product-price">
+                                            <strong>@od.CurrencyId @((item.UnitPrice * item.Quantity).ToString("N2"))</strong>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+
+                            <!-- Breakdown -->
+                            <div class="detail-section">
+                                <h4>Desglose</h4>
+                                <div class="detail-breakdown">
+                                    <div class="breakdown-row">
+                                        <span>Precio del producto</span>
+                                        <span>@od.CurrencyId @od.Items.Sum(i => i.UnitPrice * i.Quantity).ToString("N2")</span>
+                                    </div>
+                                    @if (od.TotalSaleFee.HasValue && od.TotalSaleFee.Value > 0)
+                                    {
+                                        <div class="breakdown-row deduction">
+                                            <span>Comision de venta</span>
+                                            <span>-@od.CurrencyId @od.TotalSaleFee.Value.ToString("N2")</span>
+                                        </div>
+                                    }
+                                    @if (od.ShippingCost.HasValue && od.ShippingCost.Value > 0)
+                                    {
+                                        <div class="breakdown-row deduction">
+                                            <span>Costo de envio</span>
+                                            <span>-@od.CurrencyId @od.ShippingCost.Value.ToString("N2")</span>
+                                        </div>
+                                    }
+                                    @if (od.TaxesAmount.HasValue && od.TaxesAmount.Value > 0)
+                                    {
+                                        <div class="breakdown-row deduction">
+                                            <span>Impuestos / Retenciones</span>
+                                            <span>-@od.CurrencyId @od.TaxesAmount.Value.ToString("N2")</span>
+                                        </div>
+                                    }
+                                    <div class="breakdown-row total">
+                                        <span>Total de la venta</span>
+                                        <span>@od.CurrencyId @od.TotalAmount.ToString("N2")</span>
+                                    </div>
+                                    @{
+                                        var totalToReceive = od.Items.Sum(i => i.UnitPrice * i.Quantity)
+                                            - (od.TotalSaleFee ?? 0)
+                                            - (od.ShippingCost ?? 0)
+                                            - (od.TaxesAmount ?? 0);
+                                    }
+                                    @if (totalToReceive != od.TotalAmount)
+                                    {
+                                        <div class="breakdown-row total highlight">
+                                            <span>Total a recibir</span>
+                                            <span>@od.CurrencyId @totalToReceive.ToString("N2")</span>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+
+                            <!-- Payments -->
+                            @if (od.Payments.Any())
+                            {
+                                <div class="detail-section">
+                                    <h4>Pago</h4>
+                                    @foreach (var pay in od.Payments)
+                                    {
+                                        <div class="detail-payment">
+                                            <div class="payment-method">
+                                                <strong>@GetPaymentMethodLabel(pay.PaymentMethodId) @GetPaymentTypeLabel(pay.PaymentType)</strong>
+                                                @if (pay.Installments.HasValue && pay.Installments.Value > 1)
+                                                {
+                                                    <span class="payment-installments">(@pay.Installments cuotas)</span>
+                                                }
+                                            </div>
+                                            <div class="payment-details">
+                                                <span>Monto: @od.CurrencyId @pay.TotalPaidAmount.ToString("N2")</span>
+                                                <span class="payment-status @GetPaymentStatusClass(pay.Status)">@GetPaymentStatusLabel(pay.Status)</span>
+                                            </div>
+                                            @if (pay.DateApproved.HasValue)
+                                            {
+                                                <div class="payment-date">Aprobado: @pay.DateApproved.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</div>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseDetailModal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    /* Column headers - sortable only */
+    .th-sortable {
+        cursor: pointer;
+        user-select: none;
+        white-space: nowrap;
+    }
+    .th-inner {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+    .th-label {
+        flex: 1;
+    }
+    .th-icons {
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+        margin-left: 0.4rem;
+    }
+
+    /* Column headers - with dropdown filter */
+    .th-dropdown {
+        position: relative;
+        cursor: pointer;
+        user-select: none;
+        white-space: nowrap;
+    }
+    .th-dropdown.filter-open {
+        z-index: 1002;
+    }
+
+    /* Column headers - with inline filter input */
+    .th-filterable {
+        white-space: nowrap;
+        padding: 0.3rem 0.4rem !important;
+    }
+    .th-filter-inner {
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+    }
+    .th-filter-input {
+        flex: 1;
+        min-width: 0;
+        padding: 0.3rem 0.5rem;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        outline: none;
+        background: white;
+        color: #1f2937;
+        box-sizing: border-box;
+        transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .th-filter-input::placeholder {
+        color: #6b7280;
+        font-weight: 600;
+    }
+    .th-filter-input:focus {
+        border-color: #4f46e5;
+        box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.1);
+    }
+    .th-filter-input.has-filter {
+        border-color: #4f46e5;
+        background: #f5f3ff;
+    }
+
+    /* Sort icon */
+    .sort-icon {
+        display: inline-flex;
+        flex-direction: column;
+        gap: 1px;
+        cursor: pointer;
+        padding: 0.2rem;
+        border-radius: 4px;
+        flex-shrink: 0;
+    }
+    .sort-icon:hover {
+        background: rgba(0,0,0,0.06);
+    }
+    .sort-icon span {
+        display: block;
+        font-size: 0.5rem;
+        line-height: 1;
+        color: #c8ccd4;
+        transition: color 0.15s;
+    }
+    .sort-icon .sort-up-active {
+        color: #4f46e5;
+    }
+    .sort-icon .sort-down-active {
+        color: #4f46e5;
+    }
+
+    /* Filter icon button */
+    .filter-btn {
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 0.2rem 0.25rem;
+        display: inline-flex;
+        align-items: center;
+        color: #c8ccd4;
+        font-size: 0.7rem;
+        border-radius: 4px;
+        transition: color 0.15s, background 0.15s;
+    }
+    .filter-btn:hover {
+        color: #6b7280;
+        background: rgba(0,0,0,0.06);
+    }
+    .filter-btn.filter-active {
+        color: #4f46e5;
+        background: rgba(79, 70, 229, 0.08);
+    }
+
+    /* Dropdown panel */
+    .column-filter-dropdown {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        z-index: 1001;
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+        min-width: 200px;
+        max-width: 280px;
+        padding: 0.5rem;
+        margin-top: 0.25rem;
+    }
+    .filter-search-input {
+        width: 100%;
+        padding: 0.4rem 0.6rem;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        margin-bottom: 0.4rem;
+        outline: none;
+        box-sizing: border-box;
+    }
+    .filter-search-input:focus {
+        border-color: #4f46e5;
+        box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.1);
+    }
+    .filter-checkbox-list {
+        max-height: 180px;
+        overflow-y: auto;
+        margin-bottom: 0.4rem;
+    }
+    .filter-checkbox-item {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.25rem 0.3rem;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        cursor: pointer;
+    }
+    .filter-checkbox-item:hover {
+        background: #f3f4f6;
+    }
+    .filter-checkbox-item input[type="checkbox"] {
+        margin: 0;
+        cursor: pointer;
+    }
+    .filter-actions {
+        display: flex;
+        justify-content: flex-end;
+        padding-top: 0.3rem;
+        border-top: 1px solid #e5e7eb;
+    }
+    .filter-clear-btn {
+        background: none;
+        border: none;
+        color: #ef4444;
+        font-size: 0.75rem;
+        cursor: pointer;
+        padding: 0.2rem 0.4rem;
+        border-radius: 4px;
+    }
+    .filter-clear-btn:hover {
+        background: #fef2f2;
+    }
+
+    /* Date filter dropdown */
+    .date-filter-dropdown {
+        min-width: 220px;
+        padding: 0.75rem;
+    }
+    .date-filter-field {
+        margin-bottom: 0.5rem;
+    }
+    .date-filter-field label {
+        display: block;
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: #374151;
+        margin-bottom: 0.2rem;
+        text-transform: uppercase;
+    }
+    .date-filter-field .form-input {
+        width: 100%;
+        font-size: 0.8rem;
+        padding: 0.3rem 0.5rem;
+        box-sizing: border-box;
+    }
+    .date-quick-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.3rem;
+        margin: 0.5rem 0;
+    }
+    .date-quick-btn {
+        background: #f3f4f6;
+        border: 1px solid #e5e7eb;
+        border-radius: 6px;
+        padding: 0.25rem 0.5rem;
+        font-size: 0.75rem;
+        cursor: pointer;
+        color: #374151;
+        transition: background 0.15s, border-color 0.15s;
+    }
+    .date-quick-btn:hover {
+        background: #eef2ff;
+        border-color: #4f46e5;
+        color: #4f46e5;
+    }
+    .date-filter-actions {
+        display: flex;
+        gap: 0.4rem;
+        justify-content: flex-end;
+        padding-top: 0.4rem;
+        border-top: 1px solid #e5e7eb;
+    }
+    .date-filter-actions .btn-sm {
+        padding: 0.25rem 0.75rem;
+        font-size: 0.75rem;
+    }
+
+    /* Filter overlay */
+    .filter-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+    }
+
+    /* Active filters bar */
+    .active-filters-bar {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        background: #f8fafc;
+        border-bottom: 1px solid #e5e7eb;
+        flex-wrap: wrap;
+        font-size: 0.8rem;
+        color: #6b7280;
+    }
+    .filter-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        background: #eef2ff;
+        color: #4f46e5;
+        padding: 0.15rem 0.5rem;
+        border-radius: 12px;
+        font-size: 0.75rem;
+    }
+    .filter-tag button {
+        background: none;
+        border: none;
+        color: #4f46e5;
+        cursor: pointer;
+        font-size: 0.85rem;
+        padding: 0;
+        line-height: 1;
+        margin-left: 0.15rem;
+    }
+    .filter-tag button:hover {
+        color: #ef4444;
+    }
+    .btn-clear-all {
+        background: none;
+        border: none;
+        color: #ef4444;
+        cursor: pointer;
+        font-size: 0.75rem;
+        padding: 0.15rem 0.4rem;
+        border-radius: 4px;
+    }
+    .btn-clear-all:hover {
+        background: #fef2f2;
+    }
+
+    /* Pack rows */
+    .pack-header-row {
+        background-color: #f0f4ff;
+        border-left: 3px solid #4f46e5;
+    }
+    .pack-item-row {
+        background-color: #fafbff;
+        font-size: 0.9em;
+    }
+    .pack-item-row td {
+        padding-top: 0.35rem !important;
+        padding-bottom: 0.35rem !important;
+    }
+    .pack-indent {
+        padding-left: 1.5rem !important;
+        color: #6b7280;
+        font-size: 0.85em;
+    }
+
+    /* Clickable rows */
+    .clickable-row {
+        cursor: pointer;
+        transition: background-color 0.15s;
+    }
+    .clickable-row:hover {
+        background-color: #f0f4ff !important;
+    }
+
+    /* Modal */
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 2000;
+        padding: 1rem;
+    }
+    .modal-content {
+        background: white;
+        border-radius: 12px;
+        width: 100%;
+        max-width: 700px;
+        max-height: 90vh;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    }
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem 1.5rem;
+        border-bottom: 1px solid #e5e7eb;
+    }
+    .modal-header h3 {
+        margin: 0;
+        font-size: 1.1rem;
+        color: #1f2937;
+    }
+    .modal-close {
+        background: none;
+        border: none;
+        font-size: 1.5rem;
+        cursor: pointer;
+        color: #6b7280;
+        padding: 0.25rem 0.5rem;
+        border-radius: 6px;
+        line-height: 1;
+    }
+    .modal-close:hover {
+        background: #f3f4f6;
+        color: #1f2937;
+    }
+    .modal-body {
+        padding: 1.5rem;
+        overflow-y: auto;
+        flex: 1;
+    }
+    .modal-footer {
+        padding: 0.75rem 1.5rem;
+        border-top: 1px solid #e5e7eb;
+        display: flex;
+        justify-content: flex-end;
+    }
+
+    /* Detail sections */
+    .detail-order-section.multi-order {
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+    .detail-order-title {
+        font-weight: 700;
+        font-size: 0.95rem;
+        color: #4f46e5;
+        margin-bottom: 0.75rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid #eef2ff;
+    }
+    .detail-info-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75rem;
+        margin-bottom: 1.25rem;
+    }
+    .detail-info-item {
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+    }
+    .detail-label {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        font-weight: 700;
+        color: #6b7280;
+        letter-spacing: 0.03em;
+    }
+    .detail-value {
+        font-size: 0.9rem;
+        color: #1f2937;
+    }
+    .detail-section {
+        margin-bottom: 1.25rem;
+    }
+    .detail-section h4 {
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        font-weight: 700;
+        color: #374151;
+        margin: 0 0 0.5rem 0;
+        padding-bottom: 0.35rem;
+        border-bottom: 1px solid #e5e7eb;
+        letter-spacing: 0.03em;
+    }
+
+    /* Product item */
+    .detail-product {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.75rem;
+        padding: 0.75rem;
+        background: #f9fafb;
+        border-radius: 8px;
+        margin-bottom: 0.5rem;
+    }
+    .detail-product-thumb {
+        width: 64px;
+        height: 64px;
+        flex-shrink: 0;
+        border-radius: 6px;
+        overflow: hidden;
+        background: #f3f4f6;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .detail-product-thumb img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .thumb-placeholder {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
+        background: #e5e7eb;
+    }
+    .detail-product-info {
+        flex: 1;
+        min-width: 0;
+    }
+    .detail-product-title {
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: #1f2937;
+        line-height: 1.3;
+        margin-bottom: 0.15rem;
+    }
+    .detail-product-id {
+        font-size: 0.7rem;
+        color: #9ca3af;
+    }
+    .detail-product-qty {
+        font-size: 0.8rem;
+        color: #6b7280;
+        margin-top: 0.25rem;
+    }
+    .detail-product-price {
+        text-align: right;
+        white-space: nowrap;
+        font-size: 0.9rem;
+        color: #1f2937;
+    }
+
+    /* Breakdown */
+    .detail-breakdown {
+        background: #f9fafb;
+        border-radius: 8px;
+        padding: 0.75rem;
+    }
+    .breakdown-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.35rem 0;
+        font-size: 0.85rem;
+        color: #374151;
+    }
+    .breakdown-row.deduction {
+        color: #dc2626;
+    }
+    .breakdown-row.total {
+        border-top: 1px solid #e5e7eb;
+        margin-top: 0.3rem;
+        padding-top: 0.5rem;
+        font-weight: 700;
+    }
+    .breakdown-row.highlight {
+        color: #059669;
+        font-size: 0.95rem;
+    }
+
+    /* Payment */
+    .detail-payment {
+        background: #f9fafb;
+        border-radius: 8px;
+        padding: 0.75rem;
+        margin-bottom: 0.5rem;
+    }
+    .payment-method {
+        font-size: 0.85rem;
+        color: #1f2937;
+        margin-bottom: 0.25rem;
+    }
+    .payment-installments {
+        color: #6b7280;
+        font-weight: 400;
+        margin-left: 0.25rem;
+    }
+    .payment-details {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.8rem;
+        color: #6b7280;
+    }
+    .payment-status {
+        font-weight: 600;
+        font-size: 0.75rem;
+        padding: 0.1rem 0.4rem;
+        border-radius: 4px;
+    }
+    .payment-status.pay-approved {
+        color: #059669;
+        background: #ecfdf5;
+    }
+    .payment-status.pay-pending {
+        color: #d97706;
+        background: #fffbeb;
+    }
+    .payment-status.pay-rejected {
+        color: #dc2626;
+        background: #fef2f2;
+    }
+    .payment-date {
+        font-size: 0.75rem;
+        color: #9ca3af;
+        margin-top: 0.25rem;
+    }
+</style>
+
+@code {
+    private List<MeliOrderDto>? orders;
+    private List<MeliAccountDto>? accounts;
+    private bool isLoading = true;
+    private bool isSyncing;
+    private int totalOrders;
+    private DateTime dateFrom = DateTime.Today.AddDays(-30);
+    private DateTime dateTo = DateTime.Today;
+
+    // Sort state
+    private string? sortColumn;
+    private bool sortAsc = true;
+
+    // Text filter state
+    private Dictionary<string, string> textFilters = new();
+
+    // Checkbox filter state (cuenta, estado)
+    private string? activeFilterColumn;
+    private Dictionary<string, HashSet<string>> checkboxFilters = new();
+    private string checkboxSearchText = "";
+
+    // Date filter state
+    private bool showDateFilter;
+    private bool dateFilterActive;
+
+    // Detail modal state
+    private bool showDetailModal;
+    private bool isLoadingDetail;
+    private MeliOrderDetailResponse? orderDetail;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAccounts();
+        await LoadOrders();
+    }
+
+    private async Task LoadAccounts()
+    {
+        try
+        {
+            accounts = await Api.GetMeliAccountsAsync();
+        }
+        catch { accounts = new(); }
+    }
+
+    private async Task SyncAndLoad()
+    {
+        isSyncing = true;
+        StateHasChanged();
+
+        try
+        {
+            await Api.SyncMeliOrdersAsync(dateFrom, dateTo.AddDays(1));
+        }
+        catch { }
+
+        isSyncing = false;
+        await LoadOrders();
+    }
+
+    private async Task LoadOrders()
+    {
+        isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            var response = await Api.GetMeliOrdersAsync(dateFrom, dateTo.AddDays(1), null);
+            if (response is not null)
+            {
+                orders = response.Orders;
+                totalOrders = response.Total;
+            }
+        }
+        catch
+        {
+            ToastService.Error("Error al cargar las ordenes");
+            orders = new();
+        }
+
+        isLoading = false;
+    }
+
+    private async Task SyncOrders()
+    {
+        isSyncing = true;
+
+        try
+        {
+            var result = await Api.SyncMeliOrdersAsync(dateFrom, dateTo.AddDays(1));
+            if (result is not null)
+            {
+                if (result.TotalErrors > 0)
+                    ToastService.Warning($"Sincronizadas {result.TotalSynced} ordenes con {result.TotalErrors} errores");
+                else
+                    ToastService.Success($"Sincronizadas {result.TotalSynced} ordenes");
+            }
+            await LoadOrders();
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error al sincronizar: " + ex.Message);
+        }
+
+        isSyncing = false;
+    }
+
+    // --- Sort ---
+    private void ToggleSort(string column)
+    {
+        activeFilterColumn = null; // Cerrar dropdown de filtro al ordenar
+        if (sortColumn == column)
+            sortAsc = !sortAsc;
+        else
+        {
+            sortColumn = column;
+            sortAsc = true;
+        }
+    }
+
+    // --- Text Filters ---
+    private void SetTextFilter(string column, string value)
+    {
+        textFilters[column] = value;
+    }
+
+    private string GetTextFilter(string column)
+    {
+        return textFilters.TryGetValue(column, out var val) ? val : "";
+    }
+
+    private bool IsFilterActive(string column)
+    {
+        return textFilters.TryGetValue(column, out var tv) && !string.IsNullOrEmpty(tv);
+    }
+
+    private void ClearTextFilter(string column)
+    {
+        textFilters.Remove(column);
+    }
+
+    // --- Checkbox Filters (Cuenta, Estado) ---
+    private void ToggleDropdownFilter(string column)
+    {
+        if (activeFilterColumn == column)
+            activeFilterColumn = null;
+        else
+        {
+            activeFilterColumn = column;
+            checkboxSearchText = "";
+            showDateFilter = false;
+        }
+    }
+
+    private void ToggleCheckboxValue(string column, string value)
+    {
+        if (!checkboxFilters.ContainsKey(column))
+            checkboxFilters[column] = new HashSet<string>();
+        if (!checkboxFilters[column].Remove(value))
+            checkboxFilters[column].Add(value);
+    }
+
+    private bool IsCheckboxChecked(string column, string value)
+    {
+        return checkboxFilters.TryGetValue(column, out var set) && set.Contains(value);
+    }
+
+    private bool IsCheckboxFilterActive(string column)
+    {
+        return checkboxFilters.TryGetValue(column, out var cv) && cv.Count > 0;
+    }
+
+    private List<string> GetUniqueValues(string column)
+    {
+        if (orders is null) return new();
+        var values = column switch
+        {
+            "cuenta" => orders.Select(o => o.AccountNickname).Distinct(),
+            "estado" => orders.Select(o => GetStatusLabel(o.Status)).Distinct(),
+            "envio" => orders.Select(o => GetShippingDisplayLabel(o.ShippingStatus, o.ShippingSubstatus)).Where(s => s != "-").Distinct(),
+            _ => Enumerable.Empty<string>()
+        };
+        var list = values.OrderBy(v => v).ToList();
+        if (!string.IsNullOrEmpty(checkboxSearchText))
+            list = list.Where(v => v.Contains(checkboxSearchText, StringComparison.OrdinalIgnoreCase)).ToList();
+        return list;
+    }
+
+    private void ClearCheckboxFilter(string column)
+    {
+        checkboxFilters.Remove(column);
+        activeFilterColumn = null;
+    }
+
+    // --- Date Filter ---
+    private void ToggleDateFilter()
+    {
+        showDateFilter = !showDateFilter;
+        activeFilterColumn = null;
+    }
+
+    private void SetDatePreset(string preset)
+    {
+        var today = DateTime.Today;
+        switch (preset)
+        {
+            case "hoy":
+                dateFrom = today;
+                dateTo = today;
+                break;
+            case "ayer":
+                dateFrom = today.AddDays(-1);
+                dateTo = today.AddDays(-1);
+                break;
+            case "7dias":
+                dateFrom = today.AddDays(-7);
+                dateTo = today;
+                break;
+            case "30dias":
+                dateFrom = today.AddDays(-30);
+                dateTo = today;
+                break;
+            case "estemes":
+                dateFrom = new DateTime(today.Year, today.Month, 1);
+                dateTo = today;
+                break;
+            case "mespasado":
+                var firstOfMonth = new DateTime(today.Year, today.Month, 1);
+                dateFrom = firstOfMonth.AddMonths(-1);
+                dateTo = firstOfMonth.AddDays(-1);
+                break;
+        }
+    }
+
+    private async Task ApplyDateFilter()
+    {
+        showDateFilter = false;
+        dateFilterActive = true;
+        await LoadOrders();
+    }
+
+    private async Task ClearDateFilter()
+    {
+        dateFrom = DateTime.Today.AddDays(-30);
+        dateTo = DateTime.Today;
+        showDateFilter = false;
+        dateFilterActive = false;
+        await LoadOrders();
+    }
+
+    // --- General ---
+    private void CloseAllDropdowns()
+    {
+        activeFilterColumn = null;
+        showDateFilter = false;
+    }
+
+    private bool HasActiveFilters()
+    {
+        return textFilters.Any(f => !string.IsNullOrEmpty(f.Value))
+            || checkboxFilters.Any(f => f.Value.Count > 0);
+    }
+
+    private void ClearAllFilters()
+    {
+        textFilters.Clear();
+        checkboxFilters.Clear();
+    }
+
+    private string GetColumnLabel(string column) => column switch
+    {
+        "orden" => "Orden",
+        "fecha" => "Fecha",
+        "cuenta" => "Cuenta",
+        "comprador" => "Comprador",
+        "producto" => "Producto",
+        "cantidad" => "Cant.",
+        "precio" => "Precio Unit.",
+        "total" => "Total",
+        "estado" => "Estado",
+        "envio" => "Envio",
+        _ => column
+    };
+
+    // --- Filtered + Sorted + Grouped ---
+    private List<OrderGroup> GetFilteredAndSortedOrders()
+    {
+        if (orders is null) return new();
+
+        var filtered = orders.AsEnumerable();
+
+        // Apply text filters
+        foreach (var kv in textFilters.Where(f => !string.IsNullOrEmpty(f.Value)))
+        {
+            var search = kv.Value;
+            filtered = kv.Key switch
+            {
+                "orden" => filtered.Where(o => o.MeliOrderId.ToString().Contains(search, StringComparison.OrdinalIgnoreCase)),
+                "comprador" => filtered.Where(o => o.BuyerNickname.Contains(search, StringComparison.OrdinalIgnoreCase)),
+                "producto" => filtered.Where(o => o.ItemTitle.Contains(search, StringComparison.OrdinalIgnoreCase)),
+                _ => filtered
+            };
+        }
+
+        // Apply checkbox filters
+        foreach (var kv in checkboxFilters.Where(f => f.Value.Count > 0))
+        {
+            var values = kv.Value;
+            filtered = kv.Key switch
+            {
+                "cuenta" => filtered.Where(o => values.Contains(o.AccountNickname)),
+                "estado" => filtered.Where(o => values.Contains(GetStatusLabel(o.Status))),
+                "envio" => filtered.Where(o => values.Contains(GetShippingDisplayLabel(o.ShippingStatus, o.ShippingSubstatus))),
+                _ => filtered
+            };
+        }
+
+        var list = filtered.ToList();
+
+        // Sort
+        if (sortColumn is not null)
+        {
+            list = sortColumn switch
+            {
+                "orden" => sortAsc ? list.OrderBy(o => o.MeliOrderId).ToList() : list.OrderByDescending(o => o.MeliOrderId).ToList(),
+                "fecha" => sortAsc ? list.OrderBy(o => o.DateCreated).ToList() : list.OrderByDescending(o => o.DateCreated).ToList(),
+                "cuenta" => sortAsc ? list.OrderBy(o => o.AccountNickname).ToList() : list.OrderByDescending(o => o.AccountNickname).ToList(),
+                "comprador" => sortAsc ? list.OrderBy(o => o.BuyerNickname).ToList() : list.OrderByDescending(o => o.BuyerNickname).ToList(),
+                "producto" => sortAsc ? list.OrderBy(o => o.ItemTitle).ToList() : list.OrderByDescending(o => o.ItemTitle).ToList(),
+                "cantidad" => sortAsc ? list.OrderBy(o => o.Quantity).ToList() : list.OrderByDescending(o => o.Quantity).ToList(),
+                "precio" => sortAsc ? list.OrderBy(o => o.UnitPrice).ToList() : list.OrderByDescending(o => o.UnitPrice).ToList(),
+                "total" => sortAsc ? list.OrderBy(o => o.TotalAmount).ToList() : list.OrderByDescending(o => o.TotalAmount).ToList(),
+                "estado" => sortAsc ? list.OrderBy(o => o.Status).ToList() : list.OrderByDescending(o => o.Status).ToList(),
+                "envio" => sortAsc ? list.OrderBy(o => o.ShippingStatus ?? "").ToList() : list.OrderByDescending(o => o.ShippingStatus ?? "").ToList(),
+                _ => list
+            };
+        }
+
+        // Group by pack (only show as pack if 2+ products)
+        var groups = new List<OrderGroup>();
+        var packGroups = list.Where(o => o.PackId.HasValue).GroupBy(o => o.PackId!.Value);
+        var singleOrders = list.Where(o => !o.PackId.HasValue).ToList();
+
+        foreach (var g in packGroups)
+        {
+            if (g.Count() >= 2)
+            {
+                groups.Add(new OrderGroup
+                {
+                    IsPack = true,
+                    PackId = g.Key,
+                    Orders = g.ToList(),
+                    SortDate = g.Max(o => o.DateCreated)
+                });
+            }
+            else
+            {
+                // Pack de 1 solo producto: mostrar como orden individual
+                singleOrders.AddRange(g);
+            }
+        }
+
+        foreach (var o in singleOrders)
+        {
+            groups.Add(new OrderGroup
+            {
+                IsPack = false,
+                Orders = new List<MeliOrderDto> { o },
+                SortDate = o.DateCreated
+            });
+        }
+
+        if (sortColumn is not null)
+            return groups; // Already sorted via individual orders
+
+        return groups.OrderByDescending(g => g.SortDate).ToList();
+    }
+
+    // --- Detail Modal ---
+    private async Task ShowOrderDetail(long meliOrderId)
+    {
+        showDetailModal = true;
+        isLoadingDetail = true;
+        orderDetail = new MeliOrderDetailResponse();
+        StateHasChanged();
+
+        try
+        {
+            orderDetail = await Api.GetMeliOrderDetailAsync(meliOrderId);
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error al cargar el detalle: " + ex.Message);
+            showDetailModal = false;
+        }
+
+        isLoadingDetail = false;
+        StateHasChanged();
+    }
+
+    private async Task ShowPackDetail(long packId)
+    {
+        showDetailModal = true;
+        isLoadingDetail = true;
+        orderDetail = new MeliOrderDetailResponse();
+        StateHasChanged();
+
+        try
+        {
+            orderDetail = await Api.GetMeliPackDetailAsync(packId);
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error al cargar el detalle del pack: " + ex.Message);
+            showDetailModal = false;
+        }
+
+        isLoadingDetail = false;
+        StateHasChanged();
+    }
+
+    private void CloseDetailModal()
+    {
+        showDetailModal = false;
+        orderDetail = null;
+    }
+
+    private string GetPaymentMethodLabel(string? method) => method?.ToLower() switch
+    {
+        "visa" => "Visa",
+        "master" => "Mastercard",
+        "amex" => "American Express",
+        "naranja" => "Naranja",
+        "cabal" => "Cabal",
+        "debvisa" => "Visa Debito",
+        "debmaster" => "Mastercard Debito",
+        "account_money" => "Dinero en cuenta",
+        "consumer_credits" => "Creditos",
+        _ => method ?? "Medio de pago"
+    };
+
+    private string GetPaymentTypeLabel(string? type) => type?.ToLower() switch
+    {
+        "credit_card" => "(credito)",
+        "debit_card" => "(debito)",
+        "account_money" => "",
+        "ticket" => "(efectivo)",
+        "bank_transfer" => "(transferencia)",
+        _ => type != null ? $"({type})" : ""
+    };
+
+    private string GetPaymentStatusClass(string status) => status.ToLower() switch
+    {
+        "approved" => "pay-approved",
+        "pending" or "in_process" or "in_mediation" => "pay-pending",
+        "rejected" or "cancelled" or "refunded" or "charged_back" => "pay-rejected",
+        _ => ""
+    };
+
+    private string GetPaymentStatusLabel(string status) => status.ToLower() switch
+    {
+        "approved" => "Aprobado",
+        "pending" => "Pendiente",
+        "in_process" => "En proceso",
+        "rejected" => "Rechazado",
+        "cancelled" => "Cancelado",
+        "refunded" => "Devuelto",
+        "charged_back" => "Contracargo",
+        "in_mediation" => "En mediacion",
+        _ => status
+    };
+
+    private string GetStatusClass(string status) => status switch
+    {
+        "paid" => "status-active",
+        "confirmed" => "status-active",
+        "cancelled" => "status-inactive",
+        "invalid" => "status-inactive",
+        _ => ""
+    };
+
+    private string GetStatusLabel(string status) => status switch
+    {
+        "confirmed" => "Confirmada",
+        "payment_required" => "Pago pendiente",
+        "paid" => "Pagada",
+        "partially_paid" => "Pago parcial",
+        "cancelled" => "Cancelada",
+        "invalid" => "Invalida",
+        _ => status
+    };
+
+    private string GetShippingStatusClass(string? status, string? substatus = null) => status switch
+    {
+        "delivered" => "status-active",
+        "shipped" => "status-shipping",
+        "ready_to_ship" => "status-warning",
+        "handling" => "status-handling",
+        "pending" => "",
+        "not_delivered" => "status-inactive",
+        "cancelled" => "status-inactive",
+        _ => ""
+    };
+
+    private string GetShippingStatusLabel(string? status, string? substatus = null) => status switch
+    {
+        "pending" => "Pendiente",
+        "handling" => "En preparacion",
+        "ready_to_ship" => "Listo para enviar",
+        "shipped" => "En camino",
+        "delivered" => "Entregado",
+        "not_delivered" => "No entregado",
+        "cancelled" => "Cancelado",
+        null or "" => "-",
+        _ => status
+    };
+
+    private string GetShippingSubstatusLabel(string? substatus) => substatus switch
+    {
+        // Pending
+        "cost_exceeded" => "Costo excedido",
+        "under_review" => "En revision",
+        "reviewed" => "Revisado",
+        "waiting_for_shipping_payment" => "Esperando pago de envio",
+        "shipment_paid" => "Envio pagado",
+        "route_created" => "Ruta creada",
+        "buffered" => "En espera",
+        "creating_shipping_order" => "Creando orden de envio",
+        "waiting_for_delivery" => "Esperando entrega",
+        "validating_receiver_documentation" => "Validando documentacion",
+        // Handling
+        "regenerating" => "Regenerando",
+        "waiting_for_label_generation" => "Generando etiqueta",
+        "invoice_pending" => "Factura pendiente",
+        "waiting_for_return_confirmation" => "Esperando confirmacion",
+        "return_confirmed" => "Devolucion confirmada",
+        "manufacturing" => "En fabricacion",
+        // Ready to ship
+        "ready_to_print" => "Etiqueta lista para imprimir",
+        "printed" => "Etiqueta impresa",
+        "in_pickup_list" => "En lista de retiro",
+        "ready_for_pickup" => "Listo para retiro",
+        "ready_for_drop_off" => "Listo para despacho",
+        "picked_up" => "Retirado",
+        "dropped_off" => "Despachado",
+        "in_hub" => "En centro de distribucion",
+        "in_warehouse" => "En deposito",
+        "ready_to_pack" => "Listo para empacar",
+        "measures_ready" => "Medidas listas",
+        "delayed" => "Demorado",
+        "in_transit" => "En transito",
+        "in_plp" => "En PLP",
+        "packed" => "Empacado",
+        "looking_for_driver" => "Buscando repartidor",
+        "bad_address" => "Direccion incorrecta",
+        "on_hold" => "En espera",
+        // Shipped
+        "soon_deliver" => "Pronto a entregar",
+        "waiting_for_withdrawal" => "Esperando retiro",
+        "receiver_absent" => "Destinatario ausente",
+        "contact_with_carrier_required" => "Contactar transportista",
+        "delivery_refused" => "Entrega rechazada",
+        "changed_address" => "Direccion cambiada",
+        "out_for_delivery" => "En reparto",
+        "delivery_failed" => "Entrega fallida",
+        "waiting_for_confirmation" => "Esperando confirmacion",
+        "shipment_at_buyers_door" => "En puerta del comprador",
+        "delivery_blocked" => "Entrega bloqueada",
+        "rescheduled_by_buyer" => "Reprogramado por comprador",
+        "rescheduled_by_meli" => "Reprogramado",
+        "at_customs" => "En aduana",
+        "delayed_at_customs" => "Demorado en aduana",
+        "left_customs" => "Salio de aduana",
+        "not_localized" => "No localizado",
+        "forwarded_to_third_party" => "Reenviado a tercero",
+        "under_investigation" => "En investigacion",
+        "withdrawn_by_sender" => "Retirado por vendedor",
+        // Delivered
+        "damaged" => "Danado",
+        "fulfilled_by_buyer_feedback" => "Confirmado por comprador",
+        "inferred_delivery" => "Entrega inferida",
+        // Not delivered
+        "returning_to_sender" => "En devolucion al vendedor",
+        "returned" => "Devuelto",
+        "destroyed" => "Destruido",
+        "returned_to_hub" => "Devuelto a centro",
+        "returned_to_agency" => "Devuelto a agencia",
+        "returning_to_warehouse" => "En devolucion a deposito",
+        "soon_to_be_returned" => "Pronto a devolver",
+        "return_failed" => "Devolucion fallida",
+        "in_storage" => "En almacenamiento",
+        "refused_delivery" => "Entrega rechazada",
+        "stolen" => "Robado",
+        "confiscated" => "Confiscado",
+        "package_lost" => "Paquete perdido",
+        "package_damaged_in_hub" => "Paquete danado",
+        "detained_at_customs" => "Retenido en aduana",
+        "recovered" => "Recuperado",
+        // Cancelled
+        "label_expired" => "Etiqueta vencida",
+        "cancelled_manually" => "Cancelado manualmente",
+        "cancelled_fraudulent" => "Cancelado por fraude",
+        "unfulfillable" => "No realizable",
+        "service_unavailable" => "Servicio no disponible",
+        "time_expired" => "Tiempo expirado",
+        "dismissed" => "Descartado",
+        null or "" => "",
+        _ => substatus?.Replace("_", " ")
+    };
+
+    private string GetShippingDisplayLabel(string? status, string? substatus)
+    {
+        var subLabel = GetShippingSubstatusLabel(substatus);
+        if (!string.IsNullOrEmpty(subLabel))
+            return subLabel;
+        return GetShippingStatusLabel(status, substatus);
+    }
+
+    private string Truncate(string text, int maxLength) =>
+        text.Length <= maxLength ? text : text[..maxLength] + "...";
+
+    private class OrderGroup
+    {
+        public bool IsPack { get; set; }
+        public long? PackId { get; set; }
+        public List<MeliOrderDto> Orders { get; set; } = new();
+        public DateTime SortDate { get; set; }
+    }
+}

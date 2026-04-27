@@ -1,0 +1,491 @@
+@page "/backups"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <h3>Backup de Base de Datos</h3>
+        <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+            <button class="btn btn-primary btn-sm" @onclick="CreateBackup" disabled="@isCreating">
+                <span style="width: 16px; height: 16px; display: inline-block; vertical-align: -3px;">@SvgIcons.Database</span>
+                @(isCreating ? "Creando..." : "Crear Backup Manual")
+            </button>
+            <label class="btn btn-secondary btn-sm" style="cursor: pointer;">
+                <span style="width: 16px; height: 16px; display: inline-block; vertical-align: -3px;">@SvgIcons.Upload</span>
+                Subir .bak
+                <InputFile OnChange="OnUploadChanged" accept=".bak" class="visually-hidden" />
+            </label>
+            <button class="btn btn-secondary btn-sm" @onclick="OpenSettings">
+                <span style="width: 16px; height: 16px; display: inline-block; vertical-align: -3px;">@SvgIcons.Clock</span>
+                Programacion automatica
+                @if (settings?.Enabled == true)
+                {
+                    <span class="backup-dot-on" title="Activa"></span>
+                }
+                else
+                {
+                    <span class="backup-dot-off" title="Inactiva"></span>
+                }
+            </button>
+        </div>
+    </div>
+
+    <div class="card-body" style="padding: 0;">
+        @if (isLoading)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">Cargando backups...</p>
+        }
+        else if (backups is null || !backups.Any())
+        {
+            <p class="text-muted" style="padding: 1.5rem;">No hay backups todavia. Creá uno manual o esperá al proximo ciclo automatico.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="min-width: 140px;">Fecha</th>
+                            <th>Archivo</th>
+                            <th>Tamano</th>
+                            <th>Tipo</th>
+                            <th>Estado</th>
+                            <th style="min-width: 260px;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var b in backups)
+                        {
+                            <tr>
+                                <td>@b.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                                <td><code class="backup-filename">@b.FileName</code></td>
+                                <td>@FormatSize(b.SizeBytes)</td>
+                                <td><span class="backup-type-badge backup-type-@b.BackupType.ToLower()">@b.BackupType</span></td>
+                                <td>
+                                    <span class="backup-status-badge backup-status-@b.Status.ToLower()">
+                                        @StatusLabel(b.Status)
+                                    </span>
+                                </td>
+                                <td style="white-space: nowrap;">
+                                    <button class="btn btn-secondary btn-sm" disabled="@(b.Status != "Completed")" @onclick="() => Download(b)">
+                                        <span style="width: 14px; height: 14px; display: inline-block; vertical-align: -2px;">@SvgIcons.Download</span> Descargar
+                                    </button>
+                                    <button class="btn btn-primary btn-sm" disabled="@(b.Status != "Completed")" @onclick="() => OpenRestore(b)">
+                                        <span style="width: 14px; height: 14px; display: inline-block; vertical-align: -2px;">@SvgIcons.RotateCcw</span> Restaurar
+                                    </button>
+                                    <button class="btn btn-danger btn-sm" @onclick="() => OpenDelete(b)">
+                                        <span style="width: 14px; height: 14px; display: inline-block; vertical-align: -2px;">@SvgIcons.Trash</span> Eliminar
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@if (showSettings && settings is not null)
+{
+    <div class="modal-overlay" @onclick="CloseSettings">
+        <div class="modal-card" style="max-width: 520px;" @onclick:stopPropagation>
+            <div class="modal-header">
+                <h3>Programacion Automatica</h3>
+                <button class="btn-close" @onclick="CloseSettings">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 1.25rem;">
+                <label class="form-check">
+                    <input type="checkbox" @bind="settings.Enabled" />
+                    <strong>Activar backups automaticos</strong>
+                </label>
+
+                <div class="form-group" style="margin-top: 1rem;">
+                    <label class="form-label">Intervalo entre backups</label>
+                    <select class="form-input" @bind="settings.IntervalMinutes">
+                        <option value="360">Cada 6 horas</option>
+                        <option value="720">Cada 12 horas</option>
+                        <option value="1440">Cada 24 horas</option>
+                        <option value="2880">Cada 2 dias</option>
+                        <option value="10080">Cada 7 dias</option>
+                    </select>
+                </div>
+
+                <div class="form-group" style="margin-top: 1rem;">
+                    <label class="form-label">Dias de retencion</label>
+                    <input type="number" class="form-input" min="1" max="365" @bind="settings.RetentionDays" />
+                    <small class="text-muted">Los backups mas antiguos que esta cantidad de dias se eliminan automaticamente.</small>
+                </div>
+
+                @if (settings.LastRunAt.HasValue)
+                {
+                    <div style="margin-top: 1rem; font-size: 0.85rem; color: #6b7280;">
+                        Ultima ejecucion: @settings.LastRunAt.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm") (@settings.LastRunStatus)
+                    </div>
+                }
+                @if (settings.NextRunAt.HasValue && settings.Enabled)
+                {
+                    <div style="font-size: 0.85rem; color: #6b7280;">
+                        Proxima ejecucion: @settings.NextRunAt.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                    </div>
+                }
+            </div>
+            <div class="modal-footer" style="padding: 1rem 1.25rem; display: flex; gap: 0.5rem; justify-content: flex-end;">
+                <button class="btn btn-secondary" @onclick="CloseSettings">Cancelar</button>
+                <button class="btn btn-primary" @onclick="SaveSettings" disabled="@savingSettings">
+                    @(savingSettings ? "Guardando..." : "Guardar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (restoreTarget is not null)
+{
+    <div class="modal-overlay" @onclick="CloseRestore">
+        <div class="modal-card" style="max-width: 560px;" @onclick:stopPropagation>
+            <div class="modal-header">
+                <h3>Restaurar Backup</h3>
+                <button class="btn-close" @onclick="CloseRestore">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 1.25rem;">
+                <div class="backup-warning">
+                    <strong>Atencion:</strong> restaurar este backup va a <strong>reemplazar TODOS los datos actuales</strong> de la base de datos por los que estaban cuando se creó este archivo. Esta accion no se puede deshacer.
+                </div>
+
+                <p style="margin-top: 1rem;">
+                    Archivo a restaurar: <code class="backup-filename">@restoreTarget.FileName</code><br />
+                    Fecha del backup: <strong>@restoreTarget.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</strong>
+                </p>
+
+                <div class="form-group" style="margin-top: 1rem;">
+                    <label class="form-label">
+                        Para confirmar, escribi el nombre exacto del archivo:
+                    </label>
+                    <input type="text" class="form-input" @bind="restoreConfirmation" @bind:event="oninput" placeholder="@restoreTarget.FileName" />
+                </div>
+            </div>
+            <div class="modal-footer" style="padding: 1rem 1.25rem; display: flex; gap: 0.5rem; justify-content: flex-end;">
+                <button class="btn btn-secondary" @onclick="CloseRestore" disabled="@isRestoring">Cancelar</button>
+                <button class="btn btn-danger" @onclick="ConfirmRestore" disabled="@(isRestoring || restoreConfirmation != restoreTarget.FileName)">
+                    @(isRestoring ? "Restaurando..." : "Restaurar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (deleteTarget is not null)
+{
+    <div class="modal-overlay" @onclick="CloseDelete">
+        <div class="modal-card" style="max-width: 440px;" @onclick:stopPropagation>
+            <div class="modal-header">
+                <h3>Eliminar Backup</h3>
+                <button class="btn-close" @onclick="CloseDelete">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 1.25rem;">
+                <p>Seguro que querés eliminar <code class="backup-filename">@deleteTarget.FileName</code>?</p>
+                <p class="text-muted" style="font-size: 0.85rem;">Esta accion no se puede deshacer.</p>
+            </div>
+            <div class="modal-footer" style="padding: 1rem 1.25rem; display: flex; gap: 0.5rem; justify-content: flex-end;">
+                <button class="btn btn-secondary" @onclick="CloseDelete">Cancelar</button>
+                <button class="btn btn-danger" @onclick="ConfirmDelete">Eliminar</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .backup-filename {
+        font-family: 'Consolas', 'Monaco', monospace;
+        font-size: 0.82rem;
+        color: #374151;
+        background: #f3f4f6;
+        padding: 0.1rem 0.4rem;
+        border-radius: 4px;
+    }
+
+    .backup-type-badge {
+        display: inline-block;
+        padding: 0.2rem 0.55rem;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    .backup-type-manual { background: #eff6ff; color: #2563eb; }
+    .backup-type-programado { background: #f3e8ff; color: #9333ea; }
+    .backup-type-subido { background: #fff7ed; color: #ea580c; }
+
+    .backup-status-badge {
+        display: inline-block;
+        padding: 0.2rem 0.55rem;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    .backup-status-completed { background: #dcfce7; color: #16a34a; }
+    .backup-status-inprogress { background: #fef3c7; color: #d97706; }
+    .backup-status-failed { background: #fee2e2; color: #dc2626; }
+
+    .backup-dot-on {
+        display: inline-block;
+        width: 8px; height: 8px;
+        border-radius: 50%;
+        background: #16a34a;
+        margin-left: 0.5rem;
+    }
+    .backup-dot-off {
+        display: inline-block;
+        width: 8px; height: 8px;
+        border-radius: 50%;
+        background: #9ca3af;
+        margin-left: 0.5rem;
+    }
+
+    .backup-warning {
+        background: #fef2f2;
+        border-left: 4px solid #ef4444;
+        padding: 0.75rem 1rem;
+        border-radius: 0 4px 4px 0;
+        color: #991b1b;
+        font-size: 0.9rem;
+    }
+
+    .btn-sm {
+        padding: 0.3rem 0.7rem;
+        font-size: 0.8rem;
+    }
+
+    .visually-hidden {
+        position: absolute;
+        width: 1px; height: 1px;
+        padding: 0; margin: -1px;
+        overflow: hidden;
+        clip: rect(0,0,0,0);
+        border: 0;
+    }
+
+    .form-check {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+        cursor: pointer;
+    }
+</style>
+
+@code {
+    private List<BackupFileDto>? backups;
+    private BackupSettingsDto? settings;
+    private bool isLoading = true;
+    private bool isCreating = false;
+    private bool savingSettings = false;
+    private bool isRestoring = false;
+    private bool showSettings = false;
+
+    private BackupFileDto? restoreTarget;
+    private string restoreConfirmation = "";
+    private BackupFileDto? deleteTarget;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.WhenAll(LoadBackups(), LoadSettings());
+    }
+
+    private async Task LoadBackups()
+    {
+        isLoading = true;
+        StateHasChanged();
+        try
+        {
+            backups = await Api.ListBackupsAsync() ?? new();
+        }
+        catch
+        {
+            ToastService.Error("Error al cargar los backups");
+            backups = new();
+        }
+        isLoading = false;
+    }
+
+    private async Task LoadSettings()
+    {
+        try { settings = await Api.GetBackupSettingsAsync(); }
+        catch { settings = new BackupSettingsDto(); }
+    }
+
+    private async Task CreateBackup()
+    {
+        if (isCreating) return;
+        isCreating = true;
+        StateHasChanged();
+        try
+        {
+            var result = await Api.CreateBackupAsync();
+            if (result is not null)
+            {
+                ToastService.Success("Backup creado correctamente");
+                await LoadBackups();
+            }
+            else
+            {
+                ToastService.Error("No se pudo crear el backup");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error($"Error: {ex.Message}");
+        }
+        isCreating = false;
+    }
+
+    private async Task OnUploadChanged(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null) return;
+        if (!file.Name.EndsWith(".bak", StringComparison.OrdinalIgnoreCase))
+        {
+            ToastService.Error("Solo se aceptan archivos .bak");
+            return;
+        }
+
+        try
+        {
+            await using var stream = file.OpenReadStream(2L * 1024 * 1024 * 1024);
+            var result = await Api.UploadBackupAsync(file.Name, stream);
+            if (result is not null)
+            {
+                ToastService.Success($"Archivo {result.FileName} subido");
+                await LoadBackups();
+            }
+            else
+            {
+                ToastService.Error("No se pudo subir el archivo");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error($"Error al subir: {ex.Message}");
+        }
+    }
+
+    private async Task Download(BackupFileDto b)
+    {
+        var url = Api.BuildBackupDownloadUrl(b.Id);
+        await JS.InvokeVoidAsync("filesDownload.start", url, b.FileName);
+    }
+
+    private void OpenSettings() => showSettings = true;
+    private void CloseSettings() => showSettings = false;
+
+    private async Task SaveSettings()
+    {
+        if (settings is null) return;
+        savingSettings = true;
+        try
+        {
+            var updated = await Api.UpdateBackupSettingsAsync(new UpdateBackupSettingsRequest
+            {
+                Enabled = settings.Enabled,
+                IntervalMinutes = settings.IntervalMinutes,
+                RetentionDays = settings.RetentionDays
+            });
+            if (updated is not null)
+            {
+                settings = updated;
+                ToastService.Success("Programacion guardada");
+                showSettings = false;
+            }
+            else
+            {
+                ToastService.Error("No se pudo guardar");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error($"Error: {ex.Message}");
+        }
+        savingSettings = false;
+    }
+
+    private void OpenRestore(BackupFileDto b)
+    {
+        restoreTarget = b;
+        restoreConfirmation = "";
+    }
+
+    private void CloseRestore()
+    {
+        restoreTarget = null;
+        restoreConfirmation = "";
+    }
+
+    private async Task ConfirmRestore()
+    {
+        if (restoreTarget is null) return;
+        if (restoreConfirmation != restoreTarget.FileName) return;
+
+        isRestoring = true;
+        try
+        {
+            var (ok, error) = await Api.RestoreBackupAsync(new RestoreBackupRequest
+            {
+                FileName = restoreTarget.FileName,
+                Confirmation = restoreConfirmation
+            });
+
+            if (ok)
+            {
+                ToastService.Success("Base de datos restaurada. La pagina se recargara.");
+                restoreTarget = null;
+                await Task.Delay(1500);
+                await JS.InvokeVoidAsync("location.reload");
+            }
+            else
+            {
+                ToastService.Error(error ?? "Error al restaurar");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error($"Error: {ex.Message}");
+        }
+        isRestoring = false;
+    }
+
+    private void OpenDelete(BackupFileDto b) => deleteTarget = b;
+    private void CloseDelete() => deleteTarget = null;
+
+    private async Task ConfirmDelete()
+    {
+        if (deleteTarget is null) return;
+        var ok = await Api.DeleteBackupAsync(deleteTarget.Id);
+        if (ok)
+        {
+            ToastService.Success("Backup eliminado");
+            deleteTarget = null;
+            await LoadBackups();
+        }
+        else
+        {
+            ToastService.Error("No se pudo eliminar");
+        }
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024L * 1024) return $"{bytes / 1024.0:F1} KB";
+        if (bytes < 1024L * 1024 * 1024) return $"{bytes / (1024.0 * 1024):F1} MB";
+        return $"{bytes / (1024.0 * 1024 * 1024):F2} GB";
+    }
+
+    private static string StatusLabel(string s) => s switch
+    {
+        "Completed" => "Completado",
+        "InProgress" => "En progreso",
+        "Failed" => "Fallido",
+        _ => s
+    };
+}

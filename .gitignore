@@ -1,0 +1,5 @@
+.env
+
+# .NET build outputs
+**/bin/
+**/obj/

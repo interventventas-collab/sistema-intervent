@@ -1,0 +1,758 @@
+@page "/config"
+@attribute [Authorize]
+@inject AuthService AuthService
+@inject ApiClient Api
+@inject ToastService Toast
+@inject BrandSettingsService BrandSettings
+@inject IJSRuntime JS
+
+@if (loading)
+{
+    <div class="loading-container">
+        <div class="spinner"></div>
+        <span>Cargando configuracion...</span>
+    </div>
+}
+else
+{
+    <!-- ========== SECCION 1: MARCA ========== -->
+    <div class="config-card-collapsible">
+        <div class="config-card-header" @onclick="() => sectionMarca = !sectionMarca">
+            <div class="config-card-header-left">
+                @SvgIcons.Edit
+                <span class="config-card-header-title">Marca</span>
+            </div>
+            <div class="config-card-header-right">
+                <!-- Vista previa mini en el header -->
+                <div class="config-brand-mini-preview" style="background: @sidebarColorInput;">
+                    @if (!string.IsNullOrEmpty(logoPreview))
+                    {
+                        <img src="@logoPreview" alt="Logo" class="config-brand-mini-img" />
+                    }
+                    else
+                    {
+                        <span class="config-brand-mini-icon" style="color: @primaryColorInput;">
+                            @SvgIcons.GetByName(selectedIcon)
+                        </span>
+                    }
+                    <span class="config-brand-mini-name">@(string.IsNullOrWhiteSpace(brandNameInput) ? "Tu Marca" : brandNameInput)</span>
+                </div>
+                <span class="config-section-chevron @(sectionMarca ? "open" : "")">@SvgIcons.ChevronRight</span>
+            </div>
+        </div>
+
+        <div class="config-card-body @(sectionMarca ? "expanded" : "")">
+            <!-- Vista previa grande -->
+            <div class="config-brand-preview" style="background: @sidebarColorInput;">
+                @if (!string.IsNullOrEmpty(logoPreview))
+                {
+                    <img src="@logoPreview" alt="Logo" class="config-brand-logo-img" />
+                }
+                else
+                {
+                    <span class="config-brand-icon" style="color: @primaryColorInput;">
+                        @SvgIcons.GetByName(selectedIcon)
+                    </span>
+                }
+                <span class="config-brand-name">@(string.IsNullOrWhiteSpace(brandNameInput) ? "Tu Marca" : brandNameInput)</span>
+            </div>
+
+            <div class="config-marca-form">
+                <!-- Nombre -->
+                <div class="config-marca-field">
+                    <label class="config-marca-label">Nombre de la marca</label>
+                    <input type="text" class="form-input" @bind="brandNameInput" @bind:event="oninput" placeholder="Nombre de tu empresa..." />
+                </div>
+
+                <!-- Colores -->
+                <div class="config-marca-colors">
+                    <div class="config-color-picker">
+                        <label class="config-marca-label">Color principal</label>
+                        <div class="config-color-row">
+                            <input type="color" value="@primaryColorInput" @oninput="OnPrimaryColorChange" />
+                            <span class="config-color-hex">@primaryColorInput</span>
+                        </div>
+                    </div>
+                    <div class="config-color-picker">
+                        <label class="config-marca-label">Fondo del menu</label>
+                        <div class="config-color-row">
+                            <input type="color" value="@sidebarColorInput" @oninput="OnSidebarColorChange" />
+                            <span class="config-color-hex">@sidebarColorInput</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Icono / Logo -->
+                <div class="config-marca-field">
+                    <label class="config-marca-label">Icono o logo</label>
+
+                    <!-- Upload logo -->
+                    <div class="config-logo-upload">
+                        <label class="config-upload-btn">
+                            <InputFile OnChange="OnLogoSelected" accept=".png,.jpg,.jpeg,.svg,.webp" />
+                            <span>Subir imagen</span>
+                        </label>
+                        <span class="text-muted" style="font-size: 0.75rem;">PNG, JPG, SVG o WebP. Max 500KB. Recomendado: 64x64 px</span>
+                        @if (!string.IsNullOrEmpty(logoPreview))
+                        {
+                            <button class="config-remove-logo" @onclick="RemoveLogo">Quitar imagen</button>
+                        }
+                    </div>
+
+                    <!-- O elegir icono SVG -->
+                    <label class="config-marca-label" style="margin-top: 0.75rem;">O elegir un icono</label>
+                    <div class="config-icon-grid">
+                        @foreach (var iconName in SvgIcons.AvailableIcons)
+                        {
+                            <button class="config-icon-option @(selectedIcon == iconName && string.IsNullOrEmpty(logoPreview) ? "selected" : "")"
+                                    style="@(selectedIcon == iconName && string.IsNullOrEmpty(logoPreview) ? $"border-color: {primaryColorInput}; background: {primaryColorInput}15;" : "")"
+                                    @onclick="() => SelectIcon(iconName)"
+                                    title="@iconName">
+                                @SvgIcons.GetByName(iconName)
+                            </button>
+                        }
+                    </div>
+                </div>
+
+                <!-- Boton guardar -->
+                <div style="margin-top: 1rem;">
+                    <button class="btn btn-primary" @onclick="SaveBrandSettings" disabled="@savingBrand">
+                        @(savingBrand ? "Guardando..." : "Guardar cambios")
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== SECCION 2: SERVICIOS DEL ENTORNO ========== -->
+    @if (systemInfo is not null)
+    {
+        <div class="config-card-collapsible" style="margin-top: 1.5rem;">
+        <div class="config-card-header" @onclick="() => sectionServicios = !sectionServicios">
+            <div class="config-card-header-left">
+                @SvgIcons.Code
+                <span class="config-card-header-title">Servicios del Entorno</span>
+                <span class="status-badge @(systemInfo.Server.Environment == "Production" ? "status-active" : "status-warning")" style="margin-left: 0.5rem;">
+                    @systemInfo.Server.Environment
+                </span>
+            </div>
+            <div class="config-card-header-right">
+                <span class="config-section-chevron @(sectionServicios ? "open" : "")">@SvgIcons.ChevronRight</span>
+            </div>
+        </div>
+
+        <div class="config-stats-row" style="padding: 0 1rem;">
+            <div class="config-stat-card">
+                <div class="config-stat-icon" style="background: #dbeafe; color: #2563eb;">
+                    @SvgIcons.Server
+                </div>
+                <div class="config-stat-info">
+                    <span class="config-stat-value">@systemInfo.Server.ServerUptime</span>
+                    <span class="config-stat-label">Tiempo activo API</span>
+                </div>
+            </div>
+            <div class="config-stat-card">
+                <div class="config-stat-icon" style="background: #dcfce7; color: #16a34a;">
+                    @SvgIcons.Database
+                </div>
+                <div class="config-stat-info">
+                    <span class="config-stat-value">@(systemInfo.SqlServer?.DatabaseSizeMb ?? 0) MB</span>
+                    <span class="config-stat-label">Tamano de la base</span>
+                </div>
+            </div>
+            <div class="config-stat-card">
+                <div class="config-stat-icon" style="background: #fef3c7; color: #d97706;">
+                    @SvgIcons.Memory
+                </div>
+                <div class="config-stat-info">
+                    <span class="config-stat-value">@systemInfo.Server.WorkingMemoryMb MB</span>
+                    <span class="config-stat-label">Memoria API</span>
+                </div>
+            </div>
+            <div class="config-stat-card">
+                <div class="config-stat-icon" style="background: #f3e8ff; color: #9333ea;">
+                    @SvgIcons.Table
+                </div>
+                <div class="config-stat-info">
+                    <span class="config-stat-value">@(systemInfo.SqlServer?.TableCount ?? 0)</span>
+                    <span class="config-stat-label">Tablas</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="config-card-body @(sectionServicios ? "expanded" : "")">
+        <div class="config-grid">
+            <!-- API Container -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>API Container</h3>
+                    <span class="status-badge status-active">Online</span>
+                </div>
+                <div class="card-body">
+                    <table class="info-table">
+                        <tr>
+                            <td class="info-label">Container</td>
+                            <td class="info-value">@systemInfo.Server.MachineName</td>
+                        </tr>
+                        <tr>
+                            <td class="info-label">Sistema operativo</td>
+                            <td class="info-value">@systemInfo.Server.OsDescription</td>
+                        </tr>
+                        <tr>
+                            <td class="info-label">Arquitectura</td>
+                            <td class="info-value">@systemInfo.Server.OsArchitecture</td>
+                        </tr>
+                        <tr>
+                            <td class="info-label">Procesadores</td>
+                            <td class="info-value">@systemInfo.Server.ProcessorCount nucleos</td>
+                        </tr>
+                        <tr>
+                            <td class="info-label">.NET</td>
+                            <td class="info-value">@systemInfo.Server.DotnetVersion</td>
+                        </tr>
+                        <tr>
+                            <td class="info-label">Memoria en uso</td>
+                            <td class="info-value">@systemInfo.Server.WorkingMemoryMb MB</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- SQL Server -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>SQL Server</h3>
+                    @if (systemInfo.SqlServer?.Error is null)
+                    {
+                        <span class="status-badge status-active">Conectado</span>
+                    }
+                    else
+                    {
+                        <span class="status-badge status-inactive">Error</span>
+                    }
+                </div>
+                <div class="card-body">
+                    @if (systemInfo.SqlServer?.Error is not null)
+                    {
+                        <div class="alert alert-danger">@systemInfo.SqlServer.Error</div>
+                    }
+                    else if (systemInfo.SqlServer is not null)
+                    {
+                        <table class="info-table">
+                            <tr>
+                                <td class="info-label">Servidor</td>
+                                <td class="info-value">@systemInfo.SqlServer.ServerName</td>
+                            </tr>
+                            <tr>
+                                <td class="info-label">Version</td>
+                                <td class="info-value">@systemInfo.SqlServer.Version</td>
+                            </tr>
+                            <tr>
+                                <td class="info-label">Edicion</td>
+                                <td class="info-value">@systemInfo.SqlServer.Edition</td>
+                            </tr>
+                            <tr>
+                                <td class="info-label">Base de datos</td>
+                                <td class="info-value"><strong>@systemInfo.SqlServer.DatabaseName</strong></td>
+                            </tr>
+                            <tr>
+                                <td class="info-label">Tamano</td>
+                                <td class="info-value">@systemInfo.SqlServer.DatabaseSizeMb MB</td>
+                            </tr>
+                            <tr>
+                                <td class="info-label">Collation</td>
+                                <td class="info-value">@systemInfo.SqlServer.Collation</td>
+                            </tr>
+                            <tr>
+                                <td class="info-label">Conexiones max</td>
+                                <td class="info-value">@systemInfo.SqlServer.MaxConnections.ToString("N0")</td>
+                            </tr>
+                            <tr>
+                                <td class="info-label">Creada</td>
+                                <td class="info-value">@(systemInfo.SqlServer.DatabaseCreated?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "-")</td>
+                            </tr>
+                        </table>
+                    }
+                </div>
+            </div>
+
+            <!-- Usuario actual -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>Usuario actual</h3>
+                </div>
+                <div class="card-body">
+                    <table class="info-table">
+                        <tr><td class="info-label">Nombre</td><td class="info-value">@username</td></tr>
+                        <tr><td class="info-label">Rol</td><td class="info-value">@role</td></tr>
+                        <tr>
+                            <td class="info-label">Sesion</td>
+                            <td class="info-value"><span class="status-badge status-active">Activa</span></td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Tablas -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>Tablas de la base de datos</h3>
+                    <span class="config-table-count">@(systemInfo.Tables?.Count ?? 0) tablas</span>
+                </div>
+                <div class="card-body config-tables-body">
+                    @if (systemInfo.Tables is not null && systemInfo.Tables.Count > 0)
+                    {
+                        <table class="config-tables-list">
+                            <thead>
+                                <tr>
+                                    <th>Tabla</th>
+                                    <th style="text-align: right;">Registros</th>
+                                    <th style="text-align: right;">Tamano</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var table in systemInfo.Tables)
+                                {
+                                    <tr>
+                                        <td>@table.Name</td>
+                                        <td style="text-align: right; font-weight: 600;">@table.Rows.ToString("N0")</td>
+                                        <td style="text-align: right; color: var(--text-secondary); font-size: 0.8rem;">@FormatSize(table.SizeKb)</td>
+                                    </tr>
+                                }
+                                <tr class="config-tables-total">
+                                    <td><strong>Total</strong></td>
+                                    <td style="text-align: right;"><strong>@systemInfo.Tables.Sum(t => t.Rows).ToString("N0")</strong></td>
+                                    <td style="text-align: right;"><strong>@FormatSize(systemInfo.Tables.Sum(t => t.SizeKb))</strong></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    }
+                    else
+                    {
+                        <p class="text-muted">No se encontraron tablas.</p>
+                    }
+                </div>
+            </div>
+        </div>
+        </div>
+        </div>
+    }
+
+    <!-- ========== SECCION 3: SERVIDOR FISICO ========== -->
+    @if (hostInfo is not null)
+    {
+        <div class="config-card-collapsible" style="margin-top: 1.5rem;">
+        <div class="config-card-header" @onclick="() => sectionServidor = !sectionServidor">
+            <div class="config-card-header-left">
+                @SvgIcons.Server
+                <span class="config-card-header-title">Servidor fisico</span>
+                <span class="config-section-subtitle">@hostInfo.Host.Hostname</span>
+            </div>
+            <div class="config-card-header-right">
+                <span class="config-section-chevron @(sectionServidor ? "open" : "")">@SvgIcons.ChevronRight</span>
+            </div>
+        </div>
+
+        <div class="config-stats-row" style="padding: 0 1rem;">
+            <div class="config-stat-card">
+                <div class="config-stat-icon" style="background: #dbeafe; color: #2563eb;">
+                    @SvgIcons.Memory
+                </div>
+                <div class="config-stat-info">
+                    <span class="config-stat-value">@hostInfo.Host.UsedRamGb / @hostInfo.Host.TotalRamGb GB</span>
+                    <span class="config-stat-label">RAM (@hostInfo.Host.RamUsagePercent%)</span>
+                </div>
+                <div class="config-usage-bar">
+                    <div class="config-usage-fill @GetUsageClass(hostInfo.Host.RamUsagePercent)" style="width: @hostInfo.Host.RamUsagePercent%"></div>
+                </div>
+            </div>
+            <div class="config-stat-card">
+                <div class="config-stat-icon" style="background: #dcfce7; color: #16a34a;">
+                    @SvgIcons.Server
+                </div>
+                <div class="config-stat-info">
+                    <span class="config-stat-value">@hostInfo.Host.CpuCount nucleos</span>
+                    <span class="config-stat-label">CPU - Load: @hostInfo.Host.LoadAverage</span>
+                </div>
+            </div>
+            <div class="config-stat-card">
+                <div class="config-stat-icon" style="background: #fef3c7; color: #d97706;">
+                    @SvgIcons.Database
+                </div>
+                <div class="config-stat-info">
+                    <span class="config-stat-value">@hostInfo.Host.DiskUsedGb / @hostInfo.Host.DiskTotalGb GB</span>
+                    <span class="config-stat-label">Disco (@hostInfo.Host.DiskUsagePercent%)</span>
+                </div>
+                <div class="config-usage-bar">
+                    <div class="config-usage-fill @GetUsageClass(hostInfo.Host.DiskUsagePercent)" style="width: @hostInfo.Host.DiskUsagePercent%"></div>
+                </div>
+            </div>
+            <div class="config-stat-card">
+                <div class="config-stat-icon" style="background: #f3e8ff; color: #9333ea;">
+                    @SvgIcons.History
+                </div>
+                <div class="config-stat-info">
+                    <span class="config-stat-value">@hostInfo.Host.Uptime</span>
+                    <span class="config-stat-label">Tiempo activo del servidor</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="config-card-body @(sectionServidor ? "expanded" : "")">
+        @if (!string.IsNullOrEmpty(hostInfo.Host.CpuModel))
+        {
+            <div class="config-cpu-detail">
+                <span class="info-label">Procesador:</span> @hostInfo.Host.CpuModel
+            </div>
+        }
+
+        @if (hostInfo.Containers is not null && hostInfo.Containers.Count > 0)
+        {
+            <div class="config-section-title" style="margin-top: 1.5rem;">
+                @SvgIcons.Box
+                <span>Contenedores Docker</span>
+                <span class="config-section-subtitle">@hostInfo.Containers.Count contenedores</span>
+            </div>
+
+            <div class="card">
+                <div class="card-body config-tables-body">
+                    <table class="config-tables-list">
+                        <thead>
+                            <tr>
+                                <th>Nombre</th>
+                                <th>Imagen</th>
+                                <th>Estado</th>
+                                <th>Status</th>
+                                <th>Puertos</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var container in hostInfo.Containers)
+                            {
+                                <tr>
+                                    <td><strong>@container.Name</strong></td>
+                                    <td class="text-muted" style="font-size: 0.8rem;">@TruncateImage(container.Image)</td>
+                                    <td>
+                                        <span class="status-badge @(container.State == "running" ? "status-active" : "status-inactive")">
+                                            @(container.State == "running" ? "Corriendo" : container.State == "exited" ? "Detenido" : container.State)
+                                        </span>
+                                    </td>
+                                    <td class="text-muted" style="font-size: 0.8rem;">@container.Status</td>
+                                    <td style="font-size: 0.8rem;">@(string.IsNullOrEmpty(container.Ports) ? "-" : container.Ports)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+        </div>
+        </div>
+    }
+
+    <!-- ========== SECCION 4: CHANGELOG DE DESARROLLO ========== -->
+    <div class="config-card-collapsible" style="margin-top: 1.5rem;">
+        <div class="config-card-header" @onclick="() => sectionChangelog = !sectionChangelog">
+            <div class="config-card-header-left">
+                @SvgIcons.Code
+                <span class="config-card-header-title">Changelog de desarrollo</span>
+                <span class="config-section-subtitle">@(changelogData?.Total ?? 0) commits</span>
+            </div>
+            <div class="config-card-header-right">
+                <span class="config-section-chevron @(sectionChangelog ? "open" : "")">@SvgIcons.ChevronRight</span>
+            </div>
+        </div>
+
+        <div class="config-card-body @(sectionChangelog ? "expanded" : "")">
+            @if (changelogData is not null && changelogData.Commits.Count > 0)
+            {
+                <div class="changelog-list">
+                    @foreach (var commit in changelogData.Commits)
+                    {
+                        <div class="changelog-item @(expandedCommit == commit.Hash ? "expanded" : "")" @onclick="() => ToggleCommit(commit.Hash)">
+                            <div class="changelog-item-header">
+                                <div class="changelog-dot"></div>
+                                <div class="changelog-info">
+                                    <span class="changelog-subject">@commit.Subject</span>
+                                    <div class="changelog-meta">
+                                        <span class="changelog-hash" title="Click para copiar" @onclick:stopPropagation="true" @onclick="() => CopyHash(commit.ShortHash)">@commit.ShortHash</span>
+                                        <span class="changelog-author">@commit.Author</span>
+                                        <span class="changelog-date">@FormatCommitDate(commit.Date)</span>
+                                    </div>
+                                </div>
+                                <span class="changelog-expand-icon @(expandedCommit == commit.Hash ? "open" : "")">@SvgIcons.ChevronRight</span>
+                            </div>
+                            @if (expandedCommit == commit.Hash && !string.IsNullOrWhiteSpace(commit.Body))
+                            {
+                                <div class="changelog-body">
+                                    <pre>@commit.Body.Trim()</pre>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+
+                @if (changelogData.TotalPages > 1)
+                {
+                    <div class="changelog-pagination">
+                        <button class="changelog-page-btn" disabled="@(changelogPage <= 1)" @onclick="() => GoToChangelogPage(changelogPage - 1)">
+                            <i class="fa-solid fa-chevron-left"></i> Anterior
+                        </button>
+                        <div class="changelog-page-numbers">
+                            @foreach (var p in GetPageNumbers())
+                            {
+                                @if (p == -1)
+                                {
+                                    <span class="changelog-page-dots">...</span>
+                                }
+                                else
+                                {
+                                    <button class="changelog-page-num @(p == changelogPage ? "active" : "")" @onclick="() => GoToChangelogPage(p)">@p</button>
+                                }
+                            }
+                        </div>
+                        <button class="changelog-page-btn" disabled="@(changelogPage >= changelogData.TotalPages)" @onclick="() => GoToChangelogPage(changelogPage + 1)">
+                            Siguiente <i class="fa-solid fa-chevron-right"></i>
+                        </button>
+                    </div>
+                }
+            }
+            else if (changelogData is not null)
+            {
+                <p class="text-muted" style="padding: 1rem;">No se encontraron commits.</p>
+            }
+            else
+            {
+                <div class="loading-container" style="padding: 2rem;">
+                    <div class="spinner"></div>
+                    <span>Cargando changelog...</span>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private string username = "usuario";
+    private string role = "user";
+    private SystemInfoDto? systemInfo;
+    private HostInfoDto? hostInfo;
+    private bool loading = true;
+
+    // Collapsible sections (all collapsed by default)
+    private bool sectionMarca;
+    private bool sectionServicios;
+    private bool sectionServidor;
+    private bool sectionChangelog;
+    private Web.Models.ChangelogResponse? changelogData;
+    private string? expandedCommit;
+    private int changelogPage = 1;
+    private bool loadingChangelog;
+
+    // Brand settings
+    private string brandNameInput = "Tu Marca";
+    private string selectedIcon = "Brand";
+    private string primaryColorInput = "#10b981";
+    private string sidebarColorInput = "#1a1a2e";
+    private string logoPreview = "";
+    private byte[]? logoBytes;
+    private string logoFileName = "";
+    private string logoContentType = "";
+    private bool savingBrand;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var userTask = AuthService.GetUserAsync();
+        var sysTask = Api.GetSystemInfoAsync();
+        var hostTask = Api.GetHostInfoAsync();
+        var changelogTask = Api.GetChangelogAsync();
+
+        await Task.WhenAll(userTask, sysTask, hostTask, changelogTask);
+
+        var user = userTask.Result;
+        if (user is not null)
+        {
+            username = user.Username;
+            role = user.Role;
+        }
+
+        systemInfo = sysTask.Result;
+        hostInfo = hostTask.Result;
+        changelogData = changelogTask.Result;
+
+        // Load brand settings from service (already loaded by MainLayout)
+        brandNameInput = BrandSettings.BrandName;
+        selectedIcon = BrandSettings.BrandIcon;
+        primaryColorInput = BrandSettings.PrimaryColor;
+        sidebarColorInput = BrandSettings.SidebarBgColor;
+        logoPreview = BrandSettings.BrandLogo;
+
+        loading = false;
+    }
+
+    private async Task OnPrimaryColorChange(ChangeEventArgs e)
+    {
+        primaryColorInput = e.Value?.ToString() ?? "#10b981";
+        await JS.InvokeVoidAsync("applyBrandColors", primaryColorInput, null);
+    }
+
+    private async Task OnSidebarColorChange(ChangeEventArgs e)
+    {
+        sidebarColorInput = e.Value?.ToString() ?? "#1a1a2e";
+        await JS.InvokeVoidAsync("applyBrandColors", null, sidebarColorInput);
+    }
+
+    private async Task SaveBrandSettings()
+    {
+        if (string.IsNullOrWhiteSpace(brandNameInput)) return;
+        savingBrand = true;
+
+        var tasks = new List<Task<bool>>();
+        tasks.Add(Api.UpdateSettingAsync("BrandName", brandNameInput.Trim()));
+        tasks.Add(Api.UpdateSettingAsync("BrandIcon", selectedIcon));
+        tasks.Add(Api.UpdateSettingAsync("PrimaryColor", primaryColorInput));
+        tasks.Add(Api.UpdateSettingAsync("SidebarBgColor", sidebarColorInput));
+
+        await Task.WhenAll(tasks);
+
+        if (tasks.All(t => t.Result))
+        {
+            BrandSettings.Update("BrandName", brandNameInput.Trim());
+            BrandSettings.Update("BrandIcon", selectedIcon);
+            BrandSettings.Update("PrimaryColor", primaryColorInput);
+            BrandSettings.Update("SidebarBgColor", sidebarColorInput);
+
+            // Upload logo if selected
+            if (logoBytes is not null)
+            {
+                var dataUri = await Api.UploadLogoAsync(logoBytes, logoFileName, logoContentType);
+                if (dataUri is not null)
+                {
+                    logoPreview = dataUri;
+                    BrandSettings.Update("BrandLogo", dataUri);
+                }
+                else
+                {
+                    Toast.Show("Error al subir el logo", ToastType.Error);
+                }
+                logoBytes = null;
+            }
+            else if (string.IsNullOrEmpty(logoPreview))
+            {
+                // Logo was removed, clear it
+                BrandSettings.Update("BrandLogo", "");
+            }
+
+            Toast.Show("Marca actualizada correctamente", ToastType.Success);
+        }
+        else
+        {
+            Toast.Show("Error al guardar algunos cambios", ToastType.Error);
+        }
+        savingBrand = false;
+    }
+
+    private async Task OnLogoSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file.Size > 512000)
+        {
+            Toast.Show("El archivo es muy grande. Maximo 500KB", ToastType.Error);
+            return;
+        }
+
+        using var ms = new MemoryStream();
+        await file.OpenReadStream(512000).CopyToAsync(ms);
+        logoBytes = ms.ToArray();
+        logoFileName = file.Name;
+        logoContentType = file.ContentType;
+        logoPreview = $"data:{file.ContentType};base64,{Convert.ToBase64String(logoBytes)}";
+    }
+
+    private void SelectIcon(string iconName)
+    {
+        selectedIcon = iconName;
+        logoPreview = "";
+        logoBytes = null;
+    }
+
+    private async Task RemoveLogo()
+    {
+        logoPreview = "";
+        logoBytes = null;
+        await Api.DeleteLogoAsync();
+        BrandSettings.Update("BrandLogo", "");
+    }
+
+    private string GetUsageClass(double percent)
+    {
+        if (percent >= 90) return "usage-critical";
+        if (percent >= 70) return "usage-warning";
+        return "usage-ok";
+    }
+
+    private string FormatSize(double sizeKb)
+    {
+        if (sizeKb >= 1024)
+            return $"{(sizeKb / 1024.0):N1} MB";
+        return $"{sizeKb:N0} KB";
+    }
+
+    private string TruncateImage(string image)
+    {
+        if (string.IsNullOrEmpty(image)) return "-";
+        var parts = image.Split('/');
+        var name = parts[^1];
+        if (name.StartsWith("sha256:"))
+            return name[..19] + "...";
+        return name.Length > 40 ? name[..37] + "..." : name;
+    }
+
+    private void ToggleCommit(string hash)
+    {
+        expandedCommit = expandedCommit == hash ? null : hash;
+    }
+
+    private async Task CopyHash(string hash)
+    {
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", hash);
+        Toast.Show($"Hash {hash} copiado", ToastType.Success);
+    }
+
+    private string FormatCommitDate(string isoDate)
+    {
+        if (DateTime.TryParse(isoDate, out var date))
+            return date.ToLocalTime().ToString("dd/MM/yyyy HH:mm");
+        return isoDate;
+    }
+
+    private async Task GoToChangelogPage(int page)
+    {
+        if (page < 1 || (changelogData != null && page > changelogData.TotalPages)) return;
+        loadingChangelog = true;
+        changelogPage = page;
+        expandedCommit = null;
+        changelogData = await Api.GetChangelogAsync(page);
+        loadingChangelog = false;
+    }
+
+    private List<int> GetPageNumbers()
+    {
+        if (changelogData == null) return new();
+        var total = changelogData.TotalPages;
+        var current = changelogPage;
+        var pages = new List<int>();
+
+        pages.Add(1);
+
+        var start = Math.Max(2, current - 1);
+        var end = Math.Min(total - 1, current + 1);
+
+        if (start > 2) pages.Add(-1);
+        for (var i = start; i <= end; i++) pages.Add(i);
+        if (end < total - 1) pages.Add(-1);
+
+        if (total > 1) pages.Add(total);
+        return pages;
+    }
+}

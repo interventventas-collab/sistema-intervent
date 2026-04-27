@@ -1,0 +1,99 @@
+# ============================================================
+# Caddy - reverse proxy con HTTPS automatico
+#
+# Modos soportados (definidos en .env, defaults en docker-compose.prod.yml):
+#
+#   1) DOMAIN vacio + PUBLIC_IP vacio  -> Caddy sirve por localhost con
+#      certificado autofirmado (issuer "internal"). El browser muestra
+#      advertencia la primera vez, pero el trafico va encriptado.
+#      Util para deploys de prueba en la misma maquina.
+#
+#   2) DOMAIN=midominio.com -> Caddy pide certificado real a Let's Encrypt
+#      y lo renueva solo. Requisitos: DNS apuntando al VPS y puertos 80/443
+#      abiertos al publico.
+#
+#   3) PUBLIC_IP=1.2.3.4 -> Caddy emite un certificado autofirmado para
+#      esa IP y lo sirve cuando el browser entra por https://1.2.3.4/.
+#      Esto es necesario porque los browsers NO mandan SNI al conectarse
+#      a una IP literal (RFC 6066): sin SNI, Caddy no sabia que cert servir
+#      y abortaba el handshake. Ahora el "default_sni" global le dice "si
+#      no viene SNI, asumi que el cliente quiere PUBLIC_IP".
+#
+# En cualquier modo, todo el trafico HTTP (:80) es redirigido a HTTPS (:443).
+# ============================================================
+
+{
+	email {$ACME_EMAIL}
+
+	# default_sni: cuando un cliente abre TLS sin Server Name Indication
+	# (caso tipico: browser entrando por IP pelada), Caddy usa este valor
+	# como si lo hubiera enviado. Asi puede matchear el bloque
+	# "https://{$PUBLIC_IP}" de abajo y devolver el cert correcto.
+	# Sin esto, el handshake muere con "tls: internal error" porque Caddy
+	# no tiene como decidir entre los varios certs que tiene cargados.
+	default_sni {$PUBLIC_IP}
+}
+
+# Bloque para dominio (solo activo si DOMAIN esta seteado en .env).
+# Si DOMAIN esta vacio, docker-compose lo defaultea a "localhost". Caddy
+# emite cert interno para localhost SIN contactar Let's Encrypt (es un caso
+# especial), asi que el bloque queda dormido en prod (nadie pide localhost)
+# y el catch-all :443 atiende todos los requests por IP.
+{$DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	reverse_proxy web-prod:80
+}
+
+# Bloque para acceso por IP publica pelada (https://1.2.3.4/).
+# "tls internal" hace que Caddy genere un cert autofirmado para esta IP
+# (las CAs publicas como Let's Encrypt no emiten certs para IPs).
+# El cliente va a ver advertencia en el browser la primera vez ("certificado
+# no confiable"), pero el trafico igualmente esta encriptado punta a punta.
+# Si PUBLIC_IP esta vacio, docker-compose lo defaultea a 127.0.0.1 y este
+# bloque queda dormido (nadie va a entrar por https://127.0.0.1/ desde
+# afuera de la maquina).
+https://{$PUBLIC_IP} {
+	tls internal
+
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	reverse_proxy web-prod:80
+}
+
+# Catch-all HTTPS: cubre cualquier hostname que no matchee los anteriores.
+# Sirve de fallback (ej. el cliente apunta otro dominio al VPS sin querer)
+# y para acceso por hostname interno (ej. localhost en dev).
+:443 {
+	tls internal
+
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	reverse_proxy web-prod:80
+}
+
+# Cualquier request HTTP -> redirigir a HTTPS.
+:80 {
+	redir https://{host}{uri} permanent
+}

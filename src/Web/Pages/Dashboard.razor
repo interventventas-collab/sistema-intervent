@@ -1,0 +1,125 @@
+@page "/"
+@page "/index.html"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject AuthService AuthService
+
+<div class="view-header">
+    <h2>Bienvenido, @username</h2>
+    <p class="view-subtitle">Panel de control</p>
+</div>
+
+<div class="dashboard-cards-row">
+    <div class="dashboard-detail-card">
+        <div class="detail-card-header">
+            <div>
+                <span class="detail-card-value">HOLA MUNDO</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="dashboard-cards-row">
+    <div class="dashboard-detail-card">
+        <div class="detail-card-header">
+            <div class="detail-card-icon primary">@SvgIcons.Tag</div>
+            <div>
+                <span class="detail-card-value">@totalItems</span>
+                <span class="detail-card-label">Publicaciones</span>
+            </div>
+            <div class="detail-card-badge warning">@itemsSinProducto sin producto</div>
+        </div>
+
+        @if (accountStats.Any())
+        {
+            <table class="detail-card-table">
+                <thead>
+                    <tr>
+                        <th>Cuenta</th>
+                        <th>Publicaciones</th>
+                        <th>Con producto</th>
+                        <th>Sin producto</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var acc in accountStats)
+                    {
+                        <tr>
+                            <td><strong>@acc.Nickname</strong></td>
+                            <td>@acc.TotalItems</td>
+                            <td>@acc.ItemsConProducto</td>
+                            <td class="@(acc.ItemsSinProducto > 0 ? "text-warning-bold" : "")">@acc.ItemsSinProducto</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+
+    <div class="dashboard-detail-card">
+        <div class="detail-card-header">
+            <div class="detail-card-icon info">@SvgIcons.Box</div>
+            <div>
+                <span class="detail-card-value">@totalProducts</span>
+                <span class="detail-card-label">Productos</span>
+            </div>
+            <div class="detail-card-badge warning">@productosSinItems sin publicacion</div>
+        </div>
+
+        @if (accountStats.Any())
+        {
+            <table class="detail-card-table">
+                <thead>
+                    <tr>
+                        <th>Cuenta</th>
+                        <th>Productos vinculados</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var acc in accountStats)
+                    {
+                        <tr>
+                            <td><strong>@acc.Nickname</strong></td>
+                            <td>@acc.ProductosVinculados</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@code {
+    private string username = "usuario";
+    private string totalItems = "--";
+    private string totalProducts = "--";
+    private string itemsSinProducto = "--";
+    private string productosSinItems = "--";
+    private List<AccountStatsRow> accountStats = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await AuthService.GetUserAsync();
+        if (user is not null)
+        {
+            username = user.Username;
+        }
+
+        try
+        {
+            var stats = await Api.GetDashboardStatsAsync();
+            if (stats is not null)
+            {
+                totalItems = stats.TotalItems.ToString();
+                totalProducts = stats.TotalProducts.ToString();
+                itemsSinProducto = stats.ItemsSinProducto.ToString();
+                productosSinItems = stats.ProductosSinItems.ToString();
+                accountStats = stats.AccountStats;
+            }
+        }
+        catch
+        {
+            // defaults already set
+        }
+    }
+}

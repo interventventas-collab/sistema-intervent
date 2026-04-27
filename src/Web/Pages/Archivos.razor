@@ -1,0 +1,865 @@
+@page "/archivos"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+@inject UploadProgressService UploadProgress
+@using Microsoft.AspNetCore.Components.Forms
+@implements IAsyncDisposable
+
+<div class="card files-card">
+    <div class="card-header files-header">
+        <div class="files-header-left">
+            <h3 style="margin: 0;">Archivos</h3>
+            <div class="files-search">
+                <span class="files-search-icon"><i class="fa-solid fa-magnifying-glass"></i></span>
+                <input class="files-search-input" placeholder="Buscar en esta carpeta..." @bind="filterText" @bind:event="oninput" />
+                @if (!string.IsNullOrEmpty(filterText))
+                {
+                    <button class="files-search-clear" @onclick="() => filterText = string.Empty" title="Limpiar"><i class="fa-solid fa-xmark"></i></button>
+                }
+            </div>
+        </div>
+        <div class="files-header-right">
+            <label class="form-label" style="margin: 0; font-size: 0.8rem; color: var(--text-muted);">Almacenamiento</label>
+            <select class="form-input files-provider-select" @bind="selectedProvider" @bind:after="OnProviderChanged">
+                @foreach (var opt in providerOptions)
+                {
+                    <option value="@opt.Value" disabled="@(!opt.Enabled)">@opt.Label @(opt.Enabled ? "" : "(proximamente)")</option>
+                }
+            </select>
+            <InputFile OnChange="OnImportInputChanged" multiple class="visually-hidden" id="file-import-input" />
+            <label for="file-import-input" class="btn btn-primary files-btn" style="cursor: pointer; margin: 0;"><i class="fa-solid fa-upload"></i> Importar</label>
+            <button class="btn btn-secondary files-btn" @onclick="OpenNewFolder"><i class="fa-solid fa-folder-plus"></i> Nueva carpeta</button>
+            <button class="btn btn-secondary files-btn" @onclick="DownloadSelected" disabled="@(!CanDownload)"><i class="fa-solid fa-download"></i> Descargar</button>
+            <button class="btn btn-secondary files-btn" @onclick="OpenRename" disabled="@(!CanRename)"><i class="fa-solid fa-pen"></i> Renombrar</button>
+            <button class="btn btn-danger files-btn" @onclick="DeleteSelected" disabled="@(!CanDelete)"><i class="fa-solid fa-trash"></i> Eliminar</button>
+        </div>
+    </div>
+
+    <div class="card-body files-body">
+        <!-- Breadcrumb -->
+        <nav class="files-breadcrumb">
+            <button class="files-crumb" @onclick='() => NavigateTo("")'
+                    ondragover="event.preventDefault();" @ondrop='() => OnDropOnFolder("")'>
+                <i class="fa-solid fa-house"></i> Inicio
+            </button>
+            @{
+                var parts = string.IsNullOrEmpty(currentPath) ? Array.Empty<string>() : currentPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                var acc = "";
+            }
+            @for (int i = 0; i < parts.Length; i++)
+            {
+                acc = string.IsNullOrEmpty(acc) ? parts[i] : $"{acc}/{parts[i]}";
+                var target = acc;
+                <span class="files-crumb-sep">›</span>
+                <button class="files-crumb" @onclick="() => NavigateTo(target)"
+                        ondragover="event.preventDefault();" @ondrop="() => OnDropOnFolder(target)">@parts[i]</button>
+            }
+        </nav>
+
+        <!-- Drop zone -->
+        <div class="drop-zone @(dragOver ? "drop-zone-active" : "")" @ref="dropZoneRef">
+            @if (dragOver)
+            {
+                <div class="upload-status">Solta los archivos para subirlos aqui</div>
+            }
+
+            @if (isLoading)
+            {
+                <p class="text-muted" style="padding: 1rem;">Cargando...</p>
+            }
+            else if (VisibleEntries.Count == 0)
+            {
+                <p class="text-muted" style="padding: 2rem; text-align: center;">
+                    @(entries.Count == 0 ? "Esta carpeta esta vacia. Arrastra archivos o usa el boton \"Importar\"." : "No hay resultados para tu busqueda.")
+                </p>
+            }
+            else
+            {
+                <div class="files-grid">
+                    <div class="files-grid-header">
+                        <div class="fg-col-check">
+                            <input type="checkbox" @bind="allSelected" @bind:after="ToggleAll" />
+                        </div>
+                        <div class="fg-col-name sortable @SortClass("name")" @onclick='() => ToggleSort("name")'>
+                            Nombre <span class="sort-ind">@SortIndicator("name")</span>
+                        </div>
+                        <div class="fg-col-modified sortable @SortClass("modified")" @onclick='() => ToggleSort("modified")'>
+                            Modificado <span class="sort-ind">@SortIndicator("modified")</span>
+                        </div>
+                        <div class="fg-col-size sortable @SortClass("size")" @onclick='() => ToggleSort("size")'>
+                            Tamano <span class="sort-ind">@SortIndicator("size")</span>
+                        </div>
+                        <div class="fg-col-type sortable @SortClass("type")" @onclick='() => ToggleSort("type")'>
+                            Tipo <span class="sort-ind">@SortIndicator("type")</span>
+                        </div>
+                    </div>
+                    @foreach (var entry in VisibleEntries)
+                    {
+                        var typeInfo = GetTypeInfo(entry);
+                        var isSelected = selected.Contains(entry.Path);
+                        <div class="files-grid-row @(isSelected ? "selected" : "")
+                                    @(dropTargetPath == entry.Path && entry.IsFolder ? "drop-target" : "")"
+                             draggable="true"
+                             @ondragstart="() => OnRowDragStart(entry)"
+                             @ondragend="OnRowDragEnd"
+                             ondragover="@(entry.IsFolder ? "event.preventDefault();" : "")"
+                             @ondragenter="() => OnRowDragEnter(entry)"
+                             @ondragleave="() => OnRowDragLeave(entry)"
+                             @ondrop="() => OnDropOnFolder(entry.IsFolder ? entry.Path : string.Empty)"
+                             @ondblclick="() => OnRowDoubleClick(entry)">
+                            <div class="fg-col-check" @onclick:stopPropagation="true">
+                                <input type="checkbox" checked="@isSelected"
+                                       @onchange="e => ToggleSelected(entry.Path, (bool)(e.Value ?? false))" />
+                            </div>
+                            <div class="fg-col-name">
+                                <span class="files-icon" style="color: @typeInfo.Color"><i class="@typeInfo.Icon"></i></span>
+                                <button class="files-name-btn" @onclick="() => OnNameClick(entry)" @onclick:stopPropagation="true">@entry.Name</button>
+                            </div>
+                            <div class="fg-col-modified" title="@entry.ModifiedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")">
+                                @FormatRelative(entry.ModifiedAt)
+                            </div>
+                            <div class="fg-col-size">@(entry.IsFolder ? "—" : FormatSize(entry.Size))</div>
+                            <div class="fg-col-type">
+                                <span class="type-badge" style="background: @typeInfo.BadgeBg; color: @typeInfo.Color;">@typeInfo.Label</span>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@if (showNewFolderModal)
+{
+    <div class="modal-overlay" @onclick="CloseNewFolder">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 420px;">
+            <div class="modal-header">
+                <h3>Nueva carpeta</h3>
+                <button class="btn-close" @onclick="CloseNewFolder">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Nombre</label>
+                    <input class="form-input" @bind="newFolderName" @bind:event="oninput" />
+                </div>
+                @if (!string.IsNullOrEmpty(newFolderError))
+                {
+                    <div class="form-error">@newFolderError</div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseNewFolder">Cancelar</button>
+                <button class="btn btn-primary" @onclick="CreateFolder" disabled="@creatingFolder">
+                    @(creatingFolder ? "Creando..." : "Crear")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showRenameModal)
+{
+    <div class="modal-overlay" @onclick="CloseRename">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 420px;">
+            <div class="modal-header">
+                <h3>Renombrar</h3>
+                <button class="btn-close" @onclick="CloseRename">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Nuevo nombre</label>
+                    <input class="form-input" @bind="renameNewName" @bind:event="oninput" />
+                </div>
+                @if (!string.IsNullOrEmpty(renameError))
+                {
+                    <div class="form-error">@renameError</div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseRename">Cancelar</button>
+                <button class="btn btn-primary" @onclick="DoRename" disabled="@renaming">
+                    @(renaming ? "Guardando..." : "Guardar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showUploadModal)
+{
+    <div class="modal-overlay">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 560px;">
+            <div class="modal-header">
+                <h3>@(isUploading ? "Subiendo archivos" : "Subida finalizada")</h3>
+                <button class="btn-close" @onclick="CloseUploadModal" title="@(isUploading ? "Minimizar (la subida continua)" : "Cerrar")">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="margin-bottom: 0.75rem;">
+                    <div style="display: flex; justify-content: space-between; font-size: 0.9rem; margin-bottom: 0.3rem;">
+                        <span>@uploadDoneCount / @uploadTotalCount archivos</span>
+                        <span>@(uploadTotalCount == 0 ? 0 : uploadDoneCount * 100 / uploadTotalCount)%</span>
+                    </div>
+                    <div class="upload-progress-bar">
+                        <div class="upload-progress-fill" style="width: @(uploadTotalCount == 0 ? 0 : uploadDoneCount * 100 / uploadTotalCount)%"></div>
+                    </div>
+                </div>
+                <div class="upload-file-list">
+                    @foreach (var item in uploadItems)
+                    {
+                        <div class="upload-file-row">
+                            <span class="upload-file-icon upload-file-@item.Status">
+                                @switch (item.Status)
+                                {
+                                    case "pending": <i class="fa-regular fa-clock" style="color:#9ca3af;"></i>; break;
+                                    case "uploading": <i class="fa-solid fa-arrow-up" style="color:#2563eb;"></i>; break;
+                                    case "ok": <i class="fa-solid fa-circle-check" style="color:#16a34a;"></i>; break;
+                                    case "error": <i class="fa-solid fa-circle-xmark" style="color:#dc2626;"></i>; break;
+                                }
+                            </span>
+                            <span class="upload-file-name" title="@item.Name">@item.Name</span>
+                            @if (!string.IsNullOrEmpty(item.Error))
+                            {
+                                <span class="upload-file-error">@item.Error</span>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="modal-footer">
+                @if (isUploading)
+                {
+                    <span class="text-muted" style="font-size: 0.85rem; margin-right: auto;">La subida continua si minimizas</span>
+                    <button class="btn btn-danger" @onclick="CancelUploads" disabled="@cancelRequested">
+                        @(cancelRequested ? "Cancelando..." : "Cancelar")
+                    </button>
+                    <button class="btn btn-secondary" @onclick="CloseUploadModal">Minimizar</button>
+                }
+                else
+                {
+                    <button class="btn btn-primary" @onclick="CloseUploadModal">Cerrar</button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .files-card { overflow: visible; }
+    .files-header { flex-direction: column; align-items: stretch !important; gap: 0.75rem !important; }
+    .files-header-left, .files-header-right { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+    .files-header-right { justify-content: flex-end; }
+    .files-btn { font-size: 0.85rem; padding: 0.45rem 0.8rem; margin: 0; }
+
+    .files-search { position: relative; min-width: 280px; flex: 1; max-width: 440px; }
+    .files-search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; opacity: 0.5; font-size: 0.9rem; }
+    .files-search-input { width: 100%; padding: 0.45rem 2rem 0.45rem 2rem; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 0.88rem; background: #fafafa; }
+    .files-search-input:focus { outline: none; border-color: var(--primary, #2563eb); background: white; }
+    .files-search-clear { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; opacity: 0.6; font-size: 0.9rem; }
+    .files-search-clear:hover { opacity: 1; }
+
+    .files-provider-select { width: auto; font-size: 0.8rem; padding: 0.35rem 0.5rem; }
+
+    .files-body { padding: 0 !important; }
+
+    .files-breadcrumb { display: flex; align-items: center; gap: 0.25rem; flex-wrap: wrap; padding: 0.75rem 1rem; font-size: 0.9rem; border-bottom: 1px solid #f0f0f0; background: #fafbfc; }
+    .files-crumb { background: none; border: none; color: var(--primary, #2563eb); cursor: pointer; padding: 0.25rem 0.5rem; border-radius: 4px; font: inherit; }
+    .files-crumb:hover { background: #eef2ff; }
+    .files-crumb-sep { color: #9ca3af; font-size: 1rem; }
+
+    .drop-zone { position: relative; padding: 0; min-height: 200px; }
+    .drop-zone-active::before { content: ""; position: absolute; inset: 8px; border: 2px dashed #25D366; border-radius: 8px; background: rgba(37, 211, 102, 0.06); pointer-events: none; z-index: 2; }
+    .upload-status { position: absolute; top: 16px; right: 20px; background: #25D366; color: white; padding: 0.4rem 0.85rem; border-radius: 6px; font-size: 0.85rem; z-index: 3; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .upload-progress-bar { width: 100%; height: 10px; background: #e5e7eb; border-radius: 5px; overflow: hidden; }
+    .upload-progress-fill { height: 100%; background: #25D366; transition: width 0.2s ease; }
+    .upload-file-list { max-height: 320px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 6px; }
+    .upload-file-row { display: flex; align-items: center; gap: 0.5rem; padding: 0.45rem 0.75rem; border-bottom: 1px solid #f3f4f6; font-size: 0.9rem; }
+    .upload-file-row:last-child { border-bottom: none; }
+    .upload-file-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .upload-file-icon { width: 20px; text-align: center; }
+    .upload-file-error { color: #dc2626; font-size: 0.8rem; }
+    .upload-file-uploading { animation: pulse 1s infinite; }
+    @@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+    /* OneDrive-like grid */
+    .files-grid { display: block; }
+    .files-grid-header, .files-grid-row {
+        display: grid;
+        grid-template-columns: 40px minmax(200px, 2.5fr) 160px 110px 120px;
+        align-items: center;
+        padding: 0 0.5rem;
+    }
+    .files-grid-header {
+        background: #fafbfc;
+        border-bottom: 1px solid #e5e7eb;
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: #6b7280;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        position: sticky; top: 0; z-index: 1;
+    }
+    .files-grid-header > div { padding: 0.6rem 0.5rem; }
+    .files-grid-header .sortable { cursor: pointer; user-select: none; }
+    .files-grid-header .sortable:hover { color: var(--primary, #2563eb); }
+    .files-grid-header .sortable.active { color: var(--primary, #2563eb); }
+    .sort-ind { margin-left: 0.25rem; font-size: 0.75rem; }
+
+    .files-grid-row {
+        border-bottom: 1px solid #f3f4f6;
+        font-size: 0.88rem;
+        transition: background 0.12s;
+        cursor: default;
+    }
+    .files-grid-row:hover { background: #f9fafb; }
+    .files-grid-row.selected { background: #eff6ff; }
+    .files-grid-row.selected:hover { background: #dbeafe; }
+    .files-grid-row.drop-target { background: #ecfdf5 !important; outline: 2px solid #10b981; outline-offset: -2px; }
+    .files-grid-row > div { padding: 0.55rem 0.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .fg-col-check { text-align: center; }
+    .files-icon { display: inline-block; width: 22px; font-size: 1.05rem; text-align: center; margin-right: 0.5rem; }
+    .files-name-btn { background: none; border: none; color: #111827; cursor: pointer; padding: 0; font: inherit; text-align: left; overflow: hidden; text-overflow: ellipsis; max-width: calc(100% - 30px); vertical-align: middle; }
+    .files-name-btn:hover { color: var(--primary, #2563eb); text-decoration: underline; }
+
+    .type-badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 10px; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+
+    .fg-col-modified, .fg-col-size { color: #6b7280; }
+    .fg-col-size { text-align: right; }
+
+    .visually-hidden { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
+    @@media (max-width: 900px) {
+        .files-grid-header, .files-grid-row { grid-template-columns: 32px minmax(140px, 2fr) 110px 90px; }
+        .fg-col-type { display: none; }
+    }
+</style>
+
+@code {
+    private List<FileEntryDto> entries = new();
+    private HashSet<string> selected = new();
+    private string currentPath = "";
+    private bool isLoading;
+    private bool isUploading;
+    private bool dragOver;
+    private bool allSelected;
+    private ElementReference dropZoneRef;
+    private DotNetObjectReference<Archivos>? dotNetRef;
+    private bool dropWired;
+
+    private string filterText = "";
+    private string sortKey = "name";
+    private bool sortDesc;
+
+    private class UploadItem { public string Name { get; set; } = ""; public string Status { get; set; } = "pending"; public string? Error { get; set; } }
+    private bool showUploadModal;
+    private List<UploadItem> uploadItems = new();
+    private int uploadDoneCount;
+    private int uploadTotalCount;
+    private int uploadOkCount;
+    private int uploadFailCount;
+    private bool cancelRequested;
+    private CancellationTokenSource? _importCts;
+    private string? uploadStartPath;
+
+    private string selectedProvider = "local";
+    private List<StorageProviderOption> providerOptions = new();
+
+    private bool showNewFolderModal;
+    private string newFolderName = "";
+    private string newFolderError = "";
+    private bool creatingFolder;
+
+    private bool showRenameModal;
+    private string renameNewName = "";
+    private string renameError = "";
+    private bool renaming;
+    private string? renameTargetPath;
+
+    // Drag & drop row move
+    private string? draggingPath;
+    private string? dropTargetPath;
+
+    private bool CanDelete => selected.Count > 0;
+    private bool CanDownload => selected.Count == 1 && entries.FirstOrDefault(e => e.Path == selected.First())?.IsFolder == false;
+    private bool CanRename => selected.Count == 1;
+
+    private List<FileEntryDto> VisibleEntries
+    {
+        get
+        {
+            IEnumerable<FileEntryDto> q = entries;
+            if (!string.IsNullOrWhiteSpace(filterText))
+                q = q.Where(e => e.Name.Contains(filterText, StringComparison.OrdinalIgnoreCase));
+
+            q = sortKey switch
+            {
+                "modified" => sortDesc ? q.OrderByDescending(e => e.IsFolder).ThenByDescending(e => e.ModifiedAt)
+                                        : q.OrderByDescending(e => e.IsFolder).ThenBy(e => e.ModifiedAt),
+                "size" => sortDesc ? q.OrderByDescending(e => e.IsFolder).ThenByDescending(e => e.Size)
+                                    : q.OrderByDescending(e => e.IsFolder).ThenBy(e => e.Size),
+                "type" => sortDesc ? q.OrderByDescending(e => e.IsFolder).ThenByDescending(e => GetTypeInfo(e).Label)
+                                    : q.OrderByDescending(e => e.IsFolder).ThenBy(e => GetTypeInfo(e).Label),
+                _ => sortDesc ? q.OrderByDescending(e => e.IsFolder).ThenByDescending(e => e.Name, StringComparer.OrdinalIgnoreCase)
+                              : q.OrderByDescending(e => e.IsFolder).ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase),
+            };
+            return q.ToList();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        UploadProgress.ReopenRequested += OnReopenRequested;
+        await LoadProvider();
+        await Load();
+    }
+
+    private void OnReopenRequested()
+    {
+        showUploadModal = true;
+        InvokeAsync(StateHasChanged);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            dotNetRef = DotNetObjectReference.Create(this);
+            try
+            {
+                await JS.InvokeVoidAsync("filesDragDrop.init", dropZoneRef, dotNetRef);
+                dropWired = true;
+            }
+            catch { }
+        }
+    }
+
+    [JSInvokable]
+    public void OnDragStateChanged(bool over)
+    {
+        dragOver = over;
+        InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public void OnUploadStart(string[] names)
+    {
+        isUploading = true;
+        showUploadModal = true;
+        cancelRequested = false;
+        uploadStartPath = currentPath;
+        uploadTotalCount = names.Length;
+        uploadDoneCount = 0;
+        uploadOkCount = 0;
+        uploadFailCount = 0;
+        uploadItems = names.Select(n => new UploadItem { Name = n, Status = "pending" }).ToList();
+        UploadProgress.Start(names.Length);
+        UploadProgress.CancelHandler = CancelUploads;
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task OnUploadFileStart(int index)
+    {
+        if (index >= 0 && index < uploadItems.Count)
+        {
+            uploadItems[index].Status = "uploading";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnUploadFileDone(int index, bool success, string? error)
+    {
+        if (index >= 0 && index < uploadItems.Count)
+        {
+            uploadItems[index].Status = success ? "ok" : "error";
+            uploadItems[index].Error = success ? null : error;
+            uploadDoneCount++;
+            if (success) uploadOkCount++; else uploadFailCount++;
+            UploadProgress.Update(uploadDoneCount, uploadOkCount, uploadFailCount);
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnUploadComplete(int ok, int fail)
+    {
+        isUploading = false;
+        cancelRequested = false;
+        UploadProgress.Finish();
+        if (fail == 0 && ok > 0) ToastService.Success($"{ok} archivo(s) subidos");
+        else if (ok == 0 && fail > 0) ToastService.Error($"Fallo la subida de {fail} archivo(s)");
+        else if (ok + fail > 0) ToastService.Info($"{ok} subidos, {fail} con error");
+        await InvokeAsync(StateHasChanged);
+        if (string.Equals(uploadStartPath ?? "", currentPath ?? "", StringComparison.Ordinal))
+        {
+            await Load();
+            await InvokeAsync(StateHasChanged);
+        }
+        uploadStartPath = null;
+    }
+
+    [JSInvokable]
+    public string GetCurrentPath() => currentPath ?? "";
+
+    public async ValueTask DisposeAsync()
+    {
+        UploadProgress.ReopenRequested -= OnReopenRequested;
+        if (dropWired)
+        {
+            try { await JS.InvokeVoidAsync("filesDragDrop.dispose", dropZoneRef); } catch { }
+        }
+        dotNetRef?.Dispose();
+    }
+
+    private async Task LoadProvider()
+    {
+        var p = await Api.GetFilesProviderAsync();
+        if (p is not null) { selectedProvider = p.Provider; providerOptions = p.Options; }
+    }
+
+    private async Task OnProviderChanged()
+    {
+        var opt = providerOptions.FirstOrDefault(o => o.Value == selectedProvider);
+        if (opt is null || !opt.Enabled)
+        {
+            ToastService.Info($"{opt?.Label ?? selectedProvider}: proximamente. Se mantiene 'Servidor local'.");
+            selectedProvider = "local";
+            return;
+        }
+        if (await Api.SetFilesProviderAsync(selectedProvider))
+            ToastService.Success("Proveedor de almacenamiento actualizado");
+        else
+            ToastService.Error("No se pudo actualizar el proveedor");
+    }
+
+    private async Task Load()
+    {
+        isLoading = true;
+        selected.Clear();
+        allSelected = false;
+        try
+        {
+            var resp = await Api.ListFilesAsync(currentPath);
+            if (resp is null)
+            {
+                entries = new();
+                ToastService.Error("No se pudo listar la carpeta");
+            }
+            else
+            {
+                entries = resp.Entries;
+                currentPath = resp.Path;
+            }
+        }
+        catch (Exception ex) { ToastService.Error($"Error: {ex.Message}"); }
+        finally { isLoading = false; }
+    }
+
+    private async Task NavigateTo(string path) { currentPath = path ?? ""; filterText = ""; await Load(); }
+
+    private void ToggleSelected(string path, bool isSelected)
+    {
+        if (isSelected) selected.Add(path);
+        else selected.Remove(path);
+        allSelected = VisibleEntries.Count > 0 && VisibleEntries.All(e => selected.Contains(e.Path));
+    }
+
+    private void ToggleAll()
+    {
+        if (allSelected) foreach (var e in VisibleEntries) selected.Add(e.Path);
+        else selected.Clear();
+    }
+
+    private void ToggleSort(string key)
+    {
+        if (sortKey == key) sortDesc = !sortDesc;
+        else { sortKey = key; sortDesc = false; }
+    }
+
+    private string SortClass(string key) => sortKey == key ? "active" : "";
+    private string SortIndicator(string key) => sortKey == key ? (sortDesc ? "▼" : "▲") : "";
+
+    private async Task OnRowDoubleClick(FileEntryDto entry)
+    {
+        if (entry.IsFolder) await NavigateTo(entry.Path);
+        else await DownloadOne(entry.Path);
+    }
+
+    private async Task OnNameClick(FileEntryDto entry)
+    {
+        if (entry.IsFolder) await NavigateTo(entry.Path);
+        else await DownloadOne(entry.Path);
+    }
+
+    // --- Row drag to move ---
+    private void OnRowDragStart(FileEntryDto entry)
+    {
+        draggingPath = entry.Path;
+        if (!selected.Contains(entry.Path))
+        {
+            selected.Clear();
+            selected.Add(entry.Path);
+        }
+    }
+
+    private void OnRowDragEnd() { draggingPath = null; dropTargetPath = null; }
+
+    private void OnRowDragEnter(FileEntryDto entry)
+    {
+        if (entry.IsFolder && draggingPath is not null && !selected.Contains(entry.Path))
+            dropTargetPath = entry.Path;
+    }
+
+    private void OnRowDragLeave(FileEntryDto entry)
+    {
+        if (dropTargetPath == entry.Path) dropTargetPath = null;
+    }
+
+    private async Task OnDropOnFolder(string targetPath)
+    {
+        if (draggingPath is null) return;
+        var paths = selected.Count > 0 ? selected.ToList() : new List<string> { draggingPath };
+        // Evitar soltar en si mismo
+        paths = paths.Where(p => p != targetPath).ToList();
+        if (paths.Count == 0) { draggingPath = null; dropTargetPath = null; return; }
+
+        var results = await Api.MoveFilesAsync(paths, targetPath ?? "");
+        draggingPath = null;
+        dropTargetPath = null;
+        if (results is null) { ToastService.Error("Error al mover"); return; }
+        var ok = results.Count(r => r.Success);
+        var fail = results.Count - ok;
+        if (fail == 0) ToastService.Success($"{ok} elemento(s) movidos");
+        else ToastService.Error($"{ok} ok, {fail} con error");
+        await Load();
+    }
+
+    // --- CRUD actions ---
+    private void OpenNewFolder() { newFolderName = ""; newFolderError = ""; showNewFolderModal = true; }
+    private void CloseNewFolder() => showNewFolderModal = false;
+
+    private async Task CreateFolder()
+    {
+        if (string.IsNullOrWhiteSpace(newFolderName)) { newFolderError = "Ingresa un nombre"; return; }
+        creatingFolder = true; newFolderError = "";
+        try
+        {
+            var ok = await Api.CreateFolderAsync(currentPath, newFolderName);
+            if (ok) { ToastService.Success("Carpeta creada"); showNewFolderModal = false; await Load(); }
+            else newFolderError = "No se pudo crear la carpeta";
+        }
+        catch (Exception ex) { renameError = ex.Message; }
+        finally { creatingFolder = false; }
+    }
+
+    private void OpenRename()
+    {
+        if (selected.Count != 1) return;
+        var p = selected.First();
+        var entry = entries.FirstOrDefault(e => e.Path == p);
+        if (entry is null) return;
+        renameTargetPath = p;
+        renameNewName = entry.Name;
+        renameError = "";
+        showRenameModal = true;
+    }
+
+    private void CloseRename() => showRenameModal = false;
+
+    private async Task DoRename()
+    {
+        if (renameTargetPath is null) return;
+        if (string.IsNullOrWhiteSpace(renameNewName)) { renameError = "Ingresa un nombre"; return; }
+        renaming = true; renameError = "";
+        try
+        {
+            var ok = await Api.RenameFileAsync(renameTargetPath, renameNewName);
+            if (ok) { ToastService.Success("Renombrado"); showRenameModal = false; await Load(); }
+            else renameError = "No se pudo renombrar";
+        }
+        catch (Exception ex) { renameError = ex.Message; }
+        finally { renaming = false; }
+    }
+
+    private async Task DeleteSelected()
+    {
+        if (selected.Count == 0) return;
+        var ok = await JS.InvokeAsync<bool>("confirm", $"Eliminar {selected.Count} elemento(s)? Esta accion no se puede deshacer.");
+        if (!ok) return;
+        var results = await Api.DeleteFilesAsync(selected.ToList());
+        if (results is null) { ToastService.Error("Error al eliminar"); return; }
+        var okCount = results.Count(r => r.Success);
+        var failed = results.Count(r => !r.Success);
+        if (failed == 0) ToastService.Success($"{okCount} elemento(s) eliminados");
+        else ToastService.Error($"{okCount} ok, {failed} con error");
+        await Load();
+    }
+
+    private async Task DownloadOne(string path)
+    {
+        var url = Api.BuildFilesDownloadUrl(path);
+        await JS.InvokeVoidAsync("filesDownload.start", url, System.IO.Path.GetFileName(path));
+    }
+
+    private async Task DownloadSelected()
+    {
+        if (selected.Count != 1) return;
+        var p = selected.First();
+        var entry = entries.FirstOrDefault(e => e.Path == p);
+        if (entry is null || entry.IsFolder) return;
+        await DownloadOne(p);
+    }
+
+    // --- Import button ---
+    private async Task OnImportInputChanged(InputFileChangeEventArgs e)
+    {
+        var files = e.GetMultipleFiles(10000);
+        if (files.Count == 0) return;
+
+        isUploading = true;
+        showUploadModal = true;
+        cancelRequested = false;
+        uploadStartPath = currentPath;
+        uploadTotalCount = files.Count;
+        uploadDoneCount = 0;
+        uploadOkCount = 0;
+        uploadFailCount = 0;
+        uploadItems = files.Select(f => new UploadItem { Name = f.Name, Status = "pending" }).ToList();
+        UploadProgress.Start(files.Count);
+        UploadProgress.CancelHandler = CancelUploads;
+        _importCts = new CancellationTokenSource();
+        StateHasChanged();
+
+        try
+        {
+            for (int i = 0; i < files.Count; i++)
+            {
+                if (_importCts.IsCancellationRequested)
+                {
+                    for (int j = i; j < files.Count; j++)
+                    {
+                        uploadItems[j].Status = "error";
+                        uploadItems[j].Error = "Cancelado";
+                        uploadDoneCount++;
+                        uploadFailCount++;
+                    }
+                    UploadProgress.Update(uploadDoneCount, uploadOkCount, uploadFailCount);
+                    break;
+                }
+                uploadItems[i].Status = "uploading";
+                StateHasChanged();
+                try
+                {
+                    await using var stream = files[i].OpenReadStream(2L * 1024 * 1024 * 1024, _importCts.Token);
+                    var results = await Api.UploadFilesAsync(currentPath, new[] { (files[i].Name, (Stream)stream, files[i].Size) });
+                    var result = results?.FirstOrDefault();
+                    if (result is not null && result.Success) { uploadItems[i].Status = "ok"; uploadOkCount++; }
+                    else { uploadItems[i].Status = "error"; uploadItems[i].Error = result?.Error ?? "Error"; uploadFailCount++; }
+                }
+                catch (OperationCanceledException) { uploadItems[i].Status = "error"; uploadItems[i].Error = "Cancelado"; uploadFailCount++; }
+                catch (Exception ex) { uploadItems[i].Status = "error"; uploadItems[i].Error = ex.Message; uploadFailCount++; }
+                uploadDoneCount++;
+                UploadProgress.Update(uploadDoneCount, uploadOkCount, uploadFailCount);
+                StateHasChanged();
+            }
+        }
+        finally
+        {
+            isUploading = false;
+            cancelRequested = false;
+            UploadProgress.Finish();
+            _importCts?.Dispose(); _importCts = null;
+            if (uploadFailCount == 0 && uploadOkCount > 0) ToastService.Success($"{uploadOkCount} archivo(s) subidos");
+            else if (uploadOkCount == 0 && uploadFailCount > 0) ToastService.Error($"Fallo la subida de {uploadFailCount} archivo(s)");
+            else if (uploadOkCount + uploadFailCount > 0) ToastService.Info($"{uploadOkCount} subidos, {uploadFailCount} con error");
+            if (string.Equals(uploadStartPath ?? "", currentPath ?? "", StringComparison.Ordinal))
+                await Load();
+            uploadStartPath = null;
+        }
+    }
+
+    private void CloseUploadModal()
+    {
+        showUploadModal = false;
+        if (!isUploading) uploadItems = new();
+    }
+
+    private async Task CancelUploads()
+    {
+        if (!isUploading || cancelRequested) return;
+        cancelRequested = true;
+        StateHasChanged();
+        try { _importCts?.Cancel(); } catch { }
+        try { await JS.InvokeVoidAsync("filesDragDrop.cancel"); } catch { }
+    }
+
+    // --- Helpers ---
+    private record TypeInfo(string Label, string Icon, string Color, string BadgeBg);
+
+    private static readonly Dictionary<string, TypeInfo> _typeMap = new(StringComparer.OrdinalIgnoreCase)
+    {
+        [".pdf"] = new("PDF", "fa-solid fa-file-pdf", "#dc2626", "#fef2f2"),
+        [".doc"] = new("Word", "fa-solid fa-file-word", "#2563eb", "#eff6ff"),
+        [".docx"] = new("Word", "fa-solid fa-file-word", "#2563eb", "#eff6ff"),
+        [".xls"] = new("Excel", "fa-solid fa-file-excel", "#16a34a", "#f0fdf4"),
+        [".xlsx"] = new("Excel", "fa-solid fa-file-excel", "#16a34a", "#f0fdf4"),
+        [".csv"] = new("CSV", "fa-solid fa-file-csv", "#16a34a", "#f0fdf4"),
+        [".ppt"] = new("PPT", "fa-solid fa-file-powerpoint", "#ea580c", "#fff7ed"),
+        [".pptx"] = new("PPT", "fa-solid fa-file-powerpoint", "#ea580c", "#fff7ed"),
+        [".txt"] = new("Texto", "fa-solid fa-file-lines", "#6b7280", "#f9fafb"),
+        [".md"] = new("Markdown", "fa-solid fa-file-lines", "#6b7280", "#f9fafb"),
+        [".json"] = new("JSON", "fa-solid fa-file-code", "#7c3aed", "#f5f3ff"),
+        [".xml"] = new("XML", "fa-solid fa-file-code", "#7c3aed", "#f5f3ff"),
+        [".html"] = new("HTML", "fa-solid fa-file-code", "#db2777", "#fdf2f8"),
+        [".zip"] = new("ZIP", "fa-solid fa-file-zipper", "#92400e", "#fffbeb"),
+        [".rar"] = new("RAR", "fa-solid fa-file-zipper", "#92400e", "#fffbeb"),
+        [".7z"] = new("7Z", "fa-solid fa-file-zipper", "#92400e", "#fffbeb"),
+        [".tar"] = new("TAR", "fa-solid fa-file-zipper", "#92400e", "#fffbeb"),
+        [".gz"] = new("GZ", "fa-solid fa-file-zipper", "#92400e", "#fffbeb"),
+        [".png"] = new("Imagen", "fa-solid fa-file-image", "#0891b2", "#ecfeff"),
+        [".jpg"] = new("Imagen", "fa-solid fa-file-image", "#0891b2", "#ecfeff"),
+        [".jpeg"] = new("Imagen", "fa-solid fa-file-image", "#0891b2", "#ecfeff"),
+        [".gif"] = new("Imagen", "fa-solid fa-file-image", "#0891b2", "#ecfeff"),
+        [".webp"] = new("Imagen", "fa-solid fa-file-image", "#0891b2", "#ecfeff"),
+        [".svg"] = new("SVG", "fa-solid fa-file-image", "#0891b2", "#ecfeff"),
+        [".mp3"] = new("Audio", "fa-solid fa-file-audio", "#9333ea", "#faf5ff"),
+        [".wav"] = new("Audio", "fa-solid fa-file-audio", "#9333ea", "#faf5ff"),
+        [".mp4"] = new("Video", "fa-solid fa-file-video", "#be123c", "#fff1f2"),
+        [".mov"] = new("Video", "fa-solid fa-file-video", "#be123c", "#fff1f2"),
+        [".avi"] = new("Video", "fa-solid fa-file-video", "#be123c", "#fff1f2"),
+        [".mkv"] = new("Video", "fa-solid fa-file-video", "#be123c", "#fff1f2"),
+    };
+
+    private TypeInfo GetTypeInfo(FileEntryDto entry)
+    {
+        if (entry.IsFolder) return new("Carpeta", "fa-solid fa-folder", "#d97706", "#fffbeb");
+        var ext = System.IO.Path.GetExtension(entry.Name);
+        if (string.IsNullOrEmpty(ext)) return new("Archivo", "fa-solid fa-file", "#6b7280", "#f3f4f6");
+        if (_typeMap.TryGetValue(ext, out var info)) return info;
+        return new(ext.TrimStart('.').ToUpperInvariant(), "fa-solid fa-file", "#6b7280", "#f3f4f6");
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        string[] units = { "B", "KB", "MB", "GB", "TB" };
+        double size = bytes;
+        int unit = 0;
+        while (size >= 1024 && unit < units.Length - 1) { size /= 1024; unit++; }
+        return $"{size:0.##} {units[unit]}";
+    }
+
+    private static string FormatRelative(DateTime dt)
+    {
+        var local = dt.ToLocalTime();
+        var diff = DateTime.Now - local;
+        if (diff.TotalMinutes < 1) return "Hace instantes";
+        if (diff.TotalMinutes < 60) return $"Hace {(int)diff.TotalMinutes} min";
+        if (diff.TotalHours < 24) return $"Hace {(int)diff.TotalHours} h";
+        if (diff.TotalDays < 7) return $"Hace {(int)diff.TotalDays} d";
+        return local.ToString("dd/MM/yyyy HH:mm");
+    }
+}

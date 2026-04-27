@@ -1,0 +1,2055 @@
+@page "/integraciones"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<div class="view-header">
+    <h2>Integraciones</h2>
+    <div class="view-header-actions">
+        @if (HasAvailableIntegrations)
+        {
+            <div class="add-integration-wrapper">
+                <button class="btn btn-primary" @onclick="ToggleAddMenu">+ Nueva Integracion</button>
+                @if (showAddMenu)
+                {
+                    <div class="add-integration-dropdown">
+                        @if (mlId == 0)
+                        {
+                            <button class="add-integration-option" @onclick="() => AddIntegration_ML()">
+                                <span class="integration-logo-icon ml-logo" style="width:28px;height:28px;font-size:0.7rem;">ML</span>
+                                <div>
+                                    <strong>MercadoLibre</strong>
+                                    <small>Gestionar publicaciones, ordenes y mas</small>
+                                </div>
+                            </button>
+                        }
+                        @if (openaiId == 0)
+                        {
+                            <button class="add-integration-option" @onclick="() => AddIntegration_OpenAI()">
+                                <span class="integration-logo-icon openai-logo" style="width:28px;height:28px;font-size:0.7rem;">AI</span>
+                                <div>
+                                    <strong>OpenAI</strong>
+                                    <small>Modelos GPT para funciones de IA</small>
+                                </div>
+                            </button>
+                        }
+                        @if (claudeId == 0)
+                        {
+                            <button class="add-integration-option" @onclick="() => AddIntegration_Claude()">
+                                <span class="integration-logo-icon claude-logo" style="width:28px;height:28px;font-size:0.7rem;">CL</span>
+                                <div>
+                                    <strong>Claude (Anthropic)</strong>
+                                    <small>Modelos Claude para funciones de IA</small>
+                                </div>
+                            </button>
+                        }
+                        @if (emailId == 0)
+                        {
+                            <button class="add-integration-option" @onclick="() => AddIntegration_Email()">
+                                <span class="integration-logo-icon email-logo" style="width:28px;height:28px;font-size:0.85rem;">&#9993;</span>
+                                <div>
+                                    <strong>Email (SMTP)</strong>
+                                    <small>Enviar y recibir emails desde el sistema</small>
+                                </div>
+                            </button>
+                        }
+                        @if (!waLinked)
+                        {
+                            <button class="add-integration-option" @onclick="() => AddIntegration_WhatsApp()">
+                                <span class="integration-logo-icon whatsapp-logo" style="width:28px;height:28px;font-size:0.7rem;">WA</span>
+                                <div>
+                                    <strong>WhatsApp</strong>
+                                    <small>Envio de mensajes via WhatsApp Web</small>
+                                </div>
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@if (!HasConfiguredIntegrations)
+{
+    <div class="empty-state">
+        <div class="empty-state-icon"><i class="fa-solid fa-plug"></i></div>
+        <h3>No hay integraciones configuradas</h3>
+        <p>Hace clic en "+ Nueva Integracion" para agregar tu primera integracion con un servicio externo.</p>
+    </div>
+}
+
+<div class="integrations-grid">
+    <!-- MercadoLibre (solo si esta configurada) -->
+    @if (mlId > 0)
+    {
+    <div class="integration-card @(mlActive ? "integration-active" : "")">
+        <div class="integration-card-header">
+            <div class="integration-logo">
+                <span class="integration-logo-icon ml-logo">ML</span>
+            </div>
+            <div class="integration-info">
+                <h3>MercadoLibre</h3>
+                <p>Conecta tu cuenta de MercadoLibre para gestionar publicaciones, ordenes y mas.</p>
+            </div>
+            <div class="integration-header-actions">
+                <span class="status-badge @(mlActive ? "status-active" : "status-inactive")">
+                    @(mlActive ? "Activa" : "Inactiva")
+                </span>
+                <button class="btn btn-secondary btn-sm" @onclick="OpenConfigModal">Configurar</button>
+            </div>
+        </div>
+
+        <!-- Cuentas conectadas -->
+        @if (mlActive)
+        {
+            <div class="integration-accounts">
+                <div class="integration-accounts-header">
+                    <h4>Cuentas conectadas</h4>
+                    <div class="connect-btn-wrapper" style="display:flex; gap:0.5rem; align-items:center;">
+                        <button class="btn btn-primary" @onclick="ToggleConnectMenu" disabled="@connecting">
+                            @(connecting ? "Conectando..." : "+ Conectar cuenta")
+                        </button>
+                        <button class="btn btn-secondary" @onclick="OpenTestUserModal" disabled="@creatingTestUser">
+                            <i class="fa-solid fa-flask"></i> Crear cuenta de test
+                        </button>
+                        @if (showConnectMenu)
+                        {
+                            <div class="connect-dropdown">
+                                <button class="connect-dropdown-item" @onclick="OpenInBrowser">
+                                    Abrir en navegador
+                                </button>
+                                <button class="connect-dropdown-item" @onclick="CopyAuthUrl">
+                                    @(urlCopied ? "URL copiada!" : "Copiar URL")
+                                </button>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                @if (waitingForCode)
+                {
+                    <div class="code-input-section">
+                        <p class="code-input-instructions">Autoriza la aplicacion en MercadoLibre y luego pega aca el codigo que obtuviste:</p>
+                        <div class="code-input-row">
+                            <input type="text" class="form-input" @bind="authCode"
+                                   placeholder="Pega el codigo aca" />
+                            <button class="btn btn-primary" @onclick="SubmitCode" disabled="@connecting">
+                                @(connecting ? "Conectando..." : "Conectar")
+                            </button>
+                            <button class="btn btn-secondary" @onclick="CancelConnect">Cancelar</button>
+                        </div>
+                    </div>
+                }
+
+                @if (accounts is not null && accounts.Count > 0)
+                {
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Usuario</th>
+                                    <th>Email</th>
+                                    <th>ID MeLi</th>
+                                    <th>Token</th>
+                                    <th>Conectada</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var account in accounts)
+                                {
+                                    <tr>
+                                        <td><strong>@account.Nickname</strong></td>
+                                        <td>@(account.Email ?? "-")</td>
+                                        <td>@account.MeliUserId</td>
+                                        <td>
+                                            <span class="status-badge @(account.TokenValid ? "status-active" : "status-inactive")">
+                                                @(account.TokenValid ? "Valido" : "Expirado")
+                                            </span>
+                                        </td>
+                                        <td>@account.CreatedAt.ToString("dd/MM/yyyy")</td>
+                                        <td>
+                                            <div class="actions-cell">
+                                                <button class="btn-icon btn-delete" @onclick="() => RemoveAccount(account.Id)"
+                                                        title="Quitar cuenta">
+                                                    @SvgIcons.Logout
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else if (!waitingForCode)
+                {
+                    <p class="text-muted" style="padding: 1rem 1.5rem;">No hay cuentas conectadas. Hace clic en "Conectar cuenta" para vincular tu cuenta de MercadoLibre.</p>
+                }
+            </div>
+        }
+        else
+        {
+            <div style="padding: 1rem 1.5rem;">
+                <p class="text-muted">Configura la aplicacion para comenzar a conectar cuentas.</p>
+            </div>
+        }
+    </div>
+    }
+    <!-- OpenAI (solo si esta configurada) -->
+    @if (openaiId > 0)
+    {
+    <div class="integration-card @(openaiActive ? "integration-active" : "")">
+        <div class="integration-card-header">
+            <div class="integration-logo">
+                <span class="integration-logo-icon openai-logo">AI</span>
+            </div>
+            <div class="integration-info">
+                <h3>OpenAI</h3>
+                <p>Conecta tu API Key de OpenAI para usar modelos GPT en otras funciones del programa.</p>
+            </div>
+            <div class="integration-header-actions">
+                <span class="status-badge @(openaiActive ? "status-active" : "status-inactive")">
+                    @(openaiActive ? "Activa" : "Inactiva")
+                </span>
+                <button class="btn btn-secondary btn-sm" @onclick="OpenOpenAiModal">Configurar</button>
+            </div>
+        </div>
+
+        @if (openaiId > 0 && openaiActive)
+        {
+            <div class="integration-accounts" style="padding: 1rem 1.5rem;">
+                <div style="display: flex; gap: 2rem; flex-wrap: wrap;">
+                    <div>
+                        <small class="text-muted">Modelo</small>
+                        <div><strong>@openaiModel</strong></div>
+                    </div>
+                    <div>
+                        <small class="text-muted">Max Tokens</small>
+                        <div><strong>@openaiMaxTokens</strong></div>
+                    </div>
+                    <div>
+                        <small class="text-muted">Temperatura</small>
+                        <div><strong>@openaiTemperature.ToString("F1")</strong></div>
+                    </div>
+                    <div>
+                        <small class="text-muted">API Key</small>
+                        <div><strong>@(openaiHasSecret ? "Configurada" : "No configurada")</strong></div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+    }
+
+    <!-- Claude (solo si esta configurada) -->
+    @if (claudeId > 0)
+    {
+    <div class="integration-card @(claudeActive ? "integration-active" : "")">
+        <div class="integration-card-header">
+            <div class="integration-logo">
+                <span class="integration-logo-icon claude-logo">CL</span>
+            </div>
+            <div class="integration-info">
+                <h3>Claude (Anthropic)</h3>
+                <p>Conecta tu API Key de Anthropic para usar modelos Claude en otras funciones del programa.</p>
+            </div>
+            <div class="integration-header-actions">
+                <span class="status-badge @(claudeActive ? "status-active" : "status-inactive")">
+                    @(claudeActive ? "Activa" : "Inactiva")
+                </span>
+                <button class="btn btn-secondary btn-sm" @onclick="OpenClaudeModal">Configurar</button>
+            </div>
+        </div>
+
+        @if (claudeId > 0 && claudeActive)
+        {
+            <div class="integration-accounts" style="padding: 1rem 1.5rem;">
+                <div style="display: flex; gap: 2rem; flex-wrap: wrap;">
+                    <div>
+                        <small class="text-muted">Modelo</small>
+                        <div><strong>@claudeModel</strong></div>
+                    </div>
+                    <div>
+                        <small class="text-muted">Max Tokens</small>
+                        <div><strong>@claudeMaxTokens</strong></div>
+                    </div>
+                    <div>
+                        <small class="text-muted">Temperatura</small>
+                        <div><strong>@claudeTemperature.ToString("F1")</strong></div>
+                    </div>
+                    <div>
+                        <small class="text-muted">API Key</small>
+                        <div><strong>@(claudeHasSecret ? "Configurada" : "No configurada")</strong></div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+    }
+
+    <!-- Email SMTP (solo si esta configurada) -->
+    @if (emailId > 0)
+    {
+    <div class="integration-card @(emailActive ? "integration-active" : "")">
+        <div class="integration-card-header">
+            <div class="integration-logo">
+                <span class="integration-logo-icon email-logo">&#9993;</span>
+            </div>
+            <div class="integration-info">
+                <h3>Email (SMTP/IMAP)</h3>
+                <p>Envia y recibe emails desde el sistema usando tu cuenta de correo.</p>
+            </div>
+            <div class="integration-header-actions">
+                <span class="status-badge @(emailActive ? "status-active" : "status-inactive")">
+                    @(emailActive ? "Activa" : "Inactiva")
+                </span>
+                <button class="btn btn-secondary btn-sm" @onclick="OpenEmailModal">Configurar</button>
+            </div>
+        </div>
+
+        @if (emailId > 0 && emailActive)
+        {
+            <div class="integration-accounts" style="padding: 1rem 1.5rem;">
+                <div style="display: flex; gap: 2rem; flex-wrap: wrap;">
+                    <div>
+                        <small class="text-muted">Servidor SMTP</small>
+                        <div><strong>@emailSmtpHost</strong></div>
+                    </div>
+                    <div>
+                        <small class="text-muted">Puerto</small>
+                        <div><strong>@emailSmtpPort</strong></div>
+                    </div>
+                    <div>
+                        <small class="text-muted">Remitente</small>
+                        <div><strong>@emailFromAddress</strong></div>
+                    </div>
+                    <div>
+                        <small class="text-muted">TLS</small>
+                        <div><strong>@(emailSmtpTls ? "Si" : "No")</strong></div>
+                    </div>
+                    <div>
+                        <small class="text-muted">IMAP</small>
+                        <div><strong>@(string.IsNullOrEmpty(emailImapHost) ? "No configurado" : emailImapHost)</strong></div>
+                    </div>
+                    <div>
+                        <small class="text-muted">Contraseña</small>
+                        <div><strong>@(emailHasSecret ? "Configurada" : "No configurada")</strong></div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+    }
+
+    <!-- WhatsApp (solo si esta vinculada) -->
+    @if (waLinked)
+    {
+    <div class="integration-card integration-active">
+        <div class="integration-card-header">
+            <div class="integration-logo">
+                <span class="integration-logo-icon whatsapp-logo">WA</span>
+            </div>
+            <div class="integration-info">
+                <h3>WhatsApp</h3>
+                <p>Envio de mensajes via WhatsApp Web. Sesion vinculada por QR.</p>
+            </div>
+            <div class="integration-header-actions">
+                <span class="status-badge status-active">Activa</span>
+                <button class="btn btn-secondary btn-sm" @onclick="OpenWhatsAppTestModal">Probar</button>
+                <button class="btn btn-secondary btn-sm" @onclick="UnlinkWhatsApp" disabled="@waBusy">Desvincular</button>
+            </div>
+        </div>
+    </div>
+    }
+</div>
+
+<!-- Modal: Vincular WhatsApp (QR) -->
+@if (showWaQrModal)
+{
+    <div class="modal-overlay" @onclick="CancelWhatsAppLink">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 480px;">
+            <div class="modal-header">
+                <h3>Vincular WhatsApp</h3>
+                <button class="btn-close" @onclick="CancelWhatsAppLink">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (waPreparingQr)
+                {
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 1rem; padding: 2.5rem 1rem; background: #f9fafb; border-radius: 8px;">
+                        <div class="spinner" style="width: 48px; height: 48px; border: 4px solid #ddd; border-top-color: #25D366; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+                        <div style="text-align: center;">
+                            <strong style="display: block; font-size: 1.05rem; margin-bottom: 0.25rem;">Preparando el QR...</strong>
+                            <span style="color: var(--text-muted); font-size: 0.9rem;">Estamos abriendo WhatsApp Web. Esto puede tardar unos segundos.</span>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <p style="margin-bottom: 1rem;">
+                        Abri WhatsApp en tu telefono &rarr; <strong>Configuracion</strong> &rarr;
+                        <strong>Dispositivos vinculados</strong> &rarr; <strong>Vincular dispositivo</strong>
+                        &rarr; escanea el QR.
+                    </p>
+                    <div style="display: flex; justify-content: center; padding: 1rem; background: #f9fafb; border-radius: 8px;">
+                        <img src="@waQrUrl" alt="QR de WhatsApp"
+                             style="max-width: 100%; width: 300px; height: auto; border-radius: 4px;" />
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem; justify-content: center; margin-top: 1rem; color: var(--text-muted);">
+                        <div class="spinner" style="width: 16px; height: 16px; border: 2px solid #ddd; border-top-color: #25D366; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+                        <span>Esperando escaneo...</span>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CancelWhatsAppLink">Cancelar</button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Modal: Probar WhatsApp -->
+@if (showWaTestModal)
+{
+    <div class="modal-overlay" @onclick="CloseWhatsAppTestModal">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 480px;">
+            <div class="modal-header">
+                <h3>Enviar mensaje de prueba</h3>
+                <button class="btn-close" @onclick="CloseWhatsAppTestModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Telefono(s) destino</label>
+                    <input type="text" class="form-input" @bind="waTestPhone"
+                           placeholder="5491131962615; 5491163080371" />
+                    <span class="input-hint">Incluye codigo de pais. Podes poner varios numeros separados por ; , o espacio.</span>
+                </div>
+                @if (!string.IsNullOrEmpty(waTestResult))
+                {
+                    <div class="@(waTestSuccess ? "form-success" : "form-error")" style="margin-top: 0.5rem;">
+                        @waTestResult
+                    </div>
+                }
+                @if (waTestResults.Count > 0)
+                {
+                    <div style="margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.35rem;">
+                        @foreach (var r in waTestResults)
+                        {
+                            <div class="@(r.Success ? "form-success" : "form-error")" style="padding: 0.45rem 0.6rem;">
+                                <strong>@r.Phone</strong> - @(r.Success ? "OK" : "Error"): @r.Message
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseWhatsAppTestModal">Cerrar</button>
+                <button class="btn btn-primary" @onclick="SendWhatsAppTest" disabled="@waTesting">
+                    @(waTesting ? "Enviando..." : "Enviar prueba")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+@@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+
+<!-- Modal: Configuracion MercadoLibre -->
+@if (showConfigModal)
+{
+    <div class="modal-overlay" @onclick="CloseConfigModal">
+        <div class="modal-card" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>Configuracion de MercadoLibre</h3>
+                <button class="btn-close" @onclick="CloseConfigModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(mlError))
+                {
+                    <div class="form-error">@mlError</div>
+                }
+                @if (mlSaved)
+                {
+                    <div class="form-success">Configuracion guardada correctamente</div>
+                }
+                <div class="form-group">
+                    <label class="form-label">APP ID</label>
+                    <input type="text" class="form-input" @bind="mlAppId"
+                           placeholder="Ej: 1234567890" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Secret Key</label>
+                    <div class="input-with-hint">
+                        <input type="password" class="form-input" @bind="mlSecret"
+                               placeholder="@(mlHasSecret ? "••••••••  (ya configurado)" : "Ingresa tu Secret Key")" />
+                        @if (mlHasSecret)
+                        {
+                            <span class="input-hint">Deja en blanco para mantener el actual</span>
+                        }
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">URL de redireccion (pagina de salida)</label>
+                    <input type="text" class="form-input" @bind="mlRedirectUrl"
+                           placeholder="Ej: https://tudominio.com/meli-callback" />
+                    <span class="input-hint">Esta URL se configura en tu aplicacion de MercadoLibre como Redirect URI</span>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">
+                        <input type="checkbox" @bind="mlActive" /> Integracion activa
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                @if (mlId > 0)
+                {
+                    <button class="btn btn-danger" @onclick="DeleteMercadoLibre" disabled="@saving">
+                        Eliminar
+                    </button>
+                }
+                <button class="btn btn-secondary" @onclick="CloseConfigModal">Cancelar</button>
+                <button class="btn btn-primary" @onclick="SaveMercadoLibre" disabled="@saving">
+                    @(saving ? "Guardando..." : "Guardar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Modal: Crear cuenta de test MercadoLibre -->
+@if (showTestUserModal)
+{
+    <div class="modal-overlay" @onclick="CloseTestUserModal">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 560px;">
+            <div class="modal-header">
+                <h3>Crear cuenta de test MercadoLibre</h3>
+                <button class="btn-close" @onclick="CloseTestUserModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (string.IsNullOrEmpty(testUserJson))
+                {
+                    <div class="form-group">
+                        <label class="form-label">Sitio (pais) de la cuenta de test</label>
+                        <select class="form-input" @bind="testUserSite">
+                            <option value="MLA">Argentina (MLA)</option>
+                            <option value="MLB">Brasil (MLB)</option>
+                            <option value="MLM">Mexico (MLM)</option>
+                            <option value="MCO">Colombia (MCO)</option>
+                            <option value="MLC">Chile (MLC)</option>
+                            <option value="MLU">Uruguay (MLU)</option>
+                            <option value="MPE">Peru (MPE)</option>
+                            <option value="MLV">Venezuela (MLV)</option>
+                            <option value="MEC">Ecuador (MEC)</option>
+                            <option value="MPA">Panama (MPA)</option>
+                            <option value="MRD">Rep. Dominicana (MRD)</option>
+                            <option value="MCR">Costa Rica (MCR)</option>
+                            <option value="MBO">Bolivia (MBO)</option>
+                            <option value="MPY">Paraguay (MPY)</option>
+                            <option value="MGT">Guatemala (MGT)</option>
+                            <option value="MHN">Honduras (MHN)</option>
+                            <option value="MNI">Nicaragua (MNI)</option>
+                            <option value="MSV">El Salvador (MSV)</option>
+                        </select>
+                        <span class="input-hint">Elegi el pais para el cual se creara la cuenta de test.</span>
+                    </div>
+                    @if (!string.IsNullOrEmpty(testUserError))
+                    {
+                        <div class="form-error" style="margin-top:0.75rem;">@testUserError</div>
+                    }
+                }
+                else
+                {
+                    <div style="background:#fff3cd; border:1px solid #ffc107; border-radius:8px; padding:1rem; margin-bottom:1rem;">
+                        <strong style="color:#856404;"><i class="fa-solid fa-triangle-exclamation"></i> Importante:</strong>
+                        <span style="color:#856404;"> Guarda estos datos ahora. Por seguridad, MercadoLibre no te los va a mostrar de nuevo. Descargalos en un archivo .json o copialos a un lugar seguro.</span>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Datos de la cuenta de test</label>
+                        <textarea class="form-input" readonly rows="10" style="font-family: monospace; font-size: 0.85rem;">@testUserJson</textarea>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                @if (string.IsNullOrEmpty(testUserJson))
+                {
+                    <button class="btn btn-secondary" @onclick="CloseTestUserModal">Cancelar</button>
+                    <button class="btn btn-primary" @onclick="CreateTestUser" disabled="@creatingTestUser">
+                        @(creatingTestUser ? "Creando..." : "Crear cuenta de test")
+                    </button>
+                }
+                else
+                {
+                    <button class="btn btn-secondary" @onclick="CloseTestUserModal">Cerrar</button>
+                    <button class="btn btn-secondary" @onclick="CopyTestUserJson">
+                        @(testUserCopied ? "Copiado!" : "Copiar JSON")
+                    </button>
+                    <button class="btn btn-primary" @onclick="DownloadTestUserJson">
+                        <i class="fa-solid fa-download"></i> Descargar .json
+                    </button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Modal: Configuracion OpenAI -->
+@if (showOpenaiModal)
+{
+    <div class="modal-overlay" @onclick="CloseOpenAiModal">
+        <div class="modal-card" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>Configuracion de OpenAI</h3>
+                <button class="btn-close" @onclick="CloseOpenAiModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">API Key</label>
+                    <div class="input-with-hint">
+                        <input type="password" class="form-input" @bind="openaiApiKey"
+                               placeholder="@(openaiHasSecret ? "Ya configurada" : "sk-...")" />
+                        @if (openaiHasSecret)
+                        {
+                            <span class="input-hint">Deja en blanco para mantener la actual</span>
+                        }
+                        else
+                        {
+                            <span class="input-hint">Ingresa tu API Key y guarda para ver los modelos disponibles</span>
+                        }
+                    </div>
+                </div>
+
+                @if (openaiHasSecret)
+                {
+                    @if (loadingModels)
+                    {
+                        <div class="form-group">
+                            <label class="form-label">Modelo</label>
+                            <div class="form-input" style="color: var(--text-muted); background: #f9fafb;">Cargando modelos disponibles...</div>
+                        </div>
+                    }
+                    else if (openaiModels is not null && openaiModels.Count > 0)
+                    {
+                        <div class="form-group">
+                            <label class="form-label">Modelo <small class="text-muted">(@openaiModels.Count disponibles)</small></label>
+                            <select class="form-input" @bind="openaiModel">
+                                @foreach (var model in openaiModels)
+                                {
+                                    <option value="@model.Id">@model.Id</option>
+                                }
+                            </select>
+                        </div>
+                    }
+                    else if (!string.IsNullOrEmpty(openaiModelsError))
+                    {
+                        <div class="form-group">
+                            <label class="form-label">Modelo</label>
+                            <div style="color: var(--danger); font-size: 0.85rem;">@openaiModelsError</div>
+                        </div>
+                    }
+
+                    <div class="form-group">
+                        <label class="form-label">Temperatura: <strong>@openaiTemperature.ToString("F1")</strong></label>
+                        <input type="range" class="form-range" min="0" max="2" step="0.1" @bind="openaiTemperature" @bind:event="oninput" />
+                        <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted);">
+                            <span>Preciso (0)</span>
+                            <span>Creativo (2)</span>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Max Tokens</label>
+                        <input type="number" class="form-input" @bind="openaiMaxTokens" min="1" max="128000" />
+                        <span class="input-hint">Maximo de tokens que puede generar el modelo en una respuesta</span>
+                    </div>
+                }
+
+                <div class="form-group">
+                    <label class="form-label">
+                        <input type="checkbox" @bind="openaiActive" /> Integracion activa
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                @if (openaiId > 0)
+                {
+                    <button class="btn btn-danger" @onclick="DeleteOpenAi" disabled="@openaiSaving">
+                        Eliminar
+                    </button>
+                }
+                <button class="btn btn-secondary" @onclick="CloseOpenAiModal">Cancelar</button>
+                <button class="btn btn-primary" @onclick="SaveOpenAi" disabled="@openaiSaving">
+                    @(openaiSaving ? "Guardando..." : "Guardar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Modal: Configuracion Claude -->
+@if (showClaudeModal)
+{
+    <div class="modal-overlay" @onclick="CloseClaudeModal">
+        <div class="modal-card" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>Configuracion de Claude (Anthropic)</h3>
+                <button class="btn-close" @onclick="CloseClaudeModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">API Key</label>
+                    <div class="input-with-hint">
+                        <input type="password" class="form-input" @bind="claudeApiKey"
+                               placeholder="@(claudeHasSecret ? "Ya configurada" : "sk-ant-...")" />
+                        @if (claudeHasSecret)
+                        {
+                            <span class="input-hint">Deja en blanco para mantener la actual</span>
+                        }
+                        else
+                        {
+                            <span class="input-hint">Ingresa tu API Key y guarda para ver los modelos disponibles</span>
+                        }
+                    </div>
+                </div>
+
+                @if (claudeHasSecret)
+                {
+                    @if (loadingClaudeModels)
+                    {
+                        <div class="form-group">
+                            <label class="form-label">Modelo</label>
+                            <div class="form-input" style="color: var(--text-muted); background: #f9fafb;">Cargando modelos disponibles...</div>
+                        </div>
+                    }
+                    else if (claudeModels is not null && claudeModels.Count > 0)
+                    {
+                        <div class="form-group">
+                            <label class="form-label">Modelo <small class="text-muted">(@claudeModels.Count disponibles)</small></label>
+                            <select class="form-input" @bind="claudeModel">
+                                @foreach (var model in claudeModels)
+                                {
+                                    <option value="@model.Id">@model.DisplayName</option>
+                                }
+                            </select>
+                        </div>
+                    }
+                    else if (!string.IsNullOrEmpty(claudeModelsError))
+                    {
+                        <div class="form-group">
+                            <label class="form-label">Modelo</label>
+                            <div style="color: var(--danger); font-size: 0.85rem;">@claudeModelsError</div>
+                        </div>
+                    }
+
+                    <div class="form-group">
+                        <label class="form-label">Temperatura: <strong>@claudeTemperature.ToString("F1")</strong></label>
+                        <input type="range" class="form-range" min="0" max="1" step="0.1" @bind="claudeTemperature" @bind:event="oninput" />
+                        <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted);">
+                            <span>Preciso (0)</span>
+                            <span>Creativo (1)</span>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Max Tokens</label>
+                        <input type="number" class="form-input" @bind="claudeMaxTokens" min="1" max="64000" />
+                        <span class="input-hint">Maximo de tokens que puede generar el modelo en una respuesta</span>
+                    </div>
+                }
+
+                <div class="form-group">
+                    <label class="form-label">
+                        <input type="checkbox" @bind="claudeActive" /> Integracion activa
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                @if (claudeId > 0)
+                {
+                    <button class="btn btn-danger" @onclick="DeleteClaude" disabled="@claudeSaving">
+                        Eliminar
+                    </button>
+                }
+                <button class="btn btn-secondary" @onclick="CloseClaudeModal">Cancelar</button>
+                <button class="btn btn-primary" @onclick="SaveClaude" disabled="@claudeSaving">
+                    @(claudeSaving ? "Guardando..." : "Guardar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Modal: Quitar cuenta -->
+@if (showDeleteConfirm && deleteStats != null)
+{
+    <div class="modal-overlay" @onclick="CloseDeleteModal">
+        <div class="modal-card" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: #fff3f3;">
+                <h3 style="color: var(--danger);">Quitar cuenta: @deleteStats.Nickname</h3>
+                <button class="btn-close" @onclick="CloseDeleteModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; padding: 1rem; margin-bottom: 1rem;">
+                    <strong style="color: #856404;">Atencion:</strong>
+                    <span style="color: #856404;"> Esta accion eliminara de la base de datos local todos los datos asociados a esta cuenta.</span>
+                </div>
+
+                <p style="margin-bottom: 0.5rem;">Se van a eliminar los siguientes datos:</p>
+                <ul style="margin: 0.5rem 0 1rem 1.5rem; line-height: 1.8;">
+                    <li><strong>@deleteStats.OrderCount ordenes</strong> sincronizadas</li>
+                    <li><strong>@deleteStats.ItemCount publicaciones</strong> sincronizadas</li>
+                    <li>La conexion y tokens de acceso de la cuenta</li>
+                </ul>
+
+                <div style="background: #d4edda; border: 1px solid #28a745; border-radius: 8px; padding: 1rem; margin-bottom: 1rem;">
+                    <strong style="color: #155724;">Importante:</strong>
+                    <span style="color: #155724;"> NO se eliminara nada de MercadoLibre. Tus ordenes, publicaciones y datos en MercadoLibre no se van a modificar. Solo se borran los datos de esta aplicacion.</span>
+                </div>
+
+                <div class="form-group" style="margin-top: 1rem;">
+                    <label class="form-label">Para confirmar, escribi <strong>@deleteStats.Nickname</strong> en el campo de abajo:</label>
+                    <input type="text" class="form-input" @bind="deleteConfirmText" @bind:event="oninput" placeholder="Escribi el nombre de la cuenta..."
+                           style="@(deleteConfirmText.Length > 0 && deleteConfirmText != deleteStats.Nickname ? "border-color: #dc3545;" : "")" />
+                    @if (deleteConfirmText.Length > 0 && deleteConfirmText != deleteStats.Nickname)
+                    {
+                        <small style="color: #dc3545; margin-top: 0.25rem; display: block;">El texto no coincide. Escribi exactamente <strong>@deleteStats.Nickname</strong> para confirmar.</small>
+                    }
+                    else if (string.IsNullOrEmpty(deleteConfirmText))
+                    {
+                        <small style="color: #856404; margin-top: 0.25rem; display: block;">Debes completar este campo para confirmar la eliminacion.</small>
+                    }
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseDeleteModal">Cancelar</button>
+                <button class="btn btn-danger" @onclick="ConfirmRemoveAccount"
+                        disabled="@(deleteConfirmText != deleteStats.Nickname || deletingAccount)">
+                    @(deletingAccount ? "Eliminando..." : "Quitar cuenta y datos")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Modal: Configuracion Email SMTP -->
+@if (showEmailModal)
+{
+    <div class="modal-overlay" @onclick="CloseEmailModal">
+        <div class="modal-card" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>Configuracion de Email</h3>
+                <button class="btn-close" @onclick="CloseEmailModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <h4 style="margin-bottom: 0.75rem; color: var(--text-primary);">Envio (SMTP)</h4>
+                <div class="form-row">
+                    <div class="form-group" style="flex:2">
+                        <label class="form-label">Servidor SMTP</label>
+                        <input type="text" class="form-input" @bind="emailSmtpHost" placeholder="smtp.gmail.com" />
+                    </div>
+                    <div class="form-group" style="flex:1">
+                        <label class="form-label">Puerto</label>
+                        <input type="number" class="form-input" @bind="emailSmtpPort" />
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" style="display: flex; align-items: center; gap: 0.5rem;">
+                        <input type="checkbox" @bind="emailSmtpTls" /> Usar TLS/SSL
+                    </label>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group" style="flex:1">
+                        <label class="form-label">Nombre remitente</label>
+                        <input type="text" class="form-input" @bind="emailFromName" placeholder="Mi Empresa" />
+                    </div>
+                    <div class="form-group" style="flex:1">
+                        <label class="form-label">Email remitente</label>
+                        <input type="email" class="form-input" @bind="emailFromAddress" placeholder="info@empresa.com" />
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group" style="flex:1">
+                        <label class="form-label">Usuario</label>
+                        <input type="text" class="form-input" @bind="emailUsername" placeholder="Igual al email si no se especifica" />
+                    </div>
+                    <div class="form-group" style="flex:1">
+                        <label class="form-label">Contraseña</label>
+                        <input type="password" class="form-input" @bind="emailPassword"
+                               placeholder="@(emailHasSecret ? "••••••••  (ya configurada)" : "Contraseña o App Password")" />
+                    </div>
+                </div>
+
+                <hr style="margin: 1.25rem 0; border: none; border-top: 1px solid var(--border);" />
+
+                <h4 style="margin-bottom: 0.75rem; color: var(--text-primary);">Lectura (IMAP)</h4>
+                <div class="form-row">
+                    <div class="form-group" style="flex:2">
+                        <label class="form-label">Servidor IMAP</label>
+                        <input type="text" class="form-input" @bind="emailImapHost" placeholder="imap.gmail.com" />
+                    </div>
+                    <div class="form-group" style="flex:1">
+                        <label class="form-label">Puerto</label>
+                        <input type="number" class="form-input" @bind="emailImapPort" />
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" style="display: flex; align-items: center; gap: 0.5rem;">
+                        <input type="checkbox" @bind="emailImapTls" /> Usar TLS/SSL
+                    </label>
+                </div>
+
+                <hr style="margin: 1.25rem 0; border: none; border-top: 1px solid var(--border);" />
+
+                <div class="form-group">
+                    <label class="form-label" style="display: flex; align-items: center; gap: 0.5rem;">
+                        <input type="checkbox" @bind="emailActive" /> Activo
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                @if (emailId > 0)
+                {
+                    <button class="btn btn-danger" @onclick="DeleteEmail" disabled="@emailSaving" style="margin-right: auto;">
+                        Eliminar
+                    </button>
+                }
+                <button class="btn btn-outline-primary" @onclick="TestEmail" disabled="@(emailSaving || emailTesting)">
+                    @(emailTesting ? "Enviando..." : "Enviar prueba")
+                </button>
+                <button class="btn btn-secondary" @onclick="CloseEmailModal">Cancelar</button>
+                <button class="btn btn-primary" @onclick="SaveEmail" disabled="@emailSaving">
+                    @(emailSaving ? "Guardando..." : "Guardar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    // MercadoLibre config fields
+    private int mlId;
+    private string mlAppId = "";
+    private string mlSecret = "";
+    private string mlRedirectUrl = "";
+    private bool mlActive;
+    private bool mlHasSecret;
+    private string? mlError;
+    private bool mlSaved;
+    private bool saving;
+    private bool showConfigModal;
+
+    // OpenAI config fields
+    private int openaiId;
+    private string openaiApiKey = "";
+    private bool openaiActive;
+    private bool openaiHasSecret;
+    private string openaiModel = "gpt-4o";
+    private int openaiMaxTokens = 4096;
+    private double openaiTemperature = 0.7;
+    private bool showOpenaiModal;
+    private bool openaiSaving;
+    private List<OpenAiModelDto>? openaiModels;
+    private bool loadingModels;
+    private string? openaiModelsError;
+
+    // Claude (Anthropic) config fields
+    private int claudeId;
+    private string claudeApiKey = "";
+    private bool claudeActive;
+    private bool claudeHasSecret;
+    private string claudeModel = "claude-sonnet-4-20250514";
+    private int claudeMaxTokens = 4096;
+    private double claudeTemperature = 1.0;
+    private bool showClaudeModal;
+    private bool claudeSaving;
+    private List<ClaudeModelDto>? claudeModels;
+    private bool loadingClaudeModels;
+    private string? claudeModelsError;
+
+    // Email SMTP config fields
+    private int emailId;
+    private bool emailActive;
+    private bool emailHasSecret;
+    private string emailSmtpHost = "smtp.gmail.com";
+    private int emailSmtpPort = 587;
+    private bool emailSmtpTls = true;
+    private string emailImapHost = "imap.gmail.com";
+    private int emailImapPort = 993;
+    private bool emailImapTls = true;
+    private string emailFromName = "";
+    private string emailFromAddress = "";
+    private string emailUsername = "";
+    private string emailPassword = "";
+    private bool showEmailModal;
+    private bool emailSaving;
+    private bool emailTesting;
+
+    // Accounts
+    private List<MeliAccountDto>? accounts;
+    private bool connecting;
+    private bool showDeleteConfirm;
+    private int accountToDelete;
+    private MeliAccountStatsDto? deleteStats;
+    private string deleteConfirmText = "";
+    private bool deletingAccount;
+
+    // Add integration menu
+    private bool showAddMenu;
+    private bool HasConfiguredIntegrations => mlId > 0 || openaiId > 0 || claudeId > 0 || emailId > 0 || waLinked;
+    private bool HasAvailableIntegrations => mlId == 0 || openaiId == 0 || claudeId == 0 || emailId == 0 || !waLinked;
+
+    // Test user flow
+    private bool showTestUserModal;
+    private string testUserSite = "MLA";
+    private string testUserJson = "";
+    private string? testUserError;
+    private bool creatingTestUser;
+    private bool testUserCopied;
+
+    // Connect flow
+    private bool showConnectMenu;
+    private bool waitingForCode;
+    private string authCode = "";
+    private string? meliAuthUrl;
+    private bool urlCopied;
+
+    // --- WhatsApp state ---
+    private bool waLinked;
+    private bool waBusy;
+    private bool showWaQrModal;
+    private bool waPreparingQr;
+    private bool showWaTestModal;
+    private string waQrUrl = "";
+    private string waTestPhone = "";
+    private string waTestResult = "";
+    private bool waTestSuccess;
+    private bool waTesting;
+    private List<Web.Models.WhatsAppSendResultDto> waTestResults = new();
+    private CancellationTokenSource? waPollCts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadMercadoLibre();
+        await LoadOpenAi();
+        await LoadClaude();
+        await LoadEmail();
+        await LoadAccounts();
+        await LoadWhatsApp();
+    }
+
+    // --- WhatsApp methods ---
+    private async Task LoadWhatsApp()
+    {
+        try
+        {
+            var status = await Api.GetWhatsAppStatusAsync();
+            waLinked = status?.Linked ?? false;
+        }
+        catch { waLinked = false; }
+    }
+
+    private async Task AddIntegration_WhatsApp()
+    {
+        showAddMenu = false;
+        // Abrir modal de inmediato en estado "preparando"
+        waBusy = true;
+        waPreparingQr = true;
+        showWaQrModal = true;
+        StateHasChanged();
+
+        try
+        {
+            var ok = await Api.StartWhatsAppLinkAsync();
+            if (!ok)
+            {
+                showWaQrModal = false;
+                ToastService.Error("No se pudo iniciar la vinculacion de WhatsApp");
+                return;
+            }
+            // Pequeño delay para que Playwright tenga tiempo de renderizar el QR
+            await Task.Delay(4000);
+            waQrUrl = $"/api/whatsapp/qr?t={DateTimeOffset.Now.ToUnixTimeMilliseconds()}";
+            waPreparingQr = false;
+            StartWhatsAppPolling();
+        }
+        catch (Exception ex)
+        {
+            showWaQrModal = false;
+            ToastService.Error("Error al iniciar vinculacion: " + ex.Message);
+        }
+        finally
+        {
+            waBusy = false;
+        }
+    }
+
+    private void StartWhatsAppPolling()
+    {
+        waPollCts?.Cancel();
+        waPollCts = new CancellationTokenSource();
+        var token = waPollCts.Token;
+        _ = Task.Run(async () =>
+        {
+            while (!token.IsCancellationRequested)
+            {
+                try
+                {
+                    await Task.Delay(3000, token);
+                    if (token.IsCancellationRequested) break;
+
+                    // Refrescar QR (cache-bust)
+                    waQrUrl = $"/api/whatsapp/qr?t={DateTimeOffset.Now.ToUnixTimeMilliseconds()}";
+
+                    var linked = await Api.CheckWhatsAppLinkedAsync();
+                    await InvokeAsync(StateHasChanged);
+                    if (linked)
+                    {
+                        waLinked = true;
+                        showWaQrModal = false;
+                        ToastService.Success("WhatsApp vinculado correctamente");
+                        await InvokeAsync(StateHasChanged);
+                        break;
+                    }
+                }
+                catch (TaskCanceledException) { break; }
+                catch { /* swallow, seguimos */ }
+            }
+        }, token);
+    }
+
+    private async Task CancelWhatsAppLink()
+    {
+        waPollCts?.Cancel();
+        showWaQrModal = false;
+        try { await Api.CancelWhatsAppLinkAsync(); } catch { }
+    }
+
+    private async Task UnlinkWhatsApp()
+    {
+        waBusy = true;
+        try
+        {
+            var ok = await Api.UnlinkWhatsAppAsync();
+            if (ok)
+            {
+                waLinked = false;
+                ToastService.Success("WhatsApp desvinculado");
+            }
+            else
+            {
+                ToastService.Error("No se pudo desvincular");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error al desvincular: " + ex.Message);
+        }
+        finally
+        {
+            waBusy = false;
+        }
+    }
+
+    private void OpenWhatsAppTestModal()
+    {
+        waTestPhone = "";
+        waTestResult = "";
+        waTestSuccess = false;
+        waTestResults = new();
+        showWaTestModal = true;
+    }
+
+    private void CloseWhatsAppTestModal()
+    {
+        showWaTestModal = false;
+    }
+
+    private static List<string> ParseTestPhones(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return new();
+        var parts = raw.Split(new[] { ';', ',', '\n', '\r', ' ', '\t', '|' }, StringSplitOptions.RemoveEmptyEntries);
+        var seen = new HashSet<string>();
+        var result = new List<string>();
+        foreach (var p in parts)
+        {
+            var digits = new string(p.Where(char.IsDigit).ToArray());
+            if (digits.Length >= 8 && seen.Add(digits))
+                result.Add(digits);
+        }
+        return result;
+    }
+
+    private async Task SendWhatsAppTest()
+    {
+        var phones = ParseTestPhones(waTestPhone ?? "");
+        if (phones.Count == 0)
+        {
+            waTestResult = "Ingresa al menos un telefono valido (al menos 8 digitos, con codigo de pais)";
+            waTestSuccess = false;
+            waTestResults = new();
+            return;
+        }
+        waTesting = true;
+        waTestResult = "";
+        waTestResults = new();
+        try
+        {
+            if (phones.Count == 1)
+            {
+                var result = await Api.SendWhatsAppTestAsync(phones[0]);
+                if (result is null)
+                {
+                    waTestResult = "Sin respuesta del servidor";
+                    waTestSuccess = false;
+                }
+                else if (result.Success)
+                {
+                    waTestResult = $"Mensaje enviado a {phones[0]} ({result.Message})";
+                    waTestSuccess = true;
+                }
+                else
+                {
+                    waTestResult = "Error: " + result.Message;
+                    waTestSuccess = false;
+                }
+            }
+            else
+            {
+                var results = await Api.SendWhatsAppTestBulkAsync(phones);
+                if (results is null || results.Count == 0)
+                {
+                    waTestResult = "Sin respuesta del servidor";
+                    waTestSuccess = false;
+                }
+                else
+                {
+                    waTestResults = results;
+                    var ok = results.Count(r => r.Success);
+                    waTestSuccess = ok == results.Count;
+                    waTestResult = $"Envio masivo finalizado: {ok}/{results.Count} exitosos";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            waTestResult = "Error: " + ex.Message;
+            waTestSuccess = false;
+        }
+        finally
+        {
+            waTesting = false;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            waPollCts?.Cancel();
+            waPollCts?.Dispose();
+        }
+        catch { }
+        await Task.CompletedTask;
+    }
+
+    private async Task LoadMercadoLibre()
+    {
+        try
+        {
+            var integration = await Api.GetIntegrationAsync("mercadolibre");
+            if (integration is not null)
+            {
+                mlId = integration.Id;
+                mlAppId = integration.AppId ?? "";
+                mlRedirectUrl = integration.RedirectUrl ?? "";
+                mlActive = integration.IsActive;
+                mlHasSecret = integration.HasSecret;
+            }
+        }
+        catch { }
+    }
+
+    private async Task LoadAccounts()
+    {
+        try
+        {
+            accounts = await Api.GetMeliAccountsAsync();
+        }
+        catch { accounts = new(); }
+    }
+
+    // --- OpenAI Methods ---
+    private async Task LoadOpenAi()
+    {
+        try
+        {
+            var integration = await Api.GetIntegrationAsync("openai");
+            if (integration is not null)
+            {
+                openaiId = integration.Id;
+                openaiActive = integration.IsActive;
+                openaiHasSecret = integration.HasSecret;
+                if (!string.IsNullOrEmpty(integration.Settings))
+                {
+                    try
+                    {
+                        var doc = System.Text.Json.JsonDocument.Parse(integration.Settings);
+                        var root = doc.RootElement;
+                        if (root.TryGetProperty("model", out var m)) openaiModel = m.GetString() ?? "gpt-4o";
+                        if (root.TryGetProperty("maxTokens", out var t)) openaiMaxTokens = t.GetInt32();
+                        if (root.TryGetProperty("temperature", out var tp)) openaiTemperature = tp.GetDouble();
+                    }
+                    catch { }
+                }
+            }
+        }
+        catch { }
+    }
+
+    private async Task OpenOpenAiModal()
+    {
+        showOpenaiModal = true;
+        if (openaiHasSecret)
+            await LoadOpenAiModels();
+    }
+
+    private async Task LoadOpenAiModels()
+    {
+        loadingModels = true;
+        openaiModelsError = null;
+        StateHasChanged();
+
+        try
+        {
+            openaiModels = await Api.GetOpenAiModelsAsync();
+            if (openaiModels.Count == 0)
+                openaiModelsError = "No se encontraron modelos disponibles para esta API Key";
+        }
+        catch (Exception ex)
+        {
+            openaiModelsError = ex.Message;
+            openaiModels = null;
+        }
+        finally
+        {
+            loadingModels = false;
+        }
+    }
+
+    private void CloseOpenAiModal() => showOpenaiModal = false;
+
+    private async Task SaveOpenAi()
+    {
+        openaiSaving = true;
+        try
+        {
+            var settings = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                model = openaiModel,
+                maxTokens = openaiMaxTokens,
+                temperature = openaiTemperature
+            });
+
+            var request = new SaveIntegrationRequest
+            {
+                Provider = "openai",
+                AppId = null,
+                AppSecret = string.IsNullOrWhiteSpace(openaiApiKey) ? null : openaiApiKey,
+                RedirectUrl = null,
+                Settings = settings,
+                IsActive = openaiActive
+            };
+
+            var result = await Api.SaveIntegrationAsync(request);
+            if (result is not null)
+            {
+                openaiId = result.Id;
+                openaiHasSecret = result.HasSecret;
+                openaiApiKey = "";
+                ToastService.Success("Configuracion de OpenAI guardada");
+                // Reload models if key was just set
+                if (!openaiHasSecret || openaiModels == null)
+                {
+                    openaiHasSecret = result.HasSecret;
+                    await LoadOpenAiModels();
+                }
+                else
+                {
+                    showOpenaiModal = false;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error al guardar: " + ex.Message);
+        }
+        finally
+        {
+            openaiSaving = false;
+        }
+    }
+
+    private async Task DeleteOpenAi()
+    {
+        openaiSaving = true;
+        try
+        {
+            var deleted = await Api.DeleteIntegrationAsync("openai");
+            if (deleted)
+            {
+                openaiId = 0;
+                openaiApiKey = "";
+                openaiActive = false;
+                openaiHasSecret = false;
+                openaiModel = "gpt-4o";
+                openaiMaxTokens = 4096;
+                openaiTemperature = 0.7;
+                showOpenaiModal = false;
+                ToastService.Success("Integracion de OpenAI eliminada");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error al eliminar: " + ex.Message);
+        }
+        finally
+        {
+            openaiSaving = false;
+        }
+    }
+
+        // --- Claude (Anthropic) Methods ---
+    private async Task LoadClaude()
+    {
+        try
+        {
+            var integration = await Api.GetIntegrationAsync("claude");
+            if (integration is not null)
+            {
+                claudeId = integration.Id;
+                claudeActive = integration.IsActive;
+                claudeHasSecret = integration.HasSecret;
+                if (!string.IsNullOrEmpty(integration.Settings))
+                {
+                    try
+                    {
+                        var doc = System.Text.Json.JsonDocument.Parse(integration.Settings);
+                        var root = doc.RootElement;
+                        if (root.TryGetProperty("model", out var m)) claudeModel = m.GetString() ?? "claude-sonnet-4-20250514";
+                        if (root.TryGetProperty("maxTokens", out var t)) claudeMaxTokens = t.GetInt32();
+                        if (root.TryGetProperty("temperature", out var tp)) claudeTemperature = tp.GetDouble();
+                    }
+                    catch { }
+                }
+            }
+        }
+        catch { }
+    }
+
+    private async Task OpenClaudeModal()
+    {
+        showClaudeModal = true;
+        if (claudeHasSecret)
+            await LoadClaudeModels();
+    }
+
+    private void CloseClaudeModal() => showClaudeModal = false;
+
+    private async Task LoadClaudeModels()
+    {
+        loadingClaudeModels = true;
+        claudeModelsError = null;
+        StateHasChanged();
+
+        try
+        {
+            claudeModels = await Api.GetClaudeModelsAsync();
+            if (claudeModels.Count == 0)
+                claudeModelsError = "No se encontraron modelos disponibles para esta API Key";
+        }
+        catch (Exception ex)
+        {
+            claudeModelsError = ex.Message;
+            claudeModels = null;
+        }
+        finally
+        {
+            loadingClaudeModels = false;
+        }
+    }
+
+    private async Task SaveClaude()
+    {
+        claudeSaving = true;
+        try
+        {
+            var settings = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                model = claudeModel,
+                maxTokens = claudeMaxTokens,
+                temperature = claudeTemperature
+            });
+
+            var request = new SaveIntegrationRequest
+            {
+                Provider = "claude",
+                AppId = null,
+                AppSecret = string.IsNullOrWhiteSpace(claudeApiKey) ? null : claudeApiKey,
+                RedirectUrl = null,
+                Settings = settings,
+                IsActive = claudeActive
+            };
+
+            var result = await Api.SaveIntegrationAsync(request);
+            if (result is not null)
+            {
+                claudeId = result.Id;
+                claudeApiKey = "";
+                ToastService.Success("Configuracion de Claude guardada");
+                if (!claudeHasSecret || claudeModels == null)
+                {
+                    claudeHasSecret = result.HasSecret;
+                    await LoadClaudeModels();
+                }
+                else
+                {
+                    showClaudeModal = false;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error al guardar: " + ex.Message);
+        }
+        finally
+        {
+            claudeSaving = false;
+        }
+    }
+
+    private async Task DeleteClaude()
+    {
+        claudeSaving = true;
+        try
+        {
+            var deleted = await Api.DeleteIntegrationAsync("claude");
+            if (deleted)
+            {
+                claudeId = 0;
+                claudeApiKey = "";
+                claudeActive = false;
+                claudeHasSecret = false;
+                claudeModel = "claude-sonnet-4-20250514";
+                claudeMaxTokens = 4096;
+                claudeTemperature = 1.0;
+                claudeModels = null;
+                showClaudeModal = false;
+                ToastService.Success("Integracion de Claude eliminada");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error al eliminar: " + ex.Message);
+        }
+        finally
+        {
+            claudeSaving = false;
+        }
+    }
+
+    // --- Email SMTP Methods ---
+    private async Task LoadEmail()
+    {
+        try
+        {
+            var integration = await Api.GetIntegrationAsync("email-smtp");
+            if (integration is not null)
+            {
+                emailId = integration.Id;
+                emailActive = integration.IsActive;
+                emailHasSecret = integration.HasSecret;
+                if (!string.IsNullOrEmpty(integration.Settings))
+                {
+                    try
+                    {
+                        var doc = System.Text.Json.JsonDocument.Parse(integration.Settings);
+                        var root = doc.RootElement;
+                        if (root.TryGetProperty("smtpHost", out var sh)) emailSmtpHost = sh.GetString() ?? "smtp.gmail.com";
+                        if (root.TryGetProperty("smtpPort", out var sp)) emailSmtpPort = sp.GetInt32();
+                        if (root.TryGetProperty("smtpTls", out var st)) emailSmtpTls = st.GetBoolean();
+                        if (root.TryGetProperty("imapHost", out var ih)) emailImapHost = ih.GetString() ?? "imap.gmail.com";
+                        if (root.TryGetProperty("imapPort", out var ip)) emailImapPort = ip.GetInt32();
+                        if (root.TryGetProperty("imapTls", out var it)) emailImapTls = it.GetBoolean();
+                        if (root.TryGetProperty("fromName", out var fn)) emailFromName = fn.GetString() ?? "";
+                        if (root.TryGetProperty("fromAddress", out var fa)) emailFromAddress = fa.GetString() ?? "";
+                        if (root.TryGetProperty("username", out var un)) emailUsername = un.GetString() ?? "";
+                    }
+                    catch { }
+                }
+            }
+        }
+        catch { }
+    }
+
+    private async Task SaveEmail()
+    {
+        emailSaving = true;
+        try
+        {
+            var settings = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                smtpHost = emailSmtpHost,
+                smtpPort = emailSmtpPort,
+                smtpTls = emailSmtpTls,
+                imapHost = emailImapHost,
+                imapPort = emailImapPort,
+                imapTls = emailImapTls,
+                fromName = emailFromName,
+                fromAddress = emailFromAddress,
+                username = emailUsername
+            });
+
+            var request = new SaveIntegrationRequest
+            {
+                Provider = "email-smtp",
+                AppId = emailFromAddress,
+                AppSecret = string.IsNullOrWhiteSpace(emailPassword) ? null : emailPassword,
+                RedirectUrl = null,
+                Settings = settings,
+                IsActive = emailActive
+            };
+
+            var result = await Api.SaveIntegrationAsync(request);
+            if (result is not null)
+            {
+                emailId = result.Id;
+                emailHasSecret = result.HasSecret;
+                emailPassword = "";
+                ToastService.Success("Configuracion de Email guardada");
+                showEmailModal = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error al guardar: " + ex.Message);
+        }
+        finally
+        {
+            emailSaving = false;
+        }
+    }
+
+    private async Task DeleteEmail()
+    {
+        emailSaving = true;
+        try
+        {
+            var deleted = await Api.DeleteIntegrationAsync("email-smtp");
+            if (deleted)
+            {
+                emailId = 0;
+                emailPassword = "";
+                emailActive = false;
+                emailHasSecret = false;
+                emailSmtpHost = "smtp.gmail.com";
+                emailSmtpPort = 587;
+                emailSmtpTls = true;
+                emailImapHost = "imap.gmail.com";
+                emailImapPort = 993;
+                emailImapTls = true;
+                emailFromName = "";
+                emailFromAddress = "";
+                emailUsername = "";
+                showEmailModal = false;
+                ToastService.Success("Integracion de Email eliminada");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error al eliminar: " + ex.Message);
+        }
+        finally
+        {
+            emailSaving = false;
+        }
+    }
+
+    private async Task TestEmail()
+    {
+        emailTesting = true;
+        StateHasChanged();
+        try
+        {
+            // Save first if needed
+            if (emailId == 0 || !string.IsNullOrWhiteSpace(emailPassword))
+            {
+                await SaveEmail();
+            }
+            var msg = await Api.TestEmailAsync();
+            if (!string.IsNullOrEmpty(msg))
+                ToastService.Success(msg);
+            else
+                ToastService.Error("No se pudo enviar el email de prueba");
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error(ex.Message);
+        }
+        finally
+        {
+            emailTesting = false;
+        }
+    }
+
+    private void ToggleAddMenu()
+    {
+        showAddMenu = !showAddMenu;
+    }
+
+    private void AddIntegration_ML()
+    {
+        showAddMenu = false;
+        OpenConfigModal();
+    }
+
+    private async Task AddIntegration_OpenAI()
+    {
+        showAddMenu = false;
+        await OpenOpenAiModal();
+    }
+
+    private async Task AddIntegration_Claude()
+    {
+        showAddMenu = false;
+        await OpenClaudeModal();
+    }
+
+    private void AddIntegration_Email()
+    {
+        showAddMenu = false;
+        OpenEmailModal();
+    }
+
+    private void OpenEmailModal() => showEmailModal = true;
+    private void CloseEmailModal() => showEmailModal = false;
+
+    private void OpenConfigModal()
+    {
+        mlError = null;
+        mlSaved = false;
+        showConfigModal = true;
+    }
+
+    private void CloseConfigModal()
+    {
+        showConfigModal = false;
+        mlError = null;
+        mlSaved = false;
+    }
+
+    private async Task SaveMercadoLibre()
+    {
+        mlError = null;
+        mlSaved = false;
+        saving = true;
+
+        try
+        {
+            var request = new SaveIntegrationRequest
+            {
+                Provider = "mercadolibre",
+                AppId = mlAppId,
+                AppSecret = string.IsNullOrWhiteSpace(mlSecret) ? null : mlSecret,
+                RedirectUrl = mlRedirectUrl,
+                IsActive = mlActive
+            };
+
+            var result = await Api.SaveIntegrationAsync(request);
+            if (result is not null)
+            {
+                mlId = result.Id;
+                mlHasSecret = result.HasSecret;
+                mlSecret = "";
+                mlSaved = true;
+                ToastService.Success("Configuracion de MercadoLibre guardada");
+                showConfigModal = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            mlError = "Error al guardar: " + ex.Message;
+            ToastService.Error("Error al guardar la configuracion");
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private async Task DeleteMercadoLibre()
+    {
+        saving = true;
+        mlError = null;
+
+        try
+        {
+            var deleted = await Api.DeleteIntegrationAsync("mercadolibre");
+            if (deleted)
+            {
+                mlId = 0;
+                mlAppId = "";
+                mlSecret = "";
+                mlRedirectUrl = "";
+                mlActive = false;
+                mlHasSecret = false;
+                accounts = new();
+                showConfigModal = false;
+                ToastService.Success("Integracion de MercadoLibre eliminada");
+            }
+        }
+        catch
+        {
+            mlError = "Error al eliminar la integracion";
+            ToastService.Error("Error al eliminar");
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private async Task ToggleConnectMenu()
+    {
+        if (showConnectMenu)
+        {
+            showConnectMenu = false;
+            return;
+        }
+
+        mlError = null;
+        try
+        {
+            var response = await Api.GetMeliAuthUrlAsync();
+            if (response is not null && !string.IsNullOrEmpty(response.AuthUrl))
+            {
+                meliAuthUrl = response.AuthUrl;
+                showConnectMenu = true;
+                urlCopied = false;
+            }
+            else
+            {
+                ToastService.Error("No se pudo obtener la URL de autorizacion. Verifica la configuracion.");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error al obtener URL: " + ex.Message);
+        }
+    }
+
+    private async Task OpenInBrowser()
+    {
+        showConnectMenu = false;
+        waitingForCode = true;
+        authCode = "";
+        await JS.InvokeVoidAsync("open", meliAuthUrl, "_blank");
+    }
+
+    private async Task CopyAuthUrl()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("copyToClipboard", meliAuthUrl);
+            urlCopied = true;
+            waitingForCode = true;
+            showConnectMenu = false;
+            ToastService.Success("URL copiada al portapapeles");
+        }
+        catch
+        {
+            ToastService.Error("No se pudo copiar la URL");
+        }
+    }
+
+    private void CancelConnect()
+    {
+        waitingForCode = false;
+        authCode = "";
+        showConnectMenu = false;
+    }
+
+    private void OpenTestUserModal()
+    {
+        testUserJson = "";
+        testUserError = null;
+        testUserCopied = false;
+        testUserSite = "MLA";
+        showTestUserModal = true;
+    }
+
+    private void CloseTestUserModal()
+    {
+        showTestUserModal = false;
+        testUserJson = "";
+        testUserError = null;
+        testUserCopied = false;
+    }
+
+    private async Task CreateTestUser()
+    {
+        testUserError = null;
+        creatingTestUser = true;
+        try
+        {
+            var json = await Api.CreateMeliTestUserAsync(testUserSite);
+            if (!string.IsNullOrEmpty(json))
+            {
+                testUserJson = TryPrettyPrintJson(json);
+                ToastService.Success("Cuenta de test creada");
+            }
+            else
+            {
+                testUserError = "No se recibio respuesta del servidor.";
+            }
+        }
+        catch (Exception ex)
+        {
+            testUserError = ex.Message;
+        }
+        finally
+        {
+            creatingTestUser = false;
+        }
+    }
+
+    private static string TryPrettyPrintJson(string raw)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(raw);
+            return System.Text.Json.JsonSerializer.Serialize(doc, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+        catch
+        {
+            return raw;
+        }
+    }
+
+    private async Task CopyTestUserJson()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("copyToClipboard", testUserJson);
+            testUserCopied = true;
+            ToastService.Success("JSON copiado al portapapeles");
+        }
+        catch
+        {
+            ToastService.Error("No se pudo copiar");
+        }
+    }
+
+    private async Task DownloadTestUserJson()
+    {
+        try
+        {
+            var fileName = $"meli-test-user-{testUserSite}-{DateTime.Now:yyyyMMdd-HHmmss}.json";
+            await JS.InvokeVoidAsync("downloadTextFile", fileName, testUserJson, "application/json");
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("No se pudo descargar: " + ex.Message);
+        }
+    }
+
+    private async Task SubmitCode()
+    {
+        if (string.IsNullOrWhiteSpace(authCode))
+        {
+            ToastService.Warning("Pega el codigo de autorizacion");
+            return;
+        }
+
+        connecting = true;
+
+        try
+        {
+            var account = await Api.MeliCallbackAsync(authCode.Trim());
+            if (account is not null)
+            {
+                ToastService.Success($"Cuenta {account.Nickname} conectada exitosamente");
+                waitingForCode = false;
+                authCode = "";
+                await LoadAccounts();
+            }
+            else
+            {
+                ToastService.Error("No se pudo conectar. Verifica el codigo e intenta de nuevo.");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error al conectar: " + ex.Message);
+        }
+        finally
+        {
+            connecting = false;
+        }
+    }
+
+    private async Task RemoveAccount(int id)
+    {
+        accountToDelete = id;
+        deleteConfirmText = "";
+        deletingAccount = false;
+        try
+        {
+            deleteStats = await Api.GetMeliAccountStatsAsync(id);
+            if (deleteStats != null)
+                showDeleteConfirm = true;
+            else
+                ToastService.Error("No se pudo obtener la informacion de la cuenta");
+        }
+        catch
+        {
+            ToastService.Error("Error al obtener datos de la cuenta");
+        }
+    }
+
+    private void CloseDeleteModal()
+    {
+        showDeleteConfirm = false;
+        deleteStats = null;
+        deleteConfirmText = "";
+    }
+
+    private async Task ConfirmRemoveAccount()
+    {
+        if (deleteStats == null || deleteConfirmText != deleteStats.Nickname) return;
+        deletingAccount = true;
+
+        try
+        {
+            var deleted = await Api.DeleteMeliAccountAsync(accountToDelete);
+            if (deleted)
+            {
+                ToastService.Success("Cuenta " + deleteStats.Nickname + " desconectada y datos eliminados");
+                CloseDeleteModal();
+                await LoadAccounts();
+            }
+        }
+        catch
+        {
+            ToastService.Error("Error al quitar la cuenta");
+        }
+        finally
+        {
+            deletingAccount = false;
+        }
+    }
+}

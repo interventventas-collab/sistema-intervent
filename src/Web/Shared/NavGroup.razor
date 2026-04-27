@@ -1,0 +1,35 @@
+<div class="nav-group @(IsExpanded ? "expanded" : "") @(HasActiveChild ? "has-active" : "")">
+    <button class="nav-group-header" @onclick="Toggle">
+        <span class="nav-icon">@Icon</span>
+        <span class="nav-label">@Label</span>
+        <span class="nav-group-arrow">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </span>
+    </button>
+    <div class="nav-group-children" style="@(IsExpanded ? "" : "display:none")">
+        @ChildContent
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public MarkupString Icon { get; set; }
+    [Parameter] public bool HasActiveChild { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private bool IsExpanded { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        // Auto-expand when a child page is active
+        if (HasActiveChild)
+        {
+            IsExpanded = true;
+        }
+    }
+
+    private void Toggle()
+    {
+        IsExpanded = !IsExpanded;
+    }
+}
