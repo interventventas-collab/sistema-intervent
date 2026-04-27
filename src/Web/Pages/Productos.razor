@@ -218,7 +218,20 @@
                                         </div>
                                     }
                                 </td>
-                                <td style="text-align: right;">$@FormatPrice(product.CostPrice)</td>
+                                <td style="text-align: right; padding: 0.25rem 0.5rem;" @onclick:stopPropagation="true">
+                                    <div style="display: inline-flex; align-items: center; gap: 0.2rem; border: 1px solid #d1d5db; border-radius: 6px; padding: 0.25rem 0.4rem; background: white;">
+                                        <span style="color: #6b7280; font-size: 0.85rem;">$</span>
+                                        <input type="text"
+                                               value="@FormatPrice(product.CostPrice)"
+                                               @onchange="@(e => SaveProductCost(product, e.Value?.ToString()))"
+                                               disabled="@(savingCostId == product.Id)"
+                                               style="border: none; outline: none; text-align: right; width: 95px; font-size: 0.9rem; background: transparent; padding: 0;" />
+                                        @if (savingCostId == product.Id)
+                                        {
+                                            <span style="color: #3b82f6; font-size: 0.75rem;">...</span>
+                                        }
+                                    </div>
+                                </td>
                                 <td style="text-align: right;">$@FormatPrice(product.RetailPrice)</td>
                                 <td style="text-align: center; font-weight: 700;">
                                     @if (product.CriticalStock > 0 && product.Stock <= product.CriticalStock)
@@ -1568,6 +1581,47 @@
         }
         errors.AddRange(warnings);
         return errors;
+    }
+
+    private int? savingCostId;
+
+    private async Task SaveProductCost(ProductDto product, string? rawValue)
+    {
+        var newCost = ParseFormattedPrice(rawValue ?? "");
+        if (newCost == product.CostPrice) return;
+        if (newCost < 0)
+        {
+            ToastService.Error("El costo no puede ser negativo");
+            return;
+        }
+
+        var original = product.CostPrice;
+        savingCostId = product.Id;
+        StateHasChanged();
+
+        try
+        {
+            var req = new UpdateProductRequest { CostPrice = newCost };
+            var updated = await Api.UpdateProductAsync(product.Id, req);
+            if (updated is null)
+            {
+                product.CostPrice = original;
+                ToastService.Error("No se pudo actualizar el costo");
+            }
+            else
+            {
+                product.CostPrice = newCost;
+                ToastService.Success($"Costo actualizado: ${FormatPrice(newCost)}");
+            }
+        }
+        catch (Exception ex)
+        {
+            product.CostPrice = original;
+            ToastService.Error("Error al actualizar costo: " + ex.Message);
+        }
+
+        savingCostId = null;
+        StateHasChanged();
     }
 
     private string FormatPrice(decimal value)
