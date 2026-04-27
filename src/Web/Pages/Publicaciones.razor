@@ -1304,6 +1304,12 @@
     }
 
     /* Sync dropdown */
+    .card:has(.sync-dropdown-wrapper) {
+        overflow: visible;
+    }
+    .card:has(.sync-dropdown-wrapper) > .card-header {
+        overflow: visible;
+    }
     .sync-dropdown-wrapper {
         position: relative;
         display: flex;
