@@ -183,7 +183,7 @@ public class MeliController : ControllerBase
     {
         try
         {
-            var result = await _itemService.SyncSingleItemAsync(request.MeliItemId);
+            var result = await _itemService.SyncItemsByIdAsync(request.MeliItemId);
             return Ok(result);
         }
         catch (Exception ex)

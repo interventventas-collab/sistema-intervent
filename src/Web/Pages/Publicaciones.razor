@@ -1737,26 +1737,43 @@
     <div class="modal-overlay" @onclick="CloseSyncByIdModal">
         <div class="modal-card modal-small" @onclick:stopPropagation="true">
             <div class="modal-header" style="background: whitesmoke;">
-                <h4 style="margin: 0;">Traer publicacion por ID</h4>
+                <h4 style="margin: 0;">Traer publicaciones por ID</h4>
                 <button class="btn-close" @onclick="CloseSyncByIdModal">&times;</button>
             </div>
             <div class="modal-body">
                 <p style="font-size: 0.85rem; color: #6b7280; margin-bottom: 0.75rem;">
-                    Ingresa el ID de la publicacion (solo el numero, por ejemplo: <strong>123456789</strong>).
+                    Ingresa uno o varios IDs separados por coma (solo el numero).<br/>
+                    Ejemplo: <strong>123456789, 987654321, 555444333</strong>
                 </p>
                 <div class="form-group">
-                    <input type="text" class="form-control" placeholder="123456789"
-                           @bind="syncByIdInput" @bind:event="oninput"
-                           @onkeydown="OnSyncByIdKeyDown"
-                           disabled="@isSyncingById" autofocus />
+                    <textarea class="form-control" rows="3" placeholder="123456789, 987654321, ..."
+                              @bind="syncByIdInput" @bind:event="oninput"
+                              disabled="@isSyncingById"></textarea>
                 </div>
                 @if (!string.IsNullOrEmpty(syncByIdError))
                 {
                     <p style="color: #dc3545; font-size: 0.85rem; margin: 0;">@syncByIdError</p>
                 }
+                @if (syncByIdResults is not null)
+                {
+                    <div style="margin-top: 0.75rem; padding: 0.6rem 0.75rem; border-radius: 6px; background: #f3f4f6; font-size: 0.85rem;">
+                        <strong>@syncByIdResults.TotalSynced</strong> traidas, <strong style="color:@(syncByIdResults.TotalErrors > 0 ? "#dc3545" : "#374151")">@syncByIdResults.TotalErrors</strong> con error (de @syncByIdResults.TotalRequested solicitados).
+                    </div>
+                    @if (syncByIdResults.Results.Any(r => !string.IsNullOrEmpty(r.Error)))
+                    {
+                        <div style="margin-top: 0.5rem; max-height: 180px; overflow-y: auto; font-size: 0.8rem;">
+                            @foreach (var r in syncByIdResults.Results.Where(x => !string.IsNullOrEmpty(x.Error)))
+                            {
+                                <div style="padding: 0.3rem 0.5rem; border-bottom: 1px solid #e5e7eb;">
+                                    <strong>@r.MeliItemId</strong>: <span style="color:#dc3545;">@r.Error</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" @onclick="CloseSyncByIdModal" disabled="@isSyncingById">Cancelar</button>
+                <button class="btn btn-secondary" @onclick="CloseSyncByIdModal" disabled="@isSyncingById">@(syncByIdResults is not null ? "Cerrar" : "Cancelar")</button>
                 <button class="btn btn-primary" @onclick="ConfirmSyncById" disabled="@(isSyncingById || string.IsNullOrWhiteSpace(syncByIdInput))">
                     @(isSyncingById ? "Trayendo..." : "Traer")
                 </button>
@@ -2040,6 +2057,7 @@
     private string syncByIdInput = string.Empty;
     private string? syncByIdError;
     private bool isSyncingById;
+    private MeliItemSyncByIdBatchResult? syncByIdResults;
 
     // View mode
     private string viewMode = "flat";
@@ -2235,6 +2253,7 @@
         showSyncMenu = false;
         syncByIdInput = string.Empty;
         syncByIdError = null;
+        syncByIdResults = null;
         showSyncByIdModal = true;
     }
 
@@ -2244,42 +2263,47 @@
         showSyncByIdModal = false;
         syncByIdInput = string.Empty;
         syncByIdError = null;
-    }
-
-    private async Task OnSyncByIdKeyDown(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter" && !isSyncingById && !string.IsNullOrWhiteSpace(syncByIdInput))
-            await ConfirmSyncById();
+        syncByIdResults = null;
     }
 
     private async Task ConfirmSyncById()
     {
-        var id = (syncByIdInput ?? "").Trim();
-        if (string.IsNullOrEmpty(id))
+        var input = (syncByIdInput ?? "").Trim();
+        if (string.IsNullOrEmpty(input))
         {
-            syncByIdError = "Ingresa un ID.";
+            syncByIdError = "Ingresa al menos un ID.";
             return;
         }
 
         isSyncingById = true;
         syncByIdError = null;
+        syncByIdResults = null;
         StateHasChanged();
 
-        var (result, error) = await Api.SyncMeliItemByIdAsync(id);
+        var (result, error) = await Api.SyncMeliItemByIdAsync(input);
 
         isSyncingById = false;
 
-        if (result is not null && result.Item is not null)
+        if (result is not null)
         {
-            var verb = result.Action == "created" ? "Traida" : "Actualizada";
-            ToastService.Success($"{verb} la publicacion {result.Item.MeliItemId} ({result.AccountNickname}).");
-            showSyncByIdModal = false;
-            syncByIdInput = string.Empty;
-            await LoadItems();
+            syncByIdResults = result;
+            if (result.TotalSynced > 0)
+            {
+                var msg = result.TotalErrors == 0
+                    ? $"{result.TotalSynced} publicacion(es) traidas correctamente."
+                    : $"{result.TotalSynced} traidas, {result.TotalErrors} con error.";
+                ToastService.Success(msg);
+                await LoadItems();
+            }
+            else
+            {
+                ToastService.Error($"Ninguna publicacion pudo traerse ({result.TotalErrors} error(es)).");
+            }
+            StateHasChanged();
         }
         else
         {
-            syncByIdError = error ?? "No se pudo traer la publicacion.";
+            syncByIdError = error ?? "No se pudieron traer las publicaciones.";
             StateHasChanged();
         }
     }

@@ -141,6 +141,10 @@ public record MeliItemSyncSingleResult(string Action, string AccountNickname, Me
 
 public record SyncItemByIdRequest(string MeliItemId);
 
+public record MeliItemSyncByIdResultItem(string MeliItemId, string? Action, string? AccountNickname, string? Error);
+
+public record MeliItemSyncByIdBatchResult(int TotalRequested, int TotalSynced, int TotalErrors, List<MeliItemSyncByIdResultItem> Results);
+
 public record UpdateMeliItemRequest(string? Title, decimal? Price, int? AvailableQuantity, string? Status);
 
 public record LinkItemToProductRequest(int ProductId);

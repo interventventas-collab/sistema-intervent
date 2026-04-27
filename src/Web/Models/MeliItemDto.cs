@@ -53,6 +53,22 @@ public class MeliItemSyncSingleResult
     public MeliItemDto? Item { get; set; }
 }
 
+public class MeliItemSyncByIdResultItem
+{
+    public string MeliItemId { get; set; } = string.Empty;
+    public string? Action { get; set; }
+    public string? AccountNickname { get; set; }
+    public string? Error { get; set; }
+}
+
+public class MeliItemSyncByIdBatchResult
+{
+    public int TotalRequested { get; set; }
+    public int TotalSynced { get; set; }
+    public int TotalErrors { get; set; }
+    public List<MeliItemSyncByIdResultItem> Results { get; set; } = new();
+}
+
 public class UpdateMeliItemRequest
 {
     public string? Title { get; set; }

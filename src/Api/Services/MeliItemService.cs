@@ -446,6 +446,39 @@ public class MeliItemService
         return result;
     }
 
+    public async Task<MeliItemSyncByIdBatchResult> SyncItemsByIdAsync(string rawIds)
+    {
+        var ids = (rawIds ?? "")
+            .Split(new[] { ',', ';', '\n', '\r', '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => s.Trim())
+            .Where(s => s.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (ids.Count == 0)
+            throw new Exception("Hay que indicar al menos un ID de publicacion.");
+
+        var results = new List<MeliItemSyncByIdResultItem>();
+        int synced = 0, errors = 0;
+
+        foreach (var id in ids)
+        {
+            try
+            {
+                var single = await SyncSingleItemAsync(id);
+                results.Add(new MeliItemSyncByIdResultItem(single.Item.MeliItemId, single.Action, single.AccountNickname, null));
+                synced++;
+            }
+            catch (Exception ex)
+            {
+                results.Add(new MeliItemSyncByIdResultItem(id, null, null, ex.Message));
+                errors++;
+            }
+        }
+
+        return new MeliItemSyncByIdBatchResult(ids.Count, synced, errors, results);
+    }
+
     public async Task<MeliItemSyncSingleResult> SyncSingleItemAsync(string meliItemId)
     {
         meliItemId = (meliItemId ?? "").Trim().ToUpperInvariant();
