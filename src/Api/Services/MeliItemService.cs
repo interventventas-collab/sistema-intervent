@@ -452,6 +452,10 @@ public class MeliItemService
         if (string.IsNullOrEmpty(meliItemId))
             throw new Exception("Hay que indicar un ID de publicacion.");
 
+        // Aceptar IDs sin prefijo (solo numeros): asumir MLA (Argentina) por default.
+        if (meliItemId.All(char.IsDigit))
+            meliItemId = "MLA" + meliItemId;
+
         var accounts = await _accountService.GetAllAccountEntitiesAsync();
         if (accounts.Count == 0)
             throw new Exception("No hay cuentas de MercadoLibre conectadas.");

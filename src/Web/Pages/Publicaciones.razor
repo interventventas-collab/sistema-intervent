@@ -1742,10 +1742,10 @@
             </div>
             <div class="modal-body">
                 <p style="font-size: 0.85rem; color: #6b7280; margin-bottom: 0.75rem;">
-                    Ingresa el ID de la publicacion de MercadoLibre (por ejemplo: <strong>MLA123456789</strong>).
+                    Ingresa el ID de la publicacion (solo el numero, por ejemplo: <strong>123456789</strong>).
                 </p>
                 <div class="form-group">
-                    <input type="text" class="form-control" placeholder="MLAxxxxxxxxx"
+                    <input type="text" class="form-control" placeholder="123456789"
                            @bind="syncByIdInput" @bind:event="oninput"
                            @onkeydown="OnSyncByIdKeyDown"
                            disabled="@isSyncingById" autofocus />
