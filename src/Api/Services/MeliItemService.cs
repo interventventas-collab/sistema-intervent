@@ -446,6 +446,76 @@ public class MeliItemService
         return result;
     }
 
+    public async Task<MeliItemSyncSingleResult> SyncSingleItemAsync(string meliItemId)
+    {
+        meliItemId = (meliItemId ?? "").Trim().ToUpperInvariant();
+        if (string.IsNullOrEmpty(meliItemId))
+            throw new Exception("Hay que indicar un ID de publicacion.");
+
+        var accounts = await _accountService.GetAllAccountEntitiesAsync();
+        if (accounts.Count == 0)
+            throw new Exception("No hay cuentas de MercadoLibre conectadas.");
+
+        // Use the first account's token to fetch the item (the /items/{id} endpoint
+        // works for any item, but we still need a token to avoid throttling).
+        var firstAccount = accounts[0];
+        var token = await _accountService.GetValidTokenAsync(firstAccount);
+        if (token is null)
+            throw new Exception($"Token expirado para {firstAccount.Nickname}. Reconecta la cuenta.");
+
+        var http = _httpFactory.CreateClient();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var response = await http.GetAsync($"https://api.mercadolibre.com/items/{meliItemId}");
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            throw new Exception($"La publicacion {meliItemId} no existe en MercadoLibre.");
+        if (!response.IsSuccessStatusCode)
+        {
+            var errBody = await response.Content.ReadAsStringAsync();
+            throw new Exception($"Error de MercadoLibre ({response.StatusCode}): {errBody}");
+        }
+
+        var json = await response.Content.ReadAsStringAsync();
+        var body = JsonDocument.Parse(json).RootElement;
+
+        // Identify owner account by seller_id
+        long sellerId = 0;
+        if (body.TryGetProperty("seller_id", out var sid) && sid.ValueKind == JsonValueKind.Number)
+            sellerId = sid.GetInt64();
+
+        var ownerAccount = accounts.FirstOrDefault(a => a.MeliUserId == sellerId);
+        if (ownerAccount is null)
+            throw new Exception($"La publicacion {meliItemId} pertenece a una cuenta de MercadoLibre que no esta conectada (seller_id={sellerId}).");
+
+        // Detect if it already existed locally to report create vs update
+        var existed = await _db.MeliItems.AnyAsync(i => i.MeliItemId == meliItemId);
+
+        await UpsertItemAsync(ownerAccount.Id, body);
+        await _db.SaveChangesAsync();
+
+        var saved = await _db.MeliItems
+            .Include(i => i.MeliAccount)
+            .Include(i => i.Product)
+            .FirstAsync(i => i.MeliItemId == meliItemId);
+
+        var dto = new MeliItemDto(
+            saved.Id, saved.MeliItemId, saved.MeliAccountId,
+            saved.MeliAccount != null ? saved.MeliAccount.Nickname : "Desconocida",
+            saved.Title, saved.CategoryId, saved.CategoryPath, saved.Price, saved.OriginalPrice, saved.CurrencyId,
+            saved.AvailableQuantity, saved.SoldQuantity, saved.Status,
+            saved.Condition, saved.ListingTypeId, saved.InstallmentTag, saved.FreeShipping, saved.Thumbnail, saved.Permalink,
+            saved.Sku, saved.UserProductId, saved.FamilyId, saved.FamilyName,
+            saved.DateCreated, saved.LastUpdated,
+            saved.ProductId, saved.Product != null ? saved.Product.Title : null,
+            saved.Product != null ? (int?)saved.Product.CriticalStock : null);
+
+        var action = existed ? "updated" : "created";
+        await _auditLog.LogAsync("Sync", "items", "SYNC_BY_ID",
+            System.Text.Json.JsonSerializer.Serialize(new { meliItemId, action, cuenta = ownerAccount.Nickname }));
+
+        return new MeliItemSyncSingleResult(action, ownerAccount.Nickname, dto);
+    }
+
     public async Task<MeliItemSyncResult> SyncItemsAsync(string? statusFilter = null, int? accountId = null, string? progressId = null)
     {
         var accounts = await _accountService.GetAllAccountEntitiesAsync();

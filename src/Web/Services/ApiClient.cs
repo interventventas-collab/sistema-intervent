@@ -305,6 +305,25 @@ public class ApiClient
         return await PostAsync<MeliItemSyncResult>(url, new { });
     }
 
+    public async Task<(MeliItemSyncSingleResult? Result, string? Error)> SyncMeliItemByIdAsync(string meliItemId)
+    {
+        var response = await _http.PostAsJsonAsync("/api/meli/items/sync-by-id", new { meliItemId });
+        if (response.IsSuccessStatusCode)
+        {
+            var result = await response.Content.ReadFromJsonAsync<MeliItemSyncSingleResult>();
+            return (result, null);
+        }
+        try
+        {
+            var err = await response.Content.ReadFromJsonAsync<Dictionary<string, string>>();
+            return (null, err is not null && err.TryGetValue("error", out var msg) ? msg : "Error al traer la publicacion.");
+        }
+        catch
+        {
+            return (null, "Error al traer la publicacion.");
+        }
+    }
+
     public async Task<SyncProgressResponse?> GetSyncProgressAsync(string? id = null)
     {
         var url = "/api/meli/items/sync/progress";

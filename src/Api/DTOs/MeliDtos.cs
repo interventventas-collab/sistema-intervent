@@ -137,6 +137,10 @@ public record MeliItemsResponse(List<MeliItemDto> Items, int Total);
 
 public record MeliItemSyncResult(int TotalSynced, int TotalErrors, List<string> Errors);
 
+public record MeliItemSyncSingleResult(string Action, string AccountNickname, MeliItemDto Item);
+
+public record SyncItemByIdRequest(string MeliItemId);
+
 public record UpdateMeliItemRequest(string? Title, decimal? Price, int? AvailableQuantity, string? Status);
 
 public record LinkItemToProductRequest(int ProductId);

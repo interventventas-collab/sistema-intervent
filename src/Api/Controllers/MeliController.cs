@@ -178,6 +178,20 @@ public class MeliController : ControllerBase
         }
     }
 
+    [HttpPost("items/sync-by-id")]
+    public async Task<IActionResult> SyncItemById([FromBody] SyncItemByIdRequest request)
+    {
+        try
+        {
+            var result = await _itemService.SyncSingleItemAsync(request.MeliItemId);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpPost("items/sync")]
     public IActionResult SyncItems([FromQuery] string? status = null, [FromQuery] int? accountId = null)
     {

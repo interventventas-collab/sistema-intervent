@@ -43,6 +43,10 @@
                         }
                     }
                     <div class="sync-dropdown-divider"></div>
+                    <button class="sync-dropdown-item" @onclick="OpenSyncByIdModal">
+                        <i class="fa-solid fa-magnifying-glass"></i> Traer por ID
+                    </button>
+                    <div class="sync-dropdown-divider"></div>
                     <button class="sync-dropdown-item sync-item-all" @onclick='() => SyncItems(null, null)'>
                         <i class="fa-solid fa-arrows-rotate"></i> Sincronizar todo
                     </button>
@@ -1728,6 +1732,39 @@
     </div>
 }
 
+@if (showSyncByIdModal)
+{
+    <div class="modal-overlay" @onclick="CloseSyncByIdModal">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h4 style="margin: 0;">Traer publicacion por ID</h4>
+                <button class="btn-close" @onclick="CloseSyncByIdModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.85rem; color: #6b7280; margin-bottom: 0.75rem;">
+                    Ingresa el ID de la publicacion de MercadoLibre (por ejemplo: <strong>MLA123456789</strong>).
+                </p>
+                <div class="form-group">
+                    <input type="text" class="form-control" placeholder="MLAxxxxxxxxx"
+                           @bind="syncByIdInput" @bind:event="oninput"
+                           @onkeydown="OnSyncByIdKeyDown"
+                           disabled="@isSyncingById" autofocus />
+                </div>
+                @if (!string.IsNullOrEmpty(syncByIdError))
+                {
+                    <p style="color: #dc3545; font-size: 0.85rem; margin: 0;">@syncByIdError</p>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseSyncByIdModal" disabled="@isSyncingById">Cancelar</button>
+                <button class="btn btn-primary" @onclick="ConfirmSyncById" disabled="@(isSyncingById || string.IsNullOrWhiteSpace(syncByIdInput))">
+                    @(isSyncingById ? "Trayendo..." : "Traer")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @if (showDeleteModal)
 {
     <div class="modal-overlay" @onclick="CloseDeleteModal">
@@ -1998,6 +2035,12 @@
     private bool showSyncMenu;
     private List<MeliAccountDto>? meliAccounts;
 
+    // Sync by ID modal
+    private bool showSyncByIdModal;
+    private string syncByIdInput = string.Empty;
+    private string? syncByIdError;
+    private bool isSyncingById;
+
     // View mode
     private string viewMode = "flat";
     private bool filterPromo = false;
@@ -2185,6 +2228,60 @@
         }
 
         isSyncing = false;
+    }
+
+    private void OpenSyncByIdModal()
+    {
+        showSyncMenu = false;
+        syncByIdInput = string.Empty;
+        syncByIdError = null;
+        showSyncByIdModal = true;
+    }
+
+    private void CloseSyncByIdModal()
+    {
+        if (isSyncingById) return;
+        showSyncByIdModal = false;
+        syncByIdInput = string.Empty;
+        syncByIdError = null;
+    }
+
+    private async Task OnSyncByIdKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !isSyncingById && !string.IsNullOrWhiteSpace(syncByIdInput))
+            await ConfirmSyncById();
+    }
+
+    private async Task ConfirmSyncById()
+    {
+        var id = (syncByIdInput ?? "").Trim();
+        if (string.IsNullOrEmpty(id))
+        {
+            syncByIdError = "Ingresa un ID.";
+            return;
+        }
+
+        isSyncingById = true;
+        syncByIdError = null;
+        StateHasChanged();
+
+        var (result, error) = await Api.SyncMeliItemByIdAsync(id);
+
+        isSyncingById = false;
+
+        if (result is not null && result.Item is not null)
+        {
+            var verb = result.Action == "created" ? "Traida" : "Actualizada";
+            ToastService.Success($"{verb} la publicacion {result.Item.MeliItemId} ({result.AccountNickname}).");
+            showSyncByIdModal = false;
+            syncByIdInput = string.Empty;
+            await LoadItems();
+        }
+        else
+        {
+            syncByIdError = error ?? "No se pudo traer la publicacion.";
+            StateHasChanged();
+        }
     }
 
     private void SendSyncToBackground()

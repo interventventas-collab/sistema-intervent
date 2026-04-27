@@ -46,6 +46,13 @@ public class MeliItemSyncResult
     public string? ProgressId { get; set; }
 }
 
+public class MeliItemSyncSingleResult
+{
+    public string Action { get; set; } = string.Empty;
+    public string AccountNickname { get; set; } = string.Empty;
+    public MeliItemDto? Item { get; set; }
+}
+
 public class UpdateMeliItemRequest
 {
     public string? Title { get; set; }
