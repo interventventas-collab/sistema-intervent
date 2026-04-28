@@ -76,8 +76,15 @@
                                         <span class="status-badge status-active">Emitida</span>
                                     }
                                 </td>
-                                <td class="actions-cell">
+                                <td class="actions-cell" style="white-space: nowrap;">
                                     <button class="btn-icon btn-edit" @onclick="() => OpenViewer(s)" title="Ver comprobante">@SvgIcons.Tag</button>
+                                    @if (!s.IsCancelled)
+                                    {
+                                        <button class="btn-icon" style="background:#dbeafe;color:#1e40af;border:1px solid #1e40af;padding:2px 6px;border-radius:4px;font-size:0.7rem;font-weight:700;"
+                                                @onclick="() => OpenEditForm(s)" title="Editar comprobante">✎ Editar</button>
+                                    }
+                                    <button class="btn-icon" style="background:#fef3c7;color:#92400e;border:1px solid #fbbf24;padding:2px 6px;border-radius:4px;font-size:0.7rem;font-weight:700;"
+                                            @onclick="() => OpenDuplicateForm(s)" title="Duplicar como comprobante nuevo">⎘ Duplicar</button>
                                     @if (!s.IsCancelled)
                                     {
                                         <button class="btn-icon btn-delete" @onclick="() => ConfirmCancel(s)" title="Anular">@SvgIcons.AlertCircle</button>
@@ -102,11 +109,39 @@
 {
     <div class="modal-overlay" @onclick="CloseForm">
         <div class="modal-card modal-wide" @onclick:stopPropagation="true">
-            <div class="modal-header" style="background: whitesmoke;">
-                <h3>Nueva Venta</h3>
+            <div class="modal-header" style="background: @(formMode == "edit" ? "#dbeafe" : (formMode == "duplicate" ? "#fef3c7" : "whitesmoke"));">
+                <h3>
+                    @(formMode switch
+                    {
+                        "edit" => $"✎ Editando comprobante {sourceSaleNumber}",
+                        "duplicate" => $"⎘ Duplicando comprobante {sourceSaleNumber}",
+                        _ => "Nueva Venta"
+                    })
+                </h3>
                 <button class="btn-close" @onclick="CloseForm">&times;</button>
             </div>
             <div class="modal-body">
+                @if (formMode == "edit")
+                {
+                    <div style="background:#dbeafe; border:2px solid #1e40af; color:#1e3a8a; padding:0.6rem 0.9rem; border-radius:6px; margin-bottom:0.8rem; display:flex; align-items:center; gap:0.5rem;">
+                        <span style="font-size:1.4rem;">✎</span>
+                        <div>
+                            <div style="font-weight:800; font-size:1rem;">ESTAS EDITANDO el comprobante <strong>@sourceSaleNumber</strong></div>
+                            <div style="font-size:0.82rem;">Cuando guardes, se sobreescriben los datos del mismo comprobante (no se crea uno nuevo).</div>
+                        </div>
+                    </div>
+                }
+                else if (formMode == "duplicate")
+                {
+                    <div style="background:#fef3c7; border:2px solid #d97706; color:#7c2d12; padding:0.6rem 0.9rem; border-radius:6px; margin-bottom:0.8rem; display:flex; align-items:center; gap:0.5rem;">
+                        <span style="font-size:1.4rem;">⎘</span>
+                        <div>
+                            <div style="font-weight:800; font-size:1rem;">ESTAS DUPLICANDO el comprobante <strong>@sourceSaleNumber</strong></div>
+                            <div style="font-size:0.82rem;">Se va a generar un comprobante NUEVO con la fecha de hoy. Modificá lo que quieras antes de emitirlo.</div>
+                        </div>
+                    </div>
+                }
+
                 @if (!string.IsNullOrEmpty(formError))
                 {
                     <div class="form-error">@formError</div>
@@ -285,7 +320,12 @@
             <div class="modal-footer">
                 <button class="btn btn-secondary" @onclick="CloseForm" disabled="@isSaving">Cancelar</button>
                 <button class="btn btn-primary" @onclick="Save" disabled="@(isSaving || formItems.Count == 0)">
-                    @(isSaving ? "Guardando..." : "Emitir comprobante")
+                    @(isSaving ? "Guardando..." : (formMode switch
+                    {
+                        "edit" => "Guardar cambios",
+                        "duplicate" => "Emitir comprobante nuevo",
+                        _ => "Emitir comprobante"
+                    }))
                 </button>
             </div>
         </div>
@@ -623,6 +663,11 @@
     private bool formIsPaid;
     private string formCompanyName = "FRIKAF®";
 
+    // Modo del formulario: "new" | "edit" | "duplicate"
+    private string formMode = "new";
+    private int? editingSaleId;
+    private string? sourceSaleNumber; // numero del comprobante origen (para banner de edit/duplicate)
+
     private static readonly string[] AllWeekDays = { "LUN", "MAR", "MIE", "JUE", "VIE", "SAB", "DOM" };
     private static readonly string[] BrandOptions = { "FRIKAF®", "INTERVENT®", "INTEREVENTOS®", "PALANICA®" };
 
@@ -667,6 +712,9 @@
 
     private void ShowCreateForm()
     {
+        formMode = "new";
+        editingSaleId = null;
+        sourceSaleNumber = null;
         formDate = DateTime.Today;
         formClientId = 0;
         formIvaCondition = "Consumidor final";
@@ -682,6 +730,62 @@
             ? companyInfo.Name
             : (companyInfo?.Name ?? "FRIKAF®");
         formError = null; showForm = true;
+    }
+
+    private async Task OpenEditForm(SaleDto s)
+    {
+        // Recargar para tener todos los items actualizados
+        var fresh = await Api.GetSaleAsync(s.Id) ?? s;
+        LoadFormFromSale(fresh, mode: "edit");
+    }
+
+    private async Task OpenDuplicateForm(SaleDto s)
+    {
+        var fresh = await Api.GetSaleAsync(s.Id) ?? s;
+        LoadFormFromSale(fresh, mode: "duplicate");
+    }
+
+    private void LoadFormFromSale(SaleDto s, string mode)
+    {
+        formMode = mode;
+        editingSaleId = mode == "edit" ? s.Id : null;
+        sourceSaleNumber = s.Number;
+
+        // Para duplicar usamos la fecha de hoy; para editar conservamos la del comprobante.
+        formDate = mode == "duplicate" ? DateTime.Today : s.Date;
+        formClientId = s.ClientId ?? 0;
+        formIvaCondition = string.IsNullOrEmpty(s.IvaCondition) ? "Consumidor final" : s.IvaCondition!;
+        formPaymentCondition = string.IsNullOrEmpty(s.PaymentCondition) ? "Efectivo" : s.PaymentCondition!;
+        formDiscount = s.Discount;
+        formNotes = s.Notes ?? "";
+        formIsPaid = s.IsPaid;
+        formCompanyName = !string.IsNullOrEmpty(s.CompanyNameSnapshot)
+            ? s.CompanyNameSnapshot!
+            : (companyInfo?.Name ?? "FRIKAF®");
+
+        // WeekDays
+        formWeekDays = new();
+        if (!string.IsNullOrEmpty(s.WeekDays))
+        {
+            foreach (var d in s.WeekDays.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                formWeekDays.Add(d.Trim());
+        }
+
+        // Items
+        formItems = s.Items.Select(it => new CreateSaleItemRequest
+        {
+            ProductId = it.ProductId,
+            Code = it.Code,
+            Description = it.Description,
+            Quantity = it.Quantity,
+            UnitPrice = it.UnitPrice,
+            VatRate = it.VatRate,
+            BonifPercent = it.BonifPercent
+        }).ToList();
+
+        addProductId = 0; addProductQty = 1;
+        formError = null;
+        showForm = true;
     }
 
     private void ToggleFormDay(string day)
@@ -743,27 +847,58 @@
         isSaving = true; formError = null;
         try
         {
-            var req = new CreateSaleRequest
+            var weekDaysCsv = formWeekDays.Count == 0 ? null
+                : string.Join(",", AllWeekDays.Where(d => formWeekDays.Contains(d)));
+
+            SaleDto? saved = null;
+
+            if (formMode == "edit" && editingSaleId.HasValue)
             {
-                Date = formDate,
-                ClientId = formClientId > 0 ? formClientId : null,
-                PaymentCondition = formPaymentCondition,
-                IvaCondition = formIvaCondition,
-                Discount = formDiscount,
-                Notes = formNotes,
-                WeekDays = formWeekDays.Count == 0 ? null
-                    : string.Join(",", AllWeekDays.Where(d => formWeekDays.Contains(d))),
-                IsPaid = formIsPaid,
-                CompanyNameOverride = formCompanyName,
-                Items = formItems.ToList()
-            };
-            var created = await Api.CreateSaleAsync(req);
-            if (created is null) { formError = "No se pudo crear el comprobante"; return; }
-            ToastService.Success($"Comprobante {created.Number} emitido");
+                var upd = new UpdateSaleRequest
+                {
+                    Date = formDate,
+                    ClientId = formClientId > 0 ? formClientId : null,
+                    PaymentCondition = formPaymentCondition,
+                    IvaCondition = formIvaCondition,
+                    Discount = formDiscount,
+                    Notes = formNotes,
+                    WeekDays = weekDaysCsv,
+                    IsPaid = formIsPaid,
+                    CompanyNameOverride = formCompanyName,
+                    Items = formItems.ToList()
+                };
+                saved = await Api.UpdateSaleAsync(editingSaleId.Value, upd);
+                if (saved is null) { formError = "No se pudo guardar los cambios"; return; }
+                ToastService.Success($"Comprobante {saved.Number} actualizado");
+            }
+            else
+            {
+                var req = new CreateSaleRequest
+                {
+                    Date = formDate,
+                    ClientId = formClientId > 0 ? formClientId : null,
+                    PaymentCondition = formPaymentCondition,
+                    IvaCondition = formIvaCondition,
+                    Discount = formDiscount,
+                    Notes = formNotes,
+                    WeekDays = weekDaysCsv,
+                    IsPaid = formIsPaid,
+                    CompanyNameOverride = formCompanyName,
+                    Items = formItems.ToList()
+                };
+                saved = await Api.CreateSaleAsync(req);
+                if (saved is null) { formError = "No se pudo crear el comprobante"; return; }
+                ToastService.Success($"Comprobante {saved.Number} emitido");
+            }
+
             showForm = false;
+            // Reset modo
+            formMode = "new";
+            editingSaleId = null;
+            sourceSaleNumber = null;
             await LoadAll();
             // Abrir el visor automáticamente
-            viewerSale = created;
+            viewerSale = saved;
         }
         catch (Exception ex) { formError = ex.Message; }
         finally { isSaving = false; }

@@ -35,6 +35,18 @@ public class SalesController : ControllerBase
         catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
     }
 
+    [HttpPut("{id}")]
+    public async Task<IActionResult> Update(int id, [FromBody] UpdateSaleRequest request)
+    {
+        try
+        {
+            var u = await _service.UpdateAsync(id, request);
+            if (u is null) return NotFound(new { error = "Venta no encontrada" });
+            return Ok(u);
+        }
+        catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
     [HttpPost("{id}/cancel")]
     public async Task<IActionResult> Cancel(int id)
     {

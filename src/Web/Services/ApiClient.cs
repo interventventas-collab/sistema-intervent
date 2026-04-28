@@ -219,6 +219,9 @@ public class ApiClient
     public async Task<SaleDto?> CreateSaleAsync(CreateSaleRequest request)
         => await PostAsync<SaleDto>("/api/sales", request);
 
+    public async Task<SaleDto?> UpdateSaleAsync(int id, UpdateSaleRequest request)
+        => await PutAsync<SaleDto>($"/api/sales/{id}", request);
+
     public async Task<SaleDto?> CancelSaleAsync(int id)
         => await PostAsync<SaleDto>($"/api/sales/{id}/cancel", new { });
 

@@ -50,6 +50,22 @@ public record UpdateSaleFlagsRequest(
     bool? IsPaid
 );
 
+// Editar un comprobante existente (cambia datos + items + recalcula totales).
+public record UpdateSaleRequest(
+    DateTime? Date,
+    DateTime? DueDate,
+    int? ClientId,
+    [MaxLength(200)] string? ClientNameOverride,
+    [MaxLength(50)] string? PaymentCondition,
+    [MaxLength(50)] string? IvaCondition,
+    decimal? Discount,
+    string? Notes,
+    [MaxLength(40)] string? WeekDays,
+    bool? IsPaid,
+    [MaxLength(100)] string? CompanyNameOverride,
+    [MinLength(1)] List<CreateSaleItemRequest>? Items
+);
+
 public record DeleteSaleRequest(string Password);
 
 public record DeleteSaleSettingsDto(string AllowedOperator, string Hint);

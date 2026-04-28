@@ -89,6 +89,22 @@ public class CreateSaleRequest
     public List<CreateSaleItemRequest> Items { get; set; } = new();
 }
 
+public class UpdateSaleRequest
+{
+    public DateTime? Date { get; set; }
+    public DateTime? DueDate { get; set; }
+    public int? ClientId { get; set; }
+    public string? ClientNameOverride { get; set; }
+    public string? PaymentCondition { get; set; }
+    public string? IvaCondition { get; set; }
+    public decimal? Discount { get; set; }
+    public string? Notes { get; set; }
+    public string? WeekDays { get; set; }
+    public bool? IsPaid { get; set; }
+    public string? CompanyNameOverride { get; set; }
+    public List<CreateSaleItemRequest>? Items { get; set; }
+}
+
 public class CompanyInfoDto
 {
     public string Name { get; set; } = string.Empty;

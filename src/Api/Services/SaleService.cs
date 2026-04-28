@@ -134,6 +134,108 @@ public class SaleService
         return await GetByIdAsync(id);
     }
 
+    public async Task<SaleDto?> UpdateAsync(int id, UpdateSaleRequest request)
+    {
+        var sale = await _db.Sales.Include(s => s.Items).Include(s => s.Client).FirstOrDefaultAsync(s => s.Id == id);
+        if (sale is null) return null;
+        if (sale.IsCancelled) throw new InvalidOperationException("No se puede editar un comprobante anulado.");
+
+        // Actualizar datos generales si vinieron
+        if (request.Date.HasValue) sale.Date = request.Date.Value.Date;
+        if (request.DueDate.HasValue) sale.DueDate = request.DueDate.Value.Date;
+        if (request.PaymentCondition is not null) sale.PaymentCondition = request.PaymentCondition;
+        if (request.IvaCondition is not null) sale.IvaCondition = request.IvaCondition;
+        if (request.Notes is not null) sale.Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes;
+        if (request.WeekDays is not null) sale.WeekDays = string.IsNullOrWhiteSpace(request.WeekDays) ? null : request.WeekDays;
+        if (request.IsPaid.HasValue) sale.IsPaid = request.IsPaid.Value;
+        if (request.CompanyNameOverride is not null)
+            sale.CompanyNameSnapshot = string.IsNullOrWhiteSpace(request.CompanyNameOverride) ? null : request.CompanyNameOverride.Trim();
+
+        // Cambiar cliente si vinieron datos
+        if (request.ClientId.HasValue)
+        {
+            if (request.ClientId.Value == 0)
+            {
+                sale.ClientId = null;
+                sale.ClientNameSnapshot = request.ClientNameOverride;
+                sale.ClientAddressSnapshot = null;
+                sale.ClientCuitSnapshot = null;
+            }
+            else
+            {
+                var client = await _db.Clients.FindAsync(request.ClientId.Value)
+                    ?? throw new InvalidOperationException("Cliente no encontrado.");
+                sale.ClientId = client.Id;
+                sale.ClientNameSnapshot = request.ClientNameOverride ?? client.Name;
+                sale.ClientAddressSnapshot = client.Address;
+                sale.ClientCuitSnapshot = client.Cuit;
+            }
+        }
+
+        // Reemplazar items si vinieron
+        if (request.Items is not null)
+        {
+            if (request.Items.Count == 0)
+                throw new InvalidOperationException("La venta tiene que tener al menos un item.");
+
+            // Borrar items viejos
+            _db.SaleItems.RemoveRange(sale.Items);
+            sale.Items.Clear();
+
+            decimal subtotal = 0m;
+            foreach (var i in request.Items)
+            {
+                if (i.Quantity <= 0) throw new InvalidOperationException("La cantidad de cada item debe ser mayor a 0.");
+                string? code = i.Code;
+                string description = i.Description;
+                decimal unit = i.UnitPrice;
+                decimal? vat = i.VatRate;
+
+                if (i.ProductId.HasValue)
+                {
+                    var product = await _db.Products.FindAsync(i.ProductId.Value)
+                        ?? throw new InvalidOperationException($"Producto {i.ProductId} no encontrado.");
+                    code ??= product.Sku;
+                    if (string.IsNullOrWhiteSpace(description)) description = product.DisplayName ?? product.Title;
+                    if (unit <= 0) unit = product.RetailPrice;
+                    vat ??= product.VatRate;
+                }
+
+                var bruto = i.Quantity * unit;
+                var bonif = bruto * (i.BonifPercent / 100m);
+                var lineTotal = Math.Round(bruto - bonif, 2);
+
+                sale.Items.Add(new SaleItem
+                {
+                    ProductId = i.ProductId, Code = code, Description = description,
+                    Quantity = i.Quantity, UnitPrice = unit, VatRate = vat,
+                    BonifPercent = i.BonifPercent, LineTotal = lineTotal
+                });
+                subtotal += lineTotal;
+            }
+
+            var discount = Math.Max(0m, request.Discount ?? sale.Discount);
+            var total = Math.Max(0m, subtotal - discount);
+            sale.Subtotal = Math.Round(subtotal, 2);
+            sale.Discount = Math.Round(discount, 2);
+            sale.Total = Math.Round(total, 2);
+            sale.AmountInWords = NumberToWordsEs.AmountToPesos(total);
+        }
+        else if (request.Discount.HasValue)
+        {
+            // Solo cambio el descuento manteniendo items
+            var discount = Math.Max(0m, request.Discount.Value);
+            var total = Math.Max(0m, sale.Subtotal - discount);
+            sale.Discount = Math.Round(discount, 2);
+            sale.Total = Math.Round(total, 2);
+            sale.AmountInWords = NumberToWordsEs.AmountToPesos(total);
+        }
+
+        sale.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return await GetByIdAsync(sale.Id);
+    }
+
     public async Task<DeleteSaleSettingsDto> GetDeleteSettingsAsync()
     {
         var keys = new[] { "sales.delete_allowed_operator", "sales.delete_password_hint" };
