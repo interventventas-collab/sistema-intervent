@@ -237,6 +237,13 @@ public class ApiClient
         return false;
     }
 
+    // ===== Empresas (display names editables) =====
+    public async Task<List<CompanyNameDto>?> GetCompanyNamesAsync()
+        => await GetAsync<List<CompanyNameDto>>("/api/companies/names");
+
+    public async Task<List<CompanyNameDto>?> UpdateCompanyNamesAsync(string password, Dictionary<string, string> names)
+        => await PostAsync<List<CompanyNameDto>>("/api/companies/names", new { password, names });
+
     public async Task<SaleDto?> UpdateSaleFlagsAsync(int id, UpdateSaleFlagsRequest request)
     {
         var response = await _http.PatchAsJsonAsync($"/api/sales/{id}/flags", request);

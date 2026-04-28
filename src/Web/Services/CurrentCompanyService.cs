@@ -4,15 +4,20 @@ namespace Web.Services;
 
 /// <summary>
 /// Mantiene cual es la EMPRESA con la que el usuario esta trabajando ahora.
-/// Persiste en localStorage. Es independiente del operador (persona fisica)
-/// que opera el sistema. Se usa como marca por defecto al emitir comprobantes
-/// y como titulo en el topbar.
+/// Persiste el ID en localStorage.
+///
+/// Conceptos:
+/// - <see cref="Companies"/> son los IDs estables (INTERVENT, INTEREVENTOS, FRIKAF, PALANICA).
+///   Los IDs nunca cambian — son los que se guardan en la base (ej. en Brands.Companies).
+/// - <see cref="DisplayNames"/> son los nombres visibles que el admin (OSMAR) puede editar
+///   desde el engranaje del modal de seleccion de empresa.
 /// </summary>
 public class CurrentCompanyService
 {
     private const string StorageKey = "current_company";
     private readonly IJSRuntime _js;
     private string? _current;
+    private Dictionary<string, string> _displayNames = new(StringComparer.OrdinalIgnoreCase);
 
     public static readonly string[] Companies =
     {
@@ -21,6 +26,21 @@ public class CurrentCompanyService
 
     public string? Current => _current;
     public bool HasCompany => !string.IsNullOrWhiteSpace(_current);
+
+    /// <summary>Mapa ID -> nombre visible. Si una empresa no esta presente, se usa el ID como fallback.</summary>
+    public IReadOnlyDictionary<string, string> DisplayNames => _displayNames;
+
+    /// <summary>Devuelve el nombre visible del ID indicado. Si no hay nombre custom, devuelve el ID tal cual.</summary>
+    public string GetDisplayName(string? id)
+    {
+        if (string.IsNullOrEmpty(id)) return "";
+        return _displayNames.TryGetValue(id, out var name) && !string.IsNullOrWhiteSpace(name)
+            ? name
+            : id;
+    }
+
+    /// <summary>Nombre visible de la empresa actualmente seleccionada.</summary>
+    public string CurrentDisplayName => HasCompany ? GetDisplayName(_current!) : "";
 
     public event Action? OnChange;
 
@@ -38,6 +58,13 @@ public class CurrentCompanyService
                 _current = stored;
         }
         catch { /* primer arranque */ }
+    }
+
+    /// <summary>Reemplaza el mapa de display names. Usado por el layout despues de cargarlos del backend.</summary>
+    public void SetDisplayNames(Dictionary<string, string> map)
+    {
+        _displayNames = new Dictionary<string, string>(map, StringComparer.OrdinalIgnoreCase);
+        OnChange?.Invoke();
     }
 
     public async Task SetAsync(string? name)

@@ -11,7 +11,7 @@
             Marcas (@(visibleBrands?.Count ?? 0))
             @if (Company.HasCompany)
             {
-                <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;"> · @Company.Current</span>
+                <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;"> · @Company.CurrentDisplayName</span>
             }
         </h3>
         <div style="display: flex; gap: 0.4rem; align-items: center;">
@@ -37,7 +37,7 @@
                 }
                 else
                 {
-                    <span>No hay marcas visibles para <strong>@Company.Current</strong>. Tildá "Ver marcas de todas las empresas" para verlas todas, o creá una nueva.</span>
+                    <span>No hay marcas visibles para <strong>@Company.CurrentDisplayName</strong>. Tildá "Ver marcas de todas las empresas" para verlas todas, o creá una nueva.</span>
                 }
             </p>
         }
@@ -74,7 +74,7 @@
                                     {
                                         @foreach (var co in cos)
                                         {
-                                            <span style="display:inline-block; padding:0.15rem 0.45rem; background:#f3f4f6; color:#374151; border-radius:999px; font-size:0.7rem; font-weight:600; margin-right:0.2rem;">@co</span>
+                                            <span style="display:inline-block; padding:0.15rem 0.45rem; background:#f3f4f6; color:#374151; border-radius:999px; font-size:0.7rem; font-weight:600; margin-right:0.2rem;" title="@co">@Company.GetDisplayName(co)</span>
                                         }
                                     }
                                 </td>
@@ -152,11 +152,11 @@
                     <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
                         @foreach (var co in CurrentCompanyService.Companies)
                         {
-                            var name = co;
-                            var isOn = formCompanies.Contains(name);
+                            var id = co;
+                            var isOn = formCompanies.Contains(id);
                             <label style="display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.4rem 0.7rem; border: 1.5px solid @(isOn ? "#15803d" : "#d1d5db"); background: @(isOn ? "#dcfce7" : "white"); border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.85rem;">
-                                <input type="checkbox" checked="@isOn" @onchange="() => ToggleFormCompany(name)" style="margin: 0;" />
-                                @name
+                                <input type="checkbox" checked="@isOn" @onchange="() => ToggleFormCompany(id)" style="margin: 0;" />
+                                @Company.GetDisplayName(id)
                             </label>
                         }
                     </div>

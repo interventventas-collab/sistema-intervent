@@ -208,7 +208,7 @@
                 @SvgIcons.Menu
             </button>
             <button class="topbar-company-btn" @onclick="() => showCompanyModal = true" title="Cambiar empresa de trabajo">
-                <span class="topbar-company-name">@(Company.HasCompany ? Company.Current : BrandSettings.BrandName)</span>
+                <span class="topbar-company-name">@(Company.HasCompany ? Company.CurrentDisplayName : BrandSettings.BrandName)</span>
                 <span class="topbar-company-chevron">@SvgIcons.ChevronRight</span>
             </button>
             @if (Operator.HasOperator)
@@ -273,7 +273,17 @@
         <div class="modal-card modal-small" @onclick:stopPropagation="true">
             <div class="modal-header" style="background: whitesmoke;">
                 <h3>🏢 ¿Con qué empresa estás trabajando?</h3>
-                <button class="btn-close" @onclick="() => showCompanyModal = false">&times;</button>
+                <div style="display: flex; gap: 0.3rem; align-items: center;">
+                    @if (CanEditCompanyNames)
+                    {
+                        <button class="btn-icon" @onclick="OpenCompanyAdminPasswordModal"
+                                title="Editar nombres de las empresas (solo OSMAR)"
+                                style="background: transparent; border: none; cursor: pointer; font-size: 1.1rem; padding: 0.3rem;">
+                            ⚙
+                        </button>
+                    }
+                    <button class="btn-close" @onclick="() => showCompanyModal = false">&times;</button>
+                </div>
             </div>
             <div class="modal-body">
                 <p style="font-size: 0.85rem; color: #6b7280; margin: 0 0 0.75rem;">
@@ -283,14 +293,90 @@
                 <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem;">
                     @foreach (var co in CurrentCompanyService.Companies)
                     {
-                        var name = co;
-                        <button class="btn @(Company.Current == name ? "btn-primary" : "btn-secondary")"
-                                @onclick="() => SelectCompany(name)"
+                        var id = co;
+                        var displayName = Company.GetDisplayName(id);
+                        <button class="btn @(Company.Current == id ? "btn-primary" : "btn-secondary")"
+                                @onclick="() => SelectCompany(id)"
                                 style="padding: 0.7rem; font-weight: 700; font-size: 0.95rem;">
-                            @name
+                            @displayName
                         </button>
                     }
                 </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* Sub-modal: pedir clave a OSMAR *@
+@if (showCompanyAdminPasswordModal)
+{
+    <div class="modal-overlay" style="z-index: 9100;" @onclick="CloseCompanyAdminPasswordModal">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: #1f2937; color: white;">
+                <h4 style="margin: 0;">🔒 Clave de OSMAR</h4>
+                <button class="btn-close" @onclick="CloseCompanyAdminPasswordModal" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.85rem; color: #6b7280; margin: 0 0 0.75rem;">
+                    Ingresá tu clave para editar los nombres de las empresas.
+                </p>
+                <div class="form-group">
+                    <input class="form-input" type="password" @bind="companyAdminPassword" @bind:event="oninput"
+                           @onkeydown="OnCompanyAdminPasswordKey"
+                           placeholder="Tu clave" autofocus />
+                </div>
+                @if (!string.IsNullOrEmpty(companyAdminError))
+                {
+                    <div class="form-error">@companyAdminError</div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseCompanyAdminPasswordModal">Cancelar</button>
+                <button class="btn btn-primary" @onclick="ConfirmCompanyAdminPassword"
+                        disabled="@string.IsNullOrEmpty(companyAdminPassword)">
+                    Continuar
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* Sub-modal: editar nombres *@
+@if (showCompanyNamesEditModal)
+{
+    <div class="modal-overlay" style="z-index: 9100;" @onclick="CloseCompanyNamesEditModal">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true" style="max-width: 480px;">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h4 style="margin: 0;">✎ Editar nombres de empresas</h4>
+                <button class="btn-close" @onclick="CloseCompanyNamesEditModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.82rem; color: #6b7280; margin: 0 0 0.6rem;">
+                    Cambiá el nombre con el que aparecen las empresas en pantalla. El identificador interno
+                    (INTERVENT, INTEREVENTOS, FRIKAF, PALANICA) no cambia, así que tus marcas y comprobantes
+                    cargados quedan intactos.
+                </p>
+                @foreach (var id in CurrentCompanyService.Companies)
+                {
+                    var key = id;
+                    <div class="form-group" style="margin-bottom: 0.6rem;">
+                        <label class="form-label">@id</label>
+                        <input class="form-input" @bind="companyNameEdits[key]" placeholder="@id" />
+                    </div>
+                }
+                <p style="font-size: 0.78rem; color: #6b7280; margin-top: 0.4rem;">
+                    Si dejás un campo vacío, vuelve al nombre por default.
+                </p>
+                @if (!string.IsNullOrEmpty(companyNamesEditError))
+                {
+                    <div class="form-error">@companyNamesEditError</div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseCompanyNamesEditModal" disabled="@isSavingCompanyNames">Cancelar</button>
+                <button class="btn btn-primary" @onclick="SaveCompanyNames" disabled="@isSavingCompanyNames">
+                    @(isSavingCompanyNames ? "Guardando..." : "Guardar")
+                </button>
             </div>
         </div>
     </div>
@@ -336,6 +422,13 @@
     private bool userMenuOpen;
     private bool showOperatorModal;
     private bool showCompanyModal;
+    private bool showCompanyAdminPasswordModal;
+    private bool showCompanyNamesEditModal;
+    private string companyAdminPassword = "";
+    private string? companyAdminError;
+    private Dictionary<string, string> companyNameEdits = new(StringComparer.OrdinalIgnoreCase);
+    private string? companyNamesEditError;
+    private bool isSavingCompanyNames;
     private string username = "usuario";
     private string role = "user";
     private List<string> permissions = new();
@@ -385,6 +478,9 @@
 
         // Cargar empresa actual desde localStorage (no es obligatoria; cae al BrandSettings.BrandName si no hay).
         await Company.LoadAsync();
+
+        // Cargar los nombres visibles de las empresas (los que el admin puede editar).
+        await LoadCompanyNamesAsync();
 
         // Refrescar permisos desde el servidor para reflejar cambios sin necesidad de re-login.
         try
@@ -493,7 +589,114 @@
     {
         await Company.SetAsync(name);
         showCompanyModal = false;
-        ToastService.Success($"Trabajando con {name}");
+        ToastService.Success($"Trabajando con {Company.GetDisplayName(name)}");
+    }
+
+    // ===== Edicion de nombres de empresas (solo OSMAR con clave) =====
+
+    private bool CanEditCompanyNames =>
+        Operator.HasOperator &&
+        string.Equals(Operator.Current, "OSMAR", StringComparison.OrdinalIgnoreCase);
+
+    private async Task LoadCompanyNamesAsync()
+    {
+        try
+        {
+            var list = await Api.GetCompanyNamesAsync();
+            if (list is null) return;
+            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var c in list)
+                if (!string.IsNullOrEmpty(c.Id))
+                    map[c.Id] = string.IsNullOrWhiteSpace(c.DisplayName) ? c.Id : c.DisplayName;
+            Company.SetDisplayNames(map);
+        }
+        catch { /* primer arranque sin migracion / sin sesion */ }
+    }
+
+    private void OpenCompanyAdminPasswordModal()
+    {
+        if (!CanEditCompanyNames) return;
+        companyAdminPassword = "";
+        companyAdminError = null;
+        showCompanyAdminPasswordModal = true;
+    }
+
+    private void CloseCompanyAdminPasswordModal()
+    {
+        showCompanyAdminPasswordModal = false;
+        companyAdminPassword = "";
+        companyAdminError = null;
+    }
+
+    private async Task OnCompanyAdminPasswordKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrEmpty(companyAdminPassword))
+            await ConfirmCompanyAdminPassword();
+    }
+
+    private Task ConfirmCompanyAdminPassword()
+    {
+        // No validamos contra el backend aca: el backend valida la clave cuando se guarda.
+        // Avanzamos al modal de edicion. Si la clave es incorrecta, el guardado va a tirar error.
+        if (string.IsNullOrEmpty(companyAdminPassword))
+        {
+            companyAdminError = "Ingresá tu clave";
+            return Task.CompletedTask;
+        }
+        // Pre-cargar los inputs con los nombres actuales
+        companyNameEdits = new(StringComparer.OrdinalIgnoreCase);
+        foreach (var id in CurrentCompanyService.Companies)
+        {
+            // Si el display name = ID, dejamos vacio para que el usuario vea el placeholder con el default
+            var current = Company.GetDisplayName(id);
+            companyNameEdits[id] = string.Equals(current, id, StringComparison.OrdinalIgnoreCase) ? "" : current;
+        }
+        showCompanyAdminPasswordModal = false;
+        companyNamesEditError = null;
+        showCompanyNamesEditModal = true;
+        return Task.CompletedTask;
+    }
+
+    private void CloseCompanyNamesEditModal()
+    {
+        if (isSavingCompanyNames) return;
+        showCompanyNamesEditModal = false;
+        companyNamesEditError = null;
+        companyAdminPassword = ""; // limpiamos la clave en memoria
+    }
+
+    private async Task SaveCompanyNames()
+    {
+        if (string.IsNullOrEmpty(companyAdminPassword))
+        {
+            companyNamesEditError = "Sesion expirada, ingresá tu clave de nuevo.";
+            showCompanyNamesEditModal = false;
+            showCompanyAdminPasswordModal = true;
+            return;
+        }
+        isSavingCompanyNames = true;
+        companyNamesEditError = null;
+        try
+        {
+            var payload = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var id in CurrentCompanyService.Companies)
+            {
+                payload[id] = (companyNameEdits.GetValueOrDefault(id) ?? "").Trim();
+            }
+            var updated = await Api.UpdateCompanyNamesAsync(companyAdminPassword, payload);
+            if (updated is null) { companyNamesEditError = "No se pudo guardar."; return; }
+
+            var newMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var c in updated)
+                newMap[c.Id] = string.IsNullOrWhiteSpace(c.DisplayName) ? c.Id : c.DisplayName;
+            Company.SetDisplayNames(newMap);
+
+            ToastService.Success("Nombres de empresas actualizados");
+            showCompanyNamesEditModal = false;
+            companyAdminPassword = "";
+        }
+        catch (Exception ex) { companyNamesEditError = ex.Message; }
+        finally { isSavingCompanyNames = false; }
     }
 
     private async Task SelectOperator(string name)
