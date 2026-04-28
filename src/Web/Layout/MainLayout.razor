@@ -50,12 +50,14 @@
 
         @if (HasPerm("productos") || HasPerm("combos"))
         {
-            <NavGroup Label="Inventario" Icon="@SvgIcons.Inventory"
-                      HasActiveChild="@(IsActive("/productos") || IsActive("/combos"))">
+            <NavGroup Label="Productos y Servicios" Icon="@SvgIcons.Inventory"
+                      HasActiveChild="@(IsActive("/productos") || IsActive("/productos-base") || IsActive("/combos"))">
                 @if (HasPerm("productos"))
                 {
-                    <NavItem Href="/productos" Label="Productos base" Icon="@SvgIcons.Package"
+                    <NavItem Href="/productos" Label="Productos" Icon="@SvgIcons.Package"
                              IsActive="@IsActive("/productos")" OnClick="@(() => NavigateTo("/productos"))" />
+                    <NavItem Href="/productos-base" Label="Productos base" Icon="@SvgIcons.Package"
+                             IsActive="@IsActive("/productos-base")" OnClick="@(() => NavigateTo("/productos-base"))" />
                 }
                 @if (HasPerm("combos"))
                 {
@@ -208,6 +210,7 @@
         { "publicaciones", "publicaciones" },
         { "ordenes", "ordenes" },
         { "productos", "productos" },
+        { "productos-base", "productos" },
         { "combos", "combos" },
         { "usuarios", "usuarios" },
         { "roles", "roles" },
@@ -336,10 +339,11 @@
 
     private bool IsActive(string href)
     {
-        var relativePath = Navigation.ToBaseRelativePath(Navigation.Uri);
-        if (href == "/")
-            return string.IsNullOrEmpty(relativePath) || relativePath == "/" || relativePath.Equals("index.html", StringComparison.OrdinalIgnoreCase);
-        return relativePath.StartsWith(href.TrimStart('/'), StringComparison.OrdinalIgnoreCase);
+        var relativePath = Navigation.ToBaseRelativePath(Navigation.Uri).Split('?')[0].TrimEnd('/');
+        var target = href.TrimStart('/').TrimEnd('/');
+        if (string.IsNullOrEmpty(target))
+            return string.IsNullOrEmpty(relativePath) || relativePath.Equals("index.html", StringComparison.OrdinalIgnoreCase);
+        return relativePath.Equals(target, StringComparison.OrdinalIgnoreCase);
     }
 
     private void NavigateTo(string url)

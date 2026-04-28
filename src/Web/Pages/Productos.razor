@@ -1,11 +1,14 @@
 @page "/productos"
+@page "/productos-base"
 @attribute [Authorize]
 @inject ApiClient Api
 @inject ToastService ToastService
+@inject NavigationManager Navigation
+@implements IDisposable
 
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-        <h3>Productos (@GetFilteredProducts().Count de @totalProducts)</h3>
+        <h3>@PageTitle (@GetFilteredProducts().Count de @VisibleTotal)</h3>
         <button class="btn btn-primary" @onclick="ShowCreateForm">+ Nuevo Producto</button>
     </div>
     <div class="card-body" style="padding: 0;">
@@ -1059,7 +1062,23 @@
     private int bulkPublishErrCount;
     private int bulkPublishSkipCount;
 
-    protected override async Task OnInitializedAsync() { await LoadData(); }
+    protected override async Task OnInitializedAsync()
+    {
+        Navigation.LocationChanged += OnLocationChanged;
+        await LoadData();
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        // Cambio entre /productos y /productos-base: invalidar cache de filtros y refrescar.
+        InvalidateFilterCache();
+        InvokeAsync(StateHasChanged);
+    }
 
     private async Task LoadData()
     {
@@ -1141,10 +1160,29 @@
         return _cachedFiltered;
     }
 
+    private void InvalidateFilterCache()
+    {
+        _filterDirty = true;
+    }
+
+    private bool IsBaseOnlyView =>
+        Navigation.ToBaseRelativePath(Navigation.Uri).TrimStart('/').Split('?')[0]
+            .Equals("productos-base", StringComparison.OrdinalIgnoreCase);
+
+    private string PageTitle => IsBaseOnlyView ? "Productos base" : "Productos";
+
+    private int VisibleTotal => IsBaseOnlyView
+        ? (products?.Count(p => p.DerivedCount > 0) ?? 0)
+        : totalProducts;
+
     private List<ProductDto> ApplyFiltersAndSort()
     {
         if (products is null) return new();
         IEnumerable<ProductDto> result = products;
+
+        // Filtro automatico segun la ruta: /productos-base muestra solo productos que tienen derivados.
+        if (IsBaseOnlyView)
+            result = result.Where(p => p.DerivedCount > 0);
 
         // Text filters
         foreach (var kv in textFilters.Where(f => !string.IsNullOrEmpty(f.Value)))

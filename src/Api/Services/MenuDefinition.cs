@@ -13,9 +13,9 @@ public static class MenuDefinition
             new MenuItem("publicaciones", "Publicaciones", "/publicaciones"),
             new MenuItem("ordenes", "Ordenes", "/ordenes")
         }),
-        new MenuGroup("inventario", "Inventario", new[]
+        new MenuGroup("inventario", "Productos y Servicios", new[]
         {
-            new MenuItem("productos", "Productos base", "/productos"),
+            new MenuItem("productos", "Productos", "/productos"),
             new MenuItem("combos", "Combos", "/combos")
         }),
         new MenuGroup("administracion", "Administracion", new[]
