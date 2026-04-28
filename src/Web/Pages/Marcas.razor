@@ -1,12 +1,24 @@
 @page "/marcas"
 @attribute [Authorize]
+@implements IDisposable
 @inject ApiClient Api
 @inject ToastService ToastService
+@inject CurrentCompanyService Company
 
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-        <h3>Marcas (@(brands?.Count ?? 0))</h3>
+        <h3>
+            Marcas (@(visibleBrands?.Count ?? 0))
+            @if (Company.HasCompany)
+            {
+                <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;"> · @Company.Current</span>
+            }
+        </h3>
         <div style="display: flex; gap: 0.4rem; align-items: center;">
+            <label style="display: flex; align-items: center; gap: 0.3rem; font-size: 0.8rem; cursor: pointer; color: #6b7280;">
+                <input type="checkbox" @bind="showAllCompanies" />
+                Ver marcas de todas las empresas
+            </label>
             <button class="btn btn-primary" @onclick="ShowCreateForm">+ Nueva Marca</button>
             <button class="btn btn-primary" @onclick="() => showImport = true" title="Subir varias marcas desde un Excel" style="background: #059669; border-color: #059669;">📤 Importar Excel</button>
         </div>
@@ -16,9 +28,18 @@
         {
             <p class="text-muted" style="padding: 1.5rem;">Cargando marcas...</p>
         }
-        else if (brands is null || brands.Count == 0)
+        else if (visibleBrands is null || visibleBrands.Count == 0)
         {
-            <p class="text-muted" style="padding: 1.5rem;">Todavia no cargaste ninguna marca. Hace clic en "+ Nueva Marca" para empezar.</p>
+            <p class="text-muted" style="padding: 1.5rem;">
+                @if (brands is null || brands.Count == 0)
+                {
+                    <span>Todavia no cargaste ninguna marca. Hace clic en "+ Nueva Marca" para empezar.</span>
+                }
+                else
+                {
+                    <span>No hay marcas visibles para <strong>@Company.Current</strong>. Tildá "Ver marcas de todas las empresas" para verlas todas, o creá una nueva.</span>
+                }
+            </p>
         }
         else
         {
@@ -28,6 +49,7 @@
                         <tr>
                             <th style="width: 110px;">Codigo</th>
                             <th>Nombre</th>
+                            <th>Empresas</th>
                             <th>Descripcion</th>
                             <th>Vencimiento</th>
                             <th>Estado</th>
@@ -35,11 +57,27 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var b in brands)
+                        @foreach (var b in visibleBrands)
                         {
                             <tr>
                                 <td style="font-family: monospace; color: #374151;">@b.Code</td>
                                 <td><strong>@b.Name</strong></td>
+                                <td>
+                                    @{
+                                        var cos = ParseCompanies(b.Companies);
+                                    }
+                                    @if (cos.Count == 0)
+                                    {
+                                        <span style="display:inline-block; padding:0.15rem 0.5rem; background:#e0f2fe; color:#075985; border-radius:999px; font-size:0.7rem; font-weight:600;">Todas</span>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var co in cos)
+                                        {
+                                            <span style="display:inline-block; padding:0.15rem 0.45rem; background:#f3f4f6; color:#374151; border-radius:999px; font-size:0.7rem; font-weight:600; margin-right:0.2rem;">@co</span>
+                                        }
+                                    }
+                                </td>
                                 <td style="color: #6b7280; font-size: 0.85rem;">@(b.Description ?? "")</td>
                                 <td>
                                     @if (b.HasExpiry)
@@ -108,13 +146,31 @@
                         Si lo tildas, los productos de esta marca van a manejar el stock por lotes (cantidad + fecha de vencimiento).
                     </p>
                 </div>
+
+                <div class="form-group">
+                    <label class="form-label">Empresas en las que se muestra</label>
+                    <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                        @foreach (var co in CurrentCompanyService.Companies)
+                        {
+                            var name = co;
+                            var isOn = formCompanies.Contains(name);
+                            <label style="display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.4rem 0.7rem; border: 1.5px solid @(isOn ? "#15803d" : "#d1d5db"); background: @(isOn ? "#dcfce7" : "white"); border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.85rem;">
+                                <input type="checkbox" checked="@isOn" @onchange="() => ToggleFormCompany(name)" style="margin: 0;" />
+                                @name
+                            </label>
+                        }
+                    </div>
+                    <p style="font-size: 0.78rem; color: #6b7280; margin: 0.4rem 0 0;">
+                        Si no tildas ninguna, la marca y sus productos se muestran en <strong>todas</strong> las empresas.
+                    </p>
+                </div>
                 @if (isEditing)
                 {
                     <div class="form-group">
                         <label class="form-label">Estado</label>
                         <select class="form-input" @bind="formIsActive">
-                            <option value="true">Activa</option>
-                            <option value="false">Inactiva</option>
+                            <option value="@true">Activa</option>
+                            <option value="@false">Inactiva</option>
                         </select>
                     </div>
                 }
@@ -171,10 +227,31 @@
     private string formDescription = "";
     private bool formHasExpiry;
     private bool formIsActive = true;
+    private HashSet<string> formCompanies = new(StringComparer.OrdinalIgnoreCase);
     private bool showDeleteConfirm;
     private BrandDto? brandToDelete;
+    private bool showAllCompanies; // Si esta tildado, ignora el filtro por empresa actual
 
-    protected override async Task OnInitializedAsync() => await LoadData();
+    // Marcas que se muestran segun la empresa actual (o todas si showAllCompanies)
+    private List<BrandDto>? visibleBrands =>
+        brands is null
+            ? null
+            : (showAllCompanies || !Company.HasCompany
+                ? brands
+                : brands.Where(b => CurrentCompanyService.IsVisibleForCompany(b.Companies, Company.Current!)).ToList());
+
+    protected override async Task OnInitializedAsync()
+    {
+        Company.OnChange += OnCompanyChanged;
+        await LoadData();
+    }
+
+    public void Dispose()
+    {
+        Company.OnChange -= OnCompanyChanged;
+    }
+
+    private void OnCompanyChanged() => InvokeAsync(StateHasChanged);
 
     private async Task LoadData()
     {
@@ -189,6 +266,9 @@
         isEditing = false; editingId = null;
         formCode = ""; formName = ""; formDescription = "";
         formHasExpiry = false; formIsActive = true;
+        // Si la usuario tiene una empresa elegida, pre-tildamos esa para que la marca arranque visible
+        formCompanies = new(StringComparer.OrdinalIgnoreCase);
+        if (Company.HasCompany) formCompanies.Add(Company.Current!);
         formError = null; showForm = true;
     }
 
@@ -198,7 +278,14 @@
         formCode = b.Code; formName = b.Name; formDescription = b.Description ?? "";
         formHasExpiry = b.HasExpiry;
         formIsActive = b.IsActive;
+        formCompanies = new HashSet<string>(ParseCompanies(b.Companies), StringComparer.OrdinalIgnoreCase);
         formError = null; showForm = true;
+    }
+
+    private void ToggleFormCompany(string name)
+    {
+        if (formCompanies.Contains(name)) formCompanies.Remove(name);
+        else formCompanies.Add(name);
     }
 
     private void CloseForm() { showForm = false; formError = null; }
@@ -210,12 +297,18 @@
         isSaving = true;
         try
         {
+            // Serializa el HashSet en CSV en el orden canonico de las empresas
+            string? companiesCsv = formCompanies.Count == 0
+                ? null
+                : string.Join(",", CurrentCompanyService.Companies.Where(c => formCompanies.Contains(c)));
+
             if (isEditing && editingId.HasValue)
             {
                 var updated = await Api.UpdateBrandAsync(editingId.Value, new UpdateBrandRequest
                 {
                     Code = formCode, Name = formName, Description = formDescription,
-                    HasExpiry = formHasExpiry, IsActive = formIsActive
+                    HasExpiry = formHasExpiry, IsActive = formIsActive,
+                    Companies = companiesCsv ?? "" // string vacio explicito = "todas" (limpiar restriccion). El backend lo normaliza a null.
                 });
                 if (updated is null) { formError = "No se pudo actualizar"; return; }
                 ToastService.Success("Marca actualizada");
@@ -226,7 +319,8 @@
                 {
                     Code = string.IsNullOrWhiteSpace(formCode) ? null : formCode,
                     Name = formName, Description = formDescription,
-                    HasExpiry = formHasExpiry
+                    HasExpiry = formHasExpiry,
+                    Companies = companiesCsv
                 });
                 if (created is null) { formError = "No se pudo crear"; return; }
                 ToastService.Success("Marca creada");
@@ -237,6 +331,9 @@
         catch (Exception ex) { formError = ex.Message; }
         finally { isSaving = false; }
     }
+
+    // Wrapper local para usar desde el markup
+    private List<string> ParseCompanies(string? csv) => CurrentCompanyService.ParseCompanies(csv);
 
     private void ConfirmDelete(BrandDto b) { brandToDelete = b; showDeleteConfirm = true; }
 

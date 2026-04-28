@@ -4,6 +4,7 @@
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject NavigationManager Navigation
+@inject CurrentCompanyService Company
 @implements IDisposable
 
 <div class="card">
@@ -1279,12 +1280,20 @@
     protected override async Task OnInitializedAsync()
     {
         Navigation.LocationChanged += OnLocationChanged;
+        Company.OnChange += OnCompanyChanged;
         await LoadData();
     }
 
     public void Dispose()
     {
         Navigation.LocationChanged -= OnLocationChanged;
+        Company.OnChange -= OnCompanyChanged;
+    }
+
+    private void OnCompanyChanged()
+    {
+        InvalidateFilterCache();
+        InvokeAsync(StateHasChanged);
     }
 
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
@@ -1434,14 +1443,37 @@
 
     private bool IsConsideredBase(ProductDto p) => p.IsBase || p.DerivedCount > 0;
 
+    // Productos visibles para la empresa actual (filtra por la propiedad Companies de la marca asociada).
+    private IEnumerable<ProductDto> CompanyVisibleProducts()
+    {
+        if (products is null) return Enumerable.Empty<ProductDto>();
+        if (!Company.HasCompany || brands is null || brands.Count == 0) return products;
+        var visibleBrandIds = brands
+            .Where(b => CurrentCompanyService.IsVisibleForCompany(b.Companies, Company.Current!))
+            .Select(b => b.Id)
+            .ToHashSet();
+        return products.Where(p => p.BrandId == null || visibleBrandIds.Contains(p.BrandId.Value));
+    }
+
     private int VisibleTotal => IsBaseOnlyView
-        ? (products?.Count(IsConsideredBase) ?? 0)
-        : (products?.Count(p => !IsConsideredBase(p)) ?? 0);
+        ? CompanyVisibleProducts().Count(IsConsideredBase)
+        : CompanyVisibleProducts().Count(p => !IsConsideredBase(p));
 
     private List<ProductDto> ApplyFiltersAndSort()
     {
         if (products is null) return new();
         IEnumerable<ProductDto> result = products;
+
+        // Filtro por empresa actual: productos cuya marca no es visible en esta empresa, no se muestran.
+        // Productos sin marca (BrandId == null) o con una marca sin restriccion de empresa, se muestran siempre.
+        if (Company.HasCompany && brands is not null && brands.Count > 0)
+        {
+            var visibleBrandIds = brands
+                .Where(b => CurrentCompanyService.IsVisibleForCompany(b.Companies, Company.Current!))
+                .Select(b => b.Id)
+                .ToHashSet();
+            result = result.Where(p => p.BrandId == null || visibleBrandIds.Contains(p.BrandId.Value));
+        }
 
         // Filtro automatico segun la ruta:
         // - /productos-base: productos marcados como base o que ya tienen derivados.

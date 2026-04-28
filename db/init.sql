@@ -629,6 +629,14 @@ BEGIN
 END
 GO
 
+-- Empresas (CSV) en las que esta marca se muestra. NULL o '' = visible para todas las empresas.
+-- Valores posibles separados por coma: INTERVENT, INTEREVENTOS, FRIKAF, PALANICA
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'Companies' AND Object_ID = Object_ID(N'Brands'))
+BEGIN
+    ALTER TABLE Brands ADD Companies NVARCHAR(200) NULL;
+END
+GO
+
 -- Campos extendidos en Products (nombre para mostrar, codigos, IVA, cuentas contables)
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'DisplayName' AND Object_ID = Object_ID(N'Products'))
 BEGIN

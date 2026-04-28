@@ -24,6 +24,11 @@ public class Brand
     // Si es true, los productos de esta marca manejan stock por lotes con fecha de vencimiento.
     public bool HasExpiry { get; set; } = false;
 
+    // Empresas en las que la marca se muestra (CSV). NULL o "" = visible para TODAS las empresas.
+    // Valores posibles separados por coma: INTERVENT, INTEREVENTOS, FRIKAF, PALANICA
+    [MaxLength(200)]
+    public string? Companies { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

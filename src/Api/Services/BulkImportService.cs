@@ -159,7 +159,8 @@ public class BulkImportService
                     Code: Cell(row, headers, "codigo"),
                     Name: name!,
                     Description: Cell(row, headers, "descripcion"),
-                    HasExpiry: ParseBool(Cell(row, headers, "vencimiento"))
+                    HasExpiry: ParseBool(Cell(row, headers, "vencimiento")),
+                    Companies: Cell(row, headers, "empresas")
                 ));
                 created++;
             }

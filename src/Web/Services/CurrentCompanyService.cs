@@ -57,4 +57,25 @@ public class CurrentCompanyService
     }
 
     public async Task ClearAsync() => await SetAsync(null);
+
+    // ===== Helpers de visibilidad por empresa =====
+
+    /// <summary>Parsea un CSV de empresas a una lista normalizada (trim, uppercase, dedupe).</summary>
+    public static List<string> ParseCompanies(string? csv)
+    {
+        if (string.IsNullOrWhiteSpace(csv)) return new();
+        return csv.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                  .Select(s => s.Trim().ToUpperInvariant())
+                  .Where(s => s.Length > 0)
+                  .Distinct()
+                  .ToList();
+    }
+
+    /// <summary>True si el CSV de empresas (vacio o null = sin restriccion) incluye a la empresa indicada.</summary>
+    public static bool IsVisibleForCompany(string? companiesCsv, string company)
+    {
+        var list = ParseCompanies(companiesCsv);
+        if (list.Count == 0) return true;
+        return list.Contains((company ?? "").ToUpperInvariant());
+    }
 }
