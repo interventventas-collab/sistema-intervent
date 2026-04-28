@@ -171,9 +171,15 @@
             w.document.write('<style>');
             w.document.write('@page { size: A4 portrait; margin: 1cm; }');
             w.document.write('html, body { margin: 0; padding: 0; background: white; font-family: Inter, Arial, sans-serif; font-size: 11pt; color: #000; }');
+            w.document.write('body { position: relative; min-height: 95vh; }');
             w.document.write('table { width: 100%; border-collapse: collapse; }');
             w.document.write('th, td { padding: 4px 6px; }');
             w.document.write('.no-print { display: none !important; }');
+            // Sello PAGADO grande, transparente, centrado en la hoja.
+            w.document.write('.pagado-stamp { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-22deg); font-size: 7rem; font-weight: 900; color: rgba(220, 38, 38, 0.18); border: 8px solid rgba(220, 38, 38, 0.18); padding: 0.6rem 3.5rem; border-radius: 14px; letter-spacing: 0.5rem; z-index: 9999; pointer-events: none; }');
+            // Pildoras de los dias de la semana: el seleccionado va con fondo oscuro.
+            w.document.write('.day-pill { display: inline-block; padding: 4px 10px; border: 1px solid #d1d5db; border-radius: 5px; font-weight: 700; font-size: 0.85rem; min-width: 38px; text-align: center; margin: 0 2px; }');
+            w.document.write('.day-pill.on { background: #1f2937 !important; color: white !important; border-color: #1f2937 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }');
             w.document.write('</style>');
             w.document.write('</head><body>');
             w.document.write(el.innerHTML);
