@@ -33,7 +33,9 @@
                      IsActive="@IsActive("/")" OnClick="@(() => NavigateTo("/"))" />
         }
 
-        @if (HasPerm("publicaciones") || HasPerm("ordenes"))
+        @* MercadoLibre: solo visible para INTERVENT (es la unica empresa que vende por ML).
+           Si no hay empresa elegida, se sigue mostrando para no esconderlo a usuarios viejos. *@
+        @if ((HasPerm("publicaciones") || HasPerm("ordenes")) && (!Company.HasCompany || string.Equals(Company.Current, "INTERVENT", StringComparison.OrdinalIgnoreCase)))
         {
             <NavGroup Label="MercadoLibre" Icon="@SvgIcons.Store"
                       HasActiveChild="@(IsActive("/publicaciones") || IsActive("/ordenes"))">

@@ -6,6 +6,7 @@
 @inject AuthService AuthService
 @inject OperatorService Operator
 @inject ToastService ToastService
+@inject CurrentCompanyService Company
 
 <div class="view-header">
     <h2>Bienvenido, @username</h2>
@@ -89,41 +90,45 @@
 </div>
 
 <div class="dashboard-cards-row">
-    <div class="dashboard-detail-card">
-        <div class="detail-card-header">
-            <div class="detail-card-icon primary">@SvgIcons.Tag</div>
-            <div>
-                <span class="detail-card-value">@totalItems</span>
-                <span class="detail-card-label">Publicaciones</span>
+    @* Publicaciones (MercadoLibre): solo visible para INTERVENT *@
+    @if (ShowMlWidgets)
+    {
+        <div class="dashboard-detail-card">
+            <div class="detail-card-header">
+                <div class="detail-card-icon primary">@SvgIcons.Tag</div>
+                <div>
+                    <span class="detail-card-value">@totalItems</span>
+                    <span class="detail-card-label">Publicaciones</span>
+                </div>
+                <div class="detail-card-badge warning">@itemsSinProducto sin producto</div>
             </div>
-            <div class="detail-card-badge warning">@itemsSinProducto sin producto</div>
-        </div>
 
-        @if (accountStats.Any())
-        {
-            <table class="detail-card-table">
-                <thead>
-                    <tr>
-                        <th>Cuenta</th>
-                        <th>Publicaciones</th>
-                        <th>Con producto</th>
-                        <th>Sin producto</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var acc in accountStats)
-                    {
+            @if (accountStats.Any())
+            {
+                <table class="detail-card-table">
+                    <thead>
                         <tr>
-                            <td><strong>@acc.Nickname</strong></td>
-                            <td>@acc.TotalItems</td>
-                            <td>@acc.ItemsConProducto</td>
-                            <td class="@(acc.ItemsSinProducto > 0 ? "text-warning-bold" : "")">@acc.ItemsSinProducto</td>
+                            <th>Cuenta</th>
+                            <th>Publicaciones</th>
+                            <th>Con producto</th>
+                            <th>Sin producto</th>
                         </tr>
-                    }
-                </tbody>
-            </table>
-        }
-    </div>
+                    </thead>
+                    <tbody>
+                        @foreach (var acc in accountStats)
+                        {
+                            <tr>
+                                <td><strong>@acc.Nickname</strong></td>
+                                <td>@acc.TotalItems</td>
+                                <td>@acc.ItemsConProducto</td>
+                                <td class="@(acc.ItemsSinProducto > 0 ? "text-warning-bold" : "")">@acc.ItemsSinProducto</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    }
 
     <div class="dashboard-detail-card">
         <div class="detail-card-header">
@@ -132,10 +137,13 @@
                 <span class="detail-card-value">@totalProducts</span>
                 <span class="detail-card-label">Productos</span>
             </div>
-            <div class="detail-card-badge warning">@productosSinItems sin publicacion</div>
+            @if (ShowMlWidgets)
+            {
+                <div class="detail-card-badge warning">@productosSinItems sin publicacion</div>
+            }
         </div>
 
-        @if (accountStats.Any())
+        @if (ShowMlWidgets && accountStats.Any())
         {
             <table class="detail-card-table">
                 <thead>
@@ -177,6 +185,12 @@
     private static readonly TimeZoneInfo ArgentinaTz = SafeTz("America/Argentina/Buenos_Aires", -3);
     private static readonly TimeZoneInfo SpainTz = SafeTz("Europe/Madrid", 1);
 
+    // MercadoLibre solo aplica a INTERVENT. Si no hay empresa elegida, lo mostramos
+    // para mantener compatibilidad con usuarios que todavia no eligieron empresa.
+    private bool ShowMlWidgets =>
+        !Company.HasCompany ||
+        string.Equals(Company.Current, "INTERVENT", StringComparison.OrdinalIgnoreCase);
+
     protected override async Task OnInitializedAsync()
     {
         var user = await AuthService.GetUserAsync();
@@ -184,6 +198,9 @@
         {
             username = user.Username;
         }
+
+        // Re-renderizar cuando el usuario cambia de empresa desde el topbar
+        Company.OnChange += OnCompanyChanged;
 
         // Inicializar relojes y arrancar timer que actualiza cada segundo.
         UpdateClocks();
@@ -268,5 +285,8 @@
     {
         clockTimer?.Dispose();
         quoteTimer?.Dispose();
+        Company.OnChange -= OnCompanyChanged;
     }
+
+    private void OnCompanyChanged() => InvokeAsync(StateHasChanged);
 }
