@@ -26,8 +26,31 @@ public class ProductsController : ControllerBase
         return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "productos-template.xlsx");
     }
 
+    // Plantilla especifica para productos base (sin columna producto_base_sku)
+    [HttpGet("base-import-template")]
+    public IActionResult BaseTemplate()
+    {
+        var bytes = _import.BuildBaseProductTemplate();
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "productos-base-template.xlsx");
+    }
+
     [HttpPost("bulk-import")]
     public async Task<IActionResult> BulkImport(IFormFile file)
+    {
+        if (file is null || file.Length == 0) return BadRequest(new { error = "Subi un archivo .xlsx" });
+        try
+        {
+            using var stream = file.OpenReadStream();
+            var result = await _import.ImportProductsAsync(stream);
+            return Ok(result);
+        }
+        catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    // Importacion para productos base: usa el mismo procesador
+    // (si el Excel no trae columna producto_base_sku, todos se crean sin padre).
+    [HttpPost("base-bulk-import")]
+    public async Task<IActionResult> BaseBulkImport(IFormFile file)
     {
         if (file is null || file.Length == 0) return BadRequest(new { error = "Subi un archivo .xlsx" });
         try

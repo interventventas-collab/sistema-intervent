@@ -1156,11 +1156,11 @@
 }
 
 <BulkImportModal @bind-Visible="showImport"
-                 EntityNameSingular="producto"
-                 EntityNamePlural="productos"
-                 TemplateUrl="/api/products/import-template"
-                 TemplateFileName="productos-template.xlsx"
-                 ImportUrl="/api/products/bulk-import"
+                 EntityNameSingular="@(IsBaseOnlyView ? "producto base" : "producto")"
+                 EntityNamePlural="@(IsBaseOnlyView ? "productos base" : "productos")"
+                 TemplateUrl="@(IsBaseOnlyView ? "/api/products/base-import-template" : "/api/products/import-template")"
+                 TemplateFileName="@(IsBaseOnlyView ? "productos-base-template.xlsx" : "productos-template.xlsx")"
+                 ImportUrl="@(IsBaseOnlyView ? "/api/products/base-bulk-import" : "/api/products/bulk-import")"
                  OnImported="LoadData" />
 
 @code {

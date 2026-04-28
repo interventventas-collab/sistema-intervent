@@ -174,13 +174,35 @@ public class BulkImportService
 
     public byte[] BuildProductTemplate() => BuildTemplate("Productos", new[]
     {
+        ("titulo", "Bandeja Blanca 10L"),
+        ("nombre_para_mostrar", "Bandeja Plastica 10 Litros Blanca"),
+        ("descripcion", "Bandeja plastica resistente"),
+        ("marca", "Colombraro (nombre exacto de la marca cargada)"),
+        ("modelo", "Modelo X"),
+        ("producto_base_sku", "9311 (SKU del producto base, dejar vacio si es producto suelto)"),
+        ("sku", "C9311BL"),
+        ("codigo_de_barras", "7790140123456"),
+        ("codigo_oem", "OEM-X"),
+        ("url_imagen", "https://ejemplo.com/img.jpg"),
+        ("precio_costo", "1500.50 (se ignora si tiene producto_base_sku, hereda del padre)"),
+        ("precio_venta", "2999.99 (se ignora si tiene producto_base_sku, hereda del padre)"),
+        ("iva", "21"),
+        ("cuenta_compra", "511001"),
+        ("cuenta_venta", "411001"),
+        ("cuenta_mercaderia", "113001"),
+        ("stock", "10"),
+        ("stock_critico", "2")
+    });
+
+    // Plantilla SIN columna producto_base_sku: para cargar productos que SERAN base de otros.
+    public byte[] BuildBaseProductTemplate() => BuildTemplate("Productos base", new[]
+    {
         ("titulo", "Caja Plastica 10L"),
         ("nombre_para_mostrar", "Caja Plastica Apilable 10 Litros"),
         ("descripcion", "Caja plastica resistente"),
         ("marca", "Colombraro (nombre exacto de la marca cargada)"),
         ("modelo", "Modelo X"),
-        ("producto_base_sku", "(SKU del producto base, opcional)"),
-        ("sku", "C8718BL"),
+        ("sku", "9311"),
         ("codigo_de_barras", "7790140123456"),
         ("codigo_oem", "OEM-X"),
         ("url_imagen", "https://ejemplo.com/img.jpg"),
@@ -200,65 +222,101 @@ public class BulkImportService
         int created = 0, skipped = 0;
         var errors = new List<BulkImportError>();
 
-        // Cache de marcas por nombre y productos por SKU para resolver referencias
+        // Cache de marcas por nombre (lower) y productos existentes por SKU (lower)
         var brandsByName = await _db.Brands
             .ToDictionaryAsync(b => b.Name.ToLowerInvariant(), b => b.Id);
 
+        var productIdBySku = (await _db.Products
+            .Where(p => p.Sku != null)
+            .Select(p => new { p.Id, p.Sku })
+            .ToListAsync())
+            .GroupBy(p => p.Sku!.ToLowerInvariant())
+            .ToDictionary(g => g.Key, g => g.First().Id);
+
+        // Doble pasada: primero las filas SIN producto_base_sku (padres y sueltos),
+        // despues las que SI tienen, asi cuando llega el derivado el padre ya existe.
+        var withoutBase = new List<(int rowNum, List<string?> row)>();
+        var withBase = new List<(int rowNum, List<string?> row)>();
         for (int i = 0; i < rows.Count; i++)
         {
             var rowNum = i + 2;
             var row = rows[i];
-            try
-            {
-                var title = Cell(row, headers, "titulo");
-                if (string.IsNullOrWhiteSpace(title)) { skipped++; continue; }
+            var title = Cell(row, headers, "titulo");
+            if (string.IsNullOrWhiteSpace(title)) { skipped++; continue; }
 
-                int? brandId = null;
-                var brandName = Cell(row, headers, "marca");
-                if (!string.IsNullOrWhiteSpace(brandName))
-                {
-                    if (!brandsByName.TryGetValue(brandName.Trim().ToLowerInvariant(), out var bid))
-                        throw new InvalidOperationException($"La marca '{brandName}' no existe. Cargala primero.");
-                    brandId = bid;
-                }
-
-                int? baseId = null;
-                var baseSku = Cell(row, headers, "producto_base_sku");
-                if (!string.IsNullOrWhiteSpace(baseSku))
-                {
-                    var b = await _db.Products.FirstOrDefaultAsync(p => p.Sku == baseSku.Trim());
-                    if (b is null)
-                        throw new InvalidOperationException($"El producto base con SKU '{baseSku}' no existe.");
-                    baseId = b.Id;
-                }
-
-                await _products.CreateAsync(new CreateProductRequest(
-                    Title: title!,
-                    DisplayName: Cell(row, headers, "nombre_para_mostrar"),
-                    Description: Cell(row, headers, "descripcion"),
-                    Brand: brandName,
-                    Model: Cell(row, headers, "modelo"),
-                    Sku: Cell(row, headers, "sku"),
-                    Barcode: Cell(row, headers, "codigo_de_barras"),
-                    OemCode: Cell(row, headers, "codigo_oem"),
-                    ImageUrl: Cell(row, headers, "url_imagen"),
-                    Photo1: null, Photo2: null, Photo3: null,
-                    CostPrice: ParseDecimal(Cell(row, headers, "precio_costo")) ?? 0m,
-                    RetailPrice: ParseDecimal(Cell(row, headers, "precio_venta")) ?? 0m,
-                    VatRate: ParseDecimal(Cell(row, headers, "iva")),
-                    PurchaseAccount: Cell(row, headers, "cuenta_compra"),
-                    SaleAccount: Cell(row, headers, "cuenta_venta"),
-                    InventoryAccount: Cell(row, headers, "cuenta_mercaderia"),
-                    Stock: ParseInt(Cell(row, headers, "stock")) ?? 0,
-                    CriticalStock: ParseInt(Cell(row, headers, "stock_critico")) ?? 0,
-                    BaseProductId: baseId,
-                    BrandId: brandId
-                ));
-                created++;
-            }
-            catch (Exception ex) { errors.Add(new BulkImportError(rowNum, ex.Message)); }
+            var baseSku = Cell(row, headers, "producto_base_sku");
+            if (string.IsNullOrWhiteSpace(baseSku)) withoutBase.Add((rowNum, row));
+            else withBase.Add((rowNum, row));
         }
+
+        async Task ProcessAsync(List<(int rowNum, List<string?> row)> batch)
+        {
+            foreach (var (rowNum, row) in batch)
+            {
+                try
+                {
+                    var dto = await CreateProductFromRow(row, headers, brandsByName, productIdBySku);
+                    if (dto is not null && !string.IsNullOrEmpty(dto.Sku))
+                        productIdBySku[dto.Sku.ToLowerInvariant()] = dto.Id;
+                    created++;
+                }
+                catch (Exception ex) { errors.Add(new BulkImportError(rowNum, ex.Message)); }
+            }
+        }
+
+        await ProcessAsync(withoutBase);
+        await ProcessAsync(withBase);
+
         return new BulkImportResult(rows.Count, created, skipped, errors);
+    }
+
+    private async Task<ProductListDto?> CreateProductFromRow(
+        List<string?> row, List<string> headers,
+        Dictionary<string, int> brandsByName,
+        Dictionary<string, int> productIdBySku)
+    {
+        var title = Cell(row, headers, "titulo");
+
+        int? brandId = null;
+        var brandName = Cell(row, headers, "marca");
+        if (!string.IsNullOrWhiteSpace(brandName))
+        {
+            if (!brandsByName.TryGetValue(brandName.Trim().ToLowerInvariant(), out var bid))
+                throw new InvalidOperationException($"La marca '{brandName}' no existe. Cargala primero.");
+            brandId = bid;
+        }
+
+        int? baseId = null;
+        var baseSku = Cell(row, headers, "producto_base_sku");
+        if (!string.IsNullOrWhiteSpace(baseSku))
+        {
+            if (!productIdBySku.TryGetValue(baseSku.Trim().ToLowerInvariant(), out var bid))
+                throw new InvalidOperationException($"El producto base con SKU '{baseSku}' no existe. Cargalo primero (en la solapa Productos base).");
+            baseId = bid;
+        }
+
+        return await _products.CreateAsync(new CreateProductRequest(
+            Title: title!,
+            DisplayName: Cell(row, headers, "nombre_para_mostrar"),
+            Description: Cell(row, headers, "descripcion"),
+            Brand: brandName,
+            Model: Cell(row, headers, "modelo"),
+            Sku: Cell(row, headers, "sku"),
+            Barcode: Cell(row, headers, "codigo_de_barras"),
+            OemCode: Cell(row, headers, "codigo_oem"),
+            ImageUrl: Cell(row, headers, "url_imagen"),
+            Photo1: null, Photo2: null, Photo3: null,
+            CostPrice: ParseDecimal(Cell(row, headers, "precio_costo")) ?? 0m,
+            RetailPrice: ParseDecimal(Cell(row, headers, "precio_venta")) ?? 0m,
+            VatRate: ParseDecimal(Cell(row, headers, "iva")),
+            PurchaseAccount: Cell(row, headers, "cuenta_compra"),
+            SaleAccount: Cell(row, headers, "cuenta_venta"),
+            InventoryAccount: Cell(row, headers, "cuenta_mercaderia"),
+            Stock: ParseInt(Cell(row, headers, "stock")) ?? 0,
+            CriticalStock: ParseInt(Cell(row, headers, "stock_critico")) ?? 0,
+            BaseProductId: baseId,
+            BrandId: brandId
+        ));
     }
 
     // ============================================================
