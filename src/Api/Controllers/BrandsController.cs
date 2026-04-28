@@ -11,10 +11,32 @@ namespace Api.Controllers;
 public class BrandsController : ControllerBase
 {
     private readonly BrandService _service;
+    private readonly BulkImportService _import;
 
-    public BrandsController(BrandService service)
+    public BrandsController(BrandService service, BulkImportService import)
     {
         _service = service;
+        _import = import;
+    }
+
+    [HttpGet("import-template")]
+    public IActionResult Template()
+    {
+        var bytes = _import.BuildBrandTemplate();
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "marcas-template.xlsx");
+    }
+
+    [HttpPost("bulk-import")]
+    public async Task<IActionResult> BulkImport(IFormFile file)
+    {
+        if (file is null || file.Length == 0) return BadRequest(new { error = "Subi un archivo .xlsx" });
+        try
+        {
+            using var stream = file.OpenReadStream();
+            var result = await _import.ImportBrandsAsync(stream);
+            return Ok(result);
+        }
+        catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
     }
 
     [HttpGet]

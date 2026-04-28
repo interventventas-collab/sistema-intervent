@@ -1,0 +1,162 @@
+@using Microsoft.AspNetCore.Components.Forms
+@inject IJSRuntime JS
+@inject HttpClient Http
+@inject ToastService ToastService
+
+@if (Visible)
+{
+    <div class="modal-overlay" @onclick="Close">
+        <div class="modal-card modal-wide" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3>Importar @EntityNamePlural desde Excel</h3>
+                <button class="btn-close" @onclick="Close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.9rem; color: #374151; margin: 0 0 0.5rem;">
+                    <strong>Paso 1:</strong> descargá la plantilla con las columnas correctas.
+                </p>
+                <button class="btn btn-secondary" @onclick="DownloadTemplate" disabled="@isWorking" style="margin-bottom: 1rem;">
+                    📥 Descargar plantilla (.xlsx)
+                </button>
+
+                <p style="font-size: 0.9rem; color: #374151; margin: 0 0 0.4rem;">
+                    <strong>Paso 2:</strong> completá una fila por cada @EntityNameSingular y subí el archivo.
+                </p>
+                <p style="font-size: 0.78rem; color: #6b7280; margin: 0 0 0.6rem;">
+                    La fila 2 de la plantilla tiene un ejemplo en gris cursiva: borrala antes de subir o reemplazá su contenido por datos reales.
+                </p>
+
+                <InputFile OnChange="OnFileSelected" accept=".xlsx" disabled="@isWorking" />
+
+                @if (isWorking)
+                {
+                    <p style="margin-top: 1rem; color: #3b82f6;">⏳ Procesando archivo...</p>
+                }
+
+                @if (lastResult is not null)
+                {
+                    <div style="margin-top: 1rem; padding: 0.75rem; border-radius: 6px; background: @(lastResult.Errors.Count == 0 ? "#dcfce7" : "#fef3c7");">
+                        <strong>Resultado:</strong>
+                        @lastResult.Created creado(s), @lastResult.Skipped salteado(s), @lastResult.Errors.Count error(es)
+                        de @lastResult.TotalRows fila(s).
+                    </div>
+
+                    @if (lastResult.Errors.Count > 0)
+                    {
+                        <div style="margin-top: 0.75rem; max-height: 300px; overflow-y: auto; border: 1px solid #fca5a5; border-radius: 6px;">
+                            <table class="data-table" style="margin: 0;">
+                                <thead>
+                                    <tr><th style="width: 80px;">Fila</th><th>Error</th></tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var err in lastResult.Errors)
+                                    {
+                                        <tr><td>@err.Row</td><td style="color: #b91c1c;">@err.Message</td></tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                }
+
+                @if (!string.IsNullOrEmpty(generalError))
+                {
+                    <div class="form-error" style="margin-top: 0.75rem;">@generalError</div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="Close" disabled="@isWorking">Cerrar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public string EntityNameSingular { get; set; } = "registro";
+    [Parameter] public string EntityNamePlural { get; set; } = "registros";
+    [Parameter] public string TemplateUrl { get; set; } = "";
+    [Parameter] public string TemplateFileName { get; set; } = "template.xlsx";
+    [Parameter] public string ImportUrl { get; set; } = "";
+    [Parameter] public EventCallback OnImported { get; set; }
+
+    private bool isWorking;
+    private BulkImportResult? lastResult;
+    private string? generalError;
+
+    private async Task DownloadTemplate()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("filesDownload.start", TemplateUrl, TemplateFileName);
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("No se pudo descargar la plantilla: " + ex.Message);
+        }
+    }
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null) return;
+        if (file.Size == 0) { generalError = "El archivo esta vacio."; return; }
+        if (file.Size > 5 * 1024 * 1024) { generalError = "El archivo supera los 5MB."; return; }
+
+        generalError = null;
+        lastResult = null;
+        isWorking = true;
+        StateHasChanged();
+
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            using var fs = file.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await fs.CopyToAsync(ms);
+            ms.Position = 0;
+
+            var streamContent = new StreamContent(ms);
+            streamContent.Headers.ContentType =
+                new System.Net.Http.Headers.MediaTypeHeaderValue("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            content.Add(streamContent, "file", file.Name);
+
+            var response = await Http.PostAsync(ImportUrl, content);
+            if (response.IsSuccessStatusCode)
+            {
+                lastResult = await response.Content.ReadFromJsonAsync<BulkImportResult>();
+                if (lastResult is not null && lastResult.Created > 0)
+                {
+                    ToastService.Success($"{lastResult.Created} {EntityNamePlural} importado(s)");
+                    if (OnImported.HasDelegate) await OnImported.InvokeAsync();
+                }
+                else if (lastResult is not null && lastResult.Errors.Count > 0)
+                {
+                    ToastService.Error($"{lastResult.Errors.Count} fila(s) con error");
+                }
+            }
+            else
+            {
+                try
+                {
+                    var err = await response.Content.ReadFromJsonAsync<Dictionary<string, string>>();
+                    generalError = err?.GetValueOrDefault("error") ?? $"Error HTTP {(int)response.StatusCode}";
+                }
+                catch { generalError = $"Error HTTP {(int)response.StatusCode}"; }
+            }
+        }
+        catch (Exception ex) { generalError = "Error: " + ex.Message; }
+        isWorking = false;
+        StateHasChanged();
+    }
+
+    private async Task Close()
+    {
+        if (isWorking) return;
+        Visible = false;
+        lastResult = null;
+        generalError = null;
+        await VisibleChanged.InvokeAsync(Visible);
+    }
+}

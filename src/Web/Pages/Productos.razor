@@ -9,7 +9,10 @@
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
         <h3>@PageTitle (@GetFilteredProducts().Count de @VisibleTotal)</h3>
-        <button class="btn btn-primary" @onclick="ShowCreateForm">+ Nuevo Producto</button>
+        <div style="display: flex; gap: 0.4rem; align-items: center;">
+            <button class="btn btn-primary" @onclick="ShowCreateForm">+ Nuevo Producto</button>
+            <button class="btn btn-primary" @onclick="() => showImport = true" title="Subir varios productos desde un Excel" style="background: #059669; border-color: #059669;">📤 Importar Excel</button>
+        </div>
     </div>
     <div class="card-body" style="padding: 0;">
         @if (isLoading)
@@ -1152,7 +1155,16 @@
     </div>
 }
 
+<BulkImportModal @bind-Visible="showImport"
+                 EntityNameSingular="producto"
+                 EntityNamePlural="productos"
+                 TemplateUrl="/api/products/import-template"
+                 TemplateFileName="productos-template.xlsx"
+                 ImportUrl="/api/products/bulk-import"
+                 OnImported="LoadData" />
+
 @code {
+    private bool showImport;
     private List<ProductDto>? products;
     private int totalProducts;
     private bool isLoading = true;

@@ -6,7 +6,10 @@
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
         <h3>Combos (@(combos?.Count ?? 0))</h3>
-        <button class="btn btn-primary" @onclick="ShowCreateForm">+ Nuevo Combo</button>
+        <div style="display: flex; gap: 0.4rem; align-items: center;">
+            <button class="btn btn-primary" @onclick="ShowCreateForm">+ Nuevo Combo</button>
+            <button class="btn btn-primary" @onclick="() => showImport = true" title="Subir varios combos desde un Excel" style="background: #059669; border-color: #059669;">📤 Importar Excel</button>
+        </div>
     </div>
     <div class="card-body" style="padding: 0;">
         @if (isLoading)
@@ -88,7 +91,13 @@
                     </div>
                     <div class="form-group">
                         <label class="form-label">SKU</label>
-                        <input class="form-input" @bind="formSku" placeholder="Codigo del combo (opcional)" />
+                        <input class="form-input" @bind="formSku" placeholder="Codigo del combo" />
+                        @if (!isEditing)
+                        {
+                            <p style="font-size: 0.72rem; color: #6b7280; margin: 0.2rem 0 0;">
+                                Sugerido automaticamente. Podes cambiarlo si queres.
+                            </p>
+                        }
                     </div>
                 </div>
                 <div class="form-group">
@@ -278,7 +287,16 @@
     </div>
 }
 
+<BulkImportModal @bind-Visible="showImport"
+                 EntityNameSingular="combo"
+                 EntityNamePlural="combos"
+                 TemplateUrl="/api/combos/import-template"
+                 TemplateFileName="combos-template.xlsx"
+                 ImportUrl="/api/combos/bulk-import"
+                 OnImported="LoadData" />
+
 @code {
+    private bool showImport;
     private List<ComboDto>? combos;
     private List<ProductDto>? availableProducts;
     private bool isLoading = true;
@@ -336,7 +354,7 @@
         isLoading = false;
     }
 
-    private void ShowCreateForm()
+    private async Task ShowCreateForm()
     {
         isEditing = false; editingId = null;
         formName = ""; formSku = ""; formDescription = "";
@@ -348,6 +366,18 @@
         formPercentAdjustment = 0;
         addProductId = 0; addProductQty = 1;
         formError = null; showForm = true;
+
+        // Pedir SKU sugerido al backend (no bloqueante).
+        try
+        {
+            var suggested = await Api.GetNextComboSkuAsync();
+            if (!string.IsNullOrEmpty(suggested))
+            {
+                formSku = suggested;
+                StateHasChanged();
+            }
+        }
+        catch { /* dejar vacio si falla, el backend tambien lo genera al crear */ }
     }
 
     private void ShowEditForm(ComboDto c)

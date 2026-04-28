@@ -11,10 +11,32 @@ namespace Api.Controllers;
 public class ProductsController : ControllerBase
 {
     private readonly ProductService _productService;
+    private readonly BulkImportService _import;
 
-    public ProductsController(ProductService productService)
+    public ProductsController(ProductService productService, BulkImportService import)
     {
         _productService = productService;
+        _import = import;
+    }
+
+    [HttpGet("import-template")]
+    public IActionResult Template()
+    {
+        var bytes = _import.BuildProductTemplate();
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "productos-template.xlsx");
+    }
+
+    [HttpPost("bulk-import")]
+    public async Task<IActionResult> BulkImport(IFormFile file)
+    {
+        if (file is null || file.Length == 0) return BadRequest(new { error = "Subi un archivo .xlsx" });
+        try
+        {
+            using var stream = file.OpenReadStream();
+            var result = await _import.ImportProductsAsync(stream);
+            return Ok(result);
+        }
+        catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
     }
 
     [HttpGet]

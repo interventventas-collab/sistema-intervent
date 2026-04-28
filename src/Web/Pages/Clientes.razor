@@ -6,7 +6,10 @@
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
         <h3>Clientes (@(clients?.Count ?? 0))</h3>
-        <button class="btn btn-primary" @onclick="ShowCreateForm">+ Nuevo Cliente</button>
+        <div style="display: flex; gap: 0.4rem; align-items: center;">
+            <button class="btn btn-primary" @onclick="ShowCreateForm">+ Nuevo Cliente</button>
+            <button class="btn btn-primary" @onclick="() => showImport = true" title="Subir varios clientes desde un Excel" style="background: #059669; border-color: #059669;">📤 Importar Excel</button>
+        </div>
     </div>
     <div class="card-body" style="padding: 0;">
         @if (isLoading)
@@ -159,7 +162,16 @@
     </div>
 }
 
+<BulkImportModal @bind-Visible="showImport"
+                 EntityNameSingular="cliente"
+                 EntityNamePlural="clientes"
+                 TemplateUrl="/api/clients/import-template"
+                 TemplateFileName="clientes-template.xlsx"
+                 ImportUrl="/api/clients/bulk-import"
+                 OnImported="LoadData" />
+
 @code {
+    private bool showImport;
     private List<ClientDto>? clients;
     private bool isLoading = true;
     private bool showForm;

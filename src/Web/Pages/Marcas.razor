@@ -6,7 +6,10 @@
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
         <h3>Marcas (@(brands?.Count ?? 0))</h3>
-        <button class="btn btn-primary" @onclick="ShowCreateForm">+ Nueva Marca</button>
+        <div style="display: flex; gap: 0.4rem; align-items: center;">
+            <button class="btn btn-primary" @onclick="ShowCreateForm">+ Nueva Marca</button>
+            <button class="btn btn-primary" @onclick="() => showImport = true" title="Subir varias marcas desde un Excel" style="background: #059669; border-color: #059669;">📤 Importar Excel</button>
+        </div>
     </div>
     <div class="card-body" style="padding: 0;">
         @if (isLoading)
@@ -146,7 +149,16 @@
     </div>
 }
 
+<BulkImportModal @bind-Visible="showImport"
+                 EntityNameSingular="marca"
+                 EntityNamePlural="marcas"
+                 TemplateUrl="/api/brands/import-template"
+                 TemplateFileName="marcas-template.xlsx"
+                 ImportUrl="/api/brands/bulk-import"
+                 OnImported="LoadData" />
+
 @code {
+    private bool showImport;
     private List<BrandDto>? brands;
     private bool isLoading = true;
     private bool showForm;

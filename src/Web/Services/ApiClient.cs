@@ -216,6 +216,12 @@ public class ApiClient
     public async Task<List<ComboDto>?> GetCombosAsync()
         => await GetAsync<List<ComboDto>>("/api/combos");
 
+    public async Task<string?> GetNextComboSkuAsync()
+    {
+        var res = await GetAsync<Dictionary<string, string>>("/api/combos/next-sku");
+        return res?.GetValueOrDefault("sku");
+    }
+
     public async Task<ComboDto?> CreateComboAsync(CreateComboRequest request)
         => await PostAsync<ComboDto>("/api/combos", request);
 

@@ -11,14 +11,39 @@ namespace Api.Controllers;
 public class CombosController : ControllerBase
 {
     private readonly ComboService _service;
+    private readonly BulkImportService _import;
 
-    public CombosController(ComboService service)
+    public CombosController(ComboService service, BulkImportService import)
     {
         _service = service;
+        _import = import;
+    }
+
+    [HttpGet("import-template")]
+    public IActionResult Template()
+    {
+        var bytes = _import.BuildComboTemplate();
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "combos-template.xlsx");
+    }
+
+    [HttpPost("bulk-import")]
+    public async Task<IActionResult> BulkImport(IFormFile file)
+    {
+        if (file is null || file.Length == 0) return BadRequest(new { error = "Subi un archivo .xlsx" });
+        try
+        {
+            using var stream = file.OpenReadStream();
+            var result = await _import.ImportCombosAsync(stream);
+            return Ok(result);
+        }
+        catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
     }
 
     [HttpGet]
     public async Task<IActionResult> GetAll() => Ok(await _service.GetAllAsync());
+
+    [HttpGet("next-sku")]
+    public async Task<IActionResult> NextSku() => Ok(new { sku = await _service.GenerateNextSkuAsync() });
 
     [HttpGet("{id}")]
     public async Task<IActionResult> GetById(int id)

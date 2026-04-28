@@ -6,7 +6,10 @@
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
         <h3>Proveedores (@(suppliers?.Count ?? 0))</h3>
-        <button class="btn btn-primary" @onclick="ShowCreateForm">+ Nuevo Proveedor</button>
+        <div style="display: flex; gap: 0.4rem; align-items: center;">
+            <button class="btn btn-primary" @onclick="ShowCreateForm">+ Nuevo Proveedor</button>
+            <button class="btn btn-primary" @onclick="() => showImport = true" title="Subir varios proveedores desde un Excel" style="background: #059669; border-color: #059669;">📤 Importar Excel</button>
+        </div>
     </div>
     <div class="card-body" style="padding: 0;">
         @if (isLoading)
@@ -158,7 +161,16 @@
     </div>
 }
 
+<BulkImportModal @bind-Visible="showImport"
+                 EntityNameSingular="proveedor"
+                 EntityNamePlural="proveedores"
+                 TemplateUrl="/api/suppliers/import-template"
+                 TemplateFileName="proveedores-template.xlsx"
+                 ImportUrl="/api/suppliers/bulk-import"
+                 OnImported="LoadData" />
+
 @code {
+    private bool showImport;
     private List<SupplierDto>? suppliers;
     private bool isLoading = true;
     private bool showForm;

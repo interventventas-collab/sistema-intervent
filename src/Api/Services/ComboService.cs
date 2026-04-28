@@ -8,6 +8,7 @@ namespace Api.Services;
 public class ComboService
 {
     private readonly AppDbContext _db;
+    private const string SkuPrefix = "COMBO-";
     private static readonly string[] AllowedPriceModes = new[] { "auto", "manual", "percent" };
 
     public ComboService(AppDbContext db)
@@ -42,10 +43,12 @@ public class ComboService
 
         await EnsureProductsExistAsync(request.Items.Select(i => i.ProductId).ToList());
 
+        var sku = string.IsNullOrWhiteSpace(request.Sku) ? await GenerateNextSkuAsync() : request.Sku.Trim();
+
         var combo = new Combo
         {
             Name = request.Name.Trim(),
-            Sku = string.IsNullOrWhiteSpace(request.Sku) ? null : request.Sku.Trim(),
+            Sku = sku,
             Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description,
             Photo = string.IsNullOrWhiteSpace(request.Photo) ? null : request.Photo,
             PriceMode = request.PriceMode,
@@ -120,6 +123,22 @@ public class ComboService
     }
 
     // --- Helpers ---
+
+    public async Task<string> GenerateNextSkuAsync()
+    {
+        var existing = await _db.Combos
+            .Where(c => c.Sku != null && c.Sku.StartsWith(SkuPrefix))
+            .Select(c => c.Sku!)
+            .ToListAsync();
+
+        int max = 0;
+        foreach (var sku in existing)
+        {
+            var numPart = sku.Substring(SkuPrefix.Length);
+            if (int.TryParse(numPart, out var num) && num > max) max = num;
+        }
+        return $"{SkuPrefix}{(max + 1):D3}";
+    }
 
     private static void ValidatePriceMode(string mode)
     {
