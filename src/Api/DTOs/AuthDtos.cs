@@ -27,5 +27,6 @@ public record UserDto(
     string Email,
     string Role,
     DateTime CreatedAt,
-    bool IsActive
+    bool IsActive,
+    List<string>? Permissions = null
 );

@@ -208,6 +208,7 @@
         { "publicaciones", "publicaciones" },
         { "ordenes", "ordenes" },
         { "productos", "productos" },
+        { "combos", "combos" },
         { "usuarios", "usuarios" },
         { "roles", "roles" },
         { "integraciones", "integraciones" },
@@ -228,6 +229,17 @@
             role = user.Role;
             permissions = user.Permissions ?? new();
         }
+
+        // Refrescar permisos desde el servidor para reflejar cambios sin necesidad de re-login.
+        try
+        {
+            var fresh = await Api.GetMeAsync();
+            if (fresh?.Permissions is not null)
+            {
+                permissions = fresh.Permissions;
+            }
+        }
+        catch { /* offline o sin sesion: dejamos lo que vino del cache */ }
 
         // Load brand settings
         try

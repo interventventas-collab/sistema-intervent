@@ -110,13 +110,29 @@ public class AuthController : ControllerBase
             if (user is null)
                 return NotFound(new { message = "User not found" });
 
+            // Cargar permisos vigentes del rol (o todos si es admin)
+            List<string> permissions;
+            var roleName = user.RoleNav?.Name ?? user.Role;
+            if (string.Equals(roleName, "admin", StringComparison.OrdinalIgnoreCase))
+            {
+                permissions = MenuDefinition.AllMenuKeys;
+            }
+            else
+            {
+                permissions = await _db.RolePermissions
+                    .Where(rp => rp.RoleId == user.RoleId)
+                    .Select(rp => rp.MenuKey)
+                    .ToListAsync();
+            }
+
             return Ok(new UserDto(
                 Id: user.Id,
                 Username: user.Username,
                 Email: user.Email,
-                Role: user.RoleNav?.Name ?? user.Role,
+                Role: roleName,
                 CreatedAt: user.CreatedAt,
-                IsActive: user.IsActive
+                IsActive: user.IsActive,
+                Permissions: permissions
             ));
         }
         catch (Exception ex)
