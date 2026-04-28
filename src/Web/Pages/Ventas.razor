@@ -267,23 +267,42 @@
     @* CSS impresion A4 *@
     <style>
         @@media print {
-            @@page { size: A4; margin: 1.5cm; }
+            @@page { size: A4 portrait; margin: 1cm; }
+            html, body { background: white !important; }
             body * { visibility: hidden !important; }
+            .modal-overlay {
+                position: static !important; background: transparent !important;
+                padding: 0 !important; margin: 0 !important; display: block !important;
+            }
+            .modal-card {
+                position: static !important;
+                max-width: none !important; width: 100% !important;
+                box-shadow: none !important; border: 0 !important;
+                margin: 0 !important; padding: 0 !important;
+                background: white !important;
+            }
+            .modal-body, .modal-footer, .modal-header { padding: 0 !important; margin: 0 !important; }
             #comprobante-print, #comprobante-print * { visibility: visible !important; }
-            #comprobante-print { position: absolute !important; left: 0; top: 0; width: 100% !important; max-width: none !important; box-shadow: none !important; }
+            #comprobante-print {
+                position: absolute !important; left: 0; top: 0;
+                width: 100% !important; max-width: none !important;
+                padding: 0 !important; margin: 0 !important;
+                font-size: 11pt !important;
+            }
+            #comprobante-print table { width: 100% !important; }
             .no-print { display: none !important; }
         }
         .pagado-stamp {
             position: absolute;
             top: 50%; left: 50%;
             transform: translate(-50%, -50%) rotate(-18deg);
-            font-size: 6rem;
-            font-weight: 900;
-            color: rgba(220, 38, 38, 0.45);
-            border: 8px solid rgba(220, 38, 38, 0.45);
-            padding: 0.4rem 2.5rem;
-            border-radius: 12px;
-            letter-spacing: 0.3rem;
+            font-size: 2.2rem;
+            font-weight: 800;
+            color: rgba(220, 38, 38, 0.22);
+            border: 3px solid rgba(220, 38, 38, 0.22);
+            padding: 0.25rem 1.2rem;
+            border-radius: 8px;
+            letter-spacing: 0.2rem;
             pointer-events: none;
             user-select: none;
             z-index: 5;
@@ -423,7 +442,7 @@
                         {
                             var isOn = ViewerHasDay(d);
                             <span class="day-pill @(isOn ? "on" : "")" @onclick="() => ToggleViewerDay(d)" title="Click para tildar/destildar">
-                                @(isOn ? "✓ " : "")@d
+                                @d
                             </span>
                         }
                     </div>
