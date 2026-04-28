@@ -892,6 +892,27 @@ IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId = 1 AND MenuKey = 'sue
     INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'sueldos');
 GO
 
+-- Pagos parciales de sueldos (adelantos + pagos finales)
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='PayrollPayments' AND xtype='U')
+BEGIN
+    CREATE TABLE PayrollPayments (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        PayrollId INT NOT NULL,
+        Date DATETIME2 NOT NULL,
+        Amount DECIMAL(18,2) NOT NULL,
+        AccountId INT NULL,
+        PaymentMethod NVARCHAR(30) NOT NULL DEFAULT 'efectivo',
+        Concept NVARCHAR(100) NULL,
+        Notes NVARCHAR(500) NULL,
+        TreasuryMovementId INT NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        CONSTRAINT FK_PayrollPayments_Payroll FOREIGN KEY (PayrollId) REFERENCES Payrolls(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_PayrollPayments_Account FOREIGN KEY (AccountId) REFERENCES TreasuryAccounts(Id) ON DELETE SET NULL
+    );
+    CREATE INDEX IX_PayrollPayments_PayrollId ON PayrollPayments (PayrollId);
+END
+GO
+
 -- Asegurar que el nombre default tenga el simbolo de marca registrada
 IF EXISTS (SELECT 1 FROM AppSettings WHERE [Key] = 'company.name' AND ([Value] = '' OR [Value] = 'FRIKAF'))
     UPDATE AppSettings SET [Value] = 'FRIKAF' + NCHAR(174), UpdatedAt = GETDATE() WHERE [Key] = 'company.name';

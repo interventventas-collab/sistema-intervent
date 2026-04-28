@@ -76,8 +76,32 @@ public record PayrollDto(
     DateTime? PaidAt,
     int? PaidFromAccountId,
     string? PaidFromAccountName,
+    decimal TotalPaid,
+    decimal Pending,
+    List<PayrollPaymentDto> Payments,
     DateTime CreatedAt,
     DateTime? UpdatedAt
+);
+
+public record PayrollPaymentDto(
+    int Id,
+    int PayrollId,
+    DateTime Date,
+    decimal Amount,
+    int? AccountId,
+    string? AccountName,
+    string PaymentMethod,
+    string? Concept,
+    string? Notes
+);
+
+public record AddPayrollPaymentRequest(
+    DateTime? Date,
+    [Range(0.01, double.MaxValue)] decimal Amount,
+    int? AccountId,
+    [Required, MaxLength(30)] string PaymentMethod,
+    [MaxLength(100)] string? Concept,
+    [MaxLength(500)] string? Notes
 );
 
 public record CreatePayrollRequest(

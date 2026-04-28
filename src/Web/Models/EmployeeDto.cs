@@ -78,8 +78,34 @@ public class PayrollDto
     public DateTime? PaidAt { get; set; }
     public int? PaidFromAccountId { get; set; }
     public string? PaidFromAccountName { get; set; }
+    public decimal TotalPaid { get; set; }
+    public decimal Pending { get; set; }
+    public List<PayrollPaymentDto> Payments { get; set; } = new();
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
+}
+
+public class PayrollPaymentDto
+{
+    public int Id { get; set; }
+    public int PayrollId { get; set; }
+    public DateTime Date { get; set; }
+    public decimal Amount { get; set; }
+    public int? AccountId { get; set; }
+    public string? AccountName { get; set; }
+    public string PaymentMethod { get; set; } = "efectivo";
+    public string? Concept { get; set; }
+    public string? Notes { get; set; }
+}
+
+public class AddPayrollPaymentRequest
+{
+    public DateTime? Date { get; set; }
+    public decimal Amount { get; set; }
+    public int? AccountId { get; set; }
+    public string PaymentMethod { get; set; } = "efectivo";
+    public string? Concept { get; set; }
+    public string? Notes { get; set; }
 }
 
 public class CreatePayrollRequest

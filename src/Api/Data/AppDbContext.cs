@@ -27,6 +27,7 @@ public class AppDbContext : DbContext
     public DbSet<TreasuryMovement> TreasuryMovements => Set<TreasuryMovement>();
     public DbSet<Employee> Employees => Set<Employee>();
     public DbSet<Payroll> Payrolls => Set<Payroll>();
+    public DbSet<PayrollPayment> PayrollPayments => Set<PayrollPayment>();
     public DbSet<ScheduledProcess> ScheduledProcesses => Set<ScheduledProcess>();
     public DbSet<ProcessExecutionLog> ProcessExecutionLogs => Set<ProcessExecutionLog>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
@@ -201,6 +202,19 @@ public class AppDbContext : DbContext
             entity.HasOne(p => p.PaidFromAccount)
                   .WithMany()
                   .HasForeignKey(p => p.PaidFromAccountId)
+                  .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<PayrollPayment>(entity =>
+        {
+            entity.HasIndex(pp => pp.PayrollId);
+            entity.HasOne(pp => pp.Payroll)
+                  .WithMany(p => p.Payments)
+                  .HasForeignKey(pp => pp.PayrollId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(pp => pp.Account)
+                  .WithMany()
+                  .HasForeignKey(pp => pp.AccountId)
                   .OnDelete(DeleteBehavior.SetNull);
         });
 

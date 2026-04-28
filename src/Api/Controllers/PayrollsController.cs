@@ -68,23 +68,25 @@ public class PayrollsController : ControllerBase
         catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
     }
 
-    [HttpPost("{id}/mark-paid")]
-    public async Task<IActionResult> MarkPaid(int id, [FromBody] MarkPayrollPaidRequest r)
+    // ===== Pagos parciales (adelantos, quincenas, pago final) =====
+
+    [HttpPost("{id}/payments")]
+    public async Task<IActionResult> AddPayment(int id, [FromBody] AddPayrollPaymentRequest r)
     {
         try
         {
-            var u = await _service.MarkPaidAsync(id, r);
+            var u = await _service.AddPaymentAsync(id, r);
             if (u is null) return NotFound(new { error = "Liquidacion no encontrada" });
             return Ok(u);
         }
         catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
     }
 
-    [HttpPost("{id}/unmark-paid")]
-    public async Task<IActionResult> UnmarkPaid(int id)
+    [HttpDelete("payments/{paymentId}")]
+    public async Task<IActionResult> DeletePayment(int paymentId)
     {
-        var u = await _service.UnmarkPaidAsync(id);
-        if (u is null) return NotFound(new { error = "Liquidacion no encontrada" });
+        var u = await _service.DeletePaymentAsync(paymentId);
+        if (u is null) return NotFound(new { error = "Pago no encontrado" });
         return Ok(u);
     }
 }

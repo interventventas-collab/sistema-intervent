@@ -10,6 +10,12 @@ public class PayrollService
     private readonly AppDbContext _db;
     private readonly TreasuryService _treasury;
 
+    private static readonly string[] AllowedPaymentMethods =
+    {
+        "efectivo", "transferencia", "tarjeta_debito", "tarjeta_credito",
+        "cheque", "mercadopago", "otro"
+    };
+
     public PayrollService(AppDbContext db, TreasuryService treasury)
     {
         _db = db;
@@ -18,7 +24,11 @@ public class PayrollService
 
     public async Task<List<PayrollDto>> GetAllAsync(int? employeeId = null, int? year = null, int? month = null)
     {
-        var q = _db.Payrolls.Include(p => p.Employee).Include(p => p.PaidFromAccount).AsQueryable();
+        var q = _db.Payrolls
+            .Include(p => p.Employee)
+            .Include(p => p.PaidFromAccount)
+            .Include(p => p.Payments).ThenInclude(pp => pp.Account)
+            .AsQueryable();
         if (employeeId.HasValue) q = q.Where(p => p.EmployeeId == employeeId.Value);
         if (year.HasValue) q = q.Where(p => p.Year == year.Value);
         if (month.HasValue) q = q.Where(p => p.Month == month.Value);
@@ -31,7 +41,10 @@ public class PayrollService
 
     public async Task<PayrollDto?> GetByIdAsync(int id)
     {
-        var p = await _db.Payrolls.Include(x => x.Employee).Include(x => x.PaidFromAccount)
+        var p = await _db.Payrolls
+            .Include(x => x.Employee)
+            .Include(x => x.PaidFromAccount)
+            .Include(x => x.Payments).ThenInclude(pp => pp.Account)
             .FirstOrDefaultAsync(x => x.Id == id);
         return p is null ? null : Map(p);
     }
@@ -65,9 +78,10 @@ public class PayrollService
 
     public async Task<PayrollDto?> UpdateAsync(int id, UpdatePayrollRequest r)
     {
-        var p = await _db.Payrolls.FindAsync(id);
+        var p = await _db.Payrolls.Include(x => x.Payments).FirstOrDefaultAsync(x => x.Id == id);
         if (p is null) return null;
-        if (p.IsPaid) throw new InvalidOperationException("No se puede modificar una liquidacion ya pagada. Desmarcala como pagada primero.");
+        if (p.Payments.Any())
+            throw new InvalidOperationException("No se puede modificar una liquidacion con pagos registrados. Anulalos primero.");
 
         if (r.BaseSalary.HasValue) p.BaseSalary = r.BaseSalary.Value;
         if (r.Bonuses.HasValue) p.Bonuses = r.Bonuses.Value;
@@ -82,9 +96,10 @@ public class PayrollService
 
     public async Task<bool> DeleteAsync(int id)
     {
-        var p = await _db.Payrolls.FindAsync(id);
+        var p = await _db.Payrolls.Include(x => x.Payments).FirstOrDefaultAsync(x => x.Id == id);
         if (p is null) return false;
-        if (p.IsPaid) throw new InvalidOperationException("No se puede eliminar una liquidacion pagada.");
+        if (p.Payments.Any())
+            throw new InvalidOperationException("No se puede eliminar una liquidacion con pagos registrados.");
         _db.Payrolls.Remove(p);
         await _db.SaveChangesAsync();
         return true;
@@ -98,63 +113,120 @@ public class PayrollService
         {
             if (await _db.Payrolls.AnyAsync(p => p.EmployeeId == e.Id && p.Year == r.Year && p.Month == r.Month))
                 continue;
-            var p = new Payroll
+            _db.Payrolls.Add(new Payroll
             {
                 EmployeeId = e.Id, Year = r.Year, Month = r.Month,
                 BaseSalary = e.BaseSalary,
                 Bonuses = 0, Deductions = 0,
                 GrossTotal = e.BaseSalary, NetTotal = e.BaseSalary,
-                IsPaid = false,
-                CreatedAt = DateTime.UtcNow
-            };
-            _db.Payrolls.Add(p);
+                IsPaid = false, CreatedAt = DateTime.UtcNow
+            });
             created++;
         }
         await _db.SaveChangesAsync();
         return created;
     }
 
-    public async Task<PayrollDto?> MarkPaidAsync(int id, MarkPayrollPaidRequest r)
+    // ===== PAGOS PARCIALES (adelantos, quincenas, pago final) =====
+
+    public async Task<PayrollDto?> AddPaymentAsync(int payrollId, AddPayrollPaymentRequest r)
     {
-        var p = await _db.Payrolls.Include(x => x.Employee).FirstOrDefaultAsync(x => x.Id == id);
-        if (p is null) return null;
-        if (p.IsPaid) return await GetByIdAsync(id);
+        if (!AllowedPaymentMethods.Contains(r.PaymentMethod))
+            throw new InvalidOperationException($"Forma de pago invalida: '{r.PaymentMethod}'.");
+        if (r.Amount <= 0) throw new InvalidOperationException("El importe debe ser mayor a 0.");
 
-        p.IsPaid = true;
-        p.PaidAt = (r.PaidAt ?? DateTime.UtcNow);
-        p.PaidFromAccountId = r.AccountId;
-        p.UpdatedAt = DateTime.UtcNow;
-        await _db.SaveChangesAsync();
+        var payroll = await _db.Payrolls.Include(p => p.Employee).Include(p => p.Payments)
+            .FirstOrDefaultAsync(p => p.Id == payrollId);
+        if (payroll is null) return null;
 
-        // Si se especifico cuenta, registrar el egreso en tesoreria
-        if (r.AccountId.HasValue && p.NetTotal > 0)
+        var alreadyPaid = payroll.Payments.Sum(p => p.Amount);
+        var pending = payroll.NetTotal - alreadyPaid;
+        // Permitimos que el pago supere el neto (ej. ajustes), pero advertimos via UI; aqui no bloqueamos.
+
+        // Si se especifico cuenta, registrar el egreso de tesoreria.
+        int? movementId = null;
+        if (r.AccountId.HasValue)
         {
-            var concept = "Sueldo";
-            var desc = $"{p.Year}/{p.Month:D2} - {p.Employee?.LastName}, {p.Employee?.FirstName}";
-            await _treasury.RegisterEgresoAsync(r.AccountId.Value, p.NetTotal, concept, desc, p.EmployeeId);
+            var concept = string.IsNullOrWhiteSpace(r.Concept) ? "Sueldo" : r.Concept;
+            var desc = $"{payroll.Year}/{payroll.Month:D2} - {payroll.Employee?.LastName}, {payroll.Employee?.FirstName} ({r.PaymentMethod})";
+            var mov = await _treasury.RegisterEgresoAsync(r.AccountId.Value, r.Amount, concept, desc, payroll.EmployeeId);
+            movementId = mov.Id;
         }
 
-        return await GetByIdAsync(id);
-    }
+        var payment = new PayrollPayment
+        {
+            PayrollId = payroll.Id,
+            Date = (r.Date ?? DateTime.UtcNow).Date,
+            Amount = r.Amount,
+            AccountId = r.AccountId,
+            PaymentMethod = r.PaymentMethod,
+            Concept = string.IsNullOrWhiteSpace(r.Concept) ? null : r.Concept,
+            Notes = string.IsNullOrWhiteSpace(r.Notes) ? null : r.Notes,
+            TreasuryMovementId = movementId,
+            CreatedAt = DateTime.UtcNow
+        };
+        _db.PayrollPayments.Add(payment);
 
-    public async Task<PayrollDto?> UnmarkPaidAsync(int id)
-    {
-        var p = await _db.Payrolls.FindAsync(id);
-        if (p is null) return null;
-        p.IsPaid = false;
-        p.PaidAt = null;
-        p.PaidFromAccountId = null;
-        p.UpdatedAt = DateTime.UtcNow;
+        // Actualizar flag IsPaid del payroll si llega o supera el neto.
+        var newTotal = alreadyPaid + r.Amount;
+        if (newTotal >= payroll.NetTotal)
+        {
+            payroll.IsPaid = true;
+            payroll.PaidAt = payment.Date;
+            payroll.PaidFromAccountId = r.AccountId;
+        }
+        payroll.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
-        return await GetByIdAsync(id);
+
+        return await GetByIdAsync(payroll.Id);
     }
 
-    private static PayrollDto Map(Payroll p) => new PayrollDto(
-        p.Id, p.EmployeeId,
-        p.Employee != null ? $"{p.Employee.LastName}, {p.Employee.FirstName}" : "?",
-        p.Employee?.Code,
-        p.Year, p.Month,
-        p.BaseSalary, p.Bonuses, p.Deductions, p.GrossTotal, p.NetTotal,
-        p.Notes, p.IsPaid, p.PaidAt, p.PaidFromAccountId, p.PaidFromAccount?.Name,
-        p.CreatedAt, p.UpdatedAt);
+    public async Task<PayrollDto?> DeletePaymentAsync(int paymentId)
+    {
+        var payment = await _db.PayrollPayments.Include(p => p.Payroll).FirstOrDefaultAsync(p => p.Id == paymentId);
+        if (payment is null) return null;
+        var payrollId = payment.PayrollId;
+
+        // Revertir el movimiento de tesoreria si se habia generado.
+        if (payment.TreasuryMovementId.HasValue)
+        {
+            var mov = await _db.TreasuryMovements.FindAsync(payment.TreasuryMovementId.Value);
+            if (mov is not null) _db.TreasuryMovements.Remove(mov);
+        }
+
+        _db.PayrollPayments.Remove(payment);
+
+        // Recalcular flag pagado del payroll.
+        var payroll = await _db.Payrolls.Include(p => p.Payments).FirstOrDefaultAsync(p => p.Id == payrollId);
+        if (payroll is not null)
+        {
+            var totalAfter = payroll.Payments.Where(p => p.Id != paymentId).Sum(p => p.Amount);
+            payroll.IsPaid = totalAfter >= payroll.NetTotal && payroll.NetTotal > 0;
+            payroll.PaidAt = payroll.IsPaid ? payroll.PaidAt : null;
+            payroll.PaidFromAccountId = payroll.IsPaid ? payroll.PaidFromAccountId : null;
+            payroll.UpdatedAt = DateTime.UtcNow;
+        }
+        await _db.SaveChangesAsync();
+        return await GetByIdAsync(payrollId);
+    }
+
+    private static PayrollDto Map(Payroll p)
+    {
+        var payments = p.Payments.OrderBy(x => x.Date).ThenBy(x => x.Id).Select(x => new PayrollPaymentDto(
+            x.Id, x.PayrollId, x.Date, x.Amount,
+            x.AccountId, x.Account?.Name, x.PaymentMethod, x.Concept, x.Notes
+        )).ToList();
+        var totalPaid = payments.Sum(x => x.Amount);
+        var pending = Math.Max(0, p.NetTotal - totalPaid);
+
+        return new PayrollDto(
+            p.Id, p.EmployeeId,
+            p.Employee != null ? $"{p.Employee.LastName}, {p.Employee.FirstName}" : "?",
+            p.Employee?.Code,
+            p.Year, p.Month,
+            p.BaseSalary, p.Bonuses, p.Deductions, p.GrossTotal, p.NetTotal,
+            p.Notes, p.IsPaid, p.PaidAt, p.PaidFromAccountId, p.PaidFromAccount?.Name,
+            totalPaid, pending, payments,
+            p.CreatedAt, p.UpdatedAt);
+    }
 }

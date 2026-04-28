@@ -277,10 +277,14 @@ public class ApiClient
         var result = await PostAsync<Dictionary<string, int>>("/api/payrolls/generate-month", r);
         return result?.GetValueOrDefault("created") ?? 0;
     }
-    public async Task<PayrollDto?> MarkPayrollPaidAsync(int id, MarkPayrollPaidRequest r)
-        => await PostAsync<PayrollDto>($"/api/payrolls/{id}/mark-paid", r);
-    public async Task<PayrollDto?> UnmarkPayrollPaidAsync(int id)
-        => await PostAsync<PayrollDto>($"/api/payrolls/{id}/unmark-paid", new { });
+    public async Task<PayrollDto?> AddPayrollPaymentAsync(int payrollId, AddPayrollPaymentRequest r)
+        => await PostAsync<PayrollDto>($"/api/payrolls/{payrollId}/payments", r);
+    public async Task<PayrollDto?> DeletePayrollPaymentAsync(int paymentId)
+        => await DeleteWithBodyAsync<PayrollDto>($"/api/payrolls/payments/{paymentId}");
+
+    // --- Lookup AFIP ---
+    public async Task<FiscalLookupDto?> LookupCuitAsync(string cuit)
+        => await GetAsync<FiscalLookupDto>($"/api/fiscal/lookup?cuit={Uri.EscapeDataString(cuit)}");
 
     // --- Stock batches (lotes con vencimiento) ---
     public async Task<List<StockBatchDto>?> GetStockBatchesAsync(int productId)
@@ -1090,6 +1094,19 @@ public class ApiClient
         }
 
         return response.IsSuccessStatusCode;
+    }
+
+    private async Task<T?> DeleteWithBodyAsync<T>(string url)
+    {
+        await SetAuthHeaderAsync();
+        var response = await _http.DeleteAsync(url);
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            await HandleUnauthorizedAsync();
+            return default;
+        }
+        await ThrowIfErrorAsync(response);
+        return await response.Content.ReadFromJsonAsync<T>();
     }
 
     // No-op: el JWT viaja en una cookie httpOnly que el browser envia automaticamente

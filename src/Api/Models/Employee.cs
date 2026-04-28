@@ -57,6 +57,41 @@ public class Employee
     public DateTime? UpdatedAt { get; set; }
 }
 
+[Table("PayrollPayments")]
+public class PayrollPayment
+{
+    [Key]
+    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public int Id { get; set; }
+
+    public int PayrollId { get; set; }
+    [ForeignKey(nameof(PayrollId))]
+    public Payroll? Payroll { get; set; }
+
+    public DateTime Date { get; set; }
+
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal Amount { get; set; }
+
+    public int? AccountId { get; set; }
+    [ForeignKey(nameof(AccountId))]
+    public TreasuryAccount? Account { get; set; }
+
+    // efectivo | transferencia | tarjeta_debito | tarjeta_credito | cheque | mercadopago | otro
+    [Required, MaxLength(30)]
+    public string PaymentMethod { get; set; } = "efectivo";
+
+    [MaxLength(100)]
+    public string? Concept { get; set; }   // ej. "Adelanto", "Pago final", "Quincena"
+
+    [MaxLength(500)]
+    public string? Notes { get; set; }
+
+    public int? TreasuryMovementId { get; set; }   // referencia al movimiento generado en tesoreria
+
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
 [Table("Payrolls")]
 public class Payroll
 {
@@ -98,4 +133,6 @@ public class Payroll
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
+
+    public ICollection<PayrollPayment> Payments { get; set; } = new List<PayrollPayment>();
 }

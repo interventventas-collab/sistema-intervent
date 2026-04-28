@@ -73,8 +73,12 @@
                                 <td>
                                     @if (p.IsPaid)
                                     {
-                                        <span class="status-badge status-active" title="@(p.PaidFromAccountName ?? "")">
-                                            Pagado @(p.PaidAt?.ToString("dd/MM"))
+                                        <span class="status-badge status-active">Pagado @(p.PaidAt?.ToString("dd/MM"))</span>
+                                    }
+                                    else if (p.TotalPaid > 0)
+                                    {
+                                        <span class="status-badge" style="background:#fef3c7;color:#92400e;">
+                                            Parcial · $@FormatAmount(p.TotalPaid) / $@FormatAmount(p.NetTotal)
                                         </span>
                                     }
                                     else
@@ -83,17 +87,10 @@
                                     }
                                 </td>
                                 <td class="actions-cell">
-                                    @if (!p.IsPaid)
+                                    <button class="btn-icon" style="background:#dcfce7;color:#15803d;border:1px solid #15803d;padding:2px 6px;border-radius:4px;font-size:0.7rem;font-weight:700;" @onclick="() => OpenMarkPaid(p)" title="Pagos / adelantos">$ Pagos</button>
+                                    @if (p.Payments.Count == 0)
                                     {
                                         <button class="btn-icon btn-edit" @onclick="() => OpenEdit(p)" title="Editar">@SvgIcons.Edit</button>
-                                        <button class="btn-icon" style="background:#dcfce7;color:#15803d;border:1px solid #15803d;padding:2px 6px;border-radius:4px;font-size:0.7rem;font-weight:700;" @onclick="() => OpenMarkPaid(p)" title="Marcar como pagado">$ Pagar</button>
-                                    }
-                                    else
-                                    {
-                                        <button class="btn-icon" style="background:#fef3c7;color:#92400e;border:1px solid #fbbf24;padding:2px 6px;border-radius:4px;font-size:0.7rem;font-weight:700;" @onclick="() => UnmarkPaid(p)" title="Desmarcar pago">↩</button>
-                                    }
-                                    @if (!p.IsPaid)
-                                    {
                                         <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(p)" title="Eliminar">@SvgIcons.AlertCircle</button>
                                     }
                                 </td>
@@ -220,38 +217,134 @@
     </div>
 }
 
-@* === MARCAR PAGADO === *@
+@* === PAGOS PARCIALES (adelantos + pagos finales) === *@
 @if (showPay && payingPayroll is not null)
 {
     <div class="modal-overlay" @onclick="() => showPay = false">
-        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+        <div class="modal-card modal-wide" @onclick:stopPropagation="true">
             <div class="modal-header" style="background: whitesmoke;">
-                <h3>Pagar sueldo</h3>
+                <h3>Pagos del sueldo · @payingPayroll.EmployeeFullName · @payingPayroll.Year/@payingPayroll.Month.ToString("D2")</h3>
                 <button class="btn-close" @onclick="() => showPay = false">&times;</button>
             </div>
             <div class="modal-body">
-                <p>Vas a marcar como <strong>pagada</strong> la liquidacion de <strong>@payingPayroll.EmployeeFullName</strong> de @payingPayroll.Year/@payingPayroll.Month.ToString("D2").</p>
-                <p>Importe a pagar: <strong>$@FormatAmount(payingPayroll.NetTotal)</strong></p>
-                <div class="form-group">
-                    <label class="form-label">Pagar desde la cuenta de tesoreria (opcional)</label>
-                    <select class="form-input" @bind="payAccountId">
-                        <option value="0">— No registrar movimiento de tesoreria —</option>
-                        @if (accounts is not null)
-                        {
-                            @foreach (var a in accounts.Where(x => x.IsActive))
+                @* Resumen *@
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; margin-bottom: 1rem;">
+                    <div style="background: #f3f4f6; padding: 0.75rem; border-radius: 6px;">
+                        <div style="font-size: 0.78rem; color: #6b7280;">Neto a pagar</div>
+                        <div style="font-size: 1.2rem; font-weight: 800;">$@FormatAmount(payingPayroll.NetTotal)</div>
+                    </div>
+                    <div style="background: #dcfce7; padding: 0.75rem; border-radius: 6px;">
+                        <div style="font-size: 0.78rem; color: #15803d;">Ya pagado</div>
+                        <div style="font-size: 1.2rem; font-weight: 800; color: #15803d;">$@FormatAmount(payingPayroll.TotalPaid)</div>
+                    </div>
+                    <div style="background: @(payingPayroll.Pending > 0 ? "#fef3c7" : "#dcfce7"); padding: 0.75rem; border-radius: 6px;">
+                        <div style="font-size: 0.78rem; color: #92400e;">Pendiente</div>
+                        <div style="font-size: 1.2rem; font-weight: 800; color: @(payingPayroll.Pending > 0 ? "#92400e" : "#15803d");">$@FormatAmount(payingPayroll.Pending)</div>
+                    </div>
+                </div>
+
+                @* Histórico de pagos *@
+                <h4 style="margin: 0 0 0.4rem; font-size: 0.95rem;">Historial de pagos</h4>
+                @if (payingPayroll.Payments.Count == 0)
+                {
+                    <p style="color: #6b7280; font-style: italic; margin: 0 0 0.5rem;">Sin pagos registrados.</p>
+                }
+                else
+                {
+                    <table class="data-table" style="margin-bottom: 0.75rem;">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Concepto</th>
+                                <th>Forma de pago</th>
+                                <th>Cuenta</th>
+                                <th style="text-align: right;">Importe</th>
+                                <th style="width: 50px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var pay in payingPayroll.Payments)
                             {
-                                <option value="@a.Id">@a.Code · @a.Name (saldo: $@FormatAmount(a.CurrentBalance))</option>
+                                <tr>
+                                    <td>@pay.Date.ToString("dd/MM/yyyy")</td>
+                                    <td>@(pay.Concept ?? "(sin concepto)")</td>
+                                    <td>@PaymentMethodLabel(pay.PaymentMethod)</td>
+                                    <td>@(pay.AccountName ?? "—")</td>
+                                    <td style="text-align: right; font-weight: 700;">$@FormatAmount(pay.Amount)</td>
+                                    <td><button class="btn-icon btn-delete" @onclick="() => DeletePayment(pay)" title="Eliminar pago">×</button></td>
+                                </tr>
                             }
-                        }
-                    </select>
-                    <p style="font-size: 0.75rem; color: #6b7280; margin: 0.2rem 0 0;">
-                        Si elegis una cuenta, se descuenta automaticamente el monto y queda registrado en Tesoreria.
-                    </p>
+                        </tbody>
+                    </table>
+                }
+
+                <hr style="margin: 1rem 0; border: none; border-top: 1px solid #e5e7eb;" />
+
+                @* Form de nuevo pago *@
+                <h4 style="margin: 0 0 0.5rem; font-size: 0.95rem;">Registrar nuevo pago / adelanto</h4>
+                @if (!string.IsNullOrEmpty(payError)) { <div class="form-error">@payError</div> }
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Fecha</label>
+                        <input class="form-input" type="date" @bind="newPayDate" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Importe *</label>
+                        <input class="form-input" type="number" step="0.01" min="0.01" @bind="newPayAmount" style="font-weight: 700; text-align: right;" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Concepto</label>
+                        <select class="form-input" @bind="newPayConcept">
+                            <option value="Adelanto">Adelanto</option>
+                            <option value="Quincena">Quincena</option>
+                            <option value="Pago final">Pago final</option>
+                            <option value="Aguinaldo">Aguinaldo</option>
+                            <option value="Bonificacion">Bonificacion</option>
+                            <option value="Otro">Otro</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Forma de pago *</label>
+                        <select class="form-input" @bind="newPayMethod">
+                            <option value="efectivo">Efectivo</option>
+                            <option value="transferencia">Transferencia</option>
+                            <option value="tarjeta_debito">Tarjeta de debito</option>
+                            <option value="tarjeta_credito">Tarjeta de credito</option>
+                            <option value="cheque">Cheque</option>
+                            <option value="mercadopago">MercadoPago</option>
+                            <option value="otro">Otro</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 2;">
+                        <label class="form-label">Cuenta de tesoreria (opcional)</label>
+                        <select class="form-input" @bind="newPayAccountId">
+                            <option value="0">— No registrar en tesoreria —</option>
+                            @if (accounts is not null)
+                            {
+                                @foreach (var a in accounts.Where(x => x.IsActive))
+                                {
+                                    <option value="@a.Id">@a.Code · @a.Name (saldo: $@FormatAmount(a.CurrentBalance))</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Notas</label>
+                    <input class="form-input" @bind="newPayNotes" placeholder="Detalle del pago, recibo, etc." />
+                </div>
+                <div style="display: flex; gap: 0.5rem; align-items: center; margin-top: 0.5rem;">
+                    <button class="btn btn-primary" @onclick="DoAddPayment" disabled="@isAddingPayment">@(isAddingPayment ? "Guardando..." : "+ Registrar pago")</button>
+                    @if (payingPayroll.Pending > 0)
+                    {
+                        <button class="btn btn-secondary" @onclick="FillPendingAmount" type="button">Completar con pendiente ($@FormatAmount(payingPayroll.Pending))</button>
+                    }
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" @onclick="() => showPay = false">Cancelar</button>
-                <button class="btn btn-primary" @onclick="DoMarkPaid">Confirmar pago</button>
+                <button class="btn btn-secondary" @onclick="() => showPay = false">Cerrar</button>
             </div>
         </div>
     </div>
@@ -284,10 +377,17 @@
     private decimal formDeductions;
     private string formNotes = "";
 
-    // Pago
+    // Pago (parcial)
     private bool showPay;
     private PayrollDto? payingPayroll;
-    private int payAccountId;
+    private DateTime newPayDate = DateTime.Today;
+    private decimal newPayAmount;
+    private int newPayAccountId;
+    private string newPayMethod = "efectivo";
+    private string newPayConcept = "Adelanto";
+    private string newPayNotes = "";
+    private bool isAddingPayment;
+    private string? payError;
 
     [Inject] IJSRuntime JS { get; set; } = default!;
 
@@ -382,31 +482,84 @@
         catch (Exception ex) { formError = ex.Message; }
     }
 
-    private void OpenMarkPaid(PayrollDto p) { payingPayroll = p; payAccountId = 0; showPay = true; }
+    private void OpenMarkPaid(PayrollDto p)
+    {
+        payingPayroll = p;
+        newPayDate = DateTime.Today;
+        newPayAmount = p.Pending > 0 ? p.Pending : 0;
+        newPayAccountId = 0;
+        newPayMethod = "efectivo";
+        newPayConcept = p.TotalPaid == 0 ? "Adelanto" : (p.Pending > 0 ? "Adelanto" : "Pago final");
+        newPayNotes = "";
+        payError = null;
+        showPay = true;
+    }
 
-    private async Task DoMarkPaid()
+    private void FillPendingAmount()
     {
         if (payingPayroll is null) return;
+        newPayAmount = payingPayroll.Pending;
+        newPayConcept = "Pago final";
+    }
+
+    private async Task DoAddPayment()
+    {
+        if (payingPayroll is null) return;
+        payError = null;
+        if (newPayAmount <= 0) { payError = "El importe debe ser mayor a 0"; return; }
+        isAddingPayment = true;
         try
         {
-            await Api.MarkPayrollPaidAsync(payingPayroll.Id, new MarkPayrollPaidRequest
+            var updated = await Api.AddPayrollPaymentAsync(payingPayroll.Id, new AddPayrollPaymentRequest
             {
-                AccountId = payAccountId > 0 ? payAccountId : (int?)null,
-                PaidAt = DateTime.UtcNow
+                Date = newPayDate,
+                Amount = newPayAmount,
+                AccountId = newPayAccountId > 0 ? newPayAccountId : (int?)null,
+                PaymentMethod = newPayMethod,
+                Concept = newPayConcept,
+                Notes = newPayNotes
             });
-            ToastService.Success("Pago registrado");
-            showPay = false;
-            await LoadAll();
+            if (updated is not null)
+            {
+                payingPayroll = updated;
+                ToastService.Success("Pago registrado");
+                // Reset form para el proximo pago
+                newPayAmount = updated.Pending > 0 ? updated.Pending : 0;
+                newPayNotes = "";
+                await LoadAll();
+            }
+        }
+        catch (Exception ex) { payError = ex.Message; }
+        finally { isAddingPayment = false; }
+    }
+
+    private async Task DeletePayment(PayrollPaymentDto pay)
+    {
+        if (payingPayroll is null) return;
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Eliminar este pago de ${FormatAmount(pay.Amount)}? Si tenia movimiento de tesoreria, tambien se borra.")) return;
+        try
+        {
+            var updated = await Api.DeletePayrollPaymentAsync(pay.Id);
+            if (updated is not null)
+            {
+                payingPayroll = updated;
+                ToastService.Success("Pago eliminado");
+                await LoadAll();
+            }
         }
         catch (Exception ex) { ToastService.Error(ex.Message); }
     }
 
-    private async Task UnmarkPaid(PayrollDto p)
+    private static string PaymentMethodLabel(string method) => method switch
     {
-        if (!await JS.InvokeAsync<bool>("confirm", "Vas a desmarcar el pago. El movimiento de tesoreria que se haya generado no se borra automaticamente. ¿Continuar?")) return;
-        try { await Api.UnmarkPayrollPaidAsync(p.Id); ToastService.Success("Pago desmarcado"); await LoadAll(); }
-        catch (Exception ex) { ToastService.Error(ex.Message); }
-    }
+        "transferencia" => "Transferencia",
+        "tarjeta_debito" => "Tarjeta debito",
+        "tarjeta_credito" => "Tarjeta credito",
+        "cheque" => "Cheque",
+        "mercadopago" => "MercadoPago",
+        "otro" => "Otro",
+        _ => "Efectivo"
+    };
 
     private async Task ConfirmDelete(PayrollDto p)
     {
