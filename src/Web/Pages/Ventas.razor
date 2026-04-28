@@ -363,6 +363,7 @@
                         <input type="checkbox" checked="@viewerSale.IsPaid" @onchange="TogglePaid" />
                         Pagado
                     </label>
+                    <button class="btn" style="background:#25D366;color:white;border:none;font-size: 0.85rem;" @onclick="OpenWhatsappShare" title="Enviar por WhatsApp Web">📱 WhatsApp</button>
                     <button class="btn btn-secondary" @onclick="PrintViewer" style="font-size: 0.85rem;">🖨 Imprimir</button>
                     <button class="btn-close" @onclick="CloseViewer">&times;</button>
                 </div>
@@ -578,6 +579,41 @@
     </div>
 }
 
+@* ====== ENVIAR POR WHATSAPP ====== *@
+@if (showWhatsappModal && viewerSale is not null)
+{
+    <div class="modal-overlay" @onclick="CloseWhatsappModal" style="z-index: 7000;">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true" style="max-width: 520px;">
+            <div class="modal-header" style="background: #25D366; color: white;">
+                <h4 style="margin: 0;">📱 Enviar comprobante por WhatsApp</h4>
+                <button class="btn-close" @onclick="CloseWhatsappModal" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Teléfono del destinatario</label>
+                    <input class="form-input" @bind="whatsappPhone" placeholder="Ej: 1141234567 (sin 0 y sin 15)" />
+                    <p style="font-size: 0.78rem; color: #6b7280; margin: 0.3rem 0 0;">
+                        Si dejás vacío, WhatsApp Web te va a pedir que elijas el contacto manualmente.
+                        Si es un celular argentino, podés escribir solo los 10 dígitos (área + número) y se completa el código de país.
+                    </p>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Mensaje</label>
+                    <textarea class="form-input" rows="11" style="font-family: monospace; font-size: 0.82rem;" @bind="whatsappMessage"></textarea>
+                </div>
+                <div style="background: #fff7ed; border: 1px solid #fed7aa; padding: 0.6rem; border-radius: 6px; font-size: 0.8rem; color: #9a3412;">
+                    💡 <strong>Tip:</strong> WhatsApp Web no permite adjuntar archivos automáticamente. Si querés mandar el comprobante como imagen o PDF, después de que se abra el chat, volvé a esta ventana, tocá <strong>🖨 Imprimir → Guardar como PDF</strong> y arrastrá el PDF al chat de WhatsApp.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CopyWhatsappMessage">📋 Copiar mensaje</button>
+                <button class="btn btn-secondary" @onclick="CloseWhatsappModal">Cancelar</button>
+                <button class="btn" style="background:#25D366;color:white;border:none;font-weight:700;" @onclick="OpenWhatsapp">📱 Abrir WhatsApp</button>
+            </div>
+        </div>
+    </div>
+}
+
 @* ====== DATOS DE LA EMPRESA ====== *@
 @if (showCompanyForm && companyForm is not null)
 {
@@ -674,6 +710,11 @@
     // Viewer / cancel
     private SaleDto? viewerSale;
     private SaleDto? saleToCancel;
+
+    // Compartir por WhatsApp
+    private bool showWhatsappModal;
+    private string whatsappPhone = "";
+    private string whatsappMessage = "";
 
     // Eliminar definitivamente (solo operador autorizado, con clave)
     private SaleDto? saleToDelete;
@@ -1023,6 +1064,106 @@
         }
         catch (Exception ex) { ToastService.Error(ex.Message); }
         finally { saleToCancel = null; }
+    }
+
+    // ===== Compartir por WhatsApp =====
+
+    private void OpenWhatsappShare()
+    {
+        if (viewerSale is null) return;
+
+        // Lookup del telefono del cliente, si tenemos el ClientId
+        var phone = "";
+        if (viewerSale.ClientId.HasValue && clients is not null)
+        {
+            var c = clients.FirstOrDefault(x => x.Id == viewerSale.ClientId.Value);
+            phone = c?.Phone ?? "";
+        }
+        whatsappPhone = phone;
+
+        // Construir mensaje default
+        var sb = new System.Text.StringBuilder();
+        var clientName = viewerSale.ClientNameSnapshot ?? "";
+        var firstName = !string.IsNullOrEmpty(clientName)
+            ? clientName.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? ""
+            : "";
+        sb.AppendLine(string.IsNullOrEmpty(firstName) ? "Hola!" : $"Hola {firstName}!");
+        sb.AppendLine();
+        sb.AppendLine($"Te paso el comprobante *N° {viewerSale.Number}*");
+        sb.AppendLine($"Fecha: {viewerSale.Date:dd/MM/yyyy}");
+        if (!string.IsNullOrEmpty(viewerSale.CompanyNameSnapshot))
+            sb.AppendLine($"Emisor: {viewerSale.CompanyNameSnapshot}");
+        sb.AppendLine();
+        sb.AppendLine("Detalle:");
+        foreach (var it in viewerSale.Items)
+        {
+            sb.AppendLine($"• {FormatQty(it.Quantity)} x {it.Description} — ${FormatPrice(it.LineTotal)}");
+        }
+        sb.AppendLine();
+        if (viewerSale.Discount > 0)
+        {
+            sb.AppendLine($"Subtotal: ${FormatPrice(viewerSale.Subtotal)}");
+            sb.AppendLine($"Descuento: -${FormatPrice(viewerSale.Discount)}");
+        }
+        sb.AppendLine($"*Total: ${FormatPrice(viewerSale.Total)}*");
+        if (viewerSale.IsPaid)
+        {
+            sb.AppendLine();
+            sb.AppendLine("✅ PAGADO");
+        }
+        sb.AppendLine();
+        sb.AppendLine("¡Gracias!");
+
+        whatsappMessage = sb.ToString();
+        showWhatsappModal = true;
+    }
+
+    private void CloseWhatsappModal() => showWhatsappModal = false;
+
+    private async Task OpenWhatsapp()
+    {
+        // Normalizar telefono: solo digitos
+        var digits = new string((whatsappPhone ?? "").Where(char.IsDigit).ToArray());
+
+        // Si parece un celular argentino sin codigo de pais (10 digitos area+numero), prepender 549
+        if (digits.Length == 10 && !digits.StartsWith("54"))
+        {
+            digits = "549" + digits;
+        }
+        // Si tiene codigo de pais (54) pero falta el 9 del celular AR (queda 12 digitos comenzando con 54 + algo distinto a 9)
+        else if (digits.Length == 12 && digits.StartsWith("54") && !digits.StartsWith("549"))
+        {
+            // No tocamos: puede ser un fijo. Igual 12 digitos con 54 indica 549 normalmente, pero respetamos lo que puso el usuario.
+        }
+
+        var encoded = Uri.EscapeDataString(whatsappMessage ?? "");
+        var url = string.IsNullOrEmpty(digits)
+            ? $"https://web.whatsapp.com/send?text={encoded}"
+            : $"https://wa.me/{digits}?text={encoded}";
+
+        try
+        {
+            await JS.InvokeVoidAsync("open", url, "_blank", "noopener");
+            showWhatsappModal = false;
+            ToastService.Success("Abrí WhatsApp Web en una pestaña nueva. Si no la viste, fijate si el navegador bloqueó el popup.");
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("No pude abrir WhatsApp: " + ex.Message);
+        }
+    }
+
+    private async Task CopyWhatsappMessage()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", whatsappMessage ?? "");
+            ToastService.Success("Mensaje copiado. Pegalo en el chat con Ctrl+V.");
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("No pude copiar: " + ex.Message);
+        }
     }
 
     private void OpenCompanyForm()
