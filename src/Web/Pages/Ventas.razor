@@ -58,7 +58,18 @@
                                 <td>
                                     @if (s.IsCancelled)
                                     {
-                                        <span class="status-badge" style="background:#fee2e2;color:#991b1b;">Anulada</span>
+                                        var tip = "Anulada";
+                                        if (!string.IsNullOrEmpty(s.CancelledByOperator))
+                                            tip += $" por {s.CancelledByOperator}";
+                                        if (s.CancelledAt.HasValue)
+                                            tip += $" el {s.CancelledAt.Value.ToLocalTime():dd/MM/yyyy HH:mm}";
+                                        <span class="status-badge" style="background:#fee2e2;color:#991b1b;cursor:help;" title="@tip">Anulada</span>
+                                        @if (!string.IsNullOrEmpty(s.CancelledByOperator))
+                                        {
+                                            <div style="font-size:0.7rem;color:#991b1b;margin-top:0.2rem;">
+                                                por @s.CancelledByOperator @(s.CancelledAt.HasValue ? "· " + s.CancelledAt.Value.ToLocalTime().ToString("dd/MM HH:mm") : "")
+                                            </div>
+                                        }
                                     }
                                     else
                                     {
@@ -317,6 +328,25 @@
                 </div>
             </div>
             <div class="modal-body" id="comprobante-print" style="background: white; position: relative;">
+                @if (viewerSale.IsCancelled)
+                {
+                    <div style="background: #fee2e2; border: 2px solid #b91c1c; color: #7f1d1d; padding: 0.6rem 0.9rem; border-radius: 6px; margin-bottom: 0.6rem; display: flex; align-items: center; gap: 0.5rem;">
+                        <span style="font-size: 1.4rem;">⚠</span>
+                        <div>
+                            <div style="font-weight: 800; font-size: 1rem;">COMPROBANTE ANULADO</div>
+                            <div style="font-size: 0.85rem;">
+                                @if (!string.IsNullOrEmpty(viewerSale.CancelledByOperator))
+                                {
+                                    <span>Anulado por <strong>@viewerSale.CancelledByOperator</strong></span>
+                                }
+                                @if (viewerSale.CancelledAt.HasValue)
+                                {
+                                    <span> el <strong>@viewerSale.CancelledAt.Value.ToLocalTime().ToString("dd/MM/yyyy")</strong> a las <strong>@viewerSale.CancelledAt.Value.ToLocalTime().ToString("HH:mm")</strong></span>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
                 @if (viewerSale.IsPaid)
                 {
                     <div class="pagado-stamp">PAGADO</div>

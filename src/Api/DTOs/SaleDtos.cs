@@ -36,6 +36,7 @@ public record SaleDto(
     string? Notes,
     bool IsCancelled,
     DateTime? CancelledAt,
+    string? CancelledByOperator,
     string? WeekDays,
     bool IsPaid,
     string? CompanyNameSnapshot,

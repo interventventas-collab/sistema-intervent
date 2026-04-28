@@ -38,7 +38,8 @@ public class SalesController : ControllerBase
     [HttpPost("{id}/cancel")]
     public async Task<IActionResult> Cancel(int id)
     {
-        var s = await _service.CancelAsync(id);
+        var op = HttpContext.Request.Headers["X-Operator-Name"].ToString();
+        var s = await _service.CancelAsync(id, op);
         if (s is null) return NotFound(new { error = "Venta no encontrada" });
         return Ok(s);
     }

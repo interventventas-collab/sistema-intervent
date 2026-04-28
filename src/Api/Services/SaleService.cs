@@ -162,7 +162,7 @@ public class SaleService
         return true;
     }
 
-    public async Task<SaleDto?> CancelAsync(int id)
+    public async Task<SaleDto?> CancelAsync(int id, string? operatorName = null)
     {
         var sale = await _db.Sales.FindAsync(id);
         if (sale is null) return null;
@@ -170,6 +170,7 @@ public class SaleService
         {
             sale.IsCancelled = true;
             sale.CancelledAt = DateTime.UtcNow;
+            sale.CancelledByOperator = string.IsNullOrWhiteSpace(operatorName) ? null : operatorName.Trim();
             sale.UpdatedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync();
         }
@@ -262,7 +263,7 @@ public class SaleService
         s.ClientCityLocationSnapshot, s.ClientCuitSnapshot,
         s.PaymentCondition, s.IvaCondition,
         s.Subtotal, s.Discount, s.Total, s.AmountInWords, s.Notes,
-        s.IsCancelled, s.CancelledAt, s.WeekDays, s.IsPaid, s.CompanyNameSnapshot, s.CreatedAt, s.UpdatedAt,
+        s.IsCancelled, s.CancelledAt, s.CancelledByOperator, s.WeekDays, s.IsPaid, s.CompanyNameSnapshot, s.CreatedAt, s.UpdatedAt,
         s.Items.OrderBy(i => i.Id).Select(i => new SaleItemDto(
             i.Id, i.ProductId, i.Code, i.Description,
             i.Quantity, i.UnitPrice, i.VatRate, i.BonifPercent, i.LineTotal

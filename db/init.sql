@@ -792,6 +792,13 @@ BEGIN
 END
 GO
 
+-- Sales: nombre del operador que anulo el comprobante (auditoria visible)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'CancelledByOperator' AND Object_ID = Object_ID(N'Sales'))
+BEGIN
+    ALTER TABLE Sales ADD CancelledByOperator NVARCHAR(50) NULL;
+END
+GO
+
 -- ============================================================
 -- TESORERIA (cuentas y movimientos)
 -- ============================================================

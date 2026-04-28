@@ -36,6 +36,7 @@ public class SaleDto
     public string? Notes { get; set; }
     public bool IsCancelled { get; set; }
     public DateTime? CancelledAt { get; set; }
+    public string? CancelledByOperator { get; set; }
     public string? WeekDays { get; set; }
     public bool IsPaid { get; set; }
     public string? CompanyNameSnapshot { get; set; }
