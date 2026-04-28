@@ -38,6 +38,7 @@ public record SaleDto(
     DateTime? CancelledAt,
     string? WeekDays,
     bool IsPaid,
+    string? CompanyNameSnapshot,
     DateTime CreatedAt,
     DateTime? UpdatedAt,
     List<SaleItemDto> Items
@@ -69,6 +70,7 @@ public record CreateSaleRequest(
     string? Notes,
     [MaxLength(40)] string? WeekDays,
     bool? IsPaid,
+    [MaxLength(100)] string? CompanyNameOverride,
     [MinLength(1)] List<CreateSaleItemRequest> Items
 );
 

@@ -111,6 +111,7 @@ public class SaleService
             Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes,
             WeekDays = string.IsNullOrWhiteSpace(request.WeekDays) ? null : request.WeekDays,
             IsPaid = request.IsPaid ?? false,
+            CompanyNameSnapshot = string.IsNullOrWhiteSpace(request.CompanyNameOverride) ? null : request.CompanyNameOverride.Trim(),
             CreatedAt = DateTime.UtcNow,
             Items = items
         };
@@ -233,7 +234,7 @@ public class SaleService
         s.ClientCityLocationSnapshot, s.ClientCuitSnapshot,
         s.PaymentCondition, s.IvaCondition,
         s.Subtotal, s.Discount, s.Total, s.AmountInWords, s.Notes,
-        s.IsCancelled, s.CancelledAt, s.WeekDays, s.IsPaid, s.CreatedAt, s.UpdatedAt,
+        s.IsCancelled, s.CancelledAt, s.WeekDays, s.IsPaid, s.CompanyNameSnapshot, s.CreatedAt, s.UpdatedAt,
         s.Items.OrderBy(i => i.Id).Select(i => new SaleItemDto(
             i.Id, i.ProductId, i.Code, i.Description,
             i.Quantity, i.UnitPrice, i.VatRate, i.BonifPercent, i.LineTotal

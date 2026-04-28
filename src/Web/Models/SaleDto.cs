@@ -38,6 +38,7 @@ public class SaleDto
     public DateTime? CancelledAt { get; set; }
     public string? WeekDays { get; set; }
     public bool IsPaid { get; set; }
+    public string? CompanyNameSnapshot { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
     public List<SaleItemDto> Items { get; set; } = new();
@@ -72,6 +73,7 @@ public class CreateSaleRequest
     public string? Notes { get; set; }
     public string? WeekDays { get; set; }
     public bool? IsPaid { get; set; }
+    public string? CompanyNameOverride { get; set; }
     public List<CreateSaleItemRequest> Items { get; set; } = new();
 }
 

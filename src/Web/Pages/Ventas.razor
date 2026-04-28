@@ -226,6 +226,20 @@
                 <hr style="margin: 1rem 0; border: none; border-top: 1px solid #e5e7eb;" />
 
                 <div class="form-group">
+                    <label class="form-label">Marca / Logo del comprobante</label>
+                    <select class="form-input" @bind="formCompanyName" style="max-width: 300px;">
+                        @foreach (var b in BrandOptions)
+                        {
+                            <option value="@b">@b</option>
+                        }
+                        @if (!BrandOptions.Contains(formCompanyName))
+                        {
+                            <option value="@formCompanyName">@formCompanyName (personalizado)</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="form-group">
                     <label class="form-label">Dias de la semana (aparecen abajo del comprobante)</label>
                     <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
                         @foreach (var d in AllWeekDays)
@@ -305,7 +319,7 @@
                 <div style="border: 1px solid #d1d5db; padding: 0.75rem;">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem;">
                         <div style="flex: 1;">
-                            <h2 style="margin: 0; font-size: 1.5rem; font-weight: 800;">@companyInfo.Name</h2>
+                            <h2 style="margin: 0; font-size: 1.5rem; font-weight: 800;">@(viewerSale.CompanyNameSnapshot ?? companyInfo.Name)</h2>
                             @if (!string.IsNullOrEmpty(companyInfo.Phone))
                             {
                                 <div style="font-size: 0.8rem;">@companyInfo.Phone</div>
@@ -460,7 +474,22 @@
             </div>
             <div class="modal-body">
                 <div class="form-row">
-                    <div class="form-group" style="flex: 2;"><label class="form-label">Nombre / Razon social</label><input class="form-input" @bind="companyForm.Name" /></div>
+                    <div class="form-group" style="flex: 2;">
+                        <label class="form-label">Nombre / Marca por default</label>
+                        <select class="form-input" @bind="companyForm.Name">
+                            @foreach (var b in BrandOptions)
+                            {
+                                <option value="@b">@b</option>
+                            }
+                            @if (!BrandOptions.Contains(companyForm.Name))
+                            {
+                                <option value="@companyForm.Name">@companyForm.Name (personalizado)</option>
+                            }
+                        </select>
+                        <p style="font-size: 0.72rem; color: #6b7280; margin: 0.2rem 0 0;">
+                            Es la marca que aparece en cada comprobante por default. Lo podes cambiar al emitir cada venta.
+                        </p>
+                    </div>
                     <div class="form-group"><label class="form-label">CUIT</label><input class="form-input" @bind="companyForm.Cuit" /></div>
                 </div>
                 <div class="form-row">
@@ -517,8 +546,10 @@
     private decimal addProductQty = 1;
     private HashSet<string> formWeekDays = new();
     private bool formIsPaid;
+    private string formCompanyName = "FRIKAF®";
 
     private static readonly string[] AllWeekDays = { "LUN", "MAR", "MIE", "JUE", "VIE", "SAB", "DOM" };
+    private static readonly string[] BrandOptions = { "FRIKAF®", "INTERVENT®", "INTEREVENTOS®", "PALANICA®" };
 
     // Viewer / cancel
     private SaleDto? viewerSale;
@@ -558,6 +589,10 @@
         addProductId = 0; addProductQty = 1;
         formWeekDays = new();
         formIsPaid = false;
+        // Si la empresa configurada es una de las opciones, la pre-seleccionamos. Sino default FRIKAF.
+        formCompanyName = (companyInfo is not null && BrandOptions.Contains(companyInfo.Name))
+            ? companyInfo.Name
+            : (companyInfo?.Name ?? "FRIKAF®");
         formError = null; showForm = true;
     }
 
@@ -631,6 +666,7 @@
                 WeekDays = formWeekDays.Count == 0 ? null
                     : string.Join(",", AllWeekDays.Where(d => formWeekDays.Contains(d))),
                 IsPaid = formIsPaid,
+                CompanyNameOverride = formCompanyName,
                 Items = formItems.ToList()
             };
             var created = await Api.CreateSaleAsync(req);

@@ -64,6 +64,11 @@ public class Sale
 
     public bool IsPaid { get; set; }
 
+    // Snapshot del nombre/marca de la empresa que aparece en el comprobante.
+    // Si es null, se usa el valor actual de AppSettings("company.name").
+    [MaxLength(100)]
+    public string? CompanyNameSnapshot { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 

@@ -779,6 +779,17 @@ BEGIN
     ALTER TABLE Sales ADD IsPaid BIT NOT NULL CONSTRAINT DF_Sales_IsPaid DEFAULT 0;
 END
 GO
+-- Sales: snapshot del nombre/marca de la empresa que aparece arriba del comprobante.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'CompanyNameSnapshot' AND Object_ID = Object_ID(N'Sales'))
+BEGIN
+    ALTER TABLE Sales ADD CompanyNameSnapshot NVARCHAR(100) NULL;
+END
+GO
+
+-- Asegurar que el nombre default tenga el simbolo de marca registrada
+IF EXISTS (SELECT 1 FROM AppSettings WHERE [Key] = 'company.name' AND ([Value] = '' OR [Value] = 'FRIKAF'))
+    UPDATE AppSettings SET [Value] = 'FRIKAF' + NCHAR(174), UpdatedAt = GETDATE() WHERE [Key] = 'company.name';
+GO
 
 -- Lotes de stock (cantidad + fecha de vencimiento por producto)
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ProductStockBatches' AND xtype='U')
