@@ -52,5 +52,11 @@ public class Product
 
     public ICollection<Product> DerivedProducts { get; set; } = new List<Product>();
 
+    // Marca asociada (clasificacion). Opcional.
+    public int? BrandId { get; set; }
+
+    [ForeignKey(nameof(BrandId))]
+    public Brand? BrandNav { get; set; }
+
     public ICollection<MeliItem> MeliItems { get; set; } = new List<MeliItem>();
 }

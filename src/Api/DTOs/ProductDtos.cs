@@ -25,7 +25,9 @@ public record ProductListDto(
     int? BaseProductId,
     string? BaseProductSku,
     string? BaseProductTitle,
-    int DerivedCount
+    int DerivedCount,
+    int? BrandId,
+    string? BrandName
 );
 
 public record CreateProductRequest(
@@ -41,7 +43,8 @@ public record CreateProductRequest(
     decimal RetailPrice,
     int Stock,
     int CriticalStock,
-    int? BaseProductId
+    int? BaseProductId,
+    int? BrandId
 );
 
 public record UpdateProductRequest(
@@ -59,7 +62,9 @@ public record UpdateProductRequest(
     int? CriticalStock,
     bool? IsActive,
     int? BaseProductId,
-    bool? ClearBaseProduct
+    bool? ClearBaseProduct,
+    int? BrandId,
+    bool? ClearBrand
 );
 
 public record BulkProductIdsRequest(List<int> Ids);

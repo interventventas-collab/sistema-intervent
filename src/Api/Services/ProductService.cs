@@ -20,6 +20,7 @@ public class ProductService
     {
         var products = await _db.Products
             .Include(p => p.BaseProduct)
+            .Include(p => p.BrandNav)
             .OrderByDescending(p => p.CreatedAt)
             .ToListAsync();
 
@@ -54,7 +55,9 @@ public class ProductService
             p.BaseProductId,
             p.BaseProduct?.Sku,
             p.BaseProduct?.Title,
-            derivedCounts.GetValueOrDefault(p.Id, 0)
+            derivedCounts.GetValueOrDefault(p.Id, 0),
+            p.BrandId,
+            p.BrandNav?.Name
         )).ToList();
     }
 
@@ -62,6 +65,7 @@ public class ProductService
     {
         var p = await _db.Products
             .Include(x => x.BaseProduct)
+            .Include(x => x.BrandNav)
             .FirstOrDefaultAsync(x => x.Id == id);
         if (p is null) return null;
 
@@ -77,7 +81,9 @@ public class ProductService
             p.BaseProductId,
             p.BaseProduct?.Sku,
             p.BaseProduct?.Title,
-            derivedCount
+            derivedCount,
+            p.BrandId,
+            p.BrandNav?.Name
         );
     }
 
@@ -94,11 +100,21 @@ public class ProductService
                     "El producto seleccionado ya hereda de otro: solo se permite un nivel de productos base.");
         }
 
+        // Validar y resolver marca
+        Brand? brand = null;
+        if (request.BrandId.HasValue)
+        {
+            brand = await _db.Brands.FindAsync(request.BrandId.Value)
+                ?? throw new InvalidOperationException("La marca seleccionada no existe.");
+        }
+
         var product = new Product
         {
             Title = request.Title,
             Description = request.Description,
-            Brand = request.Brand,
+            // Mantener el campo Brand (string) sincronizado con la marca seleccionada;
+            // si no hay BrandId, respetar el texto libre que vino en el request.
+            Brand = brand?.Name ?? request.Brand,
             Model = request.Model,
             Sku = request.Sku,
             Photo1 = request.Photo1,
@@ -111,7 +127,8 @@ public class ProductService
             CriticalStock = request.CriticalStock,
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
-            BaseProductId = request.BaseProductId
+            BaseProductId = request.BaseProductId,
+            BrandId = request.BrandId
         };
 
         _db.Products.Add(product);
@@ -165,10 +182,29 @@ public class ProductService
             newBase = await _db.Products.FindAsync(product.BaseProductId.Value);
         }
 
+        // --- Manejo de marca (asignar / cambiar / quitar) ---
+        if (request.ClearBrand == true)
+        {
+            product.BrandId = null;
+            // Limpiamos tambien el campo legacy Brand para no dejar texto huerfano.
+            product.Brand = null;
+        }
+        else if (request.BrandId.HasValue)
+        {
+            var brand = await _db.Brands.FindAsync(request.BrandId.Value)
+                ?? throw new InvalidOperationException("La marca seleccionada no existe.");
+            product.BrandId = brand.Id;
+            // Sincronizamos el texto Brand con el nombre de la marca seleccionada.
+            product.Brand = brand.Name;
+        }
+
         // --- Resto de campos ---
         if (request.Title is not null) product.Title = request.Title;
         if (request.Description is not null) product.Description = request.Description;
-        if (request.Brand is not null) product.Brand = request.Brand;
+        // El input texto Brand solo se aplica si NO se mando una BrandId/ClearBrand
+        // (si vino BrandId, ya sincronizamos el texto arriba).
+        if (request.Brand is not null && !request.BrandId.HasValue && request.ClearBrand != true)
+            product.Brand = request.Brand;
         if (request.Model is not null) product.Model = request.Model;
         if (request.Sku is not null) product.Sku = request.Sku == "" ? null : request.Sku;
         if (request.Photo1 is not null) product.Photo1 = request.Photo1 == "" ? null : request.Photo1;

@@ -100,6 +100,11 @@ public class AppDbContext : DbContext
                   .WithMany(p => p.DerivedProducts)
                   .HasForeignKey(p => p.BaseProductId)
                   .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(p => p.BrandId);
+            entity.HasOne(p => p.BrandNav)
+                  .WithMany()
+                  .HasForeignKey(p => p.BrandId)
+                  .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<Supplier>(entity =>

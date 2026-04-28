@@ -23,6 +23,8 @@ public class ProductDto
     public string? BaseProductSku { get; set; }
     public string? BaseProductTitle { get; set; }
     public int DerivedCount { get; set; }
+    public int? BrandId { get; set; }
+    public string? BrandName { get; set; }
 }
 
 public class CreateProductRequest
@@ -40,6 +42,7 @@ public class CreateProductRequest
     public int Stock { get; set; }
     public int CriticalStock { get; set; }
     public int? BaseProductId { get; set; }
+    public int? BrandId { get; set; }
 }
 
 public class UpdateProductRequest
@@ -59,6 +62,8 @@ public class UpdateProductRequest
     public bool? IsActive { get; set; }
     public int? BaseProductId { get; set; }
     public bool? ClearBaseProduct { get; set; }
+    public int? BrandId { get; set; }
+    public bool? ClearBrand { get; set; }
 }
 
 public class ProductAccountLinkDto

@@ -596,6 +596,31 @@ BEGIN
 END
 GO
 
+-- Vincular productos con marca (FK opcional)
+IF NOT EXISTS (
+    SELECT * FROM sys.columns WHERE Name = N'BrandId' AND Object_ID = Object_ID(N'Products')
+)
+BEGIN
+    ALTER TABLE Products ADD BrandId INT NULL;
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_Products_Brand')
+BEGIN
+    ALTER TABLE Products
+        ADD CONSTRAINT FK_Products_Brand
+        FOREIGN KEY (BrandId) REFERENCES Brands(Id) ON DELETE SET NULL;
+END
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM sys.indexes WHERE name = 'IX_Products_BrandId' AND object_id = Object_ID(N'Products')
+)
+BEGIN
+    CREATE INDEX IX_Products_BrandId ON Products(BrandId);
+END
+GO
+
 -- Permisos de proveedores y marcas para admin
 IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId = 1 AND MenuKey = 'proveedores')
 BEGIN
