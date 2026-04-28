@@ -1,0 +1,438 @@
+@page "/sueldos"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <h3>Liquidaciones de sueldo</h3>
+        <div style="display: flex; gap: 0.4rem; align-items: center;">
+            <label style="font-size: 0.85rem;">
+                Mes:
+                <select class="form-input" style="display: inline-block; width: auto; padding: 0.2rem 0.4rem;" @bind="filterMonth" @bind:after="OnFilterChanged">
+                    <option value="0">Todos</option>
+                    @for (int i = 1; i <= 12; i++)
+                    {
+                        var m = i;
+                        <option value="@m">@MonthName(m)</option>
+                    }
+                </select>
+            </label>
+            <label style="font-size: 0.85rem;">
+                Año:
+                <input class="form-input" type="number" style="display: inline-block; width: 90px; padding: 0.2rem 0.4rem;" @bind="filterYear" @bind:after="OnFilterChanged" />
+            </label>
+            <button class="btn btn-secondary" @onclick="OpenGenerateForm">Liquidar mes</button>
+            <button class="btn btn-primary" @onclick="OpenCreateForm">+ Liquidacion</button>
+        </div>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        @if (isLoading)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">Cargando...</p>
+        }
+        else if (payrolls is null || payrolls.Count == 0)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">Sin liquidaciones para mostrar.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Periodo</th>
+                            <th>Empleado</th>
+                            <th style="text-align: right;">Basico</th>
+                            <th style="text-align: right;">Bonos</th>
+                            <th style="text-align: right;">Descuentos</th>
+                            <th style="text-align: right;">Bruto</th>
+                            <th style="text-align: right;">Neto</th>
+                            <th>Estado</th>
+                            <th style="width: 130px;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in payrolls)
+                        {
+                            <tr style="@(p.IsPaid ? "background: #f0fdf4;" : "")">
+                                <td>@p.Year/@p.Month.ToString("D2")</td>
+                                <td>
+                                    @if (!string.IsNullOrEmpty(p.EmployeeCode))
+                                    {
+                                        <span style="font-family: monospace; color: #6b7280; font-size: 0.78rem;">@p.EmployeeCode</span>
+                                        <span> · </span>
+                                    }
+                                    <strong>@p.EmployeeFullName</strong>
+                                </td>
+                                <td style="text-align: right;">$@FormatAmount(p.BaseSalary)</td>
+                                <td style="text-align: right; color: #15803d;">+$@FormatAmount(p.Bonuses)</td>
+                                <td style="text-align: right; color: #b91c1c;">-$@FormatAmount(p.Deductions)</td>
+                                <td style="text-align: right;">$@FormatAmount(p.GrossTotal)</td>
+                                <td style="text-align: right; font-weight: 800; font-size: 1.05rem;">$@FormatAmount(p.NetTotal)</td>
+                                <td>
+                                    @if (p.IsPaid)
+                                    {
+                                        <span class="status-badge status-active" title="@(p.PaidFromAccountName ?? "")">
+                                            Pagado @(p.PaidAt?.ToString("dd/MM"))
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="status-badge status-inactive">Pendiente</span>
+                                    }
+                                </td>
+                                <td class="actions-cell">
+                                    @if (!p.IsPaid)
+                                    {
+                                        <button class="btn-icon btn-edit" @onclick="() => OpenEdit(p)" title="Editar">@SvgIcons.Edit</button>
+                                        <button class="btn-icon" style="background:#dcfce7;color:#15803d;border:1px solid #15803d;padding:2px 6px;border-radius:4px;font-size:0.7rem;font-weight:700;" @onclick="() => OpenMarkPaid(p)" title="Marcar como pagado">$ Pagar</button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn-icon" style="background:#fef3c7;color:#92400e;border:1px solid #fbbf24;padding:2px 6px;border-radius:4px;font-size:0.7rem;font-weight:700;" @onclick="() => UnmarkPaid(p)" title="Desmarcar pago">↩</button>
+                                    }
+                                    @if (!p.IsPaid)
+                                    {
+                                        <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(p)" title="Eliminar">@SvgIcons.AlertCircle</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                        @{
+                            var totalNet = payrolls.Sum(p => p.NetTotal);
+                            var totalPaid = payrolls.Where(p => p.IsPaid).Sum(p => p.NetTotal);
+                            var totalPending = payrolls.Where(p => !p.IsPaid).Sum(p => p.NetTotal);
+                        }
+                        <tr style="background: #f9fafb; font-weight: 700;">
+                            <td colspan="6" style="text-align: right;">Totales:</td>
+                            <td style="text-align: right;">$@FormatAmount(totalNet)</td>
+                            <td colspan="2" style="font-size: 0.78rem; color: #6b7280;">
+                                Pagado: $@FormatAmount(totalPaid) · Pendiente: $@FormatAmount(totalPending)
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@* === LIQUIDAR MES === *@
+@if (showGenerate)
+{
+    <div class="modal-overlay" @onclick="() => showGenerate = false">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3>Liquidar mes (genera para todos los empleados activos)</h3>
+                <button class="btn-close" @onclick="() => showGenerate = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.85rem; color: #6b7280;">
+                    Por cada empleado activo se crea una liquidacion del mes con su sueldo basico actual.
+                    Si ya existia una liquidacion para ese mes, se omite (no duplica).
+                </p>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Mes</label>
+                        <select class="form-input" @bind="genMonth">
+                            @for (int i = 1; i <= 12; i++)
+                            {
+                                var m = i;
+                                <option value="@m">@MonthName(m)</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Año</label>
+                        <input class="form-input" type="number" @bind="genYear" />
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showGenerate = false">Cancelar</button>
+                <button class="btn btn-primary" @onclick="DoGenerate">Generar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* === FORM CREAR / EDITAR === *@
+@if (showForm)
+{
+    <div class="modal-overlay" @onclick="() => showForm = false">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3>@(editingPayroll is null ? "Nueva liquidacion" : "Editar liquidacion")</h3>
+                <button class="btn-close" @onclick="() => showForm = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(formError)) { <div class="form-error">@formError</div> }
+                @if (editingPayroll is null)
+                {
+                    <div class="form-group">
+                        <label class="form-label">Empleado *</label>
+                        <select class="form-input" @bind="formEmployeeId">
+                            <option value="0">— Elegi —</option>
+                            @if (employees is not null)
+                            {
+                                @foreach (var e in employees.Where(x => x.IsActive))
+                                {
+                                    <option value="@e.Id">@e.Code · @e.LastName, @e.FirstName</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label class="form-label">Mes</label>
+                            <select class="form-input" @bind="formMonth">
+                                @for (int i = 1; i <= 12; i++)
+                                { var m = i; <option value="@m">@MonthName(m)</option> }
+                            </select>
+                        </div>
+                        <div class="form-group"><label class="form-label">Año</label><input class="form-input" type="number" @bind="formYear" /></div>
+                    </div>
+                }
+                <div class="form-row">
+                    <div class="form-group"><label class="form-label">Sueldo basico</label><input class="form-input" type="number" step="0.01" @bind="formBaseSalary" /></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label class="form-label">Bonos / adicionales</label><input class="form-input" type="number" step="0.01" @bind="formBonuses" /></div>
+                    <div class="form-group"><label class="form-label">Descuentos</label><input class="form-input" type="number" step="0.01" @bind="formDeductions" /></div>
+                </div>
+                <div style="background: #f3f4f6; padding: 0.6rem; border-radius: 6px; margin: 0.5rem 0;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <span>Bruto</span>
+                        <strong>$@FormatAmount(formBaseSalary + formBonuses)</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 1.05rem; margin-top: 0.3rem;">
+                        <span style="font-weight: 700;">Neto a pagar</span>
+                        <strong>$@FormatAmount(formBaseSalary + formBonuses - formDeductions)</strong>
+                    </div>
+                </div>
+                <div class="form-group"><label class="form-label">Notas</label><textarea class="form-input" rows="2" @bind="formNotes"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showForm = false">Cancelar</button>
+                <button class="btn btn-primary" @onclick="Save">Guardar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* === MARCAR PAGADO === *@
+@if (showPay && payingPayroll is not null)
+{
+    <div class="modal-overlay" @onclick="() => showPay = false">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3>Pagar sueldo</h3>
+                <button class="btn-close" @onclick="() => showPay = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Vas a marcar como <strong>pagada</strong> la liquidacion de <strong>@payingPayroll.EmployeeFullName</strong> de @payingPayroll.Year/@payingPayroll.Month.ToString("D2").</p>
+                <p>Importe a pagar: <strong>$@FormatAmount(payingPayroll.NetTotal)</strong></p>
+                <div class="form-group">
+                    <label class="form-label">Pagar desde la cuenta de tesoreria (opcional)</label>
+                    <select class="form-input" @bind="payAccountId">
+                        <option value="0">— No registrar movimiento de tesoreria —</option>
+                        @if (accounts is not null)
+                        {
+                            @foreach (var a in accounts.Where(x => x.IsActive))
+                            {
+                                <option value="@a.Id">@a.Code · @a.Name (saldo: $@FormatAmount(a.CurrentBalance))</option>
+                            }
+                        }
+                    </select>
+                    <p style="font-size: 0.75rem; color: #6b7280; margin: 0.2rem 0 0;">
+                        Si elegis una cuenta, se descuenta automaticamente el monto y queda registrado en Tesoreria.
+                    </p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showPay = false">Cancelar</button>
+                <button class="btn btn-primary" @onclick="DoMarkPaid">Confirmar pago</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<PayrollDto>? payrolls;
+    private List<EmployeeDto>? employees;
+    private List<TreasuryAccountDto>? accounts;
+    private bool isLoading = true;
+
+    // Filtros
+    private int filterMonth;
+    private int filterYear = DateTime.Today.Year;
+
+    // Generar mes
+    private bool showGenerate;
+    private int genMonth = DateTime.Today.Month;
+    private int genYear = DateTime.Today.Year;
+
+    // Form crear/editar
+    private bool showForm;
+    private string? formError;
+    private PayrollDto? editingPayroll;
+    private int formEmployeeId;
+    private int formMonth = DateTime.Today.Month;
+    private int formYear = DateTime.Today.Year;
+    private decimal formBaseSalary;
+    private decimal formBonuses;
+    private decimal formDeductions;
+    private string formNotes = "";
+
+    // Pago
+    private bool showPay;
+    private PayrollDto? payingPayroll;
+    private int payAccountId;
+
+    [Inject] IJSRuntime JS { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync() => await LoadAll();
+
+    private async Task LoadAll()
+    {
+        isLoading = true;
+        try { employees = await Api.GetEmployeesAsync() ?? new(); } catch { employees = new(); }
+        try { accounts = await Api.GetTreasuryAccountsAsync() ?? new(); } catch { accounts = new(); }
+        await LoadPayrolls();
+        isLoading = false;
+    }
+
+    private async Task LoadPayrolls()
+    {
+        try
+        {
+            int? m = filterMonth > 0 ? filterMonth : (int?)null;
+            int? y = filterYear > 0 ? filterYear : (int?)null;
+            payrolls = await Api.GetPayrollsAsync(year: y, month: m) ?? new();
+        }
+        catch { payrolls = new(); }
+    }
+
+    private async Task OnFilterChanged() => await LoadPayrolls();
+
+    private void OpenGenerateForm() { genMonth = DateTime.Today.Month; genYear = DateTime.Today.Year; showGenerate = true; }
+
+    private async Task DoGenerate()
+    {
+        try
+        {
+            var n = await Api.GeneratePayrollMonthAsync(new GeneratePayrollMonthRequest { Year = genYear, Month = genMonth });
+            ToastService.Success($"Se generaron {n} liquidacion(es)");
+            showGenerate = false;
+            filterYear = genYear; filterMonth = genMonth;
+            await LoadPayrolls();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private void OpenCreateForm()
+    {
+        editingPayroll = null;
+        formEmployeeId = 0;
+        formMonth = DateTime.Today.Month; formYear = DateTime.Today.Year;
+        formBaseSalary = 0; formBonuses = 0; formDeductions = 0; formNotes = "";
+        formError = null; showForm = true;
+    }
+
+    private void OpenEdit(PayrollDto p)
+    {
+        editingPayroll = p;
+        formEmployeeId = p.EmployeeId;
+        formMonth = p.Month; formYear = p.Year;
+        formBaseSalary = p.BaseSalary;
+        formBonuses = p.Bonuses;
+        formDeductions = p.Deductions;
+        formNotes = p.Notes ?? "";
+        formError = null; showForm = true;
+    }
+
+    private async Task Save()
+    {
+        formError = null;
+        try
+        {
+            if (editingPayroll is null)
+            {
+                if (formEmployeeId == 0) { formError = "Elegi un empleado"; return; }
+                await Api.CreatePayrollAsync(new CreatePayrollRequest
+                {
+                    EmployeeId = formEmployeeId, Year = formYear, Month = formMonth,
+                    BaseSalary = formBaseSalary, Bonuses = formBonuses, Deductions = formDeductions,
+                    Notes = formNotes
+                });
+                ToastService.Success("Liquidacion creada");
+            }
+            else
+            {
+                await Api.UpdatePayrollAsync(editingPayroll.Id, new UpdatePayrollRequest
+                {
+                    BaseSalary = formBaseSalary, Bonuses = formBonuses, Deductions = formDeductions,
+                    Notes = formNotes
+                });
+                ToastService.Success("Liquidacion actualizada");
+            }
+            showForm = false;
+            await LoadPayrolls();
+        }
+        catch (Exception ex) { formError = ex.Message; }
+    }
+
+    private void OpenMarkPaid(PayrollDto p) { payingPayroll = p; payAccountId = 0; showPay = true; }
+
+    private async Task DoMarkPaid()
+    {
+        if (payingPayroll is null) return;
+        try
+        {
+            await Api.MarkPayrollPaidAsync(payingPayroll.Id, new MarkPayrollPaidRequest
+            {
+                AccountId = payAccountId > 0 ? payAccountId : (int?)null,
+                PaidAt = DateTime.UtcNow
+            });
+            ToastService.Success("Pago registrado");
+            showPay = false;
+            await LoadAll();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private async Task UnmarkPaid(PayrollDto p)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "Vas a desmarcar el pago. El movimiento de tesoreria que se haya generado no se borra automaticamente. ¿Continuar?")) return;
+        try { await Api.UnmarkPayrollPaidAsync(p.Id); ToastService.Success("Pago desmarcado"); await LoadAll(); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private async Task ConfirmDelete(PayrollDto p)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "¿Eliminar esta liquidacion?")) return;
+        try { await Api.DeletePayrollAsync(p.Id); ToastService.Success("Eliminada"); await LoadPayrolls(); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private static string MonthName(int m) => m switch
+    {
+        1 => "Enero", 2 => "Febrero", 3 => "Marzo", 4 => "Abril", 5 => "Mayo", 6 => "Junio",
+        7 => "Julio", 8 => "Agosto", 9 => "Septiembre", 10 => "Octubre", 11 => "Noviembre", 12 => "Diciembre",
+        _ => m.ToString()
+    };
+
+    private string FormatAmount(decimal value)
+    {
+        var parts = value.ToString("F2", System.Globalization.CultureInfo.InvariantCulture).Split('.');
+        var sign = ""; var intPart = parts[0]; var decPart = parts.Length > 1 ? parts[1] : "00";
+        if (intPart.StartsWith("-")) { sign = "-"; intPart = intPart[1..]; }
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < intPart.Length; i++)
+        {
+            if (i > 0 && (intPart.Length - i) % 3 == 0) sb.Append('.');
+            sb.Append(intPart[i]);
+        }
+        return sign + sb + "," + decPart;
+    }
+}

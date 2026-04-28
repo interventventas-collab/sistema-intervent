@@ -1,0 +1,464 @@
+@page "/tesoreria"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3>Tesoreria</h3>
+        <div style="display: flex; gap: 0.4rem;">
+            <button class="btn btn-secondary" @onclick="OpenAccountForm">+ Cuenta</button>
+            <button class="btn btn-primary" @onclick="OpenMovementForm" disabled="@(accounts is null || accounts.Count == 0)">+ Movimiento</button>
+        </div>
+    </div>
+    <div class="card-body">
+        @if (isLoading)
+        {
+            <p class="text-muted">Cargando...</p>
+        }
+        else
+        {
+            @* Resumen de cuentas con saldos *@
+            <h4 style="margin: 0 0 0.6rem; font-size: 0.95rem;">Cuentas y saldos</h4>
+            @if (accounts is null || accounts.Count == 0)
+            {
+                <p class="text-muted">Todavia no cargaste ninguna cuenta. Tocá "+ Cuenta" para crear una caja, banco o billetera.</p>
+            }
+            else
+            {
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 0.75rem; margin-bottom: 1.5rem;">
+                    @foreach (var a in accounts)
+                    {
+                        var color = AccountTypeColor(a.AccountType);
+                        <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.85rem; background: white; @(filterAccountId == a.Id ? "outline: 2px solid #3b82f6;" : "") cursor: pointer;"
+                             @onclick="() => SetFilterAccount(a.Id)">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem;">
+                                <span style="background: @color.bg; color: @color.fg; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase;">@a.AccountType</span>
+                                <span style="font-family: monospace; font-size: 0.75rem; color: #6b7280;">@a.Code</span>
+                            </div>
+                            <div style="font-weight: 700; margin-bottom: 0.3rem;">@a.Name</div>
+                            <div style="font-size: 1.3rem; font-weight: 800; color: @(a.CurrentBalance < 0 ? "#dc2626" : "#15803d");">
+                                $@FormatAmount(a.CurrentBalance)
+                            </div>
+                            <div style="display: flex; gap: 0.3rem; margin-top: 0.5rem;">
+                                <button class="btn-icon btn-edit" @onclick:stopPropagation="true" @onclick="() => OpenEditAccount(a)" title="Editar">@SvgIcons.Edit</button>
+                                <button class="btn-icon btn-delete" @onclick:stopPropagation="true" @onclick="() => ConfirmDeleteAccount(a)" title="Eliminar">@SvgIcons.AlertCircle</button>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+
+            @* Movimientos *@
+            <h4 style="margin: 0 0 0.6rem; font-size: 0.95rem; display: flex; justify-content: space-between; align-items: center;">
+                <span>
+                    Movimientos
+                    @if (filterAccountId.HasValue)
+                    {
+                        var n = accounts?.FirstOrDefault(a => a.Id == filterAccountId)?.Name;
+                        <span style="font-weight: 400; color: #6b7280; font-size: 0.85rem;"> · filtrando: @n</span>
+                        <button class="btn btn-secondary" style="font-size: 0.7rem; padding: 0.15rem 0.5rem; margin-left: 0.5rem;" @onclick="() => SetFilterAccount(null)">Quitar filtro</button>
+                    }
+                </span>
+            </h4>
+            @if (movements is null || movements.Count == 0)
+            {
+                <p class="text-muted">Sin movimientos para mostrar.</p>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Cuenta</th>
+                                <th>Tipo</th>
+                                <th>Concepto</th>
+                                <th>Descripcion</th>
+                                <th style="text-align: right;">Importe</th>
+                                <th style="width: 60px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var m in movements)
+                            {
+                                var c = MovTypeColor(m.MovementType);
+                                <tr>
+                                    <td>@m.Date.ToString("dd/MM/yyyy")</td>
+                                    <td>@m.AccountName</td>
+                                    <td><span style="background: @c.bg; color: @c.fg; padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase;">@m.MovementType</span></td>
+                                    <td>@(m.Concept ?? "")</td>
+                                    <td style="font-size: 0.85rem; color: #6b7280;">
+                                        @(m.Description ?? "")
+                                        @if (m.RelatedAccountName is not null)
+                                        {
+                                            <span style="font-style: italic;"> · ↔ @m.RelatedAccountName</span>
+                                        }
+                                    </td>
+                                    <td style="text-align: right; font-weight: 700; color: @(m.MovementType == "egreso" ? "#dc2626" : "#15803d");">
+                                        @(m.MovementType == "egreso" ? "-" : "+")$@FormatAmount(m.Amount)
+                                    </td>
+                                    <td><button class="btn-icon btn-delete" @onclick="() => ConfirmDeleteMovement(m)" title="Eliminar">×</button></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@* ===== FORM CUENTA ===== *@
+@if (showAccountForm)
+{
+    <div class="modal-overlay" @onclick="() => showAccountForm = false">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3>@(editingAccount is null ? "Nueva cuenta" : "Editar cuenta")</h3>
+                <button class="btn-close" @onclick="() => showAccountForm = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(accountFormError)) { <div class="form-error">@accountFormError</div> }
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Codigo</label>
+                        <input class="form-input" @bind="formAccountCode" placeholder="@(editingAccount is null ? "Auto: CTA-001" : "")" />
+                    </div>
+                    <div class="form-group" style="flex: 2;">
+                        <label class="form-label">Nombre *</label>
+                        <input class="form-input" @bind="formAccountName" placeholder="Caja, Banco Galicia, MercadoPago..." />
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Tipo</label>
+                        <select class="form-input" @bind="formAccountType">
+                            <option value="caja">Caja (efectivo)</option>
+                            <option value="banco">Banco</option>
+                            <option value="billetera">Billetera virtual</option>
+                            <option value="otro">Otro</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Saldo inicial</label>
+                        <input class="form-input" type="number" step="0.01" @bind="formAccountInitial" />
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Notas</label>
+                    <textarea class="form-input" rows="2" @bind="formAccountNotes"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showAccountForm = false">Cancelar</button>
+                <button class="btn btn-primary" @onclick="SaveAccount">Guardar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ===== FORM MOVIMIENTO ===== *@
+@if (showMovementForm)
+{
+    <div class="modal-overlay" @onclick="() => showMovementForm = false">
+        <div class="modal-card modal-wide" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3>Nuevo movimiento</h3>
+                <button class="btn-close" @onclick="() => showMovementForm = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(movFormError)) { <div class="form-error">@movFormError</div> }
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Fecha</label>
+                        <input class="form-input" type="date" @bind="formMovDate" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Tipo</label>
+                        <select class="form-input" @bind="formMovType">
+                            <option value="ingreso">Ingreso</option>
+                            <option value="egreso">Egreso</option>
+                            <option value="transferencia">Transferencia entre cuentas</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Cuenta @(formMovType == "transferencia" ? "ORIGEN" : "")</label>
+                        <select class="form-input" @bind="formMovAccountId">
+                            <option value="0">— Elegi cuenta —</option>
+                            @if (accounts is not null)
+                            {
+                                @foreach (var a in accounts.Where(x => x.IsActive))
+                                {
+                                    <option value="@a.Id">@a.Code · @a.Name</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                    @if (formMovType == "transferencia")
+                    {
+                        <div class="form-group">
+                            <label class="form-label">Cuenta DESTINO</label>
+                            <select class="form-input" @bind="formMovRelatedAccountId">
+                                <option value="0">— Elegi cuenta —</option>
+                                @if (accounts is not null)
+                                {
+                                    @foreach (var a in accounts.Where(x => x.IsActive && x.Id != formMovAccountId))
+                                    {
+                                        <option value="@a.Id">@a.Code · @a.Name</option>
+                                    }
+                                }
+                            </select>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="form-group">
+                            <label class="form-label">Concepto</label>
+                            <select class="form-input" @bind="formMovConcept">
+                                <option value="">(sin concepto)</option>
+                                @if (formMovType == "ingreso")
+                                {
+                                    <option value="Cobro venta">Cobro venta</option>
+                                    <option value="Cobro cliente">Cobro cliente</option>
+                                    <option value="Aporte capital">Aporte de capital</option>
+                                    <option value="Otro ingreso">Otro ingreso</option>
+                                }
+                                else
+                                {
+                                    <option value="Pago proveedor">Pago proveedor</option>
+                                    <option value="Pago sueldo">Pago sueldo</option>
+                                    <option value="Pago servicio">Pago servicio</option>
+                                    <option value="Compra mercaderia">Compra mercaderia</option>
+                                    <option value="Otro egreso">Otro egreso</option>
+                                }
+                            </select>
+                        </div>
+                    }
+                </div>
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Importe *</label>
+                        <input class="form-input" type="number" step="0.01" min="0.01" @bind="formMovAmount" style="font-weight: 700; text-align: right; font-size: 1.1rem;" />
+                    </div>
+                    <div class="form-group" style="flex: 3;">
+                        <label class="form-label">Descripcion / Detalle</label>
+                        <input class="form-input" @bind="formMovDescription" placeholder="N° de factura, nombre, observaciones..." />
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showMovementForm = false">Cancelar</button>
+                <button class="btn btn-primary" @onclick="SaveMovement">Registrar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<TreasuryAccountDto>? accounts;
+    private List<TreasuryMovementDto>? movements;
+    private bool isLoading = true;
+    private int? filterAccountId;
+
+    // Form cuenta
+    private bool showAccountForm;
+    private TreasuryAccountDto? editingAccount;
+    private string? accountFormError;
+    private string formAccountCode = "";
+    private string formAccountName = "";
+    private string formAccountType = "caja";
+    private decimal formAccountInitial;
+    private string formAccountNotes = "";
+
+    // Form movimiento
+    private bool showMovementForm;
+    private string? movFormError;
+    private DateTime formMovDate = DateTime.Today;
+    private int formMovAccountId;
+    private int formMovRelatedAccountId;
+    private string formMovType = "ingreso";
+    private string formMovConcept = "";
+    private string formMovDescription = "";
+    private decimal formMovAmount;
+
+    protected override async Task OnInitializedAsync() => await LoadAll();
+
+    private async Task LoadAll()
+    {
+        isLoading = true;
+        try { accounts = await Api.GetTreasuryAccountsAsync() ?? new(); } catch { accounts = new(); ToastService.Error("Error cargando cuentas"); }
+        await LoadMovements();
+        isLoading = false;
+    }
+
+    private async Task LoadMovements()
+    {
+        try { movements = await Api.GetTreasuryMovementsAsync(filterAccountId) ?? new(); } catch { movements = new(); }
+    }
+
+    private async Task SetFilterAccount(int? id)
+    {
+        filterAccountId = (filterAccountId == id) ? null : id;
+        await LoadMovements();
+    }
+
+    // ---- Cuenta ----
+    private void OpenAccountForm()
+    {
+        editingAccount = null;
+        formAccountCode = ""; formAccountName = ""; formAccountType = "caja";
+        formAccountInitial = 0; formAccountNotes = "";
+        accountFormError = null;
+        showAccountForm = true;
+    }
+
+    private void OpenEditAccount(TreasuryAccountDto a)
+    {
+        editingAccount = a;
+        formAccountCode = a.Code;
+        formAccountName = a.Name;
+        formAccountType = a.AccountType;
+        formAccountInitial = a.InitialBalance;
+        formAccountNotes = a.Notes ?? "";
+        accountFormError = null;
+        showAccountForm = true;
+    }
+
+    private async Task SaveAccount()
+    {
+        accountFormError = null;
+        if (string.IsNullOrWhiteSpace(formAccountName)) { accountFormError = "El nombre es obligatorio"; return; }
+        try
+        {
+            if (editingAccount is null)
+            {
+                await Api.CreateTreasuryAccountAsync(new CreateTreasuryAccountRequest
+                {
+                    Code = string.IsNullOrWhiteSpace(formAccountCode) ? null : formAccountCode,
+                    Name = formAccountName, AccountType = formAccountType,
+                    InitialBalance = formAccountInitial, Notes = formAccountNotes
+                });
+                ToastService.Success("Cuenta creada");
+            }
+            else
+            {
+                await Api.UpdateTreasuryAccountAsync(editingAccount.Id, new UpdateTreasuryAccountRequest
+                {
+                    Code = formAccountCode, Name = formAccountName, AccountType = formAccountType,
+                    InitialBalance = formAccountInitial, Notes = formAccountNotes
+                });
+                ToastService.Success("Cuenta actualizada");
+            }
+            showAccountForm = false;
+            await LoadAll();
+        }
+        catch (Exception ex) { accountFormError = ex.Message; }
+    }
+
+    private async Task ConfirmDeleteAccount(TreasuryAccountDto a)
+    {
+        if (!await JsConfirm($"¿Eliminar la cuenta {a.Name}? Se borran todos sus movimientos.")) return;
+        try
+        {
+            await Api.DeleteTreasuryAccountAsync(a.Id);
+            ToastService.Success("Cuenta eliminada");
+            await LoadAll();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    // ---- Movimiento ----
+    private void OpenMovementForm()
+    {
+        if (accounts is null || accounts.Count == 0) return;
+        formMovDate = DateTime.Today;
+        formMovAccountId = filterAccountId ?? accounts.FirstOrDefault()?.Id ?? 0;
+        formMovRelatedAccountId = 0;
+        formMovType = "ingreso";
+        formMovConcept = "";
+        formMovDescription = "";
+        formMovAmount = 0;
+        movFormError = null;
+        showMovementForm = true;
+    }
+
+    private async Task SaveMovement()
+    {
+        movFormError = null;
+        if (formMovAccountId == 0) { movFormError = "Elegi una cuenta"; return; }
+        if (formMovAmount <= 0) { movFormError = "El importe debe ser mayor a 0"; return; }
+        if (formMovType == "transferencia" && (formMovRelatedAccountId == 0 || formMovRelatedAccountId == formMovAccountId))
+        { movFormError = "Elegi una cuenta destino distinta"; return; }
+        try
+        {
+            await Api.CreateTreasuryMovementAsync(new CreateTreasuryMovementRequest
+            {
+                AccountId = formMovAccountId,
+                Date = formMovDate,
+                MovementType = formMovType,
+                Concept = string.IsNullOrWhiteSpace(formMovConcept) ? null : formMovConcept,
+                Description = string.IsNullOrWhiteSpace(formMovDescription) ? null : formMovDescription,
+                Amount = formMovAmount,
+                RelatedAccountId = formMovType == "transferencia" ? formMovRelatedAccountId : (int?)null
+            });
+            ToastService.Success("Movimiento registrado");
+            showMovementForm = false;
+            await LoadAll();
+        }
+        catch (Exception ex) { movFormError = ex.Message; }
+    }
+
+    private async Task ConfirmDeleteMovement(TreasuryMovementDto m)
+    {
+        if (!await JsConfirm("¿Eliminar este movimiento?")) return;
+        try
+        {
+            await Api.DeleteTreasuryMovementAsync(m.Id);
+            ToastService.Success("Movimiento eliminado");
+            await LoadAll();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    // ---- Helpers ----
+    [Inject] IJSRuntime JS { get; set; } = default!;
+
+    private async Task<bool> JsConfirm(string msg)
+    {
+        try { return await JS.InvokeAsync<bool>("confirm", msg); }
+        catch { return true; }
+    }
+
+    private (string bg, string fg) AccountTypeColor(string t) => t switch
+    {
+        "banco" => ("#dbeafe", "#1e40af"),
+        "billetera" => ("#fef3c7", "#92400e"),
+        "otro" => ("#e5e7eb", "#374151"),
+        _ => ("#dcfce7", "#166534")
+    };
+
+    private (string bg, string fg) MovTypeColor(string t) => t switch
+    {
+        "egreso" => ("#fee2e2", "#991b1b"),
+        "transferencia" => ("#e0e7ff", "#3730a3"),
+        _ => ("#dcfce7", "#166534")
+    };
+
+    private string FormatAmount(decimal value)
+    {
+        var parts = value.ToString("F2", System.Globalization.CultureInfo.InvariantCulture).Split('.');
+        var sign = ""; var intPart = parts[0]; var decPart = parts.Length > 1 ? parts[1] : "00";
+        if (intPart.StartsWith("-")) { sign = "-"; intPart = intPart[1..]; }
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < intPart.Length; i++)
+        {
+            if (i > 0 && (intPart.Length - i) % 3 == 0) sb.Append('.');
+            sb.Append(intPart[i]);
+        }
+        return sign + sb + "," + decPart;
+    }
+}

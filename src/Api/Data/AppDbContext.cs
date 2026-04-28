@@ -23,6 +23,10 @@ public class AppDbContext : DbContext
     public DbSet<ProductStockBatch> ProductStockBatches => Set<ProductStockBatch>();
     public DbSet<Sale> Sales => Set<Sale>();
     public DbSet<SaleItem> SaleItems => Set<SaleItem>();
+    public DbSet<TreasuryAccount> TreasuryAccounts => Set<TreasuryAccount>();
+    public DbSet<TreasuryMovement> TreasuryMovements => Set<TreasuryMovement>();
+    public DbSet<Employee> Employees => Set<Employee>();
+    public DbSet<Payroll> Payrolls => Set<Payroll>();
     public DbSet<ScheduledProcess> ScheduledProcesses => Set<ScheduledProcess>();
     public DbSet<ProcessExecutionLog> ProcessExecutionLogs => Set<ProcessExecutionLog>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
@@ -163,6 +167,41 @@ public class AppDbContext : DbContext
                   .WithMany()
                   .HasForeignKey(si => si.ProductId)
                   .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<TreasuryAccount>(entity =>
+        {
+            entity.HasIndex(a => a.Code).IsUnique();
+            entity.HasIndex(a => a.Name);
+        });
+
+        modelBuilder.Entity<TreasuryMovement>(entity =>
+        {
+            entity.HasIndex(m => m.AccountId);
+            entity.HasIndex(m => m.Date);
+            entity.HasOne(m => m.Account)
+                  .WithMany()
+                  .HasForeignKey(m => m.AccountId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Employee>(entity =>
+        {
+            entity.HasIndex(e => e.Code).IsUnique();
+            entity.HasIndex(e => new { e.LastName, e.FirstName });
+        });
+
+        modelBuilder.Entity<Payroll>(entity =>
+        {
+            entity.HasIndex(p => new { p.EmployeeId, p.Year, p.Month }).IsUnique();
+            entity.HasOne(p => p.Employee)
+                  .WithMany()
+                  .HasForeignKey(p => p.EmployeeId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(p => p.PaidFromAccount)
+                  .WithMany()
+                  .HasForeignKey(p => p.PaidFromAccountId)
+                  .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<Combo>(entity =>

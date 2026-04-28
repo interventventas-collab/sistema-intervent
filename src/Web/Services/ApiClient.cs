@@ -226,6 +226,62 @@ public class ApiClient
     public async Task<CompanyInfoDto?> UpdateCompanyInfoAsync(CompanyInfoDto info)
         => await PutAsync<CompanyInfoDto>("/api/sales/company-info", info);
 
+    // --- Treasury (cuentas + movimientos) ---
+    public async Task<List<TreasuryAccountDto>?> GetTreasuryAccountsAsync()
+        => await GetAsync<List<TreasuryAccountDto>>("/api/treasury/accounts");
+    public async Task<TreasuryAccountDto?> CreateTreasuryAccountAsync(CreateTreasuryAccountRequest r)
+        => await PostAsync<TreasuryAccountDto>("/api/treasury/accounts", r);
+    public async Task<TreasuryAccountDto?> UpdateTreasuryAccountAsync(int id, UpdateTreasuryAccountRequest r)
+        => await PutAsync<TreasuryAccountDto>($"/api/treasury/accounts/{id}", r);
+    public async Task<bool> DeleteTreasuryAccountAsync(int id)
+        => await DeleteAsync($"/api/treasury/accounts/{id}");
+    public async Task<List<TreasuryMovementDto>?> GetTreasuryMovementsAsync(int? accountId = null)
+    {
+        var url = "/api/treasury/movements";
+        if (accountId.HasValue) url += $"?accountId={accountId.Value}";
+        return await GetAsync<List<TreasuryMovementDto>>(url);
+    }
+    public async Task<List<TreasuryMovementDto>?> CreateTreasuryMovementAsync(CreateTreasuryMovementRequest r)
+        => await PostAsync<List<TreasuryMovementDto>>("/api/treasury/movements", r);
+    public async Task<bool> DeleteTreasuryMovementAsync(int id)
+        => await DeleteAsync($"/api/treasury/movements/{id}");
+
+    // --- Empleados ---
+    public async Task<List<EmployeeDto>?> GetEmployeesAsync()
+        => await GetAsync<List<EmployeeDto>>("/api/employees");
+    public async Task<EmployeeDto?> CreateEmployeeAsync(CreateEmployeeRequest r)
+        => await PostAsync<EmployeeDto>("/api/employees", r);
+    public async Task<EmployeeDto?> UpdateEmployeeAsync(int id, UpdateEmployeeRequest r)
+        => await PutAsync<EmployeeDto>($"/api/employees/{id}", r);
+    public async Task<bool> DeleteEmployeeAsync(int id)
+        => await DeleteAsync($"/api/employees/{id}");
+
+    // --- Liquidaciones de sueldo ---
+    public async Task<List<PayrollDto>?> GetPayrollsAsync(int? employeeId = null, int? year = null, int? month = null)
+    {
+        var qs = new List<string>();
+        if (employeeId.HasValue) qs.Add($"employeeId={employeeId.Value}");
+        if (year.HasValue) qs.Add($"year={year.Value}");
+        if (month.HasValue) qs.Add($"month={month.Value}");
+        var url = "/api/payrolls" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+        return await GetAsync<List<PayrollDto>>(url);
+    }
+    public async Task<PayrollDto?> CreatePayrollAsync(CreatePayrollRequest r)
+        => await PostAsync<PayrollDto>("/api/payrolls", r);
+    public async Task<PayrollDto?> UpdatePayrollAsync(int id, UpdatePayrollRequest r)
+        => await PutAsync<PayrollDto>($"/api/payrolls/{id}", r);
+    public async Task<bool> DeletePayrollAsync(int id)
+        => await DeleteAsync($"/api/payrolls/{id}");
+    public async Task<int> GeneratePayrollMonthAsync(GeneratePayrollMonthRequest r)
+    {
+        var result = await PostAsync<Dictionary<string, int>>("/api/payrolls/generate-month", r);
+        return result?.GetValueOrDefault("created") ?? 0;
+    }
+    public async Task<PayrollDto?> MarkPayrollPaidAsync(int id, MarkPayrollPaidRequest r)
+        => await PostAsync<PayrollDto>($"/api/payrolls/{id}/mark-paid", r);
+    public async Task<PayrollDto?> UnmarkPayrollPaidAsync(int id)
+        => await PostAsync<PayrollDto>($"/api/payrolls/{id}/unmark-paid", new { });
+
     // --- Stock batches (lotes con vencimiento) ---
     public async Task<List<StockBatchDto>?> GetStockBatchesAsync(int productId)
         => await GetAsync<List<StockBatchDto>>($"/api/products/{productId}/stock-batches");

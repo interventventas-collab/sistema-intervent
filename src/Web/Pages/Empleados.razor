@@ -1,0 +1,232 @@
+@page "/empleados"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3>Empleados (@(employees?.Count ?? 0))</h3>
+        <button class="btn btn-primary" @onclick="ShowCreate">+ Nuevo Empleado</button>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        @if (isLoading)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">Cargando empleados...</p>
+        }
+        else if (employees is null || employees.Count == 0)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">Todavia no cargaste empleados.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 100px;">Codigo</th>
+                            <th>Apellido y Nombre</th>
+                            <th>DNI / CUIL</th>
+                            <th>Puesto</th>
+                            <th>Ingreso</th>
+                            <th style="text-align: right;">Sueldo basico</th>
+                            <th>Estado</th>
+                            <th style="width: 130px;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var e in employees)
+                        {
+                            <tr>
+                                <td style="font-family: monospace;">@e.Code</td>
+                                <td><strong>@e.LastName, @e.FirstName</strong></td>
+                                <td style="font-size: 0.85rem;">
+                                    @if (!string.IsNullOrEmpty(e.Dni)) { <div>DNI @e.Dni</div> }
+                                    @if (!string.IsNullOrEmpty(e.Cuil)) { <div style="color:#6b7280;">CUIL @e.Cuil</div> }
+                                </td>
+                                <td style="font-size: 0.85rem;">@(e.Position ?? "")</td>
+                                <td style="font-size: 0.85rem;">@(e.HireDate?.ToString("dd/MM/yyyy") ?? "")</td>
+                                <td style="text-align: right; font-weight: 700;">$@FormatAmount(e.BaseSalary)</td>
+                                <td>
+                                    <span class="status-badge @(e.IsActive ? "status-active" : "status-inactive")">
+                                        @(e.IsActive ? "Activo" : "Inactivo")
+                                    </span>
+                                </td>
+                                <td class="actions-cell">
+                                    <button class="btn-icon btn-edit" @onclick="() => ShowEdit(e)" title="Editar">@SvgIcons.Edit</button>
+                                    <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(e)" title="Eliminar">@SvgIcons.AlertCircle</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@if (showForm)
+{
+    <div class="modal-overlay" @onclick="() => showForm = false">
+        <div class="modal-card modal-wide" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3>@(editingId is null ? "Nuevo empleado" : "Editar empleado")</h3>
+                <button class="btn-close" @onclick="() => showForm = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(formError)) { <div class="form-error">@formError</div> }
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Codigo</label>
+                        <input class="form-input" @bind="formCode" placeholder="@(editingId is null ? "Auto: EMP-001" : "")" />
+                    </div>
+                    <div class="form-group" style="flex: 2;"><label class="form-label">Apellido *</label><input class="form-input" @bind="formLastName" /></div>
+                    <div class="form-group" style="flex: 2;"><label class="form-label">Nombre *</label><input class="form-input" @bind="formFirstName" /></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label class="form-label">DNI</label><input class="form-input" @bind="formDni" /></div>
+                    <div class="form-group"><label class="form-label">CUIL</label><input class="form-input" @bind="formCuil" placeholder="20-12345678-9" /></div>
+                    <div class="form-group"><label class="form-label">Puesto</label><input class="form-input" @bind="formPosition" /></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label class="form-label">Fecha de ingreso</label><input class="form-input" type="date" @bind="formHireDate" /></div>
+                    <div class="form-group"><label class="form-label">Sueldo basico mensual *</label><input class="form-input" type="number" step="0.01" @bind="formBaseSalary" style="font-weight: 700; text-align: right;" /></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label class="form-label">Banco</label><input class="form-input" @bind="formBank" /></div>
+                    <div class="form-group"><label class="form-label">CBU / CVU</label><input class="form-input" @bind="formCbu" /></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label class="form-label">Telefono</label><input class="form-input" @bind="formPhone" /></div>
+                    <div class="form-group"><label class="form-label">Email</label><input class="form-input" type="email" @bind="formEmail" /></div>
+                </div>
+                <div class="form-group"><label class="form-label">Direccion</label><input class="form-input" @bind="formAddress" /></div>
+                <div class="form-group"><label class="form-label">Notas</label><textarea class="form-input" rows="2" @bind="formNotes"></textarea></div>
+                @if (editingId is not null)
+                {
+                    <div class="form-group" style="max-width: 200px;">
+                        <label class="form-label">Estado</label>
+                        <select class="form-input" @bind="formIsActive">
+                            <option value="@true">Activo</option>
+                            <option value="@false">Inactivo</option>
+                        </select>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showForm = false">Cancelar</button>
+                <button class="btn btn-primary" @onclick="Save">Guardar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<EmployeeDto>? employees;
+    private bool isLoading = true;
+    private bool showForm;
+    private string? formError;
+    private int? editingId;
+    private string formCode = "";
+    private string formFirstName = "", formLastName = "", formDni = "", formCuil = "", formPosition = "";
+    private DateTime? formHireDate;
+    private decimal formBaseSalary;
+    private string formBank = "", formCbu = "", formPhone = "", formEmail = "", formAddress = "", formNotes = "";
+    private bool formIsActive = true;
+
+    [Inject] IJSRuntime JS { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        isLoading = true;
+        try { employees = await Api.GetEmployeesAsync() ?? new(); }
+        catch { employees = new(); ToastService.Error("Error cargando empleados"); }
+        isLoading = false;
+    }
+
+    private void ShowCreate()
+    {
+        editingId = null;
+        formCode = ""; formFirstName = ""; formLastName = ""; formDni = ""; formCuil = "";
+        formPosition = ""; formHireDate = null; formBaseSalary = 0;
+        formBank = ""; formCbu = ""; formPhone = ""; formEmail = ""; formAddress = ""; formNotes = "";
+        formIsActive = true; formError = null; showForm = true;
+    }
+
+    private void ShowEdit(EmployeeDto e)
+    {
+        editingId = e.Id;
+        formCode = e.Code;
+        formFirstName = e.FirstName; formLastName = e.LastName;
+        formDni = e.Dni ?? ""; formCuil = e.Cuil ?? "";
+        formPosition = e.Position ?? "";
+        formHireDate = e.HireDate;
+        formBaseSalary = e.BaseSalary;
+        formBank = e.Bank ?? ""; formCbu = e.Cbu ?? "";
+        formPhone = e.Phone ?? ""; formEmail = e.Email ?? "";
+        formAddress = e.Address ?? ""; formNotes = e.Notes ?? "";
+        formIsActive = e.IsActive;
+        formError = null; showForm = true;
+    }
+
+    private async Task Save()
+    {
+        formError = null;
+        if (string.IsNullOrWhiteSpace(formFirstName) || string.IsNullOrWhiteSpace(formLastName))
+        { formError = "Nombre y apellido son obligatorios"; return; }
+        try
+        {
+            if (editingId is null)
+            {
+                await Api.CreateEmployeeAsync(new CreateEmployeeRequest
+                {
+                    Code = string.IsNullOrWhiteSpace(formCode) ? null : formCode,
+                    FirstName = formFirstName, LastName = formLastName,
+                    Dni = formDni, Cuil = formCuil, Position = formPosition,
+                    HireDate = formHireDate, BaseSalary = formBaseSalary,
+                    Bank = formBank, Cbu = formCbu, Phone = formPhone, Email = formEmail,
+                    Address = formAddress, Notes = formNotes
+                });
+                ToastService.Success("Empleado creado");
+            }
+            else
+            {
+                await Api.UpdateEmployeeAsync(editingId.Value, new UpdateEmployeeRequest
+                {
+                    Code = formCode, FirstName = formFirstName, LastName = formLastName,
+                    Dni = formDni, Cuil = formCuil, Position = formPosition,
+                    HireDate = formHireDate, BaseSalary = formBaseSalary,
+                    Bank = formBank, Cbu = formCbu, Phone = formPhone, Email = formEmail,
+                    Address = formAddress, Notes = formNotes,
+                    IsActive = formIsActive
+                });
+                ToastService.Success("Empleado actualizado");
+            }
+            showForm = false;
+            await Load();
+        }
+        catch (Exception ex) { formError = ex.Message; }
+    }
+
+    private async Task ConfirmDelete(EmployeeDto e)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Eliminar al empleado {e.LastName}, {e.FirstName}? Se borran sus liquidaciones.")) return;
+        try { await Api.DeleteEmployeeAsync(e.Id); ToastService.Success("Empleado eliminado"); await Load(); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private string FormatAmount(decimal value)
+    {
+        var parts = value.ToString("F2", System.Globalization.CultureInfo.InvariantCulture).Split('.');
+        var sign = ""; var intPart = parts[0]; var decPart = parts.Length > 1 ? parts[1] : "00";
+        if (intPart.StartsWith("-")) { sign = "-"; intPart = intPart[1..]; }
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < intPart.Length; i++)
+        {
+            if (i > 0 && (intPart.Length - i) % 3 == 0) sb.Append('.');
+            sb.Append(intPart[i]);
+        }
+        return sign + sb + "," + decPart;
+    }
+}

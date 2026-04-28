@@ -91,6 +91,28 @@
             </NavGroup>
         }
 
+        @if (HasPerm("tesoreria") || HasPerm("empleados") || HasPerm("sueldos"))
+        {
+            <NavGroup Label="Finanzas" Icon="@SvgIcons.Admin"
+                      HasActiveChild="@(IsActive("/tesoreria") || IsActive("/empleados") || IsActive("/sueldos"))">
+                @if (HasPerm("tesoreria"))
+                {
+                    <NavItem Href="/tesoreria" Label="Tesoreria" Icon="@SvgIcons.ShoppingBag"
+                             IsActive="@IsActive("/tesoreria")" OnClick="@(() => NavigateTo("/tesoreria"))" />
+                }
+                @if (HasPerm("empleados"))
+                {
+                    <NavItem Href="/empleados" Label="Empleados" Icon="@SvgIcons.Users"
+                             IsActive="@IsActive("/empleados")" OnClick="@(() => NavigateTo("/empleados"))" />
+                }
+                @if (HasPerm("sueldos"))
+                {
+                    <NavItem Href="/sueldos" Label="Sueldos" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive("/sueldos")" OnClick="@(() => NavigateTo("/sueldos"))" />
+                }
+            </NavGroup>
+        }
+
         @if (HasPerm("usuarios") || HasPerm("roles") || HasPerm("integraciones") || HasPerm("procesos") || HasPerm("archivos") || HasPerm("auditoria") || HasPerm("backups"))
         {
             <NavGroup Label="Administracion" Icon="@SvgIcons.Admin"
@@ -240,6 +262,9 @@
         { "marcas", "marcas" },
         { "clientes", "clientes" },
         { "ventas", "ventas" },
+        { "tesoreria", "tesoreria" },
+        { "empleados", "empleados" },
+        { "sueldos", "sueldos" },
         { "usuarios", "usuarios" },
         { "roles", "roles" },
         { "integraciones", "integraciones" },

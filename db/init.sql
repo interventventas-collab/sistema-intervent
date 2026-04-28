@@ -786,6 +786,112 @@ BEGIN
 END
 GO
 
+-- ============================================================
+-- TESORERIA (cuentas y movimientos)
+-- ============================================================
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='TreasuryAccounts' AND xtype='U')
+BEGIN
+    CREATE TABLE TreasuryAccounts (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Code NVARCHAR(30) NOT NULL,
+        Name NVARCHAR(150) NOT NULL,
+        AccountType NVARCHAR(30) NOT NULL DEFAULT 'caja',
+        Currency NVARCHAR(10) NOT NULL DEFAULT 'ARS',
+        InitialBalance DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Notes NVARCHAR(500) NULL,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT UQ_TreasuryAccounts_Code UNIQUE (Code)
+    );
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='TreasuryMovements' AND xtype='U')
+BEGIN
+    CREATE TABLE TreasuryMovements (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        AccountId INT NOT NULL,
+        Date DATETIME2 NOT NULL,
+        MovementType NVARCHAR(20) NOT NULL,
+        Concept NVARCHAR(100) NULL,
+        Description NVARCHAR(500) NULL,
+        Amount DECIMAL(18,2) NOT NULL,
+        RelatedAccountId INT NULL,
+        RelatedSaleId INT NULL,
+        RelatedEmployeeId INT NULL,
+        TransferGroupId UNIQUEIDENTIFIER NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        CONSTRAINT FK_TreasuryMovements_Account FOREIGN KEY (AccountId) REFERENCES TreasuryAccounts(Id) ON DELETE CASCADE
+    );
+    CREATE INDEX IX_TreasuryMovements_AccountId ON TreasuryMovements (AccountId);
+    CREATE INDEX IX_TreasuryMovements_Date ON TreasuryMovements (Date);
+END
+GO
+
+-- ============================================================
+-- EMPLEADOS y LIQUIDACIONES DE SUELDO
+-- ============================================================
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Employees' AND xtype='U')
+BEGIN
+    CREATE TABLE Employees (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Code NVARCHAR(30) NOT NULL,
+        FirstName NVARCHAR(100) NOT NULL,
+        LastName NVARCHAR(100) NOT NULL,
+        Dni NVARCHAR(20) NULL,
+        Cuil NVARCHAR(20) NULL,
+        Position NVARCHAR(100) NULL,
+        HireDate DATE NULL,
+        BaseSalary DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Bank NVARCHAR(100) NULL,
+        Cbu NVARCHAR(30) NULL,
+        Phone NVARCHAR(50) NULL,
+        Email NVARCHAR(255) NULL,
+        Address NVARCHAR(500) NULL,
+        Notes NVARCHAR(MAX) NULL,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT UQ_Employees_Code UNIQUE (Code)
+    );
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Payrolls' AND xtype='U')
+BEGIN
+    CREATE TABLE Payrolls (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        EmployeeId INT NOT NULL,
+        Year INT NOT NULL,
+        Month INT NOT NULL,
+        BaseSalary DECIMAL(18,2) NOT NULL,
+        Bonuses DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Deductions DECIMAL(18,2) NOT NULL DEFAULT 0,
+        GrossTotal DECIMAL(18,2) NOT NULL,
+        NetTotal DECIMAL(18,2) NOT NULL,
+        Notes NVARCHAR(500) NULL,
+        IsPaid BIT NOT NULL DEFAULT 0,
+        PaidAt DATETIME2 NULL,
+        PaidFromAccountId INT NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT FK_Payrolls_Employee FOREIGN KEY (EmployeeId) REFERENCES Employees(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_Payrolls_Account FOREIGN KEY (PaidFromAccountId) REFERENCES TreasuryAccounts(Id) ON DELETE SET NULL,
+        CONSTRAINT UQ_Payrolls UNIQUE (EmployeeId, Year, Month)
+    );
+END
+GO
+
+-- Permisos para admin
+IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId = 1 AND MenuKey = 'tesoreria')
+    INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'tesoreria');
+IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId = 1 AND MenuKey = 'empleados')
+    INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'empleados');
+IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId = 1 AND MenuKey = 'sueldos')
+    INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'sueldos');
+GO
+
 -- Asegurar que el nombre default tenga el simbolo de marca registrada
 IF EXISTS (SELECT 1 FROM AppSettings WHERE [Key] = 'company.name' AND ([Value] = '' OR [Value] = 'FRIKAF'))
     UPDATE AppSettings SET [Value] = 'FRIKAF' + NCHAR(174), UpdatedAt = GETDATE() WHERE [Key] = 'company.name';
