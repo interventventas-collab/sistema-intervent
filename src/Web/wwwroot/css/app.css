@@ -689,6 +689,40 @@ button {
   color: var(--text-primary);
 }
 
+.topbar-company-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.topbar-company-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+.topbar-company-name {
+  letter-spacing: 0.02em;
+}
+.topbar-company-chevron {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  opacity: 0.55;
+  transform: rotate(90deg);
+}
+.topbar-company-chevron svg {
+  width: 100%;
+  height: 100%;
+}
+
 .topbar-actions {
   display: flex;
   align-items: center;

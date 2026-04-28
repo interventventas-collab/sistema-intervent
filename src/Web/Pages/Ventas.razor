@@ -4,6 +4,7 @@
 @inject ToastService ToastService
 @inject IJSRuntime JS
 @inject OperatorService Operator
+@inject CurrentCompanyService Company
 
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
@@ -766,11 +767,28 @@
         addProductId = 0; addProductQty = 1;
         formWeekDays = new();
         formIsPaid = false;
-        // Si la empresa configurada es una de las opciones, la pre-seleccionamos. Sino default FRIKAF.
-        formCompanyName = (companyInfo is not null && BrandOptions.Contains(companyInfo.Name))
-            ? companyInfo.Name
-            : (companyInfo?.Name ?? "FRIKAF®");
+        // Prioridad para la marca por defecto:
+        // 1. La empresa actual del topbar (si esta seleccionada y matchea alguna BrandOption)
+        // 2. La empresa configurada en companyInfo (si matchea alguna BrandOption)
+        // 3. companyInfo.Name como esta
+        // 4. FRIKAF®
+        formCompanyName = ResolveDefaultBrand();
         formError = null; showForm = true;
+    }
+
+    private string ResolveDefaultBrand()
+    {
+        // Si hay empresa actual elegida, buscar la BrandOption que coincida (ignorando ® y mayusculas)
+        if (Company.HasCompany)
+        {
+            var current = Company.Current!;
+            var match = BrandOptions.FirstOrDefault(b =>
+                string.Equals(b.TrimEnd('®').Trim(), current, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrEmpty(match)) return match;
+        }
+        if (companyInfo is not null && BrandOptions.Contains(companyInfo.Name))
+            return companyInfo.Name;
+        return companyInfo?.Name ?? "FRIKAF®";
     }
 
     private async Task OpenEditForm(SaleDto s)

@@ -8,6 +8,7 @@
 @inject IJSRuntime JS
 @inject ApiClient Api
 @inject OperatorService Operator
+@inject CurrentCompanyService Company
 @implements IDisposable
 
 <aside class="sidebar @(sidebarOpen ? "open" : "") @(sidebarCollapsed ? "collapsed" : "")" id="sidebar">
@@ -204,7 +205,10 @@
             <button class="topbar-menu-btn" @onclick="ToggleSidebar" aria-label="Abrir menu">
                 @SvgIcons.Menu
             </button>
-            <h1 class="topbar-title">@BrandSettings.BrandName</h1>
+            <button class="topbar-company-btn" @onclick="() => showCompanyModal = true" title="Cambiar empresa de trabajo">
+                <span class="topbar-company-name">@(Company.HasCompany ? Company.Current : BrandSettings.BrandName)</span>
+                <span class="topbar-company-chevron">@SvgIcons.ChevronRight</span>
+            </button>
             @if (Operator.HasOperator)
             {
                 <button class="btn btn-secondary" style="margin-left: 0.8rem; font-size: 0.78rem; padding: 0.25rem 0.6rem;"
@@ -260,6 +264,36 @@
     <div class="sidebar-overlay visible" @onclick="CloseSidebar"></div>
 }
 
+@* Modal de seleccion de empresa *@
+@if (showCompanyModal)
+{
+    <div class="modal-overlay" style="z-index: 9000;" @onclick="() => showCompanyModal = false">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3>🏢 ¿Con qué empresa estás trabajando?</h3>
+                <button class="btn-close" @onclick="() => showCompanyModal = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.85rem; color: #6b7280; margin: 0 0 0.75rem;">
+                    Elegí la empresa actual. Va a ser la marca por defecto al emitir comprobantes
+                    y el nombre que aparece arriba en la barra.
+                </p>
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem;">
+                    @foreach (var co in CurrentCompanyService.Companies)
+                    {
+                        var name = co;
+                        <button class="btn @(Company.Current == name ? "btn-primary" : "btn-secondary")"
+                                @onclick="() => SelectCompany(name)"
+                                style="padding: 0.7rem; font-weight: 700; font-size: 0.95rem;">
+                            @name
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @* Modal obligatorio: hay que elegir operador antes de operar *@
 @if (showOperatorModal)
 {
@@ -299,6 +333,7 @@
     private bool sidebarCollapsed;
     private bool userMenuOpen;
     private bool showOperatorModal;
+    private bool showCompanyModal;
     private string username = "usuario";
     private string role = "user";
     private List<string> permissions = new();
@@ -333,6 +368,7 @@
         SyncProgress.OnChange += OnSyncProgressChanged;
         UploadProgress.OnChanged += OnUploadProgressChanged;
         Operator.OnChange += OnOperatorChanged;
+        Company.OnChange += OnCompanyChanged;
         var user = await AuthService.GetUserAsync();
         if (user is not null)
         {
@@ -344,6 +380,9 @@
         // Cargar operador desde localStorage. Si no hay, abrir modal obligatorio.
         await Operator.LoadAsync();
         if (!Operator.HasOperator) showOperatorModal = true;
+
+        // Cargar empresa actual desde localStorage (no es obligatoria; cae al BrandSettings.BrandName si no hay).
+        await Company.LoadAsync();
 
         // Refrescar permisos desde el servidor para reflejar cambios sin necesidad de re-login.
         try
@@ -439,12 +478,21 @@
         SyncProgress.OnChange -= OnSyncProgressChanged;
         UploadProgress.OnChanged -= OnUploadProgressChanged;
         Operator.OnChange -= OnOperatorChanged;
+        Company.OnChange -= OnCompanyChanged;
         Navigation.LocationChanged -= OnLocationChanged;
         BrandSettings.OnChange -= OnBrandChanged;
     }
 
     private void OnUploadProgressChanged() => InvokeAsync(StateHasChanged);
     private void OnOperatorChanged() => InvokeAsync(StateHasChanged);
+    private void OnCompanyChanged() => InvokeAsync(StateHasChanged);
+
+    private async Task SelectCompany(string name)
+    {
+        await Company.SetAsync(name);
+        showCompanyModal = false;
+        ToastService.Success($"Trabajando con {name}");
+    }
 
     private async Task SelectOperator(string name)
     {
