@@ -251,8 +251,8 @@
                     <div class="form-group">
                         <label class="form-label">Estado</label>
                         <select class="form-input" @bind="formIsActive" style="max-width: 200px;">
-                            <option value="true">Activo</option>
-                            <option value="false">Inactivo</option>
+                            <option value="@true">Activo</option>
+                            <option value="@false">Inactivo</option>
                         </select>
                     </div>
                 }
@@ -517,7 +517,7 @@
 
     private string FormatPrice(decimal value)
     {
-        var parts = value.ToString("F2").Split('.');
+        var parts = value.ToString("F2", System.Globalization.CultureInfo.InvariantCulture).Split('.');
         var intPart = parts[0]; var decPart = parts.Length > 1 ? parts[1] : "00";
         var sign = "";
         if (intPart.StartsWith("-")) { sign = "-"; intPart = intPart[1..]; }

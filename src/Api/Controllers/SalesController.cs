@@ -43,6 +43,14 @@ public class SalesController : ControllerBase
         return Ok(s);
     }
 
+    [HttpPatch("{id}/flags")]
+    public async Task<IActionResult> UpdateFlags(int id, [FromBody] UpdateSaleFlagsRequest request)
+    {
+        var s = await _service.UpdateFlagsAsync(id, request);
+        if (s is null) return NotFound(new { error = "Venta no encontrada" });
+        return Ok(s);
+    }
+
     [HttpGet("company-info")]
     public async Task<IActionResult> CompanyInfo() => Ok(await _service.GetCompanyInfoAsync());
 

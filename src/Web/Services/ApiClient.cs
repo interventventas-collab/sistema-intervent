@@ -212,6 +212,14 @@ public class ApiClient
     public async Task<SaleDto?> CancelSaleAsync(int id)
         => await PostAsync<SaleDto>($"/api/sales/{id}/cancel", new { });
 
+    public async Task<SaleDto?> UpdateSaleFlagsAsync(int id, UpdateSaleFlagsRequest request)
+    {
+        var response = await _http.PatchAsJsonAsync($"/api/sales/{id}/flags", request);
+        if (response.IsSuccessStatusCode)
+            return await response.Content.ReadFromJsonAsync<SaleDto>();
+        return null;
+    }
+
     public async Task<CompanyInfoDto?> GetCompanyInfoAsync()
         => await GetAsync<CompanyInfoDto>("/api/sales/company-info");
 

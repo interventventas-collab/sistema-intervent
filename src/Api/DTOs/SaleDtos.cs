@@ -36,9 +36,16 @@ public record SaleDto(
     string? Notes,
     bool IsCancelled,
     DateTime? CancelledAt,
+    string? WeekDays,
+    bool IsPaid,
     DateTime CreatedAt,
     DateTime? UpdatedAt,
     List<SaleItemDto> Items
+);
+
+public record UpdateSaleFlagsRequest(
+    string? WeekDays,
+    bool? IsPaid
 );
 
 public record CreateSaleItemRequest(
@@ -60,6 +67,8 @@ public record CreateSaleRequest(
     [MaxLength(50)] string? IvaCondition,
     decimal Discount,
     string? Notes,
+    [MaxLength(40)] string? WeekDays,
+    bool? IsPaid,
     [MinLength(1)] List<CreateSaleItemRequest> Items
 );
 

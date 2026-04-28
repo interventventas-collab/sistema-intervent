@@ -226,6 +226,27 @@
                 <hr style="margin: 1rem 0; border: none; border-top: 1px solid #e5e7eb;" />
 
                 <div class="form-group">
+                    <label class="form-label">Dias de la semana (aparecen abajo del comprobante)</label>
+                    <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                        @foreach (var d in AllWeekDays)
+                        {
+                            var isSel = formWeekDays.Contains(d);
+                            <label style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.3rem 0.6rem; border: 1px solid @(isSel ? "#15803d" : "#d1d5db"); background: @(isSel ? "#dcfce7" : "white"); border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.85rem;">
+                                <input type="checkbox" checked="@isSel" @onchange="() => ToggleFormDay(d)" style="margin: 0;" />
+                                @d
+                            </label>
+                        }
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 0.5rem; font-weight: 600; cursor: pointer;">
+                        <input type="checkbox" @bind="formIsPaid" style="width: 18px; height: 18px;" />
+                        Marcar como PAGADO (estampa el sello en el comprobante)
+                    </label>
+                </div>
+
+                <div class="form-group">
                     <label class="form-label">Observaciones (opcional)</label>
                     <textarea class="form-input" rows="2" @bind="formNotes"></textarea>
                 </div>
@@ -243,16 +264,51 @@
 @* ====== VISOR DE COMPROBANTE ====== *@
 @if (viewerSale is not null && companyInfo is not null)
 {
+    @* CSS impresion A4 *@
+    <style>
+        @@media print {
+            @@page { size: A4; margin: 1.5cm; }
+            body * { visibility: hidden !important; }
+            #comprobante-print, #comprobante-print * { visibility: visible !important; }
+            #comprobante-print { position: absolute !important; left: 0; top: 0; width: 100% !important; max-width: none !important; box-shadow: none !important; }
+            .no-print { display: none !important; }
+        }
+        .pagado-stamp {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%) rotate(-18deg);
+            font-size: 6rem;
+            font-weight: 900;
+            color: rgba(220, 38, 38, 0.45);
+            border: 8px solid rgba(220, 38, 38, 0.45);
+            padding: 0.4rem 2.5rem;
+            border-radius: 12px;
+            letter-spacing: 0.3rem;
+            pointer-events: none;
+            user-select: none;
+            z-index: 5;
+        }
+        .day-pill { display: inline-flex; align-items: center; justify-content: center; padding: 0.25rem 0.55rem; border: 1px solid #d1d5db; border-radius: 5px; font-weight: 700; font-size: 0.8rem; cursor: pointer; min-width: 38px; user-select: none; }
+        .day-pill.on { background: #1f2937; color: white; border-color: #1f2937; }
+    </style>
     <div class="modal-overlay" @onclick="CloseViewer">
         <div class="modal-card modal-wide" @onclick:stopPropagation="true" style="max-width: 800px;">
-            <div class="modal-header" style="background: whitesmoke;">
+            <div class="modal-header no-print" style="background: whitesmoke;">
                 <h3>Comprobante @viewerSale.Number</h3>
-                <div style="display: flex; gap: 0.4rem;">
+                <div style="display: flex; gap: 0.4rem; align-items: center;">
+                    <label style="display: flex; align-items: center; gap: 0.3rem; font-size: 0.85rem; cursor: pointer;">
+                        <input type="checkbox" checked="@viewerSale.IsPaid" @onchange="TogglePaid" />
+                        Pagado
+                    </label>
                     <button class="btn btn-secondary" @onclick="PrintViewer" style="font-size: 0.85rem;">🖨 Imprimir</button>
                     <button class="btn-close" @onclick="CloseViewer">&times;</button>
                 </div>
             </div>
-            <div class="modal-body" id="comprobante-print" style="background: white;">
+            <div class="modal-body" id="comprobante-print" style="background: white; position: relative;">
+                @if (viewerSale.IsPaid)
+                {
+                    <div class="pagado-stamp">PAGADO</div>
+                }
                 <!-- Cabecera -->
                 <div style="border: 1px solid #d1d5db; padding: 0.75rem;">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem;">
@@ -360,6 +416,17 @@
                             <strong>Observaciones:</strong> @viewerSale.Notes
                         </div>
                     }
+
+                    <!-- Dias de la semana (tildables tambien despues de impreso) -->
+                    <div style="margin-top: 0.8rem; display: flex; gap: 0.3rem; justify-content: center; flex-wrap: wrap;">
+                        @foreach (var d in AllWeekDays)
+                        {
+                            var isOn = ViewerHasDay(d);
+                            <span class="day-pill @(isOn ? "on" : "")" @onclick="() => ToggleViewerDay(d)" title="Click para tildar/destildar">
+                                @(isOn ? "✓ " : "")@d
+                            </span>
+                        }
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -456,6 +523,10 @@
     private List<CreateSaleItemRequest> formItems = new();
     private int addProductId;
     private decimal addProductQty = 1;
+    private HashSet<string> formWeekDays = new();
+    private bool formIsPaid;
+
+    private static readonly string[] AllWeekDays = { "LUN", "MAR", "MIE", "JUE", "VIE", "SAB", "DOM" };
 
     // Viewer / cancel
     private SaleDto? viewerSale;
@@ -493,7 +564,15 @@
         formNotes = "";
         formItems = new();
         addProductId = 0; addProductQty = 1;
+        formWeekDays = new();
+        formIsPaid = false;
         formError = null; showForm = true;
+    }
+
+    private void ToggleFormDay(string day)
+    {
+        if (formWeekDays.Contains(day)) formWeekDays.Remove(day);
+        else formWeekDays.Add(day);
     }
 
     private void CloseForm() { showForm = false; formError = null; }
@@ -557,6 +636,9 @@
                 IvaCondition = formIvaCondition,
                 Discount = formDiscount,
                 Notes = formNotes,
+                WeekDays = formWeekDays.Count == 0 ? null
+                    : string.Join(",", AllWeekDays.Where(d => formWeekDays.Contains(d))),
+                IsPaid = formIsPaid,
                 Items = formItems.ToList()
             };
             var created = await Api.CreateSaleAsync(req);
@@ -584,6 +666,48 @@
     {
         try { await JS.InvokeVoidAsync("print"); }
         catch { /* algunos browsers bloquean si no es trigger directo */ }
+    }
+
+    private bool ViewerHasDay(string day)
+    {
+        if (viewerSale?.WeekDays is null) return false;
+        return viewerSale.WeekDays.Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => s.Trim()).Contains(day);
+    }
+
+    private async Task ToggleViewerDay(string day)
+    {
+        if (viewerSale is null) return;
+        var current = (viewerSale.WeekDays ?? "")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => s.Trim())
+            .ToHashSet();
+        if (current.Contains(day)) current.Remove(day);
+        else current.Add(day);
+        var ordered = string.Join(",", AllWeekDays.Where(d => current.Contains(d)));
+        try
+        {
+            var updated = await Api.UpdateSaleFlagsAsync(viewerSale.Id, new UpdateSaleFlagsRequest { WeekDays = ordered });
+            if (updated is not null) { viewerSale = updated; await RefreshSalesAsync(); }
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo guardar: " + ex.Message); }
+    }
+
+    private async Task TogglePaid(ChangeEventArgs e)
+    {
+        if (viewerSale is null) return;
+        var paid = e.Value is bool b && b;
+        try
+        {
+            var updated = await Api.UpdateSaleFlagsAsync(viewerSale.Id, new UpdateSaleFlagsRequest { IsPaid = paid });
+            if (updated is not null) { viewerSale = updated; await RefreshSalesAsync(); }
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo guardar: " + ex.Message); }
+    }
+
+    private async Task RefreshSalesAsync()
+    {
+        try { sales = await Api.GetSalesAsync() ?? new(); } catch { }
     }
 
     private void ConfirmCancel(SaleDto s) => saleToCancel = s;
@@ -630,7 +754,7 @@
     // === formato ===
     private string FormatPrice(decimal value)
     {
-        var parts = value.ToString("F2").Split('.');
+        var parts = value.ToString("F2", System.Globalization.CultureInfo.InvariantCulture).Split('.');
         var sign = ""; var intPart = parts[0]; var decPart = parts.Length > 1 ? parts[1] : "00";
         if (intPart.StartsWith("-")) { sign = "-"; intPart = intPart[1..]; }
         var sb = new System.Text.StringBuilder();

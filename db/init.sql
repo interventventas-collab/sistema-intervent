@@ -768,6 +768,18 @@ IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId = 1 AND MenuKey = 'ven
     INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'ventas');
 GO
 
+-- Sales: dias de la semana visibles en el comprobante + flag pagado
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'WeekDays' AND Object_ID = Object_ID(N'Sales'))
+BEGIN
+    ALTER TABLE Sales ADD WeekDays NVARCHAR(40) NULL;
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'IsPaid' AND Object_ID = Object_ID(N'Sales'))
+BEGIN
+    ALTER TABLE Sales ADD IsPaid BIT NOT NULL CONSTRAINT DF_Sales_IsPaid DEFAULT 0;
+END
+GO
+
 -- Lotes de stock (cantidad + fecha de vencimiento por producto)
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ProductStockBatches' AND xtype='U')
 BEGIN

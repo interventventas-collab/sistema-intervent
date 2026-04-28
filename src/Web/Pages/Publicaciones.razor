@@ -2692,7 +2692,7 @@
 
     private string FormatPrice(decimal value)
     {
-        var parts = value.ToString("F2").Split('.');
+        var parts = value.ToString("F2", System.Globalization.CultureInfo.InvariantCulture).Split('.');
         var intPart = parts[0];
         var decPart = parts.Length > 1 ? parts[1] : "00";
 

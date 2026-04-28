@@ -58,6 +58,12 @@ public class Sale
     public bool IsCancelled { get; set; }
     public DateTime? CancelledAt { get; set; }
 
+    // Lista de dias visibles abajo del comprobante: "LUN,MIE,VIE" (CSV).
+    [MaxLength(40)]
+    public string? WeekDays { get; set; }
+
+    public bool IsPaid { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 

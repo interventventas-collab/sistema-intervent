@@ -36,9 +36,17 @@ public class SaleDto
     public string? Notes { get; set; }
     public bool IsCancelled { get; set; }
     public DateTime? CancelledAt { get; set; }
+    public string? WeekDays { get; set; }
+    public bool IsPaid { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
     public List<SaleItemDto> Items { get; set; } = new();
+}
+
+public class UpdateSaleFlagsRequest
+{
+    public string? WeekDays { get; set; }
+    public bool? IsPaid { get; set; }
 }
 
 public class CreateSaleItemRequest
@@ -62,6 +70,8 @@ public class CreateSaleRequest
     public string? IvaCondition { get; set; }
     public decimal Discount { get; set; }
     public string? Notes { get; set; }
+    public string? WeekDays { get; set; }
+    public bool? IsPaid { get; set; }
     public List<CreateSaleItemRequest> Items { get; set; } = new();
 }
 
