@@ -111,6 +111,7 @@ builder.Services.AddScoped<BrandService>();
 builder.Services.AddScoped<ClientService>();
 builder.Services.AddScoped<ComboService>();
 builder.Services.AddScoped<StockBatchService>();
+builder.Services.AddScoped<SaleService>();
 builder.Services.AddScoped<BulkImportService>();
 builder.Services.AddScoped<AiService>();
 builder.Services.AddSingleton<SyncProgressService>();

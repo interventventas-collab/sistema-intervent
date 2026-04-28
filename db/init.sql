@@ -686,6 +686,88 @@ BEGIN
 END
 GO
 
+-- ===== VENTAS (comprobantes) =====
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Sales' AND xtype='U')
+BEGIN
+    CREATE TABLE Sales (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Number NVARCHAR(50) NOT NULL,
+        Date DATETIME2 NOT NULL,
+        DueDate DATETIME2 NULL,
+        PeriodFrom DATETIME2 NULL,
+        PeriodTo DATETIME2 NULL,
+        ClientId INT NULL,
+        ClientNameSnapshot NVARCHAR(200) NULL,
+        ClientAddressSnapshot NVARCHAR(500) NULL,
+        ClientCityLocationSnapshot NVARCHAR(200) NULL,
+        ClientCuitSnapshot NVARCHAR(20) NULL,
+        PaymentCondition NVARCHAR(50) NULL,
+        IvaCondition NVARCHAR(50) NULL,
+        Subtotal DECIMAL(18,2) NOT NULL,
+        Discount DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Total DECIMAL(18,2) NOT NULL,
+        AmountInWords NVARCHAR(500) NULL,
+        Notes NVARCHAR(MAX) NULL,
+        IsCancelled BIT NOT NULL DEFAULT 0,
+        CancelledAt DATETIME2 NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT FK_Sales_Client FOREIGN KEY (ClientId) REFERENCES Clients(Id) ON DELETE SET NULL,
+        CONSTRAINT UQ_Sales_Number UNIQUE (Number)
+    );
+    CREATE INDEX IX_Sales_Date ON Sales (Date);
+    CREATE INDEX IX_Sales_ClientId ON Sales (ClientId);
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='SaleItems' AND xtype='U')
+BEGIN
+    CREATE TABLE SaleItems (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        SaleId INT NOT NULL,
+        ProductId INT NULL,
+        Code NVARCHAR(100) NULL,
+        Description NVARCHAR(500) NOT NULL,
+        Quantity DECIMAL(18,2) NOT NULL,
+        UnitPrice DECIMAL(18,2) NOT NULL,
+        VatRate DECIMAL(5,2) NULL,
+        BonifPercent DECIMAL(5,2) NOT NULL DEFAULT 0,
+        LineTotal DECIMAL(18,2) NOT NULL,
+        CONSTRAINT FK_SaleItems_Sale FOREIGN KEY (SaleId) REFERENCES Sales(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_SaleItems_Product FOREIGN KEY (ProductId) REFERENCES Products(Id) ON DELETE NO ACTION
+    );
+    CREATE INDEX IX_SaleItems_SaleId ON SaleItems (SaleId);
+END
+GO
+
+-- Settings de la empresa (para el comprobante)
+IF NOT EXISTS (SELECT * FROM AppSettings WHERE [Key] = 'company.name')
+    INSERT INTO AppSettings ([Key], [Value]) VALUES ('company.name', 'FRIKAF');
+IF NOT EXISTS (SELECT * FROM AppSettings WHERE [Key] = 'company.cuit')
+    INSERT INTO AppSettings ([Key], [Value]) VALUES ('company.cuit', '');
+IF NOT EXISTS (SELECT * FROM AppSettings WHERE [Key] = 'company.address')
+    INSERT INTO AppSettings ([Key], [Value]) VALUES ('company.address', '');
+IF NOT EXISTS (SELECT * FROM AppSettings WHERE [Key] = 'company.phone')
+    INSERT INTO AppSettings ([Key], [Value]) VALUES ('company.phone', '');
+IF NOT EXISTS (SELECT * FROM AppSettings WHERE [Key] = 'company.email')
+    INSERT INTO AppSettings ([Key], [Value]) VALUES ('company.email', '');
+IF NOT EXISTS (SELECT * FROM AppSettings WHERE [Key] = 'company.web')
+    INSERT INTO AppSettings ([Key], [Value]) VALUES ('company.web', '');
+IF NOT EXISTS (SELECT * FROM AppSettings WHERE [Key] = 'company.iva_condition')
+    INSERT INTO AppSettings ([Key], [Value]) VALUES ('company.iva_condition', 'Responsable Inscripto');
+IF NOT EXISTS (SELECT * FROM AppSettings WHERE [Key] = 'company.iibb')
+    INSERT INTO AppSettings ([Key], [Value]) VALUES ('company.iibb', '');
+IF NOT EXISTS (SELECT * FROM AppSettings WHERE [Key] = 'company.activity_start')
+    INSERT INTO AppSettings ([Key], [Value]) VALUES ('company.activity_start', '');
+IF NOT EXISTS (SELECT * FROM AppSettings WHERE [Key] = 'sales.point_of_sale')
+    INSERT INTO AppSettings ([Key], [Value]) VALUES ('sales.point_of_sale', '0001');
+GO
+
+-- Permiso ventas
+IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId = 1 AND MenuKey = 'ventas')
+    INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'ventas');
+GO
+
 -- Lotes de stock (cantidad + fecha de vencimiento por producto)
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ProductStockBatches' AND xtype='U')
 BEGIN

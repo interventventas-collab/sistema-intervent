@@ -82,6 +82,15 @@
             </NavGroup>
         }
 
+        @if (HasPerm("ventas"))
+        {
+            <NavGroup Label="Ventas" Icon="@SvgIcons.ShoppingBag"
+                      HasActiveChild="@IsActive("/ventas")">
+                <NavItem Href="/ventas" Label="Comprobantes" Icon="@SvgIcons.Tag"
+                         IsActive="@IsActive("/ventas")" OnClick="@(() => NavigateTo("/ventas"))" />
+            </NavGroup>
+        }
+
         @if (HasPerm("usuarios") || HasPerm("roles") || HasPerm("integraciones") || HasPerm("procesos") || HasPerm("archivos") || HasPerm("auditoria") || HasPerm("backups"))
         {
             <NavGroup Label="Administracion" Icon="@SvgIcons.Admin"
@@ -230,6 +239,7 @@
         { "proveedores", "proveedores" },
         { "marcas", "marcas" },
         { "clientes", "clientes" },
+        { "ventas", "ventas" },
         { "usuarios", "usuarios" },
         { "roles", "roles" },
         { "integraciones", "integraciones" },

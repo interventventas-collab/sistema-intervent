@@ -21,6 +21,8 @@ public class AppDbContext : DbContext
     public DbSet<ComboItem> ComboItems => Set<ComboItem>();
     public DbSet<Client> Clients => Set<Client>();
     public DbSet<ProductStockBatch> ProductStockBatches => Set<ProductStockBatch>();
+    public DbSet<Sale> Sales => Set<Sale>();
+    public DbSet<SaleItem> SaleItems => Set<SaleItem>();
     public DbSet<ScheduledProcess> ScheduledProcesses => Set<ScheduledProcess>();
     public DbSet<ProcessExecutionLog> ProcessExecutionLogs => Set<ProcessExecutionLog>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
@@ -137,6 +139,30 @@ public class AppDbContext : DbContext
                   .WithMany()
                   .HasForeignKey(b => b.ProductId)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Sale>(entity =>
+        {
+            entity.HasIndex(s => s.Number).IsUnique();
+            entity.HasIndex(s => s.Date);
+            entity.HasIndex(s => s.ClientId);
+            entity.HasOne(s => s.Client)
+                  .WithMany()
+                  .HasForeignKey(s => s.ClientId)
+                  .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<SaleItem>(entity =>
+        {
+            entity.HasIndex(si => si.SaleId);
+            entity.HasOne(si => si.Sale)
+                  .WithMany(s => s.Items)
+                  .HasForeignKey(si => si.SaleId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(si => si.Product)
+                  .WithMany()
+                  .HasForeignKey(si => si.ProductId)
+                  .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<Combo>(entity =>

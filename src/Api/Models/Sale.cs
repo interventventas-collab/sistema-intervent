@@ -1,0 +1,103 @@
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+
+namespace Api.Models;
+
+[Table("Sales")]
+public class Sale
+{
+    [Key]
+    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public int Id { get; set; }
+
+    [Required]
+    [MaxLength(50)]
+    public string Number { get; set; } = string.Empty;
+
+    public DateTime Date { get; set; }
+    public DateTime? DueDate { get; set; }
+    public DateTime? PeriodFrom { get; set; }
+    public DateTime? PeriodTo { get; set; }
+
+    public int? ClientId { get; set; }
+    [ForeignKey(nameof(ClientId))]
+    public Client? Client { get; set; }
+
+    [MaxLength(200)]
+    public string? ClientNameSnapshot { get; set; }
+
+    [MaxLength(500)]
+    public string? ClientAddressSnapshot { get; set; }
+
+    [MaxLength(200)]
+    public string? ClientCityLocationSnapshot { get; set; }
+
+    [MaxLength(20)]
+    public string? ClientCuitSnapshot { get; set; }
+
+    [MaxLength(50)]
+    public string? PaymentCondition { get; set; }
+
+    [MaxLength(50)]
+    public string? IvaCondition { get; set; }
+
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal Subtotal { get; set; }
+
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal Discount { get; set; }
+
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal Total { get; set; }
+
+    [MaxLength(500)]
+    public string? AmountInWords { get; set; }
+
+    public string? Notes { get; set; }
+
+    public bool IsCancelled { get; set; }
+    public DateTime? CancelledAt { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? UpdatedAt { get; set; }
+
+    public ICollection<SaleItem> Items { get; set; } = new List<SaleItem>();
+}
+
+[Table("SaleItems")]
+public class SaleItem
+{
+    [Key]
+    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public int Id { get; set; }
+
+    public int SaleId { get; set; }
+    [ForeignKey(nameof(SaleId))]
+    public Sale? Sale { get; set; }
+
+    public int? ProductId { get; set; }
+    [ForeignKey(nameof(ProductId))]
+    public Product? Product { get; set; }
+
+    [MaxLength(100)]
+    public string? Code { get; set; }
+
+    [Required]
+    [MaxLength(500)]
+    public string Description { get; set; } = string.Empty;
+
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal Quantity { get; set; }
+
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal UnitPrice { get; set; }
+
+    [Column(TypeName = "decimal(5,2)")]
+    public decimal? VatRate { get; set; }
+
+    [Column(TypeName = "decimal(5,2)")]
+    public decimal BonifPercent { get; set; }
+
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal LineTotal { get; set; }
+}

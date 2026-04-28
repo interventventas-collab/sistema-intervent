@@ -1,0 +1,646 @@
+@page "/ventas"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3>Ventas (@(sales?.Count ?? 0))</h3>
+        <div style="display: flex; gap: 0.4rem;">
+            <button class="btn btn-secondary" @onclick="OpenCompanyForm" title="Datos de la empresa que aparecen en el comprobante">⚙ Datos empresa</button>
+            <button class="btn btn-primary" @onclick="ShowCreateForm">+ Nueva Venta</button>
+        </div>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        @if (isLoading)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">Cargando ventas...</p>
+        }
+        else if (sales is null || sales.Count == 0)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">Todavia no cargaste ninguna venta. Hace clic en "+ Nueva Venta" para empezar.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Numero</th>
+                            <th>Fecha</th>
+                            <th>Cliente</th>
+                            <th>Cond. IVA</th>
+                            <th>Pago</th>
+                            <th style="text-align: right;">Total</th>
+                            <th>Estado</th>
+                            <th style="width: 130px;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var s in sales)
+                        {
+                            <tr style="@(s.IsCancelled ? "opacity:0.55;text-decoration:line-through;" : "")">
+                                <td style="font-family: monospace;">@s.Number</td>
+                                <td>@s.Date.ToString("dd/MM/yyyy")</td>
+                                <td>
+                                    @if (!string.IsNullOrEmpty(s.ClientCode))
+                                    {
+                                        <span style="font-family: monospace; color: #6b7280; font-size: 0.78rem;">@s.ClientCode</span>
+                                        <span> · </span>
+                                    }
+                                    <strong>@(s.ClientNameSnapshot ?? "Consumidor final")</strong>
+                                </td>
+                                <td style="font-size: 0.85rem;">@(s.IvaCondition ?? "")</td>
+                                <td style="font-size: 0.85rem;">@(s.PaymentCondition ?? "")</td>
+                                <td style="text-align: right; font-weight: 700;">$@FormatPrice(s.Total)</td>
+                                <td>
+                                    @if (s.IsCancelled)
+                                    {
+                                        <span class="status-badge" style="background:#fee2e2;color:#991b1b;">Anulada</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="status-badge status-active">Emitida</span>
+                                    }
+                                </td>
+                                <td class="actions-cell">
+                                    <button class="btn-icon btn-edit" @onclick="() => OpenViewer(s)" title="Ver comprobante">@SvgIcons.Tag</button>
+                                    @if (!s.IsCancelled)
+                                    {
+                                        <button class="btn-icon btn-delete" @onclick="() => ConfirmCancel(s)" title="Anular">@SvgIcons.AlertCircle</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@* ====== NUEVA VENTA ====== *@
+@if (showForm)
+{
+    <div class="modal-overlay" @onclick="CloseForm">
+        <div class="modal-card modal-wide" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3>Nueva Venta</h3>
+                <button class="btn-close" @onclick="CloseForm">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(formError))
+                {
+                    <div class="form-error">@formError</div>
+                }
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Fecha *</label>
+                        <input type="date" class="form-input" @bind="formDate" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Cliente</label>
+                        <select class="form-input" @bind="formClientId">
+                            <option value="0">— Consumidor final —</option>
+                            @if (clients is not null)
+                            {
+                                @foreach (var c in clients.Where(x => x.IsActive || x.Id == formClientId))
+                                {
+                                    <option value="@c.Id">@c.Code · @c.Name</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Condicion IVA del cliente</label>
+                        <select class="form-input" @bind="formIvaCondition">
+                            <option value="Consumidor final">Consumidor final</option>
+                            <option value="Responsable Inscripto">Responsable Inscripto</option>
+                            <option value="Monotributo">Monotributo</option>
+                            <option value="Exento">Exento</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Condicion de pago</label>
+                        <select class="form-input" @bind="formPaymentCondition">
+                            <option value="Efectivo">Efectivo</option>
+                            <option value="Transferencia">Transferencia</option>
+                            <option value="Tarjeta de debito">Tarjeta de debito</option>
+                            <option value="Tarjeta de credito">Tarjeta de credito</option>
+                            <option value="Cuenta corriente">Cuenta corriente</option>
+                            <option value="Cheque">Cheque</option>
+                        </select>
+                    </div>
+                </div>
+
+                <hr style="margin: 1rem 0; border: none; border-top: 1px solid #e5e7eb;" />
+
+                <h4 style="margin: 0 0 0.5rem; font-size: 0.95rem;">Items</h4>
+                @if (formItems.Count == 0)
+                {
+                    <p style="color: #6b7280; font-size: 0.85rem; margin: 0 0 0.5rem;">Sin items. Agrega abajo.</p>
+                }
+                else
+                {
+                    <table class="data-table" style="margin-bottom: 0.5rem;">
+                        <thead>
+                            <tr>
+                                <th style="width: 100px;">Codigo</th>
+                                <th>Descripcion</th>
+                                <th style="width: 90px; text-align: center;">Cantidad</th>
+                                <th style="width: 130px; text-align: right;">P. unitario</th>
+                                <th style="width: 80px; text-align: right;">Bonif %</th>
+                                <th style="width: 130px; text-align: right;">Importe</th>
+                                <th style="width: 50px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @for (int idx = 0; idx < formItems.Count; idx++)
+                            {
+                                var i = idx;
+                                var item = formItems[i];
+                                <tr>
+                                    <td><input class="form-input" style="font-size: 0.8rem; padding: 0.25rem;" @bind="item.Code" /></td>
+                                    <td><input class="form-input" style="font-size: 0.85rem; padding: 0.25rem;" @bind="item.Description" /></td>
+                                    <td><input class="form-input" type="number" step="0.01" min="0.01" style="text-align: right; font-size: 0.85rem; padding: 0.25rem;" @bind="item.Quantity" /></td>
+                                    <td><input class="form-input" type="number" step="0.01" min="0" style="text-align: right; font-size: 0.85rem; padding: 0.25rem;" @bind="item.UnitPrice" /></td>
+                                    <td><input class="form-input" type="number" step="0.1" min="0" max="100" style="text-align: right; font-size: 0.85rem; padding: 0.25rem;" @bind="item.BonifPercent" /></td>
+                                    <td style="text-align: right; font-weight: 700;">$@FormatPrice(LineTotal(item))</td>
+                                    <td style="text-align: center;">
+                                        <button class="btn-icon btn-delete" @onclick="() => RemoveItem(i)">×</button>
+                                    </td>
+                                </tr>
+                            }
+                            <tr>
+                                <td colspan="5" style="text-align: right; font-weight: 600;">Subtotal:</td>
+                                <td style="text-align: right; font-weight: 700;">$@FormatPrice(Subtotal)</td>
+                                <td></td>
+                            </tr>
+                            <tr>
+                                <td colspan="5" style="text-align: right; font-weight: 600;">Descuento ($):</td>
+                                <td style="text-align: right;"><input class="form-input" type="number" step="0.01" min="0" style="text-align: right; font-size: 0.85rem; padding: 0.25rem;" @bind="formDiscount" /></td>
+                                <td></td>
+                            </tr>
+                            <tr style="background: #f9fafb;">
+                                <td colspan="5" style="text-align: right; font-weight: 700; font-size: 1rem;">Total:</td>
+                                <td style="text-align: right; font-weight: 700; font-size: 1.1rem;">$@FormatPrice(TotalCalc)</td>
+                                <td></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                }
+
+                @* Selector para agregar producto *@
+                <div class="form-row" style="align-items: flex-end;">
+                    <div class="form-group" style="flex: 4;">
+                        <label class="form-label">Agregar producto</label>
+                        <select class="form-input" @bind="addProductId">
+                            <option value="0">— Elegi un producto —</option>
+                            @if (availableProducts is not null)
+                            {
+                                @foreach (var p in availableProducts)
+                                {
+                                    <option value="@p.Id">@(p.Sku ?? "—") · @p.Title — $@FormatPrice(p.RetailPrice)</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Cantidad</label>
+                        <input class="form-input" type="number" step="0.01" min="0.01" @bind="addProductQty" />
+                    </div>
+                    <div class="form-group" style="flex: 0;">
+                        <button class="btn btn-secondary" @onclick="AddProduct" disabled="@(addProductId == 0)" style="white-space: nowrap;">+ Agregar</button>
+                    </div>
+                </div>
+                <p style="font-size: 0.78rem; color: #6b7280; margin: 0.3rem 0 0;">
+                    Tambien podes agregar items manuales tocando el boton <strong>+ Item manual</strong>.
+                </p>
+                <button class="btn btn-secondary" style="margin-top: 0.4rem; font-size: 0.8rem;" @onclick="AddManualItem">+ Item manual</button>
+
+                <hr style="margin: 1rem 0; border: none; border-top: 1px solid #e5e7eb;" />
+
+                <div class="form-group">
+                    <label class="form-label">Observaciones (opcional)</label>
+                    <textarea class="form-input" rows="2" @bind="formNotes"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseForm" disabled="@isSaving">Cancelar</button>
+                <button class="btn btn-primary" @onclick="Save" disabled="@(isSaving || formItems.Count == 0)">
+                    @(isSaving ? "Guardando..." : "Emitir comprobante")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ====== VISOR DE COMPROBANTE ====== *@
+@if (viewerSale is not null && companyInfo is not null)
+{
+    <div class="modal-overlay" @onclick="CloseViewer">
+        <div class="modal-card modal-wide" @onclick:stopPropagation="true" style="max-width: 800px;">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3>Comprobante @viewerSale.Number</h3>
+                <div style="display: flex; gap: 0.4rem;">
+                    <button class="btn btn-secondary" @onclick="PrintViewer" style="font-size: 0.85rem;">🖨 Imprimir</button>
+                    <button class="btn-close" @onclick="CloseViewer">&times;</button>
+                </div>
+            </div>
+            <div class="modal-body" id="comprobante-print" style="background: white;">
+                <!-- Cabecera -->
+                <div style="border: 1px solid #d1d5db; padding: 0.75rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem;">
+                        <div style="flex: 1;">
+                            <h2 style="margin: 0; font-size: 1.5rem; font-weight: 800;">@companyInfo.Name</h2>
+                            @if (!string.IsNullOrEmpty(companyInfo.Phone))
+                            {
+                                <div style="font-size: 0.8rem;">@companyInfo.Phone</div>
+                            }
+                            @if (!string.IsNullOrEmpty(companyInfo.Email))
+                            {
+                                <div style="font-size: 0.78rem; font-style: italic;">@companyInfo.Email</div>
+                            }
+                            @if (!string.IsNullOrEmpty(companyInfo.Web))
+                            {
+                                <div style="font-size: 0.78rem; font-style: italic;">@companyInfo.Web</div>
+                            }
+                        </div>
+                        <div style="background: #e5e7eb; padding: 0.6rem 1rem; font-weight: 700; font-size: 1.5rem;">X</div>
+                        <div style="flex: 1; text-align: right; font-size: 0.85rem;">
+                            <div style="color: #6b7280; font-style: italic; margin-bottom: 0.3rem;">Documento no valido como factura</div>
+                            <div><strong>Original</strong></div>
+                            <div><strong>N°:</strong> @viewerSale.Number</div>
+                            <div><strong>Fecha:</strong> @viewerSale.Date.ToString("dd/MM/yyyy")</div>
+                            <div><strong>CUIT:</strong> @companyInfo.Cuit</div>
+                            @if (!string.IsNullOrEmpty(companyInfo.Iibb))
+                            {
+                                <div><strong>Ingresos brutos:</strong> @companyInfo.Iibb</div>
+                            }
+                            @if (!string.IsNullOrEmpty(companyInfo.ActivityStart))
+                            {
+                                <div><strong>Inicio de actividades:</strong> @companyInfo.ActivityStart</div>
+                            }
+                        </div>
+                    </div>
+                    <div style="font-size: 0.78rem; margin-top: 0.4rem;">
+                        @if (!string.IsNullOrEmpty(companyInfo.Address))
+                        {
+                            <div>@companyInfo.Address</div>
+                        }
+                        <div>@companyInfo.IvaCondition</div>
+                    </div>
+                </div>
+
+                <!-- Cliente -->
+                <div style="border: 1px solid #d1d5db; border-top: 0; padding: 0.6rem; font-size: 0.85rem;">
+                    <div><strong>Razón social:</strong> @(viewerSale.ClientNameSnapshot ?? "Consumidor final")</div>
+                    @if (!string.IsNullOrEmpty(viewerSale.ClientAddressSnapshot))
+                    {
+                        <div><strong>Domicilio:</strong> @viewerSale.ClientAddressSnapshot</div>
+                    }
+                    @if (!string.IsNullOrEmpty(viewerSale.ClientCuitSnapshot))
+                    {
+                        <div><strong>CUIT/DNI:</strong> @viewerSale.ClientCuitSnapshot</div>
+                    }
+                    <div style="display: flex; justify-content: space-between; margin-top: 0.3rem;">
+                        <span><strong>Condicion de venta:</strong> @viewerSale.PaymentCondition</span>
+                        <span><strong>Condicion de IVA:</strong> @viewerSale.IvaCondition</span>
+                    </div>
+                </div>
+
+                <!-- Items -->
+                <table class="data-table" style="margin: 0; border: 1px solid #d1d5db; border-top: 0;">
+                    <thead style="background: #f3f4f6;">
+                        <tr>
+                            <th style="width: 70px;">Cant.</th>
+                            <th style="width: 110px;">Codigo</th>
+                            <th>Descripcion</th>
+                            <th style="text-align: right; width: 110px;">P. unit.</th>
+                            <th style="text-align: right; width: 70px;">Bonif</th>
+                            <th style="text-align: right; width: 130px;">Importe</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var i in viewerSale.Items)
+                        {
+                            <tr>
+                                <td>@FormatQty(i.Quantity)</td>
+                                <td style="font-family: monospace;">@(i.Code ?? "")</td>
+                                <td>@i.Description</td>
+                                <td style="text-align: right;">$@FormatPrice(i.UnitPrice)</td>
+                                <td style="text-align: right;">@FormatQty(i.BonifPercent) %</td>
+                                <td style="text-align: right; font-weight: 600;">$@FormatPrice(i.LineTotal)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+
+                <!-- Pie -->
+                <div style="border: 1px solid #d1d5db; border-top: 0; padding: 0.6rem; font-size: 0.85rem;">
+                    <div>@(viewerSale.AmountInWords ?? "")</div>
+                    <div style="margin-top: 0.3rem;">
+                        @if (viewerSale.Discount > 0)
+                        {
+                            <div style="text-align: right;">Subtotal: $@FormatPrice(viewerSale.Subtotal)</div>
+                            <div style="text-align: right;">Descuento: -$@FormatPrice(viewerSale.Discount)</div>
+                        }
+                        <div style="text-align: right; font-size: 1.1rem; font-weight: 700; margin-top: 0.4rem;">
+                            Importe Total: $@FormatPrice(viewerSale.Total)
+                        </div>
+                    </div>
+                    @if (!string.IsNullOrEmpty(viewerSale.Notes))
+                    {
+                        <div style="margin-top: 0.5rem; color: #6b7280; font-size: 0.78rem;">
+                            <strong>Observaciones:</strong> @viewerSale.Notes
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseViewer">Cerrar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ====== CONFIRMAR ANULAR ====== *@
+@if (saleToCancel is not null)
+{
+    <div class="modal-overlay" @onclick="() => saleToCancel = null">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: #dc3545; color: white;">
+                <h4 style="margin: 0;">Anular comprobante</h4>
+                <button class="btn-close" @onclick="() => saleToCancel = null" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Vas a marcar como anulado el comprobante <strong>@saleToCancel.Number</strong>.</p>
+                <p class="text-muted" style="font-size: 0.85rem;">El comprobante queda guardado pero marcado como anulado.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => saleToCancel = null">No anular</button>
+                <button class="btn btn-danger" @onclick="DoCancel">Si, anular</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ====== DATOS DE LA EMPRESA ====== *@
+@if (showCompanyForm && companyForm is not null)
+{
+    <div class="modal-overlay" @onclick="() => showCompanyForm = false">
+        <div class="modal-card modal-wide" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3>Datos de la empresa (aparecen en el comprobante)</h3>
+                <button class="btn-close" @onclick="() => showCompanyForm = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-row">
+                    <div class="form-group" style="flex: 2;"><label class="form-label">Nombre / Razon social</label><input class="form-input" @bind="companyForm.Name" /></div>
+                    <div class="form-group"><label class="form-label">CUIT</label><input class="form-input" @bind="companyForm.Cuit" /></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label class="form-label">Telefono</label><input class="form-input" @bind="companyForm.Phone" /></div>
+                    <div class="form-group"><label class="form-label">Email</label><input class="form-input" @bind="companyForm.Email" /></div>
+                    <div class="form-group"><label class="form-label">Web</label><input class="form-input" @bind="companyForm.Web" /></div>
+                </div>
+                <div class="form-group"><label class="form-label">Direccion</label><input class="form-input" @bind="companyForm.Address" /></div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Condicion de IVA</label>
+                        <select class="form-input" @bind="companyForm.IvaCondition">
+                            <option value="Responsable Inscripto">Responsable Inscripto</option>
+                            <option value="Monotributo">Monotributo</option>
+                            <option value="Exento">Exento</option>
+                        </select>
+                    </div>
+                    <div class="form-group"><label class="form-label">Ingresos brutos</label><input class="form-input" @bind="companyForm.Iibb" /></div>
+                    <div class="form-group"><label class="form-label">Inicio de actividades</label><input class="form-input" @bind="companyForm.ActivityStart" placeholder="dd/mm/aaaa" /></div>
+                </div>
+                <div class="form-group" style="max-width: 200px;">
+                    <label class="form-label">Punto de venta</label>
+                    <input class="form-input" @bind="companyForm.PointOfSale" placeholder="0001" />
+                    <p style="font-size: 0.72rem; color: #6b7280; margin: 0.2rem 0 0;">Es el prefijo de los numeros de comprobante.</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showCompanyForm = false">Cancelar</button>
+                <button class="btn btn-primary" @onclick="SaveCompany">Guardar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<SaleDto>? sales;
+    private List<ClientDto>? clients;
+    private List<ProductDto>? availableProducts;
+    private CompanyInfoDto? companyInfo;
+    private bool isLoading = true;
+    private bool showForm;
+    private bool isSaving;
+    private string? formError;
+
+    // Form
+    private DateTime formDate = DateTime.Today;
+    private int formClientId;
+    private string formIvaCondition = "Consumidor final";
+    private string formPaymentCondition = "Efectivo";
+    private decimal formDiscount;
+    private string formNotes = "";
+    private List<CreateSaleItemRequest> formItems = new();
+    private int addProductId;
+    private decimal addProductQty = 1;
+
+    // Viewer / cancel
+    private SaleDto? viewerSale;
+    private SaleDto? saleToCancel;
+
+    // Company form
+    private bool showCompanyForm;
+    private CompanyInfoDto? companyForm;
+
+    protected override async Task OnInitializedAsync() => await LoadAll();
+
+    private async Task LoadAll()
+    {
+        isLoading = true;
+        try { sales = await Api.GetSalesAsync() ?? new(); } catch { sales = new(); ToastService.Error("Error cargando ventas"); }
+        try { clients = await Api.GetClientsAsync() ?? new(); } catch { clients = new(); }
+        try
+        {
+            var all = await Api.GetProductsAsync() ?? new();
+            availableProducts = all.Where(p => p.IsActive && p.DerivedCount == 0)
+                .OrderBy(p => p.Sku ?? "").ThenBy(p => p.Title).ToList();
+        }
+        catch { availableProducts = new(); }
+        try { companyInfo = await Api.GetCompanyInfoAsync(); } catch { /* defaults */ }
+        isLoading = false;
+    }
+
+    private void ShowCreateForm()
+    {
+        formDate = DateTime.Today;
+        formClientId = 0;
+        formIvaCondition = "Consumidor final";
+        formPaymentCondition = "Efectivo";
+        formDiscount = 0;
+        formNotes = "";
+        formItems = new();
+        addProductId = 0; addProductQty = 1;
+        formError = null; showForm = true;
+    }
+
+    private void CloseForm() { showForm = false; formError = null; }
+
+    private void AddProduct()
+    {
+        if (addProductId == 0) return;
+        var p = availableProducts?.FirstOrDefault(x => x.Id == addProductId);
+        if (p is null) return;
+        formItems.Add(new CreateSaleItemRequest
+        {
+            ProductId = p.Id,
+            Code = p.Sku,
+            Description = p.DisplayName ?? p.Title,
+            Quantity = addProductQty <= 0 ? 1 : addProductQty,
+            UnitPrice = p.RetailPrice,
+            VatRate = p.VatRate,
+            BonifPercent = 0
+        });
+        addProductId = 0; addProductQty = 1;
+    }
+
+    private void AddManualItem()
+    {
+        formItems.Add(new CreateSaleItemRequest
+        {
+            ProductId = null, Code = "", Description = "Item manual",
+            Quantity = 1, UnitPrice = 0, BonifPercent = 0
+        });
+    }
+
+    private void RemoveItem(int idx)
+    {
+        if (idx >= 0 && idx < formItems.Count) formItems.RemoveAt(idx);
+    }
+
+    private decimal LineTotal(CreateSaleItemRequest i)
+    {
+        var bruto = i.Quantity * i.UnitPrice;
+        var bonif = bruto * (i.BonifPercent / 100m);
+        return Math.Round(bruto - bonif, 2);
+    }
+
+    private decimal Subtotal => formItems.Sum(LineTotal);
+    private decimal TotalCalc => Math.Max(0, Subtotal - formDiscount);
+
+    private async Task Save()
+    {
+        if (formItems.Count == 0) { formError = "Agregá al menos un item"; return; }
+        if (formItems.Any(i => i.Quantity <= 0 || string.IsNullOrWhiteSpace(i.Description)))
+        { formError = "Todos los items deben tener cantidad > 0 y descripcion."; return; }
+
+        isSaving = true; formError = null;
+        try
+        {
+            var req = new CreateSaleRequest
+            {
+                Date = formDate,
+                ClientId = formClientId > 0 ? formClientId : null,
+                PaymentCondition = formPaymentCondition,
+                IvaCondition = formIvaCondition,
+                Discount = formDiscount,
+                Notes = formNotes,
+                Items = formItems.ToList()
+            };
+            var created = await Api.CreateSaleAsync(req);
+            if (created is null) { formError = "No se pudo crear el comprobante"; return; }
+            ToastService.Success($"Comprobante {created.Number} emitido");
+            showForm = false;
+            await LoadAll();
+            // Abrir el visor automáticamente
+            viewerSale = created;
+        }
+        catch (Exception ex) { formError = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private async Task OpenViewer(SaleDto s)
+    {
+        // Recargar para tener los snapshot del cliente actualizados
+        var fresh = await Api.GetSaleAsync(s.Id) ?? s;
+        viewerSale = fresh;
+    }
+
+    private void CloseViewer() => viewerSale = null;
+
+    private async Task PrintViewer()
+    {
+        try { await JS.InvokeVoidAsync("print"); }
+        catch { /* algunos browsers bloquean si no es trigger directo */ }
+    }
+
+    private void ConfirmCancel(SaleDto s) => saleToCancel = s;
+
+    private async Task DoCancel()
+    {
+        if (saleToCancel is null) return;
+        try
+        {
+            var updated = await Api.CancelSaleAsync(saleToCancel.Id);
+            if (updated is not null) { ToastService.Success("Comprobante anulado"); await LoadAll(); }
+            else ToastService.Error("No se pudo anular");
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { saleToCancel = null; }
+    }
+
+    private void OpenCompanyForm()
+    {
+        companyForm = companyInfo is null
+            ? new CompanyInfoDto()
+            : new CompanyInfoDto
+            {
+                Name = companyInfo.Name, Cuit = companyInfo.Cuit, Address = companyInfo.Address,
+                Phone = companyInfo.Phone, Email = companyInfo.Email, Web = companyInfo.Web,
+                IvaCondition = companyInfo.IvaCondition, Iibb = companyInfo.Iibb,
+                ActivityStart = companyInfo.ActivityStart, PointOfSale = companyInfo.PointOfSale
+            };
+        showCompanyForm = true;
+    }
+
+    private async Task SaveCompany()
+    {
+        if (companyForm is null) return;
+        try
+        {
+            var saved = await Api.UpdateCompanyInfoAsync(companyForm);
+            if (saved is not null) { companyInfo = saved; ToastService.Success("Datos de empresa guardados"); }
+            showCompanyForm = false;
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    // === formato ===
+    private string FormatPrice(decimal value)
+    {
+        var parts = value.ToString("F2").Split('.');
+        var sign = ""; var intPart = parts[0]; var decPart = parts.Length > 1 ? parts[1] : "00";
+        if (intPart.StartsWith("-")) { sign = "-"; intPart = intPart[1..]; }
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < intPart.Length; i++)
+        {
+            if (i > 0 && (intPart.Length - i) % 3 == 0) sb.Append('.');
+            sb.Append(intPart[i]);
+        }
+        return sign + sb + "," + decPart;
+    }
+
+    private string FormatQty(decimal value) => value.ToString("0.##");
+}

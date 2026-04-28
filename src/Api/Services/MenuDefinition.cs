@@ -21,6 +21,10 @@ public static class MenuDefinition
             new MenuItem("marcas", "Marcas", "/marcas"),
             new MenuItem("clientes", "Clientes", "/clientes")
         }),
+        new MenuGroup("ventas", "Ventas", new[]
+        {
+            new MenuItem("ventas", "Comprobantes", "/ventas")
+        }),
         new MenuGroup("administracion", "Administracion", new[]
         {
             new MenuItem("usuarios", "Usuarios", "/usuarios"),
