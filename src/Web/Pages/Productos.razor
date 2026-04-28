@@ -183,7 +183,21 @@
                                         </div>
                                     }
                                 </td>
-                                <td><strong>@product.Title</strong></td>
+                                <td>
+                                    <strong>@product.Title</strong>
+                                    @if (product.DerivedCount > 0)
+                                    {
+                                        <span style="display: inline-block; margin-left: 0.4rem; padding: 0.1rem 0.45rem; background: #dcfce7; color: #15803d; border-radius: 999px; font-size: 0.7rem; font-weight: 600;" title="Este producto es base de @product.DerivedCount productos">
+                                            Base de @product.DerivedCount
+                                        </span>
+                                    }
+                                    @if (product.BaseProductId.HasValue)
+                                    {
+                                        <div style="font-size: 0.72rem; color: #6b7280; margin-top: 0.15rem;">
+                                            <span style="color:#3b82f6;">↳</span> deriva de <strong>@(product.BaseProductSku ?? product.BaseProductTitle)</strong>
+                                        </div>
+                                    }
+                                </td>
                                 <td style="font-size: 0.85rem; color: #6b7280;">@(product.Sku ?? "")</td>
                                 <td>
                                     @{
@@ -219,20 +233,37 @@
                                     }
                                 </td>
                                 <td style="text-align: right; padding: 0.25rem 0.5rem;" @onclick:stopPropagation="true">
-                                    <div style="display: inline-flex; align-items: center; gap: 0.2rem; border: 1px solid #d1d5db; border-radius: 6px; padding: 0.25rem 0.4rem; background: white;">
+                                    @{
+                                        var costInherited = product.BaseProductId.HasValue;
+                                        var costDisabled = costInherited || savingCostId == product.Id;
+                                        var costTitle = costInherited
+                                            ? $"Heredado del producto base {product.BaseProductSku ?? product.BaseProductTitle}"
+                                            : "";
+                                    }
+                                    <div style="display: inline-flex; align-items: center; gap: 0.2rem; border: 1px solid @(costInherited ? "#e5e7eb" : "#d1d5db"); border-radius: 6px; padding: 0.25rem 0.4rem; background: @(costInherited ? "#f9fafb" : "white");" title="@costTitle">
                                         <span style="color: #6b7280; font-size: 0.85rem;">$</span>
                                         <input type="text"
                                                value="@FormatPrice(product.CostPrice)"
                                                @onchange="@(e => SaveProductCost(product, e.Value?.ToString()))"
-                                               disabled="@(savingCostId == product.Id)"
-                                               style="border: none; outline: none; text-align: right; width: 95px; font-size: 0.9rem; background: transparent; padding: 0;" />
-                                        @if (savingCostId == product.Id)
+                                               disabled="@costDisabled"
+                                               style="border: none; outline: none; text-align: right; width: 95px; font-size: 0.9rem; background: transparent; padding: 0; @(costInherited ? "color:#6b7280;" : "")" />
+                                        @if (costInherited)
+                                        {
+                                            <span style="color: #3b82f6; font-size: 0.75rem;" title="@costTitle">🔗</span>
+                                        }
+                                        else if (savingCostId == product.Id)
                                         {
                                             <span style="color: #3b82f6; font-size: 0.75rem;">...</span>
                                         }
                                     </div>
                                 </td>
-                                <td style="text-align: right;">$@FormatPrice(product.RetailPrice)</td>
+                                <td style="text-align: right;">
+                                    $@FormatPrice(product.RetailPrice)
+                                    @if (product.BaseProductId.HasValue)
+                                    {
+                                        <span style="color: #3b82f6; font-size: 0.75rem; margin-left: 0.2rem;" title="Heredado del producto base">🔗</span>
+                                    }
+                                </td>
                                 <td style="text-align: center; font-weight: 700;">
                                     @if (product.CriticalStock > 0 && product.Stock <= product.CriticalStock)
                                     {
@@ -329,19 +360,50 @@
                         <input class="form-input" @bind="formModel" placeholder="Modelo" />
                     </div>
                 </div>
+                @{
+                    var baseOptions = (products ?? new List<ProductDto>())
+                        .Where(p => !p.BaseProductId.HasValue && p.Id != editingProductId)
+                        .Where(p => editingProductId is null || products?.FirstOrDefault(c => c.Id == editingProductId)?.DerivedCount == 0)
+                        .OrderBy(p => p.Sku ?? "").ThenBy(p => p.Title)
+                        .ToList();
+                    var canHaveBase = !isEditing
+                        || (products?.FirstOrDefault(c => c.Id == editingProductId)?.DerivedCount ?? 0) == 0;
+                }
+                <div class="form-group">
+                    <label class="form-label">Producto base (opcional)</label>
+                    @if (!canHaveBase)
+                    {
+                        <p style="font-size: 0.8rem; color: #6b7280; margin: 0;">
+                            Este producto ya es base de otros productos, asi que no puede heredar de un tercero.
+                        </p>
+                    }
+                    else
+                    {
+                        <select class="form-input" @bind="formBaseProductId" style="max-width: 480px;">
+                            <option value="0">— Sin producto base (precio independiente) —</option>
+                            @foreach (var p in baseOptions)
+                            {
+                                <option value="@p.Id">@(p.Sku ?? "—") · @p.Title</option>
+                            }
+                        </select>
+                        <p style="font-size: 0.78rem; color: #6b7280; margin: 0.3rem 0 0;">
+                            Si elegis un producto base, este producto va a heredar el costo y el PVP del padre. Cuando cambies el precio del padre, se aplica automaticamente aca.
+                        </p>
+                    }
+                </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label class="form-label">Precio de Costo</label>
+                        <label class="form-label">Precio de Costo @(formBaseProductId > 0 ? "(heredado)" : "")</label>
                         <div style="position: relative;">
                             <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 1.1rem; font-weight: 700; color: #333;">$</span>
-                            <input type="text" class="form-input" style="font-size: 1.1rem; font-weight: 700; text-align: right; padding-left: 28px;" value="@formCostPriceFormatted" @oninput="OnFormCostPriceInput" inputmode="decimal" />
+                            <input type="text" class="form-input" style="font-size: 1.1rem; font-weight: 700; text-align: right; padding-left: 28px; @(formBaseProductId > 0 ? "background:#f3f4f6;color:#6b7280;" : "")" value="@formCostPriceFormatted" @oninput="OnFormCostPriceInput" inputmode="decimal" disabled="@(formBaseProductId > 0)" />
                         </div>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">PVP (Precio de Venta)</label>
+                        <label class="form-label">PVP (Precio de Venta) @(formBaseProductId > 0 ? "(heredado)" : "")</label>
                         <div style="position: relative;">
                             <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 1.1rem; font-weight: 700; color: #333;">$</span>
-                            <input type="text" class="form-input" style="font-size: 1.1rem; font-weight: 700; text-align: right; padding-left: 28px;" value="@formRetailPriceFormatted" @oninput="OnFormRetailPriceInput" inputmode="decimal" />
+                            <input type="text" class="form-input" style="font-size: 1.1rem; font-weight: 700; text-align: right; padding-left: 28px; @(formBaseProductId > 0 ? "background:#f3f4f6;color:#6b7280;" : "")" value="@formRetailPriceFormatted" @oninput="OnFormRetailPriceInput" inputmode="decimal" disabled="@(formBaseProductId > 0)" />
                         </div>
                     </div>
                 </div>
@@ -935,6 +997,7 @@
     private string? formPhoto1;
     private string? formPhoto2;
     private string? formPhoto3;
+    private int formBaseProductId; // 0 = sin base
     private bool showDeleteConfirm;
     private ProductDto? productToDelete;
     private const long MaxFileSize = 2 * 1024 * 1024;
@@ -1228,6 +1291,7 @@
         formCostPrice = 0; formRetailPrice = 0; formStock = 0; formCriticalStock = 0;
         formCostPriceFormatted = FormatPrice(0); formRetailPriceFormatted = FormatPrice(0);
         formIsActive = true; formPhoto1 = null; formPhoto2 = null; formPhoto3 = null;
+        formBaseProductId = 0;
         formError = null; showForm = true;
     }
 
@@ -1242,6 +1306,7 @@
         formRetailPriceFormatted = FormatPrice(formRetailPrice);
         formIsActive = product.IsActive;
         formPhoto1 = product.Photo1; formPhoto2 = product.Photo2; formPhoto3 = product.Photo3;
+        formBaseProductId = product.BaseProductId ?? 0;
         formError = null; showForm = true;
     }
 
@@ -1257,6 +1322,8 @@
             if (isEditing && editingProductId.HasValue)
             {
                 var update = new UpdateProductRequest { Title = formTitle, Description = formDescription, Sku = formSku, Brand = formBrand, Model = formModel, CostPrice = formCostPrice, RetailPrice = formRetailPrice, Stock = formStock, CriticalStock = formCriticalStock, IsActive = formIsActive, Photo1 = formPhoto1 ?? "", Photo2 = formPhoto2 ?? "", Photo3 = formPhoto3 ?? "" };
+                if (formBaseProductId > 0) update.BaseProductId = formBaseProductId;
+                else update.ClearBaseProduct = true;
                 var result = await Api.UpdateProductAsync(editingProductId.Value, update);
                 if (result is null) { formError = "Error al actualizar el producto"; return; }
                 ToastService.Success("Producto actualizado");
@@ -1264,6 +1331,7 @@
             else
             {
                 var create = new CreateProductRequest { Title = formTitle, Description = formDescription, Sku = formSku, Brand = formBrand, Model = formModel, CostPrice = formCostPrice, RetailPrice = formRetailPrice, Stock = formStock, CriticalStock = formCriticalStock, Photo1 = formPhoto1, Photo2 = formPhoto2, Photo3 = formPhoto3 };
+                if (formBaseProductId > 0) create.BaseProductId = formBaseProductId;
                 var result = await Api.CreateProductAsync(create);
                 if (result is null) { formError = "Error al crear el producto"; return; }
                 ToastService.Success("Producto creado");
@@ -1587,6 +1655,12 @@
 
     private async Task SaveProductCost(ProductDto product, string? rawValue)
     {
+        if (product.BaseProductId.HasValue)
+        {
+            // No deberia llegar aca (el input esta deshabilitado), pero por las dudas:
+            ToastService.Error($"Este producto hereda el costo del producto base {product.BaseProductSku ?? product.BaseProductTitle}.");
+            return;
+        }
         var newCost = ParseFormattedPrice(rawValue ?? "");
         if (newCost == product.CostPrice) return;
         if (newCost < 0)
@@ -1611,7 +1685,15 @@
             else
             {
                 product.CostPrice = newCost;
-                ToastService.Success($"Costo actualizado: ${FormatPrice(newCost)}");
+                if (product.DerivedCount > 0)
+                {
+                    ToastService.Success($"Costo actualizado: ${FormatPrice(newCost)}. Aplicado a {product.DerivedCount} producto(s) derivado(s).");
+                    await LoadData();
+                }
+                else
+                {
+                    ToastService.Success($"Costo actualizado: ${FormatPrice(newCost)}");
+                }
             }
         }
         catch (Exception ex)

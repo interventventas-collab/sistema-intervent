@@ -44,5 +44,13 @@ public class Product
 
     public DateTime? UpdatedAt { get; set; }
 
+    // Producto base del que hereda costo y PVP. Si es null, es un producto independiente (o base).
+    public int? BaseProductId { get; set; }
+
+    [ForeignKey(nameof(BaseProductId))]
+    public Product? BaseProduct { get; set; }
+
+    public ICollection<Product> DerivedProducts { get; set; } = new List<Product>();
+
     public ICollection<MeliItem> MeliItems { get; set; } = new List<MeliItem>();
 }

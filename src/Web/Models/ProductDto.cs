@@ -19,6 +19,10 @@ public class ProductDto
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
     public List<ProductAccountLinkDto> LinkedAccounts { get; set; } = new();
+    public int? BaseProductId { get; set; }
+    public string? BaseProductSku { get; set; }
+    public string? BaseProductTitle { get; set; }
+    public int DerivedCount { get; set; }
 }
 
 public class CreateProductRequest
@@ -35,6 +39,7 @@ public class CreateProductRequest
     public decimal RetailPrice { get; set; }
     public int Stock { get; set; }
     public int CriticalStock { get; set; }
+    public int? BaseProductId { get; set; }
 }
 
 public class UpdateProductRequest
@@ -52,6 +57,8 @@ public class UpdateProductRequest
     public int? Stock { get; set; }
     public int? CriticalStock { get; set; }
     public bool? IsActive { get; set; }
+    public int? BaseProductId { get; set; }
+    public bool? ClearBaseProduct { get; set; }
 }
 
 public class ProductAccountLinkDto

@@ -889,7 +889,7 @@ public class ApiClient
             return default;
         }
 
-        response.EnsureSuccessStatusCode();
+        await ThrowIfErrorAsync(response);
         return await response.Content.ReadFromJsonAsync<T>();
     }
 
@@ -904,8 +904,24 @@ public class ApiClient
             return default;
         }
 
-        response.EnsureSuccessStatusCode();
+        await ThrowIfErrorAsync(response);
         return await response.Content.ReadFromJsonAsync<T>();
+    }
+
+    // Si la respuesta no es exitosa, lee el body buscando { "error": "..." } y lanza HttpRequestException con ese mensaje.
+    private static async Task ThrowIfErrorAsync(HttpResponseMessage response)
+    {
+        if (response.IsSuccessStatusCode) return;
+        string? message = null;
+        try
+        {
+            var dict = await response.Content.ReadFromJsonAsync<Dictionary<string, string>>();
+            if (dict is not null && dict.TryGetValue("error", out var msg)) message = msg;
+        }
+        catch { /* no era JSON con la forma esperada */ }
+        if (string.IsNullOrEmpty(message))
+            message = $"Error {(int)response.StatusCode}: {response.ReasonPhrase}";
+        throw new HttpRequestException(message);
     }
 
     private async Task<bool> DeleteAsync(string url)

@@ -531,3 +531,32 @@ BEGIN
     INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'combos');
 END
 GO
+
+-- Agregar columna BaseProductId a Products
+-- (un producto puede basarse en otro: hereda costo y PVP del producto base)
+IF NOT EXISTS (
+    SELECT * FROM sys.columns
+    WHERE Name = N'BaseProductId' AND Object_ID = Object_ID(N'Products')
+)
+BEGIN
+    ALTER TABLE Products ADD BaseProductId INT NULL;
+END
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM sys.foreign_keys WHERE name = 'FK_Products_BaseProduct'
+)
+BEGIN
+    ALTER TABLE Products
+        ADD CONSTRAINT FK_Products_BaseProduct
+        FOREIGN KEY (BaseProductId) REFERENCES Products(Id) ON DELETE NO ACTION;
+END
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM sys.indexes WHERE name = 'IX_Products_BaseProductId' AND object_id = Object_ID(N'Products')
+)
+BEGIN
+    CREATE INDEX IX_Products_BaseProductId ON Products(BaseProductId);
+END
+GO

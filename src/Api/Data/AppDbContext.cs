@@ -91,6 +91,15 @@ public class AppDbContext : DbContext
                   .OnDelete(DeleteBehavior.SetNull);
         });
 
+        modelBuilder.Entity<Product>(entity =>
+        {
+            entity.HasIndex(p => p.BaseProductId);
+            entity.HasOne(p => p.BaseProduct)
+                  .WithMany(p => p.DerivedProducts)
+                  .HasForeignKey(p => p.BaseProductId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
         modelBuilder.Entity<AuditLog>(entity =>
         {
             entity.HasIndex(a => new { a.EntityType, a.EntityId });

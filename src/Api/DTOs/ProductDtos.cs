@@ -21,7 +21,11 @@ public record ProductListDto(
     bool IsActive,
     DateTime CreatedAt,
     DateTime? UpdatedAt,
-    List<ProductAccountLinkDto> LinkedAccounts
+    List<ProductAccountLinkDto> LinkedAccounts,
+    int? BaseProductId,
+    string? BaseProductSku,
+    string? BaseProductTitle,
+    int DerivedCount
 );
 
 public record CreateProductRequest(
@@ -36,7 +40,8 @@ public record CreateProductRequest(
     decimal CostPrice,
     decimal RetailPrice,
     int Stock,
-    int CriticalStock
+    int CriticalStock,
+    int? BaseProductId
 );
 
 public record UpdateProductRequest(
@@ -52,7 +57,9 @@ public record UpdateProductRequest(
     decimal? RetailPrice,
     int? Stock,
     int? CriticalStock,
-    bool? IsActive
+    bool? IsActive,
+    int? BaseProductId,
+    bool? ClearBaseProduct
 );
 
 public record BulkProductIdsRequest(List<int> Ids);
