@@ -1173,16 +1173,20 @@
 
     private int VisibleTotal => IsBaseOnlyView
         ? (products?.Count(p => p.DerivedCount > 0) ?? 0)
-        : totalProducts;
+        : (products?.Count(p => p.DerivedCount == 0) ?? 0);
 
     private List<ProductDto> ApplyFiltersAndSort()
     {
         if (products is null) return new();
         IEnumerable<ProductDto> result = products;
 
-        // Filtro automatico segun la ruta: /productos-base muestra solo productos que tienen derivados.
+        // Filtro automatico segun la ruta:
+        // - /productos-base: solo productos que son base (tienen derivados).
+        // - /productos: todos EXCEPTO los productos base (estos viven en su propia solapa).
         if (IsBaseOnlyView)
             result = result.Where(p => p.DerivedCount > 0);
+        else
+            result = result.Where(p => p.DerivedCount == 0);
 
         // Text filters
         foreach (var kv in textFilters.Where(f => !string.IsNullOrEmpty(f.Value)))
