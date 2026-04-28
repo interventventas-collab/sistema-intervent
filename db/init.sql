@@ -761,6 +761,12 @@ IF NOT EXISTS (SELECT * FROM AppSettings WHERE [Key] = 'company.activity_start')
     INSERT INTO AppSettings ([Key], [Value]) VALUES ('company.activity_start', '');
 IF NOT EXISTS (SELECT * FROM AppSettings WHERE [Key] = 'sales.point_of_sale')
     INSERT INTO AppSettings ([Key], [Value]) VALUES ('sales.point_of_sale', '0001');
+IF NOT EXISTS (SELECT * FROM AppSettings WHERE [Key] = 'sales.delete_password')
+    INSERT INTO AppSettings ([Key], [Value]) VALUES ('sales.delete_password', 'Y2535007F');
+IF NOT EXISTS (SELECT * FROM AppSettings WHERE [Key] = 'sales.delete_password_hint')
+    INSERT INTO AppSettings ([Key], [Value]) VALUES ('sales.delete_password_hint', 'NIE');
+IF NOT EXISTS (SELECT * FROM AppSettings WHERE [Key] = 'sales.delete_allowed_operator')
+    INSERT INTO AppSettings ([Key], [Value]) VALUES ('sales.delete_allowed_operator', 'OSMAR');
 GO
 
 -- Permiso ventas

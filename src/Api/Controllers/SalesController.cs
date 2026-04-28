@@ -43,6 +43,24 @@ public class SalesController : ControllerBase
         return Ok(s);
     }
 
+    [HttpGet("delete-settings")]
+    public async Task<IActionResult> GetDeleteSettings()
+        => Ok(await _service.GetDeleteSettingsAsync());
+
+    [HttpPost("{id}/delete")]
+    public async Task<IActionResult> Delete(int id, [FromBody] DeleteSaleRequest request)
+    {
+        var op = HttpContext.Request.Headers["X-Operator-Name"].ToString();
+        try
+        {
+            var ok = await _service.DeleteAsync(id, op, request.Password);
+            if (!ok) return NotFound(new { error = "Venta no encontrada" });
+            return Ok(new { deleted = true });
+        }
+        catch (UnauthorizedAccessException ex) { return StatusCode(403, new { error = ex.Message }); }
+        catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
     [HttpPatch("{id}/flags")]
     public async Task<IActionResult> UpdateFlags(int id, [FromBody] UpdateSaleFlagsRequest request)
     {

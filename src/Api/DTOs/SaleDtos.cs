@@ -49,6 +49,10 @@ public record UpdateSaleFlagsRequest(
     bool? IsPaid
 );
 
+public record DeleteSaleRequest(string Password);
+
+public record DeleteSaleSettingsDto(string AllowedOperator, string Hint);
+
 public record CreateSaleItemRequest(
     int? ProductId,
     [MaxLength(100)] string? Code,

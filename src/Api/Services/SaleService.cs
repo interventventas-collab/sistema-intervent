@@ -134,6 +134,34 @@ public class SaleService
         return await GetByIdAsync(id);
     }
 
+    public async Task<DeleteSaleSettingsDto> GetDeleteSettingsAsync()
+    {
+        var keys = new[] { "sales.delete_allowed_operator", "sales.delete_password_hint" };
+        var settings = await _db.AppSettings.Where(s => keys.Contains(s.Key))
+            .ToDictionaryAsync(s => s.Key, s => s.Value);
+        return new DeleteSaleSettingsDto(
+            settings.GetValueOrDefault("sales.delete_allowed_operator", "OSMAR"),
+            settings.GetValueOrDefault("sales.delete_password_hint", "")
+        );
+    }
+
+    public async Task<bool> DeleteAsync(int id, string operatorName, string password)
+    {
+        var allowedOp = (await _db.AppSettings.FindAsync("sales.delete_allowed_operator"))?.Value ?? "OSMAR";
+        var expectedPassword = (await _db.AppSettings.FindAsync("sales.delete_password"))?.Value ?? "";
+
+        if (!string.Equals(operatorName ?? "", allowedOp, StringComparison.OrdinalIgnoreCase))
+            throw new UnauthorizedAccessException($"Solo {allowedOp} puede eliminar comprobantes.");
+        if (string.IsNullOrEmpty(expectedPassword) || password != expectedPassword)
+            throw new UnauthorizedAccessException("Clave incorrecta.");
+
+        var sale = await _db.Sales.FindAsync(id);
+        if (sale is null) return false;
+        _db.Sales.Remove(sale);
+        await _db.SaveChangesAsync();
+        return true;
+    }
+
     public async Task<SaleDto?> CancelAsync(int id)
     {
         var sale = await _db.Sales.FindAsync(id);

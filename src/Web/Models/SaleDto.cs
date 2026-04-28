@@ -50,6 +50,17 @@ public class UpdateSaleFlagsRequest
     public bool? IsPaid { get; set; }
 }
 
+public class DeleteSaleRequest
+{
+    public string Password { get; set; } = string.Empty;
+}
+
+public class DeleteSaleSettingsDto
+{
+    public string AllowedOperator { get; set; } = "OSMAR";
+    public string Hint { get; set; } = string.Empty;
+}
+
 public class CreateSaleItemRequest
 {
     public int? ProductId { get; set; }

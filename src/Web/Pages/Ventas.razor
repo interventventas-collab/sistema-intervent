@@ -3,6 +3,7 @@
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject IJSRuntime JS
+@inject OperatorService Operator
 
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
@@ -69,6 +70,11 @@
                                     @if (!s.IsCancelled)
                                     {
                                         <button class="btn-icon btn-delete" @onclick="() => ConfirmCancel(s)" title="Anular">@SvgIcons.AlertCircle</button>
+                                    }
+                                    @if (CanDelete)
+                                    {
+                                        <button class="btn-icon" style="background:#7f1d1d;color:white;border:1px solid #7f1d1d;padding:2px 6px;border-radius:4px;font-size:0.7rem;font-weight:700;"
+                                                @onclick="() => OpenDeleteModal(s)" title="Eliminar definitivamente (solo @(deleteSettings?.AllowedOperator ?? "OSMAR"))">🗑</button>
                                     }
                                 </td>
                             </tr>
@@ -463,6 +469,45 @@
     </div>
 }
 
+@* ====== ELIMINAR COMPROBANTE (con clave, solo OSMAR) ====== *@
+@if (saleToDelete is not null)
+{
+    <div class="modal-overlay" @onclick="CloseDeleteModal">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: #7f1d1d; color: white;">
+                <h4 style="margin: 0;">🗑 Eliminar comprobante DEFINITIVAMENTE</h4>
+                <button class="btn-close" @onclick="CloseDeleteModal" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Vas a <strong>borrar</strong> el comprobante <strong>@saleToDelete.Number</strong> de @saleToDelete.Date.ToString("dd/MM/yyyy") por <strong>$@FormatPrice(saleToDelete.Total)</strong>.</p>
+                <p style="color:#b91c1c; font-weight: 600;">⚠ Esta accion NO se puede deshacer. El comprobante se borra de la base.</p>
+                <div class="form-group">
+                    <label class="form-label">Clave secreta *</label>
+                    <input class="form-input" type="password" @bind="deletePassword" @bind:event="oninput"
+                           @onkeydown="OnDeletePasswordKey"
+                           placeholder="Ingresá la clave" autofocus />
+                    @if (!string.IsNullOrEmpty(deleteSettings?.Hint))
+                    {
+                        <p style="font-size: 0.8rem; color: #6b7280; margin: 0.3rem 0 0;">
+                            💡 Pista: <strong>@deleteSettings.Hint</strong>
+                        </p>
+                    }
+                </div>
+                @if (!string.IsNullOrEmpty(deleteError))
+                {
+                    <div class="form-error">@deleteError</div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseDeleteModal" disabled="@isDeleting">Cancelar</button>
+                <button class="btn" style="background: #7f1d1d; color: white; border: none;" @onclick="DoDelete" disabled="@(isDeleting || string.IsNullOrEmpty(deletePassword))">
+                    @(isDeleting ? "Eliminando..." : "🗑 Eliminar definitivamente")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @* ====== DATOS DE LA EMPRESA ====== *@
 @if (showCompanyForm && companyForm is not null)
 {
@@ -555,6 +600,18 @@
     private SaleDto? viewerSale;
     private SaleDto? saleToCancel;
 
+    // Eliminar definitivamente (solo operador autorizado, con clave)
+    private SaleDto? saleToDelete;
+    private string deletePassword = "";
+    private string? deleteError;
+    private bool isDeleting;
+    private DeleteSaleSettingsDto? deleteSettings;
+
+    private bool CanDelete =>
+        deleteSettings is not null &&
+        Operator.HasOperator &&
+        string.Equals(Operator.Current, deleteSettings.AllowedOperator, StringComparison.OrdinalIgnoreCase);
+
     // Company form
     private bool showCompanyForm;
     private CompanyInfoDto? companyForm;
@@ -574,6 +631,7 @@
         }
         catch { availableProducts = new(); }
         try { companyInfo = await Api.GetCompanyInfoAsync(); } catch { /* defaults */ }
+        try { deleteSettings = await Api.GetSaleDeleteSettingsAsync(); } catch { deleteSettings = new DeleteSaleSettingsDto(); }
         isLoading = false;
     }
 
@@ -740,6 +798,54 @@
     }
 
     private void ConfirmCancel(SaleDto s) => saleToCancel = s;
+
+    // ===== Eliminar definitivamente =====
+
+    private void OpenDeleteModal(SaleDto s)
+    {
+        if (!CanDelete)
+        {
+            ToastService.Error($"Solo {deleteSettings?.AllowedOperator ?? "OSMAR"} puede eliminar comprobantes.");
+            return;
+        }
+        saleToDelete = s;
+        deletePassword = "";
+        deleteError = null;
+    }
+
+    private void CloseDeleteModal()
+    {
+        if (isDeleting) return;
+        saleToDelete = null;
+        deletePassword = "";
+        deleteError = null;
+    }
+
+    private async Task OnDeletePasswordKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrEmpty(deletePassword) && !isDeleting)
+            await DoDelete();
+    }
+
+    private async Task DoDelete()
+    {
+        if (saleToDelete is null) return;
+        if (string.IsNullOrEmpty(deletePassword)) { deleteError = "Ingresá la clave"; return; }
+        deleteError = null; isDeleting = true;
+        try
+        {
+            var ok = await Api.DeleteSaleAsync(saleToDelete.Id, deletePassword);
+            if (ok)
+            {
+                ToastService.Success($"Comprobante {saleToDelete.Number} eliminado");
+                saleToDelete = null;
+                deletePassword = "";
+                await LoadAll();
+            }
+        }
+        catch (Exception ex) { deleteError = ex.Message; }
+        finally { isDeleting = false; }
+    }
 
     private async Task DoCancel()
     {

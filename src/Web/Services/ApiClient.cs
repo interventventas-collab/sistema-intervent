@@ -222,6 +222,18 @@ public class ApiClient
     public async Task<SaleDto?> CancelSaleAsync(int id)
         => await PostAsync<SaleDto>($"/api/sales/{id}/cancel", new { });
 
+    public async Task<DeleteSaleSettingsDto?> GetSaleDeleteSettingsAsync()
+        => await GetAsync<DeleteSaleSettingsDto>("/api/sales/delete-settings");
+
+    public async Task<bool> DeleteSaleAsync(int id, string password)
+    {
+        await SetAuthHeaderAsync();
+        var response = await _http.PostAsJsonAsync($"/api/sales/{id}/delete", new { password });
+        if (response.IsSuccessStatusCode) return true;
+        await ThrowIfErrorAsync(response);
+        return false;
+    }
+
     public async Task<SaleDto?> UpdateSaleFlagsAsync(int id, UpdateSaleFlagsRequest request)
     {
         var response = await _http.PatchAsJsonAsync($"/api/sales/{id}/flags", request);
