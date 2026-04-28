@@ -1569,8 +1569,8 @@
         formIsActive = true; formPhoto1 = null; formPhoto2 = null; formPhoto3 = null;
         formBaseProductId = 0;
         formBrandId = 0;
-        // Si la solapa actual es Productos base, pre-tildar "Es producto base".
-        formIsBase = IsBaseOnlyView;
+        // Por default, NO marcar como producto base. El usuario lo tilda manualmente si aplica.
+        formIsBase = false;
         formError = null; showForm = true;
     }
 
