@@ -17,6 +17,8 @@ public class AppDbContext : DbContext
     public DbSet<Product> Products => Set<Product>();
     public DbSet<Supplier> Suppliers => Set<Supplier>();
     public DbSet<Brand> Brands => Set<Brand>();
+    public DbSet<Combo> Combos => Set<Combo>();
+    public DbSet<ComboItem> ComboItems => Set<ComboItem>();
     public DbSet<ScheduledProcess> ScheduledProcesses => Set<ScheduledProcess>();
     public DbSet<ProcessExecutionLog> ProcessExecutionLogs => Set<ProcessExecutionLog>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
@@ -115,6 +117,25 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Brand>(entity =>
         {
             entity.HasIndex(b => b.Name).IsUnique();
+        });
+
+        modelBuilder.Entity<Combo>(entity =>
+        {
+            entity.HasIndex(c => c.Name);
+        });
+
+        modelBuilder.Entity<ComboItem>(entity =>
+        {
+            entity.HasIndex(ci => ci.ComboId);
+            entity.HasIndex(ci => ci.ProductId);
+            entity.HasOne(ci => ci.Combo)
+                  .WithMany(c => c.Items)
+                  .HasForeignKey(ci => ci.ComboId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(ci => ci.Product)
+                  .WithMany()
+                  .HasForeignKey(ci => ci.ProductId)
+                  .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<AuditLog>(entity =>

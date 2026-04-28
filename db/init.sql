@@ -633,3 +633,38 @@ BEGIN
     INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'marcas');
 END
 GO
+
+-- Combos (agrupacion de productos vendida como una unidad)
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Combos' AND xtype='U')
+BEGIN
+    CREATE TABLE Combos (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Name NVARCHAR(200) NOT NULL,
+        Sku NVARCHAR(100) NULL,
+        Description NVARCHAR(MAX) NULL,
+        Photo NVARCHAR(MAX) NULL,
+        PriceMode NVARCHAR(10) NOT NULL DEFAULT 'auto',
+        ManualPrice DECIMAL(18,2) NULL,
+        PercentAdjustment DECIMAL(8,2) NULL,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL
+    );
+    CREATE INDEX IX_Combos_Name ON Combos (Name);
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ComboItems' AND xtype='U')
+BEGIN
+    CREATE TABLE ComboItems (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        ComboId INT NOT NULL,
+        ProductId INT NOT NULL,
+        Quantity INT NOT NULL DEFAULT 1,
+        CONSTRAINT FK_ComboItems_Combo FOREIGN KEY (ComboId) REFERENCES Combos(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_ComboItems_Product FOREIGN KEY (ProductId) REFERENCES Products(Id) ON DELETE NO ACTION
+    );
+    CREATE INDEX IX_ComboItems_ComboId ON ComboItems (ComboId);
+    CREATE INDEX IX_ComboItems_ProductId ON ComboItems (ProductId);
+END
+GO

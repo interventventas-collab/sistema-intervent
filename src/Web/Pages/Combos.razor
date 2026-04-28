@@ -1,23 +1,538 @@
 @page "/combos"
 @attribute [Authorize]
-
-<div class="view-header">
-    <h2>Combos</h2>
-    <p class="view-subtitle">Agrupaciones de productos base que se venden como un combo unico.</p>
-</div>
+@inject ApiClient Api
+@inject ToastService ToastService
 
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-        <h3>Combos</h3>
+        <h3>Combos (@(combos?.Count ?? 0))</h3>
+        <button class="btn btn-primary" @onclick="ShowCreateForm">+ Nuevo Combo</button>
     </div>
-    <div class="card-body">
-        <div style="text-align: center; padding: 2.5rem 1rem; color: #6b7280;">
-            <div style="font-size: 2rem; margin-bottom: 0.5rem;">📦</div>
-            <h4 style="margin: 0 0 0.5rem; color: #374151;">Proximamente</h4>
-            <p style="margin: 0; font-size: 0.9rem;">
-                Aca vas a poder armar combos juntando varios productos base
-                en una sola unidad de venta.
-            </p>
-        </div>
+    <div class="card-body" style="padding: 0;">
+        @if (isLoading)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">Cargando combos...</p>
+        }
+        else if (combos is null || combos.Count == 0)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">Todavia no creaste ningun combo. Hace clic en "+ Nuevo Combo" para empezar.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>SKU</th>
+                            <th>Productos</th>
+                            <th style="text-align: right;">Subtotal</th>
+                            <th>Precio</th>
+                            <th style="text-align: right;">Precio Final</th>
+                            <th>Estado</th>
+                            <th style="width: 130px;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var c in combos)
+                        {
+                            <tr>
+                                <td><strong>@c.Name</strong></td>
+                                <td style="font-size: 0.85rem; color: #6b7280;">@(c.Sku ?? "")</td>
+                                <td style="font-size: 0.85rem;">
+                                    @c.Items.Count item(s)
+                                    <div style="color: #6b7280; font-size: 0.75rem;">
+                                        @string.Join(", ", c.Items.Take(3).Select(i => $"{i.Quantity}× {Trim(i.ProductTitle, 25)}"))
+                                        @(c.Items.Count > 3 ? "..." : "")
+                                    </div>
+                                </td>
+                                <td style="text-align: right; color: #6b7280;">$@FormatPrice(c.SubtotalProductos)</td>
+                                <td>@PriceModeLabel(c.PriceMode, c.PercentAdjustment)</td>
+                                <td style="text-align: right; font-weight: 700;">$@FormatPrice(c.FinalPrice)</td>
+                                <td>
+                                    <span class="status-badge @(c.IsActive ? "status-active" : "status-inactive")">
+                                        @(c.IsActive ? "Activo" : "Inactivo")
+                                    </span>
+                                </td>
+                                <td class="actions-cell">
+                                    <button class="btn-icon btn-edit" @onclick="() => ShowEditForm(c)" title="Editar">@SvgIcons.Edit</button>
+                                    <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(c)" title="Eliminar">@SvgIcons.AlertCircle</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
     </div>
 </div>
+
+@if (showForm)
+{
+    <div class="modal-overlay" @onclick="CloseForm">
+        <div class="modal-card modal-wide" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3>@(isEditing ? "Editar Combo" : "Nuevo Combo")</h3>
+                <button class="btn-close" @onclick="CloseForm">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(formError))
+                {
+                    <div class="form-error">@formError</div>
+                }
+
+                <div class="form-row">
+                    <div class="form-group" style="flex: 2;">
+                        <label class="form-label">Nombre del combo *</label>
+                        <input class="form-input" @bind="formName" placeholder="Ej: Pack escolar 3 unidades" autofocus />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">SKU</label>
+                        <input class="form-input" @bind="formSku" placeholder="Codigo del combo (opcional)" />
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Descripcion</label>
+                    <textarea class="form-input" @bind="formDescription" rows="2" placeholder="Que incluye este combo (opcional)"></textarea>
+                </div>
+
+                <hr style="margin: 1rem 0; border: none; border-top: 1px solid #e5e7eb;" />
+
+                <h4 style="margin: 0 0 0.6rem; font-size: 0.95rem;">Productos del combo</h4>
+
+                @if (formItems.Count == 0)
+                {
+                    <p style="color: #6b7280; font-size: 0.85rem; margin: 0 0 0.5rem;">
+                        Todavia no agregaste productos. Elegi uno abajo y tocá <strong>Agregar</strong>.
+                    </p>
+                }
+                else
+                {
+                    <table class="data-table" style="margin-bottom: 0.75rem;">
+                        <thead>
+                            <tr>
+                                <th>Producto</th>
+                                <th style="width: 100px; text-align: center;">Cantidad</th>
+                                <th style="text-align: right; width: 120px;">PVP unitario</th>
+                                <th style="text-align: right; width: 120px;">Subtotal</th>
+                                <th style="width: 50px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in formItems)
+                            {
+                                var prod = availableProducts?.FirstOrDefault(p => p.Id == item.ProductId);
+                                var unit = prod?.RetailPrice ?? 0m;
+                                <tr>
+                                    <td>
+                                        <strong>@(prod?.Title ?? "(Producto eliminado)")</strong>
+                                        @if (!string.IsNullOrEmpty(prod?.Sku))
+                                        {
+                                            <span style="color: #6b7280; font-size: 0.75rem;"> · @prod.Sku</span>
+                                        }
+                                    </td>
+                                    <td style="text-align: center;">
+                                        <input type="number" min="1" value="@item.Quantity"
+                                               @onchange="@((ChangeEventArgs e) => UpdateQty(item, e.Value?.ToString()))"
+                                               style="width: 70px; text-align: right; border: 1px solid #d1d5db; border-radius: 4px; padding: 0.25rem 0.4rem;" />
+                                    </td>
+                                    <td style="text-align: right; color: #6b7280;">$@FormatPrice(unit)</td>
+                                    <td style="text-align: right; font-weight: 600;">$@FormatPrice(unit * item.Quantity)</td>
+                                    <td style="text-align: center;">
+                                        <button class="btn-icon btn-delete" @onclick="() => RemoveItem(item)" title="Quitar">×</button>
+                                    </td>
+                                </tr>
+                            }
+                            <tr>
+                                <td colspan="3" style="text-align: right; font-weight: 600;">Subtotal productos:</td>
+                                <td style="text-align: right; font-weight: 700; font-size: 1rem;">$@FormatPrice(SubtotalFormItems)</td>
+                                <td></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                }
+
+                @* Selector para agregar producto *@
+                <div class="form-row" style="align-items: flex-end;">
+                    <div class="form-group" style="flex: 3;">
+                        <label class="form-label">Agregar producto</label>
+                        <select class="form-input" @bind="addProductId">
+                            <option value="0">— Elegi un producto —</option>
+                            @if (availableProducts is not null)
+                            {
+                                @foreach (var p in availableProducts.Where(x => !formItems.Any(i => i.ProductId == x.Id)))
+                                {
+                                    <option value="@p.Id">@(p.Sku ?? "—") · @p.Title — $@FormatPrice(p.RetailPrice)</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Cantidad</label>
+                        <input class="form-input" type="number" min="1" @bind="addProductQty" />
+                    </div>
+                    <div class="form-group" style="flex: 0;">
+                        <button class="btn btn-secondary" @onclick="AddItem" disabled="@(addProductId == 0)" style="white-space: nowrap;">+ Agregar</button>
+                    </div>
+                </div>
+
+                <hr style="margin: 1rem 0; border: none; border-top: 1px solid #e5e7eb;" />
+
+                @* Modo de precio *@
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 0.5rem; font-weight: 600; cursor: pointer;">
+                        <input type="checkbox" checked="@autoPrice" @onchange="@((ChangeEventArgs e) => OnAutoPriceChanged(e))" style="width: 18px; height: 18px;" />
+                        Precio automatico (suma de los productos del combo)
+                    </label>
+                    <p style="font-size: 0.78rem; color: #6b7280; margin: 0.3rem 0 0 1.7rem;">
+                        Si lo destildas, podes definir un precio fijo o un porcentaje de ajuste sobre la suma.
+                    </p>
+                </div>
+
+                @if (autoPrice)
+                {
+                    <div style="background: #f3f4f6; border-radius: 6px; padding: 0.75rem 1rem; margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
+                        <span style="color: #6b7280;">Precio final del combo:</span>
+                        <strong style="font-size: 1.2rem;">$@FormatPrice(SubtotalFormItems)</strong>
+                    </div>
+                }
+                else
+                {
+                    <div class="form-group">
+                        <div style="display: flex; gap: 1rem; margin-bottom: 0.5rem;">
+                            <label style="cursor: pointer;">
+                                <input type="radio" name="priceMode" value="manual" checked="@(formPriceMode == "manual")"
+                                       @onchange='() => formPriceMode = "manual"' />
+                                Precio fijo
+                            </label>
+                            <label style="cursor: pointer;">
+                                <input type="radio" name="priceMode" value="percent" checked="@(formPriceMode == "percent")"
+                                       @onchange='() => formPriceMode = "percent"' />
+                                Ajuste por porcentaje
+                            </label>
+                        </div>
+
+                        @if (formPriceMode == "manual")
+                        {
+                            <div style="display: flex; align-items: center; gap: 0.5rem; max-width: 280px;">
+                                <span style="font-size: 1.1rem; font-weight: 700;">$</span>
+                                <input type="text" class="form-input" style="font-size: 1.1rem; font-weight: 700; text-align: right;"
+                                       value="@formManualPriceFormatted" @oninput="OnManualPriceInput" inputmode="decimal" />
+                            </div>
+                            <p style="font-size: 0.78rem; color: #6b7280; margin: 0.3rem 0 0;">
+                                Subtotal de productos: $@FormatPrice(SubtotalFormItems)
+                            </p>
+                        }
+                        else if (formPriceMode == "percent")
+                        {
+                            <div style="display: flex; align-items: center; gap: 0.5rem; max-width: 280px;">
+                                <input type="number" class="form-input" step="0.1" @bind="formPercentAdjustment"
+                                       style="font-size: 1.1rem; font-weight: 700; text-align: right;" />
+                                <span style="font-size: 1.1rem; font-weight: 700;">%</span>
+                            </div>
+                            <p style="font-size: 0.78rem; color: #6b7280; margin: 0.3rem 0 0;">
+                                Positivo aumenta, negativo descuenta. Subtotal: $@FormatPrice(SubtotalFormItems) → Final: <strong>$@FormatPrice(ComputedPercentPrice)</strong>
+                            </p>
+                        }
+                    </div>
+                }
+
+                @if (isEditing)
+                {
+                    <div class="form-group">
+                        <label class="form-label">Estado</label>
+                        <select class="form-input" @bind="formIsActive" style="max-width: 200px;">
+                            <option value="true">Activo</option>
+                            <option value="false">Inactivo</option>
+                        </select>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseForm" disabled="@isSaving">Cancelar</button>
+                <button class="btn btn-primary" @onclick="Save" disabled="@isSaving">
+                    @(isSaving ? "Guardando..." : (isEditing ? "Guardar" : "Crear"))
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showDeleteConfirm && comboToDelete is not null)
+{
+    <div class="modal-overlay" @onclick="() => showDeleteConfirm = false">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: #dc3545; color: white;">
+                <h4 style="margin: 0;">Eliminar combo</h4>
+                <button class="btn-close" @onclick="() => showDeleteConfirm = false" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Estas seguro que queres eliminar el combo <strong>@comboToDelete.Name</strong>?</p>
+                <p class="text-muted" style="font-size: 0.85rem;">Esta accion no se puede deshacer. Los productos que componen el combo no se borran.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showDeleteConfirm = false">Cancelar</button>
+                <button class="btn btn-danger" @onclick="Delete">Eliminar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<ComboDto>? combos;
+    private List<ProductDto>? availableProducts;
+    private bool isLoading = true;
+    private bool showForm;
+    private bool isEditing;
+    private bool isSaving;
+    private string? formError;
+    private int? editingId;
+
+    // Form state
+    private string formName = "";
+    private string formSku = "";
+    private string formDescription = "";
+    private bool formIsActive = true;
+    private List<ComboItemRequest> formItems = new();
+
+    // Add product helpers
+    private int addProductId;
+    private int addProductQty = 1;
+
+    // Price mode
+    private bool autoPrice = true;
+    private string formPriceMode = "manual"; // cuando autoPrice=false: "manual" | "percent"
+    private decimal formManualPrice;
+    private string formManualPriceFormatted = "0,00";
+    private decimal formPercentAdjustment;
+
+    // Delete
+    private bool showDeleteConfirm;
+    private ComboDto? comboToDelete;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        isLoading = true;
+        try
+        {
+            combos = await Api.GetCombosAsync() ?? new();
+        }
+        catch { ToastService.Error("Error al cargar los combos"); combos = new(); }
+
+        try
+        {
+            // Productos elegibles para combos: NO los productos base (que tienen derivados).
+            var allProducts = await Api.GetProductsAsync() ?? new();
+            availableProducts = allProducts.Where(p => p.DerivedCount == 0 && p.IsActive)
+                .OrderBy(p => p.Title).ToList();
+        }
+        catch { availableProducts = new(); }
+
+        isLoading = false;
+    }
+
+    private void ShowCreateForm()
+    {
+        isEditing = false; editingId = null;
+        formName = ""; formSku = ""; formDescription = "";
+        formIsActive = true;
+        formItems = new();
+        autoPrice = true;
+        formPriceMode = "manual";
+        formManualPrice = 0; formManualPriceFormatted = "0,00";
+        formPercentAdjustment = 0;
+        addProductId = 0; addProductQty = 1;
+        formError = null; showForm = true;
+    }
+
+    private void ShowEditForm(ComboDto c)
+    {
+        isEditing = true; editingId = c.Id;
+        formName = c.Name; formSku = c.Sku ?? ""; formDescription = c.Description ?? "";
+        formIsActive = c.IsActive;
+        formItems = c.Items.Select(i => new ComboItemRequest { ProductId = i.ProductId, Quantity = i.Quantity }).ToList();
+        autoPrice = c.PriceMode == "auto";
+        formPriceMode = c.PriceMode == "auto" ? "manual" : c.PriceMode;
+        formManualPrice = c.ManualPrice ?? 0;
+        formManualPriceFormatted = FormatPrice(formManualPrice);
+        formPercentAdjustment = c.PercentAdjustment ?? 0;
+        addProductId = 0; addProductQty = 1;
+        formError = null; showForm = true;
+    }
+
+    private void CloseForm() { showForm = false; formError = null; }
+
+    private void AddItem()
+    {
+        if (addProductId == 0) return;
+        if (addProductQty < 1) addProductQty = 1;
+        if (formItems.Any(i => i.ProductId == addProductId)) return;
+        formItems.Add(new ComboItemRequest { ProductId = addProductId, Quantity = addProductQty });
+        addProductId = 0; addProductQty = 1;
+    }
+
+    private void RemoveItem(ComboItemRequest item)
+    {
+        formItems.Remove(item);
+    }
+
+    private void UpdateQty(ComboItemRequest item, string? raw)
+    {
+        if (int.TryParse(raw, out var q) && q >= 1)
+            item.Quantity = q;
+    }
+
+    private void OnAutoPriceChanged(ChangeEventArgs e)
+    {
+        autoPrice = e.Value is bool b && b;
+        if (!autoPrice && string.IsNullOrEmpty(formPriceMode))
+            formPriceMode = "manual";
+    }
+
+    private void OnManualPriceInput(ChangeEventArgs e)
+    {
+        formManualPriceFormatted = FormatPriceInput(e.Value?.ToString() ?? "");
+        formManualPrice = ParseFormattedPrice(formManualPriceFormatted);
+    }
+
+    private decimal SubtotalFormItems
+    {
+        get
+        {
+            decimal sum = 0;
+            foreach (var item in formItems)
+            {
+                var p = availableProducts?.FirstOrDefault(x => x.Id == item.ProductId);
+                if (p is not null) sum += p.RetailPrice * item.Quantity;
+            }
+            return sum;
+        }
+    }
+
+    private decimal ComputedPercentPrice =>
+        Math.Round(SubtotalFormItems * (1m + formPercentAdjustment / 100m), 2);
+
+    private async Task Save()
+    {
+        formError = null;
+        if (string.IsNullOrWhiteSpace(formName)) { formError = "El nombre es obligatorio"; return; }
+        if (formItems.Count == 0) { formError = "Agrega al menos un producto al combo"; return; }
+
+        var priceMode = autoPrice ? "auto" : formPriceMode;
+        decimal? manualPrice = priceMode == "manual" ? formManualPrice : (decimal?)null;
+        decimal? percent = priceMode == "percent" ? formPercentAdjustment : (decimal?)null;
+
+        isSaving = true;
+        try
+        {
+            if (isEditing && editingId.HasValue)
+            {
+                var updated = await Api.UpdateComboAsync(editingId.Value, new UpdateComboRequest
+                {
+                    Name = formName, Sku = formSku, Description = formDescription,
+                    PriceMode = priceMode, ManualPrice = manualPrice, PercentAdjustment = percent,
+                    IsActive = formIsActive, Items = formItems
+                });
+                if (updated is null) { formError = "No se pudo actualizar"; return; }
+                ToastService.Success("Combo actualizado");
+            }
+            else
+            {
+                var created = await Api.CreateComboAsync(new CreateComboRequest
+                {
+                    Name = formName, Sku = formSku, Description = formDescription,
+                    PriceMode = priceMode, ManualPrice = manualPrice, PercentAdjustment = percent,
+                    Items = formItems
+                });
+                if (created is null) { formError = "No se pudo crear"; return; }
+                ToastService.Success("Combo creado");
+            }
+            showForm = false;
+            await LoadData();
+        }
+        catch (Exception ex) { formError = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private void ConfirmDelete(ComboDto c) { comboToDelete = c; showDeleteConfirm = true; }
+
+    private async Task Delete()
+    {
+        if (comboToDelete is null) return;
+        try
+        {
+            var ok = await Api.DeleteComboAsync(comboToDelete.Id);
+            if (ok) { ToastService.Success("Combo eliminado"); await LoadData(); }
+            else { ToastService.Error("No se pudo eliminar"); }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { showDeleteConfirm = false; comboToDelete = null; }
+    }
+
+    // --- Helpers de formato ---
+
+    private static string PriceModeLabel(string mode, decimal? percent) => mode switch
+    {
+        "manual" => "Manual",
+        "percent" => $"{(percent >= 0 ? "+" : "")}{percent?.ToString("0.##")}%",
+        _ => "Automatico"
+    };
+
+    private static string Trim(string s, int max) => s.Length <= max ? s : s.Substring(0, max - 1) + "…";
+
+    private string FormatPrice(decimal value)
+    {
+        var parts = value.ToString("F2").Split('.');
+        var intPart = parts[0]; var decPart = parts.Length > 1 ? parts[1] : "00";
+        var sign = "";
+        if (intPart.StartsWith("-")) { sign = "-"; intPart = intPart[1..]; }
+        var formatted = new System.Text.StringBuilder();
+        for (int i = 0; i < intPart.Length; i++)
+        {
+            if (i > 0 && (intPart.Length - i) % 3 == 0) formatted.Append('.');
+            formatted.Append(intPart[i]);
+        }
+        return sign + formatted + "," + decPart;
+    }
+
+    private decimal ParseFormattedPrice(string formatted)
+    {
+        if (string.IsNullOrWhiteSpace(formatted)) return 0;
+        var clean = formatted.Replace(".", "").Replace(",", ".");
+        return decimal.TryParse(clean, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : 0;
+    }
+
+    private string FormatPriceInput(string raw)
+    {
+        if (raw.EndsWith(".") && !raw.Contains(',')) raw = raw[..^1] + ",";
+        else if (!raw.Contains(',') && raw.Count(c => c == '.') == 1)
+        {
+            var dotIdx = raw.IndexOf('.'); var afterDot = raw[(dotIdx + 1)..];
+            if (afterDot.Length <= 2 && afterDot.All(char.IsDigit)) raw = raw[..dotIdx] + "," + afterDot;
+        }
+        var cleaned = new string(raw.Where(c => char.IsDigit(c) || c == ',').ToArray());
+        var commaIdx = cleaned.IndexOf(',');
+        string intPart, decPart;
+        if (commaIdx >= 0)
+        {
+            intPart = cleaned[..commaIdx];
+            decPart = new string(cleaned[(commaIdx + 1)..].Where(char.IsDigit).ToArray());
+            if (decPart.Length > 2) decPart = decPart[..2];
+        }
+        else { intPart = cleaned; decPart = ""; }
+        intPart = intPart.TrimStart('0');
+        if (string.IsNullOrEmpty(intPart)) intPart = "0";
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < intPart.Length; i++)
+        {
+            if (i > 0 && (intPart.Length - i) % 3 == 0) sb.Append('.');
+            sb.Append(intPart[i]);
+        }
+        return commaIdx >= 0 ? sb + "," + decPart : sb.ToString();
+    }
+}
