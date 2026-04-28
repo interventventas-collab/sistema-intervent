@@ -1,6 +1,7 @@
 @page "/"
 @page "/index.html"
 @attribute [Authorize]
+@implements IDisposable
 @inject ApiClient Api
 @inject AuthService AuthService
 
@@ -9,13 +10,66 @@
     <p class="view-subtitle">Panel de control</p>
 </div>
 
-<div class="dashboard-cards-row">
-    <div class="dashboard-detail-card">
-        <div class="detail-card-header">
+@* Fila superior: HOLA MUNDO + 3 widgets (dolar BNA, reloj AR, reloj ES) *@
+<div style="display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 0.8rem; margin-bottom: 1rem;">
+    <div class="dashboard-detail-card" style="display: flex; align-items: center; justify-content: center;">
+        <span class="detail-card-value" style="font-size: 1.4rem;">HOLA MUNDO</span>
+    </div>
+
+    @* Widget Dolar BNA *@
+    <div class="dashboard-detail-card" style="padding: 0.85rem;">
+        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem;">
+            <span style="font-size: 1.4rem;">💵</span>
             <div>
-                <span class="detail-card-value">HOLA MUNDO</span>
+                <div style="font-weight: 700; font-size: 0.85rem;">Dolar Banco Nacion</div>
+                <div style="font-size: 0.7rem; color: #6b7280;">@(dolar?.Fecha ?? "Cargando...")</div>
             </div>
         </div>
+        @if (dolarLoading && dolar is null)
+        {
+            <div style="font-size: 0.8rem; color: #6b7280;">Consultando BNA...</div>
+        }
+        else if (dolar is not null && dolar.Compra is not null && dolar.Venta is not null)
+        {
+            <div style="display: flex; justify-content: space-around; align-items: center; padding-top: 0.3rem;">
+                <div style="text-align: center;">
+                    <div style="font-size: 0.7rem; color: #15803d; font-weight: 600;">COMPRA</div>
+                    <div style="font-size: 1.2rem; font-weight: 800; color: #15803d;">$@FormatMoney(dolar.Compra.Value)</div>
+                </div>
+                <div style="text-align: center;">
+                    <div style="font-size: 0.7rem; color: #b91c1c; font-weight: 600;">VENTA</div>
+                    <div style="font-size: 1.2rem; font-weight: 800; color: #b91c1c;">$@FormatMoney(dolar.Venta.Value)</div>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div style="font-size: 0.78rem; color: #b91c1c;">@(dolar?.Error ?? "No se pudo obtener la cotizacion")</div>
+        }
+    </div>
+
+    @* Reloj Argentina *@
+    <div class="dashboard-detail-card" style="padding: 0.85rem; text-align: center;">
+        <div style="display: flex; align-items: center; justify-content: center; gap: 0.4rem; margin-bottom: 0.3rem;">
+            <span style="font-size: 1.5rem;">🇦🇷</span>
+            <strong style="font-size: 0.9rem;">Argentina</strong>
+        </div>
+        <div style="font-size: 1.6rem; font-weight: 800; font-family: 'Courier New', monospace; line-height: 1.2;">
+            @arTime.ToString("HH:mm:ss")
+        </div>
+        <div style="font-size: 0.72rem; color: #6b7280;">@arTime.ToString("dddd dd/MM/yyyy", new System.Globalization.CultureInfo("es-AR"))</div>
+    </div>
+
+    @* Reloj España *@
+    <div class="dashboard-detail-card" style="padding: 0.85rem; text-align: center;">
+        <div style="display: flex; align-items: center; justify-content: center; gap: 0.4rem; margin-bottom: 0.3rem;">
+            <span style="font-size: 1.5rem;">🇪🇸</span>
+            <strong style="font-size: 0.9rem;">España</strong>
+        </div>
+        <div style="font-size: 1.6rem; font-weight: 800; font-family: 'Courier New', monospace; line-height: 1.2;">
+            @esTime.ToString("HH:mm:ss")
+        </div>
+        <div style="font-size: 0.72rem; color: #6b7280;">@esTime.ToString("dddd dd/MM/yyyy", new System.Globalization.CultureInfo("es-ES"))</div>
     </div>
 </div>
 
@@ -97,6 +151,17 @@
     private string productosSinItems = "--";
     private List<AccountStatsRow> accountStats = new();
 
+    // Widgets nuevos
+    private DolarBnaDto? dolar;
+    private bool dolarLoading = true;
+    private DateTime arTime;
+    private DateTime esTime;
+    private System.Threading.Timer? clockTimer;
+    private System.Threading.Timer? quoteTimer;
+
+    private static readonly TimeZoneInfo ArgentinaTz = SafeTz("America/Argentina/Buenos_Aires", -3);
+    private static readonly TimeZoneInfo SpainTz = SafeTz("Europe/Madrid", 1);
+
     protected override async Task OnInitializedAsync()
     {
         var user = await AuthService.GetUserAsync();
@@ -104,6 +169,19 @@
         {
             username = user.Username;
         }
+
+        // Inicializar relojes y arrancar timer que actualiza cada segundo.
+        UpdateClocks();
+        clockTimer = new System.Threading.Timer(_ => InvokeAsync(() =>
+        {
+            UpdateClocks();
+            StateHasChanged();
+        }), null, 1000, 1000);
+
+        // Cargar cotizacion dolar BNA y refrescar cada 5 minutos.
+        _ = LoadDolarAsync();
+        quoteTimer = new System.Threading.Timer(_ => InvokeAsync(LoadDolarAsync), null,
+            TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5));
 
         try
         {
@@ -121,5 +199,51 @@
         {
             // defaults already set
         }
+    }
+
+    private void UpdateClocks()
+    {
+        var nowUtc = DateTime.UtcNow;
+        arTime = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, ArgentinaTz);
+        esTime = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, SpainTz);
+    }
+
+    private async Task LoadDolarAsync()
+    {
+        try
+        {
+            dolar = await Api.GetDolarBnaAsync();
+        }
+        catch (Exception ex)
+        {
+            dolar = new DolarBnaDto { Error = ex.Message };
+        }
+        dolarLoading = false;
+        StateHasChanged();
+    }
+
+    private static string FormatMoney(decimal value)
+    {
+        var parts = value.ToString("F2", System.Globalization.CultureInfo.InvariantCulture).Split('.');
+        var intPart = parts[0]; var decPart = parts.Length > 1 ? parts[1] : "00";
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < intPart.Length; i++)
+        {
+            if (i > 0 && (intPart.Length - i) % 3 == 0) sb.Append('.');
+            sb.Append(intPart[i]);
+        }
+        return sb + "," + decPart;
+    }
+
+    private static TimeZoneInfo SafeTz(string id, int offsetHours)
+    {
+        try { return TimeZoneInfo.FindSystemTimeZoneById(id); }
+        catch { return TimeZoneInfo.CreateCustomTimeZone(id, TimeSpan.FromHours(offsetHours), id, id); }
+    }
+
+    public void Dispose()
+    {
+        clockTimer?.Dispose();
+        quoteTimer?.Dispose();
     }
 }

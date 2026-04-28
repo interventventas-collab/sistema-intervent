@@ -286,6 +286,10 @@ public class ApiClient
     public async Task<FiscalLookupDto?> LookupCuitAsync(string cuit)
         => await GetAsync<FiscalLookupDto>($"/api/fiscal/lookup?cuit={Uri.EscapeDataString(cuit)}");
 
+    // --- Cotizaciones ---
+    public async Task<DolarBnaDto?> GetDolarBnaAsync()
+        => await GetAsync<DolarBnaDto>("/api/quotes/dolar-bna");
+
     // --- Stock batches (lotes con vencimiento) ---
     public async Task<List<StockBatchDto>?> GetStockBatchesAsync(int productId)
         => await GetAsync<List<StockBatchDto>>($"/api/products/{productId}/stock-batches");

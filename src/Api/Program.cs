@@ -116,6 +116,7 @@ builder.Services.AddScoped<TreasuryService>();
 builder.Services.AddScoped<EmployeeService>();
 builder.Services.AddScoped<PayrollService>();
 builder.Services.AddScoped<FiscalLookupService>();
+builder.Services.AddScoped<QuotesService>();
 builder.Services.AddScoped<BulkImportService>();
 builder.Services.AddScoped<AiService>();
 builder.Services.AddSingleton<SyncProgressService>();
