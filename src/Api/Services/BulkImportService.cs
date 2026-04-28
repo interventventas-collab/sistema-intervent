@@ -50,9 +50,9 @@ public class BulkImportService
     public async Task<BulkImportResult> ImportSuppliersAsync(Stream excelStream)
     {
         var (headers, rows) = ReadSheet(excelStream);
-        var result = new BulkImportResult(rows.Count, 0, 0, new List<BulkImportError>());
         int created = 0, skipped = 0;
         var errors = new List<BulkImportError>();
+        var warnings = new List<BulkImportWarning>();
 
         for (int i = 0; i < rows.Count; i++)
         {
@@ -77,7 +77,7 @@ public class BulkImportService
             }
             catch (Exception ex) { errors.Add(new BulkImportError(rowNum, ex.Message)); }
         }
-        return result with { Created = created, Skipped = skipped, Errors = errors };
+        return new BulkImportResult(rows.Count, created, 0, skipped, errors, warnings);
     }
 
     // ============================================================
@@ -125,7 +125,7 @@ public class BulkImportService
             }
             catch (Exception ex) { errors.Add(new BulkImportError(rowNum, ex.Message)); }
         }
-        return new BulkImportResult(rows.Count, created, skipped, errors);
+        return new BulkImportResult(rows.Count, created, 0, skipped, errors, new List<BulkImportWarning>());
     }
 
     // ============================================================
@@ -165,7 +165,7 @@ public class BulkImportService
             }
             catch (Exception ex) { errors.Add(new BulkImportError(rowNum, ex.Message)); }
         }
-        return new BulkImportResult(rows.Count, created, skipped, errors);
+        return new BulkImportResult(rows.Count, created, 0, skipped, errors, new List<BulkImportWarning>());
     }
 
     // ============================================================
@@ -219,8 +219,9 @@ public class BulkImportService
     public async Task<BulkImportResult> ImportProductsAsync(Stream excelStream, bool markAsBase = false)
     {
         var (headers, rows) = ReadSheet(excelStream);
-        int created = 0, skipped = 0;
+        int created = 0, updated = 0, skipped = 0;
         var errors = new List<BulkImportError>();
+        var warnings = new List<BulkImportWarning>();
 
         // Cache de marcas por nombre (lower) y productos existentes por SKU (lower)
         var brandsByName = await _db.Brands
@@ -255,10 +256,15 @@ public class BulkImportService
             {
                 try
                 {
-                    var dto = await CreateProductFromRow(row, headers, brandsByName, productIdBySku, markAsBase);
-                    if (dto is not null && !string.IsNullOrEmpty(dto.Sku))
+                    var result = await CreateProductFromRow(row, headers, brandsByName, productIdBySku, markAsBase);
+                    if (result is null) continue;
+                    var dto = result.Product;
+                    if (!string.IsNullOrEmpty(dto.Sku))
                         productIdBySku[dto.Sku.ToLowerInvariant()] = dto.Id;
-                    created++;
+                    if (result.Action == "updated") updated++;
+                    else created++;
+                    if (!string.IsNullOrEmpty(result.PriceWarning))
+                        warnings.Add(new BulkImportWarning(rowNum, $"{dto.Sku ?? dto.Title}: {result.PriceWarning}"));
                 }
                 catch (Exception ex) { errors.Add(new BulkImportError(rowNum, ex.Message)); }
             }
@@ -267,10 +273,10 @@ public class BulkImportService
         await ProcessAsync(withoutBase);
         await ProcessAsync(withBase);
 
-        return new BulkImportResult(rows.Count, created, skipped, errors);
+        return new BulkImportResult(rows.Count, created, updated, skipped, errors, warnings);
     }
 
-    private async Task<ProductListDto?> CreateProductFromRow(
+    private async Task<ProductUpsertResult?> CreateProductFromRow(
         List<string?> row, List<string> headers,
         Dictionary<string, int> brandsByName,
         Dictionary<string, int> productIdBySku,
@@ -296,7 +302,7 @@ public class BulkImportService
             baseId = bid;
         }
 
-        return await _products.CreateAsync(new CreateProductRequest(
+        return await _products.CreateOrUpdateAsync(new CreateProductRequest(
             Title: title!,
             DisplayName: Cell(row, headers, "nombre_para_mostrar"),
             Description: Cell(row, headers, "descripcion"),
@@ -396,7 +402,7 @@ public class BulkImportService
             }
             catch (Exception ex) { errors.Add(new BulkImportError(rowNum, ex.Message)); }
         }
-        return new BulkImportResult(rows.Count, created, skipped, errors);
+        return new BulkImportResult(rows.Count, created, 0, skipped, errors, new List<BulkImportWarning>());
     }
 
     // ============================================================

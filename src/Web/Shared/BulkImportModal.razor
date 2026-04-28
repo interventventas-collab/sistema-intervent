@@ -37,9 +37,30 @@
                 {
                     <div style="margin-top: 1rem; padding: 0.75rem; border-radius: 6px; background: @(lastResult.Errors.Count == 0 ? "#dcfce7" : "#fef3c7");">
                         <strong>Resultado:</strong>
-                        @lastResult.Created creado(s), @lastResult.Skipped salteado(s), @lastResult.Errors.Count error(es)
+                        @lastResult.Created creado(s), @lastResult.Updated actualizado(s),
+                        @lastResult.Skipped salteado(s), @lastResult.Errors.Count error(es), @lastResult.Warnings.Count alerta(s)
                         de @lastResult.TotalRows fila(s).
                     </div>
+
+                    @if (lastResult.Warnings.Count > 0)
+                    {
+                        <div style="margin-top: 0.75rem; padding: 0.5rem 0.75rem; border-radius: 6px; background: #fef3c7; border: 1px solid #fbbf24;">
+                            <strong>⚠ Alertas (@lastResult.Warnings.Count):</strong> revisalas para confirmar que estas seguro del cambio.
+                        </div>
+                        <div style="margin-top: 0.5rem; max-height: 200px; overflow-y: auto; border: 1px solid #fbbf24; border-radius: 6px;">
+                            <table class="data-table" style="margin: 0;">
+                                <thead>
+                                    <tr><th style="width: 80px;">Fila</th><th>Alerta</th></tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var w in lastResult.Warnings)
+                                    {
+                                        <tr><td>@w.Row</td><td style="color: #92400e;">@w.Message</td></tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
 
                     @if (lastResult.Errors.Count > 0)
                     {
@@ -126,9 +147,11 @@
             if (response.IsSuccessStatusCode)
             {
                 lastResult = await response.Content.ReadFromJsonAsync<BulkImportResult>();
-                if (lastResult is not null && lastResult.Created > 0)
+                if (lastResult is not null && (lastResult.Created > 0 || lastResult.Updated > 0))
                 {
-                    ToastService.Success($"{lastResult.Created} {EntityNamePlural} importado(s)");
+                    var msg = $"{lastResult.Created} creado(s), {lastResult.Updated} actualizado(s)";
+                    if (lastResult.Warnings.Count > 0) msg += $" — {lastResult.Warnings.Count} alerta(s) de precio";
+                    ToastService.Success(msg);
                     if (OnImported.HasDelegate) await OnImported.InvokeAsync();
                 }
                 else if (lastResult is not null && lastResult.Errors.Count > 0)

@@ -97,7 +97,72 @@ public class ProductService
 
     public async Task<ProductListDto?> CreateAsync(CreateProductRequest request)
     {
-        // Validar y resolver producto base
+        var result = await CreateOrUpdateAsync(request);
+        return result?.Product;
+    }
+
+    /// <summary>
+    /// Upsert por SKU: si llega un SKU que ya existe, actualiza el producto en vez de crear uno duplicado.
+    /// Devuelve action ("created"|"updated") y un warning si bajo el precio respecto al anterior.
+    /// </summary>
+    public async Task<ProductUpsertResult?> CreateOrUpdateAsync(CreateProductRequest request)
+    {
+        // 1) Si el SKU ya existe, hacer UPDATE en lugar de crear duplicado.
+        if (!string.IsNullOrWhiteSpace(request.Sku))
+        {
+            var existing = await _db.Products.FirstOrDefaultAsync(p => p.Sku == request.Sku);
+            if (existing is not null)
+            {
+                var oldCost = existing.CostPrice;
+                var oldRetail = existing.RetailPrice;
+
+                var update = new UpdateProductRequest(
+                    Title: request.Title,
+                    DisplayName: request.DisplayName,
+                    Description: request.Description,
+                    Brand: request.Brand,
+                    Model: request.Model,
+                    Sku: request.Sku,
+                    Barcode: request.Barcode,
+                    OemCode: request.OemCode,
+                    ImageUrl: request.ImageUrl,
+                    Photo1: request.Photo1,
+                    Photo2: request.Photo2,
+                    Photo3: request.Photo3,
+                    CostPrice: request.CostPrice,
+                    RetailPrice: request.RetailPrice,
+                    VatRate: request.VatRate,
+                    PurchaseAccount: request.PurchaseAccount,
+                    SaleAccount: request.SaleAccount,
+                    InventoryAccount: request.InventoryAccount,
+                    Stock: request.Stock,
+                    CriticalStock: request.CriticalStock,
+                    IsActive: null,
+                    BaseProductId: request.BaseProductId,
+                    ClearBaseProduct: !request.BaseProductId.HasValue,
+                    BrandId: request.BrandId,
+                    ClearBrand: !request.BrandId.HasValue,
+                    IsBase: request.IsBase
+                );
+                var updated = await UpdateAsync(existing.Id, update);
+                if (updated is null) return null;
+
+                // Detectar bajadas de precio
+                string? warning = null;
+                var costDropped = request.CostPrice > 0 && request.CostPrice < oldCost;
+                var retailDropped = request.RetailPrice > 0 && request.RetailPrice < oldRetail;
+                if (costDropped && retailDropped)
+                    warning = $"Bajaron costo (de ${oldCost:0.##} a ${request.CostPrice:0.##}) y PVP (de ${oldRetail:0.##} a ${request.RetailPrice:0.##}).";
+                else if (costDropped)
+                    warning = $"Bajo el costo de ${oldCost:0.##} a ${request.CostPrice:0.##}.";
+                else if (retailDropped)
+                    warning = $"Bajo el PVP de ${oldRetail:0.##} a ${request.RetailPrice:0.##}.";
+
+                return new ProductUpsertResult(updated, "updated", warning);
+            }
+        }
+
+        // 2) No existe: crear nuevo (validar producto base y marca)
         Product? baseProduct = null;
         if (request.BaseProductId.HasValue)
         {
@@ -108,7 +173,6 @@ public class ProductService
                     "El producto seleccionado ya hereda de otro: solo se permite un nivel de productos base.");
         }
 
-        // Validar y resolver marca
         Brand? brand = null;
         if (request.BrandId.HasValue)
         {
@@ -121,8 +185,6 @@ public class ProductService
             Title = request.Title,
             DisplayName = string.IsNullOrWhiteSpace(request.DisplayName) ? null : request.DisplayName,
             Description = request.Description,
-            // Mantener el campo Brand (string) sincronizado con la marca seleccionada;
-            // si no hay BrandId, respetar el texto libre que vino en el request.
             Brand = brand?.Name ?? request.Brand,
             Model = request.Model,
             Sku = request.Sku,
@@ -132,7 +194,6 @@ public class ProductService
             Photo1 = request.Photo1,
             Photo2 = request.Photo2,
             Photo3 = request.Photo3,
-            // Si tiene base, los precios se heredan; si no, los del request.
             CostPrice = baseProduct?.CostPrice ?? request.CostPrice,
             RetailPrice = baseProduct?.RetailPrice ?? request.RetailPrice,
             VatRate = request.VatRate,
@@ -151,7 +212,8 @@ public class ProductService
         _db.Products.Add(product);
         await _db.SaveChangesAsync();
 
-        return await GetByIdAsync(product.Id);
+        var dto = await GetByIdAsync(product.Id);
+        return dto is null ? null : new ProductUpsertResult(dto, "created", null);
     }
 
     public async Task<ProductListDto?> UpdateAsync(int id, UpdateProductRequest request)

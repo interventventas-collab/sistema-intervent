@@ -98,3 +98,11 @@ public record UpdateProductRequest(
 public record BulkProductIdsRequest(List<int> Ids);
 
 public record BulkToggleStatusRequest(List<int> Ids, bool IsActive);
+
+// Resultado de un upsert (Create que puede convertirse en Update si el SKU ya existe).
+// Action puede ser "created" o "updated". PriceWarning se setea si bajo el precio.
+public record ProductUpsertResult(
+    ProductListDto Product,
+    string Action,
+    string? PriceWarning
+);

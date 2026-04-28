@@ -512,8 +512,8 @@
                         <div class="form-group">
                             <label class="form-label">Estado</label>
                             <select class="form-input" @bind="formIsActive">
-                                <option value="true">Activo</option>
-                                <option value="false">Inactivo</option>
+                                <option value="@true">Activo</option>
+                                <option value="@false">Inactivo</option>
                             </select>
                         </div>
                     }
@@ -1617,6 +1617,21 @@
 
             if (isEditing && editingProductId.HasValue)
             {
+                // Detectar bajada de precio para alertar al usuario (no bloquea, solo avisa).
+                var original = products?.FirstOrDefault(p => p.Id == editingProductId.Value);
+                string? priceWarning = null;
+                if (original is not null && !requiresExpiry && formBaseProductId == 0)
+                {
+                    var costDropped = formCostPrice > 0 && formCostPrice < original.CostPrice;
+                    var retailDropped = formRetailPrice > 0 && formRetailPrice < original.RetailPrice;
+                    if (costDropped && retailDropped)
+                        priceWarning = $"Bajaron costo (de ${FormatPrice(original.CostPrice)} a ${FormatPrice(formCostPrice)}) y PVP (de ${FormatPrice(original.RetailPrice)} a ${FormatPrice(formRetailPrice)})";
+                    else if (costDropped)
+                        priceWarning = $"Bajo el costo de ${FormatPrice(original.CostPrice)} a ${FormatPrice(formCostPrice)}";
+                    else if (retailDropped)
+                        priceWarning = $"Bajo el PVP de ${FormatPrice(original.RetailPrice)} a ${FormatPrice(formRetailPrice)}";
+                }
+
                 var update = new UpdateProductRequest {
                     Title = formTitle, DisplayName = formDisplayName, Description = formDescription,
                     Sku = formSku, Barcode = formBarcode, OemCode = formOemCode, ImageUrl = formImageUrl,
@@ -1636,9 +1651,31 @@
                 var result = await Api.UpdateProductAsync(editingProductId.Value, update);
                 if (result is null) { formError = "Error al actualizar el producto"; return; }
                 ToastService.Success("Producto actualizado");
+                if (priceWarning is not null)
+                    ToastService.Error("⚠ " + priceWarning);
             }
             else
             {
+                // Si el SKU ya existe entre los productos cargados, el backend va a hacer upsert.
+                // Detectamos posible bajada de precio para alertar.
+                ProductDto? existingBySku = null;
+                string? priceWarning = null;
+                if (!string.IsNullOrWhiteSpace(formSku))
+                {
+                    existingBySku = products?.FirstOrDefault(p => string.Equals(p.Sku, formSku, StringComparison.OrdinalIgnoreCase));
+                    if (existingBySku is not null && !requiresExpiry && formBaseProductId == 0)
+                    {
+                        var costDropped = formCostPrice > 0 && formCostPrice < existingBySku.CostPrice;
+                        var retailDropped = formRetailPrice > 0 && formRetailPrice < existingBySku.RetailPrice;
+                        if (costDropped && retailDropped)
+                            priceWarning = $"Bajaron costo (de ${FormatPrice(existingBySku.CostPrice)} a ${FormatPrice(formCostPrice)}) y PVP (de ${FormatPrice(existingBySku.RetailPrice)} a ${FormatPrice(formRetailPrice)})";
+                        else if (costDropped)
+                            priceWarning = $"Bajo el costo de ${FormatPrice(existingBySku.CostPrice)} a ${FormatPrice(formCostPrice)}";
+                        else if (retailDropped)
+                            priceWarning = $"Bajo el PVP de ${FormatPrice(existingBySku.RetailPrice)} a ${FormatPrice(formRetailPrice)}";
+                    }
+                }
+
                 var create = new CreateProductRequest {
                     Title = formTitle, DisplayName = formDisplayName, Description = formDescription,
                     Sku = formSku, Barcode = formBarcode, OemCode = formOemCode, ImageUrl = formImageUrl,
@@ -1654,9 +1691,14 @@
                 create.IsBase = formIsBase;
                 var result = await Api.CreateProductAsync(create);
                 if (result is null) { formError = "Error al crear el producto"; return; }
-                ToastService.Success(requiresExpiry
-                    ? "Producto creado. Tocá '📅 Lotes' para cargar el stock con vencimiento."
-                    : "Producto creado");
+                if (existingBySku is not null)
+                    ToastService.Success($"Producto actualizado (ya existia el SKU '{formSku}')");
+                else
+                    ToastService.Success(requiresExpiry
+                        ? "Producto creado. Tocá '📅 Lotes' para cargar el stock con vencimiento."
+                        : "Producto creado");
+                if (priceWarning is not null)
+                    ToastService.Error("⚠ " + priceWarning);
             }
             showForm = false; await LoadData();
         }
