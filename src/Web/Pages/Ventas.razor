@@ -264,34 +264,7 @@
 @* ====== VISOR DE COMPROBANTE ====== *@
 @if (viewerSale is not null && companyInfo is not null)
 {
-    @* CSS impresion A4 *@
     <style>
-        @@media print {
-            @@page { size: A4 portrait; margin: 1cm; }
-            html, body { background: white !important; }
-            body * { visibility: hidden !important; }
-            .modal-overlay {
-                position: static !important; background: transparent !important;
-                padding: 0 !important; margin: 0 !important; display: block !important;
-            }
-            .modal-card {
-                position: static !important;
-                max-width: none !important; width: 100% !important;
-                box-shadow: none !important; border: 0 !important;
-                margin: 0 !important; padding: 0 !important;
-                background: white !important;
-            }
-            .modal-body, .modal-footer, .modal-header { padding: 0 !important; margin: 0 !important; }
-            #comprobante-print, #comprobante-print * { visibility: visible !important; }
-            #comprobante-print {
-                position: absolute !important; left: 0; top: 0;
-                width: 100% !important; max-width: none !important;
-                padding: 0 !important; margin: 0 !important;
-                font-size: 11pt !important;
-            }
-            #comprobante-print table { width: 100% !important; }
-            .no-print { display: none !important; }
-        }
         .pagado-stamp {
             position: absolute;
             top: 50%; left: 50%;
@@ -683,8 +656,9 @@
 
     private async Task PrintViewer()
     {
-        try { await JS.InvokeVoidAsync("print"); }
-        catch { /* algunos browsers bloquean si no es trigger directo */ }
+        // Abre una ventana nueva con SOLO el comprobante para evitar conflictos con el modal.
+        try { await JS.InvokeVoidAsync("printElement", "comprobante-print", $"Comprobante {viewerSale?.Number}"); }
+        catch { /* algunos browsers bloquean popups */ }
     }
 
     private bool ViewerHasDay(string day)
