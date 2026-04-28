@@ -406,60 +406,46 @@
                         <input class="form-input" @bind="formModel" placeholder="Modelo" />
                     </div>
                 </div>
-                @{
-                    var baseOptions = (products ?? new List<ProductDto>())
-                        .Where(p => !p.BaseProductId.HasValue && p.Id != editingProductId)
-                        .Where(p => editingProductId is null || products?.FirstOrDefault(c => c.Id == editingProductId)?.DerivedCount == 0)
-                        .OrderBy(p => p.Sku ?? "").ThenBy(p => p.Title)
-                        .ToList();
-                    var canHaveBase = !isEditing
-                        || (products?.FirstOrDefault(c => c.Id == editingProductId)?.DerivedCount ?? 0) == 0;
-                }
                 <div class="form-group">
-                    <label style="display: flex; align-items: center; gap: 0.5rem; font-weight: 600; cursor: pointer;">
-                        <input type="checkbox" @bind="formIsBase" style="width: 18px; height: 18px;" />
-                        Es producto base
-                    </label>
-                    <p style="font-size: 0.78rem; color: #6b7280; margin: 0.3rem 0 0 1.7rem;">
-                        Tildalo cuando este producto va a tener variantes derivadas (por ejemplo, distintos colores o tamaños).
-                        Aparece en la solapa <strong>"Productos base"</strong>.
-                    </p>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Producto base (opcional)</label>
-                    @if (!canHaveBase)
-                    {
-                        <p style="font-size: 0.8rem; color: #6b7280; margin: 0;">
-                            Este producto ya es base de otros productos, asi que no puede heredar de un tercero.
-                        </p>
-                    }
-                    else
-                    {
-                        <select class="form-input" @bind="formBaseProductId" style="max-width: 480px;">
-                            <option value="0">— Sin producto base (precio independiente) —</option>
-                            @foreach (var p in baseOptions)
+                    <label class="form-label">Item de lista de precios (opcional)</label>
+                    <input class="form-input" list="priceListItems-datalist" @bind="formPriceListCode"
+                           @bind:event="oninput" @onchange="OnPriceListCodeChange"
+                           placeholder="Tipea o pegá el código del item (ej: 9311)" style="max-width: 480px;" />
+                    <datalist id="priceListItems-datalist">
+                        @if (priceListItems is not null)
+                        {
+                            @foreach (var i in priceListItems.Take(2000))
                             {
-                                <option value="@p.Id">@(p.Sku ?? "—") · @p.Title</option>
+                                <option value="@i.Code">@i.Description ($@i.CostPrice.ToString("0.00"))</option>
                             }
-                        </select>
-                        <p style="font-size: 0.78rem; color: #6b7280; margin: 0.3rem 0 0;">
-                            Si elegis un producto base, este producto va a heredar el costo y el PVP del padre. Cuando cambies el precio del padre, se aplica automaticamente aca.
-                        </p>
-                    }
+                        }
+                    </datalist>
+                    <p style="font-size: 0.78rem; color: #6b7280; margin: 0.3rem 0 0;">
+                        Vinculá este producto a un item de la lista de precios del proveedor.
+                        Cuando se actualice el costo del item (al subir una lista nueva), <strong>se hereda automáticamente</strong> aquí.
+                        @if (formPriceListItemId > 0 && priceListItems is not null)
+                        {
+                            var matched = priceListItems.FirstOrDefault(x => x.Id == formPriceListItemId);
+                            if (matched is not null)
+                            {
+                                <span style="color: #15803d; font-weight: 600;"> ✓ Vinculado: @matched.Description (costo $@matched.CostPrice.ToString("0.00"))</span>
+                            }
+                        }
+                    </p>
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label class="form-label">Precio de Costo @(formBaseProductId > 0 ? "(heredado)" : "")</label>
+                        <label class="form-label">Precio de Costo @(formPriceListItemId > 0 ? "(heredado de lista)" : "")</label>
                         <div style="position: relative;">
                             <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 1.1rem; font-weight: 700; color: #333;">$</span>
-                            <input type="text" class="form-input" style="font-size: 1.1rem; font-weight: 700; text-align: right; padding-left: 28px; @(formBaseProductId > 0 ? "background:#f3f4f6;color:#6b7280;" : "")" value="@formCostPriceFormatted" @oninput="OnFormCostPriceInput" inputmode="decimal" disabled="@(formBaseProductId > 0)" />
+                            <input type="text" class="form-input" style="font-size: 1.1rem; font-weight: 700; text-align: right; padding-left: 28px; @(formPriceListItemId > 0 ? "background:#f3f4f6;color:#6b7280;" : "")" value="@formCostPriceFormatted" @oninput="OnFormCostPriceInput" inputmode="decimal" disabled="@(formPriceListItemId > 0)" />
                         </div>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">PVP (Precio de Venta) @(formBaseProductId > 0 ? "(heredado)" : "")</label>
+                        <label class="form-label">PVP (Precio de Venta)</label>
                         <div style="position: relative;">
                             <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 1.1rem; font-weight: 700; color: #333;">$</span>
-                            <input type="text" class="form-input" style="font-size: 1.1rem; font-weight: 700; text-align: right; padding-left: 28px; @(formBaseProductId > 0 ? "background:#f3f4f6;color:#6b7280;" : "")" value="@formRetailPriceFormatted" @oninput="OnFormRetailPriceInput" inputmode="decimal" disabled="@(formBaseProductId > 0)" />
+                            <input type="text" class="form-input" style="font-size: 1.1rem; font-weight: 700; text-align: right; padding-left: 28px;" value="@formRetailPriceFormatted" @oninput="OnFormRetailPriceInput" inputmode="decimal" />
                         </div>
                     </div>
                 </div>
@@ -1206,10 +1192,15 @@
     private string? formPhoto1;
     private string? formPhoto2;
     private string? formPhoto3;
-    private int formBaseProductId; // 0 = sin base
+    private int formBaseProductId; // 0 = sin base (legacy, no usado)
     private int formBrandId; // 0 = sin marca
-    private bool formIsBase;
+    private bool formIsBase; // legacy
     private List<BrandDto>? brands;
+
+    // Lista de precios: vinculo opcional a un item de la lista de un proveedor.
+    private int formPriceListItemId; // 0 = sin vinculo
+    private string formPriceListCode = "";
+    private List<SupplierPriceListItemDto>? priceListItems;
 
     // Stock batches (lotes con vencimiento)
     private bool showBatchesModal;
@@ -1318,7 +1309,49 @@
             brands = await Api.GetBrandsAsync() ?? new();
         }
         catch { brands = new(); }
+        try
+        {
+            // Cargar TODOS los items de TODAS las listas de precios para el datalist.
+            priceListItems = new List<SupplierPriceListItemDto>();
+            var lists = await Api.GetPriceListsAsync() ?? new();
+            foreach (var l in lists)
+            {
+                var its = await Api.GetPriceListItemsAsync(l.Id);
+                if (its is not null) priceListItems.AddRange(its);
+            }
+        }
+        catch { priceListItems = new(); }
         isLoading = false;
+    }
+
+    private void OnPriceListCodeChange(ChangeEventArgs e)
+    {
+        var code = (e.Value?.ToString() ?? "").Trim();
+        formPriceListCode = code;
+        if (string.IsNullOrEmpty(code) || priceListItems is null)
+        {
+            formPriceListItemId = 0;
+            return;
+        }
+        var item = priceListItems.FirstOrDefault(i => string.Equals(i.Code, code, StringComparison.OrdinalIgnoreCase));
+        if (item is not null)
+        {
+            formPriceListItemId = item.Id;
+            // Autocompletar costo y, si esta vacio, descripcion + PVP sugerido.
+            formCostPrice = item.CostPrice;
+            formCostPriceFormatted = FormatPrice(item.CostPrice);
+            if (string.IsNullOrWhiteSpace(formTitle) && !string.IsNullOrWhiteSpace(item.Description))
+                formTitle = item.Description;
+            if (formRetailPrice == 0 && item.SuggestedRetailPrice.HasValue)
+            {
+                formRetailPrice = item.SuggestedRetailPrice.Value;
+                formRetailPriceFormatted = FormatPrice(formRetailPrice);
+            }
+        }
+        else
+        {
+            formPriceListItemId = 0;
+        }
     }
 
     // ===== FILTER & SORT METHODS =====
@@ -1571,6 +1604,8 @@
         formBrandId = 0;
         // Por default, NO marcar como producto base. El usuario lo tilda manualmente si aplica.
         formIsBase = false;
+        formPriceListItemId = 0;
+        formPriceListCode = "";
         formError = null; showForm = true;
     }
 
@@ -1599,6 +1634,9 @@
         formBaseProductId = product.BaseProductId ?? 0;
         formBrandId = product.BrandId ?? 0;
         formIsBase = product.IsBase;
+        formPriceListItemId = product.SupplierPriceListItemId ?? 0;
+        var matched = priceListItems?.FirstOrDefault(i => i.Id == formPriceListItemId);
+        formPriceListCode = matched?.Code ?? "";
         formError = null; showForm = true;
     }
 
@@ -1648,6 +1686,8 @@
                 if (formBrandId > 0) update.BrandId = formBrandId;
                 else update.ClearBrand = true;
                 update.IsBase = formIsBase;
+                if (formPriceListItemId > 0) update.SupplierPriceListItemId = formPriceListItemId;
+                else update.ClearSupplierPriceListItem = true;
                 var result = await Api.UpdateProductAsync(editingProductId.Value, update);
                 if (result is null) { formError = "Error al actualizar el producto"; return; }
                 ToastService.Success("Producto actualizado");
@@ -1689,6 +1729,7 @@
                 if (formBaseProductId > 0) create.BaseProductId = formBaseProductId;
                 if (formBrandId > 0) create.BrandId = formBrandId;
                 create.IsBase = formIsBase;
+                if (formPriceListItemId > 0) create.SupplierPriceListItemId = formPriceListItemId;
                 var result = await Api.CreateProductAsync(create);
                 if (result is null) { formError = "Error al crear el producto"; return; }
                 if (existingBySku is not null)

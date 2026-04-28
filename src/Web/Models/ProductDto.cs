@@ -35,6 +35,7 @@ public class ProductDto
     public string? BrandName { get; set; }
     public bool RequiresExpiry { get; set; }
     public bool IsBase { get; set; }
+    public int? SupplierPriceListItemId { get; set; }
 }
 
 public class CreateProductRequest
@@ -62,6 +63,7 @@ public class CreateProductRequest
     public int? BaseProductId { get; set; }
     public int? BrandId { get; set; }
     public bool? IsBase { get; set; }
+    public int? SupplierPriceListItemId { get; set; }
 }
 
 public class UpdateProductRequest
@@ -92,6 +94,8 @@ public class UpdateProductRequest
     public int? BrandId { get; set; }
     public bool? ClearBrand { get; set; }
     public bool? IsBase { get; set; }
+    public int? SupplierPriceListItemId { get; set; }
+    public bool? ClearSupplierPriceListItem { get; set; }
 }
 
 public class ProductAccountLinkDto

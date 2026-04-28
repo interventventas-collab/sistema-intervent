@@ -1,0 +1,465 @@
+@page "/listas-precios"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3>Listas de precios de proveedores</h3>
+        <button class="btn btn-primary" @onclick="ShowCreate">+ Nueva lista</button>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        @if (isLoading)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">Cargando...</p>
+        }
+        else if (lists is null || lists.Count == 0)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">Todavia no cargaste ninguna lista. Tocá "+ Nueva lista" para crear una (ej: una por cada proveedor).</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>Proveedor</th>
+                            <th style="text-align: right;">Items</th>
+                            <th style="text-align: right;">Productos vinculados</th>
+                            <th>Ultima actualizacion</th>
+                            <th style="width: 200px;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var l in lists)
+                        {
+                            <tr style="cursor: pointer;" @onclick="() => OpenList(l)">
+                                <td><strong>@l.Name</strong></td>
+                                <td>@(l.SupplierName ?? "—")</td>
+                                <td style="text-align: right; font-weight: 700;">@l.ItemsCount</td>
+                                <td style="text-align: right;">@l.LinkedProductsCount</td>
+                                <td style="font-size: 0.85rem; color: #6b7280;">@(l.LastUploadAt?.ToString("dd/MM/yyyy HH:mm") ?? "—")</td>
+                                <td class="actions-cell" @onclick:stopPropagation="true">
+                                    <button class="btn-icon btn-edit" @onclick="() => OpenList(l)" title="Ver items">@SvgIcons.Edit</button>
+                                    <button class="btn-icon" style="background:#fef3c7;color:#92400e;border:1px solid #fbbf24;padding:2px 6px;border-radius:4px;font-size:0.7rem;font-weight:700;"
+                                            @onclick="() => OpenImport(l)" title="Subir Excel">📤 Excel</button>
+                                    <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(l)" title="Eliminar lista">@SvgIcons.AlertCircle</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@* === ITEMS DE LISTA === *@
+@if (currentList is not null)
+{
+    <div class="card" style="margin-top: 1rem;">
+        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.4rem;">
+            <h3 style="margin: 0;">Items de "<strong>@currentList.Name</strong>" (@(items?.Count ?? 0))</h3>
+            <div style="display: flex; gap: 0.4rem;">
+                <input class="form-input" style="width: 220px; font-size: 0.85rem;" placeholder="🔍 Buscar por codigo o descripcion"
+                       @bind="search" @bind:event="oninput" @onkeyup="OnSearchKey" />
+                <button class="btn btn-secondary" @onclick="OpenAddItem">+ Item</button>
+                <button class="btn btn-secondary" @onclick="() => OpenImport(currentList)">📤 Subir Excel</button>
+                <button class="btn btn-secondary" @onclick="() => currentList = null">Cerrar</button>
+            </div>
+        </div>
+        <div class="card-body" style="padding: 0;">
+            @if (itemsLoading)
+            {
+                <p class="text-muted" style="padding: 1rem;">Cargando items...</p>
+            }
+            else if (items is null || items.Count == 0)
+            {
+                <p class="text-muted" style="padding: 1rem;">Sin items.</p>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 130px;">Codigo</th>
+                                <th>Descripcion</th>
+                                <th style="text-align: right;">Costo</th>
+                                <th style="text-align: right;">PVP sugerido</th>
+                                <th style="text-align: center;">Vinculados</th>
+                                <th style="width: 90px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var i in items)
+                            {
+                                <tr>
+                                    <td style="font-family: monospace;">@i.Code</td>
+                                    <td>@(i.Description ?? "")</td>
+                                    <td style="text-align: right; font-weight: 700;">$@FormatAmount(i.CostPrice)</td>
+                                    <td style="text-align: right;">@(i.SuggestedRetailPrice.HasValue ? "$" + FormatAmount(i.SuggestedRetailPrice.Value) : "—")</td>
+                                    <td style="text-align: center;">
+                                        @if (i.LinkedProductsCount > 0)
+                                        {
+                                            <span style="background:#dcfce7;color:#166534;padding:0.1rem 0.5rem;border-radius:999px;font-size:0.7rem;font-weight:700;">@i.LinkedProductsCount</span>
+                                        }
+                                        else
+                                        {
+                                            <span style="color:#9ca3af;">0</span>
+                                        }
+                                    </td>
+                                    <td class="actions-cell">
+                                        <button class="btn-icon btn-edit" @onclick="() => OpenEditItem(i)">@SvgIcons.Edit</button>
+                                        <button class="btn-icon btn-delete" @onclick="() => ConfirmDeleteItem(i)">@SvgIcons.AlertCircle</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@* === FORM CREAR / EDITAR LISTA === *@
+@if (showListForm)
+{
+    <div class="modal-overlay" @onclick="() => showListForm = false">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3>@(editingList is null ? "Nueva lista de precios" : "Editar lista")</h3>
+                <button class="btn-close" @onclick="() => showListForm = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(listFormError)) { <div class="form-error">@listFormError</div> }
+                <div class="form-group">
+                    <label class="form-label">Nombre *</label>
+                    <input class="form-input" @bind="formName" placeholder="Ej: Colombraro - Mayo 2026" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Proveedor</label>
+                    <select class="form-input" @bind="formSupplierId">
+                        <option value="0">— Sin proveedor —</option>
+                        @if (suppliers is not null)
+                        {
+                            @foreach (var s in suppliers)
+                            {
+                                <option value="@s.Id">@s.Code · @s.Name</option>
+                            }
+                        }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Notas</label>
+                    <textarea class="form-input" rows="2" @bind="formNotes"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showListForm = false">Cancelar</button>
+                <button class="btn btn-primary" @onclick="SaveList">Guardar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* === SUBIR EXCEL === *@
+@if (showImport && importTarget is not null)
+{
+    <div class="modal-overlay" @onclick="() => showImport = false">
+        <div class="modal-card modal-wide" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3>Importar lista "@importTarget.Name" desde Excel</h3>
+                <button class="btn-close" @onclick="() => showImport = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.9rem;"><strong>Paso 1:</strong> descargá la plantilla.</p>
+                <a class="btn btn-secondary" href="/api/price-lists/import-template" target="_blank">📥 Descargar plantilla (.xlsx)</a>
+                <p style="font-size: 0.9rem; margin-top: 1rem;"><strong>Paso 2:</strong> completá una fila por cada producto del catalogo y subí el archivo.</p>
+                <p style="font-size: 0.78rem; color: #6b7280;">
+                    Las columnas obligatorias son <strong>codigo</strong> y <strong>costo</strong>. Si el codigo ya existe en la lista, se actualiza (no duplica).
+                    Si baja o sube el costo, los productos vinculados a ese item heredan el cambio automaticamente.
+                </p>
+                <InputFile OnChange="OnImportFileSelected" accept=".xlsx" disabled="@isImporting" />
+
+                @if (lastImportResult is not null)
+                {
+                    <div style="margin-top: 1rem; padding: 0.75rem; border-radius: 6px; background: @(lastImportResult.Errors.Count == 0 ? "#dcfce7" : "#fef3c7");">
+                        <strong>Resultado:</strong>
+                        @lastImportResult.Created creado(s), @lastImportResult.Updated actualizado(s),
+                        @lastImportResult.Skipped salteado(s), @lastImportResult.Errors.Count error(es) de @lastImportResult.TotalRows fila(s).
+                        @if (lastImportResult.LinkedProductsUpdated > 0)
+                        {
+                            <div style="margin-top: 0.3rem; color: #15803d;">
+                                ✓ @lastImportResult.LinkedProductsUpdated producto(s) vinculado(s) tomaron el nuevo costo automaticamente.
+                            </div>
+                        }
+                    </div>
+                    @if (lastImportResult.Errors.Count > 0)
+                    {
+                        <div style="margin-top: 0.5rem; max-height: 200px; overflow-y: auto; border: 1px solid #fca5a5; border-radius: 6px; padding: 0.5rem;">
+                            @foreach (var err in lastImportResult.Errors)
+                            {
+                                <div style="color: #b91c1c; font-size: 0.85rem;">@err</div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showImport = false">Cerrar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* === FORM ITEM === *@
+@if (showItemForm)
+{
+    <div class="modal-overlay" @onclick="() => showItemForm = false">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3>@(editingItem is null ? "+ Item de lista" : "Editar item")</h3>
+                <button class="btn-close" @onclick="() => showItemForm = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(itemFormError)) { <div class="form-error">@itemFormError</div> }
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Codigo *</label>
+                        <input class="form-input" @bind="iCode" />
+                    </div>
+                    <div class="form-group" style="flex: 2;">
+                        <label class="form-label">Descripcion</label>
+                        <input class="form-input" @bind="iDescription" />
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Costo *</label>
+                        <input class="form-input" type="number" step="0.01" @bind="iCost" style="font-weight: 700; text-align: right;" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">PVP sugerido</label>
+                        <input class="form-input" type="number" step="0.01" @bind="iSuggested" style="text-align: right;" />
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showItemForm = false">Cancelar</button>
+                <button class="btn btn-primary" @onclick="SaveItem">Guardar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<SupplierPriceListDto>? lists;
+    private List<SupplierPriceListItemDto>? items;
+    private SupplierPriceListDto? currentList;
+    private List<SupplierDto>? suppliers;
+    private bool isLoading = true;
+    private bool itemsLoading;
+    private string search = "";
+
+    // Form lista
+    private bool showListForm;
+    private SupplierPriceListDto? editingList;
+    private string formName = "";
+    private int formSupplierId;
+    private string formNotes = "";
+    private string? listFormError;
+
+    // Form item
+    private bool showItemForm;
+    private SupplierPriceListItemDto? editingItem;
+    private string iCode = "", iDescription = "";
+    private decimal iCost;
+    private decimal? iSuggested;
+    private string? itemFormError;
+
+    // Import
+    private bool showImport;
+    private SupplierPriceListDto? importTarget;
+    private bool isImporting;
+    private PriceListImportResult? lastImportResult;
+
+    protected override async Task OnInitializedAsync() => await LoadAll();
+
+    private async Task LoadAll()
+    {
+        isLoading = true;
+        try { lists = await Api.GetPriceListsAsync() ?? new(); } catch { lists = new(); ToastService.Error("Error cargando listas"); }
+        try { suppliers = await Api.GetSuppliersAsync() ?? new(); } catch { suppliers = new(); }
+        isLoading = false;
+    }
+
+    private async Task OpenList(SupplierPriceListDto l)
+    {
+        currentList = l;
+        items = null;
+        search = "";
+        await LoadItems();
+    }
+
+    private async Task LoadItems()
+    {
+        if (currentList is null) return;
+        itemsLoading = true;
+        try { items = await Api.GetPriceListItemsAsync(currentList.Id, string.IsNullOrWhiteSpace(search) ? null : search) ?? new(); }
+        catch { items = new(); ToastService.Error("Error cargando items"); }
+        itemsLoading = false;
+    }
+
+    private async Task OnSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await LoadItems();
+    }
+
+    // ---- ABM lista ----
+    private void ShowCreate()
+    {
+        editingList = null;
+        formName = ""; formSupplierId = 0; formNotes = "";
+        listFormError = null; showListForm = true;
+    }
+
+    private async Task SaveList()
+    {
+        listFormError = null;
+        if (string.IsNullOrWhiteSpace(formName)) { listFormError = "El nombre es obligatorio"; return; }
+        try
+        {
+            if (editingList is null)
+                await Api.CreatePriceListAsync(new CreateSupplierPriceListRequest
+                {
+                    Name = formName, SupplierId = formSupplierId > 0 ? formSupplierId : null,
+                    Notes = formNotes
+                });
+            else
+                await Api.UpdatePriceListAsync(editingList.Id, new UpdateSupplierPriceListRequest
+                {
+                    Name = formName, SupplierId = formSupplierId,
+                    Notes = formNotes
+                });
+            ToastService.Success("Guardado");
+            showListForm = false;
+            await LoadAll();
+        }
+        catch (Exception ex) { listFormError = ex.Message; }
+    }
+
+    private async Task ConfirmDelete(SupplierPriceListDto l)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Eliminar la lista '{l.Name}'? Se borran todos sus items. Los productos vinculados quedan sin lista.")) return;
+        try { await Api.DeletePriceListAsync(l.Id); ToastService.Success("Lista eliminada"); await LoadAll(); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    // ---- Items ----
+    private void OpenAddItem()
+    {
+        editingItem = null;
+        iCode = ""; iDescription = ""; iCost = 0; iSuggested = null;
+        itemFormError = null; showItemForm = true;
+    }
+
+    private void OpenEditItem(SupplierPriceListItemDto i)
+    {
+        editingItem = i;
+        iCode = i.Code; iDescription = i.Description ?? "";
+        iCost = i.CostPrice; iSuggested = i.SuggestedRetailPrice;
+        itemFormError = null; showItemForm = true;
+    }
+
+    private async Task SaveItem()
+    {
+        if (currentList is null) return;
+        itemFormError = null;
+        if (string.IsNullOrWhiteSpace(iCode)) { itemFormError = "El codigo es obligatorio"; return; }
+        try
+        {
+            if (editingItem is null)
+                await Api.AddPriceListItemAsync(currentList.Id, new CreatePriceListItemRequest
+                {
+                    Code = iCode, Description = iDescription, CostPrice = iCost, SuggestedRetailPrice = iSuggested
+                });
+            else
+                await Api.UpdatePriceListItemAsync(editingItem.Id, new UpdatePriceListItemRequest
+                {
+                    Code = iCode, Description = iDescription, CostPrice = iCost, SuggestedRetailPrice = iSuggested
+                });
+            ToastService.Success("Item guardado");
+            showItemForm = false;
+            await LoadItems();
+            await LoadAll(); // refrescar contador
+        }
+        catch (Exception ex) { itemFormError = ex.Message; }
+    }
+
+    private async Task ConfirmDeleteItem(SupplierPriceListItemDto i)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Eliminar el item {i.Code}?")) return;
+        try { await Api.DeletePriceListItemAsync(i.Id); ToastService.Success("Item eliminado"); await LoadItems(); await LoadAll(); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    // ---- Import Excel ----
+    private void OpenImport(SupplierPriceListDto l)
+    {
+        importTarget = l;
+        lastImportResult = null;
+        showImport = true;
+    }
+
+    private async Task OnImportFileSelected(InputFileChangeEventArgs e)
+    {
+        if (importTarget is null) return;
+        var file = e.File;
+        if (file is null) return;
+        isImporting = true;
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            using var stream = file.OpenReadStream(maxAllowedSize: 25 * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            content.Add(new ByteArrayContent(ms.ToArray()), "file", file.Name);
+
+            var http = new HttpClient { BaseAddress = new Uri(Navigation.BaseUri) };
+            var response = await http.PostAsync($"/api/price-lists/{importTarget.Id}/import", content);
+            if (response.IsSuccessStatusCode)
+            {
+                lastImportResult = await response.Content.ReadFromJsonAsync<PriceListImportResult>();
+                ToastService.Success($"{lastImportResult?.Created ?? 0} creados, {lastImportResult?.Updated ?? 0} actualizados");
+                await LoadAll();
+                if (currentList?.Id == importTarget.Id) await LoadItems();
+            }
+            else
+            {
+                var err = await response.Content.ReadAsStringAsync();
+                ToastService.Error("Error al importar: " + err);
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { isImporting = false; }
+    }
+
+    [Inject] NavigationManager Navigation { get; set; } = default!;
+
+    private static string FormatAmount(decimal value)
+    {
+        var parts = value.ToString("F2", System.Globalization.CultureInfo.InvariantCulture).Split('.');
+        var intPart = parts[0]; var decPart = parts.Length > 1 ? parts[1] : "00";
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < intPart.Length; i++)
+        {
+            if (i > 0 && (intPart.Length - i) % 3 == 0) sb.Append('.');
+            sb.Append(intPart[i]);
+        }
+        return sb + "," + decPart;
+    }
+}

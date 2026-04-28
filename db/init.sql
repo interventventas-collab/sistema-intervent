@@ -892,6 +892,70 @@ IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId = 1 AND MenuKey = 'sue
     INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'sueldos');
 GO
 
+-- ============================================================
+-- LISTAS DE PRECIOS DE PROVEEDORES
+-- (catalogos completos enviados por proveedores que sirven de referencia
+--  para precios de productos vinculados; NO son productos vendibles)
+-- ============================================================
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='SupplierPriceLists' AND xtype='U')
+BEGIN
+    CREATE TABLE SupplierPriceLists (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Name NVARCHAR(150) NOT NULL,
+        SupplierId INT NULL,
+        Notes NVARCHAR(500) NULL,
+        LastUploadAt DATETIME2 NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT FK_SupplierPriceLists_Supplier FOREIGN KEY (SupplierId) REFERENCES Suppliers(Id) ON DELETE SET NULL
+    );
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='SupplierPriceListItems' AND xtype='U')
+BEGIN
+    CREATE TABLE SupplierPriceListItems (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        PriceListId INT NOT NULL,
+        Code NVARCHAR(100) NOT NULL,
+        Description NVARCHAR(500) NULL,
+        CostPrice DECIMAL(18,2) NOT NULL DEFAULT 0,
+        SuggestedRetailPrice DECIMAL(18,2) NULL,
+        Notes NVARCHAR(500) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT FK_SupplierPriceListItems_List FOREIGN KEY (PriceListId) REFERENCES SupplierPriceLists(Id) ON DELETE CASCADE,
+        CONSTRAINT UQ_SupplierPriceListItems_ListCode UNIQUE (PriceListId, Code)
+    );
+    CREATE INDEX IX_SupplierPriceListItems_PriceListId ON SupplierPriceListItems (PriceListId);
+    CREATE INDEX IX_SupplierPriceListItems_Code ON SupplierPriceListItems (Code);
+END
+GO
+
+-- Vincular un Producto a un item de lista de precios (de proveedor).
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'SupplierPriceListItemId' AND Object_ID = Object_ID(N'Products'))
+BEGIN
+    ALTER TABLE Products ADD SupplierPriceListItemId INT NULL;
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_Products_PriceListItem')
+BEGIN
+    ALTER TABLE Products
+        ADD CONSTRAINT FK_Products_PriceListItem
+        FOREIGN KEY (SupplierPriceListItemId) REFERENCES SupplierPriceListItems(Id) ON DELETE SET NULL;
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Products_PriceListItemId' AND object_id = Object_ID(N'Products'))
+BEGIN
+    CREATE INDEX IX_Products_PriceListItemId ON Products(SupplierPriceListItemId);
+END
+GO
+
+-- Permiso "listas-precios"
+IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId = 1 AND MenuKey = 'listas-precios')
+    INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'listas-precios');
+GO
+
 -- Pagos parciales de sueldos (adelantos + pagos finales)
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='PayrollPayments' AND xtype='U')
 BEGIN

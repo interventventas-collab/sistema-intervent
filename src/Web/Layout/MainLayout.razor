@@ -49,21 +49,24 @@
             </NavGroup>
         }
 
-        @if (HasPerm("productos") || HasPerm("combos") || HasPerm("proveedores") || HasPerm("marcas") || HasPerm("clientes"))
+        @if (HasPerm("productos") || HasPerm("combos") || HasPerm("proveedores") || HasPerm("marcas") || HasPerm("clientes") || HasPerm("listas-precios"))
         {
             <NavGroup Label="Productos y Servicios" Icon="@SvgIcons.Inventory"
-                      HasActiveChild="@(IsActive("/productos") || IsActive("/productos-base") || IsActive("/combos") || IsActive("/proveedores") || IsActive("/marcas") || IsActive("/clientes"))">
+                      HasActiveChild="@(IsActive("/productos") || IsActive("/combos") || IsActive("/listas-precios") || IsActive("/proveedores") || IsActive("/marcas") || IsActive("/clientes"))">
                 @if (HasPerm("productos"))
                 {
                     <NavItem Href="/productos" Label="Productos" Icon="@SvgIcons.Package"
                              IsActive="@IsActive("/productos")" OnClick="@(() => NavigateTo("/productos"))" />
-                    <NavItem Href="/productos-base" Label="Productos base" Icon="@SvgIcons.Package"
-                             IsActive="@IsActive("/productos-base")" OnClick="@(() => NavigateTo("/productos-base"))" />
                 }
                 @if (HasPerm("combos"))
                 {
                     <NavItem Href="/combos" Label="Combos" Icon="@SvgIcons.Package"
                              IsActive="@IsActive("/combos")" OnClick="@(() => NavigateTo("/combos"))" />
+                }
+                @if (HasPerm("listas-precios"))
+                {
+                    <NavItem Href="/listas-precios" Label="Listas de precios" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive("/listas-precios")" OnClick="@(() => NavigateTo("/listas-precios"))" />
                 }
                 @if (HasPerm("proveedores"))
                 {
@@ -298,6 +301,7 @@
         { "ordenes", "ordenes" },
         { "productos", "productos" },
         { "productos-base", "productos" },
+        { "listas-precios", "listas-precios" },
         { "combos", "combos" },
         { "proveedores", "proveedores" },
         { "marcas", "marcas" },
