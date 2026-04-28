@@ -524,3 +524,10 @@ BEGIN
     INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'backups');
 END
 GO
+
+-- Agregar permiso del menu combos al admin
+IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId = 1 AND MenuKey = 'combos')
+BEGIN
+    INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'combos');
+END
+GO

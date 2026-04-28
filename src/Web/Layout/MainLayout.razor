@@ -48,12 +48,20 @@
             </NavGroup>
         }
 
-        @if (HasPerm("productos"))
+        @if (HasPerm("productos") || HasPerm("combos"))
         {
             <NavGroup Label="Inventario" Icon="@SvgIcons.Inventory"
-                      HasActiveChild="@IsActive("/productos")">
-                <NavItem Href="/productos" Label="Productos" Icon="@SvgIcons.Package"
-                         IsActive="@IsActive("/productos")" OnClick="@(() => NavigateTo("/productos"))" />
+                      HasActiveChild="@(IsActive("/productos") || IsActive("/combos"))">
+                @if (HasPerm("productos"))
+                {
+                    <NavItem Href="/productos" Label="Productos base" Icon="@SvgIcons.Package"
+                             IsActive="@IsActive("/productos")" OnClick="@(() => NavigateTo("/productos"))" />
+                }
+                @if (HasPerm("combos"))
+                {
+                    <NavItem Href="/combos" Label="Combos" Icon="@SvgIcons.Package"
+                             IsActive="@IsActive("/combos")" OnClick="@(() => NavigateTo("/combos"))" />
+                }
             </NavGroup>
         }
 

@@ -15,7 +15,8 @@ public static class MenuDefinition
         }),
         new MenuGroup("inventario", "Inventario", new[]
         {
-            new MenuItem("productos", "Productos", "/productos")
+            new MenuItem("productos", "Productos base", "/productos"),
+            new MenuItem("combos", "Combos", "/combos")
         }),
         new MenuGroup("administracion", "Administracion", new[]
         {
