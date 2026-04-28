@@ -216,7 +216,7 @@ public class BulkImportService
         ("stock_critico", "2")
     });
 
-    public async Task<BulkImportResult> ImportProductsAsync(Stream excelStream)
+    public async Task<BulkImportResult> ImportProductsAsync(Stream excelStream, bool markAsBase = false)
     {
         var (headers, rows) = ReadSheet(excelStream);
         int created = 0, skipped = 0;
@@ -255,7 +255,7 @@ public class BulkImportService
             {
                 try
                 {
-                    var dto = await CreateProductFromRow(row, headers, brandsByName, productIdBySku);
+                    var dto = await CreateProductFromRow(row, headers, brandsByName, productIdBySku, markAsBase);
                     if (dto is not null && !string.IsNullOrEmpty(dto.Sku))
                         productIdBySku[dto.Sku.ToLowerInvariant()] = dto.Id;
                     created++;
@@ -273,7 +273,8 @@ public class BulkImportService
     private async Task<ProductListDto?> CreateProductFromRow(
         List<string?> row, List<string> headers,
         Dictionary<string, int> brandsByName,
-        Dictionary<string, int> productIdBySku)
+        Dictionary<string, int> productIdBySku,
+        bool markAsBase = false)
     {
         var title = Cell(row, headers, "titulo");
 
@@ -315,7 +316,8 @@ public class BulkImportService
             Stock: ParseInt(Cell(row, headers, "stock")) ?? 0,
             CriticalStock: ParseInt(Cell(row, headers, "stock_critico")) ?? 0,
             BaseProductId: baseId,
-            BrandId: brandId
+            BrandId: brandId,
+            IsBase: markAsBase
         ));
     }
 

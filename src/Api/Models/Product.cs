@@ -68,6 +68,10 @@ public class Product
 
     public DateTime? UpdatedAt { get; set; }
 
+    // Marca explicita "es producto base": independiente de si tiene derivados o no.
+    // Setear a true cuando se carga desde la solapa "Productos base".
+    public bool IsBase { get; set; } = false;
+
     // Producto base del que hereda costo y PVP. Si es null, es un producto independiente (o base).
     public int? BaseProductId { get; set; }
 

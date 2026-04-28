@@ -416,6 +416,16 @@
                         || (products?.FirstOrDefault(c => c.Id == editingProductId)?.DerivedCount ?? 0) == 0;
                 }
                 <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 0.5rem; font-weight: 600; cursor: pointer;">
+                        <input type="checkbox" @bind="formIsBase" style="width: 18px; height: 18px;" />
+                        Es producto base
+                    </label>
+                    <p style="font-size: 0.78rem; color: #6b7280; margin: 0.3rem 0 0 1.7rem;">
+                        Tildalo cuando este producto va a tener variantes derivadas (por ejemplo, distintos colores o tamaños).
+                        Aparece en la solapa <strong>"Productos base"</strong>.
+                    </p>
+                </div>
+                <div class="form-group">
                     <label class="form-label">Producto base (opcional)</label>
                     @if (!canHaveBase)
                     {
@@ -1198,6 +1208,7 @@
     private string? formPhoto3;
     private int formBaseProductId; // 0 = sin base
     private int formBrandId; // 0 = sin marca
+    private bool formIsBase;
     private List<BrandDto>? brands;
 
     // Stock batches (lotes con vencimiento)
@@ -1388,9 +1399,11 @@
 
     private string PageTitle => IsBaseOnlyView ? "Productos base" : "Productos";
 
+    private bool IsConsideredBase(ProductDto p) => p.IsBase || p.DerivedCount > 0;
+
     private int VisibleTotal => IsBaseOnlyView
-        ? (products?.Count(p => p.DerivedCount > 0) ?? 0)
-        : (products?.Count(p => p.DerivedCount == 0) ?? 0);
+        ? (products?.Count(IsConsideredBase) ?? 0)
+        : (products?.Count(p => !IsConsideredBase(p)) ?? 0);
 
     private List<ProductDto> ApplyFiltersAndSort()
     {
@@ -1398,12 +1411,12 @@
         IEnumerable<ProductDto> result = products;
 
         // Filtro automatico segun la ruta:
-        // - /productos-base: solo productos que son base (tienen derivados).
-        // - /productos: todos EXCEPTO los productos base (estos viven en su propia solapa).
+        // - /productos-base: productos marcados como base o que ya tienen derivados.
+        // - /productos: todo lo demas (sueltos y derivados).
         if (IsBaseOnlyView)
-            result = result.Where(p => p.DerivedCount > 0);
+            result = result.Where(IsConsideredBase);
         else
-            result = result.Where(p => p.DerivedCount == 0);
+            result = result.Where(p => !IsConsideredBase(p));
 
         // Text filters
         foreach (var kv in textFilters.Where(f => !string.IsNullOrEmpty(f.Value)))
@@ -1556,6 +1569,8 @@
         formIsActive = true; formPhoto1 = null; formPhoto2 = null; formPhoto3 = null;
         formBaseProductId = 0;
         formBrandId = 0;
+        // Si la solapa actual es Productos base, pre-tildar "Es producto base".
+        formIsBase = IsBaseOnlyView;
         formError = null; showForm = true;
     }
 
@@ -1583,6 +1598,7 @@
         formPhoto1 = product.Photo1; formPhoto2 = product.Photo2; formPhoto3 = product.Photo3;
         formBaseProductId = product.BaseProductId ?? 0;
         formBrandId = product.BrandId ?? 0;
+        formIsBase = product.IsBase;
         formError = null; showForm = true;
     }
 
@@ -1616,6 +1632,7 @@
                 else update.ClearBaseProduct = true;
                 if (formBrandId > 0) update.BrandId = formBrandId;
                 else update.ClearBrand = true;
+                update.IsBase = formIsBase;
                 var result = await Api.UpdateProductAsync(editingProductId.Value, update);
                 if (result is null) { formError = "Error al actualizar el producto"; return; }
                 ToastService.Success("Producto actualizado");
@@ -1634,6 +1651,7 @@
                 };
                 if (formBaseProductId > 0) create.BaseProductId = formBaseProductId;
                 if (formBrandId > 0) create.BrandId = formBrandId;
+                create.IsBase = formIsBase;
                 var result = await Api.CreateProductAsync(create);
                 if (result is null) { formError = "Error al crear el producto"; return; }
                 ToastService.Success(requiresExpiry

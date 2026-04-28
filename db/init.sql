@@ -671,6 +671,21 @@ BEGIN
 END
 GO
 
+-- Flag explicito de "producto base" (independiente de tener derivados)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'IsBase' AND Object_ID = Object_ID(N'Products'))
+BEGIN
+    ALTER TABLE Products ADD IsBase BIT NOT NULL CONSTRAINT DF_Products_IsBase DEFAULT 0;
+END
+GO
+
+-- Backfill UNA SOLA VEZ: marcar como base a los productos sin padre que existian antes del flag.
+IF NOT EXISTS (SELECT 1 FROM AppSettings WHERE [Key] = 'products_isbase_backfilled')
+BEGIN
+    UPDATE Products SET IsBase = 1 WHERE BaseProductId IS NULL;
+    INSERT INTO AppSettings ([Key], [Value]) VALUES ('products_isbase_backfilled', '1');
+END
+GO
+
 -- Lotes de stock (cantidad + fecha de vencimiento por producto)
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ProductStockBatches' AND xtype='U')
 BEGIN

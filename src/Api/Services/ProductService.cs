@@ -60,7 +60,8 @@ public class ProductService
             derivedCounts.GetValueOrDefault(p.Id, 0),
             p.BrandId,
             p.BrandNav?.Name,
-            p.BrandNav?.HasExpiry ?? false
+            p.BrandNav?.HasExpiry ?? false,
+            p.IsBase
         )).ToList();
     }
 
@@ -89,7 +90,8 @@ public class ProductService
             derivedCount,
             p.BrandId,
             p.BrandNav?.Name,
-            p.BrandNav?.HasExpiry ?? false
+            p.BrandNav?.HasExpiry ?? false,
+            p.IsBase
         );
     }
 
@@ -142,7 +144,8 @@ public class ProductService
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
             BaseProductId = request.BaseProductId,
-            BrandId = request.BrandId
+            BrandId = request.BrandId,
+            IsBase = request.IsBase ?? false
         };
 
         _db.Products.Add(product);
@@ -253,6 +256,7 @@ public class ProductService
         if (request.Stock.HasValue) product.Stock = request.Stock.Value;
         if (request.CriticalStock.HasValue) product.CriticalStock = request.CriticalStock.Value;
         if (request.IsActive.HasValue) product.IsActive = request.IsActive.Value;
+        if (request.IsBase.HasValue) product.IsBase = request.IsBase.Value;
 
         product.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();

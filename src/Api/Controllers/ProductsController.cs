@@ -47,8 +47,7 @@ public class ProductsController : ControllerBase
         catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
     }
 
-    // Importacion para productos base: usa el mismo procesador
-    // (si el Excel no trae columna producto_base_sku, todos se crean sin padre).
+    // Importacion para productos base: marca IsBase=true en cada producto creado.
     [HttpPost("base-bulk-import")]
     public async Task<IActionResult> BaseBulkImport(IFormFile file)
     {
@@ -56,7 +55,7 @@ public class ProductsController : ControllerBase
         try
         {
             using var stream = file.OpenReadStream();
-            var result = await _import.ImportProductsAsync(stream);
+            var result = await _import.ImportProductsAsync(stream, markAsBase: true);
             return Ok(result);
         }
         catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
