@@ -11,12 +11,22 @@ public class ApiClient
     private readonly HttpClient _http;
     private readonly AuthService _authService;
     private readonly NavigationManager _navigation;
+    private readonly OperatorService _operator;
 
-    public ApiClient(HttpClient http, AuthService authService, NavigationManager navigation)
+    public ApiClient(HttpClient http, AuthService authService, NavigationManager navigation, OperatorService op)
     {
         _http = http;
         _authService = authService;
         _navigation = navigation;
+        _operator = op;
+    }
+
+    private void EnsureOperatorHeader()
+    {
+        // Setea/actualiza el header X-Operator-Name con el operador actual.
+        _http.DefaultRequestHeaders.Remove("X-Operator-Name");
+        if (!string.IsNullOrWhiteSpace(_operator.Current))
+            _http.DefaultRequestHeaders.Add("X-Operator-Name", _operator.Current);
     }
 
     public async Task<DashboardStats?> GetDashboardStatsAsync()
@@ -1113,11 +1123,15 @@ public class ApiClient
         return await response.Content.ReadFromJsonAsync<T>();
     }
 
-    // No-op: el JWT viaja en una cookie httpOnly que el browser envia automaticamente
-    // en cada request al mismo origen. Antes este metodo seteaba el header
-    // Authorization desde localStorage; ahora ya no hace falta. Se mantiene como
-    // no-op para no tocar las decenas de call sites que lo invocan.
-    private Task SetAuthHeaderAsync() => Task.CompletedTask;
+    // El JWT viaja en una cookie httpOnly que el browser envia automaticamente
+    // en cada request al mismo origen, asi que ya no hace falta setear Authorization.
+    // Aprovechamos este hook para inyectar el header X-Operator-Name (operador
+    // actual seleccionado en la UI) en cada request.
+    private Task SetAuthHeaderAsync()
+    {
+        EnsureOperatorHeader();
+        return Task.CompletedTask;
+    }
 
     public async Task<BulkPublishResponse?> BulkPublishAsync(BulkPublishRequest request)
     {

@@ -7,6 +7,7 @@
 @inject BrandSettingsService BrandSettings
 @inject IJSRuntime JS
 @inject ApiClient Api
+@inject OperatorService Operator
 @implements IDisposable
 
 <aside class="sidebar @(sidebarOpen ? "open" : "") @(sidebarCollapsed ? "collapsed" : "")" id="sidebar">
@@ -192,6 +193,13 @@
                 @SvgIcons.Menu
             </button>
             <h1 class="topbar-title">@BrandSettings.BrandName</h1>
+            @if (Operator.HasOperator)
+            {
+                <button class="btn btn-secondary" style="margin-left: 0.8rem; font-size: 0.78rem; padding: 0.25rem 0.6rem;"
+                        @onclick="() => showOperatorModal = true" title="Cambiar operador">
+                    👤 @Operator.Current
+                </button>
+            }
         </div>
         <div class="topbar-actions">
             @if (UploadProgress.IsUploading)
@@ -240,12 +248,45 @@
     <div class="sidebar-overlay visible" @onclick="CloseSidebar"></div>
 }
 
+@* Modal obligatorio: hay que elegir operador antes de operar *@
+@if (showOperatorModal)
+{
+    <div class="modal-overlay" style="z-index: 9000;" @onclick:stopPropagation="true">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3>👤 ¿Quién está trabajando?</h3>
+                @if (Operator.HasOperator)
+                {
+                    <button class="btn-close" @onclick="() => showOperatorModal = false">&times;</button>
+                }
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.85rem; color: #6b7280; margin: 0 0 0.75rem;">
+                    Elegi tu nombre para que el sistema registre quien hace cada accion.
+                </p>
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem;">
+                    @foreach (var op in OperatorService.Operators)
+                    {
+                        var name = op;
+                        <button class="btn @(Operator.Current == name ? "btn-primary" : "btn-secondary")"
+                                @onclick="() => SelectOperator(name)"
+                                style="padding: 0.7rem; font-weight: 700; font-size: 0.95rem;">
+                            @name
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 <ToastContainer />
 
 @code {
     private bool sidebarOpen;
     private bool sidebarCollapsed;
     private bool userMenuOpen;
+    private bool showOperatorModal;
     private string username = "usuario";
     private string role = "user";
     private List<string> permissions = new();
@@ -278,6 +319,7 @@
     {
         SyncProgress.OnChange += OnSyncProgressChanged;
         UploadProgress.OnChanged += OnUploadProgressChanged;
+        Operator.OnChange += OnOperatorChanged;
         var user = await AuthService.GetUserAsync();
         if (user is not null)
         {
@@ -285,6 +327,10 @@
             role = user.Role;
             permissions = user.Permissions ?? new();
         }
+
+        // Cargar operador desde localStorage. Si no hay, abrir modal obligatorio.
+        await Operator.LoadAsync();
+        if (!Operator.HasOperator) showOperatorModal = true;
 
         // Refrescar permisos desde el servidor para reflejar cambios sin necesidad de re-login.
         try
@@ -379,11 +425,20 @@
     {
         SyncProgress.OnChange -= OnSyncProgressChanged;
         UploadProgress.OnChanged -= OnUploadProgressChanged;
+        Operator.OnChange -= OnOperatorChanged;
         Navigation.LocationChanged -= OnLocationChanged;
         BrandSettings.OnChange -= OnBrandChanged;
     }
 
     private void OnUploadProgressChanged() => InvokeAsync(StateHasChanged);
+    private void OnOperatorChanged() => InvokeAsync(StateHasChanged);
+
+    private async Task SelectOperator(string name)
+    {
+        await Operator.SetAsync(name);
+        showOperatorModal = false;
+        ToastService.Success($"Trabajando como {name}");
+    }
 
     private async Task CancelUpload()
     {

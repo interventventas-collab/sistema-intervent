@@ -8,14 +8,24 @@ namespace Api.Services;
 public class AuditLogService
 {
     private readonly AppDbContext _db;
+    private readonly IHttpContextAccessor _http;
 
-    public AuditLogService(AppDbContext db)
+    public AuditLogService(AppDbContext db, IHttpContextAccessor http)
     {
         _db = db;
+        _http = http;
     }
 
     public async Task LogAsync(string entityType, string entityId, string action, string? changes = null, string? userName = null)
     {
+        // Si no nos pasaron userName explicito, lo tomamos del header X-Operator-Name
+        // (operador seleccionado en la UI). Si tampoco esta, queda null.
+        if (string.IsNullOrWhiteSpace(userName))
+        {
+            var op = _http.HttpContext?.Request.Headers["X-Operator-Name"].ToString();
+            if (!string.IsNullOrWhiteSpace(op)) userName = op;
+        }
+
         _db.AuditLogs.Add(new AuditLog
         {
             EntityType = entityType,

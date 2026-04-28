@@ -21,6 +21,7 @@ builder.Services.AddScoped<ApiClient>();
 builder.Services.AddScoped<ToastService>();
 builder.Services.AddScoped<SyncProgressTracker>();
 builder.Services.AddScoped<BrandSettingsService>();
+builder.Services.AddScoped<OperatorService>();
 builder.Services.AddSingleton<UploadProgressService>();
 
 await builder.Build().RunAsync();

@@ -4,6 +4,8 @@
 @implements IDisposable
 @inject ApiClient Api
 @inject AuthService AuthService
+@inject OperatorService Operator
+@inject ToastService ToastService
 
 <div class="view-header">
     <h2>Bienvenido, @username</h2>
@@ -12,8 +14,21 @@
 
 @* Fila superior: HOLA MUNDO + 3 widgets (dolar BNA, reloj AR, reloj ES) *@
 <div style="display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 0.8rem; margin-bottom: 1rem;">
-    <div class="dashboard-detail-card" style="display: flex; align-items: center; justify-content: center;">
-        <span class="detail-card-value" style="font-size: 1.4rem;">HOLA MUNDO</span>
+    <div class="dashboard-detail-card" style="padding: 1rem; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.5rem;">
+        <span style="font-size: 1.2rem; font-weight: 700;">👋 HOLA EQUIPO:</span>
+        <select class="form-input" style="font-size: 1rem; font-weight: 700; max-width: 220px;"
+                value="@(Operator.Current ?? "")"
+                @onchange="OnSelectOperator">
+            <option value="">— Elegi tu nombre —</option>
+            @foreach (var op in OperatorService.Operators)
+            {
+                <option value="@op">@op</option>
+            }
+        </select>
+        @if (Operator.HasOperator)
+        {
+            <div style="font-size: 0.78rem; color: #6b7280;">Estás trabajando como <strong>@Operator.Current</strong></div>
+        }
     </div>
 
     @* Widget Dolar BNA *@
@@ -220,6 +235,14 @@
         }
         dolarLoading = false;
         StateHasChanged();
+    }
+
+    private async Task OnSelectOperator(ChangeEventArgs e)
+    {
+        var name = e.Value?.ToString();
+        await Operator.SetAsync(string.IsNullOrWhiteSpace(name) ? null : name);
+        if (!string.IsNullOrWhiteSpace(name))
+            ToastService.Success($"Trabajando como {name}");
     }
 
     private static string FormatMoney(decimal value)
