@@ -273,18 +273,21 @@
         isSaving = true;
         try
         {
+            // Helper para evitar mandar "" donde el backend espera null (rompe validaciones como [EmailAddress])
+            string? Nz(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
             if (isEditing && editingId.HasValue)
             {
                 var updated = await Api.UpdateClientAsync(editingId.Value, new UpdateClientRequest
                 {
-                    Code = formCode,
-                    Name = formName,
-                    Cuit = formCuit,
-                    Phone = formPhone,
-                    Email = formEmail,
-                    Address = formAddress,
-                    ContactName = formContactName,
-                    Notes = formNotes,
+                    Code = Nz(formCode),
+                    Name = formName.Trim(),
+                    Cuit = Nz(formCuit),
+                    Phone = Nz(formPhone),
+                    Email = Nz(formEmail),
+                    Address = Nz(formAddress),
+                    ContactName = Nz(formContactName),
+                    Notes = Nz(formNotes),
                     IsActive = formIsActive
                 });
                 if (updated is null) { formError = "No se pudo actualizar"; return; }
@@ -294,14 +297,14 @@
             {
                 var created = await Api.CreateClientAsync(new CreateClientRequest
                 {
-                    Code = string.IsNullOrWhiteSpace(formCode) ? null : formCode,
-                    Name = formName,
-                    Cuit = formCuit,
-                    Phone = formPhone,
-                    Email = formEmail,
-                    Address = formAddress,
-                    ContactName = formContactName,
-                    Notes = formNotes
+                    Code = Nz(formCode),
+                    Name = formName.Trim(),
+                    Cuit = Nz(formCuit),
+                    Phone = Nz(formPhone),
+                    Email = Nz(formEmail),
+                    Address = Nz(formAddress),
+                    ContactName = Nz(formContactName),
+                    Notes = Nz(formNotes)
                 });
                 if (created is null) { formError = "No se pudo crear"; return; }
                 ToastService.Success("Cliente creado");
