@@ -21,6 +21,9 @@ public class Brand
     [MaxLength(500)]
     public string? Description { get; set; }
 
+    // Si es true, los productos de esta marca manejan stock por lotes con fecha de vencimiento.
+    public bool HasExpiry { get; set; } = false;
+
     public bool IsActive { get; set; } = true;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

@@ -26,6 +26,7 @@
                             <th style="width: 110px;">Codigo</th>
                             <th>Nombre</th>
                             <th>Descripcion</th>
+                            <th>Vencimiento</th>
                             <th>Estado</th>
                             <th style="width: 130px;">Acciones</th>
                         </tr>
@@ -37,6 +38,16 @@
                                 <td style="font-family: monospace; color: #374151;">@b.Code</td>
                                 <td><strong>@b.Name</strong></td>
                                 <td style="color: #6b7280; font-size: 0.85rem;">@(b.Description ?? "")</td>
+                                <td>
+                                    @if (b.HasExpiry)
+                                    {
+                                        <span style="display: inline-block; padding: 0.15rem 0.5rem; background: #fef3c7; color: #92400e; border-radius: 999px; font-size: 0.75rem; font-weight: 600;">Con vencimiento</span>
+                                    }
+                                    else
+                                    {
+                                        <span style="color: #9ca3af; font-size: 0.8rem;">—</span>
+                                    }
+                                </td>
                                 <td>
                                     <span class="status-badge @(b.IsActive ? "status-active" : "status-inactive")">
                                         @(b.IsActive ? "Activa" : "Inactiva")
@@ -84,6 +95,15 @@
                 <div class="form-group">
                     <label class="form-label">Descripcion</label>
                     <textarea class="form-input" @bind="formDescription" rows="3" placeholder="Notas sobre la marca (opcional)"></textarea>
+                </div>
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 0.5rem; font-weight: 600; cursor: pointer;">
+                        <input type="checkbox" @bind="formHasExpiry" style="width: 18px; height: 18px;" />
+                        Producto con vencimiento
+                    </label>
+                    <p style="font-size: 0.78rem; color: #6b7280; margin: 0.3rem 0 0 1.7rem;">
+                        Si lo tildas, los productos de esta marca van a manejar el stock por lotes (cantidad + fecha de vencimiento).
+                    </p>
                 </div>
                 @if (isEditing)
                 {
@@ -137,6 +157,7 @@
     private string formCode = "";
     private string formName = "";
     private string formDescription = "";
+    private bool formHasExpiry;
     private bool formIsActive = true;
     private bool showDeleteConfirm;
     private BrandDto? brandToDelete;
@@ -154,7 +175,8 @@
     private void ShowCreateForm()
     {
         isEditing = false; editingId = null;
-        formCode = ""; formName = ""; formDescription = ""; formIsActive = true;
+        formCode = ""; formName = ""; formDescription = "";
+        formHasExpiry = false; formIsActive = true;
         formError = null; showForm = true;
     }
 
@@ -162,6 +184,7 @@
     {
         isEditing = true; editingId = b.Id;
         formCode = b.Code; formName = b.Name; formDescription = b.Description ?? "";
+        formHasExpiry = b.HasExpiry;
         formIsActive = b.IsActive;
         formError = null; showForm = true;
     }
@@ -179,7 +202,8 @@
             {
                 var updated = await Api.UpdateBrandAsync(editingId.Value, new UpdateBrandRequest
                 {
-                    Code = formCode, Name = formName, Description = formDescription, IsActive = formIsActive
+                    Code = formCode, Name = formName, Description = formDescription,
+                    HasExpiry = formHasExpiry, IsActive = formIsActive
                 });
                 if (updated is null) { formError = "No se pudo actualizar"; return; }
                 ToastService.Success("Marca actualizada");
@@ -189,7 +213,8 @@
                 var created = await Api.CreateBrandAsync(new CreateBrandRequest
                 {
                     Code = string.IsNullOrWhiteSpace(formCode) ? null : formCode,
-                    Name = formName, Description = formDescription
+                    Name = formName, Description = formDescription,
+                    HasExpiry = formHasExpiry
                 });
                 if (created is null) { formError = "No se pudo crear"; return; }
                 ToastService.Success("Marca creada");

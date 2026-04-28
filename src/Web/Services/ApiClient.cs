@@ -199,6 +199,19 @@ public class ApiClient
     public async Task<bool> DeleteClientAsync(int id)
         => await DeleteAsync($"/api/clients/{id}");
 
+    // --- Stock batches (lotes con vencimiento) ---
+    public async Task<List<StockBatchDto>?> GetStockBatchesAsync(int productId)
+        => await GetAsync<List<StockBatchDto>>($"/api/products/{productId}/stock-batches");
+
+    public async Task<StockBatchDto?> CreateStockBatchAsync(int productId, CreateStockBatchRequest request)
+        => await PostAsync<StockBatchDto>($"/api/products/{productId}/stock-batches", request);
+
+    public async Task<StockBatchDto?> UpdateStockBatchAsync(int batchId, UpdateStockBatchRequest request)
+        => await PutAsync<StockBatchDto>($"/api/stock-batches/{batchId}", request);
+
+    public async Task<bool> DeleteStockBatchAsync(int batchId)
+        => await DeleteAsync($"/api/stock-batches/{batchId}");
+
     // --- Combos ---
     public async Task<List<ComboDto>?> GetCombosAsync()
         => await GetAsync<List<ComboDto>>("/api/combos");

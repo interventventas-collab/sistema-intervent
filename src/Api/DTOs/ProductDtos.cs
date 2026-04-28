@@ -27,7 +27,8 @@ public record ProductListDto(
     string? BaseProductTitle,
     int DerivedCount,
     int? BrandId,
-    string? BrandName
+    string? BrandName,
+    bool RequiresExpiry
 );
 
 public record CreateProductRequest(

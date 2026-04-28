@@ -57,7 +57,8 @@ public class ProductService
             p.BaseProduct?.Title,
             derivedCounts.GetValueOrDefault(p.Id, 0),
             p.BrandId,
-            p.BrandNav?.Name
+            p.BrandNav?.Name,
+            p.BrandNav?.HasExpiry ?? false
         )).ToList();
     }
 
@@ -83,7 +84,8 @@ public class ProductService
             p.BaseProduct?.Title,
             derivedCount,
             p.BrandId,
-            p.BrandNav?.Name
+            p.BrandNav?.Name,
+            p.BrandNav?.HasExpiry ?? false
         );
     }
 

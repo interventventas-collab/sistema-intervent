@@ -19,7 +19,7 @@ public class BrandService
     {
         return await _db.Brands
             .OrderBy(b => b.Code)
-            .Select(b => new BrandDto(b.Id, b.Code, b.Name, b.Description, b.IsActive, b.CreatedAt, b.UpdatedAt))
+            .Select(b => new BrandDto(b.Id, b.Code, b.Name, b.Description, b.HasExpiry, b.IsActive, b.CreatedAt, b.UpdatedAt))
             .ToListAsync();
     }
 
@@ -27,7 +27,7 @@ public class BrandService
     {
         return await _db.Brands
             .Where(b => b.Id == id)
-            .Select(b => new BrandDto(b.Id, b.Code, b.Name, b.Description, b.IsActive, b.CreatedAt, b.UpdatedAt))
+            .Select(b => new BrandDto(b.Id, b.Code, b.Name, b.Description, b.HasExpiry, b.IsActive, b.CreatedAt, b.UpdatedAt))
             .FirstOrDefaultAsync();
     }
 
@@ -45,12 +45,13 @@ public class BrandService
             Code = code,
             Name = name,
             Description = string.IsNullOrWhiteSpace(r.Description) ? null : r.Description.Trim(),
+            HasExpiry = r.HasExpiry ?? false,
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
         _db.Brands.Add(b);
         await _db.SaveChangesAsync();
-        return new BrandDto(b.Id, b.Code, b.Name, b.Description, b.IsActive, b.CreatedAt, b.UpdatedAt);
+        return new BrandDto(b.Id, b.Code, b.Name, b.Description, b.HasExpiry, b.IsActive, b.CreatedAt, b.UpdatedAt);
     }
 
     public async Task<BrandDto?> UpdateAsync(int id, UpdateBrandRequest r)
@@ -77,11 +78,12 @@ public class BrandService
             b.Name = newName;
         }
         if (r.Description is not null) b.Description = string.IsNullOrWhiteSpace(r.Description) ? null : r.Description.Trim();
+        if (r.HasExpiry.HasValue) b.HasExpiry = r.HasExpiry.Value;
         if (r.IsActive.HasValue) b.IsActive = r.IsActive.Value;
         b.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync();
-        return new BrandDto(b.Id, b.Code, b.Name, b.Description, b.IsActive, b.CreatedAt, b.UpdatedAt);
+        return new BrandDto(b.Id, b.Code, b.Name, b.Description, b.HasExpiry, b.IsActive, b.CreatedAt, b.UpdatedAt);
     }
 
     public async Task<bool> DeleteAsync(int id)

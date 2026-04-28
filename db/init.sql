@@ -622,6 +622,31 @@ BEGIN
 END
 GO
 
+-- Marcas con productos perecederos (manejan stock por lotes con fecha de vencimiento)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'HasExpiry' AND Object_ID = Object_ID(N'Brands'))
+BEGIN
+    ALTER TABLE Brands ADD HasExpiry BIT NOT NULL DEFAULT 0;
+END
+GO
+
+-- Lotes de stock (cantidad + fecha de vencimiento por producto)
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ProductStockBatches' AND xtype='U')
+BEGIN
+    CREATE TABLE ProductStockBatches (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        ProductId INT NOT NULL,
+        Quantity INT NOT NULL,
+        ExpiryDate DATE NOT NULL,
+        Notes NVARCHAR(500) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT FK_ProductStockBatches_Product FOREIGN KEY (ProductId) REFERENCES Products(Id) ON DELETE CASCADE
+    );
+    CREATE INDEX IX_ProductStockBatches_ProductId ON ProductStockBatches (ProductId);
+    CREATE INDEX IX_ProductStockBatches_ExpiryDate ON ProductStockBatches (ExpiryDate);
+END
+GO
+
 -- Clients (clientes)
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Clients' AND xtype='U')
 BEGIN

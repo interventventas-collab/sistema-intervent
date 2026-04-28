@@ -280,6 +280,14 @@
                                     {
                                         @product.Stock
                                     }
+                                    @if (product.RequiresExpiry)
+                                    {
+                                        <button class="btn-icon" @onclick:stopPropagation="true" @onclick="() => OpenBatchesModal(product)"
+                                                title="Gestionar stock por lotes con vencimiento"
+                                                style="margin-left: 0.3rem; background: #fef3c7; border: 1px solid #fbbf24; color: #92400e; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.75rem; cursor: pointer;">
+                                            📅 Lotes
+                                        </button>
+                                    }
                                 </td>
                                 <td style="text-align: center;">
                                     <span class="status-badge @(product.IsActive ? "status-active" : "status-inactive")">
@@ -428,8 +436,15 @@
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label class="form-label">Stock</label>
-                        <input class="form-input" type="number" min="0" style="font-size: 1.1rem; font-weight: 700; text-align: right;" @bind="formStock" />
+                        <label class="form-label">Stock @(FormRequiresExpiry ? "(por lotes)" : "")</label>
+                        <input class="form-input" type="number" min="0" style="font-size: 1.1rem; font-weight: 700; text-align: right; @(FormRequiresExpiry ? "background:#f3f4f6;color:#6b7280;" : "")"
+                               @bind="formStock" disabled="@FormRequiresExpiry" />
+                        @if (FormRequiresExpiry)
+                        {
+                            <p style="font-size: 0.75rem; color: #92400e; margin: 0.3rem 0 0;">
+                                ⚠ Esta marca tiene productos con vencimiento. El stock se gestiona por lotes desde el boton "📅 Lotes" en la tabla, despues de guardar.
+                            </p>
+                        }
                     </div>
                     <div class="form-group">
                         <label class="form-label">Stock Critico</label>
@@ -499,6 +514,109 @@
             <div class="modal-footer">
                 <button class="btn btn-secondary" @onclick="() => showDeleteConfirm = false">Cancelar</button>
                 <button class="btn btn-danger" @onclick="DeleteProduct">Eliminar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ===== STOCK BATCHES MODAL ===== *@
+@if (showBatchesModal && batchesProduct is not null)
+{
+    <div class="modal-overlay" @onclick="CloseBatchesModal">
+        <div class="modal-card modal-wide" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3>Stock por lotes — @batchesProduct.Title</h3>
+                <button class="btn-close" @onclick="CloseBatchesModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(batchesError))
+                {
+                    <div class="form-error">@batchesError</div>
+                }
+                <p style="font-size: 0.85rem; color: #6b7280; margin: 0 0 0.75rem;">
+                    Cada lote representa una cantidad de unidades con la misma fecha de vencimiento.
+                    Marca: <strong>@(batchesProduct.BrandName ?? "—")</strong> · SKU: <strong>@(batchesProduct.Sku ?? "—")</strong>
+                </p>
+
+                @if (batchesLoading)
+                {
+                    <p style="color: #6b7280;">Cargando lotes...</p>
+                }
+                else if (batchesList is null || batchesList.Count == 0)
+                {
+                    <p style="color: #6b7280; font-style: italic; padding: 0.5rem 0;">No hay lotes cargados todavia.</p>
+                }
+                else
+                {
+                    <table class="data-table" style="margin-bottom: 0.75rem;">
+                        <thead>
+                            <tr>
+                                <th style="width: 110px; text-align: center;">Cantidad</th>
+                                <th style="width: 140px;">Vencimiento</th>
+                                <th style="width: 130px;">Estado</th>
+                                <th>Notas</th>
+                                <th style="width: 60px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var batch in batchesList)
+                            {
+                                <tr>
+                                    <td style="text-align: center; font-weight: 700;">@batch.Quantity</td>
+                                    <td>@batch.ExpiryDate.ToString("dd/MM/yyyy")</td>
+                                    <td>
+                                        @if (batch.IsExpired)
+                                        {
+                                            <span style="color: #b91c1c; font-weight: 600;">Vencido hace @(-batch.DaysUntilExpiry) dia(s)</span>
+                                        }
+                                        else if (batch.DaysUntilExpiry <= 30)
+                                        {
+                                            <span style="color: #d97706; font-weight: 600;">Vence en @batch.DaysUntilExpiry dia(s)</span>
+                                        }
+                                        else
+                                        {
+                                            <span style="color: #15803d;">Vence en @batch.DaysUntilExpiry dia(s)</span>
+                                        }
+                                    </td>
+                                    <td style="color: #6b7280; font-size: 0.85rem;">@(batch.Notes ?? "")</td>
+                                    <td style="text-align: center;">
+                                        <button class="btn-icon btn-delete" @onclick="() => DeleteBatch(batch)" title="Eliminar lote">×</button>
+                                    </td>
+                                </tr>
+                            }
+                            <tr>
+                                <td style="text-align: center; font-weight: 700; font-size: 1rem; background: #f9fafb;">@batchesList.Sum(b => b.Quantity)</td>
+                                <td colspan="4" style="background: #f9fafb; color: #6b7280; font-weight: 600;">Total stock del producto</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                }
+
+                <hr style="margin: 1rem 0; border: none; border-top: 1px solid #e5e7eb;" />
+
+                <h4 style="margin: 0 0 0.5rem; font-size: 0.95rem;">Agregar nuevo lote</h4>
+                <div class="form-row" style="align-items: flex-end;">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Cantidad</label>
+                        <input class="form-input" type="number" min="1" @bind="batchAddQty" style="text-align: right; font-weight: 700;" />
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Fecha de vencimiento</label>
+                        <input class="form-input" type="date" @bind="batchAddExpiry" />
+                    </div>
+                    <div class="form-group" style="flex: 2;">
+                        <label class="form-label">Notas (opcional)</label>
+                        <input class="form-input" @bind="batchAddNotes" placeholder="N° de lote, partida, etc." />
+                    </div>
+                    <div class="form-group" style="flex: 0;">
+                        <button class="btn btn-primary" @onclick="AddBatch" disabled="@(batchSaving || batchAddQty < 1)" style="white-space: nowrap;">
+                            @(batchSaving ? "Guardando..." : "+ Agregar")
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseBatchesModal">Cerrar</button>
             </div>
         </div>
     </div>
@@ -1019,6 +1137,20 @@
     private int formBaseProductId; // 0 = sin base
     private int formBrandId; // 0 = sin marca
     private List<BrandDto>? brands;
+
+    // Stock batches (lotes con vencimiento)
+    private bool showBatchesModal;
+    private ProductDto? batchesProduct;
+    private List<StockBatchDto>? batchesList;
+    private bool batchesLoading;
+    private int batchAddQty;
+    private DateTime batchAddExpiry = DateTime.Today.AddMonths(6);
+    private string batchAddNotes = "";
+    private string? batchesError;
+    private bool batchSaving;
+
+    private bool FormRequiresExpiry =>
+        formBrandId > 0 && (brands?.FirstOrDefault(b => b.Id == formBrandId)?.HasExpiry ?? false);
     private bool showDeleteConfirm;
     private ProductDto? productToDelete;
     private const long MaxFileSize = 2 * 1024 * 1024;
@@ -1386,9 +1518,14 @@
         isSaving = true;
         try
         {
+            // Si la marca exige manejar stock por lotes, no enviamos el campo Stock manual:
+            // se calcula como suma de lotes en el backend.
+            var requiresExpiry = FormRequiresExpiry;
+
             if (isEditing && editingProductId.HasValue)
             {
-                var update = new UpdateProductRequest { Title = formTitle, Description = formDescription, Sku = formSku, Model = formModel, CostPrice = formCostPrice, RetailPrice = formRetailPrice, Stock = formStock, CriticalStock = formCriticalStock, IsActive = formIsActive, Photo1 = formPhoto1 ?? "", Photo2 = formPhoto2 ?? "", Photo3 = formPhoto3 ?? "" };
+                var update = new UpdateProductRequest { Title = formTitle, Description = formDescription, Sku = formSku, Model = formModel, CostPrice = formCostPrice, RetailPrice = formRetailPrice, CriticalStock = formCriticalStock, IsActive = formIsActive, Photo1 = formPhoto1 ?? "", Photo2 = formPhoto2 ?? "", Photo3 = formPhoto3 ?? "" };
+                if (!requiresExpiry) update.Stock = formStock;
                 if (formBaseProductId > 0) update.BaseProductId = formBaseProductId;
                 else update.ClearBaseProduct = true;
                 if (formBrandId > 0) update.BrandId = formBrandId;
@@ -1399,12 +1536,14 @@
             }
             else
             {
-                var create = new CreateProductRequest { Title = formTitle, Description = formDescription, Sku = formSku, Model = formModel, CostPrice = formCostPrice, RetailPrice = formRetailPrice, Stock = formStock, CriticalStock = formCriticalStock, Photo1 = formPhoto1, Photo2 = formPhoto2, Photo3 = formPhoto3 };
+                var create = new CreateProductRequest { Title = formTitle, Description = formDescription, Sku = formSku, Model = formModel, CostPrice = formCostPrice, RetailPrice = formRetailPrice, Stock = requiresExpiry ? 0 : formStock, CriticalStock = formCriticalStock, Photo1 = formPhoto1, Photo2 = formPhoto2, Photo3 = formPhoto3 };
                 if (formBaseProductId > 0) create.BaseProductId = formBaseProductId;
                 if (formBrandId > 0) create.BrandId = formBrandId;
                 var result = await Api.CreateProductAsync(create);
                 if (result is null) { formError = "Error al crear el producto"; return; }
-                ToastService.Success("Producto creado");
+                ToastService.Success(requiresExpiry
+                    ? "Producto creado. Tocá '📅 Lotes' para cargar el stock con vencimiento."
+                    : "Producto creado");
             }
             showForm = false; await LoadData();
         }
@@ -1722,6 +1861,82 @@
     }
 
     private int? savingCostId;
+
+    // ===== Stock batches =====
+
+    private async Task OpenBatchesModal(ProductDto p)
+    {
+        batchesProduct = p;
+        batchesList = null;
+        batchesError = null;
+        batchAddQty = 1;
+        batchAddExpiry = DateTime.Today.AddMonths(6);
+        batchAddNotes = "";
+        showBatchesModal = true;
+        await LoadBatches();
+    }
+
+    private void CloseBatchesModal()
+    {
+        showBatchesModal = false;
+        batchesProduct = null;
+        batchesList = null;
+        batchesError = null;
+    }
+
+    private async Task LoadBatches()
+    {
+        if (batchesProduct is null) return;
+        batchesLoading = true;
+        try
+        {
+            batchesList = await Api.GetStockBatchesAsync(batchesProduct.Id) ?? new();
+        }
+        catch (Exception ex) { batchesError = "Error al cargar lotes: " + ex.Message; }
+        batchesLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task AddBatch()
+    {
+        if (batchesProduct is null) return;
+        if (batchAddQty < 1) { batchesError = "La cantidad debe ser mayor a 0."; return; }
+        batchesError = null;
+        batchSaving = true;
+        try
+        {
+            await Api.CreateStockBatchAsync(batchesProduct.Id, new CreateStockBatchRequest
+            {
+                Quantity = batchAddQty,
+                ExpiryDate = batchAddExpiry,
+                Notes = batchAddNotes
+            });
+            ToastService.Success("Lote agregado");
+            batchAddQty = 1;
+            batchAddNotes = "";
+            await LoadBatches();
+            await LoadData(); // refrescar el stock total en la tabla principal
+        }
+        catch (Exception ex) { batchesError = ex.Message; }
+        batchSaving = false;
+        StateHasChanged();
+    }
+
+    private async Task DeleteBatch(StockBatchDto batch)
+    {
+        try
+        {
+            var ok = await Api.DeleteStockBatchAsync(batch.Id);
+            if (ok)
+            {
+                ToastService.Success("Lote eliminado");
+                await LoadBatches();
+                await LoadData();
+            }
+            else ToastService.Error("No se pudo eliminar");
+        }
+        catch (Exception ex) { batchesError = ex.Message; StateHasChanged(); }
+    }
 
     private async Task SaveProductCost(ProductDto product, string? rawValue)
     {

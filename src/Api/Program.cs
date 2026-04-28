@@ -110,6 +110,7 @@ builder.Services.AddScoped<SupplierService>();
 builder.Services.AddScoped<BrandService>();
 builder.Services.AddScoped<ClientService>();
 builder.Services.AddScoped<ComboService>();
+builder.Services.AddScoped<StockBatchService>();
 builder.Services.AddScoped<AiService>();
 builder.Services.AddSingleton<SyncProgressService>();
 builder.Services.AddSingleton<WhatsAppService>();

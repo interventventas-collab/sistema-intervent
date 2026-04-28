@@ -25,6 +25,7 @@ public class ProductDto
     public int DerivedCount { get; set; }
     public int? BrandId { get; set; }
     public string? BrandName { get; set; }
+    public bool RequiresExpiry { get; set; }
 }
 
 public class CreateProductRequest

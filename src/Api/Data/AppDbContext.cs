@@ -20,6 +20,7 @@ public class AppDbContext : DbContext
     public DbSet<Combo> Combos => Set<Combo>();
     public DbSet<ComboItem> ComboItems => Set<ComboItem>();
     public DbSet<Client> Clients => Set<Client>();
+    public DbSet<ProductStockBatch> ProductStockBatches => Set<ProductStockBatch>();
     public DbSet<ScheduledProcess> ScheduledProcesses => Set<ScheduledProcess>();
     public DbSet<ProcessExecutionLog> ProcessExecutionLogs => Set<ProcessExecutionLog>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
@@ -126,6 +127,16 @@ public class AppDbContext : DbContext
         {
             entity.HasIndex(c => c.Name);
             entity.HasIndex(c => c.Code).IsUnique();
+        });
+
+        modelBuilder.Entity<ProductStockBatch>(entity =>
+        {
+            entity.HasIndex(b => b.ProductId);
+            entity.HasIndex(b => b.ExpiryDate);
+            entity.HasOne(b => b.Product)
+                  .WithMany()
+                  .HasForeignKey(b => b.ProductId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Combo>(entity =>
