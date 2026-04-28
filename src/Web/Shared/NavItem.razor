@@ -1,7 +1,17 @@
-<a href="@Href" class="nav-item @(IsActive ? "active" : "")" @onclick="OnClick" @onclick:preventDefault>
-    <span class="nav-icon">@Icon</span>
-    <span class="nav-label">@Label</span>
-</a>
+@if (IsExternal)
+{
+    <a href="@Href" class="nav-item" target="_blank" rel="noopener noreferrer">
+        <span class="nav-icon">@Icon</span>
+        <span class="nav-label">@Label</span>
+    </a>
+}
+else
+{
+    <a href="@Href" class="nav-item @(IsActive ? "active" : "")" @onclick="OnClick" @onclick:preventDefault>
+        <span class="nav-icon">@Icon</span>
+        <span class="nav-label">@Label</span>
+    </a>
+}
 
 @code {
     [Parameter] public string Href { get; set; } = "#";
@@ -9,4 +19,5 @@
     [Parameter] public MarkupString Icon { get; set; }
     [Parameter] public bool IsActive { get; set; }
     [Parameter] public EventCallback OnClick { get; set; }
+    [Parameter] public bool IsExternal { get; set; }
 }
