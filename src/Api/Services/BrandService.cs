@@ -8,6 +8,7 @@ namespace Api.Services;
 public class BrandService
 {
     private readonly AppDbContext _db;
+    private const string CodePrefix = "MAR-";
 
     public BrandService(AppDbContext db)
     {
@@ -17,8 +18,8 @@ public class BrandService
     public async Task<List<BrandDto>> GetAllAsync()
     {
         return await _db.Brands
-            .OrderBy(b => b.Name)
-            .Select(b => new BrandDto(b.Id, b.Name, b.Description, b.IsActive, b.CreatedAt, b.UpdatedAt))
+            .OrderBy(b => b.Code)
+            .Select(b => new BrandDto(b.Id, b.Code, b.Name, b.Description, b.IsActive, b.CreatedAt, b.UpdatedAt))
             .ToListAsync();
     }
 
@@ -26,7 +27,7 @@ public class BrandService
     {
         return await _db.Brands
             .Where(b => b.Id == id)
-            .Select(b => new BrandDto(b.Id, b.Name, b.Description, b.IsActive, b.CreatedAt, b.UpdatedAt))
+            .Select(b => new BrandDto(b.Id, b.Code, b.Name, b.Description, b.IsActive, b.CreatedAt, b.UpdatedAt))
             .FirstOrDefaultAsync();
     }
 
@@ -36,8 +37,12 @@ public class BrandService
         if (await _db.Brands.AnyAsync(b => b.Name == name))
             throw new InvalidOperationException($"Ya existe una marca con el nombre '{name}'.");
 
+        var code = string.IsNullOrWhiteSpace(r.Code) ? await GenerateNextCodeAsync() : r.Code.Trim();
+        await EnsureCodeIsUniqueAsync(code, ignoreId: null);
+
         var b = new Brand
         {
+            Code = code,
             Name = name,
             Description = string.IsNullOrWhiteSpace(r.Description) ? null : r.Description.Trim(),
             IsActive = true,
@@ -45,7 +50,7 @@ public class BrandService
         };
         _db.Brands.Add(b);
         await _db.SaveChangesAsync();
-        return new BrandDto(b.Id, b.Name, b.Description, b.IsActive, b.CreatedAt, b.UpdatedAt);
+        return new BrandDto(b.Id, b.Code, b.Name, b.Description, b.IsActive, b.CreatedAt, b.UpdatedAt);
     }
 
     public async Task<BrandDto?> UpdateAsync(int id, UpdateBrandRequest r)
@@ -53,6 +58,17 @@ public class BrandService
         var b = await _db.Brands.FindAsync(id);
         if (b is null) return null;
 
+        if (r.Code is not null)
+        {
+            var newCode = r.Code.Trim();
+            if (string.IsNullOrEmpty(newCode))
+                throw new InvalidOperationException("El codigo no puede estar vacio.");
+            if (newCode != b.Code)
+            {
+                await EnsureCodeIsUniqueAsync(newCode, id);
+                b.Code = newCode;
+            }
+        }
         if (r.Name is not null)
         {
             var newName = r.Name.Trim();
@@ -65,7 +81,7 @@ public class BrandService
         b.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync();
-        return new BrandDto(b.Id, b.Name, b.Description, b.IsActive, b.CreatedAt, b.UpdatedAt);
+        return new BrandDto(b.Id, b.Code, b.Name, b.Description, b.IsActive, b.CreatedAt, b.UpdatedAt);
     }
 
     public async Task<bool> DeleteAsync(int id)
@@ -75,5 +91,30 @@ public class BrandService
         _db.Brands.Remove(b);
         await _db.SaveChangesAsync();
         return true;
+    }
+
+    // --- Helpers ---
+
+    private async Task<string> GenerateNextCodeAsync()
+    {
+        var existing = await _db.Brands
+            .Where(b => b.Code.StartsWith(CodePrefix))
+            .Select(b => b.Code)
+            .ToListAsync();
+
+        int max = 0;
+        foreach (var code in existing)
+        {
+            var numPart = code.Substring(CodePrefix.Length);
+            if (int.TryParse(numPart, out var num) && num > max) max = num;
+        }
+        return $"{CodePrefix}{(max + 1):D3}";
+    }
+
+    private async Task EnsureCodeIsUniqueAsync(string code, int? ignoreId)
+    {
+        var exists = await _db.Brands.AnyAsync(b => b.Code == code && (ignoreId == null || b.Id != ignoreId.Value));
+        if (exists)
+            throw new InvalidOperationException($"Ya existe una marca con el codigo '{code}'.");
     }
 }

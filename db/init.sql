@@ -566,6 +566,7 @@ IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Suppliers' AND xtype='U')
 BEGIN
     CREATE TABLE Suppliers (
         Id INT IDENTITY(1,1) PRIMARY KEY,
+        Code NVARCHAR(30) NOT NULL,
         Name NVARCHAR(200) NOT NULL,
         Cuit NVARCHAR(20) NULL,
         Phone NVARCHAR(50) NULL,
@@ -575,9 +576,21 @@ BEGIN
         Notes NVARCHAR(MAX) NULL,
         IsActive BIT NOT NULL DEFAULT 1,
         CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
-        UpdatedAt DATETIME2 NULL
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT UQ_Suppliers_Code UNIQUE (Code)
     );
     CREATE INDEX IX_Suppliers_Name ON Suppliers (Name);
+END
+GO
+
+-- Migracion: agregar columna Code a Suppliers si no existe (backfill incluido)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'Code' AND Object_ID = Object_ID(N'Suppliers'))
+BEGIN
+    ALTER TABLE Suppliers ADD Code NVARCHAR(30) NULL;
+    EXEC('UPDATE Suppliers SET Code = ''PROV-'' + RIGHT(''000'' + CAST(Id AS VARCHAR), 3) WHERE Code IS NULL');
+    EXEC('ALTER TABLE Suppliers ALTER COLUMN Code NVARCHAR(30) NOT NULL');
+    IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'UQ_Suppliers_Code')
+        EXEC('ALTER TABLE Suppliers ADD CONSTRAINT UQ_Suppliers_Code UNIQUE (Code)');
 END
 GO
 
@@ -586,13 +599,55 @@ IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Brands' AND xtype='U')
 BEGIN
     CREATE TABLE Brands (
         Id INT IDENTITY(1,1) PRIMARY KEY,
+        Code NVARCHAR(30) NOT NULL,
         Name NVARCHAR(150) NOT NULL,
         Description NVARCHAR(500) NULL,
         IsActive BIT NOT NULL DEFAULT 1,
         CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
         UpdatedAt DATETIME2 NULL,
-        CONSTRAINT UQ_Brands_Name UNIQUE (Name)
+        CONSTRAINT UQ_Brands_Name UNIQUE (Name),
+        CONSTRAINT UQ_Brands_Code UNIQUE (Code)
     );
+END
+GO
+
+-- Migracion: agregar columna Code a Brands
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'Code' AND Object_ID = Object_ID(N'Brands'))
+BEGIN
+    ALTER TABLE Brands ADD Code NVARCHAR(30) NULL;
+    EXEC('UPDATE Brands SET Code = ''MAR-'' + RIGHT(''000'' + CAST(Id AS VARCHAR), 3) WHERE Code IS NULL');
+    EXEC('ALTER TABLE Brands ALTER COLUMN Code NVARCHAR(30) NOT NULL');
+    IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'UQ_Brands_Code')
+        EXEC('ALTER TABLE Brands ADD CONSTRAINT UQ_Brands_Code UNIQUE (Code)');
+END
+GO
+
+-- Clients (clientes)
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Clients' AND xtype='U')
+BEGIN
+    CREATE TABLE Clients (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Code NVARCHAR(30) NOT NULL,
+        Name NVARCHAR(200) NOT NULL,
+        Cuit NVARCHAR(20) NULL,
+        Phone NVARCHAR(50) NULL,
+        Email NVARCHAR(255) NULL,
+        Address NVARCHAR(500) NULL,
+        ContactName NVARCHAR(150) NULL,
+        Notes NVARCHAR(MAX) NULL,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT UQ_Clients_Code UNIQUE (Code)
+    );
+    CREATE INDEX IX_Clients_Name ON Clients (Name);
+END
+GO
+
+-- Permiso de clientes para admin
+IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId = 1 AND MenuKey = 'clientes')
+BEGIN
+    INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'clientes');
 END
 GO
 

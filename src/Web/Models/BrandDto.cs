@@ -3,6 +3,7 @@ namespace Web.Models;
 public class BrandDto
 {
     public int Id { get; set; }
+    public string Code { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
     public bool IsActive { get; set; }
@@ -12,12 +13,14 @@ public class BrandDto
 
 public class CreateBrandRequest
 {
+    public string? Code { get; set; }
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
 }
 
 public class UpdateBrandRequest
 {
+    public string? Code { get; set; }
     public string? Name { get; set; }
     public string? Description { get; set; }
     public bool? IsActive { get; set; }

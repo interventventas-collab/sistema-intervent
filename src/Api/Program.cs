@@ -108,6 +108,7 @@ builder.Services.AddScoped<ScheduledProcessService>();
 builder.Services.AddScoped<ProductService>();
 builder.Services.AddScoped<SupplierService>();
 builder.Services.AddScoped<BrandService>();
+builder.Services.AddScoped<ClientService>();
 builder.Services.AddScoped<ComboService>();
 builder.Services.AddScoped<AiService>();
 builder.Services.AddSingleton<SyncProgressService>();

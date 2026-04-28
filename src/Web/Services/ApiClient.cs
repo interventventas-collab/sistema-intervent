@@ -186,6 +186,19 @@ public class ApiClient
     public async Task<bool> DeleteBrandAsync(int id)
         => await DeleteAsync($"/api/brands/{id}");
 
+    // --- Clients ---
+    public async Task<List<ClientDto>?> GetClientsAsync()
+        => await GetAsync<List<ClientDto>>("/api/clients");
+
+    public async Task<ClientDto?> CreateClientAsync(CreateClientRequest request)
+        => await PostAsync<ClientDto>("/api/clients", request);
+
+    public async Task<ClientDto?> UpdateClientAsync(int id, UpdateClientRequest request)
+        => await PutAsync<ClientDto>($"/api/clients/{id}", request);
+
+    public async Task<bool> DeleteClientAsync(int id)
+        => await DeleteAsync($"/api/clients/{id}");
+
     // --- Combos ---
     public async Task<List<ComboDto>?> GetCombosAsync()
         => await GetAsync<List<ComboDto>>("/api/combos");

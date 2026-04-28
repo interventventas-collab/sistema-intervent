@@ -1,21 +1,21 @@
-@page "/proveedores"
+@page "/clientes"
 @attribute [Authorize]
 @inject ApiClient Api
 @inject ToastService ToastService
 
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-        <h3>Proveedores (@(suppliers?.Count ?? 0))</h3>
-        <button class="btn btn-primary" @onclick="ShowCreateForm">+ Nuevo Proveedor</button>
+        <h3>Clientes (@(clients?.Count ?? 0))</h3>
+        <button class="btn btn-primary" @onclick="ShowCreateForm">+ Nuevo Cliente</button>
     </div>
     <div class="card-body" style="padding: 0;">
         @if (isLoading)
         {
-            <p class="text-muted" style="padding: 1.5rem;">Cargando proveedores...</p>
+            <p class="text-muted" style="padding: 1.5rem;">Cargando clientes...</p>
         }
-        else if (suppliers is null || suppliers.Count == 0)
+        else if (clients is null || clients.Count == 0)
         {
-            <p class="text-muted" style="padding: 1.5rem;">Todavia no cargaste ningun proveedor. Hace clic en "+ Nuevo Proveedor" para empezar.</p>
+            <p class="text-muted" style="padding: 1.5rem;">Todavia no cargaste ningun cliente. Hace clic en "+ Nuevo Cliente" para empezar.</p>
         }
         else
         {
@@ -25,7 +25,7 @@
                         <tr>
                             <th style="width: 110px;">Codigo</th>
                             <th>Nombre</th>
-                            <th>CUIT</th>
+                            <th>CUIT / DNI</th>
                             <th>Telefono</th>
                             <th>Email</th>
                             <th>Direccion</th>
@@ -35,24 +35,24 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var s in suppliers)
+                        @foreach (var c in clients)
                         {
                             <tr>
-                                <td style="font-family: monospace; color: #374151;">@s.Code</td>
-                                <td><strong>@s.Name</strong></td>
-                                <td style="font-size: 0.85rem;">@(s.Cuit ?? "")</td>
-                                <td style="font-size: 0.85rem;">@(s.Phone ?? "")</td>
-                                <td style="font-size: 0.85rem;">@(s.Email ?? "")</td>
-                                <td style="font-size: 0.85rem; color: #6b7280;">@(s.Address ?? "")</td>
-                                <td style="font-size: 0.85rem;">@(s.ContactName ?? "")</td>
+                                <td style="font-family: monospace; color: #374151;">@c.Code</td>
+                                <td><strong>@c.Name</strong></td>
+                                <td style="font-size: 0.85rem;">@(c.Cuit ?? "")</td>
+                                <td style="font-size: 0.85rem;">@(c.Phone ?? "")</td>
+                                <td style="font-size: 0.85rem;">@(c.Email ?? "")</td>
+                                <td style="font-size: 0.85rem; color: #6b7280;">@(c.Address ?? "")</td>
+                                <td style="font-size: 0.85rem;">@(c.ContactName ?? "")</td>
                                 <td>
-                                    <span class="status-badge @(s.IsActive ? "status-active" : "status-inactive")">
-                                        @(s.IsActive ? "Activo" : "Inactivo")
+                                    <span class="status-badge @(c.IsActive ? "status-active" : "status-inactive")">
+                                        @(c.IsActive ? "Activo" : "Inactivo")
                                     </span>
                                 </td>
                                 <td class="actions-cell">
-                                    <button class="btn-icon btn-edit" @onclick="() => ShowEditForm(s)" title="Editar">@SvgIcons.Edit</button>
-                                    <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(s)" title="Eliminar">@SvgIcons.AlertCircle</button>
+                                    <button class="btn-icon btn-edit" @onclick="() => ShowEditForm(c)" title="Editar">@SvgIcons.Edit</button>
+                                    <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(c)" title="Eliminar">@SvgIcons.AlertCircle</button>
                                 </td>
                             </tr>
                         }
@@ -68,7 +68,7 @@
     <div class="modal-overlay" @onclick="CloseForm">
         <div class="modal-card modal-wide" @onclick:stopPropagation="true">
             <div class="modal-header" style="background: whitesmoke;">
-                <h3>@(isEditing ? "Editar Proveedor" : "Nuevo Proveedor")</h3>
+                <h3>@(isEditing ? "Editar Cliente" : "Nuevo Cliente")</h3>
                 <button class="btn-close" @onclick="CloseForm">&times;</button>
             </div>
             <div class="modal-body">
@@ -76,23 +76,24 @@
                 {
                     <div class="form-error">@formError</div>
                 }
+
                 <div class="form-row">
                     <div class="form-group" style="flex: 1;">
                         <label class="form-label">Codigo</label>
                         <input class="form-input" @bind="formCode" placeholder="@(isEditing ? "" : "Se genera automatico")" />
                         <p style="font-size: 0.75rem; color: #6b7280; margin: 0.2rem 0 0;">
-                            @(isEditing ? "Podes cambiarlo, pero debe ser unico." : "Si lo dejas vacio, el sistema genera el siguiente codigo automaticamente (PROV-001, PROV-002, ...).")
+                            @(isEditing ? "Podes cambiarlo, pero debe ser unico." : "Si lo dejas vacio, el sistema genera el siguiente codigo automaticamente (CLI-001, CLI-002, ...).")
                         </p>
                     </div>
                     <div class="form-group" style="flex: 2;">
                         <label class="form-label">Nombre / Razon social *</label>
-                        <input class="form-input" @bind="formName" placeholder="Ej: Distribuidora SA" autofocus />
+                        <input class="form-input" @bind="formName" placeholder="Ej: Juan Perez / Empresa SA" autofocus />
                     </div>
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label class="form-label">CUIT</label>
-                        <input class="form-input" @bind="formCuit" placeholder="20-12345678-9" />
+                        <label class="form-label">CUIT / DNI</label>
+                        <input class="form-input" @bind="formCuit" placeholder="20-12345678-9 o 12.345.678" />
                     </div>
                     <div class="form-group">
                         <label class="form-label">Telefono</label>
@@ -102,7 +103,7 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label class="form-label">Email</label>
-                        <input class="form-input" type="email" @bind="formEmail" placeholder="proveedor@ejemplo.com" />
+                        <input class="form-input" type="email" @bind="formEmail" placeholder="cliente@ejemplo.com" />
                     </div>
                     <div class="form-group">
                         <label class="form-label">Persona de contacto</label>
@@ -115,7 +116,7 @@
                 </div>
                 <div class="form-group">
                     <label class="form-label">Notas</label>
-                    <textarea class="form-input" @bind="formNotes" rows="3" placeholder="Cualquier informacion extra (horario de atencion, condiciones, etc)"></textarea>
+                    <textarea class="form-input" @bind="formNotes" rows="3" placeholder="Cualquier informacion extra (preferencias, condiciones, etc)"></textarea>
                 </div>
                 @if (isEditing)
                 {
@@ -138,16 +139,16 @@
     </div>
 }
 
-@if (showDeleteConfirm && supplierToDelete is not null)
+@if (showDeleteConfirm && clientToDelete is not null)
 {
     <div class="modal-overlay" @onclick="() => showDeleteConfirm = false">
         <div class="modal-card modal-small" @onclick:stopPropagation="true">
             <div class="modal-header" style="background: #dc3545; color: white;">
-                <h4 style="margin: 0;">Eliminar proveedor</h4>
+                <h4 style="margin: 0;">Eliminar cliente</h4>
                 <button class="btn-close" @onclick="() => showDeleteConfirm = false" style="color: white;">&times;</button>
             </div>
             <div class="modal-body">
-                <p>Estas seguro que queres eliminar al proveedor <strong>@supplierToDelete.Name</strong>?</p>
+                <p>Estas seguro que queres eliminar al cliente <strong>@clientToDelete.Name</strong>?</p>
                 <p class="text-muted" style="font-size: 0.85rem;">Esta accion no se puede deshacer.</p>
             </div>
             <div class="modal-footer">
@@ -159,7 +160,7 @@
 }
 
 @code {
-    private List<SupplierDto>? suppliers;
+    private List<ClientDto>? clients;
     private bool isLoading = true;
     private bool showForm;
     private bool isEditing;
@@ -176,15 +177,15 @@
     private string formNotes = "";
     private bool formIsActive = true;
     private bool showDeleteConfirm;
-    private SupplierDto? supplierToDelete;
+    private ClientDto? clientToDelete;
 
     protected override async Task OnInitializedAsync() => await LoadData();
 
     private async Task LoadData()
     {
         isLoading = true;
-        try { suppliers = await Api.GetSuppliersAsync() ?? new(); }
-        catch { ToastService.Error("Error al cargar los proveedores"); suppliers = new(); }
+        try { clients = await Api.GetClientsAsync() ?? new(); }
+        catch { ToastService.Error("Error al cargar los clientes"); clients = new(); }
         isLoading = false;
     }
 
@@ -196,18 +197,18 @@
         formIsActive = true; formError = null; showForm = true;
     }
 
-    private void ShowEditForm(SupplierDto s)
+    private void ShowEditForm(ClientDto c)
     {
-        isEditing = true; editingId = s.Id;
-        formCode = s.Code;
-        formName = s.Name;
-        formCuit = s.Cuit ?? "";
-        formPhone = s.Phone ?? "";
-        formEmail = s.Email ?? "";
-        formAddress = s.Address ?? "";
-        formContactName = s.ContactName ?? "";
-        formNotes = s.Notes ?? "";
-        formIsActive = s.IsActive;
+        isEditing = true; editingId = c.Id;
+        formCode = c.Code;
+        formName = c.Name;
+        formCuit = c.Cuit ?? "";
+        formPhone = c.Phone ?? "";
+        formEmail = c.Email ?? "";
+        formAddress = c.Address ?? "";
+        formContactName = c.ContactName ?? "";
+        formNotes = c.Notes ?? "";
+        formIsActive = c.IsActive;
         formError = null; showForm = true;
     }
 
@@ -222,7 +223,7 @@
         {
             if (isEditing && editingId.HasValue)
             {
-                var updated = await Api.UpdateSupplierAsync(editingId.Value, new UpdateSupplierRequest
+                var updated = await Api.UpdateClientAsync(editingId.Value, new UpdateClientRequest
                 {
                     Code = formCode,
                     Name = formName,
@@ -235,11 +236,11 @@
                     IsActive = formIsActive
                 });
                 if (updated is null) { formError = "No se pudo actualizar"; return; }
-                ToastService.Success("Proveedor actualizado");
+                ToastService.Success("Cliente actualizado");
             }
             else
             {
-                var created = await Api.CreateSupplierAsync(new CreateSupplierRequest
+                var created = await Api.CreateClientAsync(new CreateClientRequest
                 {
                     Code = string.IsNullOrWhiteSpace(formCode) ? null : formCode,
                     Name = formName,
@@ -251,7 +252,7 @@
                     Notes = formNotes
                 });
                 if (created is null) { formError = "No se pudo crear"; return; }
-                ToastService.Success("Proveedor creado");
+                ToastService.Success("Cliente creado");
             }
             showForm = false;
             await LoadData();
@@ -260,18 +261,18 @@
         finally { isSaving = false; }
     }
 
-    private void ConfirmDelete(SupplierDto s) { supplierToDelete = s; showDeleteConfirm = true; }
+    private void ConfirmDelete(ClientDto c) { clientToDelete = c; showDeleteConfirm = true; }
 
     private async Task Delete()
     {
-        if (supplierToDelete is null) return;
+        if (clientToDelete is null) return;
         try
         {
-            var ok = await Api.DeleteSupplierAsync(supplierToDelete.Id);
-            if (ok) { ToastService.Success("Proveedor eliminado"); await LoadData(); }
-            else { ToastService.Error("No se pudo eliminar el proveedor"); }
+            var ok = await Api.DeleteClientAsync(clientToDelete.Id);
+            if (ok) { ToastService.Success("Cliente eliminado"); await LoadData(); }
+            else { ToastService.Error("No se pudo eliminar el cliente"); }
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
-        finally { showDeleteConfirm = false; supplierToDelete = null; }
+        finally { showDeleteConfirm = false; clientToDelete = null; }
     }
 }

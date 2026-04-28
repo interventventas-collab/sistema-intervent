@@ -23,6 +23,7 @@
                 <table class="data-table">
                     <thead>
                         <tr>
+                            <th style="width: 110px;">Codigo</th>
                             <th>Nombre</th>
                             <th>Descripcion</th>
                             <th>Estado</th>
@@ -33,6 +34,7 @@
                         @foreach (var b in brands)
                         {
                             <tr>
+                                <td style="font-family: monospace; color: #374151;">@b.Code</td>
                                 <td><strong>@b.Name</strong></td>
                                 <td style="color: #6b7280; font-size: 0.85rem;">@(b.Description ?? "")</td>
                                 <td>
@@ -66,9 +68,18 @@
                 {
                     <div class="form-error">@formError</div>
                 }
-                <div class="form-group">
-                    <label class="form-label">Nombre *</label>
-                    <input class="form-input" @bind="formName" placeholder="Ej: Samsung" autofocus />
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Codigo</label>
+                        <input class="form-input" @bind="formCode" placeholder="@(isEditing ? "" : "Se genera automatico")" />
+                        <p style="font-size: 0.75rem; color: #6b7280; margin: 0.2rem 0 0;">
+                            @(isEditing ? "Podes cambiarlo, pero debe ser unico." : "Si lo dejas vacio, el sistema genera el siguiente codigo automaticamente (MAR-001, MAR-002, ...).")
+                        </p>
+                    </div>
+                    <div class="form-group" style="flex: 2;">
+                        <label class="form-label">Nombre *</label>
+                        <input class="form-input" @bind="formName" placeholder="Ej: Samsung" autofocus />
+                    </div>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Descripcion</label>
@@ -123,6 +134,7 @@
     private bool isSaving;
     private string? formError;
     private int? editingId;
+    private string formCode = "";
     private string formName = "";
     private string formDescription = "";
     private bool formIsActive = true;
@@ -142,14 +154,14 @@
     private void ShowCreateForm()
     {
         isEditing = false; editingId = null;
-        formName = ""; formDescription = ""; formIsActive = true;
+        formCode = ""; formName = ""; formDescription = ""; formIsActive = true;
         formError = null; showForm = true;
     }
 
     private void ShowEditForm(BrandDto b)
     {
         isEditing = true; editingId = b.Id;
-        formName = b.Name; formDescription = b.Description ?? "";
+        formCode = b.Code; formName = b.Name; formDescription = b.Description ?? "";
         formIsActive = b.IsActive;
         formError = null; showForm = true;
     }
@@ -167,7 +179,7 @@
             {
                 var updated = await Api.UpdateBrandAsync(editingId.Value, new UpdateBrandRequest
                 {
-                    Name = formName, Description = formDescription, IsActive = formIsActive
+                    Code = formCode, Name = formName, Description = formDescription, IsActive = formIsActive
                 });
                 if (updated is null) { formError = "No se pudo actualizar"; return; }
                 ToastService.Success("Marca actualizada");
@@ -176,6 +188,7 @@
             {
                 var created = await Api.CreateBrandAsync(new CreateBrandRequest
                 {
+                    Code = string.IsNullOrWhiteSpace(formCode) ? null : formCode,
                     Name = formName, Description = formDescription
                 });
                 if (created is null) { formError = "No se pudo crear"; return; }

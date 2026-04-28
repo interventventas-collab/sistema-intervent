@@ -19,6 +19,7 @@ public class AppDbContext : DbContext
     public DbSet<Brand> Brands => Set<Brand>();
     public DbSet<Combo> Combos => Set<Combo>();
     public DbSet<ComboItem> ComboItems => Set<ComboItem>();
+    public DbSet<Client> Clients => Set<Client>();
     public DbSet<ScheduledProcess> ScheduledProcesses => Set<ScheduledProcess>();
     public DbSet<ProcessExecutionLog> ProcessExecutionLogs => Set<ProcessExecutionLog>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
@@ -112,11 +113,19 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Supplier>(entity =>
         {
             entity.HasIndex(s => s.Name);
+            entity.HasIndex(s => s.Code).IsUnique();
         });
 
         modelBuilder.Entity<Brand>(entity =>
         {
             entity.HasIndex(b => b.Name).IsUnique();
+            entity.HasIndex(b => b.Code).IsUnique();
+        });
+
+        modelBuilder.Entity<Client>(entity =>
+        {
+            entity.HasIndex(c => c.Name);
+            entity.HasIndex(c => c.Code).IsUnique();
         });
 
         modelBuilder.Entity<Combo>(entity =>

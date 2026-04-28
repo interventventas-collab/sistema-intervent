@@ -2,7 +2,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Api.DTOs;
 
-public record SupplierDto(
+public record ClientDto(
     int Id,
     string Code,
     string Name,
@@ -17,7 +17,7 @@ public record SupplierDto(
     DateTime? UpdatedAt
 );
 
-public record CreateSupplierRequest(
+public record CreateClientRequest(
     [MaxLength(30)] string? Code,
     [Required][MaxLength(200)] string Name,
     [MaxLength(20)] string? Cuit,
@@ -28,7 +28,7 @@ public record CreateSupplierRequest(
     string? Notes
 );
 
-public record UpdateSupplierRequest(
+public record UpdateClientRequest(
     [MaxLength(30)] string? Code,
     [MaxLength(200)] string? Name,
     [MaxLength(20)] string? Cuit,

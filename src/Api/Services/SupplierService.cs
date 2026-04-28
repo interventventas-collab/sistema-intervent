@@ -8,6 +8,7 @@ namespace Api.Services;
 public class SupplierService
 {
     private readonly AppDbContext _db;
+    private const string CodePrefix = "PROV-";
 
     public SupplierService(AppDbContext db)
     {
@@ -17,9 +18,9 @@ public class SupplierService
     public async Task<List<SupplierDto>> GetAllAsync()
     {
         return await _db.Suppliers
-            .OrderBy(s => s.Name)
+            .OrderBy(s => s.Code)
             .Select(s => new SupplierDto(
-                s.Id, s.Name, s.Cuit, s.Phone, s.Email, s.Address,
+                s.Id, s.Code, s.Name, s.Cuit, s.Phone, s.Email, s.Address,
                 s.ContactName, s.Notes, s.IsActive, s.CreatedAt, s.UpdatedAt))
             .ToListAsync();
     }
@@ -29,15 +30,21 @@ public class SupplierService
         return await _db.Suppliers
             .Where(s => s.Id == id)
             .Select(s => new SupplierDto(
-                s.Id, s.Name, s.Cuit, s.Phone, s.Email, s.Address,
+                s.Id, s.Code, s.Name, s.Cuit, s.Phone, s.Email, s.Address,
                 s.ContactName, s.Notes, s.IsActive, s.CreatedAt, s.UpdatedAt))
             .FirstOrDefaultAsync();
     }
 
     public async Task<SupplierDto> CreateAsync(CreateSupplierRequest r)
     {
+        var code = string.IsNullOrWhiteSpace(r.Code)
+            ? await GenerateNextCodeAsync()
+            : r.Code.Trim();
+        await EnsureCodeIsUniqueAsync(code, ignoreId: null);
+
         var s = new Supplier
         {
+            Code = code,
             Name = r.Name.Trim(),
             Cuit = string.IsNullOrWhiteSpace(r.Cuit) ? null : r.Cuit.Trim(),
             Phone = string.IsNullOrWhiteSpace(r.Phone) ? null : r.Phone.Trim(),
@@ -50,7 +57,7 @@ public class SupplierService
         };
         _db.Suppliers.Add(s);
         await _db.SaveChangesAsync();
-        return new SupplierDto(s.Id, s.Name, s.Cuit, s.Phone, s.Email, s.Address,
+        return new SupplierDto(s.Id, s.Code, s.Name, s.Cuit, s.Phone, s.Email, s.Address,
             s.ContactName, s.Notes, s.IsActive, s.CreatedAt, s.UpdatedAt);
     }
 
@@ -59,6 +66,17 @@ public class SupplierService
         var s = await _db.Suppliers.FindAsync(id);
         if (s is null) return null;
 
+        if (r.Code is not null)
+        {
+            var newCode = r.Code.Trim();
+            if (string.IsNullOrEmpty(newCode))
+                throw new InvalidOperationException("El codigo no puede estar vacio.");
+            if (newCode != s.Code)
+            {
+                await EnsureCodeIsUniqueAsync(newCode, id);
+                s.Code = newCode;
+            }
+        }
         if (r.Name is not null) s.Name = r.Name.Trim();
         if (r.Cuit is not null) s.Cuit = string.IsNullOrWhiteSpace(r.Cuit) ? null : r.Cuit.Trim();
         if (r.Phone is not null) s.Phone = string.IsNullOrWhiteSpace(r.Phone) ? null : r.Phone.Trim();
@@ -70,7 +88,7 @@ public class SupplierService
         s.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync();
-        return new SupplierDto(s.Id, s.Name, s.Cuit, s.Phone, s.Email, s.Address,
+        return new SupplierDto(s.Id, s.Code, s.Name, s.Cuit, s.Phone, s.Email, s.Address,
             s.ContactName, s.Notes, s.IsActive, s.CreatedAt, s.UpdatedAt);
     }
 
@@ -81,5 +99,30 @@ public class SupplierService
         _db.Suppliers.Remove(s);
         await _db.SaveChangesAsync();
         return true;
+    }
+
+    // --- Helpers ---
+
+    private async Task<string> GenerateNextCodeAsync()
+    {
+        var existing = await _db.Suppliers
+            .Where(s => s.Code.StartsWith(CodePrefix))
+            .Select(s => s.Code)
+            .ToListAsync();
+
+        int max = 0;
+        foreach (var code in existing)
+        {
+            var numPart = code.Substring(CodePrefix.Length);
+            if (int.TryParse(numPart, out var num) && num > max) max = num;
+        }
+        return $"{CodePrefix}{(max + 1):D3}";
+    }
+
+    private async Task EnsureCodeIsUniqueAsync(string code, int? ignoreId)
+    {
+        var exists = await _db.Suppliers.AnyAsync(s => s.Code == code && (ignoreId == null || s.Id != ignoreId.Value));
+        if (exists)
+            throw new InvalidOperationException($"Ya existe un proveedor con el codigo '{code}'.");
     }
 }

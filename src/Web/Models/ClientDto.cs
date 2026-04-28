@@ -1,6 +1,6 @@
 namespace Web.Models;
 
-public class SupplierDto
+public class ClientDto
 {
     public int Id { get; set; }
     public string Code { get; set; } = string.Empty;
@@ -16,7 +16,7 @@ public class SupplierDto
     public DateTime? UpdatedAt { get; set; }
 }
 
-public class CreateSupplierRequest
+public class CreateClientRequest
 {
     public string? Code { get; set; }
     public string Name { get; set; } = string.Empty;
@@ -28,7 +28,7 @@ public class CreateSupplierRequest
     public string? Notes { get; set; }
 }
 
-public class UpdateSupplierRequest
+public class UpdateClientRequest
 {
     public string? Code { get; set; }
     public string? Name { get; set; }
