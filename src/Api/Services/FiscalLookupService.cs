@@ -32,45 +32,79 @@ public class FiscalLookupService
         if (clean.Length != 11)
             return new FiscalLookupResult(clean, null, null, null, false, null, "El CUIT/CUIL debe tener 11 digitos.");
 
+        var http = _httpFactory.CreateClient();
+        http.Timeout = TimeSpan.FromSeconds(15);
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36");
+        http.DefaultRequestHeaders.AcceptLanguage.ParseAdd("es-AR,es;q=0.9");
+
         try
         {
-            var http = _httpFactory.CreateClient();
-            http.Timeout = TimeSpan.FromSeconds(10);
-            http.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36");
-
-            var response = await http.GetAsync($"https://www.cuitonline.com/detalle/{clean}");
-            if (!response.IsSuccessStatusCode)
+            // Paso 1: pagina de busqueda. Devuelve un listado con el primer hit que coincide con el CUIT.
+            var searchResp = await http.GetAsync($"https://www.cuitonline.com/search.php?q={clean}");
+            if (!searchResp.IsSuccessStatusCode)
                 return new FiscalLookupResult(clean, null, null, null, false, "cuitonline",
-                    $"El servicio respondio {(int)response.StatusCode}.");
+                    $"El servicio respondio {(int)searchResp.StatusCode} al buscar el CUIT.");
 
-            var html = await response.Content.ReadAsStringAsync();
-            if (html.Contains("No se encontraron resultados", StringComparison.OrdinalIgnoreCase))
-                return new FiscalLookupResult(clean, null, null, null, false, "cuitonline", "CUIT no encontrado.");
+            var searchHtml = await searchResp.Content.ReadAsStringAsync();
 
-            // Parseo de campos clave (regex tolerantes a cambios menores).
-            var name = MatchOne(html,
-                @"<h1[^>]*class=""[^""]*denominacion[^""]*""[^>]*>([^<]+)</h1>",
-                @"<title>([^<\|]+)\|") ?? "";
-            var address = MatchOne(html,
-                @"Domicilio[^:]*:\s*</[^>]+>\s*<[^>]+>([^<]+)<",
-                @"Domicilio[^:]*:[^<]*<[^>]+>\s*([^<]+)\s*<");
-            var ivaCondition = MatchOne(html,
-                @"Condici[oó]n\s+frente\s+al\s+IVA[^:]*:\s*</[^>]+>\s*<[^>]+>([^<]+)<",
+            // Nombre: <h2 class="denominacion" ...>PALANICA JAMKOWY GERMAN PABLO</h2>
+            var name = MatchOne(searchHtml,
+                @"<h2[^>]*class=""[^""]*denominacion[^""]*""[^>]*>\s*([^<]+?)\s*</h2>",
+                @"title=""Ver detalles de ([^""]+)""",
+                @"<a[^>]*class=""denominacion""[^>]*>\s*([^<]+)\s*</a>");
+            name = HtmlDecode(name)?.Trim();
+
+            if (string.IsNullOrWhiteSpace(name) ||
+                name!.Equals("CUIT", StringComparison.OrdinalIgnoreCase) ||
+                name.Length < 3)
+            {
+                return new FiscalLookupResult(clean, null, null, null, false, "cuitonline",
+                    "No se encontraron resultados para ese CUIT.");
+            }
+
+            // IVA: aparece como "IVA:&nbsp;Iva Exento" o "IVA: Responsable Inscripto", etc.
+            var ivaCondition = MatchOne(searchHtml,
+                @"IVA:(?:&nbsp;|\s)*([A-Za-zÁÉÍÓÚáéíóúÑñ ]+?)\s*<",
                 @"IVA[^:]*:[^<]*<[^>]+>\s*([^<]+)\s*<");
+            ivaCondition = HtmlDecode(ivaCondition)?.Trim();
 
-            name = HtmlDecode(name);
-            address = HtmlDecode(address);
-            ivaCondition = HtmlDecode(ivaCondition);
+            // Buscamos la URL del detalle (tiene el domicilio fiscal).
+            string? address = null;
+            var detalleUrl = MatchOne(searchHtml,
+                @"href=""(detalle/" + clean + @"/[^""]+\.html)""",
+                @"href=""(/detalle/" + clean + @"/[^""]+\.html)""");
+            if (!string.IsNullOrEmpty(detalleUrl))
+            {
+                if (!detalleUrl.StartsWith("http"))
+                    detalleUrl = "https://www.cuitonline.com/" + detalleUrl.TrimStart('/');
+                try
+                {
+                    var detResp = await http.GetAsync(detalleUrl);
+                    if (detResp.IsSuccessStatusCode)
+                    {
+                        var detHtml = await detResp.Content.ReadAsStringAsync();
+                        address = MatchOne(detHtml,
+                            @"Domicilio\s+Fiscal[^<]*</[^>]+>\s*<[^>]+>\s*([^<]+?)\s*<",
+                            @"Domicilio[^<]*</[^>]+>\s*<[^>]+>\s*([^<]+?)\s*<",
+                            @"itemprop=""address""[^>]*>\s*([^<]+?)\s*<");
+                        address = HtmlDecode(address)?.Trim();
+                        if (string.IsNullOrEmpty(ivaCondition))
+                        {
+                            ivaCondition = HtmlDecode(MatchOne(detHtml,
+                                @"Condici[oó]n\s+frente\s+al\s+IVA[^<]*</[^>]+>\s*<[^>]+>\s*([^<]+?)\s*<",
+                                @"IVA:(?:&nbsp;|\s)*([A-Za-zÁÉÍÓÚáéíóúÑñ ]+?)\s*<"))?.Trim();
+                        }
+                    }
+                }
+                catch { /* si falla el detalle, devolvemos lo que tenemos */ }
+            }
 
-            if (string.IsNullOrWhiteSpace(name))
-                return new FiscalLookupResult(clean, null, address, ivaCondition, false, "cuitonline",
-                    "No se pudo extraer el nombre. El servicio puede haber cambiado.");
-
-            return new FiscalLookupResult(clean, name.Trim(), address?.Trim(), ivaCondition?.Trim(), true, "cuitonline", null);
+            return new FiscalLookupResult(clean, name, address, ivaCondition, true, "cuitonline", null);
         }
         catch (Exception ex)
         {
-            return new FiscalLookupResult(clean, null, null, null, false, null, "Error consultando: " + ex.Message);
+            return new FiscalLookupResult(clean, null, null, null, false, "cuitonline",
+                "Error consultando el servicio: " + ex.Message);
         }
     }
 
