@@ -46,10 +46,12 @@ public class ProductService
             .ToDictionaryAsync(g => g.ParentId, g => g.Count);
 
         return products.Select(p => new ProductListDto(
-            p.Id, p.Title, p.Description,
-            p.Brand, p.Model, p.Sku,
+            p.Id, p.Title, p.DisplayName, p.Description,
+            p.Brand, p.Model, p.Sku, p.Barcode, p.OemCode, p.ImageUrl,
             p.Photo1, p.Photo2, p.Photo3,
-            p.CostPrice, p.RetailPrice, p.Stock, p.CriticalStock,
+            p.CostPrice, p.RetailPrice, p.VatRate,
+            p.PurchaseAccount, p.SaleAccount, p.InventoryAccount,
+            p.Stock, p.CriticalStock,
             p.IsActive, p.CreatedAt, p.UpdatedAt,
             linksDict.GetValueOrDefault(p.Id, new List<ProductAccountLinkDto>()),
             p.BaseProductId,
@@ -73,10 +75,12 @@ public class ProductService
         var derivedCount = await _db.Products.CountAsync(x => x.BaseProductId == id);
 
         return new ProductListDto(
-            p.Id, p.Title, p.Description,
-            p.Brand, p.Model, p.Sku,
+            p.Id, p.Title, p.DisplayName, p.Description,
+            p.Brand, p.Model, p.Sku, p.Barcode, p.OemCode, p.ImageUrl,
             p.Photo1, p.Photo2, p.Photo3,
-            p.CostPrice, p.RetailPrice, p.Stock, p.CriticalStock,
+            p.CostPrice, p.RetailPrice, p.VatRate,
+            p.PurchaseAccount, p.SaleAccount, p.InventoryAccount,
+            p.Stock, p.CriticalStock,
             p.IsActive, p.CreatedAt, p.UpdatedAt,
             new List<ProductAccountLinkDto>(),
             p.BaseProductId,
@@ -113,18 +117,26 @@ public class ProductService
         var product = new Product
         {
             Title = request.Title,
+            DisplayName = string.IsNullOrWhiteSpace(request.DisplayName) ? null : request.DisplayName,
             Description = request.Description,
             // Mantener el campo Brand (string) sincronizado con la marca seleccionada;
             // si no hay BrandId, respetar el texto libre que vino en el request.
             Brand = brand?.Name ?? request.Brand,
             Model = request.Model,
             Sku = request.Sku,
+            Barcode = string.IsNullOrWhiteSpace(request.Barcode) ? null : request.Barcode,
+            OemCode = string.IsNullOrWhiteSpace(request.OemCode) ? null : request.OemCode,
+            ImageUrl = string.IsNullOrWhiteSpace(request.ImageUrl) ? null : request.ImageUrl,
             Photo1 = request.Photo1,
             Photo2 = request.Photo2,
             Photo3 = request.Photo3,
             // Si tiene base, los precios se heredan; si no, los del request.
             CostPrice = baseProduct?.CostPrice ?? request.CostPrice,
             RetailPrice = baseProduct?.RetailPrice ?? request.RetailPrice,
+            VatRate = request.VatRate,
+            PurchaseAccount = string.IsNullOrWhiteSpace(request.PurchaseAccount) ? null : request.PurchaseAccount,
+            SaleAccount = string.IsNullOrWhiteSpace(request.SaleAccount) ? null : request.SaleAccount,
+            InventoryAccount = string.IsNullOrWhiteSpace(request.InventoryAccount) ? null : request.InventoryAccount,
             Stock = request.Stock,
             CriticalStock = request.CriticalStock,
             IsActive = true,
@@ -202,6 +214,7 @@ public class ProductService
 
         // --- Resto de campos ---
         if (request.Title is not null) product.Title = request.Title;
+        if (request.DisplayName is not null) product.DisplayName = request.DisplayName == "" ? null : request.DisplayName;
         if (request.Description is not null) product.Description = request.Description;
         // El input texto Brand solo se aplica si NO se mando una BrandId/ClearBrand
         // (si vino BrandId, ya sincronizamos el texto arriba).
@@ -209,9 +222,16 @@ public class ProductService
             product.Brand = request.Brand;
         if (request.Model is not null) product.Model = request.Model;
         if (request.Sku is not null) product.Sku = request.Sku == "" ? null : request.Sku;
+        if (request.Barcode is not null) product.Barcode = request.Barcode == "" ? null : request.Barcode;
+        if (request.OemCode is not null) product.OemCode = request.OemCode == "" ? null : request.OemCode;
+        if (request.ImageUrl is not null) product.ImageUrl = request.ImageUrl == "" ? null : request.ImageUrl;
         if (request.Photo1 is not null) product.Photo1 = request.Photo1 == "" ? null : request.Photo1;
         if (request.Photo2 is not null) product.Photo2 = request.Photo2 == "" ? null : request.Photo2;
         if (request.Photo3 is not null) product.Photo3 = request.Photo3 == "" ? null : request.Photo3;
+        if (request.VatRate.HasValue) product.VatRate = request.VatRate.Value;
+        if (request.PurchaseAccount is not null) product.PurchaseAccount = request.PurchaseAccount == "" ? null : request.PurchaseAccount;
+        if (request.SaleAccount is not null) product.SaleAccount = request.SaleAccount == "" ? null : request.SaleAccount;
+        if (request.InventoryAccount is not null) product.InventoryAccount = request.InventoryAccount == "" ? null : request.InventoryAccount;
 
         // Capturar precios viejos antes de aplicar cambios (para detectar propagacion a hijos)
         var oldCost = product.CostPrice;

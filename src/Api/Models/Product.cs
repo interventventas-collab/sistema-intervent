@@ -14,6 +14,9 @@ public class Product
     [MaxLength(200)]
     public string Title { get; set; } = string.Empty;
 
+    [MaxLength(200)]
+    public string? DisplayName { get; set; }
+
     public string? Description { get; set; }
 
     [MaxLength(100)]
@@ -25,9 +28,30 @@ public class Product
     [MaxLength(100)]
     public string? Sku { get; set; }
 
+    [MaxLength(50)]
+    public string? Barcode { get; set; }
+
+    [MaxLength(100)]
+    public string? OemCode { get; set; }
+
+    [MaxLength(1000)]
+    public string? ImageUrl { get; set; }
+
     public string? Photo1 { get; set; }
     public string? Photo2 { get; set; }
     public string? Photo3 { get; set; }
+
+    [Column(TypeName = "decimal(5,2)")]
+    public decimal? VatRate { get; set; }
+
+    [MaxLength(100)]
+    public string? PurchaseAccount { get; set; }
+
+    [MaxLength(100)]
+    public string? SaleAccount { get; set; }
+
+    [MaxLength(100)]
+    public string? InventoryAccount { get; set; }
 
     [Column(TypeName = "decimal(18,2)")]
     public decimal CostPrice { get; set; }

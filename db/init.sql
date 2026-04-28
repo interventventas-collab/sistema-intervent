@@ -629,6 +629,48 @@ BEGIN
 END
 GO
 
+-- Campos extendidos en Products (nombre para mostrar, codigos, IVA, cuentas contables)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'DisplayName' AND Object_ID = Object_ID(N'Products'))
+BEGIN
+    ALTER TABLE Products ADD DisplayName NVARCHAR(200) NULL;
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'Barcode' AND Object_ID = Object_ID(N'Products'))
+BEGIN
+    ALTER TABLE Products ADD Barcode NVARCHAR(50) NULL;
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'OemCode' AND Object_ID = Object_ID(N'Products'))
+BEGIN
+    ALTER TABLE Products ADD OemCode NVARCHAR(100) NULL;
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'ImageUrl' AND Object_ID = Object_ID(N'Products'))
+BEGIN
+    ALTER TABLE Products ADD ImageUrl NVARCHAR(1000) NULL;
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'VatRate' AND Object_ID = Object_ID(N'Products'))
+BEGIN
+    ALTER TABLE Products ADD VatRate DECIMAL(5,2) NULL;
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'PurchaseAccount' AND Object_ID = Object_ID(N'Products'))
+BEGIN
+    ALTER TABLE Products ADD PurchaseAccount NVARCHAR(100) NULL;
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'SaleAccount' AND Object_ID = Object_ID(N'Products'))
+BEGIN
+    ALTER TABLE Products ADD SaleAccount NVARCHAR(100) NULL;
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'InventoryAccount' AND Object_ID = Object_ID(N'Products'))
+BEGIN
+    ALTER TABLE Products ADD InventoryAccount NVARCHAR(100) NULL;
+END
+GO
+
 -- Lotes de stock (cantidad + fecha de vencimiento por producto)
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ProductStockBatches' AND xtype='U')
 BEGIN
