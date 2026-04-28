@@ -160,6 +160,32 @@ public class ApiClient
         return result?.GetValueOrDefault("updated") ?? 0;
     }
 
+    // --- Suppliers ---
+    public async Task<List<SupplierDto>?> GetSuppliersAsync()
+        => await GetAsync<List<SupplierDto>>("/api/suppliers");
+
+    public async Task<SupplierDto?> CreateSupplierAsync(CreateSupplierRequest request)
+        => await PostAsync<SupplierDto>("/api/suppliers", request);
+
+    public async Task<SupplierDto?> UpdateSupplierAsync(int id, UpdateSupplierRequest request)
+        => await PutAsync<SupplierDto>($"/api/suppliers/{id}", request);
+
+    public async Task<bool> DeleteSupplierAsync(int id)
+        => await DeleteAsync($"/api/suppliers/{id}");
+
+    // --- Brands ---
+    public async Task<List<BrandDto>?> GetBrandsAsync()
+        => await GetAsync<List<BrandDto>>("/api/brands");
+
+    public async Task<BrandDto?> CreateBrandAsync(CreateBrandRequest request)
+        => await PostAsync<BrandDto>("/api/brands", request);
+
+    public async Task<BrandDto?> UpdateBrandAsync(int id, UpdateBrandRequest request)
+        => await PutAsync<BrandDto>($"/api/brands/{id}", request);
+
+    public async Task<bool> DeleteBrandAsync(int id)
+        => await DeleteAsync($"/api/brands/{id}");
+
     public async Task<bool> DeleteProductAsync(int id)
     {
         return await DeleteAsync($"/api/products/{id}");

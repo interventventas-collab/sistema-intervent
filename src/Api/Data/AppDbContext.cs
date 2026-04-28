@@ -15,6 +15,8 @@ public class AppDbContext : DbContext
     public DbSet<MeliItem> MeliItems => Set<MeliItem>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<Product> Products => Set<Product>();
+    public DbSet<Supplier> Suppliers => Set<Supplier>();
+    public DbSet<Brand> Brands => Set<Brand>();
     public DbSet<ScheduledProcess> ScheduledProcesses => Set<ScheduledProcess>();
     public DbSet<ProcessExecutionLog> ProcessExecutionLogs => Set<ProcessExecutionLog>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
@@ -98,6 +100,16 @@ public class AppDbContext : DbContext
                   .WithMany(p => p.DerivedProducts)
                   .HasForeignKey(p => p.BaseProductId)
                   .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Supplier>(entity =>
+        {
+            entity.HasIndex(s => s.Name);
+        });
+
+        modelBuilder.Entity<Brand>(entity =>
+        {
+            entity.HasIndex(b => b.Name).IsUnique();
         });
 
         modelBuilder.Entity<AuditLog>(entity =>

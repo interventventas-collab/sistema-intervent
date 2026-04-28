@@ -1,0 +1,205 @@
+@page "/marcas"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3>Marcas (@(brands?.Count ?? 0))</h3>
+        <button class="btn btn-primary" @onclick="ShowCreateForm">+ Nueva Marca</button>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        @if (isLoading)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">Cargando marcas...</p>
+        }
+        else if (brands is null || brands.Count == 0)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">Todavia no cargaste ninguna marca. Hace clic en "+ Nueva Marca" para empezar.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>Descripcion</th>
+                            <th>Estado</th>
+                            <th style="width: 130px;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var b in brands)
+                        {
+                            <tr>
+                                <td><strong>@b.Name</strong></td>
+                                <td style="color: #6b7280; font-size: 0.85rem;">@(b.Description ?? "")</td>
+                                <td>
+                                    <span class="status-badge @(b.IsActive ? "status-active" : "status-inactive")">
+                                        @(b.IsActive ? "Activa" : "Inactiva")
+                                    </span>
+                                </td>
+                                <td class="actions-cell">
+                                    <button class="btn-icon btn-edit" @onclick="() => ShowEditForm(b)" title="Editar">@SvgIcons.Edit</button>
+                                    <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(b)" title="Eliminar">@SvgIcons.AlertCircle</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@if (showForm)
+{
+    <div class="modal-overlay" @onclick="CloseForm">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3>@(isEditing ? "Editar Marca" : "Nueva Marca")</h3>
+                <button class="btn-close" @onclick="CloseForm">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(formError))
+                {
+                    <div class="form-error">@formError</div>
+                }
+                <div class="form-group">
+                    <label class="form-label">Nombre *</label>
+                    <input class="form-input" @bind="formName" placeholder="Ej: Samsung" autofocus />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Descripcion</label>
+                    <textarea class="form-input" @bind="formDescription" rows="3" placeholder="Notas sobre la marca (opcional)"></textarea>
+                </div>
+                @if (isEditing)
+                {
+                    <div class="form-group">
+                        <label class="form-label">Estado</label>
+                        <select class="form-input" @bind="formIsActive">
+                            <option value="true">Activa</option>
+                            <option value="false">Inactiva</option>
+                        </select>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseForm" disabled="@isSaving">Cancelar</button>
+                <button class="btn btn-primary" @onclick="Save" disabled="@isSaving">
+                    @(isSaving ? "Guardando..." : (isEditing ? "Guardar" : "Crear"))
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showDeleteConfirm && brandToDelete is not null)
+{
+    <div class="modal-overlay" @onclick="() => showDeleteConfirm = false">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: #dc3545; color: white;">
+                <h4 style="margin: 0;">Eliminar marca</h4>
+                <button class="btn-close" @onclick="() => showDeleteConfirm = false" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Estas seguro que queres eliminar la marca <strong>@brandToDelete.Name</strong>?</p>
+                <p class="text-muted" style="font-size: 0.85rem;">Esta accion no se puede deshacer.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showDeleteConfirm = false">Cancelar</button>
+                <button class="btn btn-danger" @onclick="Delete">Eliminar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<BrandDto>? brands;
+    private bool isLoading = true;
+    private bool showForm;
+    private bool isEditing;
+    private bool isSaving;
+    private string? formError;
+    private int? editingId;
+    private string formName = "";
+    private string formDescription = "";
+    private bool formIsActive = true;
+    private bool showDeleteConfirm;
+    private BrandDto? brandToDelete;
+
+    protected override async Task OnInitializedAsync() => await LoadData();
+
+    private async Task LoadData()
+    {
+        isLoading = true;
+        try { brands = await Api.GetBrandsAsync() ?? new(); }
+        catch { ToastService.Error("Error al cargar las marcas"); brands = new(); }
+        isLoading = false;
+    }
+
+    private void ShowCreateForm()
+    {
+        isEditing = false; editingId = null;
+        formName = ""; formDescription = ""; formIsActive = true;
+        formError = null; showForm = true;
+    }
+
+    private void ShowEditForm(BrandDto b)
+    {
+        isEditing = true; editingId = b.Id;
+        formName = b.Name; formDescription = b.Description ?? "";
+        formIsActive = b.IsActive;
+        formError = null; showForm = true;
+    }
+
+    private void CloseForm() { showForm = false; formError = null; }
+
+    private async Task Save()
+    {
+        formError = null;
+        if (string.IsNullOrWhiteSpace(formName)) { formError = "El nombre es obligatorio"; return; }
+        isSaving = true;
+        try
+        {
+            if (isEditing && editingId.HasValue)
+            {
+                var updated = await Api.UpdateBrandAsync(editingId.Value, new UpdateBrandRequest
+                {
+                    Name = formName, Description = formDescription, IsActive = formIsActive
+                });
+                if (updated is null) { formError = "No se pudo actualizar"; return; }
+                ToastService.Success("Marca actualizada");
+            }
+            else
+            {
+                var created = await Api.CreateBrandAsync(new CreateBrandRequest
+                {
+                    Name = formName, Description = formDescription
+                });
+                if (created is null) { formError = "No se pudo crear"; return; }
+                ToastService.Success("Marca creada");
+            }
+            showForm = false;
+            await LoadData();
+        }
+        catch (Exception ex) { formError = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private void ConfirmDelete(BrandDto b) { brandToDelete = b; showDeleteConfirm = true; }
+
+    private async Task Delete()
+    {
+        if (brandToDelete is null) return;
+        try
+        {
+            var ok = await Api.DeleteBrandAsync(brandToDelete.Id);
+            if (ok) { ToastService.Success("Marca eliminada"); await LoadData(); }
+            else { ToastService.Error("No se pudo eliminar la marca"); }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { showDeleteConfirm = false; brandToDelete = null; }
+    }
+}

@@ -1,0 +1,262 @@
+@page "/proveedores"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3>Proveedores (@(suppliers?.Count ?? 0))</h3>
+        <button class="btn btn-primary" @onclick="ShowCreateForm">+ Nuevo Proveedor</button>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        @if (isLoading)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">Cargando proveedores...</p>
+        }
+        else if (suppliers is null || suppliers.Count == 0)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">Todavia no cargaste ningun proveedor. Hace clic en "+ Nuevo Proveedor" para empezar.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>CUIT</th>
+                            <th>Telefono</th>
+                            <th>Email</th>
+                            <th>Direccion</th>
+                            <th>Contacto</th>
+                            <th>Estado</th>
+                            <th style="width: 130px;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var s in suppliers)
+                        {
+                            <tr>
+                                <td><strong>@s.Name</strong></td>
+                                <td style="font-size: 0.85rem;">@(s.Cuit ?? "")</td>
+                                <td style="font-size: 0.85rem;">@(s.Phone ?? "")</td>
+                                <td style="font-size: 0.85rem;">@(s.Email ?? "")</td>
+                                <td style="font-size: 0.85rem; color: #6b7280;">@(s.Address ?? "")</td>
+                                <td style="font-size: 0.85rem;">@(s.ContactName ?? "")</td>
+                                <td>
+                                    <span class="status-badge @(s.IsActive ? "status-active" : "status-inactive")">
+                                        @(s.IsActive ? "Activo" : "Inactivo")
+                                    </span>
+                                </td>
+                                <td class="actions-cell">
+                                    <button class="btn-icon btn-edit" @onclick="() => ShowEditForm(s)" title="Editar">@SvgIcons.Edit</button>
+                                    <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(s)" title="Eliminar">@SvgIcons.AlertCircle</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@if (showForm)
+{
+    <div class="modal-overlay" @onclick="CloseForm">
+        <div class="modal-card modal-wide" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3>@(isEditing ? "Editar Proveedor" : "Nuevo Proveedor")</h3>
+                <button class="btn-close" @onclick="CloseForm">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(formError))
+                {
+                    <div class="form-error">@formError</div>
+                }
+                <div class="form-group">
+                    <label class="form-label">Nombre / Razon social *</label>
+                    <input class="form-input" @bind="formName" placeholder="Ej: Distribuidora SA" autofocus />
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">CUIT</label>
+                        <input class="form-input" @bind="formCuit" placeholder="20-12345678-9" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Telefono</label>
+                        <input class="form-input" @bind="formPhone" placeholder="+54 11 1234-5678" />
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Email</label>
+                        <input class="form-input" type="email" @bind="formEmail" placeholder="proveedor@ejemplo.com" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Persona de contacto</label>
+                        <input class="form-input" @bind="formContactName" placeholder="Nombre y apellido" />
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Direccion</label>
+                    <input class="form-input" @bind="formAddress" placeholder="Calle, numero, ciudad, provincia" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Notas</label>
+                    <textarea class="form-input" @bind="formNotes" rows="3" placeholder="Cualquier informacion extra (horario de atencion, condiciones, etc)"></textarea>
+                </div>
+                @if (isEditing)
+                {
+                    <div class="form-group">
+                        <label class="form-label">Estado</label>
+                        <select class="form-input" @bind="formIsActive" style="max-width: 200px;">
+                            <option value="true">Activo</option>
+                            <option value="false">Inactivo</option>
+                        </select>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseForm" disabled="@isSaving">Cancelar</button>
+                <button class="btn btn-primary" @onclick="Save" disabled="@isSaving">
+                    @(isSaving ? "Guardando..." : (isEditing ? "Guardar" : "Crear"))
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showDeleteConfirm && supplierToDelete is not null)
+{
+    <div class="modal-overlay" @onclick="() => showDeleteConfirm = false">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: #dc3545; color: white;">
+                <h4 style="margin: 0;">Eliminar proveedor</h4>
+                <button class="btn-close" @onclick="() => showDeleteConfirm = false" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Estas seguro que queres eliminar al proveedor <strong>@supplierToDelete.Name</strong>?</p>
+                <p class="text-muted" style="font-size: 0.85rem;">Esta accion no se puede deshacer.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showDeleteConfirm = false">Cancelar</button>
+                <button class="btn btn-danger" @onclick="Delete">Eliminar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<SupplierDto>? suppliers;
+    private bool isLoading = true;
+    private bool showForm;
+    private bool isEditing;
+    private bool isSaving;
+    private string? formError;
+    private int? editingId;
+    private string formName = "";
+    private string formCuit = "";
+    private string formPhone = "";
+    private string formEmail = "";
+    private string formAddress = "";
+    private string formContactName = "";
+    private string formNotes = "";
+    private bool formIsActive = true;
+    private bool showDeleteConfirm;
+    private SupplierDto? supplierToDelete;
+
+    protected override async Task OnInitializedAsync() => await LoadData();
+
+    private async Task LoadData()
+    {
+        isLoading = true;
+        try { suppliers = await Api.GetSuppliersAsync() ?? new(); }
+        catch { ToastService.Error("Error al cargar los proveedores"); suppliers = new(); }
+        isLoading = false;
+    }
+
+    private void ShowCreateForm()
+    {
+        isEditing = false; editingId = null;
+        formName = ""; formCuit = ""; formPhone = ""; formEmail = "";
+        formAddress = ""; formContactName = ""; formNotes = "";
+        formIsActive = true; formError = null; showForm = true;
+    }
+
+    private void ShowEditForm(SupplierDto s)
+    {
+        isEditing = true; editingId = s.Id;
+        formName = s.Name;
+        formCuit = s.Cuit ?? "";
+        formPhone = s.Phone ?? "";
+        formEmail = s.Email ?? "";
+        formAddress = s.Address ?? "";
+        formContactName = s.ContactName ?? "";
+        formNotes = s.Notes ?? "";
+        formIsActive = s.IsActive;
+        formError = null; showForm = true;
+    }
+
+    private void CloseForm() { showForm = false; formError = null; }
+
+    private async Task Save()
+    {
+        formError = null;
+        if (string.IsNullOrWhiteSpace(formName)) { formError = "El nombre es obligatorio"; return; }
+        isSaving = true;
+        try
+        {
+            if (isEditing && editingId.HasValue)
+            {
+                var updated = await Api.UpdateSupplierAsync(editingId.Value, new UpdateSupplierRequest
+                {
+                    Name = formName,
+                    Cuit = formCuit,
+                    Phone = formPhone,
+                    Email = formEmail,
+                    Address = formAddress,
+                    ContactName = formContactName,
+                    Notes = formNotes,
+                    IsActive = formIsActive
+                });
+                if (updated is null) { formError = "No se pudo actualizar"; return; }
+                ToastService.Success("Proveedor actualizado");
+            }
+            else
+            {
+                var created = await Api.CreateSupplierAsync(new CreateSupplierRequest
+                {
+                    Name = formName,
+                    Cuit = formCuit,
+                    Phone = formPhone,
+                    Email = formEmail,
+                    Address = formAddress,
+                    ContactName = formContactName,
+                    Notes = formNotes
+                });
+                if (created is null) { formError = "No se pudo crear"; return; }
+                ToastService.Success("Proveedor creado");
+            }
+            showForm = false;
+            await LoadData();
+        }
+        catch (Exception ex) { formError = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private void ConfirmDelete(SupplierDto s) { supplierToDelete = s; showDeleteConfirm = true; }
+
+    private async Task Delete()
+    {
+        if (supplierToDelete is null) return;
+        try
+        {
+            var ok = await Api.DeleteSupplierAsync(supplierToDelete.Id);
+            if (ok) { ToastService.Success("Proveedor eliminado"); await LoadData(); }
+            else { ToastService.Error("No se pudo eliminar el proveedor"); }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { showDeleteConfirm = false; supplierToDelete = null; }
+    }
+}

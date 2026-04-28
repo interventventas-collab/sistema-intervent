@@ -560,3 +560,51 @@ BEGIN
     CREATE INDEX IX_Products_BaseProductId ON Products(BaseProductId);
 END
 GO
+
+-- Suppliers (proveedores)
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Suppliers' AND xtype='U')
+BEGIN
+    CREATE TABLE Suppliers (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Name NVARCHAR(200) NOT NULL,
+        Cuit NVARCHAR(20) NULL,
+        Phone NVARCHAR(50) NULL,
+        Email NVARCHAR(255) NULL,
+        Address NVARCHAR(500) NULL,
+        ContactName NVARCHAR(150) NULL,
+        Notes NVARCHAR(MAX) NULL,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL
+    );
+    CREATE INDEX IX_Suppliers_Name ON Suppliers (Name);
+END
+GO
+
+-- Brands (marcas)
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Brands' AND xtype='U')
+BEGIN
+    CREATE TABLE Brands (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Name NVARCHAR(150) NOT NULL,
+        Description NVARCHAR(500) NULL,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT UQ_Brands_Name UNIQUE (Name)
+    );
+END
+GO
+
+-- Permisos de proveedores y marcas para admin
+IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId = 1 AND MenuKey = 'proveedores')
+BEGIN
+    INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'proveedores');
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId = 1 AND MenuKey = 'marcas')
+BEGIN
+    INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'marcas');
+END
+GO
