@@ -54,7 +54,7 @@ public class SaleService
         }
 
         // Resolver tier de precios: el del cliente, o si no tiene, la lista default.
-        var tierId = await ResolveTierIdAsync(client?.CustomerTierId);
+        var (tierId, tierAdjPct) = await ResolveTierWithPercentAsync(client?.CustomerTierId);
 
         // Calcular items y totales
         var items = new List<SaleItem>();
@@ -68,6 +68,8 @@ public class SaleService
             string description = i.Description;
             decimal unit = i.UnitPrice;
             decimal? vat = i.VatRate;
+            decimal basePrice = unit;        // precio sin lista (snapshot)
+            decimal itemTierAdj = 0m;        // % que aplico la lista a este item
 
             if (i.ProductId.HasValue)
             {
@@ -75,13 +77,32 @@ public class SaleService
                     ?? throw new InvalidOperationException($"Producto {i.ProductId} no encontrado.");
                 code ??= product.Sku;
                 if (string.IsNullOrWhiteSpace(description)) description = product.DisplayName ?? product.Title;
-                // Si no se mando un precio explicito, calcularlo segun la lista del cliente
+                vat ??= product.VatRate;
+
+                // Calcular el precio que la lista habria aplicado a este producto.
+                var listPrice = Math.Round(product.RetailPrice * (1m + tierAdjPct / 100m), 2);
+
                 if (unit <= 0)
                 {
+                    // Sin precio explicito: usar el de la lista (con override si existe).
                     unit = await _tiers.GetPriceForTierAsync(product.Id, tierId);
-                    if (unit <= 0) unit = product.RetailPrice; // fallback final
+                    if (unit <= 0) unit = product.RetailPrice;
+                    basePrice = product.RetailPrice;
+                    itemTierAdj = tierAdjPct;
                 }
-                vat ??= product.VatRate;
+                else if (Math.Abs(unit - listPrice) <= 0.01m)
+                {
+                    // El precio que mando el frontend coincide con el de la lista:
+                    // registramos el descuento explicitamente.
+                    basePrice = product.RetailPrice;
+                    itemTierAdj = tierAdjPct;
+                }
+                else
+                {
+                    // El usuario lo modifico a mano. Tratarlo como "manual": sin descuento de lista.
+                    basePrice = unit;
+                    itemTierAdj = 0m;
+                }
             }
 
             var bruto = i.Quantity * unit;
@@ -97,7 +118,9 @@ public class SaleService
                 UnitPrice = unit,
                 VatRate = vat,
                 BonifPercent = i.BonifPercent,
-                LineTotal = lineTotal
+                LineTotal = lineTotal,
+                BasePrice = basePrice,
+                TierAdjustmentPercent = itemTierAdj
             });
             subtotal += lineTotal;
         }
@@ -205,9 +228,10 @@ public class SaleService
             _db.SaleItems.RemoveRange(sale.Items);
             sale.Items.Clear();
 
-            // Tier del cliente actual de la venta para autocompletar precios sin ingresar
-            var tierIdForUpdate = await ResolveTierIdAsync(sale.Client?.CustomerTierId
-                ?? (sale.ClientId.HasValue ? (await _db.Clients.FindAsync(sale.ClientId.Value))?.CustomerTierId : null));
+            // Tier del cliente actual de la venta + su % para snapshot por linea
+            var clientTierId = sale.Client?.CustomerTierId
+                ?? (sale.ClientId.HasValue ? (await _db.Clients.FindAsync(sale.ClientId.Value))?.CustomerTierId : null);
+            var (tierIdForUpdate, tierAdjPctForUpdate) = await ResolveTierWithPercentAsync(clientTierId);
 
             decimal subtotal = 0m;
             foreach (var i in request.Items)
@@ -217,6 +241,8 @@ public class SaleService
                 string description = i.Description;
                 decimal unit = i.UnitPrice;
                 decimal? vat = i.VatRate;
+                decimal basePrice = unit;
+                decimal itemTierAdj = 0m;
 
                 if (i.ProductId.HasValue)
                 {
@@ -224,12 +250,27 @@ public class SaleService
                         ?? throw new InvalidOperationException($"Producto {i.ProductId} no encontrado.");
                     code ??= product.Sku;
                     if (string.IsNullOrWhiteSpace(description)) description = product.DisplayName ?? product.Title;
+                    vat ??= product.VatRate;
+
+                    var listPrice = Math.Round(product.RetailPrice * (1m + tierAdjPctForUpdate / 100m), 2);
+
                     if (unit <= 0)
                     {
                         unit = await _tiers.GetPriceForTierAsync(product.Id, tierIdForUpdate);
                         if (unit <= 0) unit = product.RetailPrice;
+                        basePrice = product.RetailPrice;
+                        itemTierAdj = tierAdjPctForUpdate;
                     }
-                    vat ??= product.VatRate;
+                    else if (Math.Abs(unit - listPrice) <= 0.01m)
+                    {
+                        basePrice = product.RetailPrice;
+                        itemTierAdj = tierAdjPctForUpdate;
+                    }
+                    else
+                    {
+                        basePrice = unit;
+                        itemTierAdj = 0m;
+                    }
                 }
 
                 var bruto = i.Quantity * unit;
@@ -240,7 +281,8 @@ public class SaleService
                 {
                     ProductId = i.ProductId, Code = code, Description = description,
                     Quantity = i.Quantity, UnitPrice = unit, VatRate = vat,
-                    BonifPercent = i.BonifPercent, LineTotal = lineTotal
+                    BonifPercent = i.BonifPercent, LineTotal = lineTotal,
+                    BasePrice = basePrice, TierAdjustmentPercent = itemTierAdj
                 });
                 subtotal += lineTotal;
             }
@@ -404,6 +446,21 @@ public class SaleService
     }
 
     /// <summary>
+    /// Resuelve el tier que aplica a un cliente y devuelve tambien su % de ajuste.
+    /// Util para guardar el snapshot de descuento en cada item de venta.
+    /// </summary>
+    private async Task<(int? tierId, decimal adjustmentPercent)> ResolveTierWithPercentAsync(int? clientTierId)
+    {
+        var tierId = await ResolveTierIdAsync(clientTierId);
+        if (!tierId.HasValue) return (null, 0m);
+        var pct = await _db.CustomerTiers
+            .Where(t => t.Id == tierId.Value)
+            .Select(t => t.AdjustmentPercent)
+            .FirstOrDefaultAsync();
+        return (tierId, pct);
+    }
+
+    /// <summary>
     /// Descuenta del stock de cada producto las cantidades vendidas en la venta.
     /// Items sin ProductId (texto libre) se ignoran. Permite stock negativo.
     /// Marca Sale.StockDiscounted = true al terminar para evitar doble descuento.
@@ -541,7 +598,10 @@ public class SaleService
         s.IsCancelled, s.CancelledAt, s.CancelledByOperator, s.WeekDays, s.IsPaid, s.CompanyNameSnapshot, s.CreatedAt, s.UpdatedAt,
         s.Items.OrderBy(i => i.Id).Select(i => new SaleItemDto(
             i.Id, i.ProductId, i.Code, i.Description,
-            i.Quantity, i.UnitPrice, i.VatRate, i.BonifPercent, i.LineTotal
+            i.Quantity, i.UnitPrice, i.VatRate, i.BonifPercent, i.LineTotal,
+            // Si BasePrice quedo en 0 (item viejo previo a la migracion), caer al UnitPrice.
+            i.BasePrice > 0 ? i.BasePrice : i.UnitPrice,
+            i.TierAdjustmentPercent
         )).ToList()
     );
 }

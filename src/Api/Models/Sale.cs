@@ -119,4 +119,16 @@ public class SaleItem
 
     [Column(TypeName = "decimal(18,2)")]
     public decimal LineTotal { get; set; }
+
+    /// <summary>
+    /// Precio unitario base (sin lista de precios aplicada) snapshotado al momento de la venta.
+    /// Sirve para mostrar el descuento original en el comprobante aunque el precio del producto
+    /// cambie despues. Si no hubo lista, BasePrice == UnitPrice y TierAdjustmentPercent == 0.
+    /// </summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal BasePrice { get; set; }
+
+    /// <summary>Porcentaje de ajuste aplicado por la lista de precios al momento de la venta (ej -50.00).</summary>
+    [Column(TypeName = "decimal(6,2)")]
+    public decimal TierAdjustmentPercent { get; set; }
 }

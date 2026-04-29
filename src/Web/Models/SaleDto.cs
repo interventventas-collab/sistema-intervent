@@ -11,6 +11,10 @@ public class SaleItemDto
     public decimal? VatRate { get; set; }
     public decimal BonifPercent { get; set; }
     public decimal LineTotal { get; set; }
+    /// <summary>Precio unit. base sin lista (snapshot al momento de la venta).</summary>
+    public decimal BasePrice { get; set; }
+    /// <summary>% que aplicó la lista de precios (-50, +15, etc). 0 si no hubo lista.</summary>
+    public decimal TierAdjustmentPercent { get; set; }
 }
 
 public class SaleDto

@@ -11,7 +11,9 @@ public record SaleItemDto(
     decimal UnitPrice,
     decimal? VatRate,
     decimal BonifPercent,
-    decimal LineTotal
+    decimal LineTotal,
+    decimal BasePrice,                  // Precio unit. sin lista (snapshot al momento de la venta)
+    decimal TierAdjustmentPercent       // % aplicado por la lista (-50, +15, etc). 0 si no hubo lista.
 );
 
 public record SaleDto(

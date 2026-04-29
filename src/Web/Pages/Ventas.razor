@@ -501,6 +501,30 @@
         }
         .day-pill { display: inline-flex; align-items: center; justify-content: center; padding: 0.25rem 0.55rem; border: 1px solid #d1d5db; border-radius: 5px; font-weight: 700; font-size: 0.8rem; cursor: pointer; min-width: 38px; user-select: none; }
         .day-pill.on { background: #1f2937; color: white; border-color: #1f2937; }
+        .comprobante-items th, .comprobante-items td { font-size: 0.82rem; padding: 0.3rem 0.4rem; }
+
+        /* === Reglas de impresion: A4 fijo, ocultar artifacts del navegador === */
+        @@media print {
+            @@page { size: A4; margin: 12mm; }
+            html, body { background: white !important; margin: 0 !important; padding: 0 !important; }
+            /* Ocultar todo lo que no sea el comprobante */
+            body * { visibility: hidden; }
+            #comprobante-print, #comprobante-print * { visibility: visible; }
+            #comprobante-print {
+                position: absolute; left: 0; top: 0; width: 100%;
+                min-height: 265mm; /* A4 - margenes */
+                padding: 0 !important;
+                background: white !important;
+                display: flex; flex-direction: column;
+            }
+            /* Empuja el pie hacia abajo cuando hay pocos items, asi siempre llena la hoja */
+            #comprobante-print > *:last-child { margin-top: auto; }
+            .no-print { display: none !important; }
+            /* La tabla y bloques no se cortan a la mitad */
+            .comprobante-items, .comprobante-firmas { page-break-inside: avoid; }
+            /* La caja de totales y firmas mas chicas para que entren bien */
+            .comprobante-items th, .comprobante-items td { font-size: 0.78rem; }
+        }
     </style>
     <div class="modal-overlay" @onclick="CloseViewer">
         <div class="modal-card modal-wide" @onclick:stopPropagation="true" style="max-width: 800px;">
@@ -601,55 +625,126 @@
                     </div>
                 </div>
 
-                <!-- Items -->
-                <table class="data-table" style="margin: 0; border: 1px solid #d1d5db; border-top: 0;">
+                @* ===== Items ===== *@
+                @{
+                    // Mostrar columnas dinamicas: "P.U. lista" + "Desc." solo si algun item tiene
+                    // descuento de lista; "Bonif" solo si algun item tiene bonificacion ad-hoc.
+                    var anyTierDiscount = viewerSale.Items.Any(i => i.TierAdjustmentPercent != 0m && i.BasePrice > 0 && Math.Abs(i.BasePrice - i.UnitPrice) > 0.01m);
+                    var anyBonif = viewerSale.Items.Any(i => i.BonifPercent > 0m);
+
+                    // Subtotal sin descuento (sumando precios base, no los ya rebajados).
+                    decimal subtotalSinDescuento = viewerSale.Items.Sum(i => i.Quantity * (i.BasePrice > 0 ? i.BasePrice : i.UnitPrice));
+                    decimal totalAhorrado = Math.Max(0m, subtotalSinDescuento - viewerSale.Subtotal);
+
+                    // Si todos los items tienen el mismo % de tier, mostramos el % en el pie.
+                    var distinctTierPcts = viewerSale.Items.Where(i => i.TierAdjustmentPercent != 0m).Select(i => i.TierAdjustmentPercent).Distinct().ToList();
+                    decimal? uniformTierPct = distinctTierPcts.Count == 1 ? distinctTierPcts[0] : (decimal?)null;
+                }
+                <table class="data-table comprobante-items" style="margin: 0; border: 1px solid #d1d5db; border-top: 0;">
                     <thead style="background: #f3f4f6;">
                         <tr>
-                            <th style="width: 70px;">Cant.</th>
-                            <th style="width: 110px;">Codigo</th>
-                            <th>Descripcion</th>
-                            <th style="text-align: right; width: 110px;">P. unit.</th>
-                            <th style="text-align: right; width: 70px;">Bonif</th>
-                            <th style="text-align: right; width: 130px;">Importe</th>
+                            <th style="width: 60px;">Cant.</th>
+                            <th style="width: 100px;">Código</th>
+                            <th>Descripción</th>
+                            @if (anyTierDiscount)
+                            {
+                                <th style="text-align: right; width: 100px;">P.U. lista</th>
+                                <th style="text-align: right; width: 60px;">Desc.</th>
+                            }
+                            <th style="text-align: right; width: 110px;">Precio unitario</th>
+                            @if (anyBonif)
+                            {
+                                <th style="text-align: right; width: 60px;">Bonif</th>
+                            }
+                            <th style="text-align: right; width: 120px;">Subtotal</th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach (var i in viewerSale.Items)
                         {
+                            var hasDiscount = i.TierAdjustmentPercent != 0m && i.BasePrice > 0 && Math.Abs(i.BasePrice - i.UnitPrice) > 0.01m;
                             <tr>
                                 <td>@FormatQty(i.Quantity)</td>
                                 <td style="font-family: monospace;">@(i.Code ?? "")</td>
                                 <td>@i.Description</td>
-                                <td style="text-align: right;">$@FormatPrice(i.UnitPrice)</td>
-                                <td style="text-align: right;">@FormatQty(i.BonifPercent) %</td>
+                                @if (anyTierDiscount)
+                                {
+                                    @if (hasDiscount)
+                                    {
+                                        <td style="text-align: right; color: #6b7280; text-decoration: line-through;">$@FormatPrice(i.BasePrice)</td>
+                                        <td style="text-align: right; font-weight: 700; color: #dc2626;">@FormatPercent(i.TierAdjustmentPercent)</td>
+                                    }
+                                    else
+                                    {
+                                        <td style="text-align: right; color: #d1d5db;">—</td>
+                                        <td style="text-align: right; color: #d1d5db;">—</td>
+                                    }
+                                }
+                                <td style="text-align: right; font-weight: 600;">$@FormatPrice(i.UnitPrice)</td>
+                                @if (anyBonif)
+                                {
+                                    <td style="text-align: right;">@(i.BonifPercent > 0 ? FormatQty(i.BonifPercent) + " %" : "—")</td>
+                                }
                                 <td style="text-align: right; font-weight: 600;">$@FormatPrice(i.LineTotal)</td>
                             </tr>
                         }
                     </tbody>
                 </table>
 
-                <!-- Pie -->
+                @* ===== Pie ===== *@
                 <div style="border: 1px solid #d1d5db; border-top: 0; padding: 0.6rem; font-size: 0.85rem;">
-                    <div>@(viewerSale.AmountInWords ?? "")</div>
-                    <div style="margin-top: 0.3rem;">
-                        @if (viewerSale.Discount > 0)
-                        {
-                            <div style="text-align: right;">Subtotal: $@FormatPrice(viewerSale.Subtotal)</div>
-                            <div style="text-align: right;">Descuento: -$@FormatPrice(viewerSale.Discount)</div>
-                        }
-                        <div style="text-align: right; font-size: 1.1rem; font-weight: 700; margin-top: 0.4rem;">
-                            Importe Total: $@FormatPrice(viewerSale.Total)
+                    <div style="display: flex; gap: 1rem; align-items: flex-start;">
+                        <div style="flex: 1;">
+                            @if (!string.IsNullOrEmpty(viewerSale.AmountInWords))
+                            {
+                                <div style="font-style: italic;">@viewerSale.AmountInWords</div>
+                            }
+                            @if (!string.IsNullOrEmpty(viewerSale.Notes))
+                            {
+                                <div style="margin-top: 0.4rem; color: #6b7280; font-size: 0.78rem;">
+                                    <strong>Observaciones:</strong> @viewerSale.Notes
+                                </div>
+                            }
+                        </div>
+                        @* Caja de totales con desglose *@
+                        <div style="min-width: 280px; border-left: 1px solid #e5e7eb; padding-left: 0.75rem;">
+                            @if (totalAhorrado > 0 || viewerSale.Discount > 0)
+                            {
+                                <div style="display: flex; justify-content: space-between; padding: 0.15rem 0;">
+                                    <span style="color: #6b7280;">Subtotal sin descuento:</span>
+                                    <span>$@FormatPrice(subtotalSinDescuento)</span>
+                                </div>
+                            }
+                            @if (totalAhorrado > 0)
+                            {
+                                <div style="display: flex; justify-content: space-between; padding: 0.15rem 0; color: #dc2626;">
+                                    <span>Descuento de lista@(uniformTierPct.HasValue ? $" ({FormatPercent(uniformTierPct.Value)})" : ""):</span>
+                                    <span>-$@FormatPrice(totalAhorrado)</span>
+                                </div>
+                            }
+                            @if (viewerSale.Discount > 0)
+                            {
+                                <div style="display: flex; justify-content: space-between; padding: 0.15rem 0; color: #dc2626;">
+                                    <span>Descuento adicional:</span>
+                                    <span>-$@FormatPrice(viewerSale.Discount)</span>
+                                </div>
+                            }
+                            <div style="border-top: 2px solid #1f2937; margin-top: 0.4rem; padding-top: 0.4rem; display: flex; justify-content: space-between; font-size: 1.1rem; font-weight: 800;">
+                                <span>IMPORTE TOTAL:</span>
+                                <span>$@FormatPrice(viewerSale.Total)</span>
+                            </div>
+                            @if (totalAhorrado > 0)
+                            {
+                                <div style="margin-top: 0.5rem; padding: 0.4rem 0.6rem; background: #dcfce7; color: #166534; border-radius: 4px; text-align: center; font-weight: 700; font-size: 0.85rem;">
+                                    💰 Ahorraste $@FormatPrice(totalAhorrado)
+                                </div>
+                            }
                         </div>
                     </div>
-                    @if (!string.IsNullOrEmpty(viewerSale.Notes))
-                    {
-                        <div style="margin-top: 0.5rem; color: #6b7280; font-size: 0.78rem;">
-                            <strong>Observaciones:</strong> @viewerSale.Notes
-                        </div>
-                    }
 
-                    <!-- Dias de la semana (tildables tambien despues de impreso) -->
-                    <div style="margin-top: 0.8rem; display: flex; gap: 0.3rem; justify-content: center; flex-wrap: wrap;">
+                    @* Dias de la semana (tildables tambien despues de impreso) *@
+                    <div style="margin-top: 0.8rem; display: flex; gap: 0.3rem; justify-content: center; flex-wrap: wrap; align-items: center;">
+                        <span style="font-size: 0.78rem; color: #6b7280; margin-right: 0.4rem;">Días de visita / reparto:</span>
                         @foreach (var d in AllWeekDays)
                         {
                             var isOn = ViewerHasDay(d);
@@ -658,9 +753,23 @@
                             </span>
                         }
                     </div>
+
+                    @* Espacios de firma *@
+                    <div class="comprobante-firmas" style="margin-top: 1.5rem; display: flex; justify-content: space-around; gap: 2rem;">
+                        <div style="flex: 1; text-align: center;">
+                            <div style="border-top: 1px solid #6b7280; padding-top: 0.3rem; font-size: 0.75rem; color: #6b7280;">
+                                Firma del cliente / Aclaración
+                            </div>
+                        </div>
+                        <div style="flex: 1; text-align: center;">
+                            <div style="border-top: 1px solid #6b7280; padding-top: 0.3rem; font-size: 0.75rem; color: #6b7280;">
+                                Firma autorizada
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <div class="modal-footer">
+            <div class="modal-footer no-print">
                 <button class="btn btn-secondary" @onclick="CloseViewer">Cerrar</button>
             </div>
         </div>

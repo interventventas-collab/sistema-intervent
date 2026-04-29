@@ -826,6 +826,23 @@ BEGIN
 END
 GO
 
+-- SaleItems: snapshot del precio base (sin lista de precios aplicada) y del % de
+-- ajuste de la lista al momento de la venta. Sirve para mostrar el descuento
+-- correctamente en el comprobante impreso aunque despues cambie el precio del producto.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'BasePrice' AND Object_ID = Object_ID(N'SaleItems'))
+BEGIN
+    ALTER TABLE SaleItems ADD BasePrice DECIMAL(18,2) NOT NULL CONSTRAINT DF_SaleItems_BasePrice DEFAULT 0;
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'TierAdjustmentPercent' AND Object_ID = Object_ID(N'SaleItems'))
+BEGIN
+    ALTER TABLE SaleItems ADD TierAdjustmentPercent DECIMAL(6,2) NOT NULL CONSTRAINT DF_SaleItems_TierAdjustmentPercent DEFAULT 0;
+END
+GO
+-- Para items existentes (cargados antes de esta migracion), backfill: BasePrice = UnitPrice.
+UPDATE SaleItems SET BasePrice = UnitPrice WHERE BasePrice = 0 AND UnitPrice > 0;
+GO
+
 -- ============================================================
 -- TESORERIA (cuentas y movimientos)
 -- ============================================================
