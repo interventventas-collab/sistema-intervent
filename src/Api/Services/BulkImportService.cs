@@ -180,19 +180,22 @@ public class BulkImportService
         ("descripcion", "Bandeja plastica resistente"),
         ("marca", "Colombraro (nombre exacto de la marca cargada)"),
         ("modelo", "Modelo X"),
-        ("producto_base_sku", "9311 (SKU del producto base, dejar vacio si es producto suelto)"),
+        ("tipo", "independiente (opciones: padre / hijo / independiente — vacio = independiente)"),
+        ("producto_base_sku", "9311 (solo si tipo=hijo: SKU del padre. Si tipo=padre o independiente, dejar vacio)"),
         ("sku", "C9311BL"),
         ("codigo_de_barras", "7790140123456"),
         ("codigo_oem", "OEM-X"),
         ("url_imagen", "https://ejemplo.com/img.jpg"),
-        ("precio_costo", "1500.50 (se ignora si tiene producto_base_sku, hereda del padre)"),
-        ("precio_venta", "2999.99 (se ignora si tiene producto_base_sku, hereda del padre)"),
+        ("precio_costo", "1500.50 (se ignora si tipo=hijo, hereda del padre)"),
+        ("precio_venta", "2999.99 (se ignora si tipo=hijo, hereda del padre)"),
         ("iva", "21"),
         ("cuenta_compra", "511001"),
         ("cuenta_venta", "411001"),
         ("cuenta_mercaderia", "113001"),
-        ("stock", "10"),
-        ("stock_critico", "2")
+        ("stock", "10 (se ignora si tipo=padre — el stock del padre es la suma de los hijos)"),
+        ("stock_critico", "2"),
+        ("uxb", "12 (unidades por bulto, opcional)"),
+        ("activo", "si (opciones: si / no — vacio = si)")
     });
 
     // Plantilla SIN columna producto_base_sku: para cargar productos que SERAN base de otros.
@@ -213,8 +216,9 @@ public class BulkImportService
         ("cuenta_compra", "511001"),
         ("cuenta_venta", "411001"),
         ("cuenta_mercaderia", "113001"),
-        ("stock", "10"),
-        ("stock_critico", "2")
+        ("stock_critico", "2"),
+        ("uxb", "12 (unidades por bulto, opcional)"),
+        ("activo", "si (opciones: si / no — vacio = si)")
     });
 
     public async Task<BulkImportResult> ImportProductsAsync(Stream excelStream, bool markAsBase = false)
@@ -294,16 +298,51 @@ public class BulkImportService
             brandId = bid;
         }
 
-        int? baseId = null;
         var baseSku = Cell(row, headers, "producto_base_sku");
-        if (!string.IsNullOrWhiteSpace(baseSku))
+        var tipoRaw = (Cell(row, headers, "tipo") ?? "").Trim().ToLowerInvariant();
+
+        // Resolver el tipo del producto.
+        // Si el Excel especifica "tipo", manda. Sino, fallback al markAsBase + producto_base_sku.
+        bool isPadre, isHijo;
+        if (tipoRaw is "padre" or "padres")
+        {
+            isPadre = true; isHijo = false;
+        }
+        else if (tipoRaw is "hijo" or "hijos")
+        {
+            isPadre = false; isHijo = true;
+            if (string.IsNullOrWhiteSpace(baseSku))
+                throw new InvalidOperationException("Producto marcado como 'hijo' pero la columna 'producto_base_sku' esta vacia. Indicá el SKU del padre.");
+        }
+        else if (tipoRaw is "independiente" or "indep" or "")
+        {
+            // Vacio: respetar markAsBase + producto_base_sku tradicional.
+            if (string.IsNullOrEmpty(tipoRaw))
+            {
+                isPadre = markAsBase;
+                isHijo = !markAsBase && !string.IsNullOrWhiteSpace(baseSku);
+            }
+            else
+            {
+                isPadre = false; isHijo = false;
+                // Para 'independiente', ignoramos producto_base_sku aunque venga.
+                baseSku = null;
+            }
+        }
+        else
+        {
+            throw new InvalidOperationException($"Valor invalido en columna 'tipo': '{tipoRaw}'. Opciones validas: padre / hijo / independiente.");
+        }
+
+        int? baseId = null;
+        if (isHijo && !string.IsNullOrWhiteSpace(baseSku))
         {
             if (!productIdBySku.TryGetValue(baseSku.Trim().ToLowerInvariant(), out var bid))
-                throw new InvalidOperationException($"El producto base con SKU '{baseSku}' no existe. Cargalo primero (en la solapa Productos base).");
+                throw new InvalidOperationException($"El producto base con SKU '{baseSku}' no existe. Cargalo primero (como 'tipo=padre').");
             baseId = bid;
         }
 
-        return await _products.CreateOrUpdateAsync(new CreateProductRequest(
+        var result = await _products.CreateOrUpdateAsync(new CreateProductRequest(
             Title: title!,
             DisplayName: Cell(row, headers, "nombre_para_mostrar"),
             Description: Cell(row, headers, "descripcion"),
@@ -324,10 +363,34 @@ public class BulkImportService
             CriticalStock: ParseInt(Cell(row, headers, "stock_critico")) ?? 0,
             BaseProductId: baseId,
             BrandId: brandId,
-            IsBase: markAsBase,
+            IsBase: isPadre,
             IsService: false,
             UnitsPerPack: ParseInt(Cell(row, headers, "uxb"))
         ));
+
+        // Si el Excel pidio activo=no (false), ajustar despues de crear (el create por default es activo).
+        if (result is not null)
+        {
+            var activo = ParseBool(Cell(row, headers, "activo"));
+            if (activo == false)
+            {
+                await _products.UpdateAsync(result.Product.Id, new UpdateProductRequest(
+                    Title: null, DisplayName: null, Description: null,
+                    Brand: null, Model: null, Sku: null, Barcode: null, OemCode: null,
+                    ImageUrl: null, Photo1: null, Photo2: null, Photo3: null,
+                    CostPrice: null, RetailPrice: null, VatRate: null,
+                    PurchaseAccount: null, SaleAccount: null, InventoryAccount: null,
+                    Stock: null, CriticalStock: null,
+                    IsActive: false,
+                    BaseProductId: null, ClearBaseProduct: null,
+                    BrandId: null, ClearBrand: null,
+                    IsBase: null, IsService: null,
+                    UnitsPerPack: null, ClearUnitsPerPack: null
+                ));
+            }
+        }
+
+        return result;
     }
 
     // ============================================================
