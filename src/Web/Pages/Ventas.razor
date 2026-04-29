@@ -248,10 +248,27 @@
                     </table>
                 }
 
-                @* Selector para agregar producto *@
+                @* Input rapido por codigo: si es padre, abre selector de hijos *@
+                <div class="form-row" style="align-items: flex-end;">
+                    <div class="form-group" style="flex: 2;">
+                        <label class="form-label">Tipear / escanear código (SKU)</label>
+                        <input class="form-input" @bind="codeInput" @bind:event="oninput"
+                               @onkeydown="OnCodeInputKey"
+                               placeholder="Tipeá el código y dale Enter" />
+                        <p style="font-size: 0.75rem; color: #6b7280; margin: 0.2rem 0 0;">
+                            Si el código es de un <strong>padre</strong>, se abre un selector con sus hijos.
+                            Si es un hijo o independiente, se agrega directo.
+                        </p>
+                    </div>
+                    <div class="form-group" style="flex: 0;">
+                        <button class="btn btn-secondary" @onclick="AddByCode" disabled="@string.IsNullOrWhiteSpace(codeInput)" style="white-space: nowrap;">↵ Buscar</button>
+                    </div>
+                </div>
+
+                @* Selector tradicional para agregar producto desde dropdown *@
                 <div class="form-row" style="align-items: flex-end;">
                     <div class="form-group" style="flex: 4;">
-                        <label class="form-label">Agregar producto</label>
+                        <label class="form-label">o elegí desde la lista</label>
                         <select class="form-input" @bind="addProductId">
                             <option value="0">— Elegi un producto —</option>
                             @if (availableProducts is not null)
@@ -327,6 +344,64 @@
                         "duplicate" => "Emitir comprobante nuevo",
                         _ => "Emitir comprobante"
                     }))
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ====== SELECTOR DE HIJOS DE UN PADRE (cuando se carga un codigo padre) ====== *@
+@if (parentForChildPicker is not null)
+{
+    <div class="modal-overlay" @onclick="CloseChildPicker">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true" style="max-width: 600px;">
+            <div class="modal-header" style="background: #dcfce7;">
+                <h3 style="color: #15803d;">Elegí qué variantes querés agregar</h3>
+                <button class="btn-close" @onclick="CloseChildPicker">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.85rem; color: #374151; margin: 0 0 0.7rem;">
+                    Tipeaste el código <strong>@parentForChildPicker.Sku</strong> que corresponde al producto padre
+                    <strong>@parentForChildPicker.Title</strong>. Indicá cuántas unidades de cada variante querés sumar a la venta:
+                </p>
+                @if (childrenOfParent.Count == 0)
+                {
+                    <p class="text-muted">Este padre no tiene hijos cargados todavía.</p>
+                }
+                else
+                {
+                    <table class="data-table" style="margin: 0;">
+                        <thead>
+                            <tr>
+                                <th style="width: 110px;">Código</th>
+                                <th>Variante</th>
+                                <th style="text-align: right; width: 110px;">PVP s/IVA</th>
+                                <th style="text-align: center; width: 100px;">Cantidad</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var child in childrenOfParent)
+                            {
+                                var cId = child.Id;
+                                <tr>
+                                    <td style="font-family: monospace; font-size: 0.85rem;">@(child.Sku ?? "—")</td>
+                                    <td><strong>@child.Title</strong></td>
+                                    <td style="text-align: right; font-weight: 700;">$@FormatPrice(child.RetailPrice)</td>
+                                    <td style="text-align: center;">
+                                        <input type="number" step="0.01" min="0" class="form-input" style="text-align:center; width: 80px;"
+                                               value="@(childPickerQuantities.TryGetValue(cId, out var q) ? q : 0m)"
+                                               @onchange="@(e => SetChildQty(cId, e.Value?.ToString()))" />
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseChildPicker">Cancelar</button>
+                <button class="btn btn-primary" @onclick="ConfirmChildPicker" disabled="@(!childPickerQuantities.Any(kv => kv.Value > 0))">
+                    + Agregar a la venta
                 </button>
             </div>
         </div>
@@ -680,6 +755,14 @@
     private List<SaleDto>? sales;
     private List<ClientDto>? clients;
     private List<ProductDto>? availableProducts;
+    // Todos los productos (incluyendo padres) — usados para lookup por codigo en el input rapido.
+    private List<ProductDto>? allProducts;
+    // Input rapido por codigo
+    private string codeInput = "";
+    // Modal selector de hijos cuando el usuario tipea el codigo de un padre
+    private ProductDto? parentForChildPicker;
+    private List<ProductDto> childrenOfParent = new();
+    private Dictionary<int, decimal> childPickerQuantities = new();
     private CompanyInfoDto? companyInfo;
     private bool isLoading = true;
     private bool showForm;
@@ -743,10 +826,11 @@
         try
         {
             var all = await Api.GetProductsAsync() ?? new();
+            allProducts = all;
             availableProducts = all.Where(p => p.IsActive && p.DerivedCount == 0)
                 .OrderBy(p => p.Sku ?? "").ThenBy(p => p.Title).ToList();
         }
-        catch { availableProducts = new(); }
+        catch { availableProducts = new(); allProducts = new(); }
         try { companyInfo = await Api.GetCompanyInfoAsync(); } catch { /* defaults */ }
         try { deleteSettings = await Api.GetSaleDeleteSettingsAsync(); } catch { deleteSettings = new DeleteSaleSettingsDto(); }
         isLoading = false;
@@ -860,17 +944,109 @@
         if (addProductId == 0) return;
         var p = availableProducts?.FirstOrDefault(x => x.Id == addProductId);
         if (p is null) return;
+        AddProductToSale(p, addProductQty);
+        addProductId = 0; addProductQty = 1;
+    }
+
+    // Helper compartido: agrega un producto al carrito de la venta.
+    private void AddProductToSale(ProductDto p, decimal qty)
+    {
         formItems.Add(new CreateSaleItemRequest
         {
             ProductId = p.Id,
             Code = p.Sku,
             Description = p.DisplayName ?? p.Title,
-            Quantity = addProductQty <= 0 ? 1 : addProductQty,
+            Quantity = qty <= 0 ? 1 : qty,
             UnitPrice = p.RetailPrice,
             VatRate = p.VatRate,
             BonifPercent = 0
         });
-        addProductId = 0; addProductQty = 1;
+    }
+
+    // === Lookup por codigo (input rapido + Enter) ===
+
+    private async Task OnCodeInputKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await AddByCode();
+    }
+
+    private Task AddByCode()
+    {
+        var code = (codeInput ?? "").Trim();
+        if (string.IsNullOrEmpty(code)) return Task.CompletedTask;
+        if (allProducts is null || allProducts.Count == 0)
+        {
+            ToastService.Error("No hay productos cargados todavia.");
+            return Task.CompletedTask;
+        }
+
+        // Match por SKU exacto (case-insensitive). Excluye servicios solo si quisiera, pero
+        // los servicios tambien son vendibles asi que los dejamos.
+        var match = allProducts.FirstOrDefault(p =>
+            p.IsActive && string.Equals(p.Sku, code, StringComparison.OrdinalIgnoreCase));
+
+        if (match is null)
+        {
+            ToastService.Error($"No se encontró ningún producto con código '{code}'.");
+            return Task.CompletedTask;
+        }
+
+        // Si es padre (tiene hijos), abrir el selector
+        if (match.DerivedCount > 0)
+        {
+            parentForChildPicker = match;
+            childrenOfParent = allProducts
+                .Where(p => p.IsActive && p.BaseProductId == match.Id)
+                .OrderBy(p => p.Sku ?? "").ThenBy(p => p.Title)
+                .ToList();
+            childPickerQuantities = childrenOfParent.ToDictionary(c => c.Id, _ => 0m);
+            return Task.CompletedTask;
+        }
+
+        // Si es hijo o independiente: agregar directo con cantidad 1
+        AddProductToSale(match, 1);
+        ToastService.Success($"Agregado: {match.Title}");
+        codeInput = "";
+        return Task.CompletedTask;
+    }
+
+    private void SetChildQty(int childId, string? raw)
+    {
+        if (decimal.TryParse((raw ?? "").Replace(',', '.'),
+            System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var v))
+        {
+            childPickerQuantities[childId] = v < 0 ? 0 : v;
+        }
+        else
+        {
+            childPickerQuantities[childId] = 0;
+        }
+    }
+
+    private void ConfirmChildPicker()
+    {
+        if (parentForChildPicker is null) return;
+        var added = 0;
+        foreach (var child in childrenOfParent)
+        {
+            if (childPickerQuantities.TryGetValue(child.Id, out var qty) && qty > 0)
+            {
+                AddProductToSale(child, qty);
+                added++;
+            }
+        }
+        if (added > 0)
+            ToastService.Success($"Agregadas {added} variante(s) de {parentForChildPicker.Title}");
+        CloseChildPicker();
+    }
+
+    private void CloseChildPicker()
+    {
+        parentForChildPicker = null;
+        childrenOfParent = new();
+        childPickerQuantities = new();
+        codeInput = "";
     }
 
     private void AddManualItem()
