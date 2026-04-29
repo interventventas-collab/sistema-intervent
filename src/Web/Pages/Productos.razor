@@ -38,6 +38,15 @@
                     <option value="indep">Solo independientes</option>
                 </select>
             </label>
+            <label style="display: flex; align-items: center; gap: 0.3rem; font-size: 0.85rem; color: #374151;">
+                <span>Estado:</span>
+                <select class="form-input" style="font-size: 0.85rem; padding: 0.3rem 0.5rem; min-width: 130px;"
+                        @bind="filterEstado" @bind:after="InvalidateFilterCache">
+                    <option value="activos">Solo activos</option>
+                    <option value="inactivos">Solo inactivos</option>
+                    <option value="">— Todos —</option>
+                </select>
+            </label>
             <div style="position: relative;">
                 <button class="btn btn-primary" @onclick="ToggleNewTypeMenu" @onclick:stopPropagation="true">+ Nuevo ▾</button>
                 @if (showNewTypeMenu)
@@ -248,7 +257,8 @@
                         @foreach (var product in GetFilteredProducts())
                         {
                             var rowIsChild = product.BaseProductId.HasValue;
-                            var rowIsParent = !rowIsChild && product.DerivedCount > 0;
+                            // Padre = tiene tilde IsBase=true O ya tiene hijos cargados.
+                            var rowIsParent = !rowIsChild && (product.IsBase || product.DerivedCount > 0);
                             string rowKindClass = rowIsChild ? "child-row" : (rowIsParent ? "parent-row" : "");
                             string rowSelClass = selectedItems.Contains(product.Id) ? "row-selected" : "";
                             string rowTitle = rowIsChild
@@ -1485,6 +1495,12 @@
     // "hijo"    = Solo hijos
     // "indep"   = Solo independientes (sin padre y sin hijos)
     private string filterType = "default";
+
+    // Filtro por Estado:
+    // "activos" (default)   = solo IsActive=true
+    // "inactivos"           = solo IsActive=false
+    // ""                    = todos
+    private string filterEstado = "activos";
     // Menu desplegable del boton "+ Nuevo": padre / hijo / independiente / combo / servicio
     private bool showNewTypeMenu;
     private string? activeFilterColumn;
@@ -1720,17 +1736,27 @@
             result = result.Where(p => p.BrandId == null);
 
         // Filtro por Tipo
+        // Definicion: PADRE = (IsBase=true OR tiene hijos). HIJO = BaseProductId NOT NULL.
+        // INDEP = no es hijo, no es padre.
         var ft = (filterType ?? "").ToLowerInvariant();
         if (ft == "default")
-            // Hijos + Independientes (lo que realmente se vende). Excluye padres con hijos.
-            result = result.Where(p => p.DerivedCount == 0);
+            // Lo que realmente se vende: hijos + independientes (excluye padres).
+            result = result.Where(p => !(p.IsBase || p.DerivedCount > 0) || p.BaseProductId.HasValue);
         else if (ft == "padre")
-            result = result.Where(p => p.DerivedCount > 0);
+            result = result.Where(p => !p.BaseProductId.HasValue && (p.IsBase || p.DerivedCount > 0));
         else if (ft == "hijo")
             result = result.Where(p => p.BaseProductId.HasValue);
         else if (ft == "indep")
-            result = result.Where(p => p.BaseProductId == null && p.DerivedCount == 0);
-        // ft == "combos" / "servicios" / "" => no filtra (combos/servicios redirigen via OnFilterTypeChanged).
+            result = result.Where(p => p.BaseProductId == null && !p.IsBase && p.DerivedCount == 0);
+        // ft == "" => no filtra (Todos).
+
+        // Filtro por Estado (Activo / Inactivo / Todos)
+        var fe = (filterEstado ?? "").ToLowerInvariant();
+        if (fe == "activos")
+            result = result.Where(p => p.IsActive);
+        else if (fe == "inactivos")
+            result = result.Where(p => !p.IsActive);
+        // fe == "" => no filtra
 
         // Text filters
         foreach (var kv in textFilters.Where(f => !string.IsNullOrEmpty(f.Value)))
