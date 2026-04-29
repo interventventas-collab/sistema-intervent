@@ -109,7 +109,7 @@
                             <!-- Costo: sort only -->
                             <th class="th-sortable" @onclick='() => ToggleSort("costo")'>
                                 <div class="th-inner">
-                                    <span class="th-label">Costo</span>
+                                    <span class="th-label">Costo S/IVA</span>
                                     <span class="sort-icon">
                                         <span class="@(sortColumn == "costo" && sortAsc ? "sort-up-active" : "")">&#9650;</span>
                                         <span class="@(sortColumn == "costo" && !sortAsc ? "sort-down-active" : "")">&#9660;</span>
@@ -119,7 +119,7 @@
                             <!-- PVP: sort only -->
                             <th class="th-sortable" @onclick='() => ToggleSort("pvp")'>
                                 <div class="th-inner">
-                                    <span class="th-label">PVP</span>
+                                    <span class="th-label">PVP C/IVA</span>
                                     <span class="sort-icon">
                                         <span class="@(sortColumn == "pvp" && sortAsc ? "sort-up-active" : "")">&#9650;</span>
                                         <span class="@(sortColumn == "pvp" && !sortAsc ? "sort-down-active" : "")">&#9660;</span>
@@ -267,8 +267,8 @@
                                         }
                                     </div>
                                 </td>
-                                <td style="text-align: right;">
-                                    $@FormatPrice(product.RetailPrice)
+                                <td style="text-align: right;" title="@(product.VatRate.HasValue && product.VatRate.Value > 0 ? $"PVP s/IVA: ${FormatPrice(product.RetailPrice)} · IVA {product.VatRate}%" : "Sin IVA")">
+                                    $@FormatPrice(RetailWithVat(product))
                                     @if (product.BaseProductId.HasValue)
                                     {
                                         <span style="color: #3b82f6; font-size: 0.75rem; margin-left: 0.2rem;" title="Heredado del producto base">🔗</span>
@@ -2344,4 +2344,13 @@
     }
 
     private void OnPubPriceInput(ChangeEventArgs e) { pubPriceFormatted = FormatPriceInput(e.Value?.ToString() ?? ""); pubPrice = ParseFormattedPrice(pubPriceFormatted); }
+
+    // PVP con IVA aplicado para mostrar en el listado.
+    // Si el producto no tiene VatRate o es 0, devuelve el RetailPrice tal cual.
+    private decimal RetailWithVat(ProductDto p)
+    {
+        var rate = p.VatRate ?? 0m;
+        if (rate <= 0m) return p.RetailPrice;
+        return Math.Round(p.RetailPrice * (1m + rate / 100m), 2, MidpointRounding.AwayFromZero);
+    }
 }
