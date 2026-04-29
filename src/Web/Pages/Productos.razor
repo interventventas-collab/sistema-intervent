@@ -447,31 +447,69 @@
                     </div>
                 </div>
 
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label">Precio de Costo</label>
-                        <div style="position: relative;">
-                            <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 1.1rem; font-weight: 700; color: #333;">$</span>
-                            <input type="text" class="form-input" style="font-size: 1.1rem; font-weight: 700; text-align: right; padding-left: 28px;" value="@formCostPriceFormatted" @oninput="OnFormCostPriceInput" inputmode="decimal" />
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">PVP (Precio de Venta)</label>
-                        <div style="position: relative;">
-                            <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 1.1rem; font-weight: 700; color: #333;">$</span>
-                            <input type="text" class="form-input" style="font-size: 1.1rem; font-weight: 700; text-align: right; padding-left: 28px;" value="@formRetailPriceFormatted" @oninput="OnFormRetailPriceInput" inputmode="decimal" />
-                        </div>
-                    </div>
-                </div>
+                @* === IVA + precios === *@
                 <div class="form-row">
                     <div class="form-group" style="flex: 1;">
                         <label class="form-label">IVA (%)</label>
-                        <input class="form-input" type="number" step="0.01" min="0" max="100"
-                               @bind="formVatRate" placeholder="Ej: 21" style="text-align: right;" />
+                        <select class="form-input" @bind="formVatRate" @bind:after="OnVatRateChanged" style="text-align: right;">
+                            <option value="">— Sin IVA —</option>
+                            <option value="0">0 %</option>
+                            <option value="2.5">2,5 %</option>
+                            <option value="5">5 %</option>
+                            <option value="10.5">10,5 %</option>
+                            <option value="21">21 %</option>
+                            <option value="27">27 %</option>
+                        </select>
                     </div>
                     <div class="form-group" style="flex: 3;">
                         <label class="form-label">URL de imagen externa</label>
                         <input class="form-input" @bind="formImageUrl" placeholder="https://..." />
+                    </div>
+                </div>
+
+                <div style="background:#f9fafb; padding:0.7rem; border-radius:6px; border:1px solid #e5e7eb; margin-bottom: 0.8rem;">
+                    <div style="font-size:0.82rem; color:#374151; font-weight:600; margin-bottom:0.4rem;">
+                        💰 Costo interno
+                        <span style="font-weight:400; color:#6b7280;">— tipeá en cualquiera de los dos, el otro se calcula automáticamente</span>
+                    </div>
+                    <div class="form-row" style="margin: 0;">
+                        <div class="form-group">
+                            <label class="form-label">Costo SIN IVA</label>
+                            <div style="position: relative;">
+                                <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 1.1rem; font-weight: 700; color: #333;">$</span>
+                                <input type="text" class="form-input" style="font-size: 1.05rem; font-weight: 700; text-align: right; padding-left: 28px;" value="@formCostPriceFormatted" @oninput="OnFormCostPriceInput" inputmode="decimal" />
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Costo CON IVA</label>
+                            <div style="position: relative;">
+                                <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 1.1rem; font-weight: 700; color: #333;">$</span>
+                                <input type="text" class="form-input" style="font-size: 1.05rem; font-weight: 700; text-align: right; padding-left: 28px;" value="@formCostPriceWithVatFormatted" @oninput="OnFormCostPriceWithVatInput" inputmode="decimal" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="background:#f9fafb; padding:0.7rem; border-radius:6px; border:1px solid #e5e7eb; margin-bottom: 0.8rem;">
+                    <div style="font-size:0.82rem; color:#374151; font-weight:600; margin-bottom:0.4rem;">
+                        🏷 Precio de venta
+                        <span style="font-weight:400; color:#6b7280;">— tipeá en cualquiera de los dos, el otro se calcula automáticamente</span>
+                    </div>
+                    <div class="form-row" style="margin: 0;">
+                        <div class="form-group">
+                            <label class="form-label">PVP SIN IVA</label>
+                            <div style="position: relative;">
+                                <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 1.1rem; font-weight: 700; color: #333;">$</span>
+                                <input type="text" class="form-input" style="font-size: 1.05rem; font-weight: 700; text-align: right; padding-left: 28px;" value="@formRetailPriceFormatted" @oninput="OnFormRetailPriceInput" inputmode="decimal" />
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">PVP CON IVA</label>
+                            <div style="position: relative;">
+                                <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 1.1rem; font-weight: 700; color: #333;">$</span>
+                                <input type="text" class="form-input" style="font-size: 1.05rem; font-weight: 700; text-align: right; padding-left: 28px;" value="@formRetailPriceWithVatFormatted" @oninput="OnFormRetailPriceWithVatInput" inputmode="decimal" />
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <h4 style="margin: 1.2rem 0 0.4rem; font-size: 0.9rem; color: #374151;">Cuentas contables</h4>
@@ -1203,6 +1241,9 @@
     private int? formUnitsPerPack;
     private string formCostPriceFormatted = "";
     private string formRetailPriceFormatted = "";
+    // Espejo "con IVA" — se calculan a partir del valor sin IVA + formVatRate.
+    private string formCostPriceWithVatFormatted = "";
+    private string formRetailPriceWithVatFormatted = "";
     private bool formIsActive = true;
     private string? formPhoto1;
     private string? formPhoto2;
@@ -1602,7 +1643,9 @@
         formCostPrice = 0; formRetailPrice = 0; formStock = 0; formCriticalStock = 0;
         formUnitsPerPack = null;
         formCostPriceFormatted = FormatPrice(0); formRetailPriceFormatted = FormatPrice(0);
-        formVatRate = null;
+        formCostPriceWithVatFormatted = FormatPrice(0); formRetailPriceWithVatFormatted = FormatPrice(0);
+        // Default 21% en productos nuevos (es lo mas frecuente)
+        formVatRate = 21m;
         formPurchaseAccount = ""; formSaleAccount = ""; formInventoryAccount = "";
         formIsActive = true; formPhoto1 = null; formPhoto2 = null; formPhoto3 = null;
         formBaseProductId = 0;
@@ -1630,6 +1673,8 @@
         formCostPriceFormatted = FormatPrice(formCostPrice);
         formRetailPriceFormatted = FormatPrice(formRetailPrice);
         formVatRate = product.VatRate;
+        // Espejar a "con IVA" usando el VatRate del producto
+        SyncWithVatFromBase();
         formPurchaseAccount = product.PurchaseAccount ?? "";
         formSaleAccount = product.SaleAccount ?? "";
         formInventoryAccount = product.InventoryAccount ?? "";
@@ -2240,7 +2285,61 @@
         return commaIdx >= 0 ? sb + "," + decPart : sb.ToString();
     }
 
-    private void OnFormCostPriceInput(ChangeEventArgs e) { formCostPriceFormatted = FormatPriceInput(e.Value?.ToString() ?? ""); formCostPrice = ParseFormattedPrice(formCostPriceFormatted); }
-    private void OnFormRetailPriceInput(ChangeEventArgs e) { formRetailPriceFormatted = FormatPriceInput(e.Value?.ToString() ?? ""); formRetailPrice = ParseFormattedPrice(formRetailPriceFormatted); }
+    private void OnFormCostPriceInput(ChangeEventArgs e)
+    {
+        formCostPriceFormatted = FormatPriceInput(e.Value?.ToString() ?? "");
+        formCostPrice = ParseFormattedPrice(formCostPriceFormatted);
+        // Recalcular el "con IVA" a partir del nuevo "sin IVA"
+        formCostPriceWithVatFormatted = FormatPrice(WithVat(formCostPrice));
+    }
+
+    private void OnFormRetailPriceInput(ChangeEventArgs e)
+    {
+        formRetailPriceFormatted = FormatPriceInput(e.Value?.ToString() ?? "");
+        formRetailPrice = ParseFormattedPrice(formRetailPriceFormatted);
+        formRetailPriceWithVatFormatted = FormatPrice(WithVat(formRetailPrice));
+    }
+
+    private void OnFormCostPriceWithVatInput(ChangeEventArgs e)
+    {
+        formCostPriceWithVatFormatted = FormatPriceInput(e.Value?.ToString() ?? "");
+        var withVat = ParseFormattedPrice(formCostPriceWithVatFormatted);
+        // Calcular el "sin IVA" a partir del "con IVA"
+        formCostPrice = WithoutVat(withVat);
+        formCostPriceFormatted = FormatPrice(formCostPrice);
+    }
+
+    private void OnFormRetailPriceWithVatInput(ChangeEventArgs e)
+    {
+        formRetailPriceWithVatFormatted = FormatPriceInput(e.Value?.ToString() ?? "");
+        var withVat = ParseFormattedPrice(formRetailPriceWithVatFormatted);
+        formRetailPrice = WithoutVat(withVat);
+        formRetailPriceFormatted = FormatPrice(formRetailPrice);
+    }
+
+    // Cuando cambia el IVA, recalcular las casillas "con IVA" desde el "sin IVA" canonico.
+    private void OnVatRateChanged() => SyncWithVatFromBase();
+
+    private void SyncWithVatFromBase()
+    {
+        formCostPriceWithVatFormatted = FormatPrice(WithVat(formCostPrice));
+        formRetailPriceWithVatFormatted = FormatPrice(WithVat(formRetailPrice));
+    }
+
+    // Helpers IVA: el valor canonico almacenado es SIN IVA. CON IVA se computa.
+    private decimal WithVat(decimal priceWithoutVat)
+    {
+        var rate = formVatRate ?? 0m;
+        if (rate <= 0m) return priceWithoutVat;
+        return Math.Round(priceWithoutVat * (1m + rate / 100m), 2, MidpointRounding.AwayFromZero);
+    }
+
+    private decimal WithoutVat(decimal priceWithVat)
+    {
+        var rate = formVatRate ?? 0m;
+        if (rate <= 0m) return priceWithVat;
+        return Math.Round(priceWithVat / (1m + rate / 100m), 2, MidpointRounding.AwayFromZero);
+    }
+
     private void OnPubPriceInput(ChangeEventArgs e) { pubPriceFormatted = FormatPriceInput(e.Value?.ToString() ?? ""); pubPrice = ParseFormattedPrice(pubPriceFormatted); }
 }
