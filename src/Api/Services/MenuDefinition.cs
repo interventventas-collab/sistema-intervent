@@ -34,6 +34,7 @@ public static class MenuDefinition
         }),
         new MenuGroup("administracion", "Administracion", new[]
         {
+            new MenuItem("listas-precios", "Listas de precios", "/listas-precios"),
             new MenuItem("usuarios", "Usuarios", "/usuarios"),
             new MenuItem("roles", "Roles", "/roles"),
             new MenuItem("integraciones", "Integraciones", "/integraciones"),
