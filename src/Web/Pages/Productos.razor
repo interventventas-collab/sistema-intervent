@@ -205,9 +205,14 @@
                                 title="@(product.BaseProductId.HasValue ? "Producto hijo" : "Producto padre")">
                                 <td class="td-checkbox" @onclick:stopPropagation="true"><input type="checkbox" checked="@selectedItems.Contains(product.Id)" @onchange="() => ToggleSelectItem(product.Id)" /></td>
                                 <td>
-                                    @if (!string.IsNullOrEmpty(product.Photo1))
+                                    @{
+                                        var thumbSrc = !string.IsNullOrEmpty(product.Photo1)
+                                            ? product.Photo1
+                                            : (!string.IsNullOrEmpty(product.ImageUrl) ? product.ImageUrl : null);
+                                    }
+                                    @if (!string.IsNullOrEmpty(thumbSrc))
                                     {
-                                        <img src="@product.Photo1" class="product-thumb" alt="@product.Title" />
+                                        <img src="@thumbSrc" class="product-thumb" alt="@product.Title" />
                                     }
                                     else
                                     {
@@ -582,7 +587,18 @@
                     </div>
                     <div class="form-group" style="flex: 3;">
                         <label class="form-label">URL de imagen externa</label>
-                        <input class="form-input" @bind="formImageUrl" placeholder="https://..." />
+                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+                            <input class="form-input" @bind="formImageUrl" @bind:event="oninput" placeholder="https://..." style="flex: 1;" />
+                            @if (!string.IsNullOrWhiteSpace(formImageUrl))
+                            {
+                                <img src="@formImageUrl" alt="Preview"
+                                     style="height: 40px; width: 40px; object-fit: cover; border: 1px solid #d1d5db; border-radius: 4px;"
+                                     onerror="this.style.display='none'" />
+                            }
+                        </div>
+                        <p style="font-size: 0.72rem; color: #6b7280; margin: 0.2rem 0 0;">
+                            Si no subiste fotos abajo, esta URL se va a usar como imagen del producto en el listado.
+                        </p>
                     </div>
                 </div>
 
@@ -1823,7 +1839,9 @@
         formUnitsPerPack = product.UnitsPerPack;
         formCostPriceFormatted = FormatPrice(formCostPrice);
         formRetailPriceFormatted = FormatPrice(formRetailPrice);
-        formVatRate = product.VatRate;
+        // Si el producto fue creado antes de que existiera el default 21%, usamos 21 al abrir
+        // (asi al guardar se persiste y deja de salir como "Sin IVA").
+        formVatRate = product.VatRate ?? 21m;
         // Espejar a "con IVA" usando el VatRate del producto
         SyncWithVatFromBase();
         formPurchaseAccount = product.PurchaseAccount ?? "";
