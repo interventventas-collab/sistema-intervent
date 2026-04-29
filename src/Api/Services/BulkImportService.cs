@@ -250,7 +250,15 @@ public class BulkImportService
             var rowNum = i + 2;
             var row = rows[i];
             var title = Cell(row, headers, "titulo");
-            if (string.IsNullOrWhiteSpace(title)) { skipped++; continue; }
+            var sku = Cell(row, headers, "sku");
+
+            // Saltar SOLO si la fila esta totalmente vacia (sin SKU y sin titulo).
+            // Si tiene SKU, procesarla aunque no tenga titulo: si el SKU ya existe en la DB,
+            // se hace update parcial respetando los datos existentes.
+            if (string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(sku))
+            {
+                skipped++; continue;
+            }
 
             var baseSku = Cell(row, headers, "producto_base_sku");
             if (string.IsNullOrWhiteSpace(baseSku)) withoutBase.Add((rowNum, row));
@@ -305,6 +313,13 @@ public class BulkImportService
         ProductListDto? existing = null;
         var existingId = productIdBySku.GetValueOrDefault(sku.ToLowerInvariant());
         if (existingId > 0) existing = await _products.GetByIdAsync(existingId);
+
+        // Para CREAR un producto nuevo (no existe el SKU todavia) hace falta titulo.
+        // Para ACTUALIZAR uno existente, el titulo se hereda del producto previo si viene vacio.
+        if (existing is null && string.IsNullOrWhiteSpace(title))
+            throw new InvalidOperationException(
+                $"El SKU '{sku}' no existe todavia y la fila no tiene titulo. " +
+                "Para crear un producto nuevo necesitas al menos titulo + SKU.");
 
         int? brandId = existing?.BrandId;
         var brandName = Nz(Cell(row, headers, "marca"));
