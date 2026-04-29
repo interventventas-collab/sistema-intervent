@@ -503,12 +503,21 @@
         .day-pill.on { background: #1f2937; color: white; border-color: #1f2937; }
         .comprobante-items th, .comprobante-items td { font-size: 0.82rem; padding: 0.3rem 0.4rem; }
 
-        /* === Reglas de impresion: pegar las firmas al fondo de la hoja === */
+        /* Filas de relleno: linea punteada simulando un formulario de papel.
+           Garantizan que el comprobante siempre tenga una altura estable
+           y el pie/firmas siempre queden cerca del fondo de la hoja. */
+        .comprobante-filler-row td {
+            height: 7mm;
+            border-bottom: 1px dotted #d1d5db !important;
+            color: transparent;
+            user-select: none;
+        }
+
+        /* === Reglas de impresion: ocultar artifacts del navegador === */
         @@media print {
             @@page { size: A4; margin: 12mm; }
             html, body { background: white !important; margin: 0 !important; padding: 0 !important; }
 
-            /* Ocultar todo lo que no sea el comprobante */
             body * { visibility: hidden; }
             #comprobante-print, #comprobante-print * { visibility: visible; }
 
@@ -520,18 +529,10 @@
                 background: white !important;
             }
 
-            /* Las firmas siempre pegadas al fondo de la hoja, sin importar cuantos items haya */
-            .comprobante-firmas {
-                position: fixed !important;
-                bottom: 12mm !important;
-                left: 12mm !important;
-                right: 12mm !important;
-                background: white !important;
-            }
-
             .no-print { display: none !important; }
-            .comprobante-items, .comprobante-firmas { page-break-inside: avoid; }
+            .comprobante-items { page-break-inside: auto; }
             .comprobante-items th, .comprobante-items td { font-size: 0.78rem; }
+            .comprobante-firmas { page-break-inside: avoid; }
         }
     </style>
     <div class="modal-overlay" @onclick="CloseViewer">
@@ -694,6 +695,21 @@
                                     <td style="text-align: right;">@(i.BonifPercent > 0 ? FormatQty(i.BonifPercent) + " %" : "—")</td>
                                 }
                                 <td style="text-align: right; font-weight: 600;">$@FormatPrice(i.LineTotal)</td>
+                            </tr>
+                        }
+                        @* Filas vacias de relleno: garantizan que el comprobante siempre tenga
+                           una altura minima estable, asi el pie/firmas quedan al fondo aunque
+                           la venta tenga pocos items. Si hay mas items que MIN_ROWS, no se agregan rellenos. *@
+                        @{
+                            const int MIN_ROWS = 18;
+                            int filasFijas = 3 + (anyTierDiscount ? 2 : 0) + (anyBonif ? 1 : 0); // Cant + Codigo + Descripcion + (P.U. lista + Desc) + (Bonif) + Precio + Subtotal
+                            int totalCols = 5 + (anyTierDiscount ? 2 : 0) + (anyBonif ? 1 : 0);
+                            int rellenos = Math.Max(0, MIN_ROWS - viewerSale.Items.Count);
+                        }
+                        @for (int r = 0; r < rellenos; r++)
+                        {
+                            <tr class="comprobante-filler-row">
+                                <td colspan="@totalCols">&nbsp;</td>
                             </tr>
                         }
                     </tbody>
