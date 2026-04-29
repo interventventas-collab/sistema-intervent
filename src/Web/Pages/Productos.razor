@@ -771,16 +771,13 @@
                     </div>
                 </div>
                 <div class="form-row">
-                    @if (isEditing)
-                    {
-                        <div class="form-group">
-                            <label class="form-label">Estado</label>
-                            <select class="form-input" @bind="formIsActive">
-                                <option value="@true">Activo</option>
-                                <option value="@false">Inactivo</option>
-                            </select>
-                        </div>
-                    }
+                    <div class="form-group">
+                        <label class="form-label">Estado</label>
+                        <select class="form-input" @bind="formIsActive">
+                            <option value="true">Activo</option>
+                            <option value="false">Inactivo</option>
+                        </select>
+                    </div>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Fotos (maximo 2MB cada una)</label>
