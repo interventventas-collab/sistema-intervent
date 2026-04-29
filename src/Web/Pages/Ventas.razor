@@ -505,24 +505,35 @@
 
         /* === Reglas de impresion: A4 fijo, ocultar artifacts del navegador === */
         @@media print {
-            @@page { size: A4; margin: 12mm; }
-            html, body { background: white !important; margin: 0 !important; padding: 0 !important; }
+            /* margin:0 le saca al navegador (Chrome) los encabezados/pies automaticos
+               (fecha, titulo, URL, "1/1"). Los margenes los ponemos internos via padding. */
+            @@page { size: A4; margin: 0; }
+            html, body {
+                margin: 0 !important;
+                padding: 0 !important;
+                background: white !important;
+                width: 210mm; height: 297mm;
+            }
             /* Ocultar todo lo que no sea el comprobante */
             body * { visibility: hidden; }
             #comprobante-print, #comprobante-print * { visibility: visible; }
             #comprobante-print {
-                position: absolute; left: 0; top: 0; width: 100%;
-                min-height: 265mm; /* A4 - margenes */
-                padding: 0 !important;
+                position: fixed;
+                left: 0; top: 0;
+                width: 210mm; height: 297mm;
+                padding: 12mm !important;
+                margin: 0 !important;
                 background: white !important;
                 display: flex; flex-direction: column;
+                box-sizing: border-box;
+                overflow: hidden;
             }
             /* Empuja el pie hacia abajo cuando hay pocos items, asi siempre llena la hoja */
             #comprobante-print > *:last-child { margin-top: auto; }
             .no-print { display: none !important; }
             /* La tabla y bloques no se cortan a la mitad */
             .comprobante-items, .comprobante-firmas { page-break-inside: avoid; }
-            /* La caja de totales y firmas mas chicas para que entren bien */
+            /* Tipografia mas chica para que entre bien y reste espacio en blanco */
             .comprobante-items th, .comprobante-items td { font-size: 0.78rem; }
         }
     </style>
