@@ -1690,36 +1690,44 @@
         formError = null; showForm = true;
     }
 
-    // Clona un producto: precarga el form con los datos pero como producto NUEVO
-    // (sin Id de edicion). Limpia los identificadores unicos: SKU, codigo de barras
-    // y codigo OEM, para evitar conflictos al guardar.
+    // Clona un producto pero arrastra SOLO los campos "compartibles":
+    // IVA, Marca (BrandId) y las 3 cuentas contables. El resto arranca en blanco
+    // como un producto nuevo. Asi sirve como atajo para cargar otro producto
+    // de la misma marca/IVA sin tener que volver a tildar lo mismo.
     private void ShowCloneForm(ProductDto product)
     {
         isEditing = false; editingProductId = null;
-        formTitle = product.Title + " (copia)";
-        formDisplayName = product.DisplayName ?? "";
-        formDescription = product.Description ?? "";
-        formSku = ""; // SKU unico, se regenera
-        formBarcode = ""; // EAN/UPC unico
-        formOemCode = ""; // generalmente unico
-        formImageUrl = product.ImageUrl ?? "";
-        formBrand = product.Brand ?? "";
-        formModel = product.Model ?? "";
-        formCostPrice = product.CostPrice; formRetailPrice = product.RetailPrice;
-        formStock = 0; formCriticalStock = product.CriticalStock; // stock arranca en 0
-        formUnitsPerPack = product.UnitsPerPack;
-        formCostPriceFormatted = FormatPrice(formCostPrice);
-        formRetailPriceFormatted = FormatPrice(formRetailPrice);
-        formVatRate = product.VatRate ?? 21m; // default 21 si el origen no tenia
-        SyncWithVatFromBase();
-        formPurchaseAccount = product.PurchaseAccount ?? "";
+
+        // Campos que NO se copian: arrancan vacios/default como en + Nuevo Producto
+        formTitle = "";
+        formDisplayName = "";
+        formDescription = "";
+        formSku = "";
+        formBarcode = "";
+        formOemCode = "";
+        formImageUrl = "";
+        formBrand = "";
+        formModel = "";
+        formCostPrice = 0; formRetailPrice = 0;
+        formStock = 0; formCriticalStock = 0;
+        formUnitsPerPack = null;
+        formCostPriceFormatted = FormatPrice(0); formRetailPriceFormatted = FormatPrice(0);
+        formCostPriceWithVatFormatted = FormatPrice(0); formRetailPriceWithVatFormatted = FormatPrice(0);
+        formIsActive = true;
+        formPhoto1 = null; formPhoto2 = null; formPhoto3 = null;
+        formBaseProductId = 0;
+        formIsBase = false;
+
+        // Campos que SI se copian del producto origen
+        formVatRate = product.VatRate ?? 21m; // IVA
+        formBrandId = product.BrandId ?? 0; // Marca
+        formPurchaseAccount = product.PurchaseAccount ?? ""; // Cuentas contables
         formSaleAccount = product.SaleAccount ?? "";
         formInventoryAccount = product.InventoryAccount ?? "";
-        formIsActive = true;
-        formPhoto1 = product.Photo1; formPhoto2 = product.Photo2; formPhoto3 = product.Photo3;
-        formBaseProductId = product.BaseProductId ?? 0;
-        formBrandId = product.BrandId ?? 0;
-        formIsBase = product.IsBase;
+
+        // Espejar el "con IVA" usando el VatRate copiado
+        SyncWithVatFromBase();
+
         formError = null; showForm = true;
     }
 
