@@ -186,8 +186,9 @@ public class BulkImportService
         ("codigo_de_barras", "7790140123456"),
         ("codigo_oem", "OEM-X"),
         ("url_imagen", "https://ejemplo.com/img.jpg"),
-        ("precio_costo", "1500.50 (se ignora si tipo=hijo, hereda del padre)"),
-        ("precio_venta", "2999.99 (se ignora si tipo=hijo, hereda del padre)"),
+        ("precio_costo", "1500.50 (SIN IVA. Se ignora si tipo=hijo, hereda del padre)"),
+        ("precio_venta", "2478.51 (SIN IVA. Si llenas precio_venta_con_iva, ignora esta)"),
+        ("precio_venta_con_iva", "2999.99 (precio final CON IVA tal como te lo manda el proveedor. Si esta llena, prevalece sobre precio_venta)"),
         ("iva", "21"),
         ("cuenta_compra", "511001"),
         ("cuenta_venta", "411001"),
@@ -210,8 +211,9 @@ public class BulkImportService
         ("codigo_de_barras", "7790140123456"),
         ("codigo_oem", "OEM-X"),
         ("url_imagen", "https://ejemplo.com/img.jpg"),
-        ("precio_costo", "1500.50"),
-        ("precio_venta", "2999.99"),
+        ("precio_costo", "1500.50 (SIN IVA)"),
+        ("precio_venta", "2478.51 (SIN IVA. Si llenas precio_venta_con_iva, ignora esta)"),
+        ("precio_venta_con_iva", "2999.99 (precio final CON IVA tal como te lo manda el proveedor)"),
         ("iva", "21"),
         ("cuenta_compra", "511001"),
         ("cuenta_venta", "411001"),
@@ -287,22 +289,31 @@ public class BulkImportService
         Dictionary<string, int> productIdBySku,
         bool markAsBase = false)
     {
-        var title = Cell(row, headers, "titulo");
+        var title = Nz(Cell(row, headers, "titulo"));
 
-        int? brandId = null;
-        var brandName = Cell(row, headers, "marca");
-        if (!string.IsNullOrWhiteSpace(brandName))
+        // Cargar el producto existente (si lo hay) para usarlo como FALLBACK cuando
+        // una celda del Excel viene vacia. Asi no pisamos datos buenos con vacios.
+        ProductListDto? existing = null;
+        var sku = Nz(Cell(row, headers, "sku"));
+        if (!string.IsNullOrEmpty(sku))
         {
-            if (!brandsByName.TryGetValue(brandName.Trim().ToLowerInvariant(), out var bid))
+            var existingId = productIdBySku.GetValueOrDefault(sku.ToLowerInvariant());
+            if (existingId > 0) existing = await _products.GetByIdAsync(existingId);
+        }
+
+        int? brandId = existing?.BrandId;
+        var brandName = Nz(Cell(row, headers, "marca"));
+        if (brandName is not null)
+        {
+            if (!brandsByName.TryGetValue(brandName.ToLowerInvariant(), out var bid))
                 throw new InvalidOperationException($"La marca '{brandName}' no existe. Cargala primero.");
             brandId = bid;
         }
 
-        var baseSku = Cell(row, headers, "producto_base_sku");
+        var baseSku = Nz(Cell(row, headers, "producto_base_sku"));
         var tipoRaw = (Cell(row, headers, "tipo") ?? "").Trim().ToLowerInvariant();
 
-        // Resolver el tipo del producto.
-        // Si el Excel especifica "tipo", manda. Sino, fallback al markAsBase + producto_base_sku.
+        // Resolver tipo del producto.
         bool isPadre, isHijo;
         if (tipoRaw is "padre" or "padres")
         {
@@ -311,21 +322,29 @@ public class BulkImportService
         else if (tipoRaw is "hijo" or "hijos")
         {
             isPadre = false; isHijo = true;
-            if (string.IsNullOrWhiteSpace(baseSku))
+            if (baseSku is null)
                 throw new InvalidOperationException("Producto marcado como 'hijo' pero la columna 'producto_base_sku' esta vacia. Indicá el SKU del padre.");
         }
         else if (tipoRaw is "independiente" or "indep" or "")
         {
-            // Vacio: respetar markAsBase + producto_base_sku tradicional.
-            if (string.IsNullOrEmpty(tipoRaw))
+            if (tipoRaw == "")
             {
-                isPadre = markAsBase;
-                isHijo = !markAsBase && !string.IsNullOrWhiteSpace(baseSku);
+                // Vacio: si existe, respetar lo que ya era (no cambiar tipo).
+                // Si es nuevo: usar markAsBase + producto_base_sku como antes.
+                if (existing is not null)
+                {
+                    isPadre = existing.IsBase || existing.DerivedCount > 0;
+                    isHijo = existing.BaseProductId.HasValue;
+                }
+                else
+                {
+                    isPadre = markAsBase;
+                    isHijo = !markAsBase && baseSku is not null;
+                }
             }
             else
             {
                 isPadre = false; isHijo = false;
-                // Para 'independiente', ignoramos producto_base_sku aunque venga.
                 baseSku = null;
             }
         }
@@ -334,38 +353,78 @@ public class BulkImportService
             throw new InvalidOperationException($"Valor invalido en columna 'tipo': '{tipoRaw}'. Opciones validas: padre / hijo / independiente.");
         }
 
-        int? baseId = null;
-        if (isHijo && !string.IsNullOrWhiteSpace(baseSku))
+        int? baseId = existing?.BaseProductId;
+        if (isHijo && baseSku is not null)
         {
-            if (!productIdBySku.TryGetValue(baseSku.Trim().ToLowerInvariant(), out var bid))
+            if (!productIdBySku.TryGetValue(baseSku.ToLowerInvariant(), out var bid))
                 throw new InvalidOperationException($"El producto base con SKU '{baseSku}' no existe. Cargalo primero (como 'tipo=padre').");
             baseId = bid;
         }
+        else if (!isHijo)
+        {
+            baseId = null; // independiente o padre: sin padre
+        }
+
+        // === Precios e IVA ===
+        // IVA: Excel manda → existente → null.
+        var vatRate = ParseDecimal(Cell(row, headers, "iva")) ?? existing?.VatRate;
+
+        // Costo: el costo siempre es SIN IVA.
+        var costExcel = ParseDecimal(Cell(row, headers, "precio_costo"));
+        var costPrice = costExcel ?? existing?.CostPrice ?? 0m;
+
+        // PVP: dos columnas alternativas. Si llenas precio_venta_con_iva, descontamos
+        // el IVA y guardamos el equivalente sin IVA. Si llenas precio_venta, se usa
+        // tal cual (sin IVA). Si las dos vienen, prevalece precio_venta_con_iva.
+        var pvpConIva = ParseDecimal(Cell(row, headers, "precio_venta_con_iva"));
+        var pvpSinIvaCell = ParseDecimal(Cell(row, headers, "precio_venta"));
+        decimal retailPrice;
+        if (pvpConIva.HasValue)
+        {
+            var rate = vatRate ?? 0m;
+            retailPrice = rate > 0m
+                ? Math.Round(pvpConIva.Value / (1m + rate / 100m), 2, MidpointRounding.AwayFromZero)
+                : pvpConIva.Value;
+        }
+        else if (pvpSinIvaCell.HasValue)
+        {
+            retailPrice = pvpSinIvaCell.Value;
+        }
+        else
+        {
+            retailPrice = existing?.RetailPrice ?? 0m;
+        }
+
+        // Stock y stock critico: empty -> existente -> 0.
+        var stock = ParseInt(Cell(row, headers, "stock")) ?? existing?.Stock ?? 0;
+        var stockCritico = ParseInt(Cell(row, headers, "stock_critico")) ?? existing?.CriticalStock ?? 0;
+        // UxB: empty -> existente -> null.
+        var uxb = ParseInt(Cell(row, headers, "uxb")) ?? existing?.UnitsPerPack;
 
         var result = await _products.CreateOrUpdateAsync(new CreateProductRequest(
-            Title: title!,
-            DisplayName: Cell(row, headers, "nombre_para_mostrar"),
-            Description: Cell(row, headers, "descripcion"),
+            Title: title ?? existing?.Title ?? "",
+            DisplayName: Nz(Cell(row, headers, "nombre_para_mostrar")),
+            Description: Nz(Cell(row, headers, "descripcion")),
             Brand: brandName,
-            Model: Cell(row, headers, "modelo"),
-            Sku: Cell(row, headers, "sku"),
-            Barcode: Cell(row, headers, "codigo_de_barras"),
-            OemCode: Cell(row, headers, "codigo_oem"),
-            ImageUrl: Cell(row, headers, "url_imagen"),
+            Model: Nz(Cell(row, headers, "modelo")),
+            Sku: sku,
+            Barcode: Nz(Cell(row, headers, "codigo_de_barras")),
+            OemCode: Nz(Cell(row, headers, "codigo_oem")),
+            ImageUrl: Nz(Cell(row, headers, "url_imagen")),
             Photo1: null, Photo2: null, Photo3: null,
-            CostPrice: ParseDecimal(Cell(row, headers, "precio_costo")) ?? 0m,
-            RetailPrice: ParseDecimal(Cell(row, headers, "precio_venta")) ?? 0m,
-            VatRate: ParseDecimal(Cell(row, headers, "iva")),
-            PurchaseAccount: Cell(row, headers, "cuenta_compra"),
-            SaleAccount: Cell(row, headers, "cuenta_venta"),
-            InventoryAccount: Cell(row, headers, "cuenta_mercaderia"),
-            Stock: ParseInt(Cell(row, headers, "stock")) ?? 0,
-            CriticalStock: ParseInt(Cell(row, headers, "stock_critico")) ?? 0,
+            CostPrice: costPrice,
+            RetailPrice: retailPrice,
+            VatRate: vatRate,
+            PurchaseAccount: Nz(Cell(row, headers, "cuenta_compra")),
+            SaleAccount: Nz(Cell(row, headers, "cuenta_venta")),
+            InventoryAccount: Nz(Cell(row, headers, "cuenta_mercaderia")),
+            Stock: stock,
+            CriticalStock: stockCritico,
             BaseProductId: baseId,
             BrandId: brandId,
             IsBase: isPadre,
             IsService: false,
-            UnitsPerPack: ParseInt(Cell(row, headers, "uxb"))
+            UnitsPerPack: uxb
         ));
 
         // Si el Excel pidio activo=no (false), ajustar despues de crear (el create por default es activo).
@@ -532,6 +591,12 @@ public class BulkImportService
         if (idx < 0 || idx >= row.Count) return null;
         return row[idx];
     }
+
+    /// <summary>
+    /// Convierte celda vacia o solo-espacios en null. Asi, en updates, los campos vacios
+    /// del Excel NO pisan los valores existentes en la DB (la API ignora null).
+    /// </summary>
+    private static string? Nz(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
 
     private static decimal? ParseDecimal(string? s)
     {
