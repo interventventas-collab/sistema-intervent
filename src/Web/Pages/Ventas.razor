@@ -265,20 +265,28 @@
                     </div>
                 </div>
 
-                @* Selector tradicional para agregar producto desde dropdown *@
+                @* Buscador con autocompletado: tipea SKU o parte del nombre y elegi *@
                 <div class="form-row" style="align-items: flex-end;">
                     <div class="form-group" style="flex: 4;">
-                        <label class="form-label">o elegí desde la lista</label>
-                        <select class="form-input" @bind="addProductId">
-                            <option value="0">— Elegi un producto —</option>
+                        <label class="form-label">o buscá por código o nombre</label>
+                        <input class="form-input"
+                               list="ventas-products-datalist"
+                               value="@productSearchText"
+                               @oninput="OnProductSearchInput"
+                               @onchange="OnProductSearchPicked"
+                               placeholder="Empezá a escribir SKU o nombre..." />
+                        <datalist id="ventas-products-datalist">
                             @if (availableProducts is not null)
                             {
-                                @foreach (var p in availableProducts)
+                                @foreach (var p in availableProducts.Take(2000))
                                 {
-                                    <option value="@p.Id">@(p.Sku ?? "—") · @p.Title — $@FormatPrice(p.RetailPrice)</option>
+                                    <option value="@(p.Sku ?? "—") · @p.Title — $@FormatPrice(p.RetailPrice)"></option>
                                 }
                             }
-                        </select>
+                        </datalist>
+                        <p style="font-size: 0.72rem; color: #6b7280; margin: 0.2rem 0 0;">
+                            Tipeá unas letras y el navegador te muestra coincidencias. Elegí una y ajustá la cantidad.
+                        </p>
                     </div>
                     <div class="form-group" style="flex: 1;">
                         <label class="form-label">Cantidad</label>
@@ -779,6 +787,8 @@
     private List<CreateSaleItemRequest> formItems = new();
     private int addProductId;
     private decimal addProductQty = 1;
+    // Texto del buscador con autocompletado (input + datalist)
+    private string productSearchText = "";
     private HashSet<string> formWeekDays = new();
     private bool formIsPaid;
     private string formCompanyName = "FRIKAF®";
@@ -946,6 +956,48 @@
         if (p is null) return;
         AddProductToSale(p, addProductQty);
         addProductId = 0; addProductQty = 1;
+        productSearchText = "";
+    }
+
+    // Mientras tipea: actualiza el texto y resetea el id elegido (porque puede no
+    // haber match exacto todavia; el usuario sigue escribiendo).
+    private void OnProductSearchInput(ChangeEventArgs e)
+    {
+        productSearchText = e.Value?.ToString() ?? "";
+        addProductId = 0;
+    }
+
+    // Cuando elige una opcion del datalist: el texto del input pasa a ser
+    // exactamente el value de un <option>. Buscamos el producto correspondiente.
+    private void OnProductSearchPicked(ChangeEventArgs e)
+    {
+        productSearchText = e.Value?.ToString() ?? "";
+        if (string.IsNullOrWhiteSpace(productSearchText) || availableProducts is null)
+        {
+            addProductId = 0;
+            return;
+        }
+        // Buscar por value exacto (lo que esta en <option value="...">):
+        var match = availableProducts.FirstOrDefault(p =>
+            string.Equals($"{(p.Sku ?? "—")} · {p.Title} — ${FormatPrice(p.RetailPrice)}",
+                productSearchText, StringComparison.OrdinalIgnoreCase));
+        if (match is null)
+        {
+            // Fallback: si tipeo solo el SKU
+            match = availableProducts.FirstOrDefault(p =>
+                !string.IsNullOrEmpty(p.Sku) &&
+                string.Equals(p.Sku, productSearchText.Trim(), StringComparison.OrdinalIgnoreCase));
+        }
+        if (match is null)
+        {
+            // Fallback final: si tipeo parte del nombre y solo hay 1 que matchea
+            var search = productSearchText.Trim().ToLower();
+            var matches = availableProducts.Where(p =>
+                (p.Title ?? "").ToLower().Contains(search) ||
+                (p.Sku ?? "").ToLower().Contains(search)).Take(2).ToList();
+            if (matches.Count == 1) match = matches[0];
+        }
+        addProductId = match?.Id ?? 0;
     }
 
     // Helper compartido: agrega un producto al carrito de la venta.
