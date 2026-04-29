@@ -200,16 +200,14 @@
                     <tbody>
                         @foreach (var product in GetFilteredProducts())
                         {
-                            @{
-                                var rowIsChild = product.BaseProductId.HasValue;
-                                var rowIsParent = !rowIsChild && product.DerivedCount > 0;
-                                string rowStyle = rowIsChild
-                                    ? "color: #6b7280;"
-                                    : (rowIsParent ? "color: #15803d; font-size: 0.82rem;" : "");
-                                string rowTitle = rowIsChild
-                                    ? "Producto hijo"
-                                    : (rowIsParent ? "Producto padre (con hijos)" : "Producto independiente");
-                            }
+                            var rowIsChild = product.BaseProductId.HasValue;
+                            var rowIsParent = !rowIsChild && product.DerivedCount > 0;
+                            string rowStyle = rowIsChild
+                                ? "color: #6b7280;"
+                                : (rowIsParent ? "color: #15803d; font-size: 0.82rem;" : "");
+                            string rowTitle = rowIsChild
+                                ? "Producto hijo"
+                                : (rowIsParent ? "Producto padre (con hijos)" : "Producto independiente");
                             <tr class="@(selectedItems.Contains(product.Id) ? "row-selected" : "")"
                                 style="@rowStyle"
                                 title="@rowTitle">
