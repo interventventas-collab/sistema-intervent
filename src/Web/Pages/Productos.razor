@@ -27,6 +27,15 @@
                     }
                 </select>
             </label>
+            <label style="display: flex; align-items: center; gap: 0.3rem; font-size: 0.85rem; color: #374151;">
+                <span>Tipo:</span>
+                <select class="form-input" style="font-size: 0.85rem; padding: 0.3rem 0.5rem; min-width: 130px;"
+                        @bind="filterType" @bind:after="InvalidateFilterCache">
+                    <option value="">— Todos —</option>
+                    <option value="padre">Solo padres</option>
+                    <option value="hijo">Solo hijos</option>
+                </select>
+            </label>
             <button class="btn btn-primary" @onclick="ShowCreateForm">+ Nuevo Producto</button>
             <button class="btn btn-primary" @onclick="() => showImport = true" title="Subir varios productos desde un Excel" style="background: #059669; border-color: #059669;">📤 Importar Excel</button>
         </div>
@@ -1431,6 +1440,8 @@
     private Dictionary<string, HashSet<string>> checkboxFilters = new();
     // Filtro por Marca: 0 = Todas, -1 = Sin marca, >0 = id de la marca
     private int filterBrandId;
+    // Filtro por Tipo: "" = Todos, "padre" = solo padres con hijos, "hijo" = solo hijos
+    private string filterType = "";
     private string? activeFilterColumn;
     private string sortColumn = "";
     private bool sortAsc = true;
@@ -1660,6 +1671,12 @@
             result = result.Where(p => p.BrandId == filterBrandId);
         else if (filterBrandId == -1)
             result = result.Where(p => p.BrandId == null);
+
+        // Filtro por Tipo (Padre / Hijo / Todos)
+        if (string.Equals(filterType, "padre", StringComparison.OrdinalIgnoreCase))
+            result = result.Where(p => p.DerivedCount > 0);
+        else if (string.Equals(filterType, "hijo", StringComparison.OrdinalIgnoreCase))
+            result = result.Where(p => p.BaseProductId.HasValue);
 
         // Text filters
         foreach (var kv in textFilters.Where(f => !string.IsNullOrEmpty(f.Value)))
