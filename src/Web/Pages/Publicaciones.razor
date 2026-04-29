@@ -342,6 +342,7 @@
                                                 @Truncate(item.ProductTitle ?? "", 18)
                                                 <button class="product-badge-unlink" @onclick="() => UnlinkProduct(item)" title="Desvincular">&times;</button>
                                             </span>
+                                            <button class="push-meli-btn" @onclick="() => OpenPushModal(item)" title="Push precio + stock a MeLi">📤</button>
                                         }
                                         else
                                         {
@@ -429,6 +430,7 @@
                                                     @Truncate(item.ProductTitle ?? "", 18)
                                                     <button class="product-badge-unlink" @onclick="() => UnlinkProduct(item)" title="Desvincular">&times;</button>
                                                 </span>
+                                                <button class="push-meli-btn" @onclick="() => OpenPushModal(item)" title="Push precio + stock a MeLi">📤</button>
                                             }
                                             else
                                             {
@@ -2039,6 +2041,75 @@
     </div>
 }
 
+@* Modal de confirmacion para Push a MeLi *@
+@if (showPushModal && pushItem is not null)
+{
+    <div class="modal-overlay" @onclick="ClosePushModal">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: #fef3c7;">
+                <h3 style="margin: 0;">📤 Push a MercadoLibre</h3>
+                <button class="btn-close" @onclick="ClosePushModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.85rem; margin: 0 0 0.7rem;">
+                    Vas a actualizar la publicación <strong>@pushItem.MeliItemId</strong> con los datos del producto vinculado.
+                </p>
+                @if (pushItemProduct is not null)
+                {
+                    <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; padding:0.7rem; margin-bottom:0.7rem;">
+                        <div style="font-size:0.8rem; color:#6b7280; margin-bottom:0.3rem;">Producto vinculado:</div>
+                        <div style="font-weight:700;">@pushItemProduct.Title</div>
+                        <div style="font-size:0.8rem; color:#374151;">SKU: <strong>@pushItemProduct.Sku</strong></div>
+                    </div>
+
+                    <div class="form-group">
+                        <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer; font-weight:600;">
+                            <input type="checkbox" @bind="pushFlagPrice" style="width:18px; height:18px;" />
+                            Actualizar precio
+                        </label>
+                        @if (pushFlagPrice)
+                        {
+                            var rate = pushItemProduct.VatRate ?? 0m;
+                            var pvpConIva = rate > 0m
+                                ? Math.Round(pushItemProduct.RetailPrice * (1m + rate / 100m), 2)
+                                : pushItemProduct.RetailPrice;
+                            <div style="margin-left: 1.7rem; font-size:0.82rem; color:#374151;">
+                                Antes en MeLi: <strong>$@pushItem.Price.ToString("N2")</strong> →
+                                Ahora: <strong style="color:#15803d;">$@pvpConIva.ToString("N2")</strong>
+                                (PVP s/IVA $@pushItemProduct.RetailPrice.ToString("N2") + IVA @(rate.ToString("0.##"))%)
+                            </div>
+                        }
+                    </div>
+
+                    <div class="form-group" style="margin-top: 0.6rem;">
+                        <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer; font-weight:600;">
+                            <input type="checkbox" @bind="pushFlagStock" style="width:18px; height:18px;" />
+                            Actualizar stock
+                        </label>
+                        @if (pushFlagStock)
+                        {
+                            <div style="margin-left: 1.7rem; font-size:0.82rem; color:#374151;">
+                                Antes en MeLi: <strong>@pushItem.AvailableQuantity</strong> →
+                                Ahora: <strong style="color:#15803d;">@pushItemProduct.Stock</strong>
+                            </div>
+                        }
+                    </div>
+                }
+                <p style="font-size: 0.75rem; color: #6b7280; margin-top: 0.7rem; margin-bottom: 0;">
+                    El cambio puede tardar unos segundos en reflejarse en la publicación pública de MeLi.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="ClosePushModal" disabled="@isPushing">Cancelar</button>
+                <button class="btn btn-primary" @onclick="ConfirmPush" disabled="@(isPushing || (!pushFlagPrice && !pushFlagStock))"
+                        style="background:#f59e0b; border-color:#f59e0b;">
+                    @(isPushing ? "Enviando..." : "📤 Push a MeLi")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private List<MeliItemDto>? items;
     private bool isLoading = true;
@@ -2082,6 +2153,14 @@
     // Product linking
     private bool showCreateProductModal;
     private MeliItemDto? createProductItem;
+
+    // Push a MeLi: confirmacion + flags
+    private bool showPushModal;
+    private MeliItemDto? pushItem;
+    private ProductDto? pushItemProduct; // Producto vinculado, para mostrar en preview
+    private bool pushFlagPrice = true;
+    private bool pushFlagStock = true;
+    private bool isPushing;
     private string newProductTitle = "";
     private string newProductDescription = "";
     private string newProductBrand = "";
@@ -3375,5 +3454,74 @@
         {
             ToastService.Error("Error: " + ex.Message);
         }
+    }
+
+    // === Push a MeLi ===
+
+    private async Task OpenPushModal(MeliItemDto item)
+    {
+        if (item.ProductId is null)
+        {
+            ToastService.Error("Esta publicación no tiene producto vinculado.");
+            return;
+        }
+        pushItem = item;
+        pushFlagPrice = true;
+        pushFlagStock = true;
+        // Cargar el producto vinculado para mostrar preview
+        try
+        {
+            var products = await Api.GetProductsAsync();
+            pushItemProduct = products?.FirstOrDefault(p => p.Id == item.ProductId.Value);
+        }
+        catch { pushItemProduct = null; }
+
+        if (pushItemProduct is null)
+        {
+            ToastService.Error("No se pudo cargar el producto vinculado.");
+            return;
+        }
+        showPushModal = true;
+    }
+
+    private void ClosePushModal()
+    {
+        if (isPushing) return;
+        showPushModal = false;
+        pushItem = null;
+        pushItemProduct = null;
+    }
+
+    private async Task ConfirmPush()
+    {
+        if (pushItem is null) return;
+        isPushing = true;
+        try
+        {
+            var result = await Api.PushMeliItemFromProductAsync(pushItem.Id, pushFlagPrice, pushFlagStock);
+            if (result is not null && result.Success)
+            {
+                ToastService.Success(result.Message);
+                // Refrescar el item localmente con los nuevos valores
+                if (items is not null)
+                {
+                    var idx = items.FindIndex(i => i.Id == pushItem.Id);
+                    if (idx >= 0)
+                    {
+                        if (result.PushedPrice.HasValue) items[idx].Price = result.PushedPrice.Value;
+                        if (result.PushedStock.HasValue) items[idx].AvailableQuantity = result.PushedStock.Value;
+                    }
+                }
+                showPushModal = false;
+                pushItem = null;
+                pushItemProduct = null;
+            }
+            else
+            {
+                ToastService.Error(result?.Message ?? "Error al enviar a MeLi");
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { isPushing = false; }
     }
 }

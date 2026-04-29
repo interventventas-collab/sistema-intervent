@@ -399,6 +399,24 @@ public class MeliController : ControllerBase
         }
     }
 
+    public record PushFromProductRequest(bool PushPrice = true, bool PushStock = true);
+
+    [HttpPost("items/{id}/push-from-product")]
+    public async Task<IActionResult> PushFromProduct(int id, [FromBody] PushFromProductRequest? request)
+    {
+        try
+        {
+            var req = request ?? new PushFromProductRequest();
+            var result = await _itemService.PushFromProductAsync(id, req.PushPrice, req.PushStock);
+            if (!result.Success) return BadRequest(new { error = result.Message });
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
         [HttpPost("items/bulk-create-products")]
     public async Task<IActionResult> BulkCreateProducts([FromBody] BulkCreateProductsRequest request)
     {

@@ -1599,6 +1599,86 @@ public class MeliItemService
     /// Propaga el stock de un producto a todas sus publicaciones activas en MercadoLibre.
     /// Actualiza via API de MeLi y luego en la base de datos local.
     /// </summary>
+    /// <summary>
+    /// Empuja a MeLi los datos del producto local vinculado a la publicacion.
+    /// Por defecto manda precio (PVP con IVA aplicado) y stock.
+    /// </summary>
+    public async Task<MeliPushResult> PushFromProductAsync(int meliItemId, bool pushPrice = true, bool pushStock = true)
+    {
+        var item = await _db.MeliItems
+            .Include(i => i.MeliAccount)
+            .FirstOrDefaultAsync(i => i.Id == meliItemId);
+
+        if (item is null) throw new InvalidOperationException("Publicacion no encontrada.");
+        if (item.ProductId is null) throw new InvalidOperationException("Esta publicacion no tiene producto vinculado todavia.");
+        if (item.MeliAccount is null) throw new InvalidOperationException("La cuenta de MeLi no esta cargada.");
+
+        var product = await _db.Products.FirstOrDefaultAsync(p => p.Id == item.ProductId.Value);
+        if (product is null) throw new InvalidOperationException("El producto vinculado no existe.");
+
+        // Construir payload: precio CON IVA aplicado (el publico de MeLi siempre incluye IVA).
+        var payloadDict = new Dictionary<string, object>();
+        decimal? priceWithVat = null;
+        if (pushPrice)
+        {
+            var rate = product.VatRate ?? 0m;
+            priceWithVat = rate > 0m
+                ? Math.Round(product.RetailPrice * (1m + rate / 100m), 2, MidpointRounding.AwayFromZero)
+                : product.RetailPrice;
+            payloadDict["price"] = priceWithVat;
+        }
+        if (pushStock)
+        {
+            payloadDict["available_quantity"] = product.Stock;
+        }
+
+        if (payloadDict.Count == 0)
+            return new MeliPushResult(false, "No se eligio ningun campo para sincronizar.", null, null);
+
+        var token = await _accountService.GetValidTokenAsync(item.MeliAccount);
+        if (token is null)
+            return new MeliPushResult(false, "No se pudo obtener un token valido para la cuenta de MeLi.", null, null);
+
+        var http = _httpFactory.CreateClient();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var payload = JsonSerializer.Serialize(payloadDict);
+        var content = new StringContent(payload, Encoding.UTF8, "application/json");
+        var response = await http.PutAsync($"https://api.mercadolibre.com/items/{item.MeliItemId}", content);
+
+        // Retry con token refrescado si da 401/403
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized ||
+            response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        {
+            var newToken = await _accountService.GetValidTokenAsync(item.MeliAccount, forceRefresh: true);
+            if (newToken is not null)
+            {
+                http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", newToken);
+                content = new StringContent(payload, Encoding.UTF8, "application/json");
+                response = await http.PutAsync($"https://api.mercadolibre.com/items/{item.MeliItemId}", content);
+            }
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync();
+            return new MeliPushResult(false, $"Error de MeLi ({(int)response.StatusCode}): {FormatMeliError(body)}", null, null);
+        }
+
+        // Actualizar la copia local
+        if (pushPrice && priceWithVat.HasValue) item.Price = priceWithVat.Value;
+        if (pushStock) item.AvailableQuantity = product.Stock;
+        item.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        await _auditLog.LogAsync("MeliItem", item.MeliItemId, "PUSH_FROM_PRODUCT",
+            JsonSerializer.Serialize(new { productId = product.Id, productSku = product.Sku, pushPrice, pushStock, priceWithVat, stock = product.Stock }));
+
+        return new MeliPushResult(true, "Publicacion actualizada en MeLi.", priceWithVat, pushStock ? product.Stock : null);
+    }
+
+    public record MeliPushResult(bool Success, string Message, decimal? PushedPrice, int? PushedStock);
+
     public async Task PropagateStockAsync(int productId, int newStock)
     {
         var items = await _db.MeliItems

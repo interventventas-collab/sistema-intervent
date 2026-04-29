@@ -2640,6 +2640,23 @@ textarea.form-input {
     color: #1d4ed8;
 }
 
+.push-meli-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border: 1px solid #fbbf24;
+    background: #fef3c7;
+    cursor: pointer;
+    margin-left: 0.3rem;
+    font-size: 0.95rem;
+    transition: all 0.15s;
+    padding: 0;
+}
+.push-meli-btn:hover {
+    background: #fde68a;
+    border-color: #f59e0b;
+}
+
 /* Link Product Modal */
 .link-product-list {
     max-height: 250px;
