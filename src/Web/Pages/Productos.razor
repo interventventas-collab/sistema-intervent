@@ -311,6 +311,8 @@
                                     <button class="btn-icon btn-edit" @onclick="() => ShowEditForm(product)" title="Editar">
                                         @SvgIcons.Edit
                                     </button>
+                                    <button class="btn-icon" style="background:#fef3c7;color:#92400e;border:1px solid #fbbf24;padding:2px 6px;border-radius:4px;font-size:0.7rem;font-weight:700;"
+                                            @onclick="() => ShowCloneForm(product)" title="Crear similar (duplica este producto como uno nuevo)">⎘ Similar</button>
                                     <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(product)" title="Eliminar">
                                         @SvgIcons.AlertCircle
                                     </button>
@@ -1681,6 +1683,39 @@
         formSaleAccount = product.SaleAccount ?? "";
         formInventoryAccount = product.InventoryAccount ?? "";
         formIsActive = product.IsActive;
+        formPhoto1 = product.Photo1; formPhoto2 = product.Photo2; formPhoto3 = product.Photo3;
+        formBaseProductId = product.BaseProductId ?? 0;
+        formBrandId = product.BrandId ?? 0;
+        formIsBase = product.IsBase;
+        formError = null; showForm = true;
+    }
+
+    // Clona un producto: precarga el form con los datos pero como producto NUEVO
+    // (sin Id de edicion). Limpia los identificadores unicos: SKU, codigo de barras
+    // y codigo OEM, para evitar conflictos al guardar.
+    private void ShowCloneForm(ProductDto product)
+    {
+        isEditing = false; editingProductId = null;
+        formTitle = product.Title + " (copia)";
+        formDisplayName = product.DisplayName ?? "";
+        formDescription = product.Description ?? "";
+        formSku = ""; // SKU unico, se regenera
+        formBarcode = ""; // EAN/UPC unico
+        formOemCode = ""; // generalmente unico
+        formImageUrl = product.ImageUrl ?? "";
+        formBrand = product.Brand ?? "";
+        formModel = product.Model ?? "";
+        formCostPrice = product.CostPrice; formRetailPrice = product.RetailPrice;
+        formStock = 0; formCriticalStock = product.CriticalStock; // stock arranca en 0
+        formUnitsPerPack = product.UnitsPerPack;
+        formCostPriceFormatted = FormatPrice(formCostPrice);
+        formRetailPriceFormatted = FormatPrice(formRetailPrice);
+        formVatRate = product.VatRate ?? 21m; // default 21 si el origen no tenia
+        SyncWithVatFromBase();
+        formPurchaseAccount = product.PurchaseAccount ?? "";
+        formSaleAccount = product.SaleAccount ?? "";
+        formInventoryAccount = product.InventoryAccount ?? "";
+        formIsActive = true;
         formPhoto1 = product.Photo1; formPhoto2 = product.Photo2; formPhoto3 = product.Photo3;
         formBaseProductId = product.BaseProductId ?? 0;
         formBrandId = product.BrandId ?? 0;

@@ -59,6 +59,8 @@
                                 </td>
                                 <td class="actions-cell">
                                     <button class="btn-icon btn-edit" @onclick="() => ShowEditForm(c)" title="Editar">@SvgIcons.Edit</button>
+                                    <button class="btn-icon" style="background:#fef3c7;color:#92400e;border:1px solid #fbbf24;padding:2px 6px;border-radius:4px;font-size:0.7rem;font-weight:700;"
+                                            @onclick="() => ShowCloneForm(c)" title="Crear similar (duplica este combo como uno nuevo)">⎘ Similar</button>
                                     <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(c)" title="Eliminar">@SvgIcons.AlertCircle</button>
                                 </td>
                             </tr>
@@ -385,6 +387,25 @@
         isEditing = true; editingId = c.Id;
         formName = c.Name; formSku = c.Sku ?? ""; formDescription = c.Description ?? "";
         formIsActive = c.IsActive;
+        formItems = c.Items.Select(i => new ComboItemRequest { ProductId = i.ProductId, Quantity = i.Quantity }).ToList();
+        autoPrice = c.PriceMode == "auto";
+        formPriceMode = c.PriceMode == "auto" ? "manual" : c.PriceMode;
+        formManualPrice = c.ManualPrice ?? 0;
+        formManualPriceFormatted = FormatPrice(formManualPrice);
+        formPercentAdjustment = c.PercentAdjustment ?? 0;
+        addProductId = 0; addProductQty = 1;
+        formError = null; showForm = true;
+    }
+
+    // Clona un combo: precarga el form con los items y configuracion de precios
+    // pero como combo NUEVO. Limpia identificadores unicos (SKU se regenera).
+    private void ShowCloneForm(ComboDto c)
+    {
+        isEditing = false; editingId = null;
+        formName = c.Name + " (copia)";
+        formSku = ""; // SKU unico, se regenera al guardar
+        formDescription = c.Description ?? "";
+        formIsActive = true;
         formItems = c.Items.Select(i => new ComboItemRequest { ProductId = i.ProductId, Quantity = i.Quantity }).ToList();
         autoPrice = c.PriceMode == "auto";
         formPriceMode = c.PriceMode == "auto" ? "manual" : c.PriceMode;
