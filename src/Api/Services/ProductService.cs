@@ -45,13 +45,23 @@ public class ProductService
             .Select(g => new { ParentId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(g => g.ParentId, g => g.Count);
 
+        // Stock total de cada padre = suma del stock de sus hijos.
+        // Para padres con hijos, el campo Stock devuelto en el DTO es esa suma,
+        // ignorando el Stock propio del padre en la DB.
+        var childrenStockByParent = await _db.Products
+            .Where(p => p.BaseProductId != null)
+            .GroupBy(p => p.BaseProductId!.Value)
+            .Select(g => new { ParentId = g.Key, Sum = g.Sum(p => p.Stock) })
+            .ToDictionaryAsync(g => g.ParentId, g => g.Sum);
+
         return products.Select(p => new ProductListDto(
             p.Id, p.Title, p.DisplayName, p.Description,
             p.Brand, p.Model, p.Sku, p.Barcode, p.OemCode, p.ImageUrl,
             p.Photo1, p.Photo2, p.Photo3,
             p.CostPrice, p.RetailPrice, p.VatRate,
             p.PurchaseAccount, p.SaleAccount, p.InventoryAccount,
-            p.Stock, p.CriticalStock,
+            childrenStockByParent.TryGetValue(p.Id, out var childSum) ? childSum : p.Stock,
+            p.CriticalStock,
             p.IsActive, p.CreatedAt, p.UpdatedAt,
             linksDict.GetValueOrDefault(p.Id, new List<ProductAccountLinkDto>()),
             p.BaseProductId,
@@ -76,6 +86,10 @@ public class ProductService
         if (p is null) return null;
 
         var derivedCount = await _db.Products.CountAsync(x => x.BaseProductId == id);
+        // Stock efectivo: si tiene hijos, suma; si no, su propio stock.
+        var effectiveStock = derivedCount > 0
+            ? await _db.Products.Where(x => x.BaseProductId == id).SumAsync(x => x.Stock)
+            : p.Stock;
 
         return new ProductListDto(
             p.Id, p.Title, p.DisplayName, p.Description,
@@ -83,7 +97,7 @@ public class ProductService
             p.Photo1, p.Photo2, p.Photo3,
             p.CostPrice, p.RetailPrice, p.VatRate,
             p.PurchaseAccount, p.SaleAccount, p.InventoryAccount,
-            p.Stock, p.CriticalStock,
+            effectiveStock, p.CriticalStock,
             p.IsActive, p.CreatedAt, p.UpdatedAt,
             new List<ProductAccountLinkDto>(),
             p.BaseProductId,

@@ -317,7 +317,10 @@
                                     }
                                 </td>
                                 <td style="text-align: center; font-weight: 700; padding: 0.25rem 0.5rem;" @onclick:stopPropagation="true">
-                                    @if (IsUnlocked("stock") && !product.RequiresExpiry)
+                                    @{
+                                        var hasChildren = product.DerivedCount > 0;
+                                    }
+                                    @if (IsUnlocked("stock") && !product.RequiresExpiry && !hasChildren)
                                     {
                                         var stockDisabled = savingStockId == product.Id;
                                         <input type="number" min="0" step="1"
@@ -344,6 +347,13 @@
                                         {
                                             @product.Stock
                                         }
+                                    }
+                                    @if (hasChildren)
+                                    {
+                                        <span style="margin-left: 0.3rem; background: #e0f2fe; color: #075985; border: 1px solid #7dd3fc; padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.7rem; font-weight: 700;"
+                                              title="Stock total = suma del stock de los @product.DerivedCount hijo(s)">
+                                            Σ @product.DerivedCount
+                                        </span>
                                     }
                                     @if (product.RequiresExpiry)
                                     {
@@ -623,13 +633,28 @@
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label class="form-label">Stock @(FormRequiresExpiry ? "(por lotes)" : "")</label>
-                        <input class="form-input" type="number" min="0" style="font-size: 1.1rem; font-weight: 700; text-align: right; @(FormRequiresExpiry ? "background:#f3f4f6;color:#6b7280;" : "")"
-                               @bind="formStock" disabled="@FormRequiresExpiry" />
+                        @{
+                            var formIsParentWithChildren = isEditing && editingProductId.HasValue
+                                && (products?.Any(p => p.BaseProductId == editingProductId.Value) ?? false);
+                            var stockDisabled = FormRequiresExpiry || formIsParentWithChildren;
+                        }
+                        <label class="form-label">
+                            Stock
+                            @if (FormRequiresExpiry) { <span>(por lotes)</span> }
+                            else if (formIsParentWithChildren) { <span>(suma de hijos)</span> }
+                        </label>
+                        <input class="form-input" type="number" min="0" style="font-size: 1.1rem; font-weight: 700; text-align: right; @(stockDisabled ? "background:#f3f4f6;color:#6b7280;" : "")"
+                               @bind="formStock" disabled="@stockDisabled" />
                         @if (FormRequiresExpiry)
                         {
                             <p style="font-size: 0.75rem; color: #92400e; margin: 0.3rem 0 0;">
                                 ⚠ Esta marca tiene productos con vencimiento. El stock se gestiona por lotes desde el boton "📅 Lotes" en la tabla, despues de guardar.
+                            </p>
+                        }
+                        else if (formIsParentWithChildren)
+                        {
+                            <p style="font-size: 0.75rem; color: #075985; margin: 0.3rem 0 0;">
+                                Σ Este producto es padre. El stock total es la <strong>suma del stock de sus hijos</strong>, no se carga manualmente.
                             </p>
                         }
                     </div>
@@ -2460,6 +2485,11 @@
         if (!int.TryParse(rawValue ?? "", out var newStock)) return;
         if (newStock == product.Stock) return;
         if (newStock < 0) { ToastService.Error("El stock no puede ser negativo"); return; }
+        if (product.DerivedCount > 0)
+        {
+            ToastService.Error("Los productos padre no manejan stock propio: la suma de los hijos es el stock total.");
+            return;
+        }
 
         var original = product.Stock;
         savingStockId = product.Id;
@@ -2468,7 +2498,21 @@
         {
             var updated = await Api.UpdateProductAsync(product.Id, new UpdateProductRequest { Stock = newStock });
             if (updated is null) { product.Stock = original; ToastService.Error("No se pudo actualizar el stock"); }
-            else { product.Stock = newStock; ToastService.Success($"Stock actualizado: {newStock}"); }
+            else
+            {
+                product.Stock = newStock;
+                // Si es un hijo, refrescamos el listado completo para que el padre
+                // muestre la suma actualizada en su columna Stock.
+                if (product.BaseProductId.HasValue)
+                {
+                    ToastService.Success($"Stock actualizado: {newStock}. Stock total del padre se recalcula.");
+                    await LoadData();
+                }
+                else
+                {
+                    ToastService.Success($"Stock actualizado: {newStock}");
+                }
+            }
         }
         catch (Exception ex) { product.Stock = original; ToastService.Error("Error: " + ex.Message); }
         savingStockId = null;
