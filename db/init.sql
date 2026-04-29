@@ -1087,6 +1087,14 @@ BEGIN
 END
 GO
 
+-- Companies en las que se muestra cada lista. CSV (ej "FRIKAF,PALANICA").
+-- Empty/null = visible en todas las empresas. Mismo patron que Brands.Companies.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'Companies' AND Object_ID = Object_ID(N'CustomerTiers'))
+BEGIN
+    ALTER TABLE CustomerTiers ADD Companies NVARCHAR(200) NULL;
+END
+GO
+
 -- Asignar la lista por defecto a clientes que no tengan una asignada
 UPDATE Clients
 SET CustomerTierId = (SELECT TOP 1 Id FROM CustomerTiers WHERE IsDefault = 1)

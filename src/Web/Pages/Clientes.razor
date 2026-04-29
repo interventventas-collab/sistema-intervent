@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @inject ApiClient Api
 @inject ToastService ToastService
+@inject CurrentCompanyService Company
 
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
@@ -146,14 +147,23 @@
                 <div class="form-group">
                     <label class="form-label">Lista de precios</label>
                     <select class="form-input" @bind="formCustomerTierId" style="max-width: 320px;">
-                        @if (tiers is null || tiers.Count == 0)
+                        @{
+                            // Filtrar listas por la empresa actual. Si no hay empresa elegida, mostrar todas.
+                            var availableTiers = tiers is null
+                                ? new List<CustomerTierDto>()
+                                : tiers.Where(x => x.IsActive
+                                    && (!Company.HasCompany || CurrentCompanyService.IsVisibleForCompany(x.Companies, Company.Current!)))
+                                    .OrderBy(x => x.SortOrder).ToList();
+                            var defaultTier = availableTiers.FirstOrDefault(x => x.IsDefault) ?? tiers?.FirstOrDefault(x => x.IsDefault);
+                        }
+                        @if (availableTiers.Count == 0)
                         {
-                            <option value="0">— (sin listas configuradas) —</option>
+                            <option value="0">— (sin listas configuradas para @(Company.HasCompany ? Company.CurrentDisplayName : "esta empresa")) —</option>
                         }
                         else
                         {
-                            <option value="0">— Default (@(tiers.FirstOrDefault(x => x.IsDefault)?.Name ?? "Ventas")) —</option>
-                            @foreach (var t in tiers.Where(x => x.IsActive).OrderBy(x => x.SortOrder))
+                            <option value="0">— Default (@(defaultTier?.Name ?? "—")) —</option>
+                            @foreach (var t in availableTiers)
                             {
                                 <option value="@t.Id">@t.Name (@FormatPercent(t.AdjustmentPercent))</option>
                             }

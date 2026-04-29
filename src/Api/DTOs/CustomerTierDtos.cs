@@ -12,7 +12,8 @@ public record CustomerTierDto(
     int SortOrder,
     string? Notes,
     int ClientCount,        // cuantos clientes apuntan a esta lista
-    int OverrideCount       // cuantas excepciones de precio tiene
+    int OverrideCount,      // cuantas excepciones de precio tiene
+    string? Companies       // CSV de empresas. null/vacio = visible en todas.
 );
 
 public record CreateCustomerTierRequest(
@@ -21,7 +22,8 @@ public record CreateCustomerTierRequest(
     [Range(-100, 1000)] decimal AdjustmentPercent,
     bool IsDefault,
     int SortOrder,
-    [MaxLength(500)] string? Notes
+    [MaxLength(500)] string? Notes,
+    [MaxLength(200)] string? Companies
 );
 
 public record UpdateCustomerTierRequest(
@@ -30,7 +32,8 @@ public record UpdateCustomerTierRequest(
     bool? IsDefault,
     bool? IsActive,
     int? SortOrder,
-    [MaxLength(500)] string? Notes
+    [MaxLength(500)] string? Notes,
+    [MaxLength(200)] string? Companies
 );
 
 /// <summary>

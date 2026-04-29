@@ -1,12 +1,26 @@
 @page "/listas-precios"
 @attribute [Authorize]
+@implements IDisposable
 @inject ApiClient Api
 @inject ToastService ToastService
+@inject CurrentCompanyService Company
 
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
-        <h3>Listas de precios (@(tiers?.Count ?? 0))</h3>
-        <button class="btn btn-primary" @onclick="ShowCreateForm">+ Nueva lista</button>
+        <h3>
+            Listas de precios (@(visibleTiers?.Count ?? 0))
+            @if (Company.HasCompany)
+            {
+                <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;"> · @Company.CurrentDisplayName</span>
+            }
+        </h3>
+        <div style="display: flex; gap: 0.4rem; align-items: center;">
+            <label style="display: flex; align-items: center; gap: 0.3rem; font-size: 0.8rem; cursor: pointer; color: #6b7280;">
+                <input type="checkbox" @bind="showAllCompanies" />
+                Ver listas de todas las empresas
+            </label>
+            <button class="btn btn-primary" @onclick="ShowCreateForm">+ Nueva lista</button>
+        </div>
     </div>
     <div class="card-body" style="padding: 0;">
         <div style="padding: 1rem 1.25rem; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 0.85rem; color: #4b5563;">
@@ -25,9 +39,18 @@
         {
             <p class="text-muted" style="padding: 1.5rem;">Cargando...</p>
         }
-        else if (tiers is null || tiers.Count == 0)
+        else if (visibleTiers is null || visibleTiers.Count == 0)
         {
-            <p class="text-muted" style="padding: 1.5rem;">No hay listas creadas. Tocá "+ Nueva lista".</p>
+            <p class="text-muted" style="padding: 1.5rem;">
+                @if (tiers is null || tiers.Count == 0)
+                {
+                    <span>No hay listas creadas. Tocá "+ Nueva lista".</span>
+                }
+                else
+                {
+                    <span>No hay listas para <strong>@Company.CurrentDisplayName</strong>. Tildá "Ver listas de todas las empresas" para verlas todas, o creá una nueva.</span>
+                }
+            </p>
         }
         else
         {
@@ -39,6 +62,7 @@
                             <th>Nombre</th>
                             <th style="width: 110px;">Codigo</th>
                             <th style="text-align: right; width: 110px;">Ajuste %</th>
+                            <th>Empresas</th>
                             <th style="text-align: center; width: 90px;">Default</th>
                             <th style="text-align: center; width: 100px;">Clientes</th>
                             <th style="text-align: center; width: 110px;">Excepciones</th>
@@ -47,7 +71,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var t in tiers!.OrderBy(x => x.SortOrder).ThenBy(x => x.Name))
+                        @foreach (var t in visibleTiers!.OrderBy(x => x.SortOrder).ThenBy(x => x.Name))
                         {
                             <tr>
                                 <td style="text-align: center; color: #6b7280;">@t.SortOrder</td>
@@ -61,6 +85,22 @@
                                 <td style="font-family: monospace; color: #374151;">@t.Code</td>
                                 <td style="text-align: right; font-weight: 700; color: @(t.AdjustmentPercent < 0 ? "#dc2626" : (t.AdjustmentPercent > 0 ? "#059669" : "#374151"));">
                                     @FormatPercent(t.AdjustmentPercent)
+                                </td>
+                                <td>
+                                    @{
+                                        var cos = CurrentCompanyService.ParseCompanies(t.Companies);
+                                    }
+                                    @if (cos.Count == 0)
+                                    {
+                                        <span style="display:inline-block; padding:0.15rem 0.5rem; background:#e0f2fe; color:#075985; border-radius:999px; font-size:0.7rem; font-weight:600;">Todas</span>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var co in cos)
+                                        {
+                                            <span style="display:inline-block; padding:0.15rem 0.45rem; background:#f3f4f6; color:#374151; border-radius:999px; font-size:0.7rem; font-weight:600; margin-right:0.2rem;" title="@co">@Company.GetDisplayName(co)</span>
+                                        }
+                                    }
                                 </td>
                                 <td style="text-align: center;">
                                     @if (t.IsDefault)
@@ -151,6 +191,24 @@
                     </label>
                 </div>
 
+                <div class="form-group">
+                    <label class="form-label">Empresas en las que se muestra</label>
+                    <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                        @foreach (var co in CurrentCompanyService.Companies)
+                        {
+                            var id = co;
+                            var isOn = formCompanies.Contains(id);
+                            <label style="display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.4rem 0.7rem; border: 1.5px solid @(isOn ? "#15803d" : "#d1d5db"); background: @(isOn ? "#dcfce7" : "white"); border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.85rem;">
+                                <input type="checkbox" checked="@isOn" @onchange="() => ToggleFormCompany(id)" style="margin: 0;" />
+                                @Company.GetDisplayName(id)
+                            </label>
+                        }
+                    </div>
+                    <p style="font-size: 0.78rem; color: #6b7280; margin: 0.4rem 0 0;">
+                        Si no tildas ninguna, esta lista se muestra en <strong>todas</strong> las empresas.
+                    </p>
+                </div>
+
                 @if (isEditing)
                 {
                     <div class="form-group">
@@ -207,6 +265,8 @@
 @code {
     private List<CustomerTierDto>? tiers;
     private bool isLoading = true;
+    private bool showAllCompanies;
+    private HashSet<string> formCompanies = new(StringComparer.OrdinalIgnoreCase);
 
     private bool showForm;
     private bool isEditing;
@@ -226,9 +286,31 @@
     private bool showDeleteConfirm;
     private CustomerTierDto? tierToDelete;
 
+    // Listas filtradas por la empresa actual (o todas si showAllCompanies).
+    private List<CustomerTierDto>? visibleTiers
+    {
+        get
+        {
+            if (tiers is null) return null;
+            if (showAllCompanies || !Company.HasCompany) return tiers;
+            return tiers.Where(t => CurrentCompanyService.IsVisibleForCompany(t.Companies, Company.Current!)).ToList();
+        }
+    }
+
     protected override async Task OnInitializedAsync()
     {
+        Company.OnChange += OnCompanyChanged;
         await LoadData();
+    }
+
+    public void Dispose() { Company.OnChange -= OnCompanyChanged; }
+
+    private void OnCompanyChanged() => InvokeAsync(StateHasChanged);
+
+    private void ToggleFormCompany(string name)
+    {
+        if (formCompanies.Contains(name)) formCompanies.Remove(name);
+        else formCompanies.Add(name);
     }
 
     private async Task LoadData()
@@ -248,6 +330,9 @@
         formName = ""; formCode = ""; formPercent = 0;
         formSortOrder = (tiers?.Count ?? 0) + 1;
         formNotes = ""; formIsDefault = false; formIsActive = true;
+        // Pre-tildar la empresa actual asi por default queda restringida a esta
+        formCompanies = new(StringComparer.OrdinalIgnoreCase);
+        if (Company.HasCompany) formCompanies.Add(Company.Current!);
         formError = null; showForm = true;
     }
 
@@ -257,6 +342,7 @@
         formName = t.Name; formCode = t.Code; formPercent = t.AdjustmentPercent;
         formSortOrder = t.SortOrder; formNotes = t.Notes ?? "";
         formIsDefault = t.IsDefault; formIsActive = t.IsActive;
+        formCompanies = new HashSet<string>(CurrentCompanyService.ParseCompanies(t.Companies), StringComparer.OrdinalIgnoreCase);
         formError = null; showForm = true;
     }
 
@@ -267,6 +353,12 @@
         formError = null;
         if (string.IsNullOrWhiteSpace(formName)) { formError = "El nombre es obligatorio"; return; }
         if (!isEditing && string.IsNullOrWhiteSpace(formCode)) { formError = "El codigo es obligatorio"; return; }
+
+        // CSV de empresas. Vacio => "" para limpiar restriccion (= todas).
+        // Mantiene el orden de CurrentCompanyService.Companies para consistencia.
+        string companiesCsv = formCompanies.Count == 0
+            ? ""
+            : string.Join(",", CurrentCompanyService.Companies.Where(c => formCompanies.Contains(c)));
 
         isSaving = true;
         try
@@ -280,7 +372,8 @@
                     IsDefault = formIsDefault ? true : (bool?)null, // solo enviar true para evitar la validacion de "no se puede desmarcar"
                     IsActive = formIsActive,
                     SortOrder = formSortOrder,
-                    Notes = formNotes
+                    Notes = formNotes,
+                    Companies = companiesCsv
                 });
                 if (updated is null) { formError = "No se pudo actualizar"; return; }
                 ToastService.Success("Lista actualizada");
@@ -294,7 +387,8 @@
                     AdjustmentPercent = formPercent,
                     IsDefault = formIsDefault,
                     SortOrder = formSortOrder,
-                    Notes = formNotes
+                    Notes = formNotes,
+                    Companies = companiesCsv
                 });
                 if (created is null) { formError = "No se pudo crear"; return; }
                 ToastService.Success("Lista creada");

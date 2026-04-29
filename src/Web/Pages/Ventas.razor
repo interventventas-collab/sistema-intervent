@@ -1029,20 +1029,27 @@
 
     // === Helpers de listas de precios (tiers) ===
 
-    /// Devuelve la lista activa para un cliente: la suya, o la default si no tiene.
+    /// Devuelve la lista activa para un cliente: la suya (si esta visible para la empresa actual),
+    /// o la default visible para la empresa, o null si no hay ninguna aplicable.
     private CustomerTierDto? GetActiveTierForClient(int clientId)
     {
         if (tiers is null || tiers.Count == 0) return null;
+
+        // Filtrar listas por la empresa actual. Si no hay empresa elegida, considerar todas.
+        bool isVisible(CustomerTierDto t) =>
+            !Company.HasCompany || CurrentCompanyService.IsVisibleForCompany(t.Companies, Company.Current!);
+
         if (clientId > 0 && clients is not null)
         {
             var c = clients.FirstOrDefault(x => x.Id == clientId);
             if (c?.CustomerTierId is int tid)
             {
-                var byClient = tiers.FirstOrDefault(t => t.Id == tid);
+                var byClient = tiers.FirstOrDefault(t => t.Id == tid && isVisible(t));
                 if (byClient is not null) return byClient;
             }
         }
-        return tiers.FirstOrDefault(t => t.IsDefault);
+        return tiers.FirstOrDefault(t => t.IsDefault && isVisible(t))
+            ?? tiers.FirstOrDefault(t => t.IsDefault);
     }
 
     /// Calcula el PVP del producto aplicando el % de ajuste de la lista activa.

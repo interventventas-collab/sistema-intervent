@@ -12,6 +12,7 @@ public class CustomerTierDto
     public string? Notes { get; set; }
     public int ClientCount { get; set; }
     public int OverrideCount { get; set; }
+    public string? Companies { get; set; } // CSV. null/vacio = todas.
 }
 
 public class CreateCustomerTierRequest
@@ -22,6 +23,7 @@ public class CreateCustomerTierRequest
     public bool IsDefault { get; set; }
     public int SortOrder { get; set; }
     public string? Notes { get; set; }
+    public string? Companies { get; set; }
 }
 
 public class UpdateCustomerTierRequest
@@ -32,6 +34,7 @@ public class UpdateCustomerTierRequest
     public bool? IsActive { get; set; }
     public int? SortOrder { get; set; }
     public string? Notes { get; set; }
+    public string? Companies { get; set; }
 }
 
 public class ProductTierPriceDto

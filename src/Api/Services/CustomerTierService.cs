@@ -64,6 +64,7 @@ public class CustomerTierService
             IsActive = true,
             SortOrder = req.SortOrder,
             Notes = string.IsNullOrWhiteSpace(req.Notes) ? null : req.Notes.Trim(),
+            Companies = NormalizeCompanies(req.Companies),
             CreatedAt = DateTime.UtcNow
         };
         _db.CustomerTiers.Add(tier);
@@ -96,6 +97,7 @@ public class CustomerTierService
         if (req.SortOrder.HasValue) tier.SortOrder = req.SortOrder.Value;
         if (req.Notes is not null) tier.Notes = string.IsNullOrWhiteSpace(req.Notes) ? null : req.Notes.Trim();
         if (req.IsActive.HasValue) tier.IsActive = req.IsActive.Value;
+        if (req.Companies is not null) tier.Companies = NormalizeCompanies(req.Companies);
 
         if (req.IsDefault.HasValue && req.IsDefault.Value && !tier.IsDefault)
         {
@@ -263,7 +265,21 @@ public class CustomerTierService
         return c;
     }
 
+    /// <summary>
+    /// Normaliza el CSV de empresas: trim, uppercase, dedupe, vacio -> null.
+    /// </summary>
+    private static string? NormalizeCompanies(string? csv)
+    {
+        if (string.IsNullOrWhiteSpace(csv)) return null;
+        var items = csv.Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => s.Trim().ToUpperInvariant())
+            .Where(s => s.Length > 0)
+            .Distinct()
+            .ToList();
+        return items.Count == 0 ? null : string.Join(",", items);
+    }
+
     private static CustomerTierDto ToDto(CustomerTier t, int clientCount, int overrideCount) => new(
         t.Id, t.Name, t.Code, t.AdjustmentPercent, t.IsDefault, t.IsActive,
-        t.SortOrder, t.Notes, clientCount, overrideCount);
+        t.SortOrder, t.Notes, clientCount, overrideCount, t.Companies);
 }

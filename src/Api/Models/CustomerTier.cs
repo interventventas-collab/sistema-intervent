@@ -37,6 +37,13 @@ public class CustomerTier
     [MaxLength(500)]
     public string? Notes { get; set; }
 
+    /// <summary>
+    /// Empresas en las que se muestra esta lista. CSV (ej "FRIKAF,PALANICA").
+    /// Vacio o null = visible en todas las empresas.
+    /// </summary>
+    [MaxLength(200)]
+    public string? Companies { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }
