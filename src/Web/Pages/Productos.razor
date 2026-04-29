@@ -240,8 +240,8 @@
                                     <strong>@product.Title</strong>
                                     @if (product.DerivedCount > 0)
                                     {
-                                        <span style="display: inline-block; margin-left: 0.4rem; padding: 0.1rem 0.45rem; background: #dcfce7; color: #15803d; border-radius: 999px; font-size: 0.7rem; font-weight: 600;" title="Este producto es base de @product.DerivedCount productos">
-                                            Base de @product.DerivedCount
+                                        <span style="display: inline-block; margin-left: 0.4rem; padding: 0.1rem 0.45rem; background: #dcfce7; color: #15803d; border-radius: 999px; font-size: 0.7rem; font-weight: 600;" title="Este producto es padre de @product.DerivedCount producto(s)">
+                                            Padre de @product.DerivedCount
                                         </span>
                                     }
                                     @if (product.BaseProductId.HasValue)

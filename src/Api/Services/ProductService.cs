@@ -326,11 +326,12 @@ public class ProductService
         var oldCost = product.CostPrice;
         var oldRetail = product.RetailPrice;
 
-        // Si el producto tiene base, los precios SIEMPRE se heredan del padre, ignoramos el request.
+        // Si el producto tiene base, los precios e IVA SIEMPRE se heredan del padre, ignoramos el request.
         if (newBase is not null)
         {
             product.CostPrice = newBase.CostPrice;
             product.RetailPrice = newBase.RetailPrice;
+            product.VatRate = newBase.VatRate;
         }
         else
         {
