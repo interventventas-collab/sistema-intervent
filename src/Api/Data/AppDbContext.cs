@@ -20,6 +20,8 @@ public class AppDbContext : DbContext
     public DbSet<Combo> Combos => Set<Combo>();
     public DbSet<ComboItem> ComboItems => Set<ComboItem>();
     public DbSet<Client> Clients => Set<Client>();
+    public DbSet<CustomerTier> CustomerTiers => Set<CustomerTier>();
+    public DbSet<ProductPriceOverride> ProductPriceOverrides => Set<ProductPriceOverride>();
     public DbSet<ProductStockBatch> ProductStockBatches => Set<ProductStockBatch>();
     public DbSet<Sale> Sales => Set<Sale>();
     public DbSet<SaleItem> SaleItems => Set<SaleItem>();

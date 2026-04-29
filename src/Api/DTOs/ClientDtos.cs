@@ -14,7 +14,9 @@ public record ClientDto(
     string? Notes,
     bool IsActive,
     DateTime CreatedAt,
-    DateTime? UpdatedAt
+    DateTime? UpdatedAt,
+    int? CustomerTierId,
+    string? CustomerTierName
 );
 
 public record CreateClientRequest(
@@ -25,7 +27,8 @@ public record CreateClientRequest(
     [EmailAddress][MaxLength(255)] string? Email,
     [MaxLength(500)] string? Address,
     [MaxLength(150)] string? ContactName,
-    string? Notes
+    string? Notes,
+    int? CustomerTierId
 );
 
 public record UpdateClientRequest(
@@ -37,5 +40,6 @@ public record UpdateClientRequest(
     [MaxLength(500)] string? Address,
     [MaxLength(150)] string? ContactName,
     string? Notes,
-    bool? IsActive
+    bool? IsActive,
+    int? CustomerTierId
 );

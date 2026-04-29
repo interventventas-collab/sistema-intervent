@@ -18,20 +18,24 @@ public class ClientService
     public async Task<List<ClientDto>> GetAllAsync()
     {
         return await _db.Clients
+            .Include(c => c.CustomerTier)
             .OrderBy(c => c.Code)
             .Select(c => new ClientDto(
                 c.Id, c.Code, c.Name, c.Cuit, c.Phone, c.Email, c.Address,
-                c.ContactName, c.Notes, c.IsActive, c.CreatedAt, c.UpdatedAt))
+                c.ContactName, c.Notes, c.IsActive, c.CreatedAt, c.UpdatedAt,
+                c.CustomerTierId, c.CustomerTier != null ? c.CustomerTier.Name : null))
             .ToListAsync();
     }
 
     public async Task<ClientDto?> GetByIdAsync(int id)
     {
         return await _db.Clients
+            .Include(c => c.CustomerTier)
             .Where(c => c.Id == id)
             .Select(c => new ClientDto(
                 c.Id, c.Code, c.Name, c.Cuit, c.Phone, c.Email, c.Address,
-                c.ContactName, c.Notes, c.IsActive, c.CreatedAt, c.UpdatedAt))
+                c.ContactName, c.Notes, c.IsActive, c.CreatedAt, c.UpdatedAt,
+                c.CustomerTierId, c.CustomerTier != null ? c.CustomerTier.Name : null))
             .FirstOrDefaultAsync();
     }
 
@@ -39,6 +43,16 @@ public class ClientService
     {
         var code = string.IsNullOrWhiteSpace(r.Code) ? await GenerateNextCodeAsync() : r.Code.Trim();
         await EnsureCodeIsUniqueAsync(code, ignoreId: null);
+
+        // Si no se especifica una lista, usar la default.
+        var tierId = r.CustomerTierId;
+        if (!tierId.HasValue)
+        {
+            tierId = await _db.CustomerTiers
+                .Where(t => t.IsDefault)
+                .Select(t => (int?)t.Id)
+                .FirstOrDefaultAsync();
+        }
 
         var c = new Client
         {
@@ -51,12 +65,12 @@ public class ClientService
             ContactName = string.IsNullOrWhiteSpace(r.ContactName) ? null : r.ContactName.Trim(),
             Notes = string.IsNullOrWhiteSpace(r.Notes) ? null : r.Notes,
             IsActive = true,
+            CustomerTierId = tierId,
             CreatedAt = DateTime.UtcNow
         };
         _db.Clients.Add(c);
         await _db.SaveChangesAsync();
-        return new ClientDto(c.Id, c.Code, c.Name, c.Cuit, c.Phone, c.Email, c.Address,
-            c.ContactName, c.Notes, c.IsActive, c.CreatedAt, c.UpdatedAt);
+        return (await GetByIdAsync(c.Id))!;
     }
 
     public async Task<ClientDto?> UpdateAsync(int id, UpdateClientRequest r)
@@ -83,11 +97,15 @@ public class ClientService
         if (r.ContactName is not null) c.ContactName = string.IsNullOrWhiteSpace(r.ContactName) ? null : r.ContactName.Trim();
         if (r.Notes is not null) c.Notes = string.IsNullOrWhiteSpace(r.Notes) ? null : r.Notes;
         if (r.IsActive.HasValue) c.IsActive = r.IsActive.Value;
+        if (r.CustomerTierId.HasValue)
+        {
+            // 0 -> desasignar (volvera al default al usarlo)
+            c.CustomerTierId = r.CustomerTierId.Value == 0 ? null : r.CustomerTierId.Value;
+        }
         c.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync();
-        return new ClientDto(c.Id, c.Code, c.Name, c.Cuit, c.Phone, c.Email, c.Address,
-            c.ContactName, c.Notes, c.IsActive, c.CreatedAt, c.UpdatedAt);
+        return await GetByIdAsync(c.Id);
     }
 
     public async Task<bool> DeleteAsync(int id)

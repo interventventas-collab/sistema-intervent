@@ -37,6 +37,11 @@ public class Client
 
     public bool IsActive { get; set; } = true;
 
+    // Lista de precios asociada al cliente. Si es null, se usa la lista marcada como default.
+    public int? CustomerTierId { get; set; }
+    [ForeignKey(nameof(CustomerTierId))]
+    public CustomerTier? CustomerTier { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

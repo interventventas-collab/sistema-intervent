@@ -109,6 +109,7 @@ builder.Services.AddScoped<ProductService>();
 builder.Services.AddScoped<SupplierService>();
 builder.Services.AddScoped<BrandService>();
 builder.Services.AddScoped<ClientService>();
+builder.Services.AddScoped<CustomerTierService>();
 builder.Services.AddScoped<ComboService>();
 builder.Services.AddScoped<StockBatchService>();
 builder.Services.AddScoped<SaleService>();

@@ -119,7 +119,8 @@ public class BulkImportService
                     Email: Cell(row, headers, "email"),
                     Address: Cell(row, headers, "direccion"),
                     ContactName: Cell(row, headers, "contacto"),
-                    Notes: Cell(row, headers, "notas")
+                    Notes: Cell(row, headers, "notas"),
+                    CustomerTierId: null
                 ));
                 created++;
             }

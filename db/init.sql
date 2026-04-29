@@ -1022,6 +1022,91 @@ BEGIN
 END
 GO
 
+-- ============================================================
+-- LISTAS DE PRECIOS POR TIPO DE CLIENTE
+-- Cada cliente apunta a una lista. Cada lista tiene un % de ajuste
+-- sobre el PVP base del producto. Por defecto: Bares -10%, Ventas 0%, MeLi +15%.
+-- ============================================================
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='CustomerTiers' AND xtype='U')
+BEGIN
+    CREATE TABLE CustomerTiers (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Name NVARCHAR(60) NOT NULL,
+        Code NVARCHAR(20) NOT NULL,           -- 'bares', 'ventas', 'meli', 'mayorista', etc.
+        AdjustmentPercent DECIMAL(6,2) NOT NULL DEFAULT 0, -- ej: -10.00 / 0.00 / 15.00
+        IsDefault BIT NOT NULL DEFAULT 0,
+        IsActive BIT NOT NULL DEFAULT 1,
+        SortOrder INT NOT NULL DEFAULT 0,
+        Notes NVARCHAR(500) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT UQ_CustomerTiers_Code UNIQUE (Code)
+    );
+    CREATE INDEX IX_CustomerTiers_IsDefault ON CustomerTiers (IsDefault);
+END
+GO
+
+-- Seed inicial de las 3 listas pedidas por el usuario
+IF NOT EXISTS (SELECT * FROM CustomerTiers WHERE Code = 'bares')
+BEGIN
+    INSERT INTO CustomerTiers (Name, Code, AdjustmentPercent, IsDefault, IsActive, SortOrder, Notes)
+    VALUES (N'Bares', 'bares', -10.00, 0, 1, 1, N'Precio para bares y locales gastronomicos. Ajuste por compra al por mayor.');
+END
+IF NOT EXISTS (SELECT * FROM CustomerTiers WHERE Code = 'ventas')
+BEGIN
+    INSERT INTO CustomerTiers (Name, Code, AdjustmentPercent, IsDefault, IsActive, SortOrder, Notes)
+    VALUES (N'Ventas', 'ventas', 0.00, 1, 1, 2, N'Lista por defecto. Precio de venta al publico general.');
+END
+IF NOT EXISTS (SELECT * FROM CustomerTiers WHERE Code = 'meli')
+BEGIN
+    INSERT INTO CustomerTiers (Name, Code, AdjustmentPercent, IsDefault, IsActive, SortOrder, Notes)
+    VALUES (N'MercadoLibre', 'meli', 15.00, 0, 1, 3, N'Precio que se sube a publicaciones de MeLi. Cubre comisiones y financiacion.');
+END
+GO
+
+-- Vincular cliente con su lista de precios
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'CustomerTierId' AND Object_ID = Object_ID(N'Clients'))
+BEGIN
+    ALTER TABLE Clients ADD CustomerTierId INT NULL;
+    EXEC('ALTER TABLE Clients ADD CONSTRAINT FK_Clients_CustomerTier FOREIGN KEY (CustomerTierId) REFERENCES CustomerTiers(Id) ON DELETE SET NULL');
+    CREATE INDEX IX_Clients_CustomerTierId ON Clients (CustomerTierId);
+END
+GO
+
+-- Asignar la lista por defecto a clientes que no tengan una asignada
+UPDATE Clients
+SET CustomerTierId = (SELECT TOP 1 Id FROM CustomerTiers WHERE IsDefault = 1)
+WHERE CustomerTierId IS NULL;
+GO
+
+-- Tabla de precios especiales (override) por producto + lista
+-- Si existe una fila aca, gana sobre el calculo automatico (RetailPrice * (1 + Adjustment%)).
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ProductPriceOverrides' AND xtype='U')
+BEGIN
+    CREATE TABLE ProductPriceOverrides (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        ProductId INT NOT NULL,
+        CustomerTierId INT NOT NULL,
+        Price DECIMAL(18,2) NOT NULL,         -- Precio sin IVA, mismo criterio que Products.RetailPrice
+        Notes NVARCHAR(300) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT FK_PPO_Product FOREIGN KEY (ProductId) REFERENCES Products(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_PPO_Tier FOREIGN KEY (CustomerTierId) REFERENCES CustomerTiers(Id) ON DELETE CASCADE,
+        CONSTRAINT UQ_PPO_ProductTier UNIQUE (ProductId, CustomerTierId)
+    );
+    CREATE INDEX IX_PPO_ProductId ON ProductPriceOverrides (ProductId);
+    CREATE INDEX IX_PPO_CustomerTierId ON ProductPriceOverrides (CustomerTierId);
+END
+GO
+
+-- Permiso para listas de precios (admin)
+IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId = 1 AND MenuKey = 'listas-precios')
+BEGIN
+    INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'listas-precios');
+END
+GO
+
 -- Vincular productos con marca (FK opcional)
 IF NOT EXISTS (
     SELECT * FROM sys.columns WHERE Name = N'BrandId' AND Object_ID = Object_ID(N'Products')
