@@ -2693,8 +2693,11 @@
     // del <select> se aplica al render (HTML lo entiende correctamente).
     private string VatRateString
     {
+        // Importante: el DECIMAL(18,2) de la DB devuelve scale=2 (ej. 21.00).
+        // Sin formatear, "21.00m".ToString() da "21.00" y no matchea la
+        // option value="21". El formato "0.##" remueve ceros sobrantes.
         get => formVatRate.HasValue
-            ? formVatRate.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            ? formVatRate.Value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)
             : "";
         set
         {
