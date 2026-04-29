@@ -29,11 +29,15 @@
             </label>
             <label style="display: flex; align-items: center; gap: 0.3rem; font-size: 0.85rem; color: #374151;">
                 <span>Tipo:</span>
-                <select class="form-input" style="font-size: 0.85rem; padding: 0.3rem 0.5rem; min-width: 130px;"
-                        @bind="filterType" @bind:after="InvalidateFilterCache">
+                <select class="form-input" style="font-size: 0.85rem; padding: 0.3rem 0.5rem; min-width: 180px;"
+                        @bind="filterType" @bind:after="OnFilterTypeChanged">
+                    <option value="default">Default (hijos + indep.)</option>
                     <option value="">— Todos —</option>
                     <option value="padre">Solo padres</option>
                     <option value="hijo">Solo hijos</option>
+                    <option value="indep">Solo independientes</option>
+                    <option value="combos">Combos →</option>
+                    <option value="servicios">Servicios →</option>
                 </select>
             </label>
             <div style="position: relative;">
@@ -1476,8 +1480,15 @@
     private Dictionary<string, HashSet<string>> checkboxFilters = new();
     // Filtro por Marca: 0 = Todas, -1 = Sin marca, >0 = id de la marca
     private int filterBrandId;
-    // Filtro por Tipo: "" = Todos, "padre" = solo padres con hijos, "hijo" = solo hijos
-    private string filterType = "";
+    // Filtro por Tipo:
+    // "default" (preset al entrar) = hijos + independientes (lo que se vende)
+    // ""        = Todos
+    // "padre"   = Solo padres con hijos
+    // "hijo"    = Solo hijos
+    // "indep"   = Solo independientes (sin padre y sin hijos)
+    // "combos"  = redirige a /combos (no filtra aca)
+    // "servicios" = redirige a /servicios (no filtra aca)
+    private string filterType = "default";
     // Menu desplegable del boton "+ Nuevo": padre / hijo / independiente / combo / servicio
     private bool showNewTypeMenu;
     private string? activeFilterColumn;
@@ -1659,6 +1670,25 @@
         _filterDirty = true;
     }
 
+    // Cuando cambia el filtro Tipo: si eligio combos/servicios, redirigir a esas paginas.
+    // Sino, simplemente invalidar el cache de filtros para que se recalcule.
+    private void OnFilterTypeChanged()
+    {
+        if (string.Equals(filterType, "combos", StringComparison.OrdinalIgnoreCase))
+        {
+            filterType = "default"; // resetear para cuando vuelvan
+            Navigation.NavigateTo("/combos");
+            return;
+        }
+        if (string.Equals(filterType, "servicios", StringComparison.OrdinalIgnoreCase))
+        {
+            filterType = "default";
+            Navigation.NavigateTo("/servicios");
+            return;
+        }
+        InvalidateFilterCache();
+    }
+
     // Vista unificada: muestra padres + hijos en la misma pagina.
     // Mantenemos /productos-base como ruta valida por compatibilidad pero ya no filtra.
     // (Antes /productos-base mostraba solo padres y /productos solo hijos.)
@@ -1710,11 +1740,18 @@
         else if (filterBrandId == -1)
             result = result.Where(p => p.BrandId == null);
 
-        // Filtro por Tipo (Padre / Hijo / Todos)
-        if (string.Equals(filterType, "padre", StringComparison.OrdinalIgnoreCase))
+        // Filtro por Tipo
+        var ft = (filterType ?? "").ToLowerInvariant();
+        if (ft == "default")
+            // Hijos + Independientes (lo que realmente se vende). Excluye padres con hijos.
+            result = result.Where(p => p.DerivedCount == 0);
+        else if (ft == "padre")
             result = result.Where(p => p.DerivedCount > 0);
-        else if (string.Equals(filterType, "hijo", StringComparison.OrdinalIgnoreCase))
+        else if (ft == "hijo")
             result = result.Where(p => p.BaseProductId.HasValue);
+        else if (ft == "indep")
+            result = result.Where(p => p.BaseProductId == null && p.DerivedCount == 0);
+        // ft == "combos" / "servicios" / "" => no filtra (combos/servicios redirigen via OnFilterTypeChanged).
 
         // Text filters
         foreach (var kv in textFilters.Where(f => !string.IsNullOrEmpty(f.Value)))
