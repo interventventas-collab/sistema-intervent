@@ -14,6 +14,8 @@ public class ClientDto
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
+    public int? CustomerTierId { get; set; }
+    public string? CustomerTierName { get; set; }
 }
 
 public class CreateClientRequest
@@ -26,6 +28,7 @@ public class CreateClientRequest
     public string? Address { get; set; }
     public string? ContactName { get; set; }
     public string? Notes { get; set; }
+    public int? CustomerTierId { get; set; }
 }
 
 public class UpdateClientRequest
@@ -39,4 +42,5 @@ public class UpdateClientRequest
     public string? ContactName { get; set; }
     public string? Notes { get; set; }
     public bool? IsActive { get; set; }
+    public int? CustomerTierId { get; set; }
 }

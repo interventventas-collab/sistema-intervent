@@ -155,7 +155,7 @@
                     </div>
                     <div class="form-group">
                         <label class="form-label">Cliente</label>
-                        <select class="form-input" @bind="formClientId">
+                        <select class="form-input" @bind="formClientId" @bind:after="OnClientChanged">
                             <option value="0">— Consumidor final —</option>
                             @if (clients is not null)
                             {
@@ -165,6 +165,16 @@
                                 }
                             }
                         </select>
+                        @{
+                            var activeTier = GetActiveTierForClient(formClientId);
+                        }
+                        @if (activeTier is not null)
+                        {
+                            <p style="font-size: 0.72rem; margin: 0.25rem 0 0; color: #4b5563;">
+                                Lista de precios: <strong>@activeTier.Name</strong>
+                                <span style="color: @(activeTier.AdjustmentPercent < 0 ? "#dc2626" : (activeTier.AdjustmentPercent > 0 ? "#059669" : "#6b7280"));"> (@FormatPercent(activeTier.AdjustmentPercent))</span>
+                            </p>
+                        }
                     </div>
                 </div>
 
@@ -762,6 +772,7 @@
 @code {
     private List<SaleDto>? sales;
     private List<ClientDto>? clients;
+    private List<CustomerTierDto>? tiers;
     private List<ProductDto>? availableProducts;
     // Todos los productos (incluyendo padres) — usados para lookup por codigo en el input rapido.
     private List<ProductDto>? allProducts;
@@ -833,6 +844,7 @@
         isLoading = true;
         try { sales = await Api.GetSalesAsync() ?? new(); } catch { sales = new(); ToastService.Error("Error cargando ventas"); }
         try { clients = await Api.GetClientsAsync() ?? new(); } catch { clients = new(); }
+        try { tiers = await Api.GetCustomerTiersAsync() ?? new(); } catch { tiers = new(); }
         try
         {
             var all = await Api.GetProductsAsync() ?? new();
@@ -1009,10 +1021,59 @@
             Code = p.Sku,
             Description = p.DisplayName ?? p.Title,
             Quantity = qty <= 0 ? 1 : qty,
-            UnitPrice = p.RetailPrice,
+            UnitPrice = GetTierAdjustedPrice(p, formClientId),
             VatRate = p.VatRate,
             BonifPercent = 0
         });
+    }
+
+    // === Helpers de listas de precios (tiers) ===
+
+    /// Devuelve la lista activa para un cliente: la suya, o la default si no tiene.
+    private CustomerTierDto? GetActiveTierForClient(int clientId)
+    {
+        if (tiers is null || tiers.Count == 0) return null;
+        if (clientId > 0 && clients is not null)
+        {
+            var c = clients.FirstOrDefault(x => x.Id == clientId);
+            if (c?.CustomerTierId is int tid)
+            {
+                var byClient = tiers.FirstOrDefault(t => t.Id == tid);
+                if (byClient is not null) return byClient;
+            }
+        }
+        return tiers.FirstOrDefault(t => t.IsDefault);
+    }
+
+    /// Calcula el PVP del producto aplicando el % de ajuste de la lista activa.
+    /// (Sin overrides puntuales — esos los resuelve el backend si el frontend
+    /// manda 0; aca priorizamos respuesta inmediata).
+    private decimal GetTierAdjustedPrice(ProductDto p, int clientId)
+    {
+        var tier = GetActiveTierForClient(clientId);
+        if (tier is null || tier.AdjustmentPercent == 0) return p.RetailPrice;
+        return Math.Round(p.RetailPrice * (1m + tier.AdjustmentPercent / 100m), 2);
+    }
+
+    /// Cuando cambia el cliente, recalcula los UnitPrice del carrito segun
+    /// la nueva lista. Solo afecta productos con ProductId (no items texto libre).
+    private void OnClientChanged()
+    {
+        if (formItems is null || availableProducts is null) return;
+        foreach (var item in formItems)
+        {
+            if (!item.ProductId.HasValue) continue;
+            var p = availableProducts.FirstOrDefault(x => x.Id == item.ProductId.Value);
+            if (p is null) continue;
+            item.UnitPrice = GetTierAdjustedPrice(p, formClientId);
+        }
+        StateHasChanged();
+    }
+
+    private static string FormatPercent(decimal p)
+    {
+        var sign = p > 0 ? "+" : "";
+        return $"{sign}{p.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture).Replace(".", ",")}%";
     }
 
     // === Lookup por codigo (input rapido + Enter) ===

@@ -214,6 +214,28 @@ public class ApiClient
     public async Task<bool> DeleteClientAsync(int id)
         => await DeleteAsync($"/api/clients/{id}");
 
+    // --- Customer Tiers (listas de precios por tipo de cliente) ---
+    public async Task<List<CustomerTierDto>?> GetCustomerTiersAsync()
+        => await GetAsync<List<CustomerTierDto>>("/api/customer-tiers");
+
+    public async Task<CustomerTierDto?> CreateCustomerTierAsync(CreateCustomerTierRequest request)
+        => await PostAsync<CustomerTierDto>("/api/customer-tiers", request);
+
+    public async Task<CustomerTierDto?> UpdateCustomerTierAsync(int id, UpdateCustomerTierRequest request)
+        => await PutAsync<CustomerTierDto>($"/api/customer-tiers/{id}", request);
+
+    public async Task<bool> DeleteCustomerTierAsync(int id)
+        => await DeleteAsync($"/api/customer-tiers/{id}");
+
+    public async Task<List<ProductTierPriceDto>?> GetProductTierPricesAsync(int productId)
+        => await GetAsync<List<ProductTierPriceDto>>($"/api/products/{productId}/tier-prices");
+
+    public async Task<ProductTierPriceDto?> SetProductPriceOverrideAsync(SetProductPriceOverrideRequest request)
+        => await PostAsync<ProductTierPriceDto>("/api/customer-tiers/price-override", request);
+
+    public async Task<bool> DeleteProductPriceOverrideAsync(int productId, int tierId)
+        => await DeleteAsync($"/api/customer-tiers/price-override/{productId}/{tierId}");
+
     // --- Sales (ventas / comprobantes) ---
     public async Task<List<SaleDto>?> GetSalesAsync()
         => await GetAsync<List<SaleDto>>("/api/sales");

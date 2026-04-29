@@ -33,6 +33,7 @@
                             <th>Email</th>
                             <th>Direccion</th>
                             <th>Contacto</th>
+                            <th style="width: 130px;">Lista de precios</th>
                             <th>Estado</th>
                             <th style="width: 130px;">Acciones</th>
                         </tr>
@@ -48,6 +49,16 @@
                                 <td style="font-size: 0.85rem;">@(c.Email ?? "")</td>
                                 <td style="font-size: 0.85rem; color: #6b7280;">@(c.Address ?? "")</td>
                                 <td style="font-size: 0.85rem;">@(c.ContactName ?? "")</td>
+                                <td>
+                                    @if (!string.IsNullOrEmpty(c.CustomerTierName))
+                                    {
+                                        <span style="display:inline-block; padding:0.15rem 0.5rem; background:#e0e7ff; color:#3730a3; border-radius:999px; font-size:0.7rem; font-weight:600;">@c.CustomerTierName</span>
+                                    }
+                                    else
+                                    {
+                                        <span style="color: #9ca3af; font-size: 0.75rem;">— sin asignar —</span>
+                                    }
+                                </td>
                                 <td>
                                     <span class="status-badge @(c.IsActive ? "status-active" : "status-inactive")">
                                         @(c.IsActive ? "Activo" : "Inactivo")
@@ -131,6 +142,28 @@
                     <label class="form-label">Notas</label>
                     <textarea class="form-input" @bind="formNotes" rows="3" placeholder="Cualquier informacion extra (preferencias, condiciones, etc)"></textarea>
                 </div>
+
+                <div class="form-group">
+                    <label class="form-label">Lista de precios</label>
+                    <select class="form-input" @bind="formCustomerTierId" style="max-width: 320px;">
+                        @if (tiers is null || tiers.Count == 0)
+                        {
+                            <option value="0">— (sin listas configuradas) —</option>
+                        }
+                        else
+                        {
+                            <option value="0">— Default (@(tiers.FirstOrDefault(x => x.IsDefault)?.Name ?? "Ventas")) —</option>
+                            @foreach (var t in tiers.Where(x => x.IsActive).OrderBy(x => x.SortOrder))
+                            {
+                                <option value="@t.Id">@t.Name (@FormatPercent(t.AdjustmentPercent))</option>
+                            }
+                        }
+                    </select>
+                    <p style="font-size: 0.72rem; color: #6b7280; margin: 0.2rem 0 0;">
+                        Define que precios se autocompletan al cargar una venta de este cliente.
+                    </p>
+                </div>
+
                 @if (isEditing)
                 {
                     <div class="form-group">
@@ -183,6 +216,7 @@
 @code {
     private bool showImport;
     private List<ClientDto>? clients;
+    private List<CustomerTierDto>? tiers;
     private bool isLoading = true;
     private bool showForm;
     private bool isEditing;
@@ -198,11 +232,19 @@
     private string formContactName = "";
     private string formNotes = "";
     private bool formIsActive = true;
+    // 0 = usar default; >0 = id de la lista elegida
+    private int formCustomerTierId;
     private bool showDeleteConfirm;
     private ClientDto? clientToDelete;
     private bool isLookingUp;
     private string? lookupMessage;
     private bool lookupOk;
+
+    private static string FormatPercent(decimal p)
+    {
+        var sign = p > 0 ? "+" : "";
+        return $"{sign}{p.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture).Replace(".", ",")}%";
+    }
 
     private async Task LookupAfip()
     {
@@ -238,6 +280,11 @@
         isLoading = true;
         try { clients = await Api.GetClientsAsync() ?? new(); }
         catch { ToastService.Error("Error al cargar los clientes"); clients = new(); }
+
+        // Cargar listas de precios disponibles para el dropdown del form
+        try { tiers = await Api.GetCustomerTiersAsync() ?? new(); }
+        catch { tiers = new(); }
+
         isLoading = false;
     }
 
@@ -246,7 +293,8 @@
         isEditing = false; editingId = null;
         formCode = ""; formName = ""; formCuit = ""; formPhone = ""; formEmail = "";
         formAddress = ""; formContactName = ""; formNotes = "";
-        formIsActive = true; formError = null; showForm = true;
+        formIsActive = true; formCustomerTierId = 0;
+        formError = null; showForm = true;
     }
 
     private void ShowEditForm(ClientDto c)
@@ -261,6 +309,7 @@
         formContactName = c.ContactName ?? "";
         formNotes = c.Notes ?? "";
         formIsActive = c.IsActive;
+        formCustomerTierId = c.CustomerTierId ?? 0;
         formError = null; showForm = true;
     }
 
@@ -288,7 +337,9 @@
                     Address = Nz(formAddress),
                     ContactName = Nz(formContactName),
                     Notes = Nz(formNotes),
-                    IsActive = formIsActive
+                    IsActive = formIsActive,
+                    // 0 = desasignar (vuelve a default); >0 = lista elegida
+                    CustomerTierId = formCustomerTierId
                 });
                 if (updated is null) { formError = "No se pudo actualizar"; return; }
                 ToastService.Success("Cliente actualizado");
@@ -304,7 +355,8 @@
                     Email = Nz(formEmail),
                     Address = Nz(formAddress),
                     ContactName = Nz(formContactName),
-                    Notes = Nz(formNotes)
+                    Notes = Nz(formNotes),
+                    CustomerTierId = formCustomerTierId == 0 ? (int?)null : formCustomerTierId
                 });
                 if (created is null) { formError = "No se pudo crear"; return; }
                 ToastService.Success("Cliente creado");

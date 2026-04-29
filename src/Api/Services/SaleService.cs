@@ -10,11 +10,13 @@ public class SaleService
 {
     private readonly AppDbContext _db;
     private readonly AuditLogService _audit;
+    private readonly CustomerTierService _tiers;
 
-    public SaleService(AppDbContext db, AuditLogService audit)
+    public SaleService(AppDbContext db, AuditLogService audit, CustomerTierService tiers)
     {
         _db = db;
         _audit = audit;
+        _tiers = tiers;
     }
 
     public async Task<List<SaleDto>> GetAllAsync()
@@ -51,6 +53,9 @@ public class SaleService
                 ?? throw new InvalidOperationException("Cliente no encontrado.");
         }
 
+        // Resolver tier de precios: el del cliente, o si no tiene, la lista default.
+        var tierId = await ResolveTierIdAsync(client?.CustomerTierId);
+
         // Calcular items y totales
         var items = new List<SaleItem>();
         decimal subtotal = 0m;
@@ -70,7 +75,12 @@ public class SaleService
                     ?? throw new InvalidOperationException($"Producto {i.ProductId} no encontrado.");
                 code ??= product.Sku;
                 if (string.IsNullOrWhiteSpace(description)) description = product.DisplayName ?? product.Title;
-                if (unit <= 0) unit = product.RetailPrice;
+                // Si no se mando un precio explicito, calcularlo segun la lista del cliente
+                if (unit <= 0)
+                {
+                    unit = await _tiers.GetPriceForTierAsync(product.Id, tierId);
+                    if (unit <= 0) unit = product.RetailPrice; // fallback final
+                }
                 vat ??= product.VatRate;
             }
 
@@ -195,6 +205,10 @@ public class SaleService
             _db.SaleItems.RemoveRange(sale.Items);
             sale.Items.Clear();
 
+            // Tier del cliente actual de la venta para autocompletar precios sin ingresar
+            var tierIdForUpdate = await ResolveTierIdAsync(sale.Client?.CustomerTierId
+                ?? (sale.ClientId.HasValue ? (await _db.Clients.FindAsync(sale.ClientId.Value))?.CustomerTierId : null));
+
             decimal subtotal = 0m;
             foreach (var i in request.Items)
             {
@@ -210,7 +224,11 @@ public class SaleService
                         ?? throw new InvalidOperationException($"Producto {i.ProductId} no encontrado.");
                     code ??= product.Sku;
                     if (string.IsNullOrWhiteSpace(description)) description = product.DisplayName ?? product.Title;
-                    if (unit <= 0) unit = product.RetailPrice;
+                    if (unit <= 0)
+                    {
+                        unit = await _tiers.GetPriceForTierAsync(product.Id, tierIdForUpdate);
+                        if (unit <= 0) unit = product.RetailPrice;
+                    }
                     vat ??= product.VatRate;
                 }
 
@@ -371,6 +389,19 @@ public class SaleService
     }
 
     // === Helpers ===
+
+    /// <summary>
+    /// Devuelve el id del tier que aplica a un cliente. Si el cliente no tiene
+    /// uno asignado, usa el que esta marcado como default. Null si no hay listas.
+    /// </summary>
+    private async Task<int?> ResolveTierIdAsync(int? clientTierId)
+    {
+        if (clientTierId.HasValue) return clientTierId.Value;
+        return await _db.CustomerTiers
+            .Where(t => t.IsDefault)
+            .Select(t => (int?)t.Id)
+            .FirstOrDefaultAsync();
+    }
 
     /// <summary>
     /// Descuenta del stock de cada producto las cantidades vendidas en la venta.

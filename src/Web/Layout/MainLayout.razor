@@ -122,7 +122,7 @@
         @if (HasPerm("usuarios") || HasPerm("roles") || HasPerm("integraciones") || HasPerm("procesos") || HasPerm("archivos") || HasPerm("auditoria") || HasPerm("backups") || HasPerm("proveedores") || HasPerm("marcas"))
         {
             <NavGroup Label="Administracion" Icon="@SvgIcons.Admin"
-                      HasActiveChild="@(IsActive("/usuarios") || IsActive("/roles") || IsActive("/integraciones") || IsActive("/procesos") || IsActive("/archivos") || IsActive("/auditoria") || IsActive("/backups") || IsActive("/config") || IsActive("/proveedores") || IsActive("/marcas"))">
+                      HasActiveChild="@(IsActive("/usuarios") || IsActive("/roles") || IsActive("/integraciones") || IsActive("/procesos") || IsActive("/archivos") || IsActive("/auditoria") || IsActive("/backups") || IsActive("/config") || IsActive("/proveedores") || IsActive("/marcas") || IsActive("/listas-precios"))">
                 @if (HasPerm("proveedores"))
                 {
                     <NavItem Href="/proveedores" Label="Proveedores" Icon="@SvgIcons.Users"
@@ -132,6 +132,11 @@
                 {
                     <NavItem Href="/marcas" Label="Marcas" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/marcas")" OnClick="@(() => NavigateTo("/marcas"))" />
+                }
+                @if (HasPerm("listas-precios"))
+                {
+                    <NavItem Href="/listas-precios" Label="Listas de precios" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive("/listas-precios")" OnClick="@(() => NavigateTo("/listas-precios"))" />
                 }
                 @if (HasPerm("usuarios"))
                 {
