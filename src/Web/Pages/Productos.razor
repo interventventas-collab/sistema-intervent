@@ -177,7 +177,9 @@
                     <tbody>
                         @foreach (var product in GetFilteredProducts())
                         {
-                            <tr class="@(selectedItems.Contains(product.Id) ? "row-selected" : "")">
+                            <tr class="@(selectedItems.Contains(product.Id) ? "row-selected" : "")"
+                                style="@(product.BaseProductId.HasValue ? "color: #6b7280;" : "")"
+                                title="@(product.BaseProductId.HasValue ? "Producto hijo" : "Producto padre")">
                                 <td class="td-checkbox" @onclick:stopPropagation="true"><input type="checkbox" checked="@selectedItems.Contains(product.Id)" @onchange="() => ToggleSelectItem(product.Id)" /></td>
                                 <td>
                                     @if (!string.IsNullOrEmpty(product.Photo1))
