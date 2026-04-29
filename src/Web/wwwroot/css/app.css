@@ -1903,6 +1903,16 @@ button {
   border-bottom: none;
 }
 
+/* Distincion visual padre/hijo en el listado de productos:
+   selector mas especifico que .data-table tbody td para que el color tome efecto. */
+.data-table tbody tr.parent-row td {
+  color: #15803d;
+  font-size: 0.82rem;
+}
+.data-table tbody tr.child-row td {
+  color: #6b7280;
+}
+
 .actions-cell {
   display: flex;
   gap: 0.25rem;
