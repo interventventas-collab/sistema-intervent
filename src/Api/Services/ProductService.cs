@@ -316,6 +316,7 @@ public class ProductService
         if (request.Photo1 is not null) product.Photo1 = request.Photo1 == "" ? null : request.Photo1;
         if (request.Photo2 is not null) product.Photo2 = request.Photo2 == "" ? null : request.Photo2;
         if (request.Photo3 is not null) product.Photo3 = request.Photo3 == "" ? null : request.Photo3;
+        var oldVat = product.VatRate;
         if (request.VatRate.HasValue) product.VatRate = request.VatRate.Value;
         if (request.PurchaseAccount is not null) product.PurchaseAccount = request.PurchaseAccount == "" ? null : request.PurchaseAccount;
         if (request.SaleAccount is not null) product.SaleAccount = request.SaleAccount == "" ? null : request.SaleAccount;
@@ -352,10 +353,11 @@ public class ProductService
         product.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
 
-        // --- Propagar precio a hijos si este producto es base y cambio el precio ---
+        // --- Propagar precio/IVA a hijos si este producto es padre y algo cambio ---
         var costChanged = product.CostPrice != oldCost;
         var retailChanged = product.RetailPrice != oldRetail;
-        if (costChanged || retailChanged)
+        var vatChanged = product.VatRate != oldVat;
+        if (costChanged || retailChanged || vatChanged)
         {
             var derived = await _db.Products
                 .Where(p => p.BaseProductId == product.Id)
@@ -366,6 +368,7 @@ public class ProductService
                 {
                     if (costChanged) child.CostPrice = product.CostPrice;
                     if (retailChanged) child.RetailPrice = product.RetailPrice;
+                    if (vatChanged) child.VatRate = product.VatRate;
                     child.UpdatedAt = DateTime.UtcNow;
                 }
                 await _db.SaveChangesAsync();

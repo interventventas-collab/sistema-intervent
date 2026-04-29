@@ -575,7 +575,7 @@
                 <div class="form-row">
                     <div class="form-group" style="flex: 1;">
                         <label class="form-label">IVA (%)</label>
-                        <select class="form-input" value="@VatRateString" @onchange="OnVatRateSelected" style="text-align: right;">
+                        <select class="form-input" @bind="VatRateString" style="text-align: right;">
                             <option value="">— Sin IVA —</option>
                             <option value="0">0 %</option>
                             <option value="2.5">2,5 %</option>
@@ -2686,26 +2686,28 @@
         formRetailPriceFormatted = FormatPrice(formRetailPrice);
     }
 
-    // El bind nativo @bind="formVatRate" sobre <select> + decimal? con opcion value=""
-    // tiene un comportamiento inconsistente: la opcion seleccionada no se sincroniza
-    // siempre con el valor programatico. Resolvemos manualmente con string.
-    private string VatRateString =>
-        formVatRate.HasValue
+    // Bindeamos el dropdown de IVA via una propiedad string get/set, no directo a decimal?.
+    // Razon: @bind sobre <select> con decimal? + opcion vacia ("Sin IVA") tiene un bug:
+    // Blazor no logra sincronizar consistentemente la opcion seleccionada con el valor
+    // programatico. Bindeando a un string, @bind funciona como se espera y el value
+    // del <select> se aplica al render (HTML lo entiende correctamente).
+    private string VatRateString
+    {
+        get => formVatRate.HasValue
             ? formVatRate.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)
             : "";
-
-    private void OnVatRateSelected(ChangeEventArgs e)
-    {
-        var s = e.Value?.ToString() ?? "";
-        if (string.IsNullOrWhiteSpace(s))
+        set
         {
-            formVatRate = null;
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                formVatRate = null;
+            }
+            else if (decimal.TryParse(value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v))
+            {
+                formVatRate = v;
+            }
+            SyncWithVatFromBase();
         }
-        else if (decimal.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v))
-        {
-            formVatRate = v;
-        }
-        SyncWithVatFromBase();
     }
 
     private void SyncWithVatFromBase()
