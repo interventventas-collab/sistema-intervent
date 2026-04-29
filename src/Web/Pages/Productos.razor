@@ -34,6 +34,7 @@
                     <option value="default">Default (hijos + indep.)</option>
                     <option value="">— Todos —</option>
                     <option value="padre">Solo padres</option>
+                    <option value="futuro-padre">Solo futuros padres</option>
                     <option value="hijo">Solo hijos</option>
                     <option value="indep">Solo independientes</option>
                 </select>
@@ -257,13 +258,19 @@
                         @foreach (var product in GetFilteredProducts())
                         {
                             var rowIsChild = product.BaseProductId.HasValue;
-                            // Padre = tiene tilde IsBase=true O ya tiene hijos cargados.
-                            var rowIsParent = !rowIsChild && (product.IsBase || product.DerivedCount > 0);
-                            string rowKindClass = rowIsChild ? "child-row" : (rowIsParent ? "parent-row" : "");
+                            // Padre confirmado: ya tiene hijos cargados.
+                            var rowIsRealParent = !rowIsChild && product.DerivedCount > 0;
+                            // Futuro padre: tildado IsBase=true pero todavia no tiene hijos.
+                            var rowIsFutureParent = !rowIsChild && product.IsBase && product.DerivedCount == 0;
+                            string rowKindClass = rowIsChild
+                                ? "child-row"
+                                : (rowIsRealParent ? "parent-row" : (rowIsFutureParent ? "future-parent-row" : ""));
                             string rowSelClass = selectedItems.Contains(product.Id) ? "row-selected" : "";
                             string rowTitle = rowIsChild
                                 ? "Producto hijo"
-                                : (rowIsParent ? "Producto padre (con hijos)" : "Producto independiente");
+                                : (rowIsRealParent
+                                    ? $"Producto padre · {product.DerivedCount} hijo(s)"
+                                    : (rowIsFutureParent ? "Futuro padre (sin hijos cargados todavía)" : "Producto independiente"));
                             <tr class="@($"{rowSelClass} {rowKindClass}".Trim())"
                                 title="@rowTitle">
                                 <td class="td-checkbox" @onclick:stopPropagation="true"><input type="checkbox" checked="@selectedItems.Contains(product.Id)" @onchange="() => ToggleSelectItem(product.Id)" /></td>
@@ -290,6 +297,12 @@
                                     {
                                         <span style="display: inline-block; margin-left: 0.4rem; padding: 0.1rem 0.45rem; background: #dcfce7; color: #15803d; border-radius: 999px; font-size: 0.7rem; font-weight: 600;" title="Este producto es padre de @product.DerivedCount producto(s)">
                                             Padre de @product.DerivedCount
+                                        </span>
+                                    }
+                                    else if (product.IsBase && !product.BaseProductId.HasValue)
+                                    {
+                                        <span style="display: inline-block; margin-left: 0.4rem; padding: 0.1rem 0.45rem; background: #fef3c7; color: #92400e; border-radius: 999px; font-size: 0.7rem; font-weight: 600;" title="Tildado como padre pero todavía sin hijos cargados">
+                                            Futuro padre
                                         </span>
                                     }
                                     @if (product.BaseProductId.HasValue)
@@ -1736,14 +1749,19 @@
             result = result.Where(p => p.BrandId == null);
 
         // Filtro por Tipo
-        // Definicion: PADRE = (IsBase=true OR tiene hijos). HIJO = BaseProductId NOT NULL.
-        // INDEP = no es hijo, no es padre.
+        // Definiciones:
+        // - PADRE confirmado: tiene hijos cargados (DerivedCount > 0).
+        // - FUTURO PADRE: tildado IsBase=true pero todavia sin hijos.
+        // - HIJO: BaseProductId NOT NULL.
+        // - INDEPENDIENTE: ni hijo, ni padre, ni futuro padre.
         var ft = (filterType ?? "").ToLowerInvariant();
         if (ft == "default")
-            // Lo que realmente se vende: hijos + independientes (excluye padres).
-            result = result.Where(p => !(p.IsBase || p.DerivedCount > 0) || p.BaseProductId.HasValue);
+            // Lo que se vende: hijos + independientes (excluye padres confirmados Y futuros padres).
+            result = result.Where(p => p.BaseProductId.HasValue || (!p.IsBase && p.DerivedCount == 0));
         else if (ft == "padre")
-            result = result.Where(p => !p.BaseProductId.HasValue && (p.IsBase || p.DerivedCount > 0));
+            result = result.Where(p => !p.BaseProductId.HasValue && p.DerivedCount > 0);
+        else if (ft == "futuro-padre")
+            result = result.Where(p => !p.BaseProductId.HasValue && p.IsBase && p.DerivedCount == 0);
         else if (ft == "hijo")
             result = result.Where(p => p.BaseProductId.HasValue);
         else if (ft == "indep")

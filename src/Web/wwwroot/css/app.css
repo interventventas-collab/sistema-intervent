@@ -1909,6 +1909,10 @@ button {
   color: #15803d;
   font-size: 0.82rem;
 }
+.data-table tbody tr.future-parent-row td {
+  color: #92400e;
+  font-size: 0.82rem;
+}
 .data-table tbody tr.child-row td {
   color: #6b7280;
 }
