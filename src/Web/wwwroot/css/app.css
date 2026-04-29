@@ -3503,6 +3503,10 @@ textarea.form-input {
 .row-selected {
   background: #f5f3ff !important;
 }
+.new-type-option:hover {
+  background: #f3f4f6;
+}
+
 .bulk-actions-bar {
   display: flex;
   align-items: center;

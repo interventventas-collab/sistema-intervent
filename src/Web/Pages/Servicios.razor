@@ -4,6 +4,7 @@
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject CurrentCompanyService Company
+@inject NavigationManager Navigation
 
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
@@ -180,6 +181,12 @@
     {
         Company.OnChange += OnCompanyChanged;
         await LoadData();
+        // Si vinieron con ?new=1, abrir el form de creacion automaticamente.
+        var uri = new Uri(Navigation.Uri);
+        if (uri.Query.Contains("new=1", StringComparison.OrdinalIgnoreCase))
+        {
+            ShowCreateForm();
+        }
     }
 
     public void Dispose()

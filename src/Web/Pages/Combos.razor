@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @inject ApiClient Api
 @inject ToastService ToastService
+@inject NavigationManager Navigation
 
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
@@ -367,6 +368,12 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadData();
+        // Si vinieron con ?new=1, abrir el formulario de creacion automaticamente.
+        var uri = new Uri(Navigation.Uri);
+        if (uri.Query.Contains("new=1", StringComparison.OrdinalIgnoreCase))
+        {
+            await ShowCreateForm();
+        }
     }
 
     private async Task LoadData()

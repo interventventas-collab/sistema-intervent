@@ -36,7 +36,43 @@
                     <option value="hijo">Solo hijos</option>
                 </select>
             </label>
-            <button class="btn btn-primary" @onclick="ShowCreateForm">+ Nuevo Producto</button>
+            <div style="position: relative;">
+                <button class="btn btn-primary" @onclick="ToggleNewTypeMenu" @onclick:stopPropagation="true">+ Nuevo ▾</button>
+                @if (showNewTypeMenu)
+                {
+                    <div @onclick:stopPropagation="true"
+                         style="position: absolute; top: 100%; right: 0; margin-top: 0.3rem; background: white;
+                                border: 1px solid #d1d5db; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+                                min-width: 240px; z-index: 100; padding: 0.3rem 0;">
+                        <button class="new-type-option" @onclick="StartCreatePadre"
+                                style="display: block; width: 100%; text-align: left; padding: 0.55rem 0.85rem; background: none; border: none; cursor: pointer; font-size: 0.9rem;">
+                            <strong style="color: #15803d;">📦 Producto Padre</strong>
+                            <div style="font-size: 0.72rem; color: #6b7280;">Plantilla con variantes (hijos)</div>
+                        </button>
+                        <button class="new-type-option" @onclick="StartCreateHijo"
+                                style="display: block; width: 100%; text-align: left; padding: 0.55rem 0.85rem; background: none; border: none; cursor: pointer; font-size: 0.9rem;">
+                            <strong style="color: #6b7280;">↳ Producto Hijo</strong>
+                            <div style="font-size: 0.72rem; color: #6b7280;">Variante de un padre existente</div>
+                        </button>
+                        <button class="new-type-option" @onclick="StartCreateIndependiente"
+                                style="display: block; width: 100%; text-align: left; padding: 0.55rem 0.85rem; background: none; border: none; cursor: pointer; font-size: 0.9rem;">
+                            <strong>📦 Producto Independiente</strong>
+                            <div style="font-size: 0.72rem; color: #6b7280;">Producto suelto, sin variantes</div>
+                        </button>
+                        <hr style="margin: 0.3rem 0; border: none; border-top: 1px solid #e5e7eb;" />
+                        <button class="new-type-option" @onclick="GoCreateCombo"
+                                style="display: block; width: 100%; text-align: left; padding: 0.55rem 0.85rem; background: none; border: none; cursor: pointer; font-size: 0.9rem;">
+                            <strong>🎁 Combo</strong>
+                            <div style="font-size: 0.72rem; color: #6b7280;">Pack de varios productos</div>
+                        </button>
+                        <button class="new-type-option" @onclick="GoCreateServicio"
+                                style="display: block; width: 100%; text-align: left; padding: 0.55rem 0.85rem; background: none; border: none; cursor: pointer; font-size: 0.9rem;">
+                            <strong>🏷 Servicio</strong>
+                            <div style="font-size: 0.72rem; color: #6b7280;">Sin stock, vendible infinitamente</div>
+                        </button>
+                    </div>
+                }
+            </div>
             <button class="btn btn-primary" @onclick="() => showImport = true" title="Subir varios productos desde un Excel" style="background: #059669; border-color: #059669;">📤 Importar Excel</button>
         </div>
     </div>
@@ -1442,6 +1478,8 @@
     private int filterBrandId;
     // Filtro por Tipo: "" = Todos, "padre" = solo padres con hijos, "hijo" = solo hijos
     private string filterType = "";
+    // Menu desplegable del boton "+ Nuevo": padre / hijo / independiente / combo / servicio
+    private bool showNewTypeMenu;
     private string? activeFilterColumn;
     private string sortColumn = "";
     private bool sortAsc = true;
@@ -1846,6 +1884,47 @@
             StateHasChanged();
         }
         catch { ToastService.Error("Error al cargar la foto"); }
+    }
+
+    // === Menu desplegable "+ Nuevo" ===
+    private void ToggleNewTypeMenu() => showNewTypeMenu = !showNewTypeMenu;
+    private void CloseNewTypeMenu() => showNewTypeMenu = false;
+
+    private void StartCreatePadre()
+    {
+        CloseNewTypeMenu();
+        ShowCreateForm();
+        formIsBase = true;       // tilde "Puede tener variantes (hijos)"
+        formBaseProductId = 0;   // no es hijo de nadie
+    }
+
+    private void StartCreateHijo()
+    {
+        CloseNewTypeMenu();
+        ShowCreateForm();
+        formIsBase = false;
+        // formBaseProductId queda en 0; el usuario tiene que elegir el padre en el form.
+        // El form ya tiene un selector "¿Es hijo de otro producto?" listando padres elegibles.
+    }
+
+    private void StartCreateIndependiente()
+    {
+        CloseNewTypeMenu();
+        ShowCreateForm();
+        formIsBase = false;
+        formBaseProductId = 0;
+    }
+
+    private void GoCreateCombo()
+    {
+        CloseNewTypeMenu();
+        Navigation.NavigateTo("/combos?new=1");
+    }
+
+    private void GoCreateServicio()
+    {
+        CloseNewTypeMenu();
+        Navigation.NavigateTo("/servicios?new=1");
     }
 
     private void ShowCreateForm()
