@@ -37,6 +37,8 @@ public class ProductDto
     public bool IsBase { get; set; }
     public bool IsService { get; set; }
     public int? UnitsPerPack { get; set; }
+    public decimal Fraction { get; set; } = 1m;
+    public decimal MarkupAmount { get; set; }
 }
 
 public class CreateProductRequest
@@ -66,6 +68,8 @@ public class CreateProductRequest
     public bool? IsBase { get; set; }
     public bool? IsService { get; set; }
     public int? UnitsPerPack { get; set; }
+    public decimal? Fraction { get; set; }
+    public decimal? MarkupAmount { get; set; }
 }
 
 public class UpdateProductRequest
@@ -99,6 +103,8 @@ public class UpdateProductRequest
     public bool? IsService { get; set; }
     public int? UnitsPerPack { get; set; }
     public bool? ClearUnitsPerPack { get; set; }
+    public decimal? Fraction { get; set; }
+    public decimal? MarkupAmount { get; set; }
 }
 
 public class ProductAccountLinkDto

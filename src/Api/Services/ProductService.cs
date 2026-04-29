@@ -73,7 +73,9 @@ public class ProductService
             p.BrandNav?.HasExpiry ?? false,
             p.IsBase,
             p.IsService,
-            p.UnitsPerPack
+            p.UnitsPerPack,
+            p.Fraction,
+            p.MarkupAmount
         )).ToList();
     }
 
@@ -109,7 +111,9 @@ public class ProductService
             p.BrandNav?.HasExpiry ?? false,
             p.IsBase,
             p.IsService,
-            p.UnitsPerPack
+            p.UnitsPerPack,
+            p.Fraction,
+            p.MarkupAmount
         );
     }
 
@@ -163,7 +167,9 @@ public class ProductService
                     IsBase: request.IsBase,
                     IsService: request.IsService,
                     UnitsPerPack: request.UnitsPerPack,
-                    ClearUnitsPerPack: !request.UnitsPerPack.HasValue
+                    ClearUnitsPerPack: !request.UnitsPerPack.HasValue,
+                    Fraction: request.Fraction,
+                    MarkupAmount: request.MarkupAmount
                 );
                 var updated = await UpdateAsync(existing.Id, update);
                 if (updated is null) return null;
@@ -201,6 +207,25 @@ public class ProductService
                 ?? throw new InvalidOperationException("La marca seleccionada no existe.");
         }
 
+        // Para hijos: si vino Fraction/MarkupAmount usalos, si no default 1/0.
+        var newFraction = (request.Fraction.HasValue && request.Fraction.Value > 0) ? request.Fraction.Value : 1m;
+        var newMarkup = request.MarkupAmount ?? 0m;
+
+        // Si es hijo (tiene base), el precio se DERIVA con la formula.
+        decimal initialCost, initialRetail;
+        decimal? initialVat = request.VatRate;
+        if (baseProduct is not null)
+        {
+            initialCost = Math.Round(baseProduct.CostPrice * newFraction, 2);
+            initialRetail = Math.Round(baseProduct.RetailPrice * newFraction + newMarkup, 2);
+            initialVat = baseProduct.VatRate;
+        }
+        else
+        {
+            initialCost = request.CostPrice;
+            initialRetail = request.RetailPrice;
+        }
+
         var product = new Product
         {
             Title = request.Title,
@@ -215,9 +240,9 @@ public class ProductService
             Photo1 = request.Photo1,
             Photo2 = request.Photo2,
             Photo3 = request.Photo3,
-            CostPrice = baseProduct?.CostPrice ?? request.CostPrice,
-            RetailPrice = baseProduct?.RetailPrice ?? request.RetailPrice,
-            VatRate = request.VatRate,
+            CostPrice = initialCost,
+            RetailPrice = initialRetail,
+            VatRate = initialVat,
             PurchaseAccount = string.IsNullOrWhiteSpace(request.PurchaseAccount) ? null : request.PurchaseAccount,
             SaleAccount = string.IsNullOrWhiteSpace(request.SaleAccount) ? null : request.SaleAccount,
             InventoryAccount = string.IsNullOrWhiteSpace(request.InventoryAccount) ? null : request.InventoryAccount,
@@ -229,7 +254,9 @@ public class ProductService
             BrandId = request.BrandId,
             IsBase = request.IsBase ?? false,
             IsService = request.IsService ?? false,
-            UnitsPerPack = request.UnitsPerPack
+            UnitsPerPack = request.UnitsPerPack,
+            Fraction = newFraction,
+            MarkupAmount = newMarkup
         };
 
         _db.Products.Add(product);
@@ -326,11 +353,21 @@ public class ProductService
         var oldCost = product.CostPrice;
         var oldRetail = product.RetailPrice;
 
-        // Si el producto tiene base, los precios e IVA SIEMPRE se heredan del padre, ignoramos el request.
+        // Permitir actualizar Fraction y MarkupAmount tanto en padres (si por alguna razon)
+        // como en hijos. En hijos, esto vuelve a recalcular el precio derivado.
+        if (request.Fraction.HasValue && request.Fraction.Value > 0)
+            product.Fraction = request.Fraction.Value;
+        if (request.MarkupAmount.HasValue)
+            product.MarkupAmount = request.MarkupAmount.Value;
+
+        // Si el producto tiene base, los precios e IVA se DERIVAN del padre usando:
+        //   precio_costo = base_costo * Fraction
+        //   precio_pvp   = base_pvp   * Fraction + MarkupAmount
+        // El IVA siempre se hereda tal cual del padre.
         if (newBase is not null)
         {
-            product.CostPrice = newBase.CostPrice;
-            product.RetailPrice = newBase.RetailPrice;
+            product.CostPrice = Math.Round(newBase.CostPrice * product.Fraction, 2);
+            product.RetailPrice = Math.Round(newBase.RetailPrice * product.Fraction + product.MarkupAmount, 2);
             product.VatRate = newBase.VatRate;
         }
         else
@@ -355,6 +392,9 @@ public class ProductService
         await _db.SaveChangesAsync();
 
         // --- Propagar precio/IVA a hijos si este producto es padre y algo cambio ---
+        // Cada hijo recalcula segun su Fraction y MarkupAmount:
+        //   precio_costo_hijo = padre_costo * hijo_fraction
+        //   precio_pvp_hijo   = padre_pvp   * hijo_fraction + hijo_markup
         var costChanged = product.CostPrice != oldCost;
         var retailChanged = product.RetailPrice != oldRetail;
         var vatChanged = product.VatRate != oldVat;
@@ -367,8 +407,10 @@ public class ProductService
             {
                 foreach (var child in derived)
                 {
-                    if (costChanged) child.CostPrice = product.CostPrice;
-                    if (retailChanged) child.RetailPrice = product.RetailPrice;
+                    if (costChanged)
+                        child.CostPrice = Math.Round(product.CostPrice * child.Fraction, 2);
+                    if (retailChanged)
+                        child.RetailPrice = Math.Round(product.RetailPrice * child.Fraction + child.MarkupAmount, 2);
                     if (vatChanged) child.VatRate = product.VatRate;
                     child.UpdatedAt = DateTime.UtcNow;
                 }

@@ -93,5 +93,21 @@ public class Product
     // Unidades por bulto (UxB). Informativo, util para armar pedidos.
     public int? UnitsPerPack { get; set; }
 
+    /// <summary>
+    /// Fraccion del padre que representa este producto. Solo aplica a hijos (con BaseProductId).
+    /// Default 1.0 (= mismo precio que el padre). Ej: cafe 1/2 kg => 0.5; cafe 1/4 kg => 0.25.
+    /// Formula: precio_hijo = precio_padre * Fraction + MarkupAmount
+    /// </summary>
+    [Column(TypeName = "decimal(10,4)")]
+    public decimal Fraction { get; set; } = 1.0m;
+
+    /// <summary>
+    /// Recargo fijo (en pesos, sin IVA) que se suma al precio proporcional del hijo.
+    /// Sirve para cobrar el costo de fraccionar/envasar (ej: +$1.000 por cada paquete chico).
+    /// Solo aplica a RetailPrice. CostPrice se propaga proporcional sin markup.
+    /// </summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal MarkupAmount { get; set; } = 0m;
+
     public ICollection<MeliItem> MeliItems { get; set; } = new List<MeliItem>();
 }

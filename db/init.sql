@@ -949,6 +949,20 @@ BEGIN
 END
 GO
 
+-- Fraccionamiento padre/hijo: cada hijo representa una fraccion del padre + un recargo fijo.
+-- Formula: precio_hijo = precio_padre * Fraction + MarkupAmount
+-- Ej (cafe): hijo "1/2 kg" tiene Fraction=0.5 y MarkupAmount=1000 (recargo por fraccionar y envasar).
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'Fraction' AND Object_ID = Object_ID(N'Products'))
+BEGIN
+    ALTER TABLE Products ADD Fraction DECIMAL(10,4) NOT NULL CONSTRAINT DF_Products_Fraction DEFAULT 1.0;
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'MarkupAmount' AND Object_ID = Object_ID(N'Products'))
+BEGIN
+    ALTER TABLE Products ADD MarkupAmount DECIMAL(18,2) NOT NULL CONSTRAINT DF_Products_MarkupAmount DEFAULT 0;
+END
+GO
+
 -- Pagos parciales de sueldos (adelantos + pagos finales)
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='PayrollPayments' AND xtype='U')
 BEGIN

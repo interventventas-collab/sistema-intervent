@@ -39,7 +39,9 @@ public record ProductListDto(
     bool RequiresExpiry,
     bool IsBase,
     bool IsService,
-    int? UnitsPerPack
+    int? UnitsPerPack,
+    decimal Fraction,
+    decimal MarkupAmount
 );
 
 public record CreateProductRequest(
@@ -67,7 +69,9 @@ public record CreateProductRequest(
     int? BrandId,
     bool? IsBase,
     bool? IsService,
-    int? UnitsPerPack
+    int? UnitsPerPack,
+    decimal? Fraction,
+    decimal? MarkupAmount
 );
 
 public record UpdateProductRequest(
@@ -99,7 +103,9 @@ public record UpdateProductRequest(
     bool? IsBase,
     bool? IsService,
     int? UnitsPerPack,
-    bool? ClearUnitsPerPack
+    bool? ClearUnitsPerPack,
+    decimal? Fraction,
+    decimal? MarkupAmount
 );
 
 public record BulkProductIdsRequest(List<int> Ids);

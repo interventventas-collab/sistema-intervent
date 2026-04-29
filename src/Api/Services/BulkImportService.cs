@@ -445,7 +445,9 @@ public class BulkImportService
             BrandId: brandId,
             IsBase: isPadre,
             IsService: false,
-            UnitsPerPack: uxb
+            UnitsPerPack: uxb,
+            Fraction: null,
+            MarkupAmount: null
         ));
 
         // Si el Excel pidio activo=no (false), ajustar despues de crear (el create por default es activo).
@@ -465,7 +467,8 @@ public class BulkImportService
                     BaseProductId: null, ClearBaseProduct: null,
                     BrandId: null, ClearBrand: null,
                     IsBase: null, IsService: null,
-                    UnitsPerPack: null, ClearUnitsPerPack: null
+                    UnitsPerPack: null, ClearUnitsPerPack: null,
+                    Fraction: null, MarkupAmount: null
                 ));
             }
         }

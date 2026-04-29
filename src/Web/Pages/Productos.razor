@@ -645,6 +645,50 @@
                             Si lo elegis, este producto pasa a ser un hijo y hereda los datos del padre.
                         </p>
                     </div>
+
+                    @* Solo aparece cuando el producto es hijo (tiene padre seleccionado). *@
+                    @if (formBaseProductId > 0)
+                    {
+                        var parentProduct = products?.FirstOrDefault(p => p.Id == formBaseProductId);
+                        var parentRetail = parentProduct?.RetailPrice ?? 0m;
+                        var derivedRetail = Math.Round(parentRetail * formFraction + formMarkupAmount, 2);
+                        <div style="margin-top: 0.8rem; padding: 0.7rem; background: #fef3c7; border-radius: 6px; border: 1px solid #fbbf24;">
+                            <p style="font-size: 0.85rem; color: #92400e; margin: 0 0 0.5rem; font-weight: 600;">
+                                📦 Fraccionamiento del padre
+                            </p>
+                            <p style="font-size: 0.78rem; color: #78350f; margin: 0 0 0.7rem;">
+                                Si este hijo es una fracción del padre (ej: 1/2 kg de café), poné cuánto representa
+                                y opcionalmente un recargo por fraccionar/envasar.
+                                <strong>Fórmula:</strong> precio_hijo = precio_padre × Fracción + Recargo.
+                            </p>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label" style="font-size: 0.8rem;">Fracción del padre</label>
+                                    <input class="form-input" type="number" step="0.0001" min="0.0001"
+                                           @bind="formFraction" @bind:event="oninput"
+                                           style="text-align: right;" />
+                                    <p style="font-size: 0.7rem; color: #92400e; margin: 0.2rem 0 0;">
+                                        Ej: 1 (mismo precio), 0,5 (mitad), 0,25 (cuarto), 2 (doble).
+                                    </p>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label" style="font-size: 0.8rem;">Recargo $ (sin IVA)</label>
+                                    <input class="form-input" type="number" step="0.01" min="0"
+                                           @bind="formMarkupAmount" @bind:event="oninput"
+                                           style="text-align: right;" />
+                                    <p style="font-size: 0.7rem; color: #92400e; margin: 0.2rem 0 0;">
+                                        Costo de fraccionar/envasar (opcional).
+                                    </p>
+                                </div>
+                            </div>
+                            <div style="background: white; padding: 0.5rem 0.7rem; border-radius: 4px; margin-top: 0.5rem; font-size: 0.85rem;">
+                                <strong>PVP calculado (sin IVA):</strong>
+                                $@FormatPrice(parentRetail) (padre) × @formFraction.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)
+                                + $@FormatPrice(formMarkupAmount) =
+                                <strong style="color:#059669; font-size: 1rem;">$@FormatPrice(derivedRetail)</strong>
+                            </div>
+                        </div>
+                    }
                 </div>
 
                 @* === IVA + precios === *@
@@ -1474,6 +1518,8 @@
     private int formBaseProductId; // 0 = sin base (legacy, no usado)
     private int formBrandId; // 0 = sin marca
     private bool formIsBase; // legacy
+    private decimal formFraction = 1m;     // fracción del padre (default 1)
+    private decimal formMarkupAmount = 0m; // recargo fijo en $ por fraccionar
     private List<BrandDto>? brands;
 
     // Stock batches (lotes con vencimiento)
@@ -2002,6 +2048,9 @@
         formBrandId = 0;
         // Por default, NO marcar como producto base. El usuario lo tilda manualmente si aplica.
         formIsBase = false;
+        // Default fraction = 1 (mismo precio que el padre), markup = 0
+        formFraction = 1m;
+        formMarkupAmount = 0m;
         formError = null; showForm = true;
     }
 
@@ -2035,6 +2084,9 @@
         formBaseProductId = product.BaseProductId ?? 0;
         formBrandId = product.BrandId ?? 0;
         formIsBase = product.IsBase;
+        // Cargar fraccion/recargo del producto. Si nunca se setearon, default 1/0.
+        formFraction = product.Fraction <= 0 ? 1m : product.Fraction;
+        formMarkupAmount = product.MarkupAmount;
         formError = null; showForm = true;
     }
 
@@ -2065,6 +2117,8 @@
         formPhoto1 = null; formPhoto2 = null; formPhoto3 = null;
         formBaseProductId = 0;
         formIsBase = false;
+        formFraction = 1m;
+        formMarkupAmount = 0m;
 
         // Campos que SI se copian del producto origen
         formVatRate = product.VatRate ?? 21m; // IVA
@@ -2129,6 +2183,9 @@
                     update.UnitsPerPack = formUnitsPerPack.Value;
                 else
                     update.ClearUnitsPerPack = true;
+                // Fraccionamiento (solo afecta hijos, pero lo enviamos siempre — el backend ignora si no aplica)
+                update.Fraction = formFraction <= 0 ? 1m : formFraction;
+                update.MarkupAmount = formMarkupAmount;
                 var result = await Api.UpdateProductAsync(editingProductId.Value, update);
                 if (result is null) { formError = "Error al actualizar el producto"; return; }
                 ToastService.Success("Producto actualizado");
@@ -2172,6 +2229,9 @@
                 create.IsBase = formIsBase;
                 if (formUnitsPerPack.HasValue && formUnitsPerPack.Value > 0)
                     create.UnitsPerPack = formUnitsPerPack.Value;
+                // Fraccionamiento (solo aplica si es hijo)
+                create.Fraction = formFraction <= 0 ? 1m : formFraction;
+                create.MarkupAmount = formMarkupAmount;
                 var result = await Api.CreateProductAsync(create);
                 if (result is null) { formError = "Error al crear el producto"; return; }
                 if (existingBySku is not null)
