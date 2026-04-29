@@ -4,9 +4,22 @@
 @inject ToastService ToastService
 
 <div class="card">
-    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-        <h3>Combos (@(combos?.Count ?? 0))</h3>
-        <div style="display: flex; gap: 0.4rem; align-items: center;">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <h3>Combos (@(filteredCombos?.Count ?? 0))</h3>
+        <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
+            <label style="display: flex; align-items: center; gap: 0.3rem; font-size: 0.85rem; color: #374151;">
+                <span>Marca:</span>
+                <select class="form-input" style="font-size: 0.85rem; padding: 0.3rem 0.5rem; min-width: 160px;" @bind="filterBrandId">
+                    <option value="0">— Todas —</option>
+                    @if (brands is not null)
+                    {
+                        @foreach (var b in brands.Where(x => x.IsActive).OrderBy(x => x.Name))
+                        {
+                            <option value="@b.Id">@b.Name</option>
+                        }
+                    }
+                </select>
+            </label>
             <button class="btn btn-primary" @onclick="ShowCreateForm">+ Nuevo Combo</button>
             <button class="btn btn-primary" @onclick="() => showImport = true" title="Subir varios combos desde un Excel" style="background: #059669; border-color: #059669;">📤 Importar Excel</button>
         </div>
@@ -19,6 +32,10 @@
         else if (combos is null || combos.Count == 0)
         {
             <p class="text-muted" style="padding: 1.5rem;">Todavia no creaste ningun combo. Hace clic en "+ Nuevo Combo" para empezar.</p>
+        }
+        else if (filteredCombos is null || filteredCombos.Count == 0)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">No hay combos para la marca seleccionada. Tocá "— Todas —" para verlos todos.</p>
         }
         else
         {
@@ -37,7 +54,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var c in combos)
+                        @foreach (var c in filteredCombos!)
                         {
                             <tr>
                                 <td><strong>@c.Name</strong></td>
@@ -301,6 +318,23 @@
     private bool showImport;
     private List<ComboDto>? combos;
     private List<ProductDto>? availableProducts;
+    private List<BrandDto>? brands;
+    // 0 = Todas. >0 = id de la marca. Filtra los combos cuyos items tienen esa marca.
+    private int filterBrandId;
+    // Mapeo productId -> brandId construido desde los productos cargados.
+    private Dictionary<int, int?> productBrandMap = new();
+
+    private List<ComboDto>? filteredCombos
+    {
+        get
+        {
+            if (combos is null) return null;
+            if (filterBrandId <= 0) return combos;
+            return combos.Where(c =>
+                c.Items.Any(i => productBrandMap.TryGetValue(i.ProductId, out var brandId) && brandId == filterBrandId)
+            ).ToList();
+        }
+    }
     private bool isLoading = true;
     private bool showForm;
     private bool isEditing;
@@ -350,8 +384,13 @@
             var allProducts = await Api.GetProductsAsync() ?? new();
             availableProducts = allProducts.Where(p => p.DerivedCount == 0 && p.IsActive)
                 .OrderBy(p => p.Title).ToList();
+            // Mapeo TODOS los productos (no solo los activos) para que el filtro
+            // siga funcionando aunque un item del combo apunte a un producto inactivo.
+            productBrandMap = allProducts.ToDictionary(p => p.Id, p => p.BrandId);
         }
-        catch { availableProducts = new(); }
+        catch { availableProducts = new(); productBrandMap = new(); }
+
+        try { brands = await Api.GetBrandsAsync() ?? new(); } catch { brands = new(); }
 
         isLoading = false;
     }

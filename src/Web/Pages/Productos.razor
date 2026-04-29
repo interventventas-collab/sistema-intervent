@@ -9,9 +9,24 @@
 @implements IDisposable
 
 <div class="card">
-    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
         <h3>@PageTitle (@GetFilteredProducts().Count de @VisibleTotal)</h3>
-        <div style="display: flex; gap: 0.4rem; align-items: center;">
+        <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
+            <label style="display: flex; align-items: center; gap: 0.3rem; font-size: 0.85rem; color: #374151;">
+                <span>Marca:</span>
+                <select class="form-input" style="font-size: 0.85rem; padding: 0.3rem 0.5rem; min-width: 160px;"
+                        @bind="filterBrandId" @bind:after="InvalidateFilterCache">
+                    <option value="0">— Todas —</option>
+                    <option value="-1">— Sin marca —</option>
+                    @if (brands is not null)
+                    {
+                        @foreach (var b in brands.Where(x => x.IsActive).OrderBy(x => x.Name))
+                        {
+                            <option value="@b.Id">@b.Name</option>
+                        }
+                    }
+                </select>
+            </label>
             <button class="btn btn-primary" @onclick="ShowCreateForm">+ Nuevo Producto</button>
             <button class="btn btn-primary" @onclick="() => showImport = true" title="Subir varios productos desde un Excel" style="background: #059669; border-color: #059669;">📤 Importar Excel</button>
         </div>
@@ -1392,6 +1407,8 @@
     // Filter & sort state
     private Dictionary<string, string> textFilters = new();
     private Dictionary<string, HashSet<string>> checkboxFilters = new();
+    // Filtro por Marca: 0 = Todas, -1 = Sin marca, >0 = id de la marca
+    private int filterBrandId;
     private string? activeFilterColumn;
     private string sortColumn = "";
     private bool sortAsc = true;
@@ -1623,6 +1640,12 @@
             result = result.Where(p => p.BaseProductId == null);
         else
             result = result.Where(p => p.BaseProductId != null);
+
+        // Filtro por Marca (selector arriba de la tabla)
+        if (filterBrandId > 0)
+            result = result.Where(p => p.BrandId == filterBrandId);
+        else if (filterBrandId == -1)
+            result = result.Where(p => p.BrandId == null);
 
         // Text filters
         foreach (var kv in textFilters.Where(f => !string.IsNullOrEmpty(f.Value)))
