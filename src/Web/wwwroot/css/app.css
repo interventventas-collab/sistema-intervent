@@ -3946,3 +3946,120 @@ textarea.form-input {
     color: var(--text-muted, #9ca3af);
     font-size: 0.82rem;
 }
+
+/* ============================================================
+   Form de Nueva Venta — layout en secciones (estilo Contabilium)
+   ============================================================ */
+.venta-section {
+    margin-bottom: 1rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+    background: white;
+}
+
+.venta-section-header {
+    background: #f3f4f6;
+    padding: 0.5rem 0.9rem;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.venta-section-header h4 {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #1f2937;
+}
+
+.venta-section-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: #2563eb;
+    color: white;
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.venta-section-body {
+    padding: 0.9rem;
+}
+
+/* Fila horizontal de "agregar item" (cantidad / item / bonif% / agregar) */
+.venta-add-row {
+    display: flex;
+    gap: 0.6rem;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    background: #f9fafb;
+    padding: 0.7rem;
+    border-radius: 6px;
+    border: 1px solid #e5e7eb;
+    margin-bottom: 0.5rem;
+}
+
+.venta-add-row .form-group {
+    margin-bottom: 0;
+}
+
+.venta-add-shortcuts {
+    display: flex;
+    gap: 0.6rem;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    margin-top: 0.4rem;
+}
+
+.venta-add-shortcuts .form-group {
+    margin-bottom: 0;
+}
+
+/* Tabla de items */
+.venta-items-table th {
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: none;
+}
+
+.venta-items-table td {
+    padding: 0.3rem 0.4rem;
+}
+
+/* Grilla 2 columnas: detalle + caja de totales */
+.venta-final-grid {
+    display: grid;
+    grid-template-columns: 1.5fr 1fr;
+    gap: 1.2rem;
+}
+
+@media (max-width: 768px) {
+    .venta-final-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Caja de totales (lado derecho) */
+.venta-totals-box {
+    background: #f9fafb;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 1rem 1.2rem;
+}
+
+.venta-totals-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.3rem 0;
+    font-size: 0.95rem;
+}
+
+.venta-totals-row strong {
+    font-weight: 700;
+}
