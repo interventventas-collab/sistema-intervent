@@ -575,7 +575,7 @@
                 <div class="form-row">
                     <div class="form-group" style="flex: 1;">
                         <label class="form-label">IVA (%)</label>
-                        <select class="form-input" @bind="formVatRate" @bind:after="OnVatRateChanged" style="text-align: right;">
+                        <select class="form-input" value="@VatRateString" @onchange="OnVatRateSelected" style="text-align: right;">
                             <option value="">— Sin IVA —</option>
                             <option value="0">0 %</option>
                             <option value="2.5">2,5 %</option>
@@ -2686,8 +2686,27 @@
         formRetailPriceFormatted = FormatPrice(formRetailPrice);
     }
 
-    // Cuando cambia el IVA, recalcular las casillas "con IVA" desde el "sin IVA" canonico.
-    private void OnVatRateChanged() => SyncWithVatFromBase();
+    // El bind nativo @bind="formVatRate" sobre <select> + decimal? con opcion value=""
+    // tiene un comportamiento inconsistente: la opcion seleccionada no se sincroniza
+    // siempre con el valor programatico. Resolvemos manualmente con string.
+    private string VatRateString =>
+        formVatRate.HasValue
+            ? formVatRate.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            : "";
+
+    private void OnVatRateSelected(ChangeEventArgs e)
+    {
+        var s = e.Value?.ToString() ?? "";
+        if (string.IsNullOrWhiteSpace(s))
+        {
+            formVatRate = null;
+        }
+        else if (decimal.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v))
+        {
+            formVatRate = v;
+        }
+        SyncWithVatFromBase();
+    }
 
     private void SyncWithVatFromBase()
     {
