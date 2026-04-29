@@ -291,15 +291,20 @@ public class BulkImportService
     {
         var title = Nz(Cell(row, headers, "titulo"));
 
+        // VALIDACION OBLIGATORIA: el SKU es la clave para no duplicar al re-importar.
+        // Sin SKU el sistema no puede saber si un producto ya existe -> crearia duplicados
+        // fantasma. Rechazamos la fila con error claro.
+        var sku = Nz(Cell(row, headers, "sku"));
+        if (sku is null)
+            throw new InvalidOperationException(
+                $"El SKU es obligatorio. La fila '{title ?? "(sin titulo)"}' no tiene SKU. " +
+                "Si volves a subir el mismo Excel, los productos sin SKU se crean duplicados.");
+
         // Cargar el producto existente (si lo hay) para usarlo como FALLBACK cuando
         // una celda del Excel viene vacia. Asi no pisamos datos buenos con vacios.
         ProductListDto? existing = null;
-        var sku = Nz(Cell(row, headers, "sku"));
-        if (!string.IsNullOrEmpty(sku))
-        {
-            var existingId = productIdBySku.GetValueOrDefault(sku.ToLowerInvariant());
-            if (existingId > 0) existing = await _products.GetByIdAsync(existingId);
-        }
+        var existingId = productIdBySku.GetValueOrDefault(sku.ToLowerInvariant());
+        if (existingId > 0) existing = await _products.GetByIdAsync(existingId);
 
         int? brandId = existing?.BrandId;
         var brandName = Nz(Cell(row, headers, "marca"));
