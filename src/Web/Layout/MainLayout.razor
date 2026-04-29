@@ -52,10 +52,10 @@
             </NavGroup>
         }
 
-        @if (HasPerm("productos") || HasPerm("combos") || HasPerm("proveedores") || HasPerm("marcas") || HasPerm("listas-precios"))
+        @if (HasPerm("productos") || HasPerm("combos") || HasPerm("proveedores") || HasPerm("marcas"))
         {
             <NavGroup Label="Productos y Servicios" Icon="@SvgIcons.Inventory"
-                      HasActiveChild="@(IsActive("/productos") || IsActive("/combos") || IsActive("/listas-precios") || IsActive("/proveedores") || IsActive("/marcas"))">
+                      HasActiveChild="@(IsActive("/productos") || IsActive("/combos") || IsActive("/proveedores") || IsActive("/marcas"))">
                 @if (HasPerm("productos"))
                 {
                     <NavItem Href="/productos" Label="Productos" Icon="@SvgIcons.Package"
@@ -65,11 +65,6 @@
                 {
                     <NavItem Href="/combos" Label="Combos" Icon="@SvgIcons.Package"
                              IsActive="@IsActive("/combos")" OnClick="@(() => NavigateTo("/combos"))" />
-                }
-                @if (HasPerm("listas-precios"))
-                {
-                    <NavItem Href="/listas-precios" Label="Listas de precios" Icon="@SvgIcons.Tag"
-                             IsActive="@IsActive("/listas-precios")" OnClick="@(() => NavigateTo("/listas-precios"))" />
                 }
                 @if (HasPerm("proveedores"))
                 {
@@ -440,7 +435,6 @@
         { "ordenes", "ordenes" },
         { "productos", "productos" },
         { "productos-base", "productos" },
-        { "listas-precios", "listas-precios" },
         { "combos", "combos" },
         { "proveedores", "proveedores" },
         { "marcas", "marcas" },

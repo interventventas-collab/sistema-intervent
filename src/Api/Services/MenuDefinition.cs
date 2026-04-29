@@ -17,7 +17,6 @@ public static class MenuDefinition
         {
             new MenuItem("productos", "Productos", "/productos"),
             new MenuItem("combos", "Combos", "/combos"),
-            new MenuItem("listas-precios", "Listas de precios", "/listas-precios"),
             new MenuItem("proveedores", "Proveedores", "/proveedores"),
             new MenuItem("marcas", "Marcas", "/marcas"),
             new MenuItem("clientes", "Clientes", "/clientes")

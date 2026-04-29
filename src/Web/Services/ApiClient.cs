@@ -322,28 +322,6 @@ public class ApiClient
     public async Task<DolarBnaDto?> GetDolarBnaAsync()
         => await GetAsync<DolarBnaDto>("/api/quotes/dolar-bna");
 
-    // --- Listas de precios de proveedores ---
-    public async Task<List<SupplierPriceListDto>?> GetPriceListsAsync()
-        => await GetAsync<List<SupplierPriceListDto>>("/api/price-lists");
-    public async Task<SupplierPriceListDto?> CreatePriceListAsync(CreateSupplierPriceListRequest r)
-        => await PostAsync<SupplierPriceListDto>("/api/price-lists", r);
-    public async Task<SupplierPriceListDto?> UpdatePriceListAsync(int id, UpdateSupplierPriceListRequest r)
-        => await PutAsync<SupplierPriceListDto>($"/api/price-lists/{id}", r);
-    public async Task<bool> DeletePriceListAsync(int id)
-        => await DeleteAsync($"/api/price-lists/{id}");
-    public async Task<List<SupplierPriceListItemDto>?> GetPriceListItemsAsync(int listId, string? search = null)
-    {
-        var url = $"/api/price-lists/{listId}/items";
-        if (!string.IsNullOrEmpty(search)) url += $"?search={Uri.EscapeDataString(search)}";
-        return await GetAsync<List<SupplierPriceListItemDto>>(url);
-    }
-    public async Task<SupplierPriceListItemDto?> AddPriceListItemAsync(int listId, CreatePriceListItemRequest r)
-        => await PostAsync<SupplierPriceListItemDto>($"/api/price-lists/{listId}/items", r);
-    public async Task<SupplierPriceListItemDto?> UpdatePriceListItemAsync(int itemId, UpdatePriceListItemRequest r)
-        => await PutAsync<SupplierPriceListItemDto>($"/api/price-lists/items/{itemId}", r);
-    public async Task<bool> DeletePriceListItemAsync(int itemId)
-        => await DeleteAsync($"/api/price-lists/items/{itemId}");
-
     // --- Stock batches (lotes con vencimiento) ---
     public async Task<List<StockBatchDto>?> GetStockBatchesAsync(int productId)
         => await GetAsync<List<StockBatchDto>>($"/api/products/{productId}/stock-batches");

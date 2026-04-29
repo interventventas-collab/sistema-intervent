@@ -86,12 +86,5 @@ public class Product
     [ForeignKey(nameof(BrandId))]
     public Brand? BrandNav { get; set; }
 
-    // Vinculo a un item de Lista de precios de proveedor (catalogo del proveedor).
-    // Cuando se actualiza el item, se propaga el costo a este producto.
-    public int? SupplierPriceListItemId { get; set; }
-
-    [ForeignKey(nameof(SupplierPriceListItemId))]
-    public SupplierPriceListItem? SupplierPriceListItem { get; set; }
-
     public ICollection<MeliItem> MeliItems { get; set; } = new List<MeliItem>();
 }

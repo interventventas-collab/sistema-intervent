@@ -61,8 +61,7 @@ public class ProductService
             p.BrandId,
             p.BrandNav?.Name,
             p.BrandNav?.HasExpiry ?? false,
-            p.IsBase,
-            p.SupplierPriceListItemId
+            p.IsBase
         )).ToList();
     }
 
@@ -92,8 +91,7 @@ public class ProductService
             p.BrandId,
             p.BrandNav?.Name,
             p.BrandNav?.HasExpiry ?? false,
-            p.IsBase,
-            p.SupplierPriceListItemId
+            p.IsBase
         );
     }
 
@@ -144,9 +142,7 @@ public class ProductService
                     ClearBaseProduct: !request.BaseProductId.HasValue,
                     BrandId: request.BrandId,
                     ClearBrand: !request.BrandId.HasValue,
-                    IsBase: request.IsBase,
-                    SupplierPriceListItemId: request.SupplierPriceListItemId,
-                    ClearSupplierPriceListItem: !request.SupplierPriceListItemId.HasValue
+                    IsBase: request.IsBase
                 );
                 var updated = await UpdateAsync(existing.Id, update);
                 if (updated is null) return null;
@@ -210,8 +206,7 @@ public class ProductService
             CreatedAt = DateTime.UtcNow,
             BaseProductId = request.BaseProductId,
             BrandId = request.BrandId,
-            IsBase = request.IsBase ?? false,
-            SupplierPriceListItemId = request.SupplierPriceListItemId
+            IsBase = request.IsBase ?? false
         };
 
         _db.Products.Add(product);
@@ -324,15 +319,6 @@ public class ProductService
         if (request.CriticalStock.HasValue) product.CriticalStock = request.CriticalStock.Value;
         if (request.IsActive.HasValue) product.IsActive = request.IsActive.Value;
         if (request.IsBase.HasValue) product.IsBase = request.IsBase.Value;
-        if (request.ClearSupplierPriceListItem == true)
-            product.SupplierPriceListItemId = null;
-        else if (request.SupplierPriceListItemId.HasValue && request.SupplierPriceListItemId.Value > 0)
-        {
-            product.SupplierPriceListItemId = request.SupplierPriceListItemId.Value;
-            // Heredar el costo del item al vincular.
-            var item = await _db.SupplierPriceListItems.FindAsync(request.SupplierPriceListItemId.Value);
-            if (item is not null) product.CostPrice = item.CostPrice;
-        }
 
         product.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();

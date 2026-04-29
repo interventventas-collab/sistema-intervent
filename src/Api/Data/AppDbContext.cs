@@ -23,8 +23,6 @@ public class AppDbContext : DbContext
     public DbSet<ProductStockBatch> ProductStockBatches => Set<ProductStockBatch>();
     public DbSet<Sale> Sales => Set<Sale>();
     public DbSet<SaleItem> SaleItems => Set<SaleItem>();
-    public DbSet<SupplierPriceList> SupplierPriceLists => Set<SupplierPriceList>();
-    public DbSet<SupplierPriceListItem> SupplierPriceListItems => Set<SupplierPriceListItem>();
     public DbSet<TreasuryAccount> TreasuryAccounts => Set<TreasuryAccount>();
     public DbSet<TreasuryMovement> TreasuryMovements => Set<TreasuryMovement>();
     public DbSet<Employee> Employees => Set<Employee>();
@@ -118,30 +116,6 @@ public class AppDbContext : DbContext
                   .WithMany()
                   .HasForeignKey(p => p.BrandId)
                   .OnDelete(DeleteBehavior.SetNull);
-            entity.HasIndex(p => p.SupplierPriceListItemId);
-            entity.HasOne(p => p.SupplierPriceListItem)
-                  .WithMany()
-                  .HasForeignKey(p => p.SupplierPriceListItemId)
-                  .OnDelete(DeleteBehavior.SetNull);
-        });
-
-        modelBuilder.Entity<SupplierPriceList>(entity =>
-        {
-            entity.HasIndex(l => l.Name);
-            entity.HasOne(l => l.Supplier)
-                  .WithMany()
-                  .HasForeignKey(l => l.SupplierId)
-                  .OnDelete(DeleteBehavior.SetNull);
-        });
-
-        modelBuilder.Entity<SupplierPriceListItem>(entity =>
-        {
-            entity.HasIndex(i => i.PriceListId);
-            entity.HasIndex(i => new { i.PriceListId, i.Code }).IsUnique();
-            entity.HasOne(i => i.PriceList)
-                  .WithMany(l => l.Items)
-                  .HasForeignKey(i => i.PriceListId)
-                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Supplier>(entity =>
