@@ -67,6 +67,11 @@ public class Sale
 
     public bool IsPaid { get; set; }
 
+    // Indica si el stock de los items ya fue descontado del inventario.
+    // Se setea en true al crear la venta y se vuelve a false al anular,
+    // para evitar descontar dos veces ante reintentos o ediciones.
+    public bool StockDiscounted { get; set; }
+
     // Snapshot del nombre/marca de la empresa que aparece en el comprobante.
     // Si es null, se usa el valor actual de AppSettings("company.name").
     [MaxLength(100)]

@@ -818,6 +818,14 @@ BEGIN
 END
 GO
 
+-- Sales: flag para evitar descontar stock dos veces (idempotencia ante reintentos).
+-- Se setea en true al crear la venta y se vuelve a false al anular.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'StockDiscounted' AND Object_ID = Object_ID(N'Sales'))
+BEGIN
+    ALTER TABLE Sales ADD StockDiscounted BIT NOT NULL CONSTRAINT DF_Sales_StockDiscounted DEFAULT 0;
+END
+GO
+
 -- ============================================================
 -- TESORERIA (cuentas y movimientos)
 -- ============================================================

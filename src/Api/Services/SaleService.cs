@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Api.Data;
 using Api.DTOs;
 using Api.Models;
@@ -8,10 +9,12 @@ namespace Api.Services;
 public class SaleService
 {
     private readonly AppDbContext _db;
+    private readonly AuditLogService _audit;
 
-    public SaleService(AppDbContext db)
+    public SaleService(AppDbContext db, AuditLogService audit)
     {
         _db = db;
+        _audit = audit;
     }
 
     public async Task<List<SaleDto>> GetAllAsync()
@@ -119,6 +122,9 @@ public class SaleService
         _db.Sales.Add(sale);
         await _db.SaveChangesAsync();
 
+        // Descontar stock de los productos vendidos.
+        await ApplyStockDiscountAsync(sale, "CreateSale");
+
         return (await GetByIdAsync(sale.Id))!;
     }
 
@@ -178,6 +184,13 @@ public class SaleService
             if (request.Items.Count == 0)
                 throw new InvalidOperationException("La venta tiene que tener al menos un item.");
 
+            // Devolver al stock las cantidades de los items viejos antes de borrarlos,
+            // para despues descontar las nuevas. Asi un cambio de cantidades queda prolijo.
+            if (sale.StockDiscounted)
+            {
+                await ApplyStockRefundAsync(sale, "UpdateSale-RefundOld");
+            }
+
             // Borrar items viejos
             _db.SaleItems.RemoveRange(sale.Items);
             sale.Items.Clear();
@@ -233,6 +246,13 @@ public class SaleService
 
         sale.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
+
+        // Si la venta no esta anulada y se reemplazaron los items, descontar el nuevo stock.
+        if (request.Items is not null && !sale.IsCancelled)
+        {
+            await ApplyStockDiscountAsync(sale, "UpdateSale-DiscountNew");
+        }
+
         return await GetByIdAsync(sale.Id);
     }
 
@@ -257,8 +277,15 @@ public class SaleService
         if (string.IsNullOrEmpty(expectedPassword) || password != expectedPassword)
             throw new UnauthorizedAccessException("Clave incorrecta.");
 
-        var sale = await _db.Sales.FindAsync(id);
+        var sale = await _db.Sales.Include(s => s.Items).FirstOrDefaultAsync(s => s.Id == id);
         if (sale is null) return false;
+
+        // Si la venta tenia stock descontado, devolver al inventario antes de borrarla.
+        if (sale.StockDiscounted)
+        {
+            await ApplyStockRefundAsync(sale, "DeleteSale");
+        }
+
         _db.Sales.Remove(sale);
         await _db.SaveChangesAsync();
         return true;
@@ -266,10 +293,16 @@ public class SaleService
 
     public async Task<SaleDto?> CancelAsync(int id, string? operatorName = null)
     {
-        var sale = await _db.Sales.FindAsync(id);
+        var sale = await _db.Sales.Include(s => s.Items).FirstOrDefaultAsync(s => s.Id == id);
         if (sale is null) return null;
         if (!sale.IsCancelled)
         {
+            // Devolver el stock al inventario antes de marcar como anulada.
+            if (sale.StockDiscounted)
+            {
+                await ApplyStockRefundAsync(sale, "CancelSale");
+            }
+
             sale.IsCancelled = true;
             sale.CancelledAt = DateTime.UtcNow;
             sale.CancelledByOperator = string.IsNullOrWhiteSpace(operatorName) ? null : operatorName.Trim();
@@ -338,6 +371,115 @@ public class SaleService
     }
 
     // === Helpers ===
+
+    /// <summary>
+    /// Descuenta del stock de cada producto las cantidades vendidas en la venta.
+    /// Items sin ProductId (texto libre) se ignoran. Permite stock negativo.
+    /// Marca Sale.StockDiscounted = true al terminar para evitar doble descuento.
+    /// </summary>
+    private async Task ApplyStockDiscountAsync(Sale sale, string source)
+    {
+        if (sale.StockDiscounted) return; // ya descontado, no hacer dos veces
+
+        var items = sale.Items?.Where(i => i.ProductId.HasValue && i.Quantity > 0).ToList() ?? new();
+        if (items.Count == 0)
+        {
+            sale.StockDiscounted = true;
+            await _db.SaveChangesAsync();
+            return;
+        }
+
+        var productIds = items.Select(i => i.ProductId!.Value).Distinct().ToList();
+        var products = await _db.Products
+            .Where(p => productIds.Contains(p.Id))
+            .ToDictionaryAsync(p => p.Id);
+
+        // Sumar cantidades por producto (por si el mismo producto aparece varias veces)
+        var totalsByProduct = items
+            .GroupBy(i => i.ProductId!.Value)
+            .ToDictionary(g => g.Key, g => g.Sum(x => (int)Math.Round(x.Quantity)));
+
+        var detalles = new List<object>();
+        foreach (var (productId, qty) in totalsByProduct)
+        {
+            if (!products.TryGetValue(productId, out var product)) continue;
+            var oldStock = product.Stock;
+            product.Stock = product.Stock - qty; // permite negativo a proposito
+            product.UpdatedAt = DateTime.UtcNow;
+            detalles.Add(new
+            {
+                productId = product.Id,
+                sku = product.Sku,
+                title = product.Title,
+                cantidadDescontada = qty,
+                stockAnterior = oldStock,
+                stockNuevo = product.Stock,
+                quedoNegativo = product.Stock < 0
+            });
+        }
+
+        sale.StockDiscounted = true;
+        sale.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        await _audit.LogAsync(
+            "Sale", sale.Id.ToString(), "STOCK_DISCOUNT",
+            JsonSerializer.Serialize(new { source, ventaNumero = sale.Number, items = detalles }),
+            null);
+    }
+
+    /// <summary>
+    /// Devuelve al stock de cada producto las cantidades de la venta.
+    /// Marca Sale.StockDiscounted = false al terminar.
+    /// </summary>
+    private async Task ApplyStockRefundAsync(Sale sale, string source)
+    {
+        if (!sale.StockDiscounted) return; // nada que devolver
+
+        var items = sale.Items?.Where(i => i.ProductId.HasValue && i.Quantity > 0).ToList() ?? new();
+        if (items.Count == 0)
+        {
+            sale.StockDiscounted = false;
+            await _db.SaveChangesAsync();
+            return;
+        }
+
+        var productIds = items.Select(i => i.ProductId!.Value).Distinct().ToList();
+        var products = await _db.Products
+            .Where(p => productIds.Contains(p.Id))
+            .ToDictionaryAsync(p => p.Id);
+
+        var totalsByProduct = items
+            .GroupBy(i => i.ProductId!.Value)
+            .ToDictionary(g => g.Key, g => g.Sum(x => (int)Math.Round(x.Quantity)));
+
+        var detalles = new List<object>();
+        foreach (var (productId, qty) in totalsByProduct)
+        {
+            if (!products.TryGetValue(productId, out var product)) continue;
+            var oldStock = product.Stock;
+            product.Stock = product.Stock + qty;
+            product.UpdatedAt = DateTime.UtcNow;
+            detalles.Add(new
+            {
+                productId = product.Id,
+                sku = product.Sku,
+                title = product.Title,
+                cantidadDevuelta = qty,
+                stockAnterior = oldStock,
+                stockNuevo = product.Stock
+            });
+        }
+
+        sale.StockDiscounted = false;
+        sale.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        await _audit.LogAsync(
+            "Sale", sale.Id.ToString(), "STOCK_REFUND",
+            JsonSerializer.Serialize(new { source, ventaNumero = sale.Number, items = detalles }),
+            null);
+    }
 
     private async Task<string> GenerateNumberAsync()
     {
