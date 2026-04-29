@@ -344,6 +344,14 @@
                                             </span>
                                             <button class="push-meli-btn" @onclick="() => OpenPushModal(item)" title="Push precio + stock a MeLi">📤</button>
                                         }
+                                        else if (item.ComboId.HasValue)
+                                        {
+                                            <span class="product-badge" style="background:#fef3c7; color:#92400e; border-color:#fbbf24;" title="@item.ComboName">
+                                                🎁 @Truncate(item.ComboName ?? "", 16)
+                                                <button class="product-badge-unlink" @onclick="() => UnlinkProduct(item)" title="Desvincular">&times;</button>
+                                            </span>
+                                            <button class="push-meli-btn" @onclick="() => OpenPushModal(item)" title="Push precio + stock a MeLi">📤</button>
+                                        }
                                         else
                                         {
                                             <div class="product-actions-inline">
@@ -1898,48 +1906,96 @@
 @if (showLinkProductModal && linkProductItem is not null)
 {
     <div class="modal-overlay" @onclick="CloseLinkProductModal">
-        <div class="modal-card" style="max-width: 420px;" @onclick:stopPropagation="true">
+        <div class="modal-card" style="max-width: 480px;" @onclick:stopPropagation="true">
             <div class="modal-header" style="background: whitesmoke;">
-                <h3 style="margin:0; font-size:1rem;">Vincular a Producto</h3>
+                <h3 style="margin:0; font-size:1rem;">Vincular a Producto o Combo</h3>
                 <button class="modal-close" @onclick="CloseLinkProductModal">&times;</button>
             </div>
             <div class="modal-body">
-                <p style="font-size: 0.8rem; color: #6b7280; margin-bottom: 1rem;">
+                <p style="font-size: 0.8rem; color: #6b7280; margin-bottom: 0.7rem;">
                     Publicacion: <strong>@linkProductItem.MeliItemId</strong>
                 </p>
-                @if (allProducts is null || !allProducts.Any())
+
+                @* Tabs: Producto / Combo *@
+                <div style="display:flex; gap:0.4rem; margin-bottom: 0.8rem;">
+                    <button class="btn @(linkTab == "product" ? "btn-primary" : "btn-secondary")" style="font-size:0.85rem; padding:0.4rem 0.8rem;"
+                            @onclick='() => linkTab = "product"'>
+                        📦 Producto
+                    </button>
+                    <button class="btn @(linkTab == "combo" ? "btn-primary" : "btn-secondary")" style="font-size:0.85rem; padding:0.4rem 0.8rem;"
+                            @onclick='() => linkTab = "combo"'>
+                        🎁 Combo
+                    </button>
+                </div>
+
+                @if (linkTab == "product")
                 {
-                    <p class="text-muted">No hay productos creados. Primero crea un producto.</p>
+                    @if (allProducts is null || !allProducts.Any())
+                    {
+                        <p class="text-muted">No hay productos creados. Primero crea un producto.</p>
+                    }
+                    else
+                    {
+                        <div class="form-group">
+                            <label class="form-label">Buscar producto</label>
+                            <input type="text" class="form-input" placeholder="Escribi para filtrar..." @oninput="OnLinkSearchInput" />
+                        </div>
+                        <div class="link-product-list">
+                            @foreach (var scored in GetFilteredProducts())
+                            {
+                                var prod = scored.Product;
+                                var matchType = scored.MatchTag;
+                                <button class="link-product-option @(matchType != null ? "link-product-highlighted" : "")" @onclick="() => LinkToProduct(prod.Id)">
+                                    <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+                                        <span class="link-product-title">@Truncate(prod.Title, 38)</span>
+                                        @if (matchType != null)
+                                        {
+                                            <span class="link-match-tag">@matchType</span>
+                                        }
+                                    </div>
+                                    <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+                                        <span class="link-product-meta">$@prod.RetailPrice.ToString("N2") | Stock: @prod.Stock</span>
+                                        @if (!string.IsNullOrEmpty(prod.Sku))
+                                        {
+                                            <span class="link-product-sku">SKU: @prod.Sku</span>
+                                        }
+                                    </div>
+                                </button>
+                            }
+                        </div>
+                    }
                 }
                 else
                 {
-                    <div class="form-group">
-                        <label class="form-label">Buscar producto</label>
-                        <input type="text" class="form-input" placeholder="Escribi para filtrar..." @oninput="OnLinkSearchInput" />
-                    </div>
-                    <div class="link-product-list">
-                        @foreach (var scored in GetFilteredProducts())
-                        {
-                            var prod = scored.Product;
-                            var matchType = scored.MatchTag;
-                            <button class="link-product-option @(matchType != null ? "link-product-highlighted" : "")" @onclick="() => LinkToProduct(prod.Id)">
-                                <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
-                                    <span class="link-product-title">@Truncate(prod.Title, 38)</span>
-                                    @if (matchType != null)
-                                    {
-                                        <span class="link-match-tag">@matchType</span>
-                                    }
-                                </div>
-                                <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
-                                    <span class="link-product-meta">$@prod.RetailPrice.ToString("N2") | Stock: @prod.Stock</span>
-                                    @if (!string.IsNullOrEmpty(prod.Sku))
-                                    {
-                                        <span class="link-product-sku">SKU: @prod.Sku</span>
-                                    }
-                                </div>
-                            </button>
-                        }
-                    </div>
+                    @* Tab combos *@
+                    @if (allCombos is null || !allCombos.Any())
+                    {
+                        <p class="text-muted">No hay combos creados. Primero crea uno desde la sección Combos.</p>
+                    }
+                    else
+                    {
+                        <div class="form-group">
+                            <label class="form-label">Buscar combo</label>
+                            <input type="text" class="form-input" placeholder="Escribi nombre o SKU..." @oninput="OnLinkComboSearchInput" />
+                        </div>
+                        <div class="link-product-list">
+                            @foreach (var combo in GetFilteredCombos())
+                            {
+                                <button class="link-product-option" @onclick="() => LinkToCombo(combo.Id)">
+                                    <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+                                        <span class="link-product-title">@Truncate(combo.Name, 38)</span>
+                                    </div>
+                                    <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+                                        <span class="link-product-meta">@combo.Items.Count item(s)</span>
+                                        @if (!string.IsNullOrEmpty(combo.Sku))
+                                        {
+                                            <span class="link-product-sku">SKU: @combo.Sku</span>
+                                        }
+                                    </div>
+                                </button>
+                            }
+                        </div>
+                    }
                 }
             </div>
             <div class="modal-footer">
@@ -2052,8 +2108,19 @@
             </div>
             <div class="modal-body">
                 <p style="font-size: 0.85rem; margin: 0 0 0.7rem;">
-                    Vas a actualizar la publicación <strong>@pushItem.MeliItemId</strong> con los datos del producto vinculado.
+                    Vas a actualizar la publicación <strong>@pushItem.MeliItemId</strong> con los datos del @(pushItem.ComboId.HasValue ? "combo" : "producto") vinculado.
                 </p>
+                @if (pushItem.ComboId.HasValue)
+                {
+                    <div style="background:#fef3c7; border:1px solid #fbbf24; border-radius:6px; padding:0.7rem; margin-bottom:0.7rem;">
+                        <div style="font-size:0.8rem; color:#92400e; margin-bottom:0.3rem;">🎁 Combo vinculado:</div>
+                        <div style="font-weight:700;">@pushItem.ComboName</div>
+                        <div style="font-size:0.8rem; color:#374151;">SKU: <strong>@pushItem.ComboSku</strong></div>
+                        <div style="font-size:0.75rem; color:#6b7280; margin-top:0.3rem;">
+                            El precio se calcula segun el modo del combo (manual / auto / ajuste %) y el stock es el minimo disponible considerando los items.
+                        </div>
+                    </div>
+                }
                 @if (pushItemProduct is not null)
                 {
                     <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; padding:0.7rem; margin-bottom:0.7rem;">
@@ -2093,6 +2160,25 @@
                                 Ahora: <strong style="color:#15803d;">@pushItemProduct.Stock</strong>
                             </div>
                         }
+                    </div>
+                }
+                @if (pushItem.ComboId.HasValue)
+                {
+                    @* Para combos no precalculamos el preview en el front. El backend calcula precio + stock. *@
+                    <div class="form-group">
+                        <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer; font-weight:600;">
+                            <input type="checkbox" @bind="pushFlagPrice" style="width:18px; height:18px;" />
+                            Actualizar precio del combo
+                        </label>
+                    </div>
+                    <div class="form-group" style="margin-top: 0.6rem;">
+                        <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer; font-weight:600;">
+                            <input type="checkbox" @bind="pushFlagStock" style="width:18px; height:18px;" />
+                            Actualizar stock del combo
+                        </label>
+                        <div style="margin-left: 1.7rem; font-size:0.78rem; color:#6b7280;">
+                            Stock del combo = mínimo de (stock_item / cantidad_necesaria) entre los items.
+                        </div>
                     </div>
                 }
                 <p style="font-size: 0.75rem; color: #6b7280; margin-top: 0.7rem; margin-bottom: 0;">
@@ -2179,6 +2265,10 @@
     private bool showLinkProductModal;
     private MeliItemDto? linkProductItem;
     private List<ProductDto>? allProducts;
+    // Modal de vincular ahora soporta Productos y Combos
+    private string linkTab = "product"; // "product" o "combo"
+    private List<ComboDto>? allCombos;
+    private string linkComboSearch = "";
     private string linkSearchTerm = "";
 
     private void TogglePromoFilter()
@@ -3314,7 +3404,11 @@
     {
         linkProductItem = item;
         linkSearchTerm = "";
+        linkComboSearch = "";
+        linkTab = "product";
         allProducts ??= await Api.GetProductsAsync();
+        // Siempre recargamos combos al abrir, para que se reflejen los recien creados
+        allCombos = await Api.GetCombosAsync();
         showLinkProductModal = true;
     }
 
@@ -3327,6 +3421,52 @@
     private void OnLinkSearchInput(ChangeEventArgs e)
     {
         linkSearchTerm = e.Value?.ToString() ?? "";
+    }
+
+    private void OnLinkComboSearchInput(ChangeEventArgs e)
+    {
+        linkComboSearch = e.Value?.ToString() ?? "";
+    }
+
+    private List<ComboDto> GetFilteredCombos()
+    {
+        if (allCombos is null) return new();
+        var search = linkComboSearch.Trim().ToLowerInvariant();
+        var itemSku = linkProductItem?.Sku?.Trim().ToLowerInvariant() ?? "";
+        IEnumerable<ComboDto> combos = allCombos;
+        if (!string.IsNullOrEmpty(search))
+        {
+            combos = combos.Where(c =>
+                (c.Name ?? "").ToLowerInvariant().Contains(search) ||
+                (c.Sku ?? "").ToLowerInvariant().Contains(search));
+        }
+        else if (!string.IsNullOrEmpty(itemSku))
+        {
+            // Sin busqueda: priorizar match exacto por SKU del item arriba
+            combos = combos.OrderByDescending(c => (c.Sku ?? "").ToLowerInvariant() == itemSku);
+        }
+        return combos.Take(50).ToList();
+    }
+
+    private async Task LinkToCombo(int comboId)
+    {
+        if (linkProductItem is null) return;
+        try
+        {
+            var updated = await Api.LinkItemToComboAsync(linkProductItem.MeliItemId, comboId);
+            if (updated is not null && items is not null)
+            {
+                var idx = items.FindIndex(i => i.Id == linkProductItem.Id);
+                if (idx >= 0) items[idx] = updated;
+                InvalidateFilterCache();
+            }
+            ToastService.Success("Publicacion vinculada al combo");
+            CloseLinkProductModal();
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error: " + ex.Message);
+        }
     }
 
     private record ScoredProduct(ProductDto Product, int Score, string? MatchTag);
@@ -3460,26 +3600,24 @@
 
     private async Task OpenPushModal(MeliItemDto item)
     {
-        if (item.ProductId is null)
+        if (item.ProductId is null && item.ComboId is null)
         {
-            ToastService.Error("Esta publicación no tiene producto vinculado.");
+            ToastService.Error("Esta publicación no tiene producto ni combo vinculado.");
             return;
         }
         pushItem = item;
         pushFlagPrice = true;
         pushFlagStock = true;
-        // Cargar el producto vinculado para mostrar preview
-        try
+        pushItemProduct = null;
+        // Cargar el producto vinculado (solo aplica si es producto)
+        if (item.ProductId.HasValue)
         {
-            var products = await Api.GetProductsAsync();
-            pushItemProduct = products?.FirstOrDefault(p => p.Id == item.ProductId.Value);
-        }
-        catch { pushItemProduct = null; }
-
-        if (pushItemProduct is null)
-        {
-            ToastService.Error("No se pudo cargar el producto vinculado.");
-            return;
+            try
+            {
+                var products = await Api.GetProductsAsync();
+                pushItemProduct = products?.FirstOrDefault(p => p.Id == item.ProductId.Value);
+            }
+            catch { pushItemProduct = null; }
         }
         showPushModal = true;
     }

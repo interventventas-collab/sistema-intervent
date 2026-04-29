@@ -130,7 +130,10 @@ public record MeliItemDto(
     DateTime? LastUpdated,
     int? ProductId,
     string? ProductTitle,
-    int? ProductCriticalStock
+    int? ProductCriticalStock,
+    int? ComboId,
+    string? ComboSku,
+    string? ComboName
 );
 
 public record MeliItemsResponse(List<MeliItemDto> Items, int Total);

@@ -32,6 +32,7 @@ public class MeliItemService
         var query = _db.MeliItems
             .Include(i => i.MeliAccount)
             .Include(i => i.Product)
+            .Include(i => i.Combo)
             .AsQueryable();
 
         if (meliAccountId.HasValue)
@@ -51,7 +52,8 @@ public class MeliItemService
                 i.Condition, i.ListingTypeId, i.InstallmentTag, i.FreeShipping, i.Thumbnail, i.Permalink,
                 i.Sku, i.UserProductId, i.FamilyId, i.FamilyName,
                 i.DateCreated, i.LastUpdated,
-                i.ProductId, i.Product != null ? i.Product.Title : null, i.Product != null ? (int?)i.Product.CriticalStock : null))
+                i.ProductId, i.Product != null ? i.Product.Title : null, i.Product != null ? (int?)i.Product.CriticalStock : null,
+                i.ComboId, i.Combo != null ? i.Combo.Sku : null, i.Combo != null ? i.Combo.Name : null))
             .ToListAsync();
 
         return new MeliItemsResponse(items, total);
@@ -144,14 +146,7 @@ public class MeliItemService
         }
 
         var nickname = item.MeliAccount?.Nickname ?? "Desconocida";
-        return new MeliItemDto(
-            item.Id, item.MeliItemId, item.MeliAccountId, nickname,
-            item.Title, item.CategoryId, item.CategoryPath, item.Price, item.OriginalPrice, item.CurrencyId,
-            item.AvailableQuantity, item.SoldQuantity, item.Status,
-            item.Condition, item.ListingTypeId, item.InstallmentTag, item.FreeShipping, item.Thumbnail, item.Permalink,
-            item.Sku, item.UserProductId, item.FamilyId, item.FamilyName,
-            item.DateCreated, item.LastUpdated,
-            item.ProductId, item.Product?.Title, item.Product != null ? (int?)item.Product.CriticalStock : null);
+        return ToDto(item, nickname);
     }
 
     public async Task<MeliItemDto> LinkToProductAsync(string meliItemId, int productId)
@@ -159,6 +154,7 @@ public class MeliItemService
         var item = await _db.MeliItems
             .Include(i => i.MeliAccount)
             .Include(i => i.Product)
+            .Include(i => i.Combo)
             .FirstOrDefaultAsync(i => i.MeliItemId == meliItemId);
         if (item is null) throw new Exception("Item no encontrado");
 
@@ -167,18 +163,38 @@ public class MeliItemService
 
         item.ProductId = productId;
         item.Product = product;
+        // Mutuamente excluyente: vincular a producto desvincula del combo si lo hubiera.
+        item.ComboId = null;
+        item.Combo = null;
         item.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
 
         var nickname = item.MeliAccount?.Nickname ?? "Desconocida";
-        return new MeliItemDto(
-            item.Id, item.MeliItemId, item.MeliAccountId, nickname,
-            item.Title, item.CategoryId, item.CategoryPath, item.Price, item.OriginalPrice, item.CurrencyId,
-            item.AvailableQuantity, item.SoldQuantity, item.Status,
-            item.Condition, item.ListingTypeId, item.InstallmentTag, item.FreeShipping, item.Thumbnail, item.Permalink,
-            item.Sku, item.UserProductId, item.FamilyId, item.FamilyName,
-            item.DateCreated, item.LastUpdated,
-            item.ProductId, item.Product?.Title, item.Product != null ? (int?)item.Product.CriticalStock : null);
+        return ToDto(item, nickname);
+    }
+
+    public async Task<MeliItemDto> LinkToComboAsync(string meliItemId, int comboId)
+    {
+        var item = await _db.MeliItems
+            .Include(i => i.MeliAccount)
+            .Include(i => i.Product)
+            .Include(i => i.Combo)
+            .FirstOrDefaultAsync(i => i.MeliItemId == meliItemId);
+        if (item is null) throw new Exception("Item no encontrado");
+
+        var combo = await _db.Combos.FindAsync(comboId);
+        if (combo is null) throw new Exception("Combo no encontrado");
+
+        item.ComboId = comboId;
+        item.Combo = combo;
+        // Mutuamente excluyente: vincular a combo desvincula del producto.
+        item.ProductId = null;
+        item.Product = null;
+        item.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        var nickname = item.MeliAccount?.Nickname ?? "Desconocida";
+        return ToDto(item, nickname);
     }
 
     public async Task<MeliItemDto> UnlinkProductAsync(string meliItemId)
@@ -190,19 +206,24 @@ public class MeliItemService
 
         item.ProductId = null;
         item.Product = null;
+        item.ComboId = null;
+        item.Combo = null;
         item.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
 
         var nickname = item.MeliAccount?.Nickname ?? "Desconocida";
-        return new MeliItemDto(
-            item.Id, item.MeliItemId, item.MeliAccountId, nickname,
-            item.Title, item.CategoryId, item.CategoryPath, item.Price, item.OriginalPrice, item.CurrencyId,
-            item.AvailableQuantity, item.SoldQuantity, item.Status,
-            item.Condition, item.ListingTypeId, item.InstallmentTag, item.FreeShipping, item.Thumbnail, item.Permalink,
-            item.Sku, item.UserProductId, item.FamilyId, item.FamilyName,
-            item.DateCreated, item.LastUpdated,
-            null, null, null);
+        return ToDto(item, nickname);
     }
+
+    private static MeliItemDto ToDto(MeliItem item, string nickname) => new MeliItemDto(
+        item.Id, item.MeliItemId, item.MeliAccountId, nickname,
+        item.Title, item.CategoryId, item.CategoryPath, item.Price, item.OriginalPrice, item.CurrencyId,
+        item.AvailableQuantity, item.SoldQuantity, item.Status,
+        item.Condition, item.ListingTypeId, item.InstallmentTag, item.FreeShipping, item.Thumbnail, item.Permalink,
+        item.Sku, item.UserProductId, item.FamilyId, item.FamilyName,
+        item.DateCreated, item.LastUpdated,
+        item.ProductId, item.Product?.Title, item.Product != null ? (int?)item.Product.CriticalStock : null,
+        item.ComboId, item.Combo?.Sku, item.Combo?.Name);
 
     public async Task<int> DeleteItemsAsync(List<int> ids)
     {
@@ -562,18 +583,10 @@ public class MeliItemService
         var saved = await _db.MeliItems
             .Include(i => i.MeliAccount)
             .Include(i => i.Product)
+            .Include(i => i.Combo)
             .FirstAsync(i => i.MeliItemId == meliItemId);
 
-        var dto = new MeliItemDto(
-            saved.Id, saved.MeliItemId, saved.MeliAccountId,
-            saved.MeliAccount != null ? saved.MeliAccount.Nickname : "Desconocida",
-            saved.Title, saved.CategoryId, saved.CategoryPath, saved.Price, saved.OriginalPrice, saved.CurrencyId,
-            saved.AvailableQuantity, saved.SoldQuantity, saved.Status,
-            saved.Condition, saved.ListingTypeId, saved.InstallmentTag, saved.FreeShipping, saved.Thumbnail, saved.Permalink,
-            saved.Sku, saved.UserProductId, saved.FamilyId, saved.FamilyName,
-            saved.DateCreated, saved.LastUpdated,
-            saved.ProductId, saved.Product != null ? saved.Product.Title : null,
-            saved.Product != null ? (int?)saved.Product.CriticalStock : null);
+        var dto = ToDto(saved, saved.MeliAccount != null ? saved.MeliAccount.Nickname : "Desconocida");
 
         var action = existed ? "updated" : "created";
         await _auditLog.LogAsync("Sync", "items", "SYNC_BY_ID",
@@ -1600,8 +1613,9 @@ public class MeliItemService
     /// Actualiza via API de MeLi y luego en la base de datos local.
     /// </summary>
     /// <summary>
-    /// Empuja a MeLi los datos del producto local vinculado a la publicacion.
-    /// Por defecto manda precio (PVP con IVA aplicado) y stock.
+    /// Empuja a MeLi los datos del producto O combo vinculado a la publicacion.
+    /// Para combos, el precio se calcula segun el modo (manual/auto/percent) y el
+    /// stock es el minimo disponible considerando la cantidad de cada item.
     /// </summary>
     public async Task<MeliPushResult> PushFromProductAsync(int meliItemId, bool pushPrice = true, bool pushStock = true)
     {
@@ -1610,26 +1624,78 @@ public class MeliItemService
             .FirstOrDefaultAsync(i => i.Id == meliItemId);
 
         if (item is null) throw new InvalidOperationException("Publicacion no encontrada.");
-        if (item.ProductId is null) throw new InvalidOperationException("Esta publicacion no tiene producto vinculado todavia.");
+        if (item.ProductId is null && item.ComboId is null)
+            throw new InvalidOperationException("Esta publicacion no tiene producto ni combo vinculado todavia.");
         if (item.MeliAccount is null) throw new InvalidOperationException("La cuenta de MeLi no esta cargada.");
 
-        var product = await _db.Products.FirstOrDefaultAsync(p => p.Id == item.ProductId.Value);
-        if (product is null) throw new InvalidOperationException("El producto vinculado no existe.");
-
-        // Construir payload: precio CON IVA aplicado (el publico de MeLi siempre incluye IVA).
+        // Construir payload segun la fuente vinculada.
         var payloadDict = new Dictionary<string, object>();
         decimal? priceWithVat = null;
-        if (pushPrice)
+        int? stockToPush = null;
+
+        if (item.ProductId.HasValue)
         {
-            var rate = product.VatRate ?? 0m;
-            priceWithVat = rate > 0m
-                ? Math.Round(product.RetailPrice * (1m + rate / 100m), 2, MidpointRounding.AwayFromZero)
-                : product.RetailPrice;
-            payloadDict["price"] = priceWithVat;
+            var product = await _db.Products.FirstOrDefaultAsync(p => p.Id == item.ProductId.Value);
+            if (product is null) throw new InvalidOperationException("El producto vinculado no existe.");
+
+            if (pushPrice)
+            {
+                var rate = product.VatRate ?? 0m;
+                priceWithVat = rate > 0m
+                    ? Math.Round(product.RetailPrice * (1m + rate / 100m), 2, MidpointRounding.AwayFromZero)
+                    : product.RetailPrice;
+                payloadDict["price"] = priceWithVat;
+            }
+            if (pushStock)
+            {
+                stockToPush = product.Stock;
+                payloadDict["available_quantity"] = stockToPush.Value;
+            }
         }
-        if (pushStock)
+        else // ComboId.HasValue
         {
-            payloadDict["available_quantity"] = product.Stock;
+            var combo = await _db.Combos
+                .Include(c => c.Items).ThenInclude(ci => ci.Product)
+                .FirstOrDefaultAsync(c => c.Id == item.ComboId!.Value);
+            if (combo is null) throw new InvalidOperationException("El combo vinculado no existe.");
+
+            if (pushPrice)
+            {
+                // Calcular precio del combo segun el modo
+                decimal comboPriceSinIva;
+                if (combo.PriceMode == "manual" && combo.ManualPrice.HasValue)
+                {
+                    comboPriceSinIva = combo.ManualPrice.Value;
+                }
+                else if (combo.PriceMode == "percent" && combo.PercentAdjustment.HasValue)
+                {
+                    var sumItems = combo.Items.Sum(ci => (ci.Product?.RetailPrice ?? 0m) * ci.Quantity);
+                    comboPriceSinIva = Math.Round(sumItems * (1 + combo.PercentAdjustment.Value / 100m), 2, MidpointRounding.AwayFromZero);
+                }
+                else // auto
+                {
+                    comboPriceSinIva = combo.Items.Sum(ci => (ci.Product?.RetailPrice ?? 0m) * ci.Quantity);
+                }
+
+                // Aplicar IVA: usar el VatRate del primer item con IVA seteado (o 21 default).
+                var rate = combo.Items.Select(ci => ci.Product?.VatRate).FirstOrDefault(v => v.HasValue) ?? 21m;
+                priceWithVat = rate > 0m
+                    ? Math.Round(comboPriceSinIva * (1m + rate / 100m), 2, MidpointRounding.AwayFromZero)
+                    : comboPriceSinIva;
+                payloadDict["price"] = priceWithVat;
+            }
+            if (pushStock)
+            {
+                // Stock del combo = minimo de (stock_item / cantidad_necesaria) entre todos los items.
+                if (combo.Items.Any())
+                {
+                    stockToPush = combo.Items
+                        .Select(ci => ci.Product is null ? 0 : (ci.Quantity > 0 ? ci.Product.Stock / ci.Quantity : 0))
+                        .Min();
+                }
+                else stockToPush = 0;
+                payloadDict["available_quantity"] = stockToPush.Value;
+            }
         }
 
         if (payloadDict.Count == 0)
@@ -1667,14 +1733,14 @@ public class MeliItemService
 
         // Actualizar la copia local
         if (pushPrice && priceWithVat.HasValue) item.Price = priceWithVat.Value;
-        if (pushStock) item.AvailableQuantity = product.Stock;
+        if (pushStock && stockToPush.HasValue) item.AvailableQuantity = stockToPush.Value;
         item.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
 
-        await _auditLog.LogAsync("MeliItem", item.MeliItemId, "PUSH_FROM_PRODUCT",
-            JsonSerializer.Serialize(new { productId = product.Id, productSku = product.Sku, pushPrice, pushStock, priceWithVat, stock = product.Stock }));
+        await _auditLog.LogAsync("MeliItem", item.MeliItemId, "PUSH_FROM_LINKED",
+            JsonSerializer.Serialize(new { productId = item.ProductId, comboId = item.ComboId, pushPrice, pushStock, priceWithVat, stock = stockToPush }));
 
-        return new MeliPushResult(true, "Publicacion actualizada en MeLi.", priceWithVat, pushStock ? product.Stock : null);
+        return new MeliPushResult(true, "Publicacion actualizada en MeLi.", priceWithVat, pushStock ? stockToPush : null);
     }
 
     public record MeliPushResult(bool Success, string Message, decimal? PushedPrice, int? PushedStock);

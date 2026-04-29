@@ -330,6 +330,22 @@ public class MeliController : ControllerBase
         }
     }
 
+    public record LinkItemToComboRequest(int ComboId);
+
+    [HttpPut("items/{meliItemId}/link-combo")]
+    public async Task<IActionResult> LinkItemToCombo(string meliItemId, [FromBody] LinkItemToComboRequest request)
+    {
+        try
+        {
+            var result = await _itemService.LinkToComboAsync(meliItemId, request.ComboId);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpPost("items/bulk-delete")]
     public async Task<IActionResult> BulkDeleteItems([FromBody] BulkDeleteRequest request)
     {

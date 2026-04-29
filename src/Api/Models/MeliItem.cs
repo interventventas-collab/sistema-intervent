@@ -32,5 +32,9 @@ public class MeliItem
     public int? ProductId { get; set; }
     public Product? Product { get; set; }
 
+    // Una publicacion puede vincularse a un Producto O a un Combo (mutuamente excluyente).
+    public int? ComboId { get; set; }
+    public Combo? Combo { get; set; }
+
     public MeliAccount? MeliAccount { get; set; }
 }

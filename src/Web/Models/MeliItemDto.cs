@@ -30,6 +30,9 @@ public class MeliItemDto
     public int? ProductId { get; set; }
     public string? ProductTitle { get; set; }
     public int? ProductCriticalStock { get; set; }
+    public int? ComboId { get; set; }
+    public string? ComboSku { get; set; }
+    public string? ComboName { get; set; }
 }
 
 public class MeliItemsResponse

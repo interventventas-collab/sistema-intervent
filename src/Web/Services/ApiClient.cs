@@ -134,6 +134,11 @@ public class ApiClient
         return await PutAsync<MeliItemDto>($"/api/meli/items/{meliItemId}/link", new { productId });
     }
 
+    public async Task<MeliItemDto?> LinkItemToComboAsync(string meliItemId, int comboId)
+    {
+        return await PutAsync<MeliItemDto>($"/api/meli/items/{meliItemId}/link-combo", new { comboId });
+    }
+
     public async Task<MeliItemDto?> UnlinkItemProductAsync(string meliItemId)
     {
         await SetAuthHeaderAsync();

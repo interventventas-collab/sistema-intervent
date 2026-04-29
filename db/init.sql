@@ -237,6 +237,17 @@ BEGIN
 END
 GO
 
+-- Migracion: vincular publicaciones de MeLi tambien a Combos (no solo a Productos)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'ComboId' AND Object_ID = Object_ID(N'MeliItems'))
+BEGIN
+    ALTER TABLE MeliItems ADD ComboId INT NULL;
+    -- FK se agrega solo si la tabla Combos ya existe (puede correrse antes que Combos en init fresco).
+    IF EXISTS (SELECT * FROM sysobjects WHERE name='Combos' AND xtype='U')
+        EXEC('ALTER TABLE MeliItems ADD CONSTRAINT FK_MeliItems_Combo FOREIGN KEY (ComboId) REFERENCES Combos(Id) ON DELETE SET NULL');
+    CREATE INDEX IX_MeliItems_ComboId ON MeliItems(ComboId);
+END
+GO
+
 -- AuditLogs table
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='AuditLogs' AND xtype='U')
 BEGIN
