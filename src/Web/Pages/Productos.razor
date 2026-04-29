@@ -1604,13 +1604,12 @@
         _filterDirty = true;
     }
 
-    // Vista "Padres" (URL /productos-base): productos que NO son hijos de otro (BaseProductId == null).
-    // Vista "Hijos" (URL /productos): productos que SI son hijos (BaseProductId != null).
-    private bool IsBaseOnlyView =>
-        Navigation.ToBaseRelativePath(Navigation.Uri).TrimStart('/').Split('?')[0]
-            .Equals("productos-base", StringComparison.OrdinalIgnoreCase);
+    // Vista unificada: muestra padres + hijos en la misma pagina.
+    // Mantenemos /productos-base como ruta valida por compatibilidad pero ya no filtra.
+    // (Antes /productos-base mostraba solo padres y /productos solo hijos.)
+    private bool IsBaseOnlyView => false;
 
-    private string PageTitle => IsBaseOnlyView ? "Productos Padre" : "Productos hijos";
+    private string PageTitle => "Productos Padre e hijos";
 
     // Productos visibles para la empresa actual (filtra por la propiedad Companies de la marca asociada).
     // SIEMPRE excluye servicios (IsService=true): los servicios viven en su propia pagina.
@@ -1626,9 +1625,7 @@
         return noServices.Where(p => p.BrandId == null || visibleBrandIds.Contains(p.BrandId.Value));
     }
 
-    private int VisibleTotal => IsBaseOnlyView
-        ? CompanyVisibleProducts().Count(p => p.BaseProductId == null)
-        : CompanyVisibleProducts().Count(p => p.BaseProductId != null);
+    private int VisibleTotal => CompanyVisibleProducts().Count();
 
     private List<ProductDto> ApplyFiltersAndSort()
     {
@@ -1649,13 +1646,8 @@
             result = result.Where(p => p.BrandId == null || visibleBrandIds.Contains(p.BrandId.Value));
         }
 
-        // Filtro Padre/Hijo segun la ruta:
-        // - /productos-base => Padres (sin BaseProductId)
-        // - /productos      => Hijos (con BaseProductId NOT NULL)
-        if (IsBaseOnlyView)
-            result = result.Where(p => p.BaseProductId == null);
-        else
-            result = result.Where(p => p.BaseProductId != null);
+        // Vista unificada: NO filtramos por padre/hijo. Mostramos todo y luego
+        // los hijos quedan agrupados debajo de su padre (ver al final del metodo).
 
         // Filtro por Marca (selector arriba de la tabla)
         if (filterBrandId > 0)
@@ -1701,7 +1693,39 @@
             };
         }
 
-        return result.ToList();
+        var flat = result.ToList();
+
+        // === Agrupar: cada padre seguido por sus hijos ===
+        // - Padres y standalone (BaseProductId == null) ya estan ordenados por la sort.
+        // - Hijos del listado los pongo inmediatamente debajo de su padre, conservando
+        //   el sort dentro del grupo.
+        // - Si el padre quedo afuera del listado (filtrado), los hijos huerfanos quedan
+        //   al final como un bloque suelto.
+        var byParent = flat
+            .Where(p => p.BaseProductId.HasValue)
+            .GroupBy(p => p.BaseProductId!.Value)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        var grouped = new List<ProductDto>(flat.Count);
+        var emittedIds = new HashSet<int>();
+        foreach (var p in flat.Where(x => x.BaseProductId == null))
+        {
+            grouped.Add(p);
+            emittedIds.Add(p.Id);
+            if (byParent.TryGetValue(p.Id, out var kids))
+            {
+                foreach (var k in kids)
+                {
+                    grouped.Add(k);
+                    emittedIds.Add(k.Id);
+                }
+            }
+        }
+        // Hijos cuyo padre quedo fuera del listado (por filtro de marca, texto, etc.)
+        foreach (var orphan in flat.Where(x => x.BaseProductId.HasValue && !emittedIds.Contains(x.Id)))
+            grouped.Add(orphan);
+
+        return grouped;
     }
 
     // ===== SELECTION METHODS =====

@@ -58,13 +58,8 @@
                       HasActiveChild="@(IsActive("/productos") || IsActive("/productos-base") || IsActive("/combos") || IsActive("/servicios"))">
                 @if (HasPerm("productos"))
                 {
-                    <NavItem Href="/productos-base" Label="Productos Padre" Icon="@SvgIcons.Package"
-                             IsActive="@IsActive("/productos-base")" OnClick="@(() => NavigateTo("/productos-base"))" />
-                }
-                @if (HasPerm("productos"))
-                {
-                    <NavItem Href="/productos" Label="Productos hijos" Icon="@SvgIcons.Package"
-                             IsActive="@IsActive("/productos")" OnClick="@(() => NavigateTo("/productos"))" />
+                    <NavItem Href="/productos" Label="Productos Padre e hijos" Icon="@SvgIcons.Package"
+                             IsActive="@(IsActive("/productos") || IsActive("/productos-base"))" OnClick="@(() => NavigateTo("/productos"))" />
                 }
                 @if (HasPerm("combos"))
                 {
