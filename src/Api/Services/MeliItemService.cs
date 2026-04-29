@@ -245,10 +245,10 @@ public class MeliItemService
 
         var toProcess = items.Where(i => !i.ProductId.HasValue).ToList();
 
-        // Get all existing SKUs for duplicate detection
+        // Get all existing SKUs for duplicate detection AND parent auto-detection.
         var existingSkus = await _db.Products
             .Where(p => p.Sku != null && p.Sku != "")
-            .Select(p => new { p.Sku, p.Title, p.Id })
+            .Select(p => new { p.Sku, p.Title, p.Id, p.CostPrice, p.RetailPrice, p.VatRate })
             .ToListAsync();
         var skuMap = existingSkus
             .GroupBy(p => p.Sku!.ToLowerInvariant())
@@ -274,15 +274,42 @@ public class MeliItemService
                     }
                 }
 
-                // Create new product
+                // === Heuristica: detectar padre candidato ===
+                // Extraer la subcadena NUMERICA mas larga del SKU. Si esa subcadena coincide
+                // con el SKU de un producto existente, asumimos que es el padre.
+                // Ej: C818BL -> "818" -> matches SKU "818" -> padre.
+                // Ej: 8718X4 -> "8718" -> matches SKU "8718" -> padre.
+                int? parentId = null;
+                decimal? parentCost = null, parentRetail = null, parentVat = null;
+                if (!string.IsNullOrWhiteSpace(item.Sku))
+                {
+                    var numericCore = ExtractLongestNumericRun(item.Sku);
+                    if (!string.IsNullOrEmpty(numericCore) && numericCore != item.Sku)
+                    {
+                        var parentLower = numericCore.ToLowerInvariant();
+                        if (skuMap.TryGetValue(parentLower, out var parent))
+                        {
+                            parentId = parent.Id;
+                            parentCost = parent.CostPrice;
+                            parentRetail = parent.RetailPrice;
+                            parentVat = parent.VatRate;
+                        }
+                    }
+                }
+
+                // Create new product. Si detectamos padre, lo creamos como HIJO heredando
+                // cost/retail/IVA del padre. Sino, queda como independiente con datos del MeLi.
                 var product = new Product
                 {
                     Title = item.Title,
                     Sku = item.Sku,
-                    RetailPrice = item.Price,
+                    RetailPrice = parentRetail ?? item.Price,
+                    CostPrice = parentCost ?? 0,
+                    VatRate = parentVat,
                     Stock = item.AvailableQuantity,
                     Photo1 = item.Thumbnail,
                     IsActive = true,
+                    BaseProductId = parentId,
                     CreatedAt = DateTime.UtcNow
                 };
 
@@ -299,10 +326,12 @@ public class MeliItemService
                 {
                     var skuLower = item.Sku.ToLowerInvariant();
                     if (!skuMap.ContainsKey(skuLower))
-                        skuMap[skuLower] = new { Sku = item.Sku, Title = product.Title, Id = product.Id };
+                        skuMap[skuLower] = new { Sku = item.Sku, Title = product.Title, Id = product.Id, CostPrice = product.CostPrice, RetailPrice = product.RetailPrice, VatRate = product.VatRate };
                 }
 
                 result.Created++;
+                if (parentId.HasValue)
+                    result.SkippedMessages.Add($"✓ {item.Sku} creado como hijo del padre detectado automaticamente");
             }
             catch (Exception ex)
             {
@@ -2029,5 +2058,26 @@ public class MeliItemService
         }
     }
 
-
+    /// <summary>
+    /// Extrae la corrida (run) numerica mas larga del string. Util para detectar el SKU
+    /// del padre dentro de un SKU de variante (ej. "C818BL" -> "818", "8718X4" -> "8718").
+    /// </summary>
+    private static string ExtractLongestNumericRun(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        string longest = "";
+        int i = 0;
+        while (i < s.Length)
+        {
+            if (char.IsDigit(s[i]))
+            {
+                int start = i;
+                while (i < s.Length && char.IsDigit(s[i])) i++;
+                var run = s.Substring(start, i - start);
+                if (run.Length > longest.Length) longest = run;
+            }
+            else i++;
+        }
+        return longest;
+    }
 }
