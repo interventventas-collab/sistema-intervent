@@ -9,6 +9,9 @@ public class ComboItemDto
     public int Quantity { get; set; }
     public decimal UnitPrice { get; set; }
     public decimal LineTotal { get; set; }
+    public decimal? VatRate { get; set; }
+    public decimal UnitPriceWithVat { get; set; }
+    public decimal LineTotalWithVat { get; set; }
 }
 
 public class ComboDto
@@ -27,6 +30,8 @@ public class ComboDto
     public List<ComboItemDto> Items { get; set; } = new();
     public decimal SubtotalProductos { get; set; }
     public decimal FinalPrice { get; set; }
+    public decimal SubtotalProductosWithVat { get; set; }
+    public decimal FinalPriceWithVat { get; set; }
 }
 
 public class ComboItemRequest

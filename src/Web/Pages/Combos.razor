@@ -47,9 +47,9 @@
                             <th>Nombre</th>
                             <th>SKU</th>
                             <th>Productos</th>
-                            <th style="text-align: right;">Subtotal</th>
+                            <th style="text-align: right;" title="Suma de los productos del combo, con IVA aplicado">Subtotal C/IVA</th>
                             <th>Precio</th>
-                            <th style="text-align: right;">Precio Final</th>
+                            <th style="text-align: right;" title="Precio final del combo, con IVA aplicado">Precio Final C/IVA</th>
                             <th>Estado</th>
                             <th style="width: 130px;">Acciones</th>
                         </tr>
@@ -67,9 +67,9 @@
                                         @(c.Items.Count > 3 ? "..." : "")
                                     </div>
                                 </td>
-                                <td style="text-align: right; color: #6b7280;">$@FormatPrice(c.SubtotalProductos)</td>
+                                <td style="text-align: right; color: #6b7280;" title="Sin IVA: $@FormatPrice(c.SubtotalProductos)">$@FormatPrice(c.SubtotalProductosWithVat)</td>
                                 <td>@PriceModeLabel(c.PriceMode, c.PercentAdjustment)</td>
-                                <td style="text-align: right; font-weight: 700;">$@FormatPrice(c.FinalPrice)</td>
+                                <td style="text-align: right; font-weight: 700;" title="Sin IVA: $@FormatPrice(c.FinalPrice)">$@FormatPrice(c.FinalPriceWithVat)</td>
                                 <td>
                                     <span class="status-badge @(c.IsActive ? "status-active" : "status-inactive")">
                                         @(c.IsActive ? "Activo" : "Inactivo")
@@ -142,8 +142,8 @@
                             <tr>
                                 <th>Producto</th>
                                 <th style="width: 100px; text-align: center;">Cantidad</th>
-                                <th style="text-align: right; width: 120px;">PVP unitario</th>
-                                <th style="text-align: right; width: 120px;">Subtotal</th>
+                                <th style="text-align: right; width: 120px;" title="PVP del producto con IVA aplicado">PVP unit. C/IVA</th>
+                                <th style="text-align: right; width: 120px;">Subtotal C/IVA</th>
                                 <th style="width: 50px;"></th>
                             </tr>
                         </thead>
@@ -151,7 +151,7 @@
                             @foreach (var item in formItems)
                             {
                                 var prod = availableProducts?.FirstOrDefault(p => p.Id == item.ProductId);
-                                var unit = prod?.RetailPrice ?? 0m;
+                                var unit = UnitWithVat(prod);
                                 <tr>
                                     <td>
                                         <strong>@(prod?.Title ?? "(Producto eliminado)")</strong>
@@ -165,7 +165,7 @@
                                                @onchange="@((ChangeEventArgs e) => UpdateQty(item, e.Value?.ToString()))"
                                                style="width: 70px; text-align: right; border: 1px solid #d1d5db; border-radius: 4px; padding: 0.25rem 0.4rem;" />
                                     </td>
-                                    <td style="text-align: right; color: #6b7280;">$@FormatPrice(unit)</td>
+                                    <td style="text-align: right; color: #6b7280;" title="Sin IVA: $@FormatPrice(prod?.RetailPrice ?? 0m)">$@FormatPrice(unit)</td>
                                     <td style="text-align: right; font-weight: 600;">$@FormatPrice(unit * item.Quantity)</td>
                                     <td style="text-align: center;">
                                         <button class="btn-icon btn-delete" @onclick="() => RemoveItem(item)" title="Quitar">×</button>
@@ -173,8 +173,8 @@
                                 </tr>
                             }
                             <tr>
-                                <td colspan="3" style="text-align: right; font-weight: 600;">Subtotal productos:</td>
-                                <td style="text-align: right; font-weight: 700; font-size: 1rem;">$@FormatPrice(SubtotalFormItems)</td>
+                                <td colspan="3" style="text-align: right; font-weight: 600;">Subtotal productos C/IVA:</td>
+                                <td style="text-align: right; font-weight: 700; font-size: 1rem;" title="Sin IVA: $@FormatPrice(SubtotalFormItems)">$@FormatPrice(SubtotalFormItemsWithVat)</td>
                                 <td></td>
                             </tr>
                         </tbody>
@@ -191,7 +191,7 @@
                             {
                                 @foreach (var p in availableProducts.Where(x => !formItems.Any(i => i.ProductId == x.Id)))
                                 {
-                                    <option value="@p.Id">@(p.Sku ?? "—") · @p.Title — $@FormatPrice(p.RetailPrice)</option>
+                                    <option value="@p.Id">@(p.Sku ?? "—") · @p.Title — $@FormatPrice(UnitWithVat(p)) c/IVA</option>
                                 }
                             }
                         </select>
@@ -221,8 +221,8 @@
                 @if (autoPrice)
                 {
                     <div style="background: #f3f4f6; border-radius: 6px; padding: 0.75rem 1rem; margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
-                        <span style="color: #6b7280;">Precio final del combo:</span>
-                        <strong style="font-size: 1.2rem;">$@FormatPrice(SubtotalFormItems)</strong>
+                        <span style="color: #6b7280;">Precio final del combo (c/IVA):</span>
+                        <strong style="font-size: 1.2rem;" title="Sin IVA: $@FormatPrice(SubtotalFormItems)">$@FormatPrice(SubtotalFormItemsWithVat)</strong>
                     </div>
                 }
                 else
@@ -247,9 +247,10 @@
                                 <span style="font-size: 1.1rem; font-weight: 700;">$</span>
                                 <input type="text" class="form-input" style="font-size: 1.1rem; font-weight: 700; text-align: right;"
                                        value="@formManualPriceFormatted" @oninput="OnManualPriceInput" inputmode="decimal" />
+                                <span style="font-size: 0.85rem; color: #6b7280;">sin IVA</span>
                             </div>
                             <p style="font-size: 0.78rem; color: #6b7280; margin: 0.3rem 0 0;">
-                                Subtotal de productos: $@FormatPrice(SubtotalFormItems)
+                                Subtotal de productos: $@FormatPrice(SubtotalFormItemsWithVat) c/IVA · $@FormatPrice(SubtotalFormItems) s/IVA
                             </p>
                         }
                         else if (formPriceMode == "percent")
@@ -260,7 +261,7 @@
                                 <span style="font-size: 1.1rem; font-weight: 700;">%</span>
                             </div>
                             <p style="font-size: 0.78rem; color: #6b7280; margin: 0.3rem 0 0;">
-                                Positivo aumenta, negativo descuenta. Subtotal: $@FormatPrice(SubtotalFormItems) → Final: <strong>$@FormatPrice(ComputedPercentPrice)</strong>
+                                Positivo aumenta, negativo descuenta. Subtotal c/IVA: $@FormatPrice(SubtotalFormItemsWithVat) → Final c/IVA: <strong>$@FormatPrice(ComputedPercentPriceWithVat)</strong>
                             </p>
                         }
                     </div>
@@ -511,8 +512,33 @@
         }
     }
 
+    private decimal SubtotalFormItemsWithVat
+    {
+        get
+        {
+            decimal sum = 0;
+            foreach (var item in formItems)
+            {
+                var p = availableProducts?.FirstOrDefault(x => x.Id == item.ProductId);
+                if (p is not null) sum += UnitWithVat(p) * item.Quantity;
+            }
+            return sum;
+        }
+    }
+
+    // PVP unitario con IVA aplicado. Si el producto no tiene VatRate cargado, se asume 0% (no se infla).
+    private static decimal UnitWithVat(ProductDto? p)
+    {
+        if (p is null) return 0m;
+        var rate = (p.VatRate ?? 0m) / 100m;
+        return Math.Round(p.RetailPrice * (1m + rate), 2);
+    }
+
     private decimal ComputedPercentPrice =>
         Math.Round(SubtotalFormItems * (1m + formPercentAdjustment / 100m), 2);
+
+    private decimal ComputedPercentPriceWithVat =>
+        Math.Round(SubtotalFormItemsWithVat * (1m + formPercentAdjustment / 100m), 2);
 
     private async Task Save()
     {

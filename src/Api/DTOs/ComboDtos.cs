@@ -8,8 +8,11 @@ public record ComboItemDto(
     string ProductTitle,
     string? ProductSku,
     int Quantity,
-    decimal UnitPrice,        // PVP del producto al momento de consultar
-    decimal LineTotal          // Quantity * UnitPrice
+    decimal UnitPrice,        // PVP del producto sin IVA
+    decimal LineTotal,         // Quantity * UnitPrice (sin IVA)
+    decimal? VatRate,          // IVA del producto (ej: 21)
+    decimal UnitPriceWithVat,  // PVP con IVA aplicado
+    decimal LineTotalWithVat   // Quantity * UnitPriceWithVat (con IVA)
 );
 
 public record ComboDto(
@@ -25,8 +28,10 @@ public record ComboDto(
     DateTime CreatedAt,
     DateTime? UpdatedAt,
     List<ComboItemDto> Items,
-    decimal SubtotalProductos, // suma de lineas (cantidad * PVP)
-    decimal FinalPrice         // segun PriceMode
+    decimal SubtotalProductos, // suma de lineas SIN IVA
+    decimal FinalPrice,        // precio final SIN IVA, segun PriceMode
+    decimal SubtotalProductosWithVat, // suma de lineas CON IVA aplicado
+    decimal FinalPriceWithVat        // precio final CON IVA, segun PriceMode
 );
 
 public record ComboItemRequest(

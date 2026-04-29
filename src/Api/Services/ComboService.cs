@@ -169,17 +169,29 @@ public class ComboService
     {
         var items = c.Items
             .OrderBy(i => i.Id)
-            .Select(i => new ComboItemDto(
-                i.Id,
-                i.ProductId,
-                i.Product?.Title ?? "Producto eliminado",
-                i.Product?.Sku,
-                i.Quantity,
-                i.Product?.RetailPrice ?? 0m,
-                (i.Product?.RetailPrice ?? 0m) * i.Quantity
-            )).ToList();
+            .Select(i =>
+            {
+                var unit = i.Product?.RetailPrice ?? 0m;
+                var vat = i.Product?.VatRate; // null = sin IVA / no informado
+                var rate = (vat ?? 0m) / 100m;
+                var unitWithVat = Math.Round(unit * (1m + rate), 2);
+                return new ComboItemDto(
+                    i.Id,
+                    i.ProductId,
+                    i.Product?.Title ?? "Producto eliminado",
+                    i.Product?.Sku,
+                    i.Quantity,
+                    unit,
+                    unit * i.Quantity,
+                    vat,
+                    unitWithVat,
+                    unitWithVat * i.Quantity
+                );
+            }).ToList();
 
         var subtotal = items.Sum(x => x.LineTotal);
+        var subtotalWithVat = items.Sum(x => x.LineTotalWithVat);
+
         var final = c.PriceMode switch
         {
             "manual" => c.ManualPrice ?? subtotal,
@@ -187,11 +199,36 @@ public class ComboService
             _ => subtotal // auto
         };
 
+        // Para el precio final con IVA mantenemos la proporcion entre el subtotal
+        // sin IVA y el con IVA. Si el subtotal sin IVA es 0, asumimos 21% por default.
+        decimal finalWithVat;
+        if (c.PriceMode == "percent")
+        {
+            finalWithVat = Math.Round(subtotalWithVat * (1m + (c.PercentAdjustment ?? 0m) / 100m), 2);
+        }
+        else if (c.PriceMode == "manual")
+        {
+            if (subtotal > 0)
+            {
+                var ratio = subtotalWithVat / subtotal;
+                finalWithVat = Math.Round((c.ManualPrice ?? 0m) * ratio, 2);
+            }
+            else
+            {
+                finalWithVat = Math.Round((c.ManualPrice ?? 0m) * 1.21m, 2);
+            }
+        }
+        else
+        {
+            finalWithVat = subtotalWithVat;
+        }
+
         return new ComboDto(
             c.Id, c.Name, c.Sku, c.Description, c.Photo,
             c.PriceMode, c.ManualPrice, c.PercentAdjustment,
             c.IsActive, c.CreatedAt, c.UpdatedAt,
-            items, subtotal, final
+            items, subtotal, final,
+            subtotalWithVat, finalWithVat
         );
     }
 }
