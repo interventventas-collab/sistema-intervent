@@ -37,7 +37,8 @@ public record ProductListDto(
     int? BrandId,
     string? BrandName,
     bool RequiresExpiry,
-    bool IsBase
+    bool IsBase,
+    bool IsService
 );
 
 public record CreateProductRequest(
@@ -63,7 +64,8 @@ public record CreateProductRequest(
     int CriticalStock,
     int? BaseProductId,
     int? BrandId,
-    bool? IsBase
+    bool? IsBase,
+    bool? IsService
 );
 
 public record UpdateProductRequest(
@@ -92,7 +94,8 @@ public record UpdateProductRequest(
     bool? ClearBaseProduct,
     int? BrandId,
     bool? ClearBrand,
-    bool? IsBase
+    bool? IsBase,
+    bool? IsService
 );
 
 public record BulkProductIdsRequest(List<int> Ids);

@@ -407,6 +407,38 @@
                         <input class="form-input" @bind="formModel" placeholder="Modelo" />
                     </div>
                 </div>
+
+                @* === Padre / hijo === *@
+                <div class="form-group" style="background:#f9fafb; padding:0.7rem; border-radius:6px; border:1px solid #e5e7eb;">
+                    <label style="display: flex; align-items: center; gap: 0.5rem; font-weight: 600; cursor: pointer;">
+                        <input type="checkbox" @bind="formIsBase" style="width: 18px; height: 18px;" />
+                        Puede tener variantes (hijos)
+                    </label>
+                    <p style="font-size: 0.78rem; color: #6b7280; margin: 0.3rem 0 0 1.7rem;">
+                        Tildalo si este producto va a tener variantes (ej: el mismo producto en distintos colores).
+                        Los hijos heredan precio, costo y datos del padre.
+                    </p>
+
+                    <div class="form-group" style="margin-top: 0.7rem;">
+                        <label class="form-label">¿Es hijo de otro producto?</label>
+                        <select class="form-input" @bind="formBaseProductId">
+                            <option value="0">— No es hijo (es independiente o padre) —</option>
+                            @if (products is not null)
+                            {
+                                @foreach (var parent in products
+                                    .Where(p => p.IsBase && (editingProductId is null || p.Id != editingProductId.Value) && !p.IsService)
+                                    .OrderBy(p => p.Title))
+                                {
+                                    <option value="@parent.Id">@(parent.Sku ?? "—") · @parent.Title</option>
+                                }
+                            }
+                        </select>
+                        <p style="font-size: 0.78rem; color: #6b7280; margin: 0.3rem 0 0;">
+                            Si lo elegis, este producto pasa a ser un hijo y hereda los datos del padre.
+                        </p>
+                    </div>
+                </div>
+
                 <div class="form-row">
                     <div class="form-group">
                         <label class="form-label">Precio de Costo</label>
@@ -1361,34 +1393,39 @@
         _filterDirty = true;
     }
 
+    // Vista "Padres" (URL /productos-base): productos que NO son hijos de otro (BaseProductId == null).
+    // Vista "Hijos" (URL /productos): productos que SI son hijos (BaseProductId != null).
     private bool IsBaseOnlyView =>
         Navigation.ToBaseRelativePath(Navigation.Uri).TrimStart('/').Split('?')[0]
             .Equals("productos-base", StringComparison.OrdinalIgnoreCase);
 
-    private string PageTitle => IsBaseOnlyView ? "Productos base" : "Productos";
-
-    private bool IsConsideredBase(ProductDto p) => p.IsBase || p.DerivedCount > 0;
+    private string PageTitle => IsBaseOnlyView ? "Productos Padre" : "Productos hijos";
 
     // Productos visibles para la empresa actual (filtra por la propiedad Companies de la marca asociada).
+    // SIEMPRE excluye servicios (IsService=true): los servicios viven en su propia pagina.
     private IEnumerable<ProductDto> CompanyVisibleProducts()
     {
         if (products is null) return Enumerable.Empty<ProductDto>();
-        if (!Company.HasCompany || brands is null || brands.Count == 0) return products;
+        var noServices = products.Where(p => !p.IsService);
+        if (!Company.HasCompany || brands is null || brands.Count == 0) return noServices;
         var visibleBrandIds = brands
             .Where(b => CurrentCompanyService.IsVisibleForCompany(b.Companies, Company.Current!))
             .Select(b => b.Id)
             .ToHashSet();
-        return products.Where(p => p.BrandId == null || visibleBrandIds.Contains(p.BrandId.Value));
+        return noServices.Where(p => p.BrandId == null || visibleBrandIds.Contains(p.BrandId.Value));
     }
 
     private int VisibleTotal => IsBaseOnlyView
-        ? CompanyVisibleProducts().Count(IsConsideredBase)
-        : CompanyVisibleProducts().Count(p => !IsConsideredBase(p));
+        ? CompanyVisibleProducts().Count(p => p.BaseProductId == null)
+        : CompanyVisibleProducts().Count(p => p.BaseProductId != null);
 
     private List<ProductDto> ApplyFiltersAndSort()
     {
         if (products is null) return new();
         IEnumerable<ProductDto> result = products;
+
+        // Excluir servicios (IsService=true) — viven en su propia pagina (/servicios).
+        result = result.Where(p => !p.IsService);
 
         // Filtro por empresa actual: productos cuya marca no es visible en esta empresa, no se muestran.
         // Productos sin marca (BrandId == null) o con una marca sin restriccion de empresa, se muestran siempre.
@@ -1401,13 +1438,13 @@
             result = result.Where(p => p.BrandId == null || visibleBrandIds.Contains(p.BrandId.Value));
         }
 
-        // Filtro automatico segun la ruta:
-        // - /productos-base: productos marcados como base o que ya tienen derivados.
-        // - /productos: todo lo demas (sueltos y derivados).
+        // Filtro Padre/Hijo segun la ruta:
+        // - /productos-base => Padres (sin BaseProductId)
+        // - /productos      => Hijos (con BaseProductId NOT NULL)
         if (IsBaseOnlyView)
-            result = result.Where(IsConsideredBase);
+            result = result.Where(p => p.BaseProductId == null);
         else
-            result = result.Where(p => !IsConsideredBase(p));
+            result = result.Where(p => p.BaseProductId != null);
 
         // Text filters
         foreach (var kv in textFilters.Where(f => !string.IsNullOrEmpty(f.Value)))

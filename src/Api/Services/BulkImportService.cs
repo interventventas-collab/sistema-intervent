@@ -324,7 +324,8 @@ public class BulkImportService
             CriticalStock: ParseInt(Cell(row, headers, "stock_critico")) ?? 0,
             BaseProductId: baseId,
             BrandId: brandId,
-            IsBase: markAsBase
+            IsBase: markAsBase,
+            IsService: false
         ));
     }
 

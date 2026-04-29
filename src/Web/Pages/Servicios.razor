@@ -1,0 +1,306 @@
+@page "/servicios"
+@attribute [Authorize]
+@implements IDisposable
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject CurrentCompanyService Company
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3>
+            Servicios (@(visibleServices?.Count ?? 0))
+            @if (Company.HasCompany)
+            {
+                <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;"> · @Company.CurrentDisplayName</span>
+            }
+            <span style="font-weight: 400; font-size: 0.78rem; color: #9ca3af; margin-left: 0.5rem;">— infinitos, sin stock</span>
+        </h3>
+        <button class="btn btn-primary" @onclick="ShowCreateForm">+ Nuevo Servicio</button>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        @if (isLoading)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">Cargando servicios...</p>
+        }
+        else if (visibleServices is null || visibleServices.Count == 0)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">
+                Todavia no cargaste ningun servicio. Hace clic en "+ Nuevo Servicio" para empezar.
+            </p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 130px;">Codigo (SKU)</th>
+                            <th>Nombre</th>
+                            <th>Descripcion</th>
+                            <th style="text-align: right; width: 130px;">Precio</th>
+                            <th style="width: 100px;">Estado</th>
+                            <th style="width: 100px;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var s in visibleServices)
+                        {
+                            <tr>
+                                <td style="font-family: monospace; color: #374151;">@(s.Sku ?? "—")</td>
+                                <td><strong>@(s.DisplayName ?? s.Title)</strong></td>
+                                <td style="color:#6b7280; font-size:0.85rem;">@(s.Description ?? "")</td>
+                                <td style="text-align: right; font-weight: 700;">$@FormatPrice(s.RetailPrice)</td>
+                                <td>
+                                    <span class="status-badge @(s.IsActive ? "status-active" : "status-inactive")">
+                                        @(s.IsActive ? "Activo" : "Inactivo")
+                                    </span>
+                                </td>
+                                <td class="actions-cell">
+                                    <button class="btn-icon btn-edit" @onclick="() => ShowEditForm(s)" title="Editar">@SvgIcons.Edit</button>
+                                    <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(s)" title="Eliminar">@SvgIcons.AlertCircle</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@if (showForm)
+{
+    <div class="modal-overlay" @onclick="CloseForm">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3>@(isEditing ? "Editar Servicio" : "Nuevo Servicio")</h3>
+                <button class="btn-close" @onclick="CloseForm">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(formError))
+                {
+                    <div class="form-error">@formError</div>
+                }
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Codigo (SKU)</label>
+                        <input class="form-input" @bind="formSku" placeholder="Codigo opcional" />
+                    </div>
+                    <div class="form-group" style="flex: 2;">
+                        <label class="form-label">Nombre *</label>
+                        <input class="form-input" @bind="formTitle" placeholder="Ej: Sonido para evento, Catering..." autofocus />
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Descripcion</label>
+                    <textarea class="form-input" rows="2" @bind="formDescription" placeholder="Descripcion del servicio (opcional)"></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Precio</label>
+                        <div style="position: relative;">
+                            <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 1.1rem; font-weight: 700; color: #333;">$</span>
+                            <input type="number" step="0.01" min="0" class="form-input"
+                                   style="font-size: 1.1rem; font-weight: 700; text-align: right; padding-left: 28px;"
+                                   @bind="formPrice" />
+                        </div>
+                    </div>
+                    @if (isEditing)
+                    {
+                        <div class="form-group">
+                            <label class="form-label">Estado</label>
+                            <select class="form-input" @bind="formIsActive">
+                                <option value="@true">Activo</option>
+                                <option value="@false">Inactivo</option>
+                            </select>
+                        </div>
+                    }
+                </div>
+                <p style="font-size: 0.78rem; color: #6b7280; margin: 0;">
+                    Los servicios no manejan stock — se pueden vender ilimitadamente.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseForm" disabled="@isSaving">Cancelar</button>
+                <button class="btn btn-primary" @onclick="Save" disabled="@isSaving">
+                    @(isSaving ? "Guardando..." : (isEditing ? "Guardar" : "Crear"))
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showDeleteConfirm && serviceToDelete is not null)
+{
+    <div class="modal-overlay" @onclick="() => showDeleteConfirm = false">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: #dc3545; color: white;">
+                <h4 style="margin: 0;">Eliminar servicio</h4>
+                <button class="btn-close" @onclick="() => showDeleteConfirm = false" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Estas seguro que queres eliminar el servicio <strong>@(serviceToDelete.DisplayName ?? serviceToDelete.Title)</strong>?</p>
+                <p class="text-muted" style="font-size: 0.85rem;">Esta accion no se puede deshacer.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showDeleteConfirm = false">Cancelar</button>
+                <button class="btn btn-danger" @onclick="Delete">Eliminar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<ProductDto>? services;
+    private List<BrandDto>? brands;
+    private bool isLoading = true;
+    private bool showForm;
+    private bool isEditing;
+    private bool isSaving;
+    private string? formError;
+    private int? editingId;
+    private string formSku = "";
+    private string formTitle = "";
+    private string formDescription = "";
+    private decimal formPrice;
+    private bool formIsActive = true;
+    private bool showDeleteConfirm;
+    private ProductDto? serviceToDelete;
+
+    private List<ProductDto>? visibleServices =>
+        services is null
+            ? null
+            : (!Company.HasCompany || brands is null
+                ? services
+                : services.Where(s => s.BrandId == null || brands.Any(b =>
+                    b.Id == s.BrandId &&
+                    CurrentCompanyService.IsVisibleForCompany(b.Companies, Company.Current!))).ToList());
+
+    protected override async Task OnInitializedAsync()
+    {
+        Company.OnChange += OnCompanyChanged;
+        await LoadData();
+    }
+
+    public void Dispose()
+    {
+        Company.OnChange -= OnCompanyChanged;
+    }
+
+    private void OnCompanyChanged() => InvokeAsync(StateHasChanged);
+
+    private async Task LoadData()
+    {
+        isLoading = true;
+        try
+        {
+            var all = await Api.GetProductsAsync() ?? new();
+            services = all.Where(p => p.IsService).OrderBy(p => p.Sku ?? "").ThenBy(p => p.Title).ToList();
+        }
+        catch { ToastService.Error("Error al cargar los servicios"); services = new(); }
+        try { brands = await Api.GetBrandsAsync() ?? new(); } catch { brands = new(); }
+        isLoading = false;
+    }
+
+    private void ShowCreateForm()
+    {
+        isEditing = false; editingId = null;
+        formSku = ""; formTitle = ""; formDescription = "";
+        formPrice = 0; formIsActive = true;
+        formError = null; showForm = true;
+    }
+
+    private void ShowEditForm(ProductDto s)
+    {
+        isEditing = true; editingId = s.Id;
+        formSku = s.Sku ?? "";
+        formTitle = s.DisplayName ?? s.Title;
+        formDescription = s.Description ?? "";
+        formPrice = s.RetailPrice;
+        formIsActive = s.IsActive;
+        formError = null; showForm = true;
+    }
+
+    private void CloseForm() { showForm = false; formError = null; }
+
+    private async Task Save()
+    {
+        formError = null;
+        if (string.IsNullOrWhiteSpace(formTitle)) { formError = "El nombre es obligatorio"; return; }
+        if (formPrice < 0) { formError = "El precio no puede ser negativo"; return; }
+        isSaving = true;
+        try
+        {
+            string? Nz(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+            if (isEditing && editingId.HasValue)
+            {
+                var updated = await Api.UpdateProductAsync(editingId.Value, new UpdateProductRequest
+                {
+                    Title = formTitle.Trim(),
+                    DisplayName = formTitle.Trim(),
+                    Description = Nz(formDescription),
+                    Sku = Nz(formSku),
+                    RetailPrice = formPrice,
+                    CostPrice = 0,
+                    Stock = 0,
+                    CriticalStock = 0,
+                    IsActive = formIsActive,
+                    IsService = true
+                });
+                if (updated is null) { formError = "No se pudo actualizar"; return; }
+                ToastService.Success("Servicio actualizado");
+            }
+            else
+            {
+                var created = await Api.CreateProductAsync(new CreateProductRequest
+                {
+                    Title = formTitle.Trim(),
+                    DisplayName = formTitle.Trim(),
+                    Description = Nz(formDescription) ?? "",
+                    Sku = Nz(formSku),
+                    RetailPrice = formPrice,
+                    CostPrice = 0,
+                    Stock = 0,
+                    CriticalStock = 0,
+                    IsService = true
+                });
+                if (created is null) { formError = "No se pudo crear"; return; }
+                ToastService.Success("Servicio creado");
+            }
+            showForm = false;
+            await LoadData();
+        }
+        catch (Exception ex) { formError = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private void ConfirmDelete(ProductDto s) { serviceToDelete = s; showDeleteConfirm = true; }
+
+    private async Task Delete()
+    {
+        if (serviceToDelete is null) return;
+        try
+        {
+            var ok = await Api.DeleteProductAsync(serviceToDelete.Id);
+            if (ok) { ToastService.Success("Servicio eliminado"); await LoadData(); }
+            else { ToastService.Error("No se pudo eliminar"); }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { showDeleteConfirm = false; serviceToDelete = null; }
+    }
+
+    private string FormatPrice(decimal value)
+    {
+        var parts = value.ToString("F2", System.Globalization.CultureInfo.InvariantCulture).Split('.');
+        var sign = ""; var intPart = parts[0]; var decPart = parts.Length > 1 ? parts[1] : "00";
+        if (intPart.StartsWith("-")) { sign = "-"; intPart = intPart[1..]; }
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < intPart.Length; i++)
+        {
+            if (i > 0 && (intPart.Length - i) % 3 == 0) sb.Append('.');
+            sb.Append(intPart[i]);
+        }
+        return sign + sb + "," + decPart;
+    }
+}

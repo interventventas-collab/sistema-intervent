@@ -86,5 +86,9 @@ public class Product
     [ForeignKey(nameof(BrandId))]
     public Brand? BrandNav { get; set; }
 
+    // Si es true, se trata de un servicio (sin stock, infinitamente disponible).
+    // Aparece en la pagina de Servicios, no en Productos.
+    public bool IsService { get; set; } = false;
+
     public ICollection<MeliItem> MeliItems { get; set; } = new List<MeliItem>();
 }

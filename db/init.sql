@@ -913,6 +913,16 @@ IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId = 1 AND MenuKey = 'sue
     INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'sueldos');
 GO
 
+-- Servicios: productos con IsService=true, no manejan stock (infinitamente disponibles)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'IsService' AND Object_ID = Object_ID(N'Products'))
+BEGIN
+    ALTER TABLE Products ADD IsService BIT NOT NULL DEFAULT 0;
+END
+GO
+IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId = 1 AND MenuKey = 'servicios')
+    INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'servicios');
+GO
+
 -- Pagos parciales de sueldos (adelantos + pagos finales)
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='PayrollPayments' AND xtype='U')
 BEGIN
