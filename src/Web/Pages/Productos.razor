@@ -5,6 +5,7 @@
 @inject ToastService ToastService
 @inject NavigationManager Navigation
 @inject CurrentCompanyService Company
+@inject OperatorService Operator
 @implements IDisposable
 
 <div class="card">
@@ -106,41 +107,48 @@
                                     </div>
                                 }
                             </th>
-                            <!-- Costo: sort only -->
-                            <th class="th-sortable" @onclick='() => ToggleSort("costo")'>
+                            <!-- Costo: sort + lock -->
+                            <th class="th-sortable">
                                 <div class="th-inner">
-                                    <span class="th-label">Costo S/IVA</span>
-                                    <span class="sort-icon">
+                                    <span class="th-label" @onclick='() => ToggleSort("costo")' style="cursor:pointer;">Costo S/IVA</span>
+                                    @LockButton("costo")
+                                    <span class="sort-icon" @onclick='() => ToggleSort("costo")'>
                                         <span class="@(sortColumn == "costo" && sortAsc ? "sort-up-active" : "")">&#9650;</span>
                                         <span class="@(sortColumn == "costo" && !sortAsc ? "sort-down-active" : "")">&#9660;</span>
                                     </span>
                                 </div>
                             </th>
-                            <!-- PVP: sort only -->
-                            <th class="th-sortable" @onclick='() => ToggleSort("pvp")'>
+                            <!-- PVP: sort + lock -->
+                            <th class="th-sortable">
                                 <div class="th-inner">
-                                    <span class="th-label">PVP C/IVA</span>
-                                    <span class="sort-icon">
+                                    <span class="th-label" @onclick='() => ToggleSort("pvp")' style="cursor:pointer;">PVP C/IVA</span>
+                                    @LockButton("pvp")
+                                    <span class="sort-icon" @onclick='() => ToggleSort("pvp")'>
                                         <span class="@(sortColumn == "pvp" && sortAsc ? "sort-up-active" : "")">&#9650;</span>
                                         <span class="@(sortColumn == "pvp" && !sortAsc ? "sort-down-active" : "")">&#9660;</span>
                                     </span>
                                 </div>
                             </th>
-                            <!-- Stock: sort only -->
-                            <th class="th-sortable" @onclick='() => ToggleSort("stock")'>
+                            <!-- Stock: sort + lock -->
+                            <th class="th-sortable">
                                 <div class="th-inner">
-                                    <span class="th-label">Stock</span>
-                                    <span class="sort-icon">
+                                    <span class="th-label" @onclick='() => ToggleSort("stock")' style="cursor:pointer;">Stock</span>
+                                    @LockButton("stock")
+                                    <span class="sort-icon" @onclick='() => ToggleSort("stock")'>
                                         <span class="@(sortColumn == "stock" && sortAsc ? "sort-up-active" : "")">&#9650;</span>
                                         <span class="@(sortColumn == "stock" && !sortAsc ? "sort-down-active" : "")">&#9660;</span>
                                     </span>
                                 </div>
                             </th>
-                            <th title="Unidades por Bulto" style="width: 70px; text-align: center;">UxB</th>
-                            <!-- Estado: checkbox dropdown -->
+                            <th title="Unidades por Bulto" style="width: 90px; text-align: center;">
+                                <span>UxB</span>
+                                @LockButton("uxb")
+                            </th>
+                            <!-- Estado: checkbox dropdown + lock -->
                             <th class="th-dropdown @(activeFilterColumn == "estado" ? "filter-open" : "")">
                                 <div class="th-inner">
                                     <span class="th-label" @onclick='() => ToggleSort("estado")'>Estado</span>
+                                    @LockButton("estado")
                                     <span class="th-icons">
                                         <span class="sort-icon" @onclick='() => ToggleSort("estado")'>
                                             <span class="@(sortColumn == "estado" && sortAsc ? "sort-up-active" : "")">&#9650;</span>
@@ -243,66 +251,148 @@
                                     }
                                 </td>
                                 <td style="text-align: right; padding: 0.25rem 0.5rem;" @onclick:stopPropagation="true">
-                                    @{
+                                    @if (IsUnlocked("costo"))
+                                    {
                                         var costInherited = product.BaseProductId.HasValue;
                                         var costDisabled = costInherited || savingCostId == product.Id;
                                         var costTitle = costInherited
                                             ? $"Heredado del producto base {product.BaseProductSku ?? product.BaseProductTitle}"
                                             : "";
-                                    }
-                                    <div style="display: inline-flex; align-items: center; gap: 0.2rem; border: 1px solid @(costInherited ? "#e5e7eb" : "#d1d5db"); border-radius: 6px; padding: 0.25rem 0.4rem; background: @(costInherited ? "#f9fafb" : "white");" title="@costTitle">
-                                        <span style="color: #6b7280; font-size: 0.85rem;">$</span>
-                                        <input type="text"
-                                               value="@FormatPrice(product.CostPrice)"
-                                               @onchange="@(e => SaveProductCost(product, e.Value?.ToString()))"
-                                               disabled="@costDisabled"
-                                               style="border: none; outline: none; text-align: right; width: 95px; font-size: 0.9rem; background: transparent; padding: 0; @(costInherited ? "color:#6b7280;" : "")" />
-                                        @if (costInherited)
-                                        {
-                                            <span style="color: #3b82f6; font-size: 0.75rem;" title="@costTitle">🔗</span>
-                                        }
-                                        else if (savingCostId == product.Id)
-                                        {
-                                            <span style="color: #3b82f6; font-size: 0.75rem;">...</span>
-                                        }
-                                    </div>
-                                </td>
-                                <td style="text-align: right;" title="@(product.VatRate.HasValue && product.VatRate.Value > 0 ? $"PVP s/IVA: ${FormatPrice(product.RetailPrice)} · IVA {product.VatRate}%" : "Sin IVA")">
-                                    $@FormatPrice(RetailWithVat(product))
-                                    @if (product.BaseProductId.HasValue)
-                                    {
-                                        <span style="color: #3b82f6; font-size: 0.75rem; margin-left: 0.2rem;" title="Heredado del producto base">🔗</span>
-                                    }
-                                </td>
-                                <td style="text-align: center; font-weight: 700;">
-                                    @if (product.CriticalStock > 0 && product.Stock <= product.CriticalStock)
-                                    {
-                                        <span class="stock-badge @(product.Stock < product.CriticalStock ? "stock-critical" : "stock-warning")">@product.Stock</span>
-                                    }
-                                    else if (product.CriticalStock > 0 && product.Stock > product.CriticalStock)
-                                    {
-                                        <span class="stock-badge stock-healthy">@product.Stock</span>
+                                        <div style="display: inline-flex; align-items: center; gap: 0.2rem; border: 1px solid @(costInherited ? "#e5e7eb" : "#d1d5db"); border-radius: 6px; padding: 0.25rem 0.4rem; background: @(costInherited ? "#f9fafb" : "white");" title="@costTitle">
+                                            <span style="color: #6b7280; font-size: 0.85rem;">$</span>
+                                            <input type="text"
+                                                   value="@FormatPrice(product.CostPrice)"
+                                                   @onchange="@(e => SaveProductCost(product, e.Value?.ToString()))"
+                                                   disabled="@costDisabled"
+                                                   style="border: none; outline: none; text-align: right; width: 95px; font-size: 0.9rem; background: transparent; padding: 0; @(costInherited ? "color:#6b7280;" : "")" />
+                                            @if (costInherited)
+                                            {
+                                                <span style="color: #3b82f6; font-size: 0.75rem;" title="@costTitle">🔗</span>
+                                            }
+                                            else if (savingCostId == product.Id)
+                                            {
+                                                <span style="color: #3b82f6; font-size: 0.75rem;">...</span>
+                                            }
+                                        </div>
                                     }
                                     else
                                     {
-                                        @product.Stock
+                                        <span>$@FormatPrice(product.CostPrice)</span>
+                                        @if (product.BaseProductId.HasValue)
+                                        {
+                                            <span style="color: #3b82f6; font-size: 0.75rem; margin-left: 0.2rem;" title="Heredado del producto base">🔗</span>
+                                        }
+                                    }
+                                </td>
+                                <td style="text-align: right; padding: 0.25rem 0.5rem;" @onclick:stopPropagation="true"
+                                    title="@(product.VatRate.HasValue && product.VatRate.Value > 0 ? $"PVP s/IVA: ${FormatPrice(product.RetailPrice)} · IVA {product.VatRate}%" : "Sin IVA")">
+                                    @if (IsUnlocked("pvp"))
+                                    {
+                                        var pvpInherited = product.BaseProductId.HasValue;
+                                        var pvpDisabled = pvpInherited || savingPvpId == product.Id;
+                                        <div style="display: inline-flex; align-items: center; gap: 0.2rem; border: 1px solid @(pvpInherited ? "#e5e7eb" : "#d1d5db"); border-radius: 6px; padding: 0.25rem 0.4rem; background: @(pvpInherited ? "#f9fafb" : "white");">
+                                            <span style="color: #6b7280; font-size: 0.85rem;">$</span>
+                                            <input type="text"
+                                                   value="@FormatPrice(RetailWithVat(product))"
+                                                   @onchange="@(e => SaveProductRetailWithVat(product, e.Value?.ToString()))"
+                                                   disabled="@pvpDisabled"
+                                                   style="border: none; outline: none; text-align: right; width: 100px; font-size: 0.9rem; background: transparent; padding: 0; @(pvpInherited ? "color:#6b7280;" : "")" />
+                                            @if (pvpInherited)
+                                            {
+                                                <span style="color: #3b82f6; font-size: 0.75rem;" title="Heredado del producto base">🔗</span>
+                                            }
+                                            else if (savingPvpId == product.Id)
+                                            {
+                                                <span style="color: #3b82f6; font-size: 0.75rem;">...</span>
+                                            }
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <span>$@FormatPrice(RetailWithVat(product))</span>
+                                        @if (product.BaseProductId.HasValue)
+                                        {
+                                            <span style="color: #3b82f6; font-size: 0.75rem; margin-left: 0.2rem;" title="Heredado del producto base">🔗</span>
+                                        }
+                                    }
+                                </td>
+                                <td style="text-align: center; font-weight: 700; padding: 0.25rem 0.5rem;" @onclick:stopPropagation="true">
+                                    @if (IsUnlocked("stock") && !product.RequiresExpiry)
+                                    {
+                                        var stockDisabled = savingStockId == product.Id;
+                                        <input type="number" min="0" step="1"
+                                               value="@product.Stock"
+                                               @onchange="@(e => SaveProductStock(product, e.Value?.ToString()))"
+                                               disabled="@stockDisabled"
+                                               style="border: 1px solid #d1d5db; border-radius: 6px; padding: 0.25rem 0.4rem; text-align: center; width: 75px; font-size: 0.9rem;" />
+                                        @if (savingStockId == product.Id)
+                                        {
+                                            <span style="color: #3b82f6; font-size: 0.75rem; margin-left: 0.2rem;">...</span>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        @if (product.CriticalStock > 0 && product.Stock <= product.CriticalStock)
+                                        {
+                                            <span class="stock-badge @(product.Stock < product.CriticalStock ? "stock-critical" : "stock-warning")">@product.Stock</span>
+                                        }
+                                        else if (product.CriticalStock > 0 && product.Stock > product.CriticalStock)
+                                        {
+                                            <span class="stock-badge stock-healthy">@product.Stock</span>
+                                        }
+                                        else
+                                        {
+                                            @product.Stock
+                                        }
                                     }
                                     @if (product.RequiresExpiry)
                                     {
                                         <button class="btn-icon" @onclick:stopPropagation="true" @onclick="() => OpenBatchesModal(product)"
-                                                title="Gestionar stock por lotes con vencimiento"
+                                                title="Stock por lotes con vencimiento — solo se edita desde el modal de lotes"
                                                 style="margin-left: 0.3rem; background: #fef3c7; border: 1px solid #fbbf24; color: #92400e; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.75rem; cursor: pointer;">
                                             📅 Lotes
                                         </button>
                                     }
                                 </td>
-                                <td style="text-align: center; font-size: 0.85rem; color: #374151;" title="Unidades por Bulto">
-                                    @(product.UnitsPerPack?.ToString() ?? "—")
+                                <td style="text-align: center; font-size: 0.85rem; color: #374151; padding: 0.25rem 0.5rem;" title="Unidades por Bulto" @onclick:stopPropagation="true">
+                                    @if (IsUnlocked("uxb"))
+                                    {
+                                        var uxbDisabled = savingUxbId == product.Id;
+                                        <input type="number" min="0" step="1"
+                                               value="@(product.UnitsPerPack?.ToString() ?? "")"
+                                               placeholder="—"
+                                               @onchange="@(e => SaveProductUxB(product, e.Value?.ToString()))"
+                                               disabled="@uxbDisabled"
+                                               style="border: 1px solid #d1d5db; border-radius: 6px; padding: 0.25rem 0.4rem; text-align: center; width: 65px; font-size: 0.9rem;" />
+                                        @if (savingUxbId == product.Id)
+                                        {
+                                            <span style="color: #3b82f6; font-size: 0.75rem; margin-left: 0.2rem;">...</span>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        @(product.UnitsPerPack?.ToString() ?? "—")
+                                    }
                                 </td>
-                                <td style="text-align: center;">
-                                    <span class="status-badge @(product.IsActive ? "status-active" : "status-inactive")">
-                                        @(product.IsActive ? "Activo" : "Inactivo")
-                                    </span>
+                                <td style="text-align: center;" @onclick:stopPropagation="true">
+                                    @if (IsUnlocked("estado"))
+                                    {
+                                        var estadoDisabled = savingEstadoId == product.Id;
+                                        <button type="button"
+                                                @onclick="@(() => SaveProductEstado(product, !product.IsActive))"
+                                                disabled="@estadoDisabled"
+                                                class="status-badge @(product.IsActive ? "status-active" : "status-inactive")"
+                                                style="border: none; cursor: pointer;"
+                                                title="Click para @(product.IsActive ? "DESACTIVAR" : "ACTIVAR")">
+                                            @(product.IsActive ? "Activo" : "Inactivo") @(estadoDisabled ? "..." : "↻")
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <span class="status-badge @(product.IsActive ? "status-active" : "status-inactive")">
+                                            @(product.IsActive ? "Activo" : "Inactivo")
+                                        </span>
+                                    }
                                 </td>
                                 <td class="actions-cell">
                                     <button class="btn-publish" @onclick="() => StartPublishWizard(product)" title="Publicar en MeLi">
@@ -1335,6 +1425,7 @@
     {
         Navigation.LocationChanged += OnLocationChanged;
         Company.OnChange += OnCompanyChanged;
+        Operator.OnChange += OnOperatorChanged;
         await LoadData();
     }
 
@@ -1342,6 +1433,14 @@
     {
         Navigation.LocationChanged -= OnLocationChanged;
         Company.OnChange -= OnCompanyChanged;
+        Operator.OnChange -= OnOperatorChanged;
+    }
+
+    private void OnOperatorChanged()
+    {
+        // Si el operador cambia y deja de ser OSMAR, cerramos todos los candados.
+        if (!CanUnlock) unlockedColumns.Clear();
+        InvokeAsync(StateHasChanged);
     }
 
     private void OnCompanyChanged()
@@ -2151,6 +2250,35 @@
     }
 
     private int? savingCostId;
+    private int? savingPvpId;
+    private int? savingStockId;
+    private int? savingUxbId;
+    private int? savingEstadoId;
+
+    // Edicion rapida por columna: cada columna tiene su candadito que solo OSMAR puede abrir/cerrar.
+    private HashSet<string> unlockedColumns = new(StringComparer.OrdinalIgnoreCase);
+    private bool CanUnlock => Operator.HasOperator &&
+                               string.Equals(Operator.Current, "OSMAR", StringComparison.OrdinalIgnoreCase);
+    private bool IsUnlocked(string col) => unlockedColumns.Contains(col);
+    private void ToggleUnlock(string col)
+    {
+        if (!CanUnlock)
+        {
+            ToastService.Error("Solo OSMAR puede activar la edicion rapida.");
+            return;
+        }
+        if (unlockedColumns.Contains(col)) unlockedColumns.Remove(col);
+        else unlockedColumns.Add(col);
+    }
+
+    private RenderFragment LockButton(string col) => @<button type="button"
+                                                              @onclick="@(() => ToggleUnlock(col))"
+                                                              @onclick:stopPropagation="true"
+                                                              disabled="@(!CanUnlock)"
+                                                              title="@(CanUnlock ? (IsUnlocked(col) ? "Click para BLOQUEAR la edicion rapida" : "Click para DESBLOQUEAR la edicion rapida") : "Solo OSMAR puede activar la edicion rapida")"
+                                                              style="@($"background:transparent;border:none;cursor:{(CanUnlock ? "pointer" : "not-allowed")};padding:0 0.25rem;font-size:0.85rem;opacity:{(CanUnlock ? "1" : "0.5")};")">
+        @(IsUnlocked(col) ? "🔓" : "🔒")
+    </button>;
 
     // ===== Stock batches =====
 
@@ -2278,6 +2406,117 @@
         }
 
         savingCostId = null;
+        StateHasChanged();
+    }
+
+    // ===== Save inline: PVP (con IVA) =====
+    private async Task SaveProductRetailWithVat(ProductDto product, string? rawValue)
+    {
+        if (product.BaseProductId.HasValue)
+        {
+            ToastService.Error($"Este producto hereda el PVP del producto base {product.BaseProductSku ?? product.BaseProductTitle}.");
+            return;
+        }
+        var newWithVat = ParseFormattedPrice(rawValue ?? "");
+        if (newWithVat < 0) { ToastService.Error("El PVP no puede ser negativo"); return; }
+
+        // Convertir CON IVA -> SIN IVA usando el VatRate del producto
+        var rate = product.VatRate ?? 0m;
+        var newSinIva = rate > 0m
+            ? Math.Round(newWithVat / (1m + rate / 100m), 2, MidpointRounding.AwayFromZero)
+            : newWithVat;
+
+        if (newSinIva == product.RetailPrice) return;
+
+        var original = product.RetailPrice;
+        savingPvpId = product.Id;
+        StateHasChanged();
+        try
+        {
+            var updated = await Api.UpdateProductAsync(product.Id, new UpdateProductRequest { RetailPrice = newSinIva });
+            if (updated is null) { product.RetailPrice = original; ToastService.Error("No se pudo actualizar el PVP"); }
+            else
+            {
+                product.RetailPrice = newSinIva;
+                if (product.DerivedCount > 0)
+                {
+                    ToastService.Success($"PVP actualizado: ${FormatPrice(newWithVat)} c/IVA. Aplicado a {product.DerivedCount} derivado(s).");
+                    await LoadData();
+                }
+                else
+                {
+                    ToastService.Success($"PVP actualizado: ${FormatPrice(newWithVat)} c/IVA");
+                }
+            }
+        }
+        catch (Exception ex) { product.RetailPrice = original; ToastService.Error("Error: " + ex.Message); }
+        savingPvpId = null;
+        StateHasChanged();
+    }
+
+    // ===== Save inline: Stock =====
+    private async Task SaveProductStock(ProductDto product, string? rawValue)
+    {
+        if (!int.TryParse(rawValue ?? "", out var newStock)) return;
+        if (newStock == product.Stock) return;
+        if (newStock < 0) { ToastService.Error("El stock no puede ser negativo"); return; }
+
+        var original = product.Stock;
+        savingStockId = product.Id;
+        StateHasChanged();
+        try
+        {
+            var updated = await Api.UpdateProductAsync(product.Id, new UpdateProductRequest { Stock = newStock });
+            if (updated is null) { product.Stock = original; ToastService.Error("No se pudo actualizar el stock"); }
+            else { product.Stock = newStock; ToastService.Success($"Stock actualizado: {newStock}"); }
+        }
+        catch (Exception ex) { product.Stock = original; ToastService.Error("Error: " + ex.Message); }
+        savingStockId = null;
+        StateHasChanged();
+    }
+
+    // ===== Save inline: UxB =====
+    private async Task SaveProductUxB(ProductDto product, string? rawValue)
+    {
+        int? newUxb = null;
+        if (!string.IsNullOrWhiteSpace(rawValue) && int.TryParse(rawValue, out var parsed))
+            newUxb = parsed >= 0 ? parsed : null;
+
+        if (newUxb == product.UnitsPerPack) return;
+
+        var original = product.UnitsPerPack;
+        savingUxbId = product.Id;
+        StateHasChanged();
+        try
+        {
+            var req = new UpdateProductRequest();
+            if (newUxb.HasValue && newUxb.Value > 0) req.UnitsPerPack = newUxb.Value;
+            else req.ClearUnitsPerPack = true;
+
+            var updated = await Api.UpdateProductAsync(product.Id, req);
+            if (updated is null) { product.UnitsPerPack = original; ToastService.Error("No se pudo actualizar UxB"); }
+            else { product.UnitsPerPack = newUxb; ToastService.Success(newUxb.HasValue ? $"UxB: {newUxb}" : "UxB: vacio"); }
+        }
+        catch (Exception ex) { product.UnitsPerPack = original; ToastService.Error("Error: " + ex.Message); }
+        savingUxbId = null;
+        StateHasChanged();
+    }
+
+    // ===== Save inline: Estado (Activo/Inactivo) =====
+    private async Task SaveProductEstado(ProductDto product, bool newActive)
+    {
+        if (newActive == product.IsActive) return;
+        var original = product.IsActive;
+        savingEstadoId = product.Id;
+        StateHasChanged();
+        try
+        {
+            var updated = await Api.UpdateProductAsync(product.Id, new UpdateProductRequest { IsActive = newActive });
+            if (updated is null) { product.IsActive = original; ToastService.Error("No se pudo actualizar el estado"); }
+            else { product.IsActive = newActive; ToastService.Success(newActive ? "Activado" : "Desactivado"); }
+        }
+        catch (Exception ex) { product.IsActive = original; ToastService.Error("Error: " + ex.Message); }
+        savingEstadoId = null;
         StateHasChanged();
     }
 
