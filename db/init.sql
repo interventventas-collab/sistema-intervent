@@ -923,6 +923,13 @@ IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId = 1 AND MenuKey = 'ser
     INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'servicios');
 GO
 
+-- UxB (unidades por bulto): informativo para armar pedidos a proveedor
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'UnitsPerPack' AND Object_ID = Object_ID(N'Products'))
+BEGIN
+    ALTER TABLE Products ADD UnitsPerPack INT NULL;
+END
+GO
+
 -- Pagos parciales de sueldos (adelantos + pagos finales)
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='PayrollPayments' AND xtype='U')
 BEGIN

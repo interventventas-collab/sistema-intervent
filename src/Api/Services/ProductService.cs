@@ -62,7 +62,8 @@ public class ProductService
             p.BrandNav?.Name,
             p.BrandNav?.HasExpiry ?? false,
             p.IsBase,
-            p.IsService
+            p.IsService,
+            p.UnitsPerPack
         )).ToList();
     }
 
@@ -93,7 +94,8 @@ public class ProductService
             p.BrandNav?.Name,
             p.BrandNav?.HasExpiry ?? false,
             p.IsBase,
-            p.IsService
+            p.IsService,
+            p.UnitsPerPack
         );
     }
 
@@ -145,7 +147,9 @@ public class ProductService
                     BrandId: request.BrandId,
                     ClearBrand: !request.BrandId.HasValue,
                     IsBase: request.IsBase,
-                    IsService: request.IsService
+                    IsService: request.IsService,
+                    UnitsPerPack: request.UnitsPerPack,
+                    ClearUnitsPerPack: !request.UnitsPerPack.HasValue
                 );
                 var updated = await UpdateAsync(existing.Id, update);
                 if (updated is null) return null;
@@ -210,7 +214,8 @@ public class ProductService
             BaseProductId = request.BaseProductId,
             BrandId = request.BrandId,
             IsBase = request.IsBase ?? false,
-            IsService = request.IsService ?? false
+            IsService = request.IsService ?? false,
+            UnitsPerPack = request.UnitsPerPack
         };
 
         _db.Products.Add(product);
@@ -324,6 +329,11 @@ public class ProductService
         if (request.IsActive.HasValue) product.IsActive = request.IsActive.Value;
         if (request.IsBase.HasValue) product.IsBase = request.IsBase.Value;
         if (request.IsService.HasValue) product.IsService = request.IsService.Value;
+
+        if (request.ClearUnitsPerPack == true)
+            product.UnitsPerPack = null;
+        else if (request.UnitsPerPack.HasValue)
+            product.UnitsPerPack = request.UnitsPerPack.Value;
 
         product.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();

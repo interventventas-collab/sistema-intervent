@@ -325,7 +325,8 @@ public class BulkImportService
             BaseProductId: baseId,
             BrandId: brandId,
             IsBase: markAsBase,
-            IsService: false
+            IsService: false,
+            UnitsPerPack: ParseInt(Cell(row, headers, "uxb"))
         ));
     }
 

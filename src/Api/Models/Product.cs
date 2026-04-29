@@ -90,5 +90,8 @@ public class Product
     // Aparece en la pagina de Servicios, no en Productos.
     public bool IsService { get; set; } = false;
 
+    // Unidades por bulto (UxB). Informativo, util para armar pedidos.
+    public int? UnitsPerPack { get; set; }
+
     public ICollection<MeliItem> MeliItems { get; set; } = new List<MeliItem>();
 }

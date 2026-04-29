@@ -36,6 +36,7 @@ public class ProductDto
     public bool RequiresExpiry { get; set; }
     public bool IsBase { get; set; }
     public bool IsService { get; set; }
+    public int? UnitsPerPack { get; set; }
 }
 
 public class CreateProductRequest
@@ -64,6 +65,7 @@ public class CreateProductRequest
     public int? BrandId { get; set; }
     public bool? IsBase { get; set; }
     public bool? IsService { get; set; }
+    public int? UnitsPerPack { get; set; }
 }
 
 public class UpdateProductRequest
@@ -95,6 +97,8 @@ public class UpdateProductRequest
     public bool? ClearBrand { get; set; }
     public bool? IsBase { get; set; }
     public bool? IsService { get; set; }
+    public int? UnitsPerPack { get; set; }
+    public bool? ClearUnitsPerPack { get; set; }
 }
 
 public class ProductAccountLinkDto
