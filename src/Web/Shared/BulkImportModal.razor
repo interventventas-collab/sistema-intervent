@@ -143,7 +143,10 @@
                 new System.Net.Http.Headers.MediaTypeHeaderValue("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
             content.Add(streamContent, "file", file.Name);
 
-            var response = await Http.PostAsync(ImportUrl, content);
+            // Imports grandes pueden tardar varios minutos. Subimos el timeout a 10 min
+            // (el default global de HttpClient es 100s, que se queda corto con +1000 filas).
+            using var importHttp = new HttpClient { BaseAddress = Http.BaseAddress, Timeout = TimeSpan.FromMinutes(10) };
+            var response = await importHttp.PostAsync(ImportUrl, content);
             if (response.IsSuccessStatusCode)
             {
                 lastResult = await response.Content.ReadFromJsonAsync<BulkImportResult>();
