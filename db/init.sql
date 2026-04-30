@@ -1024,6 +1024,77 @@ BEGIN
 END
 GO
 
+-- ============================================================
+-- INVENTARIOS: Depositos + Movimientos de stock
+-- ============================================================
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Warehouses' AND xtype='U')
+BEGIN
+    CREATE TABLE Warehouses (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Code NVARCHAR(30) NOT NULL,
+        Name NVARCHAR(150) NOT NULL,
+        Address NVARCHAR(300) NULL,
+        Notes NVARCHAR(500) NULL,
+        IsDefault BIT NOT NULL DEFAULT 0,
+        IsActive BIT NOT NULL DEFAULT 1,
+        SortOrder INT NOT NULL DEFAULT 0,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT UQ_Warehouses_Code UNIQUE (Code)
+    );
+    CREATE INDEX IX_Warehouses_IsDefault ON Warehouses (IsDefault);
+END
+GO
+
+-- Seed de depositos pedidos por el usuario: '9 de abril' (default) y 'Full'.
+IF NOT EXISTS (SELECT * FROM Warehouses WHERE Code = '9DEABRIL')
+    INSERT INTO Warehouses (Code, Name, IsDefault, IsActive, SortOrder, Notes)
+    VALUES ('9DEABRIL', N'9 de abril', 1, 1, 1, N'Deposito principal. Por default toda la mercaderia se ubica aca.');
+IF NOT EXISTS (SELECT * FROM Warehouses WHERE Code = 'FULL')
+    INSERT INTO Warehouses (Code, Name, IsDefault, IsActive, SortOrder, Notes)
+    VALUES ('FULL', N'Full', 0, 1, 2, N'Deposito Full (MercadoLibre / fulfillment).');
+GO
+
+-- Movimientos de stock: log de cada ajuste manual hecho desde "Modificacion de stock".
+-- Tipo: 'ajuste' (cambia el stock al valor indicado), 'ingreso' (suma), 'egreso' (resta),
+-- 'venta' (descuento por venta), 'devolucion', 'rotura', 'merma', etc. — texto libre por ahora.
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='StockMovements' AND xtype='U')
+BEGIN
+    CREATE TABLE StockMovements (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        ProductId INT NOT NULL,
+        WarehouseId INT NOT NULL,
+        MovementType NVARCHAR(30) NOT NULL,    -- 'ingreso', 'egreso', 'ajuste', 'rotura', 'merma', 'devolucion', 'conteo', 'otro'
+        DeltaQuantity INT NOT NULL,             -- positivo (entra) o negativo (sale)
+        StockBefore INT NOT NULL,
+        StockAfter INT NOT NULL,
+        Reason NVARCHAR(150) NULL,              -- motivo corto (texto)
+        Notes NVARCHAR(500) NULL,               -- detalle opcional
+        OperatorName NVARCHAR(100) NULL,        -- quien lo hizo (operador del sistema)
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        CONSTRAINT FK_StockMovements_Product FOREIGN KEY (ProductId) REFERENCES Products(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_StockMovements_Warehouse FOREIGN KEY (WarehouseId) REFERENCES Warehouses(Id) ON DELETE NO ACTION
+    );
+    CREATE INDEX IX_StockMovements_ProductId ON StockMovements (ProductId);
+    CREATE INDEX IX_StockMovements_WarehouseId ON StockMovements (WarehouseId);
+    CREATE INDEX IX_StockMovements_CreatedAt ON StockMovements (CreatedAt);
+END
+GO
+
+-- Permiso para inventarios (admin lo recibe automatico via MenuDefinition).
+-- Pre-cargamos por las dudas para roles existentes.
+IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId = 1 AND MenuKey = 'modificacion-stock')
+    INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'modificacion-stock');
+IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId = 1 AND MenuKey = 'depositos')
+    INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'depositos');
+IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId = 1 AND MenuKey = 'movimientos-depositos')
+    INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'movimientos-depositos');
+IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId = 1 AND MenuKey = 'import-productos')
+    INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'import-productos');
+IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId = 1 AND MenuKey = 'actualizacion-stock')
+    INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'actualizacion-stock');
+GO
+
 -- Clients (clientes)
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Clients' AND xtype='U')
 BEGIN

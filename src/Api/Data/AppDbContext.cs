@@ -23,6 +23,8 @@ public class AppDbContext : DbContext
     public DbSet<CustomerTier> CustomerTiers => Set<CustomerTier>();
     public DbSet<ProductPriceOverride> ProductPriceOverrides => Set<ProductPriceOverride>();
     public DbSet<ProductStockBatch> ProductStockBatches => Set<ProductStockBatch>();
+    public DbSet<Warehouse> Warehouses => Set<Warehouse>();
+    public DbSet<StockMovement> StockMovements => Set<StockMovement>();
     public DbSet<Sale> Sales => Set<Sale>();
     public DbSet<SaleItem> SaleItems => Set<SaleItem>();
     public DbSet<TreasuryAccount> TreasuryAccounts => Set<TreasuryAccount>();

@@ -236,6 +236,22 @@ public class ApiClient
     public async Task<bool> DeleteProductPriceOverrideAsync(int productId, int tierId)
         => await DeleteAsync($"/api/customer-tiers/price-override/{productId}/{tierId}");
 
+    // --- Inventory: depositos + ajustes de stock ---
+    public async Task<List<WarehouseDto>?> GetWarehousesAsync()
+        => await GetAsync<List<WarehouseDto>>("/api/inventory/warehouses");
+
+    public async Task<StockMovementDto?> AdjustStockAsync(AdjustStockRequest request)
+        => await PostAsync<StockMovementDto>("/api/inventory/stock-adjust", request);
+
+    public async Task<List<StockMovementDto>?> GetStockMovementsAsync(int? productId = null, int? warehouseId = null, int take = 50)
+    {
+        var qs = new List<string>();
+        if (productId.HasValue) qs.Add($"productId={productId.Value}");
+        if (warehouseId.HasValue) qs.Add($"warehouseId={warehouseId.Value}");
+        qs.Add($"take={take}");
+        return await GetAsync<List<StockMovementDto>>("/api/inventory/movements?" + string.Join("&", qs));
+    }
+
     // --- Sales (ventas / comprobantes) ---
     public async Task<List<SaleDto>?> GetSalesAsync()
         => await GetAsync<List<SaleDto>>("/api/sales");

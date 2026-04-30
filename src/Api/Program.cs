@@ -112,6 +112,7 @@ builder.Services.AddScoped<ClientService>();
 builder.Services.AddScoped<CustomerTierService>();
 builder.Services.AddScoped<ComboService>();
 builder.Services.AddScoped<StockBatchService>();
+builder.Services.AddScoped<StockMovementService>();
 builder.Services.AddScoped<SaleService>();
 builder.Services.AddScoped<TreasuryService>();
 builder.Services.AddScoped<EmployeeService>();

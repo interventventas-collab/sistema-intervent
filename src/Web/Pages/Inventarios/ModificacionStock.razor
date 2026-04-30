@@ -1,32 +1,409 @@
 @page "/modificacion-stock"
 @attribute [Authorize]
-@inject NavigationManager Navigation
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject OperatorService Operator
 
 <div class="card">
-    <div class="card-header">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
         <h3>📊 Modificación de stock</h3>
+        @if (warehouses is not null && warehouses.Count > 0)
+        {
+            <div style="font-size: 0.85rem; color: #6b7280;">
+                Depósitos: @string.Join(" · ", warehouses.Select(w => $"{w.Name}{(w.IsDefault ? " (default)" : "")}"))
+            </div>
+        }
     </div>
     <div class="card-body">
-        <div style="background: #fef3c7; border: 1px solid #fbbf24; color: #92400e; padding: 1rem 1.25rem; border-radius: 8px; margin-bottom: 1rem;">
-            <strong>🚧 Sección en desarrollo</strong>
-            <p style="margin: 0.5rem 0 0; font-size: 0.9rem;">
-                Mientras tanto, podés modificar el stock de cada producto desde la
-                pantalla de <a href="/productos" style="color: #2563eb; text-decoration: underline;">Productos</a>:
-                editás el producto y cambiás el campo "Stock" directamente, o usás los candaditos
-                inline si tenés permiso de OSMAR.
-            </p>
+        <div style="background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; padding: 0.7rem 0.9rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.85rem;">
+            💡 Buscá un producto por SKU o nombre, elegí el depósito, indicá el ajuste y el motivo.
+            Cada cambio queda registrado con quién lo hizo y cuándo.
         </div>
 
-        <h4 style="margin: 0 0 0.5rem;">¿Qué va a hacer esta sección cuando esté lista?</h4>
-        <ul style="font-size: 0.92rem; line-height: 1.7;">
-            <li><strong>Ajuste manual de stock</strong> con motivo (rotura, merma, conteo físico, recepción, devolución, etc).</li>
-            <li><strong>Historial de movimientos</strong>: cada cambio queda registrado con quién lo hizo, cuándo y por qué.</li>
-            <li><strong>Búsqueda rápida</strong> por SKU o código de barras (escaneás y ajustás).</li>
-            <li><strong>Por depósito</strong> (cuando los depósitos estén implementados).</li>
-        </ul>
+        @* === Buscador de producto === *@
+        <div class="form-row" style="align-items: flex-end;">
+            <div class="form-group" style="flex: 4;">
+                <label class="form-label">Producto (SKU o nombre)</label>
+                <input class="form-input"
+                       list="modstock-products-list"
+                       value="@productSearchText"
+                       @oninput="OnSearchInput"
+                       @onchange="@(e => OnSearchPicked(e))"
+                       placeholder="Tipeá SKU o nombre y elegí del listado..." />
+                <datalist id="modstock-products-list">
+                    @if (products is not null)
+                    {
+                        @foreach (var p in products.Take(2000))
+                        {
+                            <option value="@(p.Sku ?? "—") · @p.Title — Stock: @p.Stock"></option>
+                        }
+                    }
+                </datalist>
+            </div>
+            <div class="form-group" style="flex: 0;">
+                <label class="form-label" style="visibility: hidden;">.</label>
+                <button class="btn btn-secondary" @onclick="ClearSelection" disabled="@(selectedProduct is null)">Limpiar</button>
+            </div>
+        </div>
 
-        <button class="btn btn-primary" @onclick='() => Navigation.NavigateTo("/productos")'>
-            Ir a Productos
-        </button>
+        @* === Producto seleccionado === *@
+        @if (selectedProduct is not null)
+        {
+            <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 1rem 1.2rem; margin-top: 0.8rem;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem;">
+                    <div>
+                        <div style="font-size: 0.75rem; color: #6b7280;">@(selectedProduct.Sku ?? "—")</div>
+                        <div style="font-weight: 700; font-size: 1.05rem;">@selectedProduct.Title</div>
+                        @if (!string.IsNullOrEmpty(selectedProduct.BrandName))
+                        {
+                            <div style="font-size: 0.78rem; color: #6b7280;">Marca: @selectedProduct.BrandName</div>
+                        }
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="font-size: 0.7rem; color: #6b7280;">STOCK ACTUAL</div>
+                        <div style="font-size: 2rem; font-weight: 800; color: @(selectedProduct.Stock < (selectedProduct.CriticalStock) ? "#dc2626" : "#059669");">
+                            @selectedProduct.Stock
+                        </div>
+                        @if (selectedProduct.CriticalStock > 0)
+                        {
+                            <div style="font-size: 0.7rem; color: #6b7280;">crítico: @selectedProduct.CriticalStock</div>
+                        }
+                    </div>
+                </div>
+
+                <hr style="margin: 1rem 0; border: none; border-top: 1px solid #e5e7eb;" />
+
+                <h4 style="margin: 0 0 0.7rem; font-size: 0.95rem;">Registrar movimiento</h4>
+
+                @if (!string.IsNullOrEmpty(formError))
+                {
+                    <div class="form-error">@formError</div>
+                }
+
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Depósito</label>
+                        <select class="form-input" @bind="formWarehouseId">
+                            @if (warehouses is not null)
+                            {
+                                @foreach (var w in warehouses.Where(x => x.IsActive))
+                                {
+                                    <option value="@w.Id">@w.Name @(w.IsDefault ? "(default)" : "")</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Tipo de movimiento</label>
+                        <select class="form-input" @bind="formMovementType">
+                            <option value="ingreso">📥 Ingreso (suma)</option>
+                            <option value="egreso">📤 Egreso (resta)</option>
+                            <option value="ajuste">⚙️ Ajuste a valor exacto</option>
+                            <option value="conteo">📋 Conteo físico (a valor exacto)</option>
+                            <option value="rotura">💥 Rotura (resta)</option>
+                            <option value="merma">📉 Merma (resta)</option>
+                            <option value="devolucion">↩️ Devolución (suma)</option>
+                            <option value="otro">❓ Otro</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">
+                            @if (IsAbsoluteMode)
+                            {
+                                <span>Stock final (valor absoluto)</span>
+                            }
+                            else
+                            {
+                                <span>Cantidad @(IsNegativeMovement ? "a restar" : "a sumar")</span>
+                            }
+                        </label>
+                        <input type="number" min="0" step="1" class="form-input" @bind="formQuantity" style="text-align: right; font-size: 1.1rem; font-weight: 700;" />
+                        @if (selectedProduct is not null)
+                        {
+                            <p style="font-size: 0.75rem; color: #6b7280; margin: 0.25rem 0 0;">
+                                Resultado: <strong>@selectedProduct.Stock → @PreviewNewStock</strong>
+                                @if (PreviewNewStock < 0)
+                                {
+                                    <span style="color: #dc2626; font-weight: 700;"> (queda negativo)</span>
+                                }
+                            </p>
+                        }
+                    </div>
+                    <div class="form-group" style="flex: 2;">
+                        <label class="form-label">Motivo (opcional)</label>
+                        <input class="form-input" @bind="formReason" placeholder="Ej: conteo de fin de mes, rotura por traslado, etc." />
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Notas extra (opcional)</label>
+                    <textarea class="form-input" rows="2" @bind="formNotes" placeholder="Detalles adicionales si hace falta"></textarea>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+                    <button class="btn btn-secondary" @onclick="() => ResetForm(false)" disabled="@isSaving">Limpiar</button>
+                    <button class="btn btn-primary" @onclick="Save" disabled="@(isSaving || formQuantity < 0)">
+                        @(isSaving ? "Guardando..." : "💾 Aplicar movimiento")
+                    </button>
+                </div>
+            </div>
+        }
     </div>
 </div>
+
+@* === Historial de movimientos === *@
+<div class="card" style="margin-top: 1rem;">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3>🕓 Historial de movimientos</h3>
+        @if (selectedProduct is not null)
+        {
+            <button class="btn btn-secondary" style="font-size: 0.8rem;" @onclick="() => ToggleFilterByProduct()">
+                @(filterByProduct ? "Ver todos" : $"Solo de {selectedProduct.Sku ?? selectedProduct.Title}")
+            </button>
+        }
+    </div>
+    <div class="card-body" style="padding: 0;">
+        @if (movements is null)
+        {
+            <p class="text-muted" style="padding: 1rem;">Cargando...</p>
+        }
+        else if (movements.Count == 0)
+        {
+            <p class="text-muted" style="padding: 1rem;">No hay movimientos registrados todavía.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 130px;">Fecha</th>
+                            <th>Producto</th>
+                            <th style="width: 110px;">Depósito</th>
+                            <th style="width: 100px;">Tipo</th>
+                            <th style="width: 80px; text-align: right;">Δ</th>
+                            <th style="width: 110px; text-align: right;">Antes → Después</th>
+                            <th>Motivo</th>
+                            <th style="width: 100px;">Operador</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var m in movements)
+                        {
+                            <tr>
+                                <td style="font-size: 0.78rem; color: #6b7280;">@m.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                                <td>
+                                    <div style="font-weight: 600;">@(m.ProductSku ?? "—")</div>
+                                    <div style="font-size: 0.78rem; color: #6b7280;">@m.ProductTitle</div>
+                                </td>
+                                <td><span style="display:inline-block; padding:0.15rem 0.45rem; background:#f3f4f6; color:#374151; border-radius:999px; font-size:0.7rem; font-weight:600;">@m.WarehouseName</span></td>
+                                <td><span style="font-size: 0.78rem;">@MovementTypeLabel(m.MovementType)</span></td>
+                                <td style="text-align: right; font-weight: 700; color: @(m.DeltaQuantity > 0 ? "#059669" : (m.DeltaQuantity < 0 ? "#dc2626" : "#6b7280"));">
+                                    @(m.DeltaQuantity > 0 ? "+" : "")@m.DeltaQuantity
+                                </td>
+                                <td style="text-align: right; font-size: 0.85rem;">@m.StockBefore → <strong>@m.StockAfter</strong></td>
+                                <td style="font-size: 0.82rem;">
+                                    @(m.Reason ?? "")
+                                    @if (!string.IsNullOrEmpty(m.Notes))
+                                    {
+                                        <div style="font-size: 0.72rem; color: #6b7280;">@m.Notes</div>
+                                    }
+                                </td>
+                                <td style="font-size: 0.78rem; color: #6b7280;">@(m.OperatorName ?? "—")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private List<WarehouseDto>? warehouses;
+    private List<ProductDto>? products;
+    private List<StockMovementDto>? movements;
+
+    private string productSearchText = "";
+    private ProductDto? selectedProduct;
+    private bool filterByProduct;
+
+    private int formWarehouseId;
+    private string formMovementType = "ingreso";
+    private int formQuantity;
+    private string formReason = "";
+    private string formNotes = "";
+    private bool isSaving;
+    private string? formError;
+
+    // Para "ajuste" / "conteo": Quantity es valor absoluto. Para los demas: cantidad a sumar/restar.
+    private bool IsAbsoluteMode => formMovementType is "ajuste" or "conteo";
+    private bool IsNegativeMovement => formMovementType is "egreso" or "rotura" or "merma" or "otro";
+
+    private int PreviewNewStock
+    {
+        get
+        {
+            if (selectedProduct is null) return 0;
+            if (IsAbsoluteMode) return formQuantity;
+            return selectedProduct.Stock + (IsNegativeMovement ? -formQuantity : formQuantity);
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try { warehouses = await Api.GetWarehousesAsync() ?? new(); }
+        catch { warehouses = new(); ToastService.Error("No se pudieron cargar los depósitos"); }
+
+        try
+        {
+            var all = await Api.GetProductsAsync() ?? new();
+            // Productos vendibles (no padres con derivados, no servicios)
+            products = all.Where(p => p.IsActive && p.DerivedCount == 0 && !p.IsService)
+                .OrderBy(p => p.Sku ?? "").ThenBy(p => p.Title).ToList();
+        }
+        catch { products = new(); }
+
+        // Default: el deposito principal
+        if (formWarehouseId == 0 && warehouses is not null && warehouses.Count > 0)
+        {
+            formWarehouseId = warehouses.FirstOrDefault(w => w.IsDefault)?.Id ?? warehouses[0].Id;
+        }
+
+        await LoadMovements();
+    }
+
+    private async Task LoadMovements()
+    {
+        try
+        {
+            int? pid = filterByProduct && selectedProduct is not null ? selectedProduct.Id : null;
+            movements = await Api.GetStockMovementsAsync(pid) ?? new();
+        }
+        catch { movements = new(); }
+    }
+
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        productSearchText = e.Value?.ToString() ?? "";
+        // No re-asignar selectedProduct mientras tipea — esperar que elija del datalist
+    }
+
+    private async Task OnSearchPicked(ChangeEventArgs e)
+    {
+        productSearchText = e.Value?.ToString() ?? "";
+        if (string.IsNullOrWhiteSpace(productSearchText) || products is null)
+        {
+            selectedProduct = null;
+            return;
+        }
+        // Match por value exacto del datalist
+        var match = products.FirstOrDefault(p =>
+            string.Equals($"{(p.Sku ?? "—")} · {p.Title} — Stock: {p.Stock}", productSearchText, StringComparison.OrdinalIgnoreCase));
+        if (match is null)
+        {
+            // Fallback: SKU exacto
+            match = products.FirstOrDefault(p =>
+                !string.IsNullOrEmpty(p.Sku) &&
+                string.Equals(p.Sku, productSearchText.Trim(), StringComparison.OrdinalIgnoreCase));
+        }
+        selectedProduct = match;
+        if (selectedProduct is not null)
+        {
+            ResetForm(keepProduct: true);
+            await LoadMovements();
+        }
+    }
+
+    private void ClearSelection()
+    {
+        selectedProduct = null;
+        productSearchText = "";
+        ResetForm();
+    }
+
+    private void ResetForm(bool keepProduct = false)
+    {
+        formMovementType = "ingreso";
+        formQuantity = 0;
+        formReason = "";
+        formNotes = "";
+        formError = null;
+        if (warehouses is not null && warehouses.Count > 0)
+            formWarehouseId = warehouses.FirstOrDefault(w => w.IsDefault)?.Id ?? warehouses[0].Id;
+        if (!keepProduct) selectedProduct = null;
+    }
+
+    private async Task Save()
+    {
+        formError = null;
+        if (selectedProduct is null) { formError = "Elegí un producto primero"; return; }
+        if (formWarehouseId == 0) { formError = "Elegí un depósito"; return; }
+        if (formQuantity < 0) { formError = "La cantidad no puede ser negativa (usá el tipo de movimiento para indicar dirección)"; return; }
+
+        isSaving = true;
+        try
+        {
+            var saved = await Api.AdjustStockAsync(new AdjustStockRequest
+            {
+                ProductId = selectedProduct.Id,
+                WarehouseId = formWarehouseId,
+                MovementType = formMovementType,
+                Quantity = formQuantity,
+                Reason = string.IsNullOrWhiteSpace(formReason) ? null : formReason,
+                Notes = string.IsNullOrWhiteSpace(formNotes) ? null : formNotes,
+                OperatorName = Operator.Current
+            });
+
+            if (saved is null) { formError = "No se pudo aplicar el movimiento"; return; }
+
+            ToastService.Success($"Stock actualizado: {saved.StockBefore} → {saved.StockAfter}");
+            // Refrescar el stock del producto seleccionado en memoria
+            selectedProduct.Stock = saved.StockAfter;
+
+            ResetForm(keepProduct: true);
+            await LoadMovements();
+            // Refrescar el listado de productos (para que el datalist refleje el nuevo stock)
+            await RefreshProductsListSilently();
+        }
+        catch (Exception ex) { formError = "Error: " + ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private async Task RefreshProductsListSilently()
+    {
+        try
+        {
+            var all = await Api.GetProductsAsync() ?? new();
+            products = all.Where(p => p.IsActive && p.DerivedCount == 0 && !p.IsService)
+                .OrderBy(p => p.Sku ?? "").ThenBy(p => p.Title).ToList();
+        }
+        catch { /* silencioso */ }
+    }
+
+    private async Task ToggleFilterByProduct()
+    {
+        filterByProduct = !filterByProduct;
+        await LoadMovements();
+    }
+
+    private static string MovementTypeLabel(string type) => type switch
+    {
+        "ingreso" => "📥 Ingreso",
+        "egreso" => "📤 Egreso",
+        "ajuste" => "⚙️ Ajuste",
+        "conteo" => "📋 Conteo",
+        "rotura" => "💥 Rotura",
+        "merma" => "📉 Merma",
+        "devolucion" => "↩️ Devolución",
+        _ => "❓ Otro"
+    };
+}
