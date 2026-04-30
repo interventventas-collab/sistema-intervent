@@ -70,14 +70,28 @@ public class ProductsController : ControllerBase
     }
 
     [HttpPost("bulk-import-by-oem")]
-    public async Task<IActionResult> BulkImportByOem(IFormFile file, [FromQuery] bool createIfMissing = true)
+    public async Task<IActionResult> BulkImportByOem(IFormFile file,
+        [FromQuery] bool createIfMissing = true,
+        [FromQuery] bool loadAsInactive = false)
     {
         if (file is null || file.Length == 0) return BadRequest(new { error = "Subi un archivo .xlsx" });
         try
         {
             using var stream = file.OpenReadStream();
-            var result = await _import.ImportProductsByOemAsync(stream, createIfMissing);
+            var result = await _import.ImportProductsByOemAsync(stream, createIfMissing, loadAsInactive);
             return Ok(result);
+        }
+        catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    /// <summary>Re-vincula publicaciones ML huerfanas a productos con SKU u OEM coincidente.</summary>
+    [HttpPost("relink-meli-orphans")]
+    public async Task<IActionResult> RelinkMeliOrphans()
+    {
+        try
+        {
+            var report = await _import.RelinkOrphanMeliItemsExactAsync();
+            return Ok(report);
         }
         catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
     }

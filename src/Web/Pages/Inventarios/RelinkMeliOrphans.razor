@@ -1,0 +1,109 @@
+@page "/relink-meli-orphans"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div class="card">
+    <div class="card-header">
+        <h3>🔁 Re-vincular publicaciones ML huérfanas</h3>
+    </div>
+    <div class="card-body">
+        <div style="background: #eff6ff; border: 1px solid #93c5fd; padding: 0.8rem 1rem; border-radius: 8px; margin-bottom: 1rem; font-size: 0.88rem; line-height: 1.55;">
+            <strong>💡 Qué hace este proceso</strong>
+            <p style="margin: 0.4rem 0 0;">
+                Recorre todas las publicaciones de Mercado Libre que no tienen producto vinculado
+                (<code>ProductId = NULL</code>) y trata de engancharlas con productos del sistema usando
+                <strong>matcheo exacto</strong>:
+            </p>
+            <ol style="margin: 0.5rem 0 0; padding-left: 1.4rem;">
+                <li>Primero por <strong>SKU</strong>: <code>Product.Sku == MeliItem.SellerSku</code> (case-insensitive).</li>
+                <li>Si no hay match por SKU, intenta por <strong>OEM</strong>: <code>Product.OemCode == MeliItem.SellerSku</code>.</li>
+            </ol>
+            <p style="margin: 0.5rem 0 0;">
+                Solo vincula si hay <strong>un único producto candidato</strong>. Si hay ambigüedad, queda huérfana.
+                Combos como <code>C9335GRX2</code> NO se enganchan al individual <code>C9335GR</code> (igualdad estricta).
+            </p>
+        </div>
+
+        <div style="background: #fef3c7; border: 1px solid #fbbf24; padding: 0.7rem 1rem; border-radius: 8px; margin-bottom: 1rem; font-size: 0.85rem;">
+            <strong>⚠ Pre-requisito</strong>
+            <p style="margin: 0.4rem 0 0;">
+                Si recientemente sincronizaste con Mercado Libre, las publicaciones ya están en el sistema.
+                Si todavía no sincronizaste, hacelo desde <strong>Mercado Libre → Sincronizar publicaciones</strong> primero.
+                Sin sincronizar, no hay nada que vincular.
+            </p>
+        </div>
+
+        <div style="display: flex; gap: 0.6rem; align-items: center; margin-bottom: 1rem;">
+            <button class="btn btn-primary" @onclick="DoRelink" disabled="@isWorking" style="background: #059669; border-color: #059669;">
+                @(isWorking ? "⏳ Re-vinculando..." : "🔁 Ejecutar re-vinculación")
+            </button>
+            @if (lastReport is not null && !isWorking)
+            {
+                <span style="font-size: 0.82rem; color: #6b7280;">Última corrida finalizada.</span>
+            }
+        </div>
+
+        @if (lastReport is not null)
+        {
+            var totalLinked = lastReport.LinkedBySku + lastReport.LinkedByOem;
+            <div style="background: @(totalLinked > 0 ? "#dcfce7" : "#f3f4f6"); border: 1px solid @(totalLinked > 0 ? "#16a34a" : "#d1d5db"); padding: 0.9rem 1.1rem; border-radius: 8px; font-size: 0.9rem;">
+                <strong>📊 Resultado</strong>
+                <table style="margin-top: 0.6rem; width: 100%; max-width: 460px;">
+                    <tr>
+                        <td>Vinculadas por <strong>SKU exacto</strong>:</td>
+                        <td style="text-align: right; font-weight: 700; color: #15803d;">@lastReport.LinkedBySku</td>
+                    </tr>
+                    <tr>
+                        <td>Vinculadas por <strong>OEM exacto</strong>:</td>
+                        <td style="text-align: right; font-weight: 700; color: #15803d;">@lastReport.LinkedByOem</td>
+                    </tr>
+                    <tr>
+                        <td>Total nuevas vinculaciones:</td>
+                        <td style="text-align: right; font-weight: 800; color: #047857;">@totalLinked</td>
+                    </tr>
+                    <tr>
+                        <td>Publicaciones que quedaron huérfanas:</td>
+                        <td style="text-align: right; font-weight: 700; color: @(lastReport.RemainingOrphans > 0 ? "#92400e" : "#15803d");">@lastReport.RemainingOrphans</td>
+                    </tr>
+                </table>
+                @if (lastReport.RemainingOrphans > 0)
+                {
+                    <p style="margin: 0.7rem 0 0; font-size: 0.82rem; color: #92400e;">
+                        Las @lastReport.RemainingOrphans huérfanas restantes son publicaciones cuyo SellerSku no matchea con ningún SKU u OEM del sistema
+                        (ej: combos, packs, productos no cargados todavía). Las podés vincular a mano desde la pantalla de la publicación,
+                        o crear el producto correspondiente y volver a correr este proceso.
+                    </p>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private bool isWorking;
+    private RelinkOrphansReportDto? lastReport;
+
+    private async Task DoRelink()
+    {
+        isWorking = true;
+        try
+        {
+            lastReport = await Api.RelinkMeliOrphansAsync();
+            if (lastReport is null)
+            {
+                ToastService.Error("No pude correr la re-vinculación.");
+            }
+            else
+            {
+                var total = lastReport.LinkedBySku + lastReport.LinkedByOem;
+                if (total > 0)
+                    ToastService.Success($"✓ {total} publicaciones re-vinculadas");
+                else
+                    ToastService.Info("No se encontraron nuevas vinculaciones posibles.");
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { isWorking = false; }
+    }
+}

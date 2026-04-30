@@ -970,6 +970,12 @@ public class ApiClient
         return await PostAsync<WhatsAppSendResultDto>("/api/whatsapp/send", new { phone, message });
     }
 
+    /// <summary>Re-vincula publicaciones ML huerfanas a productos por SKU u OEM exacto.</summary>
+    public async Task<RelinkOrphansReportDto?> RelinkMeliOrphansAsync()
+    {
+        return await PostAsync<RelinkOrphansReportDto>("/api/products/relink-meli-orphans", new { });
+    }
+
     public async Task<List<WhatsAppSendResultDto>?> SendWhatsAppTestBulkAsync(IEnumerable<string> phones)
     {
         var appName = "AI-ML";

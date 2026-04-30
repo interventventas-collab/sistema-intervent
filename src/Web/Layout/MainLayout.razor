@@ -99,6 +99,8 @@
                              IsActive="@IsActive("/import-productos")" OnClick="@(() => NavigateTo("/import-productos"))" />
                     <NavItem Href="/import-precios-oem" Label="Importar precios por OEM" Icon="@SvgIcons.Folder"
                              IsActive="@IsActive("/import-precios-oem")" OnClick="@(() => NavigateTo("/import-precios-oem"))" />
+                    <NavItem Href="/relink-meli-orphans" Label="Re-vincular publicaciones ML" Icon="@SvgIcons.Refresh"
+                             IsActive="@IsActive("/relink-meli-orphans")" OnClick="@(() => NavigateTo("/relink-meli-orphans"))" />
                 }
                 @if (HasPerm("actualizacion-stock"))
                 {

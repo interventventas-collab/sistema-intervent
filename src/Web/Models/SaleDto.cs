@@ -114,6 +114,13 @@ public class UpdateSaleRequest
     public string? VendedorName { get; set; }
 }
 
+public class RelinkOrphansReportDto
+{
+    public int LinkedBySku { get; set; }
+    public int LinkedByOem { get; set; }
+    public int RemainingOrphans { get; set; }
+}
+
 public class TopProductByClientDto
 {
     public int ProductId { get; set; }

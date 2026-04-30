@@ -304,18 +304,21 @@ public class BulkImportService
     public byte[] BuildProductsByOemTemplate() => BuildTemplate("Productos por OEM", new[]
     {
         ("codigo_oem", "8733 (codigo del proveedor — clave de matching)"),
-        ("titulo", "Cajonera en Torre x 3 Grande"),
+        ("sku_interno", "C8733BL (opcional — si lo llenas, ese sera el SKU del producto. Vacio = usa el OEM)"),
+        ("titulo", "Cajonera en Torre x 3 Grande Blanca"),
         ("marca", "Colombraro (nombre exacto)"),
         ("precio_costo", "35501.25 (SIN IVA)"),
         ("precio_venta", "65719.01 (SIN IVA, opcional)"),
         ("precio_venta_con_iva", "79520.00 (CON IVA, opcional — si lo llenas, ignora precio_venta)"),
         ("iva", "21"),
         ("codigo_de_barras", "7790733087333 (opcional)"),
-        ("stock", "5 (opcional, solo si crea nuevo)"),
         ("stock_critico", "2 (opcional)")
     });
 
-    public async Task<BulkImportResult> ImportProductsByOemAsync(Stream excelStream, bool createIfMissing = true)
+    public async Task<BulkImportResult> ImportProductsByOemAsync(
+        Stream excelStream,
+        bool createIfMissing = true,
+        bool loadAsInactive = false)
     {
         var (headers, rows) = ReadSheet(excelStream);
         int created = 0, updated = 0, skipped = 0;
@@ -374,15 +377,18 @@ public class BulkImportService
                     retailFromExcel = pvpSinIva.Value;
                 }
 
-                var stock = ParseInt(Cell(row, headers, "stock"));
                 var stockCritico = ParseInt(Cell(row, headers, "stock_critico"));
                 var barcode = Nz(Cell(row, headers, "codigo_de_barras"));
+                // SKU interno: prioridad 'sku_interno' > 'sku' > el OEM mismo.
+                var skuInterno = Nz(Cell(row, headers, "sku_interno")) ?? Nz(Cell(row, headers, "sku")) ?? oem;
 
                 var existingIds = productsByOem.GetValueOrDefault(oem.ToLowerInvariant(), new List<int>());
 
                 if (existingIds.Count > 0)
                 {
-                    // Update — propagar cambios a TODOS los productos con ese OEM
+                    // Update — propagar cambios a TODOS los productos con ese OEM.
+                    // No tocamos: SKU (no queremos cambiar la identidad del producto),
+                    // ni stock, ni IsActive (cada producto tiene su estado).
                     foreach (var pid in existingIds)
                     {
                         await _products.UpdateAsync(pid, new UpdateProductRequest(
@@ -399,7 +405,7 @@ public class BulkImportService
                             RetailPrice: retailFromExcel,
                             VatRate: vatRate,
                             PurchaseAccount: null, SaleAccount: null, InventoryAccount: null,
-                            Stock: null,  // no tocar stock al actualizar precios
+                            Stock: null,
                             CriticalStock: stockCritico,
                             StockUnit: null,
                             IsActive: null,
@@ -428,7 +434,7 @@ public class BulkImportService
                         Title: title!,
                         DisplayName: null, Description: null,
                         Brand: brandName, Model: null,
-                        Sku: oem,        // por defecto usamos el OEM como SKU interno
+                        Sku: skuInterno,    // si vino 'sku_interno' lo usa; sino el OEM
                         Barcode: barcode,
                         OemCode: oem,
                         ImageUrl: null, Photo1: null, Photo2: null, Photo3: null,
@@ -436,7 +442,7 @@ public class BulkImportService
                         RetailPrice: retailFromExcel ?? 0m,
                         VatRate: vatRate,
                         PurchaseAccount: null, SaleAccount: null, InventoryAccount: null,
-                        Stock: stock ?? 0,
+                        Stock: 0,                  // siempre 0 al crear; el stock entra por "Modificacion de stock"
                         CriticalStock: stockCritico ?? 0,
                         StockUnit: "unidad",
                         BaseProductId: null,
@@ -449,8 +455,26 @@ public class BulkImportService
                     ));
                     if (result is not null)
                     {
+                        // Si pidieron carga inactiva, marcamos IsActive=false en un segundo paso
+                        // (CreateOrUpdateAsync siempre crea Active=true).
+                        if (loadAsInactive)
+                        {
+                            await _products.UpdateAsync(result.Product.Id, new UpdateProductRequest(
+                                Title: null, DisplayName: null, Description: null,
+                                Brand: null, Model: null, Sku: null, Barcode: null, OemCode: null,
+                                ImageUrl: null, Photo1: null, Photo2: null, Photo3: null,
+                                CostPrice: null, RetailPrice: null, VatRate: null,
+                                PurchaseAccount: null, SaleAccount: null, InventoryAccount: null,
+                                Stock: null, CriticalStock: null, StockUnit: null,
+                                IsActive: false,
+                                BaseProductId: null, ClearBaseProduct: null,
+                                BrandId: null, ClearBrand: null,
+                                IsBase: null, IsService: null,
+                                UnitsPerPack: null, ClearUnitsPerPack: null,
+                                Fraction: null, MarkupAmount: null
+                            ));
+                        }
                         created++;
-                        // Indexar para que filas posteriores con el mismo OEM lo encuentren
                         if (!productsByOem.ContainsKey(oem.ToLowerInvariant()))
                             productsByOem[oem.ToLowerInvariant()] = new List<int>();
                         productsByOem[oem.ToLowerInvariant()].Add(result.Product.Id);
@@ -466,42 +490,71 @@ public class BulkImportService
             catch (Exception ex) { errors.Add(new BulkImportError(rowNum, ex.Message)); }
         }
 
-        // Auto-relink: si quedaron MeliItems sin producto y existe la tabla temporal de
-        // mapping, intentamos re-vincularlos por OEM ahora.
-        try
+        // Auto-relink solo cuando NO es carga inactiva. Si los productos vienen inactivos,
+        // los SKUs aun no son los definitivos — re-vincular ahora puede asociar mal.
+        if (!loadAsInactive)
         {
-            var relinked = await RelinkOrphanMeliItemsByOemAsync();
-            if (relinked > 0)
-                warnings.Add(new BulkImportWarning(0, $"Re-vinculadas {relinked} publicacion(es) de MercadoLibre por OEM."));
+            try
+            {
+                var report = await RelinkOrphanMeliItemsExactAsync();
+                var total = report.LinkedBySku + report.LinkedByOem;
+                if (total > 0)
+                    warnings.Add(new BulkImportWarning(0,
+                        $"Re-vinculadas {total} publicaciones de ML ({report.LinkedBySku} por SKU exacto, {report.LinkedByOem} por OEM exacto). Quedaron {report.RemainingOrphans} huerfanas."));
+            }
+            catch { /* silencioso */ }
         }
-        catch { /* tabla temporal no existe — ok */ }
 
         return new BulkImportResult(rows.Count, created, updated, skipped, errors, warnings);
     }
 
     /// <summary>
-    /// Recorre la tabla temporal _temp_meli_colombraro_map (creada antes de un borrado masivo)
-    /// y para cada MeliItem huerfano busca en Products por OemCode = InferredOemCode. Si encuentra
-    /// match, le pone el ProductId. Devuelve cuantos vinculo. Es seguro llamar varias veces.
+    /// Re-vincula publicaciones ML huerfanas (ProductId IS NULL) usando matcheo exacto:
+    /// 1) Pasada A: Product.Sku == MeliItem.Sku (case-insensitive, trim) — solo si UN unico producto matchea.
+    /// 2) Pasada B: Product.OemCode == MeliItem.Sku — idem (sobre las que quedaron huerfanas).
+    /// Combos como 'C9335GRX2' no matchean a 'C9335GR' porque exigimos igualdad exacta.
+    /// Es seguro llamar varias veces (idempotente).
     /// </summary>
-    private async Task<int> RelinkOrphanMeliItemsByOemAsync()
+    public class RelinkReport
     {
-        // Verificar que la tabla auxiliar exista
-        var exists = await _db.Database.SqlQueryRaw<int>(
-            "SELECT COUNT(*) AS Value FROM sys.objects WHERE name = '_temp_meli_colombraro_map' AND type = 'U'"
-        ).FirstOrDefaultAsync();
-        if (exists == 0) return 0;
+        public int LinkedBySku { get; set; }
+        public int LinkedByOem { get; set; }
+        public int RemainingOrphans { get; set; }
+    }
 
-        var sql = @"
+    public async Task<RelinkReport> RelinkOrphanMeliItemsExactAsync()
+    {
+        // Pasada A: match exacto por SKU
+        var sqlBySku = @"
         UPDATE mi
            SET ProductId = p.Id
           FROM MeliItems mi
-          JOIN dbo._temp_meli_colombraro_map t ON t.MeliItemDbId = mi.Id
-          JOIN Products p ON p.OemCode = t.InferredOemCode
-         WHERE mi.ProductId IS NULL;
+          JOIN Products p ON LOWER(LTRIM(RTRIM(p.Sku))) = LOWER(LTRIM(RTRIM(mi.Sku)))
+         WHERE mi.ProductId IS NULL
+           AND mi.Sku IS NOT NULL AND LTRIM(RTRIM(mi.Sku)) <> ''
+           AND p.Sku IS NOT NULL AND LTRIM(RTRIM(p.Sku)) <> ''
+           AND (SELECT COUNT(*) FROM Products px
+                 WHERE LOWER(LTRIM(RTRIM(px.Sku))) = LOWER(LTRIM(RTRIM(mi.Sku)))) = 1;
         SELECT @@ROWCOUNT AS Value;";
-        var n = await _db.Database.SqlQueryRaw<int>(sql).FirstOrDefaultAsync();
-        return n;
+        var bySku = await _db.Database.SqlQueryRaw<int>(sqlBySku).FirstOrDefaultAsync();
+
+        // Pasada B: match exacto por OEM
+        var sqlByOem = @"
+        UPDATE mi
+           SET ProductId = p.Id
+          FROM MeliItems mi
+          JOIN Products p ON LOWER(LTRIM(RTRIM(p.OemCode))) = LOWER(LTRIM(RTRIM(mi.Sku)))
+         WHERE mi.ProductId IS NULL
+           AND mi.Sku IS NOT NULL AND LTRIM(RTRIM(mi.Sku)) <> ''
+           AND p.OemCode IS NOT NULL AND LTRIM(RTRIM(p.OemCode)) <> ''
+           AND (SELECT COUNT(*) FROM Products px
+                 WHERE LOWER(LTRIM(RTRIM(px.OemCode))) = LOWER(LTRIM(RTRIM(mi.Sku)))) = 1;
+        SELECT @@ROWCOUNT AS Value;";
+        var byOem = await _db.Database.SqlQueryRaw<int>(sqlByOem).FirstOrDefaultAsync();
+
+        var orphansLeft = await _db.MeliItems.CountAsync(m => m.ProductId == null);
+
+        return new RelinkReport { LinkedBySku = bySku, LinkedByOem = byOem, RemainingOrphans = orphansLeft };
     }
 
     private async Task<ProductUpsertResult?> CreateProductFromRow(
