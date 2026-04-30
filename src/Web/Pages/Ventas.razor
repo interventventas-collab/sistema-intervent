@@ -525,6 +525,28 @@
         .day-pill.on { background: #1f2937; color: white; border-color: #1f2937; }
         .comprobante-items th, .comprobante-items td { font-size: 0.82rem; padding: 0.3rem 0.4rem; }
 
+        /* Etiqueta vertical en el margen derecho con el nombre de quien cargo la venta */
+        .comprobante-vendedor-vertical {
+            position: absolute;
+            top: 0;
+            right: -2px;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            writing-mode: vertical-rl;
+            transform: rotate(180deg); /* texto se lee de abajo hacia arriba */
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: #9ca3af;
+            letter-spacing: 0.15rem;
+            text-transform: uppercase;
+            padding: 6mm 0;
+            pointer-events: none;
+            user-select: none;
+            z-index: 4;
+            white-space: nowrap;
+        }
+
         /* Filas de relleno: linea punteada simulando un formulario de papel.
            Garantizan que el comprobante siempre tenga una altura estable
            y el pie/firmas siempre queden cerca del fondo de la hoja. */
@@ -594,6 +616,13 @@
                 @if (viewerSale.IsPaid)
                 {
                     <div class="pagado-stamp">PAGADO</div>
+                }
+                @* Etiqueta vertical con el nombre de quien cargo la venta. Solo si tenemos vendedor. *@
+                @if (!string.IsNullOrWhiteSpace(viewerSale.VendedorName))
+                {
+                    <div class="comprobante-vendedor-vertical">
+                        Cargado por: @viewerSale.VendedorName
+                    </div>
                 }
                 <!-- Cabecera -->
                 <div style="border: 1px solid #d1d5db; padding: 0.75rem;">
