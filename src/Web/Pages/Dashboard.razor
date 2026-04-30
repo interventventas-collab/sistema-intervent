@@ -88,49 +88,54 @@
         <div style="font-size: 0.72rem; color: #6b7280;">@esTime.ToString("dddd dd/MM/yyyy", new System.Globalization.CultureInfo("es-ES"))</div>
     </div>
 
-    @* Contador de café FRIKAF — redondo, con imagen de fondo subible *@
-    <div class="cafe-frikaf-circle"
-         style="background-image: linear-gradient(rgba(255,255,255,0.55), rgba(255,255,255,0.85)), url('/api/branding/cafe-frikaf-bg?v=@bgVersion');">
-        @* Boton para subir / cambiar la imagen de fondo *@
-        <label class="cafe-frikaf-upload-btn" title="Cambiar imagen de fondo">
-            📷
-            <InputFile OnChange="OnCafeBgFilePicked" accept=".png,.jpg,.jpeg,.webp" style="display: none;" />
-        </label>
+    @* Balanza de café FRIKAF — circulo con imagen + labels abajo (estilo "balanza") *@
+    <div class="cafe-frikaf-balanza">
+        <div class="cafe-frikaf-circle"
+             style="background-image: linear-gradient(rgba(255,255,255,0.10), rgba(255,255,255,0.25)), url('/api/branding/cafe-frikaf-bg?v=@bgVersion');">
+            @* Boton para subir / cambiar la imagen de fondo *@
+            <label class="cafe-frikaf-upload-btn" title="Cambiar imagen de fondo">
+                📷
+                <InputFile OnChange="OnCafeBgFilePicked" accept=".png,.jpg,.jpeg,.webp" style="display: none;" />
+            </label>
 
-        <div class="cafe-frikaf-circle-content">
-            <div style="font-size: 0.78rem; font-weight: 700; color: #78350f; letter-spacing: 0.05rem;">
-                ☕ Café FRIKAF
+            <div class="cafe-frikaf-circle-content">
+                @if (coffeeKg is null)
+                {
+                    <div class="cafe-frikaf-loading">…</div>
+                }
+                else
+                {
+                    <div class="cafe-frikaf-kg-number">@FormatKg(coffeeKg.KgTotal)</div>
+                    <div class="cafe-frikaf-kg-unit">kg</div>
+                }
             </div>
-            @if (coffeeKg is null)
+
+            @if (cafeBgUploading)
             {
-                <div style="font-size: 0.95rem; color: #92400e; margin-top: 0.3rem;">Cargando...</div>
-            }
-            else
-            {
-                <div style="font-size: 1.85rem; font-weight: 800; color: #78350f; line-height: 1.1; margin-top: 0.15rem;">
-                    @FormatKg(coffeeKg.KgTotal)
-                </div>
-                <div style="font-size: 0.85rem; font-weight: 700; color: #78350f; line-height: 1; margin-top: -0.1rem;">
-                    kg
-                </div>
-                <div style="font-size: 0.62rem; color: #92400e; margin-top: 0.3rem; line-height: 1.1;">
-                    @coffeeKg.PeriodStart.ToString("MMMM yyyy", new System.Globalization.CultureInfo("es-AR"))
-                </div>
+                <div class="cafe-frikaf-uploading">Subiendo...</div>
             }
         </div>
 
-        @if (cafeBgUploading)
-        {
-            <div style="position: absolute; inset: 0; background: rgba(255,255,255,0.85); display: flex; align-items: center; justify-content: center; font-size: 0.78rem; color: #78350f; font-weight: 700; border-radius: 50%; text-align: center; padding: 0 0.5rem;">
-                Subiendo...
-            </div>
-        }
+        @* Labels abajo del circulo: BALANZA + mes/año *@
+        <div class="cafe-frikaf-balanza-label">BALANZA</div>
+        <div class="cafe-frikaf-balanza-period">
+            @if (coffeeKg is not null)
+            {
+                @coffeeKg.PeriodStart.ToString("MMMM yyyy", new System.Globalization.CultureInfo("es-AR")).ToUpper()
+            }
+        </div>
     </div>
 </div>
 
 <style>
-    .cafe-frikaf-circle {
+    .cafe-frikaf-balanza {
         flex: 0 0 180px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.3rem;
+    }
+    .cafe-frikaf-circle {
         width: 180px;
         height: 180px;
         border-radius: 50%;
@@ -139,8 +144,8 @@
         background-color: #fde68a;
         background-size: cover;
         background-position: center;
-        border: 3px solid #f59e0b;
-        box-shadow: 0 4px 12px rgba(120, 53, 15, 0.25);
+        border: 4px solid #f59e0b;
+        box-shadow: 0 6px 16px rgba(120, 53, 15, 0.35), inset 0 0 30px rgba(120, 53, 15, 0.15);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -150,7 +155,49 @@
         position: relative;
         z-index: 1;
         padding: 0 0.5rem;
-        max-width: 150px;
+    }
+    .cafe-frikaf-kg-number {
+        font-size: 2.6rem;
+        font-weight: 900;
+        color: #ffffff;
+        line-height: 1;
+        text-shadow: 2px 2px 6px rgba(0,0,0,0.7), 0 0 12px rgba(0,0,0,0.5);
+        letter-spacing: -0.03em;
+    }
+    .cafe-frikaf-kg-unit {
+        font-size: 1.05rem;
+        font-weight: 800;
+        color: #ffffff;
+        line-height: 1;
+        margin-top: 0.1rem;
+        text-shadow: 1px 1px 4px rgba(0,0,0,0.7);
+        letter-spacing: 0.05em;
+    }
+    .cafe-frikaf-loading {
+        font-size: 1.5rem;
+        color: #ffffff;
+        text-shadow: 1px 1px 3px rgba(0,0,0,0.7);
+    }
+    .cafe-frikaf-balanza-label {
+        font-size: 1.1rem;
+        font-weight: 800;
+        color: #1f2937;
+        letter-spacing: 0.15em;
+        margin-top: 0.4rem;
+    }
+    .cafe-frikaf-balanza-period {
+        font-size: 0.85rem;
+        font-weight: 700;
+        color: #4b5563;
+        letter-spacing: 0.1em;
+        margin-top: -0.15rem;
+    }
+    .cafe-frikaf-uploading {
+        position: absolute; inset: 0;
+        background: rgba(255,255,255,0.92);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 0.78rem; color: #78350f; font-weight: 700;
+        border-radius: 50%; text-align: center; padding: 0 0.5rem;
     }
     .cafe-frikaf-upload-btn {
         position: absolute;
