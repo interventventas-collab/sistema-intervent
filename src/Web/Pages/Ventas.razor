@@ -25,10 +25,44 @@
         }
         else
         {
+            @* Barra de acciones masivas — solo visible cuando hay seleccionadas *@
+            @if (selectedSaleIds.Count > 0)
+            {
+                <div style="background: #1e3a8a; color: white; padding: 0.6rem 1rem; display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; flex-wrap: wrap;">
+                    <div style="font-weight: 700;">
+                        ☑ <strong>@selectedSaleIds.Count</strong> venta@(selectedSaleIds.Count == 1 ? "" : "s") seleccionada@(selectedSaleIds.Count == 1 ? "" : "s")
+                        <span style="font-weight: 400; font-size: 0.82rem; margin-left: 0.5rem; opacity: 0.85;">
+                            Total: <strong>$@FormatPrice(sales.Where(x => selectedSaleIds.Contains(x.Id)).Sum(x => x.Total))</strong>
+                        </span>
+                    </div>
+                    <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                        <button class="btn" style="background: white; color: #1e3a8a; border: none; font-weight: 700;"
+                                @onclick="DownloadSelectedAsCsv">
+                            ⬇ Descargar CSV
+                        </button>
+                        @if (CanDelete)
+                        {
+                            <button class="btn" style="background: #b91c1c; color: white; border: none; font-weight: 700;"
+                                    @onclick="OpenBulkDeleteModal">
+                                🗑 Eliminar @selectedSaleIds.Count
+                            </button>
+                        }
+                        <button class="btn" style="background: rgba(255,255,255,0.15); color: white; border: 1px solid rgba(255,255,255,0.3);"
+                                @onclick="ClearSelection">
+                            Cancelar
+                        </button>
+                    </div>
+                </div>
+            }
             <div class="table-responsive">
                 <table class="data-table">
                     <thead>
                         <tr>
+                            <th style="width: 36px; text-align: center;">
+                                <input type="checkbox" title="Seleccionar todas"
+                                       checked="@AllVisibleSelected"
+                                       @onchange="ToggleSelectAll" />
+                            </th>
                             <th>Numero</th>
                             <th>Fecha</th>
                             <th>Cliente</th>
@@ -42,7 +76,12 @@
                     <tbody>
                         @foreach (var s in sales)
                         {
-                            <tr style="@(s.IsCancelled ? "opacity:0.55;text-decoration:line-through;" : "")">
+                            <tr style="@(s.IsCancelled ? "opacity:0.55;text-decoration:line-through;" : "") @(selectedSaleIds.Contains(s.Id) ? "background:#eff6ff;" : "")">
+                                <td style="text-align: center;">
+                                    <input type="checkbox"
+                                           checked="@selectedSaleIds.Contains(s.Id)"
+                                           @onchange="@(e => ToggleSelect(s.Id, (bool)(e.Value ?? false)))" />
+                                </td>
                                 <td style="font-family: monospace;">@s.Number</td>
                                 <td>@s.Date.ToString("dd/MM/yyyy")</td>
                                 <td>
@@ -319,6 +358,38 @@
                                 <button class="btn btn-secondary" @onclick="AddManualItem" style="white-space: nowrap;" title="Agregar un item con descripción libre, sin producto">+ Item manual</button>
                             </div>
                         </div>
+
+                        @* Sugerencias: top 10 productos historicos del cliente *@
+                        @if (formClientId > 0 && topProductsForClient.Count > 0)
+                        {
+                            <div style="margin-top: 0.6rem; padding: 0.6rem 0.8rem; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 1px solid #f59e0b; border-radius: 8px;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem;">
+                                    <span style="font-size: 1rem;">⭐</span>
+                                    <strong style="font-size: 0.85rem; color: #78350f;">
+                                        Productos más comprados por @(clients?.FirstOrDefault(c => c.Id == formClientId)?.Name ?? "este cliente"):
+                                    </strong>
+                                    <span style="font-size: 0.75rem; color: #92400e;">(tocá uno para agregarlo)</span>
+                                </div>
+                                <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
+                                    @foreach (var t in topProductsForClient)
+                                    {
+                                        var stockColor = t.Stock <= 0 ? "#dc2626" : "#15803d";
+                                        var unit = t.StockUnit == "kg" ? "kg" : "u.";
+                                        <button type="button" class="btn"
+                                                style="background: white; border: 1px solid #f59e0b; color: #78350f; padding: 0.35rem 0.6rem; border-radius: 6px; font-size: 0.78rem; display: inline-flex; align-items: center; gap: 0.4rem;"
+                                                @onclick="() => AddSuggestedProduct(t.ProductId)"
+                                                title="Comprado @t.TimesOrdered ve@(t.TimesOrdered == 1 ? "z" : "ces") · Cantidad total histórica: @FormatQty(t.TotalQuantity) · Última compra: @t.LastPurchase.ToString("dd/MM/yyyy")">
+                                            <span style="background: #f59e0b; color: white; padding: 0.05rem 0.35rem; border-radius: 999px; font-size: 0.65rem; font-weight: 800;">@t.TimesOrdered×</span>
+                                            <span style="font-family: monospace; color: #6b7280; font-size: 0.72rem;">@(string.IsNullOrEmpty(t.Sku) ? "—" : t.Sku)</span>
+                                            <strong>@t.Title</strong>
+                                            <span style="color: @stockColor; font-size: 0.7rem;">· @FormatQty(t.Stock) @unit</span>
+                                            <span style="color: #6b7280; font-size: 0.72rem;">· $@FormatPrice(t.RetailPrice)</span>
+                                            <span style="color: #f59e0b; font-weight: 700;">+</span>
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                        }
 
                         @* Tabla de items agregados *@
                         @if (formItems.Count == 0)
@@ -936,6 +1007,64 @@
     </div>
 }
 
+@* ====== ELIMINAR MASIVAMENTE (con clave) ====== *@
+@if (showBulkDeleteModal)
+{
+    <div class="modal-overlay" @onclick="CloseBulkDeleteModal">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: #7f1d1d; color: white;">
+                <h4 style="margin: 0;">🗑 Eliminar @selectedSaleIds.Count comprobante@(selectedSaleIds.Count == 1 ? "" : "s") DEFINITIVAMENTE</h4>
+                <button class="btn-close" @onclick="CloseBulkDeleteModal" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Vas a <strong>borrar @selectedSaleIds.Count comprobante@(selectedSaleIds.Count == 1 ? "" : "s")</strong> definitivamente.</p>
+                @if (sales is not null)
+                {
+                    var seleccionadas = sales.Where(x => selectedSaleIds.Contains(x.Id)).ToList();
+                    <ul style="margin: 0.5rem 0; padding-left: 1.2rem; font-size: 0.82rem; max-height: 180px; overflow-y: auto;">
+                        @foreach (var s in seleccionadas)
+                        {
+                            <li><span style="font-family: monospace;">@s.Number</span> · @s.Date.ToString("dd/MM/yyyy") · $@FormatPrice(s.Total)</li>
+                        }
+                    </ul>
+                    <p style="font-size: 0.85rem;">Total a eliminar: <strong>$@FormatPrice(seleccionadas.Sum(x => x.Total))</strong></p>
+                }
+                <p style="color:#b91c1c; font-weight: 600;">⚠ Esta accion NO se puede deshacer.</p>
+                <div class="form-group">
+                    <label class="form-label">Clave secreta *</label>
+                    <input class="form-input" type="password" @bind="bulkDeletePassword" @bind:event="oninput"
+                           @onkeydown="OnBulkDeletePasswordKey"
+                           placeholder="Ingresá la clave" autofocus />
+                    @if (!string.IsNullOrEmpty(deleteSettings?.Hint))
+                    {
+                        <p style="font-size: 0.8rem; color: #6b7280; margin: 0.3rem 0 0;">
+                            💡 Pista: <strong>@deleteSettings.Hint</strong>
+                        </p>
+                    }
+                </div>
+                @if (!string.IsNullOrEmpty(bulkDeleteError))
+                {
+                    <div class="form-error">@bulkDeleteError</div>
+                }
+                @if (isBulkDeleting)
+                {
+                    <p style="font-size: 0.82rem; color: #6b7280; margin: 0.4rem 0 0;">
+                        Eliminando @bulkDeleteProgress de @selectedSaleIds.Count...
+                    </p>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseBulkDeleteModal" disabled="@isBulkDeleting">Cancelar</button>
+                <button class="btn" style="background: #7f1d1d; color: white; border: none;"
+                        @onclick="DoBulkDelete"
+                        disabled="@(isBulkDeleting || string.IsNullOrEmpty(bulkDeletePassword))">
+                    @(isBulkDeleting ? $"Eliminando..." : $"🗑 Eliminar {selectedSaleIds.Count} definitivamente")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @* ====== ENVIAR POR WHATSAPP ====== *@
 @if (showWhatsappModal && viewerSale is not null)
 {
@@ -1114,6 +1243,155 @@
         Operator.HasOperator &&
         string.Equals(Operator.Current, deleteSettings.AllowedOperator, StringComparison.OrdinalIgnoreCase);
 
+    // Top 10 productos mas comprados por el cliente actual del form (sugerencias)
+    private List<TopProductByClientDto> topProductsForClient = new();
+
+    // Selección masiva
+    private HashSet<int> selectedSaleIds = new();
+    private bool showBulkDeleteModal;
+    private string bulkDeletePassword = "";
+    private string? bulkDeleteError;
+    private bool isBulkDeleting;
+    private int bulkDeleteProgress;
+
+    private bool AllVisibleSelected =>
+        sales is not null && sales.Count > 0 && sales.All(s => selectedSaleIds.Contains(s.Id));
+
+    private void ToggleSelect(int id, bool isSelected)
+    {
+        if (isSelected) selectedSaleIds.Add(id);
+        else selectedSaleIds.Remove(id);
+    }
+
+    private void ToggleSelectAll(ChangeEventArgs e)
+    {
+        var check = (bool)(e.Value ?? false);
+        if (sales is null) return;
+        if (check) foreach (var s in sales) selectedSaleIds.Add(s.Id);
+        else selectedSaleIds.Clear();
+    }
+
+    private void ClearSelection() => selectedSaleIds.Clear();
+
+    private void OpenBulkDeleteModal()
+    {
+        if (!CanDelete)
+        {
+            ToastService.Error($"Solo {deleteSettings?.AllowedOperator ?? "OSMAR"} puede eliminar comprobantes.");
+            return;
+        }
+        if (selectedSaleIds.Count == 0) return;
+        showBulkDeleteModal = true;
+        bulkDeletePassword = "";
+        bulkDeleteError = null;
+        bulkDeleteProgress = 0;
+    }
+
+    private void CloseBulkDeleteModal()
+    {
+        if (isBulkDeleting) return;
+        showBulkDeleteModal = false;
+        bulkDeletePassword = "";
+        bulkDeleteError = null;
+    }
+
+    private async Task OnBulkDeletePasswordKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrEmpty(bulkDeletePassword) && !isBulkDeleting)
+            await DoBulkDelete();
+    }
+
+    private async Task DoBulkDelete()
+    {
+        if (selectedSaleIds.Count == 0) return;
+        if (string.IsNullOrEmpty(bulkDeletePassword)) { bulkDeleteError = "Ingresá la clave"; return; }
+
+        isBulkDeleting = true;
+        bulkDeleteError = null;
+        bulkDeleteProgress = 0;
+        int ok = 0;
+        var errors = new List<string>();
+
+        foreach (var id in selectedSaleIds.ToList())
+        {
+            bulkDeleteProgress++;
+            StateHasChanged();
+            try
+            {
+                var success = await Api.DeleteSaleAsync(id, bulkDeletePassword);
+                if (success) ok++;
+                else errors.Add($"#{id}: error desconocido");
+            }
+            catch (Exception ex) { errors.Add($"#{id}: {ex.Message}"); }
+        }
+
+        isBulkDeleting = false;
+        if (errors.Count == 0)
+        {
+            ToastService.Success($"✓ {ok} comprobante{(ok == 1 ? "" : "s")} eliminado{(ok == 1 ? "" : "s")}");
+            showBulkDeleteModal = false;
+            selectedSaleIds.Clear();
+            await LoadAll();
+        }
+        else
+        {
+            bulkDeleteError = $"{ok}/{selectedSaleIds.Count} eliminadas. Errores: " + string.Join(" | ", errors.Take(3));
+            ToastService.Error("Algunos no se pudieron eliminar — revisá la lista");
+            await LoadAll();
+        }
+    }
+
+    private async Task DownloadSelectedAsCsv()
+    {
+        if (sales is null || selectedSaleIds.Count == 0) return;
+        var seleccionadas = sales.Where(x => selectedSaleIds.Contains(x.Id))
+            .OrderByDescending(x => x.Date).ThenByDescending(x => x.Id).ToList();
+
+        var sb = new System.Text.StringBuilder();
+        // BOM para que Excel detecte UTF-8
+        sb.Append('﻿');
+        sb.AppendLine("Numero;Fecha;Cliente;Codigo Cliente;Cond. IVA;Pago;Subtotal;Descuento;Total;Estado;Anulada por;Anulada el;Observaciones");
+
+        string Esc(string? v)
+        {
+            if (string.IsNullOrEmpty(v)) return "";
+            var s = v.Replace("\"", "\"\"").Replace("\r", " ").Replace("\n", " ");
+            return s.Contains(';') || s.Contains('"') ? $"\"{s}\"" : s;
+        }
+        string Money(decimal v) => v.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+
+        foreach (var s in seleccionadas)
+        {
+            sb.AppendLine(string.Join(";", new[]
+            {
+                Esc(s.Number),
+                s.Date.ToString("yyyy-MM-dd"),
+                Esc(s.ClientNameSnapshot ?? "Consumidor final"),
+                Esc(s.ClientCode ?? ""),
+                Esc(s.IvaCondition ?? ""),
+                Esc(s.PaymentCondition ?? ""),
+                Money(s.Subtotal),
+                Money(s.Discount),
+                Money(s.Total),
+                s.IsCancelled ? "Anulada" : "Emitida",
+                Esc(s.CancelledByOperator ?? ""),
+                s.CancelledAt.HasValue ? s.CancelledAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "",
+                Esc(s.Notes ?? "")
+            }));
+        }
+
+        var filename = $"ventas_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
+        try
+        {
+            await JS.InvokeVoidAsync("downloadTextFile", filename, sb.ToString(), "text/csv;charset=utf-8");
+            ToastService.Success($"✓ {seleccionadas.Count} venta{(seleccionadas.Count == 1 ? "" : "s")} exportada{(seleccionadas.Count == 1 ? "" : "s")} a CSV");
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("No se pudo descargar: " + ex.Message);
+        }
+    }
+
     // Company form
     private bool showCompanyForm;
     private CompanyInfoDto? companyForm;
@@ -1161,6 +1439,7 @@
         // 3. companyInfo.Name como esta
         // 4. FRIKAF®
         formCompanyName = ResolveDefaultBrand();
+        topProductsForClient = new();  // sin cliente = sin sugerencias
         formError = null; showForm = true;
     }
 
@@ -1234,6 +1513,13 @@
         addProductId = 0; addProductQty = 1;
         formError = null;
         showForm = true;
+
+        // Cargar sugerencias del cliente (fire-and-forget)
+        topProductsForClient = new();
+        if (formClientId > 0)
+        {
+            _ = OnClientChanged();
+        }
     }
 
     private void ToggleFormDay(string day)
@@ -1252,6 +1538,18 @@
         AddProductToSale(p, addProductQty, addProductBonif);
         addProductId = 0; addProductQty = 1; addProductBonif = 0;
         productSearchText = "";
+    }
+
+    /// <summary>Agrega al carrito un producto sugerido del top 10 del cliente.</summary>
+    private void AddSuggestedProduct(int productId)
+    {
+        var p = availableProducts?.FirstOrDefault(x => x.Id == productId);
+        if (p is null)
+        {
+            ToastService.Error("El producto sugerido ya no está disponible");
+            return;
+        }
+        AddProductToSale(p, 1, 0);
     }
 
     // Mientras tipea: actualiza el texto y resetea el id elegido (porque puede no
@@ -1348,16 +1646,34 @@
 
     /// Cuando cambia el cliente, recalcula los UnitPrice del carrito segun
     /// la nueva lista. Solo afecta productos con ProductId (no items texto libre).
-    private void OnClientChanged()
+    /// Tambien dispara la carga del top 10 productos historicos del cliente.
+    private async Task OnClientChanged()
     {
-        if (formItems is null || availableProducts is null) return;
-        foreach (var item in formItems)
+        if (availableProducts is not null)
         {
-            if (!item.ProductId.HasValue) continue;
-            var p = availableProducts.FirstOrDefault(x => x.Id == item.ProductId.Value);
-            if (p is null) continue;
-            item.UnitPrice = GetTierAdjustedPrice(p, formClientId);
+            foreach (var item in formItems)
+            {
+                if (!item.ProductId.HasValue) continue;
+                var p = availableProducts.FirstOrDefault(x => x.Id == item.ProductId.Value);
+                if (p is null) continue;
+                item.UnitPrice = GetTierAdjustedPrice(p, formClientId);
+            }
         }
+
+        // Fetch sugerencias historicas
+        if (formClientId > 0)
+        {
+            try
+            {
+                topProductsForClient = await Api.GetTopProductsByClientAsync(formClientId, 10) ?? new();
+            }
+            catch { topProductsForClient = new(); }
+        }
+        else
+        {
+            topProductsForClient = new();
+        }
+
         StateHasChanged();
     }
 

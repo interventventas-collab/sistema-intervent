@@ -82,6 +82,10 @@ public class SalesController : ControllerBase
         return Ok(s);
     }
 
+    [HttpGet("top-products-by-client/{clientId:int}")]
+    public async Task<IActionResult> TopProductsByClient(int clientId, [FromQuery] int count = 10)
+        => Ok(await _service.GetTopProductsByClientAsync(clientId, count));
+
     [HttpGet("company-info")]
     public async Task<IActionResult> CompanyInfo() => Ok(await _service.GetCompanyInfoAsync());
 

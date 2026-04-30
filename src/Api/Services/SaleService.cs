@@ -334,6 +334,62 @@ public class SaleService
         );
     }
 
+    /// <summary>
+    /// Devuelve los productos que el cliente mas compro historicamente, ordenados por
+    /// frecuencia (cantidad de comprobantes en los que aparecio) y desempate por cantidad
+    /// total. Solo cuenta ventas no anuladas y productos activos con ProductId asignado.
+    /// </summary>
+    public async Task<List<TopProductByClientDto>> GetTopProductsByClientAsync(int clientId, int count = 10)
+    {
+        if (clientId <= 0) return new();
+        if (count <= 0) count = 10;
+
+        var grouped = await _db.SaleItems
+            .Where(si => si.ProductId.HasValue
+                         && si.Sale != null
+                         && si.Sale.ClientId == clientId
+                         && !si.Sale.IsCancelled)
+            .GroupBy(si => si.ProductId!.Value)
+            .Select(g => new
+            {
+                ProductId = g.Key,
+                TimesOrdered = g.Select(x => x.SaleId).Distinct().Count(),
+                TotalQuantity = g.Sum(x => x.Quantity),
+                LastPurchase = g.Max(x => x.Sale!.Date)
+            })
+            .OrderByDescending(x => x.TimesOrdered)
+            .ThenByDescending(x => x.TotalQuantity)
+            .ThenByDescending(x => x.LastPurchase)
+            .Take(count)
+            .ToListAsync();
+
+        if (grouped.Count == 0) return new();
+
+        var ids = grouped.Select(x => x.ProductId).ToList();
+        var products = await _db.Products
+            .Where(p => ids.Contains(p.Id) && p.IsActive)
+            .ToListAsync();
+
+        var result = new List<TopProductByClientDto>();
+        foreach (var g in grouped)
+        {
+            var p = products.FirstOrDefault(x => x.Id == g.ProductId);
+            if (p is null) continue;  // producto borrado o desactivado
+            result.Add(new TopProductByClientDto(
+                p.Id,
+                p.Sku ?? "",
+                p.Title,
+                p.RetailPrice,
+                p.Stock,
+                p.StockUnit ?? "unidad",
+                g.TimesOrdered,
+                g.TotalQuantity,
+                g.LastPurchase
+            ));
+        }
+        return result;
+    }
+
     public async Task<bool> DeleteAsync(int id, string operatorName, string password)
     {
         var allowedOp = (await _db.AppSettings.FindAsync("sales.delete_allowed_operator"))?.Value ?? "OSMAR";

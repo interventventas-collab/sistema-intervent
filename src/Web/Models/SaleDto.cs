@@ -114,6 +114,19 @@ public class UpdateSaleRequest
     public string? VendedorName { get; set; }
 }
 
+public class TopProductByClientDto
+{
+    public int ProductId { get; set; }
+    public string Sku { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public decimal RetailPrice { get; set; }
+    public decimal Stock { get; set; }
+    public string StockUnit { get; set; } = "unidad";
+    public int TimesOrdered { get; set; }
+    public decimal TotalQuantity { get; set; }
+    public DateTime LastPurchase { get; set; }
+}
+
 public class CompanyInfoDto
 {
     public string Name { get; set; } = string.Empty;

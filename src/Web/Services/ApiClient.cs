@@ -277,6 +277,9 @@ public class ApiClient
     public async Task<DeleteSaleSettingsDto?> GetSaleDeleteSettingsAsync()
         => await GetAsync<DeleteSaleSettingsDto>("/api/sales/delete-settings");
 
+    public async Task<List<TopProductByClientDto>?> GetTopProductsByClientAsync(int clientId, int count = 10)
+        => await GetAsync<List<TopProductByClientDto>>($"/api/sales/top-products-by-client/{clientId}?count={count}");
+
     public async Task<bool> DeleteSaleAsync(int id, string password)
     {
         await SetAuthHeaderAsync();

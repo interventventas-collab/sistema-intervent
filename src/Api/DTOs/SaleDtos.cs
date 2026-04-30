@@ -102,6 +102,19 @@ public record CreateSaleRequest(
     [MaxLength(150)] string? VendedorName       // null => null
 );
 
+// Top-N productos mas comprados por un cliente.
+public record TopProductByClientDto(
+    int ProductId,
+    string Sku,
+    string Title,
+    decimal RetailPrice,
+    decimal Stock,
+    string StockUnit,
+    int TimesOrdered,
+    decimal TotalQuantity,
+    DateTime LastPurchase
+);
+
 // Datos de la empresa que aparecen en el comprobante.
 public record CompanyInfoDto(
     string Name,
