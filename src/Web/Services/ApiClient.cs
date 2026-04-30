@@ -371,6 +371,10 @@ public class ApiClient
     public async Task<DolarBnaDto?> GetDolarBnaAsync()
         => await GetAsync<DolarBnaDto>("/api/quotes/dolar-bna");
 
+    /// <summary>Sumatoria de kg de café FRIKAF vendidos en el mes en curso.</summary>
+    public async Task<CoffeeMonthlyKgDto?> GetCoffeeMonthlyKgAsync()
+        => await GetAsync<CoffeeMonthlyKgDto>("/api/dashboard/coffee-monthly-kg");
+
     // --- Stock batches (lotes con vencimiento) ---
     public async Task<List<StockBatchDto>?> GetStockBatchesAsync(int productId)
         => await GetAsync<List<StockBatchDto>>($"/api/products/{productId}/stock-batches");

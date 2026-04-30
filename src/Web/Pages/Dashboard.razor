@@ -87,6 +87,30 @@
         </div>
         <div style="font-size: 0.72rem; color: #6b7280;">@esTime.ToString("dddd dd/MM/yyyy", new System.Globalization.CultureInfo("es-ES"))</div>
     </div>
+
+    @* Contador de café FRIKAF vendido en el mes *@
+    <div class="dashboard-detail-card" style="padding: 0.85rem; text-align: center; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 1px solid #f59e0b;">
+        <div style="display: flex; align-items: center; justify-content: center; gap: 0.4rem; margin-bottom: 0.3rem;">
+            <span style="font-size: 1.5rem;">☕</span>
+            <strong style="font-size: 0.9rem; color: #78350f;">Café FRIKAF</strong>
+        </div>
+        @if (coffeeKg is null)
+        {
+            <div style="font-size: 1rem; color: #92400e;">Cargando...</div>
+        }
+        else
+        {
+            <div style="font-size: 1.6rem; font-weight: 800; color: #78350f; line-height: 1.2;">
+                @FormatKg(coffeeKg.KgTotal) <span style="font-size: 0.95rem; font-weight: 600;">kg</span>
+            </div>
+            <div style="font-size: 0.7rem; color: #92400e;">
+                vendidos en @coffeeKg.PeriodStart.ToString("MMMM yyyy", new System.Globalization.CultureInfo("es-AR"))
+            </div>
+            <div style="font-size: 0.65rem; color: #b45309; margin-top: 0.15rem;">
+                @coffeeKg.Sales venta@(coffeeKg.Sales == 1 ? "" : "s") · @coffeeKg.Items línea@(coffeeKg.Items == 1 ? "" : "s")
+            </div>
+        }
+    </div>
 </div>
 
 <div class="dashboard-cards-row">
@@ -181,6 +205,8 @@
     private DateTime esTime;
     private System.Threading.Timer? clockTimer;
     private System.Threading.Timer? quoteTimer;
+    private System.Threading.Timer? coffeeTimer;
+    private CoffeeMonthlyKgDto? coffeeKg;
 
     private static readonly TimeZoneInfo ArgentinaTz = SafeTz("America/Argentina/Buenos_Aires", -3);
     private static readonly TimeZoneInfo SpainTz = SafeTz("Europe/Madrid", 1);
@@ -214,6 +240,11 @@
         _ = LoadDolarAsync();
         quoteTimer = new System.Threading.Timer(_ => InvokeAsync(LoadDolarAsync), null,
             TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5));
+
+        // Contador de café FRIKAF vendido en el mes: cargar y refrescar cada 30 segundos
+        _ = LoadCoffeeKgAsync();
+        coffeeTimer = new System.Threading.Timer(_ => InvokeAsync(LoadCoffeeKgAsync), null,
+            TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
 
         try
         {
@@ -254,6 +285,36 @@
         StateHasChanged();
     }
 
+    private async Task LoadCoffeeKgAsync()
+    {
+        try
+        {
+            coffeeKg = await Api.GetCoffeeMonthlyKgAsync();
+        }
+        catch
+        {
+            // Mantener el valor anterior si falla, no romper el dashboard
+        }
+        StateHasChanged();
+    }
+
+    /// <summary>Formatea kg con punto y coma argentinos: 12.345,5 → "12.345,5".</summary>
+    private static string FormatKg(decimal value)
+    {
+        var s = value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+        // Si tiene parte decimal, separar
+        var parts = s.Split('.');
+        var intPart = parts[0];
+        var decPart = parts.Length > 1 ? parts[1] : "";
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < intPart.Length; i++)
+        {
+            if (i > 0 && (intPart.Length - i) % 3 == 0) sb.Append('.');
+            sb.Append(intPart[i]);
+        }
+        return decPart.Length > 0 ? $"{sb},{decPart}" : sb.ToString();
+    }
+
     private async Task OnSelectOperator(ChangeEventArgs e)
     {
         var name = e.Value?.ToString();
@@ -285,6 +346,7 @@
     {
         clockTimer?.Dispose();
         quoteTimer?.Dispose();
+        coffeeTimer?.Dispose();
         Company.OnChange -= OnCompanyChanged;
     }
 

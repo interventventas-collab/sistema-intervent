@@ -50,4 +50,62 @@ public class DashboardController : ControllerBase
             accountStats
         });
     }
+
+    /// <summary>
+    /// Devuelve la sumatoria de kg de café vendidos en el mes actual.
+    /// Considera todos los items de venta cuyo producto tenga marca FRIKAF
+    /// (case insensitive, ignorando el simbolo de marca registrada).
+    /// La cantidad de kg por linea es: Quantity * Product.Fraction.
+    /// Excluye ventas anuladas.
+    /// </summary>
+    [HttpGet("coffee-monthly-kg")]
+    public async Task<IActionResult> GetCoffeeMonthlyKg()
+    {
+        var now = DateTime.UtcNow;
+        var monthStart = new DateTime(now.Year, now.Month, 1);
+        var nextMonthStart = monthStart.AddMonths(1);
+
+        // Items de ventas no anuladas, en el mes actual, de productos marca FRIKAF.
+        // Sumamos Quantity * Fraction (= kg vendidos por linea).
+        var query =
+            from si in _db.SaleItems
+            join s in _db.Sales on si.SaleId equals s.Id
+            join p in _db.Products on si.ProductId equals p.Id
+            where !s.IsCancelled
+                && s.Date >= monthStart && s.Date < nextMonthStart
+                && p.Brand != null
+                && p.Brand.ToUpper().Contains("FRIKAF")
+            select new { si.Quantity, p.Fraction };
+
+        // Ejecutar y sumar en memoria (Quantity es decimal, Fraction es decimal — multiplicacion segura)
+        var rows = await query.ToListAsync();
+        decimal kgTotal = 0m;
+        int items = 0;
+        foreach (var r in rows)
+        {
+            kgTotal += r.Quantity * r.Fraction;
+            items++;
+        }
+
+        // Cuantas ventas distintas
+        var distinctSales = await (
+            from si in _db.SaleItems
+            join s in _db.Sales on si.SaleId equals s.Id
+            join p in _db.Products on si.ProductId equals p.Id
+            where !s.IsCancelled
+                && s.Date >= monthStart && s.Date < nextMonthStart
+                && p.Brand != null
+                && p.Brand.ToUpper().Contains("FRIKAF")
+            select s.Id).Distinct().CountAsync();
+
+        return Ok(new
+        {
+            kgTotal = Math.Round(kgTotal, 3),
+            items,
+            sales = distinctSales,
+            periodStart = monthStart,
+            periodEnd = nextMonthStart.AddMilliseconds(-1),
+            generatedAt = DateTime.UtcNow
+        });
+    }
 }
