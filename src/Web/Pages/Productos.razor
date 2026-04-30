@@ -155,6 +155,17 @@
                                     </span>
                                 </div>
                             </th>
+                            <!-- OEM: text filter + sort -->
+                            <th class="th-filterable" style="min-width: 90px;">
+                                <div class="th-filter-inner">
+                                    <input type="text" class="th-filter-input @(IsFilterActive("oem") ? "has-filter" : "")" placeholder="OEM..."
+                                           value='@GetTextFilter("oem")' @oninput='(e) => SetTextFilter("oem", e.Value?.ToString() ?? "")' />
+                                    <span class="sort-icon" @onclick='() => ToggleSort("oem")' title="Ordenar">
+                                        <span class="@(sortColumn == "oem" && sortAsc ? "sort-up-active" : "")">&#9650;</span>
+                                        <span class="@(sortColumn == "oem" && !sortAsc ? "sort-down-active" : "")">&#9660;</span>
+                                    </span>
+                                </div>
+                            </th>
                             <!-- Publicaciones: checkbox dropdown -->
                             <th class="th-dropdown @(activeFilterColumn == "publicaciones" ? "filter-open" : "")" style="min-width: 120px;">
                                 <div class="th-inner">
@@ -319,6 +330,16 @@
                                     }
                                 </td>
                                 <td style="font-size: 0.85rem; color: #6b7280;">@(product.Sku ?? "")</td>
+                                <td style="font-size: 0.82rem; color: #6b7280; font-family: monospace;">
+                                    @if (!string.IsNullOrEmpty(product.OemCode))
+                                    {
+                                        <span style="background: #f3f4f6; padding: 0.1rem 0.4rem; border-radius: 4px;">@product.OemCode</span>
+                                    }
+                                    else
+                                    {
+                                        <span style="color: #d1d5db;">—</span>
+                                    }
+                                </td>
                                 <td>
                                     @{
                                         var links = product.LinkedAccounts;
@@ -2017,6 +2038,7 @@
             {
                 "titulo" => result.Where(p => p.Title.ToLower().Contains(search)),
                 "sku" => result.Where(p => (p.Sku ?? "").ToLower().Contains(search)),
+                "oem" => result.Where(p => (p.OemCode ?? "").ToLower().Contains(search)),
                 _ => result
             };
         }
@@ -2039,6 +2061,7 @@
             {
                 "titulo" => sortAsc ? result.OrderBy(p => p.Title) : result.OrderByDescending(p => p.Title),
                 "sku" => sortAsc ? result.OrderBy(p => p.Sku ?? "") : result.OrderByDescending(p => p.Sku ?? ""),
+                "oem" => sortAsc ? result.OrderBy(p => p.OemCode ?? "") : result.OrderByDescending(p => p.OemCode ?? ""),
                 "costo" => sortAsc ? result.OrderBy(p => p.CostPrice) : result.OrderByDescending(p => p.CostPrice),
                 "pvp" => sortAsc ? result.OrderBy(p => p.RetailPrice) : result.OrderByDescending(p => p.RetailPrice),
                 "stock" => sortAsc ? result.OrderBy(p => p.Stock) : result.OrderByDescending(p => p.Stock),
