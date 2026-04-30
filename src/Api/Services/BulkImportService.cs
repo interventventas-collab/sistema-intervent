@@ -336,6 +336,14 @@ public class BulkImportService
             .GroupBy(p => p.OemCode!.ToLowerInvariant())
             .ToDictionary(g => g.Key, g => g.Select(x => x.Id).ToList());
 
+        // Indice de productos por Sku (clave primaria de identidad)
+        var productIdBySku = (await _db.Products
+            .Where(p => p.Sku != null && p.Sku != "")
+            .Select(p => new { p.Id, p.Sku })
+            .ToListAsync())
+            .GroupBy(p => p.Sku!.ToLowerInvariant())
+            .ToDictionary(g => g.Key, g => g.First().Id);
+
         for (int i = 0; i < rows.Count; i++)
         {
             var rowNum = i + 2;
@@ -380,15 +388,30 @@ public class BulkImportService
                 var stockCritico = ParseInt(Cell(row, headers, "stock_critico"));
                 var barcode = Nz(Cell(row, headers, "codigo_de_barras"));
                 // SKU interno: prioridad 'sku_interno' > 'sku' > el OEM mismo.
-                var skuInterno = Nz(Cell(row, headers, "sku_interno")) ?? Nz(Cell(row, headers, "sku")) ?? oem;
+                var skuExplicito = Nz(Cell(row, headers, "sku_interno")) ?? Nz(Cell(row, headers, "sku"));
+                var skuInterno = skuExplicito ?? oem;
 
-                var existingIds = productsByOem.GetValueOrDefault(oem.ToLowerInvariant(), new List<int>());
+                // === LOGICA DE MATCHING ===
+                // Prioridad 1: si la fila trae SKU interno explicito, matchear por SKU exacto.
+                //   - Match -> UPDATE solo ese producto
+                //   - No match -> CREATE producto nuevo (cada SKU explicito = producto distinto)
+                // Prioridad 2: si NO trae SKU explicito, matchear por OEM (legacy: actualizar todos los del OEM).
+                List<int> existingIds;
+                if (skuExplicito is not null)
+                {
+                    existingIds = productIdBySku.TryGetValue(skuExplicito.ToLowerInvariant(), out var eid)
+                        ? new List<int> { eid }
+                        : new List<int>();
+                }
+                else
+                {
+                    existingIds = productsByOem.GetValueOrDefault(oem.ToLowerInvariant(), new List<int>());
+                }
 
                 if (existingIds.Count > 0)
                 {
-                    // Update — propagar cambios a TODOS los productos con ese OEM.
-                    // No tocamos: SKU (no queremos cambiar la identidad del producto),
-                    // ni stock, ni IsActive (cada producto tiene su estado).
+                    // Update — actualiza el/los productos encontrados (por SKU si vino explicito,
+                    // o por OEM si no). No tocamos SKU, stock ni IsActive.
                     foreach (var pid in existingIds)
                     {
                         await _products.UpdateAsync(pid, new UpdateProductRequest(
@@ -417,7 +440,7 @@ public class BulkImportService
                         ));
                         updated++;
                     }
-                    if (existingIds.Count > 1)
+                    if (skuExplicito is null && existingIds.Count > 1)
                     {
                         warnings.Add(new BulkImportWarning(rowNum,
                             $"OEM '{oem}' actualizo {existingIds.Count} productos (variantes que comparten el mismo OEM)."));
@@ -478,6 +501,10 @@ public class BulkImportService
                         if (!productsByOem.ContainsKey(oem.ToLowerInvariant()))
                             productsByOem[oem.ToLowerInvariant()] = new List<int>();
                         productsByOem[oem.ToLowerInvariant()].Add(result.Product.Id);
+                        // Indexar tambien por SKU para que filas posteriores con el mismo SKU
+                        // se traten como UPDATE (no como CREATE de un duplicado).
+                        if (!string.IsNullOrEmpty(result.Product.Sku))
+                            productIdBySku[result.Product.Sku.ToLowerInvariant()] = result.Product.Id;
                     }
                 }
                 else
