@@ -375,6 +375,10 @@ public class ApiClient
     public async Task<CoffeeMonthlyKgDto?> GetCoffeeMonthlyKgAsync()
         => await GetAsync<CoffeeMonthlyKgDto>("/api/dashboard/coffee-monthly-kg");
 
+    /// <summary>Resumen financiero (ventas del mes + saldos a cobrar de clientes).</summary>
+    public async Task<SalesSummaryDto?> GetSalesSummaryAsync()
+        => await GetAsync<SalesSummaryDto>("/api/dashboard/sales-summary");
+
     // --- Stock batches (lotes con vencimiento) ---
     public async Task<List<StockBatchDto>?> GetStockBatchesAsync(int productId)
         => await GetAsync<List<StockBatchDto>>($"/api/products/{productId}/stock-batches");

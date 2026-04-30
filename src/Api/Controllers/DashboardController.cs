@@ -108,4 +108,49 @@ public class DashboardController : ControllerBase
             generatedAt = DateTime.UtcNow
         });
     }
+
+    /// <summary>
+    /// Resumen financiero del dashboard:
+    /// - Ventas del mes en curso (suma de Total + cantidad)
+    /// - Saldos pendientes de cobro a clientes (ventas !IsPaid !IsCancelled)
+    /// </summary>
+    [HttpGet("sales-summary")]
+    public async Task<IActionResult> GetSalesSummary()
+    {
+        var now = DateTime.UtcNow;
+        var monthStart = new DateTime(now.Year, now.Month, 1);
+        var nextMonthStart = monthStart.AddMonths(1);
+
+        // Ventas del mes (no anuladas)
+        var monthlySales = await _db.Sales
+            .Where(s => !s.IsCancelled && s.Date >= monthStart && s.Date < nextMonthStart)
+            .GroupBy(_ => 1)
+            .Select(g => new { Total = g.Sum(s => s.Total), Count = g.Count() })
+            .FirstOrDefaultAsync();
+
+        // Saldos a cobrar: ventas no pagadas, no anuladas, con cliente asignado
+        // (consumidor final sin pagar lo descartamos — generalmente es venta cash que el operador no marco)
+        var clientBalance = await _db.Sales
+            .Where(s => !s.IsCancelled && !s.IsPaid && s.ClientId != null)
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                Total = g.Sum(s => s.Total),
+                Count = g.Count(),
+                DistinctClients = g.Select(s => s.ClientId).Distinct().Count()
+            })
+            .FirstOrDefaultAsync();
+
+        return Ok(new
+        {
+            monthlySalesTotal = monthlySales?.Total ?? 0m,
+            monthlySalesCount = monthlySales?.Count ?? 0,
+            clientBalanceTotal = clientBalance?.Total ?? 0m,
+            clientBalanceCount = clientBalance?.Count ?? 0,
+            clientsWithBalance = clientBalance?.DistinctClients ?? 0,
+            periodStart = monthStart,
+            periodEnd = nextMonthStart.AddMilliseconds(-1),
+            generatedAt = DateTime.UtcNow
+        });
+    }
 }

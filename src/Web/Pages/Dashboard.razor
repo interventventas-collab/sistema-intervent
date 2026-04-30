@@ -113,6 +113,65 @@
     </div>
 </div>
 
+@* === Fila de KPIs financieros: Ventas del mes / Saldos clientes / Cuentas a pagar === *@
+<div class="dashboard-cards-row">
+    @* Ventas del mes *@
+    <div class="dashboard-detail-card" style="padding: 0.85rem; background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); border: 1px solid #10b981;">
+        <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem;">
+            <span style="font-size: 1.3rem;">💵</span>
+            <strong style="font-size: 0.85rem; color: #065f46;">Ventas del mes</strong>
+        </div>
+        @if (salesSummary is null)
+        {
+            <div style="font-size: 1rem; color: #047857;">Cargando...</div>
+        }
+        else
+        {
+            <div style="font-size: 1.5rem; font-weight: 800; color: #065f46; line-height: 1.2;">
+                $@FormatMoney(salesSummary.MonthlySalesTotal)
+            </div>
+            <div style="font-size: 0.72rem; color: #047857; margin-top: 0.15rem;">
+                @salesSummary.MonthlySalesCount comprobante@(salesSummary.MonthlySalesCount == 1 ? "" : "s") en @salesSummary.PeriodStart.ToString("MMMM", new System.Globalization.CultureInfo("es-AR"))
+            </div>
+        }
+    </div>
+
+    @* Saldos de clientes *@
+    <div class="dashboard-detail-card" style="padding: 0.85rem; background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); border: 1px solid #ef4444;">
+        <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem;">
+            <span style="font-size: 1.3rem;">📋</span>
+            <strong style="font-size: 0.85rem; color: #991b1b;">Saldos de clientes</strong>
+        </div>
+        @if (salesSummary is null)
+        {
+            <div style="font-size: 1rem; color: #b91c1c;">Cargando...</div>
+        }
+        else
+        {
+            <div style="font-size: 1.5rem; font-weight: 800; color: #991b1b; line-height: 1.2;">
+                $@FormatMoney(salesSummary.ClientBalanceTotal)
+            </div>
+            <div style="font-size: 0.72rem; color: #b91c1c; margin-top: 0.15rem;">
+                @salesSummary.ClientsWithBalance cliente@(salesSummary.ClientsWithBalance == 1 ? "" : "s") · @salesSummary.ClientBalanceCount comprobante@(salesSummary.ClientBalanceCount == 1 ? "" : "s") sin pagar
+            </div>
+        }
+    </div>
+
+    @* Cuentas a pagar (en construccion) *@
+    <div class="dashboard-detail-card" style="padding: 0.85rem; background: #f3f4f6; border: 1px dashed #9ca3af; opacity: 0.85;">
+        <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem;">
+            <span style="font-size: 1.3rem;">🧾</span>
+            <strong style="font-size: 0.85rem; color: #4b5563;">Cuentas a pagar</strong>
+        </div>
+        <div style="font-size: 1rem; font-weight: 700; color: #6b7280; line-height: 1.2;">
+            🚧 En construcción
+        </div>
+        <div style="font-size: 0.7rem; color: #6b7280; margin-top: 0.15rem;">
+            Pronto: facturas de proveedores con vencimientos
+        </div>
+    </div>
+</div>
+
 <div class="dashboard-cards-row">
     @* Publicaciones (MercadoLibre): solo visible para INTERVENT *@
     @if (ShowMlWidgets)
@@ -207,6 +266,8 @@
     private System.Threading.Timer? quoteTimer;
     private System.Threading.Timer? coffeeTimer;
     private CoffeeMonthlyKgDto? coffeeKg;
+    private System.Threading.Timer? salesSummaryTimer;
+    private SalesSummaryDto? salesSummary;
 
     private static readonly TimeZoneInfo ArgentinaTz = SafeTz("America/Argentina/Buenos_Aires", -3);
     private static readonly TimeZoneInfo SpainTz = SafeTz("Europe/Madrid", 1);
@@ -244,6 +305,11 @@
         // Contador de café FRIKAF vendido en el mes: cargar y refrescar cada 30 segundos
         _ = LoadCoffeeKgAsync();
         coffeeTimer = new System.Threading.Timer(_ => InvokeAsync(LoadCoffeeKgAsync), null,
+            TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+
+        // Resumen financiero (ventas del mes + saldos): refrescar cada 30 segundos
+        _ = LoadSalesSummaryAsync();
+        salesSummaryTimer = new System.Threading.Timer(_ => InvokeAsync(LoadSalesSummaryAsync), null,
             TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
 
         try
@@ -298,6 +364,19 @@
         StateHasChanged();
     }
 
+    private async Task LoadSalesSummaryAsync()
+    {
+        try
+        {
+            salesSummary = await Api.GetSalesSummaryAsync();
+        }
+        catch
+        {
+            // Mantener el valor anterior si falla
+        }
+        StateHasChanged();
+    }
+
     /// <summary>Formatea kg con punto y coma argentinos: 12.345,5 → "12.345,5".</summary>
     private static string FormatKg(decimal value)
     {
@@ -347,6 +426,7 @@
         clockTimer?.Dispose();
         quoteTimer?.Dispose();
         coffeeTimer?.Dispose();
+        salesSummaryTimer?.Dispose();
         Company.OnChange -= OnCompanyChanged;
     }
 
