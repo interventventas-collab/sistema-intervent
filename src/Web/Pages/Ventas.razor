@@ -250,7 +250,32 @@
                                 <input class="form-input" type="number" step="0.01" min="0.01" @bind="addProductQty" style="text-align: right;" />
                             </div>
                             <div class="form-group" style="flex: 4;">
-                                <label class="form-label">Seleccione un ítem</label>
+                                <label class="form-label">
+                                    Seleccione un ítem
+                                    @{
+                                        var selectedAddProduct = (addProductId == 0 || availableProducts is null)
+                                            ? null
+                                            : availableProducts.FirstOrDefault(x => x.Id == addProductId);
+                                    }
+                                    @if (selectedAddProduct is not null && !selectedAddProduct.IsService)
+                                    {
+                                        var stk = selectedAddProduct.Stock;
+                                        var unit = string.IsNullOrEmpty(selectedAddProduct.StockUnit) ? "u." : (selectedAddProduct.StockUnit == "kg" ? "kg" : "u.");
+                                        string bg, fg, icon;
+                                        if (stk <= 0) { bg = "#fee2e2"; fg = "#b91c1c"; icon = "⚠️"; }
+                                        else if (stk < selectedAddProduct.CriticalStock) { bg = "#fef3c7"; fg = "#92400e"; icon = "⚠️"; }
+                                        else { bg = "#dcfce7"; fg = "#15803d"; icon = "📦"; }
+                                        <span style="display: inline-block; margin-left: 0.5rem; padding: 0.1rem 0.5rem; background: @bg; color: @fg; border-radius: 999px; font-size: 0.7rem; font-weight: 700; vertical-align: middle;">
+                                            @icon Stock: @FormatQty(stk) @unit
+                                        </span>
+                                    }
+                                    else if (selectedAddProduct is not null && selectedAddProduct.IsService)
+                                    {
+                                        <span style="display: inline-block; margin-left: 0.5rem; padding: 0.1rem 0.5rem; background: #e0e7ff; color: #3730a3; border-radius: 999px; font-size: 0.7rem; font-weight: 700; vertical-align: middle;">
+                                            🛠️ Servicio (sin stock)
+                                        </span>
+                                    }
+                                </label>
                                 <input class="form-input"
                                        list="ventas-products-datalist"
                                        value="@productSearchText"
