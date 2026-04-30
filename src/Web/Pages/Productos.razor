@@ -280,13 +280,13 @@
                     <tbody>
                         @{
                             var visibleProducts = GetFilteredProducts();
-                            // Cuando agrupar por OEM esta activo, calculamos los grupos visibles:
-                            // un OEM aparece como "grupo" si tiene 2+ productos en la lista filtrada.
+                            // Cuando agrupar por OEM esta activo, mostramos el header SIEMPRE que el
+                            // producto tenga OEM cargado, aunque sea una sola variante.
+                            // Asi la jerarquia OEM > variante queda clara y consistente.
                             var oemGroupCounts = groupByOem
                                 ? visibleProducts
                                     .Where(p => !string.IsNullOrEmpty(p.OemCode))
                                     .GroupBy(p => p.OemCode!.ToLowerInvariant())
-                                    .Where(g => g.Count() >= 2)
                                     .ToDictionary(g => g.Key, g => g.Count())
                                 : new Dictionary<string, int>();
                             string? lastEmittedOem = null;
@@ -316,7 +316,7 @@
                                             <span style="background: #16a34a; color: white; padding: 0.15rem 0.5rem; border-radius: 6px; font-weight: 800; font-family: monospace; font-size: 0.85rem;">OEM @product.OemCode</span>
                                             <strong style="color: #14532d;">@groupTitle</strong>
                                             <span style="font-size: 0.78rem; color: #166534; background: #dcfce7; padding: 0.1rem 0.45rem; border-radius: 999px; font-weight: 700;">
-                                                @groupCount variantes
+                                                @groupCount @(groupCount == 1 ? "variante" : "variantes")
                                             </span>
                                             @if (!string.IsNullOrEmpty(sharedBrand))
                                             {
