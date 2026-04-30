@@ -292,6 +292,218 @@ public class BulkImportService
         return new BulkImportResult(rows.Count, created, updated, skipped, errors, warnings);
     }
 
+    // ============================================================
+    // IMPORT POR OEM (codigo del proveedor)
+    // ============================================================
+    // A diferencia de ImportProductsAsync que matchea por SKU, este metodo busca por
+    // OemCode. Util para listas de precios del proveedor que vienen con SU codigo
+    // (ej: '8733', '9335') y no con el SKU interno tuyo (ej: 'C8733BL').
+    // Si el OEM existe en uno o mas productos -> los actualiza a TODOS.
+    // Si no existe y createIfMissing=true -> crea uno nuevo con Sku=OEM, OemCode=OEM.
+
+    public byte[] BuildProductsByOemTemplate() => BuildTemplate("Productos por OEM", new[]
+    {
+        ("codigo_oem", "8733 (codigo del proveedor — clave de matching)"),
+        ("titulo", "Cajonera en Torre x 3 Grande"),
+        ("marca", "Colombraro (nombre exacto)"),
+        ("precio_costo", "35501.25 (SIN IVA)"),
+        ("precio_venta", "65719.01 (SIN IVA, opcional)"),
+        ("precio_venta_con_iva", "79520.00 (CON IVA, opcional — si lo llenas, ignora precio_venta)"),
+        ("iva", "21"),
+        ("codigo_de_barras", "7790733087333 (opcional)"),
+        ("stock", "5 (opcional, solo si crea nuevo)"),
+        ("stock_critico", "2 (opcional)")
+    });
+
+    public async Task<BulkImportResult> ImportProductsByOemAsync(Stream excelStream, bool createIfMissing = true)
+    {
+        var (headers, rows) = ReadSheet(excelStream);
+        int created = 0, updated = 0, skipped = 0;
+        var errors = new List<BulkImportError>();
+        var warnings = new List<BulkImportWarning>();
+
+        var brandsByName = await _db.Brands
+            .ToDictionaryAsync(b => b.Name.ToLowerInvariant(), b => b.Id);
+
+        // Indice de productos por OemCode (un OEM puede mapear a varios productos = sus colores/variantes)
+        var productsByOem = (await _db.Products
+            .Where(p => p.OemCode != null && p.OemCode != "")
+            .Select(p => new { p.Id, p.OemCode })
+            .ToListAsync())
+            .GroupBy(p => p.OemCode!.ToLowerInvariant())
+            .ToDictionary(g => g.Key, g => g.Select(x => x.Id).ToList());
+
+        for (int i = 0; i < rows.Count; i++)
+        {
+            var rowNum = i + 2;
+            var row = rows[i];
+            try
+            {
+                var oem = Nz(Cell(row, headers, "codigo_oem"));
+                if (oem is null)
+                {
+                    skipped++;
+                    continue;
+                }
+
+                var title = Nz(Cell(row, headers, "titulo"));
+                var brandName = Nz(Cell(row, headers, "marca"));
+                int? brandId = null;
+                if (brandName is not null)
+                {
+                    if (!brandsByName.TryGetValue(brandName.ToLowerInvariant(), out var bid))
+                        throw new InvalidOperationException($"La marca '{brandName}' no existe. Cargala primero.");
+                    brandId = bid;
+                }
+
+                var vatRate = ParseDecimal(Cell(row, headers, "iva"));
+                var costExcel = ParseDecimal(Cell(row, headers, "precio_costo"));
+                var pvpConIva = ParseDecimal(Cell(row, headers, "precio_venta_con_iva"));
+                var pvpSinIva = ParseDecimal(Cell(row, headers, "precio_venta"));
+
+                decimal? retailFromExcel = null;
+                if (pvpConIva.HasValue)
+                {
+                    var rate = vatRate ?? 0m;
+                    retailFromExcel = rate > 0m
+                        ? Math.Round(pvpConIva.Value / (1m + rate / 100m), 2, MidpointRounding.AwayFromZero)
+                        : pvpConIva.Value;
+                }
+                else if (pvpSinIva.HasValue)
+                {
+                    retailFromExcel = pvpSinIva.Value;
+                }
+
+                var stock = ParseInt(Cell(row, headers, "stock"));
+                var stockCritico = ParseInt(Cell(row, headers, "stock_critico"));
+                var barcode = Nz(Cell(row, headers, "codigo_de_barras"));
+
+                var existingIds = productsByOem.GetValueOrDefault(oem.ToLowerInvariant(), new List<int>());
+
+                if (existingIds.Count > 0)
+                {
+                    // Update — propagar cambios a TODOS los productos con ese OEM
+                    foreach (var pid in existingIds)
+                    {
+                        await _products.UpdateAsync(pid, new UpdateProductRequest(
+                            Title: title,
+                            DisplayName: null,
+                            Description: null,
+                            Brand: brandName,
+                            Model: null,
+                            Sku: null,
+                            Barcode: barcode,
+                            OemCode: oem,
+                            ImageUrl: null, Photo1: null, Photo2: null, Photo3: null,
+                            CostPrice: costExcel,
+                            RetailPrice: retailFromExcel,
+                            VatRate: vatRate,
+                            PurchaseAccount: null, SaleAccount: null, InventoryAccount: null,
+                            Stock: null,  // no tocar stock al actualizar precios
+                            CriticalStock: stockCritico,
+                            StockUnit: null,
+                            IsActive: null,
+                            BaseProductId: null, ClearBaseProduct: null,
+                            BrandId: brandId, ClearBrand: null,
+                            IsBase: null, IsService: null,
+                            UnitsPerPack: null, ClearUnitsPerPack: null,
+                            Fraction: null, MarkupAmount: null
+                        ));
+                        updated++;
+                    }
+                    if (existingIds.Count > 1)
+                    {
+                        warnings.Add(new BulkImportWarning(rowNum,
+                            $"OEM '{oem}' actualizo {existingIds.Count} productos (variantes que comparten el mismo OEM)."));
+                    }
+                }
+                else if (createIfMissing)
+                {
+                    if (string.IsNullOrWhiteSpace(title))
+                        throw new InvalidOperationException(
+                            $"OEM '{oem}' no existe en la base y la fila no tiene 'titulo'. " +
+                            "Para crear un producto nuevo necesitas titulo + codigo_oem.");
+
+                    var result = await _products.CreateOrUpdateAsync(new CreateProductRequest(
+                        Title: title!,
+                        DisplayName: null, Description: null,
+                        Brand: brandName, Model: null,
+                        Sku: oem,        // por defecto usamos el OEM como SKU interno
+                        Barcode: barcode,
+                        OemCode: oem,
+                        ImageUrl: null, Photo1: null, Photo2: null, Photo3: null,
+                        CostPrice: costExcel ?? 0m,
+                        RetailPrice: retailFromExcel ?? 0m,
+                        VatRate: vatRate,
+                        PurchaseAccount: null, SaleAccount: null, InventoryAccount: null,
+                        Stock: stock ?? 0,
+                        CriticalStock: stockCritico ?? 0,
+                        StockUnit: "unidad",
+                        BaseProductId: null,
+                        BrandId: brandId,
+                        IsBase: false,
+                        IsService: false,
+                        UnitsPerPack: null,
+                        Fraction: null,
+                        MarkupAmount: null
+                    ));
+                    if (result is not null)
+                    {
+                        created++;
+                        // Indexar para que filas posteriores con el mismo OEM lo encuentren
+                        if (!productsByOem.ContainsKey(oem.ToLowerInvariant()))
+                            productsByOem[oem.ToLowerInvariant()] = new List<int>();
+                        productsByOem[oem.ToLowerInvariant()].Add(result.Product.Id);
+                    }
+                }
+                else
+                {
+                    skipped++;
+                    warnings.Add(new BulkImportWarning(rowNum,
+                        $"OEM '{oem}' no existe y la opcion 'crear si falta' esta apagada — fila ignorada."));
+                }
+            }
+            catch (Exception ex) { errors.Add(new BulkImportError(rowNum, ex.Message)); }
+        }
+
+        // Auto-relink: si quedaron MeliItems sin producto y existe la tabla temporal de
+        // mapping, intentamos re-vincularlos por OEM ahora.
+        try
+        {
+            var relinked = await RelinkOrphanMeliItemsByOemAsync();
+            if (relinked > 0)
+                warnings.Add(new BulkImportWarning(0, $"Re-vinculadas {relinked} publicacion(es) de MercadoLibre por OEM."));
+        }
+        catch { /* tabla temporal no existe — ok */ }
+
+        return new BulkImportResult(rows.Count, created, updated, skipped, errors, warnings);
+    }
+
+    /// <summary>
+    /// Recorre la tabla temporal _temp_meli_colombraro_map (creada antes de un borrado masivo)
+    /// y para cada MeliItem huerfano busca en Products por OemCode = InferredOemCode. Si encuentra
+    /// match, le pone el ProductId. Devuelve cuantos vinculo. Es seguro llamar varias veces.
+    /// </summary>
+    private async Task<int> RelinkOrphanMeliItemsByOemAsync()
+    {
+        // Verificar que la tabla auxiliar exista
+        var exists = await _db.Database.SqlQueryRaw<int>(
+            "SELECT COUNT(*) AS Value FROM sys.objects WHERE name = '_temp_meli_colombraro_map' AND type = 'U'"
+        ).FirstOrDefaultAsync();
+        if (exists == 0) return 0;
+
+        var sql = @"
+        UPDATE mi
+           SET ProductId = p.Id
+          FROM MeliItems mi
+          JOIN dbo._temp_meli_colombraro_map t ON t.MeliItemDbId = mi.Id
+          JOIN Products p ON p.OemCode = t.InferredOemCode
+         WHERE mi.ProductId IS NULL;
+        SELECT @@ROWCOUNT AS Value;";
+        var n = await _db.Database.SqlQueryRaw<int>(sql).FirstOrDefaultAsync();
+        return n;
+    }
+
     private async Task<ProductUpsertResult?> CreateProductFromRow(
         List<string?> row, List<string> headers,
         Dictionary<string, int> brandsByName,

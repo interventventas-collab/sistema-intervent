@@ -61,6 +61,27 @@ public class ProductsController : ControllerBase
         catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
     }
 
+    // ===== IMPORT POR OEM (codigo del proveedor) =====
+    [HttpGet("import-by-oem-template")]
+    public IActionResult OemTemplate()
+    {
+        var bytes = _import.BuildProductsByOemTemplate();
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "productos-por-oem-template.xlsx");
+    }
+
+    [HttpPost("bulk-import-by-oem")]
+    public async Task<IActionResult> BulkImportByOem(IFormFile file, [FromQuery] bool createIfMissing = true)
+    {
+        if (file is null || file.Length == 0) return BadRequest(new { error = "Subi un archivo .xlsx" });
+        try
+        {
+            using var stream = file.OpenReadStream();
+            var result = await _import.ImportProductsByOemAsync(stream, createIfMissing);
+            return Ok(result);
+        }
+        catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetAll()
     {

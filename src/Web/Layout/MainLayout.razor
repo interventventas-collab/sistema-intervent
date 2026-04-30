@@ -97,6 +97,8 @@
                 {
                     <NavItem Href="/import-productos" Label="Importación masiva de productos" Icon="@SvgIcons.Folder"
                              IsActive="@IsActive("/import-productos")" OnClick="@(() => NavigateTo("/import-productos"))" />
+                    <NavItem Href="/import-precios-oem" Label="Importar precios por OEM" Icon="@SvgIcons.Folder"
+                             IsActive="@IsActive("/import-precios-oem")" OnClick="@(() => NavigateTo("/import-precios-oem"))" />
                 }
                 @if (HasPerm("actualizacion-stock"))
                 {
