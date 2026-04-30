@@ -37,6 +37,7 @@
                     <option value="futuro-padre">Solo futuros padres</option>
                     <option value="hijo">Solo hijos</option>
                     <option value="indep">Solo independientes</option>
+                    <option value="oems">📦 Solo OEMs (1 por código)</option>
                 </select>
             </label>
             <label style="display: flex; align-items: center; gap: 0.3rem; font-size: 0.85rem; color: #374151;">
@@ -1900,7 +1901,24 @@
         Navigation.LocationChanged += OnLocationChanged;
         Company.OnChange += OnCompanyChanged;
         Operator.OnChange += OnOperatorChanged;
+        ApplyQueryParams();
         await LoadData();
+    }
+
+    /// <summary>Si la URL trae ?oem=XXX, aplica el filtro de OEM automaticamente.</summary>
+    private void ApplyQueryParams()
+    {
+        var uri = new Uri(Navigation.Uri);
+        var qs = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        var oem = qs["oem"];
+        if (!string.IsNullOrEmpty(oem))
+        {
+            textFilters["oem"] = oem;
+            // Mostrar todos (no solo activos) para que se vean todas las variantes del OEM.
+            filterEstado = "";
+            filterType = "";
+            InvalidateFilterCache();
+        }
     }
 
     public void Dispose()
@@ -2091,6 +2109,16 @@
             result = result.Where(p => p.BaseProductId.HasValue);
         else if (ft == "indep")
             result = result.Where(p => p.BaseProductId == null && !p.IsBase && p.DerivedCount == 0);
+        else if (ft == "oems")
+        {
+            // Mostrar 1 producto por OEM (el primero alfabeticamente por SKU). Los productos
+            // sin OEM se muestran tambien (uno por cada uno, o sea sin agrupar).
+            var conOem = result.Where(p => !string.IsNullOrEmpty(p.OemCode))
+                .GroupBy(p => p.OemCode!.ToLowerInvariant())
+                .Select(g => g.OrderBy(p => p.Sku ?? "").First());
+            var sinOem = result.Where(p => string.IsNullOrEmpty(p.OemCode));
+            result = conOem.Concat(sinOem);
+        }
         // ft == "" => no filtra (Todos).
 
         // Filtro por Estado (Activo / Inactivo / Todos)
