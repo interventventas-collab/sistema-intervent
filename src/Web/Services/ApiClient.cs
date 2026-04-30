@@ -964,6 +964,12 @@ public class ApiClient
         return await PostAsync<WhatsAppSendResultDto>("/api/whatsapp/send", new { phone, message });
     }
 
+    /// <summary>Envía un mensaje cualquiera a un teléfono usando la sesión WhatsApp vinculada.</summary>
+    public async Task<WhatsAppSendResultDto?> SendWhatsAppMessageAsync(string phone, string message)
+    {
+        return await PostAsync<WhatsAppSendResultDto>("/api/whatsapp/send", new { phone, message });
+    }
+
     public async Task<List<WhatsAppSendResultDto>?> SendWhatsAppTestBulkAsync(IEnumerable<string> phones)
     {
         var appName = "AI-ML";
