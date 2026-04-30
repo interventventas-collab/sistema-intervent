@@ -21,8 +21,9 @@ public class ProductDto
     public string? PurchaseAccount { get; set; }
     public string? SaleAccount { get; set; }
     public string? InventoryAccount { get; set; }
-    public int Stock { get; set; }
+    public decimal Stock { get; set; }
     public int CriticalStock { get; set; }
+    public string StockUnit { get; set; } = "unidad";
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
@@ -61,8 +62,9 @@ public class CreateProductRequest
     public string? PurchaseAccount { get; set; }
     public string? SaleAccount { get; set; }
     public string? InventoryAccount { get; set; }
-    public int Stock { get; set; }
+    public decimal Stock { get; set; }
     public int CriticalStock { get; set; }
+    public string? StockUnit { get; set; }
     public int? BaseProductId { get; set; }
     public int? BrandId { get; set; }
     public bool? IsBase { get; set; }
@@ -92,8 +94,9 @@ public class UpdateProductRequest
     public string? PurchaseAccount { get; set; }
     public string? SaleAccount { get; set; }
     public string? InventoryAccount { get; set; }
-    public int? Stock { get; set; }
+    public decimal? Stock { get; set; }
     public int? CriticalStock { get; set; }
+    public string? StockUnit { get; set; }
     public bool? IsActive { get; set; }
     public int? BaseProductId { get; set; }
     public bool? ClearBaseProduct { get; set; }

@@ -1008,6 +1008,29 @@ BEGIN
 END
 GO
 
+-- Stock decimal: cambiamos Products.Stock a DECIMAL(18,3) para soportar kg con fracciones (0.5 kg, 0.25 kg, etc).
+-- Tambien agregamos StockUnit para distinguir productos vendidos por unidad vs por kg.
+-- Al pasar a 'kg', el padre lleva el total del bulk y los hijos NO tienen stock propio:
+-- al vender un hijo (1/2 kg), se descuentan kg del padre = quantity * Fraction.
+IF EXISTS (SELECT * FROM sys.columns WHERE Name = N'Stock' AND Object_ID = Object_ID(N'Products') AND system_type_id = TYPE_ID('int'))
+BEGIN
+    -- Necesitamos dropear el default constraint antes de cambiar el tipo
+    DECLARE @df_name NVARCHAR(200);
+    SELECT @df_name = name FROM sys.default_constraints
+        WHERE parent_object_id = OBJECT_ID('Products')
+        AND parent_column_id = (SELECT column_id FROM sys.columns WHERE Name = 'Stock' AND Object_ID = Object_ID('Products'));
+    IF @df_name IS NOT NULL
+        EXEC('ALTER TABLE Products DROP CONSTRAINT ' + @df_name);
+    ALTER TABLE Products ALTER COLUMN Stock DECIMAL(18,3) NOT NULL;
+    ALTER TABLE Products ADD CONSTRAINT DF_Products_Stock DEFAULT 0 FOR Stock;
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'StockUnit' AND Object_ID = Object_ID(N'Products'))
+BEGIN
+    ALTER TABLE Products ADD StockUnit NVARCHAR(10) NOT NULL CONSTRAINT DF_Products_StockUnit DEFAULT 'unidad';
+END
+GO
+
 -- Pagos parciales de sueldos (adelantos + pagos finales)
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='PayrollPayments' AND xtype='U')
 BEGIN
@@ -1093,9 +1116,9 @@ BEGIN
         ProductId INT NOT NULL,
         WarehouseId INT NOT NULL,
         MovementType NVARCHAR(30) NOT NULL,    -- 'ingreso', 'egreso', 'ajuste', 'rotura', 'merma', 'devolucion', 'conteo', 'otro'
-        DeltaQuantity INT NOT NULL,             -- positivo (entra) o negativo (sale)
-        StockBefore INT NOT NULL,
-        StockAfter INT NOT NULL,
+        DeltaQuantity DECIMAL(18,3) NOT NULL,   -- decimal para soportar kg con fracciones
+        StockBefore DECIMAL(18,3) NOT NULL,
+        StockAfter DECIMAL(18,3) NOT NULL,
         Reason NVARCHAR(150) NULL,              -- motivo corto (texto)
         Notes NVARCHAR(500) NULL,               -- detalle opcional
         OperatorName NVARCHAR(100) NULL,        -- quien lo hizo (operador del sistema)

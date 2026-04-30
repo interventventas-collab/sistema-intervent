@@ -45,9 +45,8 @@ public class ProductService
             .Select(g => new { ParentId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(g => g.ParentId, g => g.Count);
 
-        // Stock total de cada padre = suma del stock de sus hijos.
-        // Para padres con hijos, el campo Stock devuelto en el DTO es esa suma,
-        // ignorando el Stock propio del padre en la DB.
+        // Stock total de cada padre (modo unidad legacy): suma del stock de sus hijos.
+        // Para padres en modo kg, el Stock del padre ES el stock real (kg) y se devuelve tal cual.
         var childrenStockByParent = await _db.Products
             .Where(p => p.BaseProductId != null)
             .GroupBy(p => p.BaseProductId!.Value)
@@ -60,8 +59,9 @@ public class ProductService
             p.Photo1, p.Photo2, p.Photo3,
             p.CostPrice, p.RetailPrice, p.VatRate,
             p.PurchaseAccount, p.SaleAccount, p.InventoryAccount,
-            childrenStockByParent.TryGetValue(p.Id, out var childSum) ? childSum : p.Stock,
+            ComputeEffectiveStock(p, childrenStockByParent),
             p.CriticalStock,
+            string.IsNullOrEmpty(p.StockUnit) ? "unidad" : p.StockUnit,
             p.IsActive, p.CreatedAt, p.UpdatedAt,
             linksDict.GetValueOrDefault(p.Id, new List<ProductAccountLinkDto>()),
             p.BaseProductId,
@@ -79,6 +79,35 @@ public class ProductService
         )).ToList();
     }
 
+    /// <summary>
+    /// Calcula el stock efectivo a mostrar:
+    /// - Hijo de padre kg-mode: floor(padre.Stock / hijo.Fraction) → paquetes equivalentes derivados
+    /// - Padre kg-mode: el Stock real (kg)
+    /// - Padre unidad-mode con hijos: suma de stock de los hijos (legacy)
+    /// - Producto independiente o hijo de padre unidad-mode: el Stock propio
+    /// </summary>
+    private static decimal ComputeEffectiveStock(Product p, Dictionary<int, decimal> childrenStockByParent)
+    {
+        // Hijo de padre en modo kg → paquetes equivalentes derivados del padre
+        if (p.BaseProductId.HasValue && p.BaseProduct is not null
+            && p.BaseProduct.StockUnit == "kg" && p.Fraction > 0)
+        {
+            return Math.Floor(p.BaseProduct.Stock / p.Fraction);
+        }
+        // Padre kg-mode: Stock es el total en kg
+        if (p.StockUnit == "kg")
+        {
+            return p.Stock;
+        }
+        // Padre unidad-mode con hijos: sumar
+        if (childrenStockByParent.TryGetValue(p.Id, out var childSum))
+        {
+            return childSum;
+        }
+        // Por defecto: Stock propio
+        return p.Stock;
+    }
+
     public async Task<ProductListDto?> GetByIdAsync(int id)
     {
         var p = await _db.Products
@@ -88,10 +117,26 @@ public class ProductService
         if (p is null) return null;
 
         var derivedCount = await _db.Products.CountAsync(x => x.BaseProductId == id);
-        // Stock efectivo: si tiene hijos, suma; si no, su propio stock.
-        var effectiveStock = derivedCount > 0
-            ? await _db.Products.Where(x => x.BaseProductId == id).SumAsync(x => x.Stock)
-            : p.Stock;
+        // Stock efectivo:
+        // - kg-mode: el padre es el total en kg, los hijos derivan paquetes
+        // - unidad-mode: si tiene hijos, sumamos
+        decimal effectiveStock;
+        if (p.StockUnit == "kg")
+        {
+            effectiveStock = p.Stock;
+        }
+        else if (p.BaseProductId.HasValue && p.BaseProduct?.StockUnit == "kg" && p.Fraction > 0)
+        {
+            effectiveStock = Math.Floor(p.BaseProduct.Stock / p.Fraction);
+        }
+        else if (derivedCount > 0)
+        {
+            effectiveStock = await _db.Products.Where(x => x.BaseProductId == id).SumAsync(x => x.Stock);
+        }
+        else
+        {
+            effectiveStock = p.Stock;
+        }
 
         return new ProductListDto(
             p.Id, p.Title, p.DisplayName, p.Description,
@@ -100,6 +145,7 @@ public class ProductService
             p.CostPrice, p.RetailPrice, p.VatRate,
             p.PurchaseAccount, p.SaleAccount, p.InventoryAccount,
             effectiveStock, p.CriticalStock,
+            string.IsNullOrEmpty(p.StockUnit) ? "unidad" : p.StockUnit,
             p.IsActive, p.CreatedAt, p.UpdatedAt,
             new List<ProductAccountLinkDto>(),
             p.BaseProductId,
@@ -163,7 +209,9 @@ public class ProductService
             RetailPrice: req.RetailPerKg,
             VatRate: req.VatRate ?? 21m,
             PurchaseAccount: null, SaleAccount: null, InventoryAccount: null,
-            Stock: 0, CriticalStock: 0,
+            Stock: 0m, CriticalStock: 0,
+            // Padre cafe -> stock en kg, los hijos descuentan kg al venderse
+            StockUnit: "kg",
             BaseProductId: null,
             BrandId: req.BrandId,
             IsBase: true,
@@ -192,6 +240,8 @@ public class ProductService
                 PurchaseAccount: null, SaleAccount: null, InventoryAccount: null,
                 Stock: Math.Max(0, stock),
                 CriticalStock: 0,
+                // Hijos de cafe -> unidad (no rastrean stock individual; el padre lleva los kg)
+                StockUnit: "unidad",
                 BaseProductId: padreId,
                 BrandId: req.BrandId,
                 IsBase: false,
@@ -248,6 +298,7 @@ public class ProductService
                     InventoryAccount: request.InventoryAccount,
                     Stock: request.Stock,
                     CriticalStock: request.CriticalStock,
+                    StockUnit: request.StockUnit,
                     IsActive: null,
                     BaseProductId: request.BaseProductId,
                     ClearBaseProduct: !request.BaseProductId.HasValue,
@@ -337,6 +388,8 @@ public class ProductService
             InventoryAccount = string.IsNullOrWhiteSpace(request.InventoryAccount) ? null : request.InventoryAccount,
             Stock = request.Stock,
             CriticalStock = request.CriticalStock,
+            StockUnit = (!string.IsNullOrEmpty(request.StockUnit) && (request.StockUnit == "unidad" || request.StockUnit == "kg"))
+                ? request.StockUnit : "unidad",
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
             BaseProductId = request.BaseProductId,
@@ -468,6 +521,12 @@ public class ProductService
         var oldStock = product.Stock;
         if (request.Stock.HasValue) product.Stock = request.Stock.Value;
         if (request.CriticalStock.HasValue) product.CriticalStock = request.CriticalStock.Value;
+        if (!string.IsNullOrEmpty(request.StockUnit))
+        {
+            // Solo aceptamos los valores conocidos
+            if (request.StockUnit == "unidad" || request.StockUnit == "kg")
+                product.StockUnit = request.StockUnit;
+        }
         if (request.IsActive.HasValue) product.IsActive = request.IsActive.Value;
         if (request.IsBase.HasValue) product.IsBase = request.IsBase.Value;
         if (request.IsService.HasValue) product.IsService = request.IsService.Value;
@@ -508,9 +567,12 @@ public class ProductService
         }
 
         // Propagar stock a publicaciones de MeLi si cambio
+        // Nota: MeLi maneja unidades enteras. Para productos kg-mode, esto no es ideal
+        // — el push correcto a MeLi requiere derivar paquetes desde el padre kg
+        // (TODO en el FUTURO). Por ahora redondeamos al entero más cercano hacia abajo.
         if (request.Stock.HasValue && product.Stock != oldStock)
         {
-            try { await _meliItemService.PropagateStockAsync(product.Id, product.Stock); }
+            try { await _meliItemService.PropagateStockAsync(product.Id, (int)Math.Floor(product.Stock)); }
             catch { /* No bloquear la actualizacion del producto si falla la propagacion */ }
         }
 

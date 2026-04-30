@@ -485,31 +485,50 @@ public class SaleService
         }
 
         var productIds = items.Select(i => i.ProductId!.Value).Distinct().ToList();
+        // Incluir BaseProduct para resolver el caso "hijo de padre kg-mode"
         var products = await _db.Products
+            .Include(p => p.BaseProduct)
             .Where(p => productIds.Contains(p.Id))
             .ToDictionaryAsync(p => p.Id);
 
         // Sumar cantidades por producto (por si el mismo producto aparece varias veces)
         var totalsByProduct = items
             .GroupBy(i => i.ProductId!.Value)
-            .ToDictionary(g => g.Key, g => g.Sum(x => (int)Math.Round(x.Quantity)));
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Quantity));
 
         var detalles = new List<object>();
         foreach (var (productId, qty) in totalsByProduct)
         {
             if (!products.TryGetValue(productId, out var product)) continue;
-            var oldStock = product.Stock;
-            product.Stock = product.Stock - qty; // permite negativo a proposito
-            product.UpdatedAt = DateTime.UtcNow;
+
+            // Determinar entidad a descontar y cantidad real:
+            //  - Hijo de padre kg-mode: el descuento va al PADRE en kg = qty * Fraction
+            //  - Caso normal: descuento al propio producto en unidades = qty
+            Product target = product;
+            decimal qtyToDeduct = qty;
+            string mode = "unidad";
+            if (product.BaseProductId.HasValue && product.BaseProduct?.StockUnit == "kg" && product.Fraction > 0)
+            {
+                target = product.BaseProduct;
+                qtyToDeduct = qty * product.Fraction;
+                mode = "kg-padre";
+            }
+
+            var oldStock = target.Stock;
+            target.Stock = target.Stock - qtyToDeduct; // permite negativo a proposito
+            target.UpdatedAt = DateTime.UtcNow;
             detalles.Add(new
             {
                 productId = product.Id,
                 sku = product.Sku,
                 title = product.Title,
-                cantidadDescontada = qty,
+                modo = mode,
+                targetSku = target.Sku,
+                cantidadVendida = qty,
+                cantidadDescontadaDelTarget = qtyToDeduct,
                 stockAnterior = oldStock,
-                stockNuevo = product.Stock,
-                quedoNegativo = product.Stock < 0
+                stockNuevo = target.Stock,
+                quedoNegativo = target.Stock < 0
             });
         }
 
@@ -541,28 +560,42 @@ public class SaleService
 
         var productIds = items.Select(i => i.ProductId!.Value).Distinct().ToList();
         var products = await _db.Products
+            .Include(p => p.BaseProduct)
             .Where(p => productIds.Contains(p.Id))
             .ToDictionaryAsync(p => p.Id);
 
         var totalsByProduct = items
             .GroupBy(i => i.ProductId!.Value)
-            .ToDictionary(g => g.Key, g => g.Sum(x => (int)Math.Round(x.Quantity)));
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Quantity));
 
         var detalles = new List<object>();
         foreach (var (productId, qty) in totalsByProduct)
         {
             if (!products.TryGetValue(productId, out var product)) continue;
-            var oldStock = product.Stock;
-            product.Stock = product.Stock + qty;
-            product.UpdatedAt = DateTime.UtcNow;
+
+            // Mismo criterio que en el descuento: si es hijo de padre kg-mode, el reembolso
+            // va al padre = qty * Fraction
+            Product target = product;
+            decimal qtyToAdd = qty;
+            if (product.BaseProductId.HasValue && product.BaseProduct?.StockUnit == "kg" && product.Fraction > 0)
+            {
+                target = product.BaseProduct;
+                qtyToAdd = qty * product.Fraction;
+            }
+
+            var oldStock = target.Stock;
+            target.Stock = target.Stock + qtyToAdd;
+            target.UpdatedAt = DateTime.UtcNow;
             detalles.Add(new
             {
                 productId = product.Id,
                 sku = product.Sku,
                 title = product.Title,
-                cantidadDevuelta = qty,
+                targetSku = target.Sku,
+                cantidadVendida = qty,
+                cantidadDevueltaAlTarget = qtyToAdd,
                 stockAnterior = oldStock,
-                stockNuevo = product.Stock
+                stockNuevo = target.Stock
             });
         }
 

@@ -63,11 +63,15 @@ public class StockMovement
     [MaxLength(30)]
     public string MovementType { get; set; } = "ajuste";
 
-    /// <summary>Positivo (entra al stock) o negativo (sale del stock).</summary>
-    public int DeltaQuantity { get; set; }
+    /// <summary>Positivo (entra al stock) o negativo (sale del stock). Decimal para soportar kg.</summary>
+    [Column(TypeName = "decimal(18,3)")]
+    public decimal DeltaQuantity { get; set; }
 
-    public int StockBefore { get; set; }
-    public int StockAfter { get; set; }
+    [Column(TypeName = "decimal(18,3)")]
+    public decimal StockBefore { get; set; }
+
+    [Column(TypeName = "decimal(18,3)")]
+    public decimal StockAfter { get; set; }
 
     [MaxLength(150)]
     public string? Reason { get; set; }

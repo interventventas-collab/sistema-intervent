@@ -143,7 +143,7 @@ public class ProcessOrderStockJob : IScheduledJob
                 {
                     try
                     {
-                        await meliItemService.PropagateStockAsync(product.Id, product.Stock);
+                        await meliItemService.PropagateStockAsync(product.Id, (int)Math.Floor(product.Stock));
 
                         await auditLog.LogAsync("Product", product.Id.ToString(), "STOCK_PROPAGATED",
                             JsonSerializer.Serialize(new

@@ -21,9 +21,9 @@ public record StockMovementDto(
     int WarehouseId,
     string WarehouseName,
     string MovementType,
-    int DeltaQuantity,
-    int StockBefore,
-    int StockAfter,
+    decimal DeltaQuantity,
+    decimal StockBefore,
+    decimal StockAfter,
     string? Reason,
     string? Notes,
     string? OperatorName,
@@ -39,8 +39,9 @@ public record AdjustStockRequest(
     /// <summary>
     /// Si MovementType es 'ajuste' o 'conteo': el valor absoluto al que dejar el stock.
     /// Si es 'ingreso' / 'egreso' / etc: la cantidad a sumar/restar (siempre positiva).
+    /// Decimal para soportar kg con fracciones.
     /// </summary>
-    [Range(0, int.MaxValue)] int Quantity,
+    [Range(0.0, double.MaxValue)] decimal Quantity,
     [MaxLength(150)] string? Reason,
     [MaxLength(500)] string? Notes,
     [MaxLength(100)] string? OperatorName

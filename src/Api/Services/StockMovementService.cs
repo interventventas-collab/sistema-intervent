@@ -63,8 +63,8 @@ public class StockMovementService
             ?? throw new InvalidOperationException("Deposito no encontrado.");
 
         var stockBefore = product.Stock;
-        int newStock;
-        int delta;
+        decimal newStock;
+        decimal delta;
 
         switch (req.MovementType)
         {

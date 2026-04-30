@@ -1648,7 +1648,9 @@ public class MeliItemService
             }
             if (pushStock)
             {
-                stockToPush = product.Stock;
+                // MeLi maneja enteros. Para productos kg-mode, esto necesitará lógica especial
+                // (derivar paquetes desde el padre kg). Por ahora flooreamos a int.
+                stockToPush = (int)Math.Floor(product.Stock);
                 payloadDict["available_quantity"] = stockToPush.Value;
             }
         }
@@ -1689,8 +1691,8 @@ public class MeliItemService
                 // Stock del combo = minimo de (stock_item / cantidad_necesaria) entre todos los items.
                 if (combo.Items.Any())
                 {
-                    stockToPush = combo.Items
-                        .Select(ci => ci.Product is null ? 0 : (ci.Quantity > 0 ? ci.Product.Stock / ci.Quantity : 0))
+                    stockToPush = (int)combo.Items
+                        .Select(ci => ci.Product is null ? 0m : (ci.Quantity > 0 ? Math.Floor(ci.Product.Stock / ci.Quantity) : 0m))
                         .Min();
                 }
                 else stockToPush = 0;
@@ -1871,7 +1873,7 @@ public class MeliItemService
                 Title = product.Title,
                 Description = product.Description,
                 Price = price,
-                AvailableQuantity = product.Stock > 0 ? product.Stock : 1,
+                AvailableQuantity = product.Stock > 0 ? (int)Math.Floor(product.Stock) : 1,
                 Condition = request.Condition,
                 ListingTypeId = request.ListingTypeId,
                 FreeShipping = request.FreeShipping,

@@ -422,14 +422,24 @@
                                     @{
                                         var hasChildren = product.DerivedCount > 0;
                                     }
+                                    @{
+                                        var isKg = product.StockUnit == "kg";
+                                        var stepStock = isKg ? "0.001" : "1";
+                                        var unitSuffix = isKg ? " kg" : "";
+                                        var stockText = FormatStockNumber(product.Stock) + unitSuffix;
+                                    }
                                     @if (IsUnlocked("stock") && !product.RequiresExpiry && !hasChildren)
                                     {
                                         var stockDisabled = savingStockId == product.Id;
-                                        <input type="number" min="0" step="1"
+                                        <input type="number" min="0" step="@stepStock"
                                                value="@product.Stock"
                                                @onchange="@(e => SaveProductStock(product, e.Value?.ToString()))"
                                                disabled="@stockDisabled"
-                                               style="border: 1px solid #d1d5db; border-radius: 6px; padding: 0.25rem 0.4rem; text-align: center; width: 75px; font-size: 0.9rem;" />
+                                               style="border: 1px solid #d1d5db; border-radius: 6px; padding: 0.25rem 0.4rem; text-align: center; width: 85px; font-size: 0.9rem;" />
+                                        @if (isKg)
+                                        {
+                                            <span style="font-size: 0.7rem; color: #92400e; font-weight: 700; margin-left: 0.2rem;">kg</span>
+                                        }
                                         @if (savingStockId == product.Id)
                                         {
                                             <span style="color: #3b82f6; font-size: 0.75rem; margin-left: 0.2rem;">...</span>
@@ -439,22 +449,29 @@
                                     {
                                         @if (product.CriticalStock > 0 && product.Stock <= product.CriticalStock)
                                         {
-                                            <span class="stock-badge @(product.Stock < product.CriticalStock ? "stock-critical" : "stock-warning")">@product.Stock</span>
+                                            <span class="stock-badge @(product.Stock < product.CriticalStock ? "stock-critical" : "stock-warning")">@stockText</span>
                                         }
                                         else if (product.CriticalStock > 0 && product.Stock > product.CriticalStock)
                                         {
-                                            <span class="stock-badge stock-healthy">@product.Stock</span>
+                                            <span class="stock-badge stock-healthy">@stockText</span>
                                         }
                                         else
                                         {
-                                            @product.Stock
+                                            @stockText
                                         }
                                     }
-                                    @if (hasChildren)
+                                    @if (hasChildren && !isKg)
                                     {
                                         <span style="margin-left: 0.3rem; background: #e0f2fe; color: #075985; border: 1px solid #7dd3fc; padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.7rem; font-weight: 700;"
                                               title="Stock total = suma del stock de los @product.DerivedCount hijo(s)">
                                             Σ @product.DerivedCount
+                                        </span>
+                                    }
+                                    @if (isKg)
+                                    {
+                                        <span style="margin-left: 0.3rem; background: #fef3c7; color: #78350f; border: 1px solid #fbbf24; padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.7rem; font-weight: 700;"
+                                              title="Stock medido en kg — al vender un hijo, descuenta kg × fracción">
+                                            ⚖ kg
                                         </span>
                                     }
                                     @if (product.RequiresExpiry)
@@ -633,6 +650,22 @@
                         Los hijos heredan precio, costo y datos del padre.
                     </p>
 
+                    @* Unidad de stock — solo para padres. Default 'unidad'; 'kg' para café/granel *@
+                    @if (formIsBase)
+                    {
+                        <div class="form-group" style="margin-top: 0.7rem; padding: 0.6rem 0.8rem; background: #fffbeb; border: 1px solid #fbbf24; border-radius: 6px;">
+                            <label class="form-label" style="color: #78350f;">⚖ Unidad de stock del padre</label>
+                            <select class="form-input" @bind="formStockUnit" style="max-width: 320px;">
+                                <option value="unidad">Unidades (cada hijo lleva su propio stock)</option>
+                                <option value="kg">Kilos — fraccionable (el padre lleva los kg, los hijos descuentan según fracción)</option>
+                            </select>
+                            <p style="font-size: 0.75rem; color: #78350f; margin: 0.4rem 0 0;">
+                                <strong>Unidades</strong>: cada presentación tiene su stock independiente (ej: tornillería).<br/>
+                                <strong>Kilos</strong>: el padre tiene los kg totales (ej: café). Vendiendo un paquete de 1/2 kg, descuenta 0,5 kg del padre.
+                            </p>
+                        </div>
+                    }
+
                     <div class="form-group" style="margin-top: 0.7rem;">
                         <label class="form-label">¿Es hijo de otro producto?</label>
                         <select class="form-input" @bind="formBaseProductId">
@@ -793,14 +826,17 @@
                         @{
                             var formIsParentWithChildren = isEditing && editingProductId.HasValue
                                 && (products?.Any(p => p.BaseProductId == editingProductId.Value) ?? false);
-                            var stockDisabled = FormRequiresExpiry || formIsParentWithChildren;
+                            var stockDisabled = FormRequiresExpiry || (formIsParentWithChildren && formStockUnit != "kg");
+                            var isKgMode = formStockUnit == "kg";
+                            var stockStep = isKgMode ? "0.001" : "1";
                         }
                         <label class="form-label">
                             Stock
                             @if (FormRequiresExpiry) { <span>(por lotes)</span> }
-                            else if (formIsParentWithChildren) { <span>(suma de hijos)</span> }
+                            else if (formIsParentWithChildren && !isKgMode) { <span>(suma de hijos)</span> }
+                            else if (isKgMode) { <span style="color: #92400e;">(total en kg, decimal)</span> }
                         </label>
-                        <input class="form-input" type="number" min="0" style="font-size: 1.1rem; font-weight: 700; text-align: right; @(stockDisabled ? "background:#f3f4f6;color:#6b7280;" : "")"
+                        <input class="form-input" type="number" min="0" step="@stockStep" style="font-size: 1.1rem; font-weight: 700; text-align: right; @(stockDisabled ? "background:#f3f4f6;color:#6b7280;" : "")"
                                @bind="formStock" disabled="@stockDisabled" />
                         @if (FormRequiresExpiry)
                         {
@@ -808,10 +844,16 @@
                                 ⚠ Esta marca tiene productos con vencimiento. El stock se gestiona por lotes desde el boton "📅 Lotes" en la tabla, despues de guardar.
                             </p>
                         }
-                        else if (formIsParentWithChildren)
+                        else if (formIsParentWithChildren && !isKgMode)
                         {
                             <p style="font-size: 0.75rem; color: #075985; margin: 0.3rem 0 0;">
                                 Σ Este producto es padre. El stock total es la <strong>suma del stock de sus hijos</strong>, no se carga manualmente.
+                            </p>
+                        }
+                        else if (isKgMode)
+                        {
+                            <p style="font-size: 0.75rem; color: #92400e; margin: 0.3rem 0 0;">
+                                ⚖ Modo kg: el stock del padre lleva los <strong>kg totales</strong>. Al vender un hijo, descuenta del padre <strong>cantidad × fracción</strong>.
                             </p>
                         }
                     </div>
@@ -1629,7 +1671,9 @@
     private string formInventoryAccount = "";
     private decimal formCostPrice;
     private decimal formRetailPrice;
-    private int formStock;
+    private decimal formStock;
+    // 'unidad' (default) o 'kg'. Solo aplica a padres (IsBase=true). Los hijos lo dejamos en 'unidad'.
+    private string formStockUnit = "unidad";
     private int formCriticalStock;
     private int? formUnitsPerPack;
     private string formCostPriceFormatted = "";
@@ -2238,6 +2282,7 @@
         formBrandId = 0;
         // Por default, NO marcar como producto base. El usuario lo tilda manualmente si aplica.
         formIsBase = false;
+        formStockUnit = "unidad";
         // Default fraction = 1 (mismo precio que el padre), markup = 0
         formFraction = 1m;
         formMarkupAmount = 0m;
@@ -2274,6 +2319,7 @@
         formBaseProductId = product.BaseProductId ?? 0;
         formBrandId = product.BrandId ?? 0;
         formIsBase = product.IsBase;
+        formStockUnit = string.IsNullOrEmpty(product.StockUnit) ? "unidad" : product.StockUnit;
         // Cargar fraccion/recargo del producto. Si nunca se setearon, default 1/0.
         formFraction = product.Fraction <= 0 ? 1m : product.Fraction;
         formMarkupAmount = product.MarkupAmount;
@@ -2369,6 +2415,8 @@
                 if (formBrandId > 0) update.BrandId = formBrandId;
                 else update.ClearBrand = true;
                 update.IsBase = formIsBase;
+                // Solo mandamos StockUnit si es padre (los hijos siempre quedan en 'unidad')
+                if (formIsBase) update.StockUnit = formStockUnit;
                 if (formUnitsPerPack.HasValue && formUnitsPerPack.Value > 0)
                     update.UnitsPerPack = formUnitsPerPack.Value;
                 else
@@ -2417,6 +2465,8 @@
                 if (formBaseProductId > 0) create.BaseProductId = formBaseProductId;
                 if (formBrandId > 0) create.BrandId = formBrandId;
                 create.IsBase = formIsBase;
+                // StockUnit solo es relevante para padres
+                create.StockUnit = formIsBase ? formStockUnit : "unidad";
                 if (formUnitsPerPack.HasValue && formUnitsPerPack.Value > 0)
                     create.UnitsPerPack = formUnitsPerPack.Value;
                 // Fraccionamiento (solo aplica si es hijo)
@@ -2460,7 +2510,7 @@
         publishingProduct = product; publishStep = 1; publishError = null; publishResult = null;
         pubTitle = product.Title; pubDescription = product.Description;
         pubPrice = product.RetailPrice; pubPriceFormatted = FormatPrice(product.RetailPrice);
-        pubStock = product.Stock > 0 ? product.Stock : 1;
+        pubStock = product.Stock > 0 ? (int)Math.Floor(product.Stock) : 1;
         pubCondition = "new"; pubListingType = "gold_special"; pubFreeShipping = true;
         pubAccountId = 0; pubCategoryId = "";
         categoryPredictions = null; categoryAttributes = null; attributeValues = new();
@@ -3036,6 +3086,18 @@
         catch (Exception ex) { product.IsActive = original; ToastService.Error("Error: " + ex.Message); }
         savingEstadoId = null;
         StateHasChanged();
+    }
+
+    /// <summary>
+    /// Formatea un numero de stock: si es entero, sin decimales (ej "120"); si tiene
+    /// fraccion, muestra hasta 3 decimales con coma argentina (ej "120,500" o "108,5").
+    /// </summary>
+    private string FormatStockNumber(decimal value)
+    {
+        // Cuando es entero exacto, mostrar sin decimales
+        if (value == Math.Truncate(value))
+            return ((long)value).ToString("N0", new System.Globalization.CultureInfo("es-AR"));
+        return value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture).Replace(".", ",");
     }
 
     private string FormatPrice(decimal value)

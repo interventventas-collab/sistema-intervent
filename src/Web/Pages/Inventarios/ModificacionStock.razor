@@ -233,7 +233,7 @@
 
     private int formWarehouseId;
     private string formMovementType = "ingreso";
-    private int formQuantity;
+    private decimal formQuantity;
     private string formReason = "";
     private string formNotes = "";
     private bool isSaving;
@@ -243,7 +243,7 @@
     private bool IsAbsoluteMode => formMovementType is "ajuste" or "conteo";
     private bool IsNegativeMovement => formMovementType is "egreso" or "rotura" or "merma" or "otro";
 
-    private int PreviewNewStock
+    private decimal PreviewNewStock
     {
         get
         {

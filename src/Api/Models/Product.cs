@@ -59,7 +59,21 @@ public class Product
     [Column(TypeName = "decimal(18,2)")]
     public decimal RetailPrice { get; set; }
 
-    public int Stock { get; set; }
+    /// <summary>
+    /// Cantidad en stock. Si StockUnit = "unidad" (default), es entero conceptualmente.
+    /// Si StockUnit = "kg", representa kg con decimales (ej: 108.5 kg).
+    /// </summary>
+    [Column(TypeName = "decimal(18,3)")]
+    public decimal Stock { get; set; }
+
+    /// <summary>
+    /// Unidad del stock: "unidad" (default, productos contables) o "kg" (productos a granel).
+    /// Cuando un padre tiene "kg", los hijos NO llevan stock propio: al venderlos, se descuenta
+    /// del padre la cantidad = quantity * Fraction (ej: 1 paquete de 1/2 kg = 0.5 kg del padre).
+    /// </summary>
+    [MaxLength(10)]
+    public string StockUnit { get; set; } = "unidad";
+
     public int CriticalStock { get; set; }
 
     public bool IsActive { get; set; } = true;
