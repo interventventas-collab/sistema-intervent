@@ -110,6 +110,33 @@ public record UpdateProductRequest(
 
 public record BulkProductIdsRequest(List<int> Ids);
 
+/// <summary>
+/// Crea una variedad nueva de cafe (u otro producto fraccionable): genera el
+/// producto padre + 3 hijos (1 kg, 1/2 kg, 1/4 kg) en una sola operacion.
+/// Pensado para que el usuario cargue rapido cafes nuevos sin repetir el flujo
+/// de "crear padre, despues crear hijo, despues otro hijo, otro hijo, etc".
+/// </summary>
+public record CreateCoffeeVarietyRequest(
+    [Required][MaxLength(150)] string Name,            // Ej: "Cafe Brasil Seleccion"
+    [Required][MaxLength(20)] string SkuBase,          // Ej: "F2" -> hijos quedan F2-1KG, F2-500G, F2-250G
+    int? BrandId,
+    [Range(0, double.MaxValue)] decimal CostPerKg,     // sin IVA, costo del kilo
+    [Range(0, double.MaxValue)] decimal RetailPerKg,   // sin IVA, PVP del kilo
+    [Range(0, double.MaxValue)] decimal MarkupAmount,  // recargo $ por fraccionar (default 1000). Aplica a 1/2 y 1/4
+    decimal? VatRate,                                  // default 21
+    int InitialStock1Kg,
+    int InitialStock500g,
+    int InitialStock250g
+);
+
+public record CreateCoffeeVarietyResponse(
+    int ParentId,
+    string ParentSku,
+    int Child1KgId,
+    int Child500gId,
+    int Child250gId
+);
+
 public record BulkToggleStatusRequest(List<int> Ids, bool IsActive);
 
 // Resultado de un upsert (Create que puede convertirse en Update si el SKU ya existe).

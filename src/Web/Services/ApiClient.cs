@@ -158,6 +158,12 @@ public class ApiClient
         return await PostAsync<ProductDto>("/api/products", request);
     }
 
+    /// <summary>Crea una variedad de cafe (padre + 3 hijos 1kg/500g/250g) en una sola llamada.</summary>
+    public async Task<CreateCoffeeVarietyResponse?> CreateCoffeeVarietyAsync(CreateCoffeeVarietyRequest request)
+    {
+        return await PostAsync<CreateCoffeeVarietyResponse>("/api/products/coffee-variety", request);
+    }
+
     public async Task<ProductDto?> UpdateProductAsync(int id, UpdateProductRequest request)
     {
         return await PutAsync<ProductDto>($"/api/products/{id}", request);

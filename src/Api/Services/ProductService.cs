@@ -124,6 +124,95 @@ public class ProductService
     }
 
     /// <summary>
+    /// Crea una "variedad de cafe" completa: un producto padre + 3 hijos con
+    /// presentaciones standard 1 kg, 1/2 kg y 1/4 kg. Util para cargar muchos
+    /// cafes rapido sin repetir el flujo de "padre + hijo + hijo + hijo".
+    /// El padre no lleva stock (los hijos manejan el stock real por separado).
+    /// </summary>
+    public async Task<CreateCoffeeVarietyResponse> CreateCoffeeVarietyAsync(CreateCoffeeVarietyRequest req)
+    {
+        var name = req.Name?.Trim() ?? "";
+        var skuBase = req.SkuBase?.Trim().ToUpperInvariant() ?? "";
+        if (string.IsNullOrWhiteSpace(name)) throw new InvalidOperationException("El nombre es obligatorio.");
+        if (string.IsNullOrWhiteSpace(skuBase)) throw new InvalidOperationException("El SKU base es obligatorio.");
+
+        // Validar que ningun SKU choque con uno existente.
+        var skuPadre = skuBase;
+        var sku1Kg = $"{skuBase}-1KG";
+        var sku500 = $"{skuBase}-500G";
+        var sku250 = $"{skuBase}-250G";
+        var existing = await _db.Products
+            .Where(p => p.Sku == skuPadre || p.Sku == sku1Kg || p.Sku == sku500 || p.Sku == sku250)
+            .Select(p => p.Sku!).ToListAsync();
+        if (existing.Count > 0)
+            throw new InvalidOperationException($"Ya existen productos con estos SKUs: {string.Join(", ", existing)}. Elegi otro SKU base.");
+
+        // Crear padre
+        var padreReq = new CreateProductRequest(
+            Title: name,
+            DisplayName: null,
+            Description: null,
+            Brand: null,
+            Model: null,
+            Sku: skuPadre,
+            Barcode: null,
+            OemCode: null,
+            ImageUrl: null,
+            Photo1: null, Photo2: null, Photo3: null,
+            CostPrice: req.CostPerKg,
+            RetailPrice: req.RetailPerKg,
+            VatRate: req.VatRate ?? 21m,
+            PurchaseAccount: null, SaleAccount: null, InventoryAccount: null,
+            Stock: 0, CriticalStock: 0,
+            BaseProductId: null,
+            BrandId: req.BrandId,
+            IsBase: true,
+            IsService: false,
+            UnitsPerPack: null,
+            Fraction: 1m,
+            MarkupAmount: 0m
+        );
+        var padreResult = await CreateOrUpdateAsync(padreReq)
+            ?? throw new InvalidOperationException("No se pudo crear el producto padre.");
+        var padreId = padreResult.Product.Id;
+
+        // Helper para crear hijo
+        async Task<int> CrearHijo(string sku, string sufijoTitulo, decimal fraction, decimal markup, int stock)
+        {
+            var hijoReq = new CreateProductRequest(
+                Title: $"{name} {sufijoTitulo}",
+                DisplayName: null, Description: null,
+                Brand: null, Model: null,
+                Sku: sku,
+                Barcode: null, OemCode: null, ImageUrl: null,
+                Photo1: null, Photo2: null, Photo3: null,
+                CostPrice: 0,           // se deriva del padre via Fraction
+                RetailPrice: 0,         // se deriva del padre via Fraction + MarkupAmount
+                VatRate: req.VatRate ?? 21m,
+                PurchaseAccount: null, SaleAccount: null, InventoryAccount: null,
+                Stock: Math.Max(0, stock),
+                CriticalStock: 0,
+                BaseProductId: padreId,
+                BrandId: req.BrandId,
+                IsBase: false,
+                IsService: false,
+                UnitsPerPack: null,
+                Fraction: fraction,
+                MarkupAmount: markup
+            );
+            var r = await CreateOrUpdateAsync(hijoReq)
+                ?? throw new InvalidOperationException($"No se pudo crear el hijo {sku}.");
+            return r.Product.Id;
+        }
+
+        var idKg  = await CrearHijo(sku1Kg, "1 kg",   1.00m, 0m,                req.InitialStock1Kg);
+        var id500 = await CrearHijo(sku500, "1/2 kg", 0.50m, req.MarkupAmount,  req.InitialStock500g);
+        var id250 = await CrearHijo(sku250, "1/4 kg", 0.25m, req.MarkupAmount,  req.InitialStock250g);
+
+        return new CreateCoffeeVarietyResponse(padreId, skuPadre, idKg, id500, id250);
+    }
+
+    /// <summary>
     /// Upsert por SKU: si llega un SKU que ya existe, actualiza el producto en vez de crear uno duplicado.
     /// Devuelve action ("created"|"updated") y un warning si bajo el precio respecto al anterior.
     /// </summary>

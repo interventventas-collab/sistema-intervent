@@ -113,6 +113,29 @@ public class ProductAccountLinkDto
     public int Count { get; set; }
 }
 
+public class CreateCoffeeVarietyRequest
+{
+    public string Name { get; set; } = string.Empty;
+    public string SkuBase { get; set; } = string.Empty;
+    public int? BrandId { get; set; }
+    public decimal CostPerKg { get; set; }
+    public decimal RetailPerKg { get; set; }
+    public decimal MarkupAmount { get; set; } = 1000m;
+    public decimal? VatRate { get; set; } = 21m;
+    public int InitialStock1Kg { get; set; }
+    public int InitialStock500g { get; set; }
+    public int InitialStock250g { get; set; }
+}
+
+public class CreateCoffeeVarietyResponse
+{
+    public int ParentId { get; set; }
+    public string ParentSku { get; set; } = string.Empty;
+    public int Child1KgId { get; set; }
+    public int Child500gId { get; set; }
+    public int Child250gId { get; set; }
+}
+
 public class BulkCreateProductResult
 {
     public int Created { get; set; }

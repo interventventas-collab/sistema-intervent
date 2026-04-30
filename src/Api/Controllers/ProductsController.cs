@@ -84,6 +84,14 @@ public class ProductsController : ControllerBase
         return Created("/api/products/" + product.Id, product);
     }
 
+    /// <summary>Crea una variedad nueva de cafe (padre + 3 hijos 1kg/500g/250g) en una sola llamada.</summary>
+    [HttpPost("coffee-variety")]
+    public async Task<IActionResult> CreateCoffeeVariety([FromBody] CreateCoffeeVarietyRequest request)
+    {
+        try { return Ok(await _productService.CreateCoffeeVarietyAsync(request)); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(int id, [FromBody] UpdateProductRequest request)
     {

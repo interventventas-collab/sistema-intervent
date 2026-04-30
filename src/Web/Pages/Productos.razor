@@ -72,6 +72,12 @@
                             <div style="font-size: 0.72rem; color: #6b7280;">Producto suelto, sin variantes</div>
                         </button>
                         <hr style="margin: 0.3rem 0; border: none; border-top: 1px solid #e5e7eb;" />
+                        <button class="new-type-option" @onclick="StartCreateCoffeeVariety"
+                                style="display: block; width: 100%; text-align: left; padding: 0.55rem 0.85rem; background: none; border: none; cursor: pointer; font-size: 0.9rem;">
+                            <strong style="color: #92400e;">☕ Variedad de café</strong>
+                            <div style="font-size: 0.72rem; color: #6b7280;">Crea padre + 3 hijos (1 kg, 1/2, 1/4) en un solo paso</div>
+                        </button>
+                        <hr style="margin: 0.3rem 0; border: none; border-top: 1px solid #e5e7eb;" />
                         <button class="new-type-option" @onclick="GoCreateCombo"
                                 style="display: block; width: 100%; text-align: left; padding: 0.55rem 0.85rem; background: none; border: none; cursor: pointer; font-size: 0.9rem;">
                             <strong>🎁 Combo</strong>
@@ -1478,6 +1484,126 @@
                  ImportUrl="@(IsBaseOnlyView ? "/api/products/base-bulk-import" : "/api/products/bulk-import")"
                  OnImported="LoadData" />
 
+@* ====== MODAL: Nueva variedad de café (crea padre + 3 hijos en un solo paso) ====== *@
+@if (showCoffeeModal)
+{
+    <div class="modal-overlay" @onclick="() => showCoffeeModal = false">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 720px;">
+            <div class="modal-header" style="background: #fef3c7; color: #78350f;">
+                <h3>☕ Nueva variedad de café</h3>
+                <button class="btn-close" @onclick="() => showCoffeeModal = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.85rem; color: #6b7280; margin: 0 0 1rem;">
+                    Cargá los datos del café <strong>una sola vez</strong> y el sistema crea automáticamente
+                    el producto padre + los 3 hijos (1 kg, 1/2 kg, 1/4 kg) con sus precios proporcionales.
+                </p>
+
+                @if (!string.IsNullOrEmpty(coffeeError))
+                {
+                    <div class="form-error">@coffeeError</div>
+                }
+
+                <div class="form-row">
+                    <div class="form-group" style="flex: 2;">
+                        <label class="form-label">Nombre de la variedad *</label>
+                        <input class="form-input" @bind="coffeeName" placeholder="Ej: Café Brasil Selección" autofocus />
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">SKU base *</label>
+                        <input class="form-input" @bind="coffeeSkuBase" placeholder="Ej: F2"
+                               style="text-transform: uppercase;" />
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
+                            Se generan: <code>@coffeeSkuBase</code>, <code>@coffeeSkuBase-1KG</code>, <code>@coffeeSkuBase-500G</code>, <code>@coffeeSkuBase-250G</code>
+                        </p>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Marca</label>
+                        <select class="form-input" @bind="coffeeBrandId">
+                            <option value="0">— Sin marca —</option>
+                            @if (brands is not null)
+                            {
+                                @foreach (var b in brands.Where(x => x.IsActive))
+                                {
+                                    <option value="@b.Id">@b.Name</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 0 0 120px;">
+                        <label class="form-label">IVA %</label>
+                        <select class="form-input" @bind="coffeeVatRate">
+                            <option value="0">0 %</option>
+                            <option value="10.5">10,5 %</option>
+                            <option value="21">21 %</option>
+                            <option value="27">27 %</option>
+                        </select>
+                    </div>
+                </div>
+
+                <hr style="margin: 1rem 0; border: none; border-top: 1px solid #e5e7eb;" />
+                <h4 style="margin: 0 0 0.5rem; font-size: 0.95rem;">💰 Precios (sin IVA, por kilo)</h4>
+
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Costo por kg</label>
+                        <input type="number" min="0" step="0.01" class="form-input" @bind="coffeeCostPerKg" style="text-align: right;" />
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">PVP por kg</label>
+                        <input type="number" min="0" step="0.01" class="form-input" @bind="coffeeRetailPerKg" style="text-align: right;" />
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label" title="Recargo fijo en pesos por fraccionar (se suma a 1/2 kg y 1/4 kg)">
+                            Recargo $ por fraccionar
+                        </label>
+                        <input type="number" min="0" step="1" class="form-input" @bind="coffeeMarkup" style="text-align: right;" />
+                    </div>
+                </div>
+
+                <div style="background: #f9fafb; padding: 0.7rem 0.9rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.85rem;">
+                    <strong>📊 Precios calculados (sin IVA):</strong>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem; margin-top: 0.4rem;">
+                        <div><strong>1 kg</strong>: $@FormatPrice(coffeeRetailPerKg)</div>
+                        <div><strong>1/2 kg</strong>: $@FormatPrice(coffeeRetailPerKg * 0.5m + coffeeMarkup)</div>
+                        <div><strong>1/4 kg</strong>: $@FormatPrice(coffeeRetailPerKg * 0.25m + coffeeMarkup)</div>
+                    </div>
+                </div>
+
+                <hr style="margin: 1rem 0; border: none; border-top: 1px solid #e5e7eb;" />
+                <h4 style="margin: 0 0 0.5rem; font-size: 0.95rem;">📦 Stock inicial (paquetes)</h4>
+
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Paquetes de 1 kg</label>
+                        <input type="number" min="0" step="1" class="form-input" @bind="coffeeStock1Kg" style="text-align: right;" />
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Paquetes de 1/2 kg</label>
+                        <input type="number" min="0" step="1" class="form-input" @bind="coffeeStock500g" style="text-align: right;" />
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Paquetes de 1/4 kg</label>
+                        <input type="number" min="0" step="1" class="form-input" @bind="coffeeStock250g" style="text-align: right;" />
+                    </div>
+                </div>
+                <p style="font-size: 0.75rem; color: #6b7280; margin: 0;">
+                    Si no sabés todavía, dejá todo en 0 y cargás el stock después desde "Modificación de stock".
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showCoffeeModal = false" disabled="@coffeeSaving">Cancelar</button>
+                <button class="btn btn-primary" @onclick="SaveCoffeeVariety" disabled="@coffeeSaving">
+                    @(coffeeSaving ? "Creando..." : "☕ Crear los 4 productos")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private bool showImport;
     private List<ProductDto>? products;
@@ -2028,6 +2154,70 @@
     {
         CloseNewTypeMenu();
         Navigation.NavigateTo("/servicios?new=1");
+    }
+
+    // === Wizard "Nueva variedad de cafe" ===
+    private bool showCoffeeModal;
+    private bool coffeeSaving;
+    private string? coffeeError;
+    private string coffeeName = "";
+    private string coffeeSkuBase = "";
+    private int coffeeBrandId;
+    private decimal coffeeVatRate = 21m;
+    private decimal coffeeCostPerKg;
+    private decimal coffeeRetailPerKg;
+    private decimal coffeeMarkup = 1000m;
+    private int coffeeStock1Kg;
+    private int coffeeStock500g;
+    private int coffeeStock250g;
+
+    private void StartCreateCoffeeVariety()
+    {
+        CloseNewTypeMenu();
+        coffeeName = "Café ";
+        coffeeSkuBase = "";
+        coffeeBrandId = brands?.FirstOrDefault(b => b.Name.ToUpperInvariant().Contains("FRIKAF"))?.Id ?? 0;
+        coffeeVatRate = 21m;
+        coffeeCostPerKg = 0;
+        coffeeRetailPerKg = 0;
+        coffeeMarkup = 1000m;
+        coffeeStock1Kg = 0;
+        coffeeStock500g = 0;
+        coffeeStock250g = 0;
+        coffeeError = null;
+        showCoffeeModal = true;
+    }
+
+    private async Task SaveCoffeeVariety()
+    {
+        coffeeError = null;
+        if (string.IsNullOrWhiteSpace(coffeeName)) { coffeeError = "El nombre es obligatorio"; return; }
+        if (string.IsNullOrWhiteSpace(coffeeSkuBase)) { coffeeError = "El SKU base es obligatorio"; return; }
+        if (coffeeRetailPerKg <= 0) { coffeeError = "Cargá al menos el PVP por kg"; return; }
+
+        coffeeSaving = true;
+        try
+        {
+            var resp = await Api.CreateCoffeeVarietyAsync(new CreateCoffeeVarietyRequest
+            {
+                Name = coffeeName.Trim(),
+                SkuBase = coffeeSkuBase.Trim().ToUpperInvariant(),
+                BrandId = coffeeBrandId == 0 ? null : coffeeBrandId,
+                CostPerKg = coffeeCostPerKg,
+                RetailPerKg = coffeeRetailPerKg,
+                MarkupAmount = coffeeMarkup,
+                VatRate = coffeeVatRate,
+                InitialStock1Kg = coffeeStock1Kg,
+                InitialStock500g = coffeeStock500g,
+                InitialStock250g = coffeeStock250g
+            });
+            if (resp is null) { coffeeError = "No se pudo crear la variedad"; return; }
+            ToastService.Success($"☕ Variedad creada: {resp.ParentSku} + 3 hijos");
+            showCoffeeModal = false;
+            await LoadData();
+        }
+        catch (Exception ex) { coffeeError = ex.Message; }
+        finally { coffeeSaving = false; }
     }
 
     private void ShowCreateForm()
