@@ -834,6 +834,34 @@ BEGIN
     ALTER TABLE SaleItems ADD BasePrice DECIMAL(18,2) NOT NULL CONSTRAINT DF_SaleItems_BasePrice DEFAULT 0;
 END
 GO
+
+-- Sales: tipo de comprobante. 'X' es la cotizacion/remito interno (no fiscal, sin IVA).
+-- A futuro entran 'FACTURA_A', 'FACTURA_B', 'FACTURA_C' cuando se enlace ARCA.
+-- Cada tipo lleva su propio punto de venta y numeracion independiente.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'ComprobanteType' AND Object_ID = Object_ID(N'Sales'))
+BEGIN
+    ALTER TABLE Sales ADD ComprobanteType NVARCHAR(20) NOT NULL CONSTRAINT DF_Sales_ComprobanteType DEFAULT 'X';
+END
+GO
+
+-- Sales: vendedor que emitio el comprobante (snapshot del usuario logueado al guardar).
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'VendedorName' AND Object_ID = Object_ID(N'Sales'))
+BEGIN
+    ALTER TABLE Sales ADD VendedorName NVARCHAR(150) NULL;
+END
+GO
+
+-- Punto de venta por tipo de comprobante. Inicialmente: X = '0009' (cotizaciones/remitos),
+-- factura A/B/C = '0001' por defecto (se va a configurar bien cuando ARCA este integrado).
+IF NOT EXISTS (SELECT * FROM AppSettings WHERE [Key] = 'sales.pv.X')
+    INSERT INTO AppSettings ([Key], [Value]) VALUES ('sales.pv.X', '0009');
+IF NOT EXISTS (SELECT * FROM AppSettings WHERE [Key] = 'sales.pv.FACTURA_A')
+    INSERT INTO AppSettings ([Key], [Value]) VALUES ('sales.pv.FACTURA_A', '0001');
+IF NOT EXISTS (SELECT * FROM AppSettings WHERE [Key] = 'sales.pv.FACTURA_B')
+    INSERT INTO AppSettings ([Key], [Value]) VALUES ('sales.pv.FACTURA_B', '0001');
+IF NOT EXISTS (SELECT * FROM AppSettings WHERE [Key] = 'sales.pv.FACTURA_C')
+    INSERT INTO AppSettings ([Key], [Value]) VALUES ('sales.pv.FACTURA_C', '0001');
+GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'TierAdjustmentPercent' AND Object_ID = Object_ID(N'SaleItems'))
 BEGIN
     ALTER TABLE SaleItems ADD TierAdjustmentPercent DECIMAL(6,2) NOT NULL CONSTRAINT DF_SaleItems_TierAdjustmentPercent DEFAULT 0;

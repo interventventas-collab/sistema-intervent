@@ -128,9 +128,12 @@ public class SaleService
         var discount = Math.Max(0m, request.Discount);
         var total = Math.Max(0m, subtotal - discount);
 
+        // Tipo de comprobante: por defecto 'X' (cotizacion/remito interno).
+        var comprobanteType = NormalizeComprobanteType(request.ComprobanteType);
+
         var sale = new Sale
         {
-            Number = await GenerateNumberAsync(),
+            Number = await GenerateNumberAsync(comprobanteType),
             Date = (request.Date ?? DateTime.UtcNow).Date,
             DueDate = request.DueDate?.Date,
             ClientId = client?.Id,
@@ -148,6 +151,8 @@ public class SaleService
             WeekDays = string.IsNullOrWhiteSpace(request.WeekDays) ? null : request.WeekDays,
             IsPaid = request.IsPaid ?? false,
             CompanyNameSnapshot = string.IsNullOrWhiteSpace(request.CompanyNameOverride) ? null : request.CompanyNameOverride.Trim(),
+            ComprobanteType = comprobanteType,
+            VendedorName = string.IsNullOrWhiteSpace(request.VendedorName) ? null : request.VendedorName.Trim(),
             CreatedAt = DateTime.UtcNow,
             Items = items
         };
@@ -189,6 +194,8 @@ public class SaleService
         if (request.IsPaid.HasValue) sale.IsPaid = request.IsPaid.Value;
         if (request.CompanyNameOverride is not null)
             sale.CompanyNameSnapshot = string.IsNullOrWhiteSpace(request.CompanyNameOverride) ? null : request.CompanyNameOverride.Trim();
+        if (request.VendedorName is not null)
+            sale.VendedorName = string.IsNullOrWhiteSpace(request.VendedorName) ? null : request.VendedorName.Trim();
 
         // Cambiar cliente si vinieron datos
         if (request.ClientId.HasValue)
@@ -569,9 +576,19 @@ public class SaleService
             null);
     }
 
-    private async Task<string> GenerateNumberAsync()
+    /// <summary>
+    /// Genera el numero del comprobante. Cada tipo (X, FACTURA_A, etc.) tiene su
+    /// propio Punto de Venta y por lo tanto su propia numeracion correlativa.
+    /// Convencion: AppSettings 'sales.pv.{TIPO}' tiene el codigo de PV (ej '0009').
+    /// Si no existe, cae al PV global 'sales.point_of_sale'.
+    /// </summary>
+    private async Task<string> GenerateNumberAsync(string comprobanteType)
     {
-        var pos = (await _db.AppSettings.FindAsync("sales.point_of_sale"))?.Value ?? "0001";
+        var pos =
+            (await _db.AppSettings.FindAsync($"sales.pv.{comprobanteType}"))?.Value
+            ?? (await _db.AppSettings.FindAsync("sales.point_of_sale"))?.Value
+            ?? "0001";
+
         // Tomar el ultimo numero usado para ese punto de venta
         var lastForPos = await _db.Sales
             .Where(s => s.Number.StartsWith(pos + "-"))
@@ -589,6 +606,15 @@ public class SaleService
         return $"{pos}-{next:D8}";
     }
 
+    /// <summary>Normaliza el tipo de comprobante. Default 'X' si viene vacio o invalido.</summary>
+    private static readonly string[] ValidComprobanteTypes = new[] { "X", "FACTURA_A", "FACTURA_B", "FACTURA_C" };
+    private static string NormalizeComprobanteType(string? type)
+    {
+        if (string.IsNullOrWhiteSpace(type)) return "X";
+        var t = type.Trim().ToUpperInvariant();
+        return ValidComprobanteTypes.Contains(t) ? t : "X";
+    }
+
     private static SaleDto BuildDto(Sale s) => new SaleDto(
         s.Id, s.Number, s.Date, s.DueDate, s.PeriodFrom, s.PeriodTo,
         s.ClientId, s.Client?.Code, s.ClientNameSnapshot, s.ClientAddressSnapshot,
@@ -602,6 +628,8 @@ public class SaleService
             // Si BasePrice quedo en 0 (item viejo previo a la migracion), caer al UnitPrice.
             i.BasePrice > 0 ? i.BasePrice : i.UnitPrice,
             i.TierAdjustmentPercent
-        )).ToList()
+        )).ToList(),
+        string.IsNullOrEmpty(s.ComprobanteType) ? "X" : s.ComprobanteType,
+        s.VendedorName
     );
 }

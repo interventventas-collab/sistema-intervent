@@ -44,7 +44,9 @@ public record SaleDto(
     string? CompanyNameSnapshot,
     DateTime CreatedAt,
     DateTime? UpdatedAt,
-    List<SaleItemDto> Items
+    List<SaleItemDto> Items,
+    string ComprobanteType,    // 'X' por default; 'FACTURA_A'/'FACTURA_B'/'FACTURA_C' a futuro
+    string? VendedorName       // Snapshot del usuario que emitio
 );
 
 public record UpdateSaleFlagsRequest(
@@ -65,7 +67,8 @@ public record UpdateSaleRequest(
     [MaxLength(40)] string? WeekDays,
     bool? IsPaid,
     [MaxLength(100)] string? CompanyNameOverride,
-    [MinLength(1)] List<CreateSaleItemRequest>? Items
+    [MinLength(1)] List<CreateSaleItemRequest>? Items,
+    [MaxLength(150)] string? VendedorName
 );
 
 public record DeleteSaleRequest(string Password);
@@ -94,7 +97,9 @@ public record CreateSaleRequest(
     [MaxLength(40)] string? WeekDays,
     bool? IsPaid,
     [MaxLength(100)] string? CompanyNameOverride,
-    [MinLength(1)] List<CreateSaleItemRequest> Items
+    [MinLength(1)] List<CreateSaleItemRequest> Items,
+    [MaxLength(20)] string? ComprobanteType,    // null/vacio => 'X' por default
+    [MaxLength(150)] string? VendedorName       // null => null
 );
 
 // Datos de la empresa que aparecen en el comprobante.

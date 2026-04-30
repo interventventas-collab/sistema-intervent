@@ -47,6 +47,8 @@ public class SaleDto
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
     public List<SaleItemDto> Items { get; set; } = new();
+    public string ComprobanteType { get; set; } = "X"; // 'X' por default; FACTURA_A/B/C a futuro
+    public string? VendedorName { get; set; }
 }
 
 public class UpdateSaleFlagsRequest
@@ -91,6 +93,8 @@ public class CreateSaleRequest
     public bool? IsPaid { get; set; }
     public string? CompanyNameOverride { get; set; }
     public List<CreateSaleItemRequest> Items { get; set; } = new();
+    public string? ComprobanteType { get; set; } // null/vacio => 'X'
+    public string? VendedorName { get; set; }
 }
 
 public class UpdateSaleRequest
@@ -107,6 +111,7 @@ public class UpdateSaleRequest
     public bool? IsPaid { get; set; }
     public string? CompanyNameOverride { get; set; }
     public List<CreateSaleItemRequest>? Items { get; set; }
+    public string? VendedorName { get; set; }
 }
 
 public class CompanyInfoDto

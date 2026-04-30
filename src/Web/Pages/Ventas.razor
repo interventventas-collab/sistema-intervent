@@ -154,14 +154,38 @@
                 <div class="venta-section">
                     <div class="venta-section-header">
                         <span class="venta-section-num">1</span>
-                        <h4>Datos del comprobante</h4>
+                        <h4>Datos generales</h4>
                     </div>
                     <div class="venta-section-body">
+                        @* Fila 1: Tipo de comprobante + Punto de venta + Vendedor + Fecha *@
                         <div class="form-row">
                             <div class="form-group" style="flex: 1;">
+                                <label class="form-label">Tipo de comprobante *</label>
+                                <select class="form-input" @bind="formComprobanteType">
+                                    <option value="X">X — Cotización / Remito interno (sin IVA)</option>
+                                    <option value="FACTURA_A" disabled>Factura A (próximamente — ARCA)</option>
+                                    <option value="FACTURA_B" disabled>Factura B (próximamente — ARCA)</option>
+                                    <option value="FACTURA_C" disabled>Factura C (próximamente — ARCA)</option>
+                                </select>
+                                <p style="font-size: 0.72rem; margin: 0.25rem 0 0; color: #6b7280;">
+                                    Punto de venta: <strong>@PvForType(formComprobanteType)</strong> · descuenta stock, sin valor fiscal
+                                </p>
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label">Vendedor</label>
+                                <input class="form-input" value="@(VendedorAuto ?? "—")" disabled />
+                                <p style="font-size: 0.72rem; margin: 0.25rem 0 0; color: #6b7280;">
+                                    Tomado del usuario logueado.
+                                </p>
+                            </div>
+                            <div class="form-group" style="flex: 0 0 160px;">
                                 <label class="form-label">Fecha *</label>
                                 <input type="date" class="form-input" @bind="formDate" />
                             </div>
+                        </div>
+
+                        @* Fila 2: Cliente + (info de lista) *@
+                        <div class="form-row">
                             <div class="form-group" style="flex: 2;">
                                 <label class="form-label">Cliente</label>
                                 <select class="form-input" @bind="formClientId" @bind:after="OnClientChanged">
@@ -185,10 +209,8 @@
                                     </p>
                                 }
                             </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">Condicion IVA del cliente</label>
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label">Condición IVA del cliente</label>
                                 <select class="form-input" @bind="formIvaCondition">
                                     <option value="Consumidor final">Consumidor final</option>
                                     <option value="Responsable Inscripto">Responsable Inscripto</option>
@@ -196,13 +218,13 @@
                                     <option value="Exento">Exento</option>
                                 </select>
                             </div>
-                            <div class="form-group">
-                                <label class="form-label">Condicion de pago</label>
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label">Condición de pago</label>
                                 <select class="form-input" @bind="formPaymentCondition">
                                     <option value="Efectivo">Efectivo</option>
                                     <option value="Transferencia">Transferencia</option>
-                                    <option value="Tarjeta de debito">Tarjeta de debito</option>
-                                    <option value="Tarjeta de credito">Tarjeta de credito</option>
+                                    <option value="Tarjeta de debito">Tarjeta de débito</option>
+                                    <option value="Tarjeta de credito">Tarjeta de crédito</option>
                                     <option value="Cuenta corriente">Cuenta corriente</option>
                                     <option value="Cheque">Cheque</option>
                                 </select>
@@ -979,6 +1001,22 @@
     private DateTime formDate = DateTime.Today;
     private int formClientId;
     private string formIvaCondition = "Consumidor final";
+    // 'X' por default. A futuro: 'FACTURA_A', 'FACTURA_B', 'FACTURA_C' cuando ARCA.
+    private string formComprobanteType = "X";
+
+    /// Vendedor inferido del operador logueado (snapshot que se guarda al emitir).
+    private string? VendedorAuto => Operator.Current;
+
+    /// Punto de venta segun tipo. Hoy hardcodeado al default conocido (que tambien
+    /// estan en la tabla AppSettings del backend); el numero real se asigna alla.
+    private static string PvForType(string tipo) => tipo switch
+    {
+        "X" => "0009",
+        "FACTURA_A" => "0001",
+        "FACTURA_B" => "0001",
+        "FACTURA_C" => "0001",
+        _ => "0001"
+    };
     private string formPaymentCondition = "Efectivo";
     private decimal formDiscount;
     private string formNotes = "";
@@ -1056,6 +1094,7 @@
         formClientId = 0;
         formIvaCondition = "Consumidor final";
         formPaymentCondition = "Efectivo";
+        formComprobanteType = "X"; // por default todos los comprobantes nuevos son X
         formDiscount = 0;
         formNotes = "";
         formItems = new();
@@ -1110,6 +1149,7 @@
         formClientId = s.ClientId ?? 0;
         formIvaCondition = string.IsNullOrEmpty(s.IvaCondition) ? "Consumidor final" : s.IvaCondition!;
         formPaymentCondition = string.IsNullOrEmpty(s.PaymentCondition) ? "Efectivo" : s.PaymentCondition!;
+        formComprobanteType = string.IsNullOrEmpty(s.ComprobanteType) ? "X" : s.ComprobanteType;
         formDiscount = s.Discount;
         formNotes = s.Notes ?? "";
         formIsPaid = s.IsPaid;
@@ -1417,7 +1457,8 @@
                     WeekDays = weekDaysCsv,
                     IsPaid = formIsPaid,
                     CompanyNameOverride = formCompanyName,
-                    Items = formItems.ToList()
+                    Items = formItems.ToList(),
+                    VendedorName = VendedorAuto
                 };
                 saved = await Api.UpdateSaleAsync(editingSaleId.Value, upd);
                 if (saved is null) { formError = "No se pudo guardar los cambios"; return; }
@@ -1436,7 +1477,9 @@
                     WeekDays = weekDaysCsv,
                     IsPaid = formIsPaid,
                     CompanyNameOverride = formCompanyName,
-                    Items = formItems.ToList()
+                    Items = formItems.ToList(),
+                    ComprobanteType = formComprobanteType,
+                    VendedorName = VendedorAuto
                 };
                 saved = await Api.CreateSaleAsync(req);
                 if (saved is null) { formError = "No se pudo crear el comprobante"; return; }

@@ -72,6 +72,19 @@ public class Sale
     // para evitar descontar dos veces ante reintentos o ediciones.
     public bool StockDiscounted { get; set; }
 
+    /// <summary>
+    /// Tipo de comprobante: 'X' (cotizacion / remito interno, no fiscal, sin IVA) por default.
+    /// A futuro: 'FACTURA_A', 'FACTURA_B', 'FACTURA_C' cuando se enlace ARCA.
+    /// Cada tipo lleva su propio Punto de Venta y numeracion independiente.
+    /// </summary>
+    [Required]
+    [MaxLength(20)]
+    public string ComprobanteType { get; set; } = "X";
+
+    /// <summary>Nombre del vendedor que emitio el comprobante (snapshot del usuario logueado).</summary>
+    [MaxLength(150)]
+    public string? VendedorName { get; set; }
+
     // Snapshot del nombre/marca de la empresa que aparece en el comprobante.
     // Si es null, se usa el valor actual de AppSettings("company.name").
     [MaxLength(100)]
