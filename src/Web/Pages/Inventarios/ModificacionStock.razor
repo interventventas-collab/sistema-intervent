@@ -9,83 +9,28 @@
         <h3>📊 Modificación de stock</h3>
         @if (warehouses is not null && warehouses.Count > 0)
         {
-            <div style="font-size: 0.85rem; color: #6b7280;">
-                Depósitos: @string.Join(" · ", warehouses.Select(w => $"{w.Name}{(w.IsDefault ? " (default)" : "")}"))
+            <div style="font-size: 0.8rem; color: #6b7280;">
+                Depósitos disponibles: @string.Join(" · ", warehouses.Select(w => $"{w.Name}{(w.IsDefault ? " (default)" : "")}"))
             </div>
         }
     </div>
     <div class="card-body">
-        <div style="background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; padding: 0.7rem 0.9rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.85rem;">
-            💡 Buscá un producto por SKU o nombre, elegí el depósito, indicá el ajuste y el motivo.
-            Cada cambio queda registrado con quién lo hizo y cuándo.
+        @* Banner amarillo de info *@
+        <div style="background: #fef3c7; border: 1px solid #fbbf24; color: #92400e; padding: 0.7rem 0.9rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.85rem;">
+            💡 Cargá uno o varios productos al batch y después tocá <strong>Guardar todos los ajustes</strong>.
+            Los productos <strong>hijos de cafés (kg-mode)</strong> NO aparecen acá: el stock real está en el padre F1, F2, etc.
         </div>
 
-        @* === Buscador de producto === *@
-        <div class="form-row" style="align-items: flex-end;">
-            <div class="form-group" style="flex: 4;">
-                <label class="form-label">Producto (SKU o nombre)</label>
-                <input class="form-input"
-                       list="modstock-products-list"
-                       value="@productSearchText"
-                       @oninput="OnSearchInput"
-                       @onchange="@(e => OnSearchPicked(e))"
-                       placeholder="Tipeá SKU o nombre y elegí del listado..." />
-                <datalist id="modstock-products-list">
-                    @if (products is not null)
-                    {
-                        @foreach (var p in products.Take(2000))
-                        {
-                            <option value="@(p.Sku ?? "—") · @p.Title — @FormatStock(p.Stock) @(p.StockUnit == "kg" ? "kg" : "u.")"></option>
-                        }
-                    }
-                </datalist>
+        @* ────── SECCION 1: Depósito + Referencia ────── *@
+        <div class="venta-section">
+            <div class="venta-section-header">
+                <span class="venta-section-num">1</span>
+                <h4>Depósito y referencia</h4>
             </div>
-            <div class="form-group" style="flex: 0;">
-                <label class="form-label" style="visibility: hidden;">.</label>
-                <button class="btn btn-secondary" @onclick="ClearSelection" disabled="@(selectedProduct is null)">Limpiar</button>
-            </div>
-        </div>
-
-        @* === Producto seleccionado === *@
-        @if (selectedProduct is not null)
-        {
-            <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 1rem 1.2rem; margin-top: 0.8rem;">
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem;">
-                    <div>
-                        <div style="font-size: 0.75rem; color: #6b7280;">@(selectedProduct.Sku ?? "—")</div>
-                        <div style="font-weight: 700; font-size: 1.05rem;">@selectedProduct.Title</div>
-                        @if (!string.IsNullOrEmpty(selectedProduct.BrandName))
-                        {
-                            <div style="font-size: 0.78rem; color: #6b7280;">Marca: @selectedProduct.BrandName</div>
-                        }
-                    </div>
-                    <div style="text-align: right;">
-                        <div style="font-size: 0.7rem; color: #6b7280;">STOCK ACTUAL</div>
-                        <div style="font-size: 2rem; font-weight: 800; color: @(selectedProduct.Stock < (selectedProduct.CriticalStock) ? "#dc2626" : "#059669");">
-                            @FormatStock(selectedProduct.Stock)
-                            <span style="font-size: 1rem; font-weight: 700; color: #6b7280;">
-                                @(selectedProduct.StockUnit == "kg" ? "kg" : "u.")
-                            </span>
-                        </div>
-                        @if (selectedProduct.CriticalStock > 0)
-                        {
-                            <div style="font-size: 0.7rem; color: #6b7280;">crítico: @selectedProduct.CriticalStock</div>
-                        }
-                    </div>
-                </div>
-
-                <hr style="margin: 1rem 0; border: none; border-top: 1px solid #e5e7eb;" />
-
-                <h4 style="margin: 0 0 0.7rem; font-size: 0.95rem;">Registrar movimiento</h4>
-
-                @if (!string.IsNullOrEmpty(formError))
-                {
-                    <div class="form-error">@formError</div>
-                }
-
+            <div class="venta-section-body">
                 <div class="form-row">
-                    <div class="form-group" style="flex: 1;">
-                        <label class="form-label">Depósito</label>
+                    <div class="form-group">
+                        <label class="form-label">Depósito *</label>
                         <select class="form-input" @bind="formWarehouseId">
                             @if (warehouses is not null)
                             {
@@ -96,77 +41,251 @@
                             }
                         </select>
                     </div>
-                    <div class="form-group" style="flex: 1;">
-                        <label class="form-label">Tipo de movimiento</label>
-                        <select class="form-input" @bind="formMovementType">
-                            <option value="ingreso">📥 Ingreso (suma)</option>
-                            <option value="egreso">📤 Egreso (resta)</option>
-                            <option value="ajuste">⚙️ Ajuste a valor exacto</option>
-                            <option value="conteo">📋 Conteo físico (a valor exacto)</option>
-                            <option value="rotura">💥 Rotura (resta)</option>
-                            <option value="merma">📉 Merma (resta)</option>
-                            <option value="devolucion">↩️ Devolución (suma)</option>
-                            <option value="otro">❓ Otro</option>
-                        </select>
+                    <div class="form-group">
+                        <label class="form-label">Nro Referencia</label>
+                        <input class="form-input" @bind="formReference" placeholder="(opcional) ej: remito de proveedor" />
                     </div>
                 </div>
+            </div>
+        </div>
 
-                <div class="form-row">
-                    <div class="form-group" style="flex: 1;">
-                        <label class="form-label">
-                            @if (IsAbsoluteMode)
+        @* ────── SECCION 2: Agregar producto al ajuste ────── *@
+        <div class="venta-section">
+            <div class="venta-section-header">
+                <span class="venta-section-num">2</span>
+                <h4>Agregar productos al ajuste</h4>
+            </div>
+            <div class="venta-section-body">
+                <div class="form-row" style="align-items: flex-end;">
+                    @* Buscador del producto *@
+                    <div class="form-group" style="flex: 3;">
+                        <label class="form-label">Producto *</label>
+                        <input class="form-input"
+                               list="modstock-products-list"
+                               value="@productSearchText"
+                               @oninput="OnSearchInput"
+                               @onchange="@(e => OnSearchPicked(e))"
+                               placeholder="Tipeá SKU o nombre y elegí del listado..." />
+                        <datalist id="modstock-products-list">
+                            @if (products is not null)
                             {
-                                <span>Stock final (valor absoluto)</span>
+                                @foreach (var p in products.Take(2000))
+                                {
+                                    <option value="@(p.Sku ?? "—") · @p.Title — @FormatStock(p.Stock) @StockUnitShort(p.StockUnit)"></option>
+                                }
+                            }
+                        </datalist>
+                    </div>
+
+                    @* Tipo de ajuste *@
+                    <div class="form-group" style="flex: 0 0 180px;">
+                        <label class="form-label">Tipo</label>
+                        <div style="display: flex; flex-direction: column; gap: 0.25rem; padding-top: 0.3rem;">
+                            <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-size: 0.85rem;">
+                                <input type="radio" name="addType" checked="@(addType == "reemplazar")"
+                                       @onchange='() => addType = "reemplazar"' />
+                                <strong>Reemplazar</strong> <span style="color: #6b7280; font-size: 0.75rem;">(valor exacto)</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-size: 0.85rem;">
+                                <input type="radio" name="addType" checked="@(addType == "modificar")"
+                                       @onchange='() => addType = "modificar"' />
+                                <strong>Modificar</strong> <span style="color: #6b7280; font-size: 0.75rem;">(suma/resta)</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    @* Cantidad *@
+                    <div class="form-group" style="flex: 0 0 110px;">
+                        <label class="form-label">Cantidad</label>
+                        <input type="number" step="0.001" class="form-input" style="text-align: right; font-weight: 700;"
+                               @bind="addQuantity" placeholder="@(addType == "modificar" ? "+/-" : "0")" />
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
+                            @if (addType == "modificar")
+                            {
+                                <span>Negativo resta. Ej: -5</span>
                             }
                             else
                             {
-                                <span>Cantidad @(IsNegativeMovement ? "a restar" : "a sumar")</span>
+                                <span>Valor final absoluto</span>
                             }
-                        </label>
-                        <input type="number" min="0" step="1" class="form-input" @bind="formQuantity" style="text-align: right; font-size: 1.1rem; font-weight: 700;" />
-                        @if (selectedProduct is not null)
-                        {
-                            <p style="font-size: 0.75rem; color: #6b7280; margin: 0.25rem 0 0;">
-                                Resultado: <strong>@FormatStock(selectedProduct.Stock) → @FormatStock(PreviewNewStock)</strong> @(selectedProduct.StockUnit == "kg" ? "kg" : "u.")
-                                @if (PreviewNewStock < 0)
-                                {
-                                    <span style="color: #dc2626; font-weight: 700;"> (queda negativo)</span>
-                                }
-                            </p>
-                        }
+                        </p>
+                    </div>
+
+                    @* Stock actual readonly *@
+                    <div class="form-group" style="flex: 0 0 110px;">
+                        <label class="form-label">Stock actual</label>
+                        <div style="font-size: 1rem; font-weight: 700; color: @(selectedProduct is null ? "#9ca3af" : (selectedProduct.Stock < selectedProduct.CriticalStock ? "#dc2626" : "#059669"));">
+                            @if (selectedProduct is null)
+                            {
+                                <span>—</span>
+                            }
+                            else
+                            {
+                                <span>@FormatStock(selectedProduct.Stock) @StockUnitShort(selectedProduct.StockUnit)</span>
+                            }
+                        </div>
+                    </div>
+
+                    @* Botón agregar *@
+                    <div class="form-group" style="flex: 0 0 auto;">
+                        <button class="btn btn-primary" @onclick="AddToBatch"
+                                disabled="@(selectedProduct is null || isSaving)" style="white-space: nowrap;">
+                            + Agregar
+                        </button>
+                    </div>
+                </div>
+
+                @* Motivo opcional para todos los items *@
+                <div class="form-row" style="margin-top: 0.5rem;">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Motivo (opcional, se aplica al item agregado)</label>
+                        <select class="form-input" @bind="addReason" style="max-width: 280px;">
+                            <option value="">— Sin motivo específico —</option>
+                            <option value="Compra a proveedor">📥 Compra a proveedor</option>
+                            <option value="Conteo físico">📋 Conteo físico</option>
+                            <option value="Rotura">💥 Rotura</option>
+                            <option value="Merma">📉 Merma</option>
+                            <option value="Devolución de cliente">↩️ Devolución de cliente</option>
+                            <option value="Ajuste manual">⚙️ Ajuste manual</option>
+                            <option value="Otro">❓ Otro</option>
+                        </select>
                     </div>
                     <div class="form-group" style="flex: 2;">
-                        <label class="form-label">Motivo (opcional)</label>
-                        <input class="form-input" @bind="formReason" placeholder="Ej: conteo de fin de mes, rotura por traslado, etc." />
+                        <label class="form-label">Notas extra del item (opcional)</label>
+                        <input class="form-input" @bind="addNotes" placeholder="Detalles del item" />
                     </div>
                 </div>
 
-                <div class="form-group">
-                    <label class="form-label">Notas extra (opcional)</label>
-                    <textarea class="form-input" rows="2" @bind="formNotes" placeholder="Detalles adicionales si hace falta"></textarea>
-                </div>
-
-                <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
-                    <button class="btn btn-secondary" @onclick="() => ResetForm(false)" disabled="@isSaving">Limpiar</button>
-                    <button class="btn btn-primary" @onclick="Save" disabled="@(isSaving || formQuantity < 0)">
-                        @(isSaving ? "Guardando..." : "💾 Aplicar movimiento")
-                    </button>
-                </div>
+                @if (!string.IsNullOrEmpty(addError))
+                {
+                    <div class="form-error" style="margin-top: 0.5rem;">@addError</div>
+                }
             </div>
+        </div>
+
+        @* ────── SECCION 3: Tabla de items en batch ────── *@
+        <div class="venta-section">
+            <div class="venta-section-header">
+                <span class="venta-section-num">3</span>
+                <h4>Items en este ajuste @(batchItems.Count > 0 ? $"({batchItems.Count})" : "")</h4>
+            </div>
+            <div class="venta-section-body" style="padding: 0;">
+                <table class="data-table" style="margin: 0;">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px; text-align: center;">#</th>
+                            <th style="width: 110px;">Código</th>
+                            <th>Producto</th>
+                            <th style="width: 110px;">Tipo</th>
+                            <th style="width: 130px; text-align: right;">Valor ingresado</th>
+                            <th>Motivo</th>
+                            <th style="width: 120px; text-align: right;">Stock actual</th>
+                            <th style="width: 120px; text-align: right;">Stock nuevo</th>
+                            <th style="width: 50px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (batchItems.Count == 0)
+                        {
+                            <tr>
+                                <td colspan="9" style="text-align: center; color: #9ca3af; padding: 1.5rem;">
+                                    No tenés items agregados. Cargá un producto arriba y tocá <strong>+ Agregar</strong>.
+                                </td>
+                            </tr>
+                        }
+                        else
+                        {
+                            @for (int i = 0; i < batchItems.Count; i++)
+                            {
+                                var idx = i;
+                                var item = batchItems[idx];
+                                var hayCambio = item.StockNuevo != item.StockActual;
+                                <tr>
+                                    <td style="text-align: center; color: #6b7280;">@(idx + 1)</td>
+                                    <td style="font-family: monospace;">@item.Sku</td>
+                                    <td>@item.Title</td>
+                                    <td>
+                                        <span style="display: inline-block; padding: 0.15rem 0.5rem; background: @(item.Type == "reemplazar" ? "#dbeafe" : "#fef3c7"); color: @(item.Type == "reemplazar" ? "#1e40af" : "#92400e"); border-radius: 999px; font-size: 0.7rem; font-weight: 700;">
+                                            @(item.Type == "reemplazar" ? "Reemplazar" : "Modificar")
+                                        </span>
+                                    </td>
+                                    <td style="text-align: right; font-weight: 600;">
+                                        @if (item.Type == "modificar" && item.ValorIngresado > 0)
+                                        {
+                                            <span style="color: #059669;">+@FormatStock(item.ValorIngresado)</span>
+                                        }
+                                        else if (item.Type == "modificar" && item.ValorIngresado < 0)
+                                        {
+                                            <span style="color: #dc2626;">@FormatStock(item.ValorIngresado)</span>
+                                        }
+                                        else
+                                        {
+                                            <span>@FormatStock(item.ValorIngresado)</span>
+                                        }
+                                        <span style="font-size: 0.75rem; color: #6b7280; margin-left: 0.2rem;">@StockUnitShort(item.StockUnit)</span>
+                                    </td>
+                                    <td style="font-size: 0.85rem; color: #4b5563;">
+                                        @(item.Reason ?? "")
+                                        @if (!string.IsNullOrEmpty(item.Notes))
+                                        {
+                                            <div style="font-size: 0.72rem; color: #9ca3af;">@item.Notes</div>
+                                        }
+                                    </td>
+                                    <td style="text-align: right; color: #6b7280;">@FormatStock(item.StockActual) @StockUnitShort(item.StockUnit)</td>
+                                    <td style="text-align: right; font-weight: 700; color: @(hayCambio ? (item.StockNuevo > item.StockActual ? "#059669" : "#dc2626") : "#6b7280");">
+                                        @FormatStock(item.StockNuevo) @StockUnitShort(item.StockUnit)
+                                    </td>
+                                    <td style="text-align: center;">
+                                        <button class="btn-icon btn-delete" @onclick="() => RemoveFromBatch(idx)" title="Quitar del batch">×</button>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        @* ────── SECCION 4: Observaciones globales ────── *@
+        <div class="venta-section">
+            <div class="venta-section-header">
+                <span class="venta-section-num">4</span>
+                <h4>Observaciones</h4>
+            </div>
+            <div class="venta-section-body">
+                <p style="font-size: 0.78rem; color: #6b7280; margin: 0 0 0.5rem;">
+                    No es necesario poner una observación, pero puede ser útil. Se aplica a todos los items del batch.
+                </p>
+                <textarea class="form-input" rows="2" @bind="formGlobalNotes" placeholder="(opcional) Notas que aplican a todo el batch"></textarea>
+            </div>
+        </div>
+
+        @* ────── Footer con botones de acción ────── *@
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; margin-top: 1rem;">
+            <div style="font-size: 0.78rem; color: #6b7280;">
+                Operador: <strong>@(Operator.Current ?? "(no seteado)")</strong>
+            </div>
+            <div style="display: flex; gap: 0.5rem;">
+                <button class="btn btn-secondary" @onclick="ClearBatch" disabled="@(batchItems.Count == 0 || isSaving)">
+                    Cancelar
+                </button>
+                <button class="btn btn-primary" @onclick="SaveBatch" disabled="@(batchItems.Count == 0 || isSaving)">
+                    @(isSaving ? "Guardando..." : $"💾 Guardar {batchItems.Count} ajuste{(batchItems.Count == 1 ? "" : "s")}")
+                </button>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(saveError))
+        {
+            <div class="form-error" style="margin-top: 0.5rem;">@saveError</div>
         }
     </div>
 </div>
 
-@* === Historial de movimientos === *@
+@* ====== HISTORIAL DE MOVIMIENTOS (independiente) ====== *@
 <div class="card" style="margin-top: 1rem;">
-    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-        <h3>🕓 Historial de movimientos</h3>
-        @if (selectedProduct is not null)
-        {
-            <button class="btn btn-secondary" style="font-size: 0.8rem;" @onclick="() => ToggleFilterByProduct()">
-                @(filterByProduct ? "Ver todos" : $"Solo de {selectedProduct.Sku ?? selectedProduct.Title}")
-            </button>
-        }
+    <div class="card-header">
+        <h3>🕓 Historial de movimientos (últimos 50)</h3>
     </div>
     <div class="card-body" style="padding: 0;">
         @if (movements is null)
@@ -187,8 +306,8 @@
                             <th>Producto</th>
                             <th style="width: 110px;">Depósito</th>
                             <th style="width: 100px;">Tipo</th>
-                            <th style="width: 80px; text-align: right;">Δ</th>
-                            <th style="width: 110px; text-align: right;">Antes → Después</th>
+                            <th style="width: 90px; text-align: right;">Δ</th>
+                            <th style="width: 130px; text-align: right;">Antes → Después</th>
                             <th>Motivo</th>
                             <th style="width: 100px;">Operador</th>
                         </tr>
@@ -230,51 +349,53 @@
     private List<ProductDto>? products;
     private List<StockMovementDto>? movements;
 
+    // Cabecera del batch
+    private int formWarehouseId;
+    private string formReference = "";
+    private string formGlobalNotes = "";
+
+    // Estado de "agregar nuevo item"
     private string productSearchText = "";
     private ProductDto? selectedProduct;
-    private bool filterByProduct;
+    private string addType = "modificar";  // "reemplazar" o "modificar"
+    private decimal addQuantity;
+    private string addReason = "";
+    private string addNotes = "";
+    private string? addError;
 
-    private int formWarehouseId;
-    private string formMovementType = "ingreso";
-    private decimal formQuantity;
-    private string formReason = "";
-    private string formNotes = "";
+    // Items en el batch antes de guardar
+    private List<BatchItem> batchItems = new();
+
     private bool isSaving;
-    private string? formError;
+    private string? saveError;
 
-    // Para "ajuste" / "conteo": Quantity es valor absoluto. Para los demas: cantidad a sumar/restar.
-    private bool IsAbsoluteMode => formMovementType is "ajuste" or "conteo";
-    private bool IsNegativeMovement => formMovementType is "egreso" or "rotura" or "merma" or "otro";
-
-    private decimal PreviewNewStock
+    private class BatchItem
     {
-        get
-        {
-            if (selectedProduct is null) return 0;
-            if (IsAbsoluteMode) return formQuantity;
-            return selectedProduct.Stock + (IsNegativeMovement ? -formQuantity : formQuantity);
-        }
+        public int ProductId { get; set; }
+        public string Sku { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string StockUnit { get; set; } = "unidad";
+        public string Type { get; set; } = "modificar";  // "reemplazar" o "modificar"
+        public decimal ValorIngresado { get; set; }       // lo que escribió el usuario (puede ser negativo en modificar)
+        public decimal StockActual { get; set; }
+        public decimal StockNuevo { get; set; }
+        public string? Reason { get; set; }
+        public string? Notes { get; set; }
+    }
+
+    /// <summary>Filtra los productos disponibles para ajustar stock.</summary>
+    private bool IsAjustableStock(ProductDto p, IDictionary<int, ProductDto> byId)
+    {
+        if (!p.IsActive || p.IsService) return false;
+        if (p.BaseProductId.HasValue && byId.TryGetValue(p.BaseProductId.Value, out var parent)
+            && parent.StockUnit == "kg") return false;
+        if (p.IsBase && p.DerivedCount > 0 && p.StockUnit != "kg") return false;
+        return true;
     }
 
     protected override async Task OnInitializedAsync()
     {
         await LoadData();
-    }
-
-    /// <summary>Filtra los productos disponibles para ajustar stock:
-    /// - hijos de padres kg-mode se OCULTAN (su stock es derivado, ajustarlo no tiene sentido)
-    /// - padres en kg-mode se MUESTRAN (llevan los kg totales del bulk)
-    /// - padres en unidad-mode con hijos se OCULTAN (stock es suma de hijos)
-    /// - independientes y servicios filtrados normalmente</summary>
-    private bool IsAjustableStock(ProductDto p, IDictionary<int, ProductDto> byId)
-    {
-        if (!p.IsActive || p.IsService) return false;
-        // Hijo de padre kg-mode → no ajustable directo
-        if (p.BaseProductId.HasValue && byId.TryGetValue(p.BaseProductId.Value, out var parent)
-            && parent.StockUnit == "kg") return false;
-        // Padre en unidad-mode con hijos → no ajustable (suma de hijos)
-        if (p.IsBase && p.DerivedCount > 0 && p.StockUnit != "kg") return false;
-        return true;
     }
 
     private async Task LoadData()
@@ -285,40 +406,30 @@
         try
         {
             var all = await Api.GetProductsAsync() ?? new();
-            // Construir dict para chequear padres por id rapidamente
             var byId = all.ToDictionary(x => x.Id);
-            products = all
-                .Where(p => IsAjustableStock(p, byId))
+            products = all.Where(p => IsAjustableStock(p, byId))
                 .OrderBy(p => p.Sku ?? "").ThenBy(p => p.Title).ToList();
         }
         catch { products = new(); }
 
-        // Default: el deposito principal
         if (formWarehouseId == 0 && warehouses is not null && warehouses.Count > 0)
-        {
             formWarehouseId = warehouses.FirstOrDefault(w => w.IsDefault)?.Id ?? warehouses[0].Id;
-        }
 
         await LoadMovements();
     }
 
     private async Task LoadMovements()
     {
-        try
-        {
-            int? pid = filterByProduct && selectedProduct is not null ? selectedProduct.Id : null;
-            movements = await Api.GetStockMovementsAsync(pid) ?? new();
-        }
+        try { movements = await Api.GetStockMovementsAsync() ?? new(); }
         catch { movements = new(); }
     }
 
     private void OnSearchInput(ChangeEventArgs e)
     {
         productSearchText = e.Value?.ToString() ?? "";
-        // No re-asignar selectedProduct mientras tipea — esperar que elija del datalist
     }
 
-    private async Task OnSearchPicked(ChangeEventArgs e)
+    private void OnSearchPicked(ChangeEventArgs e)
     {
         productSearchText = e.Value?.ToString() ?? "";
         if (string.IsNullOrWhiteSpace(productSearchText) || products is null)
@@ -326,18 +437,12 @@
             selectedProduct = null;
             return;
         }
-
         var texto = productSearchText.Trim();
-
-        // Estrategia 1: si el texto empieza con un SKU conocido seguido de "·" o " ", matchear por SKU.
-        // Esto es lo que pasa cuando el usuario clickea una opcion del datalist (cuyo value arranca con el SKU).
         var match = products.FirstOrDefault(p =>
             !string.IsNullOrEmpty(p.Sku) &&
             (texto.StartsWith(p.Sku + " ", StringComparison.OrdinalIgnoreCase) ||
              texto.StartsWith(p.Sku + "·", StringComparison.OrdinalIgnoreCase) ||
              string.Equals(p.Sku, texto, StringComparison.OrdinalIgnoreCase)));
-
-        // Estrategia 2: fallback case-insensitive contiene SKU o título único
         if (match is null)
         {
             var matches = products.Where(p =>
@@ -345,98 +450,178 @@
                 p.Title.Contains(texto, StringComparison.OrdinalIgnoreCase)).Take(2).ToList();
             if (matches.Count == 1) match = matches[0];
         }
-
         selectedProduct = match;
-        if (selectedProduct is not null)
+    }
+
+    private void AddToBatch()
+    {
+        addError = null;
+        if (selectedProduct is null) { addError = "Elegí un producto del listado primero"; return; }
+
+        // Calcular stock nuevo según tipo
+        decimal stockNuevo;
+        if (addType == "reemplazar")
         {
-            ResetForm(keepProduct: true);
-            await LoadMovements();
+            if (addQuantity < 0) { addError = "Para reemplazar, la cantidad no puede ser negativa"; return; }
+            stockNuevo = addQuantity;
         }
-    }
+        else // modificar
+        {
+            stockNuevo = selectedProduct.Stock + addQuantity;
+        }
 
-    private void ClearSelection()
-    {
-        selectedProduct = null;
+        // Validar que no haya 0 cambio
+        if (stockNuevo == selectedProduct.Stock)
+        {
+            addError = "El ajuste resulta en el mismo stock — no hay nada que cambiar";
+            return;
+        }
+
+        // Si el mismo producto ya está en el batch, lo reemplazamos (no acumulamos para evitar confusión)
+        var existing = batchItems.FirstOrDefault(b => b.ProductId == selectedProduct.Id);
+        if (existing is not null)
+        {
+            batchItems.Remove(existing);
+        }
+
+        batchItems.Add(new BatchItem
+        {
+            ProductId = selectedProduct.Id,
+            Sku = selectedProduct.Sku ?? "—",
+            Title = selectedProduct.Title,
+            StockUnit = string.IsNullOrEmpty(selectedProduct.StockUnit) ? "unidad" : selectedProduct.StockUnit,
+            Type = addType,
+            ValorIngresado = addQuantity,
+            StockActual = selectedProduct.Stock,
+            StockNuevo = stockNuevo,
+            Reason = string.IsNullOrWhiteSpace(addReason) ? null : addReason,
+            Notes = string.IsNullOrWhiteSpace(addNotes) ? null : addNotes,
+        });
+
+        // Limpiar form de "agregar"
         productSearchText = "";
-        ResetForm();
+        selectedProduct = null;
+        addQuantity = 0;
+        addReason = "";
+        addNotes = "";
+        addError = null;
     }
 
-    private void ResetForm(bool keepProduct = false)
+    private void RemoveFromBatch(int idx)
     {
-        formMovementType = "ingreso";
-        formQuantity = 0;
-        formReason = "";
-        formNotes = "";
-        formError = null;
-        if (warehouses is not null && warehouses.Count > 0)
-            formWarehouseId = warehouses.FirstOrDefault(w => w.IsDefault)?.Id ?? warehouses[0].Id;
-        if (!keepProduct) selectedProduct = null;
+        if (idx < 0 || idx >= batchItems.Count) return;
+        batchItems.RemoveAt(idx);
     }
 
-    private async Task Save()
+    private void ClearBatch()
     {
-        formError = null;
-        if (selectedProduct is null) { formError = "Elegí un producto primero"; return; }
-        if (formWarehouseId == 0) { formError = "Elegí un depósito"; return; }
-        if (formQuantity < 0) { formError = "La cantidad no puede ser negativa (usá el tipo de movimiento para indicar dirección)"; return; }
+        batchItems.Clear();
+        productSearchText = "";
+        selectedProduct = null;
+        addQuantity = 0;
+        addReason = "";
+        addNotes = "";
+        formReference = "";
+        formGlobalNotes = "";
+        saveError = null;
+    }
+
+    private async Task SaveBatch()
+    {
+        if (batchItems.Count == 0) { saveError = "No hay items en el batch"; return; }
+        if (formWarehouseId == 0) { saveError = "Elegí un depósito"; return; }
 
         isSaving = true;
+        saveError = null;
+        int ok = 0;
+        var errores = new List<string>();
+
         try
         {
-            var saved = await Api.AdjustStockAsync(new AdjustStockRequest
+            foreach (var item in batchItems)
             {
-                ProductId = selectedProduct.Id,
-                WarehouseId = formWarehouseId,
-                MovementType = formMovementType,
-                Quantity = formQuantity,
-                Reason = string.IsNullOrWhiteSpace(formReason) ? null : formReason,
-                Notes = string.IsNullOrWhiteSpace(formNotes) ? null : formNotes,
-                OperatorName = Operator.Current
-            });
+                // Mapear tipo + valor a nuestro AdjustStockRequest:
+                //  - reemplazar -> 'ajuste' (valor absoluto)
+                //  - modificar +X -> 'ingreso' (suma X)
+                //  - modificar -X -> 'egreso' (resta |X|)
+                string movType;
+                decimal qty;
+                if (item.Type == "reemplazar")
+                {
+                    movType = "ajuste";
+                    qty = item.ValorIngresado;
+                }
+                else if (item.ValorIngresado >= 0)
+                {
+                    movType = "ingreso";
+                    qty = item.ValorIngresado;
+                }
+                else
+                {
+                    movType = "egreso";
+                    qty = Math.Abs(item.ValorIngresado);
+                }
 
-            if (saved is null) { formError = "No se pudo aplicar el movimiento"; return; }
+                var notas = string.Join(" · ",
+                    new[] { item.Notes, formGlobalNotes, string.IsNullOrEmpty(formReference) ? null : $"Ref: {formReference}" }
+                        .Where(s => !string.IsNullOrWhiteSpace(s)));
 
-            ToastService.Success($"Stock actualizado: {FormatStock(saved.StockBefore)} → {FormatStock(saved.StockAfter)}");
-            // Refrescar el stock del producto seleccionado en memoria
-            selectedProduct.Stock = saved.StockAfter;
+                try
+                {
+                    var saved = await Api.AdjustStockAsync(new AdjustStockRequest
+                    {
+                        ProductId = item.ProductId,
+                        WarehouseId = formWarehouseId,
+                        MovementType = movType,
+                        Quantity = qty,
+                        Reason = item.Reason,
+                        Notes = string.IsNullOrEmpty(notas) ? null : notas,
+                        OperatorName = Operator.Current
+                    });
+                    if (saved is null) errores.Add($"{item.Sku}: error desconocido");
+                    else ok++;
+                }
+                catch (Exception ex) { errores.Add($"{item.Sku}: {ex.Message}"); }
+            }
 
-            // Reseteamos el form pero MANTENEMOS el producto seleccionado y el texto del search
-            // para que el usuario pueda hacer otro ajuste rápido al mismo producto.
-            // (Si quiere otro producto, toca "Limpiar" o tipea otro SKU.)
-            ResetForm(keepProduct: true);
+            if (ok == batchItems.Count)
+            {
+                ToastService.Success($"✓ {ok} ajuste{(ok == 1 ? "" : "s")} aplicado{(ok == 1 ? "" : "s")}");
+                ClearBatch();
+            }
+            else
+            {
+                saveError = $"{ok}/{batchItems.Count} aplicados. Errores: " + string.Join(" | ", errores);
+                ToastService.Error("Algunos ajustes fallaron — revisá la lista");
+            }
+
             await LoadMovements();
-            await RefreshProductsListSilently();
+            // Refrescar productos para que muestren nuevo stock
+            try
+            {
+                var all = await Api.GetProductsAsync() ?? new();
+                var byId = all.ToDictionary(x => x.Id);
+                products = all.Where(p => IsAjustableStock(p, byId))
+                    .OrderBy(p => p.Sku ?? "").ThenBy(p => p.Title).ToList();
+            }
+            catch { /* silencioso */ }
         }
-        catch (Exception ex) { formError = "Error: " + ex.Message; }
-        finally { isSaving = false; }
-    }
-
-    private async Task RefreshProductsListSilently()
-    {
-        try
+        finally
         {
-            var all = await Api.GetProductsAsync() ?? new();
-            var byId = all.ToDictionary(x => x.Id);
-            products = all
-                .Where(p => IsAjustableStock(p, byId))
-                .OrderBy(p => p.Sku ?? "").ThenBy(p => p.Title).ToList();
+            isSaving = false;
         }
-        catch { /* silencioso */ }
     }
 
-    private async Task ToggleFilterByProduct()
-    {
-        filterByProduct = !filterByProduct;
-        await LoadMovements();
-    }
-
-    /// <summary>Formatea un stock decimal: entero sin decimales (15), o hasta 3 decimales (15,5; 0,125).</summary>
+    /// <summary>Formatea un stock decimal: entero sin decimales o hasta 3 decimales.</summary>
     private static string FormatStock(decimal value)
     {
         if (value == Math.Truncate(value))
             return ((long)value).ToString("N0", new System.Globalization.CultureInfo("es-AR"));
         return value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture).Replace(".", ",");
     }
+
+    /// <summary>Devuelve "kg" o "u." según la unidad del producto.</summary>
+    private static string StockUnitShort(string? unit) => unit == "kg" ? "kg" : "u.";
 
     private static string MovementTypeLabel(string type) => type switch
     {
