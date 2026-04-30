@@ -35,7 +35,7 @@
                     {
                         @foreach (var p in products.Take(2000))
                         {
-                            <option value="@(p.Sku ?? "—") · @p.Title — Stock: @p.Stock"></option>
+                            <option value="@(p.Sku ?? "—") · @p.Title — @FormatStock(p.Stock) @(p.StockUnit == "kg" ? "kg" : "u.")"></option>
                         }
                     }
                 </datalist>
@@ -62,7 +62,10 @@
                     <div style="text-align: right;">
                         <div style="font-size: 0.7rem; color: #6b7280;">STOCK ACTUAL</div>
                         <div style="font-size: 2rem; font-weight: 800; color: @(selectedProduct.Stock < (selectedProduct.CriticalStock) ? "#dc2626" : "#059669");">
-                            @selectedProduct.Stock
+                            @FormatStock(selectedProduct.Stock)
+                            <span style="font-size: 1rem; font-weight: 700; color: #6b7280;">
+                                @(selectedProduct.StockUnit == "kg" ? "kg" : "u.")
+                            </span>
                         </div>
                         @if (selectedProduct.CriticalStock > 0)
                         {
@@ -124,7 +127,7 @@
                         @if (selectedProduct is not null)
                         {
                             <p style="font-size: 0.75rem; color: #6b7280; margin: 0.25rem 0 0;">
-                                Resultado: <strong>@selectedProduct.Stock → @PreviewNewStock</strong>
+                                Resultado: <strong>@FormatStock(selectedProduct.Stock) → @FormatStock(PreviewNewStock)</strong> @(selectedProduct.StockUnit == "kg" ? "kg" : "u.")
                                 @if (PreviewNewStock < 0)
                                 {
                                     <span style="color: #dc2626; font-weight: 700;"> (queda negativo)</span>
@@ -202,9 +205,9 @@
                                 <td><span style="display:inline-block; padding:0.15rem 0.45rem; background:#f3f4f6; color:#374151; border-radius:999px; font-size:0.7rem; font-weight:600;">@m.WarehouseName</span></td>
                                 <td><span style="font-size: 0.78rem;">@MovementTypeLabel(m.MovementType)</span></td>
                                 <td style="text-align: right; font-weight: 700; color: @(m.DeltaQuantity > 0 ? "#059669" : (m.DeltaQuantity < 0 ? "#dc2626" : "#6b7280"));">
-                                    @(m.DeltaQuantity > 0 ? "+" : "")@m.DeltaQuantity
+                                    @(m.DeltaQuantity > 0 ? "+" : "")@FormatStock(m.DeltaQuantity)
                                 </td>
-                                <td style="text-align: right; font-size: 0.85rem;">@m.StockBefore → <strong>@m.StockAfter</strong></td>
+                                <td style="text-align: right; font-size: 0.85rem;">@FormatStock(m.StockBefore) → <strong>@FormatStock(m.StockAfter)</strong></td>
                                 <td style="font-size: 0.82rem;">
                                     @(m.Reason ?? "")
                                     @if (!string.IsNullOrEmpty(m.Notes))
@@ -258,6 +261,22 @@
         await LoadData();
     }
 
+    /// <summary>Filtra los productos disponibles para ajustar stock:
+    /// - hijos de padres kg-mode se OCULTAN (su stock es derivado, ajustarlo no tiene sentido)
+    /// - padres en kg-mode se MUESTRAN (llevan los kg totales del bulk)
+    /// - padres en unidad-mode con hijos se OCULTAN (stock es suma de hijos)
+    /// - independientes y servicios filtrados normalmente</summary>
+    private bool IsAjustableStock(ProductDto p, IDictionary<int, ProductDto> byId)
+    {
+        if (!p.IsActive || p.IsService) return false;
+        // Hijo de padre kg-mode → no ajustable directo
+        if (p.BaseProductId.HasValue && byId.TryGetValue(p.BaseProductId.Value, out var parent)
+            && parent.StockUnit == "kg") return false;
+        // Padre en unidad-mode con hijos → no ajustable (suma de hijos)
+        if (p.IsBase && p.DerivedCount > 0 && p.StockUnit != "kg") return false;
+        return true;
+    }
+
     private async Task LoadData()
     {
         try { warehouses = await Api.GetWarehousesAsync() ?? new(); }
@@ -266,8 +285,10 @@
         try
         {
             var all = await Api.GetProductsAsync() ?? new();
-            // Productos vendibles (no padres con derivados, no servicios)
-            products = all.Where(p => p.IsActive && p.DerivedCount == 0 && !p.IsService)
+            // Construir dict para chequear padres por id rapidamente
+            var byId = all.ToDictionary(x => x.Id);
+            products = all
+                .Where(p => IsAjustableStock(p, byId))
                 .OrderBy(p => p.Sku ?? "").ThenBy(p => p.Title).ToList();
         }
         catch { products = new(); }
@@ -305,16 +326,26 @@
             selectedProduct = null;
             return;
         }
-        // Match por value exacto del datalist
+
+        var texto = productSearchText.Trim();
+
+        // Estrategia 1: si el texto empieza con un SKU conocido seguido de "·" o " ", matchear por SKU.
+        // Esto es lo que pasa cuando el usuario clickea una opcion del datalist (cuyo value arranca con el SKU).
         var match = products.FirstOrDefault(p =>
-            string.Equals($"{(p.Sku ?? "—")} · {p.Title} — Stock: {p.Stock}", productSearchText, StringComparison.OrdinalIgnoreCase));
+            !string.IsNullOrEmpty(p.Sku) &&
+            (texto.StartsWith(p.Sku + " ", StringComparison.OrdinalIgnoreCase) ||
+             texto.StartsWith(p.Sku + "·", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(p.Sku, texto, StringComparison.OrdinalIgnoreCase)));
+
+        // Estrategia 2: fallback case-insensitive contiene SKU o título único
         if (match is null)
         {
-            // Fallback: SKU exacto
-            match = products.FirstOrDefault(p =>
-                !string.IsNullOrEmpty(p.Sku) &&
-                string.Equals(p.Sku, productSearchText.Trim(), StringComparison.OrdinalIgnoreCase));
+            var matches = products.Where(p =>
+                (!string.IsNullOrEmpty(p.Sku) && p.Sku.Contains(texto, StringComparison.OrdinalIgnoreCase)) ||
+                p.Title.Contains(texto, StringComparison.OrdinalIgnoreCase)).Take(2).ToList();
+            if (matches.Count == 1) match = matches[0];
         }
+
         selectedProduct = match;
         if (selectedProduct is not null)
         {
@@ -365,13 +396,15 @@
 
             if (saved is null) { formError = "No se pudo aplicar el movimiento"; return; }
 
-            ToastService.Success($"Stock actualizado: {saved.StockBefore} → {saved.StockAfter}");
+            ToastService.Success($"Stock actualizado: {FormatStock(saved.StockBefore)} → {FormatStock(saved.StockAfter)}");
             // Refrescar el stock del producto seleccionado en memoria
             selectedProduct.Stock = saved.StockAfter;
 
+            // Reseteamos el form pero MANTENEMOS el producto seleccionado y el texto del search
+            // para que el usuario pueda hacer otro ajuste rápido al mismo producto.
+            // (Si quiere otro producto, toca "Limpiar" o tipea otro SKU.)
             ResetForm(keepProduct: true);
             await LoadMovements();
-            // Refrescar el listado de productos (para que el datalist refleje el nuevo stock)
             await RefreshProductsListSilently();
         }
         catch (Exception ex) { formError = "Error: " + ex.Message; }
@@ -383,7 +416,9 @@
         try
         {
             var all = await Api.GetProductsAsync() ?? new();
-            products = all.Where(p => p.IsActive && p.DerivedCount == 0 && !p.IsService)
+            var byId = all.ToDictionary(x => x.Id);
+            products = all
+                .Where(p => IsAjustableStock(p, byId))
                 .OrderBy(p => p.Sku ?? "").ThenBy(p => p.Title).ToList();
         }
         catch { /* silencioso */ }
@@ -393,6 +428,14 @@
     {
         filterByProduct = !filterByProduct;
         await LoadMovements();
+    }
+
+    /// <summary>Formatea un stock decimal: entero sin decimales (15), o hasta 3 decimales (15,5; 0,125).</summary>
+    private static string FormatStock(decimal value)
+    {
+        if (value == Math.Truncate(value))
+            return ((long)value).ToString("N0", new System.Globalization.CultureInfo("es-AR"));
+        return value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture).Replace(".", ",");
     }
 
     private static string MovementTypeLabel(string type) => type switch
