@@ -88,30 +88,69 @@
         <div style="font-size: 0.72rem; color: #6b7280;">@esTime.ToString("dddd dd/MM/yyyy", new System.Globalization.CultureInfo("es-ES"))</div>
     </div>
 
-    @* Contador de café FRIKAF vendido en el mes *@
-    <div class="dashboard-detail-card" style="padding: 0.85rem; text-align: center; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 1px solid #f59e0b;">
-        <div style="display: flex; align-items: center; justify-content: center; gap: 0.4rem; margin-bottom: 0.3rem;">
+    @* Contador de café FRIKAF vendido en el mes — con imagen de fondo subible por el usuario *@
+    <div class="dashboard-detail-card cafe-frikaf-card"
+         style="padding: 0.85rem; text-align: center; position: relative; overflow: hidden;
+                background-color: #fde68a;
+                background-image: linear-gradient(rgba(255,255,255,0.65), rgba(255,255,255,0.85)), url('/api/branding/cafe-frikaf-bg?v=@bgVersion');
+                background-size: cover;
+                background-position: center;
+                border: 1px solid #f59e0b;">
+        @* Boton para subir / cambiar la imagen de fondo. Usa InputFile de Blazor para
+           tener acceso real al stream del archivo desde el handler. *@
+        <label class="cafe-frikaf-upload-btn" title="Cambiar imagen de fondo">
+            📷
+            <InputFile OnChange="OnCafeBgFilePicked" accept=".png,.jpg,.jpeg,.webp" style="display: none;" />
+        </label>
+        <div style="display: flex; align-items: center; justify-content: center; gap: 0.4rem; margin-bottom: 0.3rem; position: relative;">
             <span style="font-size: 1.5rem;">☕</span>
             <strong style="font-size: 0.9rem; color: #78350f;">Café FRIKAF</strong>
         </div>
         @if (coffeeKg is null)
         {
-            <div style="font-size: 1rem; color: #92400e;">Cargando...</div>
+            <div style="font-size: 1rem; color: #92400e; position: relative;">Cargando...</div>
         }
         else
         {
-            <div style="font-size: 1.6rem; font-weight: 800; color: #78350f; line-height: 1.2;">
+            <div style="font-size: 1.6rem; font-weight: 800; color: #78350f; line-height: 1.2; position: relative;">
                 @FormatKg(coffeeKg.KgTotal) <span style="font-size: 0.95rem; font-weight: 600;">kg</span>
             </div>
-            <div style="font-size: 0.7rem; color: #92400e;">
+            <div style="font-size: 0.7rem; color: #92400e; position: relative;">
                 vendidos en @coffeeKg.PeriodStart.ToString("MMMM yyyy", new System.Globalization.CultureInfo("es-AR"))
             </div>
-            <div style="font-size: 0.65rem; color: #b45309; margin-top: 0.15rem;">
+            <div style="font-size: 0.65rem; color: #b45309; margin-top: 0.15rem; position: relative;">
                 @coffeeKg.Sales venta@(coffeeKg.Sales == 1 ? "" : "s") · @coffeeKg.Items línea@(coffeeKg.Items == 1 ? "" : "s")
+            </div>
+        }
+        @if (cafeBgUploading)
+        {
+            <div style="position: absolute; inset: 0; background: rgba(255,255,255,0.85); display: flex; align-items: center; justify-content: center; font-size: 0.85rem; color: #78350f; font-weight: 700;">
+                Subiendo imagen...
             </div>
         }
     </div>
 </div>
+
+<style>
+    .cafe-frikaf-upload-btn {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        width: 26px;
+        height: 26px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(255, 255, 255, 0.85);
+        border: 1px solid #f59e0b;
+        border-radius: 50%;
+        cursor: pointer;
+        font-size: 0.85rem;
+        z-index: 2;
+        transition: background 0.15s;
+    }
+    .cafe-frikaf-upload-btn:hover { background: white; transform: scale(1.05); }
+</style>
 
 @* === Fila de KPIs financieros: Ventas del mes / Saldos clientes / Cuentas a pagar === *@
 <div class="dashboard-cards-row">
@@ -269,6 +308,11 @@
     private System.Threading.Timer? salesSummaryTimer;
     private SalesSummaryDto? salesSummary;
 
+    // Cache-buster para la imagen de fondo (cuando se reemplaza, sube este numero
+    // y el navegador recarga la URL en vez de usar la version cacheada).
+    private long bgVersion = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+    private bool cafeBgUploading;
+
     private static readonly TimeZoneInfo ArgentinaTz = SafeTz("America/Argentina/Buenos_Aires", -3);
     private static readonly TimeZoneInfo SpainTz = SafeTz("Europe/Madrid", 1);
 
@@ -375,6 +419,36 @@
             // Mantener el valor anterior si falla
         }
         StateHasChanged();
+    }
+
+    /// <summary>Subir la imagen elegida como fondo de la card "Café FRIKAF".</summary>
+    private async Task OnCafeBgFilePicked(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
+    {
+        if (e.File is null) return;
+        await UploadCafeBg(e.File);
+    }
+
+    private async Task UploadCafeBg(Microsoft.AspNetCore.Components.Forms.IBrowserFile file)
+    {
+        cafeBgUploading = true;
+        StateHasChanged();
+        try
+        {
+            using var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024); // 10 MB
+            await Api.UploadBrandingImageAsync("cafe-frikaf-bg", stream, file.Name, file.ContentType);
+            // Actualizar version → fuerza al navegador a recargar la imagen
+            bgVersion = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            ToastService.Success("Imagen actualizada ✓");
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("No se pudo subir la imagen: " + ex.Message);
+        }
+        finally
+        {
+            cafeBgUploading = false;
+            StateHasChanged();
+        }
     }
 
     /// <summary>Formatea kg con punto y coma argentinos: 12.345,5 → "12.345,5".</summary>

@@ -379,6 +379,27 @@ public class ApiClient
     public async Task<SalesSummaryDto?> GetSalesSummaryAsync()
         => await GetAsync<SalesSummaryDto>("/api/dashboard/sales-summary");
 
+    /// <summary>
+    /// Sube una imagen de marca (logo, fondo, etc) bajo una key. Si ya hay una con
+    /// la misma key, se reemplaza. La imagen luego se sirve desde /api/branding/{key}.
+    /// </summary>
+    public async Task UploadBrandingImageAsync(string key, Stream stream, string fileName, string contentType)
+    {
+        await SetAuthHeaderAsync();
+        using var content = new MultipartFormDataContent();
+        var streamContent = new StreamContent(stream);
+        if (!string.IsNullOrEmpty(contentType))
+            streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
+        content.Add(streamContent, "file", string.IsNullOrEmpty(fileName) ? "upload" : fileName);
+
+        var response = await _http.PostAsync($"/api/branding/upload/{Uri.EscapeDataString(key)}", content);
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            throw new InvalidOperationException(string.IsNullOrEmpty(error) ? response.ReasonPhrase : error);
+        }
+    }
+
     // --- Stock batches (lotes con vencimiento) ---
     public async Task<List<StockBatchDto>?> GetStockBatchesAsync(int productId)
         => await GetAsync<List<StockBatchDto>>($"/api/products/{productId}/stock-batches");
