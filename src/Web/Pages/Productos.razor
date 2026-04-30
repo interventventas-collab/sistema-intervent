@@ -787,7 +787,7 @@
                 <div style="background:#f9fafb; padding:0.7rem; border-radius:6px; border:1px solid #e5e7eb; margin-bottom: 0.8rem;">
                     <div style="font-size:0.82rem; color:#374151; font-weight:600; margin-bottom:0.4rem;">
                         🏷 Precio de venta
-                        <span style="font-weight:400; color:#6b7280;">— tipeá en cualquiera de los dos, el otro se calcula automáticamente</span>
+                        <span style="font-weight:400; color:#6b7280;">— tipeá en cualquiera de los tres, los otros se recalculan</span>
                     </div>
                     <div class="form-row" style="margin: 0;">
                         <div class="form-group">
@@ -803,6 +803,24 @@
                                 <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 1.1rem; font-weight: 700; color: #333;">$</span>
                                 <input type="text" class="form-input" style="font-size: 1.05rem; font-weight: 700; text-align: right; padding-left: 28px;" value="@formRetailPriceWithVatFormatted" @oninput="OnFormRetailPriceWithVatInput" inputmode="decimal" />
                             </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Rentabilidad</label>
+                            <div style="position: relative;">
+                                <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 1.1rem; font-weight: 700; color: #333;">%</span>
+                                <input type="text" class="form-input" style="font-size: 1.05rem; font-weight: 700; text-align: right; padding-left: 28px;" value="@formMarkupPercentFormatted" @oninput="OnFormMarkupPercentInput" inputmode="decimal" placeholder="@(formCostPrice <= 0 ? "(cargá costo primero)" : "Ej: 75")" disabled="@(formCostPrice <= 0)" />
+                            </div>
+                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
+                                @if (formCostPrice > 0 && formRetailPrice > 0)
+                                {
+                                    var ganancia = formRetailPrice - formCostPrice;
+                                    <span>Ganancia: <strong>$@FormatPrice(ganancia)</strong> por unidad (s/IVA)</span>
+                                }
+                                else
+                                {
+                                    <span>Margen sobre costo s/IVA</span>
+                                }
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -1681,6 +1699,8 @@
     // Espejo "con IVA" — se calculan a partir del valor sin IVA + formVatRate.
     private string formCostPriceWithVatFormatted = "";
     private string formRetailPriceWithVatFormatted = "";
+    // Rentabilidad % = (RetailPrice - CostPrice) / CostPrice * 100. Es derivada, no se persiste.
+    private string formMarkupPercentFormatted = "";
     private bool formIsActive = true;
     private string? formPhoto1;
     private string? formPhoto2;
@@ -2274,6 +2294,7 @@
         formUnitsPerPack = null;
         formCostPriceFormatted = FormatPrice(0); formRetailPriceFormatted = FormatPrice(0);
         formCostPriceWithVatFormatted = FormatPrice(0); formRetailPriceWithVatFormatted = FormatPrice(0);
+        formMarkupPercentFormatted = "";
         // Default 21% en productos nuevos (es lo mas frecuente)
         formVatRate = 21m;
         formPurchaseAccount = ""; formSaleAccount = ""; formInventoryAccount = "";
@@ -2306,6 +2327,7 @@
         formUnitsPerPack = product.UnitsPerPack;
         formCostPriceFormatted = FormatPrice(formCostPrice);
         formRetailPriceFormatted = FormatPrice(formRetailPrice);
+        RecalcMarkupFromPrices();
         // Si el producto fue creado antes de que existiera el default 21%, usamos 21 al abrir
         // (asi al guardar se persiste y deja de salir como "Sin IVA").
         formVatRate = product.VatRate ?? 21m;
@@ -2349,6 +2371,7 @@
         formUnitsPerPack = null;
         formCostPriceFormatted = FormatPrice(0); formRetailPriceFormatted = FormatPrice(0);
         formCostPriceWithVatFormatted = FormatPrice(0); formRetailPriceWithVatFormatted = FormatPrice(0);
+        formMarkupPercentFormatted = "";
         formIsActive = true;
         formPhoto1 = null; formPhoto2 = null; formPhoto3 = null;
         formBaseProductId = 0;
@@ -3153,8 +3176,8 @@
     {
         formCostPriceFormatted = FormatPriceInput(e.Value?.ToString() ?? "");
         formCostPrice = ParseFormattedPrice(formCostPriceFormatted);
-        // Recalcular el "con IVA" a partir del nuevo "sin IVA"
         formCostPriceWithVatFormatted = FormatPrice(WithVat(formCostPrice));
+        RecalcMarkupFromPrices();
     }
 
     private void OnFormRetailPriceInput(ChangeEventArgs e)
@@ -3162,15 +3185,16 @@
         formRetailPriceFormatted = FormatPriceInput(e.Value?.ToString() ?? "");
         formRetailPrice = ParseFormattedPrice(formRetailPriceFormatted);
         formRetailPriceWithVatFormatted = FormatPrice(WithVat(formRetailPrice));
+        RecalcMarkupFromPrices();
     }
 
     private void OnFormCostPriceWithVatInput(ChangeEventArgs e)
     {
         formCostPriceWithVatFormatted = FormatPriceInput(e.Value?.ToString() ?? "");
         var withVat = ParseFormattedPrice(formCostPriceWithVatFormatted);
-        // Calcular el "sin IVA" a partir del "con IVA"
         formCostPrice = WithoutVat(withVat);
         formCostPriceFormatted = FormatPrice(formCostPrice);
+        RecalcMarkupFromPrices();
     }
 
     private void OnFormRetailPriceWithVatInput(ChangeEventArgs e)
@@ -3179,6 +3203,36 @@
         var withVat = ParseFormattedPrice(formRetailPriceWithVatFormatted);
         formRetailPrice = WithoutVat(withVat);
         formRetailPriceFormatted = FormatPrice(formRetailPrice);
+        RecalcMarkupFromPrices();
+    }
+
+    /// <summary>El usuario tipea el % de rentabilidad → recalculamos PVP usando el costo actual.</summary>
+    private void OnFormMarkupPercentInput(ChangeEventArgs e)
+    {
+        var raw = (e.Value?.ToString() ?? "").Trim();
+        // Aceptar coma o punto, dejar valor literal en pantalla
+        formMarkupPercentFormatted = raw;
+        var normalized = raw.Replace(".", "").Replace(",", ".");
+        if (!decimal.TryParse(normalized, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var pct))
+        {
+            return; // entrada parcial; no recalculamos
+        }
+        if (formCostPrice <= 0m) return; // sin costo, no se puede calcular
+        formRetailPrice = Math.Round(formCostPrice * (1m + pct / 100m), 2, MidpointRounding.AwayFromZero);
+        formRetailPriceFormatted = FormatPrice(formRetailPrice);
+        formRetailPriceWithVatFormatted = FormatPrice(WithVat(formRetailPrice));
+    }
+
+    /// <summary>Recalcula el % de rentabilidad cuando cambian costo o PVP.</summary>
+    private void RecalcMarkupFromPrices()
+    {
+        if (formCostPrice <= 0m)
+        {
+            formMarkupPercentFormatted = "";
+            return;
+        }
+        var pct = (formRetailPrice - formCostPrice) / formCostPrice * 100m;
+        formMarkupPercentFormatted = pct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture).Replace(".", ",");
     }
 
     // Bindeamos el dropdown de IVA via una propiedad string get/set, no directo a decimal?.
