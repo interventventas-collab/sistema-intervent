@@ -1,0 +1,27 @@
+@page "/actualizacion-stock"
+@attribute [Authorize]
+
+<div class="card">
+    <div class="card-header">
+        <h3>📥 Actualización masiva de stock</h3>
+    </div>
+    <div class="card-body">
+        <div style="background: #fef3c7; border: 1px solid #fbbf24; color: #92400e; padding: 1rem 1.25rem; border-radius: 8px; margin-bottom: 1rem;">
+            <strong>🚧 Sección en desarrollo</strong>
+            <p style="margin: 0.5rem 0 0; font-size: 0.9rem;">
+                Mientras tanto, la <a href="/import-productos" style="color: #2563eb; text-decoration: underline;">importación masiva de productos</a>
+                ya permite subir un Excel con la columna <code>stock</code> y se aplica a cada producto por SKU
+                (sirve si querés actualizar precio + stock al mismo tiempo).
+            </p>
+        </div>
+
+        <h4 style="margin: 0 0 0.5rem;">¿Qué va a hacer esta sección cuando esté lista?</h4>
+        <ul style="font-size: 0.92rem; line-height: 1.7;">
+            <li><strong>Excel solo de stock</strong>: 2 columnas (SKU, Stock). No toca ningún otro campo del producto.</li>
+            <li><strong>Modos</strong>: <em>reemplazar</em> (el stock queda en el valor del Excel) o <em>sumar/restar</em> (al stock actual le suma lo que dice el Excel — ej: ingreso de mercadería).</li>
+            <li><strong>Por depósito</strong> (cuando los depósitos estén implementados).</li>
+            <li><strong>Vista previa</strong> antes de aplicar: ver qué productos cambian y cuánto, antes de confirmar.</li>
+            <li><strong>Audit log</strong>: queda registrado quién subió qué archivo y cuándo.</li>
+        </ul>
+    </div>
+</div>

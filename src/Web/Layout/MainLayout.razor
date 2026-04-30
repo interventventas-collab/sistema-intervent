@@ -74,6 +74,38 @@
             </NavGroup>
         }
 
+        @if (HasPerm("depositos") || HasPerm("modificacion-stock") || HasPerm("movimientos-depositos") || HasPerm("import-productos") || HasPerm("actualizacion-stock"))
+        {
+            <NavGroup Label="Inventarios" Icon="@SvgIcons.Inventory"
+                      HasActiveChild="@(IsActive("/depositos") || IsActive("/modificacion-stock") || IsActive("/movimientos-depositos") || IsActive("/import-productos") || IsActive("/actualizacion-stock"))">
+                @if (HasPerm("depositos"))
+                {
+                    <NavItem Href="/depositos" Label="Depósitos" Icon="@SvgIcons.Store"
+                             IsActive="@IsActive("/depositos")" OnClick="@(() => NavigateTo("/depositos"))" />
+                }
+                @if (HasPerm("modificacion-stock"))
+                {
+                    <NavItem Href="/modificacion-stock" Label="Modificación de stock" Icon="@SvgIcons.Edit"
+                             IsActive="@IsActive("/modificacion-stock")" OnClick="@(() => NavigateTo("/modificacion-stock"))" />
+                }
+                @if (HasPerm("movimientos-depositos"))
+                {
+                    <NavItem Href="/movimientos-depositos" Label="Movimientos entre depósitos" Icon="@SvgIcons.Refresh"
+                             IsActive="@IsActive("/movimientos-depositos")" OnClick="@(() => NavigateTo("/movimientos-depositos"))" />
+                }
+                @if (HasPerm("import-productos"))
+                {
+                    <NavItem Href="/import-productos" Label="Importación masiva de productos" Icon="@SvgIcons.Folder"
+                             IsActive="@IsActive("/import-productos")" OnClick="@(() => NavigateTo("/import-productos"))" />
+                }
+                @if (HasPerm("actualizacion-stock"))
+                {
+                    <NavItem Href="/actualizacion-stock" Label="Actualización masiva de stock" Icon="@SvgIcons.Folder"
+                             IsActive="@IsActive("/actualizacion-stock")" OnClick="@(() => NavigateTo("/actualizacion-stock"))" />
+                }
+            </NavGroup>
+        }
+
         @if (HasPerm("ventas") || HasPerm("clientes"))
         {
             <NavGroup Label="Ventas" Icon="@SvgIcons.ShoppingBag"

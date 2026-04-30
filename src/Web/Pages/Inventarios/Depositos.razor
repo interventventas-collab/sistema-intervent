@@ -1,0 +1,31 @@
+@page "/depositos"
+@attribute [Authorize]
+
+<div class="card">
+    <div class="card-header">
+        <h3>📦 Depósitos</h3>
+    </div>
+    <div class="card-body">
+        <div style="background: #fef3c7; border: 1px solid #fbbf24; color: #92400e; padding: 1rem 1.25rem; border-radius: 8px; margin-bottom: 1rem;">
+            <strong>🚧 Sección en desarrollo</strong>
+            <p style="margin: 0.5rem 0 0; font-size: 0.9rem;">
+                Esta pantalla todavía no está implementada. Cuando esté lista vas a poder gestionar depósitos
+                desde acá.
+            </p>
+        </div>
+
+        <h4 style="margin: 0 0 0.5rem;">¿Qué va a hacer esta sección?</h4>
+        <ul style="font-size: 0.92rem; line-height: 1.7;">
+            <li><strong>Crear depósitos / sucursales</strong>: nombre, dirección, encargado, notas.</li>
+            <li><strong>Activar / desactivar</strong> depósitos sin perder su historial.</li>
+            <li><strong>Ver el stock por depósito</strong>: cuántas unidades de cada producto hay en cada lugar.</li>
+            <li><strong>Marcar un depósito como predeterminado</strong> para nuevas ventas/compras.</li>
+        </ul>
+
+        <div style="margin-top: 1rem; padding: 0.75rem 1rem; background: #f3f4f6; border-radius: 6px; font-size: 0.85rem; color: #374151;">
+            💡 <strong>Importante:</strong> implementar depósitos requiere migrar el campo <code>Stock</code>
+            actual (un solo número por producto) a una tabla de <code>StockPorDeposito</code>. Es un cambio grande
+            que afecta ventas, compras, MeLi, etc. Cuando arranquemos, lo planificamos paso a paso para no romper nada.
+        </div>
+    </div>
+</div>

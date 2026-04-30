@@ -1,0 +1,60 @@
+@page "/import-productos"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject NavigationManager Navigation
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3>📤 Importación masiva de productos</h3>
+        <button class="btn btn-primary" @onclick="() => showImport = true" style="background: #059669; border-color: #059669;">
+            📤 Subir Excel
+        </button>
+    </div>
+    <div class="card-body">
+        <p style="font-size: 0.95rem; color: #4b5563;">
+            Subí un archivo Excel para crear o actualizar varios productos de una sola vez.
+            Si el SKU ya existe, se <strong>actualiza</strong>. Si no existe, se <strong>crea nuevo</strong>.
+        </p>
+        <p style="font-size: 0.9rem; color: #6b7280;">
+            👉 Tocá <strong>📤 Subir Excel</strong> arriba a la derecha. El sistema te ofrece descargar
+            la plantilla con los nombres de las columnas que espera.
+        </p>
+
+        <div style="background: #f3f4f6; padding: 0.9rem 1.1rem; border-radius: 6px; margin-top: 1rem; font-size: 0.85rem;">
+            <strong>📋 Columnas reconocidas en el Excel</strong>
+            <ul style="margin: 0.5rem 0 0; line-height: 1.7;">
+                <li><code>sku</code> (obligatorio), <code>nombre</code>, <code>descripcion</code>, <code>marca</code>, <code>modelo</code></li>
+                <li><code>codigo_de_barras</code>, <code>codigo_oem</code>, <code>url_imagen</code></li>
+                <li><code>precio_costo</code>, <code>precio_venta</code> (o <code>precio_venta_con_iva</code>), <code>iva</code></li>
+                <li><code>stock</code>, <code>stock_critico</code>, <code>uxb</code> (unidades por bulto)</li>
+                <li><code>cuenta_compra</code>, <code>cuenta_venta</code>, <code>cuenta_mercaderia</code></li>
+                <li><code>tipo</code> (padre / hijo / independiente), <code>activo</code> (sí/no)</li>
+            </ul>
+        </div>
+
+        <p style="font-size: 0.78rem; color: #9ca3af; margin-top: 0.8rem;">
+            Esta es la misma función que ya está en
+            <a href="/productos" @onclick:preventDefault @onclick='() => Navigation.NavigateTo("/productos")' style="color: #2563eb; text-decoration: underline; cursor: pointer;">Productos → 📤 Importar Excel</a>.
+            Está duplicada acá para que sea más fácil encontrarla desde el menú de Inventarios.
+        </p>
+    </div>
+</div>
+
+<BulkImportModal @bind-Visible="showImport"
+                 EntityNameSingular="producto"
+                 EntityNamePlural="productos"
+                 TemplateUrl="/api/products/import-template"
+                 TemplateFileName="productos-template.xlsx"
+                 ImportUrl="/api/products/bulk-import"
+                 OnImported="OnImported" />
+
+@code {
+    private bool showImport;
+
+    private void OnImported()
+    {
+        ToastService.Success("Importación lista. Andá a Productos para ver los cambios.");
+        showImport = false;
+    }
+}

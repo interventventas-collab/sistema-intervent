@@ -1,0 +1,32 @@
+@page "/modificacion-stock"
+@attribute [Authorize]
+@inject NavigationManager Navigation
+
+<div class="card">
+    <div class="card-header">
+        <h3>📊 Modificación de stock</h3>
+    </div>
+    <div class="card-body">
+        <div style="background: #fef3c7; border: 1px solid #fbbf24; color: #92400e; padding: 1rem 1.25rem; border-radius: 8px; margin-bottom: 1rem;">
+            <strong>🚧 Sección en desarrollo</strong>
+            <p style="margin: 0.5rem 0 0; font-size: 0.9rem;">
+                Mientras tanto, podés modificar el stock de cada producto desde la
+                pantalla de <a href="/productos" style="color: #2563eb; text-decoration: underline;">Productos</a>:
+                editás el producto y cambiás el campo "Stock" directamente, o usás los candaditos
+                inline si tenés permiso de OSMAR.
+            </p>
+        </div>
+
+        <h4 style="margin: 0 0 0.5rem;">¿Qué va a hacer esta sección cuando esté lista?</h4>
+        <ul style="font-size: 0.92rem; line-height: 1.7;">
+            <li><strong>Ajuste manual de stock</strong> con motivo (rotura, merma, conteo físico, recepción, devolución, etc).</li>
+            <li><strong>Historial de movimientos</strong>: cada cambio queda registrado con quién lo hizo, cuándo y por qué.</li>
+            <li><strong>Búsqueda rápida</strong> por SKU o código de barras (escaneás y ajustás).</li>
+            <li><strong>Por depósito</strong> (cuando los depósitos estén implementados).</li>
+        </ul>
+
+        <button class="btn btn-primary" @onclick='() => Navigation.NavigateTo("/productos")'>
+            Ir a Productos
+        </button>
+    </div>
+</div>

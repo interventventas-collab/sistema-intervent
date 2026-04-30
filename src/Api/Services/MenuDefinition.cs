@@ -22,6 +22,14 @@ public static class MenuDefinition
             new MenuItem("marcas", "Marcas", "/marcas"),
             new MenuItem("clientes", "Clientes", "/clientes")
         }),
+        new MenuGroup("inventarios", "Inventarios", new[]
+        {
+            new MenuItem("depositos", "Depósitos", "/depositos"),
+            new MenuItem("modificacion-stock", "Modificación de stock", "/modificacion-stock"),
+            new MenuItem("movimientos-depositos", "Movimientos entre depósitos", "/movimientos-depositos"),
+            new MenuItem("import-productos", "Importación masiva de productos", "/import-productos"),
+            new MenuItem("actualizacion-stock", "Actualización masiva de stock", "/actualizacion-stock")
+        }),
         new MenuGroup("ventas", "Ventas", new[]
         {
             new MenuItem("ventas", "Comprobantes", "/ventas")
