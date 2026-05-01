@@ -344,6 +344,16 @@ public class BulkImportService
             .GroupBy(p => p.Sku!.ToLowerInvariant())
             .ToDictionary(g => g.Key, g => g.First().Id);
 
+        // Indice de "placeholders OEM": productos que tienen OemCode pero todavia no tienen
+        // SKU asignado. Se "promueven" cuando llega una fila con sku_interno y mismo OEM
+        // (asi el placeholder de la lista del proveedor se convierte en un producto real).
+        var placeholdersByOem = (await _db.Products
+            .Where(p => (p.Sku == null || p.Sku == "") && p.OemCode != null && p.OemCode != "")
+            .Select(p => new { p.Id, p.OemCode })
+            .ToListAsync())
+            .GroupBy(p => p.OemCode!.ToLowerInvariant())
+            .ToDictionary(g => g.Key, g => g.Select(x => x.Id).ToList());
+
         for (int i = 0; i < rows.Count; i++)
         {
             var rowNum = i + 2;
@@ -393,26 +403,53 @@ public class BulkImportService
                 var skuExplicito = Nz(Cell(row, headers, "sku_interno")) ?? Nz(Cell(row, headers, "sku"));
 
                 // === LOGICA DE MATCHING ===
-                // Prioridad 1: si la fila trae SKU interno explicito, matchear por SKU exacto.
-                //   - Match -> UPDATE solo ese producto
-                //   - No match -> CREATE producto nuevo (cada SKU explicito = producto distinto)
-                // Prioridad 2: si NO trae SKU explicito, matchear por OEM (legacy: actualizar todos los del OEM).
+                // Caso A: la fila trae SKU interno explicito (Contabilium-style)
+                //   1. Match por SKU exacto -> UPDATE
+                //   2. Si no, match por OEM contra un placeholder (Sku=null) -> PROMOCION
+                //      (el placeholder se "convierte" en producto real, recibiendo el SKU)
+                //   3. Si no hay nada, CREATE
+                // Caso B: la fila NO trae SKU explicito (lista del proveedor)
+                //   1. Si hay placeholder (Sku=null) con ese OEM, UPDATE el placeholder
+                //   2. Si no hay placeholder pero hay variantes (con SKU), UPDATE solo
+                //      cost/PVP/title de TODAS (la lista del proveedor refresca precios masivamente)
+                //   3. Si nada, CREATE placeholder nuevo (SKU=null)
                 List<int> existingIds;
+                bool isPromotion = false;
                 if (skuExplicito is not null)
                 {
-                    existingIds = productIdBySku.TryGetValue(skuExplicito.ToLowerInvariant(), out var eid)
-                        ? new List<int> { eid }
-                        : new List<int>();
+                    if (productIdBySku.TryGetValue(skuExplicito.ToLowerInvariant(), out var eid))
+                    {
+                        existingIds = new List<int> { eid };
+                    }
+                    else if (placeholdersByOem.TryGetValue(oem.ToLowerInvariant(), out var phs) && phs.Count > 0)
+                    {
+                        // Promovemos el primer placeholder encontrado.
+                        existingIds = new List<int> { phs[0] };
+                        isPromotion = true;
+                        // Quitar de placeholders (deja de ser placeholder)
+                        phs.RemoveAt(0);
+                    }
+                    else
+                    {
+                        existingIds = new List<int>();
+                    }
                 }
                 else
                 {
-                    existingIds = productsByOem.GetValueOrDefault(oem.ToLowerInvariant(), new List<int>());
+                    // Sin SKU explicito: priorizar el placeholder. Si hay, solo actualiza el placeholder.
+                    // Si no hay, refresca todas las variantes con ese OEM.
+                    if (placeholdersByOem.TryGetValue(oem.ToLowerInvariant(), out var phs) && phs.Count > 0)
+                    {
+                        existingIds = new List<int> { phs[0] };
+                    }
+                    else
+                    {
+                        existingIds = productsByOem.GetValueOrDefault(oem.ToLowerInvariant(), new List<int>());
+                    }
                 }
 
                 if (existingIds.Count > 0)
                 {
-                    // Update — actualiza el/los productos encontrados (por SKU si vino explicito,
-                    // o por OEM si no). No tocamos SKU, stock ni IsActive.
                     foreach (var pid in existingIds)
                     {
                         await _products.UpdateAsync(pid, new UpdateProductRequest(
@@ -421,7 +458,7 @@ public class BulkImportService
                             Description: null,
                             Brand: brandName,
                             Model: null,
-                            Sku: null,
+                            Sku: isPromotion ? skuExplicito : null,  // promocion -> asignar el SKU
                             Barcode: barcode,
                             OemCode: oem,
                             ImageUrl: null, Photo1: null, Photo2: null, Photo3: null,
@@ -440,6 +477,11 @@ public class BulkImportService
                             Fraction: null, MarkupAmount: null
                         ));
                         updated++;
+                    }
+                    // Mantener indices coherentes
+                    if (isPromotion && skuExplicito is not null)
+                    {
+                        productIdBySku[skuExplicito.ToLowerInvariant()] = existingIds[0];
                     }
                     if (skuExplicito is null && existingIds.Count > 1)
                     {
