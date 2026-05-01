@@ -49,12 +49,6 @@
                     <option value="">— Todos —</option>
                 </select>
             </label>
-            <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; color: #374151; cursor: pointer;"
-                   title="Cuando 2+ productos comparten OEM, los muestra agrupados con un encabezado del OEM">
-                <input type="checkbox" @bind="groupByOem" @bind:after="StateHasChanged"
-                       style="width: 16px; height: 16px;" />
-                <span>📦 Agrupar por OEM</span>
-            </label>
             <div style="position: relative;">
                 <button class="btn btn-primary" @onclick="ToggleNewTypeMenu" @onclick:stopPropagation="true">+ Nuevo ▾</button>
                 @if (showNewTypeMenu)
@@ -279,65 +273,8 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @{
-                            var visibleProducts = GetFilteredProducts();
-                            // Cuando agrupar por OEM esta activo, mostramos el header SIEMPRE que el
-                            // producto tenga OEM cargado, aunque sea una sola variante.
-                            // Asi la jerarquia OEM > variante queda clara y consistente.
-                            var oemGroupCounts = groupByOem
-                                ? visibleProducts
-                                    .Where(p => !string.IsNullOrEmpty(p.OemCode))
-                                    .GroupBy(p => p.OemCode!.ToLowerInvariant())
-                                    .ToDictionary(g => g.Key, g => g.Count())
-                                : new Dictionary<string, int>();
-                            string? lastEmittedOem = null;
-                        }
-                        @foreach (var product in visibleProducts)
+                        @foreach (var product in GetFilteredProducts())
                         {
-                            var oemKey = (product.OemCode ?? "").ToLowerInvariant();
-                            var isGroupedOem = !string.IsNullOrEmpty(oemKey) && oemGroupCounts.ContainsKey(oemKey);
-
-                            // Si arranca un grupo nuevo, emitir el header.
-                            if (isGroupedOem && oemKey != lastEmittedOem)
-                            {
-                                lastEmittedOem = oemKey;
-                                var groupCount = oemGroupCounts[oemKey];
-                                var groupItems = visibleProducts.Where(p => (p.OemCode ?? "").ToLowerInvariant() == oemKey).ToList();
-                                var sharedCost = groupItems.Select(p => p.CostPrice).Distinct().Count() == 1 ? groupItems.First().CostPrice : (decimal?)null;
-                                var sharedBrand = groupItems.Select(p => p.Brand ?? "").Distinct().Count() == 1 ? (groupItems.First().Brand ?? "") : "";
-                                // Titulo "comun": tomamos el del primer producto, sin la parte despues del ultimo guion (ej: "Cajonera Torre x3 - Blanca" -> "Cajonera Torre x3")
-                                var firstTitle = groupItems.First().Title ?? "";
-                                var dashIdx = firstTitle.LastIndexOf('-');
-                                var groupTitle = dashIdx > 5 ? firstTitle.Substring(0, dashIdx).Trim() : firstTitle;
-                                var isCollapsed = collapsedOems.Contains(oemKey);
-                                <tr class="oem-group-header" @onclick="() => ToggleOemCollapsed(oemKey)" style="cursor: pointer; background: linear-gradient(90deg, #ecfdf5 0%, #f0fdf4 100%); border-top: 2px solid #16a34a;">
-                                    <td colspan="12" style="padding: 0.5rem 0.8rem;">
-                                        <div style="display: flex; align-items: center; gap: 0.7rem; font-size: 0.88rem;">
-                                            <span style="font-size: 0.85rem; color: #16a34a;">@(isCollapsed ? "▶" : "▼")</span>
-                                            <span style="background: #16a34a; color: white; padding: 0.15rem 0.5rem; border-radius: 6px; font-weight: 800; font-family: monospace; font-size: 0.85rem;">OEM @product.OemCode</span>
-                                            <strong style="color: #14532d;">@groupTitle</strong>
-                                            <span style="font-size: 0.78rem; color: #166534; background: #dcfce7; padding: 0.1rem 0.45rem; border-radius: 999px; font-weight: 700;">
-                                                @groupCount @(groupCount == 1 ? "variante" : "variantes")
-                                            </span>
-                                            @if (!string.IsNullOrEmpty(sharedBrand))
-                                            {
-                                                <span style="font-size: 0.78rem; color: #6b7280;">@sharedBrand</span>
-                                            }
-                                            @if (sharedCost.HasValue && sharedCost.Value > 0)
-                                            {
-                                                <span style="font-size: 0.78rem; color: #6b7280;">· costo s/IVA: <strong>$@FormatPrice(sharedCost.Value)</strong></span>
-                                            }
-                                            <span style="margin-left: auto; font-size: 0.72rem; color: #9ca3af;">click para @(isCollapsed ? "expandir" : "colapsar")</span>
-                                        </div>
-                                    </td>
-                                </tr>
-                            }
-                            // Si el grupo esta colapsado, no emitir las filas de variantes.
-                            if (isGroupedOem && collapsedOems.Contains(oemKey))
-                            {
-                                continue;
-                            }
-
                             var rowIsChild = product.BaseProductId.HasValue;
                             // Padre confirmado: ya tiene hijos cargados.
                             var rowIsRealParent = !rowIsChild && product.DerivedCount > 0;
@@ -347,15 +284,13 @@
                                 ? "child-row"
                                 : (rowIsRealParent ? "parent-row" : (rowIsFutureParent ? "future-parent-row" : ""));
                             string rowSelClass = selectedItems.Contains(product.Id) ? "row-selected" : "";
-                            string rowGroupClass = isGroupedOem ? "oem-group-child" : "";
                             string rowTitle = rowIsChild
                                 ? "Producto hijo"
                                 : (rowIsRealParent
                                     ? $"Producto padre · {product.DerivedCount} hijo(s)"
                                     : (rowIsFutureParent ? "Futuro padre (sin hijos cargados todavía)" : "Producto independiente"));
-                            <tr class="@($"{rowSelClass} {rowKindClass} {rowGroupClass}".Trim())"
-                                title="@rowTitle"
-                                style="@(isGroupedOem ? "background: #f9fafb;" : "")">
+                            <tr class="@($"{rowSelClass} {rowKindClass}".Trim())"
+                                title="@rowTitle">
                                 <td class="td-checkbox" @onclick:stopPropagation="true"><input type="checkbox" checked="@selectedItems.Contains(product.Id)" @onchange="() => ToggleSelectItem(product.Id)" /></td>
                                 <td>
                                     @{
@@ -1834,12 +1769,6 @@
     // "inactivos"           = solo IsActive=false
     // ""                    = todos
     private string filterEstado = "activos";
-
-    // Vista agrupada por OEM (UX como Contabilium): cuando 2+ productos comparten OEM,
-    // se muestra una banda de header con los datos del OEM y abajo las variantes.
-    private bool groupByOem = true;
-    // Set de OEMs colapsados por el usuario (click en el header los oculta).
-    private HashSet<string> collapsedOems = new(StringComparer.OrdinalIgnoreCase);
     // Menu desplegable del boton "+ Nuevo": padre / hijo / independiente / combo / servicio
     private bool showNewTypeMenu;
     private string? activeFilterColumn;
@@ -2202,14 +2131,6 @@
             grouped.Add(orphan);
 
         return grouped;
-    }
-
-    // ===== OEM GROUPING =====
-
-    private void ToggleOemCollapsed(string oemKey)
-    {
-        if (!collapsedOems.Add(oemKey))
-            collapsedOems.Remove(oemKey);
     }
 
     // ===== SELECTION METHODS =====
