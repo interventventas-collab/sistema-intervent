@@ -387,9 +387,10 @@ public class BulkImportService
 
                 var stockCritico = ParseInt(Cell(row, headers, "stock_critico"));
                 var barcode = Nz(Cell(row, headers, "codigo_de_barras"));
-                // SKU interno: prioridad 'sku_interno' > 'sku' > el OEM mismo.
+                // SKU interno: solo si la fila lo trae explicito ('sku_interno' o 'sku').
+                // Si NO viene, dejamos el SKU en NULL: el producto queda como "solo OEM"
+                // (catalogo del proveedor) y NO aparece en Productos hasta que tenga SKU real.
                 var skuExplicito = Nz(Cell(row, headers, "sku_interno")) ?? Nz(Cell(row, headers, "sku"));
-                var skuInterno = skuExplicito ?? oem;
 
                 // === LOGICA DE MATCHING ===
                 // Prioridad 1: si la fila trae SKU interno explicito, matchear por SKU exacto.
@@ -457,7 +458,7 @@ public class BulkImportService
                         Title: title!,
                         DisplayName: null, Description: null,
                         Brand: brandName, Model: null,
-                        Sku: skuInterno,    // si vino 'sku_interno' lo usa; sino el OEM
+                        Sku: skuExplicito,  // null si no vino — queda como entrada de catalogo OEM
                         Barcode: barcode,
                         OemCode: oem,
                         ImageUrl: null, Photo1: null, Photo2: null, Photo3: null,

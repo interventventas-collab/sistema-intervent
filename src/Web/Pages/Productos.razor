@@ -2050,6 +2050,16 @@
         }
         // ft == "" => no filtra (Todos).
 
+        // === Ocultar entradas de catalogo OEM (sin SKU) ===
+        // Los productos cargados desde la lista del proveedor que NO tienen SKU interno
+        // son "entradas de catalogo OEM" — no son productos reales que se vendan.
+        // Aparecen en la pantalla "OEMs" pero no en Productos.
+        // Cuando vos crees una variante real (ej: C8733BL), recibe SKU y aparece aca.
+        if (ft != "oems")
+        {
+            result = result.Where(p => !string.IsNullOrWhiteSpace(p.Sku));
+        }
+
         // Filtro por Estado (Activo / Inactivo / Todos)
         var fe = (filterEstado ?? "").ToLowerInvariant();
         if (fe == "activos")
