@@ -496,6 +496,24 @@ public class BulkImportService
                             $"OEM '{oem}' no existe en la base y la fila no tiene 'titulo'. " +
                             "Para crear un producto nuevo necesitas titulo + codigo_oem.");
 
+                    // Si la fila no trae precios, intentar HEREDAR de algun producto existente con el mismo OEM
+                    // (placeholder ya promovido o variante creada previamente). Asi todas las variantes
+                    // que comparten OEM terminan con los mismos precios sin que el usuario los repita.
+                    decimal? inheritedCost = null;
+                    decimal? inheritedRetail = null;
+                    decimal? inheritedVat = null;
+                    if ((!costExcel.HasValue || !retailFromExcel.HasValue || !vatRate.HasValue) &&
+                        productsByOem.TryGetValue(oem.ToLowerInvariant(), out var siblingIds) && siblingIds.Count > 0)
+                    {
+                        var sibling = await _db.Products.FindAsync(siblingIds[0]);
+                        if (sibling is not null)
+                        {
+                            inheritedCost = sibling.CostPrice;
+                            inheritedRetail = sibling.RetailPrice;
+                            inheritedVat = sibling.VatRate;
+                        }
+                    }
+
                     var result = await _products.CreateOrUpdateAsync(new CreateProductRequest(
                         Title: title!,
                         DisplayName: null, Description: null,
@@ -504,9 +522,9 @@ public class BulkImportService
                         Barcode: barcode,
                         OemCode: oem,
                         ImageUrl: null, Photo1: null, Photo2: null, Photo3: null,
-                        CostPrice: costExcel ?? 0m,
-                        RetailPrice: retailFromExcel ?? 0m,
-                        VatRate: vatRate,
+                        CostPrice: costExcel ?? inheritedCost ?? 0m,
+                        RetailPrice: retailFromExcel ?? inheritedRetail ?? 0m,
+                        VatRate: vatRate ?? inheritedVat,
                         PurchaseAccount: null, SaleAccount: null, InventoryAccount: null,
                         Stock: 0,                  // siempre 0 al crear; el stock entra por "Modificacion de stock"
                         CriticalStock: stockCritico ?? 0,
