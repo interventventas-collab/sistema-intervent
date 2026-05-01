@@ -27,35 +27,20 @@
         </button>
     </div>
     <nav class="sidebar-nav" role="navigation" aria-label="Menu principal">
+        @* ═════════════ 1. DASHBOARD ═════════════ *@
         @if (HasPerm("dashboard"))
         {
             <NavItem Href="/" Label="Dashboard" Icon="@SvgIcons.Dashboard"
                      IsActive="@IsActive("/")" OnClick="@(() => NavigateTo("/"))" />
         }
 
-        @* MercadoLibre: solo visible para INTERVENT (es la unica empresa que vende por ML).
-           Si no hay empresa elegida, se sigue mostrando para no esconderlo a usuarios viejos. *@
-        @if ((HasPerm("publicaciones") || HasPerm("ordenes")) && (!Company.HasCompany || string.Equals(Company.Current, "INTERVENT", StringComparison.OrdinalIgnoreCase)))
+        @* ═════════════ 2. CATALOGO ═════════════
+           Todo lo relacionado con QUE vendés: productos, OEMs, combos, marcas, proveedores,
+           listas de precios, e importaciones masivas (que cargan/actualizan el catalogo). *@
+        @if (HasPerm("productos") || HasPerm("combos") || HasPerm("servicios") || HasPerm("marcas") || HasPerm("proveedores") || HasPerm("listas-precios") || HasPerm("import-productos"))
         {
-            <NavGroup Label="MercadoLibre" Icon="@SvgIcons.Store"
-                      HasActiveChild="@(IsActive("/publicaciones") || IsActive("/ordenes"))">
-                @if (HasPerm("publicaciones"))
-                {
-                    <NavItem Href="/publicaciones" Label="Publicaciones" Icon="@SvgIcons.Tag"
-                             IsActive="@IsActive("/publicaciones")" OnClick="@(() => NavigateTo("/publicaciones"))" />
-                }
-                @if (HasPerm("ordenes"))
-                {
-                    <NavItem Href="/ordenes" Label="Ordenes" Icon="@SvgIcons.ShoppingBag"
-                             IsActive="@IsActive("/ordenes")" OnClick="@(() => NavigateTo("/ordenes"))" />
-                }
-            </NavGroup>
-        }
-
-        @if (HasPerm("productos") || HasPerm("combos") || HasPerm("servicios"))
-        {
-            <NavGroup Label="Productos y Servicios" Icon="@SvgIcons.Inventory"
-                      HasActiveChild="@(IsActive("/productos") || IsActive("/productos-base") || IsActive("/oems") || IsActive("/combos") || IsActive("/servicios"))">
+            <NavGroup Label="Catálogo" Icon="@SvgIcons.Package"
+                      HasActiveChild="@(IsActive("/productos") || IsActive("/productos-base") || IsActive("/oems") || IsActive("/combos") || IsActive("/servicios") || IsActive("/marcas") || IsActive("/proveedores") || IsActive("/listas-precios") || IsActive("/import-productos") || IsActive("/import-precios-oem"))">
                 @if (HasPerm("productos"))
                 {
                     <NavItem Href="/productos" Label="Productos" Icon="@SvgIcons.Package"
@@ -73,13 +58,37 @@
                     <NavItem Href="/servicios" Label="Servicios (infinitos)" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/servicios")" OnClick="@(() => NavigateTo("/servicios"))" />
                 }
+                @if (HasPerm("marcas"))
+                {
+                    <NavItem Href="/marcas" Label="Marcas" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive("/marcas")" OnClick="@(() => NavigateTo("/marcas"))" />
+                }
+                @if (HasPerm("proveedores"))
+                {
+                    <NavItem Href="/proveedores" Label="Proveedores" Icon="@SvgIcons.Users"
+                             IsActive="@IsActive("/proveedores")" OnClick="@(() => NavigateTo("/proveedores"))" />
+                }
+                @if (HasPerm("listas-precios"))
+                {
+                    <NavItem Href="/listas-precios" Label="Listas de precios" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive("/listas-precios")" OnClick="@(() => NavigateTo("/listas-precios"))" />
+                }
+                @if (HasPerm("import-productos"))
+                {
+                    <NavItem Href="/import-productos" Label="Importar productos" Icon="@SvgIcons.Folder"
+                             IsActive="@IsActive("/import-productos")" OnClick="@(() => NavigateTo("/import-productos"))" />
+                    <NavItem Href="/import-precios-oem" Label="Importar por OEM" Icon="@SvgIcons.Folder"
+                             IsActive="@IsActive("/import-precios-oem")" OnClick="@(() => NavigateTo("/import-precios-oem"))" />
+                }
             </NavGroup>
         }
 
-        @if (HasPerm("depositos") || HasPerm("modificacion-stock") || HasPerm("movimientos-depositos") || HasPerm("import-productos") || HasPerm("actualizacion-stock"))
+        @* ═════════════ 3. INVENTARIOS ═════════════
+           Solo stock fisico real: depositos, movimientos, ajustes. *@
+        @if (HasPerm("depositos") || HasPerm("modificacion-stock") || HasPerm("movimientos-depositos") || HasPerm("actualizacion-stock"))
         {
-            <NavGroup Label="Inventarios" Icon="@SvgIcons.Inventory"
-                      HasActiveChild="@(IsActive("/depositos") || IsActive("/modificacion-stock") || IsActive("/movimientos-depositos") || IsActive("/import-productos") || IsActive("/actualizacion-stock"))">
+            <NavGroup Label="Inventarios" Icon="@SvgIcons.Store"
+                      HasActiveChild="@(IsActive("/depositos") || IsActive("/modificacion-stock") || IsActive("/movimientos-depositos") || IsActive("/actualizacion-stock"))">
                 @if (HasPerm("depositos"))
                 {
                     <NavItem Href="/depositos" Label="Depósitos" Icon="@SvgIcons.Store"
@@ -95,15 +104,6 @@
                     <NavItem Href="/movimientos-depositos" Label="Movimientos entre depósitos" Icon="@SvgIcons.Refresh"
                              IsActive="@IsActive("/movimientos-depositos")" OnClick="@(() => NavigateTo("/movimientos-depositos"))" />
                 }
-                @if (HasPerm("import-productos"))
-                {
-                    <NavItem Href="/import-productos" Label="Importación masiva de productos" Icon="@SvgIcons.Folder"
-                             IsActive="@IsActive("/import-productos")" OnClick="@(() => NavigateTo("/import-productos"))" />
-                    <NavItem Href="/import-precios-oem" Label="Importar precios por OEM" Icon="@SvgIcons.Folder"
-                             IsActive="@IsActive("/import-precios-oem")" OnClick="@(() => NavigateTo("/import-precios-oem"))" />
-                    <NavItem Href="/relink-meli-orphans" Label="Re-vincular publicaciones ML" Icon="@SvgIcons.Refresh"
-                             IsActive="@IsActive("/relink-meli-orphans")" OnClick="@(() => NavigateTo("/relink-meli-orphans"))" />
-                }
                 @if (HasPerm("actualizacion-stock"))
                 {
                     <NavItem Href="/actualizacion-stock" Label="Actualización masiva de stock" Icon="@SvgIcons.Folder"
@@ -112,6 +112,7 @@
             </NavGroup>
         }
 
+        @* ═════════════ 4. VENTAS ═════════════ *@
         @if (HasPerm("ventas") || HasPerm("clientes"))
         {
             <NavGroup Label="Ventas" Icon="@SvgIcons.ShoppingBag"
@@ -129,6 +130,33 @@
             </NavGroup>
         }
 
+        @* ═════════════ 5. MERCADOLIBRE ═════════════
+           Solo visible para INTERVENT (es la unica empresa que vende por ML).
+           Si no hay empresa elegida, se sigue mostrando para no esconderlo a usuarios viejos.
+           Re-vincular publicaciones vive aca (es una accion de ML, no de inventario). *@
+        @if ((HasPerm("publicaciones") || HasPerm("ordenes") || HasPerm("import-productos")) && (!Company.HasCompany || string.Equals(Company.Current, "INTERVENT", StringComparison.OrdinalIgnoreCase)))
+        {
+            <NavGroup Label="MercadoLibre" Icon="@SvgIcons.Store"
+                      HasActiveChild="@(IsActive("/publicaciones") || IsActive("/ordenes") || IsActive("/relink-meli-orphans"))">
+                @if (HasPerm("publicaciones"))
+                {
+                    <NavItem Href="/publicaciones" Label="Publicaciones" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive("/publicaciones")" OnClick="@(() => NavigateTo("/publicaciones"))" />
+                }
+                @if (HasPerm("ordenes"))
+                {
+                    <NavItem Href="/ordenes" Label="Ordenes" Icon="@SvgIcons.ShoppingBag"
+                             IsActive="@IsActive("/ordenes")" OnClick="@(() => NavigateTo("/ordenes"))" />
+                }
+                @if (HasPerm("import-productos"))
+                {
+                    <NavItem Href="/relink-meli-orphans" Label="Re-vincular publicaciones" Icon="@SvgIcons.Refresh"
+                             IsActive="@IsActive("/relink-meli-orphans")" OnClick="@(() => NavigateTo("/relink-meli-orphans"))" />
+                }
+            </NavGroup>
+        }
+
+        @* ═════════════ 6. FINANZAS Y RRHH ═════════════ *@
         @if (HasPerm("tesoreria") || HasPerm("empleados") || HasPerm("sueldos"))
         {
             <NavGroup Label="Finanzas" Icon="@SvgIcons.Admin"
@@ -151,6 +179,7 @@
             </NavGroup>
         }
 
+        @* ═════════════ 7. COMUNICACIONES (links externos) ═════════════ *@
         <NavGroup Label="Comunicaciones" Icon="@SvgIcons.MessageCircle" HasActiveChild="false">
             <NavItem Href="https://web.whatsapp.com" Label="WhatsApp Web" Icon="@SvgIcons.MessageCircle" IsExternal="true" />
             <NavItem Href="https://mail.google.com" Label="Gmail" Icon="@SvgIcons.Mail" IsExternal="true" />
@@ -158,25 +187,13 @@
             <NavItem Href="https://drive.google.com" Label="Google Drive" Icon="@SvgIcons.Folder" IsExternal="true" />
         </NavGroup>
 
-        @if (HasPerm("usuarios") || HasPerm("roles") || HasPerm("integraciones") || HasPerm("procesos") || HasPerm("archivos") || HasPerm("auditoria") || HasPerm("backups") || HasPerm("proveedores") || HasPerm("marcas"))
+        @* ═════════════ 8. ADMINISTRACION (sistema) ═════════════
+           Solo cosas de configuracion del sistema: usuarios, roles, integraciones, archivos
+           tecnicos, auditoria, backups, configuracion general. *@
+        @if (HasPerm("usuarios") || HasPerm("roles") || HasPerm("integraciones") || HasPerm("procesos") || HasPerm("archivos") || HasPerm("auditoria") || HasPerm("backups"))
         {
-            <NavGroup Label="Administracion" Icon="@SvgIcons.Admin"
-                      HasActiveChild="@(IsActive("/usuarios") || IsActive("/roles") || IsActive("/integraciones") || IsActive("/procesos") || IsActive("/archivos") || IsActive("/auditoria") || IsActive("/backups") || IsActive("/config") || IsActive("/proveedores") || IsActive("/marcas") || IsActive("/listas-precios"))">
-                @if (HasPerm("proveedores"))
-                {
-                    <NavItem Href="/proveedores" Label="Proveedores" Icon="@SvgIcons.Users"
-                             IsActive="@IsActive("/proveedores")" OnClick="@(() => NavigateTo("/proveedores"))" />
-                }
-                @if (HasPerm("marcas"))
-                {
-                    <NavItem Href="/marcas" Label="Marcas" Icon="@SvgIcons.Tag"
-                             IsActive="@IsActive("/marcas")" OnClick="@(() => NavigateTo("/marcas"))" />
-                }
-                @if (HasPerm("listas-precios"))
-                {
-                    <NavItem Href="/listas-precios" Label="Listas de precios" Icon="@SvgIcons.Tag"
-                             IsActive="@IsActive("/listas-precios")" OnClick="@(() => NavigateTo("/listas-precios"))" />
-                }
+            <NavGroup Label="Administración" Icon="@SvgIcons.Admin"
+                      HasActiveChild="@(IsActive("/usuarios") || IsActive("/roles") || IsActive("/integraciones") || IsActive("/procesos") || IsActive("/archivos") || IsActive("/auditoria") || IsActive("/backups") || IsActive("/config"))">
                 @if (HasPerm("usuarios"))
                 {
                     <NavItem Href="/usuarios" Label="Usuarios" Icon="@SvgIcons.Users"
@@ -204,7 +221,7 @@
                 }
                 @if (HasPerm("auditoria"))
                 {
-                    <NavItem Href="/auditoria" Label="Auditoria" Icon="@SvgIcons.History"
+                    <NavItem Href="/auditoria" Label="Auditoría" Icon="@SvgIcons.History"
                              IsActive="@IsActive("/auditoria")" OnClick="@(() => NavigateTo("/auditoria"))" />
                 }
                 @if (HasPerm("backups"))
@@ -214,7 +231,7 @@
                 }
                 @if (HasPerm("config"))
                 {
-                    <NavItem Href="/config" Label="Configuracion" Icon="@SvgIcons.Settings"
+                    <NavItem Href="/config" Label="Configuración" Icon="@SvgIcons.Settings"
                              IsActive="@IsActive("/config")" OnClick="@(() => NavigateTo("/config"))" />
                 }
             </NavGroup>
