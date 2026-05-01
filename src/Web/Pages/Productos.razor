@@ -1977,17 +1977,18 @@
     private string PageTitle => "Productos Padre e hijos";
 
     // Productos visibles para la empresa actual (filtra por la propiedad Companies de la marca asociada).
-    // SIEMPRE excluye servicios (IsService=true): los servicios viven en su propia pagina.
+    // - SIEMPRE excluye servicios (IsService=true): los servicios viven en su propia pagina.
+    // - SIEMPRE excluye entradas OEM puras (sin SKU): viven en la pantalla "OEMs", no son productos.
     private IEnumerable<ProductDto> CompanyVisibleProducts()
     {
         if (products is null) return Enumerable.Empty<ProductDto>();
-        var noServices = products.Where(p => !p.IsService);
-        if (!Company.HasCompany || brands is null || brands.Count == 0) return noServices;
+        var realProducts = products.Where(p => !p.IsService && !string.IsNullOrWhiteSpace(p.Sku));
+        if (!Company.HasCompany || brands is null || brands.Count == 0) return realProducts;
         var visibleBrandIds = brands
             .Where(b => CurrentCompanyService.IsVisibleForCompany(b.Companies, Company.Current!))
             .Select(b => b.Id)
             .ToHashSet();
-        return noServices.Where(p => p.BrandId == null || visibleBrandIds.Contains(p.BrandId.Value));
+        return realProducts.Where(p => p.BrandId == null || visibleBrandIds.Contains(p.BrandId.Value));
     }
 
     private int VisibleTotal => CompanyVisibleProducts().Count();
