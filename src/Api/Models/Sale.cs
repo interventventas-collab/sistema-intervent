@@ -29,6 +29,10 @@ public class Sale
     [MaxLength(500)]
     public string? ClientAddressSnapshot { get; set; }
 
+    /// <summary>Domicilio de entrega snapshotado al momento de emitir el comprobante.</summary>
+    [MaxLength(500)]
+    public string? ClientDeliveryAddressSnapshot { get; set; }
+
     [MaxLength(200)]
     public string? ClientCityLocationSnapshot { get; set; }
 

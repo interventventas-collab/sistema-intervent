@@ -21,7 +21,7 @@ public class ClientService
             .Include(c => c.CustomerTier)
             .OrderBy(c => c.Code)
             .Select(c => new ClientDto(
-                c.Id, c.Code, c.Name, c.Cuit, c.Phone, c.Email, c.Address,
+                c.Id, c.Code, c.Name, c.Cuit, c.Phone, c.Email, c.Address, c.DeliveryAddress,
                 c.ContactName, c.Notes, c.IsActive, c.CreatedAt, c.UpdatedAt,
                 c.CustomerTierId, c.CustomerTier != null ? c.CustomerTier.Name : null))
             .ToListAsync();
@@ -33,7 +33,7 @@ public class ClientService
             .Include(c => c.CustomerTier)
             .Where(c => c.Id == id)
             .Select(c => new ClientDto(
-                c.Id, c.Code, c.Name, c.Cuit, c.Phone, c.Email, c.Address,
+                c.Id, c.Code, c.Name, c.Cuit, c.Phone, c.Email, c.Address, c.DeliveryAddress,
                 c.ContactName, c.Notes, c.IsActive, c.CreatedAt, c.UpdatedAt,
                 c.CustomerTierId, c.CustomerTier != null ? c.CustomerTier.Name : null))
             .FirstOrDefaultAsync();
@@ -62,6 +62,7 @@ public class ClientService
             Phone = string.IsNullOrWhiteSpace(r.Phone) ? null : r.Phone.Trim(),
             Email = string.IsNullOrWhiteSpace(r.Email) ? null : r.Email.Trim(),
             Address = string.IsNullOrWhiteSpace(r.Address) ? null : r.Address.Trim(),
+            DeliveryAddress = string.IsNullOrWhiteSpace(r.DeliveryAddress) ? null : r.DeliveryAddress.Trim(),
             ContactName = string.IsNullOrWhiteSpace(r.ContactName) ? null : r.ContactName.Trim(),
             Notes = string.IsNullOrWhiteSpace(r.Notes) ? null : r.Notes,
             IsActive = true,
@@ -94,6 +95,7 @@ public class ClientService
         if (r.Phone is not null) c.Phone = string.IsNullOrWhiteSpace(r.Phone) ? null : r.Phone.Trim();
         if (r.Email is not null) c.Email = string.IsNullOrWhiteSpace(r.Email) ? null : r.Email.Trim();
         if (r.Address is not null) c.Address = string.IsNullOrWhiteSpace(r.Address) ? null : r.Address.Trim();
+        if (r.DeliveryAddress is not null) c.DeliveryAddress = string.IsNullOrWhiteSpace(r.DeliveryAddress) ? null : r.DeliveryAddress.Trim();
         if (r.ContactName is not null) c.ContactName = string.IsNullOrWhiteSpace(r.ContactName) ? null : r.ContactName.Trim();
         if (r.Notes is not null) c.Notes = string.IsNullOrWhiteSpace(r.Notes) ? null : r.Notes;
         if (r.IsActive.HasValue) c.IsActive = r.IsActive.Value;

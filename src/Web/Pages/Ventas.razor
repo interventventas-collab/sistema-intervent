@@ -818,7 +818,14 @@
                     <div><strong>Razón social:</strong> @(viewerSale.ClientNameSnapshot ?? "Consumidor final")</div>
                     @if (!string.IsNullOrEmpty(viewerSale.ClientAddressSnapshot))
                     {
-                        <div><strong>Domicilio:</strong> @viewerSale.ClientAddressSnapshot</div>
+                        <div><strong>Domicilio fiscal:</strong> @viewerSale.ClientAddressSnapshot</div>
+                    }
+                    @if (!string.IsNullOrEmpty(viewerSale.ClientDeliveryAddressSnapshot)
+                         && !string.Equals(viewerSale.ClientDeliveryAddressSnapshot, viewerSale.ClientAddressSnapshot, StringComparison.OrdinalIgnoreCase))
+                    {
+                        <div style="background: #eff6ff; border-left: 3px solid #2563eb; padding: 0.2rem 0.4rem; margin: 0.2rem 0; color: #1e3a8a;">
+                            <strong>📦 Entregar en:</strong> @viewerSale.ClientDeliveryAddressSnapshot
+                        </div>
                     }
                     @if (!string.IsNullOrEmpty(viewerSale.ClientCuitSnapshot))
                     {

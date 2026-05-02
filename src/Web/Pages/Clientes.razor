@@ -136,8 +136,15 @@
                     </div>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Direccion</label>
-                    <input class="form-input" @bind="formAddress" placeholder="Calle, numero, ciudad, provincia" />
+                    <label class="form-label">Domicilio fiscal</label>
+                    <input class="form-input" @bind="formAddress" placeholder="Calle, número, ciudad, provincia (lo que figura en factura)" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label" style="display: flex; align-items: center; gap: 0.5rem;">
+                        Domicilio de entrega
+                        <span style="font-size: 0.72rem; color: #6b7280; font-weight: 400;">(opcional · solo si recibe en otro lugar)</span>
+                    </label>
+                    <input class="form-input" @bind="formDeliveryAddress" placeholder="Si entrega en el mismo domicilio fiscal, dejá vacío" />
                 </div>
                 <div class="form-group">
                     <label class="form-label">Notas</label>
@@ -239,6 +246,7 @@
     private string formPhone = "";
     private string formEmail = "";
     private string formAddress = "";
+    private string formDeliveryAddress = "";
     private string formContactName = "";
     private string formNotes = "";
     private bool formIsActive = true;
@@ -302,7 +310,7 @@
     {
         isEditing = false; editingId = null;
         formCode = ""; formName = ""; formCuit = ""; formPhone = ""; formEmail = "";
-        formAddress = ""; formContactName = ""; formNotes = "";
+        formAddress = ""; formDeliveryAddress = ""; formContactName = ""; formNotes = "";
         formIsActive = true; formCustomerTierId = 0;
         formError = null; showForm = true;
     }
@@ -316,6 +324,7 @@
         formPhone = c.Phone ?? "";
         formEmail = c.Email ?? "";
         formAddress = c.Address ?? "";
+        formDeliveryAddress = c.DeliveryAddress ?? "";
         formContactName = c.ContactName ?? "";
         formNotes = c.Notes ?? "";
         formIsActive = c.IsActive;
@@ -345,6 +354,7 @@
                     Phone = Nz(formPhone),
                     Email = Nz(formEmail),
                     Address = Nz(formAddress),
+                    DeliveryAddress = Nz(formDeliveryAddress),
                     ContactName = Nz(formContactName),
                     Notes = Nz(formNotes),
                     IsActive = formIsActive,
@@ -364,6 +374,7 @@
                     Phone = Nz(formPhone),
                     Email = Nz(formEmail),
                     Address = Nz(formAddress),
+                    DeliveryAddress = Nz(formDeliveryAddress),
                     ContactName = Nz(formContactName),
                     Notes = Nz(formNotes),
                     CustomerTierId = formCustomerTierId == 0 ? (int?)null : formCustomerTierId

@@ -10,6 +10,7 @@ public record ClientDto(
     string? Phone,
     string? Email,
     string? Address,
+    string? DeliveryAddress,
     string? ContactName,
     string? Notes,
     bool IsActive,
@@ -26,6 +27,7 @@ public record CreateClientRequest(
     [MaxLength(50)] string? Phone,
     [EmailAddress][MaxLength(255)] string? Email,
     [MaxLength(500)] string? Address,
+    [MaxLength(500)] string? DeliveryAddress,
     [MaxLength(150)] string? ContactName,
     string? Notes,
     int? CustomerTierId
@@ -38,6 +40,7 @@ public record UpdateClientRequest(
     [MaxLength(50)] string? Phone,
     [EmailAddress][MaxLength(255)] string? Email,
     [MaxLength(500)] string? Address,
+    [MaxLength(500)] string? DeliveryAddress,
     [MaxLength(150)] string? ContactName,
     string? Notes,
     bool? IsActive,

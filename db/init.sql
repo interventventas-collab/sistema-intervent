@@ -1340,3 +1340,17 @@ BEGIN
     CREATE INDEX IX_ComboItems_ProductId ON ComboItems (ProductId);
 END
 GO
+
+-- Domicilio de entrega del cliente (opcional, distinto del fiscal/facturacion)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'DeliveryAddress' AND Object_ID = Object_ID(N'Clients'))
+BEGIN
+    ALTER TABLE Clients ADD DeliveryAddress NVARCHAR(500) NULL;
+END
+GO
+
+-- Snapshot del domicilio de entrega en cada venta (para que el comprobante quede inmutable)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'ClientDeliveryAddressSnapshot' AND Object_ID = Object_ID(N'Sales'))
+BEGIN
+    ALTER TABLE Sales ADD ClientDeliveryAddressSnapshot NVARCHAR(500) NULL;
+END
+GO

@@ -30,6 +30,10 @@ public class Client
     [MaxLength(500)]
     public string? Address { get; set; }
 
+    /// <summary>Domicilio de entrega (opcional). Si esta vacio, se entrega en el domicilio fiscal.</summary>
+    [MaxLength(500)]
+    public string? DeliveryAddress { get; set; }
+
     [MaxLength(150)]
     public string? ContactName { get; set; }
 

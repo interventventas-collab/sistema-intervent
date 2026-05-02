@@ -29,6 +29,7 @@ public class SaleDto
     public string? ClientCode { get; set; }
     public string? ClientNameSnapshot { get; set; }
     public string? ClientAddressSnapshot { get; set; }
+    public string? ClientDeliveryAddressSnapshot { get; set; }
     public string? ClientCityLocationSnapshot { get; set; }
     public string? ClientCuitSnapshot { get; set; }
     public string? PaymentCondition { get; set; }

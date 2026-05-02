@@ -118,6 +118,7 @@ public class BulkImportService
                     Phone: Cell(row, headers, "telefono"),
                     Email: Cell(row, headers, "email"),
                     Address: Cell(row, headers, "direccion"),
+                    DeliveryAddress: Cell(row, headers, "direccion_entrega"),
                     ContactName: Cell(row, headers, "contacto"),
                     Notes: Cell(row, headers, "notas"),
                     CustomerTierId: null

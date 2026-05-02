@@ -27,6 +27,7 @@ public record SaleDto(
     string? ClientCode,
     string? ClientNameSnapshot,
     string? ClientAddressSnapshot,
+    string? ClientDeliveryAddressSnapshot,
     string? ClientCityLocationSnapshot,
     string? ClientCuitSnapshot,
     string? PaymentCondition,

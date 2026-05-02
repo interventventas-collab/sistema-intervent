@@ -9,6 +9,7 @@ public class ClientDto
     public string? Phone { get; set; }
     public string? Email { get; set; }
     public string? Address { get; set; }
+    public string? DeliveryAddress { get; set; }
     public string? ContactName { get; set; }
     public string? Notes { get; set; }
     public bool IsActive { get; set; }
@@ -26,6 +27,7 @@ public class CreateClientRequest
     public string? Phone { get; set; }
     public string? Email { get; set; }
     public string? Address { get; set; }
+    public string? DeliveryAddress { get; set; }
     public string? ContactName { get; set; }
     public string? Notes { get; set; }
     public int? CustomerTierId { get; set; }
@@ -39,6 +41,7 @@ public class UpdateClientRequest
     public string? Phone { get; set; }
     public string? Email { get; set; }
     public string? Address { get; set; }
+    public string? DeliveryAddress { get; set; }
     public string? ContactName { get; set; }
     public string? Notes { get; set; }
     public bool? IsActive { get; set; }

@@ -139,6 +139,7 @@ public class SaleService
             ClientId = client?.Id,
             ClientNameSnapshot = request.ClientNameOverride ?? client?.Name,
             ClientAddressSnapshot = client?.Address,
+            ClientDeliveryAddressSnapshot = client?.DeliveryAddress,
             ClientCityLocationSnapshot = null,
             ClientCuitSnapshot = client?.Cuit,
             PaymentCondition = string.IsNullOrWhiteSpace(request.PaymentCondition) ? "Efectivo" : request.PaymentCondition,
@@ -205,6 +206,7 @@ public class SaleService
                 sale.ClientId = null;
                 sale.ClientNameSnapshot = request.ClientNameOverride;
                 sale.ClientAddressSnapshot = null;
+                sale.ClientDeliveryAddressSnapshot = null;
                 sale.ClientCuitSnapshot = null;
             }
             else
@@ -214,6 +216,7 @@ public class SaleService
                 sale.ClientId = client.Id;
                 sale.ClientNameSnapshot = request.ClientNameOverride ?? client.Name;
                 sale.ClientAddressSnapshot = client.Address;
+                sale.ClientDeliveryAddressSnapshot = client.DeliveryAddress;
                 sale.ClientCuitSnapshot = client.Cuit;
             }
         }
@@ -707,6 +710,7 @@ public class SaleService
     private static SaleDto BuildDto(Sale s) => new SaleDto(
         s.Id, s.Number, s.Date, s.DueDate, s.PeriodFrom, s.PeriodTo,
         s.ClientId, s.Client?.Code, s.ClientNameSnapshot, s.ClientAddressSnapshot,
+        s.ClientDeliveryAddressSnapshot,
         s.ClientCityLocationSnapshot, s.ClientCuitSnapshot,
         s.PaymentCondition, s.IvaCondition,
         s.Subtotal, s.Discount, s.Total, s.AmountInWords, s.Notes,
