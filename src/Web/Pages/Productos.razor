@@ -815,19 +815,19 @@
 
                 <div style="background:#f9fafb; padding:0.7rem; border-radius:6px; border:1px solid #e5e7eb; margin-bottom: 0.8rem;">
                     <div style="font-size:0.82rem; color:#374151; font-weight:600; margin-bottom:0.4rem;">
-                        🏷 Precio de venta
-                        <span style="font-weight:400; color:#6b7280;">— tipeá en cualquiera de los tres, los otros se recalculan</span>
+                        🏷 PVP 1 — Principal
+                        <span style="font-weight:400; color:#6b7280;">— el que usás cuando la marca está en modo PVP 1</span>
                     </div>
                     <div class="form-row" style="margin: 0;">
                         <div class="form-group">
-                            <label class="form-label">PVP SIN IVA</label>
+                            <label class="form-label">PVP 1 SIN IVA</label>
                             <div style="position: relative;">
                                 <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 1.1rem; font-weight: 700; color: #333;">$</span>
                                 <input type="text" class="form-input" style="font-size: 1.05rem; font-weight: 700; text-align: right; padding-left: 28px;" value="@formRetailPriceFormatted" @oninput="OnFormRetailPriceInput" inputmode="decimal" />
                             </div>
                         </div>
                         <div class="form-group">
-                            <label class="form-label">PVP CON IVA</label>
+                            <label class="form-label">PVP 1 CON IVA</label>
                             <div style="position: relative;">
                                 <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 1.1rem; font-weight: 700; color: #333;">$</span>
                                 <input type="text" class="form-input" style="font-size: 1.05rem; font-weight: 700; text-align: right; padding-left: 28px;" value="@formRetailPriceWithVatFormatted" @oninput="OnFormRetailPriceWithVatInput" inputmode="decimal" />
@@ -848,6 +848,68 @@
                                 else
                                 {
                                     <span>Margen sobre costo s/IVA</span>
+                                }
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                @* ===== PVP 2 (alternativo) y PVP 3 (% sobre costo) ===== *@
+                <div style="background:#fff7ed; padding:0.7rem; border-radius:6px; border:1px solid #fdba74; margin-bottom: 0.8rem;">
+                    <div style="font-size:0.82rem; color:#7c2d12; font-weight:600; margin-bottom:0.5rem;">
+                        🎯 PVP 2 (alternativo) y PVP 3 (% sobre costo)
+                        <span style="font-weight:400; color:#9a3412;">— se usan según la regla de la marca por empresa</span>
+                    </div>
+                    <div class="form-row" style="margin: 0;">
+                        <div class="form-group">
+                            <label class="form-label">PVP 2 SIN IVA</label>
+                            <div style="position: relative;">
+                                <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 1rem; font-weight: 700; color: #7c2d12;">$</span>
+                                <input type="text" class="form-input"
+                                       style="font-size: 1rem; font-weight: 700; text-align: right; padding-left: 26px; border-color: #fdba74;"
+                                       value="@formRetailPrice2Formatted"
+                                       @oninput="OnFormRetailPrice2Input"
+                                       placeholder="(opcional)"
+                                       inputmode="decimal" />
+                            </div>
+                            <p style="font-size: 0.7rem; color: #9a3412; margin: 0.2rem 0 0;">
+                                @if (formRetailPrice2 is not null && formRetailPrice2 > 0)
+                                {
+                                    var p2WithVat = WithVat(formRetailPrice2.Value);
+                                    <span>c/IVA: <strong>$@FormatPrice(p2WithVat)</strong></span>
+                                }
+                                else
+                                {
+                                    <span>Si lo dejás vacío, no se usa este slot</span>
+                                }
+                            </p>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">PVP 3 — % sobre costo</label>
+                            <div style="position: relative;">
+                                <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 1rem; font-weight: 700; color: #7c2d12;">%</span>
+                                <input type="text" class="form-input"
+                                       style="font-size: 1rem; font-weight: 700; text-align: right; padding-left: 26px; border-color: #fdba74;"
+                                       value="@formPvp3MarkupFormatted"
+                                       @oninput="OnFormPvp3MarkupInput"
+                                       placeholder="(opcional · ej: 50)"
+                                       inputmode="decimal"
+                                       disabled="@(formCostPrice <= 0)" />
+                            </div>
+                            <p style="font-size: 0.7rem; color: #9a3412; margin: 0.2rem 0 0;">
+                                @if (formCostPrice > 0 && formPvp3Markup is not null && formPvp3Markup.Value > 0)
+                                {
+                                    var pvp3 = Math.Round(formCostPrice * (1m + formPvp3Markup.Value / 100m), 2);
+                                    var pvp3WithVat = WithVat(pvp3);
+                                    <span>PVP 3: <strong>$@FormatPrice(pvp3)</strong> s/IVA · <strong>$@FormatPrice(pvp3WithVat)</strong> c/IVA</span>
+                                }
+                                else if (formCostPrice <= 0)
+                                {
+                                    <span>(necesita costo cargado)</span>
+                                }
+                                else
+                                {
+                                    <span>Calcula: costo × (1 + % / 100)</span>
                                 }
                             </p>
                         </div>
@@ -1762,6 +1824,11 @@
     private string formRetailPriceWithVatFormatted = "";
     // Rentabilidad % = (RetailPrice - CostPrice) / CostPrice * 100. Es derivada, no se persiste.
     private string formMarkupPercentFormatted = "";
+    // PVP 2 (alternativo) y PVP 3 (% sobre costo)
+    private decimal? formRetailPrice2;
+    private string formRetailPrice2Formatted = "";
+    private decimal? formPvp3Markup;
+    private string formPvp3MarkupFormatted = "";
     private bool formIsActive = true;
 
     // Precios por empresa (Fase 2): un dict CompanyId -> string del input.
@@ -2441,6 +2508,8 @@
         formCostPriceFormatted = FormatPrice(0); formRetailPriceFormatted = FormatPrice(0);
         formCostPriceWithVatFormatted = FormatPrice(0); formRetailPriceWithVatFormatted = FormatPrice(0);
         formMarkupPercentFormatted = "";
+        formRetailPrice2 = null; formRetailPrice2Formatted = "";
+        formPvp3Markup = null; formPvp3MarkupFormatted = "";
         // Default 21% en productos nuevos (es lo mas frecuente)
         formVatRate = 21m;
         formPurchaseAccount = ""; formSaleAccount = ""; formInventoryAccount = "";
@@ -2474,6 +2543,12 @@
         formUnitsPerPack = product.UnitsPerPack;
         formCostPriceFormatted = FormatPrice(formCostPrice);
         formRetailPriceFormatted = FormatPrice(formRetailPrice);
+        formRetailPrice2 = product.RetailPrice2;
+        formRetailPrice2Formatted = product.RetailPrice2.HasValue ? FormatPrice(product.RetailPrice2.Value) : "";
+        formPvp3Markup = product.Pvp3MarkupPercent;
+        formPvp3MarkupFormatted = product.Pvp3MarkupPercent.HasValue
+            ? product.Pvp3MarkupPercent.Value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture).Replace(".", ",")
+            : "";
         RecalcMarkupFromPrices();
         // Si el producto fue creado antes de que existiera el default 21%, usamos 21 al abrir
         // (asi al guardar se persiste y deja de salir como "Sin IVA").
@@ -2590,6 +2665,10 @@
                     Sku = formSku, Barcode = formBarcode, OemCode = formOemCode, ImageUrl = formImageUrl,
                     Model = formModel,
                     CostPrice = formCostPrice, RetailPrice = formRetailPrice,
+                    RetailPrice2 = formRetailPrice2,
+                    Pvp3MarkupPercent = formPvp3Markup,
+                    ClearRetailPrice2 = formRetailPrice2 is null,
+                    ClearPvp3MarkupPercent = formPvp3Markup is null,
                     VatRate = formVatRate,
                     PurchaseAccount = formPurchaseAccount, SaleAccount = formSaleAccount, InventoryAccount = formInventoryAccount,
                     CriticalStock = formCriticalStock, IsActive = formIsActive,
@@ -2643,6 +2722,8 @@
                     Sku = formSku, Barcode = formBarcode, OemCode = formOemCode, ImageUrl = formImageUrl,
                     Model = formModel,
                     CostPrice = formCostPrice, RetailPrice = formRetailPrice,
+                    RetailPrice2 = formRetailPrice2,
+                    Pvp3MarkupPercent = formPvp3Markup,
                     VatRate = formVatRate,
                     PurchaseAccount = formPurchaseAccount, SaleAccount = formSaleAccount, InventoryAccount = formInventoryAccount,
                     Stock = requiresExpiry ? 0 : formStock, CriticalStock = formCriticalStock,
@@ -3392,6 +3473,30 @@
         formRetailPrice = ParseFormattedPrice(formRetailPriceFormatted);
         formRetailPriceWithVatFormatted = FormatPrice(WithVat(formRetailPrice));
         RecalcMarkupFromPrices();
+    }
+
+    private void OnFormRetailPrice2Input(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? "";
+        formRetailPrice2Formatted = FormatPriceInput(raw);
+        if (string.IsNullOrWhiteSpace(formRetailPrice2Formatted))
+            formRetailPrice2 = null;
+        else
+            formRetailPrice2 = ParseFormattedPrice(formRetailPrice2Formatted);
+    }
+
+    private void OnFormPvp3MarkupInput(ChangeEventArgs e)
+    {
+        var raw = (e.Value?.ToString() ?? "").Trim();
+        formPvp3MarkupFormatted = raw;
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            formPvp3Markup = null;
+            return;
+        }
+        var normalized = raw.Replace(".", "").Replace(",", ".");
+        if (decimal.TryParse(normalized, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v))
+            formPvp3Markup = v;
     }
 
     private void OnFormCostPriceWithVatInput(ChangeEventArgs e)

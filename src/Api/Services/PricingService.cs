@@ -168,28 +168,37 @@ public class PricingService
             return new ResolvedPriceDto(productOverride.RetailPrice, "product_override", company.Id, company.Code);
         }
 
-        // Nivel 2: regla por marca+empresa (si el producto tiene marca)
+        // Nivel 2: regla por marca+empresa — elige slot (PVP1, PVP2, PVP3)
         if (product.BrandId.HasValue)
         {
             var brandRule = await _db.BrandCompanyMarkups
                 .FirstOrDefaultAsync(b => b.BrandId == product.BrandId.Value && b.CompanyId == companyId.Value);
             if (brandRule is not null)
             {
-                if (string.Equals(brandRule.PriceMode, "PVP", StringComparison.OrdinalIgnoreCase))
+                var mode = (brandRule.PriceMode ?? "PVP1").Trim().ToUpperInvariant();
+                if (mode == "PVP2")
                 {
-                    // Modo PVP: usar el RetailPrice cargado en el producto
-                    return new ResolvedPriceDto(product.RetailPrice, "brand_pvp", company.Id, company.Code);
+                    // PVP 2: precio alternativo cargado en el producto. Si esta vacio, fallback a PVP1.
+                    if (product.RetailPrice2.HasValue && product.RetailPrice2.Value > 0)
+                        return new ResolvedPriceDto(product.RetailPrice2.Value, "pvp2", company.Id, company.Code);
+                    return new ResolvedPriceDto(product.RetailPrice, "pvp2_fallback_pvp1", company.Id, company.Code);
                 }
-                // Modo PERCENT (default): cost × (1 + markup%)
-                if (product.CostPrice > 0)
+                if (mode == "PVP3")
                 {
-                    var calc = Math.Round(product.CostPrice * (1m + brandRule.MarkupPercent / 100m), 2, MidpointRounding.AwayFromZero);
-                    return new ResolvedPriceDto(calc, "brand_markup", company.Id, company.Code);
+                    // PVP 3: cost × (1 + Pvp3MarkupPercent / 100). Si falta cost o %, fallback a PVP1.
+                    if (product.CostPrice > 0 && product.Pvp3MarkupPercent.HasValue)
+                    {
+                        var calc = Math.Round(product.CostPrice * (1m + product.Pvp3MarkupPercent.Value / 100m), 2, MidpointRounding.AwayFromZero);
+                        return new ResolvedPriceDto(calc, "pvp3", company.Id, company.Code);
+                    }
+                    return new ResolvedPriceDto(product.RetailPrice, "pvp3_fallback_pvp1", company.Id, company.Code);
                 }
+                // mode == "PVP1" o cualquier otro: usar PVP 1
+                return new ResolvedPriceDto(product.RetailPrice, "pvp1", company.Id, company.Code);
             }
         }
 
-        // Nivel 3: default del producto
+        // Sin regla: default a PVP 1
         return new ResolvedPriceDto(product.RetailPrice, "default", company.Id, company.Code);
     }
 }

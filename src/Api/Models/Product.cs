@@ -59,6 +59,14 @@ public class Product
     [Column(TypeName = "decimal(18,2)")]
     public decimal RetailPrice { get; set; }
 
+    /// <summary>PVP alternativo (slot 2). Opcional. Si esta vacio y la regla de marca lo pide, cae a PVP 1.</summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? RetailPrice2 { get; set; }
+
+    /// <summary>Porcentaje de markup sobre costo para calcular el PVP 3 (slot 3). Opcional.</summary>
+    [Column(TypeName = "decimal(8,2)")]
+    public decimal? Pvp3MarkupPercent { get; set; }
+
     /// <summary>
     /// Cantidad en stock. Si StockUnit = "unidad" (default), es entero conceptualmente.
     /// Si StockUnit = "kg", representa kg con decimales (ej: 108.5 kg).

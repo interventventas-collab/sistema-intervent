@@ -17,6 +17,8 @@ public class ProductDto
     public string? Photo3 { get; set; }
     public decimal CostPrice { get; set; }
     public decimal RetailPrice { get; set; }
+    public decimal? RetailPrice2 { get; set; }
+    public decimal? Pvp3MarkupPercent { get; set; }
     public decimal? VatRate { get; set; }
     public string? PurchaseAccount { get; set; }
     public string? SaleAccount { get; set; }
@@ -58,6 +60,8 @@ public class CreateProductRequest
     public string? Photo3 { get; set; }
     public decimal CostPrice { get; set; }
     public decimal RetailPrice { get; set; }
+    public decimal? RetailPrice2 { get; set; }
+    public decimal? Pvp3MarkupPercent { get; set; }
     public decimal? VatRate { get; set; }
     public string? PurchaseAccount { get; set; }
     public string? SaleAccount { get; set; }
@@ -90,6 +94,10 @@ public class UpdateProductRequest
     public string? Photo3 { get; set; }
     public decimal? CostPrice { get; set; }
     public decimal? RetailPrice { get; set; }
+    public decimal? RetailPrice2 { get; set; }
+    public decimal? Pvp3MarkupPercent { get; set; }
+    public bool? ClearRetailPrice2 { get; set; }
+    public bool? ClearPvp3MarkupPercent { get; set; }
     public decimal? VatRate { get; set; }
     public string? PurchaseAccount { get; set; }
     public string? SaleAccount { get; set; }

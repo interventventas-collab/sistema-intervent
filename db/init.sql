@@ -1440,3 +1440,15 @@ BEGIN
     ALTER TABLE BrandCompanyMarkups ADD PriceMode NVARCHAR(20) NOT NULL CONSTRAINT DF_BrandCompanyMarkups_PriceMode DEFAULT 'PERCENT';
 END
 GO
+
+-- Products: PVP 2 (precio alternativo) y PVP 3 (% sobre costo)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'RetailPrice2' AND Object_ID = Object_ID('Products'))
+BEGIN
+    ALTER TABLE Products ADD RetailPrice2 DECIMAL(18,2) NULL;
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'Pvp3MarkupPercent' AND Object_ID = Object_ID('Products'))
+BEGIN
+    ALTER TABLE Products ADD Pvp3MarkupPercent DECIMAL(8,2) NULL;
+END
+GO

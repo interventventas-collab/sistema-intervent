@@ -57,7 +57,7 @@ public class ProductService
             p.Id, p.Title, p.DisplayName, p.Description,
             p.Brand, p.Model, p.Sku, p.Barcode, p.OemCode, p.ImageUrl,
             p.Photo1, p.Photo2, p.Photo3,
-            p.CostPrice, p.RetailPrice, p.VatRate,
+            p.CostPrice, p.RetailPrice, p.RetailPrice2, p.Pvp3MarkupPercent, p.VatRate,
             p.PurchaseAccount, p.SaleAccount, p.InventoryAccount,
             ComputeEffectiveStock(p, childrenStockByParent),
             p.CriticalStock,
@@ -142,7 +142,7 @@ public class ProductService
             p.Id, p.Title, p.DisplayName, p.Description,
             p.Brand, p.Model, p.Sku, p.Barcode, p.OemCode, p.ImageUrl,
             p.Photo1, p.Photo2, p.Photo3,
-            p.CostPrice, p.RetailPrice, p.VatRate,
+            p.CostPrice, p.RetailPrice, p.RetailPrice2, p.Pvp3MarkupPercent, p.VatRate,
             p.PurchaseAccount, p.SaleAccount, p.InventoryAccount,
             effectiveStock, p.CriticalStock,
             string.IsNullOrEmpty(p.StockUnit) ? "unidad" : p.StockUnit,
@@ -207,6 +207,8 @@ public class ProductService
             Photo1: null, Photo2: null, Photo3: null,
             CostPrice: req.CostPerKg,
             RetailPrice: req.RetailPerKg,
+            RetailPrice2: null,
+            Pvp3MarkupPercent: null,
             VatRate: req.VatRate ?? 21m,
             PurchaseAccount: null, SaleAccount: null, InventoryAccount: null,
             Stock: 0m, CriticalStock: 0,
@@ -236,6 +238,8 @@ public class ProductService
                 Photo1: null, Photo2: null, Photo3: null,
                 CostPrice: 0,           // se deriva del padre via Fraction
                 RetailPrice: 0,         // se deriva del padre via Fraction + MarkupAmount
+                RetailPrice2: null,
+                Pvp3MarkupPercent: null,
                 VatRate: req.VatRate ?? 21m,
                 PurchaseAccount: null, SaleAccount: null, InventoryAccount: null,
                 Stock: Math.Max(0, stock),
@@ -292,6 +296,10 @@ public class ProductService
                     Photo3: request.Photo3,
                     CostPrice: request.CostPrice,
                     RetailPrice: request.RetailPrice,
+                    RetailPrice2: request.RetailPrice2,
+                    Pvp3MarkupPercent: request.Pvp3MarkupPercent,
+                    ClearRetailPrice2: null,
+                    ClearPvp3MarkupPercent: null,
                     VatRate: request.VatRate,
                     PurchaseAccount: request.PurchaseAccount,
                     SaleAccount: request.SaleAccount,
@@ -382,6 +390,8 @@ public class ProductService
             Photo3 = request.Photo3,
             CostPrice = initialCost,
             RetailPrice = initialRetail,
+            RetailPrice2 = request.RetailPrice2,
+            Pvp3MarkupPercent = request.Pvp3MarkupPercent,
             VatRate = initialVat,
             PurchaseAccount = string.IsNullOrWhiteSpace(request.PurchaseAccount) ? null : request.PurchaseAccount,
             SaleAccount = string.IsNullOrWhiteSpace(request.SaleAccount) ? null : request.SaleAccount,
@@ -517,6 +527,13 @@ public class ProductService
             if (request.CostPrice.HasValue) product.CostPrice = request.CostPrice.Value;
             if (request.RetailPrice.HasValue) product.RetailPrice = request.RetailPrice.Value;
         }
+
+        // PVP 2 (alternativo) y PVP 3 (% sobre costo)
+        if (request.ClearRetailPrice2 == true) product.RetailPrice2 = null;
+        else if (request.RetailPrice2.HasValue) product.RetailPrice2 = request.RetailPrice2.Value;
+
+        if (request.ClearPvp3MarkupPercent == true) product.Pvp3MarkupPercent = null;
+        else if (request.Pvp3MarkupPercent.HasValue) product.Pvp3MarkupPercent = request.Pvp3MarkupPercent.Value;
 
         var oldStock = product.Stock;
         if (request.Stock.HasValue) product.Stock = request.Stock.Value;
