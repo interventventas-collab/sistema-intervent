@@ -248,6 +248,29 @@
                                         <span style="color: @(activeTier.AdjustmentPercent < 0 ? "#dc2626" : (activeTier.AdjustmentPercent > 0 ? "#059669" : "#6b7280"));"> (@FormatPercent(activeTier.AdjustmentPercent))</span>
                                     </p>
                                 }
+                                @* Saldo anterior — alerta si hay comprobantes impagos *@
+                                @if (formClientId > 0 && unpaidPrevSales.Count > 0)
+                                {
+                                    <div style="margin-top: 0.5rem; padding: 0.55rem 0.75rem; background: #fef3c7; border: 2px solid #d97706; border-radius: 8px; color: #78350f;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.4rem;">
+                                            <strong style="font-size: 0.85rem;">⚠ Saldo anterior: $@FormatPrice(unpaidPrevTotal)</strong>
+                                            <span style="font-size: 0.78rem;">@unpaidPrevSales.Count comprobante@(unpaidPrevSales.Count == 1 ? "" : "s") impago@(unpaidPrevSales.Count == 1 ? "" : "s")</span>
+                                        </div>
+                                        <div style="font-size: 0.78rem; margin-top: 0.4rem;">
+                                            @foreach (var s in unpaidPrevSales)
+                                            {
+                                                <span style="display: inline-block; margin-right: 0.45rem; padding: 0.1rem 0.4rem; background: white; border: 1px solid #d97706; border-radius: 4px; font-family: monospace;"
+                                                      title="@s.Date.ToString("dd/MM/yyyy") · $@FormatPrice(s.Total)">
+                                                    @s.Number ($@FormatPrice(s.Total))
+                                                </span>
+                                            }
+                                        </div>
+                                        <label style="display: flex; align-items: center; gap: 0.35rem; margin-top: 0.5rem; font-size: 0.78rem; cursor: pointer;">
+                                            <input type="checkbox" @bind="includePrevBalanceInNotes" style="margin: 0;" />
+                                            Incluir "Saldo anterior" en las observaciones del comprobante
+                                        </label>
+                                    </div>
+                                }
                             </div>
                             <div class="form-group" style="flex: 1;">
                                 <label class="form-label">Condición IVA del cliente</label>
@@ -898,9 +921,22 @@
                             }
                             @if (!string.IsNullOrEmpty(viewerSale.Notes))
                             {
-                                <div style="margin-top: 0.4rem; color: #6b7280; font-size: 0.78rem;">
-                                    <strong>Observaciones:</strong> @viewerSale.Notes
-                                </div>
+                                var notesAll = viewerSale.Notes ?? "";
+                                var lines = notesAll.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                                var saldoLines = lines.Where(l => l.TrimStart().StartsWith("Saldo anterior", StringComparison.OrdinalIgnoreCase)).ToList();
+                                var otherLines = lines.Where(l => !l.TrimStart().StartsWith("Saldo anterior", StringComparison.OrdinalIgnoreCase)).ToList();
+                                foreach (var saldoLine in saldoLines)
+                                {
+                                    <div style="margin-top: 0.4rem; padding: 0.3rem 0.5rem; background: #fef3c7; border-left: 3px solid #d97706; color: #78350f; font-size: 0.8rem; font-weight: 600;">
+                                        💰 @saldoLine.Trim()
+                                    </div>
+                                }
+                                if (otherLines.Count > 0)
+                                {
+                                    <div style="margin-top: 0.4rem; color: #6b7280; font-size: 0.78rem;">
+                                        <strong>Observaciones:</strong> @string.Join(" · ", otherLines.Select(l => l.Trim()))
+                                    </div>
+                                }
                             }
                         </div>
                         @* Caja de totales con desglose *@
@@ -1306,6 +1342,11 @@
 
     // Top 10 productos mas comprados por el cliente actual del form (sugerencias)
     private List<TopProductByClientDto> topProductsForClient = new();
+
+    // Comprobantes impagos del cliente actual (saldo anterior)
+    private List<SaleDto> unpaidPrevSales = new();
+    private decimal unpaidPrevTotal => unpaidPrevSales.Sum(s => s.Total);
+    private bool includePrevBalanceInNotes = true;
 
     // Selección masiva
     private HashSet<int> selectedSaleIds = new();
@@ -1728,7 +1769,7 @@
             }
         }
 
-        // Fetch sugerencias historicas
+        // Fetch sugerencias historicas + saldo anterior
         if (formClientId > 0)
         {
             try
@@ -1736,13 +1777,36 @@
                 topProductsForClient = await Api.GetTopProductsByClientAsync(formClientId, 10) ?? new();
             }
             catch { topProductsForClient = new(); }
+            RecomputeUnpaidPrevSales();
         }
         else
         {
             topProductsForClient = new();
+            unpaidPrevSales = new();
         }
 
         StateHasChanged();
+    }
+
+    /// <summary>
+    /// Recalcula los comprobantes impagos del cliente actual (saldo anterior).
+    /// Excluye: cancelados, pagados y el comprobante que se esta editando ahora.
+    /// </summary>
+    private void RecomputeUnpaidPrevSales()
+    {
+        if (sales is null || formClientId <= 0)
+        {
+            unpaidPrevSales = new();
+            return;
+        }
+        unpaidPrevSales = sales
+            .Where(s => s.ClientId == formClientId
+                        && !s.IsCancelled
+                        && !s.IsPaid
+                        && (editingSaleId == null || s.Id != editingSaleId))
+            .OrderBy(s => s.Date)
+            .ThenBy(s => s.Id)
+            .ToList();
     }
 
     private static string FormatPercent(decimal p)
@@ -2055,6 +2119,18 @@
             var weekDaysCsv = formWeekDays.Count == 0 ? null
                 : string.Join(",", AllWeekDays.Where(d => formWeekDays.Contains(d)));
 
+            // Inyectar saldo anterior en las notas si corresponde (no duplicar si ya esta).
+            var notesToSave = formNotes ?? "";
+            if (formClientId > 0 && includePrevBalanceInNotes && unpaidPrevSales.Count > 0
+                && !notesToSave.Contains("Saldo anterior", StringComparison.OrdinalIgnoreCase))
+            {
+                var nums = string.Join(", ", unpaidPrevSales.Select(s => s.Number));
+                var prevLine = $"Saldo anterior: ${FormatPrice(unpaidPrevTotal)} (comprobantes: {nums})";
+                notesToSave = string.IsNullOrWhiteSpace(notesToSave)
+                    ? prevLine
+                    : prevLine + "\n" + notesToSave;
+            }
+
             SaleDto? saved = null;
 
             if (formMode == "edit" && editingSaleId.HasValue)
@@ -2066,7 +2142,7 @@
                     PaymentCondition = formPaymentCondition,
                     IvaCondition = formIvaCondition,
                     Discount = formDiscount,
-                    Notes = formNotes,
+                    Notes = notesToSave,
                     WeekDays = weekDaysCsv,
                     IsPaid = formIsPaid,
                     CompanyNameOverride = formCompanyName,
@@ -2086,7 +2162,7 @@
                     PaymentCondition = formPaymentCondition,
                     IvaCondition = formIvaCondition,
                     Discount = formDiscount,
-                    Notes = formNotes,
+                    Notes = notesToSave,
                     WeekDays = weekDaysCsv,
                     IsPaid = formIsPaid,
                     CompanyNameOverride = formCompanyName,
