@@ -1772,7 +1772,8 @@
     // Menu desplegable del boton "+ Nuevo": padre / hijo / independiente / combo / servicio
     private bool showNewTypeMenu;
     private string? activeFilterColumn;
-    private string sortColumn = "";
+    // Default: ordenado por SKU con orden natural (F1, F2, F3, ..., F10, F11) ascendente.
+    private string sortColumn = "sku";
     private bool sortAsc = true;
     private bool _filterDirty = true;
     private List<ProductDto>? _cachedFiltered;
@@ -2099,8 +2100,8 @@
             result = sortColumn switch
             {
                 "titulo" => sortAsc ? result.OrderBy(p => p.Title) : result.OrderByDescending(p => p.Title),
-                "sku" => sortAsc ? result.OrderBy(p => p.Sku ?? "") : result.OrderByDescending(p => p.Sku ?? ""),
-                "oem" => sortAsc ? result.OrderBy(p => p.OemCode ?? "") : result.OrderByDescending(p => p.OemCode ?? ""),
+                "sku" => sortAsc ? result.OrderBy(p => NaturalSortKey(p.Sku ?? "")) : result.OrderByDescending(p => NaturalSortKey(p.Sku ?? "")),
+                "oem" => sortAsc ? result.OrderBy(p => NaturalSortKey(p.OemCode ?? "")) : result.OrderByDescending(p => NaturalSortKey(p.OemCode ?? "")),
                 "costo" => sortAsc ? result.OrderBy(p => p.CostPrice) : result.OrderByDescending(p => p.CostPrice),
                 "pvp" => sortAsc ? result.OrderBy(p => p.RetailPrice) : result.OrderByDescending(p => p.RetailPrice),
                 "stock" => sortAsc ? result.OrderBy(p => p.Stock) : result.OrderByDescending(p => p.Stock),
@@ -2142,6 +2143,33 @@
             grouped.Add(orphan);
 
         return grouped;
+    }
+
+    // ===== Natural sort (entiende numeros embebidos) =====
+    // "F1" < "F2" < "F10" en lugar del orden alfabetico "F1" < "F10" < "F2".
+
+    private static string NaturalSortKey(string input)
+    {
+        if (string.IsNullOrEmpty(input)) return "";
+        var sb = new System.Text.StringBuilder();
+        var i = 0;
+        while (i < input.Length)
+        {
+            if (char.IsDigit(input[i]))
+            {
+                var start = i;
+                while (i < input.Length && char.IsDigit(input[i])) i++;
+                var num = input.Substring(start, i - start);
+                // Padding a 10 digitos asi sortea como numero
+                sb.Append(num.PadLeft(10, '0'));
+            }
+            else
+            {
+                sb.Append(char.ToLowerInvariant(input[i]));
+                i++;
+            }
+        }
+        return sb.ToString();
     }
 
     // ===== SELECTION METHODS =====
