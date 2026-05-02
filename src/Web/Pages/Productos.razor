@@ -905,7 +905,7 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label class="form-label">Estado</label>
-                        <select class="form-input" @bind="formIsActive">
+                        <select class="form-input" @bind="IsActiveString">
                             <option value="true">Activo</option>
                             <option value="false">Inactivo</option>
                         </select>
@@ -3323,6 +3323,14 @@
         }
         var pct = (formRetailPrice - formCostPrice) / formCostPrice * 100m;
         formMarkupPercentFormatted = pct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture).Replace(".", ",");
+    }
+
+    // Misma razon que VatRateString: @bind directo a un bool con <option value="true"/"false">
+    // no sincroniza al renderizar. Wrapper string => el dropdown muestra "Activo" desde el primer click.
+    private string IsActiveString
+    {
+        get => formIsActive ? "true" : "false";
+        set => formIsActive = (value == "true");
     }
 
     // Bindeamos el dropdown de IVA via una propiedad string get/set, no directo a decimal?.
