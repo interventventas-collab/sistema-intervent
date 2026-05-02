@@ -1433,3 +1433,10 @@ BEGIN
      WHERE s.CompanyId IS NULL AND s.CompanyNameSnapshot IS NOT NULL;
 END
 GO
+
+-- BrandCompanyMarkups: agregar modo (PERCENT por default, o PVP para usar el RetailPrice del producto)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'PriceMode' AND Object_ID = Object_ID('BrandCompanyMarkups'))
+BEGIN
+    ALTER TABLE BrandCompanyMarkups ADD PriceMode NVARCHAR(20) NOT NULL CONSTRAINT DF_BrandCompanyMarkups_PriceMode DEFAULT 'PERCENT';
+END
+GO

@@ -89,11 +89,16 @@ public class PricingService
             .Select(b => new BrandCompanyMarkupDto(
                 b.Id, b.BrandId, b.CompanyId,
                 b.Company!.Code, b.Company.Name,
-                b.MarkupPercent, b.UpdatedAt))
+                b.MarkupPercent, b.PriceMode, b.UpdatedAt))
             .ToListAsync();
 
     public async Task<BrandCompanyMarkupDto?> SetBrandMarkupAsync(SetBrandCompanyMarkupRequest req)
     {
+        var mode = string.IsNullOrWhiteSpace(req.PriceMode)
+            ? "PERCENT"
+            : req.PriceMode.Trim().ToUpperInvariant();
+        if (mode != "PERCENT" && mode != "PVP") mode = "PERCENT";
+
         var existing = await _db.BrandCompanyMarkups
             .FirstOrDefaultAsync(b => b.BrandId == req.BrandId && b.CompanyId == req.CompanyId);
 
@@ -104,6 +109,7 @@ public class PricingService
                 BrandId = req.BrandId,
                 CompanyId = req.CompanyId,
                 MarkupPercent = req.MarkupPercent,
+                PriceMode = mode,
                 UpdatedAt = DateTime.UtcNow
             };
             _db.BrandCompanyMarkups.Add(existing);
@@ -111,6 +117,7 @@ public class PricingService
         else
         {
             existing.MarkupPercent = req.MarkupPercent;
+            existing.PriceMode = mode;
             existing.UpdatedAt = DateTime.UtcNow;
         }
         await _db.SaveChangesAsync();
@@ -120,7 +127,7 @@ public class PricingService
             .Select(b => new BrandCompanyMarkupDto(
                 b.Id, b.BrandId, b.CompanyId,
                 b.Company!.Code, b.Company.Name,
-                b.MarkupPercent, b.UpdatedAt))
+                b.MarkupPercent, b.PriceMode, b.UpdatedAt))
             .FirstOrDefaultAsync());
     }
 
@@ -161,15 +168,24 @@ public class PricingService
             return new ResolvedPriceDto(productOverride.RetailPrice, "product_override", company.Id, company.Code);
         }
 
-        // Nivel 2: markup por marca+empresa (si el producto tiene marca)
+        // Nivel 2: regla por marca+empresa (si el producto tiene marca)
         if (product.BrandId.HasValue)
         {
-            var brandMarkup = await _db.BrandCompanyMarkups
+            var brandRule = await _db.BrandCompanyMarkups
                 .FirstOrDefaultAsync(b => b.BrandId == product.BrandId.Value && b.CompanyId == companyId.Value);
-            if (brandMarkup is not null && product.CostPrice > 0)
+            if (brandRule is not null)
             {
-                var calc = Math.Round(product.CostPrice * (1m + brandMarkup.MarkupPercent / 100m), 2, MidpointRounding.AwayFromZero);
-                return new ResolvedPriceDto(calc, "brand_markup", company.Id, company.Code);
+                if (string.Equals(brandRule.PriceMode, "PVP", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Modo PVP: usar el RetailPrice cargado en el producto
+                    return new ResolvedPriceDto(product.RetailPrice, "brand_pvp", company.Id, company.Code);
+                }
+                // Modo PERCENT (default): cost × (1 + markup%)
+                if (product.CostPrice > 0)
+                {
+                    var calc = Math.Round(product.CostPrice * (1m + brandRule.MarkupPercent / 100m), 2, MidpointRounding.AwayFromZero);
+                    return new ResolvedPriceDto(calc, "brand_markup", company.Id, company.Code);
+                }
             }
         }
 

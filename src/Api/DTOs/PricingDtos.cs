@@ -32,13 +32,15 @@ public record BrandCompanyMarkupDto(
     string CompanyCode,
     string CompanyName,
     decimal MarkupPercent,
+    string PriceMode,           // "PERCENT" o "PVP"
     DateTime UpdatedAt
 );
 
 public record SetBrandCompanyMarkupRequest(
     int BrandId,
     int CompanyId,
-    decimal MarkupPercent
+    decimal MarkupPercent,
+    string? PriceMode           // "PERCENT" (default) o "PVP"
 );
 
 /// <summary>

@@ -168,30 +168,51 @@
                 {
                     <div class="form-group" style="background: #fefce8; border: 1px solid #fbbf24; padding: 0.7rem; border-radius: 6px;">
                         <label class="form-label" style="color: #78350f;">
-                            🏢 Markup % por empresa
-                            <span style="font-weight: 400; font-size: 0.78rem; color: #78350f;">— se aplica solo a productos sin precio fijo</span>
+                            🏢 Regla de precio por empresa
+                            <span style="font-weight: 400; font-size: 0.78rem; color: #78350f;">— para cada empresa elegí: PVP del producto, o costo × markup%</span>
                         </label>
-                        <div class="form-row" style="margin: 0.3rem 0 0;">
+                        <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.4rem;">
                             @foreach (var co in sellingCompanies)
                             {
                                 var coid = co.Id;
-                                var current = formBrandMarkups.TryGetValue(coid, out var v) ? v : "";
-                                <div class="form-group">
-                                    <label class="form-label" style="font-size: 0.78rem;">@co.Code</label>
-                                    <div style="position: relative;">
-                                        <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 0.95rem; font-weight: 700; color: #92400e;">%</span>
-                                        <input type="text" class="form-input"
-                                               style="text-align: right; padding-left: 24px; border-color: #fbbf24; background: white;"
-                                               value="@current"
-                                               @oninput="@(e => formBrandMarkups[coid] = e.Value?.ToString() ?? "")"
-                                               placeholder="(sin markup)"
-                                               inputmode="decimal" />
-                                    </div>
+                                var mode = formBrandPriceMode.TryGetValue(coid, out var m) ? m : "";
+                                var pct = formBrandMarkups.TryGetValue(coid, out var p) ? p : "";
+                                <div style="display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.5rem; background: white; border: 1px solid #fde68a; border-radius: 6px;">
+                                    <span style="min-width: 110px; font-weight: 700; color: #78350f;">@co.Code</span>
+                                    <select class="form-input" style="max-width: 220px; font-size: 0.85rem;"
+                                            value="@mode"
+                                            @onchange="@(e => formBrandPriceMode[coid] = e.Value?.ToString() ?? "")">
+                                        <option value="">— sin regla (PVP del producto) —</option>
+                                        <option value="PERCENT">% sobre costo</option>
+                                        <option value="PVP">PVP del producto (fijo)</option>
+                                    </select>
+                                    @if (mode == "PERCENT")
+                                    {
+                                        <div style="position: relative; max-width: 120px;">
+                                            <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 0.95rem; font-weight: 700; color: #92400e;">%</span>
+                                            <input type="text" class="form-input"
+                                                   style="text-align: right; padding-left: 24px; border-color: #fbbf24;"
+                                                   value="@pct"
+                                                   @oninput="@(e => formBrandMarkups[coid] = e.Value?.ToString() ?? "")"
+                                                   placeholder="Ej: 75"
+                                                   inputmode="decimal" />
+                                        </div>
+                                        <span style="font-size: 0.78rem; color: #92400e;">→ <code>costo × (1 + @(pct.Length > 0 ? pct : "?") / 100)</code></span>
+                                    }
+                                    else if (mode == "PVP")
+                                    {
+                                        <span style="font-size: 0.78rem; color: #166534; background: #dcfce7; padding: 0.15rem 0.5rem; border-radius: 4px; font-weight: 600;">→ usa PVP de cada producto</span>
+                                    }
+                                    else
+                                    {
+                                        <span style="font-size: 0.78rem; color: #6b7280;">(no se carga regla — cada producto usa su PVP)</span>
+                                    }
                                 </div>
                             }
                         </div>
-                        <p style="font-size: 0.72rem; color: #78350f; margin: 0.4rem 0 0;">
-                            💡 Cuando un producto NO tiene precio fijo cargado para una empresa, el sistema usa: <code>costo × (1 + markup_marca / 100)</code>.
+                        <p style="font-size: 0.72rem; color: #78350f; margin: 0.5rem 0 0;">
+                            💡 Si elegís <strong>% sobre costo</strong>: todos los productos de esta marca en esa empresa se calculan con el markup.<br/>
+                            Si elegís <strong>PVP del producto</strong>: el sistema usa el "PVP s/IVA" cargado en cada producto individual (vos lo editás producto por producto).
                         </p>
                     </div>
                 }
@@ -262,6 +283,7 @@
     // Markup por empresa (Fase 2): CompanyId -> string del input
     private List<CompanyDto>? sellingCompanies;
     private Dictionary<int, string> formBrandMarkups = new();
+    private Dictionary<int, string> formBrandPriceMode = new(); // CompanyId -> "" | "PERCENT" | "PVP"
     private bool showDeleteConfirm;
     private BrandDto? brandToDelete;
     private bool showAllCompanies; // Si esta tildado, ignora el filtro por empresa actual
@@ -337,6 +359,9 @@
             formBrandMarkups = markups.ToDictionary(
                 m => m.CompanyId,
                 m => m.MarkupPercent.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture).Replace(".", ","));
+            formBrandPriceMode = markups.ToDictionary(
+                m => m.CompanyId,
+                m => string.IsNullOrWhiteSpace(m.PriceMode) ? "PERCENT" : m.PriceMode.ToUpperInvariant());
             StateHasChanged();
         }
         catch { /* silencioso */ }
@@ -388,31 +413,46 @@
                 ToastService.Success("Marca creada");
                 brandIdForMarkups = created.Id;
             }
-            // Sincronizar markups por empresa
+            // Sincronizar reglas de precio por marca+empresa.
+            // Cada empresa tiene un modo: "" (sin regla, default), "PERCENT" (markup %), "PVP" (usa PVP del producto).
             if (brandIdForMarkups.HasValue && sellingCompanies is not null)
             {
                 foreach (var co in sellingCompanies)
                 {
-                    var raw = formBrandMarkups.TryGetValue(co.Id, out var v) ? v?.Trim() : "";
-                    if (string.IsNullOrWhiteSpace(raw))
+                    var mode = formBrandPriceMode.TryGetValue(co.Id, out var m) ? m?.Trim() ?? "" : "";
+                    if (string.IsNullOrWhiteSpace(mode))
                     {
+                        // Sin regla → borrar si existía (cae al PVP del producto por default)
                         try { await Api.DeleteBrandMarkupAsync(brandIdForMarkups.Value, co.Id); } catch { }
                         continue;
                     }
-                    var normalized = raw.Replace(".", "").Replace(",", ".");
-                    if (decimal.TryParse(normalized, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var pct))
+                    decimal pct = 0m;
+                    if (mode == "PERCENT")
                     {
-                        try
+                        var raw = formBrandMarkups.TryGetValue(co.Id, out var v) ? v?.Trim() ?? "" : "";
+                        if (string.IsNullOrWhiteSpace(raw))
                         {
-                            await Api.SetBrandMarkupAsync(new SetBrandCompanyMarkupRequest
-                            {
-                                BrandId = brandIdForMarkups.Value,
-                                CompanyId = co.Id,
-                                MarkupPercent = pct
-                            });
+                            ToastService.Error($"Falta el % para {co.Code} (modo % sobre costo)");
+                            continue;
                         }
-                        catch (Exception ex) { ToastService.Error($"Error markup {co.Code}: {ex.Message}"); }
+                        var normalized = raw.Replace(".", "").Replace(",", ".");
+                        if (!decimal.TryParse(normalized, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out pct))
+                        {
+                            ToastService.Error($"% inválido para {co.Code}: '{raw}'");
+                            continue;
+                        }
                     }
+                    try
+                    {
+                        await Api.SetBrandMarkupAsync(new SetBrandCompanyMarkupRequest
+                        {
+                            BrandId = brandIdForMarkups.Value,
+                            CompanyId = co.Id,
+                            MarkupPercent = pct,
+                            PriceMode = mode
+                        });
+                    }
+                    catch (Exception ex) { ToastService.Error($"Error regla {co.Code}: {ex.Message}"); }
                 }
             }
             showForm = false;

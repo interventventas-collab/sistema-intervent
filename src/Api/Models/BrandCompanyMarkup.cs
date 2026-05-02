@@ -26,5 +26,13 @@ public class BrandCompanyMarkup
     [Column(TypeName = "decimal(8,2)")]
     public decimal MarkupPercent { get; set; }
 
+    /// <summary>
+    /// Modo de calculo del precio para esta marca en esta empresa:
+    ///   'PERCENT' = precio = costo × (1 + MarkupPercent / 100)
+    ///   'PVP' = precio = el RetailPrice cargado en el producto (ignora MarkupPercent)
+    /// </summary>
+    [MaxLength(20)]
+    public string PriceMode { get; set; } = "PERCENT";
+
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

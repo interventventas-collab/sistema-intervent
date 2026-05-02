@@ -36,6 +36,7 @@ public class BrandCompanyMarkupDto
     public string CompanyCode { get; set; } = string.Empty;
     public string CompanyName { get; set; } = string.Empty;
     public decimal MarkupPercent { get; set; }
+    public string PriceMode { get; set; } = "PERCENT"; // "PERCENT" | "PVP"
     public DateTime UpdatedAt { get; set; }
 }
 
@@ -44,6 +45,7 @@ public class SetBrandCompanyMarkupRequest
     public int BrandId { get; set; }
     public int CompanyId { get; set; }
     public decimal MarkupPercent { get; set; }
+    public string? PriceMode { get; set; } // "PERCENT" o "PVP". Default: PERCENT
 }
 
 public class ResolvedPriceDto
