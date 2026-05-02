@@ -94,10 +94,16 @@ public class PricingService
 
     public async Task<BrandCompanyMarkupDto?> SetBrandMarkupAsync(SetBrandCompanyMarkupRequest req)
     {
-        var mode = string.IsNullOrWhiteSpace(req.PriceMode)
-            ? "PERCENT"
-            : req.PriceMode.Trim().ToUpperInvariant();
-        if (mode != "PERCENT" && mode != "PVP") mode = "PERCENT";
+        // Modos validos en el modelo nuevo: PVP1, PVP2, PVP3.
+        // Compatibilidad hacia atras: aceptamos tambien "PVP" (=> PVP1) y "PERCENT" (=> PVP3).
+        var raw = string.IsNullOrWhiteSpace(req.PriceMode) ? "" : req.PriceMode.Trim().ToUpperInvariant();
+        var mode = raw switch
+        {
+            "PVP1" or "PVP2" or "PVP3" => raw,
+            "PVP" => "PVP1",
+            "PERCENT" => "PVP3",
+            _ => "PVP1"
+        };
 
         var existing = await _db.BrandCompanyMarkups
             .FirstOrDefaultAsync(b => b.BrandId == req.BrandId && b.CompanyId == req.CompanyId);
