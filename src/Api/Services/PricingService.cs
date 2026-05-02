@@ -160,15 +160,9 @@ public class PricingService
             return new ResolvedPriceDto(product.RetailPrice, "default", null, null);
         }
 
-        // Nivel 1: override producto+empresa
-        var productOverride = await _db.ProductCompanyPrices
-            .FirstOrDefaultAsync(p => p.ProductId == productId && p.CompanyId == companyId.Value);
-        if (productOverride is not null)
-        {
-            return new ResolvedPriceDto(productOverride.RetailPrice, "product_override", company.Id, company.Code);
-        }
+        // (Sacamos el nivel de override producto+empresa: redundante con PVP 1/2/3 + regla de marca)
 
-        // Nivel 2: regla por marca+empresa — elige slot (PVP1, PVP2, PVP3)
+        // Nivel 1: regla por marca+empresa — elige slot (PVP1, PVP2, PVP3)
         if (product.BrandId.HasValue)
         {
             var brandRule = await _db.BrandCompanyMarkups

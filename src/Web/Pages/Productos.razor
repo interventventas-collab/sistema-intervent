@@ -915,38 +915,6 @@
                         </div>
                     </div>
                 </div>
-                @* ==== Precios por empresa (override sobre PVP default) ==== *@
-                @if (sellingCompanies is not null && sellingCompanies.Count > 0)
-                {
-                    <div style="background:#f0fdf4; padding:0.7rem; border-radius:6px; border:1px solid #86efac; margin-bottom: 0.8rem;">
-                        <div style="font-size:0.82rem; color:#14532d; font-weight:600; margin-bottom:0.4rem;">
-                            🏢 Precios por empresa
-                            <span style="font-weight:400; color:#15803d;">— vacío usa el PVP default de arriba (o el markup de la marca)</span>
-                        </div>
-                        <div class="form-row" style="margin: 0;">
-                            @foreach (var co in sellingCompanies)
-                            {
-                                var coid = co.Id;
-                                var current = formCompanyPrices.TryGetValue(coid, out var v) ? v : "";
-                                <div class="form-group">
-                                    <label class="form-label">@co.Code</label>
-                                    <div style="position: relative;">
-                                        <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 0.95rem; font-weight: 700; color: #15803d;">$</span>
-                                        <input type="text" class="form-input"
-                                               style="text-align: right; padding-left: 24px; border-color: #86efac;"
-                                               value="@current"
-                                               @oninput="@(e => formCompanyPrices[coid] = e.Value?.ToString() ?? "")"
-                                               placeholder="(usa default)"
-                                               inputmode="decimal" />
-                                    </div>
-                                </div>
-                            }
-                        </div>
-                        <p style="font-size: 0.7rem; color: #15803d; margin: 0.4rem 0 0;">
-                            💡 Si dejás vacío, el sistema busca primero el markup de la marca para esa empresa, y si no hay, usa el PVP default.
-                        </p>
-                    </div>
-                }
                 <h4 style="margin: 1.2rem 0 0.4rem; font-size: 0.9rem; color: #374151;">Cuentas contables</h4>
                 <div class="form-row">
                     <div class="form-group">
@@ -1831,10 +1799,8 @@
     private string formPvp3MarkupFormatted = "";
     private bool formIsActive = true;
 
-    // Precios por empresa (Fase 2): un dict CompanyId -> string del input.
-    // Vacio = no hay override (cae al markup de marca o al PVP default).
-    private List<CompanyDto>? sellingCompanies;       // empresas que CAN_SELL=true
-    private Dictionary<int, string> formCompanyPrices = new();
+    // Empresas que CAN_SELL=true (cargadas desde API; usadas en otros componentes)
+    private List<CompanyDto>? sellingCompanies;
     private string? formPhoto1;
     private string? formPhoto2;
     private string? formPhoto3;
@@ -2522,7 +2488,6 @@
         // Default fraction = 1 (mismo precio que el padre), markup = 0
         formFraction = 1m;
         formMarkupAmount = 0m;
-        formCompanyPrices = new();  // sin overrides al crear
         formError = null; showForm = true;
     }
 
@@ -2567,23 +2532,7 @@
         // Cargar fraccion/recargo del producto. Si nunca se setearon, default 1/0.
         formFraction = product.Fraction <= 0 ? 1m : product.Fraction;
         formMarkupAmount = product.MarkupAmount;
-        formCompanyPrices = new();
-        // Cargar overrides de precio por empresa (fire-and-forget)
-        _ = LoadFormCompanyPricesAsync(product.Id);
         formError = null; showForm = true;
-    }
-
-    private async Task LoadFormCompanyPricesAsync(int productId)
-    {
-        try
-        {
-            var prices = await Api.GetProductPricesAsync(productId) ?? new();
-            formCompanyPrices = prices.ToDictionary(
-                p => p.CompanyId,
-                p => p.RetailPrice.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture).Replace(".", ","));
-            StateHasChanged();
-        }
-        catch { /* silencioso */ }
     }
 
     // Clona un producto pero arrastra SOLO los campos "compartibles":
@@ -2749,49 +2698,11 @@
                         : "Producto creado");
                 if (priceWarning is not null)
                     ToastService.Error("⚠ " + priceWarning);
-                // Sincronizar precios por empresa para producto nuevo
-                await SyncCompanyPricesAsync(result.Id);
-            }
-            // Sincronizar precios por empresa para producto editado
-            if (isEditing && editingProductId.HasValue)
-            {
-                await SyncCompanyPricesAsync(editingProductId.Value);
             }
             showForm = false; await LoadData();
         }
         catch (Exception ex) { formError = "Error al guardar: " + ex.Message; }
         finally { isSaving = false; }
-    }
-
-    /// <summary>Persiste los precios por empresa del form contra la API. Limpia los vacios.</summary>
-    private async Task SyncCompanyPricesAsync(int productId)
-    {
-        if (sellingCompanies is null) return;
-        foreach (var co in sellingCompanies)
-        {
-            var raw = formCompanyPrices.TryGetValue(co.Id, out var v) ? v?.Trim() : "";
-            if (string.IsNullOrWhiteSpace(raw))
-            {
-                // Vacio = borrar el override (silencioso si no existia)
-                try { await Api.DeleteProductPriceAsync(productId, co.Id); } catch { }
-                continue;
-            }
-            // Parse: aceptar "1.234,56" y "1234.56"
-            var normalized = raw.Replace(".", "").Replace(",", ".");
-            if (decimal.TryParse(normalized, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var price) && price >= 0)
-            {
-                try
-                {
-                    await Api.SetProductPriceAsync(new SetProductCompanyPriceRequest
-                    {
-                        ProductId = productId,
-                        CompanyId = co.Id,
-                        RetailPrice = price
-                    });
-                }
-                catch (Exception ex) { ToastService.Error($"Error al guardar precio {co.Code}: {ex.Message}"); }
-            }
-        }
     }
 
     private void ConfirmDelete(ProductDto product) { productToDelete = product; showDeleteConfirm = true; }
