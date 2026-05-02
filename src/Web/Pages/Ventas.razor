@@ -148,7 +148,8 @@
 @if (showForm)
 {
     <div class="modal-overlay" @onclick="CloseForm">
-        <div class="modal-card modal-wide" @onclick:stopPropagation="true">
+        <div class="modal-card modal-wide modal-fullscreen" @onclick:stopPropagation="true"
+             style="width: 96vw; max-width: 1600px; height: 92vh; max-height: 92vh; display: flex; flex-direction: column;">
             <div class="modal-header" style="background: @(formMode == "edit" ? "#dbeafe" : (formMode == "duplicate" ? "#fef3c7" : "whitesmoke"));">
                 <h3>
                     @(formMode switch
@@ -160,7 +161,7 @@
                 </h3>
                 <button class="btn-close" @onclick="CloseForm">&times;</button>
             </div>
-            <div class="modal-body">
+            <div class="modal-body" style="flex: 1; overflow-y: auto; min-height: 0;">
                 @if (formMode == "edit")
                 {
                     <div style="background:#dbeafe; border:2px solid #1e40af; color:#1e3a8a; padding:0.6rem 0.9rem; border-radius:6px; margin-bottom:0.8rem; display:flex; align-items:center; gap:0.5rem;">
