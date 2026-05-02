@@ -2047,13 +2047,11 @@
             result = result.Where(p => p.BaseProductId == null && !p.IsBase && p.DerivedCount == 0);
         else if (ft == "oems")
         {
-            // Mostrar 1 producto por OEM (el primero alfabeticamente por SKU). Los productos
-            // sin OEM se muestran tambien (uno por cada uno, o sea sin agrupar).
-            var conOem = result.Where(p => !string.IsNullOrEmpty(p.OemCode))
+            // Mostrar SOLO productos que tienen OEM cargado, agrupados por OEM (1 por codigo).
+            // Productos sin OEM (cafes, productos sueltos sin codigo de proveedor) se ocultan.
+            result = result.Where(p => !string.IsNullOrEmpty(p.OemCode))
                 .GroupBy(p => p.OemCode!.ToLowerInvariant())
                 .Select(g => g.OrderBy(p => p.Sku ?? "").First());
-            var sinOem = result.Where(p => string.IsNullOrEmpty(p.OemCode));
-            result = conOem.Concat(sinOem);
         }
         // ft == "" => no filtra (Todos).
 
