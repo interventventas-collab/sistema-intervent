@@ -5,13 +5,27 @@
 @inject IJSRuntime JS
 @inject OperatorService Operator
 @inject CurrentCompanyService Company
+@implements IDisposable
 
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
         <h3>Ventas (@(sales?.Count ?? 0))</h3>
-        <div style="display: flex; gap: 0.4rem;">
+        <div style="display: flex; gap: 0.4rem; align-items: center;">
+            @if (currentCompany is not null)
+            {
+                <span style="font-size: 0.78rem; color: #4b5563; padding: 0.25rem 0.55rem; border-radius: 999px; background: @(currentCompany.CanSell ? "#dcfce7" : "#fee2e2"); border: 1px solid @(currentCompany.CanSell ? "#86efac" : "#fecaca"); color: @(currentCompany.CanSell ? "#14532d" : "#991b1b"); font-weight: 700;">
+                    🏢 Vendiendo desde: @currentCompany.Code
+                    @if (!currentCompany.CanSell)
+                    {
+                        <span style="font-size: 0.7rem; font-weight: 400;"> (no emite comprobantes)</span>
+                    }
+                </span>
+            }
             <button class="btn btn-secondary" @onclick="OpenCompanyForm" title="Datos de la empresa que aparecen en el comprobante">⚙ Datos empresa</button>
-            <button class="btn btn-primary" @onclick="ShowCreateForm">+ Nueva Venta</button>
+            <button class="btn btn-primary" @onclick="ShowCreateForm" disabled="@CurrentCompanyCannotSell"
+                    title="@(CurrentCompanyCannotSell ? $"{currentCompany?.Code ?? "La empresa actual"} no emite comprobantes. Cambiá la empresa en el topbar para vender." : "Crear nueva venta")">
+                + Nueva Venta
+            </button>
         </div>
     </div>
     <div class="card-body" style="padding: 0;">
@@ -54,6 +68,26 @@
                     </div>
                 </div>
             }
+            @* Filtros del listado *@
+            <div style="padding: 0.6rem 1rem; background: #f9fafb; border-bottom: 1px solid #e5e7eb; display: flex; gap: 0.6rem; align-items: center; font-size: 0.85rem;">
+                <span style="color: #4b5563;">Filtrar por empresa:</span>
+                <select class="form-input" style="max-width: 200px; padding: 0.25rem 0.5rem;" @bind="filterCompanyId">
+                    <option value="0">— Todas —</option>
+                    @if (allCompanies is not null)
+                    {
+                        @foreach (var co in allCompanies.Where(c => c.IsActive).OrderBy(c => c.SortOrder))
+                        {
+                            <option value="@co.Id">@co.Code</option>
+                        }
+                    }
+                </select>
+                @if (filterCompanyId > 0 && sales is not null)
+                {
+                    var n = sales.Count(s => s.CompanyId == filterCompanyId);
+                    var total = sales.Where(s => s.CompanyId == filterCompanyId && !s.IsCancelled).Sum(s => s.Total);
+                    <span style="color: #6b7280;">@n venta@(n == 1 ? "" : "s") · Total <strong>$@FormatPrice(total)</strong></span>
+                }
+            </div>
             <div class="table-responsive">
                 <table class="data-table">
                     <thead>
@@ -65,6 +99,7 @@
                             </th>
                             <th>Numero</th>
                             <th>Fecha</th>
+                            <th style="width: 120px;">Empresa</th>
                             <th>Cliente</th>
                             <th>Cond. IVA</th>
                             <th>Pago</th>
@@ -74,7 +109,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var s in sales)
+                        @foreach (var s in FilteredSales)
                         {
                             <tr style="@(s.IsCancelled ? "opacity:0.55;text-decoration:line-through;" : "") @(selectedSaleIds.Contains(s.Id) ? "background:#eff6ff;" : "")">
                                 <td style="text-align: center;">
@@ -84,6 +119,17 @@
                                 </td>
                                 <td style="font-family: monospace;">@s.Number</td>
                                 <td>@s.Date.ToString("dd/MM/yyyy")</td>
+                                <td style="font-size: 0.78rem;">
+                                    @if (s.CompanyId.HasValue && allCompanies is not null)
+                                    {
+                                        var co = allCompanies.FirstOrDefault(x => x.Id == s.CompanyId.Value);
+                                        <span style="background: #eff6ff; color: #1e40af; padding: 0.1rem 0.45rem; border-radius: 999px; font-weight: 700;">@(co?.Code ?? s.CompanyNameSnapshot ?? "—")</span>
+                                    }
+                                    else
+                                    {
+                                        <span style="color: #9ca3af;">@(s.CompanyNameSnapshot ?? "—")</span>
+                                    }
+                                </td>
                                 <td>
                                     @if (!string.IsNullOrEmpty(s.ClientCode))
                                     {
@@ -1350,6 +1396,17 @@
     // Top 10 productos mas comprados por el cliente actual del form (sugerencias)
     private List<TopProductByClientDto> topProductsForClient = new();
 
+    // Empresa actual del topbar resuelta a entidad Company (para precios y CompanyId en venta)
+    private List<CompanyDto>? allCompanies;
+    private CompanyDto? currentCompany;
+    private bool CurrentCompanyCannotSell => currentCompany is not null && !currentCompany.CanSell;
+
+    // Filtro del listado de ventas por empresa (0 = todas)
+    private int filterCompanyId = 0;
+    private IEnumerable<SaleDto> FilteredSales =>
+        sales is null ? Enumerable.Empty<SaleDto>()
+        : (filterCompanyId == 0 ? sales : sales.Where(s => s.CompanyId == filterCompanyId));
+
     // Comprobantes impagos del cliente actual (saldo anterior)
     private List<SaleDto> unpaidPrevSales = new();
     private decimal unpaidPrevTotal => unpaidPrevSales.Sum(s => s.Total);
@@ -1459,7 +1516,7 @@
         var sb = new System.Text.StringBuilder();
         // BOM para que Excel detecte UTF-8
         sb.Append('﻿');
-        sb.AppendLine("Numero;Fecha;Cliente;Codigo Cliente;Cond. IVA;Pago;Subtotal;Descuento;Total;Estado;Anulada por;Anulada el;Observaciones");
+        sb.AppendLine("Numero;Fecha;Empresa;Cliente;Codigo Cliente;Cond. IVA;Pago;Subtotal;Descuento;Total;Estado;Anulada por;Anulada el;Observaciones");
 
         string Esc(string? v)
         {
@@ -1475,6 +1532,7 @@
             {
                 Esc(s.Number),
                 s.Date.ToString("yyyy-MM-dd"),
+                Esc(allCompanies?.FirstOrDefault(c => c.Id == s.CompanyId)?.Code ?? s.CompanyNameSnapshot ?? ""),
                 Esc(s.ClientNameSnapshot ?? "Consumidor final"),
                 Esc(s.ClientCode ?? ""),
                 Esc(s.IvaCondition ?? ""),
@@ -1505,7 +1563,42 @@
     private bool showCompanyForm;
     private CompanyInfoDto? companyForm;
 
-    protected override async Task OnInitializedAsync() => await LoadAll();
+    protected override async Task OnInitializedAsync()
+    {
+        Company.OnChange += OnTopbarCompanyChanged;
+        await LoadAll();
+        await ResolveCurrentCompanyAsync();
+    }
+
+    public void Dispose()
+    {
+        Company.OnChange -= OnTopbarCompanyChanged;
+    }
+
+    private async void OnTopbarCompanyChanged()
+    {
+        await ResolveCurrentCompanyAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ResolveCurrentCompanyAsync()
+    {
+        try
+        {
+            allCompanies ??= await Api.GetCompaniesAsync() ?? new();
+            if (Company.HasCompany && allCompanies is not null)
+            {
+                var code = Company.Current!.Trim().Replace("®", "").ToUpperInvariant();
+                currentCompany = allCompanies.FirstOrDefault(c =>
+                    string.Equals(c.Code, code, StringComparison.OrdinalIgnoreCase));
+            }
+            else
+            {
+                currentCompany = null;
+            }
+        }
+        catch { currentCompany = null; }
+    }
 
     private async Task LoadAll()
     {
@@ -1639,18 +1732,18 @@
 
     private void CloseForm() { showForm = false; formError = null; }
 
-    private void AddProduct()
+    private async Task AddProduct()
     {
         if (addProductId == 0) return;
         var p = availableProducts?.FirstOrDefault(x => x.Id == addProductId);
         if (p is null) return;
-        AddProductToSale(p, addProductQty, addProductBonif);
+        await AddProductToSale(p, addProductQty, addProductBonif);
         addProductId = 0; addProductQty = 1; addProductBonif = 0;
         productSearchText = "";
     }
 
     /// <summary>Agrega al carrito un producto sugerido del top 10 del cliente.</summary>
-    private void AddSuggestedProduct(int productId)
+    private async Task AddSuggestedProduct(int productId)
     {
         var p = availableProducts?.FirstOrDefault(x => x.Id == productId);
         if (p is null)
@@ -1658,7 +1751,7 @@
             ToastService.Error("El producto sugerido ya no está disponible");
             return;
         }
-        AddProductToSale(p, 1, 0);
+        await AddProductToSale(p, 1, 0);
     }
 
     // Mientras tipea: actualiza el texto y resetea el id elegido (porque puede no
@@ -1704,7 +1797,7 @@
 
     // Helper compartido: agrega un producto al carrito de la venta.
     // bonifPercent es opcional (0 por default) — sirve para descuento ad-hoc adicional sobre la lista.
-    private void AddProductToSale(ProductDto p, decimal qty, decimal bonifPercent = 0m)
+    private async Task AddProductToSale(ProductDto p, decimal qty, decimal bonifPercent = 0m)
     {
         var item = new CreateSaleItemRequest
         {
@@ -1712,17 +1805,31 @@
             Code = p.Sku,
             Description = p.DisplayName ?? p.Title,
             Quantity = qty <= 0 ? 1 : qty,
-            UnitPrice = GetTierAdjustedPrice(p, formClientId),
+            // Default rapido: PVP del producto. Despues lo refinamos con PricingService.Resolve.
+            UnitPrice = p.RetailPrice,
             VatRate = p.VatRate,
             BonifPercent = Math.Clamp(bonifPercent, 0m, 100m)
         };
         formItems.Add(item);
+
+        // Pricing: resolver con la empresa actual del topbar
+        if (currentCompany is not null)
+        {
+            try
+            {
+                var resolved = await Api.ResolvePriceAsync(p.Id, currentCompany.Id);
+                if (resolved is not null && resolved.RetailPrice > 0)
+                    item.UnitPrice = resolved.RetailPrice;
+            }
+            catch { /* fallback: queda el RetailPrice del producto */ }
+        }
 
         // Si es cafe, default a "EN GRANOS" (lo mas comun). El usuario puede cambiar al toque.
         if (IsCoffeeItem(item))
         {
             SetCoffeeFormat(item, "EN GRANOS");
         }
+        StateHasChanged();
     }
 
     // === Helpers de listas de precios (tiers) ===
@@ -1829,28 +1936,25 @@
         if (e.Key == "Enter") await AddByCode();
     }
 
-    private Task AddByCode()
+    private async Task AddByCode()
     {
         var code = (codeInput ?? "").Trim();
-        if (string.IsNullOrEmpty(code)) return Task.CompletedTask;
+        if (string.IsNullOrEmpty(code)) return;
         if (allProducts is null || allProducts.Count == 0)
         {
             ToastService.Error("No hay productos cargados todavia.");
-            return Task.CompletedTask;
+            return;
         }
 
-        // Match por SKU exacto (case-insensitive). Excluye servicios solo si quisiera, pero
-        // los servicios tambien son vendibles asi que los dejamos.
         var match = allProducts.FirstOrDefault(p =>
             p.IsActive && string.Equals(p.Sku, code, StringComparison.OrdinalIgnoreCase));
 
         if (match is null)
         {
             ToastService.Error($"No se encontró ningún producto con código '{code}'.");
-            return Task.CompletedTask;
+            return;
         }
 
-        // Si es padre (tiene hijos), abrir el selector
         if (match.DerivedCount > 0)
         {
             parentForChildPicker = match;
@@ -1859,14 +1963,12 @@
                 .OrderBy(p => p.Sku ?? "").ThenBy(p => p.Title)
                 .ToList();
             childPickerQuantities = childrenOfParent.ToDictionary(c => c.Id, _ => 0m);
-            return Task.CompletedTask;
+            return;
         }
 
-        // Si es hijo o independiente: agregar directo con cantidad 1
-        AddProductToSale(match, 1);
+        await AddProductToSale(match, 1);
         ToastService.Success($"Agregado: {match.Title}");
         codeInput = "";
-        return Task.CompletedTask;
     }
 
     private void SetChildQty(int childId, string? raw)
@@ -1883,7 +1985,7 @@
         }
     }
 
-    private void ConfirmChildPicker()
+    private async Task ConfirmChildPicker()
     {
         if (parentForChildPicker is null) return;
         var added = 0;
@@ -1891,7 +1993,7 @@
         {
             if (childPickerQuantities.TryGetValue(child.Id, out var qty) && qty > 0)
             {
-                AddProductToSale(child, qty);
+                await AddProductToSale(child, qty);
                 added++;
             }
         }

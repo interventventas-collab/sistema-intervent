@@ -42,6 +42,7 @@ public record SaleDto(
     string? CancelledByOperator,
     string? WeekDays,
     bool IsPaid,
+    int? CompanyId,
     string? CompanyNameSnapshot,
     DateTime CreatedAt,
     DateTime? UpdatedAt,

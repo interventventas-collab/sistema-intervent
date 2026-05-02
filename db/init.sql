@@ -1354,3 +1354,82 @@ BEGIN
     ALTER TABLE Sales ADD ClientDeliveryAddressSnapshot NVARCHAR(500) NULL;
 END
 GO
+
+-- ============================================================
+-- ARQUITECTURA DE PRECIOS POR EMPRESA (Opcion B)
+-- ============================================================
+
+-- Tabla maestra de empresas (normaliza los strings hardcoded)
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Companies' AND xtype='U')
+BEGIN
+    CREATE TABLE Companies (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Code NVARCHAR(30) NOT NULL UNIQUE,
+        Name NVARCHAR(100) NOT NULL,
+        CanSell BIT NOT NULL DEFAULT 1,
+        SortOrder INT NOT NULL DEFAULT 0,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL
+    );
+    INSERT INTO Companies (Code, Name, CanSell, SortOrder) VALUES
+        ('INTERVENT', N'INTERVENT', 0, 1),
+        ('INTEREVENTOS', N'INTEREVENTOS', 1, 2),
+        ('FRIKAF', N'FRIKAF', 1, 3),
+        ('PALANICA', N'PALANICA', 1, 4);
+END
+GO
+
+-- Override de precio por producto+empresa (nivel 1: el mas especifico)
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ProductCompanyPrices' AND xtype='U')
+BEGIN
+    CREATE TABLE ProductCompanyPrices (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        ProductId INT NOT NULL,
+        CompanyId INT NOT NULL,
+        RetailPrice DECIMAL(18,2) NOT NULL,
+        UpdatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        CONSTRAINT FK_ProductCompanyPrices_Product FOREIGN KEY (ProductId) REFERENCES Products(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_ProductCompanyPrices_Company FOREIGN KEY (CompanyId) REFERENCES Companies(Id),
+        CONSTRAINT UQ_ProductCompanyPrices_ProductCompany UNIQUE (ProductId, CompanyId)
+    );
+    CREATE INDEX IX_ProductCompanyPrices_Company ON ProductCompanyPrices (CompanyId);
+END
+GO
+
+-- Markup por marca+empresa (nivel 2: si no hay override de producto, calcula con cost*markup)
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='BrandCompanyMarkups' AND xtype='U')
+BEGIN
+    CREATE TABLE BrandCompanyMarkups (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        BrandId INT NOT NULL,
+        CompanyId INT NOT NULL,
+        MarkupPercent DECIMAL(8,2) NOT NULL,
+        UpdatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        CONSTRAINT FK_BrandCompanyMarkups_Brand FOREIGN KEY (BrandId) REFERENCES Brands(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_BrandCompanyMarkups_Company FOREIGN KEY (CompanyId) REFERENCES Companies(Id),
+        CONSTRAINT UQ_BrandCompanyMarkups_BrandCompany UNIQUE (BrandId, CompanyId)
+    );
+    CREATE INDEX IX_BrandCompanyMarkups_Company ON BrandCompanyMarkups (CompanyId);
+END
+GO
+
+-- FK explicito de Sales -> Company. Hasta hoy era solo CompanyNameSnapshot (texto).
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'CompanyId' AND Object_ID = Object_ID(N'Sales'))
+BEGIN
+    ALTER TABLE Sales ADD CompanyId INT NULL;
+    EXEC('ALTER TABLE Sales ADD CONSTRAINT FK_Sales_Company FOREIGN KEY (CompanyId) REFERENCES Companies(Id)');
+    CREATE INDEX IX_Sales_CompanyId ON Sales (CompanyId);
+END
+GO
+
+-- Backfill: matchear ventas viejas con su empresa por el snapshot (ignorando ® y mayusculas)
+IF EXISTS (SELECT 1 FROM Sales WHERE CompanyId IS NULL AND CompanyNameSnapshot IS NOT NULL)
+BEGIN
+    UPDATE s SET s.CompanyId = c.Id
+      FROM Sales s
+      JOIN Companies c
+        ON UPPER(REPLACE(REPLACE(LTRIM(RTRIM(s.CompanyNameSnapshot)), N'®', ''), '''', '')) = UPPER(c.Code)
+     WHERE s.CompanyId IS NULL AND s.CompanyNameSnapshot IS NOT NULL;
+END
+GO

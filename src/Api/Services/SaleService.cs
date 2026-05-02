@@ -131,6 +131,9 @@ public class SaleService
         // Tipo de comprobante: por defecto 'X' (cotizacion/remito interno).
         var comprobanteType = NormalizeComprobanteType(request.ComprobanteType);
 
+        // Resolver CompanyId a partir del CompanyNameOverride. Matcheo flexible (ignorando ®, mayusculas).
+        int? companyId = await ResolveCompanyIdFromName(request.CompanyNameOverride);
+
         var sale = new Sale
         {
             Number = await GenerateNumberAsync(comprobanteType),
@@ -152,6 +155,7 @@ public class SaleService
             WeekDays = string.IsNullOrWhiteSpace(request.WeekDays) ? null : request.WeekDays,
             IsPaid = request.IsPaid ?? false,
             CompanyNameSnapshot = string.IsNullOrWhiteSpace(request.CompanyNameOverride) ? null : request.CompanyNameOverride.Trim(),
+            CompanyId = companyId,
             ComprobanteType = comprobanteType,
             VendedorName = string.IsNullOrWhiteSpace(request.VendedorName) ? null : request.VendedorName.Trim(),
             CreatedAt = DateTime.UtcNow,
@@ -194,7 +198,10 @@ public class SaleService
         if (request.WeekDays is not null) sale.WeekDays = string.IsNullOrWhiteSpace(request.WeekDays) ? null : request.WeekDays;
         if (request.IsPaid.HasValue) sale.IsPaid = request.IsPaid.Value;
         if (request.CompanyNameOverride is not null)
+        {
             sale.CompanyNameSnapshot = string.IsNullOrWhiteSpace(request.CompanyNameOverride) ? null : request.CompanyNameOverride.Trim();
+            sale.CompanyId = await ResolveCompanyIdFromName(request.CompanyNameOverride);
+        }
         if (request.VendedorName is not null)
             sale.VendedorName = string.IsNullOrWhiteSpace(request.VendedorName) ? null : request.VendedorName.Trim();
 
@@ -674,6 +681,20 @@ public class SaleService
     /// Convencion: AppSettings 'sales.pv.{TIPO}' tiene el codigo de PV (ej '0009').
     /// Si no existe, cae al PV global 'sales.point_of_sale'.
     /// </summary>
+    /// <summary>
+    /// Resuelve el CompanyId a partir de un nombre/codigo de empresa (CompanyNameOverride viene
+    /// del topbar). Matcheo flexible: trim, uppercase, sin '®'. Si no matchea, devuelve null.
+    /// </summary>
+    private async Task<int?> ResolveCompanyIdFromName(string? companyName)
+    {
+        if (string.IsNullOrWhiteSpace(companyName)) return null;
+        var normalized = companyName.Trim().Replace("®", "").ToUpperInvariant();
+        return await _db.Companies
+            .Where(c => c.Code.ToUpper() == normalized || c.Name.ToUpper().Replace("®", "") == normalized)
+            .Select(c => (int?)c.Id)
+            .FirstOrDefaultAsync();
+    }
+
     private async Task<string> GenerateNumberAsync(string comprobanteType)
     {
         var pos =
@@ -714,7 +735,7 @@ public class SaleService
         s.ClientCityLocationSnapshot, s.ClientCuitSnapshot,
         s.PaymentCondition, s.IvaCondition,
         s.Subtotal, s.Discount, s.Total, s.AmountInWords, s.Notes,
-        s.IsCancelled, s.CancelledAt, s.CancelledByOperator, s.WeekDays, s.IsPaid, s.CompanyNameSnapshot, s.CreatedAt, s.UpdatedAt,
+        s.IsCancelled, s.CancelledAt, s.CancelledByOperator, s.WeekDays, s.IsPaid, s.CompanyId, s.CompanyNameSnapshot, s.CreatedAt, s.UpdatedAt,
         s.Items.OrderBy(i => i.Id).Select(i => new SaleItemDto(
             i.Id, i.ProductId, i.Code, i.Description,
             i.Quantity, i.UnitPrice, i.VatRate, i.BonifPercent, i.LineTotal,

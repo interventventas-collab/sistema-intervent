@@ -911,6 +911,37 @@ public class ApiClient
         catch { return false; }
     }
 
+    // --- Pricing por empresa ---
+    public async Task<List<CompanyDto>?> GetCompaniesAsync()
+        => await GetAsync<List<CompanyDto>>("/api/pricing/companies");
+
+    public async Task<List<ProductCompanyPriceDto>?> GetProductPricesAsync(int productId)
+        => await GetAsync<List<ProductCompanyPriceDto>>($"/api/pricing/products/{productId}/prices");
+
+    public async Task<ProductCompanyPriceDto?> SetProductPriceAsync(SetProductCompanyPriceRequest req)
+        => await PostAsync<ProductCompanyPriceDto>("/api/pricing/products/prices", req);
+
+    public async Task<bool> DeleteProductPriceAsync(int productId, int companyId)
+    {
+        var resp = await _http.DeleteAsync($"/api/pricing/products/{productId}/prices/{companyId}");
+        return resp.IsSuccessStatusCode;
+    }
+
+    public async Task<List<BrandCompanyMarkupDto>?> GetBrandMarkupsAsync(int brandId)
+        => await GetAsync<List<BrandCompanyMarkupDto>>($"/api/pricing/brands/{brandId}/markups");
+
+    public async Task<BrandCompanyMarkupDto?> SetBrandMarkupAsync(SetBrandCompanyMarkupRequest req)
+        => await PostAsync<BrandCompanyMarkupDto>("/api/pricing/brands/markups", req);
+
+    public async Task<bool> DeleteBrandMarkupAsync(int brandId, int companyId)
+    {
+        var resp = await _http.DeleteAsync($"/api/pricing/brands/{brandId}/markups/{companyId}");
+        return resp.IsSuccessStatusCode;
+    }
+
+    public async Task<ResolvedPriceDto?> ResolvePriceAsync(int productId, int? companyId)
+        => await GetAsync<ResolvedPriceDto>($"/api/pricing/resolve?productId={productId}{(companyId.HasValue ? $"&companyId={companyId}" : "")}");
+
     // --- WhatsApp ---
     public async Task<WhatsAppStatusDto?> GetWhatsAppStatusAsync()
     {

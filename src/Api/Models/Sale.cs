@@ -33,6 +33,11 @@ public class Sale
     [MaxLength(500)]
     public string? ClientDeliveryAddressSnapshot { get; set; }
 
+    /// <summary>FK explicito a la empresa que emitio el comprobante. Reemplaza el rol del CompanyNameSnapshot.</summary>
+    public int? CompanyId { get; set; }
+    [ForeignKey(nameof(CompanyId))]
+    public Company? Company { get; set; }
+
     [MaxLength(200)]
     public string? ClientCityLocationSnapshot { get; set; }
 

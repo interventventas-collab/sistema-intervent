@@ -106,6 +106,7 @@ builder.Services.AddScoped<MeliItemService>();
 builder.Services.AddScoped<AuditLogService>();
 builder.Services.AddScoped<ScheduledProcessService>();
 builder.Services.AddScoped<ProductService>();
+builder.Services.AddScoped<PricingService>();
 builder.Services.AddScoped<SupplierService>();
 builder.Services.AddScoped<BrandService>();
 builder.Services.AddScoped<ClientService>();

@@ -164,6 +164,37 @@
                         Si no tildas ninguna, la marca y sus productos se muestran en <strong>todas</strong> las empresas.
                     </p>
                 </div>
+                @if (isEditing && sellingCompanies is not null && sellingCompanies.Count > 0)
+                {
+                    <div class="form-group" style="background: #fefce8; border: 1px solid #fbbf24; padding: 0.7rem; border-radius: 6px;">
+                        <label class="form-label" style="color: #78350f;">
+                            🏢 Markup % por empresa
+                            <span style="font-weight: 400; font-size: 0.78rem; color: #78350f;">— se aplica solo a productos sin precio fijo</span>
+                        </label>
+                        <div class="form-row" style="margin: 0.3rem 0 0;">
+                            @foreach (var co in sellingCompanies)
+                            {
+                                var coid = co.Id;
+                                var current = formBrandMarkups.TryGetValue(coid, out var v) ? v : "";
+                                <div class="form-group">
+                                    <label class="form-label" style="font-size: 0.78rem;">@co.Code</label>
+                                    <div style="position: relative;">
+                                        <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 0.95rem; font-weight: 700; color: #92400e;">%</span>
+                                        <input type="text" class="form-input"
+                                               style="text-align: right; padding-left: 24px; border-color: #fbbf24; background: white;"
+                                               value="@current"
+                                               @oninput="@(e => formBrandMarkups[coid] = e.Value?.ToString() ?? "")"
+                                               placeholder="(sin markup)"
+                                               inputmode="decimal" />
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                        <p style="font-size: 0.72rem; color: #78350f; margin: 0.4rem 0 0;">
+                            💡 Cuando un producto NO tiene precio fijo cargado para una empresa, el sistema usa: <code>costo × (1 + markup_marca / 100)</code>.
+                        </p>
+                    </div>
+                }
                 @if (isEditing)
                 {
                     <div class="form-group">
@@ -228,6 +259,9 @@
     private bool formHasExpiry;
     private bool formIsActive = true;
     private HashSet<string> formCompanies = new(StringComparer.OrdinalIgnoreCase);
+    // Markup por empresa (Fase 2): CompanyId -> string del input
+    private List<CompanyDto>? sellingCompanies;
+    private Dictionary<int, string> formBrandMarkups = new();
     private bool showDeleteConfirm;
     private BrandDto? brandToDelete;
     private bool showAllCompanies; // Si esta tildado, ignora el filtro por empresa actual
@@ -243,6 +277,7 @@
     protected override async Task OnInitializedAsync()
     {
         Company.OnChange += OnCompanyChanged;
+        await LoadCompaniesAsync();
         await LoadData();
     }
 
@@ -252,6 +287,16 @@
     }
 
     private void OnCompanyChanged() => InvokeAsync(StateHasChanged);
+
+    private async Task LoadCompaniesAsync()
+    {
+        try
+        {
+            var all = await Api.GetCompaniesAsync() ?? new();
+            sellingCompanies = all.Where(c => c.CanSell && c.IsActive).OrderBy(c => c.SortOrder).ToList();
+        }
+        catch { sellingCompanies = new(); }
+    }
 
     private async Task LoadData()
     {
@@ -279,7 +324,22 @@
         formHasExpiry = b.HasExpiry;
         formIsActive = b.IsActive;
         formCompanies = new HashSet<string>(ParseCompanies(b.Companies), StringComparer.OrdinalIgnoreCase);
+        formBrandMarkups = new();
+        _ = LoadFormBrandMarkupsAsync(b.Id);
         formError = null; showForm = true;
+    }
+
+    private async Task LoadFormBrandMarkupsAsync(int brandId)
+    {
+        try
+        {
+            var markups = await Api.GetBrandMarkupsAsync(brandId) ?? new();
+            formBrandMarkups = markups.ToDictionary(
+                m => m.CompanyId,
+                m => m.MarkupPercent.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture).Replace(".", ","));
+            StateHasChanged();
+        }
+        catch { /* silencioso */ }
     }
 
     private void ToggleFormCompany(string name)
@@ -302,6 +362,7 @@
                 ? null
                 : string.Join(",", CurrentCompanyService.Companies.Where(c => formCompanies.Contains(c)));
 
+            int? brandIdForMarkups = null;
             if (isEditing && editingId.HasValue)
             {
                 var updated = await Api.UpdateBrandAsync(editingId.Value, new UpdateBrandRequest
@@ -312,6 +373,7 @@
                 });
                 if (updated is null) { formError = "No se pudo actualizar"; return; }
                 ToastService.Success("Marca actualizada");
+                brandIdForMarkups = editingId.Value;
             }
             else
             {
@@ -324,6 +386,34 @@
                 });
                 if (created is null) { formError = "No se pudo crear"; return; }
                 ToastService.Success("Marca creada");
+                brandIdForMarkups = created.Id;
+            }
+            // Sincronizar markups por empresa
+            if (brandIdForMarkups.HasValue && sellingCompanies is not null)
+            {
+                foreach (var co in sellingCompanies)
+                {
+                    var raw = formBrandMarkups.TryGetValue(co.Id, out var v) ? v?.Trim() : "";
+                    if (string.IsNullOrWhiteSpace(raw))
+                    {
+                        try { await Api.DeleteBrandMarkupAsync(brandIdForMarkups.Value, co.Id); } catch { }
+                        continue;
+                    }
+                    var normalized = raw.Replace(".", "").Replace(",", ".");
+                    if (decimal.TryParse(normalized, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var pct))
+                    {
+                        try
+                        {
+                            await Api.SetBrandMarkupAsync(new SetBrandCompanyMarkupRequest
+                            {
+                                BrandId = brandIdForMarkups.Value,
+                                CompanyId = co.Id,
+                                MarkupPercent = pct
+                            });
+                        }
+                        catch (Exception ex) { ToastService.Error($"Error markup {co.Code}: {ex.Message}"); }
+                    }
+                }
             }
             showForm = false;
             await LoadData();

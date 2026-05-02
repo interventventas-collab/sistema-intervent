@@ -44,6 +44,7 @@ public class SaleDto
     public string? CancelledByOperator { get; set; }
     public string? WeekDays { get; set; }
     public bool IsPaid { get; set; }
+    public int? CompanyId { get; set; }
     public string? CompanyNameSnapshot { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
