@@ -1799,30 +1799,30 @@
     // bonifPercent es opcional (0 por default) — sirve para descuento ad-hoc adicional sobre la lista.
     private async Task AddProductToSale(ProductDto p, decimal qty, decimal bonifPercent = 0m)
     {
-        var item = new CreateSaleItemRequest
-        {
-            ProductId = p.Id,
-            Code = p.Sku,
-            Description = p.DisplayName ?? p.Title,
-            Quantity = qty <= 0 ? 1 : qty,
-            // Default rapido: PVP del producto. Despues lo refinamos con PricingService.Resolve.
-            UnitPrice = p.RetailPrice,
-            VatRate = p.VatRate,
-            BonifPercent = Math.Clamp(bonifPercent, 0m, 100m)
-        };
-        formItems.Add(item);
-
-        // Pricing: resolver con la empresa actual del topbar
+        // PRIMERO resolvemos el precio segun la empresa actual (asi no parpadea con el PVP default).
+        decimal resolvedPrice = p.RetailPrice;
         if (currentCompany is not null)
         {
             try
             {
                 var resolved = await Api.ResolvePriceAsync(p.Id, currentCompany.Id);
                 if (resolved is not null && resolved.RetailPrice > 0)
-                    item.UnitPrice = resolved.RetailPrice;
+                    resolvedPrice = resolved.RetailPrice;
             }
             catch { /* fallback: queda el RetailPrice del producto */ }
         }
+
+        var item = new CreateSaleItemRequest
+        {
+            ProductId = p.Id,
+            Code = p.Sku,
+            Description = p.DisplayName ?? p.Title,
+            Quantity = qty <= 0 ? 1 : qty,
+            UnitPrice = resolvedPrice,
+            VatRate = p.VatRate,
+            BonifPercent = Math.Clamp(bonifPercent, 0m, 100m)
+        };
+        formItems.Add(item);
 
         // Si es cafe, default a "EN GRANOS" (lo mas comun). El usuario puede cambiar al toque.
         if (IsCoffeeItem(item))
