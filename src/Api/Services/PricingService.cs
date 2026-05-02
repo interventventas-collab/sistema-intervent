@@ -197,13 +197,18 @@ public class PricingService
                 }
                 if (mode == "PVP3")
                 {
-                    // PVP 3: cost × (1 + Pvp3MarkupPercent / 100). El % es propio o heredado del padre.
-                    var pct = product.Pvp3MarkupPercent ?? parent?.Pvp3MarkupPercent;
+                    // PVP 3: cost × (1 + % / 100).
+                    // Prioridad del %: 1) override del producto, 2) heredado del padre, 3) regla de marca+empresa.
+                    decimal? pct = product.Pvp3MarkupPercent
+                        ?? parent?.Pvp3MarkupPercent
+                        ?? (brandRule.MarkupPercent > 0 ? (decimal?)brandRule.MarkupPercent : null);
+                    string srcLabel = product.Pvp3MarkupPercent.HasValue ? "pvp3"
+                        : (parent?.Pvp3MarkupPercent.HasValue == true ? "pvp3_inherited"
+                        : "pvp3_brand_rule");
                     if (product.CostPrice > 0 && pct.HasValue && pct.Value > 0)
                     {
                         var calc = Math.Round(product.CostPrice * (1m + pct.Value / 100m), 2, MidpointRounding.AwayFromZero);
-                        var src = product.Pvp3MarkupPercent.HasValue ? "pvp3" : "pvp3_inherited";
-                        return new ResolvedPriceDto(calc, src, company.Id, company.Code);
+                        return new ResolvedPriceDto(calc, srcLabel, company.Id, company.Code);
                     }
                     return new ResolvedPriceDto(product.RetailPrice, "pvp3_fallback_pvp1", company.Id, company.Code);
                 }

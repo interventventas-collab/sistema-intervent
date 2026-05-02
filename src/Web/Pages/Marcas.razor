@@ -176,7 +176,8 @@
                             {
                                 var coid = co.Id;
                                 var mode = formBrandPriceMode.TryGetValue(coid, out var m) ? m : "";
-                                <div style="display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.5rem; background: white; border: 1px solid #fde68a; border-radius: 6px;">
+                                var pctStr = formBrandMarkups.TryGetValue(coid, out var p) ? p : "";
+                                <div style="display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.5rem; background: white; border: 1px solid #fde68a; border-radius: 6px; flex-wrap: wrap;">
                                     <span style="min-width: 110px; font-weight: 700; color: #78350f;">@co.Code</span>
                                     <select class="form-input" style="max-width: 280px; font-size: 0.85rem;"
                                             value="@mode"
@@ -184,13 +185,23 @@
                                         <option value="">— sin regla (default = PVP 1) —</option>
                                         <option value="PVP1">PVP 1 (principal del producto)</option>
                                         <option value="PVP2">PVP 2 (alternativo del producto)</option>
-                                        <option value="PVP3">PVP 3 (% sobre costo del producto)</option>
+                                        <option value="PVP3">PVP 3 (% sobre costo)</option>
                                     </select>
+                                    @if (mode == "PVP3")
+                                    {
+                                        <div style="display: flex; align-items: center; gap: 0.3rem;">
+                                            <input class="form-input" style="width: 90px; font-size: 0.85rem;" inputmode="decimal"
+                                                   placeholder="ej: 50"
+                                                   value="@pctStr"
+                                                   @onchange="@(e => formBrandMarkups[coid] = e.Value?.ToString() ?? "")" />
+                                            <span style="font-size: 0.85rem; color: #15803d; font-weight: 700;">%</span>
+                                        </div>
+                                    }
                                     @{
                                         string label, color;
                                         if (mode == "PVP1") { label = "→ usa el PVP 1 (campo principal del producto)"; color = "#1d4ed8"; }
                                         else if (mode == "PVP2") { label = "→ usa el PVP 2 (campo alternativo del producto)"; color = "#9a3412"; }
-                                        else if (mode == "PVP3") { label = "→ usa el PVP 3: costo × (1 + %_del_producto / 100)"; color = "#15803d"; }
+                                        else if (mode == "PVP3") { label = "→ costo × (1 + % / 100) — % de la marca o del producto si lo tiene"; color = "#15803d"; }
                                         else { label = "→ default = PVP 1"; color = "#6b7280"; }
                                     }
                                     <span style="font-size: 0.78rem; color: @color;">@label</span>
@@ -198,7 +209,7 @@
                             }
                         </div>
                         <p style="font-size: 0.72rem; color: #78350f; margin: 0.5rem 0 0;">
-                            💡 PVP 1, PVP 2 y el % de PVP 3 los cargás <strong>en cada producto</strong> (en el form de Productos).<br/>
+                            💡 PVP 1 y PVP 2 los cargás <strong>en cada producto</strong>. El <strong>% de PVP 3</strong> lo podés cargar acá (aplica a todos los productos de la marca) o en cada producto (override individual).<br/>
                             Si dejás "sin regla", cae al PVP 1 por default.
                         </p>
                     </div>
@@ -415,13 +426,20 @@
                     }
                     // Validar que el modo sea uno de los 3 slots
                     if (mode != "PVP1" && mode != "PVP2" && mode != "PVP3") continue;
+                    // Si modo es PVP3, parsear el % entrado por el usuario (acepta coma o punto).
+                    decimal pctValue = 0m;
+                    if (mode == "PVP3" && formBrandMarkups.TryGetValue(co.Id, out var pctRaw) && !string.IsNullOrWhiteSpace(pctRaw))
+                    {
+                        var normalized = pctRaw.Trim().Replace(",", ".");
+                        decimal.TryParse(normalized, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out pctValue);
+                    }
                     try
                     {
                         await Api.SetBrandMarkupAsync(new SetBrandCompanyMarkupRequest
                         {
                             BrandId = brandIdForMarkups.Value,
                             CompanyId = co.Id,
-                            MarkupPercent = 0m,  // ya no se usa a nivel marca; el % vive en el producto (PVP 3)
+                            MarkupPercent = pctValue,  // PVP3: % a nivel marca+empresa (fallback si producto no tiene su propio %)
                             PriceMode = mode
                         });
                     }
