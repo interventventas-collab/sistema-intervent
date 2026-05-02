@@ -445,11 +445,12 @@
                                     }
                                     @{
                                         var isKg = product.StockUnit == "kg";
+                                        var isKgChild = IsChildOfKgParent(product);
                                         var stepStock = isKg ? "0.001" : "1";
                                         var unitSuffix = isKg ? " kg" : "";
                                         var stockText = FormatStockNumber(product.Stock) + unitSuffix;
                                     }
-                                    @if (IsUnlocked("stock") && !product.RequiresExpiry && !hasChildren)
+                                    @if (IsUnlocked("stock") && !product.RequiresExpiry && !hasChildren && !isKgChild)
                                     {
                                         var stockDisabled = savingStockId == product.Id;
                                         <input type="number" min="0" step="@stepStock"
@@ -493,6 +494,13 @@
                                         <span style="margin-left: 0.3rem; background: #fef3c7; color: #78350f; border: 1px solid #fbbf24; padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.7rem; font-weight: 700;"
                                               title="Stock medido en kg — al vender un hijo, descuenta kg × fracción">
                                             ⚖ kg
+                                        </span>
+                                    }
+                                    @if (isKgChild)
+                                    {
+                                        <span style="margin-left: 0.3rem; background: #f3f4f6; color: #6b7280; border: 1px solid #d1d5db; padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.7rem; font-weight: 700;"
+                                              title="El stock se controla en el padre (kg-mode). Solo lectura.">
+                                            🔒 derivado
                                         </span>
                                     }
                                     @if (product.RequiresExpiry)
@@ -2142,6 +2150,16 @@
         return grouped;
     }
 
+    /// <summary>True si el producto es hijo de un padre kg-mode (cafe).
+    /// Esos hijos NO permiten editar stock — el stock se controla en el padre.</summary>
+    private bool IsChildOfKgParent(ProductDto p)
+    {
+        if (!p.BaseProductId.HasValue) return false;
+        if (products is null) return false;
+        var parent = products.FirstOrDefault(x => x.Id == p.BaseProductId.Value);
+        return parent is not null && string.Equals(parent.StockUnit, "kg", StringComparison.OrdinalIgnoreCase);
+    }
+
     // ===== Natural sort (entiende numeros embebidos) =====
     // "F1" < "F2" < "F10" en lugar del orden alfabetico "F1" < "F10" < "F2".
 
@@ -3122,6 +3140,11 @@
         if (product.DerivedCount > 0)
         {
             ToastService.Error("Los productos padre no manejan stock propio: la suma de los hijos es el stock total.");
+            return;
+        }
+        if (IsChildOfKgParent(product))
+        {
+            ToastService.Error("Este producto es un derivado de un café (kg). El stock se controla en el padre (F1, F2, etc.).");
             return;
         }
 
