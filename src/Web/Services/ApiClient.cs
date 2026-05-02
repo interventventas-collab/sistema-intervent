@@ -378,6 +378,9 @@ public class ApiClient
     public async Task<CoffeeMonthlyKgDto?> GetCoffeeMonthlyKgAsync()
         => await GetAsync<CoffeeMonthlyKgDto>("/api/dashboard/coffee-monthly-kg");
 
+    public async Task<CoffeeStockKgDto?> GetCoffeeStockKgAsync()
+        => await GetAsync<CoffeeStockKgDto>("/api/dashboard/coffee-stock-kg");
+
     /// <summary>Resumen financiero (ventas del mes + saldos a cobrar de clientes).</summary>
     public async Task<SalesSummaryDto?> GetSalesSummaryAsync()
         => await GetAsync<SalesSummaryDto>("/api/dashboard/sales-summary");

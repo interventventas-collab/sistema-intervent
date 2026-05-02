@@ -125,6 +125,34 @@
             }
         </div>
     </div>
+
+    @* Stock total de cafe disponible — mismo estilo circular que la balanza *@
+    <div class="cafe-frikaf-balanza" title="Suma del stock de todos los cafés (kg-mode parents)">
+        <div class="cafe-frikaf-circle cafe-stock-circle">
+            <div class="cafe-frikaf-circle-content">
+                @if (coffeeStock is null)
+                {
+                    <div class="cafe-frikaf-loading">…</div>
+                }
+                else
+                {
+                    <div class="cafe-frikaf-kg-number">@FormatKg(coffeeStock.KgTotal)</div>
+                    <div class="cafe-frikaf-kg-unit">kg</div>
+                }
+            </div>
+        </div>
+        <div class="cafe-frikaf-balanza-label">STOCK</div>
+        <div class="cafe-frikaf-balanza-period">
+            @if (coffeeStock is not null)
+            {
+                <span>@coffeeStock.VariedadesConStock / @coffeeStock.Variedades VARIEDADES</span>
+            }
+            else
+            {
+                <span>DISPONIBLE</span>
+            }
+        </div>
+    </div>
 </div>
 
 <style>
@@ -150,6 +178,13 @@
         align-items: center;
         justify-content: center;
         text-align: center;
+    }
+    /* Variante verde para el indicador de stock disponible (vs balanza ventas) */
+    .cafe-stock-circle {
+        background-color: #86efac;
+        background-image: linear-gradient(135deg, #86efac 0%, #16a34a 100%);
+        border-color: #15803d;
+        box-shadow: 0 6px 16px rgba(20, 83, 45, 0.35), inset 0 0 30px rgba(20, 83, 45, 0.20);
     }
     .cafe-frikaf-circle-content {
         position: relative;
@@ -372,6 +407,7 @@
     private System.Threading.Timer? quoteTimer;
     private System.Threading.Timer? coffeeTimer;
     private CoffeeMonthlyKgDto? coffeeKg;
+    private CoffeeStockKgDto? coffeeStock;
     private System.Threading.Timer? salesSummaryTimer;
     private SalesSummaryDto? salesSummary;
 
@@ -472,6 +508,11 @@
         {
             // Mantener el valor anterior si falla, no romper el dashboard
         }
+        try
+        {
+            coffeeStock = await Api.GetCoffeeStockKgAsync();
+        }
+        catch { /* idem */ }
         StateHasChanged();
     }
 

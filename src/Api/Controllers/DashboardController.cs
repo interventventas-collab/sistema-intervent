@@ -110,6 +110,31 @@ public class DashboardController : ControllerBase
     }
 
     /// <summary>
+    /// Stock total de cafe disponible (en kg). Suma el Stock de todos los productos
+    /// que estan en kg-mode (StockUnit='kg'), que son los padres de cada variedad de cafe.
+    /// </summary>
+    [HttpGet("coffee-stock-kg")]
+    public async Task<IActionResult> GetCoffeeStockKg()
+    {
+        var rows = await _db.Products
+            .Where(p => p.IsActive && p.StockUnit == "kg")
+            .Select(p => new { p.Id, p.Title, p.Stock })
+            .ToListAsync();
+
+        decimal kgTotal = rows.Sum(r => r.Stock);
+        int variedades = rows.Count;
+        int conStock = rows.Count(r => r.Stock > 0);
+
+        return Ok(new
+        {
+            kgTotal = Math.Round(kgTotal, 3),
+            variedades,
+            variedadesConStock = conStock,
+            generatedAt = DateTime.UtcNow
+        });
+    }
+
+    /// <summary>
     /// Resumen financiero del dashboard:
     /// - Ventas del mes en curso (suma de Total + cantidad)
     /// - Saldos pendientes de cobro a clientes (ventas !IsPaid !IsCancelled)
