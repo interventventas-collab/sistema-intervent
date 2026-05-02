@@ -34,7 +34,6 @@
                     <option value="default">Default (hijos + indep.)</option>
                     <option value="">— Todos —</option>
                     <option value="padre">Solo padres</option>
-                    <option value="futuro-padre">Solo futuros padres</option>
                     <option value="hijo">Solo hijos</option>
                     <option value="indep">Solo independientes</option>
                     <option value="oems">📦 Solo OEMs (1 por código)</option>
@@ -2034,8 +2033,6 @@
             result = result.Where(p => p.BaseProductId.HasValue || (!p.IsBase && p.DerivedCount == 0));
         else if (ft == "padre")
             result = result.Where(p => !p.BaseProductId.HasValue && p.DerivedCount > 0);
-        else if (ft == "futuro-padre")
-            result = result.Where(p => !p.BaseProductId.HasValue && p.IsBase && p.DerivedCount == 0);
         else if (ft == "hijo")
             result = result.Where(p => p.BaseProductId.HasValue);
         else if (ft == "indep")
