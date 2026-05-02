@@ -438,16 +438,7 @@
                                                             <option value="EN GRANOS">🫘 EN GRANOS</option>
                                                             <option value="MOLIDO FILTRO">☕ MOLIDO FILTRO</option>
                                                             <option value="MOLIDO ESPRESS">⚡ MOLIDO ESPRESS</option>
-                                                            <option value="OTROS">✏️ OTROS (especificar)</option>
                                                         </select>
-                                                        @if (currentFormat == "OTROS")
-                                                        {
-                                                            <input class="form-input"
-                                                                   style="font-size: 0.78rem; padding: 0.2rem; background: #fff7ed; border-color: #d97706; flex: 1;"
-                                                                   value="@currentCustom"
-                                                                   @oninput="@(e => SetCoffeeCustomText(item, e.Value?.ToString() ?? ""))"
-                                                                   placeholder="Ej: MOLIDO MOKA, MOLIDO TURCO, GRUESO..." />
-                                                        }
                                                     </div>
                                                 }
                                             </td>
