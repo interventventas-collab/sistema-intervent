@@ -176,20 +176,34 @@ public class PricingService
             if (brandRule is not null)
             {
                 var mode = (brandRule.PriceMode ?? "PVP1").Trim().ToUpperInvariant();
+                // Si es hijo (BaseProductId), cargamos al padre para heredar PVP2/PVP3 si el hijo los tiene vacios.
+                Product? parent = product.BaseProductId.HasValue
+                    ? await _db.Products.FindAsync(product.BaseProductId.Value)
+                    : null;
+
                 if (mode == "PVP2")
                 {
-                    // PVP 2: precio alternativo cargado en el producto. Si esta vacio, fallback a PVP1.
+                    // PVP 2 propio del producto
                     if (product.RetailPrice2.HasValue && product.RetailPrice2.Value > 0)
                         return new ResolvedPriceDto(product.RetailPrice2.Value, "pvp2", company.Id, company.Code);
+                    // Hijo sin PVP2 → derivar del padre con fraction + markup
+                    if (parent is not null && parent.RetailPrice2.HasValue && parent.RetailPrice2.Value > 0 && product.Fraction > 0)
+                    {
+                        var derived = Math.Round(parent.RetailPrice2.Value * product.Fraction + product.MarkupAmount, 2, MidpointRounding.AwayFromZero);
+                        return new ResolvedPriceDto(derived, "pvp2_inherited", company.Id, company.Code);
+                    }
+                    // Sin nada → fallback a PVP1
                     return new ResolvedPriceDto(product.RetailPrice, "pvp2_fallback_pvp1", company.Id, company.Code);
                 }
                 if (mode == "PVP3")
                 {
-                    // PVP 3: cost × (1 + Pvp3MarkupPercent / 100). Si falta cost o %, fallback a PVP1.
-                    if (product.CostPrice > 0 && product.Pvp3MarkupPercent.HasValue)
+                    // PVP 3: cost × (1 + Pvp3MarkupPercent / 100). El % es propio o heredado del padre.
+                    var pct = product.Pvp3MarkupPercent ?? parent?.Pvp3MarkupPercent;
+                    if (product.CostPrice > 0 && pct.HasValue && pct.Value > 0)
                     {
-                        var calc = Math.Round(product.CostPrice * (1m + product.Pvp3MarkupPercent.Value / 100m), 2, MidpointRounding.AwayFromZero);
-                        return new ResolvedPriceDto(calc, "pvp3", company.Id, company.Code);
+                        var calc = Math.Round(product.CostPrice * (1m + pct.Value / 100m), 2, MidpointRounding.AwayFromZero);
+                        var src = product.Pvp3MarkupPercent.HasValue ? "pvp3" : "pvp3_inherited";
+                        return new ResolvedPriceDto(calc, src, company.Id, company.Code);
                     }
                     return new ResolvedPriceDto(product.RetailPrice, "pvp3_fallback_pvp1", company.Id, company.Code);
                 }
