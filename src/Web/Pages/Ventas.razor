@@ -420,7 +420,7 @@
                                         var i = idx;
                                         var item = formItems[i];
                                         var isCafe = IsCoffeeItem(item);
-                                        var currentFormat = isCafe ? ExtractCoffeeFormat(item.Description) : "";
+                                        var (currentFormat, currentCustom) = isCafe ? ExtractCoffeeMeta(item.Description) : ("", "");
                                         <tr>
                                             <td style="text-align: center; color: #6b7280;">@(i + 1)</td>
                                             <td><input class="form-input" style="font-size: 0.8rem; padding: 0.25rem;" @bind="item.Code" /></td>
@@ -428,17 +428,27 @@
                                                 <input class="form-input" style="font-size: 0.85rem; padding: 0.25rem;" @bind="item.Description" />
                                                 @if (isCafe)
                                                 {
-                                                    <select class="form-input"
-                                                            style="margin-top: 0.25rem; font-size: 0.78rem; padding: 0.2rem; background: #fef3c7; border-color: #d97706; font-weight: 600;"
-                                                            value="@currentFormat"
-                                                            @onchange="@(e => SetCoffeeFormat(item, e.Value?.ToString() ?? ""))"
-                                                            title="Formato de molido del café">
-                                                        <option value="">☕ (sin especificar)</option>
-                                                        <option value="EN GRANOS">🫘 EN GRANOS</option>
-                                                        <option value="MOLIDO FILTRO">☕ MOLIDO FILTRO</option>
-                                                        <option value="MOLIDO ESPRESS">⚡ MOLIDO ESPRESS</option>
-                                                        <option value="MOLIDO MOKA">🇮🇹 MOLIDO MOKA</option>
-                                                    </select>
+                                                    <div style="display: flex; gap: 0.3rem; margin-top: 0.25rem;">
+                                                        <select class="form-input"
+                                                                style="font-size: 0.78rem; padding: 0.2rem; background: #fef3c7; border-color: #d97706; font-weight: 600; flex: 0 0 auto;"
+                                                                value="@currentFormat"
+                                                                @onchange="@(e => SetCoffeeFormat(item, e.Value?.ToString() ?? "", currentCustom))"
+                                                                title="Formato de molido del café">
+                                                            <option value="">☕ (sin especificar)</option>
+                                                            <option value="EN GRANOS">🫘 EN GRANOS</option>
+                                                            <option value="MOLIDO FILTRO">☕ MOLIDO FILTRO</option>
+                                                            <option value="MOLIDO ESPRESS">⚡ MOLIDO ESPRESS</option>
+                                                            <option value="OTROS">✏️ OTROS (especificar)</option>
+                                                        </select>
+                                                        @if (currentFormat == "OTROS")
+                                                        {
+                                                            <input class="form-input"
+                                                                   style="font-size: 0.78rem; padding: 0.2rem; background: #fff7ed; border-color: #d97706; flex: 1;"
+                                                                   value="@currentCustom"
+                                                                   @oninput="@(e => SetCoffeeCustomText(item, e.Value?.ToString() ?? ""))"
+                                                                   placeholder="Ej: MOLIDO MOKA, MOLIDO TURCO, GRUESO..." />
+                                                        }
+                                                    </div>
                                                 }
                                             </td>
                                             <td><input class="form-input" type="number" step="0.01" min="0.01" style="text-align: right; font-size: 0.85rem; padding: 0.25rem;" @bind="item.Quantity" /></td>
@@ -1650,7 +1660,7 @@
     // bonifPercent es opcional (0 por default) — sirve para descuento ad-hoc adicional sobre la lista.
     private void AddProductToSale(ProductDto p, decimal qty, decimal bonifPercent = 0m)
     {
-        formItems.Add(new CreateSaleItemRequest
+        var item = new CreateSaleItemRequest
         {
             ProductId = p.Id,
             Code = p.Sku,
@@ -1659,7 +1669,14 @@
             UnitPrice = GetTierAdjustedPrice(p, formClientId),
             VatRate = p.VatRate,
             BonifPercent = Math.Clamp(bonifPercent, 0m, 100m)
-        });
+        };
+        formItems.Add(item);
+
+        // Si es cafe, default a "EN GRANOS" (lo mas comun). El usuario puede cambiar al toque.
+        if (IsCoffeeItem(item))
+        {
+            SetCoffeeFormat(item, "EN GRANOS");
+        }
     }
 
     // === Helpers de listas de precios (tiers) ===
@@ -1867,43 +1884,86 @@
         return false;
     }
 
-    private static readonly string[] CoffeeFormats =
+    // Formatos estandar (los que aparecen como opciones fijas en el dropdown)
+    private static readonly string[] CoffeeStandardFormats =
     {
-        "EN GRANOS", "MOLIDO FILTRO", "MOLIDO ESPRESS", "MOLIDO MOKA"
+        "EN GRANOS", "MOLIDO FILTRO", "MOLIDO ESPRESS"
     };
 
-    /// <summary>Si la descripcion termina con "— FORMATO", devuelve FORMATO. Si no, "".</summary>
-    private string ExtractCoffeeFormat(string? description)
+    /// <summary>
+    /// Extrae el formato de cafe desde la descripcion. Devuelve:
+    ///  - ("", "") si no hay sufijo
+    ///  - (format, "") si el sufijo es uno de los 3 estandar
+    ///  - ("OTROS", customText) si el sufijo es algo personalizado
+    /// </summary>
+    private (string format, string custom) ExtractCoffeeMeta(string? description)
     {
-        if (string.IsNullOrEmpty(description)) return "";
-        foreach (var f in CoffeeFormats)
+        if (string.IsNullOrEmpty(description)) return ("", "");
+
+        // Buscar el ULTIMO " — " (em-dash con espacios) o " - " como fallback
+        var idxEm = description.LastIndexOf(" — ", StringComparison.Ordinal);
+        var idxAscii = description.LastIndexOf(" - ", StringComparison.Ordinal);
+        var idx = Math.Max(idxEm, idxAscii);
+        if (idx < 0) return ("", "");
+
+        var suffix = description.Substring(idx + 3).Trim();
+        if (string.IsNullOrEmpty(suffix)) return ("", "");
+
+        foreach (var f in CoffeeStandardFormats)
         {
-            if (description.EndsWith($"— {f}", StringComparison.OrdinalIgnoreCase) ||
-                description.EndsWith($"- {f}", StringComparison.OrdinalIgnoreCase))
-                return f;
+            if (string.Equals(suffix, f, StringComparison.OrdinalIgnoreCase))
+                return (f, "");
         }
-        return "";
+        return ("OTROS", suffix);
     }
 
-    /// <summary>Reemplaza el formato de cafe en la descripcion. Vacio = sin formato.</summary>
-    private void SetCoffeeFormat(CreateSaleItemRequest item, string format)
+    /// <summary>Helper compatible: devuelve solo el "format" (sin el custom).</summary>
+    private string ExtractCoffeeFormat(string? description) => ExtractCoffeeMeta(description).format;
+
+    /// <summary>
+    /// Reemplaza el formato de cafe en la descripcion.
+    /// - format = ""        -> saca el sufijo
+    /// - format = estandar  -> usa el formato literal
+    /// - format = "OTROS"   -> usa customText (si esta vacio, deja sin sufijo hasta que tipeen)
+    /// </summary>
+    private void SetCoffeeFormat(CreateSaleItemRequest item, string format, string? customText = null)
     {
-        var current = ExtractCoffeeFormat(item.Description);
+        var (currentFormat, currentCustom) = ExtractCoffeeMeta(item.Description);
         var baseDesc = item.Description ?? "";
-        // Sacar el formato actual si lo habia
-        if (!string.IsNullOrEmpty(current))
+
+        // Limpiar el sufijo actual si lo habia
+        var currentSuffix = currentFormat == "OTROS" ? currentCustom : currentFormat;
+        if (!string.IsNullOrEmpty(currentSuffix))
         {
-            var dashEm = $"— {current}";
-            var dashAscii = $"- {current}";
-            if (baseDesc.EndsWith(dashEm, StringComparison.OrdinalIgnoreCase))
-                baseDesc = baseDesc.Substring(0, baseDesc.Length - dashEm.Length).TrimEnd();
-            else if (baseDesc.EndsWith(dashAscii, StringComparison.OrdinalIgnoreCase))
-                baseDesc = baseDesc.Substring(0, baseDesc.Length - dashAscii.Length).TrimEnd();
+            foreach (var sep in new[] { $" — {currentSuffix}", $" - {currentSuffix}" })
+            {
+                if (baseDesc.EndsWith(sep, StringComparison.OrdinalIgnoreCase))
+                {
+                    baseDesc = baseDesc.Substring(0, baseDesc.Length - sep.Length).TrimEnd();
+                    break;
+                }
+            }
         }
-        // Agregar el nuevo si corresponde
-        item.Description = string.IsNullOrEmpty(format)
-            ? baseDesc
-            : $"{baseDesc} — {format}";
+
+        string? newSuffix = null;
+        if (format == "OTROS")
+        {
+            // Si vienen con custom no vacio, lo usamos. Si no, dejamos el dropdown en "OTROS"
+            // pero sin sufijo en la descripcion (el usuario va a tipear).
+            newSuffix = string.IsNullOrWhiteSpace(customText) ? null : customText.Trim();
+        }
+        else if (!string.IsNullOrEmpty(format))
+        {
+            newSuffix = format;
+        }
+
+        item.Description = newSuffix is null ? baseDesc : $"{baseDesc} — {newSuffix}";
+    }
+
+    /// <summary>Cambia solo el texto custom cuando el formato es "OTROS".</summary>
+    private void SetCoffeeCustomText(CreateSaleItemRequest item, string customText)
+    {
+        SetCoffeeFormat(item, "OTROS", customText);
     }
 
     private decimal LineTotal(CreateSaleItemRequest i)
