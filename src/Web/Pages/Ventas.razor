@@ -611,6 +611,21 @@
                                         <span>TOTAL:</span>
                                         <strong>$@FormatPrice(TotalCalc)</strong>
                                     </div>
+                                    @if (formItems.Count > 0 && TotalCost > 0)
+                                    {
+                                        var pos = Margin >= 0;
+                                        var bg = pos ? "#ecfdf5" : "#fef2f2";
+                                        var bd = pos ? "#a7f3d0" : "#fecaca";
+                                        var fg = pos ? "#047857" : "#b91c1c";
+                                        var sign = pos ? "+" : "−";
+                                        <div style="margin-top: 0.5rem; padding: 0.45rem 0.6rem; background: @bg; border: 1px solid @bd; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
+                                            <span style="font-size: 0.75rem; color: @fg; font-weight: 600;">Ganancia:</span>
+                                            <span style="color: @fg; font-weight: 700;">
+                                                @sign$@FormatPrice(Math.Abs(Margin))
+                                                <span style="font-size: 0.78rem; opacity: 0.85;">(@sign@MarginPercent.ToString("0.#")%)</span>
+                                            </span>
+                                        </div>
+                                    }
                                     <p style="font-size: 0.7rem; color: #9ca3af; margin: 0.4rem 0 0; text-align: right;">
                                         @formItems.Count item@(formItems.Count == 1 ? "" : "s") · @(formClientId == 0 ? "Consumidor final" : (clients?.FirstOrDefault(c => c.Id == formClientId)?.Name ?? "—"))
                                     </p>
@@ -2215,6 +2230,27 @@
     private decimal TotalIva => formItems.Sum(i => Math.Round(LineTotal(i) * (i.VatRate ?? 0m) / 100m, 2));
 
     private decimal TotalCalc => Math.Max(0, Subtotal - formDiscount);
+
+    // Costo de una linea (usa ProductId para mirar allProducts; hereda del padre si el hijo no tiene costo propio).
+    private decimal LineCost(CreateSaleItemRequest i)
+    {
+        if (allProducts is null || !i.ProductId.HasValue) return 0m;
+        var p = allProducts.FirstOrDefault(x => x.Id == i.ProductId.Value);
+        if (p is null) return 0m;
+        decimal unitCost = p.CostPrice;
+        // Hijo kg-mode sin costo propio → deriva del padre proporcional a Fraction.
+        if (unitCost <= 0m && p.BaseProductId.HasValue)
+        {
+            var parent = allProducts.FirstOrDefault(x => x.Id == p.BaseProductId.Value);
+            if (parent is not null && parent.CostPrice > 0m && p.Fraction > 0m)
+                unitCost = parent.CostPrice * p.Fraction;
+        }
+        return Math.Round(i.Quantity * unitCost, 2);
+    }
+
+    private decimal TotalCost => formItems.Sum(LineCost);
+    private decimal Margin => TotalCalc - TotalCost;
+    private decimal MarginPercent => TotalCalc > 0 ? Math.Round(Margin / TotalCalc * 100m, 1) : 0m;
 
     private async Task Save()
     {
