@@ -29,10 +29,10 @@
                     <thead>
                         <tr>
                             <th>Nombre</th>
-                            <th>Empresa</th>
-                            <th>Teléfono</th>
-                            <th>Email</th>
+                            <th>DNI/CUIT</th>
+                            <th>Teléfonos</th>
                             <th>Dirección</th>
+                            <th>Barrio</th>
                             <th>Estado</th>
                             <th style="width: 130px;">Acciones</th>
                         </tr>
@@ -41,11 +41,31 @@
                         @foreach (var c in clientes)
                         {
                             <tr>
-                                <td><strong>@c.Nombre</strong></td>
-                                <td style="color: #374151;">@(c.Empresa ?? "—")</td>
-                                <td>@(c.Telefono ?? "—")</td>
-                                <td style="font-size: 0.85rem;">@(c.Email ?? "—")</td>
-                                <td style="color: #6b7280; font-size: 0.85rem;">@(c.DireccionDefault ?? "—")</td>
+                                <td>
+                                    <strong>@c.Nombre</strong>
+                                    @if (!string.IsNullOrEmpty(c.Empresa))
+                                    {
+                                        <div style="font-size: 0.78rem; color: #6b7280;">@c.Empresa</div>
+                                    }
+                                </td>
+                                <td style="font-family: monospace; font-size: 0.85rem;">@(c.DniCuit ?? "—")</td>
+                                <td style="font-size: 0.85rem;">
+                                    @if (!string.IsNullOrEmpty(c.Telefono)) { <div>@c.Telefono</div> }
+                                    @if (!string.IsNullOrEmpty(c.Telefono2)) { <div style="color: #6b7280;">@c.Telefono2</div> }
+                                    @if (string.IsNullOrEmpty(c.Telefono) && string.IsNullOrEmpty(c.Telefono2)) { <span>—</span> }
+                                </td>
+                                <td style="color: #374151; font-size: 0.85rem;">
+                                    @(c.DireccionDefault ?? "—")
+                                    @if (!string.IsNullOrEmpty(c.Piso) || !string.IsNullOrEmpty(c.Depto))
+                                    {
+                                        <span style="color: #6b7280;"> · @(c.Piso is not null ? "P." + c.Piso : "")@(!string.IsNullOrEmpty(c.Piso) && !string.IsNullOrEmpty(c.Depto) ? " " : "")@(c.Depto is not null ? "D." + c.Depto : "")</span>
+                                    }
+                                    @if (!string.IsNullOrEmpty(c.EntreCalles))
+                                    {
+                                        <div style="font-size: 0.75rem; color: #6b7280;">e/ @c.EntreCalles</div>
+                                    }
+                                </td>
+                                <td style="font-size: 0.85rem; color: #6b7280;">@(c.Barrio ?? "—")</td>
                                 <td>
                                     <span class="status-badge @(c.IsActive ? "status-active" : "status-inactive")">
                                         @(c.IsActive ? "Activo" : "Inactivo")
@@ -67,7 +87,7 @@
 @if (showForm)
 {
     <div class="modal-overlay" @onclick="CloseForm">
-        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 720px;">
             <div class="modal-header" style="background: whitesmoke;">
                 <h3>@(isEditing ? "Editar Cliente" : "Nuevo Cliente")</h3>
                 <button class="btn-close" @onclick="CloseForm">&times;</button>
@@ -77,34 +97,68 @@
                 {
                     <div class="form-error">@formError</div>
                 }
+
+                <h4 style="margin: 0 0 0.5rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em;">Datos del cliente</h4>
                 <div class="form-row">
                     <div class="form-group" style="flex: 2;">
-                        <label class="form-label">Nombre *</label>
+                        <label class="form-label">Nombre y apellido *</label>
                         <input class="form-input" @bind="formNombre" placeholder="Ej: Juan Pérez" autofocus />
                     </div>
-                    <div class="form-group" style="flex: 2;">
-                        <label class="form-label">Empresa</label>
-                        <input class="form-input" @bind="formEmpresa" placeholder="Razón social (opcional)" />
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">DNI o CUIT</label>
+                        <input class="form-input" @bind="formDniCuit" placeholder="Ej: 30123456" />
                     </div>
                 </div>
+                <div class="form-group">
+                    <label class="form-label">Empresa / Razón social</label>
+                    <input class="form-input" @bind="formEmpresa" placeholder="Solo si factura a nombre de una empresa (opcional)" />
+                </div>
+
+                <h4 style="margin: 1rem 0 0.5rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em;">Contacto</h4>
                 <div class="form-row">
                     <div class="form-group" style="flex: 1;">
-                        <label class="form-label">Teléfono</label>
+                        <label class="form-label">Teléfono 1</label>
                         <input class="form-input" @bind="formTelefono" placeholder="Ej: 11 1234-5678" />
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Teléfono 2</label>
+                        <input class="form-input" @bind="formTelefono2" placeholder="Opcional" />
                     </div>
                     <div class="form-group" style="flex: 2;">
                         <label class="form-label">Email</label>
                         <input class="form-input" @bind="formEmail" type="email" placeholder="email@ejemplo.com" />
                     </div>
                 </div>
+
+                <h4 style="margin: 1rem 0 0.5rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em;">Dirección de entrega habitual</h4>
                 <div class="form-group">
-                    <label class="form-label">Dirección por defecto</label>
-                    <input class="form-input" @bind="formDireccion" placeholder="La dirección donde habitualmente entregás (después podés sobreescribirla en cada reserva)" />
+                    <label class="form-label">Calle y número</label>
+                    <input class="form-input" @bind="formDireccion" placeholder="Ej: Av. Corrientes 1234" />
+                </div>
+                <div class="form-row">
+                    <div class="form-group" style="flex: 0 0 100px;">
+                        <label class="form-label">Piso</label>
+                        <input class="form-input" @bind="formPiso" placeholder="Ej: 3" />
+                    </div>
+                    <div class="form-group" style="flex: 0 0 110px;">
+                        <label class="form-label">Depto</label>
+                        <input class="form-input" @bind="formDepto" placeholder="Ej: B" />
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Barrio / Localidad</label>
+                        <input class="form-input" @bind="formBarrio" placeholder="Ej: Belgrano, Quilmes, etc." />
+                    </div>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Notas</label>
+                    <label class="form-label">Entre calles</label>
+                    <input class="form-input" @bind="formEntreCalles" placeholder="Importante para conurbano (ej: entre Tucumán y Lavalle)" />
+                </div>
+
+                <h4 style="margin: 1rem 0 0.5rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em;">Notas</h4>
+                <div class="form-group">
                     <textarea class="form-input" @bind="formNotas" rows="2" placeholder="Notas internas sobre el cliente (opcional)"></textarea>
                 </div>
+
                 @if (isEditing)
                 {
                     <div class="form-group">
@@ -156,9 +210,15 @@
     private int? editingId;
     private string formNombre = "";
     private string formEmpresa = "";
+    private string formDniCuit = "";
     private string formTelefono = "";
+    private string formTelefono2 = "";
     private string formEmail = "";
     private string formDireccion = "";
+    private string formPiso = "";
+    private string formDepto = "";
+    private string formBarrio = "";
+    private string formEntreCalles = "";
     private string formNotas = "";
     private bool formIsActive = true;
     private bool showDeleteConfirm;
@@ -177,8 +237,10 @@
     private void ShowCreate()
     {
         isEditing = false; editingId = null;
-        formNombre = ""; formEmpresa = ""; formTelefono = ""; formEmail = "";
-        formDireccion = ""; formNotas = "";
+        formNombre = ""; formEmpresa = ""; formDniCuit = "";
+        formTelefono = ""; formTelefono2 = ""; formEmail = "";
+        formDireccion = ""; formPiso = ""; formDepto = ""; formBarrio = ""; formEntreCalles = "";
+        formNotas = "";
         formIsActive = true;
         formError = null; showForm = true;
     }
@@ -186,9 +248,12 @@
     private void ShowEdit(AlqClienteDto c)
     {
         isEditing = true; editingId = c.Id;
-        formNombre = c.Nombre; formEmpresa = c.Empresa ?? "";
-        formTelefono = c.Telefono ?? ""; formEmail = c.Email ?? "";
-        formDireccion = c.DireccionDefault ?? ""; formNotas = c.Notas ?? "";
+        formNombre = c.Nombre; formEmpresa = c.Empresa ?? ""; formDniCuit = c.DniCuit ?? "";
+        formTelefono = c.Telefono ?? ""; formTelefono2 = c.Telefono2 ?? "";
+        formEmail = c.Email ?? "";
+        formDireccion = c.DireccionDefault ?? ""; formPiso = c.Piso ?? ""; formDepto = c.Depto ?? "";
+        formBarrio = c.Barrio ?? ""; formEntreCalles = c.EntreCalles ?? "";
+        formNotas = c.Notas ?? "";
         formIsActive = c.IsActive;
         formError = null; showForm = true;
     }
@@ -206,9 +271,11 @@
             {
                 var updated = await Api.UpdateAlqClienteAsync(editingId.Value, new UpdateAlqClienteRequest
                 {
-                    Nombre = formNombre, Empresa = formEmpresa, Telefono = formTelefono,
-                    Email = formEmail, DireccionDefault = formDireccion, Notas = formNotas,
-                    IsActive = formIsActive
+                    Nombre = formNombre, Empresa = formEmpresa, DniCuit = formDniCuit,
+                    Telefono = formTelefono, Telefono2 = formTelefono2, Email = formEmail,
+                    DireccionDefault = formDireccion, Piso = formPiso, Depto = formDepto,
+                    Barrio = formBarrio, EntreCalles = formEntreCalles,
+                    Notas = formNotas, IsActive = formIsActive
                 });
                 if (updated is null) { formError = "No se pudo actualizar"; return; }
                 ToastService.Success("Cliente actualizado");
@@ -217,8 +284,10 @@
             {
                 var created = await Api.CreateAlqClienteAsync(new CreateAlqClienteRequest
                 {
-                    Nombre = formNombre, Empresa = formEmpresa, Telefono = formTelefono,
-                    Email = formEmail, DireccionDefault = formDireccion, Notas = formNotas
+                    Nombre = formNombre, Empresa = formEmpresa, DniCuit = formDniCuit,
+                    Telefono = formTelefono, Telefono2 = formTelefono2, Email = formEmail,
+                    DireccionDefault = formDireccion, Piso = formPiso, Depto = formDepto,
+                    Barrio = formBarrio, EntreCalles = formEntreCalles, Notas = formNotas
                 });
                 if (created is null) { formError = "No se pudo crear"; return; }
                 ToastService.Success("Cliente creado");

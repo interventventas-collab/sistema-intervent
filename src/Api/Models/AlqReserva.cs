@@ -1,0 +1,81 @@
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+
+namespace Api.Models;
+
+[Table("Alq_Reservas")]
+public class AlqReserva
+{
+    [Key]
+    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public int Id { get; set; }
+
+    [Required, MaxLength(20)]
+    public string Numero { get; set; } = string.Empty;
+
+    public int ClienteId { get; set; }
+
+    [ForeignKey(nameof(ClienteId))]
+    public AlqCliente? ClienteNav { get; set; }
+
+    public DateTime FechaEntrega { get; set; }
+    public DateTime FechaRetiro { get; set; }
+
+    [MaxLength(8)]
+    public string? HoraInicio { get; set; }
+
+    [MaxLength(8)]
+    public string? HoraFin { get; set; }
+
+    [MaxLength(300)]
+    public string? DireccionEvento { get; set; }
+
+    [Column(TypeName = "decimal(10,7)")]
+    public decimal? LatitudEvento { get; set; }
+
+    [Column(TypeName = "decimal(10,7)")]
+    public decimal? LongitudEvento { get; set; }
+
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal MontoTotal { get; set; }
+
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal Sena { get; set; }
+
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal Descuento { get; set; }
+
+    [MaxLength(30)]
+    public string Estado { get; set; } = "reservado";
+
+    [MaxLength(1000)]
+    public string? Notas { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? UpdatedAt { get; set; }
+
+    public ICollection<AlqReservaItem> Items { get; set; } = new List<AlqReservaItem>();
+}
+
+[Table("Alq_ReservaItems")]
+public class AlqReservaItem
+{
+    [Key]
+    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public int Id { get; set; }
+
+    public int ReservaId { get; set; }
+
+    [ForeignKey(nameof(ReservaId))]
+    public AlqReserva? ReservaNav { get; set; }
+
+    public int EquipoId { get; set; }
+
+    [ForeignKey(nameof(EquipoId))]
+    public AlqEquipo? EquipoNav { get; set; }
+
+    public int Cantidad { get; set; }
+
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal PrecioUnitario { get; set; }
+}

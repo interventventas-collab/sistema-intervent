@@ -185,9 +185,11 @@
         @if (HasPerm("alquileres"))
         {
             <NavGroup Label="Alquileres" Icon="@SvgIcons.Calendar"
-                      HasActiveChild="@(IsActive("/alquileres") || IsActive("/alquileres/equipos") || IsActive("/alquileres/clientes"))">
+                      HasActiveChild="@(IsActive("/alquileres") || IsActive("/alquileres/equipos") || IsActive("/alquileres/clientes") || IsActive("/alquileres/reservas"))">
                 <NavItem Href="/alquileres" Label="Inicio" Icon="@SvgIcons.Dashboard"
                          IsActive="@IsActive("/alquileres")" OnClick="@(() => NavigateTo("/alquileres"))" />
+                <NavItem Href="/alquileres/reservas" Label="Reservas" Icon="@SvgIcons.Calendar"
+                         IsActive="@IsActive("/alquileres/reservas")" OnClick="@(() => NavigateTo("/alquileres/reservas"))" />
                 <NavItem Href="/alquileres/equipos" Label="Equipos" Icon="@SvgIcons.Package"
                          IsActive="@IsActive("/alquileres/equipos")" OnClick="@(() => NavigateTo("/alquileres/equipos"))" />
                 <NavItem Href="/alquileres/clientes" Label="Clientes" Icon="@SvgIcons.Users"
@@ -535,6 +537,7 @@
         { "alquileres", "alquileres" },
         { "alquileres/equipos", "alquileres" },
         { "alquileres/clientes", "alquileres" },
+        { "alquileres/reservas", "alquileres" },
         { "perfil", "" } // perfil always allowed
     };
 

@@ -17,13 +17,31 @@ public class AlqCliente
     public string? Empresa { get; set; }
 
     [MaxLength(50)]
+    public string? DniCuit { get; set; }
+
+    [MaxLength(50)]
     public string? Telefono { get; set; }
+
+    [MaxLength(50)]
+    public string? Telefono2 { get; set; }
 
     [MaxLength(200)]
     public string? Email { get; set; }
 
     [MaxLength(300)]
     public string? DireccionDefault { get; set; }
+
+    [MaxLength(20)]
+    public string? Piso { get; set; }
+
+    [MaxLength(20)]
+    public string? Depto { get; set; }
+
+    [MaxLength(100)]
+    public string? Barrio { get; set; }
+
+    [MaxLength(200)]
+    public string? EntreCalles { get; set; }
 
     [MaxLength(1000)]
     public string? Notas { get; set; }

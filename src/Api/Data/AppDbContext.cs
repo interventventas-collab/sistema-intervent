@@ -43,6 +43,8 @@ public class AppDbContext : DbContext
     // Modulo Alquileres (independiente)
     public DbSet<AlqEquipo> AlqEquipos => Set<AlqEquipo>();
     public DbSet<AlqCliente> AlqClientes => Set<AlqCliente>();
+    public DbSet<AlqReserva> AlqReservas => Set<AlqReserva>();
+    public DbSet<AlqReservaItem> AlqReservaItems => Set<AlqReservaItem>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

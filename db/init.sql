@@ -1543,3 +1543,46 @@ BEGIN
     INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'alquileres');
 END
 GO
+
+-- Alq_Clientes: campos adicionales (DNI/CUIT, telefono 2, piso, depto, barrio, entre calles)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'DniCuit' AND Object_ID = Object_ID('Alq_Clientes'))
+    ALTER TABLE Alq_Clientes ADD DniCuit NVARCHAR(50) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'Telefono2' AND Object_ID = Object_ID('Alq_Clientes'))
+    ALTER TABLE Alq_Clientes ADD Telefono2 NVARCHAR(50) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'Piso' AND Object_ID = Object_ID('Alq_Clientes'))
+    ALTER TABLE Alq_Clientes ADD Piso NVARCHAR(20) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'Depto' AND Object_ID = Object_ID('Alq_Clientes'))
+    ALTER TABLE Alq_Clientes ADD Depto NVARCHAR(20) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'Barrio' AND Object_ID = Object_ID('Alq_Clientes'))
+    ALTER TABLE Alq_Clientes ADD Barrio NVARCHAR(100) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'EntreCalles' AND Object_ID = Object_ID('Alq_Clientes'))
+    ALTER TABLE Alq_Clientes ADD EntreCalles NVARCHAR(200) NULL;
+GO
+
+-- Alq_Reservas: horarios del evento + descuento
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'HoraInicio' AND Object_ID = Object_ID('Alq_Reservas'))
+    ALTER TABLE Alq_Reservas ADD HoraInicio NVARCHAR(8) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'HoraFin' AND Object_ID = Object_ID('Alq_Reservas'))
+    ALTER TABLE Alq_Reservas ADD HoraFin NVARCHAR(8) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'Descuento' AND Object_ID = Object_ID('Alq_Reservas'))
+    ALTER TABLE Alq_Reservas ADD Descuento DECIMAL(18,2) NOT NULL CONSTRAINT DF_AlqReservas_Descuento DEFAULT 0;
+GO
+
+-- Condiciones de servicio (texto editable, va al pie del PDF de la reserva)
+IF NOT EXISTS (SELECT * FROM AppSettings WHERE [Key] = 'alq.condiciones')
+BEGIN
+    INSERT INTO AppSettings ([Key], Value, UpdatedAt)
+    VALUES ('alq.condiciones',
+'Las entregas y retiros son en puerta / planta baja / ascensor. No subimos escaleras. El servicio NO incluye acomodamiento.
+
+Su reserva es confirmada una vez que le enviamos el archivo PDF. Es FUNDAMENTAL revisar que la fecha, cantidades e importe sean correctos.',
+        GETDATE());
+END
+GO

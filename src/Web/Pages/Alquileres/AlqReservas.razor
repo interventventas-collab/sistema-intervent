@@ -1,0 +1,674 @@
+@page "/alquileres/reservas"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <h3>
+            📅 Reservas de Alquileres
+            <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;">(@(reservas?.Count ?? 0))</span>
+        </h3>
+        <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+            <select class="form-input" style="max-width: 180px; font-size: 0.85rem;" @bind="filtroEstado" @bind:after="Load">
+                <option value="">Todos los estados</option>
+                <option value="reservado">Reservado</option>
+                <option value="confirmado">Confirmado</option>
+                <option value="entregado">Entregado</option>
+                <option value="finalizado">Finalizado</option>
+                <option value="cancelado">Cancelado</option>
+            </select>
+            <button class="btn btn-primary" @onclick="ShowCreate">+ Nueva Reserva</button>
+        </div>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        @if (isLoading)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">Cargando reservas...</p>
+        }
+        else if (reservas is null || reservas.Count == 0)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">
+                No hay reservas para mostrar. Tocá <strong>"+ Nueva Reserva"</strong> para crear la primera.
+            </p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Número</th>
+                            <th>Cliente</th>
+                            <th>Entrega</th>
+                            <th>Retiro</th>
+                            <th>Hora</th>
+                            <th style="text-align: right;">Total</th>
+                            <th style="text-align: right;">Seña</th>
+                            <th style="text-align: right;">Saldo</th>
+                            <th>Estado</th>
+                            <th style="width: 130px;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in reservas)
+                        {
+                            var saldo = r.MontoTotal - r.Sena;
+                            <tr style="cursor: pointer;" @onclick="() => ShowEdit(r)">
+                                <td style="font-family: monospace; font-weight: 600;">@r.Numero</td>
+                                <td>
+                                    <strong>@r.ClienteNombre</strong>
+                                    @if (!string.IsNullOrEmpty(r.ClienteTelefono))
+                                    {
+                                        <div style="font-size: 0.78rem; color: #6b7280;">@r.ClienteTelefono</div>
+                                    }
+                                </td>
+                                <td style="font-size: 0.85rem;">@r.FechaEntrega.ToString("dd/MM/yyyy")</td>
+                                <td style="font-size: 0.85rem;">@r.FechaRetiro.ToString("dd/MM/yyyy")</td>
+                                <td style="font-size: 0.85rem; color: #6b7280;">@FormatHorario(r)</td>
+                                <td style="text-align: right; font-weight: 700;">$@FormatMoney(r.MontoTotal)</td>
+                                <td style="text-align: right; color: #059669;">$@FormatMoney(r.Sena)</td>
+                                <td style="text-align: right; color: @(saldo > 0 ? "#dc2626" : "#059669"); font-weight: 600;">$@FormatMoney(saldo)</td>
+                                <td>@EstadoBadge(r.Estado)</td>
+                                <td class="actions-cell" @onclick:stopPropagation="true">
+                                    <button class="btn-icon btn-edit" @onclick="() => ShowEdit(r)" title="Editar / Ver">@SvgIcons.Edit</button>
+                                    <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(r)" title="Eliminar">@SvgIcons.AlertCircle</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@if (showForm)
+{
+    <div class="modal-overlay" @onclick="CloseForm">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 1100px; max-height: 92vh; display: flex; flex-direction: column;">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3>@(isEditing ? $"Editar Reserva {editingNumero}" : "Nueva Reserva")</h3>
+                <button class="btn-close" @onclick="CloseForm">&times;</button>
+            </div>
+            <div class="modal-body" style="overflow-y: auto;">
+                @if (!string.IsNullOrEmpty(formError))
+                {
+                    <div class="form-error">@formError</div>
+                }
+
+                @* ═══════════════ 1. CLIENTE Y FECHAS ═══════════════ *@
+                <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem; margin-bottom: 0.75rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                        <span style="background: #3b82f6; color: white; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.78rem;">1</span>
+                        <strong>Cliente y fechas del evento</strong>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group" style="flex: 2;">
+                            <label class="form-label">Cliente *</label>
+                            <div style="display: flex; gap: 0.4rem;">
+                                <select class="form-input" @bind="formClienteId" @bind:after="OnClienteChanged" style="flex: 1;">
+                                    <option value="0">— Elegí un cliente —</option>
+                                    @foreach (var c in clientes ?? new())
+                                    {
+                                        <option value="@c.Id">@c.Nombre @(string.IsNullOrEmpty(c.Empresa) ? "" : $"({c.Empresa})")</option>
+                                    }
+                                </select>
+                                <button class="btn btn-secondary" type="button" @onclick="() => showQuickClient = true" title="Crear cliente nuevo en el momento">+ Nuevo</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Fecha entrega *</label>
+                            <input class="form-input" type="date" @bind="formFechaEntrega" @bind:after="OnFechasChanged" />
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Fecha retiro *</label>
+                            <input class="form-input" type="date" @bind="formFechaRetiro" @bind:after="OnFechasChanged" />
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Horario evento</label>
+                            <div style="display: flex; gap: 0.3rem; align-items: center;">
+                                <input class="form-input" type="text" placeholder="HH:mm" maxlength="5" @bind="formHoraInicio" style="flex: 1;" />
+                                <span style="color: #6b7280;">a</span>
+                                <input class="form-input" type="text" placeholder="HH:mm" maxlength="5" @bind="formHoraFin" style="flex: 1;" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-top: 0.5rem;">
+                        <label class="form-label">Dirección del evento</label>
+                        <input class="form-input" @bind="formDireccionEvento" placeholder="Se autocompleta con la del cliente. Editala si el evento es en otra dirección." />
+                    </div>
+                </div>
+
+                @* ═══════════════ 2. EQUIPOS ═══════════════ *@
+                <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem; margin-bottom: 0.75rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                        <span style="background: #3b82f6; color: white; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.78rem;">2</span>
+                        <strong>Equipos a alquilar</strong>
+                    </div>
+
+                    <div class="form-row" style="align-items: end;">
+                        <div class="form-group" style="flex: 0 0 90px;">
+                            <label class="form-label" style="font-size: 0.75rem;">Cantidad</label>
+                            <input class="form-input" type="number" min="1" @bind="addCantidad" style="text-align: right;" />
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label" style="font-size: 0.75rem;">Seleccioná un equipo</label>
+                            <select class="form-input" @bind="addEquipoId">
+                                <option value="0">— Tipeá o elegí un equipo —</option>
+                                @foreach (var e in equipos ?? new())
+                                {
+                                    var disp = DisponibleDe(e.Id);
+                                    <option value="@e.Id">
+                                        @e.Sku · @e.Nombre — $@FormatMoney(e.PrecioDiario)/día @(disp.HasValue ? $"· disp: {disp.Value}" : "")
+                                    </option>
+                                }
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex: 0 0 110px;">
+                            <button class="btn btn-primary" type="button" @onclick="AddItem" style="width: 100%;">+ Agregar</button>
+                        </div>
+                    </div>
+
+                    @if (formItems.Count == 0)
+                    {
+                        <div style="padding: 1rem; text-align: center; color: #9ca3af; font-size: 0.9rem;">
+                            Sin equipos todavía. Elegí uno arriba y tocá <strong>+ Agregar</strong>.
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="table-responsive" style="margin-top: 0.6rem;">
+                            <table class="data-table" style="font-size: 0.85rem;">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 80px; text-align: right;">Cant.</th>
+                                        <th style="width: 110px;">SKU</th>
+                                        <th>Equipo</th>
+                                        <th style="width: 130px; text-align: right;">P. Unit.</th>
+                                        <th style="width: 130px; text-align: right;">Subtotal</th>
+                                        <th style="width: 50px;"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @for (int idx = 0; idx < formItems.Count; idx++)
+                                    {
+                                        var i = idx;
+                                        var it = formItems[i];
+                                        var eq = equipos?.FirstOrDefault(x => x.Id == it.EquipoId);
+                                        var subtotal = it.Cantidad * it.PrecioUnitario;
+                                        var disp = DisponibleDe(it.EquipoId);
+                                        var excedido = disp.HasValue && it.Cantidad > disp.Value;
+                                        <tr style="@(excedido ? "background: #fef2f2;" : "")">
+                                            <td>
+                                                <input class="form-input" type="number" min="1" @bind="it.Cantidad" style="text-align: right; padding: 0.25rem;" />
+                                            </td>
+                                            <td style="font-family: monospace;">@(eq?.Sku ?? "—")</td>
+                                            <td>
+                                                <strong>@(eq?.Nombre ?? "—")</strong>
+                                                @if (excedido)
+                                                {
+                                                    <div style="color: #dc2626; font-size: 0.72rem; font-weight: 600;">⚠ Excede disponible (@disp.Value)</div>
+                                                }
+                                            </td>
+                                            <td>
+                                                <input class="form-input" type="number" step="0.01" min="0" @bind="it.PrecioUnitario" style="text-align: right; padding: 0.25rem;" />
+                                            </td>
+                                            <td style="text-align: right; font-weight: 700;">$@FormatMoney(subtotal)</td>
+                                            <td>
+                                                <button class="btn-icon btn-delete" type="button" @onclick="() => RemoveItem(i)" title="Quitar">×</button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+
+                @* ═══════════════ 3. TOTALES Y ESTADO ═══════════════ *@
+                <div class="form-row" style="align-items: stretch;">
+                    <div style="flex: 1.4;">
+                        <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem; height: 100%;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                                <span style="background: #3b82f6; color: white; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.78rem;">3</span>
+                                <strong>Estado y observaciones</strong>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Estado de la reserva</label>
+                                <select class="form-input" @bind="formEstado">
+                                    <option value="reservado">📋 Reservado</option>
+                                    <option value="confirmado">✅ Confirmado</option>
+                                    <option value="entregado">🚚 Entregado</option>
+                                    <option value="finalizado">🏁 Finalizado</option>
+                                    <option value="cancelado">❌ Cancelado</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Observaciones</label>
+                                <textarea class="form-input" rows="3" @bind="formNotas" placeholder="Notas internas (opcional)"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="flex: 1;">
+                        <div class="venta-totals-box" style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem;">
+                            <div class="venta-totals-row">
+                                <span>Subtotal:</span>
+                                <strong>$@FormatMoney(Subtotal)</strong>
+                            </div>
+                            <div class="venta-totals-row">
+                                <span>Descuento ($):</span>
+                                <input class="form-input" type="number" step="0.01" min="0" @bind="formDescuento"
+                                       style="text-align: right; max-width: 130px; font-weight: 700;" />
+                            </div>
+                            <hr style="margin: 0.5rem 0; border: none; border-top: 1px solid #d1d5db;" />
+                            <div class="venta-totals-row" style="font-size: 1.15rem; font-weight: 800; color: #059669;">
+                                <span>TOTAL:</span>
+                                <strong>$@FormatMoney(Total)</strong>
+                            </div>
+                            <hr style="margin: 0.5rem 0; border: none; border-top: 1px dashed #d1d5db;" />
+                            <div class="venta-totals-row">
+                                <span>Seña pagada:</span>
+                                <input class="form-input" type="number" step="0.01" min="0" @bind="formSena"
+                                       style="text-align: right; max-width: 130px; font-weight: 700; color: #059669;" />
+                            </div>
+                            <div class="venta-totals-row" style="font-size: 1rem; font-weight: 700; color: @(Saldo > 0 ? "#dc2626" : "#059669");">
+                                <span>Saldo pendiente:</span>
+                                <span>$@FormatMoney(Saldo)</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseForm" disabled="@isSaving">Cancelar</button>
+                <button class="btn btn-primary" @onclick="Save" disabled="@(isSaving || formItems.Count == 0)">
+                    @(isSaving ? "Guardando..." : (isEditing ? "Guardar cambios" : "Crear reserva"))
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showQuickClient)
+{
+    <div class="modal-overlay" @onclick="() => showQuickClient = false">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h4 style="margin: 0;">Nuevo cliente rápido</h4>
+                <button class="btn-close" @onclick="() => showQuickClient = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.85rem; color: #6b7280; margin: 0 0 0.5rem;">
+                    Cargá lo mínimo. Después podés completar el resto en <strong>Clientes</strong>.
+                </p>
+                <div class="form-group">
+                    <label class="form-label">Nombre y apellido *</label>
+                    <input class="form-input" @bind="quickNombre" autofocus />
+                </div>
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">DNI/CUIT</label>
+                        <input class="form-input" @bind="quickDniCuit" />
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Teléfono</label>
+                        <input class="form-input" @bind="quickTelefono" />
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Dirección</label>
+                    <input class="form-input" @bind="quickDireccion" />
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showQuickClient = false">Cancelar</button>
+                <button class="btn btn-primary" @onclick="CreateQuickClient">Crear y elegir</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showDeleteConfirm && reservaToDelete is not null)
+{
+    <div class="modal-overlay" @onclick="() => showDeleteConfirm = false">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: #dc3545; color: white;">
+                <h4 style="margin: 0;">Eliminar reserva</h4>
+                <button class="btn-close" @onclick="() => showDeleteConfirm = false" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Estas seguro que queres eliminar la reserva <strong>@reservaToDelete.Numero</strong> de <strong>@reservaToDelete.ClienteNombre</strong>?</p>
+                <p class="text-muted" style="font-size: 0.85rem;">Esta accion no se puede deshacer. Si la reserva fue cancelada o nunca se concretó, conviene mejor cambiar su estado a "Cancelado" para mantener el historial.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showDeleteConfirm = false">Cancelar</button>
+                <button class="btn btn-danger" @onclick="Delete">Eliminar definitivamente</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<AlqReservaDto>? reservas;
+    private List<AlqClienteDto>? clientes;
+    private List<AlqEquipoDto>? equipos;
+    private List<AlqDisponibilidadDto>? disponibilidad;
+    private bool isLoading = true;
+    private string filtroEstado = "";
+
+    // Form state
+    private bool showForm;
+    private bool isEditing;
+    private bool isSaving;
+    private string? formError;
+    private int? editingId;
+    private string editingNumero = "";
+    private int formClienteId;
+    private DateTime formFechaEntrega = DateTime.Today;
+    private DateTime formFechaRetiro = DateTime.Today.AddDays(1);
+    private string formHoraInicio = "";
+    private string formHoraFin = "";
+    private string formDireccionEvento = "";
+    private decimal formDescuento;
+    private decimal formSena;
+    private string formEstado = "reservado";
+    private string formNotas = "";
+    private List<CreateAlqReservaItemRequest> formItems = new();
+
+    // Add item state
+    private int addCantidad = 1;
+    private int addEquipoId;
+
+    // Quick client
+    private bool showQuickClient;
+    private string quickNombre = "";
+    private string quickDniCuit = "";
+    private string quickTelefono = "";
+    private string quickDireccion = "";
+
+    // Delete
+    private bool showDeleteConfirm;
+    private AlqReservaDto? reservaToDelete;
+
+    private decimal Subtotal => formItems.Sum(i => i.Cantidad * i.PrecioUnitario);
+    private decimal Total => Math.Max(0m, Subtotal - Math.Max(0m, formDescuento));
+    private decimal Saldo => Math.Max(0m, Total - Math.Max(0m, formSena));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Load();
+        await LoadCatalogos();
+    }
+
+    private async Task Load()
+    {
+        isLoading = true;
+        try { reservas = await Api.GetAlqReservasAsync(string.IsNullOrEmpty(filtroEstado) ? null : filtroEstado) ?? new(); }
+        catch { ToastService.Error("Error al cargar reservas"); reservas = new(); }
+        isLoading = false;
+    }
+
+    private async Task LoadCatalogos()
+    {
+        try
+        {
+            clientes = await Api.GetAlqClientesAsync() ?? new();
+            equipos = await Api.GetAlqEquiposAsync() ?? new();
+        }
+        catch { clientes = new(); equipos = new(); }
+    }
+
+    private async Task RefreshDisponibilidad()
+    {
+        if (formFechaEntrega == default || formFechaRetiro == default || formFechaRetiro < formFechaEntrega)
+        {
+            disponibilidad = null;
+            return;
+        }
+        try
+        {
+            disponibilidad = await Api.GetAlqDisponibilidadAsync(formFechaEntrega, formFechaRetiro, editingId) ?? new();
+        }
+        catch { disponibilidad = null; }
+    }
+
+    private int? DisponibleDe(int equipoId)
+    {
+        if (disponibilidad is null) return null;
+        var d = disponibilidad.FirstOrDefault(x => x.EquipoId == equipoId);
+        return d?.Disponible;
+    }
+
+    private async Task OnFechasChanged()
+    {
+        await RefreshDisponibilidad();
+    }
+
+    private void OnClienteChanged()
+    {
+        if (formClienteId > 0 && string.IsNullOrWhiteSpace(formDireccionEvento))
+        {
+            var c = clientes?.FirstOrDefault(x => x.Id == formClienteId);
+            if (c is not null)
+            {
+                formDireccionEvento = ArmarDireccion(c);
+            }
+        }
+    }
+
+    private static string ArmarDireccion(AlqClienteDto c)
+    {
+        var partes = new List<string>();
+        if (!string.IsNullOrWhiteSpace(c.DireccionDefault)) partes.Add(c.DireccionDefault);
+        var pisoDepto = "";
+        if (!string.IsNullOrWhiteSpace(c.Piso)) pisoDepto += $"P. {c.Piso}";
+        if (!string.IsNullOrWhiteSpace(c.Depto)) pisoDepto += (pisoDepto.Length > 0 ? " " : "") + $"Depto {c.Depto}";
+        if (pisoDepto.Length > 0) partes.Add(pisoDepto);
+        if (!string.IsNullOrWhiteSpace(c.Barrio)) partes.Add(c.Barrio);
+        if (!string.IsNullOrWhiteSpace(c.EntreCalles)) partes.Add($"e/ {c.EntreCalles}");
+        return string.Join(" · ", partes);
+    }
+
+    private async Task ShowCreate()
+    {
+        ResetForm();
+        isEditing = false; editingId = null; editingNumero = "";
+        await RefreshDisponibilidad();
+        showForm = true;
+    }
+
+    private async Task ShowEdit(AlqReservaDto r)
+    {
+        ResetForm();
+        isEditing = true; editingId = r.Id; editingNumero = r.Numero;
+        formClienteId = r.ClienteId;
+        formFechaEntrega = r.FechaEntrega.Date;
+        formFechaRetiro = r.FechaRetiro.Date;
+        formHoraInicio = r.HoraInicio ?? "";
+        formHoraFin = r.HoraFin ?? "";
+        formDireccionEvento = r.DireccionEvento ?? "";
+        formDescuento = r.Descuento;
+        formSena = r.Sena;
+        formEstado = r.Estado;
+        formNotas = r.Notas ?? "";
+        formItems = r.Items.Select(i => new CreateAlqReservaItemRequest
+        {
+            EquipoId = i.EquipoId,
+            Cantidad = i.Cantidad,
+            PrecioUnitario = i.PrecioUnitario
+        }).ToList();
+        await RefreshDisponibilidad();
+        showForm = true;
+    }
+
+    private void ResetForm()
+    {
+        formClienteId = 0;
+        formFechaEntrega = DateTime.Today;
+        formFechaRetiro = DateTime.Today.AddDays(1);
+        formHoraInicio = ""; formHoraFin = "";
+        formDireccionEvento = "";
+        formDescuento = 0m; formSena = 0m;
+        formEstado = "reservado";
+        formNotas = "";
+        formItems = new();
+        addCantidad = 1; addEquipoId = 0;
+        formError = null;
+    }
+
+    private void CloseForm() { showForm = false; formError = null; }
+
+    private void AddItem()
+    {
+        if (addEquipoId <= 0 || addCantidad <= 0) return;
+        var eq = equipos?.FirstOrDefault(x => x.Id == addEquipoId);
+        if (eq is null) return;
+
+        // Si ya existe el item, sumar cantidad
+        var existing = formItems.FirstOrDefault(i => i.EquipoId == addEquipoId);
+        if (existing is not null)
+        {
+            existing.Cantidad += addCantidad;
+        }
+        else
+        {
+            formItems.Add(new CreateAlqReservaItemRequest
+            {
+                EquipoId = addEquipoId,
+                Cantidad = addCantidad,
+                PrecioUnitario = eq.PrecioDiario
+            });
+        }
+        addCantidad = 1; addEquipoId = 0;
+    }
+
+    private void RemoveItem(int idx)
+    {
+        if (idx >= 0 && idx < formItems.Count) formItems.RemoveAt(idx);
+    }
+
+    private async Task CreateQuickClient()
+    {
+        if (string.IsNullOrWhiteSpace(quickNombre)) { ToastService.Error("Falta el nombre"); return; }
+        try
+        {
+            var nuevo = await Api.CreateAlqClienteAsync(new CreateAlqClienteRequest
+            {
+                Nombre = quickNombre, DniCuit = quickDniCuit, Telefono = quickTelefono,
+                DireccionDefault = quickDireccion
+            });
+            if (nuevo is null) { ToastService.Error("No se pudo crear"); return; }
+            clientes = await Api.GetAlqClientesAsync() ?? new();
+            formClienteId = nuevo.Id;
+            OnClienteChanged();
+            quickNombre = ""; quickDniCuit = ""; quickTelefono = ""; quickDireccion = "";
+            showQuickClient = false;
+            ToastService.Success("Cliente creado y seleccionado");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task Save()
+    {
+        formError = null;
+        if (formClienteId <= 0) { formError = "Tenés que elegir un cliente"; return; }
+        if (formFechaRetiro < formFechaEntrega) { formError = "La fecha de retiro no puede ser anterior a la de entrega"; return; }
+        if (formItems.Count == 0) { formError = "Agregá al menos un equipo"; return; }
+        if (formItems.Any(i => i.Cantidad <= 0)) { formError = "Las cantidades deben ser mayores a 0"; return; }
+
+        isSaving = true;
+        try
+        {
+            if (isEditing && editingId.HasValue)
+            {
+                var updated = await Api.UpdateAlqReservaAsync(editingId.Value, new UpdateAlqReservaRequest
+                {
+                    ClienteId = formClienteId,
+                    FechaEntrega = formFechaEntrega,
+                    FechaRetiro = formFechaRetiro,
+                    HoraInicio = formHoraInicio,
+                    HoraFin = formHoraFin,
+                    DireccionEvento = formDireccionEvento,
+                    Descuento = formDescuento,
+                    Sena = formSena,
+                    Estado = formEstado,
+                    Notas = formNotas,
+                    Items = formItems
+                });
+                if (updated is null) { formError = "No se pudo actualizar"; return; }
+                ToastService.Success($"Reserva {updated.Numero} actualizada");
+            }
+            else
+            {
+                var created = await Api.CreateAlqReservaAsync(new CreateAlqReservaRequest
+                {
+                    ClienteId = formClienteId,
+                    FechaEntrega = formFechaEntrega,
+                    FechaRetiro = formFechaRetiro,
+                    HoraInicio = formHoraInicio,
+                    HoraFin = formHoraFin,
+                    DireccionEvento = formDireccionEvento,
+                    Descuento = formDescuento,
+                    Sena = formSena,
+                    Estado = formEstado,
+                    Notas = formNotas,
+                    Items = formItems
+                });
+                if (created is null) { formError = "No se pudo crear"; return; }
+                ToastService.Success($"Reserva {created.Numero} creada");
+            }
+            showForm = false;
+            await Load();
+        }
+        catch (Exception ex) { formError = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private void ConfirmDelete(AlqReservaDto r) { reservaToDelete = r; showDeleteConfirm = true; }
+
+    private async Task Delete()
+    {
+        if (reservaToDelete is null) return;
+        try
+        {
+            var ok = await Api.DeleteAlqReservaAsync(reservaToDelete.Id);
+            if (ok) { ToastService.Success("Reserva eliminada"); await Load(); }
+            else { ToastService.Error("No se pudo eliminar"); }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { showDeleteConfirm = false; reservaToDelete = null; }
+    }
+
+    // --- Helpers de formato ---
+    private static string FormatMoney(decimal v)
+        => v.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+
+    private static string FormatHorario(AlqReservaDto r)
+    {
+        if (string.IsNullOrEmpty(r.HoraInicio) && string.IsNullOrEmpty(r.HoraFin)) return "—";
+        var h1 = r.HoraInicio ?? "";
+        var h2 = r.HoraFin ?? "";
+        if (!string.IsNullOrEmpty(h1) && !string.IsNullOrEmpty(h2)) return $"{h1} a {h2}";
+        return !string.IsNullOrEmpty(h1) ? $"desde {h1}" : $"hasta {h2}";
+    }
+
+    private static MarkupString EstadoBadge(string estado)
+    {
+        var (label, bg, fg) = estado switch
+        {
+            "reservado" => ("📋 Reservado", "#dbeafe", "#1e40af"),
+            "confirmado" => ("✅ Confirmado", "#dcfce7", "#166534"),
+            "entregado" => ("🚚 Entregado", "#fef3c7", "#92400e"),
+            "finalizado" => ("🏁 Finalizado", "#e5e7eb", "#374151"),
+            "cancelado" => ("❌ Cancelado", "#fee2e2", "#991b1b"),
+            _ => (estado, "#f3f4f6", "#6b7280")
+        };
+        return (MarkupString)$"<span style=\"display:inline-block; padding:0.15rem 0.55rem; background:{bg}; color:{fg}; border-radius:999px; font-size:0.75rem; font-weight:600;\">{label}</span>";
+    }
+}

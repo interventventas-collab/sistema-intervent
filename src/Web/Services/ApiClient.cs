@@ -220,6 +220,33 @@ public class ApiClient
     public async Task<bool> DeleteAlqClienteAsync(int id)
         => await DeleteAsync($"/api/alquileres/clientes/{id}");
 
+    // --- Alquileres: Reservas ---
+    public async Task<List<AlqReservaDto>?> GetAlqReservasAsync(string? estado = null)
+    {
+        var url = "/api/alquileres/reservas";
+        if (!string.IsNullOrWhiteSpace(estado)) url += $"?estado={Uri.EscapeDataString(estado)}";
+        return await GetAsync<List<AlqReservaDto>>(url);
+    }
+
+    public async Task<AlqReservaDto?> GetAlqReservaAsync(int id)
+        => await GetAsync<AlqReservaDto>($"/api/alquileres/reservas/{id}");
+
+    public async Task<AlqReservaDto?> CreateAlqReservaAsync(CreateAlqReservaRequest request)
+        => await PostAsync<AlqReservaDto>("/api/alquileres/reservas", request);
+
+    public async Task<AlqReservaDto?> UpdateAlqReservaAsync(int id, UpdateAlqReservaRequest request)
+        => await PutAsync<AlqReservaDto>($"/api/alquileres/reservas/{id}", request);
+
+    public async Task<bool> DeleteAlqReservaAsync(int id)
+        => await DeleteAsync($"/api/alquileres/reservas/{id}");
+
+    public async Task<List<AlqDisponibilidadDto>?> GetAlqDisponibilidadAsync(DateTime fechaEntrega, DateTime fechaRetiro, int? excluirReservaId = null)
+    {
+        var url = $"/api/alquileres/reservas/disponibilidad?fechaEntrega={fechaEntrega:yyyy-MM-dd}&fechaRetiro={fechaRetiro:yyyy-MM-dd}";
+        if (excluirReservaId.HasValue) url += $"&excluirReservaId={excluirReservaId.Value}";
+        return await GetAsync<List<AlqDisponibilidadDto>>(url);
+    }
+
     // --- Brands ---
     public async Task<List<BrandDto>?> GetBrandsAsync()
         => await GetAsync<List<BrandDto>>("/api/brands");
