@@ -1,0 +1,247 @@
+@page "/alquileres/clientes"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3>
+            👥 Clientes de Alquileres
+            <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;">(@(clientes?.Count ?? 0))</span>
+        </h3>
+        <button class="btn btn-primary" @onclick="ShowCreate">+ Nuevo Cliente</button>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        @if (isLoading)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">Cargando clientes...</p>
+        }
+        else if (clientes is null || clientes.Count == 0)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">
+                Todavia no cargaste ningun cliente. Tocá <strong>"+ Nuevo Cliente"</strong> para empezar.
+            </p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>Empresa</th>
+                            <th>Teléfono</th>
+                            <th>Email</th>
+                            <th>Dirección</th>
+                            <th>Estado</th>
+                            <th style="width: 130px;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var c in clientes)
+                        {
+                            <tr>
+                                <td><strong>@c.Nombre</strong></td>
+                                <td style="color: #374151;">@(c.Empresa ?? "—")</td>
+                                <td>@(c.Telefono ?? "—")</td>
+                                <td style="font-size: 0.85rem;">@(c.Email ?? "—")</td>
+                                <td style="color: #6b7280; font-size: 0.85rem;">@(c.DireccionDefault ?? "—")</td>
+                                <td>
+                                    <span class="status-badge @(c.IsActive ? "status-active" : "status-inactive")">
+                                        @(c.IsActive ? "Activo" : "Inactivo")
+                                    </span>
+                                </td>
+                                <td class="actions-cell">
+                                    <button class="btn-icon btn-edit" @onclick="() => ShowEdit(c)" title="Editar">@SvgIcons.Edit</button>
+                                    <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(c)" title="Eliminar">@SvgIcons.AlertCircle</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@if (showForm)
+{
+    <div class="modal-overlay" @onclick="CloseForm">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3>@(isEditing ? "Editar Cliente" : "Nuevo Cliente")</h3>
+                <button class="btn-close" @onclick="CloseForm">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(formError))
+                {
+                    <div class="form-error">@formError</div>
+                }
+                <div class="form-row">
+                    <div class="form-group" style="flex: 2;">
+                        <label class="form-label">Nombre *</label>
+                        <input class="form-input" @bind="formNombre" placeholder="Ej: Juan Pérez" autofocus />
+                    </div>
+                    <div class="form-group" style="flex: 2;">
+                        <label class="form-label">Empresa</label>
+                        <input class="form-input" @bind="formEmpresa" placeholder="Razón social (opcional)" />
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Teléfono</label>
+                        <input class="form-input" @bind="formTelefono" placeholder="Ej: 11 1234-5678" />
+                    </div>
+                    <div class="form-group" style="flex: 2;">
+                        <label class="form-label">Email</label>
+                        <input class="form-input" @bind="formEmail" type="email" placeholder="email@ejemplo.com" />
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Dirección por defecto</label>
+                    <input class="form-input" @bind="formDireccion" placeholder="La dirección donde habitualmente entregás (después podés sobreescribirla en cada reserva)" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Notas</label>
+                    <textarea class="form-input" @bind="formNotas" rows="2" placeholder="Notas internas sobre el cliente (opcional)"></textarea>
+                </div>
+                @if (isEditing)
+                {
+                    <div class="form-group">
+                        <label class="form-label">Estado</label>
+                        <select class="form-input" @bind="formIsActive">
+                            <option value="@true">Activo</option>
+                            <option value="@false">Inactivo</option>
+                        </select>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseForm" disabled="@isSaving">Cancelar</button>
+                <button class="btn btn-primary" @onclick="Save" disabled="@isSaving">
+                    @(isSaving ? "Guardando..." : (isEditing ? "Guardar" : "Crear"))
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showDeleteConfirm && clienteToDelete is not null)
+{
+    <div class="modal-overlay" @onclick="() => showDeleteConfirm = false">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: #dc3545; color: white;">
+                <h4 style="margin: 0;">Eliminar cliente</h4>
+                <button class="btn-close" @onclick="() => showDeleteConfirm = false" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Estas seguro que queres eliminar a <strong>@clienteToDelete.Nombre</strong>?</p>
+                <p class="text-muted" style="font-size: 0.85rem;">Esta accion no se puede deshacer.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showDeleteConfirm = false">Cancelar</button>
+                <button class="btn btn-danger" @onclick="Delete">Eliminar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<AlqClienteDto>? clientes;
+    private bool isLoading = true;
+    private bool showForm;
+    private bool isEditing;
+    private bool isSaving;
+    private string? formError;
+    private int? editingId;
+    private string formNombre = "";
+    private string formEmpresa = "";
+    private string formTelefono = "";
+    private string formEmail = "";
+    private string formDireccion = "";
+    private string formNotas = "";
+    private bool formIsActive = true;
+    private bool showDeleteConfirm;
+    private AlqClienteDto? clienteToDelete;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        isLoading = true;
+        try { clientes = await Api.GetAlqClientesAsync() ?? new(); }
+        catch { ToastService.Error("Error al cargar los clientes"); clientes = new(); }
+        isLoading = false;
+    }
+
+    private void ShowCreate()
+    {
+        isEditing = false; editingId = null;
+        formNombre = ""; formEmpresa = ""; formTelefono = ""; formEmail = "";
+        formDireccion = ""; formNotas = "";
+        formIsActive = true;
+        formError = null; showForm = true;
+    }
+
+    private void ShowEdit(AlqClienteDto c)
+    {
+        isEditing = true; editingId = c.Id;
+        formNombre = c.Nombre; formEmpresa = c.Empresa ?? "";
+        formTelefono = c.Telefono ?? ""; formEmail = c.Email ?? "";
+        formDireccion = c.DireccionDefault ?? ""; formNotas = c.Notas ?? "";
+        formIsActive = c.IsActive;
+        formError = null; showForm = true;
+    }
+
+    private void CloseForm() { showForm = false; formError = null; }
+
+    private async Task Save()
+    {
+        formError = null;
+        if (string.IsNullOrWhiteSpace(formNombre)) { formError = "El nombre es obligatorio"; return; }
+        isSaving = true;
+        try
+        {
+            if (isEditing && editingId.HasValue)
+            {
+                var updated = await Api.UpdateAlqClienteAsync(editingId.Value, new UpdateAlqClienteRequest
+                {
+                    Nombre = formNombre, Empresa = formEmpresa, Telefono = formTelefono,
+                    Email = formEmail, DireccionDefault = formDireccion, Notas = formNotas,
+                    IsActive = formIsActive
+                });
+                if (updated is null) { formError = "No se pudo actualizar"; return; }
+                ToastService.Success("Cliente actualizado");
+            }
+            else
+            {
+                var created = await Api.CreateAlqClienteAsync(new CreateAlqClienteRequest
+                {
+                    Nombre = formNombre, Empresa = formEmpresa, Telefono = formTelefono,
+                    Email = formEmail, DireccionDefault = formDireccion, Notas = formNotas
+                });
+                if (created is null) { formError = "No se pudo crear"; return; }
+                ToastService.Success("Cliente creado");
+            }
+            showForm = false;
+            await Load();
+        }
+        catch (Exception ex) { formError = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private void ConfirmDelete(AlqClienteDto c) { clienteToDelete = c; showDeleteConfirm = true; }
+
+    private async Task Delete()
+    {
+        if (clienteToDelete is null) return;
+        try
+        {
+            var ok = await Api.DeleteAlqClienteAsync(clienteToDelete.Id);
+            if (ok) { ToastService.Success("Cliente eliminado"); await Load(); }
+            else { ToastService.Error("No se pudo eliminar"); }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { showDeleteConfirm = false; clienteToDelete = null; }
+    }
+}

@@ -1452,3 +1452,94 @@ BEGIN
     ALTER TABLE Products ADD Pvp3MarkupPercent DECIMAL(8,2) NULL;
 END
 GO
+
+-- ============================================================
+-- MODULO ALQUILERES (independiente del resto)
+-- Tablas prefijadas con Alq_ para no mezclar con el ERP principal.
+-- ============================================================
+
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Alq_Equipos' AND xtype='U')
+BEGIN
+    CREATE TABLE Alq_Equipos (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Sku NVARCHAR(50) NOT NULL,
+        Nombre NVARCHAR(200) NOT NULL,
+        Categoria NVARCHAR(80) NULL,
+        Descripcion NVARCHAR(500) NULL,
+        StockTotal INT NOT NULL DEFAULT 0,
+        PrecioDiario DECIMAL(18,2) NOT NULL DEFAULT 0,
+        PrecioReposicion DECIMAL(18,2) NULL,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT UQ_AlqEquipos_Sku UNIQUE (Sku)
+    );
+    CREATE INDEX IX_AlqEquipos_Categoria ON Alq_Equipos (Categoria);
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Alq_Clientes' AND xtype='U')
+BEGIN
+    CREATE TABLE Alq_Clientes (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Nombre NVARCHAR(200) NOT NULL,
+        Empresa NVARCHAR(200) NULL,
+        Telefono NVARCHAR(50) NULL,
+        Email NVARCHAR(200) NULL,
+        DireccionDefault NVARCHAR(300) NULL,
+        Notas NVARCHAR(1000) NULL,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL
+    );
+    CREATE INDEX IX_AlqClientes_Nombre ON Alq_Clientes (Nombre);
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Alq_Reservas' AND xtype='U')
+BEGIN
+    CREATE TABLE Alq_Reservas (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Numero NVARCHAR(20) NOT NULL,
+        ClienteId INT NOT NULL,
+        FechaEntrega DATE NOT NULL,
+        FechaRetiro DATE NOT NULL,
+        DireccionEvento NVARCHAR(300) NULL,
+        LatitudEvento DECIMAL(10,7) NULL,
+        LongitudEvento DECIMAL(10,7) NULL,
+        MontoTotal DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Sena DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Estado NVARCHAR(30) NOT NULL DEFAULT 'reservado',
+        Notas NVARCHAR(1000) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT FK_AlqReservas_Cliente FOREIGN KEY (ClienteId) REFERENCES Alq_Clientes(Id),
+        CONSTRAINT UQ_AlqReservas_Numero UNIQUE (Numero)
+    );
+    CREATE INDEX IX_AlqReservas_Fechas ON Alq_Reservas (FechaEntrega, FechaRetiro);
+    CREATE INDEX IX_AlqReservas_Estado ON Alq_Reservas (Estado);
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Alq_ReservaItems' AND xtype='U')
+BEGIN
+    CREATE TABLE Alq_ReservaItems (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        ReservaId INT NOT NULL,
+        EquipoId INT NOT NULL,
+        Cantidad INT NOT NULL,
+        PrecioUnitario DECIMAL(18,2) NOT NULL DEFAULT 0,
+        CONSTRAINT FK_AlqReservaItems_Reserva FOREIGN KEY (ReservaId) REFERENCES Alq_Reservas(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_AlqReservaItems_Equipo FOREIGN KEY (EquipoId) REFERENCES Alq_Equipos(Id)
+    );
+    CREATE INDEX IX_AlqReservaItems_Reserva ON Alq_ReservaItems (ReservaId);
+    CREATE INDEX IX_AlqReservaItems_Equipo ON Alq_ReservaItems (EquipoId);
+END
+GO
+
+-- Permiso del modulo (admin)
+IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId = 1 AND MenuKey = 'alquileres')
+BEGIN
+    INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'alquileres');
+END
+GO

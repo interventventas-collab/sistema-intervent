@@ -40,6 +40,10 @@ public static class MenuDefinition
             new MenuItem("empleados", "Empleados", "/empleados"),
             new MenuItem("sueldos", "Sueldos", "/sueldos")
         }),
+        new MenuGroup("alquileres", "Alquileres (independiente)", new[]
+        {
+            new MenuItem("alquileres", "Alquileres", "/alquileres")
+        }),
         new MenuGroup("administracion", "Administracion", new[]
         {
             new MenuItem("listas-precios", "Listas de precios", "/listas-precios"),

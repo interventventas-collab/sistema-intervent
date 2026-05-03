@@ -194,6 +194,32 @@ public class ApiClient
     public async Task<bool> DeleteSupplierAsync(int id)
         => await DeleteAsync($"/api/suppliers/{id}");
 
+    // --- Alquileres: Equipos ---
+    public async Task<List<AlqEquipoDto>?> GetAlqEquiposAsync()
+        => await GetAsync<List<AlqEquipoDto>>("/api/alquileres/equipos");
+
+    public async Task<AlqEquipoDto?> CreateAlqEquipoAsync(CreateAlqEquipoRequest request)
+        => await PostAsync<AlqEquipoDto>("/api/alquileres/equipos", request);
+
+    public async Task<AlqEquipoDto?> UpdateAlqEquipoAsync(int id, UpdateAlqEquipoRequest request)
+        => await PutAsync<AlqEquipoDto>($"/api/alquileres/equipos/{id}", request);
+
+    public async Task<bool> DeleteAlqEquipoAsync(int id)
+        => await DeleteAsync($"/api/alquileres/equipos/{id}");
+
+    // --- Alquileres: Clientes ---
+    public async Task<List<AlqClienteDto>?> GetAlqClientesAsync()
+        => await GetAsync<List<AlqClienteDto>>("/api/alquileres/clientes");
+
+    public async Task<AlqClienteDto?> CreateAlqClienteAsync(CreateAlqClienteRequest request)
+        => await PostAsync<AlqClienteDto>("/api/alquileres/clientes", request);
+
+    public async Task<AlqClienteDto?> UpdateAlqClienteAsync(int id, UpdateAlqClienteRequest request)
+        => await PutAsync<AlqClienteDto>($"/api/alquileres/clientes/{id}", request);
+
+    public async Task<bool> DeleteAlqClienteAsync(int id)
+        => await DeleteAsync($"/api/alquileres/clientes/{id}");
+
     // --- Brands ---
     public async Task<List<BrandDto>?> GetBrandsAsync()
         => await GetAsync<List<BrandDto>>("/api/brands");

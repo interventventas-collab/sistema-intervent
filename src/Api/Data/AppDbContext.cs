@@ -40,6 +40,9 @@ public class AppDbContext : DbContext
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
     public DbSet<BackupFile> BackupFiles => Set<BackupFile>();
+    // Modulo Alquileres (independiente)
+    public DbSet<AlqEquipo> AlqEquipos => Set<AlqEquipo>();
+    public DbSet<AlqCliente> AlqClientes => Set<AlqCliente>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
