@@ -45,6 +45,10 @@ public class AppDbContext : DbContext
     public DbSet<AlqCliente> AlqClientes => Set<AlqCliente>();
     public DbSet<AlqReserva> AlqReservas => Set<AlqReserva>();
     public DbSet<AlqReservaItem> AlqReservaItems => Set<AlqReservaItem>();
+    // Modulo Nominas (independiente)
+    public DbSet<NomEmpleado> NomEmpleados => Set<NomEmpleado>();
+    public DbSet<NomLiquidacion> NomLiquidaciones => Set<NomLiquidacion>();
+    public DbSet<NomPago> NomPagos => Set<NomPago>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

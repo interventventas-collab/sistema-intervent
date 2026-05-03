@@ -1,0 +1,619 @@
+@page "/nominas/liquidaciones"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <h3>
+            🧮 Liquidaciones de sueldos
+            <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;">(@(liqs?.Count ?? 0))</span>
+        </h3>
+        <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
+            <select class="form-input" style="max-width: 110px; font-size: 0.85rem;" @bind="filtroAnio" @bind:after="Load">
+                @foreach (var y in Anios) { <option value="@y">@y</option> }
+            </select>
+            <select class="form-input" style="max-width: 140px; font-size: 0.85rem;" @bind="filtroMes" @bind:after="Load">
+                <option value="0">Todos los meses</option>
+                @for (int m = 1; m <= 12; m++)
+                {
+                    var mm = m;
+                    <option value="@mm">@MesNombre(mm)</option>
+                }
+            </select>
+            <select class="form-input" style="max-width: 140px; font-size: 0.85rem;" @bind="filtroEstado" @bind:after="Load">
+                <option value="">Todos los estados</option>
+                <option value="pendiente">Pendiente</option>
+                <option value="pagado">Pagado</option>
+                <option value="anulada">Anulada</option>
+            </select>
+            <button class="btn btn-primary" @onclick="ShowCreate">+ Nueva Liquidación</button>
+        </div>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        @if (isLoading)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">Cargando liquidaciones...</p>
+        }
+        else if (liqs is null || liqs.Count == 0)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">
+                No hay liquidaciones para los filtros seleccionados. Tocá <strong>"+ Nueva Liquidación"</strong> para crear una.
+            </p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Empleado</th>
+                            <th>Período</th>
+                            <th style="text-align: right;">Ganado</th>
+                            <th style="text-align: right;">Descuentos</th>
+                            <th style="text-align: right;">Neto</th>
+                            <th style="text-align: right;">Pagado</th>
+                            <th style="text-align: right;">Saldo</th>
+                            <th>Estado</th>
+                            <th style="width: 130px;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var l in liqs)
+                        {
+                            <tr style="cursor: pointer;" @onclick="() => ShowEdit(l)">
+                                <td>
+                                    <strong>@l.EmpleadoNombre</strong>
+                                    @if (!string.IsNullOrEmpty(l.EmpleadoPuesto))
+                                    {
+                                        <div style="font-size: 0.78rem; color: #6b7280;">@l.EmpleadoPuesto</div>
+                                    }
+                                </td>
+                                <td style="font-weight: 600;">@MesNombre(l.Mes) @l.Anio</td>
+                                <td style="text-align: right; color: #059669;">$@FormatMoney(l.TotalGanado)</td>
+                                <td style="text-align: right; color: #dc2626;">$@FormatMoney(l.TotalDescuentos)</td>
+                                <td style="text-align: right; font-weight: 800; color: #1d4ed8;">$@FormatMoney(l.NetoAPagar)</td>
+                                <td style="text-align: right;">$@FormatMoney(l.TotalPagado)</td>
+                                <td style="text-align: right; font-weight: 700; color: @(l.Saldo > 0.01m ? "#dc2626" : "#059669");">$@FormatMoney(l.Saldo)</td>
+                                <td>@EstadoBadge(l.Estado)</td>
+                                <td class="actions-cell" @onclick:stopPropagation="true">
+                                    <button class="btn-icon btn-edit" @onclick="() => ShowEdit(l)" title="Ver / editar">@SvgIcons.Edit</button>
+                                    <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(l)" title="Eliminar">@SvgIcons.AlertCircle</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@if (showForm)
+{
+    <div class="modal-overlay" @onclick="CloseForm">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 1000px; max-height: 92vh; display: flex; flex-direction: column;">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3>
+                    @(isEditing ? $"Liquidación de {editingNombre}" : "Nueva Liquidación")
+                    @if (isEditing)
+                    {
+                        <span style="font-weight: 400; font-size: 0.85rem; color: #6b7280; margin-left: 0.5rem;">@MesNombre(formMes) @formAnio</span>
+                    }
+                </h3>
+                <button class="btn-close" @onclick="CloseForm">&times;</button>
+            </div>
+            <div class="modal-body" style="overflow-y: auto;">
+                @if (!string.IsNullOrEmpty(formError))
+                {
+                    <div class="form-error">@formError</div>
+                }
+
+                @* ═══════════════ Selector empleado y mes ═══════════════ *@
+                <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem; margin-bottom: 0.75rem;">
+                    <div class="form-row">
+                        <div class="form-group" style="flex: 2;">
+                            <label class="form-label">Empleado *</label>
+                            <select class="form-input" @bind="formEmpleadoId" disabled="@isEditing">
+                                <option value="0">— Elegí un empleado —</option>
+                                @foreach (var e in empleados ?? new())
+                                {
+                                    <option value="@e.Id">@e.Nombre @(string.IsNullOrEmpty(e.Puesto) ? "" : $"({e.Puesto})") — base $@FormatMoney(e.SueldoBase)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Año</label>
+                            <select class="form-input" @bind="formAnio" disabled="@isEditing">
+                                @foreach (var y in Anios) { <option value="@y">@y</option> }
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Mes</label>
+                            <select class="form-input" @bind="formMes" disabled="@isEditing">
+                                @for (int m = 1; m <= 12; m++)
+                                {
+                                    var mm = m;
+                                    <option value="@mm">@MesNombre(mm)</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-row" style="align-items: stretch;">
+                    @* ═══════════════ Insumos del mes ═══════════════ *@
+                    <div style="flex: 1.2;">
+                        <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem;">
+                            <strong style="display: block; margin-bottom: 0.5rem;">Actividad del mes</strong>
+
+                            <div class="form-row">
+                                <div class="form-group" style="flex: 1;">
+                                    <label class="form-label">Horas trabajadas</label>
+                                    <input class="form-input" type="number" step="0.5" min="0" @bind="formHorasTrabajadas" />
+                                </div>
+                                <div class="form-group" style="flex: 1;">
+                                    <label class="form-label">Horas extra</label>
+                                    <input class="form-input" type="number" step="0.5" min="0" @bind="formHorasExtra" />
+                                </div>
+                                <div class="form-group" style="flex: 1;">
+                                    <label class="form-label">Recargo hs extra (%)</label>
+                                    <input class="form-input" type="number" step="1" min="0" @bind="formRecargoPct" />
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group" style="flex: 1;">
+                                    <label class="form-label">Días de ausencia</label>
+                                    <input class="form-input" type="number" step="0.5" min="0" @bind="formDiasAusencia" />
+                                </div>
+                                <div class="form-group" style="flex: 1;">
+                                    <label class="form-label">Días de vacaciones</label>
+                                    <input class="form-input" type="number" step="0.5" min="0" @bind="formDiasVacaciones" />
+                                    <p style="font-size: 0.72rem; color: #6b7280; margin: 0.2rem 0 0;">Solo informativo.</p>
+                                </div>
+                            </div>
+
+                            <strong style="display: block; margin: 0.7rem 0 0.4rem;">Conceptos del mes</strong>
+                            <div class="form-row">
+                                <div class="form-group" style="flex: 1;">
+                                    <label class="form-label">Comisión ($)</label>
+                                    <input class="form-input" type="number" step="0.01" min="0" @bind="formComision" />
+                                </div>
+                                <div class="form-group" style="flex: 1;">
+                                    <label class="form-label">Bonos ($)</label>
+                                    <input class="form-input" type="number" step="0.01" min="0" @bind="formBonos" />
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group" style="flex: 1;">
+                                    <label class="form-label">Adelantos ($)</label>
+                                    <input class="form-input" type="number" step="0.01" min="0" @bind="formAdelantos" />
+                                </div>
+                                <div class="form-group" style="flex: 1;">
+                                    <label class="form-label">Otros descuentos ($)</label>
+                                    <input class="form-input" type="number" step="0.01" min="0" @bind="formOtros" />
+                                </div>
+                            </div>
+
+                            <div class="form-group" style="margin-top: 0.5rem;">
+                                <label class="form-label">Notas</label>
+                                <textarea class="form-input" rows="2" @bind="formNotas" placeholder="Notas internas (opcional)"></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    @* ═══════════════ Caja de calculo ═══════════════ *@
+                    <div style="flex: 1;">
+                        <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem;">
+                            <strong style="display: block; margin-bottom: 0.5rem;">Cálculo del sueldo</strong>
+                            <div class="venta-totals-row" style="font-size: 0.85rem;">
+                                <span>Sueldo base:</span>
+                                <span>$@FormatMoney(SueldoBaseEmp)</span>
+                            </div>
+                            <div class="venta-totals-row" style="font-size: 0.85rem;">
+                                <span>+ Hs extra (@formHorasExtra × $@FormatMoney(HoraExtraConRecargo)):</span>
+                                <span style="color: #059669;">$@FormatMoney(MontoHsExtra)</span>
+                            </div>
+                            <div class="venta-totals-row" style="font-size: 0.85rem;">
+                                <span>+ Comisión:</span>
+                                <span style="color: #059669;">$@FormatMoney(formComision)</span>
+                            </div>
+                            <div class="venta-totals-row" style="font-size: 0.85rem;">
+                                <span>+ Bonos:</span>
+                                <span style="color: #059669;">$@FormatMoney(formBonos)</span>
+                            </div>
+                            <hr style="margin: 0.4rem 0; border: none; border-top: 1px solid #d1d5db;" />
+                            <div class="venta-totals-row" style="font-weight: 700; color: #059669;">
+                                <span>Total ganado:</span>
+                                <span>$@FormatMoney(TotalGanado)</span>
+                            </div>
+
+                            <hr style="margin: 0.5rem 0; border: none; border-top: 1px dashed #d1d5db;" />
+                            <div class="venta-totals-row" style="font-size: 0.85rem;">
+                                <span>− Faltas (@formDiasAusencia d × $@FormatMoney(DiaProporcional)):</span>
+                                <span style="color: #dc2626;">$@FormatMoney(DescuentoFaltas)</span>
+                            </div>
+                            <div class="venta-totals-row" style="font-size: 0.85rem;">
+                                <span>− Adelantos:</span>
+                                <span style="color: #dc2626;">$@FormatMoney(formAdelantos)</span>
+                            </div>
+                            <div class="venta-totals-row" style="font-size: 0.85rem;">
+                                <span>− Otros descuentos:</span>
+                                <span style="color: #dc2626;">$@FormatMoney(formOtros)</span>
+                            </div>
+                            <hr style="margin: 0.4rem 0; border: none; border-top: 1px solid #d1d5db;" />
+                            <div class="venta-totals-row" style="font-weight: 700; color: #dc2626;">
+                                <span>Total descuentos:</span>
+                                <span>$@FormatMoney(TotalDescuentos)</span>
+                            </div>
+
+                            <hr style="margin: 0.6rem 0; border: none; border-top: 2px solid #d1d5db;" />
+                            <div class="venta-totals-row" style="font-size: 1.25rem; font-weight: 800; color: #1d4ed8;">
+                                <span>NETO A PAGAR:</span>
+                                <span>$@FormatMoney(NetoAPagar)</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                @* ═══════════════ Pagos (solo en edicion) ═══════════════ *@
+                @if (isEditing && editingLiq is not null)
+                {
+                    <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 0.75rem; margin-top: 0.75rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                            <strong>💵 Pagos registrados</strong>
+                            <span style="font-size: 0.85rem; color: @(editingLiq.Saldo > 0.01m ? "#dc2626" : "#059669"); font-weight: 700;">
+                                Pagado $@FormatMoney(editingLiq.TotalPagado) · Saldo $@FormatMoney(editingLiq.Saldo)
+                            </span>
+                        </div>
+
+                        @if (editingLiq.Pagos.Count > 0)
+                        {
+                            <table class="data-table" style="font-size: 0.85rem; margin-bottom: 0.5rem;">
+                                <thead>
+                                    <tr>
+                                        <th>Fecha</th>
+                                        <th>Método</th>
+                                        <th style="text-align: right;">Monto</th>
+                                        <th>Notas</th>
+                                        <th style="width: 50px;"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var p in editingLiq.Pagos)
+                                    {
+                                        <tr>
+                                            <td>@p.FechaPago.ToString("dd/MM/yyyy")</td>
+                                            <td style="text-transform: capitalize;">@p.Metodo</td>
+                                            <td style="text-align: right; font-weight: 700;">$@FormatMoney(p.Monto)</td>
+                                            <td style="color: #6b7280; font-size: 0.78rem;">@(p.Notas ?? "")</td>
+                                            <td>
+                                                <button class="btn-icon btn-delete" @onclick="() => DeletePago(p.Id)" title="Borrar pago">×</button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+
+                        @if (editingLiq.Saldo > 0.01m && editingLiq.Estado != "anulada")
+                        {
+                            <div style="background: white; border: 1px solid #d1d5db; border-radius: 6px; padding: 0.5rem;">
+                                <strong style="font-size: 0.85rem;">Registrar nuevo pago</strong>
+                                <div class="form-row" style="margin-top: 0.4rem; align-items: end;">
+                                    <div class="form-group" style="flex: 1;">
+                                        <label class="form-label" style="font-size: 0.75rem;">Fecha</label>
+                                        <input class="form-input" type="date" @bind="pagoFecha" />
+                                    </div>
+                                    <div class="form-group" style="flex: 1;">
+                                        <label class="form-label" style="font-size: 0.75rem;">Método</label>
+                                        <select class="form-input" @bind="pagoMetodo">
+                                            <option value="efectivo">Efectivo</option>
+                                            <option value="transferencia">Transferencia</option>
+                                            <option value="cheque">Cheque</option>
+                                            <option value="otro">Otro</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group" style="flex: 1;">
+                                        <label class="form-label" style="font-size: 0.75rem;">Monto ($)</label>
+                                        <input class="form-input" type="number" step="0.01" min="0.01" @bind="pagoMonto" />
+                                    </div>
+                                    <div class="form-group" style="flex: 2;">
+                                        <label class="form-label" style="font-size: 0.75rem;">Notas (opcional)</label>
+                                        <input class="form-input" @bind="pagoNotas" placeholder="Ej: Numero de comprobante, Banco..." />
+                                    </div>
+                                    <div class="form-group" style="flex: 0 0 110px;">
+                                        <button class="btn btn-primary" type="button" @onclick="AddPago" style="width: 100%;">+ Pagar</button>
+                                    </div>
+                                </div>
+                                <p style="font-size: 0.75rem; color: #6b7280; margin: 0.3rem 0 0;">
+                                    💡 Tip: tocá "Pagar todo" para usar el saldo completo.
+                                    <button class="btn btn-secondary" type="button" @onclick="UsarSaldoCompleto" style="font-size: 0.75rem; padding: 0.15rem 0.5rem; margin-left: 0.3rem;">Usar saldo $@FormatMoney(editingLiq.Saldo)</button>
+                                </p>
+                            </div>
+                        }
+                        else if (editingLiq.Saldo <= 0.01m && editingLiq.Estado == "pagado")
+                        {
+                            <p style="color: #059669; font-weight: 700; margin: 0;">✅ Esta liquidación está totalmente pagada.</p>
+                        }
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseForm" disabled="@isSaving">Cerrar</button>
+                <button class="btn btn-primary" @onclick="Save" disabled="@isSaving">
+                    @(isSaving ? "Guardando..." : (isEditing ? "Guardar cambios" : "Crear liquidación"))
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showDeleteConfirm && liqToDelete is not null)
+{
+    <div class="modal-overlay" @onclick="() => showDeleteConfirm = false">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: #dc3545; color: white;">
+                <h4 style="margin: 0;">Eliminar liquidación</h4>
+                <button class="btn-close" @onclick="() => showDeleteConfirm = false" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Estas seguro que queres eliminar la liquidación de <strong>@liqToDelete.EmpleadoNombre</strong> de <strong>@MesNombre(liqToDelete.Mes) @liqToDelete.Anio</strong>?</p>
+                <p class="text-muted" style="font-size: 0.85rem;">Si tiene pagos asociados, no se puede borrar.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showDeleteConfirm = false">Cancelar</button>
+                <button class="btn btn-danger" @onclick="Delete">Eliminar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<NomLiquidacionDto>? liqs;
+    private List<NomEmpleadoDto>? empleados;
+    private bool isLoading = true;
+    private int filtroAnio = DateTime.Today.Year;
+    private int filtroMes = DateTime.Today.Month;
+    private string filtroEstado = "";
+
+    // Form state
+    private bool showForm;
+    private bool isEditing;
+    private bool isSaving;
+    private string? formError;
+    private int? editingId;
+    private string editingNombre = "";
+    private NomLiquidacionDto? editingLiq;
+    private int formEmpleadoId;
+    private int formAnio = DateTime.Today.Year;
+    private int formMes = DateTime.Today.Month;
+    private decimal formHorasTrabajadas;
+    private decimal formHorasExtra;
+    private decimal formRecargoPct = 50m;
+    private decimal formDiasAusencia;
+    private decimal formDiasVacaciones;
+    private decimal formComision;
+    private decimal formBonos;
+    private decimal formAdelantos;
+    private decimal formOtros;
+    private string formNotas = "";
+
+    // Pago form
+    private DateTime pagoFecha = DateTime.Today;
+    private string pagoMetodo = "efectivo";
+    private decimal pagoMonto;
+    private string pagoNotas = "";
+
+    // Delete
+    private bool showDeleteConfirm;
+    private NomLiquidacionDto? liqToDelete;
+
+    private static int[] Anios => Enumerable.Range(DateTime.Today.Year - 3, 5).ToArray();
+
+    private decimal SueldoBaseEmp => empleados?.FirstOrDefault(e => e.Id == formEmpleadoId)?.SueldoBase ?? 0m;
+    private decimal ValorHoraEmp => empleados?.FirstOrDefault(e => e.Id == formEmpleadoId)?.ValorHora ?? 0m;
+    private decimal HoraExtraConRecargo => Math.Round(ValorHoraEmp * (1m + formRecargoPct / 100m), 2, MidpointRounding.AwayFromZero);
+    private decimal MontoHsExtra => Math.Round(formHorasExtra * HoraExtraConRecargo, 2, MidpointRounding.AwayFromZero);
+    private decimal DiaProporcional => SueldoBaseEmp / 30m;
+    private decimal DescuentoFaltas => Math.Round(formDiasAusencia * DiaProporcional, 2, MidpointRounding.AwayFromZero);
+    private decimal TotalGanado => SueldoBaseEmp + MontoHsExtra + formComision + formBonos;
+    private decimal TotalDescuentos => DescuentoFaltas + formAdelantos + formOtros;
+    private decimal NetoAPagar => Math.Max(0m, TotalGanado - TotalDescuentos);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadEmpleados();
+        await Load();
+    }
+
+    private async Task LoadEmpleados()
+    {
+        try { empleados = (await Api.GetNomEmpleadosAsync())?.Where(e => e.IsActive).ToList() ?? new(); }
+        catch { empleados = new(); }
+    }
+
+    private async Task Load()
+    {
+        isLoading = true;
+        try
+        {
+            liqs = await Api.GetNomLiquidacionesAsync(
+                filtroAnio,
+                filtroMes == 0 ? null : filtroMes,
+                string.IsNullOrEmpty(filtroEstado) ? null : filtroEstado) ?? new();
+        }
+        catch { ToastService.Error("Error al cargar liquidaciones"); liqs = new(); }
+        isLoading = false;
+    }
+
+    private void ShowCreate()
+    {
+        ResetForm();
+        isEditing = false; editingId = null; editingLiq = null;
+        formAnio = DateTime.Today.Year; formMes = DateTime.Today.Month;
+        showForm = true;
+    }
+
+    private void ShowEdit(NomLiquidacionDto l)
+    {
+        ResetForm();
+        isEditing = true; editingId = l.Id; editingLiq = l; editingNombre = l.EmpleadoNombre;
+        formEmpleadoId = l.EmpleadoId;
+        formAnio = l.Anio; formMes = l.Mes;
+        formHorasTrabajadas = l.HorasTrabajadas;
+        formHorasExtra = l.HorasExtra;
+        formRecargoPct = l.RecargoHsExtraPct;
+        formDiasAusencia = l.DiasAusencia;
+        formDiasVacaciones = l.DiasVacaciones;
+        formComision = l.Comision;
+        formBonos = l.Bonos;
+        formAdelantos = l.Adelantos;
+        formOtros = l.OtrosDescuentos;
+        formNotas = l.Notas ?? "";
+        showForm = true;
+    }
+
+    private void ResetForm()
+    {
+        formEmpleadoId = 0;
+        formHorasTrabajadas = 0; formHorasExtra = 0; formRecargoPct = 50m;
+        formDiasAusencia = 0; formDiasVacaciones = 0;
+        formComision = 0; formBonos = 0; formAdelantos = 0; formOtros = 0;
+        formNotas = "";
+        pagoFecha = DateTime.Today; pagoMetodo = "efectivo"; pagoMonto = 0; pagoNotas = "";
+        formError = null;
+    }
+
+    private void CloseForm() { showForm = false; formError = null; editingLiq = null; }
+
+    private async Task Save()
+    {
+        formError = null;
+        if (formEmpleadoId <= 0) { formError = "Tenés que elegir un empleado"; return; }
+        if (formAnio < 2000 || formMes < 1 || formMes > 12) { formError = "Período invalido"; return; }
+        isSaving = true;
+        try
+        {
+            if (isEditing && editingId.HasValue)
+            {
+                var updated = await Api.UpdateNomLiquidacionAsync(editingId.Value, new UpdateNomLiquidacionRequest
+                {
+                    HorasTrabajadas = formHorasTrabajadas,
+                    HorasExtra = formHorasExtra,
+                    RecargoHsExtraPct = formRecargoPct,
+                    DiasAusencia = formDiasAusencia,
+                    DiasVacaciones = formDiasVacaciones,
+                    Comision = formComision,
+                    Bonos = formBonos,
+                    Adelantos = formAdelantos,
+                    OtrosDescuentos = formOtros,
+                    Notas = formNotas
+                });
+                if (updated is null) { formError = "No se pudo actualizar"; return; }
+                editingLiq = updated;
+                ToastService.Success("Liquidación actualizada");
+            }
+            else
+            {
+                var created = await Api.CreateNomLiquidacionAsync(new CreateNomLiquidacionRequest
+                {
+                    EmpleadoId = formEmpleadoId, Anio = formAnio, Mes = formMes,
+                    HorasTrabajadas = formHorasTrabajadas, HorasExtra = formHorasExtra,
+                    RecargoHsExtraPct = formRecargoPct,
+                    DiasAusencia = formDiasAusencia, DiasVacaciones = formDiasVacaciones,
+                    Comision = formComision, Bonos = formBonos,
+                    Adelantos = formAdelantos, OtrosDescuentos = formOtros,
+                    Notas = formNotas
+                });
+                if (created is null) { formError = "No se pudo crear"; return; }
+                ToastService.Success($"Liquidación creada — Neto $@FormatMoney(created.NetoAPagar)");
+                // Pasar a modo edicion para poder cargar pagos
+                isEditing = true; editingId = created.Id; editingLiq = created; editingNombre = created.EmpleadoNombre;
+            }
+            await Load();
+        }
+        catch (Exception ex) { formError = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private void UsarSaldoCompleto()
+    {
+        if (editingLiq is not null) pagoMonto = Math.Round(editingLiq.Saldo, 2);
+    }
+
+    private async Task AddPago()
+    {
+        if (editingId is null || editingLiq is null) return;
+        if (pagoMonto <= 0) { ToastService.Error("El monto debe ser mayor a 0"); return; }
+        try
+        {
+            var updated = await Api.AddNomPagoAsync(new CreateNomPagoRequest
+            {
+                LiquidacionId = editingId.Value,
+                FechaPago = pagoFecha,
+                Metodo = pagoMetodo,
+                Monto = pagoMonto,
+                Notas = pagoNotas
+            });
+            if (updated is null) { ToastService.Error("No se pudo registrar el pago"); return; }
+            editingLiq = updated;
+            pagoFecha = DateTime.Today; pagoMetodo = "efectivo"; pagoMonto = 0; pagoNotas = "";
+            ToastService.Success("Pago registrado");
+            await Load();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task DeletePago(int pagoId)
+    {
+        try
+        {
+            var ok = await Api.DeleteNomPagoAsync(pagoId);
+            if (ok)
+            {
+                ToastService.Success("Pago eliminado");
+                if (editingId.HasValue) editingLiq = await Api.GetNomLiquidacionAsync(editingId.Value);
+                await Load();
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private void ConfirmDelete(NomLiquidacionDto l) { liqToDelete = l; showDeleteConfirm = true; }
+
+    private async Task Delete()
+    {
+        if (liqToDelete is null) return;
+        try
+        {
+            var ok = await Api.DeleteNomLiquidacionAsync(liqToDelete.Id);
+            if (ok) { ToastService.Success("Liquidación eliminada"); await Load(); }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { showDeleteConfirm = false; liqToDelete = null; }
+    }
+
+    private static string FormatMoney(decimal v)
+        => v.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+
+    private static string MesNombre(int m) => m switch
+    {
+        1 => "Enero", 2 => "Febrero", 3 => "Marzo", 4 => "Abril",
+        5 => "Mayo", 6 => "Junio", 7 => "Julio", 8 => "Agosto",
+        9 => "Septiembre", 10 => "Octubre", 11 => "Noviembre", 12 => "Diciembre",
+        _ => m.ToString()
+    };
+
+    private static MarkupString EstadoBadge(string estado)
+    {
+        var (label, bg, fg) = estado switch
+        {
+            "pendiente" => ("⏳ Pendiente", "#fef3c7", "#92400e"),
+            "pagado" => ("✅ Pagado", "#dcfce7", "#166534"),
+            "anulada" => ("❌ Anulada", "#fee2e2", "#991b1b"),
+            _ => (estado, "#f3f4f6", "#6b7280")
+        };
+        return (MarkupString)$"<span style=\"display:inline-block; padding:0.15rem 0.55rem; background:{bg}; color:{fg}; border-radius:999px; font-size:0.75rem; font-weight:600;\">{label}</span>";
+    }
+}

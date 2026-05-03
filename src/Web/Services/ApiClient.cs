@@ -247,6 +247,51 @@ public class ApiClient
         return await GetAsync<List<AlqDisponibilidadDto>>(url);
     }
 
+    // --- Nominas: Empleados ---
+    public async Task<List<NomEmpleadoDto>?> GetNomEmpleadosAsync()
+        => await GetAsync<List<NomEmpleadoDto>>("/api/nominas/empleados");
+
+    public async Task<NomEmpleadoDto?> CreateNomEmpleadoAsync(CreateNomEmpleadoRequest request)
+        => await PostAsync<NomEmpleadoDto>("/api/nominas/empleados", request);
+
+    public async Task<NomEmpleadoDto?> UpdateNomEmpleadoAsync(int id, UpdateNomEmpleadoRequest request)
+        => await PutAsync<NomEmpleadoDto>($"/api/nominas/empleados/{id}", request);
+
+    public async Task<bool> DeleteNomEmpleadoAsync(int id)
+        => await DeleteAsync($"/api/nominas/empleados/{id}");
+
+    // --- Nominas: Liquidaciones ---
+    public async Task<List<NomLiquidacionDto>?> GetNomLiquidacionesAsync(int? anio = null, int? mes = null, string? estado = null)
+    {
+        var qs = new List<string>();
+        if (anio.HasValue) qs.Add($"anio={anio.Value}");
+        if (mes.HasValue) qs.Add($"mes={mes.Value}");
+        if (!string.IsNullOrWhiteSpace(estado)) qs.Add($"estado={Uri.EscapeDataString(estado)}");
+        var url = "/api/nominas/liquidaciones" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+        return await GetAsync<List<NomLiquidacionDto>>(url);
+    }
+
+    public async Task<NomLiquidacionDto?> GetNomLiquidacionAsync(int id)
+        => await GetAsync<NomLiquidacionDto>($"/api/nominas/liquidaciones/{id}");
+
+    public async Task<NomLiquidacionDto?> CreateNomLiquidacionAsync(CreateNomLiquidacionRequest request)
+        => await PostAsync<NomLiquidacionDto>("/api/nominas/liquidaciones", request);
+
+    public async Task<NomLiquidacionDto?> UpdateNomLiquidacionAsync(int id, UpdateNomLiquidacionRequest request)
+        => await PutAsync<NomLiquidacionDto>($"/api/nominas/liquidaciones/{id}", request);
+
+    public async Task<bool> DeleteNomLiquidacionAsync(int id)
+        => await DeleteAsync($"/api/nominas/liquidaciones/{id}");
+
+    public async Task<NomLiquidacionDto?> AddNomPagoAsync(CreateNomPagoRequest request)
+        => await PostAsync<NomLiquidacionDto>("/api/nominas/pagos", request);
+
+    public async Task<bool> DeleteNomPagoAsync(int id)
+        => await DeleteAsync($"/api/nominas/pagos/{id}");
+
+    public async Task<NomResumenMensualDto?> GetNomResumenAsync(int anio, int mes)
+        => await GetAsync<NomResumenMensualDto>($"/api/nominas/resumen?anio={anio}&mes={mes}");
+
     // --- Brands ---
     public async Task<List<BrandDto>?> GetBrandsAsync()
         => await GetAsync<List<BrandDto>>("/api/brands");

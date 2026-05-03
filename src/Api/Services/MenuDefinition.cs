@@ -44,6 +44,10 @@ public static class MenuDefinition
         {
             new MenuItem("alquileres", "Alquileres", "/alquileres")
         }),
+        new MenuGroup("nominas", "Nominas (independiente)", new[]
+        {
+            new MenuItem("nominas", "Nominas", "/nominas")
+        }),
         new MenuGroup("administracion", "Administracion", new[]
         {
             new MenuItem("listas-precios", "Listas de precios", "/listas-precios"),

@@ -1,0 +1,267 @@
+@page "/nominas/empleados"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3>
+            👥 Empleados
+            <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;">(@(empleados?.Count ?? 0))</span>
+        </h3>
+        <button class="btn btn-primary" @onclick="ShowCreate">+ Nuevo Empleado</button>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        @if (isLoading)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">Cargando empleados...</p>
+        }
+        else if (empleados is null || empleados.Count == 0)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">
+                Todavia no cargaste ningun empleado. Tocá <strong>"+ Nuevo Empleado"</strong> para empezar.
+            </p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>Documento</th>
+                            <th>Puesto</th>
+                            <th>Ingreso</th>
+                            <th style="text-align: right;">Sueldo base</th>
+                            <th style="text-align: right;">Valor hora</th>
+                            <th style="text-align: right;">% Comisión</th>
+                            <th>Estado</th>
+                            <th style="width: 130px;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var e in empleados)
+                        {
+                            <tr>
+                                <td><strong>@e.Nombre</strong></td>
+                                <td style="font-family: monospace; font-size: 0.85rem;">@(e.Documento ?? "—")</td>
+                                <td style="color: #374151;">@(e.Puesto ?? "—")</td>
+                                <td style="font-size: 0.85rem;">@e.FechaIngreso.ToString("dd/MM/yyyy")</td>
+                                <td style="text-align: right; font-weight: 700;">$@FormatMoney(e.SueldoBase)</td>
+                                <td style="text-align: right;">$@FormatMoney(e.ValorHora)</td>
+                                <td style="text-align: right; color: #6b7280;">@(e.ComisionPorcentaje.HasValue ? $"{e.ComisionPorcentaje.Value:0.##}%" : "—")</td>
+                                <td>
+                                    <span class="status-badge @(e.IsActive ? "status-active" : "status-inactive")">
+                                        @(e.IsActive ? "Activo" : "Inactivo")
+                                    </span>
+                                </td>
+                                <td class="actions-cell">
+                                    <button class="btn-icon btn-edit" @onclick="() => ShowEdit(e)" title="Editar">@SvgIcons.Edit</button>
+                                    <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(e)" title="Eliminar">@SvgIcons.AlertCircle</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@if (showForm)
+{
+    <div class="modal-overlay" @onclick="CloseForm">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 720px;">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3>@(isEditing ? "Editar Empleado" : "Nuevo Empleado")</h3>
+                <button class="btn-close" @onclick="CloseForm">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(formError))
+                {
+                    <div class="form-error">@formError</div>
+                }
+                <div class="form-row">
+                    <div class="form-group" style="flex: 2;">
+                        <label class="form-label">Nombre y apellido *</label>
+                        <input class="form-input" @bind="formNombre" placeholder="Ej: Juan Pérez" autofocus />
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Documento (DNI/CUIL)</label>
+                        <input class="form-input" @bind="formDocumento" placeholder="Ej: 30123456" />
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Puesto</label>
+                        <input class="form-input" @bind="formPuesto" placeholder="Ej: Vendedor, Chofer..." />
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Fecha de ingreso *</label>
+                        <input class="form-input" type="date" @bind="formFechaIngreso" />
+                    </div>
+                </div>
+                <h4 style="margin: 1rem 0 0.5rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase;">Remuneración</h4>
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Sueldo base ($)</label>
+                        <input class="form-input" type="number" step="0.01" min="0" @bind="formSueldoBase" />
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Valor por hora ($)</label>
+                        <input class="form-input" type="number" step="0.01" min="0" @bind="formValorHora" />
+                        <p style="font-size: 0.75rem; color: #6b7280; margin: 0.2rem 0 0;">Se usa para calcular las horas extra.</p>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">% Comisión (opcional)</label>
+                        <input class="form-input" type="number" step="0.01" min="0" @bind="formComisionPct" placeholder="Ej: 5" />
+                        <p style="font-size: 0.75rem; color: #6b7280; margin: 0.2rem 0 0;">Default que aparece al liquidar.</p>
+                    </div>
+                </div>
+                @if (isEditing)
+                {
+                    <div class="form-group">
+                        <label class="form-label">Estado</label>
+                        <select class="form-input" @bind="formIsActive">
+                            <option value="@true">Activo</option>
+                            <option value="@false">Inactivo</option>
+                        </select>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseForm" disabled="@isSaving">Cancelar</button>
+                <button class="btn btn-primary" @onclick="Save" disabled="@isSaving">
+                    @(isSaving ? "Guardando..." : (isEditing ? "Guardar" : "Crear"))
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showDeleteConfirm && empToDelete is not null)
+{
+    <div class="modal-overlay" @onclick="() => showDeleteConfirm = false">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: #dc3545; color: white;">
+                <h4 style="margin: 0;">Eliminar empleado</h4>
+                <button class="btn-close" @onclick="() => showDeleteConfirm = false" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Estas seguro que queres eliminar a <strong>@empToDelete.Nombre</strong>?</p>
+                <p class="text-muted" style="font-size: 0.85rem;">Si tiene liquidaciones cargadas, no se puede borrar; en ese caso conviene marcarlo como inactivo.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showDeleteConfirm = false">Cancelar</button>
+                <button class="btn btn-danger" @onclick="Delete">Eliminar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<NomEmpleadoDto>? empleados;
+    private bool isLoading = true;
+    private bool showForm;
+    private bool isEditing;
+    private bool isSaving;
+    private string? formError;
+    private int? editingId;
+    private string formNombre = "";
+    private string formDocumento = "";
+    private string formPuesto = "";
+    private DateTime formFechaIngreso = DateTime.Today;
+    private decimal formSueldoBase;
+    private decimal formValorHora;
+    private decimal? formComisionPct;
+    private bool formIsActive = true;
+    private bool showDeleteConfirm;
+    private NomEmpleadoDto? empToDelete;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        isLoading = true;
+        try { empleados = await Api.GetNomEmpleadosAsync() ?? new(); }
+        catch { ToastService.Error("Error al cargar empleados"); empleados = new(); }
+        isLoading = false;
+    }
+
+    private void ShowCreate()
+    {
+        isEditing = false; editingId = null;
+        formNombre = ""; formDocumento = ""; formPuesto = "";
+        formFechaIngreso = DateTime.Today;
+        formSueldoBase = 0m; formValorHora = 0m; formComisionPct = null;
+        formIsActive = true;
+        formError = null; showForm = true;
+    }
+
+    private void ShowEdit(NomEmpleadoDto e)
+    {
+        isEditing = true; editingId = e.Id;
+        formNombre = e.Nombre; formDocumento = e.Documento ?? ""; formPuesto = e.Puesto ?? "";
+        formFechaIngreso = e.FechaIngreso.Date;
+        formSueldoBase = e.SueldoBase; formValorHora = e.ValorHora; formComisionPct = e.ComisionPorcentaje;
+        formIsActive = e.IsActive;
+        formError = null; showForm = true;
+    }
+
+    private void CloseForm() { showForm = false; formError = null; }
+
+    private async Task Save()
+    {
+        formError = null;
+        if (string.IsNullOrWhiteSpace(formNombre)) { formError = "El nombre es obligatorio"; return; }
+        isSaving = true;
+        try
+        {
+            if (isEditing && editingId.HasValue)
+            {
+                var updated = await Api.UpdateNomEmpleadoAsync(editingId.Value, new UpdateNomEmpleadoRequest
+                {
+                    Nombre = formNombre, Documento = formDocumento, Puesto = formPuesto,
+                    FechaIngreso = formFechaIngreso, SueldoBase = formSueldoBase,
+                    ValorHora = formValorHora, ComisionPorcentaje = formComisionPct,
+                    IsActive = formIsActive
+                });
+                if (updated is null) { formError = "No se pudo actualizar"; return; }
+                ToastService.Success("Empleado actualizado");
+            }
+            else
+            {
+                var created = await Api.CreateNomEmpleadoAsync(new CreateNomEmpleadoRequest
+                {
+                    Nombre = formNombre, Documento = formDocumento, Puesto = formPuesto,
+                    FechaIngreso = formFechaIngreso, SueldoBase = formSueldoBase,
+                    ValorHora = formValorHora, ComisionPorcentaje = formComisionPct
+                });
+                if (created is null) { formError = "No se pudo crear"; return; }
+                ToastService.Success("Empleado creado");
+            }
+            showForm = false;
+            await Load();
+        }
+        catch (Exception ex) { formError = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private void ConfirmDelete(NomEmpleadoDto e) { empToDelete = e; showDeleteConfirm = true; }
+
+    private async Task Delete()
+    {
+        if (empToDelete is null) return;
+        try
+        {
+            var ok = await Api.DeleteNomEmpleadoAsync(empToDelete.Id);
+            if (ok) { ToastService.Success("Empleado eliminado"); await Load(); }
+            else { ToastService.Error("No se pudo eliminar"); }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { showDeleteConfirm = false; empToDelete = null; }
+    }
+
+    private static string FormatMoney(decimal v)
+        => v.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+}

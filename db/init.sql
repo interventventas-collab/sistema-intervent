@@ -1586,3 +1586,84 @@ Su reserva es confirmada una vez que le enviamos el archivo PDF. Es FUNDAMENTAL 
         GETDATE());
 END
 GO
+
+-- ============================================================
+-- MODULO NOMINAS (independiente del resto)
+-- Tablas prefijadas con Nom_ para no mezclar con Empleados/Sueldos del ERP principal.
+-- ============================================================
+
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Nom_Empleados' AND xtype='U')
+BEGIN
+    CREATE TABLE Nom_Empleados (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Nombre NVARCHAR(200) NOT NULL,
+        Documento NVARCHAR(50) NULL,
+        Puesto NVARCHAR(100) NULL,
+        FechaIngreso DATE NOT NULL,
+        SueldoBase DECIMAL(18,2) NOT NULL DEFAULT 0,
+        ValorHora DECIMAL(18,2) NOT NULL DEFAULT 0,
+        ComisionPorcentaje DECIMAL(8,2) NULL,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL
+    );
+    CREATE INDEX IX_NomEmpleados_Nombre ON Nom_Empleados (Nombre);
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Nom_Liquidaciones' AND xtype='U')
+BEGIN
+    CREATE TABLE Nom_Liquidaciones (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        EmpleadoId INT NOT NULL,
+        Anio INT NOT NULL,
+        Mes INT NOT NULL,
+        HorasTrabajadas DECIMAL(8,2) NOT NULL DEFAULT 0,
+        HorasExtra DECIMAL(8,2) NOT NULL DEFAULT 0,
+        RecargoHsExtraPct DECIMAL(8,2) NOT NULL DEFAULT 50,
+        DiasAusencia DECIMAL(5,2) NOT NULL DEFAULT 0,
+        DiasVacaciones DECIMAL(5,2) NOT NULL DEFAULT 0,
+        SueldoBase DECIMAL(18,2) NOT NULL DEFAULT 0,
+        MontoHsExtra DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Comision DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Bonos DECIMAL(18,2) NOT NULL DEFAULT 0,
+        DescuentoFaltas DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Adelantos DECIMAL(18,2) NOT NULL DEFAULT 0,
+        OtrosDescuentos DECIMAL(18,2) NOT NULL DEFAULT 0,
+        TotalGanado DECIMAL(18,2) NOT NULL DEFAULT 0,
+        TotalDescuentos DECIMAL(18,2) NOT NULL DEFAULT 0,
+        NetoAPagar DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Estado NVARCHAR(20) NOT NULL DEFAULT 'pendiente',
+        Notas NVARCHAR(1000) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT FK_NomLiq_Empleado FOREIGN KEY (EmpleadoId) REFERENCES Nom_Empleados(Id),
+        CONSTRAINT UQ_NomLiq_EmpleadoMes UNIQUE (EmpleadoId, Anio, Mes)
+    );
+    CREATE INDEX IX_NomLiq_AnioMes ON Nom_Liquidaciones (Anio, Mes);
+    CREATE INDEX IX_NomLiq_Estado ON Nom_Liquidaciones (Estado);
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Nom_Pagos' AND xtype='U')
+BEGIN
+    CREATE TABLE Nom_Pagos (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        LiquidacionId INT NOT NULL,
+        FechaPago DATE NOT NULL,
+        Metodo NVARCHAR(50) NOT NULL,
+        Monto DECIMAL(18,2) NOT NULL,
+        Notas NVARCHAR(500) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        CONSTRAINT FK_NomPago_Liq FOREIGN KEY (LiquidacionId) REFERENCES Nom_Liquidaciones(Id) ON DELETE CASCADE
+    );
+    CREATE INDEX IX_NomPago_Liq ON Nom_Pagos (LiquidacionId);
+    CREATE INDEX IX_NomPago_Fecha ON Nom_Pagos (FechaPago);
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId = 1 AND MenuKey = 'nominas')
+BEGIN
+    INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'nominas');
+END
+GO

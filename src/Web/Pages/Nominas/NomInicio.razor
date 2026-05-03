@@ -1,0 +1,89 @@
+@page "/nominas"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<div class="card">
+    <div class="card-header">
+        <h3>💼 Nóminas</h3>
+    </div>
+    <div class="card-body">
+        <p style="color: #6b7280; margin-top: 0;">
+            Gestión de empleados, liquidaciones de sueldo y pagos. Es <strong>independiente</strong> del resto del sistema —
+            tiene sus propias tablas y no se mezcla con Empleados / Sueldos del ERP principal.
+        </p>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem; margin-top: 1.5rem;">
+            <div class="card" style="cursor: pointer;" @onclick='() => Nav.NavigateTo("/nominas/empleados")'>
+                <div class="card-body" style="text-align: center; padding: 1.5rem;">
+                    <div style="font-size: 2.5rem;">👥</div>
+                    <h4 style="margin: 0.5rem 0 0.3rem;">Empleados</h4>
+                    <p style="color: #6b7280; font-size: 0.85rem; margin: 0;">Alta, edición y datos del personal.</p>
+                </div>
+            </div>
+            <div class="card" style="cursor: pointer;" @onclick='() => Nav.NavigateTo("/nominas/liquidaciones")'>
+                <div class="card-body" style="text-align: center; padding: 1.5rem;">
+                    <div style="font-size: 2.5rem;">🧮</div>
+                    <h4 style="margin: 0.5rem 0 0.3rem;">Liquidaciones</h4>
+                    <p style="color: #6b7280; font-size: 0.85rem; margin: 0;">Calcular sueldos del mes y registrar pagos.</p>
+                </div>
+            </div>
+        </div>
+
+        @if (resumen is not null)
+        {
+            <div style="margin-top: 1.5rem;">
+                <h4 style="margin: 0 0 0.5rem;">📊 Resumen de @MesNombre(mesActual) @anioActual</h4>
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.7rem;">
+                    <div class="card" style="padding: 0.7rem;">
+                        <div style="font-size: 0.75rem; color: #6b7280;">Empleados liquidados</div>
+                        <div style="font-size: 1.4rem; font-weight: 800;">@resumen.CantidadEmpleados</div>
+                    </div>
+                    <div class="card" style="padding: 0.7rem;">
+                        <div style="font-size: 0.75rem; color: #6b7280;">Total ganado</div>
+                        <div style="font-size: 1.2rem; font-weight: 800; color: #059669;">$@FormatMoney(resumen.TotalGanado)</div>
+                    </div>
+                    <div class="card" style="padding: 0.7rem;">
+                        <div style="font-size: 0.75rem; color: #6b7280;">Descuentos</div>
+                        <div style="font-size: 1.2rem; font-weight: 800; color: #dc2626;">$@FormatMoney(resumen.TotalDescuentos)</div>
+                    </div>
+                    <div class="card" style="padding: 0.7rem;">
+                        <div style="font-size: 0.75rem; color: #6b7280;">Neto a pagar</div>
+                        <div style="font-size: 1.4rem; font-weight: 800; color: #1d4ed8;">$@FormatMoney(resumen.TotalNeto)</div>
+                    </div>
+                    <div class="card" style="padding: 0.7rem;">
+                        <div style="font-size: 0.75rem; color: #6b7280;">Pagado</div>
+                        <div style="font-size: 1.2rem; font-weight: 800; color: #059669;">$@FormatMoney(resumen.TotalPagado)</div>
+                    </div>
+                    <div class="card" style="padding: 0.7rem; @(resumen.SaldoPendiente > 0 ? "background: #fef2f2; border-color: #fecaca;" : "")">
+                        <div style="font-size: 0.75rem; color: #6b7280;">Saldo pendiente</div>
+                        <div style="font-size: 1.4rem; font-weight: 800; color: @(resumen.SaldoPendiente > 0 ? "#dc2626" : "#059669");">$@FormatMoney(resumen.SaldoPendiente)</div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private NomResumenMensualDto? resumen;
+    private int anioActual = DateTime.Today.Year;
+    private int mesActual = DateTime.Today.Month;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { resumen = await Api.GetNomResumenAsync(anioActual, mesActual); }
+        catch { /* silencioso, simplemente no se muestra */ }
+    }
+
+    private static string FormatMoney(decimal v)
+        => v.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+
+    private static string MesNombre(int m) => m switch
+    {
+        1 => "Enero", 2 => "Febrero", 3 => "Marzo", 4 => "Abril",
+        5 => "Mayo", 6 => "Junio", 7 => "Julio", 8 => "Agosto",
+        9 => "Septiembre", 10 => "Octubre", 11 => "Noviembre", 12 => "Diciembre",
+        _ => m.ToString()
+    };
+}

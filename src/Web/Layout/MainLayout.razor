@@ -197,7 +197,23 @@
             </NavGroup>
         }
 
-        @* ═════════════ 8. COMUNICACIONES (links externos) ═════════════ *@
+        @* ═════════════ 8. NOMINAS (modulo independiente) ═════════════
+           Modulo aparte para liquidacion de sueldos.
+           No comparte datos con Empleados/Sueldos del ERP principal. *@
+        @if (HasPerm("nominas"))
+        {
+            <NavGroup Label="Nóminas" Icon="@SvgIcons.Users"
+                      HasActiveChild="@(IsActive("/nominas") || IsActive("/nominas/empleados") || IsActive("/nominas/liquidaciones"))">
+                <NavItem Href="/nominas" Label="Inicio" Icon="@SvgIcons.Dashboard"
+                         IsActive="@IsActive("/nominas")" OnClick="@(() => NavigateTo("/nominas"))" />
+                <NavItem Href="/nominas/empleados" Label="Empleados" Icon="@SvgIcons.Users"
+                         IsActive="@IsActive("/nominas/empleados")" OnClick="@(() => NavigateTo("/nominas/empleados"))" />
+                <NavItem Href="/nominas/liquidaciones" Label="Liquidaciones" Icon="@SvgIcons.Tag"
+                         IsActive="@IsActive("/nominas/liquidaciones")" OnClick="@(() => NavigateTo("/nominas/liquidaciones"))" />
+            </NavGroup>
+        }
+
+        @* ═════════════ 9. COMUNICACIONES (links externos) ═════════════ *@
         <NavGroup Label="Comunicaciones" Icon="@SvgIcons.MessageCircle" HasActiveChild="false">
             <NavItem Href="https://web.whatsapp.com" Label="WhatsApp Web" Icon="@SvgIcons.MessageCircle" IsExternal="true" />
             <NavItem Href="https://mail.google.com" Label="Gmail" Icon="@SvgIcons.Mail" IsExternal="true" />
@@ -205,7 +221,7 @@
             <NavItem Href="https://drive.google.com" Label="Google Drive" Icon="@SvgIcons.Folder" IsExternal="true" />
         </NavGroup>
 
-        @* ═════════════ 9. ADMINISTRACION (sistema) ═════════════
+        @* ═════════════ 10. ADMINISTRACION (sistema) ═════════════
            Solo cosas de configuracion del sistema: usuarios, roles, integraciones, archivos
            tecnicos, auditoria, backups, configuracion general. *@
         @if (HasPerm("usuarios") || HasPerm("roles") || HasPerm("integraciones") || HasPerm("procesos") || HasPerm("archivos") || HasPerm("auditoria") || HasPerm("backups"))
@@ -538,6 +554,9 @@
         { "alquileres/equipos", "alquileres" },
         { "alquileres/clientes", "alquileres" },
         { "alquileres/reservas", "alquileres" },
+        { "nominas", "nominas" },
+        { "nominas/empleados", "nominas" },
+        { "nominas/liquidaciones", "nominas" },
         { "perfil", "" } // perfil always allowed
     };
 
