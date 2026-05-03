@@ -221,10 +221,13 @@ public class ApiClient
         => await DeleteAsync($"/api/alquileres/clientes/{id}");
 
     // --- Alquileres: Reservas ---
-    public async Task<List<AlqReservaDto>?> GetAlqReservasAsync(string? estado = null)
+    public async Task<List<AlqReservaDto>?> GetAlqReservasAsync(string? estado = null, DateTime? from = null, DateTime? to = null)
     {
-        var url = "/api/alquileres/reservas";
-        if (!string.IsNullOrWhiteSpace(estado)) url += $"?estado={Uri.EscapeDataString(estado)}";
+        var qs = new List<string>();
+        if (!string.IsNullOrWhiteSpace(estado)) qs.Add($"estado={Uri.EscapeDataString(estado)}");
+        if (from.HasValue) qs.Add($"from={from.Value:yyyy-MM-dd}");
+        if (to.HasValue) qs.Add($"to={to.Value:yyyy-MM-dd}");
+        var url = "/api/alquileres/reservas" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
         return await GetAsync<List<AlqReservaDto>>(url);
     }
 

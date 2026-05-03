@@ -18,7 +18,10 @@ public class AlqReservasController : ControllerBase
     public AlqReservasController(AppDbContext db) { _db = db; }
 
     [HttpGet]
-    public async Task<IActionResult> GetAll([FromQuery] string? estado = null)
+    public async Task<IActionResult> GetAll(
+        [FromQuery] string? estado = null,
+        [FromQuery] DateTime? from = null,
+        [FromQuery] DateTime? to = null)
     {
         var q = _db.AlqReservas
             .Include(r => r.ClienteNav)
@@ -28,6 +31,17 @@ public class AlqReservasController : ControllerBase
         {
             var e = estado.Trim().ToLowerInvariant();
             q = q.Where(r => r.Estado == e);
+        }
+        // Filtro de rango: trae las reservas que se solapan con [from, to]
+        if (from.HasValue)
+        {
+            var f = from.Value.Date;
+            q = q.Where(r => r.FechaRetiro >= f);
+        }
+        if (to.HasValue)
+        {
+            var t = to.Value.Date;
+            q = q.Where(r => r.FechaEntrega <= t);
         }
         var list = await q.OrderByDescending(r => r.FechaEntrega).ThenByDescending(r => r.Id).ToListAsync();
         return Ok(list.Select(Map).ToList());

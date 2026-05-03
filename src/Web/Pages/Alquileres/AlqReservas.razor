@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @inject ApiClient Api
 @inject ToastService ToastService
+@inject NavigationManager Nav
 
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
@@ -355,12 +356,16 @@
 }
 
 @code {
+    [SupplyParameterFromQuery(Name = "openId")] public int? OpenIdParam { get; set; }
+    [SupplyParameterFromQuery(Name = "newDate")] public string? NewDateParam { get; set; }
+
     private List<AlqReservaDto>? reservas;
     private List<AlqClienteDto>? clientes;
     private List<AlqEquipoDto>? equipos;
     private List<AlqDisponibilidadDto>? disponibilidad;
     private bool isLoading = true;
     private string filtroEstado = "";
+    private bool deepLinkApplied;
 
     // Form state
     private bool showForm;
@@ -404,6 +409,35 @@
     {
         await Load();
         await LoadCatalogos();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (deepLinkApplied) return;
+        // Si venimos del calendario con ?openId=N => abrir esa reserva en edicion
+        if (OpenIdParam.HasValue && OpenIdParam.Value > 0)
+        {
+            // Asegurarse de tener los catalogos cargados antes de abrir el modal
+            if (clientes is null || equipos is null) await LoadCatalogos();
+            if (reservas is null || reservas.Count == 0) await Load();
+            var r = reservas?.FirstOrDefault(x => x.Id == OpenIdParam.Value)
+                    ?? await Api.GetAlqReservaAsync(OpenIdParam.Value);
+            if (r is not null) await ShowEdit(r);
+            deepLinkApplied = true;
+            // Limpiar la url para que no se reabra al refrescar
+            Nav.NavigateTo("/alquileres/reservas", replace: true);
+        }
+        // Si venimos con ?newDate=YYYY-MM-DD => abrir +Nueva Reserva con esa fecha
+        else if (!string.IsNullOrWhiteSpace(NewDateParam) && DateTime.TryParse(NewDateParam, out var d))
+        {
+            if (clientes is null || equipos is null) await LoadCatalogos();
+            await ShowCreate();
+            formFechaEntrega = d.Date;
+            formFechaRetiro = d.Date.AddDays(1);
+            await RefreshDisponibilidad();
+            deepLinkApplied = true;
+            Nav.NavigateTo("/alquileres/reservas", replace: true);
+        }
     }
 
     private async Task Load()

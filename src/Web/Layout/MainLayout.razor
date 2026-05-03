@@ -185,11 +185,13 @@
         @if (HasPerm("alquileres"))
         {
             <NavGroup Label="Alquileres" Icon="@SvgIcons.Calendar"
-                      HasActiveChild="@(IsActive("/alquileres") || IsActive("/alquileres/equipos") || IsActive("/alquileres/clientes") || IsActive("/alquileres/reservas"))">
+                      HasActiveChild="@(IsActive("/alquileres") || IsActive("/alquileres/equipos") || IsActive("/alquileres/clientes") || IsActive("/alquileres/reservas") || IsActive("/alquileres/calendario"))">
                 <NavItem Href="/alquileres" Label="Inicio" Icon="@SvgIcons.Dashboard"
                          IsActive="@IsActive("/alquileres")" OnClick="@(() => NavigateTo("/alquileres"))" />
-                <NavItem Href="/alquileres/reservas" Label="Reservas" Icon="@SvgIcons.Calendar"
+                <NavItem Href="/alquileres/reservas" Label="Reservas" Icon="@SvgIcons.Tag"
                          IsActive="@IsActive("/alquileres/reservas")" OnClick="@(() => NavigateTo("/alquileres/reservas"))" />
+                <NavItem Href="/alquileres/calendario" Label="Calendario" Icon="@SvgIcons.Calendar"
+                         IsActive="@IsActive("/alquileres/calendario")" OnClick="@(() => NavigateTo("/alquileres/calendario"))" />
                 <NavItem Href="/alquileres/equipos" Label="Equipos" Icon="@SvgIcons.Package"
                          IsActive="@IsActive("/alquileres/equipos")" OnClick="@(() => NavigateTo("/alquileres/equipos"))" />
                 <NavItem Href="/alquileres/clientes" Label="Clientes" Icon="@SvgIcons.Users"
@@ -554,6 +556,7 @@
         { "alquileres/equipos", "alquileres" },
         { "alquileres/clientes", "alquileres" },
         { "alquileres/reservas", "alquileres" },
+        { "alquileres/calendario", "alquileres" },
         { "nominas", "nominas" },
         { "nominas/empleados", "nominas" },
         { "nominas/liquidaciones", "nominas" },
