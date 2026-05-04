@@ -128,6 +128,7 @@ builder.Services.AddSingleton<WhatsAppService>();
 builder.Services.AddScoped<FileStorageService>();
 builder.Services.AddScoped<BackupService>();
 builder.Services.AddScoped<VaultService>();
+builder.Services.AddScoped<AssistantService>();
 
 // Permitir subidas grandes para Archivos (2 GB)
 builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>

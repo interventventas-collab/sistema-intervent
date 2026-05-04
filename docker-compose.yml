@@ -61,6 +61,7 @@ services:
       - Jwt__Secret=${JWT_SECRET:?JWT_SECRET no definido en .env}
       - DEFAULT_ADMIN_PASSWORD=${DEFAULT_ADMIN_PASSWORD:-}
       - VAULT_DEFAULT_PASSWORD=${VAULT_DEFAULT_PASSWORD:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - PLAYWRIGHT_URL=http://playwright:3001
       # Origenes permitidos para CORS (lista separada por coma).
       # En desarrollo, si esta vacio, la API permite localhost:3000 por default.

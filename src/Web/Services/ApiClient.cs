@@ -394,6 +394,10 @@ public class ApiClient
     public async Task<bool> DeletePostitAsync(int id)
         => await DeleteAsync($"/api/postits/{id}");
 
+    // --- Asistente ---
+    public async Task<AssistantChatResponse?> AssistantChatAsync(List<AssistantChatMessage> messages)
+        => await PostAsync<AssistantChatResponse>("/api/assistant/chat", new AssistantChatRequest { Messages = messages });
+
     // --- Brands ---
     public async Task<List<BrandDto>?> GetBrandsAsync()
         => await GetAsync<List<BrandDto>>("/api/brands");
