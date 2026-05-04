@@ -1705,3 +1705,18 @@ BEGIN
     INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'vault');
 END
 GO
+
+-- Postits del dashboard (block de notas compartido)
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Postits' AND xtype='U')
+BEGIN
+    CREATE TABLE Postits (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Texto NVARCHAR(MAX) NOT NULL,
+        Color NVARCHAR(20) NOT NULL DEFAULT 'amarillo',
+        CreadoPor NVARCHAR(100) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL
+    );
+    CREATE INDEX IX_Postits_CreatedAt ON Postits (CreatedAt DESC);
+END
+GO

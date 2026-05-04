@@ -52,6 +52,8 @@ public class AppDbContext : DbContext
     // Boveda de contraseñas (independiente)
     public DbSet<VaultSetting> VaultSettings => Set<VaultSetting>();
     public DbSet<VaultEntry> VaultEntries => Set<VaultEntry>();
+    // Postits del dashboard
+    public DbSet<Postit> Postits => Set<Postit>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

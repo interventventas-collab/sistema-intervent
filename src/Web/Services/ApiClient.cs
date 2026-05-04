@@ -381,6 +381,19 @@ public class ApiClient
     public Task<VaultGenerateResponse?> GenerateVaultPasswordAsync(string token, VaultGenerateRequest request)
         => VaultRequestAsync<VaultGenerateResponse>(HttpMethod.Post, "/api/vault/generate", request, token);
 
+    // --- Postits ---
+    public async Task<List<PostitDto>?> GetPostitsAsync()
+        => await GetAsync<List<PostitDto>>("/api/postits");
+
+    public async Task<PostitDto?> CreatePostitAsync(CreatePostitRequest request)
+        => await PostAsync<PostitDto>("/api/postits", request);
+
+    public async Task<PostitDto?> UpdatePostitAsync(int id, UpdatePostitRequest request)
+        => await PutAsync<PostitDto>($"/api/postits/{id}", request);
+
+    public async Task<bool> DeletePostitAsync(int id)
+        => await DeleteAsync($"/api/postits/{id}");
+
     // --- Brands ---
     public async Task<List<BrandDto>?> GetBrandsAsync()
         => await GetAsync<List<BrandDto>>("/api/brands");
