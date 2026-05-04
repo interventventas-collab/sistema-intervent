@@ -5,6 +5,7 @@
 @inject IJSRuntime JS
 @inject OperatorService Operator
 @inject CurrentCompanyService Company
+@inject BrandSettingsService BrandSettings
 @implements IDisposable
 
 <div class="card">
@@ -830,71 +831,84 @@
                         Cargado por: @viewerSale.VendedorName
                     </div>
                 }
-                <!-- Cabecera -->
-                <div style="border: 1px solid #d1d5db; padding: 0.75rem;">
+                <!-- Cabecera (sobrio, estilo Alquileres) -->
+                <div style="border: 1px solid #d1d5db; padding: 0.85rem;">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem;">
                         <div style="flex: 1;">
-                            <h2 style="margin: 0; font-size: 1.5rem; font-weight: 800;">@(viewerSale.CompanyNameSnapshot ?? companyInfo.Name)</h2>
-                            @if (!string.IsNullOrEmpty(companyInfo.Phone))
+                            @if (BrandSettings.HasCustomLogo)
                             {
-                                <div style="font-size: 0.8rem;">@companyInfo.Phone</div>
+                                <img src="@BrandSettings.BrandLogo" alt="Logo" style="max-height: 55px; max-width: 220px; object-fit: contain; margin-bottom: 0.3rem;" />
+                                <div style="font-size: 0.95rem; font-weight: 700;">@(viewerSale.CompanyNameSnapshot ?? companyInfo.Name)</div>
                             }
-                            @if (!string.IsNullOrEmpty(companyInfo.Email))
+                            else
                             {
-                                <div style="font-size: 0.78rem; font-style: italic;">@companyInfo.Email</div>
+                                <h2 style="margin: 0; font-size: 1.5rem; font-weight: 800;">@(viewerSale.CompanyNameSnapshot ?? companyInfo.Name)</h2>
                             }
-                            @if (!string.IsNullOrEmpty(companyInfo.Web))
-                            {
-                                <div style="font-size: 0.78rem; font-style: italic;">@companyInfo.Web</div>
-                            }
+                            <div style="font-size: 0.78rem; color: #6b7280; margin-top: 0.2rem; line-height: 1.45;">
+                                @if (!string.IsNullOrEmpty(companyInfo.Address))
+                                {
+                                    <div>@companyInfo.Address</div>
+                                }
+                                @if (!string.IsNullOrEmpty(companyInfo.Phone))
+                                {
+                                    <div>Tel: @companyInfo.Phone</div>
+                                }
+                                @if (!string.IsNullOrEmpty(companyInfo.Email))
+                                {
+                                    <div>@companyInfo.Email</div>
+                                }
+                                @if (!string.IsNullOrEmpty(companyInfo.Web))
+                                {
+                                    <div>@companyInfo.Web</div>
+                                }
+                                <div style="margin-top: 0.2rem;">@companyInfo.IvaCondition</div>
+                            </div>
                         </div>
-                        <div style="background: #e5e7eb; padding: 0.6rem 1rem; font-weight: 700; font-size: 1.5rem;">X</div>
+                        <div style="background: #f3f4f6; border: 2px solid #d1d5db; padding: 0.4rem 0.9rem; font-weight: 800; font-size: 2rem; align-self: flex-start;">X</div>
                         <div style="flex: 1; text-align: right; font-size: 0.85rem;">
-                            <div style="color: #6b7280; font-style: italic; margin-bottom: 0.3rem;">Documento no valido como factura</div>
-                            <div><strong>Original</strong></div>
-                            <div><strong>N°:</strong> @viewerSale.Number</div>
+                            <div style="font-size: 1.4rem; font-weight: 800; color: #1d4ed8;">COMPROBANTE</div>
+                            <div style="font-family: monospace; font-size: 1.05rem; font-weight: 700;">N° @viewerSale.Number</div>
+                            <div style="font-size: 0.78rem; color: #6b7280; margin-bottom: 0.3rem;">Original</div>
                             <div><strong>Fecha:</strong> @viewerSale.Date.ToString("dd/MM/yyyy")</div>
                             <div><strong>CUIT:</strong> @companyInfo.Cuit</div>
                             @if (!string.IsNullOrEmpty(companyInfo.Iibb))
                             {
-                                <div><strong>Ingresos brutos:</strong> @companyInfo.Iibb</div>
+                                <div><strong>Ing. Brutos:</strong> @companyInfo.Iibb</div>
                             }
                             @if (!string.IsNullOrEmpty(companyInfo.ActivityStart))
                             {
-                                <div><strong>Inicio de actividades:</strong> @companyInfo.ActivityStart</div>
+                                <div style="font-size: 0.78rem;"><strong>Inicio actividades:</strong> @companyInfo.ActivityStart</div>
                             }
+                            <div style="color: #6b7280; font-style: italic; font-size: 0.72rem; margin-top: 0.3rem;">Documento no válido como factura</div>
                         </div>
-                    </div>
-                    <div style="font-size: 0.78rem; margin-top: 0.4rem;">
-                        @if (!string.IsNullOrEmpty(companyInfo.Address))
-                        {
-                            <div>@companyInfo.Address</div>
-                        }
-                        <div>@companyInfo.IvaCondition</div>
                     </div>
                 </div>
 
-                <!-- Cliente -->
-                <div style="border: 1px solid #d1d5db; border-top: 0; padding: 0.6rem; font-size: 0.85rem;">
-                    <div><strong>Razón social:</strong> @(viewerSale.ClientNameSnapshot ?? "Consumidor final")</div>
-                    @if (!string.IsNullOrEmpty(viewerSale.ClientAddressSnapshot))
-                    {
-                        <div><strong>Domicilio fiscal:</strong> @viewerSale.ClientAddressSnapshot</div>
-                    }
-                    @if (!string.IsNullOrEmpty(viewerSale.ClientDeliveryAddressSnapshot)
-                         && !string.Equals(viewerSale.ClientDeliveryAddressSnapshot, viewerSale.ClientAddressSnapshot, StringComparison.OrdinalIgnoreCase))
-                    {
-                        <div style="background: #eff6ff; border-left: 3px solid #2563eb; padding: 0.2rem 0.4rem; margin: 0.2rem 0; color: #1e3a8a;">
-                            <strong>📦 Entregar en:</strong> @viewerSale.ClientDeliveryAddressSnapshot
-                        </div>
-                    }
-                    @if (!string.IsNullOrEmpty(viewerSale.ClientCuitSnapshot))
-                    {
-                        <div><strong>CUIT/DNI:</strong> @viewerSale.ClientCuitSnapshot</div>
-                    }
-                    <div style="display: flex; justify-content: space-between; margin-top: 0.3rem;">
-                        <span><strong>Condicion de venta:</strong> @viewerSale.PaymentCondition</span>
-                        <span><strong>Condicion de IVA:</strong> @viewerSale.IvaCondition</span>
+                <!-- Cliente y condiciones (dos columnas, estilo Alquileres) -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.6rem;">
+                    <div style="border: 1px solid #d1d5db; padding: 0.6rem;">
+                        <div style="font-size: 0.7rem; color: #6b7280; font-weight: 700; text-transform: uppercase; margin-bottom: 0.3rem;">Cliente</div>
+                        <div style="font-weight: 700; font-size: 1.05rem;">@(viewerSale.ClientNameSnapshot ?? "Consumidor final")</div>
+                        @if (!string.IsNullOrEmpty(viewerSale.ClientCuitSnapshot))
+                        {
+                            <div style="font-size: 0.85rem;">CUIT/DNI: <strong>@viewerSale.ClientCuitSnapshot</strong></div>
+                        }
+                        @if (!string.IsNullOrEmpty(viewerSale.ClientAddressSnapshot))
+                        {
+                            <div style="font-size: 0.85rem;">Dom. fiscal: @viewerSale.ClientAddressSnapshot</div>
+                        }
+                        @if (!string.IsNullOrEmpty(viewerSale.ClientDeliveryAddressSnapshot)
+                             && !string.Equals(viewerSale.ClientDeliveryAddressSnapshot, viewerSale.ClientAddressSnapshot, StringComparison.OrdinalIgnoreCase))
+                        {
+                            <div style="background: #eff6ff; border-left: 3px solid #2563eb; padding: 0.25rem 0.4rem; margin-top: 0.3rem; color: #1e3a8a; font-size: 0.85rem;">
+                                <strong>📦 Entregar en:</strong> @viewerSale.ClientDeliveryAddressSnapshot
+                            </div>
+                        }
+                    </div>
+                    <div style="border: 1px solid #d1d5db; padding: 0.6rem;">
+                        <div style="font-size: 0.7rem; color: #6b7280; font-weight: 700; text-transform: uppercase; margin-bottom: 0.3rem;">Condiciones</div>
+                        <div style="font-size: 0.9rem;"><strong>Cond. de venta:</strong> @viewerSale.PaymentCondition</div>
+                        <div style="font-size: 0.9rem;"><strong>Cond. de IVA:</strong> @viewerSale.IvaCondition</div>
                     </div>
                 </div>
 
@@ -913,23 +927,23 @@
                     var distinctTierPcts = viewerSale.Items.Where(i => i.TierAdjustmentPercent != 0m).Select(i => i.TierAdjustmentPercent).Distinct().ToList();
                     decimal? uniformTierPct = distinctTierPcts.Count == 1 ? distinctTierPcts[0] : (decimal?)null;
                 }
-                <table class="data-table comprobante-items" style="margin: 0; border: 1px solid #d1d5db; border-top: 0;">
-                    <thead style="background: #f3f4f6;">
-                        <tr>
-                            <th style="width: 60px;">Cant.</th>
-                            <th style="width: 100px;">Código</th>
-                            <th>Descripción</th>
+                <table class="comprobante-items" style="width: 100%; border-collapse: collapse; font-size: 0.9rem; margin-top: 0.6rem;">
+                    <thead>
+                        <tr style="background: #f3f4f6;">
+                            <th style="border: 1px solid #d1d5db; padding: 5px 8px; text-align: center; width: 70px;">Cant.</th>
+                            <th style="border: 1px solid #d1d5db; padding: 5px 8px; text-align: left; width: 110px;">Código</th>
+                            <th style="border: 1px solid #d1d5db; padding: 5px 8px; text-align: left;">Descripción</th>
                             @if (anyTierDiscount)
                             {
-                                <th style="text-align: right; width: 100px;">P.U. lista</th>
-                                <th style="text-align: right; width: 60px;">Desc.</th>
+                                <th style="border: 1px solid #d1d5db; padding: 5px 8px; text-align: right; width: 100px;">P.U. lista</th>
+                                <th style="border: 1px solid #d1d5db; padding: 5px 8px; text-align: right; width: 60px;">Desc.</th>
                             }
-                            <th style="text-align: right; width: 110px;">Precio unitario</th>
+                            <th style="border: 1px solid #d1d5db; padding: 5px 8px; text-align: right; width: 110px;">Precio unitario</th>
                             @if (anyBonif)
                             {
-                                <th style="text-align: right; width: 60px;">Bonif</th>
+                                <th style="border: 1px solid #d1d5db; padding: 5px 8px; text-align: right; width: 60px;">Bonif</th>
                             }
-                            <th style="text-align: right; width: 120px;">Subtotal</th>
+                            <th style="border: 1px solid #d1d5db; padding: 5px 8px; text-align: right; width: 130px;">Subtotal</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -937,135 +951,138 @@
                         {
                             var hasDiscount = i.TierAdjustmentPercent != 0m && i.BasePrice > 0 && Math.Abs(i.BasePrice - i.UnitPrice) > 0.01m;
                             <tr>
-                                <td>@FormatQty(i.Quantity)</td>
-                                <td style="font-family: monospace;">@(i.Code ?? "")</td>
-                                <td>@RenderItemDescription(i.Description)</td>
+                                <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: center; font-weight: 700;">@FormatQty(i.Quantity)</td>
+                                <td style="border: 1px solid #d1d5db; padding: 4px 8px; font-family: monospace;">@(i.Code ?? "")</td>
+                                <td style="border: 1px solid #d1d5db; padding: 4px 8px;">@RenderItemDescription(i.Description)</td>
                                 @if (anyTierDiscount)
                                 {
                                     @if (hasDiscount)
                                     {
-                                        <td style="text-align: right; color: #6b7280; text-decoration: line-through;">$@FormatPrice(i.BasePrice)</td>
-                                        <td style="text-align: right; font-weight: 700; color: #dc2626;">@FormatPercent(i.TierAdjustmentPercent)</td>
+                                        <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: right; color: #6b7280; text-decoration: line-through;">$@FormatPrice(i.BasePrice)</td>
+                                        <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: right; font-weight: 700; color: #dc2626;">@FormatPercent(i.TierAdjustmentPercent)</td>
                                     }
                                     else
                                     {
-                                        <td style="text-align: right; color: #d1d5db;">—</td>
-                                        <td style="text-align: right; color: #d1d5db;">—</td>
+                                        <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: right; color: #d1d5db;">—</td>
+                                        <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: right; color: #d1d5db;">—</td>
                                     }
                                 }
-                                <td style="text-align: right; font-weight: 600;">$@FormatPrice(i.UnitPrice)</td>
+                                <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: right;">$@FormatPrice(i.UnitPrice)</td>
                                 @if (anyBonif)
                                 {
-                                    <td style="text-align: right;">@(i.BonifPercent > 0 ? FormatQty(i.BonifPercent) + " %" : "—")</td>
+                                    <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: right;">@(i.BonifPercent > 0 ? FormatQty(i.BonifPercent) + " %" : "—")</td>
                                 }
-                                <td style="text-align: right; font-weight: 600;">$@FormatPrice(i.LineTotal)</td>
+                                <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: right; font-weight: 700;">$@FormatPrice(i.LineTotal)</td>
                             </tr>
                         }
                         @* Filas vacias de relleno: garantizan que el comprobante siempre tenga
                            una altura minima estable, asi el pie/firmas quedan al fondo aunque
-                           la venta tenga pocos items. Si hay mas items que MIN_ROWS, no se agregan rellenos. *@
+                           la venta tenga pocos items. *@
                         @{
                             const int MIN_ROWS = 18;
-                            int filasFijas = 3 + (anyTierDiscount ? 2 : 0) + (anyBonif ? 1 : 0); // Cant + Codigo + Descripcion + (P.U. lista + Desc) + (Bonif) + Precio + Subtotal
                             int totalCols = 5 + (anyTierDiscount ? 2 : 0) + (anyBonif ? 1 : 0);
                             int rellenos = Math.Max(0, MIN_ROWS - viewerSale.Items.Count);
                         }
                         @for (int r = 0; r < rellenos; r++)
                         {
                             <tr class="comprobante-filler-row">
-                                <td colspan="@totalCols">&nbsp;</td>
+                                <td colspan="@totalCols" style="border-left: 1px solid #d1d5db; border-right: 1px solid #d1d5db;">&nbsp;</td>
                             </tr>
                         }
                     </tbody>
                 </table>
 
-                @* ===== Pie ===== *@
-                <div style="border: 1px solid #d1d5db; border-top: 0; padding: 0.6rem; font-size: 0.85rem;">
-                    <div style="display: flex; gap: 1rem; align-items: flex-start;">
-                        <div style="flex: 1;">
-                            @if (!string.IsNullOrEmpty(viewerSale.AmountInWords))
-                            {
-                                <div style="font-style: italic;">@viewerSale.AmountInWords</div>
-                            }
-                            @if (!string.IsNullOrEmpty(viewerSale.Notes))
-                            {
-                                var notesAll = viewerSale.Notes ?? "";
-                                var lines = notesAll.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-                                var saldoLines = lines.Where(l => l.TrimStart().StartsWith("Saldo anterior", StringComparison.OrdinalIgnoreCase)).ToList();
-                                var otherLines = lines.Where(l => !l.TrimStart().StartsWith("Saldo anterior", StringComparison.OrdinalIgnoreCase)).ToList();
-                                foreach (var saldoLine in saldoLines)
-                                {
-                                    <div style="margin-top: 0.4rem; padding: 0.3rem 0.5rem; background: #fef3c7; border-left: 3px solid #d97706; color: #78350f; font-size: 0.8rem; font-weight: 600;">
-                                        💰 @saldoLine.Trim()
-                                    </div>
-                                }
-                                if (otherLines.Count > 0)
-                                {
-                                    <div style="margin-top: 0.4rem; color: #6b7280; font-size: 0.78rem;">
-                                        <strong>Observaciones:</strong> @string.Join(" · ", otherLines.Select(l => l.Trim()))
-                                    </div>
-                                }
-                            }
-                        </div>
-                        @* Caja de totales con desglose *@
-                        <div style="min-width: 280px; border-left: 1px solid #e5e7eb; padding-left: 0.75rem;">
-                            @if (totalAhorrado > 0 || viewerSale.Discount > 0)
-                            {
-                                <div style="display: flex; justify-content: space-between; padding: 0.15rem 0;">
-                                    <span style="color: #6b7280;">Subtotal sin descuento:</span>
-                                    <span>$@FormatPrice(subtotalSinDescuento)</span>
-                                </div>
-                            }
-                            @if (totalAhorrado > 0)
-                            {
-                                <div style="display: flex; justify-content: space-between; padding: 0.15rem 0; color: #dc2626;">
-                                    <span>Descuento de lista@(uniformTierPct.HasValue ? $" ({FormatPercent(uniformTierPct.Value)})" : ""):</span>
-                                    <span>-$@FormatPrice(totalAhorrado)</span>
-                                </div>
-                            }
-                            @if (viewerSale.Discount > 0)
-                            {
-                                <div style="display: flex; justify-content: space-between; padding: 0.15rem 0; color: #dc2626;">
-                                    <span>Descuento adicional:</span>
-                                    <span>-$@FormatPrice(viewerSale.Discount)</span>
-                                </div>
-                            }
-                            <div style="border-top: 2px solid #1f2937; margin-top: 0.4rem; padding-top: 0.4rem; display: flex; justify-content: space-between; font-size: 1.1rem; font-weight: 800;">
-                                <span>IMPORTE TOTAL:</span>
-                                <span>$@FormatPrice(viewerSale.Total)</span>
-                            </div>
-                            @if (totalAhorrado > 0)
-                            {
-                                <div style="margin-top: 0.5rem; padding: 0.4rem 0.6rem; background: #dcfce7; color: #166534; border-radius: 4px; text-align: center; font-weight: 700; font-size: 0.85rem;">
-                                    💰 Ahorraste $@FormatPrice(totalAhorrado)
-                                </div>
-                            }
-                        </div>
-                    </div>
-
-                    @* Dias de la semana (tildables tambien despues de impreso) *@
-                    <div style="margin-top: 0.8rem; display: flex; gap: 0.3rem; justify-content: center; flex-wrap: wrap; align-items: center;">
-                        <span style="font-size: 0.78rem; color: #6b7280; margin-right: 0.4rem;">Días de visita / reparto:</span>
-                        @foreach (var d in AllWeekDays)
+                @* ===== Importe en letras + saldo anterior + observaciones ===== *@
+                @{
+                    var notesAll = viewerSale.Notes ?? "";
+                    var noteLines = notesAll.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                    var saldoLines = noteLines.Where(l => l.TrimStart().StartsWith("Saldo anterior", StringComparison.OrdinalIgnoreCase)).ToList();
+                    var otherLines = noteLines.Where(l => !l.TrimStart().StartsWith("Saldo anterior", StringComparison.OrdinalIgnoreCase)).ToList();
+                }
+                @if (!string.IsNullOrEmpty(viewerSale.AmountInWords) || saldoLines.Count > 0 || otherLines.Count > 0)
+                {
+                    <div style="margin-top: 0.5rem;">
+                        @if (!string.IsNullOrEmpty(viewerSale.AmountInWords))
                         {
-                            var isOn = ViewerHasDay(d);
-                            <span class="day-pill @(isOn ? "on" : "")" @onclick="() => ToggleViewerDay(d)" title="Click para tildar/destildar">
-                                @d
-                            </span>
+                            <div style="font-style: italic; font-size: 0.85rem; padding: 0.3rem 0.5rem; border: 1px solid #d1d5db;">
+                                @viewerSale.AmountInWords
+                            </div>
+                        }
+                        @foreach (var saldoLine in saldoLines)
+                        {
+                            <div style="margin-top: 0.3rem; padding: 0.3rem 0.5rem; background: #fef3c7; border-left: 3px solid #d97706; color: #78350f; font-size: 0.85rem; font-weight: 600;">
+                                💰 @saldoLine.Trim()
+                            </div>
+                        }
+                        @if (otherLines.Count > 0)
+                        {
+                            <div style="margin-top: 0.3rem; padding: 0.4rem 0.6rem; border: 1px solid #d1d5db; font-size: 0.85rem;">
+                                <strong>Observaciones:</strong> @string.Join(" · ", otherLines.Select(l => l.Trim()))
+                            </div>
                         }
                     </div>
+                }
 
-                    @* Espacios de firma *@
-                    <div class="comprobante-firmas" style="margin-top: 1.5rem; display: flex; justify-content: space-around; gap: 2rem;">
-                        <div style="flex: 1; text-align: center;">
-                            <div style="border-top: 1px solid #6b7280; padding-top: 0.3rem; font-size: 0.75rem; color: #6b7280;">
-                                Firma del cliente / Aclaración
+                @* ===== Caja de totales (estilo Alquileres) ===== *@
+                <div style="display: flex; justify-content: flex-end; margin-top: 0.5rem;">
+                    <div style="min-width: 320px; border: 1px solid #d1d5db; padding: 0.6rem 0.8rem;">
+                        @if (totalAhorrado > 0 || viewerSale.Discount > 0)
+                        {
+                            <div style="display: flex; justify-content: space-between; font-size: 0.9rem; padding: 0.15rem 0;">
+                                <span style="color: #6b7280;">Subtotal sin descuento:</span>
+                                <strong>$@FormatPrice(subtotalSinDescuento)</strong>
                             </div>
+                        }
+                        @if (totalAhorrado > 0)
+                        {
+                            <div style="display: flex; justify-content: space-between; font-size: 0.9rem; padding: 0.15rem 0; color: #dc2626;">
+                                <span>Descuento de lista@(uniformTierPct.HasValue ? $" ({FormatPercent(uniformTierPct.Value)})" : ""):</span>
+                                <span>− $@FormatPrice(totalAhorrado)</span>
+                            </div>
+                        }
+                        @if (viewerSale.Discount > 0)
+                        {
+                            <div style="display: flex; justify-content: space-between; font-size: 0.9rem; padding: 0.15rem 0; color: #dc2626;">
+                                <span>Descuento adicional:</span>
+                                <span>− $@FormatPrice(viewerSale.Discount)</span>
+                            </div>
+                        }
+                        <hr style="margin: 0.4rem 0; border: none; border-top: 2px solid #1f2937;" />
+                        <div style="display: flex; justify-content: space-between; font-size: 1.15rem; font-weight: 800; color: #059669;">
+                            <span>IMPORTE TOTAL:</span>
+                            <span>$@FormatPrice(viewerSale.Total)</span>
                         </div>
-                        <div style="flex: 1; text-align: center;">
-                            <div style="border-top: 1px solid #6b7280; padding-top: 0.3rem; font-size: 0.75rem; color: #6b7280;">
-                                Firma autorizada
+                        @if (totalAhorrado > 0)
+                        {
+                            <div style="margin-top: 0.4rem; padding: 0.3rem 0.5rem; background: #dcfce7; color: #166534; border-radius: 4px; text-align: center; font-weight: 700; font-size: 0.82rem;">
+                                💰 Ahorraste $@FormatPrice(totalAhorrado)
                             </div>
+                        }
+                    </div>
+                </div>
+
+                @* Dias de la semana (tildables tambien despues de impreso) *@
+                <div style="margin-top: 0.8rem; display: flex; gap: 0.3rem; justify-content: center; flex-wrap: wrap; align-items: center; padding: 0.5rem; border: 1px solid #d1d5db;">
+                    <span style="font-size: 0.78rem; color: #6b7280; margin-right: 0.4rem;">Días de visita / reparto:</span>
+                    @foreach (var d in AllWeekDays)
+                    {
+                        var isOn = ViewerHasDay(d);
+                        <span class="day-pill @(isOn ? "on" : "")" @onclick="() => ToggleViewerDay(d)" title="Click para tildar/destildar">
+                            @d
+                        </span>
+                    }
+                </div>
+
+                @* Espacios de firma *@
+                <div class="comprobante-firmas" style="margin-top: 1.5rem; display: flex; justify-content: space-around; gap: 2rem;">
+                    <div style="flex: 1; text-align: center;">
+                        <div style="border-top: 1px solid #6b7280; padding-top: 0.3rem; font-size: 0.75rem; color: #6b7280;">
+                            Firma del cliente / Aclaración
+                        </div>
+                    </div>
+                    <div style="flex: 1; text-align: center;">
+                        <div style="border-top: 1px solid #6b7280; padding-top: 0.3rem; font-size: 0.75rem; color: #6b7280;">
+                            Firma autorizada
                         </div>
                     </div>
                 </div>
