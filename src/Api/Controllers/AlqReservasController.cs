@@ -226,6 +226,36 @@ public class AlqReservasController : ControllerBase
         return Ok(new { deleted = true });
     }
 
+    /// <summary>
+    /// Texto editable con las condiciones de servicio que aparece al pie del PDF de la reserva.
+    /// Vive en AppSettings con la key "alq.condiciones".
+    /// </summary>
+    [HttpGet("condiciones")]
+    public async Task<IActionResult> GetCondiciones()
+    {
+        var s = await _db.AppSettings.FindAsync("alq.condiciones");
+        return Ok(new { texto = s?.Value ?? "" });
+    }
+
+    [HttpPut("condiciones")]
+    public async Task<IActionResult> SetCondiciones([FromBody] SetCondicionesRequest req)
+    {
+        var s = await _db.AppSettings.FindAsync("alq.condiciones");
+        if (s is null)
+        {
+            s = new AppSetting { Key = "alq.condiciones", Value = req.Texto ?? "" };
+            _db.AppSettings.Add(s);
+        }
+        else
+        {
+            s.Value = req.Texto ?? "";
+        }
+        await _db.SaveChangesAsync();
+        return Ok(new { texto = s.Value });
+    }
+
+    public class SetCondicionesRequest { public string? Texto { get; set; } }
+
     /// <summary>Disponibilidad de TODOS los equipos para un rango de fechas.</summary>
     [HttpGet("disponibilidad")]
     public async Task<IActionResult> Disponibilidad(

@@ -250,6 +250,18 @@ public class ApiClient
         return await GetAsync<List<AlqDisponibilidadDto>>(url);
     }
 
+    public async Task<string> GetAlqCondicionesAsync()
+    {
+        var resp = await GetAsync<AlqCondicionesDto>("/api/alquileres/reservas/condiciones");
+        return resp?.Texto ?? "";
+    }
+
+    public async Task<bool> SetAlqCondicionesAsync(string texto)
+    {
+        var resp = await PutAsync<AlqCondicionesDto>("/api/alquileres/reservas/condiciones", new { texto });
+        return resp is not null;
+    }
+
     // --- Nominas: Empleados ---
     public async Task<List<NomEmpleadoDto>?> GetNomEmpleadosAsync()
         => await GetAsync<List<NomEmpleadoDto>>("/api/nominas/empleados");

@@ -170,3 +170,8 @@ public class AlqDisponibilidadDto
     public int StockComprometido { get; set; }
     public int Disponible { get; set; }
 }
+
+public class AlqCondicionesDto
+{
+    public string Texto { get; set; } = "";
+}

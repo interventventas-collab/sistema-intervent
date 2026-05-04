@@ -3,6 +3,8 @@
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject BrandSettingsService BrandSettings
 
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
@@ -19,6 +21,7 @@
                 <option value="finalizado">Finalizado</option>
                 <option value="cancelado">Cancelado</option>
             </select>
+            <button class="btn btn-secondary" @onclick="ShowCondicionesEditor" title="Editar las condiciones que aparecen al pie del PDF">📝 Condiciones</button>
             <button class="btn btn-primary" @onclick="ShowCreate">+ Nueva Reserva</button>
         </div>
     </div>
@@ -72,6 +75,7 @@
                                 <td style="text-align: right; color: @(saldo > 0 ? "#dc2626" : "#059669"); font-weight: 600;">$@FormatMoney(saldo)</td>
                                 <td>@EstadoBadge(r.Estado)</td>
                                 <td class="actions-cell" @onclick:stopPropagation="true">
+                                    <button class="btn-icon" style="color: #1d4ed8;" @onclick="() => ShowPrint(r)" title="Ver / imprimir / PDF">🖨</button>
                                     <button class="btn-icon btn-edit" @onclick="() => ShowEdit(r)" title="Editar / Ver">@SvgIcons.Edit</button>
                                     <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(r)" title="Eliminar">@SvgIcons.AlertCircle</button>
                                 </td>
@@ -90,7 +94,13 @@
         <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 1100px; max-height: 92vh; display: flex; flex-direction: column;">
             <div class="modal-header" style="background: whitesmoke;">
                 <h3>@(isEditing ? $"Editar Reserva {editingNumero}" : "Nueva Reserva")</h3>
-                <button class="btn-close" @onclick="CloseForm">&times;</button>
+                <div style="display: flex; gap: 0.4rem; align-items: center;">
+                    @if (isEditing && editingId.HasValue)
+                    {
+                        <button class="btn btn-secondary" type="button" @onclick="OpenPrintFromEdit" style="font-size: 0.85rem;">🖨 Imprimir / PDF</button>
+                    }
+                    <button class="btn-close" @onclick="CloseForm">&times;</button>
+                </div>
             </div>
             <div class="modal-body" style="overflow-y: auto;">
                 @if (!string.IsNullOrEmpty(formError))
@@ -335,6 +345,229 @@
     </div>
 }
 
+@* ═══════ Modal Print/PDF ═══════ *@
+@if (printReserva is not null)
+{
+    <style>
+        @@media print {
+            @@page { size: A4; margin: 12mm; }
+            html, body { background: white !important; margin: 0 !important; padding: 0 !important; }
+            body * { visibility: hidden; }
+            #alq-print, #alq-print * { visibility: visible; }
+            #alq-print {
+                position: absolute !important;
+                left: 0 !important; top: 0 !important; right: 0 !important;
+                margin: 0 !important; padding: 0 !important; background: white !important;
+            }
+            .no-print { display: none !important; }
+            .alq-print-items { page-break-inside: auto; }
+            .alq-print-items th, .alq-print-items td { font-size: 0.78rem; }
+            .alq-print-condiciones { page-break-inside: avoid; }
+        }
+        .alq-print-stamp {
+            position: fixed; top: 50%; left: 50%;
+            transform: translate(-50%, -50%) rotate(-22deg);
+            font-size: 7rem; font-weight: 900;
+            color: rgba(220, 38, 38, 0.18);
+            border: 8px solid rgba(220, 38, 38, 0.18);
+            padding: 0.6rem 3.5rem; border-radius: 14px;
+            letter-spacing: 0.5rem; z-index: 9999; pointer-events: none;
+        }
+    </style>
+    <div class="modal-overlay" @onclick="ClosePrint">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 820px; max-height: 92vh; display: flex; flex-direction: column;">
+            <div class="modal-header no-print" style="background: whitesmoke;">
+                <h3 style="margin: 0;">📄 Reserva @printReserva.Numero</h3>
+                <div style="display: flex; gap: 0.4rem; align-items: center;">
+                    <button class="btn btn-secondary" @onclick="DoPrint" style="font-size: 0.85rem;">🖨 Imprimir / Guardar PDF</button>
+                    <button class="btn-close" @onclick="ClosePrint">&times;</button>
+                </div>
+            </div>
+            <div class="modal-body" id="alq-print" style="background: white; overflow-y: auto; position: relative;">
+                @if (printReserva.Estado == "cancelado")
+                {
+                    <div style="background: #fee2e2; border: 2px solid #b91c1c; color: #7f1d1d; padding: 0.6rem 0.9rem; border-radius: 6px; margin-bottom: 0.6rem; font-weight: 800;">
+                        ⚠ RESERVA CANCELADA
+                    </div>
+                }
+
+                @* Cabecera *@
+                <div style="border: 1px solid #d1d5db; padding: 0.85rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem;">
+                        <div style="flex: 1;">
+                            @if (BrandSettings.HasCustomLogo)
+                            {
+                                <img src="@BrandSettings.BrandLogo" alt="Logo" style="max-height: 55px; max-width: 220px; object-fit: contain;" />
+                            }
+                            else
+                            {
+                                <h2 style="margin: 0; font-size: 1.5rem; font-weight: 800;">@BrandSettings.BrandName</h2>
+                            }
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 1.4rem; font-weight: 800; color: #1d4ed8;">RESERVA</div>
+                            <div style="font-family: monospace; font-size: 1.1rem; font-weight: 700;">@printReserva.Numero</div>
+                            <div style="font-size: 0.78rem; color: #6b7280;">Emitida: @DateTime.Today.ToString("dd/MM/yyyy")</div>
+                            <div style="margin-top: 0.3rem;">@EstadoBadge(printReserva.Estado)</div>
+                        </div>
+                    </div>
+                </div>
+
+                @* Datos del cliente y del evento *@
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.6rem;">
+                    <div style="border: 1px solid #d1d5db; padding: 0.6rem;">
+                        <div style="font-size: 0.7rem; color: #6b7280; font-weight: 700; text-transform: uppercase; margin-bottom: 0.3rem;">Cliente</div>
+                        @{
+                            var cli = clientes?.FirstOrDefault(c => c.Id == printReserva.ClienteId);
+                        }
+                        <div style="font-weight: 700; font-size: 1.05rem;">@printReserva.ClienteNombre</div>
+                        @if (cli is not null)
+                        {
+                            @if (!string.IsNullOrEmpty(cli.DniCuit))
+                            {
+                                <div style="font-size: 0.85rem;">DNI/CUIT: <strong>@cli.DniCuit</strong></div>
+                            }
+                            @if (!string.IsNullOrEmpty(cli.Telefono))
+                            {
+                                <div style="font-size: 0.85rem;">Tel: @cli.Telefono @(string.IsNullOrEmpty(cli.Telefono2) ? "" : $"/ {cli.Telefono2}")</div>
+                            }
+                            @if (!string.IsNullOrEmpty(cli.Email))
+                            {
+                                <div style="font-size: 0.85rem;">@cli.Email</div>
+                            }
+                        }
+                        else if (!string.IsNullOrEmpty(printReserva.ClienteTelefono))
+                        {
+                            <div style="font-size: 0.85rem;">Tel: @printReserva.ClienteTelefono</div>
+                        }
+                    </div>
+                    <div style="border: 1px solid #d1d5db; padding: 0.6rem;">
+                        <div style="font-size: 0.7rem; color: #6b7280; font-weight: 700; text-transform: uppercase; margin-bottom: 0.3rem;">Evento</div>
+                        <div style="font-size: 0.9rem;">
+                            <strong>Entrega:</strong> @printReserva.FechaEntrega.ToString("dd/MM/yyyy")
+                            @if (!string.IsNullOrEmpty(printReserva.HoraInicio)) { <span> · @printReserva.HoraInicio hs</span> }
+                        </div>
+                        <div style="font-size: 0.9rem;">
+                            <strong>Retiro:</strong> @printReserva.FechaRetiro.ToString("dd/MM/yyyy")
+                            @if (!string.IsNullOrEmpty(printReserva.HoraFin)) { <span> · @printReserva.HoraFin hs</span> }
+                        </div>
+                        @if (!string.IsNullOrEmpty(printReserva.DireccionEvento))
+                        {
+                            <div style="margin-top: 0.3rem; font-size: 0.85rem;">
+                                <strong>Dirección:</strong> @printReserva.DireccionEvento
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                @* Tabla de items *@
+                <div style="margin-top: 0.6rem;">
+                    <table class="alq-print-items" style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+                        <thead>
+                            <tr style="background: #f3f4f6;">
+                                <th style="border: 1px solid #d1d5db; padding: 5px 8px; text-align: center; width: 70px;">Cant.</th>
+                                <th style="border: 1px solid #d1d5db; padding: 5px 8px; text-align: left;">Descripción</th>
+                                <th style="border: 1px solid #d1d5db; padding: 5px 8px; text-align: right; width: 110px;">P. Unit.</th>
+                                <th style="border: 1px solid #d1d5db; padding: 5px 8px; text-align: right; width: 130px;">Subtotal</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var i in printReserva.Items)
+                            {
+                                <tr>
+                                    <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: center; font-weight: 700;">@i.Cantidad</td>
+                                    <td style="border: 1px solid #d1d5db; padding: 4px 8px;">
+                                        <div style="font-weight: 600;">@i.EquipoNombre</div>
+                                        <div style="font-size: 0.75rem; color: #6b7280; font-family: monospace;">@i.EquipoSku</div>
+                                    </td>
+                                    <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: right;">$@FormatMoney(i.PrecioUnitario)</td>
+                                    <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: right; font-weight: 700;">$@FormatMoney(i.Cantidad * i.PrecioUnitario)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                @* Totales *@
+                <div style="display: flex; justify-content: flex-end; margin-top: 0.5rem;">
+                    <div style="min-width: 320px; border: 1px solid #d1d5db; padding: 0.6rem 0.8rem;">
+                        @{
+                            var subtotalPrint = printReserva.Items.Sum(i => i.Cantidad * i.PrecioUnitario);
+                            var saldoPrint = printReserva.MontoTotal - printReserva.Sena;
+                        }
+                        <div style="display: flex; justify-content: space-between; font-size: 0.9rem;">
+                            <span>Subtotal:</span>
+                            <strong>$@FormatMoney(subtotalPrint)</strong>
+                        </div>
+                        @if (printReserva.Descuento > 0)
+                        {
+                            <div style="display: flex; justify-content: space-between; font-size: 0.9rem; color: #dc2626;">
+                                <span>Descuento:</span>
+                                <span>− $@FormatMoney(printReserva.Descuento)</span>
+                            </div>
+                        }
+                        <hr style="margin: 0.4rem 0; border: none; border-top: 1px solid #d1d5db;" />
+                        <div style="display: flex; justify-content: space-between; font-size: 1.1rem; font-weight: 800; color: #059669;">
+                            <span>TOTAL:</span>
+                            <span>$@FormatMoney(printReserva.MontoTotal)</span>
+                        </div>
+                        <hr style="margin: 0.4rem 0; border: none; border-top: 1px dashed #d1d5db;" />
+                        <div style="display: flex; justify-content: space-between; font-size: 0.9rem;">
+                            <span>Seña pagada:</span>
+                            <strong style="color: #059669;">$@FormatMoney(printReserva.Sena)</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; font-size: 1rem; font-weight: 800; color: @(saldoPrint > 0 ? "#dc2626" : "#059669");">
+                            <span>Saldo pendiente:</span>
+                            <span>$@FormatMoney(saldoPrint)</span>
+                        </div>
+                    </div>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(printReserva.Notas))
+                {
+                    <div style="margin-top: 0.5rem; border: 1px solid #d1d5db; padding: 0.5rem 0.7rem; font-size: 0.85rem;">
+                        <strong>Observaciones:</strong> @printReserva.Notas
+                    </div>
+                }
+
+                @* Condiciones *@
+                @if (!string.IsNullOrWhiteSpace(condicionesTexto))
+                {
+                    <div class="alq-print-condiciones" style="margin-top: 0.7rem; border-top: 2px solid #d1d5db; padding-top: 0.6rem;">
+                        <div style="font-size: 0.7rem; color: #6b7280; font-weight: 700; text-transform: uppercase; margin-bottom: 0.3rem;">Condiciones de servicio</div>
+                        <div style="white-space: pre-wrap; font-size: 0.78rem; color: #374151; line-height: 1.45;">@condicionesTexto</div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@* ═══════ Modal editar condiciones ═══════ *@
+@if (showCondicionesEditor)
+{
+    <div class="modal-overlay" @onclick="() => showCondicionesEditor = false">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 720px;">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3 style="margin: 0;">📝 Condiciones de servicio</h3>
+                <button class="btn-close" @onclick="() => showCondicionesEditor = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="color: #6b7280; font-size: 0.85rem; margin: 0 0 0.5rem;">
+                    Este texto aparece al pie del PDF de cada reserva. Editalo cuando cambien tus condiciones.
+                </p>
+                <textarea class="form-input" rows="10" @bind="condicionesEditor" style="font-family: inherit; line-height: 1.5;"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showCondicionesEditor = false" disabled="@savingCondiciones">Cancelar</button>
+                <button class="btn btn-primary" @onclick="SaveCondiciones" disabled="@savingCondiciones">
+                    @(savingCondiciones ? "Guardando..." : "Guardar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @if (showDeleteConfirm && reservaToDelete is not null)
 {
     <div class="modal-overlay" @onclick="() => showDeleteConfirm = false">
@@ -400,6 +633,13 @@
     // Delete
     private bool showDeleteConfirm;
     private AlqReservaDto? reservaToDelete;
+
+    // Print / PDF
+    private AlqReservaDto? printReserva;
+    private string condicionesTexto = "";
+    private bool showCondicionesEditor;
+    private string condicionesEditor = "";
+    private bool savingCondiciones;
 
     private decimal Subtotal => formItems.Sum(i => i.Cantidad * i.PrecioUnitario);
     private decimal Total => Math.Max(0m, Subtotal - Math.Max(0m, formDescuento));
@@ -665,6 +905,69 @@
     }
 
     private void ConfirmDelete(AlqReservaDto r) { reservaToDelete = r; showDeleteConfirm = true; }
+
+    // ═══════ Print / PDF ═══════
+    private async Task ShowPrint(AlqReservaDto r)
+    {
+        // Asegurarse de tener clientes cargados (para mostrar DNI/CUIT, telefonos en el PDF)
+        if (clientes is null) await LoadCatalogos();
+        // Cargar condiciones (cacheadas para no pedir varias veces)
+        if (string.IsNullOrEmpty(condicionesTexto))
+        {
+            try { condicionesTexto = await Api.GetAlqCondicionesAsync(); }
+            catch { condicionesTexto = ""; }
+        }
+        // Refrescar la reserva por si hubo cambios
+        var fresh = await Api.GetAlqReservaAsync(r.Id);
+        printReserva = fresh ?? r;
+    }
+
+    private async Task OpenPrintFromEdit()
+    {
+        if (!editingId.HasValue) return;
+        // Forzamos guardar primero los cambios pendientes para que el PDF refleje lo último.
+        // El usuario igual puede haber tocado "Guardar" antes; usamos la lista cargada.
+        var current = reservas?.FirstOrDefault(x => x.Id == editingId.Value) ?? await Api.GetAlqReservaAsync(editingId.Value);
+        if (current is not null) await ShowPrint(current);
+    }
+
+    private void ClosePrint() => printReserva = null;
+
+    private async Task DoPrint()
+    {
+        try { await JS.InvokeVoidAsync("printElement", "alq-print", $"Reserva {printReserva?.Numero}"); }
+        catch { ToastService.Error("No se pudo abrir la ventana de impresión. Permitilo en el navegador."); }
+    }
+
+    // ═══════ Condiciones ═══════
+    private async Task ShowCondicionesEditor()
+    {
+        try { condicionesTexto = await Api.GetAlqCondicionesAsync(); }
+        catch { condicionesTexto = ""; }
+        condicionesEditor = condicionesTexto;
+        showCondicionesEditor = true;
+    }
+
+    private async Task SaveCondiciones()
+    {
+        savingCondiciones = true;
+        try
+        {
+            var ok = await Api.SetAlqCondicionesAsync(condicionesEditor ?? "");
+            if (ok)
+            {
+                condicionesTexto = condicionesEditor ?? "";
+                showCondicionesEditor = false;
+                ToastService.Success("Condiciones guardadas");
+            }
+            else
+            {
+                ToastService.Error("No se pudo guardar");
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { savingCondiciones = false; }
+    }
 
     private async Task Delete()
     {
