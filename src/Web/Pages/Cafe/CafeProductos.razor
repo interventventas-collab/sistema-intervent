@@ -44,8 +44,9 @@
                             <th>Categoría</th>
                             <th>Marca</th>
                             <th style="text-align: right;">Costo</th>
-                            <th style="text-align: right;">PVP1 (BAR)</th>
-                            <th style="text-align: right;">PVP2 (OTRO)</th>
+                            <th style="text-align: right;">PVP BAR</th>
+                            <th style="text-align: right;">PVP OTRO</th>
+                            <th style="text-align: right; width: 70px;">UxB</th>
                             <th style="text-align: right;">Stock</th>
                             <th>Estado</th>
                             <th style="width: 130px;">Acciones</th>
@@ -89,8 +90,33 @@
                                     }
                                 </td>
                                 <td style="text-align: right;">$@FormatMoney(p.Costo)</td>
-                                <td style="text-align: right; font-weight: 700; color: #1d4ed8;">@(p.Pvp1.HasValue ? "$" + FormatMoney(p.Pvp1.Value) : "—")</td>
-                                <td style="text-align: right; font-weight: 700; color: #15803d;">@(p.Pvp2.HasValue ? "$" + FormatMoney(p.Pvp2.Value) : "—")</td>
+                                @if (esCafe)
+                                {
+                                    <td style="text-align: right; font-weight: 700; color: #1d4ed8;">@(p.Pvp1.HasValue ? "$" + FormatMoney(p.Pvp1.Value) + "/kg" : "—")</td>
+                                    <td style="text-align: right; font-weight: 700; color: #15803d;">@(p.Pvp2.HasValue ? "$" + FormatMoney(p.Pvp2.Value) + "/kg" : "—")</td>
+                                }
+                                else
+                                {
+                                    <td style="text-align: right; font-weight: 700; color: #1d4ed8;">
+                                        @if (p.BarPctSobreCosto.HasValue)
+                                        {
+                                            var precioBar = p.Costo * (1m + p.BarPctSobreCosto.Value / 100m);
+                                            <span>$@FormatMoney(precioBar)</span>
+                                            <div style="font-size: 0.66rem; color: #6b7280; font-weight: 500;">+@p.BarPctSobreCosto.Value.ToString("0.##")% s/costo</div>
+                                        }
+                                        else if (p.Pvp2.HasValue)
+                                        {
+                                            <span style="color: #6b7280;">$@FormatMoney(p.Pvp2.Value)</span>
+                                            <div style="font-size: 0.66rem; color: #9ca3af; font-weight: 500;">igual a OTRO</div>
+                                        }
+                                        else
+                                        {
+                                            <span>—</span>
+                                        }
+                                    </td>
+                                    <td style="text-align: right; font-weight: 700; color: #15803d;">@(p.Pvp2.HasValue ? "$" + FormatMoney(p.Pvp2.Value) : "—")</td>
+                                }
+                                <td style="text-align: right; color: #6b7280; font-size: 0.85rem;">@(esCafe ? "—" : (p.UxB?.ToString() ?? "—"))</td>
                                 <td style="text-align: right; font-weight: 700;">
                                     @if (esCafe)
                                     {
@@ -196,10 +222,42 @@
                 }
                 else
                 {
-                    <p style="font-size: 0.78rem; color: #6b7280; padding: 0.4rem 0.6rem; background: #f3f4f6; border-radius: 4px;">
-                        Los precios de los productos OTROS se calculan automáticamente con el margen configurado en <strong>Configuración</strong>:
-                        <strong>costo × (1 + margen%)</strong>.
-                    </p>
+                    <h4 style="margin: 1rem 0 0.5rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase;">📦 Precios</h4>
+                    <div class="form-row">
+                        <div class="form-group" style="flex: 2;">
+                            <label class="form-label">PVP * — clientes OTRO ($)</label>
+                            <input class="form-input" type="number" step="0.01" min="0" @bind="formPvp2" />
+                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Precio de lista a mano. Obligatorio.</p>
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">UxB</label>
+                            <input class="form-input" type="number" step="1" min="0" @bind="formUxB" />
+                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Unidades por bulto (informativo)</p>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">BAR paga</label>
+                            <select class="form-input" @bind="formBarMode">
+                                <option value="PVP">Lo mismo que OTRO (PVP)</option>
+                                <option value="PCT">Costo + % (mayorista)</option>
+                            </select>
+                        </div>
+                        @if (formBarMode == "PCT")
+                        {
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label">% sobre costo</label>
+                                <input class="form-input" type="number" step="0.01" @bind="formBarPct" />
+                                @if (formCosto > 0 && formBarPct.HasValue)
+                                {
+                                    var precioBar = formCosto * (1m + formBarPct.Value / 100m);
+                                    <p style="font-size: 0.72rem; color: #1d4ed8; margin: 0.2rem 0 0; font-weight: 600;">
+                                        → BAR paga $@FormatMoney(precioBar)
+                                    </p>
+                                }
+                            </div>
+                        }
+                    </div>
                     <div class="form-group">
                         <label class="form-label">Stock (unidades)</label>
                         <input class="form-input" type="number" step="1" min="0" @bind="formStockUnidades" />
@@ -270,6 +328,9 @@
     private decimal formCosto;
     private decimal? formPvp1;
     private decimal? formPvp2;
+    private decimal? formBarPct;     // % sobre costo (solo OTROS)
+    private string formBarMode = "PVP";  // "PVP" | "PCT"
+    private int? formUxB;             // unidades por bulto (solo OTROS)
     private decimal formStockGramos;
     private int formStockUnidades;
     private string formNotas = "";
@@ -325,6 +386,7 @@
         formNombre = ""; formSku = ""; formBarcode = "";
         formCategoria = "CAFE"; formMarca = "";
         formCosto = 0; formPvp1 = null; formPvp2 = null;
+        formBarPct = null; formBarMode = "PVP"; formUxB = null;
         formStockGramos = 0; formStockUnidades = 0;
         formNotas = ""; formIsActive = true;
         formError = null; showForm = true;
@@ -336,6 +398,9 @@
         formNombre = p.Nombre; formSku = p.Sku ?? ""; formBarcode = p.Barcode ?? "";
         formCategoria = p.Categoria; formMarca = p.Marca ?? "";
         formCosto = p.Costo; formPvp1 = p.Pvp1; formPvp2 = p.Pvp2;
+        formBarPct = p.BarPctSobreCosto;
+        formBarMode = p.BarPctSobreCosto.HasValue ? "PCT" : "PVP";
+        formUxB = p.UxB;
         formStockGramos = p.StockGramos; formStockUnidades = p.StockUnidades;
         formNotas = p.Notas ?? ""; formIsActive = p.IsActive;
         formError = null; showForm = true;
@@ -348,9 +413,33 @@
         formError = null;
         if (string.IsNullOrWhiteSpace(formNombre)) { formError = "El nombre es obligatorio"; return; }
         if (formCosto < 0) { formError = "El costo no puede ser negativo"; return; }
+        if (formCategoria == "OTROS")
+        {
+            if (!formPvp2.HasValue || formPvp2.Value < 0) { formError = "Para OTROS el PVP es obligatorio"; return; }
+            if (formBarMode == "PCT" && !formBarPct.HasValue) { formError = "Cargá el % BAR sobre costo o cambiá a 'BAR paga PVP'"; return; }
+        }
         saving = true;
         try
         {
+            // Para OTROS, BarPctSobreCosto sale del modo seleccionado.
+            decimal? barPctFinal = null;
+            int? uxBFinal = null;
+            bool clearBarPct = false;
+            bool clearUxB = false;
+            if (formCategoria == "OTROS")
+            {
+                barPctFinal = formBarMode == "PCT" ? formBarPct : null;
+                clearBarPct = formBarMode != "PCT";  // si esta en modo PVP, vaciar el campo
+                uxBFinal = formUxB;
+                clearUxB = !formUxB.HasValue;
+            }
+            else
+            {
+                // CAFE no usa estos campos: vaciarlos siempre.
+                clearBarPct = true;
+                clearUxB = true;
+            }
+
             if (isEditing && editingId.HasValue)
             {
                 var u = await Api.UpdateCafeProductoAsync(editingId.Value, new UpdateCafeProductoRequest
@@ -358,6 +447,8 @@
                     Sku = formSku, Barcode = formBarcode,
                     Nombre = formNombre, Categoria = formCategoria, Marca = formMarca,
                     Costo = formCosto, Pvp1 = formPvp1, Pvp2 = formPvp2,
+                    BarPctSobreCosto = barPctFinal, ClearBarPctSobreCosto = clearBarPct,
+                    UxB = uxBFinal, ClearUxB = clearUxB,
                     StockGramos = formStockGramos, StockUnidades = formStockUnidades,
                     Notas = formNotas, IsActive = formIsActive
                 });
@@ -371,6 +462,8 @@
                     Sku = formSku, Barcode = formBarcode,
                     Nombre = formNombre, Categoria = formCategoria, Marca = formMarca,
                     Costo = formCosto, Pvp1 = formPvp1, Pvp2 = formPvp2,
+                    BarPctSobreCosto = barPctFinal,
+                    UxB = uxBFinal,
                     StockGramos = formCategoria == "CAFE" ? formStockGramos : 0,
                     StockUnidades = formCategoria == "OTROS" ? formStockUnidades : 0,
                     Notas = formNotas

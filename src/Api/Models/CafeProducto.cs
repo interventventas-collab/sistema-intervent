@@ -37,6 +37,13 @@ public class CafeProducto
     [Column(TypeName = "decimal(18,2)")]
     public decimal? Pvp2 { get; set; }
 
+    /// <summary>Solo OTROS: % sobre costo para clientes BAR. NULL = BAR paga PVP (Pvp2).</summary>
+    [Column(TypeName = "decimal(7,2)")]
+    public decimal? BarPctSobreCosto { get; set; }
+
+    /// <summary>Unidades por bulto (informativo, solo OTROS).</summary>
+    public int? UxB { get; set; }
+
     [Column(TypeName = "decimal(18,3)")]
     public decimal StockGramos { get; set; }
 

@@ -21,7 +21,9 @@ public class CafeProductosController : ControllerBase
         p.Id, p.Sku, p.Barcode,
         p.Nombre, p.Categoria, p.Marca,
         p.Costo, p.PrecioPorKg,
-        p.Pvp1, p.Pvp2, p.StockGramos, p.StockUnidades,
+        p.Pvp1, p.Pvp2,
+        p.BarPctSobreCosto, p.UxB,
+        p.StockGramos, p.StockUnidades,
         p.Notas, p.IsActive, p.CreatedAt, p.UpdatedAt);
 
     [HttpGet]
@@ -53,6 +55,10 @@ public class CafeProductosController : ControllerBase
         if (req.Costo < 0) return BadRequest(new { error = "El costo no puede ser negativo" });
         var cat = NormCat(req.Categoria);
 
+        // OTROS exige PVP (Pvp2) cargado a mano
+        if (cat == "OTROS" && (!req.Pvp2.HasValue || req.Pvp2.Value < 0))
+            return BadRequest(new { error = "Para productos OTROS el PVP es obligatorio" });
+
         var p = new CafeProducto
         {
             Sku = string.IsNullOrWhiteSpace(req.Sku) ? null : req.Sku.Trim().ToUpperInvariant(),
@@ -64,6 +70,8 @@ public class CafeProductosController : ControllerBase
             PrecioPorKg = req.PrecioPorKg,
             Pvp1 = req.Pvp1,
             Pvp2 = req.Pvp2,
+            BarPctSobreCosto = cat == "OTROS" ? req.BarPctSobreCosto : null,
+            UxB = cat == "OTROS" ? req.UxB : null,
             StockGramos = Math.Max(0m, req.StockGramos ?? 0m),
             StockUnidades = Math.Max(0, req.StockUnidades ?? 0),
             Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim(),
@@ -97,6 +105,10 @@ public class CafeProductosController : ControllerBase
         if (req.PrecioPorKg.HasValue) p.PrecioPorKg = req.PrecioPorKg.Value;
         if (req.Pvp1.HasValue) p.Pvp1 = req.Pvp1.Value;
         if (req.Pvp2.HasValue) p.Pvp2 = req.Pvp2.Value;
+        if (req.BarPctSobreCosto.HasValue) p.BarPctSobreCosto = req.BarPctSobreCosto.Value;
+        else if (req.ClearBarPctSobreCosto) p.BarPctSobreCosto = null;
+        if (req.UxB.HasValue) p.UxB = req.UxB.Value;
+        else if (req.ClearUxB) p.UxB = null;
         if (req.StockGramos.HasValue) p.StockGramos = Math.Max(0m, req.StockGramos.Value);
         if (req.StockUnidades.HasValue) p.StockUnidades = Math.Max(0, req.StockUnidades.Value);
         if (req.Notas is not null) p.Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim();

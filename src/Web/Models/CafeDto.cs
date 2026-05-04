@@ -51,6 +51,8 @@ public class CafeProductoDto
     public decimal? PrecioPorKg { get; set; }
     public decimal? Pvp1 { get; set; }
     public decimal? Pvp2 { get; set; }
+    public decimal? BarPctSobreCosto { get; set; }
+    public int? UxB { get; set; }
     public decimal StockGramos { get; set; }
     public int StockUnidades { get; set; }
     public string? Notas { get; set; }
@@ -70,6 +72,8 @@ public class CreateCafeProductoRequest
     public decimal? PrecioPorKg { get; set; }
     public decimal? Pvp1 { get; set; }
     public decimal? Pvp2 { get; set; }
+    public decimal? BarPctSobreCosto { get; set; }
+    public int? UxB { get; set; }
     public decimal? StockGramos { get; set; }
     public int? StockUnidades { get; set; }
     public string? Notas { get; set; }
@@ -86,6 +90,10 @@ public class UpdateCafeProductoRequest
     public decimal? PrecioPorKg { get; set; }
     public decimal? Pvp1 { get; set; }
     public decimal? Pvp2 { get; set; }
+    public decimal? BarPctSobreCosto { get; set; }
+    public int? UxB { get; set; }
+    public bool ClearBarPctSobreCosto { get; set; }
+    public bool ClearUxB { get; set; }
     public decimal? StockGramos { get; set; }
     public int? StockUnidades { get; set; }
     public string? Notas { get; set; }

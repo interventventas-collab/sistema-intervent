@@ -12,9 +12,13 @@ namespace Api.Services;
 ///   1/4 kg   -> (precio_kg / 4) + costoFraccionamiento
 ///   -> redondeo hacia arriba a multiplo configurable (default 1000)
 ///
-/// Para OTROS:
-///   margen_pct = (cliente.tipo == BAR) ? settings.MargenOtrosBarPct : settings.MargenOtrosNoBarPct
-///   precio_unit = costo * (1 + margen_pct/100)  -> redondeado al multiplo
+/// Para OTROS (PVP por producto):
+///   OTRO  -> producto.Pvp2 (precio fijo a mano, obligatorio)
+///   BAR   -> si producto.BarPctSobreCosto != null: costo * (1 + BarPctSobreCosto/100)
+///            si null: cae al PVP (Pvp2)
+///   -> SIN redondeo (el PVP a mano es el numero literal que el usuario escribio).
+///   Settings.MargenOtros* quedaron en desuso y se ignoran. Se respetan solo si
+///   el producto OTROS no tiene Pvp2 cargado (defensivo, no deberia pasar luego de la migracion).
 /// </summary>
 public static class CafePricingService
 {
@@ -66,13 +70,25 @@ public static class CafePricingService
             };
             return RedondearArriba(precio, settings.RedondeoMultiplo);
         }
-        else // OTROS
+        else // OTROS (PVP por producto)
         {
-            var margenPct = tipoCliente == TIPO_BAR
-                ? settings.MargenOtrosBarPct
-                : settings.MargenOtrosNoBarPct;
-            var precio = producto.Costo * (1m + margenPct / 100m);
-            return RedondearArriba(precio, settings.RedondeoMultiplo);
+            // OTRO siempre paga el PVP fijo (Pvp2). Si por algun motivo el producto no tiene PVP cargado,
+            // caemos a costo + margen global como salvaguarda (no deberia ocurrir luego de la migracion).
+            var pvp = producto.Pvp2 ?? Math.Round(
+                producto.Costo * (1m + settings.MargenOtrosNoBarPct / 100m),
+                2, MidpointRounding.AwayFromZero);
+
+            if (tipoCliente == TIPO_BAR)
+            {
+                if (producto.BarPctSobreCosto.HasValue)
+                {
+                    var precioBar = producto.Costo * (1m + producto.BarPctSobreCosto.Value / 100m);
+                    return Math.Round(precioBar, 2, MidpointRounding.AwayFromZero);
+                }
+                return pvp;  // BAR sin % cargado -> paga lo mismo que OTRO
+            }
+
+            return pvp;
         }
     }
 

@@ -1970,3 +1970,36 @@ BEGIN
     CREATE INDEX IX_CafeComboItems_Producto ON Cafe_ComboItems (ProductoId);
 END
 GO
+
+-- Cafe_Productos: PVP por producto + UxB (paso 1 OEM)
+-- Para OTROS: Pvp2 = PVP fijo manual (lo paga OTRO), BarPctSobreCosto = % sobre costo (lo paga BAR si no es null).
+-- Para CAFE: sin cambios, sigue usando Pvp1 (BAR) y Pvp2 (OTRO) como precio/kg.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'BarPctSobreCosto' AND Object_ID = Object_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD BarPctSobreCosto DECIMAL(7,2) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'UxB' AND Object_ID = Object_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD UxB INT NULL;
+GO
+
+-- Migracion one-shot para OTROS:
+--  - Si Pvp2 (OTRO) viene NULL, lo seteo en costo*(1+MargenOtrosNoBarPct/100) para preservar el precio que el motor venia calculando.
+--  - BarPctSobreCosto lo seteo en MargenOtrosBarPct para preservar el precio BAR.
+--  - Solo OTROS, solo si todavia no se aplico esta migracion.
+IF NOT EXISTS (SELECT 1 FROM AppSettings WHERE [Key] = 'cafe_productos_pvp_per_product_migrated')
+BEGIN
+    DECLARE @MargenOtroPct DECIMAL(7,2) = ISNULL((SELECT TOP 1 MargenOtrosNoBarPct FROM Cafe_Settings WHERE Id = 1), 0);
+    DECLARE @MargenBarPct DECIMAL(7,2) = ISNULL((SELECT TOP 1 MargenOtrosBarPct FROM Cafe_Settings WHERE Id = 1), 0);
+
+    -- Pvp2 = costo * (1 + margenOtro/100), solo si Pvp2 esta vacio
+    UPDATE Cafe_Productos
+    SET Pvp2 = ROUND(Costo * (1 + (@MargenOtroPct / 100.0)), 2)
+    WHERE Categoria = 'OTROS' AND Pvp2 IS NULL;
+
+    -- BarPctSobreCosto = margenBar (siempre, es campo nuevo sin data previa)
+    UPDATE Cafe_Productos
+    SET BarPctSobreCosto = @MargenBarPct
+    WHERE Categoria = 'OTROS' AND BarPctSobreCosto IS NULL;
+
+    INSERT INTO AppSettings ([Key], [Value]) VALUES ('cafe_productos_pvp_per_product_migrated', '1');
+END
+GO
