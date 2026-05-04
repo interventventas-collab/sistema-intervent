@@ -326,10 +326,20 @@
             <button class="topbar-menu-btn" @onclick="ToggleSidebar" aria-label="Abrir menu">
                 @SvgIcons.Menu
             </button>
-            <button class="topbar-company-btn" @onclick="() => showCompanyModal = true" title="Cambiar empresa de trabajo">
-                <span class="topbar-company-name">@(Company.HasCompany ? Company.CurrentDisplayName : BrandSettings.BrandName)</span>
-                <span class="topbar-company-chevron">@SvgIcons.ChevronRight</span>
-            </button>
+            @* Selector de empresa desactivado — el sistema funciona sin filtro por empresa.
+               Si en algun momento querés volver a habilitarlo, cambiá ENABLE_COMPANY_SELECTOR a true. *@
+            @{ const bool ENABLE_COMPANY_SELECTOR = false; }
+            @if (ENABLE_COMPANY_SELECTOR)
+            {
+                <button class="topbar-company-btn" @onclick="() => showCompanyModal = true" title="Cambiar empresa de trabajo">
+                    <span class="topbar-company-name">@(Company.HasCompany ? Company.CurrentDisplayName : BrandSettings.BrandName)</span>
+                    <span class="topbar-company-chevron">@SvgIcons.ChevronRight</span>
+                </button>
+            }
+            else
+            {
+                <span class="topbar-company-name" style="font-weight: 700; padding: 0.4rem 0.6rem;">@BrandSettings.BrandName</span>
+            }
             @if (Operator.HasOperator)
             {
                 <button class="btn btn-secondary" style="margin-left: 0.8rem; font-size: 0.78rem; padding: 0.25rem 0.6rem;"
@@ -611,8 +621,10 @@
         await Operator.LoadAsync();
         if (!Operator.HasOperator) showOperatorModal = true;
 
-        // Cargar empresa actual desde localStorage (no es obligatoria; cae al BrandSettings.BrandName si no hay).
-        await Company.LoadAsync();
+        // Selector de empresa DESACTIVADO: limpiamos la empresa al arrancar para que la app
+        // funcione sin filtros (Company.HasCompany == false → todo se muestra sin restriccion).
+        // Si volves a habilitar el selector, reemplazá esto por:  await Company.LoadAsync();
+        await Company.ClearAsync();
 
         // Cargar los nombres visibles de las empresas (los que el admin puede editar).
         await LoadCompanyNamesAsync();
