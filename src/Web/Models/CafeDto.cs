@@ -5,7 +5,9 @@ public class CafeClienteDto
     public int Id { get; set; }
     public string Nombre { get; set; } = "";
     public string Tipo { get; set; } = "OTRO";
+    public string? Cuit { get; set; }
     public string? Telefono { get; set; }
+    public string? Email { get; set; }
     public string? Direccion { get; set; }
     public string? Notas { get; set; }
     public bool IsActive { get; set; }
@@ -17,7 +19,9 @@ public class CreateCafeClienteRequest
 {
     public string Nombre { get; set; } = "";
     public string Tipo { get; set; } = "OTRO";
+    public string? Cuit { get; set; }
     public string? Telefono { get; set; }
+    public string? Email { get; set; }
     public string? Direccion { get; set; }
     public string? Notas { get; set; }
 }
@@ -26,7 +30,9 @@ public class UpdateCafeClienteRequest
 {
     public string? Nombre { get; set; }
     public string? Tipo { get; set; }
+    public string? Cuit { get; set; }
     public string? Telefono { get; set; }
+    public string? Email { get; set; }
     public string? Direccion { get; set; }
     public string? Notas { get; set; }
     public bool? IsActive { get; set; }

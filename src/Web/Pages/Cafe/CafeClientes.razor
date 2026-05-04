@@ -25,7 +25,9 @@
                         <tr>
                             <th>Nombre</th>
                             <th>Tipo</th>
+                            <th>CUIT/DNI</th>
                             <th>Teléfono</th>
+                            <th>Email</th>
                             <th>Dirección</th>
                             <th>Estado</th>
                             <th style="width: 130px;">Acciones</th>
@@ -46,7 +48,9 @@
                                         <span style="display:inline-block; padding:0.15rem 0.5rem; background:#dcfce7; color:#166534; border-radius:999px; font-size:0.72rem; font-weight:700;">🛒 OTRO</span>
                                     }
                                 </td>
+                                <td style="font-family: monospace; font-size: 0.85rem;">@(c.Cuit ?? "—")</td>
                                 <td>@(c.Telefono ?? "—")</td>
+                                <td style="font-size: 0.85rem;">@(c.Email ?? "—")</td>
                                 <td style="font-size: 0.85rem; color: #6b7280;">@(c.Direccion ?? "—")</td>
                                 <td>
                                     <span class="status-badge @(c.IsActive ? "status-active" : "status-inactive")">@(c.IsActive ? "Activo" : "Inactivo")</span>
@@ -91,6 +95,16 @@
                         <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
                             BAR usa <strong>PVP1</strong>, OTRO usa <strong>PVP2</strong>.
                         </p>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">CUIT / DNI</label>
+                        <input class="form-input" @bind="formCuit" placeholder="Ej: 30123456789" />
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Email</label>
+                        <input class="form-input" type="email" @bind="formEmail" placeholder="email@ejemplo.com" />
                     </div>
                 </div>
                 <div class="form-row">
@@ -153,7 +167,7 @@
     private bool showForm, isEditing, saving;
     private string? formError;
     private int? editingId;
-    private string formNombre = "", formTipo = "OTRO", formTelefono = "", formDireccion = "", formNotas = "";
+    private string formNombre = "", formTipo = "OTRO", formCuit = "", formTelefono = "", formEmail = "", formDireccion = "", formNotas = "";
     private bool formIsActive = true;
     private bool showDeleteConfirm;
     private CafeClienteDto? toDelete;
@@ -171,7 +185,7 @@
     private void ShowCreate()
     {
         isEditing = false; editingId = null;
-        formNombre = ""; formTipo = "OTRO"; formTelefono = ""; formDireccion = ""; formNotas = "";
+        formNombre = ""; formTipo = "OTRO"; formCuit = ""; formTelefono = ""; formEmail = ""; formDireccion = ""; formNotas = "";
         formIsActive = true; formError = null; showForm = true;
     }
 
@@ -179,7 +193,8 @@
     {
         isEditing = true; editingId = c.Id;
         formNombre = c.Nombre; formTipo = c.Tipo;
-        formTelefono = c.Telefono ?? ""; formDireccion = c.Direccion ?? ""; formNotas = c.Notas ?? "";
+        formCuit = c.Cuit ?? ""; formTelefono = c.Telefono ?? ""; formEmail = c.Email ?? "";
+        formDireccion = c.Direccion ?? ""; formNotas = c.Notas ?? "";
         formIsActive = c.IsActive; formError = null; showForm = true;
     }
 
@@ -196,7 +211,8 @@
             {
                 var u = await Api.UpdateCafeClienteAsync(editingId.Value, new UpdateCafeClienteRequest
                 {
-                    Nombre = formNombre, Tipo = formTipo, Telefono = formTelefono,
+                    Nombre = formNombre, Tipo = formTipo,
+                    Cuit = formCuit, Telefono = formTelefono, Email = formEmail,
                     Direccion = formDireccion, Notas = formNotas, IsActive = formIsActive
                 });
                 if (u is null) { formError = "No se pudo actualizar"; return; }
@@ -206,7 +222,8 @@
             {
                 var c = await Api.CreateCafeClienteAsync(new CreateCafeClienteRequest
                 {
-                    Nombre = formNombre, Tipo = formTipo, Telefono = formTelefono,
+                    Nombre = formNombre, Tipo = formTipo,
+                    Cuit = formCuit, Telefono = formTelefono, Email = formEmail,
                     Direccion = formDireccion, Notas = formNotas
                 });
                 if (c is null) { formError = "No se pudo crear"; return; }

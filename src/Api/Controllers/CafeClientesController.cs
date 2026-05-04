@@ -18,7 +18,9 @@ public class CafeClientesController : ControllerBase
     public CafeClientesController(AppDbContext db) { _db = db; }
 
     private static CafeClienteDto Map(CafeCliente c) => new(
-        c.Id, c.Nombre, c.Tipo, c.Telefono, c.Direccion, c.Notas,
+        c.Id, c.Nombre, c.Tipo,
+        c.Cuit, c.Telefono, c.Email,
+        c.Direccion, c.Notas,
         c.IsActive, c.CreatedAt, c.UpdatedAt);
 
     [HttpGet]
@@ -46,7 +48,9 @@ public class CafeClientesController : ControllerBase
         {
             Nombre = req.Nombre.Trim(),
             Tipo = tipo,
+            Cuit = Norm(req.Cuit),
             Telefono = Norm(req.Telefono),
+            Email = Norm(req.Email),
             Direccion = Norm(req.Direccion),
             Notas = Norm(req.Notas),
             IsActive = true,
@@ -68,7 +72,9 @@ public class CafeClientesController : ControllerBase
             c.Nombre = req.Nombre.Trim();
         }
         if (req.Tipo is not null) c.Tipo = NormTipo(req.Tipo);
+        if (req.Cuit is not null) c.Cuit = Norm(req.Cuit);
         if (req.Telefono is not null) c.Telefono = Norm(req.Telefono);
+        if (req.Email is not null) c.Email = Norm(req.Email);
         if (req.Direccion is not null) c.Direccion = Norm(req.Direccion);
         if (req.Notas is not null) c.Notas = Norm(req.Notas);
         if (req.IsActive.HasValue) c.IsActive = req.IsActive.Value;

@@ -3,14 +3,17 @@ namespace Api.DTOs;
 // ===== Clientes =====
 public record CafeClienteDto(
     int Id, string Nombre, string Tipo,
-    string? Telefono, string? Direccion, string? Notas,
+    string? Cuit, string? Telefono, string? Email,
+    string? Direccion, string? Notas,
     bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt);
 
 public class CreateCafeClienteRequest
 {
     public string Nombre { get; set; } = string.Empty;
     public string Tipo { get; set; } = "OTRO";
+    public string? Cuit { get; set; }
     public string? Telefono { get; set; }
+    public string? Email { get; set; }
     public string? Direccion { get; set; }
     public string? Notas { get; set; }
 }
@@ -19,7 +22,9 @@ public class UpdateCafeClienteRequest
 {
     public string? Nombre { get; set; }
     public string? Tipo { get; set; }
+    public string? Cuit { get; set; }
     public string? Telefono { get; set; }
+    public string? Email { get; set; }
     public string? Direccion { get; set; }
     public string? Notas { get; set; }
     public bool? IsActive { get; set; }

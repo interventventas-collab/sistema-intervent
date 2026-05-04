@@ -1884,3 +1884,11 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'Scope' AND Object_ID = Object_ID('Postits'))
     ALTER TABLE Postits ADD Scope NVARCHAR(50) NOT NULL CONSTRAINT DF_Postits_Scope DEFAULT N'dashboard';
 GO
+
+-- Cafe_Clientes: agregar Cuit y Email
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'Cuit' AND Object_ID = Object_ID('Cafe_Clientes'))
+    ALTER TABLE Cafe_Clientes ADD Cuit NVARCHAR(20) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'Email' AND Object_ID = Object_ID('Cafe_Clientes'))
+    ALTER TABLE Cafe_Clientes ADD Email NVARCHAR(255) NULL;
+GO

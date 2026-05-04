@@ -16,8 +16,14 @@ public class CafeCliente
     [Required, MaxLength(20)]
     public string Tipo { get; set; } = "OTRO"; // BAR | OTRO
 
+    [MaxLength(20)]
+    public string? Cuit { get; set; }
+
     [MaxLength(50)]
     public string? Telefono { get; set; }
+
+    [MaxLength(255)]
+    public string? Email { get; set; }
 
     [MaxLength(300)]
     public string? Direccion { get; set; }
