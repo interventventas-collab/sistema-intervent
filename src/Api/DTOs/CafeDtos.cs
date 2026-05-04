@@ -114,7 +114,8 @@ public record CafeVentaItemDto(
     string Formato, int Cantidad,
     decimal PrecioUnitario, decimal CostoUnitario, decimal Subtotal,
     decimal GramosDescontados,
-    string? Molienda, bool EsDoyPack);
+    string? Molienda, bool EsDoyPack,
+    decimal DescuentoPct);
 
 public record CafeVentaDto(
     int Id, string Numero, DateTime Fecha,
@@ -134,6 +135,7 @@ public class CafeCotizarItemRequest
     public int Cantidad { get; set; } = 1;
     public string? Molienda { get; set; }   // EN GRANOS | MOLIDO FILTRO | MOLIDO ESPRESS | null
     public bool EsDoyPack { get; set; }
+    public decimal DescuentoPct { get; set; }   // 0-100, descuento porcentual de la linea
 }
 
 public class CafeCotizarRequest
@@ -150,7 +152,8 @@ public record CafeCotizadoItemDto(
     decimal PrecioUnitario, decimal CostoUnitario, decimal Subtotal,
     decimal GramosNecesarios, decimal StockGramosDisponible, int StockUnidadesDisponible,
     bool StockOk, string? Aviso,
-    string? Molienda, bool EsDoyPack);
+    string? Molienda, bool EsDoyPack,
+    decimal DescuentoPct);
 
 public record CafeCotizadoDto(
     string ClienteTipoUsado,  // BAR | OTRO

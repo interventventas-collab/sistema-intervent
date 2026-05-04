@@ -1857,6 +1857,11 @@ IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'EsDoyPack' AND Object_ID 
     ALTER TABLE Cafe_VentaItems ADD EsDoyPack BIT NOT NULL CONSTRAINT DF_CafeVentaItems_EsDoyPack DEFAULT 0;
 GO
 
+-- Cafe_VentaItems: descuento porcentual por linea
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'DescuentoPct' AND Object_ID = Object_ID('Cafe_VentaItems'))
+    ALTER TABLE Cafe_VentaItems ADD DescuentoPct DECIMAL(5,2) NOT NULL CONSTRAINT DF_CafeVentaItems_DescuentoPct DEFAULT 0;
+GO
+
 -- Cafe_Settings: agregar template del mensaje de WhatsApp
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'WhatsappMensajeTemplate' AND Object_ID = Object_ID('Cafe_Settings'))
     ALTER TABLE Cafe_Settings ADD WhatsappMensajeTemplate NVARCHAR(500) NULL;

@@ -151,6 +151,7 @@ public class CafeVentaItemDto
     public decimal GramosDescontados { get; set; }
     public string? Molienda { get; set; }
     public bool EsDoyPack { get; set; }
+    public decimal DescuentoPct { get; set; }
 }
 
 public class CafeVentaDto
@@ -185,6 +186,7 @@ public class CafeCotizarItemRequest
     public int Cantidad { get; set; } = 1;
     public string? Molienda { get; set; }
     public bool EsDoyPack { get; set; }
+    public decimal DescuentoPct { get; set; }
 }
 
 public class CafeCotizarRequest
@@ -212,6 +214,7 @@ public class CafeCotizadoItemDto
     public string? Aviso { get; set; }
     public string? Molienda { get; set; }
     public bool EsDoyPack { get; set; }
+    public decimal DescuentoPct { get; set; }
 }
 
 public class CafeCotizadoDto

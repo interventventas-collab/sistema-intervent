@@ -31,7 +31,8 @@ public class CafeVentasController : ControllerBase
             i.Formato, i.Cantidad,
             i.PrecioUnitario, i.CostoUnitario, i.Subtotal,
             i.GramosDescontados,
-            i.Molienda, i.EsDoyPack)).ToList());
+            i.Molienda, i.EsDoyPack,
+            i.DescuentoPct)).ToList());
 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null)
@@ -131,7 +132,8 @@ public class CafeVentasController : ControllerBase
                 Subtotal = it.Subtotal,
                 GramosDescontados = it.GramosNecesarios,
                 Molienda = NormMolienda(it.Molienda),
-                EsDoyPack = it.EsDoyPack && prod.Categoria == "CAFE"  // doy pack solo aplica a cafe
+                EsDoyPack = it.EsDoyPack && prod.Categoria == "CAFE",  // doy pack solo aplica a cafe
+                DescuentoPct = it.DescuentoPct
             });
 
             // Descontar stock
@@ -342,11 +344,13 @@ public class CafeVentasController : ControllerBase
         foreach (var it in items)
         {
             if (it.Cantidad <= 0) continue;
+            // Clamp el descuento a 0..100
+            var descPct = Math.Clamp(it.DescuentoPct, 0m, 100m);
             if (!FormatosValidos.Contains(it.Formato))
             {
                 cotizadoItems.Add(new CafeCotizadoItemDto(
                     it.ProductoId, "?", "?", it.Formato, it.Cantidad, 0m, 0m, 0m, 0m, 0m, 0,
-                    false, "Formato inválido", NormMolienda(it.Molienda), it.EsDoyPack));
+                    false, "Formato inválido", NormMolienda(it.Molienda), it.EsDoyPack, descPct));
                 todoOk = false;
                 continue;
             }
@@ -356,7 +360,7 @@ public class CafeVentasController : ControllerBase
             {
                 cotizadoItems.Add(new CafeCotizadoItemDto(
                     it.ProductoId, "?", "?", it.Formato, it.Cantidad, 0m, 0m, 0m, 0m, 0m, 0,
-                    false, "Producto no encontrado", NormMolienda(it.Molienda), it.EsDoyPack));
+                    false, "Producto no encontrado", NormMolienda(it.Molienda), it.EsDoyPack, descPct));
                 todoOk = false;
                 continue;
             }
@@ -369,14 +373,19 @@ public class CafeVentasController : ControllerBase
                 cotizadoItems.Add(new CafeCotizadoItemDto(
                     prod.Id, prod.Nombre, prod.Categoria, it.Formato, it.Cantidad, 0m, 0m, 0m, 0m, prod.StockGramos, prod.StockUnidades,
                     false, esCafe ? "Para café usá 1 kg / 1/2 kg / 1/4 kg" : "Para otros productos usá 'unidad'",
-                    NormMolienda(it.Molienda), it.EsDoyPack));
+                    NormMolienda(it.Molienda), it.EsDoyPack, descPct));
                 todoOk = false;
                 continue;
             }
 
             var precioUnit = CafePricingService.CalcularPrecioUnitario(prod, it.Formato, tipo, settings);
             var costoUnit = CafePricingService.CalcularCostoUnitario(prod, it.Formato);
-            var subtotalLinea = precioUnit * it.Cantidad;
+            // PrecioUnitario queda como precio de lista (sin descuento) — lo que se ve antes del descuento.
+            // El descuento se aplica solo al Subtotal: subtotal = precioUnit * cantidad * (1 - desc%/100).
+            var subtotalSinDesc = precioUnit * it.Cantidad;
+            var subtotalLinea = descPct > 0
+                ? Math.Round(subtotalSinDesc * (1m - descPct / 100m), 2, MidpointRounding.AwayFromZero)
+                : subtotalSinDesc;
             var gramosNecesarios = esCafe ? CafePricingService.GramosPorUnidad(it.Formato) * it.Cantidad : 0m;
             var stockOk = esCafe ? gramosNecesarios <= prod.StockGramos + 0.001m : it.Cantidad <= prod.StockUnidades;
             string? aviso = null;
@@ -393,7 +402,8 @@ public class CafeVentasController : ControllerBase
                 precioUnit, costoUnit, subtotalLinea,
                 gramosNecesarios, prod.StockGramos, prod.StockUnidades,
                 stockOk, aviso,
-                NormMolienda(it.Molienda), it.EsDoyPack && esCafe));
+                NormMolienda(it.Molienda), it.EsDoyPack && esCafe,
+                descPct));
 
             subtotal += subtotalLinea;
             costoTotal += costoUnit * it.Cantidad;

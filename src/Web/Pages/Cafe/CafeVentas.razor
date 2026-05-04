@@ -484,6 +484,7 @@
                                         <th>Producto</th>
                                         <th style="width: 90px;">Formato</th>
                                         <th style="width: 130px; text-align: right;">P. Unit.</th>
+                                        <th style="width: 90px; text-align: right;">Desc %</th>
                                         <th style="width: 140px; text-align: right;">Subtotal</th>
                                         <th style="width: 50px;"></th>
                                     </tr>
@@ -526,7 +527,22 @@
                                                 }
                                             </td>
                                             <td>@FormatoLabel(ci.Formato)</td>
-                                            <td style="text-align: right;">$@FormatMoney(ci.PrecioUnitario)</td>
+                                            <td style="text-align: right;">
+                                                @if (ci.DescuentoPct > 0)
+                                                {
+                                                    <span style="color: #6b7280; text-decoration: line-through; font-size: 0.78rem;">$@FormatMoney(ci.PrecioUnitario)</span>
+                                                    <div style="font-weight: 700;">$@FormatMoney(Math.Round(ci.PrecioUnitario * (1m - ci.DescuentoPct / 100m), 2, MidpointRounding.AwayFromZero))</div>
+                                                }
+                                                else
+                                                {
+                                                    <span>$@FormatMoney(ci.PrecioUnitario)</span>
+                                                }
+                                            </td>
+                                            <td style="text-align: right;">
+                                                <input class="form-input" type="number" step="0.5" min="0" max="100"
+                                                       style="width: 80px; text-align: right; padding: 0.25rem 0.4rem; font-size: 0.85rem;"
+                                                       value="@formItem.DescuentoPct" @onchange="@(e => OnItemDescuentoChanged(i, e.Value?.ToString()))" />
+                                            </td>
                                             <td style="text-align: right; font-weight: 700;">$@FormatMoney(ci.Subtotal)</td>
                                             <td><button class="btn-icon btn-delete" type="button" @onclick="() => RemoveItem(i)" title="Quitar">×</button></td>
                                         </tr>
@@ -749,6 +765,7 @@
                             <th style="border: 1px solid #d1d5db; padding: 5px 8px; text-align: left;">Producto</th>
                             <th style="border: 1px solid #d1d5db; padding: 5px 8px; text-align: center; width: 90px;">Formato</th>
                             <th style="border: 1px solid #d1d5db; padding: 5px 8px; text-align: right; width: 120px;">P. Unitario</th>
+                            <th style="border: 1px solid #d1d5db; padding: 5px 8px; text-align: right; width: 70px;">Desc.</th>
                             <th style="border: 1px solid #d1d5db; padding: 5px 8px; text-align: right; width: 140px;">Subtotal</th>
                         </tr>
                     </thead>
@@ -770,6 +787,9 @@
                                 </td>
                                 <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: center;">@FormatoLabel(i.Formato)</td>
                                 <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: right;">$@FormatMoney(i.PrecioUnitario)</td>
+                                <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: right; color: @(i.DescuentoPct > 0 ? "#b91c1c" : "#9ca3af");">
+                                    @(i.DescuentoPct > 0 ? "-" + i.DescuentoPct.ToString("0.##") + "%" : "—")
+                                </td>
                                 <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: right; font-weight: 700;">$@FormatMoney(i.Subtotal)</td>
                             </tr>
                         }
@@ -1454,6 +1474,18 @@
     {
         if (idx < 0 || idx >= formItems.Count) return;
         formItems[idx].Molienda = string.IsNullOrEmpty(molienda) ? null : molienda;
+        await Cotizar();
+    }
+
+    private async Task OnItemDescuentoChanged(int idx, string? value)
+    {
+        if (idx < 0 || idx >= formItems.Count) return;
+        decimal d = 0m;
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            decimal.TryParse(value.Replace(",", "."), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out d);
+        }
+        formItems[idx].DescuentoPct = Math.Clamp(d, 0m, 100m);
         await Cotizar();
     }
 
