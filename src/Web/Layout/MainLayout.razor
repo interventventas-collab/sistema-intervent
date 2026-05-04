@@ -57,56 +57,7 @@
             </NavGroup>
         }
 
-        @* ═════════════ 2. CATALOGO ═════════════
-           Todo lo relacionado con QUE vendés: productos, OEMs, combos, marcas, proveedores,
-           listas de precios, e importaciones masivas (que cargan/actualizan el catalogo). *@
-        @if (HasPerm("productos") || HasPerm("combos") || HasPerm("servicios") || HasPerm("marcas") || HasPerm("proveedores") || HasPerm("listas-precios") || HasPerm("import-productos"))
-        {
-            <NavGroup Label="Catálogo" Icon="@SvgIcons.Package"
-                      HasActiveChild="@(IsActive("/productos") || IsActive("/productos-base") || IsActive("/oems") || IsActive("/combos") || IsActive("/servicios") || IsActive("/marcas") || IsActive("/proveedores") || IsActive("/listas-precios") || IsActive("/import-productos") || IsActive("/import-precios-oem"))">
-                @if (HasPerm("productos"))
-                {
-                    <NavItem Href="/productos" Label="Productos" Icon="@SvgIcons.Package"
-                             IsActive="@(IsActive("/productos") || IsActive("/productos-base"))" OnClick="@(() => NavigateTo("/productos"))" />
-                    <NavItem Href="/oems" Label="OEMs" Icon="@SvgIcons.Tag"
-                             IsActive="@IsActive("/oems")" OnClick="@(() => NavigateTo("/oems"))" />
-                }
-                @if (HasPerm("combos"))
-                {
-                    <NavItem Href="/combos" Label="Combos" Icon="@SvgIcons.Package"
-                             IsActive="@IsActive("/combos")" OnClick="@(() => NavigateTo("/combos"))" />
-                }
-                @if (HasPerm("servicios"))
-                {
-                    <NavItem Href="/servicios" Label="Servicios (infinitos)" Icon="@SvgIcons.Tag"
-                             IsActive="@IsActive("/servicios")" OnClick="@(() => NavigateTo("/servicios"))" />
-                }
-                @if (HasPerm("marcas"))
-                {
-                    <NavItem Href="/marcas" Label="Marcas" Icon="@SvgIcons.Tag"
-                             IsActive="@IsActive("/marcas")" OnClick="@(() => NavigateTo("/marcas"))" />
-                }
-                @if (HasPerm("proveedores"))
-                {
-                    <NavItem Href="/proveedores" Label="Proveedores" Icon="@SvgIcons.Users"
-                             IsActive="@IsActive("/proveedores")" OnClick="@(() => NavigateTo("/proveedores"))" />
-                }
-                @if (HasPerm("listas-precios"))
-                {
-                    <NavItem Href="/listas-precios" Label="Listas de precios" Icon="@SvgIcons.Tag"
-                             IsActive="@IsActive("/listas-precios")" OnClick="@(() => NavigateTo("/listas-precios"))" />
-                }
-                @if (HasPerm("import-productos"))
-                {
-                    <NavItem Href="/import-productos" Label="Importar productos" Icon="@SvgIcons.Folder"
-                             IsActive="@IsActive("/import-productos")" OnClick="@(() => NavigateTo("/import-productos"))" />
-                    <NavItem Href="/import-precios-oem" Label="Importar por OEM" Icon="@SvgIcons.Folder"
-                             IsActive="@IsActive("/import-precios-oem")" OnClick="@(() => NavigateTo("/import-precios-oem"))" />
-                }
-            </NavGroup>
-        }
-
-        @* ═════════════ 3. INVENTARIOS ═════════════
+        @* ═════════════ 2. INVENTARIOS ═════════════
            Solo stock fisico real: depositos, movimientos, ajustes. *@
         @if (HasPerm("depositos") || HasPerm("modificacion-stock") || HasPerm("movimientos-depositos") || HasPerm("actualizacion-stock"))
         {
@@ -580,12 +531,6 @@
         { "", "dashboard" },
         { "publicaciones", "publicaciones" },
         { "ordenes", "ordenes" },
-        { "productos", "productos" },
-        { "productos-base", "productos" },
-        { "combos", "combos" },
-        { "servicios", "servicios" },
-        { "proveedores", "proveedores" },
-        { "marcas", "marcas" },
         { "clientes", "clientes" },
         { "ventas", "ventas" },
         { "tesoreria", "tesoreria" },
