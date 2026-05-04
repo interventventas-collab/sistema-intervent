@@ -58,6 +58,8 @@ public class AppDbContext : DbContext
     public DbSet<CafeCliente> CafeClientes => Set<CafeCliente>();
     public DbSet<CafeProducto> CafeProductos => Set<CafeProducto>();
     public DbSet<CafeSetting> CafeSettings => Set<CafeSetting>();
+    public DbSet<CafeVenta> CafeVentas => Set<CafeVenta>();
+    public DbSet<CafeVentaItem> CafeVentaItems => Set<CafeVentaItem>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -81,3 +81,59 @@ public class UpdateCafeSettingRequest
     public string? NegocioDireccion { get; set; }
     public string? NegocioCuit { get; set; }
 }
+
+// ===== Ventas =====
+public record CafeVentaItemDto(
+    int Id, int ProductoId, string ProductoNombre, string Categoria,
+    string Formato, int Cantidad,
+    decimal PrecioUnitario, decimal CostoUnitario, decimal Subtotal,
+    decimal GramosDescontados);
+
+public record CafeVentaDto(
+    int Id, string Numero, DateTime Fecha,
+    int? ClienteId, string? ClienteNombre, string? ClienteTipo,
+    decimal Subtotal, decimal Descuento, decimal Total,
+    decimal CostoTotal, decimal Margen,
+    string? Observaciones, string Estado,
+    DateTime CreatedAt,
+    List<CafeVentaItemDto> Items);
+
+public class CafeCotizarItemRequest
+{
+    public int ProductoId { get; set; }
+    public string Formato { get; set; } = "1KG";  // 1KG | MEDIO | CUARTO | UNIT
+    public int Cantidad { get; set; } = 1;
+}
+
+public class CafeCotizarRequest
+{
+    public int? ClienteId { get; set; }
+    public string? ClienteTipo { get; set; }  // override si no hay clienteId
+    public List<CafeCotizarItemRequest> Items { get; set; } = new();
+    public decimal Descuento { get; set; }
+}
+
+public record CafeCotizadoItemDto(
+    int ProductoId, string ProductoNombre, string Categoria,
+    string Formato, int Cantidad,
+    decimal PrecioUnitario, decimal CostoUnitario, decimal Subtotal,
+    decimal GramosNecesarios, decimal StockGramosDisponible, int StockUnidadesDisponible,
+    bool StockOk, string? Aviso);
+
+public record CafeCotizadoDto(
+    string ClienteTipoUsado,  // BAR | OTRO
+    decimal Subtotal, decimal Descuento, decimal Total,
+    decimal CostoTotal, decimal Margen,
+    bool TodoOk,
+    List<CafeCotizadoItemDto> Items);
+
+public class CreateCafeVentaRequest
+{
+    public DateTime? Fecha { get; set; }
+    public int? ClienteId { get; set; }
+    public string? ClienteNombreOverride { get; set; }   // si no hay cliente cargado
+    public string? ClienteTipoOverride { get; set; }     // BAR | OTRO si no hay cliente cargado
+    public List<CafeCotizarItemRequest> Items { get; set; } = new();
+    public decimal Descuento { get; set; }
+    public string? Observaciones { get; set; }
+}

@@ -435,6 +435,31 @@ public class ApiClient
     public async Task<CafeSettingDto?> UpdateCafeSettingsAsync(UpdateCafeSettingRequest request)
         => await PutAsync<CafeSettingDto>("/api/cafe/settings", request);
 
+    // --- Cafe: Ventas ---
+    public async Task<List<CafeVentaDto>?> GetCafeVentasAsync(DateTime? from = null, DateTime? to = null)
+    {
+        var qs = new List<string>();
+        if (from.HasValue) qs.Add($"from={from.Value:yyyy-MM-dd}");
+        if (to.HasValue) qs.Add($"to={to.Value:yyyy-MM-dd}");
+        var url = "/api/cafe/ventas" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+        return await GetAsync<List<CafeVentaDto>>(url);
+    }
+
+    public async Task<CafeVentaDto?> GetCafeVentaAsync(int id)
+        => await GetAsync<CafeVentaDto>($"/api/cafe/ventas/{id}");
+
+    public async Task<CafeCotizadoDto?> CotizarCafeAsync(CafeCotizarRequest request)
+        => await PostAsync<CafeCotizadoDto>("/api/cafe/ventas/cotizar", request);
+
+    public async Task<CafeVentaDto?> CreateCafeVentaAsync(CreateCafeVentaRequest request)
+        => await PostAsync<CafeVentaDto>("/api/cafe/ventas", request);
+
+    public async Task<CafeVentaDto?> AnularCafeVentaAsync(int id)
+        => await PostAsync<CafeVentaDto>($"/api/cafe/ventas/{id}/anular", new { });
+
+    public async Task<bool> DeleteCafeVentaAsync(int id)
+        => await DeleteAsync($"/api/cafe/ventas/{id}");
+
     // --- Brands ---
     public async Task<List<BrandDto>?> GetBrandsAsync()
         => await GetAsync<List<BrandDto>>("/api/brands");

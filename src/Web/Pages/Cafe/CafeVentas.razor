@@ -1,0 +1,684 @@
+@page "/cafe/ventas"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <h3>🧾 Ventas <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;">(@(ventas?.Count ?? 0))</span></h3>
+        <button class="btn btn-primary" @onclick="ShowCreate">+ Nueva Venta</button>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        @if (loading)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">Cargando...</p>
+        }
+        else if (ventas is null || ventas.Count == 0)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">
+                No hay ventas. Tocá <strong>"+ Nueva Venta"</strong> para emitir la primera.
+            </p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Número</th>
+                            <th>Fecha</th>
+                            <th>Cliente</th>
+                            <th>Tipo</th>
+                            <th style="text-align: right;">Total</th>
+                            <th style="text-align: right;">Margen</th>
+                            <th>Estado</th>
+                            <th style="width: 140px;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var v in ventas)
+                        {
+                            var anulada = v.Estado == "anulado";
+                            <tr style="@(anulada ? "opacity: 0.55;" : "")">
+                                <td style="font-family: monospace; font-weight: 700;">@v.Numero</td>
+                                <td>@v.Fecha.ToString("dd/MM/yyyy")</td>
+                                <td><strong>@(v.ClienteNombre ?? "—")</strong></td>
+                                <td>
+                                    @if (v.ClienteTipo == "BAR")
+                                    {
+                                        <span style="display:inline-block; padding:0.1rem 0.45rem; background:#dbeafe; color:#1e40af; border-radius:999px; font-size:0.7rem; font-weight:700;">🍺 BAR</span>
+                                    }
+                                    else
+                                    {
+                                        <span style="display:inline-block; padding:0.1rem 0.45rem; background:#dcfce7; color:#166534; border-radius:999px; font-size:0.7rem; font-weight:700;">🛒 OTRO</span>
+                                    }
+                                </td>
+                                <td style="text-align: right; font-weight: 800;">$@FormatMoney(v.Total)</td>
+                                <td style="text-align: right; color: @(v.Margen >= 0 ? "#15803d" : "#b91c1c");">$@FormatMoney(v.Margen)</td>
+                                <td>
+                                    @if (anulada)
+                                    {
+                                        <span style="display:inline-block; padding:0.15rem 0.5rem; background:#fee2e2; color:#991b1b; border-radius:999px; font-size:0.7rem; font-weight:700;">❌ ANULADA</span>
+                                    }
+                                    else
+                                    {
+                                        <span style="display:inline-block; padding:0.15rem 0.5rem; background:#dcfce7; color:#166534; border-radius:999px; font-size:0.7rem; font-weight:700;">✅ EMITIDA</span>
+                                    }
+                                </td>
+                                <td class="actions-cell">
+                                    <button class="btn-icon" style="color: #1d4ed8;" @onclick="() => ShowPrint(v)" title="Ver / imprimir / PDF">🖨</button>
+                                    @if (!anulada)
+                                    {
+                                        <button class="btn-icon" style="color: #b45309;" @onclick="() => ConfirmAnular(v)" title="Anular venta">⊘</button>
+                                    }
+                                    <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(v)" title="Eliminar">@SvgIcons.AlertCircle</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@* ═══════════════ MODAL NUEVA VENTA ═══════════════ *@
+@if (showForm)
+{
+    <div class="modal-overlay" @onclick="CloseForm">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 1000px; max-height: 92vh; display: flex; flex-direction: column;">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3 style="margin: 0;">🧾 Nueva Venta</h3>
+                <button class="btn-close" @onclick="CloseForm">&times;</button>
+            </div>
+            <div class="modal-body" style="overflow-y: auto;">
+                @if (!string.IsNullOrEmpty(formError))
+                {
+                    <div class="form-error">@formError</div>
+                }
+
+                @* ── Cliente y fecha ── *@
+                <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem; margin-bottom: 0.75rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                        <span style="background: #3b82f6; color: white; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.78rem;">1</span>
+                        <strong>Cliente y fecha</strong>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex: 2;">
+                            <label class="form-label">Cliente</label>
+                            <select class="form-input" @bind="formClienteId" @bind:after="OnClienteChanged">
+                                <option value="0">— Consumidor final —</option>
+                                @foreach (var c in clientes ?? new())
+                                {
+                                    <option value="@c.Id">@c.Nombre (@c.Tipo)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Tipo</label>
+                            <select class="form-input" @bind="formClienteTipo" @bind:after="Cotizar" disabled="@(formClienteId > 0)">
+                                <option value="OTRO">🛒 OTRO (PVP2)</option>
+                                <option value="BAR">🍺 BAR (PVP1)</option>
+                            </select>
+                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">@(formClienteId > 0 ? "Tipo del cliente seleccionado" : "Tipo a aplicar a consumidor final")</p>
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Fecha</label>
+                            <input class="form-input" type="date" @bind="formFecha" />
+                        </div>
+                    </div>
+                </div>
+
+                @* ── Items ── *@
+                <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem; margin-bottom: 0.75rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                        <span style="background: #3b82f6; color: white; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.78rem;">2</span>
+                        <strong>Productos a vender</strong>
+                    </div>
+
+                    <div class="form-row" style="align-items: end;">
+                        <div class="form-group" style="flex: 2;">
+                            <label class="form-label" style="font-size: 0.75rem;">Producto</label>
+                            <select class="form-input" @bind="addProductoId" @bind:after="OnAddProductoChanged">
+                                <option value="0">— Elegí un producto —</option>
+                                @foreach (var p in productos ?? new())
+                                {
+                                    var stockTxt = p.Categoria == "CAFE"
+                                        ? FormatGramos(p.StockGramos)
+                                        : $"{p.StockUnidades} u.";
+                                    <option value="@p.Id">@p.Nombre (@p.Categoria) — stock: @stockTxt</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label" style="font-size: 0.75rem;">Formato</label>
+                            <select class="form-input" @bind="addFormato">
+                                @if (AddProductoCategoria == "CAFE")
+                                {
+                                    <option value="1KG">1 kg</option>
+                                    <option value="MEDIO">1/2 kg</option>
+                                    <option value="CUARTO">1/4 kg</option>
+                                }
+                                else
+                                {
+                                    <option value="UNIT">unidad</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex: 0 0 80px;">
+                            <label class="form-label" style="font-size: 0.75rem;">Cant.</label>
+                            <input class="form-input" type="number" min="1" @bind="addCantidad" style="text-align: right;" />
+                        </div>
+                        <div class="form-group" style="flex: 0 0 110px;">
+                            <button class="btn btn-primary" type="button" @onclick="AddItem" style="width: 100%;">+ Agregar</button>
+                        </div>
+                    </div>
+
+                    @if (formItems.Count == 0)
+                    {
+                        <div style="padding: 0.8rem; text-align: center; color: #9ca3af; font-size: 0.9rem;">
+                            Sin items. Elegí un producto, formato y tocá <strong>+ Agregar</strong>.
+                        </div>
+                    }
+                    else if (cotizacion is not null)
+                    {
+                        <div class="table-responsive" style="margin-top: 0.5rem;">
+                            <table class="data-table" style="font-size: 0.85rem;">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 70px; text-align: right;">Cant.</th>
+                                        <th>Producto</th>
+                                        <th style="width: 90px;">Formato</th>
+                                        <th style="width: 130px; text-align: right;">P. Unit.</th>
+                                        <th style="width: 140px; text-align: right;">Subtotal</th>
+                                        <th style="width: 50px;"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @for (int idx = 0; idx < cotizacion.Items.Count; idx++)
+                                    {
+                                        var i = idx;
+                                        var ci = cotizacion.Items[i];
+                                        var rojo = !ci.StockOk;
+                                        <tr style="@(rojo ? "background: #fef2f2;" : "")">
+                                            <td style="text-align: right; font-weight: 700;">@ci.Cantidad</td>
+                                            <td>
+                                                <strong>@ci.ProductoNombre</strong>
+                                                @if (rojo && !string.IsNullOrEmpty(ci.Aviso))
+                                                {
+                                                    <div style="color: #b91c1c; font-size: 0.72rem; font-weight: 600;">⚠ @ci.Aviso</div>
+                                                }
+                                            </td>
+                                            <td>@FormatoLabel(ci.Formato)</td>
+                                            <td style="text-align: right;">$@FormatMoney(ci.PrecioUnitario)</td>
+                                            <td style="text-align: right; font-weight: 700;">$@FormatMoney(ci.Subtotal)</td>
+                                            <td><button class="btn-icon btn-delete" type="button" @onclick="() => RemoveItem(i)" title="Quitar">×</button></td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+
+                @* ── Totales ── *@
+                <div class="form-row" style="align-items: stretch;">
+                    <div style="flex: 1.4;">
+                        <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                                <span style="background: #3b82f6; color: white; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.78rem;">3</span>
+                                <strong>Observaciones</strong>
+                            </div>
+                            <textarea class="form-input" rows="3" @bind="formObservaciones" placeholder="Notas internas (opcional)"></textarea>
+                        </div>
+                    </div>
+                    <div style="flex: 1;">
+                        @if (cotizacion is not null)
+                        {
+                            <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem;">
+                                <div class="venta-totals-row">
+                                    <span>Subtotal:</span>
+                                    <strong>$@FormatMoney(cotizacion.Subtotal)</strong>
+                                </div>
+                                <div class="venta-totals-row">
+                                    <span>Descuento ($):</span>
+                                    <input class="form-input" type="number" step="0.01" min="0" @bind="formDescuento" @bind:after="Cotizar"
+                                           style="text-align: right; max-width: 130px; font-weight: 700;" />
+                                </div>
+                                <hr style="margin: 0.5rem 0; border: none; border-top: 2px solid #1f2937;" />
+                                <div class="venta-totals-row" style="font-size: 1.2rem; font-weight: 800; color: #059669;">
+                                    <span>TOTAL:</span>
+                                    <strong>$@FormatMoney(cotizacion.Total)</strong>
+                                </div>
+                                <hr style="margin: 0.5rem 0; border: none; border-top: 1px dashed #d1d5db;" />
+                                <div class="venta-totals-row" style="font-size: 0.8rem; color: #6b7280;">
+                                    <span>Costo total:</span>
+                                    <span>$@FormatMoney(cotizacion.CostoTotal)</span>
+                                </div>
+                                <div class="venta-totals-row" style="font-size: 0.95rem; font-weight: 700; color: @(cotizacion.Margen >= 0 ? "#15803d" : "#b91c1c");">
+                                    <span>Margen:</span>
+                                    <span>$@FormatMoney(cotizacion.Margen)</span>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseForm" disabled="@saving">Cancelar</button>
+                <button class="btn btn-primary" @onclick="Save" disabled="@(saving || formItems.Count == 0 || cotizacion?.TodoOk != true)">
+                    @(saving ? "Emitiendo..." : "Emitir comprobante")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ═══════════════ MODAL VIEWER / PDF ═══════════════ *@
+@if (printVenta is not null && settings is not null)
+{
+    <style>
+        @@media print {
+            @@page { size: A4; margin: 12mm; }
+            html, body { background: white !important; margin: 0 !important; padding: 0 !important; }
+            body * { visibility: hidden; }
+            #cafe-print, #cafe-print * { visibility: visible; }
+            #cafe-print {
+                position: absolute !important;
+                left: 0 !important; top: 0 !important; right: 0 !important;
+                margin: 0 !important; padding: 0 !important; background: white !important;
+            }
+            .no-print { display: none !important; }
+        }
+    </style>
+    <div class="modal-overlay" @onclick="ClosePrint">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 820px; max-height: 92vh; display: flex; flex-direction: column;">
+            <div class="modal-header no-print" style="background: whitesmoke;">
+                <h3 style="margin: 0;">📄 Comprobante @printVenta.Numero</h3>
+                <div style="display: flex; gap: 0.4rem; align-items: center;">
+                    @if (HasWhatsapp)
+                    {
+                        <a class="btn" style="background:#25D366;color:white;border:none;font-size: 0.85rem; text-decoration: none;"
+                           href="@WhatsappLink" target="_blank">📱 WhatsApp</a>
+                    }
+                    <button class="btn btn-secondary" @onclick="DoPrint" style="font-size: 0.85rem;">🖨 Imprimir / PDF</button>
+                    <button class="btn-close" @onclick="ClosePrint">&times;</button>
+                </div>
+            </div>
+            <div class="modal-body" id="cafe-print" style="background: white; overflow-y: auto;">
+                @if (printVenta.Estado == "anulado")
+                {
+                    <div style="background: #fee2e2; border: 2px solid #b91c1c; color: #7f1d1d; padding: 0.6rem 0.9rem; border-radius: 6px; margin-bottom: 0.6rem; font-weight: 800;">
+                        ⚠ COMPROBANTE ANULADO
+                    </div>
+                }
+
+                @* Cabecera *@
+                <div style="border: 1px solid #d1d5db; padding: 0.85rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem;">
+                        <div style="flex: 1;">
+                            <h2 style="margin: 0; font-size: 1.5rem; font-weight: 800;">@(string.IsNullOrEmpty(settings.NegocioNombre) ? "Café e insumos" : settings.NegocioNombre)</h2>
+                            <div style="font-size: 0.78rem; color: #6b7280; margin-top: 0.2rem; line-height: 1.45;">
+                                @if (!string.IsNullOrEmpty(settings.NegocioDireccion)) { <div>@settings.NegocioDireccion</div> }
+                                @if (!string.IsNullOrEmpty(settings.NegocioTelefono)) { <div>Tel: @settings.NegocioTelefono</div> }
+                                @if (!string.IsNullOrEmpty(settings.NegocioCuit)) { <div>CUIT: @settings.NegocioCuit</div> }
+                            </div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 1.4rem; font-weight: 800; color: #1d4ed8;">COMPROBANTE</div>
+                            <div style="font-family: monospace; font-size: 1.05rem; font-weight: 700;">@printVenta.Numero</div>
+                            <div style="font-size: 0.85rem; margin-top: 0.2rem;"><strong>Fecha:</strong> @printVenta.Fecha.ToString("dd/MM/yyyy")</div>
+                            <div style="color: #6b7280; font-style: italic; font-size: 0.72rem; margin-top: 0.3rem;">Documento no válido como factura</div>
+                        </div>
+                    </div>
+                </div>
+
+                @* Cliente *@
+                <div style="border: 1px solid #d1d5db; border-top: 0; padding: 0.6rem; font-size: 0.9rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <strong>Cliente:</strong> @(printVenta.ClienteNombre ?? "Consumidor final")
+                        </div>
+                        <div>
+                            @if (printVenta.ClienteTipo == "BAR")
+                            { <span style="display:inline-block; padding:0.15rem 0.5rem; background:#dbeafe; color:#1e40af; border-radius:999px; font-size:0.72rem; font-weight:700;">🍺 BAR · PVP1</span> }
+                            else
+                            { <span style="display:inline-block; padding:0.15rem 0.5rem; background:#dcfce7; color:#166534; border-radius:999px; font-size:0.72rem; font-weight:700;">🛒 OTRO · PVP2</span> }
+                        </div>
+                    </div>
+                </div>
+
+                @* Tabla items *@
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem; margin-top: 0.6rem;">
+                    <thead>
+                        <tr style="background: #f3f4f6;">
+                            <th style="border: 1px solid #d1d5db; padding: 5px 8px; text-align: center; width: 70px;">Cant.</th>
+                            <th style="border: 1px solid #d1d5db; padding: 5px 8px; text-align: left;">Producto</th>
+                            <th style="border: 1px solid #d1d5db; padding: 5px 8px; text-align: center; width: 90px;">Formato</th>
+                            <th style="border: 1px solid #d1d5db; padding: 5px 8px; text-align: right; width: 120px;">P. Unitario</th>
+                            <th style="border: 1px solid #d1d5db; padding: 5px 8px; text-align: right; width: 140px;">Subtotal</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var i in printVenta.Items)
+                        {
+                            <tr>
+                                <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: center; font-weight: 700;">@i.Cantidad</td>
+                                <td style="border: 1px solid #d1d5db; padding: 4px 8px;"><strong>@i.ProductoNombre</strong></td>
+                                <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: center;">@FormatoLabel(i.Formato)</td>
+                                <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: right;">$@FormatMoney(i.PrecioUnitario)</td>
+                                <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: right; font-weight: 700;">$@FormatMoney(i.Subtotal)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+
+                @* Totales *@
+                <div style="display: flex; justify-content: flex-end; margin-top: 0.5rem;">
+                    <div style="min-width: 320px; border: 1px solid #d1d5db; padding: 0.6rem 0.8rem;">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.9rem; padding: 0.15rem 0;">
+                            <span>Subtotal:</span><strong>$@FormatMoney(printVenta.Subtotal)</strong>
+                        </div>
+                        @if (printVenta.Descuento > 0)
+                        {
+                            <div style="display: flex; justify-content: space-between; font-size: 0.9rem; padding: 0.15rem 0; color: #dc2626;">
+                                <span>Descuento:</span><span>− $@FormatMoney(printVenta.Descuento)</span>
+                            </div>
+                        }
+                        <hr style="margin: 0.4rem 0; border: none; border-top: 2px solid #1f2937;" />
+                        <div style="display: flex; justify-content: space-between; font-size: 1.15rem; font-weight: 800; color: #059669;">
+                            <span>TOTAL:</span><span>$@FormatMoney(printVenta.Total)</span>
+                        </div>
+                    </div>
+                </div>
+
+                @if (!string.IsNullOrEmpty(printVenta.Observaciones))
+                {
+                    <div style="margin-top: 0.5rem; border: 1px solid #d1d5db; padding: 0.5rem 0.7rem; font-size: 0.85rem;">
+                        <strong>Observaciones:</strong> @printVenta.Observaciones
+                    </div>
+                }
+
+                <div style="margin-top: 1rem; text-align: center; font-size: 0.78rem; color: #6b7280; border-top: 1px dashed #d1d5db; padding-top: 0.5rem;">
+                    Gracias por tu compra ☕
+                    @if (HasWhatsapp)
+                    {
+                        <span> · <a href="@WhatsappLink" target="_blank" style="color: #25D366; font-weight: 700;">📱 Contactanos por WhatsApp</a></span>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showAnularConfirm && toAnular is not null)
+{
+    <div class="modal-overlay" @onclick="() => showAnularConfirm = false">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: #d97706; color: white;">
+                <h4 style="margin: 0;">Anular venta</h4>
+                <button class="btn-close" @onclick="() => showAnularConfirm = false" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Vas a anular el comprobante <strong>@toAnular.Numero</strong>. El stock se va a <strong>devolver</strong>.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showAnularConfirm = false">No</button>
+                <button class="btn btn-danger" @onclick="DoAnular">Sí, anular</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showDeleteConfirm && toDelete is not null)
+{
+    <div class="modal-overlay" @onclick="() => showDeleteConfirm = false">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: #dc3545; color: white;">
+                <h4 style="margin: 0;">Eliminar venta</h4>
+                <button class="btn-close" @onclick="() => showDeleteConfirm = false" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body"><p>Vas a eliminar definitivamente <strong>@toDelete.Numero</strong>. Si estaba emitida, el stock vuelve.</p></div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showDeleteConfirm = false">No</button>
+                <button class="btn btn-danger" @onclick="DoDelete">Sí, eliminar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<CafeVentaDto>? ventas;
+    private List<CafeClienteDto>? clientes;
+    private List<CafeProductoDto>? productos;
+    private CafeSettingDto? settings;
+    private bool loading = true;
+
+    // Form state
+    private bool showForm, saving;
+    private string? formError;
+    private int formClienteId;
+    private string formClienteTipo = "OTRO";
+    private DateTime formFecha = DateTime.Today;
+    private decimal formDescuento;
+    private string formObservaciones = "";
+    private List<CafeCotizarItemRequest> formItems = new();
+    private CafeCotizadoDto? cotizacion;
+
+    // Add item state
+    private int addProductoId;
+    private string addFormato = "1KG";
+    private int addCantidad = 1;
+
+    private string AddProductoCategoria => productos?.FirstOrDefault(x => x.Id == addProductoId)?.Categoria ?? "CAFE";
+
+    // Print
+    private CafeVentaDto? printVenta;
+
+    private bool HasWhatsapp => !string.IsNullOrWhiteSpace(settings?.NegocioWhatsappNumero);
+    private string WhatsappLink
+    {
+        get
+        {
+            if (!HasWhatsapp || printVenta is null) return "#";
+            var num = (settings!.NegocioWhatsappNumero ?? "").Replace(" ", "").Replace("-", "").Replace("+", "");
+            var msg = Uri.EscapeDataString(
+                $"Hola! Te paso el comprobante {printVenta.Numero} por ${printVenta.Total:N2}. Gracias!"
+                .Replace(",", "."));
+            return $"https://wa.me/{num}?text={msg}";
+        }
+    }
+
+    // Anular / Eliminar
+    private bool showAnularConfirm;
+    private CafeVentaDto? toAnular;
+    private bool showDeleteConfirm;
+    private CafeVentaDto? toDelete;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCatalogos();
+        await Load();
+    }
+
+    private async Task LoadCatalogos()
+    {
+        try
+        {
+            clientes = (await Api.GetCafeClientesAsync())?.Where(c => c.IsActive).ToList() ?? new();
+            productos = (await Api.GetCafeProductosAsync())?.Where(p => p.IsActive).ToList() ?? new();
+            settings = await Api.GetCafeSettingsAsync();
+        }
+        catch { }
+    }
+
+    private async Task Load()
+    {
+        loading = true;
+        try { ventas = await Api.GetCafeVentasAsync() ?? new(); }
+        catch { ToastService.Error("Error al cargar ventas"); ventas = new(); }
+        loading = false;
+    }
+
+    private void ShowCreate()
+    {
+        formClienteId = 0; formClienteTipo = "OTRO";
+        formFecha = DateTime.Today; formDescuento = 0; formObservaciones = "";
+        formItems = new(); cotizacion = null;
+        addProductoId = 0; addFormato = "1KG"; addCantidad = 1;
+        formError = null; showForm = true;
+    }
+
+    private void CloseForm() { showForm = false; formError = null; }
+
+    private async Task OnClienteChanged()
+    {
+        if (formClienteId > 0)
+        {
+            var c = clientes?.FirstOrDefault(x => x.Id == formClienteId);
+            if (c is not null) formClienteTipo = c.Tipo;
+        }
+        await Cotizar();
+    }
+
+    private void OnAddProductoChanged()
+    {
+        if (addProductoId > 0)
+        {
+            var p = productos?.FirstOrDefault(x => x.Id == addProductoId);
+            if (p is not null) addFormato = p.Categoria == "CAFE" ? "1KG" : "UNIT";
+        }
+    }
+
+    private async Task AddItem()
+    {
+        if (addProductoId <= 0 || addCantidad <= 0) return;
+        var p = productos?.FirstOrDefault(x => x.Id == addProductoId);
+        if (p is null) return;
+
+        // Si ya existe el mismo prod+formato, sumamos cantidades.
+        var existing = formItems.FirstOrDefault(i => i.ProductoId == addProductoId && i.Formato == addFormato);
+        if (existing is not null) existing.Cantidad += addCantidad;
+        else formItems.Add(new CafeCotizarItemRequest { ProductoId = addProductoId, Formato = addFormato, Cantidad = addCantidad });
+
+        addProductoId = 0; addFormato = "1KG"; addCantidad = 1;
+        await Cotizar();
+    }
+
+    private async Task RemoveItem(int idx)
+    {
+        if (idx < 0 || idx >= formItems.Count) return;
+        formItems.RemoveAt(idx);
+        await Cotizar();
+    }
+
+    private async Task Cotizar()
+    {
+        if (formItems.Count == 0) { cotizacion = null; return; }
+        try
+        {
+            cotizacion = await Api.CotizarCafeAsync(new CafeCotizarRequest
+            {
+                ClienteId = formClienteId > 0 ? formClienteId : null,
+                ClienteTipo = formClienteTipo,
+                Items = formItems,
+                Descuento = formDescuento
+            });
+        }
+        catch (Exception ex) { ToastService.Error("Error al cotizar: " + ex.Message); }
+    }
+
+    private async Task Save()
+    {
+        formError = null;
+        if (formItems.Count == 0) { formError = "Agregá al menos un producto"; return; }
+        if (cotizacion?.TodoOk != true) { formError = "Hay items con stock insuficiente o inválidos"; return; }
+        saving = true;
+        try
+        {
+            var v = await Api.CreateCafeVentaAsync(new CreateCafeVentaRequest
+            {
+                Fecha = formFecha,
+                ClienteId = formClienteId > 0 ? formClienteId : null,
+                ClienteTipoOverride = formClienteTipo,
+                Items = formItems,
+                Descuento = formDescuento,
+                Observaciones = formObservaciones
+            });
+            if (v is null) { formError = "No se pudo crear"; return; }
+            ToastService.Success($"Venta {v.Numero} emitida — Total ${v.Total:N2}");
+            showForm = false;
+            await LoadCatalogos();
+            await Load();
+            // Abrir el viewer/pdf de la venta recién creada
+            printVenta = v;
+        }
+        catch (Exception ex) { formError = ex.Message; }
+        finally { saving = false; }
+    }
+
+    private async Task ShowPrint(CafeVentaDto v)
+    {
+        // Refrescar settings por si cambiaron datos del negocio
+        try { settings = await Api.GetCafeSettingsAsync(); } catch { }
+        var fresh = await Api.GetCafeVentaAsync(v.Id);
+        printVenta = fresh ?? v;
+    }
+
+    private void ClosePrint() => printVenta = null;
+
+    private async Task DoPrint()
+    {
+        try { await JS.InvokeVoidAsync("printElement", "cafe-print", $"Comprobante {printVenta?.Numero}"); }
+        catch { ToastService.Error("No se pudo abrir la ventana de impresión"); }
+    }
+
+    private void ConfirmAnular(CafeVentaDto v) { toAnular = v; showAnularConfirm = true; }
+    private async Task DoAnular()
+    {
+        if (toAnular is null) return;
+        try
+        {
+            await Api.AnularCafeVentaAsync(toAnular.Id);
+            ToastService.Success("Venta anulada — stock devuelto");
+            await Load();
+            await LoadCatalogos();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { showAnularConfirm = false; toAnular = null; }
+    }
+
+    private void ConfirmDelete(CafeVentaDto v) { toDelete = v; showDeleteConfirm = true; }
+    private async Task DoDelete()
+    {
+        if (toDelete is null) return;
+        try
+        {
+            await Api.DeleteCafeVentaAsync(toDelete.Id);
+            ToastService.Success("Venta eliminada");
+            await Load(); await LoadCatalogos();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { showDeleteConfirm = false; toDelete = null; }
+    }
+
+    // ── Helpers ──
+    private static string FormatMoney(decimal v)
+        => v.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+
+    private static string FormatGramos(decimal g)
+    {
+        if (g >= 1000m) return $"{(g / 1000m).ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))} kg";
+        return $"{g:0} g";
+    }
+
+    private static string FormatoLabel(string formato) => formato switch
+    {
+        "1KG" => "1 kg",
+        "MEDIO" => "1/2 kg",
+        "CUARTO" => "1/4 kg",
+        "UNIT" => "u.",
+        _ => formato
+    };
+}

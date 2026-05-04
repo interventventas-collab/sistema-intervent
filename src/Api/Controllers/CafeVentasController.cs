@@ -1,0 +1,281 @@
+using Api.Data;
+using Api.DTOs;
+using Api.Models;
+using Api.Services;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+
+namespace Api.Controllers;
+
+[ApiController]
+[Route("api/cafe/ventas")]
+[Authorize]
+public class CafeVentasController : ControllerBase
+{
+    private readonly AppDbContext _db;
+    private static readonly string[] FormatosValidos = { "1KG", "MEDIO", "CUARTO", "UNIT" };
+
+    public CafeVentasController(AppDbContext db) { _db = db; }
+
+    private static CafeVentaDto Map(CafeVenta v) => new(
+        v.Id, v.Numero, v.Fecha,
+        v.ClienteId, v.ClienteNombreSnapshot, v.ClienteTipoSnapshot,
+        v.Subtotal, v.Descuento, v.Total, v.CostoTotal, v.Margen,
+        v.Observaciones, v.Estado, v.CreatedAt,
+        v.Items.Select(i => new CafeVentaItemDto(
+            i.Id, i.ProductoId, i.ProductoNombreSnapshot, i.Categoria,
+            i.Formato, i.Cantidad,
+            i.PrecioUnitario, i.CostoUnitario, i.Subtotal,
+            i.GramosDescontados)).ToList());
+
+    [HttpGet]
+    public async Task<IActionResult> GetAll([FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null)
+    {
+        var q = _db.CafeVentas.Include(v => v.Items).AsQueryable();
+        if (from.HasValue) q = q.Where(v => v.Fecha >= from.Value.Date);
+        if (to.HasValue) q = q.Where(v => v.Fecha <= to.Value.Date);
+        var list = await q.OrderByDescending(v => v.Fecha).ThenByDescending(v => v.Id).Take(200).ToListAsync();
+        return Ok(list.Select(Map).ToList());
+    }
+
+    [HttpGet("{id:int}")]
+    public async Task<IActionResult> GetById(int id)
+    {
+        var v = await _db.CafeVentas.Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == id);
+        if (v is null) return NotFound(new { error = "Venta no encontrada" });
+        return Ok(Map(v));
+    }
+
+    /// <summary>Cotización en vivo: NO crea la venta, solo calcula precios + verifica stock.</summary>
+    [HttpPost("cotizar")]
+    public async Task<IActionResult> Cotizar([FromBody] CafeCotizarRequest req)
+    {
+        var settings = await _db.CafeSettings.FindAsync(1) ?? new CafeSetting { Id = 1 };
+        var tipo = await ResolverTipoAsync(req.ClienteId, req.ClienteTipo);
+        return Ok(await CotizarInternoAsync(req.Items, tipo, req.Descuento, settings));
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> Create([FromBody] CreateCafeVentaRequest req)
+    {
+        if (req.Items is null || req.Items.Count == 0)
+            return BadRequest(new { error = "La venta debe tener al menos un item" });
+
+        var settings = await _db.CafeSettings.FindAsync(1) ?? new CafeSetting { Id = 1 };
+        var tipo = await ResolverTipoAsync(req.ClienteId, req.ClienteTipoOverride);
+
+        var cot = await CotizarInternoAsync(req.Items, tipo, req.Descuento, settings);
+        if (!cot.TodoOk)
+            return BadRequest(new { error = "No hay stock suficiente para alguno de los items. Revisá la cotización." });
+
+        // Resolver datos del cliente
+        string? clienteNombre = null;
+        if (req.ClienteId.HasValue && req.ClienteId.Value > 0)
+        {
+            var cli = await _db.CafeClientes.FindAsync(req.ClienteId.Value);
+            if (cli is null) return BadRequest(new { error = "Cliente no encontrado" });
+            clienteNombre = cli.Nombre;
+            tipo = CafePricingService.ResolverTipo(cli.Tipo);
+        }
+        else
+        {
+            clienteNombre = string.IsNullOrWhiteSpace(req.ClienteNombreOverride) ? "Consumidor final" : req.ClienteNombreOverride.Trim();
+        }
+
+        // Persistir: crear venta + items + descontar stock
+        var venta = new CafeVenta
+        {
+            Numero = await GenerarNumeroAsync(),
+            Fecha = (req.Fecha ?? DateTime.Today).Date,
+            ClienteId = req.ClienteId.HasValue && req.ClienteId.Value > 0 ? req.ClienteId.Value : null,
+            ClienteNombreSnapshot = clienteNombre,
+            ClienteTipoSnapshot = tipo,
+            Subtotal = cot.Subtotal,
+            Descuento = cot.Descuento,
+            Total = cot.Total,
+            CostoTotal = cot.CostoTotal,
+            Margen = cot.Margen,
+            Observaciones = string.IsNullOrWhiteSpace(req.Observaciones) ? null : req.Observaciones.Trim(),
+            Estado = "emitido",
+            CreatedAt = DateTime.UtcNow
+        };
+
+        // Mapear items + descontar stock fisico
+        foreach (var it in cot.Items)
+        {
+            var prod = await _db.CafeProductos.FindAsync(it.ProductoId);
+            if (prod is null) return BadRequest(new { error = $"Producto {it.ProductoId} no encontrado" });
+
+            venta.Items.Add(new CafeVentaItem
+            {
+                ProductoId = prod.Id,
+                ProductoNombreSnapshot = prod.Nombre,
+                Categoria = prod.Categoria,
+                Formato = it.Formato,
+                Cantidad = it.Cantidad,
+                PrecioUnitario = it.PrecioUnitario,
+                CostoUnitario = it.CostoUnitario,
+                Subtotal = it.Subtotal,
+                GramosDescontados = it.GramosNecesarios
+            });
+
+            // Descontar stock
+            if (prod.Categoria == "CAFE")
+                prod.StockGramos = Math.Max(0m, prod.StockGramos - it.GramosNecesarios);
+            else
+                prod.StockUnidades = Math.Max(0, prod.StockUnidades - it.Cantidad);
+            prod.UpdatedAt = DateTime.UtcNow;
+        }
+
+        _db.CafeVentas.Add(venta);
+        await _db.SaveChangesAsync();
+
+        return Ok(Map(venta));
+    }
+
+    [HttpPost("{id:int}/anular")]
+    public async Task<IActionResult> Anular(int id)
+    {
+        var v = await _db.CafeVentas.Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == id);
+        if (v is null) return NotFound(new { error = "Venta no encontrada" });
+        if (v.Estado == "anulado") return BadRequest(new { error = "Ya estaba anulada" });
+
+        // Restaurar stock
+        foreach (var it in v.Items)
+        {
+            var prod = await _db.CafeProductos.FindAsync(it.ProductoId);
+            if (prod is null) continue;
+            if (prod.Categoria == "CAFE")
+                prod.StockGramos += it.GramosDescontados;
+            else
+                prod.StockUnidades += it.Cantidad;
+            prod.UpdatedAt = DateTime.UtcNow;
+        }
+        v.Estado = "anulado";
+        v.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(Map(v));
+    }
+
+    [HttpDelete("{id:int}")]
+    public async Task<IActionResult> Delete(int id)
+    {
+        var v = await _db.CafeVentas.Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == id);
+        if (v is null) return NotFound(new { error = "Venta no encontrada" });
+        // Si estaba emitida, restaurar stock antes de borrar.
+        if (v.Estado == "emitido")
+        {
+            foreach (var it in v.Items)
+            {
+                var prod = await _db.CafeProductos.FindAsync(it.ProductoId);
+                if (prod is null) continue;
+                if (prod.Categoria == "CAFE") prod.StockGramos += it.GramosDescontados;
+                else prod.StockUnidades += it.Cantidad;
+            }
+        }
+        _db.CafeVentas.Remove(v);
+        await _db.SaveChangesAsync();
+        return Ok(new { deleted = true });
+    }
+
+    // ============================================================
+    // INTERNAS
+    // ============================================================
+
+    private async Task<string> ResolverTipoAsync(int? clienteId, string? tipoOverride)
+    {
+        if (clienteId.HasValue && clienteId.Value > 0)
+        {
+            var c = await _db.CafeClientes.FindAsync(clienteId.Value);
+            if (c is not null) return CafePricingService.ResolverTipo(c.Tipo);
+        }
+        return CafePricingService.ResolverTipo(tipoOverride);
+    }
+
+    private async Task<CafeCotizadoDto> CotizarInternoAsync(List<CafeCotizarItemRequest> items, string tipo, decimal descuento, CafeSetting settings)
+    {
+        var cotizadoItems = new List<CafeCotizadoItemDto>();
+        decimal subtotal = 0m, costoTotal = 0m;
+        bool todoOk = true;
+
+        foreach (var it in items)
+        {
+            if (it.Cantidad <= 0) continue;
+            if (!FormatosValidos.Contains(it.Formato))
+            {
+                cotizadoItems.Add(new CafeCotizadoItemDto(
+                    it.ProductoId, "?", "?", it.Formato, it.Cantidad, 0m, 0m, 0m, 0m, 0m, 0,
+                    false, "Formato inválido"));
+                todoOk = false;
+                continue;
+            }
+
+            var prod = await _db.CafeProductos.FindAsync(it.ProductoId);
+            if (prod is null)
+            {
+                cotizadoItems.Add(new CafeCotizadoItemDto(
+                    it.ProductoId, "?", "?", it.Formato, it.Cantidad, 0m, 0m, 0m, 0m, 0m, 0,
+                    false, "Producto no encontrado"));
+                todoOk = false;
+                continue;
+            }
+
+            // Validar combinación: formato unitario solo para OTROS, formatos kg solo para CAFE.
+            var esCafe = prod.Categoria == "CAFE";
+            var esFormatoCafe = it.Formato is "1KG" or "MEDIO" or "CUARTO";
+            if (esCafe != esFormatoCafe)
+            {
+                cotizadoItems.Add(new CafeCotizadoItemDto(
+                    prod.Id, prod.Nombre, prod.Categoria, it.Formato, it.Cantidad, 0m, 0m, 0m, 0m, prod.StockGramos, prod.StockUnidades,
+                    false, esCafe ? "Para café usá 1 kg / 1/2 kg / 1/4 kg" : "Para otros productos usá 'unidad'"));
+                todoOk = false;
+                continue;
+            }
+
+            var precioUnit = CafePricingService.CalcularPrecioUnitario(prod, it.Formato, tipo, settings);
+            var costoUnit = CafePricingService.CalcularCostoUnitario(prod, it.Formato);
+            var subtotalLinea = precioUnit * it.Cantidad;
+            var gramosNecesarios = esCafe ? CafePricingService.GramosPorUnidad(it.Formato) * it.Cantidad : 0m;
+            var stockOk = esCafe ? gramosNecesarios <= prod.StockGramos + 0.001m : it.Cantidad <= prod.StockUnidades;
+            string? aviso = null;
+            if (!stockOk)
+            {
+                aviso = esCafe
+                    ? $"Stock insuficiente. Disponible: {prod.StockGramos:0} g, necesitás {gramosNecesarios:0} g."
+                    : $"Stock insuficiente. Disponible: {prod.StockUnidades} u, necesitás {it.Cantidad}.";
+                todoOk = false;
+            }
+
+            cotizadoItems.Add(new CafeCotizadoItemDto(
+                prod.Id, prod.Nombre, prod.Categoria, it.Formato, it.Cantidad,
+                precioUnit, costoUnit, subtotalLinea,
+                gramosNecesarios, prod.StockGramos, prod.StockUnidades,
+                stockOk, aviso));
+
+            subtotal += subtotalLinea;
+            costoTotal += costoUnit * it.Cantidad;
+        }
+
+        var desc = Math.Max(0m, descuento);
+        var total = Math.Max(0m, subtotal - desc);
+        var margen = total - costoTotal;
+        return new CafeCotizadoDto(tipo, subtotal, desc, total, costoTotal, margen, todoOk, cotizadoItems);
+    }
+
+    private async Task<string> GenerarNumeroAsync()
+    {
+        var year = DateTime.UtcNow.Year;
+        var prefix = $"CAFE-{year}-";
+        var existing = await _db.CafeVentas
+            .Where(v => v.Numero.StartsWith(prefix))
+            .Select(v => v.Numero)
+            .ToListAsync();
+        int max = 0;
+        foreach (var s in existing)
+        {
+            if (int.TryParse(s.Substring(prefix.Length), out var n) && n > max) max = n;
+        }
+        return $"{prefix}{(max + 1):D4}";
+    }
+}

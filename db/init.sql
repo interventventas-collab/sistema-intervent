@@ -1790,3 +1790,53 @@ BEGIN
     INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'cafe');
 END
 GO
+
+-- Cafe: ventas y items
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_Ventas' AND xtype='U')
+BEGIN
+    CREATE TABLE Cafe_Ventas (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Numero NVARCHAR(20) NOT NULL,
+        Fecha DATE NOT NULL,
+        ClienteId INT NULL,
+        ClienteNombreSnapshot NVARCHAR(200) NULL,
+        ClienteTipoSnapshot NVARCHAR(20) NULL,
+        Subtotal DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Descuento DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Total DECIMAL(18,2) NOT NULL DEFAULT 0,
+        CostoTotal DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Margen DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Observaciones NVARCHAR(500) NULL,
+        Estado NVARCHAR(20) NOT NULL DEFAULT 'emitido',
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT FK_CafeVentas_Cliente FOREIGN KEY (ClienteId) REFERENCES Cafe_Clientes(Id),
+        CONSTRAINT UQ_CafeVentas_Numero UNIQUE (Numero)
+    );
+    CREATE INDEX IX_CafeVentas_Fecha ON Cafe_Ventas (Fecha);
+    CREATE INDEX IX_CafeVentas_Cliente ON Cafe_Ventas (ClienteId);
+    CREATE INDEX IX_CafeVentas_Estado ON Cafe_Ventas (Estado);
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_VentaItems' AND xtype='U')
+BEGIN
+    CREATE TABLE Cafe_VentaItems (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        VentaId INT NOT NULL,
+        ProductoId INT NOT NULL,
+        ProductoNombreSnapshot NVARCHAR(200) NOT NULL,
+        Categoria NVARCHAR(20) NOT NULL,
+        Formato NVARCHAR(20) NOT NULL,
+        Cantidad INT NOT NULL,
+        PrecioUnitario DECIMAL(18,2) NOT NULL,
+        CostoUnitario DECIMAL(18,2) NOT NULL,
+        Subtotal DECIMAL(18,2) NOT NULL,
+        GramosDescontados DECIMAL(18,3) NOT NULL DEFAULT 0,
+        CONSTRAINT FK_CafeVentaItems_Venta FOREIGN KEY (VentaId) REFERENCES Cafe_Ventas(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_CafeVentaItems_Producto FOREIGN KEY (ProductoId) REFERENCES Cafe_Productos(Id)
+    );
+    CREATE INDEX IX_CafeVentaItems_Venta ON Cafe_VentaItems (VentaId);
+    CREATE INDEX IX_CafeVentaItems_Producto ON Cafe_VentaItems (ProductoId);
+END
+GO

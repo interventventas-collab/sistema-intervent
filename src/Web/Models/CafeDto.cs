@@ -102,3 +102,92 @@ public class UpdateCafeSettingRequest
     public string? NegocioDireccion { get; set; }
     public string? NegocioCuit { get; set; }
 }
+
+// ===== Ventas =====
+public class CafeVentaItemDto
+{
+    public int Id { get; set; }
+    public int ProductoId { get; set; }
+    public string ProductoNombre { get; set; } = "";
+    public string Categoria { get; set; } = "CAFE";
+    public string Formato { get; set; } = "1KG";
+    public int Cantidad { get; set; }
+    public decimal PrecioUnitario { get; set; }
+    public decimal CostoUnitario { get; set; }
+    public decimal Subtotal { get; set; }
+    public decimal GramosDescontados { get; set; }
+}
+
+public class CafeVentaDto
+{
+    public int Id { get; set; }
+    public string Numero { get; set; } = "";
+    public DateTime Fecha { get; set; }
+    public int? ClienteId { get; set; }
+    public string? ClienteNombre { get; set; }
+    public string? ClienteTipo { get; set; }
+    public decimal Subtotal { get; set; }
+    public decimal Descuento { get; set; }
+    public decimal Total { get; set; }
+    public decimal CostoTotal { get; set; }
+    public decimal Margen { get; set; }
+    public string? Observaciones { get; set; }
+    public string Estado { get; set; } = "emitido";
+    public DateTime CreatedAt { get; set; }
+    public List<CafeVentaItemDto> Items { get; set; } = new();
+}
+
+public class CafeCotizarItemRequest
+{
+    public int ProductoId { get; set; }
+    public string Formato { get; set; } = "1KG";
+    public int Cantidad { get; set; } = 1;
+}
+
+public class CafeCotizarRequest
+{
+    public int? ClienteId { get; set; }
+    public string? ClienteTipo { get; set; }
+    public List<CafeCotizarItemRequest> Items { get; set; } = new();
+    public decimal Descuento { get; set; }
+}
+
+public class CafeCotizadoItemDto
+{
+    public int ProductoId { get; set; }
+    public string ProductoNombre { get; set; } = "";
+    public string Categoria { get; set; } = "CAFE";
+    public string Formato { get; set; } = "1KG";
+    public int Cantidad { get; set; }
+    public decimal PrecioUnitario { get; set; }
+    public decimal CostoUnitario { get; set; }
+    public decimal Subtotal { get; set; }
+    public decimal GramosNecesarios { get; set; }
+    public decimal StockGramosDisponible { get; set; }
+    public int StockUnidadesDisponible { get; set; }
+    public bool StockOk { get; set; }
+    public string? Aviso { get; set; }
+}
+
+public class CafeCotizadoDto
+{
+    public string ClienteTipoUsado { get; set; } = "OTRO";
+    public decimal Subtotal { get; set; }
+    public decimal Descuento { get; set; }
+    public decimal Total { get; set; }
+    public decimal CostoTotal { get; set; }
+    public decimal Margen { get; set; }
+    public bool TodoOk { get; set; }
+    public List<CafeCotizadoItemDto> Items { get; set; } = new();
+}
+
+public class CreateCafeVentaRequest
+{
+    public DateTime? Fecha { get; set; }
+    public int? ClienteId { get; set; }
+    public string? ClienteNombreOverride { get; set; }
+    public string? ClienteTipoOverride { get; set; }
+    public List<CafeCotizarItemRequest> Items { get; set; } = new();
+    public decimal Descuento { get; set; }
+    public string? Observaciones { get; set; }
+}
