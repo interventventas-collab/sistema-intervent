@@ -1258,16 +1258,30 @@
         catch { topProductsForClient = new(); }
     }
 
+    /// <summary>Default de molienda al agregar un item: 'EN GRANOS' para CAFE, null para OTROS.</summary>
+    private string? DefaultMolienda(int productoId)
+    {
+        var p = productos?.FirstOrDefault(x => x.Id == productoId);
+        return p?.Categoria == "CAFE" ? "EN GRANOS" : null;
+    }
+
     /// <summary>Agrega un producto sugerido (top productos del cliente) al carrito con cantidad 1.
     /// Si ya existia ese (Producto, Formato, Molienda, DoyPack), suma 1 a la cantidad.</summary>
     private async Task AddTopProduct(int productoId, string formato)
     {
+        var def = DefaultMolienda(productoId);
         var existing = formItems.FirstOrDefault(i => i.ProductoId == productoId
             && i.Formato == formato
-            && string.IsNullOrEmpty(i.Molienda)
+            && (i.Molienda ?? "") == (def ?? "")
             && !i.EsDoyPack);
         if (existing is not null) existing.Cantidad += 1;
-        else formItems.Add(new CafeCotizarItemRequest { ProductoId = productoId, Formato = formato, Cantidad = 1 });
+        else formItems.Add(new CafeCotizarItemRequest
+        {
+            ProductoId = productoId,
+            Formato = formato,
+            Cantidad = 1,
+            Molienda = def
+        });
         await Cotizar();
     }
 
@@ -1341,10 +1355,21 @@
         var p = productos?.FirstOrDefault(x => x.Id == addProductoId);
         if (p is null) return;
 
-        // Si ya existe el mismo prod+formato, sumamos cantidades.
-        var existing = formItems.FirstOrDefault(i => i.ProductoId == addProductoId && i.Formato == addFormato);
+        var def = DefaultMolienda(addProductoId);
+        // Si ya existe el mismo prod+formato+molienda+doy pack, sumamos cantidades.
+        var existing = formItems.FirstOrDefault(i =>
+            i.ProductoId == addProductoId
+            && i.Formato == addFormato
+            && (i.Molienda ?? "") == (def ?? "")
+            && !i.EsDoyPack);
         if (existing is not null) existing.Cantidad += addCantidad;
-        else formItems.Add(new CafeCotizarItemRequest { ProductoId = addProductoId, Formato = addFormato, Cantidad = addCantidad });
+        else formItems.Add(new CafeCotizarItemRequest
+        {
+            ProductoId = addProductoId,
+            Formato = addFormato,
+            Cantidad = addCantidad,
+            Molienda = def
+        });
 
         addProductoId = 0; addFormato = "1KG"; addCantidad = 1;
         productoSearch = ""; productoSearchOpen = false;
@@ -1392,7 +1417,8 @@
                     ProductoId = ci.ProductoId,
                     Formato = ci.Formato,
                     Cantidad = qty,
-                    Molienda = ci.Molienda,
+                    // Si el combo no especifica molienda, default a EN GRANOS para cafe.
+                    Molienda = !string.IsNullOrEmpty(ci.Molienda) ? ci.Molienda : DefaultMolienda(ci.ProductoId),
                     EsDoyPack = ci.EsDoyPack
                 });
             }
