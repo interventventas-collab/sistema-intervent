@@ -216,6 +216,16 @@ public class BulkDeleteCafeVentasRequest
 
 public record DeleteCafeVentaSettingsDto(string AllowedOperator, string Hint);
 
+/// <summary>Producto que el cliente compro mas seguido (sugerencia para el form de Nueva Venta).</summary>
+public record CafeTopProductoClienteDto(
+    int ProductoId, string? Sku, string Nombre, string Categoria, string? Marca,
+    string Formato,                         // 1KG / MEDIO / CUARTO / UNIT
+    int TimesOrdered,                        // cantidad de comprobantes que lo incluyen
+    int TotalQuantity,                       // suma de cantidades
+    DateTime LastPurchase,
+    decimal StockGramos, int StockUnidades,
+    decimal PrecioReferencia);              // precio aplicable al tipo del cliente actual
+
 // ===== Combos =====
 public record CafeComboItemDto(
     int Id, int ProductoId, string ProductoNombre, string Categoria, string? Marca,

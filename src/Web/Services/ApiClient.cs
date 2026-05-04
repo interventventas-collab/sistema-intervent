@@ -470,6 +470,9 @@ public class ApiClient
     public async Task<DeleteCafeVentaSettingsDto?> GetCafeDeleteSettingsAsync()
         => await GetAsync<DeleteCafeVentaSettingsDto>("/api/cafe/ventas/delete-settings");
 
+    public async Task<List<CafeTopProductoClienteDto>?> GetCafeTopProductosByClienteAsync(int clienteId, int count = 10)
+        => await GetAsync<List<CafeTopProductoClienteDto>>($"/api/cafe/ventas/top-productos-cliente/{clienteId}?count={count}");
+
     public async Task<bool> DeleteCafeVentaAsync(int id, string password)
     {
         await SetAuthHeaderAsync();

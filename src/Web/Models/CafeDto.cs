@@ -284,6 +284,22 @@ public class DeleteCafeVentaSettingsDto
     public string Hint { get; set; } = string.Empty;
 }
 
+public class CafeTopProductoClienteDto
+{
+    public int ProductoId { get; set; }
+    public string? Sku { get; set; }
+    public string Nombre { get; set; } = "";
+    public string Categoria { get; set; } = "CAFE";
+    public string? Marca { get; set; }
+    public string Formato { get; set; } = "1KG";
+    public int TimesOrdered { get; set; }
+    public int TotalQuantity { get; set; }
+    public DateTime LastPurchase { get; set; }
+    public decimal StockGramos { get; set; }
+    public int StockUnidades { get; set; }
+    public decimal PrecioReferencia { get; set; }
+}
+
 // ===== Combos =====
 public class CafeComboItemDto
 {

@@ -285,6 +285,30 @@
                             <input class="form-input" type="date" @bind="formFecha" />
                         </div>
                     </div>
+
+                    @* Saldo anterior — alerta si el cliente tiene comprobantes impagos *@
+                    @if (formClienteId > 0 && unpaidPrevSales.Count > 0)
+                    {
+                        <div style="margin-top: 0.5rem; padding: 0.55rem 0.75rem; background: #fef3c7; border: 2px solid #d97706; border-radius: 8px; color: #78350f;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.4rem;">
+                                <strong style="font-size: 0.85rem;">⚠ Saldo anterior: $@FormatMoney(UnpaidPrevTotal)</strong>
+                                <span style="font-size: 0.78rem;">@unpaidPrevSales.Count comprobante@(unpaidPrevSales.Count == 1 ? "" : "s") impago@(unpaidPrevSales.Count == 1 ? "" : "s")</span>
+                            </div>
+                            <div style="font-size: 0.78rem; margin-top: 0.4rem;">
+                                @foreach (var s in unpaidPrevSales)
+                                {
+                                    <span style="display: inline-block; margin-right: 0.45rem; margin-bottom: 0.25rem; padding: 0.1rem 0.4rem; background: white; border: 1px solid #d97706; border-radius: 4px; font-family: monospace;"
+                                          title="@s.Fecha.ToString("dd/MM/yyyy") · $@FormatMoney(s.Total)">
+                                        @s.Numero ($@FormatMoney(s.Total))
+                                    </span>
+                                }
+                            </div>
+                            <label style="display: flex; align-items: center; gap: 0.35rem; margin-top: 0.5rem; font-size: 0.78rem; cursor: pointer;">
+                                <input type="checkbox" @bind="includePrevBalanceInNotes" style="margin: 0;" />
+                                Incluir "Saldo anterior" en las observaciones del comprobante
+                            </label>
+                        </div>
+                    }
                 </div>
 
                 @* ── Items ── *@
@@ -293,6 +317,40 @@
                         <span style="background: #3b82f6; color: white; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.78rem;">3</span>
                         <strong>Productos a vender</strong>
                     </div>
+
+                    @* Productos más comprados por este cliente *@
+                    @if (formClienteId > 0 && topProductsForClient.Count > 0)
+                    {
+                        <div style="margin-bottom: 0.6rem; padding: 0.6rem 0.8rem; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 1px solid #f59e0b; border-radius: 8px;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem;">
+                                <span style="font-size: 1rem;">⭐</span>
+                                <strong style="font-size: 0.85rem; color: #78350f;">
+                                    Productos más comprados por @(clientes?.FirstOrDefault(c => c.Id == formClienteId)?.Nombre ?? "este cliente"):
+                                </strong>
+                                <span style="font-size: 0.75rem; color: #92400e;">(tocá uno para agregarlo)</span>
+                            </div>
+                            <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
+                                @foreach (var t in topProductsForClient)
+                                {
+                                    var stockTxt = t.Categoria == "CAFE" ? FormatGramos(t.StockGramos) : $"{t.StockUnidades} u.";
+                                    var stockColor = (t.Categoria == "CAFE" ? t.StockGramos : t.StockUnidades) <= 0 ? "#dc2626" : "#15803d";
+                                    var prodId = t.ProductoId;
+                                    var fmt = t.Formato;
+                                    <button type="button" class="btn"
+                                            style="background: white; border: 1px solid #f59e0b; color: #78350f; padding: 0.35rem 0.6rem; border-radius: 6px; font-size: 0.78rem; display: inline-flex; align-items: center; gap: 0.4rem;"
+                                            @onclick="() => AddTopProduct(prodId, fmt)"
+                                            title="Comprado @t.TimesOrdered ve@(t.TimesOrdered == 1 ? "z" : "ces") · Cant. total: @t.TotalQuantity · Última: @t.LastPurchase.ToString("dd/MM/yyyy")">
+                                        <span style="background: #f59e0b; color: white; padding: 0.05rem 0.35rem; border-radius: 999px; font-size: 0.65rem; font-weight: 800;">@t.TimesOrdered×</span>
+                                        <span style="font-family: monospace; color: #6b7280; font-size: 0.72rem;">@(string.IsNullOrEmpty(t.Sku) ? "—" : t.Sku)</span>
+                                        <strong>@t.Nombre @FormatoLabel(t.Formato)</strong>
+                                        <span style="color: @stockColor; font-size: 0.7rem;">· @stockTxt</span>
+                                        <span style="color: #6b7280; font-size: 0.72rem;">· $@FormatMoney(t.PrecioReferencia)</span>
+                                        <span style="color: #f59e0b; font-weight: 700;">+</span>
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    }
 
                     @* Selector Producto / Combo *@
                     <div style="display: inline-flex; gap: 0; margin-bottom: 0.5rem; border: 1px solid #d1d5db; border-radius: 6px; overflow: hidden;">
@@ -1095,6 +1153,14 @@
     private int? editingVentaId;
     private string editingVentaNumero = "";
 
+    // Saldo anterior (comprobantes impagos del cliente actual del form)
+    private List<CafeVentaDto> unpaidPrevSales = new();
+    private decimal UnpaidPrevTotal => unpaidPrevSales.Sum(s => s.Total);
+    private bool includePrevBalanceInNotes = true;
+
+    // Top productos comprados por el cliente actual del form
+    private List<CafeTopProductoClienteDto> topProductsForClient = new();
+
     protected override async Task OnInitializedAsync()
     {
         await Operator.LoadAsync();
@@ -1132,6 +1198,7 @@
     private void ShowCreate()
     {
         editingVentaId = null; editingVentaNumero = "";
+        unpaidPrevSales = new(); topProductsForClient = new(); includePrevBalanceInNotes = true;
         formClienteId = 0; formClienteTipo = "OTRO";
         clienteSearch = ""; clienteSearchOpen = false;
         formFecha = DateTime.Today; formDescuento = 0; formObservaciones = "";
@@ -1160,6 +1227,47 @@
             var c = clientes?.FirstOrDefault(x => x.Id == formClienteId);
             if (c is not null) formClienteTipo = c.Tipo;
         }
+        RecomputeUnpaidPrevSales();
+        await LoadTopProductsForClient();
+        await Cotizar();
+    }
+
+    /// <summary>Recalcula los comprobantes impagos del cliente actual (excluye anulados, pagados,
+    /// y la propia venta cuando se esta editando).</summary>
+    private void RecomputeUnpaidPrevSales()
+    {
+        if (ventas is null || formClienteId <= 0)
+        {
+            unpaidPrevSales = new();
+            return;
+        }
+        unpaidPrevSales = ventas
+            .Where(v => v.ClienteId == formClienteId
+                        && v.Estado == "emitido"
+                        && !v.IsPaid
+                        && (editingVentaId == null || v.Id != editingVentaId))
+            .OrderBy(v => v.Fecha)
+            .ThenBy(v => v.Id)
+            .ToList();
+    }
+
+    private async Task LoadTopProductsForClient()
+    {
+        if (formClienteId <= 0) { topProductsForClient = new(); return; }
+        try { topProductsForClient = await Api.GetCafeTopProductosByClienteAsync(formClienteId, 10) ?? new(); }
+        catch { topProductsForClient = new(); }
+    }
+
+    /// <summary>Agrega un producto sugerido (top productos del cliente) al carrito con cantidad 1.
+    /// Si ya existia ese (Producto, Formato, Molienda, DoyPack), suma 1 a la cantidad.</summary>
+    private async Task AddTopProduct(int productoId, string formato)
+    {
+        var existing = formItems.FirstOrDefault(i => i.ProductoId == productoId
+            && i.Formato == formato
+            && string.IsNullOrEmpty(i.Molienda)
+            && !i.EsDoyPack);
+        if (existing is not null) existing.Cantidad += 1;
+        else formItems.Add(new CafeCotizarItemRequest { ProductoId = productoId, Formato = formato, Cantidad = 1 });
         await Cotizar();
     }
 
@@ -1357,6 +1465,19 @@
                 ? string.Join(",", AllWeekDays.Where(d => formWeekDays.Contains(d)))
                 : null;
 
+            // Inyectar saldo anterior en las observaciones si esta tildado y el cliente tiene impagos.
+            var notesToSave = formObservaciones ?? "";
+            if (includePrevBalanceInNotes
+                && unpaidPrevSales.Count > 0
+                && !notesToSave.Contains("Saldo anterior", StringComparison.OrdinalIgnoreCase))
+            {
+                var nums = string.Join(", ", unpaidPrevSales.Select(s => s.Numero));
+                var prevLine = $"Saldo anterior: ${FormatMoney(UnpaidPrevTotal)} (comprobantes: {nums})";
+                notesToSave = string.IsNullOrWhiteSpace(notesToSave)
+                    ? prevLine
+                    : prevLine + "\n" + notesToSave;
+            }
+
             CafeVentaDto? v;
             if (editingVentaId.HasValue)
             {
@@ -1367,7 +1488,7 @@
                     ClienteTipoOverride = formClienteId > 0 ? null : formClienteTipo,
                     Items = formItems,
                     Descuento = formDescuento,
-                    Observaciones = formObservaciones,
+                    Observaciones = notesToSave,
                     WeekDays = weekCsv ?? "",
                     IsPaid = formIsPaid,
                     TipoComprobante = formTipoComprobante,
@@ -1386,7 +1507,7 @@
                     ClienteTipoOverride = formClienteTipo,
                     Items = formItems,
                     Descuento = formDescuento,
-                    Observaciones = formObservaciones,
+                    Observaciones = notesToSave,
                     WeekDays = weekCsv,
                     IsPaid = formIsPaid,
                     TipoComprobante = formTipoComprobante,
@@ -1616,8 +1737,11 @@
         addComboId = 0; addComboCantidad = 1;
         comboSearch = ""; comboSearchOpen = false;
         formError = null;
+        includePrevBalanceInNotes = false;  // al editar no quiero injerir saldo retroactivamente
         showForm = true;
-        // Cotizar para refrescar precios + subtotales en pantalla.
+        // Refrescar saldo anterior + sugerencias del cliente y cotizar precios.
+        RecomputeUnpaidPrevSales();
+        await LoadTopProductsForClient();
         await Cotizar();
     }
 

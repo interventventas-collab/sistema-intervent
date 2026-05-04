@@ -52,6 +52,59 @@ public class CafeVentasController : ControllerBase
         return Ok(Map(v));
     }
 
+    /// <summary>Devuelve los productos que mas compro un cliente (combinacion ProductoId+Formato),
+    /// ordenados por cantidad de comprobantes en los que aparecio. Solo cuenta ventas no anuladas.</summary>
+    [HttpGet("top-productos-cliente/{clienteId:int}")]
+    public async Task<IActionResult> GetTopProductosByCliente(int clienteId, [FromQuery] int count = 10)
+    {
+        if (clienteId <= 0) return Ok(new List<CafeTopProductoClienteDto>());
+        if (count <= 0) count = 10;
+
+        var grouped = await _db.CafeVentaItems
+            .Where(i => i.VentaNav != null
+                        && i.VentaNav.ClienteId == clienteId
+                        && i.VentaNav.Estado != "anulado")
+            .GroupBy(i => new { i.ProductoId, i.Formato })
+            .Select(g => new
+            {
+                g.Key.ProductoId,
+                g.Key.Formato,
+                TimesOrdered = g.Select(x => x.VentaId).Distinct().Count(),
+                TotalQuantity = g.Sum(x => x.Cantidad),
+                LastPurchase = g.Max(x => x.VentaNav!.Fecha)
+            })
+            .OrderByDescending(x => x.TimesOrdered)
+            .ThenByDescending(x => x.TotalQuantity)
+            .ThenByDescending(x => x.LastPurchase)
+            .Take(count)
+            .ToListAsync();
+
+        if (grouped.Count == 0) return Ok(new List<CafeTopProductoClienteDto>());
+
+        var ids = grouped.Select(x => x.ProductoId).Distinct().ToList();
+        var productos = await _db.CafeProductos
+            .Where(p => ids.Contains(p.Id) && p.IsActive)
+            .ToListAsync();
+
+        var cliente = await _db.CafeClientes.FindAsync(clienteId);
+        var tipo = CafePricingService.ResolverTipo(cliente?.Tipo);
+        var settings = await _db.CafeSettings.FindAsync(1) ?? new CafeSetting { Id = 1 };
+
+        var result = new List<CafeTopProductoClienteDto>();
+        foreach (var g in grouped)
+        {
+            var p = productos.FirstOrDefault(x => x.Id == g.ProductoId);
+            if (p is null) continue;
+            var precio = CafePricingService.CalcularPrecioUnitario(p, g.Formato, tipo, settings);
+            result.Add(new CafeTopProductoClienteDto(
+                p.Id, p.Sku, p.Nombre, p.Categoria, p.Marca,
+                g.Formato,
+                g.TimesOrdered, g.TotalQuantity, g.LastPurchase,
+                p.StockGramos, p.StockUnidades, precio));
+        }
+        return Ok(result);
+    }
+
     /// <summary>Cotización en vivo: NO crea la venta, solo calcula precios + verifica stock.</summary>
     [HttpPost("cotizar")]
     public async Task<IActionResult> Cotizar([FromBody] CafeCotizarRequest req)
