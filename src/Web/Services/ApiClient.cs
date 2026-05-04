@@ -513,6 +513,44 @@ public class ApiClient
     public async Task<bool> DeleteCafeComboAsync(int id)
         => await DeleteAsync($"/api/cafe/combos/{id}");
 
+    // --- Cafe: OEMs ---
+    public async Task<List<CafeOemDto>?> GetCafeOemsAsync(string? proveedor = null, string? marca = null, string? q = null)
+    {
+        var qs = new List<string>();
+        if (!string.IsNullOrEmpty(proveedor)) qs.Add($"proveedor={Uri.EscapeDataString(proveedor)}");
+        if (!string.IsNullOrEmpty(marca)) qs.Add($"marca={Uri.EscapeDataString(marca)}");
+        if (!string.IsNullOrEmpty(q)) qs.Add($"q={Uri.EscapeDataString(q)}");
+        var url = "/api/cafe/oems" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+        return await GetAsync<List<CafeOemDto>>(url);
+    }
+
+    public async Task<CafeOemDto?> GetCafeOemAsync(int id)
+        => await GetAsync<CafeOemDto>($"/api/cafe/oems/{id}");
+
+    public async Task<CafeOemDto?> CreateCafeOemAsync(CreateCafeOemRequest req)
+        => await PostAsync<CafeOemDto>("/api/cafe/oems", req);
+
+    public async Task<CafeOemDto?> UpdateCafeOemAsync(int id, UpdateCafeOemRequest req)
+        => await PutAsync<CafeOemDto>($"/api/cafe/oems/{id}", req);
+
+    public async Task<bool> DeleteCafeOemAsync(int id)
+        => await DeleteAsync($"/api/cafe/oems/{id}");
+
+    public async Task<CafeOemImportResultDto?> ImportCafeOemsAsync(Stream fileStream, string fileName, string proveedor)
+    {
+        await SetAuthHeaderAsync();
+        using var content = new MultipartFormDataContent();
+        var streamContent = new StreamContent(fileStream);
+        streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        content.Add(streamContent, "file", fileName);
+        content.Add(new StringContent(proveedor ?? ""), "proveedor");
+        var response = await _http.PostAsync("/api/cafe/oems/import", content);
+        if (response.IsSuccessStatusCode)
+            return await response.Content.ReadFromJsonAsync<CafeOemImportResultDto>();
+        await ThrowIfErrorAsync(response);
+        return null;
+    }
+
     // --- Brands ---
     public async Task<List<BrandDto>?> GetBrandsAsync()
         => await GetAsync<List<BrandDto>>("/api/brands");

@@ -44,6 +44,12 @@ public class CafeProducto
     /// <summary>Unidades por bulto (informativo, solo OTROS).</summary>
     public int? UxB { get; set; }
 
+    /// <summary>FK opcional al OEM origen del proveedor. 1 OEM puede alimentar a N variantes.</summary>
+    public int? OemId { get; set; }
+
+    [ForeignKey(nameof(OemId))]
+    public CafeOem? OemNav { get; set; }
+
     [Column(TypeName = "decimal(18,3)")]
     public decimal StockGramos { get; set; }
 

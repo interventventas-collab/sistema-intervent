@@ -3,6 +3,10 @@
 @inject ApiClient Api
 @inject ToastService ToastService
 
+<style>
+    .cli-pick-row:hover { background: #f0f9ff; }
+</style>
+
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
         <h3>☕ Productos <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;">(@(productosVisibles.Count))</span></h3>
@@ -222,6 +226,73 @@
                 }
                 else
                 {
+                    @* OEM origen *@
+                    <h4 style="margin: 1rem 0 0.5rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase;">📋 OEM origen (proveedor)</h4>
+                    <div class="form-group" style="position: relative;">
+                        @if (formOemId > 0)
+                        {
+                            var oSel = oems?.FirstOrDefault(x => x.Id == formOemId);
+                            <div style="display: flex; gap: 0.3rem; align-items: center;">
+                                <div class="form-input" style="flex: 1; background: #ecfdf5; border-color: #10b981; display: flex; align-items: center; gap: 0.5rem;">
+                                    <span style="background:#16a34a; color:white; padding:0.15rem 0.45rem; border-radius:6px; font-weight:800; font-family:monospace;">@(oSel?.Codigo ?? "?")</span>
+                                    <strong>@(oSel?.Descripcion ?? "—")</strong>
+                                    @if (oSel is not null)
+                                    {
+                                        @if (!string.IsNullOrEmpty(oSel.Marca))
+                                        {
+                                            <span style="font-size: 0.72rem; color: #6b7280;">· @oSel.Marca</span>
+                                        }
+                                        <span style="font-size: 0.72rem; color: #6b7280;">· costo $@FormatMoney(oSel.Costo)</span>
+                                        @if (oSel.PvpConIva.HasValue)
+                                        {
+                                            <span style="font-size: 0.72rem; color: #15803d;">· PVP $@FormatMoney(oSel.PvpConIva.Value)</span>
+                                        }
+                                    }
+                                </div>
+                                <button class="btn btn-secondary" type="button" @onclick="ClearOem" title="Quitar OEM">×</button>
+                                <button class="btn btn-secondary" type="button" @onclick="AutocompletarDesdeOem" title="Pisar costo y PVP con datos del OEM">⟳ Aplicar precios</button>
+                            </div>
+                        }
+                        else
+                        {
+                            <input class="form-input" @bind="oemSearch" @bind:event="oninput"
+                                   @onfocus="() => oemSearchOpen = true"
+                                   placeholder="🔍 Buscar OEM por código, descripción, marca, barcode..." />
+                            @if (oemSearchOpen && !string.IsNullOrWhiteSpace(oemSearch))
+                            {
+                                var matches = OemsMatching(oemSearch).Take(20).ToList();
+                                <div style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #d1d5db; border-radius: 6px; max-height: 280px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 14px rgba(0,0,0,0.12); margin-top: 0.2rem;">
+                                    @if (matches.Count == 0)
+                                    {
+                                        <div style="padding: 0.6rem; color: #6b7280; font-size: 0.85rem;">Sin resultados. Cargá OEMs en <strong>OEMs</strong>.</div>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var o in matches)
+                                        {
+                                            var oId = o.Id;
+                                            <div class="cli-pick-row" @onclick="() => SelectOem(oId)"
+                                                 style="padding: 0.4rem 0.6rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem;">
+                                                <span style="background:#16a34a; color:white; padding:0.1rem 0.4rem; border-radius:4px; font-weight:700; font-family:monospace; margin-right:0.4rem;">@o.Codigo</span>
+                                                <strong>@(o.Descripcion ?? "")</strong>
+                                                @if (!string.IsNullOrEmpty(o.Marca))
+                                                {
+                                                    <span style="color:#6b7280; font-size:0.78rem;"> · @o.Marca</span>
+                                                }
+                                                <span style="color:#6b7280; font-size:0.78rem;"> · costo $@FormatMoney(o.Costo)</span>
+                                                @if (o.PvpConIva.HasValue)
+                                                {
+                                                    <span style="color:#15803d; font-size:0.78rem;"> · PVP $@FormatMoney(o.PvpConIva.Value)</span>
+                                                }
+                                            </div>
+                                        }
+                                    }
+                                </div>
+                            }
+                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Opcional. Vincula este producto a un OEM del proveedor para heredar costo + PVP.</p>
+                        }
+                    </div>
+
                     <h4 style="margin: 1rem 0 0.5rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase;">📦 Precios</h4>
                     <div class="form-row">
                         <div class="form-group" style="flex: 2;">
@@ -331,10 +402,16 @@
     private decimal? formBarPct;     // % sobre costo (solo OTROS)
     private string formBarMode = "PVP";  // "PVP" | "PCT"
     private int? formUxB;             // unidades por bulto (solo OTROS)
+    private int formOemId;            // 0 = sin OEM origen
+    private string oemSearch = "";
+    private bool oemSearchOpen;
     private decimal formStockGramos;
     private int formStockUnidades;
     private string formNotas = "";
     private bool formIsActive = true;
+
+    // Catalogo de OEMs (cargado una sola vez al abrir la pagina)
+    private List<CafeOemDto>? oems;
 
     /// <summary>Marcas existentes (de productos ya cargados), ordenadas alfabéticamente, para el datalist y el filtro.</summary>
     private List<string> marcasExistentes => productos is null
@@ -366,7 +443,13 @@
     private bool showDeleteConfirm;
     private CafeProductoDto? toDelete;
 
-    protected override async Task OnInitializedAsync() => await Load();
+    protected override async Task OnInitializedAsync()
+    {
+        // Cargo OEMs en paralelo a productos
+        var loadOems = LoadOems();
+        await Load();
+        await loadOems;
+    }
 
     private async Task Load()
     {
@@ -380,6 +463,44 @@
         loading = false;
     }
 
+    private async Task LoadOems()
+    {
+        try { oems = await Api.GetCafeOemsAsync() ?? new(); }
+        catch { oems = new(); }
+    }
+
+    private IEnumerable<CafeOemDto> OemsMatching(string s)
+    {
+        if (oems is null) return Enumerable.Empty<CafeOemDto>();
+        var t = s.Trim();
+        bool h(string? str) => !string.IsNullOrEmpty(str) && str.Contains(t, StringComparison.OrdinalIgnoreCase);
+        return oems.Where(o => h(o.Codigo) || h(o.Descripcion) || h(o.Marca) || h(o.Barcode));
+    }
+
+    private void SelectOem(int id)
+    {
+        formOemId = id;
+        oemSearch = "";
+        oemSearchOpen = false;
+        AutocompletarDesdeOem();
+    }
+
+    private void ClearOem()
+    {
+        formOemId = 0;
+        oemSearch = "";
+    }
+
+    /// <summary>Pisa costo y Pvp2 (PVP de OTRO) con los del OEM origen. Lo pueden tocar despues a mano.</summary>
+    private void AutocompletarDesdeOem()
+    {
+        if (formOemId <= 0) return;
+        var o = oems?.FirstOrDefault(x => x.Id == formOemId);
+        if (o is null) return;
+        formCosto = o.Costo;
+        if (o.PvpConIva.HasValue) formPvp2 = o.PvpConIva.Value;
+    }
+
     private void ShowCreate()
     {
         isEditing = false; editingId = null;
@@ -387,6 +508,7 @@
         formCategoria = "CAFE"; formMarca = "";
         formCosto = 0; formPvp1 = null; formPvp2 = null;
         formBarPct = null; formBarMode = "PVP"; formUxB = null;
+        formOemId = 0; oemSearch = ""; oemSearchOpen = false;
         formStockGramos = 0; formStockUnidades = 0;
         formNotas = ""; formIsActive = true;
         formError = null; showForm = true;
@@ -401,6 +523,7 @@
         formBarPct = p.BarPctSobreCosto;
         formBarMode = p.BarPctSobreCosto.HasValue ? "PCT" : "PVP";
         formUxB = p.UxB;
+        formOemId = p.OemId ?? 0; oemSearch = ""; oemSearchOpen = false;
         formStockGramos = p.StockGramos; formStockUnidades = p.StockUnidades;
         formNotas = p.Notas ?? ""; formIsActive = p.IsActive;
         formError = null; showForm = true;
@@ -424,20 +547,25 @@
             // Para OTROS, BarPctSobreCosto sale del modo seleccionado.
             decimal? barPctFinal = null;
             int? uxBFinal = null;
+            int? oemIdFinal = null;
             bool clearBarPct = false;
             bool clearUxB = false;
+            bool clearOemId = false;
             if (formCategoria == "OTROS")
             {
                 barPctFinal = formBarMode == "PCT" ? formBarPct : null;
                 clearBarPct = formBarMode != "PCT";  // si esta en modo PVP, vaciar el campo
                 uxBFinal = formUxB;
                 clearUxB = !formUxB.HasValue;
+                oemIdFinal = formOemId > 0 ? formOemId : null;
+                clearOemId = formOemId <= 0;
             }
             else
             {
                 // CAFE no usa estos campos: vaciarlos siempre.
                 clearBarPct = true;
                 clearUxB = true;
+                clearOemId = true;
             }
 
             if (isEditing && editingId.HasValue)
@@ -449,6 +577,7 @@
                     Costo = formCosto, Pvp1 = formPvp1, Pvp2 = formPvp2,
                     BarPctSobreCosto = barPctFinal, ClearBarPctSobreCosto = clearBarPct,
                     UxB = uxBFinal, ClearUxB = clearUxB,
+                    OemId = oemIdFinal, ClearOemId = clearOemId,
                     StockGramos = formStockGramos, StockUnidades = formStockUnidades,
                     Notas = formNotas, IsActive = formIsActive
                 });
@@ -464,6 +593,7 @@
                     Costo = formCosto, Pvp1 = formPvp1, Pvp2 = formPvp2,
                     BarPctSobreCosto = barPctFinal,
                     UxB = uxBFinal,
+                    OemId = oemIdFinal,
                     StockGramos = formCategoria == "CAFE" ? formStockGramos : 0,
                     StockUnidades = formCategoria == "OTROS" ? formStockUnidades : 0,
                     Notas = formNotas

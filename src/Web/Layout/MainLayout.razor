@@ -39,7 +39,7 @@
         @if (HasPerm("cafe"))
         {
             <NavGroup Label="Ventas por fuera" Icon="@SvgIcons.Brand"
-                      HasActiveChild="@(IsActive("/cafe") || IsActive("/cafe/ventas") || IsActive("/cafe/productos") || IsActive("/cafe/combos") || IsActive("/cafe/clientes") || IsActive("/cafe/configuracion"))">
+                      HasActiveChild="@(IsActive("/cafe") || IsActive("/cafe/ventas") || IsActive("/cafe/productos") || IsActive("/cafe/combos") || IsActive("/cafe/oems") || IsActive("/cafe/clientes") || IsActive("/cafe/configuracion"))">
                 <NavItem Href="/cafe" Label="Inicio" Icon="@SvgIcons.Dashboard"
                          IsActive="@IsActive("/cafe")" OnClick="@(() => NavigateTo("/cafe"))" />
                 <NavItem Href="/cafe/ventas" Label="Ventas" Icon="@SvgIcons.ShoppingBag"
@@ -48,6 +48,8 @@
                          IsActive="@IsActive("/cafe/productos")" OnClick="@(() => NavigateTo("/cafe/productos"))" />
                 <NavItem Href="/cafe/combos" Label="Combos" Icon="@SvgIcons.Package"
                          IsActive="@IsActive("/cafe/combos")" OnClick="@(() => NavigateTo("/cafe/combos"))" />
+                <NavItem Href="/cafe/oems" Label="OEMs" Icon="@SvgIcons.Tag"
+                         IsActive="@IsActive("/cafe/oems")" OnClick="@(() => NavigateTo("/cafe/oems"))" />
                 <NavItem Href="/cafe/clientes" Label="Clientes" Icon="@SvgIcons.Users"
                          IsActive="@IsActive("/cafe/clientes")" OnClick="@(() => NavigateTo("/cafe/clientes"))" />
                 <NavItem Href="/cafe/configuracion" Label="Configuración" Icon="@SvgIcons.Settings"
@@ -608,6 +610,7 @@
         { "cafe/ventas", "cafe" },
         { "cafe/productos", "cafe" },
         { "cafe/combos", "cafe" },
+        { "cafe/oems", "cafe" },
         { "cafe/clientes", "cafe" },
         { "cafe/configuracion", "cafe" },
         { "perfil", "" } // perfil always allowed

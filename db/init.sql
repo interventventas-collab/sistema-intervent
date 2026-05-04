@@ -2003,3 +2003,42 @@ BEGIN
     INSERT INTO AppSettings ([Key], [Value]) VALUES ('cafe_productos_pvp_per_product_migrated', '1');
 END
 GO
+
+-- Cafe_Oems: lista de codigos del proveedor con costo + pvp sugerido.
+-- No tiene stock, no se vende. Sirve para alimentar precio a las variantes (Cafe_Productos)
+-- via FK opcional Cafe_Productos.OemId. Ver paso 3 OEM.
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_Oems' AND xtype='U')
+BEGIN
+    CREATE TABLE Cafe_Oems (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Codigo NVARCHAR(50) NOT NULL,
+        Descripcion NVARCHAR(500) NULL,
+        Marca NVARCHAR(100) NULL,
+        Costo DECIMAL(18,2) NOT NULL DEFAULT 0,
+        PvpConIva DECIMAL(18,2) NULL,
+        IvaPct DECIMAL(5,2) NULL,
+        Barcode NVARCHAR(100) NULL,
+        Proveedor NVARCHAR(100) NULL,    -- ej "COLOMBRARO"
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        UpdatedAt DATETIME2 NULL,
+        LastImportAt DATETIME2 NULL       -- timestamp de la ultima importacion que toco esta fila
+    );
+    CREATE UNIQUE INDEX IX_CafeOems_Codigo ON Cafe_Oems(Codigo);
+    CREATE INDEX IX_CafeOems_Marca ON Cafe_Oems(Marca);
+    CREATE INDEX IX_CafeOems_Proveedor ON Cafe_Oems(Proveedor);
+END
+GO
+
+-- Cafe_Productos: vinculo opcional al OEM origen.
+-- 1 OEM puede alimentar a N variantes (ej OEM 8733 -> C8733BL, C8733NEG, etc).
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'OemId' AND Object_ID = Object_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD OemId INT NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_CafeProductos_Oem')
+    ALTER TABLE Cafe_Productos
+        ADD CONSTRAINT FK_CafeProductos_Oem FOREIGN KEY (OemId) REFERENCES Cafe_Oems(Id);
+GO
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_CafeProductos_OemId' AND object_id = OBJECT_ID('Cafe_Productos'))
+    CREATE INDEX IX_CafeProductos_OemId ON Cafe_Productos(OemId);
+GO

@@ -23,13 +23,14 @@ public class CafeProductosController : ControllerBase
         p.Costo, p.PrecioPorKg,
         p.Pvp1, p.Pvp2,
         p.BarPctSobreCosto, p.UxB,
+        p.OemId, p.OemNav?.Codigo,
         p.StockGramos, p.StockUnidades,
         p.Notas, p.IsActive, p.CreatedAt, p.UpdatedAt);
 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] string? categoria = null)
     {
-        var q = _db.CafeProductos.AsQueryable();
+        var q = _db.CafeProductos.Include(p => p.OemNav).AsQueryable();
         if (!string.IsNullOrWhiteSpace(categoria))
         {
             var c = NormCat(categoria);
@@ -42,7 +43,7 @@ public class CafeProductosController : ControllerBase
     [HttpGet("{id:int}")]
     public async Task<IActionResult> GetById(int id)
     {
-        var p = await _db.CafeProductos.FindAsync(id);
+        var p = await _db.CafeProductos.Include(x => x.OemNav).FirstOrDefaultAsync(x => x.Id == id);
         if (p is null) return NotFound(new { error = "Producto no encontrado" });
         return Ok(Map(p));
     }
@@ -72,6 +73,7 @@ public class CafeProductosController : ControllerBase
             Pvp2 = req.Pvp2,
             BarPctSobreCosto = cat == "OTROS" ? req.BarPctSobreCosto : null,
             UxB = cat == "OTROS" ? req.UxB : null,
+            OemId = cat == "OTROS" ? req.OemId : null,
             StockGramos = Math.Max(0m, req.StockGramos ?? 0m),
             StockUnidades = Math.Max(0, req.StockUnidades ?? 0),
             Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim(),
@@ -109,6 +111,8 @@ public class CafeProductosController : ControllerBase
         else if (req.ClearBarPctSobreCosto) p.BarPctSobreCosto = null;
         if (req.UxB.HasValue) p.UxB = req.UxB.Value;
         else if (req.ClearUxB) p.UxB = null;
+        if (req.OemId.HasValue) p.OemId = req.OemId.Value;
+        else if (req.ClearOemId) p.OemId = null;
         if (req.StockGramos.HasValue) p.StockGramos = Math.Max(0m, req.StockGramos.Value);
         if (req.StockUnidades.HasValue) p.StockUnidades = Math.Max(0, req.StockUnidades.Value);
         if (req.Notas is not null) p.Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim();

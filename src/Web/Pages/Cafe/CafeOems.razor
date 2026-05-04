@@ -1,0 +1,483 @@
+@page "/cafe/oems"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <h3>📋 OEMs <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;">(@(oems?.Count ?? 0))</span></h3>
+        <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
+            <input class="form-input" style="min-width: 240px; font-size: 0.85rem;"
+                   @bind="filtroTexto" @bind:event="oninput"
+                   placeholder="🔍 Buscar por código, descripción, marca, barcode..." />
+            <select class="form-input" style="max-width: 180px; font-size: 0.85rem;" @bind="filtroProveedor">
+                <option value="">Todos los proveedores</option>
+                @foreach (var p in proveedoresExistentes) { <option value="@p">@p</option> }
+            </select>
+            <select class="form-input" style="max-width: 180px; font-size: 0.85rem;" @bind="filtroMarca">
+                <option value="">Todas las marcas</option>
+                @foreach (var m in marcasExistentes) { <option value="@m">@m</option> }
+            </select>
+            <button class="btn" style="background: #16a34a; color: white; border: none;" @onclick="OpenImport">📥 Importar Excel</button>
+            <button class="btn btn-primary" @onclick="ShowCreate">+ Nuevo OEM</button>
+        </div>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        @if (loading)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">Cargando...</p>
+        }
+        else if (oems is null || oems.Count == 0)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">
+                No hay OEMs cargados. Tocá <strong>"📥 Importar Excel"</strong> para subir la lista del proveedor o <strong>"+ Nuevo OEM"</strong> para cargar uno a mano.
+            </p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 110px;">Código</th>
+                            <th>Descripción</th>
+                            <th style="width: 120px;">Marca</th>
+                            <th style="width: 110px;">Proveedor</th>
+                            <th style="text-align: right;">Costo</th>
+                            <th style="text-align: right;">PVP c/IVA</th>
+                            <th style="width: 70px; text-align: center;">IVA %</th>
+                            <th style="width: 90px; text-align: center;">Variantes</th>
+                            <th style="width: 120px;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var o in OemsVisibles)
+                        {
+                            <tr>
+                                <td>
+                                    <span style="background: #16a34a; color: white; padding: 0.2rem 0.55rem; border-radius: 6px; font-weight: 800; font-family: monospace; font-size: 0.85rem;">@o.Codigo</span>
+                                </td>
+                                <td>
+                                    <strong>@(o.Descripcion ?? "—")</strong>
+                                    @if (!string.IsNullOrEmpty(o.Barcode))
+                                    {
+                                        <div style="font-size: 0.7rem; color: #9ca3af; font-family: monospace;">cod: @o.Barcode</div>
+                                    }
+                                </td>
+                                <td style="font-size: 0.85rem; color: #6b7280;">@(o.Marca ?? "—")</td>
+                                <td style="font-size: 0.78rem; color: #6b7280;">@(o.Proveedor ?? "—")</td>
+                                <td style="text-align: right; font-weight: 700;">$@FormatMoney(o.Costo)</td>
+                                <td style="text-align: right; font-weight: 700; color: #15803d;">@(o.PvpConIva.HasValue ? "$" + FormatMoney(o.PvpConIva.Value) : "—")</td>
+                                <td style="text-align: center; font-size: 0.8rem; color: #6b7280;">@(o.IvaPct.HasValue ? o.IvaPct.Value.ToString("0.##") + "%" : "—")</td>
+                                <td style="text-align: center;">
+                                    @if (o.VariantesCount > 0)
+                                    {
+                                        <span style="background: #dcfce7; color: #15803d; padding: 0.15rem 0.55rem; border-radius: 999px; font-size: 0.78rem; font-weight: 700;" title="Productos vinculados a este OEM">
+                                            @o.VariantesCount
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span style="color: #d1d5db;">0</span>
+                                    }
+                                </td>
+                                <td class="actions-cell">
+                                    <button class="btn-icon btn-edit" @onclick="() => ShowEdit(o)" title="Editar">✎</button>
+                                    <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(o)" title="Eliminar">🗑</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@if (showForm)
+{
+    <div class="modal-overlay" @onclick="CloseForm">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 700px;">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3 style="margin: 0;">📋 @(editing is null ? "Nuevo OEM" : $"Editar OEM — {editing.Codigo}")</h3>
+                <button class="btn-close" @onclick="CloseForm">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(formError))
+                {
+                    <div class="form-error">@formError</div>
+                }
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Código *</label>
+                        <input class="form-input" @bind="formCodigo" placeholder="Ej: 8733" />
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Proveedor</label>
+                        <input class="form-input" @bind="formProveedor" list="oem-proveedores" placeholder="COLOMBRARO" />
+                        <datalist id="oem-proveedores">
+                            @foreach (var p in proveedoresExistentes) { <option value="@p" /> }
+                        </datalist>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Descripción</label>
+                    <input class="form-input" @bind="formDescripcion" />
+                </div>
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Marca</label>
+                        <input class="form-input" @bind="formMarca" list="oem-marcas" />
+                        <datalist id="oem-marcas">
+                            @foreach (var m in marcasExistentes) { <option value="@m" /> }
+                        </datalist>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Código de barras</label>
+                        <input class="form-input" @bind="formBarcode" />
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Costo</label>
+                        <input class="form-input" type="number" step="0.01" min="0" @bind="formCosto" />
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">PVP c/IVA</label>
+                        <input class="form-input" type="number" step="0.01" min="0" @bind="formPvpConIva" />
+                    </div>
+                    <div class="form-group" style="flex: 0 0 100px;">
+                        <label class="form-label">IVA %</label>
+                        <input class="form-input" type="number" step="0.01" @bind="formIvaPct" />
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseForm" disabled="@saving">Cancelar</button>
+                <button class="btn btn-primary" @onclick="DoSave" disabled="@saving">
+                    @(saving ? "Guardando..." : "💾 Guardar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showImport)
+{
+    <div class="modal-overlay" @onclick="CloseImport">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 600px;">
+            <div class="modal-header" style="background: #16a34a; color: white;">
+                <h3 style="margin: 0;">📥 Importar lista de OEMs</h3>
+                <button class="btn-close" @onclick="CloseImport" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (importResult is null)
+                {
+                    <p style="font-size: 0.85rem; color: #4b5563;">
+                        Subí el Excel del proveedor (.xlsx). Las columnas esperadas son:
+                    </p>
+                    <ul style="font-size: 0.78rem; color: #6b7280; margin: 0.4rem 0 0.8rem 1.2rem; padding: 0;">
+                        <li><code>codigo_oem</code> — código único del proveedor (obligatorio)</li>
+                        <li><code>titulo</code> — descripción</li>
+                        <li><code>marca</code></li>
+                        <li><code>precio_costo</code></li>
+                        <li><code>precio_venta_con_iva</code></li>
+                        <li><code>iva</code> — %</li>
+                        <li><code>codigo_de_barras</code></li>
+                    </ul>
+                    <p style="font-size: 0.78rem; color: #6b7280; margin-bottom: 0.8rem;">
+                        <strong>Comportamiento:</strong> Si un código ya existe, se actualiza el costo / PVP / etc.
+                        Si no existe, se crea nuevo. <strong>Nada se elimina.</strong>
+                    </p>
+                    <div class="form-group">
+                        <label class="form-label">Proveedor (etiqueta para esta lista)</label>
+                        <input class="form-input" @bind="importProveedor" placeholder="COLOMBRARO" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Archivo .xlsx</label>
+                        <InputFile OnChange="OnFileChange" accept=".xlsx" class="form-input" />
+                        @if (importFile is not null)
+                        {
+                            <p style="font-size: 0.78rem; color: #15803d; margin: 0.3rem 0 0;">
+                                ✓ @importFile.Name (@(FormatBytes(importFile.Size)))
+                            </p>
+                        }
+                    </div>
+                    @if (!string.IsNullOrEmpty(importError))
+                    {
+                        <div class="form-error">@importError</div>
+                    }
+                }
+                else
+                {
+                    <div style="background: #dcfce7; border: 1px solid #15803d; border-radius: 8px; padding: 0.8rem; margin-bottom: 0.6rem;">
+                        <h4 style="margin: 0 0 0.4rem; color: #15803d;">✓ Importación lista</h4>
+                        <ul style="margin: 0; padding-left: 1.2rem; font-size: 0.85rem;">
+                            <li><strong>@importResult.Creados</strong> nuevos</li>
+                            <li><strong>@importResult.Actualizados</strong> actualizados</li>
+                            @if (importResult.Omitidos > 0)
+                            {
+                                <li><strong>@importResult.Omitidos</strong> omitidos (filas vacías)</li>
+                            }
+                            <li>Proveedor: <strong>@importResult.Proveedor</strong></li>
+                        </ul>
+                    </div>
+                    @if (importResult.Errores.Count > 0)
+                    {
+                        <div class="form-error">
+                            <strong>Errores:</strong>
+                            <ul style="margin: 0.3rem 0 0 1rem;">
+                                @foreach (var e in importResult.Errores) { <li>@e</li> }
+                            </ul>
+                        </div>
+                    }
+                }
+            </div>
+            <div class="modal-footer">
+                @if (importResult is null)
+                {
+                    <button class="btn btn-secondary" @onclick="CloseImport" disabled="@isImporting">Cancelar</button>
+                    <button class="btn" style="background: #16a34a; color: white; border: none;" @onclick="DoImport" disabled="@(isImporting || importFile is null)">
+                        @(isImporting ? "Importando..." : "📥 Importar")
+                    </button>
+                }
+                else
+                {
+                    <button class="btn btn-primary" @onclick="CloseImport">Cerrar</button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@if (toDelete is not null)
+{
+    <div class="modal-overlay" @onclick="() => toDelete = null">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: #dc3545; color: white;">
+                <h4 style="margin: 0;">Eliminar OEM</h4>
+                <button class="btn-close" @onclick="() => toDelete = null" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Vas a eliminar el OEM <strong>@toDelete.Codigo</strong>.</p>
+                @if (toDelete.VariantesCount > 0)
+                {
+                    <p style="color: #b45309; font-weight: 600; font-size: 0.85rem;">
+                        ⚠ Hay <strong>@toDelete.VariantesCount</strong> producto@(toDelete.VariantesCount == 1 ? "" : "s") vinculado@(toDelete.VariantesCount == 1 ? "" : "s") a este OEM.
+                        Esos productos quedan sin OEM origen pero <strong>no se borran</strong> ni cambian sus precios.
+                    </p>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => toDelete = null">No</button>
+                <button class="btn btn-danger" @onclick="DoDelete">Sí, eliminar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<CafeOemDto>? oems;
+    private bool loading = true;
+    private string filtroTexto = "";
+    private string filtroProveedor = "";
+    private string filtroMarca = "";
+
+    private List<string> proveedoresExistentes => oems is null ? new() :
+        oems.Where(o => !string.IsNullOrWhiteSpace(o.Proveedor))
+            .Select(o => o.Proveedor!).Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToList();
+    private List<string> marcasExistentes => oems is null ? new() :
+        oems.Where(o => !string.IsNullOrWhiteSpace(o.Marca))
+            .Select(o => o.Marca!).Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToList();
+
+    private List<CafeOemDto> OemsVisibles
+    {
+        get
+        {
+            if (oems is null) return new();
+            IEnumerable<CafeOemDto> q = oems;
+            if (!string.IsNullOrEmpty(filtroProveedor)) q = q.Where(o => o.Proveedor == filtroProveedor);
+            if (!string.IsNullOrEmpty(filtroMarca)) q = q.Where(o => o.Marca == filtroMarca);
+            if (!string.IsNullOrWhiteSpace(filtroTexto))
+            {
+                var t = filtroTexto.Trim();
+                bool h(string? s) => !string.IsNullOrEmpty(s) && s.Contains(t, StringComparison.OrdinalIgnoreCase);
+                q = q.Where(o => h(o.Codigo) || h(o.Descripcion) || h(o.Marca) || h(o.Barcode));
+            }
+            return q.Take(500).ToList();
+        }
+    }
+
+    // Form
+    private bool showForm, saving;
+    private string? formError;
+    private CafeOemDto? editing;
+    private string formCodigo = "";
+    private string formDescripcion = "";
+    private string formMarca = "";
+    private string formProveedor = "COLOMBRARO";
+    private string formBarcode = "";
+    private decimal formCosto;
+    private decimal? formPvpConIva;
+    private decimal? formIvaPct = 21m;
+
+    // Import
+    private bool showImport;
+    private bool isImporting;
+    private string? importError;
+    private string importProveedor = "COLOMBRARO";
+    private IBrowserFile? importFile;
+    private CafeOemImportResultDto? importResult;
+
+    // Delete
+    private CafeOemDto? toDelete;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        loading = true;
+        try { oems = await Api.GetCafeOemsAsync() ?? new(); }
+        catch { oems = new(); ToastService.Error("Error al cargar OEMs"); }
+        loading = false;
+    }
+
+    private void ShowCreate()
+    {
+        editing = null;
+        formCodigo = ""; formDescripcion = ""; formMarca = "";
+        formProveedor = "COLOMBRARO"; formBarcode = "";
+        formCosto = 0; formPvpConIva = null; formIvaPct = 21m;
+        formError = null;
+        showForm = true;
+    }
+
+    private void ShowEdit(CafeOemDto o)
+    {
+        editing = o;
+        formCodigo = o.Codigo;
+        formDescripcion = o.Descripcion ?? "";
+        formMarca = o.Marca ?? "";
+        formProveedor = o.Proveedor ?? "";
+        formBarcode = o.Barcode ?? "";
+        formCosto = o.Costo;
+        formPvpConIva = o.PvpConIva;
+        formIvaPct = o.IvaPct;
+        formError = null;
+        showForm = true;
+    }
+
+    private void CloseForm() { if (!saving) showForm = false; }
+
+    private async Task DoSave()
+    {
+        if (string.IsNullOrWhiteSpace(formCodigo)) { formError = "El código es obligatorio"; return; }
+        formError = null; saving = true;
+        try
+        {
+            if (editing is null)
+            {
+                await Api.CreateCafeOemAsync(new CreateCafeOemRequest
+                {
+                    Codigo = formCodigo,
+                    Descripcion = formDescripcion,
+                    Marca = formMarca,
+                    Proveedor = formProveedor,
+                    Barcode = formBarcode,
+                    Costo = formCosto,
+                    PvpConIva = formPvpConIva,
+                    IvaPct = formIvaPct
+                });
+                ToastService.Success("OEM creado");
+            }
+            else
+            {
+                await Api.UpdateCafeOemAsync(editing.Id, new UpdateCafeOemRequest
+                {
+                    Codigo = formCodigo,
+                    Descripcion = formDescripcion,
+                    Marca = formMarca,
+                    Proveedor = formProveedor,
+                    Barcode = formBarcode,
+                    Costo = formCosto,
+                    PvpConIva = formPvpConIva,
+                    IvaPct = formIvaPct
+                });
+                ToastService.Success("OEM actualizado");
+            }
+            showForm = false;
+            await Load();
+        }
+        catch (Exception ex) { formError = ex.Message; }
+        finally { saving = false; }
+    }
+
+    private void ConfirmDelete(CafeOemDto o) => toDelete = o;
+
+    private async Task DoDelete()
+    {
+        if (toDelete is null) return;
+        try
+        {
+            await Api.DeleteCafeOemAsync(toDelete.Id);
+            ToastService.Success("OEM eliminado");
+            toDelete = null;
+            await Load();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); toDelete = null; }
+    }
+
+    // ── Import ──
+    private void OpenImport()
+    {
+        showImport = true;
+        importFile = null;
+        importResult = null;
+        importError = null;
+        importProveedor = "COLOMBRARO";
+    }
+
+    private void CloseImport()
+    {
+        if (isImporting) return;
+        showImport = false;
+        importFile = null;
+        importResult = null;
+        importError = null;
+    }
+
+    private void OnFileChange(InputFileChangeEventArgs e)
+    {
+        importFile = e.File;
+        importError = null;
+    }
+
+    private async Task DoImport()
+    {
+        if (importFile is null) { importError = "Elegí un archivo .xlsx"; return; }
+        isImporting = true; importError = null;
+        try
+        {
+            // Hasta 100 MB
+            using var stream = importFile.OpenReadStream(maxAllowedSize: 100_000_000);
+            importResult = await Api.ImportCafeOemsAsync(stream, importFile.Name, importProveedor);
+            ToastService.Success($"✓ {importResult?.Creados ?? 0} nuevos, {importResult?.Actualizados ?? 0} actualizados");
+            await Load();
+        }
+        catch (Exception ex) { importError = ex.Message; }
+        finally { isImporting = false; }
+    }
+
+    private static string FormatMoney(decimal v)
+        => v.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+
+    private static string FormatBytes(long b)
+    {
+        if (b < 1024) return $"{b} B";
+        if (b < 1024 * 1024) return $"{b / 1024.0:F1} KB";
+        return $"{b / (1024.0 * 1024.0):F1} MB";
+    }
+}

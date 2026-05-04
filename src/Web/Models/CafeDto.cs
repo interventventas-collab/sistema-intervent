@@ -53,6 +53,8 @@ public class CafeProductoDto
     public decimal? Pvp2 { get; set; }
     public decimal? BarPctSobreCosto { get; set; }
     public int? UxB { get; set; }
+    public int? OemId { get; set; }
+    public string? OemCodigo { get; set; }
     public decimal StockGramos { get; set; }
     public int StockUnidades { get; set; }
     public string? Notas { get; set; }
@@ -74,6 +76,7 @@ public class CreateCafeProductoRequest
     public decimal? Pvp2 { get; set; }
     public decimal? BarPctSobreCosto { get; set; }
     public int? UxB { get; set; }
+    public int? OemId { get; set; }
     public decimal? StockGramos { get; set; }
     public int? StockUnidades { get; set; }
     public string? Notas { get; set; }
@@ -92,8 +95,10 @@ public class UpdateCafeProductoRequest
     public decimal? Pvp2 { get; set; }
     public decimal? BarPctSobreCosto { get; set; }
     public int? UxB { get; set; }
+    public int? OemId { get; set; }
     public bool ClearBarPctSobreCosto { get; set; }
     public bool ClearUxB { get; set; }
+    public bool ClearOemId { get; set; }
     public decimal? StockGramos { get; set; }
     public int? StockUnidades { get; set; }
     public string? Notas { get; set; }
@@ -329,4 +334,57 @@ public class UpdateCafeComboRequest
     public string? Descripcion { get; set; }
     public bool? IsActive { get; set; }
     public List<CafeComboItemRequest>? Items { get; set; }
+}
+
+// ===== OEMs =====
+public class CafeOemDto
+{
+    public int Id { get; set; }
+    public string Codigo { get; set; } = "";
+    public string? Descripcion { get; set; }
+    public string? Marca { get; set; }
+    public decimal Costo { get; set; }
+    public decimal? PvpConIva { get; set; }
+    public decimal? IvaPct { get; set; }
+    public string? Barcode { get; set; }
+    public string? Proveedor { get; set; }
+    public bool IsActive { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+    public DateTime? LastImportAt { get; set; }
+    public int VariantesCount { get; set; }
+}
+
+public class CreateCafeOemRequest
+{
+    public string Codigo { get; set; } = "";
+    public string? Descripcion { get; set; }
+    public string? Marca { get; set; }
+    public decimal Costo { get; set; }
+    public decimal? PvpConIva { get; set; }
+    public decimal? IvaPct { get; set; }
+    public string? Barcode { get; set; }
+    public string? Proveedor { get; set; }
+}
+
+public class UpdateCafeOemRequest
+{
+    public string? Codigo { get; set; }
+    public string? Descripcion { get; set; }
+    public string? Marca { get; set; }
+    public decimal? Costo { get; set; }
+    public decimal? PvpConIva { get; set; }
+    public decimal? IvaPct { get; set; }
+    public string? Barcode { get; set; }
+    public string? Proveedor { get; set; }
+    public bool? IsActive { get; set; }
+}
+
+public class CafeOemImportResultDto
+{
+    public int Creados { get; set; }
+    public int Actualizados { get; set; }
+    public int Omitidos { get; set; }
+    public string? Proveedor { get; set; }
+    public List<string> Errores { get; set; } = new();
 }
