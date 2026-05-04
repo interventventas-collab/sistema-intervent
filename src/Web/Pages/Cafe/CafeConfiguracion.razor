@@ -1,0 +1,151 @@
+@page "/cafe/configuracion"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div class="card">
+    <div class="card-header">
+        <h3>⚙️ Configuración del módulo Café</h3>
+    </div>
+    <div class="card-body">
+        @if (loading)
+        {
+            <p class="text-muted">Cargando...</p>
+        }
+        else
+        {
+            <h4 style="margin: 0 0 0.6rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase;">Motor de precios</h4>
+            <div class="form-row">
+                <div class="form-group" style="flex: 1;">
+                    <label class="form-label">Costo de fraccionamiento ($)</label>
+                    <input class="form-input" type="number" step="0.01" min="0" @bind="costoFracc" />
+                    <p style="font-size: 0.75rem; color: #6b7280; margin: 0.2rem 0 0;">Se suma al precio del 1/2 kg y 1/4 kg.</p>
+                </div>
+                <div class="form-group" style="flex: 1;">
+                    <label class="form-label">Redondeo (múltiplo)</label>
+                    <input class="form-input" type="number" step="1" min="1" @bind="redondeo" />
+                    <p style="font-size: 0.75rem; color: #6b7280; margin: 0.2rem 0 0;">El precio final se redondea hacia arriba a este múltiplo. Default: $1.000.</p>
+                </div>
+            </div>
+
+            <h4 style="margin: 1rem 0 0.6rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase;">Margen de productos OTROS</h4>
+            <div class="form-row">
+                <div class="form-group" style="flex: 1;">
+                    <label class="form-label">Margen para clientes BAR (%)</label>
+                    <input class="form-input" type="number" step="0.01" min="0" @bind="margenBar" />
+                </div>
+                <div class="form-group" style="flex: 1;">
+                    <label class="form-label">Margen para clientes OTRO (%)</label>
+                    <input class="form-input" type="number" step="0.01" min="0" @bind="margenOtro" />
+                </div>
+            </div>
+
+            <h4 style="margin: 1rem 0 0.6rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase;">Datos del negocio (para el PDF)</h4>
+            <div class="form-row">
+                <div class="form-group" style="flex: 2;">
+                    <label class="form-label">Nombre del negocio</label>
+                    <input class="form-input" @bind="negocioNombre" placeholder="Ej: Café Premium SRL" />
+                </div>
+                <div class="form-group" style="flex: 1;">
+                    <label class="form-label">CUIT</label>
+                    <input class="form-input" @bind="negocioCuit" placeholder="Ej: 30-12345678-9" />
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group" style="flex: 1;">
+                    <label class="form-label">Teléfono</label>
+                    <input class="form-input" @bind="negocioTelefono" />
+                </div>
+                <div class="form-group" style="flex: 1;">
+                    <label class="form-label">WhatsApp (sin 0 ni 15)</label>
+                    <input class="form-input" @bind="negocioWhatsapp" placeholder="Ej: 5491141234567" />
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Dirección</label>
+                <input class="form-input" @bind="negocioDireccion" />
+            </div>
+
+            <hr style="margin: 1rem 0;" />
+            <h4 style="margin: 0 0 0.6rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase;">🧮 Vista previa del cálculo</h4>
+            <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 0.7rem; font-size: 0.85rem; font-family: monospace;">
+                <div>Si un café tiene <strong>PVP1 = $25.000/kg</strong>, costoFracc <strong>$@costoFracc</strong>, redondeo <strong>$@redondeo</strong>:</div>
+                <div>· 1 kg → @FormatMoney(Calc(25000, 1))</div>
+                <div>· 1/2 kg → ($25.000/2 + $@costoFracc = $@FormatMoney(25000m/2m + costoFracc) → redondeado: <strong>@FormatMoney(Calc(25000, 0.5m))</strong>)</div>
+                <div>· 1/4 kg → ($25.000/4 + $@costoFracc = $@FormatMoney(25000m/4m + costoFracc) → redondeado: <strong>@FormatMoney(Calc(25000, 0.25m))</strong>)</div>
+            </div>
+
+            <div style="margin-top: 1.2rem; display: flex; gap: 0.5rem; justify-content: flex-end;">
+                <button class="btn btn-primary" @onclick="Save" disabled="@saving">
+                    @(saving ? "Guardando..." : "Guardar configuración")
+                </button>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private bool loading = true;
+    private bool saving;
+    private decimal costoFracc = 1000;
+    private decimal redondeo = 1000;
+    private decimal margenBar = 40;
+    private decimal margenOtro = 60;
+    private string negocioNombre = "", negocioTelefono = "", negocioWhatsapp = "", negocioDireccion = "", negocioCuit = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var s = await Api.GetCafeSettingsAsync();
+            if (s is not null)
+            {
+                costoFracc = s.CostoFraccionamiento;
+                redondeo = s.RedondeoMultiplo;
+                margenBar = s.MargenOtrosBarPct;
+                margenOtro = s.MargenOtrosNoBarPct;
+                negocioNombre = s.NegocioNombre ?? "";
+                negocioTelefono = s.NegocioTelefono ?? "";
+                negocioWhatsapp = s.NegocioWhatsappNumero ?? "";
+                negocioDireccion = s.NegocioDireccion ?? "";
+                negocioCuit = s.NegocioCuit ?? "";
+            }
+        }
+        catch { ToastService.Error("Error al cargar la configuración"); }
+        loading = false;
+    }
+
+    private async Task Save()
+    {
+        if (redondeo < 1) { ToastService.Error("El redondeo debe ser ≥ 1"); return; }
+        saving = true;
+        try
+        {
+            await Api.UpdateCafeSettingsAsync(new UpdateCafeSettingRequest
+            {
+                CostoFraccionamiento = costoFracc,
+                RedondeoMultiplo = redondeo,
+                MargenOtrosBarPct = margenBar,
+                MargenOtrosNoBarPct = margenOtro,
+                NegocioNombre = negocioNombre,
+                NegocioTelefono = negocioTelefono,
+                NegocioWhatsappNumero = negocioWhatsapp,
+                NegocioDireccion = negocioDireccion,
+                NegocioCuit = negocioCuit
+            });
+            ToastService.Success("Configuración guardada");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { saving = false; }
+    }
+
+    private decimal Calc(decimal precioKg, decimal fraccion)
+    {
+        var precio = (precioKg * fraccion) + (fraccion < 1m ? costoFracc : 0m);
+        if (redondeo > 0 && precio > 0) precio = Math.Ceiling(precio / redondeo) * redondeo;
+        return precio;
+    }
+
+    private static string FormatMoney(decimal v)
+        => "$" + v.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+}

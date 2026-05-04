@@ -1720,3 +1720,73 @@ BEGIN
     CREATE INDEX IX_Postits_CreatedAt ON Postits (CreatedAt DESC);
 END
 GO
+
+-- ============================================================
+-- MODULO CAFE (independiente del resto)
+-- Negocio de venta de cafe e insumos. Tablas prefijadas con Cafe_.
+-- ============================================================
+
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_Clientes' AND xtype='U')
+BEGIN
+    CREATE TABLE Cafe_Clientes (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Nombre NVARCHAR(200) NOT NULL,
+        Tipo NVARCHAR(20) NOT NULL DEFAULT 'OTRO',
+        Telefono NVARCHAR(50) NULL,
+        Direccion NVARCHAR(300) NULL,
+        Notas NVARCHAR(500) NULL,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL
+    );
+    CREATE INDEX IX_CafeClientes_Tipo ON Cafe_Clientes (Tipo);
+    CREATE INDEX IX_CafeClientes_Nombre ON Cafe_Clientes (Nombre);
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_Productos' AND xtype='U')
+BEGIN
+    CREATE TABLE Cafe_Productos (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Nombre NVARCHAR(200) NOT NULL,
+        Categoria NVARCHAR(20) NOT NULL DEFAULT 'CAFE',
+        Costo DECIMAL(18,2) NOT NULL DEFAULT 0,
+        PrecioPorKg DECIMAL(18,2) NULL,
+        Pvp1 DECIMAL(18,2) NULL,
+        Pvp2 DECIMAL(18,2) NULL,
+        StockGramos DECIMAL(18,3) NOT NULL DEFAULT 0,
+        StockUnidades INT NOT NULL DEFAULT 0,
+        Notas NVARCHAR(500) NULL,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL
+    );
+    CREATE INDEX IX_CafeProductos_Categoria ON Cafe_Productos (Categoria);
+    CREATE INDEX IX_CafeProductos_Nombre ON Cafe_Productos (Nombre);
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_Settings' AND xtype='U')
+BEGIN
+    CREATE TABLE Cafe_Settings (
+        Id INT NOT NULL PRIMARY KEY,
+        CostoFraccionamiento DECIMAL(18,2) NOT NULL DEFAULT 1000,
+        RedondeoMultiplo DECIMAL(18,2) NOT NULL DEFAULT 1000,
+        MargenOtrosBarPct DECIMAL(8,2) NOT NULL DEFAULT 40,
+        MargenOtrosNoBarPct DECIMAL(8,2) NOT NULL DEFAULT 60,
+        NegocioNombre NVARCHAR(200) NULL,
+        NegocioTelefono NVARCHAR(50) NULL,
+        NegocioWhatsappNumero NVARCHAR(50) NULL,
+        NegocioDireccion NVARCHAR(300) NULL,
+        NegocioCuit NVARCHAR(50) NULL,
+        UpdatedAt DATETIME2 NULL
+    );
+    INSERT INTO Cafe_Settings (Id) VALUES (1);
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId = 1 AND MenuKey = 'cafe')
+BEGIN
+    INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'cafe');
+END
+GO

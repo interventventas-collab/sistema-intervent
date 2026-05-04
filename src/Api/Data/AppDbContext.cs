@@ -54,6 +54,10 @@ public class AppDbContext : DbContext
     public DbSet<VaultEntry> VaultEntries => Set<VaultEntry>();
     // Postits del dashboard
     public DbSet<Postit> Postits => Set<Postit>();
+    // Modulo Cafe (independiente)
+    public DbSet<CafeCliente> CafeClientes => Set<CafeCliente>();
+    public DbSet<CafeProducto> CafeProductos => Set<CafeProducto>();
+    public DbSet<CafeSetting> CafeSettings => Set<CafeSetting>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

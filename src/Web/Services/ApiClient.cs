@@ -398,6 +398,43 @@ public class ApiClient
     public async Task<AssistantChatResponse?> AssistantChatAsync(List<AssistantChatMessage> messages)
         => await PostAsync<AssistantChatResponse>("/api/assistant/chat", new AssistantChatRequest { Messages = messages });
 
+    // --- Cafe: Clientes ---
+    public async Task<List<CafeClienteDto>?> GetCafeClientesAsync()
+        => await GetAsync<List<CafeClienteDto>>("/api/cafe/clientes");
+
+    public async Task<CafeClienteDto?> CreateCafeClienteAsync(CreateCafeClienteRequest request)
+        => await PostAsync<CafeClienteDto>("/api/cafe/clientes", request);
+
+    public async Task<CafeClienteDto?> UpdateCafeClienteAsync(int id, UpdateCafeClienteRequest request)
+        => await PutAsync<CafeClienteDto>($"/api/cafe/clientes/{id}", request);
+
+    public async Task<bool> DeleteCafeClienteAsync(int id)
+        => await DeleteAsync($"/api/cafe/clientes/{id}");
+
+    // --- Cafe: Productos ---
+    public async Task<List<CafeProductoDto>?> GetCafeProductosAsync(string? categoria = null)
+    {
+        var url = "/api/cafe/productos";
+        if (!string.IsNullOrWhiteSpace(categoria)) url += $"?categoria={Uri.EscapeDataString(categoria)}";
+        return await GetAsync<List<CafeProductoDto>>(url);
+    }
+
+    public async Task<CafeProductoDto?> CreateCafeProductoAsync(CreateCafeProductoRequest request)
+        => await PostAsync<CafeProductoDto>("/api/cafe/productos", request);
+
+    public async Task<CafeProductoDto?> UpdateCafeProductoAsync(int id, UpdateCafeProductoRequest request)
+        => await PutAsync<CafeProductoDto>($"/api/cafe/productos/{id}", request);
+
+    public async Task<bool> DeleteCafeProductoAsync(int id)
+        => await DeleteAsync($"/api/cafe/productos/{id}");
+
+    // --- Cafe: Settings ---
+    public async Task<CafeSettingDto?> GetCafeSettingsAsync()
+        => await GetAsync<CafeSettingDto>("/api/cafe/settings");
+
+    public async Task<CafeSettingDto?> UpdateCafeSettingsAsync(UpdateCafeSettingRequest request)
+        => await PutAsync<CafeSettingDto>("/api/cafe/settings", request);
+
     // --- Brands ---
     public async Task<List<BrandDto>?> GetBrandsAsync()
         => await GetAsync<List<BrandDto>>("/api/brands");

@@ -1,0 +1,43 @@
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+
+namespace Api.Models;
+
+[Table("Cafe_Productos")]
+public class CafeProducto
+{
+    [Key]
+    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public int Id { get; set; }
+
+    [Required, MaxLength(200)]
+    public string Nombre { get; set; } = string.Empty;
+
+    [Required, MaxLength(20)]
+    public string Categoria { get; set; } = "CAFE"; // CAFE | OTROS
+
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal Costo { get; set; }
+
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? PrecioPorKg { get; set; }
+
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? Pvp1 { get; set; }
+
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? Pvp2 { get; set; }
+
+    [Column(TypeName = "decimal(18,3)")]
+    public decimal StockGramos { get; set; }
+
+    public int StockUnidades { get; set; }
+
+    [MaxLength(500)]
+    public string? Notas { get; set; }
+
+    public bool IsActive { get; set; } = true;
+
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? UpdatedAt { get; set; }
+}

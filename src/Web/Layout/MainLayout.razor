@@ -34,6 +34,23 @@
                      IsActive="@IsActive("/")" OnClick="@(() => NavigateTo("/"))" />
         }
 
+        @* ═════════════ 1B. CAFE (modulo independiente, debajo de Dashboard) ═════════════
+           Negocio de venta de cafe e insumos, totalmente aislado del resto del ERP. *@
+        @if (HasPerm("cafe"))
+        {
+            <NavGroup Label="Café" Icon="@SvgIcons.Brand"
+                      HasActiveChild="@(IsActive("/cafe") || IsActive("/cafe/productos") || IsActive("/cafe/clientes") || IsActive("/cafe/configuracion"))">
+                <NavItem Href="/cafe" Label="Inicio" Icon="@SvgIcons.Dashboard"
+                         IsActive="@IsActive("/cafe")" OnClick="@(() => NavigateTo("/cafe"))" />
+                <NavItem Href="/cafe/productos" Label="Productos" Icon="@SvgIcons.Package"
+                         IsActive="@IsActive("/cafe/productos")" OnClick="@(() => NavigateTo("/cafe/productos"))" />
+                <NavItem Href="/cafe/clientes" Label="Clientes" Icon="@SvgIcons.Users"
+                         IsActive="@IsActive("/cafe/clientes")" OnClick="@(() => NavigateTo("/cafe/clientes"))" />
+                <NavItem Href="/cafe/configuracion" Label="Configuración" Icon="@SvgIcons.Settings"
+                         IsActive="@IsActive("/cafe/configuracion")" OnClick="@(() => NavigateTo("/cafe/configuracion"))" />
+            </NavGroup>
+        }
+
         @* ═════════════ 2. CATALOGO ═════════════
            Todo lo relacionado con QUE vendés: productos, OEMs, combos, marcas, proveedores,
            listas de precios, e importaciones masivas (que cargan/actualizan el catalogo). *@
@@ -569,6 +586,10 @@
         { "nominas/empleados", "nominas" },
         { "nominas/liquidaciones", "nominas" },
         { "vault", "vault" },
+        { "cafe", "cafe" },
+        { "cafe/productos", "cafe" },
+        { "cafe/clientes", "cafe" },
+        { "cafe/configuracion", "cafe" },
         { "perfil", "" } // perfil always allowed
     };
 

@@ -1,0 +1,63 @@
+@page "/cafe"
+@attribute [Authorize]
+@inject NavigationManager Nav
+
+<div class="card">
+    <div class="card-header">
+        <h3>☕ Café e insumos</h3>
+    </div>
+    <div class="card-body">
+        <p style="color: #6b7280; margin-top: 0;">
+            Módulo de venta de café e insumos. Es <strong>independiente</strong> del resto del sistema —
+            tiene sus propias tablas, productos, clientes y motor de precios.
+        </p>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; margin-top: 1.5rem;">
+            <div class="card" style="cursor: pointer;" @onclick='() => Nav.NavigateTo("/cafe/productos")'>
+                <div class="card-body" style="text-align: center; padding: 1.4rem;">
+                    <div style="font-size: 2.4rem;">☕</div>
+                    <h4 style="margin: 0.5rem 0 0.3rem;">Productos</h4>
+                    <p style="color: #6b7280; font-size: 0.85rem; margin: 0;">Café e insumos. Costo, PVP1, PVP2, stock.</p>
+                </div>
+            </div>
+            <div class="card" style="cursor: pointer;" @onclick='() => Nav.NavigateTo("/cafe/clientes")'>
+                <div class="card-body" style="text-align: center; padding: 1.4rem;">
+                    <div style="font-size: 2.4rem;">👥</div>
+                    <h4 style="margin: 0.5rem 0 0.3rem;">Clientes</h4>
+                    <p style="color: #6b7280; font-size: 0.85rem; margin: 0;">BAR (precio mayorista) u OTRO (precio retail).</p>
+                </div>
+            </div>
+            <div class="card" style="opacity: 0.55;">
+                <div class="card-body" style="text-align: center; padding: 1.4rem;">
+                    <div style="font-size: 2.4rem;">🧾</div>
+                    <h4 style="margin: 0.5rem 0 0.3rem;">Ventas</h4>
+                    <p style="color: #6b7280; font-size: 0.85rem; margin: 0;">Próximamente</p>
+                </div>
+            </div>
+            <div class="card" style="cursor: pointer;" @onclick='() => Nav.NavigateTo("/cafe/configuracion")'>
+                <div class="card-body" style="text-align: center; padding: 1.4rem;">
+                    <div style="font-size: 2.4rem;">⚙️</div>
+                    <h4 style="margin: 0.5rem 0 0.3rem;">Configuración</h4>
+                    <p style="color: #6b7280; font-size: 0.85rem; margin: 0;">Costo de fraccionar, redondeo, márgenes, datos del negocio.</p>
+                </div>
+            </div>
+            <div class="card" style="opacity: 0.55;">
+                <div class="card-body" style="text-align: center; padding: 1.4rem;">
+                    <div style="font-size: 2.4rem;">📊</div>
+                    <h4 style="margin: 0.5rem 0 0.3rem;">Dashboard</h4>
+                    <p style="color: #6b7280; font-size: 0.85rem; margin: 0;">Próximamente</p>
+                </div>
+            </div>
+        </div>
+
+        <div style="margin-top: 1.5rem; padding: 0.7rem; background: #fef3c7; border-left: 4px solid #d97706; border-radius: 4px; font-size: 0.85rem; color: #78350f;">
+            <strong>💡 Lógica de precios automática (sin tocar precios manuales)</strong>
+            <ul style="margin: 0.4rem 0 0 1.2rem; padding: 0;">
+                <li><strong>Café BAR</strong>: <code>PVP1/kg</code> · <strong>Café OTRO</strong>: <code>PVP2/kg</code></li>
+                <li><strong>1 kg</strong>: precio directo · <strong>1/2 kg</strong>: <code>(precio/2) + costo fracc</code> · <strong>1/4 kg</strong>: <code>(precio/4) + costo fracc</code></li>
+                <li>Resultado <strong>redondeado hacia arriba</strong> al múltiplo configurable (default $1.000)</li>
+                <li><strong>Otros productos</strong>: <code>costo × (1 + margen%)</code> según tipo de cliente (BAR / OTRO)</li>
+            </ul>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,40 @@
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+
+namespace Api.Models;
+
+[Table("Cafe_Settings")]
+public class CafeSetting
+{
+    [Key]
+    public int Id { get; set; }
+
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal CostoFraccionamiento { get; set; } = 1000m;
+
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal RedondeoMultiplo { get; set; } = 1000m;
+
+    [Column(TypeName = "decimal(8,2)")]
+    public decimal MargenOtrosBarPct { get; set; } = 40m;
+
+    [Column(TypeName = "decimal(8,2)")]
+    public decimal MargenOtrosNoBarPct { get; set; } = 60m;
+
+    [MaxLength(200)]
+    public string? NegocioNombre { get; set; }
+
+    [MaxLength(50)]
+    public string? NegocioTelefono { get; set; }
+
+    [MaxLength(50)]
+    public string? NegocioWhatsappNumero { get; set; }
+
+    [MaxLength(300)]
+    public string? NegocioDireccion { get; set; }
+
+    [MaxLength(50)]
+    public string? NegocioCuit { get; set; }
+
+    public DateTime? UpdatedAt { get; set; }
+}
