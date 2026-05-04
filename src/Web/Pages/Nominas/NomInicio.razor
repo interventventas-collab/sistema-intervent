@@ -65,6 +65,11 @@
     </div>
 </div>
 
+@* Postits del modulo Nominas (board separado del Dashboard) *@
+<div style="margin-top: 1rem;">
+    <PostitsWidget Scope="nominas" Title="Postits de Nóminas" CardStyle="max-height: 320px;" />
+</div>
+
 @code {
     private NomResumenMensualDto? resumen;
     private int anioActual = DateTime.Today.Year;

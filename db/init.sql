@@ -1879,3 +1879,8 @@ UPDATE Cafe_Settings
    SET WhatsappMensajeClienteTemplate = N'Hola {cliente}! Te escribo del negocio por el comprobante {numero}.'
  WHERE Id = 1 AND (WhatsappMensajeClienteTemplate IS NULL OR LTRIM(RTRIM(WhatsappMensajeClienteTemplate)) = '');
 GO
+
+-- Postits: agregar Scope para permitir multiples boards (dashboard, nominas, ...)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'Scope' AND Object_ID = Object_ID('Postits'))
+    ALTER TABLE Postits ADD Scope NVARCHAR(50) NOT NULL CONSTRAINT DF_Postits_Scope DEFAULT N'dashboard';
+GO

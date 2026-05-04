@@ -6,6 +6,7 @@ public class PostitDto
     public string Texto { get; set; } = "";
     public string Color { get; set; } = "amarillo";
     public string? CreadoPor { get; set; }
+    public string Scope { get; set; } = "dashboard";
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 }
@@ -15,6 +16,7 @@ public class CreatePostitRequest
     public string Texto { get; set; } = "";
     public string? Color { get; set; }
     public string? CreadoPor { get; set; }
+    public string? Scope { get; set; }
 }
 
 public class UpdatePostitRequest

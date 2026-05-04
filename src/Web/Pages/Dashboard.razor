@@ -85,40 +85,8 @@
         </div>
     </div>
 
-    @* Postits: block de notas compartido *@
-    <div class="dashboard-detail-card dashboard-postits-card">
-        <div class="dashboard-postits-header">
-            <span style="font-size: 1.2rem;">📝</span>
-            <strong style="font-size: 0.9rem; flex: 1;">Postits del equipo</strong>
-            <button class="btn-icon" style="color: #1d4ed8; font-size: 1rem;" @onclick="ShowNewPostit" title="Nuevo postit">+</button>
-        </div>
-        <div class="dashboard-postits-body">
-            @if (postitsLoading)
-            {
-                <div style="font-size: 0.78rem; color: #6b7280; text-align: center; padding: 0.5rem;">Cargando...</div>
-            }
-            else if (postits is null || postits.Count == 0)
-            {
-                <div style="font-size: 0.78rem; color: #9ca3af; text-align: center; padding: 0.5rem; font-style: italic;">
-                    Sin mensajes. Tocá <strong>+</strong> para dejar uno.
-                </div>
-            }
-            else
-            {
-                @foreach (var p in postits)
-                {
-                    var bg = PostitColor(p.Color);
-                    <div class="dashboard-postit" style="background: @bg.Bg; border-left: 4px solid @bg.Border;" @onclick="() => ShowEditPostit(p)">
-                        <div class="dashboard-postit-text">@p.Texto</div>
-                        <div class="dashboard-postit-meta">
-                            @(string.IsNullOrEmpty(p.CreadoPor) ? "Anónimo" : p.CreadoPor)
-                            · @p.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm")
-                        </div>
-                    </div>
-                }
-            }
-        </div>
-    </div>
+    @* Postits: block de notas compartido (componente reusable, scope=dashboard) *@
+    <PostitsWidget Scope="dashboard" Title="Postits del equipo" CardStyle="max-height: 220px;" />
 
     @* Balanza de café FRIKAF — circulo con imagen + labels abajo (estilo "balanza") *@
     <div class="cafe-frikaf-balanza">
@@ -186,72 +154,6 @@
         </div>
     </div>
 </div>
-
-@if (showPostitModal)
-{
-    <div class="modal-overlay" @onclick="ClosePostitModal">
-        <div class="modal-card modal-small" @onclick:stopPropagation="true">
-            <div class="modal-header" style="background: whitesmoke;">
-                <h4 style="margin: 0;">📝 @(isEditingPostit ? "Editar postit" : "Nuevo postit")</h4>
-                <button class="btn-close" @onclick="ClosePostitModal">&times;</button>
-            </div>
-            <div class="modal-body">
-                @if (!string.IsNullOrEmpty(postitError))
-                {
-                    <div class="form-error">@postitError</div>
-                }
-                <div class="form-group">
-                    <label class="form-label">Mensaje</label>
-                    <textarea class="form-input" @bind="postitTexto" rows="5"
-                              placeholder="Escribí acá el mensaje para el equipo..." autofocus
-                              style="resize: vertical;"></textarea>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Color</label>
-                    <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
-                        @foreach (var c in PostitColorOptions)
-                        {
-                            var col = PostitColor(c);
-                            var sel = postitColor == c;
-                            <button type="button" class="postit-color-pick" @onclick="() => postitColor = c"
-                                    style="background: @col.Bg; border: 2px solid @(sel ? col.Border : "transparent");">
-                                @if (sel) { <span style="font-size: 0.85rem;">✓</span> }
-                            </button>
-                        }
-                    </div>
-                </div>
-                @if (isEditingPostit)
-                {
-                    <p style="font-size: 0.78rem; color: #6b7280;">
-                        💡 Cualquier integrante del equipo puede editar o borrar este postit.
-                    </p>
-                }
-                else
-                {
-                    <p style="font-size: 0.78rem; color: #6b7280;">
-                        Va a quedar firmado como <strong>@(string.IsNullOrEmpty(Operator.Current) ? "Anónimo" : Operator.Current)</strong>.
-                    </p>
-                }
-            </div>
-            <div class="modal-footer" style="display: flex; justify-content: space-between;">
-                @if (isEditingPostit)
-                {
-                    <button class="btn btn-danger" @onclick="DeletePostit" disabled="@savingPostit" style="font-size: 0.85rem;">🗑 Eliminar</button>
-                }
-                else
-                {
-                    <span></span>
-                }
-                <div style="display: flex; gap: 0.4rem;">
-                    <button class="btn btn-secondary" @onclick="ClosePostitModal" disabled="@savingPostit">Cancelar</button>
-                    <button class="btn btn-primary" @onclick="SavePostit" disabled="@savingPostit">
-                        @(savingPostit ? "Guardando..." : (isEditingPostit ? "Guardar" : "Pegar"))
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-}
 
 <style>
     /* ═══════════════ Top grid responsive ═══════════════ */
@@ -590,10 +492,6 @@
     private System.Threading.Timer? salesSummaryTimer;
     private SalesSummaryDto? salesSummary;
 
-    // Postits
-    private List<PostitDto>? postits;
-    private bool postitsLoading = true;
-    private System.Threading.Timer? postitsTimer;
 
     // Cache-buster para la imagen de fondo (cuando se reemplaza, sube este numero
     // y el navegador recarga la URL en vez de usar la version cacheada).
@@ -643,10 +541,6 @@
         salesSummaryTimer = new System.Threading.Timer(_ => InvokeAsync(LoadSalesSummaryAsync), null,
             TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
 
-        // Postits: cargar y refrescar cada 30s para que los mensajes nuevos aparezcan solos
-        _ = LoadPostitsAsync();
-        postitsTimer = new System.Threading.Timer(_ => InvokeAsync(LoadPostitsAsync), null,
-            TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
 
         try
         {
@@ -798,98 +692,8 @@
         quoteTimer?.Dispose();
         coffeeTimer?.Dispose();
         salesSummaryTimer?.Dispose();
-        postitsTimer?.Dispose();
         Company.OnChange -= OnCompanyChanged;
     }
 
     private void OnCompanyChanged() => InvokeAsync(StateHasChanged);
-
-    // ═══════════════ Postits ═══════════════
-    private async Task LoadPostitsAsync()
-    {
-        try
-        {
-            postits = await Api.GetPostitsAsync() ?? new();
-        }
-        catch { postits = new(); }
-        finally { postitsLoading = false; StateHasChanged(); }
-    }
-
-    private record PostitColors(string Bg, string Border);
-    private static PostitColors PostitColor(string color) => color switch
-    {
-        "rosa" => new PostitColors("#fce7f3", "#ec4899"),
-        "verde" => new PostitColors("#dcfce7", "#10b981"),
-        "azul" => new PostitColors("#dbeafe", "#3b82f6"),
-        "naranja" => new PostitColors("#ffedd5", "#f97316"),
-        _ => new PostitColors("#fef9c3", "#eab308") // amarillo
-    };
-    private static readonly string[] PostitColorOptions = { "amarillo", "rosa", "verde", "azul", "naranja" };
-
-    // Modal state
-    private bool showPostitModal;
-    private bool isEditingPostit;
-    private int? editingPostitId;
-    private string postitTexto = "";
-    private string postitColor = "amarillo";
-    private bool savingPostit;
-    private string? postitError;
-
-    private void ShowNewPostit()
-    {
-        isEditingPostit = false; editingPostitId = null;
-        postitTexto = ""; postitColor = "amarillo"; postitError = null;
-        showPostitModal = true;
-    }
-
-    private void ShowEditPostit(PostitDto p)
-    {
-        isEditingPostit = true; editingPostitId = p.Id;
-        postitTexto = p.Texto; postitColor = p.Color; postitError = null;
-        showPostitModal = true;
-    }
-
-    private void ClosePostitModal() { showPostitModal = false; postitError = null; }
-
-    private async Task SavePostit()
-    {
-        postitError = null;
-        if (string.IsNullOrWhiteSpace(postitTexto)) { postitError = "El texto no puede estar vacío"; return; }
-        savingPostit = true;
-        try
-        {
-            if (isEditingPostit && editingPostitId.HasValue)
-            {
-                await Api.UpdatePostitAsync(editingPostitId.Value, new UpdatePostitRequest
-                {
-                    Texto = postitTexto, Color = postitColor
-                });
-                ToastService.Success("Postit actualizado");
-            }
-            else
-            {
-                await Api.CreatePostitAsync(new CreatePostitRequest
-                {
-                    Texto = postitTexto, Color = postitColor,
-                    CreadoPor = Operator.Current
-                });
-                ToastService.Success("Postit creado");
-            }
-            showPostitModal = false;
-            await LoadPostitsAsync();
-        }
-        catch (Exception ex) { postitError = ex.Message; }
-        finally { savingPostit = false; }
-    }
-
-    private async Task DeletePostit()
-    {
-        if (!editingPostitId.HasValue) return;
-        try
-        {
-            var ok = await Api.DeletePostitAsync(editingPostitId.Value);
-            if (ok) { ToastService.Success("Postit eliminado"); showPostitModal = false; await LoadPostitsAsync(); }
-        }
-        catch (Exception ex) { postitError = ex.Message; }
-    }
 }

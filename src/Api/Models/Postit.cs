@@ -19,6 +19,10 @@ public class Postit
     [MaxLength(100)]
     public string? CreadoPor { get; set; }
 
+    /// <summary>Tablero al que pertenece el postit. "dashboard" (default), "nominas", etc.</summary>
+    [MaxLength(50)]
+    public string Scope { get; set; } = "dashboard";
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

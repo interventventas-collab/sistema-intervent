@@ -17,12 +17,14 @@ public class PostitsController : ControllerBase
 
     public PostitsController(AppDbContext db) { _db = db; }
 
-    private static PostitDto Map(Postit p) => new(p.Id, p.Texto, p.Color, p.CreadoPor, p.CreatedAt, p.UpdatedAt);
+    private static PostitDto Map(Postit p) => new(p.Id, p.Texto, p.Color, p.CreadoPor, p.Scope, p.CreatedAt, p.UpdatedAt);
 
     [HttpGet]
-    public async Task<IActionResult> GetAll()
+    public async Task<IActionResult> GetAll([FromQuery] string? scope = null)
     {
+        var s = string.IsNullOrWhiteSpace(scope) ? "dashboard" : scope.Trim().ToLowerInvariant();
         var list = await _db.Postits
+            .Where(p => p.Scope == s)
             .OrderByDescending(p => p.CreatedAt)
             .Take(50)
             .ToListAsync();
@@ -35,11 +37,13 @@ public class PostitsController : ControllerBase
         if (string.IsNullOrWhiteSpace(req.Texto))
             return BadRequest(new { error = "El texto es obligatorio" });
         var color = NormColor(req.Color);
+        var scope = string.IsNullOrWhiteSpace(req.Scope) ? "dashboard" : req.Scope.Trim().ToLowerInvariant();
         var p = new Postit
         {
             Texto = req.Texto.Trim(),
             Color = color,
             CreadoPor = string.IsNullOrWhiteSpace(req.CreadoPor) ? null : req.CreadoPor.Trim(),
+            Scope = scope,
             CreatedAt = DateTime.UtcNow
         };
         _db.Postits.Add(p);

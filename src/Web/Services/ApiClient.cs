@@ -382,8 +382,12 @@ public class ApiClient
         => VaultRequestAsync<VaultGenerateResponse>(HttpMethod.Post, "/api/vault/generate", request, token);
 
     // --- Postits ---
-    public async Task<List<PostitDto>?> GetPostitsAsync()
-        => await GetAsync<List<PostitDto>>("/api/postits");
+    public async Task<List<PostitDto>?> GetPostitsAsync(string? scope = null)
+    {
+        var url = "/api/postits";
+        if (!string.IsNullOrWhiteSpace(scope)) url += $"?scope={Uri.EscapeDataString(scope)}";
+        return await GetAsync<List<PostitDto>>(url);
+    }
 
     public async Task<PostitDto?> CreatePostitAsync(CreatePostitRequest request)
         => await PostAsync<PostitDto>("/api/postits", request);

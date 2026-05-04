@@ -1,0 +1,224 @@
+@implements IDisposable
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject OperatorService Operator
+
+<div class="dashboard-detail-card postits-widget-card" style="@CardStyle">
+    <div class="postits-widget-header">
+        <span style="font-size: 1.2rem;">📝</span>
+        <strong style="font-size: 0.9rem; flex: 1;">@Title</strong>
+        <button class="btn-icon" style="color: #1d4ed8; font-size: 1rem;" @onclick="ShowNew" title="Nuevo postit">+</button>
+    </div>
+    <div class="postits-widget-body" style="@BodyStyle">
+        @if (loading)
+        {
+            <div style="font-size: 0.78rem; color: #6b7280; text-align: center; padding: 0.5rem;">Cargando...</div>
+        }
+        else if (postits is null || postits.Count == 0)
+        {
+            <div style="font-size: 0.78rem; color: #9ca3af; text-align: center; padding: 0.5rem; font-style: italic;">
+                Sin mensajes. Tocá <strong>+</strong> para dejar uno.
+            </div>
+        }
+        else
+        {
+            @foreach (var p in postits)
+            {
+                var col = ColorFor(p.Color);
+                <div class="postit-item" style="background: @col.Bg; border-left: 4px solid @col.Border;" @onclick="() => ShowEdit(p)">
+                    <div class="postit-text">@p.Texto</div>
+                    <div class="postit-meta">
+                        @(string.IsNullOrEmpty(p.CreadoPor) ? "Anónimo" : p.CreadoPor)
+                        · @p.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm")
+                    </div>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@if (showModal)
+{
+    <div class="modal-overlay" @onclick="CloseModal">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h4 style="margin: 0;">📝 @(isEditing ? "Editar postit" : "Nuevo postit")</h4>
+                <button class="btn-close" @onclick="CloseModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(formError))
+                {
+                    <div class="form-error">@formError</div>
+                }
+                <div class="form-group">
+                    <label class="form-label">Mensaje</label>
+                    <textarea class="form-input" @bind="formTexto" rows="5"
+                              placeholder="Escribí acá el mensaje para el equipo..." autofocus
+                              style="resize: vertical;"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Color</label>
+                    <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                        @foreach (var c in ColorOptions)
+                        {
+                            var col = ColorFor(c);
+                            var sel = formColor == c;
+                            <button type="button" class="postit-color-pick" @onclick="() => formColor = c"
+                                    style="background: @col.Bg; border: 2px solid @(sel ? col.Border : "transparent"); width: 32px; height: 32px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-weight: 800;">
+                                @if (sel) { <span style="font-size: 0.85rem;">✓</span> }
+                            </button>
+                        }
+                    </div>
+                </div>
+                @if (isEditing)
+                {
+                    <p style="font-size: 0.78rem; color: #6b7280;">
+                        💡 Cualquier integrante del equipo puede editar o borrar este postit.
+                    </p>
+                }
+                else
+                {
+                    <p style="font-size: 0.78rem; color: #6b7280;">
+                        Va a quedar firmado como <strong>@(string.IsNullOrEmpty(Operator.Current) ? "Anónimo" : Operator.Current)</strong>.
+                    </p>
+                }
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: space-between;">
+                @if (isEditing)
+                {
+                    <button class="btn btn-danger" @onclick="DeleteAsync" disabled="@saving" style="font-size: 0.85rem;">🗑 Eliminar</button>
+                }
+                else
+                {
+                    <span></span>
+                }
+                <div style="display: flex; gap: 0.4rem;">
+                    <button class="btn btn-secondary" @onclick="CloseModal" disabled="@saving">Cancelar</button>
+                    <button class="btn btn-primary" @onclick="SaveAsync" disabled="@saving">
+                        @(saving ? "Guardando..." : (isEditing ? "Guardar" : "Pegar"))
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .postits-widget-card { padding: 0.7rem 0.85rem; display: flex; flex-direction: column; gap: 0.4rem; }
+    .postits-widget-header { display: flex; align-items: center; gap: 0.4rem; padding-bottom: 0.3rem; border-bottom: 1px solid #e5e7eb; }
+    .postits-widget-body { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 0.35rem; padding-right: 0.2rem; }
+    .postit-item { padding: 0.35rem 0.5rem; border-radius: 4px; cursor: pointer; transition: filter 0.1s; }
+    .postit-item:hover { filter: brightness(0.95); }
+    .postit-text {
+        font-size: 0.82rem; line-height: 1.3;
+        white-space: pre-wrap; word-break: break-word;
+        max-height: 4.2em; overflow: hidden;
+        text-overflow: ellipsis;
+        display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+    }
+    .postit-meta { font-size: 0.65rem; color: #6b7280; margin-top: 0.15rem; }
+</style>
+
+@code {
+    [Parameter] public string Scope { get; set; } = "dashboard";
+    [Parameter] public string Title { get; set; } = "Postits del equipo";
+    [Parameter] public string CardStyle { get; set; } = "max-height: 220px;";
+    [Parameter] public string BodyStyle { get; set; } = "";
+
+    private List<PostitDto>? postits;
+    private bool loading = true;
+    private System.Threading.Timer? refreshTimer;
+
+    // Modal
+    private bool showModal;
+    private bool isEditing;
+    private int? editingId;
+    private string formTexto = "";
+    private string formColor = "amarillo";
+    private bool saving;
+    private string? formError;
+
+    private static readonly string[] ColorOptions = { "amarillo", "rosa", "verde", "azul", "naranja" };
+    private record Color(string Bg, string Border);
+    private static Color ColorFor(string c) => c switch
+    {
+        "rosa" => new Color("#fce7f3", "#ec4899"),
+        "verde" => new Color("#dcfce7", "#10b981"),
+        "azul" => new Color("#dbeafe", "#3b82f6"),
+        "naranja" => new Color("#ffedd5", "#f97316"),
+        _ => new Color("#fef9c3", "#eab308")
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        // Refresh cada 30s para que aparezcan los mensajes que dejen otros usuarios
+        refreshTimer = new System.Threading.Timer(_ => InvokeAsync(LoadAsync), null,
+            TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+    }
+
+    private async Task LoadAsync()
+    {
+        try { postits = await Api.GetPostitsAsync(Scope) ?? new(); }
+        catch { postits = new(); }
+        finally { loading = false; StateHasChanged(); }
+    }
+
+    private void ShowNew()
+    {
+        isEditing = false; editingId = null;
+        formTexto = ""; formColor = "amarillo"; formError = null;
+        showModal = true;
+    }
+
+    private void ShowEdit(PostitDto p)
+    {
+        isEditing = true; editingId = p.Id;
+        formTexto = p.Texto; formColor = p.Color; formError = null;
+        showModal = true;
+    }
+
+    private void CloseModal() { showModal = false; formError = null; }
+
+    private async Task SaveAsync()
+    {
+        formError = null;
+        if (string.IsNullOrWhiteSpace(formTexto)) { formError = "El texto no puede estar vacío"; return; }
+        saving = true;
+        try
+        {
+            if (isEditing && editingId.HasValue)
+            {
+                await Api.UpdatePostitAsync(editingId.Value, new UpdatePostitRequest { Texto = formTexto, Color = formColor });
+                ToastService.Success("Postit actualizado");
+            }
+            else
+            {
+                await Api.CreatePostitAsync(new CreatePostitRequest
+                {
+                    Texto = formTexto, Color = formColor,
+                    CreadoPor = Operator.Current,
+                    Scope = Scope
+                });
+                ToastService.Success("Postit creado");
+            }
+            showModal = false;
+            await LoadAsync();
+        }
+        catch (Exception ex) { formError = ex.Message; }
+        finally { saving = false; }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (!editingId.HasValue) return;
+        try
+        {
+            var ok = await Api.DeletePostitAsync(editingId.Value);
+            if (ok) { ToastService.Success("Postit eliminado"); showModal = false; await LoadAsync(); }
+        }
+        catch (Exception ex) { formError = ex.Message; }
+    }
+
+    public void Dispose() => refreshTimer?.Dispose();
+}
