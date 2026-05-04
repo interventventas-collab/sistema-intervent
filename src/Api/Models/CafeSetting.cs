@@ -36,5 +36,12 @@ public class CafeSetting
     [MaxLength(50)]
     public string? NegocioCuit { get; set; }
 
+    /// <summary>
+    /// Texto plantilla del mensaje pre-armado para WhatsApp (lo que el cliente envía cuando toca
+    /// "Contactanos por WhatsApp" en el PDF). Soporta los placeholders {numero}, {total}, {cliente}, {fecha}.
+    /// </summary>
+    [MaxLength(500)]
+    public string? WhatsappMensajeTemplate { get; set; }
+
     public DateTime? UpdatedAt { get; set; }
 }

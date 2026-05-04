@@ -1856,3 +1856,12 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'EsDoyPack' AND Object_ID = Object_ID('Cafe_VentaItems'))
     ALTER TABLE Cafe_VentaItems ADD EsDoyPack BIT NOT NULL CONSTRAINT DF_CafeVentaItems_EsDoyPack DEFAULT 0;
 GO
+
+-- Cafe_Settings: agregar template del mensaje de WhatsApp
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'WhatsappMensajeTemplate' AND Object_ID = Object_ID('Cafe_Settings'))
+    ALTER TABLE Cafe_Settings ADD WhatsappMensajeTemplate NVARCHAR(500) NULL;
+GO
+UPDATE Cafe_Settings
+   SET WhatsappMensajeTemplate = N'Hola! Te escribo por el comprobante {numero} (total ${total}). Gracias!'
+ WHERE Id = 1 AND (WhatsappMensajeTemplate IS NULL OR LTRIM(RTRIM(WhatsappMensajeTemplate)) = '');
+GO

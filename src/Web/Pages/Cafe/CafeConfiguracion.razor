@@ -66,6 +66,29 @@
                 <input class="form-input" @bind="negocioDireccion" />
             </div>
 
+            <h4 style="margin: 1rem 0 0.6rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase;">📱 Mensaje pre-armado de WhatsApp</h4>
+            <p style="font-size: 0.78rem; color: #6b7280; margin: 0 0 0.4rem;">
+                Es el mensaje que aparece pre-cargado cuando el cliente toca <strong>"Contactanos por WhatsApp"</strong> desde el comprobante.
+                Lo escribís acá y el sistema reemplaza los placeholders con los datos de la venta.
+            </p>
+            <div class="form-group">
+                <label class="form-label">Texto del mensaje</label>
+                <textarea class="form-input" rows="3" @bind="waTemplate" placeholder="Hola! Te escribo por el comprobante {numero}..."></textarea>
+                <p style="font-size: 0.72rem; color: #6b7280; margin: 0.3rem 0 0;">
+                    <strong>Placeholders disponibles</strong> (escribilos tal cual entre llaves):
+                    <code style="background: #f3f4f6; padding: 0 0.2rem; border-radius: 3px;">{numero}</code> ·
+                    <code style="background: #f3f4f6; padding: 0 0.2rem; border-radius: 3px;">{total}</code> ·
+                    <code style="background: #f3f4f6; padding: 0 0.2rem; border-radius: 3px;">{cliente}</code> ·
+                    <code style="background: #f3f4f6; padding: 0 0.2rem; border-radius: 3px;">{fecha}</code>
+                </p>
+            </div>
+            <div style="background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 6px; padding: 0.6rem 0.8rem; font-size: 0.85rem; color: #065f46;">
+                <strong>👁 Vista previa</strong> (con datos de ejemplo):
+                <div style="margin-top: 0.3rem; font-style: italic;">
+                    "@WaPreview"
+                </div>
+            </div>
+
             <hr style="margin: 1rem 0;" />
             <h4 style="margin: 0 0 0.6rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase;">🧮 Vista previa del cálculo</h4>
             <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 0.7rem; font-size: 0.85rem; font-family: monospace;">
@@ -92,6 +115,21 @@
     private decimal margenBar = 40;
     private decimal margenOtro = 60;
     private string negocioNombre = "", negocioTelefono = "", negocioWhatsapp = "", negocioDireccion = "", negocioCuit = "";
+    private string waTemplate = "Hola! Te escribo por el comprobante {numero} (total ${total}). Gracias!";
+
+    /// <summary>Vista previa con datos de ejemplo, usando los mismos placeholders que se reemplazan al emitir.</summary>
+    private string WaPreview
+    {
+        get
+        {
+            var t = string.IsNullOrWhiteSpace(waTemplate) ? "Hola! Comprobante {numero}" : waTemplate;
+            return t
+                .Replace("{numero}", "CAFE-2026-0001")
+                .Replace("{total}", "45.000,00")
+                .Replace("{cliente}", "Bar Don Pepe")
+                .Replace("{fecha}", DateTime.Today.ToString("dd/MM/yyyy"));
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -109,6 +147,8 @@
                 negocioWhatsapp = s.NegocioWhatsappNumero ?? "";
                 negocioDireccion = s.NegocioDireccion ?? "";
                 negocioCuit = s.NegocioCuit ?? "";
+                if (!string.IsNullOrWhiteSpace(s.WhatsappMensajeTemplate))
+                    waTemplate = s.WhatsappMensajeTemplate;
             }
         }
         catch { ToastService.Error("Error al cargar la configuración"); }
@@ -131,7 +171,8 @@
                 NegocioTelefono = negocioTelefono,
                 NegocioWhatsappNumero = negocioWhatsapp,
                 NegocioDireccion = negocioDireccion,
-                NegocioCuit = negocioCuit
+                NegocioCuit = negocioCuit,
+                WhatsappMensajeTemplate = waTemplate
             });
             ToastService.Success("Configuración guardada");
         }
