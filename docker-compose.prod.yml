@@ -60,6 +60,7 @@ services:
       - ConnectionStrings__DefaultConnection=Server=sqlserver-prod;Database=AIml;User Id=sa;Password=${SQL_SA_PASSWORD};TrustServerCertificate=True;
       - Jwt__Secret=${JWT_SECRET:?JWT_SECRET no definido en .env}
       - DEFAULT_ADMIN_PASSWORD=${DEFAULT_ADMIN_PASSWORD:-}
+      - VAULT_DEFAULT_PASSWORD=${VAULT_DEFAULT_PASSWORD:-}
       - PLAYWRIGHT_URL=http://playwright-prod:3001
       # Origenes permitidos para CORS en produccion (lista separada por coma).
       # Ej: CORS_ALLOWED_ORIGINS=https://midominio.com

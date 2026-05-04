@@ -57,7 +57,8 @@ public static class MenuDefinition
             new MenuItem("procesos", "Procesos", "/procesos"),
             new MenuItem("archivos", "Archivos", "/archivos"),
             new MenuItem("auditoria", "Auditoria", "/auditoria"),
-            new MenuItem("backups", "Backups", "/backups")
+            new MenuItem("backups", "Backups", "/backups"),
+            new MenuItem("vault", "Bóveda de contraseñas", "/vault")
         }),
         new MenuGroup("configuracion", "Configuracion", new[]
         {

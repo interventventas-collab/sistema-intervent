@@ -307,6 +307,80 @@ public class ApiClient
     public async Task<NomResumenMensualDto?> GetNomResumenAsync(int anio, int mes)
         => await GetAsync<NomResumenMensualDto>($"/api/nominas/resumen?anio={anio}&mes={mes}");
 
+    // ════════════════════════════════════════════════════════════
+    // BÓVEDA DE CONTRASEÑAS
+    // ════════════════════════════════════════════════════════════
+    // El token de la bóveda viaja en el header X-Vault-Token (NO la cookie de auth).
+    // Si el server contesta 401 en estos endpoints significa "bóveda bloqueada"
+    // (clave maestra incorrecta o auto-lock), no que el JWT de login expiró.
+    public class VaultLockedException : Exception { public VaultLockedException(string msg) : base(msg) { } }
+
+    private async Task<T?> VaultRequestAsync<T>(HttpMethod method, string url, object? body, string? vaultToken)
+    {
+        await SetAuthHeaderAsync();
+        using var req = new HttpRequestMessage(method, url);
+        if (!string.IsNullOrEmpty(vaultToken)) req.Headers.Add("X-Vault-Token", vaultToken);
+        if (body is not null)
+        {
+            req.Content = System.Net.Http.Json.JsonContent.Create(body);
+        }
+        var response = await _http.SendAsync(req);
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            // Si el JWT de login expiró el server contestaría 401 antes de llegar al [Authorize] del vault.
+            // Distinguimos: el body típicamente viene { "error": "Bóveda bloqueada" }.
+            string? body2 = null;
+            try { body2 = await response.Content.ReadAsStringAsync(); } catch { }
+            if (body2 is not null && body2.Contains("Bóveda", StringComparison.OrdinalIgnoreCase))
+                throw new VaultLockedException("Bóveda bloqueada");
+            await HandleUnauthorizedAsync();
+            return default;
+        }
+        await ThrowIfErrorAsync(response);
+        if (response.Content.Headers.ContentLength == 0) return default;
+        return await response.Content.ReadFromJsonAsync<T>();
+    }
+
+    public Task<VaultStatusDto?> GetVaultStatusAsync(string? token = null)
+        => VaultRequestAsync<VaultStatusDto>(HttpMethod.Get, "/api/vault/status", null, token);
+
+    public Task<VaultStatusDto?> SetupVaultAsync(VaultSetupRequest request)
+        => VaultRequestAsync<VaultStatusDto>(HttpMethod.Post, "/api/vault/setup", request, null);
+
+    public Task<VaultUnlockResponse?> UnlockVaultAsync(string password)
+        => VaultRequestAsync<VaultUnlockResponse>(HttpMethod.Post, "/api/vault/unlock", new { password }, null);
+
+    public Task LockVaultAsync(string token)
+        => VaultRequestAsync<object>(HttpMethod.Post, "/api/vault/lock", null, token);
+
+    public Task<List<VaultEntryDto>?> ListVaultEntriesAsync(string token)
+        => VaultRequestAsync<List<VaultEntryDto>>(HttpMethod.Get, "/api/vault/entries", null, token);
+
+    public Task<VaultEntryDto?> CreateVaultEntryAsync(string token, VaultUpsertEntryRequest request)
+        => VaultRequestAsync<VaultEntryDto>(HttpMethod.Post, "/api/vault/entries", request, token);
+
+    public Task<VaultEntryDto?> UpdateVaultEntryAsync(string token, int id, VaultUpsertEntryRequest request)
+        => VaultRequestAsync<VaultEntryDto>(HttpMethod.Put, $"/api/vault/entries/{id}", request, token);
+
+    public async Task<bool> DeleteVaultEntryAsync(string token, int id)
+    {
+        try
+        {
+            await VaultRequestAsync<object>(HttpMethod.Delete, $"/api/vault/entries/{id}", null, token);
+            return true;
+        }
+        catch { return false; }
+    }
+
+    public Task ChangeVaultMasterAsync(string token, VaultChangeMasterRequest request)
+        => VaultRequestAsync<object>(HttpMethod.Post, "/api/vault/change-master", request, token);
+
+    public Task UpdateVaultSettingsAsync(string token, VaultUpdateSettingsRequest request)
+        => VaultRequestAsync<object>(HttpMethod.Put, "/api/vault/settings", request, token);
+
+    public Task<VaultGenerateResponse?> GenerateVaultPasswordAsync(string token, VaultGenerateRequest request)
+        => VaultRequestAsync<VaultGenerateResponse>(HttpMethod.Post, "/api/vault/generate", request, token);
+
     // --- Brands ---
     public async Task<List<BrandDto>?> GetBrandsAsync()
         => await GetAsync<List<BrandDto>>("/api/brands");

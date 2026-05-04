@@ -49,6 +49,9 @@ public class AppDbContext : DbContext
     public DbSet<NomEmpleado> NomEmpleados => Set<NomEmpleado>();
     public DbSet<NomLiquidacion> NomLiquidaciones => Set<NomLiquidacion>();
     public DbSet<NomPago> NomPagos => Set<NomPago>();
+    // Boveda de contraseñas (independiente)
+    public DbSet<VaultSetting> VaultSettings => Set<VaultSetting>();
+    public DbSet<VaultEntry> VaultEntries => Set<VaultEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -226,10 +226,10 @@
         @* ═════════════ 10. ADMINISTRACION (sistema) ═════════════
            Solo cosas de configuracion del sistema: usuarios, roles, integraciones, archivos
            tecnicos, auditoria, backups, configuracion general. *@
-        @if (HasPerm("usuarios") || HasPerm("roles") || HasPerm("integraciones") || HasPerm("procesos") || HasPerm("archivos") || HasPerm("auditoria") || HasPerm("backups"))
+        @if (HasPerm("usuarios") || HasPerm("roles") || HasPerm("integraciones") || HasPerm("procesos") || HasPerm("archivos") || HasPerm("auditoria") || HasPerm("backups") || HasPerm("vault"))
         {
             <NavGroup Label="Administración" Icon="@SvgIcons.Admin"
-                      HasActiveChild="@(IsActive("/usuarios") || IsActive("/roles") || IsActive("/integraciones") || IsActive("/procesos") || IsActive("/archivos") || IsActive("/auditoria") || IsActive("/backups") || IsActive("/config"))">
+                      HasActiveChild="@(IsActive("/usuarios") || IsActive("/roles") || IsActive("/integraciones") || IsActive("/procesos") || IsActive("/archivos") || IsActive("/auditoria") || IsActive("/backups") || IsActive("/config") || IsActive("/vault"))">
                 @if (HasPerm("usuarios"))
                 {
                     <NavItem Href="/usuarios" Label="Usuarios" Icon="@SvgIcons.Users"
@@ -264,6 +264,11 @@
                 {
                     <NavItem Href="/backups" Label="Backups" Icon="@SvgIcons.Backup"
                              IsActive="@IsActive("/backups")" OnClick="@(() => NavigateTo("/backups"))" />
+                }
+                @if (HasPerm("vault"))
+                {
+                    <NavItem Href="/vault" Label="Bóveda" Icon="@SvgIcons.Shield"
+                             IsActive="@IsActive("/vault")" OnClick="@(() => NavigateTo("/vault"))" />
                 }
                 @if (HasPerm("config"))
                 {
@@ -560,6 +565,7 @@
         { "nominas", "nominas" },
         { "nominas/empleados", "nominas" },
         { "nominas/liquidaciones", "nominas" },
+        { "vault", "vault" },
         { "perfil", "" } // perfil always allowed
     };
 

@@ -127,6 +127,7 @@ builder.Services.AddSingleton<SyncProgressService>();
 builder.Services.AddSingleton<WhatsAppService>();
 builder.Services.AddScoped<FileStorageService>();
 builder.Services.AddScoped<BackupService>();
+builder.Services.AddScoped<VaultService>();
 
 // Permitir subidas grandes para Archivos (2 GB)
 builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
@@ -262,6 +263,21 @@ using (var scope = app.Services.CreateScope())
                 logger.LogInformation("Clave del admin {Action} desde DEFAULT_ADMIN_PASSWORD.", forceReset ? "reseteada" : "inicializada");
             }
         }
+    }
+}
+
+// Inicializar la bóveda de contraseñas con la maestra por defecto si todavía no existe.
+// La password viene de VAULT_DEFAULT_PASSWORD (en .env). Una vez creada, podés vaciar esa variable —
+// la bóveda solo la usa para el primer arranque.
+{
+    using var scope = app.Services.CreateScope();
+    var vault = scope.ServiceProvider.GetRequiredService<VaultService>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    var defaultVaultPwd = Environment.GetEnvironmentVariable("VAULT_DEFAULT_PASSWORD");
+    if (!string.IsNullOrWhiteSpace(defaultVaultPwd))
+    {
+        try { await vault.InitializeIfMissingAsync(defaultVaultPwd); }
+        catch (Exception ex) { logger.LogWarning(ex, "No se pudo inicializar la bóveda con la maestra por defecto."); }
     }
 }
 

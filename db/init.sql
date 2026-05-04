@@ -1667,3 +1667,41 @@ BEGIN
     INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'nominas');
 END
 GO
+
+-- ============================================================
+-- BOVEDA DE CONTRASEÑAS (modulo independiente, una bóveda compartida)
+-- ============================================================
+
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Vault_Settings' AND xtype='U')
+BEGIN
+    CREATE TABLE Vault_Settings (
+        Id INT NOT NULL PRIMARY KEY,
+        MasterPasswordHash NVARCHAR(255) NOT NULL,
+        KdfSalt NVARCHAR(64) NOT NULL,
+        AutoLockMinutes INT NOT NULL DEFAULT 5,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL
+    );
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Vault_Entries' AND xtype='U')
+BEGIN
+    CREATE TABLE Vault_Entries (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Servicio NVARCHAR(200) NOT NULL,
+        UsuarioEnc NVARCHAR(MAX) NOT NULL,
+        PasswordEnc NVARCHAR(MAX) NOT NULL,
+        NotasEnc NVARCHAR(MAX) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL
+    );
+    CREATE INDEX IX_VaultEntries_Servicio ON Vault_Entries (Servicio);
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId = 1 AND MenuKey = 'vault')
+BEGIN
+    INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'vault');
+END
+GO

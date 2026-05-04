@@ -1,0 +1,532 @@
+@page "/vault"
+@attribute [Authorize]
+@implements IDisposable
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <h3 style="margin: 0;">
+            🔐 Bóveda de contraseñas
+            @if (token is not null)
+            {
+                <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;"> · @(entries?.Count ?? 0) entradas</span>
+            }
+        </h3>
+        @if (token is not null)
+        {
+            <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
+                <span style="font-size: 0.78rem; color: #9ca3af;">⏰ Auto-bloqueo en @autoLockSecondsLeft s</span>
+                <button class="btn btn-secondary" @onclick="ShowChangeMaster" style="font-size: 0.85rem;">🔑 Cambiar maestra</button>
+                <button class="btn btn-secondary" @onclick="LockVault" style="font-size: 0.85rem;">🔒 Bloquear</button>
+                <button class="btn btn-primary" @onclick="ShowCreate">+ Nueva credencial</button>
+            </div>
+        }
+    </div>
+
+    <div class="card-body">
+        @if (loading)
+        {
+            <p class="text-muted">Cargando...</p>
+        }
+        else if (token is null)
+        {
+            @* ═══════════════ PANTALLA DE DESBLOQUEO ═══════════════ *@
+            <div style="max-width: 460px; margin: 2rem auto; text-align: center;">
+                <div style="font-size: 4rem;">🔒</div>
+                <h4 style="margin: 0.4rem 0;">Bóveda bloqueada</h4>
+                <p style="color: #6b7280; font-size: 0.9rem;">
+                    Esta sección está protegida con una contraseña maestra independiente del login.
+                    Sin la maestra correcta, los datos no se pueden leer (están cifrados).
+                </p>
+                <div style="margin-top: 1.2rem;">
+                    <input class="form-input" type="password" @bind="masterInput" @bind:event="oninput"
+                           @onkeyup="OnMasterKey"
+                           placeholder="Contraseña maestra"
+                           autofocus
+                           style="text-align: center; font-size: 1.05rem;" />
+                    @if (!string.IsNullOrEmpty(unlockError))
+                    {
+                        <div class="form-error" style="margin-top: 0.5rem;">@unlockError</div>
+                    }
+                    <button class="btn btn-primary" @onclick="DoUnlock" disabled="@(working || string.IsNullOrEmpty(masterInput))" style="width: 100%; margin-top: 0.6rem; font-size: 1rem;">
+                        @(working ? "Desbloqueando..." : "🔓 Desbloquear")
+                    </button>
+                </div>
+                <p style="margin-top: 1rem; font-size: 0.75rem; color: #9ca3af;">
+                    🛡️ La maestra se hashea con BCrypt y los datos se cifran con AES-256-GCM.
+                    Si la olvidás, los datos no se pueden recuperar.
+                </p>
+            </div>
+        }
+        else
+        {
+            @* ═══════════════ LISTADO DE CREDENCIALES ═══════════════ *@
+            <div style="margin-bottom: 0.6rem;">
+                <input class="form-input" placeholder="🔍 Buscar por nombre del servicio..." @bind="filtro" @bind:event="oninput" style="max-width: 400px;" />
+            </div>
+            @if (entries is null || entries.Count == 0)
+            {
+                <p class="text-muted" style="padding: 1rem;">
+                    Todavía no guardaste ninguna credencial. Tocá <strong>"+ Nueva credencial"</strong> para empezar.
+                </p>
+            }
+            else
+            {
+                var visibles = string.IsNullOrWhiteSpace(filtro)
+                    ? entries
+                    : entries.Where(e => e.Servicio.Contains(filtro, StringComparison.OrdinalIgnoreCase)
+                                      || e.Usuario.Contains(filtro, StringComparison.OrdinalIgnoreCase)).ToList();
+                @if (visibles.Count == 0)
+                {
+                    <p class="text-muted">No hay credenciales que matcheen "<strong>@filtro</strong>".</p>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Servicio</th>
+                                    <th>Usuario / email</th>
+                                    <th>Contraseña</th>
+                                    <th>Notas</th>
+                                    <th style="width: 130px;">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var e in visibles)
+                                {
+                                    var visible = visiblePwds.Contains(e.Id);
+                                    <tr>
+                                        <td><strong>@e.Servicio</strong></td>
+                                        <td>
+                                            <span style="font-family: monospace;">@e.Usuario</span>
+                                            <button class="btn-icon" style="padding: 0.15rem 0.3rem; font-size: 0.78rem; color: #1d4ed8;" @onclick='() => CopyTo(e.Usuario, "Usuario")' title="Copiar">📋</button>
+                                        </td>
+                                        <td>
+                                            <span style="font-family: monospace;">@(visible ? e.Password : new string('•', Math.Min(12, Math.Max(8, e.Password.Length))))</span>
+                                            <button class="btn-icon" style="padding: 0.15rem 0.3rem; font-size: 0.78rem;" @onclick="() => TogglePwd(e.Id)" title='@(visible ? "Ocultar" : "Mostrar")'>@(visible ? "🙈" : "👁")</button>
+                                            <button class="btn-icon" style="padding: 0.15rem 0.3rem; font-size: 0.78rem; color: #1d4ed8;" @onclick='() => CopyTo(e.Password, "Contraseña")' title="Copiar">📋</button>
+                                        </td>
+                                        <td style="font-size: 0.78rem; color: #6b7280; max-width: 250px; overflow: hidden; text-overflow: ellipsis;">
+                                            @(string.IsNullOrEmpty(e.Notas) ? "—" : e.Notas)
+                                        </td>
+                                        <td class="actions-cell">
+                                            <button class="btn-icon btn-edit" @onclick="() => ShowEdit(e)" title="Editar">@SvgIcons.Edit</button>
+                                            <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(e)" title="Eliminar">@SvgIcons.AlertCircle</button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            }
+        }
+    </div>
+</div>
+
+@if (showForm && token is not null)
+{
+    <div class="modal-overlay" @onclick="CloseForm">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h4 style="margin: 0;">@(isEditing ? "Editar credencial" : "Nueva credencial")</h4>
+                <button class="btn-close" @onclick="CloseForm">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(formError))
+                {
+                    <div class="form-error">@formError</div>
+                }
+                <div class="form-group">
+                    <label class="form-label">Servicio *</label>
+                    <input class="form-input" @bind="formServicio" placeholder="Ej: Gmail, Banco Macro, Instagram..." autofocus />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Usuario / email</label>
+                    <input class="form-input" @bind="formUsuario" placeholder="usuario@ejemplo.com" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Contraseña</label>
+                    <div style="display: flex; gap: 0.3rem;">
+                        <input class="form-input" type='@(formPwdVisible ? "text" : "password")' @bind="formPassword" style="font-family: monospace; flex: 1;" />
+                        <button class="btn btn-secondary" type="button" @onclick="() => formPwdVisible = !formPwdVisible" title='@(formPwdVisible ? "Ocultar" : "Mostrar")'>@(formPwdVisible ? "🙈" : "👁")</button>
+                        <button class="btn btn-secondary" type="button" @onclick="GenerateNew" title="Generar contraseña segura">🎲</button>
+                    </div>
+                    <p style="font-size: 0.72rem; color: #6b7280; margin: 0.2rem 0 0;">El dado 🎲 genera una password segura aleatoria (20 caracteres con símbolos).</p>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Notas</label>
+                    <textarea class="form-input" @bind="formNotas" rows="2" placeholder="Notas opcionales (recovery, 2FA backup, etc.)"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseForm" disabled="@working">Cancelar</button>
+                <button class="btn btn-primary" @onclick="SaveEntry" disabled="@working">@(working ? "Guardando..." : (isEditing ? "Guardar" : "Crear"))</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showChangeMaster && token is not null)
+{
+    <div class="modal-overlay" @onclick="() => showChangeMaster = false">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h4 style="margin: 0;">🔑 Cambiar contraseña maestra</h4>
+                <button class="btn-close" @onclick="() => showChangeMaster = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="color: #6b7280; font-size: 0.85rem;">
+                    Cambiar la maestra re-cifra todas las credenciales. Después de guardar vas a tener que volver a desbloquear con la nueva.
+                </p>
+                @if (!string.IsNullOrEmpty(cmError))
+                {
+                    <div class="form-error">@cmError</div>
+                }
+                <div class="form-group">
+                    <label class="form-label">Maestra actual</label>
+                    <input class="form-input" type="password" @bind="cmOld" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Nueva maestra (mín. 6)</label>
+                    <input class="form-input" type="password" @bind="cmNew" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Confirmar nueva</label>
+                    <input class="form-input" type="password" @bind="cmConfirm" />
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showChangeMaster = false" disabled="@working">Cancelar</button>
+                <button class="btn btn-primary" @onclick="DoChangeMaster" disabled="@working">@(working ? "Cambiando..." : "Cambiar")</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showDeleteConfirm && entryToDelete is not null)
+{
+    <div class="modal-overlay" @onclick="() => showDeleteConfirm = false">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: #dc3545; color: white;">
+                <h4 style="margin: 0;">Eliminar credencial</h4>
+                <button class="btn-close" @onclick="() => showDeleteConfirm = false" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Estas seguro que queres eliminar la credencial de <strong>@entryToDelete.Servicio</strong>?</p>
+                <p class="text-muted" style="font-size: 0.85rem;">Esta acción no se puede deshacer.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showDeleteConfirm = false">Cancelar</button>
+                <button class="btn btn-danger" @onclick="DoDelete">Eliminar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    // Estado general
+    private bool loading = true;
+    private bool working;
+    private string? token;
+    private int autoLockMinutes = 5;
+    private int autoLockSecondsLeft;
+    private System.Timers.Timer? lockTimer;
+    private DateTime lastActivity = DateTime.UtcNow;
+
+    // Unlock
+    private string masterInput = "";
+    private string unlockError = "";
+
+    // Lista
+    private List<VaultEntryDto>? entries;
+    private string filtro = "";
+    private HashSet<int> visiblePwds = new();
+
+    // Form (crear/editar)
+    private bool showForm;
+    private bool isEditing;
+    private int? editingId;
+    private string formServicio = "";
+    private string formUsuario = "";
+    private string formPassword = "";
+    private string formNotas = "";
+    private bool formPwdVisible;
+    private string? formError;
+
+    // Cambiar maestra
+    private bool showChangeMaster;
+    private string cmOld = "";
+    private string cmNew = "";
+    private string cmConfirm = "";
+    private string? cmError;
+
+    // Delete
+    private bool showDeleteConfirm;
+    private VaultEntryDto? entryToDelete;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Recuperar token de sessionStorage por si recargó la página estando desbloqueado
+        try
+        {
+            var saved = await JS.InvokeAsync<string?>("sessionStorage.getItem", "vault.token");
+            if (!string.IsNullOrEmpty(saved))
+            {
+                token = saved;
+                await LoadEntries();
+                StartLockTimer();
+            }
+        }
+        catch { /* ignore */ }
+        // Status (saber autoLockMinutes aunque no estemos desbloqueados)
+        try
+        {
+            var st = await Api.GetVaultStatusAsync(token);
+            if (st is not null) autoLockMinutes = st.AutoLockMinutes;
+            // Si el server dice que el token ya no está unlocked, descartarlo
+            if (token is not null && st is not null && !st.IsUnlocked)
+            {
+                token = null;
+                try { await JS.InvokeVoidAsync("sessionStorage.removeItem", "vault.token"); } catch { }
+            }
+        }
+        catch { }
+        loading = false;
+    }
+
+    private async Task DoUnlock()
+    {
+        unlockError = "";
+        if (string.IsNullOrEmpty(masterInput)) return;
+        working = true;
+        try
+        {
+            var resp = await Api.UnlockVaultAsync(masterInput);
+            if (resp is null)
+            {
+                unlockError = "Contraseña maestra incorrecta.";
+                return;
+            }
+            token = resp.Token;
+            autoLockMinutes = resp.AutoLockMinutes;
+            try { await JS.InvokeVoidAsync("sessionStorage.setItem", "vault.token", token); } catch { }
+            masterInput = "";
+            await LoadEntries();
+            StartLockTimer();
+        }
+        catch (HttpRequestException ex) { unlockError = ex.Message; }
+        catch (Exception ex) { unlockError = ex.Message; }
+        finally { working = false; }
+    }
+
+    private async Task OnMasterKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await DoUnlock();
+    }
+
+    private async Task LoadEntries()
+    {
+        if (token is null) return;
+        try
+        {
+            entries = await Api.ListVaultEntriesAsync(token) ?? new();
+            visiblePwds.Clear();
+        }
+        catch (ApiClient.VaultLockedException)
+        {
+            await ForceLock();
+        }
+        catch (Exception ex) { ToastService.Error("Error al cargar: " + ex.Message); entries = new(); }
+    }
+
+    private async Task LockVault()
+    {
+        if (token is not null)
+        {
+            try { await Api.LockVaultAsync(token); } catch { }
+        }
+        await ForceLock();
+        ToastService.Success("Bóveda bloqueada");
+    }
+
+    private async Task ForceLock()
+    {
+        token = null;
+        entries = null;
+        visiblePwds.Clear();
+        StopLockTimer();
+        try { await JS.InvokeVoidAsync("sessionStorage.removeItem", "vault.token"); } catch { }
+        StateHasChanged();
+    }
+
+    private void StartLockTimer()
+    {
+        StopLockTimer();
+        lastActivity = DateTime.UtcNow;
+        autoLockSecondsLeft = autoLockMinutes * 60;
+        lockTimer = new System.Timers.Timer(1000);
+        lockTimer.Elapsed += async (_, _) =>
+        {
+            var elapsed = (DateTime.UtcNow - lastActivity).TotalSeconds;
+            autoLockSecondsLeft = Math.Max(0, autoLockMinutes * 60 - (int)elapsed);
+            if (autoLockSecondsLeft <= 0)
+            {
+                await InvokeAsync(async () =>
+                {
+                    await ForceLock();
+                    ToastService.Info("Bóveda bloqueada por inactividad");
+                });
+            }
+            else
+            {
+                await InvokeAsync(StateHasChanged);
+            }
+        };
+        lockTimer.AutoReset = true;
+        lockTimer.Start();
+    }
+
+    private void StopLockTimer()
+    {
+        if (lockTimer is not null) { lockTimer.Stop(); lockTimer.Dispose(); lockTimer = null; }
+    }
+
+    private void Touch() => lastActivity = DateTime.UtcNow;
+
+    private void TogglePwd(int id)
+    {
+        Touch();
+        if (!visiblePwds.Add(id)) visiblePwds.Remove(id);
+    }
+
+    private async Task CopyTo(string text, string label)
+    {
+        Touch();
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+            ToastService.Success($"{label} copiada al portapapeles");
+        }
+        catch { ToastService.Error("No se pudo copiar"); }
+    }
+
+    private void ShowCreate()
+    {
+        Touch();
+        isEditing = false; editingId = null;
+        formServicio = ""; formUsuario = ""; formPassword = ""; formNotas = "";
+        formPwdVisible = false; formError = null;
+        showForm = true;
+    }
+
+    private void ShowEdit(VaultEntryDto e)
+    {
+        Touch();
+        isEditing = true; editingId = e.Id;
+        formServicio = e.Servicio; formUsuario = e.Usuario;
+        formPassword = e.Password; formNotas = e.Notas ?? "";
+        formPwdVisible = false; formError = null;
+        showForm = true;
+    }
+
+    private void CloseForm() { showForm = false; formError = null; }
+
+    private async Task SaveEntry()
+    {
+        Touch();
+        formError = null;
+        if (string.IsNullOrWhiteSpace(formServicio)) { formError = "El servicio es obligatorio"; return; }
+        working = true;
+        try
+        {
+            var req = new VaultUpsertEntryRequest
+            {
+                Servicio = formServicio, Usuario = formUsuario,
+                Password = formPassword, Notas = formNotas
+            };
+            if (isEditing && editingId.HasValue)
+            {
+                await Api.UpdateVaultEntryAsync(token!, editingId.Value, req);
+                ToastService.Success("Credencial actualizada");
+            }
+            else
+            {
+                await Api.CreateVaultEntryAsync(token!, req);
+                ToastService.Success("Credencial creada");
+            }
+            showForm = false;
+            await LoadEntries();
+        }
+        catch (ApiClient.VaultLockedException) { await ForceLock(); }
+        catch (Exception ex) { formError = ex.Message; }
+        finally { working = false; }
+    }
+
+    private void ConfirmDelete(VaultEntryDto e)
+    {
+        Touch();
+        entryToDelete = e; showDeleteConfirm = true;
+    }
+
+    private async Task DoDelete()
+    {
+        if (entryToDelete is null) return;
+        try
+        {
+            await Api.DeleteVaultEntryAsync(token!, entryToDelete.Id);
+            ToastService.Success("Eliminada");
+            await LoadEntries();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { showDeleteConfirm = false; entryToDelete = null; }
+    }
+
+    private async Task GenerateNew()
+    {
+        Touch();
+        try
+        {
+            var resp = await Api.GenerateVaultPasswordAsync(token!, new VaultGenerateRequest
+            {
+                Length = 20, IncludeSymbols = true, IncludeNumbers = true, IncludeUppercase = true
+            });
+            if (resp is not null) { formPassword = resp.Password; formPwdVisible = true; }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private void ShowChangeMaster()
+    {
+        Touch();
+        cmOld = ""; cmNew = ""; cmConfirm = ""; cmError = null;
+        showChangeMaster = true;
+    }
+
+    private async Task DoChangeMaster()
+    {
+        cmError = null;
+        if (string.IsNullOrEmpty(cmOld)) { cmError = "Falta la maestra actual"; return; }
+        if (cmNew.Length < 6) { cmError = "La nueva maestra debe tener al menos 6 caracteres"; return; }
+        if (cmNew != cmConfirm) { cmError = "La confirmación no coincide"; return; }
+        working = true;
+        try
+        {
+            await Api.ChangeVaultMasterAsync(token!, new VaultChangeMasterRequest
+            {
+                OldPassword = cmOld, NewPassword = cmNew
+            });
+            ToastService.Success("Maestra cambiada. Bóveda bloqueada — entrá con la nueva clave.");
+            showChangeMaster = false;
+            await ForceLock();
+        }
+        catch (Exception ex) { cmError = ex.Message; }
+        finally { working = false; }
+    }
+
+    public void Dispose() => StopLockTimer();
+}
