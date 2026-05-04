@@ -36,6 +36,17 @@ public class CafeSetting
     [MaxLength(50)]
     public string? NegocioCuit { get; set; }
 
+    [MaxLength(200)]
+    public string? NegocioEmail { get; set; }
+
+    [MaxLength(200)]
+    public string? NegocioWeb { get; set; }
+
+    /// <summary>URL del logo para mostrar en listas de precios y comprobantes. Puede ser ruta interna
+    /// (ej. /api/files/download?path=branding/logo.png) o un link externo.</summary>
+    [MaxLength(500)]
+    public string? NegocioLogoUrl { get; set; }
+
     /// <summary>
     /// Texto plantilla del mensaje pre-armado para WhatsApp (lo que el cliente envía cuando toca
     /// "Contactanos por WhatsApp" en el PDF). Soporta los placeholders {numero}, {total}, {cliente}, {fecha}.

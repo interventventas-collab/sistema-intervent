@@ -94,6 +94,7 @@ public record CafeSettingDto(
     decimal MargenOtrosBarPct, decimal MargenOtrosNoBarPct,
     string? NegocioNombre, string? NegocioTelefono, string? NegocioWhatsappNumero,
     string? NegocioDireccion, string? NegocioCuit,
+    string? NegocioEmail, string? NegocioWeb, string? NegocioLogoUrl,
     string? WhatsappMensajeTemplate, string? WhatsappMensajeClienteTemplate,
     DateTime? UpdatedAt);
 
@@ -108,6 +109,9 @@ public class UpdateCafeSettingRequest
     public string? NegocioWhatsappNumero { get; set; }
     public string? NegocioDireccion { get; set; }
     public string? NegocioCuit { get; set; }
+    public string? NegocioEmail { get; set; }
+    public string? NegocioWeb { get; set; }
+    public string? NegocioLogoUrl { get; set; }
     public string? WhatsappMensajeTemplate { get; set; }
     public string? WhatsappMensajeClienteTemplate { get; set; }
 }
@@ -411,7 +415,8 @@ public class CafeListaPreciosFiltroRequest
 
 public record CafeListaPreciosNegocioDto(
     string? Nombre, string? Telefono, string? WhatsappNumero,
-    string? Direccion, string? Cuit);
+    string? Direccion, string? Cuit,
+    string? Email, string? Web, string? LogoUrl);
 
 public record CafeListaPreciosClienteDto(
     int? Id, string? Codigo, string? Nombre, string Tipo,

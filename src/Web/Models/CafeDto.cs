@@ -121,6 +121,9 @@ public class CafeSettingDto
     public string? NegocioWhatsappNumero { get; set; }
     public string? NegocioDireccion { get; set; }
     public string? NegocioCuit { get; set; }
+    public string? NegocioEmail { get; set; }
+    public string? NegocioWeb { get; set; }
+    public string? NegocioLogoUrl { get; set; }
     public string? WhatsappMensajeTemplate { get; set; }
     public string? WhatsappMensajeClienteTemplate { get; set; }
     public DateTime? UpdatedAt { get; set; }
@@ -137,6 +140,9 @@ public class UpdateCafeSettingRequest
     public string? NegocioWhatsappNumero { get; set; }
     public string? NegocioDireccion { get; set; }
     public string? NegocioCuit { get; set; }
+    public string? NegocioEmail { get; set; }
+    public string? NegocioWeb { get; set; }
+    public string? NegocioLogoUrl { get; set; }
     public string? WhatsappMensajeTemplate { get; set; }
     public string? WhatsappMensajeClienteTemplate { get; set; }
 }
@@ -549,6 +555,9 @@ public class CafeListaPreciosNegocioDto
     public string? WhatsappNumero { get; set; }
     public string? Direccion { get; set; }
     public string? Cuit { get; set; }
+    public string? Email { get; set; }
+    public string? Web { get; set; }
+    public string? LogoUrl { get; set; }
 }
 
 public class CafeListaPreciosClienteDto

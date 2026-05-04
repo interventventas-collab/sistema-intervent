@@ -171,13 +171,25 @@
 
                 @* HEADER *@
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; padding-bottom: 0.8rem; border-bottom: 2px solid #1d4ed8;">
-                    <div style="flex: 1;">
-                        <div style="font-size: 1.4rem; font-weight: 800; color: #1e3a8a;">@(preview.Negocio.Nombre ?? "Tu negocio")</div>
-                        <div style="font-size: 0.82rem; color: #4b5563; margin-top: 0.2rem; line-height: 1.5;">
-                            @if (!string.IsNullOrEmpty(preview.Negocio.Direccion)) { <div>📍 @preview.Negocio.Direccion</div> }
-                            @if (!string.IsNullOrEmpty(preview.Negocio.Telefono)) { <span>📞 @preview.Negocio.Telefono</span> }
-                            @if (!string.IsNullOrEmpty(preview.Negocio.WhatsappNumero)) { <span style="margin-left: 0.6rem;">📱 @preview.Negocio.WhatsappNumero</span> }
-                            @if (!string.IsNullOrEmpty(preview.Negocio.Cuit)) { <div>CUIT: @preview.Negocio.Cuit</div> }
+                    <div style="flex: 1; display: flex; gap: 0.8rem; align-items: flex-start;">
+                        @if (!string.IsNullOrEmpty(preview.Negocio.LogoUrl))
+                        {
+                            <img src="@preview.Negocio.LogoUrl" alt="Logo"
+                                 style="max-height: 80px; max-width: 140px; object-fit: contain; flex: 0 0 auto;"
+                                 onerror="this.style.display='none'" />
+                        }
+                        <div style="flex: 1;">
+                            <div style="font-size: 1.4rem; font-weight: 800; color: #1e3a8a;">@(preview.Negocio.Nombre ?? "Tu negocio")</div>
+                            <div style="font-size: 0.82rem; color: #4b5563; margin-top: 0.2rem; line-height: 1.6;">
+                                @if (!string.IsNullOrEmpty(preview.Negocio.Direccion)) { <div>📍 @preview.Negocio.Direccion</div> }
+                                <div>
+                                    @if (!string.IsNullOrEmpty(preview.Negocio.Telefono)) { <span>📞 @preview.Negocio.Telefono</span> }
+                                    @if (!string.IsNullOrEmpty(preview.Negocio.WhatsappNumero)) { <span style="margin-left: 0.6rem;">📱 @preview.Negocio.WhatsappNumero</span> }
+                                </div>
+                                @if (!string.IsNullOrEmpty(preview.Negocio.Email)) { <div>✉ @preview.Negocio.Email</div> }
+                                @if (!string.IsNullOrEmpty(preview.Negocio.Web)) { <div>🌐 @preview.Negocio.Web</div> }
+                                @if (!string.IsNullOrEmpty(preview.Negocio.Cuit)) { <div style="font-size: 0.75rem; color: #6b7280;">CUIT: @preview.Negocio.Cuit</div> }
+                            </div>
                         </div>
                     </div>
                     <div style="text-align: right;">
@@ -286,16 +298,24 @@
                 @* FOOTER *@
                 <div style="margin-top: 1rem; padding-top: 0.7rem; border-top: 1px dashed #d1d5db; text-align: center; font-size: 0.82rem; color: #4b5563;">
                     <div style="font-weight: 700; color: #1e3a8a;">Consultanos y armamos tu pedido ☕</div>
-                    @if (!string.IsNullOrEmpty(preview.Negocio.WhatsappNumero))
-                    {
-                        <div style="margin-top: 0.3rem;">
-                            <a href="@PublicWhatsappLink" target="_blank" style="color: #25D366; font-weight: 700; text-decoration: none;">📱 WhatsApp @preview.Negocio.WhatsappNumero</a>
-                        </div>
-                    }
-                    @if (!string.IsNullOrEmpty(preview.Negocio.Telefono) && preview.Negocio.Telefono != preview.Negocio.WhatsappNumero)
-                    {
-                        <div style="margin-top: 0.2rem;">📞 @preview.Negocio.Telefono</div>
-                    }
+                    <div style="margin-top: 0.3rem; display: flex; justify-content: center; gap: 0.7rem; flex-wrap: wrap;">
+                        @if (!string.IsNullOrEmpty(preview.Negocio.WhatsappNumero))
+                        {
+                            <a href="@PublicWhatsappLink" target="_blank" style="color: #25D366; font-weight: 700; text-decoration: none;">📱 @preview.Negocio.WhatsappNumero</a>
+                        }
+                        @if (!string.IsNullOrEmpty(preview.Negocio.Telefono) && preview.Negocio.Telefono != preview.Negocio.WhatsappNumero)
+                        {
+                            <span>📞 @preview.Negocio.Telefono</span>
+                        }
+                        @if (!string.IsNullOrEmpty(preview.Negocio.Email))
+                        {
+                            <span>✉ @preview.Negocio.Email</span>
+                        }
+                        @if (!string.IsNullOrEmpty(preview.Negocio.Web))
+                        {
+                            <span>🌐 @preview.Negocio.Web</span>
+                        }
+                    </div>
                 </div>
             </div>
         }

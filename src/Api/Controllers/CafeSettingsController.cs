@@ -21,6 +21,7 @@ public class CafeSettingsController : ControllerBase
         s.MargenOtrosBarPct, s.MargenOtrosNoBarPct,
         s.NegocioNombre, s.NegocioTelefono, s.NegocioWhatsappNumero,
         s.NegocioDireccion, s.NegocioCuit,
+        s.NegocioEmail, s.NegocioWeb, s.NegocioLogoUrl,
         s.WhatsappMensajeTemplate, s.WhatsappMensajeClienteTemplate,
         s.UpdatedAt);
 
@@ -48,6 +49,9 @@ public class CafeSettingsController : ControllerBase
         if (req.NegocioWhatsappNumero is not null) s.NegocioWhatsappNumero = Norm(req.NegocioWhatsappNumero);
         if (req.NegocioDireccion is not null) s.NegocioDireccion = Norm(req.NegocioDireccion);
         if (req.NegocioCuit is not null) s.NegocioCuit = Norm(req.NegocioCuit);
+        if (req.NegocioEmail is not null) s.NegocioEmail = Norm(req.NegocioEmail);
+        if (req.NegocioWeb is not null) s.NegocioWeb = Norm(req.NegocioWeb);
+        if (req.NegocioLogoUrl is not null) s.NegocioLogoUrl = Norm(req.NegocioLogoUrl);
         if (req.WhatsappMensajeTemplate is not null) s.WhatsappMensajeTemplate = Norm(req.WhatsappMensajeTemplate);
         if (req.WhatsappMensajeClienteTemplate is not null) s.WhatsappMensajeClienteTemplate = Norm(req.WhatsappMensajeClienteTemplate);
         s.UpdatedAt = DateTime.UtcNow;

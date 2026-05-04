@@ -1939,6 +1939,17 @@ IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'CondicionPago' AND Object
     ALTER TABLE Cafe_Ventas ADD CondicionPago NVARCHAR(20) NOT NULL CONSTRAINT DF_CafeVentas_CondicionPago DEFAULT 'EFECTIVO';
 GO
 
+-- Cafe_Settings: branding extra para listas de precios (Email, Web, Logo)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'NegocioEmail' AND Object_ID = Object_ID('Cafe_Settings'))
+    ALTER TABLE Cafe_Settings ADD NegocioEmail NVARCHAR(200) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'NegocioWeb' AND Object_ID = Object_ID('Cafe_Settings'))
+    ALTER TABLE Cafe_Settings ADD NegocioWeb NVARCHAR(200) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'NegocioLogoUrl' AND Object_ID = Object_ID('Cafe_Settings'))
+    ALTER TABLE Cafe_Settings ADD NegocioLogoUrl NVARCHAR(500) NULL;
+GO
+
 -- Cafe_Combos: bundles de productos. El precio NO se guarda; se calcula en vivo
 -- al cotizar (suma de PVP*cantidad de cada item). Cuando se selecciona en una
 -- venta, se "expande" en N items de Cafe_VentaItems con la logica normal.

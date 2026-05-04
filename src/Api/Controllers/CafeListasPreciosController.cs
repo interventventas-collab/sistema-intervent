@@ -46,7 +46,8 @@ public class CafeListasPreciosController : ControllerBase
         var settings = await _db.CafeSettings.FindAsync(1) ?? new CafeSetting { Id = 1 };
         var negocio = new CafeListaPreciosNegocioDto(
             settings.NegocioNombre, settings.NegocioTelefono,
-            settings.NegocioWhatsappNumero, settings.NegocioDireccion, settings.NegocioCuit);
+            settings.NegocioWhatsappNumero, settings.NegocioDireccion, settings.NegocioCuit,
+            settings.NegocioEmail, settings.NegocioWeb, settings.NegocioLogoUrl);
 
         // Cliente y tipo
         CafeListaPreciosClienteDto? clienteDto = null;
@@ -133,6 +134,8 @@ public class CafeListasPreciosController : ControllerBase
         row++;
         if (!string.IsNullOrEmpty(p.Negocio.Telefono)) { ws.Cell(row++, 1).Value = "Tel: " + p.Negocio.Telefono; }
         if (!string.IsNullOrEmpty(p.Negocio.WhatsappNumero)) { ws.Cell(row++, 1).Value = "WhatsApp: " + p.Negocio.WhatsappNumero; }
+        if (!string.IsNullOrEmpty(p.Negocio.Email)) { ws.Cell(row++, 1).Value = "Email: " + p.Negocio.Email; }
+        if (!string.IsNullOrEmpty(p.Negocio.Web)) { ws.Cell(row++, 1).Value = "Web: " + p.Negocio.Web; }
         if (!string.IsNullOrEmpty(p.Negocio.Direccion)) { ws.Cell(row++, 1).Value = p.Negocio.Direccion; }
         if (!string.IsNullOrEmpty(p.Negocio.Cuit)) { ws.Cell(row++, 1).Value = "CUIT: " + p.Negocio.Cuit; }
         row++;

@@ -65,6 +65,31 @@
                 <label class="form-label">Dirección</label>
                 <input class="form-input" @bind="negocioDireccion" />
             </div>
+            <div class="form-row">
+                <div class="form-group" style="flex: 1;">
+                    <label class="form-label">Email</label>
+                    <input class="form-input" type="email" @bind="negocioEmail" placeholder="ventas@empresa.com" />
+                </div>
+                <div class="form-group" style="flex: 1;">
+                    <label class="form-label">Web</label>
+                    <input class="form-input" @bind="negocioWeb" placeholder="empresa.com" />
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Logo (URL de la imagen)</label>
+                <input class="form-input" @bind="negocioLogoUrl" placeholder="https://... o /api/files/download?path=branding/logo.png" />
+                <p style="font-size: 0.72rem; color: #6b7280; margin: 0.2rem 0 0;">
+                    Pegá una URL pública (ej. de tu sitio o de un servicio de hosting de imágenes). Aparece en el header de las listas de precios y comprobantes.
+                </p>
+                @if (!string.IsNullOrWhiteSpace(negocioLogoUrl))
+                {
+                    <div style="margin-top: 0.5rem; padding: 0.5rem; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; display: inline-block;">
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0 0 0.3rem;">Vista previa:</p>
+                        <img src="@negocioLogoUrl" alt="Logo" style="max-height: 80px; max-width: 200px; object-fit: contain;" onerror="this.style.display='none'; this.nextSibling.style.display='block';" />
+                        <span style="display:none; color: #b91c1c; font-size: 0.78rem;">⚠ No se pudo cargar la imagen</span>
+                    </div>
+                }
+            </div>
 
             <h4 style="margin: 1rem 0 0.6rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase;">📱 Mensajes pre-armados de WhatsApp</h4>
             <p style="font-size: 0.78rem; color: #6b7280; margin: 0 0 0.5rem;">
@@ -128,6 +153,7 @@
     private decimal margenBar = 40;
     private decimal margenOtro = 60;
     private string negocioNombre = "", negocioTelefono = "", negocioWhatsapp = "", negocioDireccion = "", negocioCuit = "";
+    private string negocioEmail = "", negocioWeb = "", negocioLogoUrl = "";
     private string waTemplate = "Hola! Te escribo por el comprobante {numero} (total ${total}). Gracias!";
     private string waTemplateCliente = "Hola {cliente}! Te escribo del negocio por el comprobante {numero}.";
 
@@ -157,6 +183,9 @@
                 negocioWhatsapp = s.NegocioWhatsappNumero ?? "";
                 negocioDireccion = s.NegocioDireccion ?? "";
                 negocioCuit = s.NegocioCuit ?? "";
+                negocioEmail = s.NegocioEmail ?? "";
+                negocioWeb = s.NegocioWeb ?? "";
+                negocioLogoUrl = s.NegocioLogoUrl ?? "";
                 if (!string.IsNullOrWhiteSpace(s.WhatsappMensajeTemplate))
                     waTemplate = s.WhatsappMensajeTemplate;
                 // Cliente: usar lo guardado tal cual, incluso si esta vacio (significa "sin mensaje").
@@ -184,6 +213,9 @@
                 NegocioWhatsappNumero = negocioWhatsapp,
                 NegocioDireccion = negocioDireccion,
                 NegocioCuit = negocioCuit,
+                NegocioEmail = negocioEmail,
+                NegocioWeb = negocioWeb,
+                NegocioLogoUrl = negocioLogoUrl,
                 WhatsappMensajeTemplate = waTemplate,
                 WhatsappMensajeClienteTemplate = waTemplateCliente
             });
