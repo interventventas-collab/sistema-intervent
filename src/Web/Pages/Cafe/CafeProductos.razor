@@ -7,6 +7,9 @@
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
         <h3>☕ Productos <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;">(@(productosVisibles.Count))</span></h3>
         <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
+            <input class="form-input" style="min-width: 240px; font-size: 0.85rem;"
+                   @bind="filtroTexto" @bind:event="oninput"
+                   placeholder="🔍 SKU, código de barras, nombre..." />
             <select class="form-input" style="max-width: 180px; font-size: 0.85rem;" @bind="filtroCategoria" @bind:after="Load">
                 <option value="">Todas las categorías</option>
                 <option value="CAFE">☕ Café</option>
@@ -36,6 +39,7 @@
                 <table class="data-table">
                     <thead>
                         <tr>
+                            <th style="width: 100px;">SKU</th>
                             <th>Nombre</th>
                             <th>Categoría</th>
                             <th>Marca</th>
@@ -52,8 +56,13 @@
                         {
                             var esCafe = p.Categoria == "CAFE";
                             <tr>
+                                <td style="font-family: monospace; font-weight: 700; color: #1d4ed8;">@(p.Sku ?? "—")</td>
                                 <td>
                                     <strong>@p.Nombre</strong>
+                                    @if (!string.IsNullOrEmpty(p.Barcode))
+                                    {
+                                        <div style="font-size: 0.7rem; color: #9ca3af; font-family: monospace;">cod: @p.Barcode</div>
+                                    }
                                     @if (!string.IsNullOrEmpty(p.Notas))
                                     {
                                         <div style="font-size: 0.78rem; color: #6b7280;">@p.Notas</div>
@@ -123,6 +132,17 @@
                 {
                     <div class="form-error">@formError</div>
                 }
+
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">SKU</label>
+                        <input class="form-input" @bind="formSku" placeholder="Ej: F1" style="font-family: monospace; text-transform: uppercase;" />
+                    </div>
+                    <div class="form-group" style="flex: 2;">
+                        <label class="form-label">Código de barras</label>
+                        <input class="form-input" @bind="formBarcode" placeholder="Opcional, ej: 7791234567890" style="font-family: monospace;" />
+                    </div>
+                </div>
 
                 <div class="form-row">
                     <div class="form-group" style="flex: 2;">
@@ -236,12 +256,15 @@
     private bool loading = true;
     private string filtroCategoria = "";
     private string filtroMarca = "";
+    private string filtroTexto = "";
     private bool showForm;
     private bool isEditing;
     private bool saving;
     private string? formError;
     private int? editingId;
     private string formNombre = "";
+    private string formSku = "";
+    private string formBarcode = "";
     private string formCategoria = "CAFE";
     private string formMarca = "";
     private decimal formCosto;
@@ -261,12 +284,24 @@
                    .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
                    .ToList();
 
-    /// <summary>Lista filtrada por marca (la categoría ya viene filtrada del backend).</summary>
-    private List<CafeProductoDto> productosVisibles => productos is null
-        ? new()
-        : (string.IsNullOrEmpty(filtroMarca)
-            ? productos
-            : productos.Where(p => string.Equals(p.Marca, filtroMarca, StringComparison.OrdinalIgnoreCase)).ToList());
+    /// <summary>Lista filtrada por marca + texto (categoría ya viene filtrada del backend).</summary>
+    private List<CafeProductoDto> productosVisibles
+    {
+        get
+        {
+            if (productos is null) return new();
+            IEnumerable<CafeProductoDto> q = productos;
+            if (!string.IsNullOrEmpty(filtroMarca))
+                q = q.Where(p => string.Equals(p.Marca, filtroMarca, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrWhiteSpace(filtroTexto))
+            {
+                var t = filtroTexto.Trim();
+                bool h(string? s) => !string.IsNullOrEmpty(s) && s.Contains(t, StringComparison.OrdinalIgnoreCase);
+                q = q.Where(p => h(p.Sku) || h(p.Barcode) || h(p.Nombre) || h(p.Marca));
+            }
+            return q.ToList();
+        }
+    }
     private bool showDeleteConfirm;
     private CafeProductoDto? toDelete;
 
@@ -287,7 +322,8 @@
     private void ShowCreate()
     {
         isEditing = false; editingId = null;
-        formNombre = ""; formCategoria = "CAFE"; formMarca = "";
+        formNombre = ""; formSku = ""; formBarcode = "";
+        formCategoria = "CAFE"; formMarca = "";
         formCosto = 0; formPvp1 = null; formPvp2 = null;
         formStockGramos = 0; formStockUnidades = 0;
         formNotas = ""; formIsActive = true;
@@ -297,7 +333,8 @@
     private void ShowEdit(CafeProductoDto p)
     {
         isEditing = true; editingId = p.Id;
-        formNombre = p.Nombre; formCategoria = p.Categoria; formMarca = p.Marca ?? "";
+        formNombre = p.Nombre; formSku = p.Sku ?? ""; formBarcode = p.Barcode ?? "";
+        formCategoria = p.Categoria; formMarca = p.Marca ?? "";
         formCosto = p.Costo; formPvp1 = p.Pvp1; formPvp2 = p.Pvp2;
         formStockGramos = p.StockGramos; formStockUnidades = p.StockUnidades;
         formNotas = p.Notas ?? ""; formIsActive = p.IsActive;
@@ -318,6 +355,7 @@
             {
                 var u = await Api.UpdateCafeProductoAsync(editingId.Value, new UpdateCafeProductoRequest
                 {
+                    Sku = formSku, Barcode = formBarcode,
                     Nombre = formNombre, Categoria = formCategoria, Marca = formMarca,
                     Costo = formCosto, Pvp1 = formPvp1, Pvp2 = formPvp2,
                     StockGramos = formStockGramos, StockUnidades = formStockUnidades,
@@ -330,6 +368,7 @@
             {
                 var c = await Api.CreateCafeProductoAsync(new CreateCafeProductoRequest
                 {
+                    Sku = formSku, Barcode = formBarcode,
                     Nombre = formNombre, Categoria = formCategoria, Marca = formMarca,
                     Costo = formCosto, Pvp1 = formPvp1, Pvp2 = formPvp2,
                     StockGramos = formCategoria == "CAFE" ? formStockGramos : 0,

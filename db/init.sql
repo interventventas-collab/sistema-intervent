@@ -1914,3 +1914,11 @@ BEGIN
     CREATE UNIQUE INDEX IX_CafeClientes_Codigo ON Cafe_Clientes(Codigo);
 END
 GO
+
+-- Cafe_Productos: agregar Sku y Barcode
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'Sku' AND Object_ID = Object_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD Sku NVARCHAR(50) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'Barcode' AND Object_ID = Object_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD Barcode NVARCHAR(100) NULL;
+GO

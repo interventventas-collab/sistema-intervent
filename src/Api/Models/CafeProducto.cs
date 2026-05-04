@@ -13,6 +13,12 @@ public class CafeProducto
     [Required, MaxLength(200)]
     public string Nombre { get; set; } = string.Empty;
 
+    [MaxLength(50)]
+    public string? Sku { get; set; }
+
+    [MaxLength(100)]
+    public string? Barcode { get; set; }
+
     [Required, MaxLength(20)]
     public string Categoria { get; set; } = "CAFE"; // CAFE | OTROS
 

@@ -42,6 +42,8 @@ public class UpdateCafeClienteRequest
 public class CafeProductoDto
 {
     public int Id { get; set; }
+    public string? Sku { get; set; }
+    public string? Barcode { get; set; }
     public string Nombre { get; set; } = "";
     public string Categoria { get; set; } = "CAFE";
     public string? Marca { get; set; }
@@ -59,6 +61,8 @@ public class CafeProductoDto
 
 public class CreateCafeProductoRequest
 {
+    public string? Sku { get; set; }
+    public string? Barcode { get; set; }
     public string Nombre { get; set; } = "";
     public string Categoria { get; set; } = "CAFE";
     public string? Marca { get; set; }
@@ -73,6 +77,8 @@ public class CreateCafeProductoRequest
 
 public class UpdateCafeProductoRequest
 {
+    public string? Sku { get; set; }
+    public string? Barcode { get; set; }
     public string? Nombre { get; set; }
     public string? Categoria { get; set; }
     public string? Marca { get; set; }

@@ -18,7 +18,8 @@ public class CafeProductosController : ControllerBase
     public CafeProductosController(AppDbContext db) { _db = db; }
 
     private static CafeProductoDto Map(CafeProducto p) => new(
-        p.Id, p.Nombre, p.Categoria, p.Marca,
+        p.Id, p.Sku, p.Barcode,
+        p.Nombre, p.Categoria, p.Marca,
         p.Costo, p.PrecioPorKg,
         p.Pvp1, p.Pvp2, p.StockGramos, p.StockUnidades,
         p.Notas, p.IsActive, p.CreatedAt, p.UpdatedAt);
@@ -54,6 +55,8 @@ public class CafeProductosController : ControllerBase
 
         var p = new CafeProducto
         {
+            Sku = string.IsNullOrWhiteSpace(req.Sku) ? null : req.Sku.Trim().ToUpperInvariant(),
+            Barcode = string.IsNullOrWhiteSpace(req.Barcode) ? null : req.Barcode.Trim(),
             Nombre = req.Nombre.Trim(),
             Categoria = cat,
             Marca = string.IsNullOrWhiteSpace(req.Marca) ? null : req.Marca.Trim(),
@@ -82,6 +85,8 @@ public class CafeProductosController : ControllerBase
             if (string.IsNullOrWhiteSpace(req.Nombre)) return BadRequest(new { error = "El nombre no puede ser vacio" });
             p.Nombre = req.Nombre.Trim();
         }
+        if (req.Sku is not null) p.Sku = string.IsNullOrWhiteSpace(req.Sku) ? null : req.Sku.Trim().ToUpperInvariant();
+        if (req.Barcode is not null) p.Barcode = string.IsNullOrWhiteSpace(req.Barcode) ? null : req.Barcode.Trim();
         if (req.Categoria is not null) p.Categoria = NormCat(req.Categoria);
         if (req.Marca is not null) p.Marca = string.IsNullOrWhiteSpace(req.Marca) ? null : req.Marca.Trim();
         if (req.Costo.HasValue)
