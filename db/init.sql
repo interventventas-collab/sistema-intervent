@@ -1933,3 +1933,40 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'CondicionPago' AND Object_ID = Object_ID('Cafe_Ventas'))
     ALTER TABLE Cafe_Ventas ADD CondicionPago NVARCHAR(20) NOT NULL CONSTRAINT DF_CafeVentas_CondicionPago DEFAULT 'EFECTIVO';
 GO
+
+-- Cafe_Combos: bundles de productos. El precio NO se guarda; se calcula en vivo
+-- al cotizar (suma de PVP*cantidad de cada item). Cuando se selecciona en una
+-- venta, se "expande" en N items de Cafe_VentaItems con la logica normal.
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_Combos' AND xtype='U')
+BEGIN
+    CREATE TABLE Cafe_Combos (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Nombre NVARCHAR(200) NOT NULL,
+        Descripcion NVARCHAR(500) NULL,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        UpdatedAt DATETIME2 NULL
+    );
+    CREATE INDEX IX_CafeCombos_Nombre ON Cafe_Combos (Nombre);
+    CREATE INDEX IX_CafeCombos_IsActive ON Cafe_Combos (IsActive);
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_ComboItems' AND xtype='U')
+BEGIN
+    CREATE TABLE Cafe_ComboItems (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        ComboId INT NOT NULL,
+        ProductoId INT NOT NULL,
+        Formato NVARCHAR(20) NOT NULL DEFAULT '1KG',  -- 1KG | MEDIO | CUARTO | UNIT
+        Cantidad INT NOT NULL DEFAULT 1,
+        Molienda NVARCHAR(30) NULL,                    -- solo CAFE
+        EsDoyPack BIT NOT NULL DEFAULT 0,              -- solo CAFE
+        SortOrder INT NOT NULL DEFAULT 0,
+        CONSTRAINT FK_CafeComboItems_Combo FOREIGN KEY (ComboId) REFERENCES Cafe_Combos(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_CafeComboItems_Producto FOREIGN KEY (ProductoId) REFERENCES Cafe_Productos(Id)
+    );
+    CREATE INDEX IX_CafeComboItems_Combo ON Cafe_ComboItems (ComboId);
+    CREATE INDEX IX_CafeComboItems_Producto ON Cafe_ComboItems (ProductoId);
+END
+GO

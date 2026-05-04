@@ -265,3 +265,60 @@ public class DeleteCafeVentaSettingsDto
     public string AllowedOperator { get; set; } = "OSMAR";
     public string Hint { get; set; } = string.Empty;
 }
+
+// ===== Combos =====
+public class CafeComboItemDto
+{
+    public int Id { get; set; }
+    public int ProductoId { get; set; }
+    public string ProductoNombre { get; set; } = "";
+    public string Categoria { get; set; } = "CAFE";
+    public string? Marca { get; set; }
+    public string? ProductoSku { get; set; }
+    public decimal? ProductoPvp1 { get; set; }
+    public decimal? ProductoPvp2 { get; set; }
+    public string Formato { get; set; } = "1KG";
+    public int Cantidad { get; set; } = 1;
+    public string? Molienda { get; set; }
+    public bool EsDoyPack { get; set; }
+    public int SortOrder { get; set; }
+}
+
+public class CafeComboDto
+{
+    public int Id { get; set; }
+    public string Nombre { get; set; } = "";
+    public string? Descripcion { get; set; }
+    public bool IsActive { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+    public int ItemsCount { get; set; }
+    public decimal PreviewPrecioBar { get; set; }
+    public decimal PreviewPrecioOtro { get; set; }
+    public List<CafeComboItemDto> Items { get; set; } = new();
+}
+
+public class CafeComboItemRequest
+{
+    public int ProductoId { get; set; }
+    public string Formato { get; set; } = "1KG";
+    public int Cantidad { get; set; } = 1;
+    public string? Molienda { get; set; }
+    public bool EsDoyPack { get; set; }
+    public int SortOrder { get; set; }
+}
+
+public class CreateCafeComboRequest
+{
+    public string Nombre { get; set; } = "";
+    public string? Descripcion { get; set; }
+    public List<CafeComboItemRequest> Items { get; set; } = new();
+}
+
+public class UpdateCafeComboRequest
+{
+    public string? Nombre { get; set; }
+    public string? Descripcion { get; set; }
+    public bool? IsActive { get; set; }
+    public List<CafeComboItemRequest>? Items { get; set; }
+}

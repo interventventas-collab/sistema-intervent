@@ -294,6 +294,89 @@
                         <strong>Productos a vender</strong>
                     </div>
 
+                    @* Selector Producto / Combo *@
+                    <div style="display: inline-flex; gap: 0; margin-bottom: 0.5rem; border: 1px solid #d1d5db; border-radius: 6px; overflow: hidden;">
+                        <button type="button"
+                                class="btn"
+                                style="border: none; border-radius: 0; padding: 0.35rem 0.8rem; font-size: 0.82rem; @(addMode == "PRODUCTO" ? "background:#1d4ed8;color:white;" : "background:white;color:#374151;")"
+                                @onclick="@(() => addMode = "PRODUCTO")">
+                            📦 Producto
+                        </button>
+                        <button type="button"
+                                class="btn"
+                                style="border: none; border-radius: 0; padding: 0.35rem 0.8rem; font-size: 0.82rem; @(addMode == "COMBO" ? "background:#1d4ed8;color:white;" : "background:white;color:#374151;")"
+                                @onclick="@(() => addMode = "COMBO")">
+                            🎁 Combo
+                        </button>
+                    </div>
+
+                    @if (addMode == "COMBO")
+                    {
+                        <div class="form-row" style="align-items: end;">
+                            <div class="form-group" style="flex: 3; position: relative;">
+                                <label class="form-label" style="font-size: 0.75rem;">Combo</label>
+                                @if (addComboId > 0)
+                                {
+                                    var cSel = combos?.FirstOrDefault(x => x.Id == addComboId);
+                                    <div style="display: flex; gap: 0.3rem; align-items: center;">
+                                        <div class="form-input" style="flex: 1; background: #ecfdf5; border-color: #10b981; display: flex; align-items: center; gap: 0.5rem;">
+                                            <span style="font-size: 1.1rem;">🎁</span>
+                                            <strong>@(cSel?.Nombre ?? "?")</strong>
+                                            @if (cSel is not null)
+                                            {
+                                                <span style="font-size: 0.72rem; color: #6b7280;">· @cSel.ItemsCount item@(cSel.ItemsCount == 1 ? "" : "s")</span>
+                                                <span style="font-size: 0.72rem; color: #6b7280;">· @(formClienteTipo == "BAR" ? "BAR" : "OTRO"): $@FormatMoney(formClienteTipo == "BAR" ? cSel.PreviewPrecioBar : cSel.PreviewPrecioOtro)</span>
+                                            }
+                                        </div>
+                                        <button class="btn btn-secondary" type="button" @onclick="ClearCombo" title="Quitar combo">×</button>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <input class="form-input" @bind="comboSearch" @bind:event="oninput"
+                                           @onfocus="() => comboSearchOpen = true"
+                                           placeholder="🔍 Buscar combo por nombre..." />
+                                    @if (comboSearchOpen && combos is not null)
+                                    {
+                                        var cmatches = string.IsNullOrWhiteSpace(comboSearch)
+                                            ? combos.Where(c => c.IsActive).Take(20).ToList()
+                                            : combos.Where(c => c.IsActive && (c.Nombre.ToLowerInvariant().Contains(comboSearch.Trim().ToLowerInvariant()) || (c.Descripcion?.ToLowerInvariant().Contains(comboSearch.Trim().ToLowerInvariant()) ?? false))).Take(20).ToList();
+                                        <div style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #d1d5db; border-radius: 6px; max-height: 280px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 14px rgba(0,0,0,0.12); margin-top: 0.2rem;">
+                                            @if (cmatches.Count == 0)
+                                            {
+                                                <div style="padding: 0.6rem; color: #6b7280; font-size: 0.85rem;">Sin combos. Creálos desde "Combos" en el menú.</div>
+                                            }
+                                            else
+                                            {
+                                                @foreach (var c in cmatches)
+                                                {
+                                                    var cId = c.Id;
+                                                    <div class="cli-pick-row" @onclick="() => SelectCombo(cId)"
+                                                         style="padding: 0.4rem 0.6rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem;">
+                                                        <span style="margin-right: 0.4rem;">🎁</span>
+                                                        <strong>@c.Nombre</strong>
+                                                        <span style="color: #6b7280; font-size: 0.78rem;"> · @c.ItemsCount item@(c.ItemsCount == 1 ? "" : "s")</span>
+                                                        <span style="color: #1d4ed8; font-size: 0.78rem;"> · BAR $@FormatMoney(c.PreviewPrecioBar)</span>
+                                                        <span style="color: #15803d; font-size: 0.78rem;"> · OTRO $@FormatMoney(c.PreviewPrecioOtro)</span>
+                                                    </div>
+                                                }
+                                            }
+                                        </div>
+                                    }
+                                }
+                            </div>
+                            <div class="form-group" style="flex: 0 0 80px;">
+                                <label class="form-label" style="font-size: 0.75rem;">Cant.</label>
+                                <input class="form-input" type="number" min="1" @bind="addComboCantidad" style="text-align: right;" />
+                                <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">cant. de combos</p>
+                            </div>
+                            <div class="form-group" style="flex: 0 0 130px;">
+                                <button class="btn btn-primary" type="button" @onclick="AddCombo" style="width: 100%;" disabled="@(addComboId <= 0)">+ Agregar combo</button>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
                     <div class="form-row" style="align-items: end;">
                         <div class="form-group" style="flex: 2; position: relative;">
                             <label class="form-label" style="font-size: 0.75rem;">Producto</label>
@@ -383,6 +466,7 @@
                             <button class="btn btn-primary" type="button" @onclick="AddItem" style="width: 100%;">+ Agregar</button>
                         </div>
                     </div>
+                    }
 
                     @if (formItems.Count == 0)
                     {
@@ -1059,6 +1143,14 @@
     private string productoSearch = "";
     private bool productoSearchOpen;
 
+    // Combo picker
+    private string addMode = "PRODUCTO";  // "PRODUCTO" | "COMBO"
+    private List<CafeComboDto>? combos;
+    private int addComboId;
+    private int addComboCantidad = 1;
+    private string comboSearch = "";
+    private bool comboSearchOpen;
+
     private string AddProductoCategoria => productos?.FirstOrDefault(x => x.Id == addProductoId)?.Categoria ?? "CAFE";
 
     // Print
@@ -1171,6 +1263,7 @@
         {
             clientes = (await Api.GetCafeClientesAsync())?.Where(c => c.IsActive).ToList() ?? new();
             productos = (await Api.GetCafeProductosAsync())?.Where(p => p.IsActive).ToList() ?? new();
+            combos = (await Api.GetCafeCombosAsync(activos: true)) ?? new();
             settings = await Api.GetCafeSettingsAsync();
         }
         catch { }
@@ -1193,6 +1286,9 @@
         formItems = new(); cotizacion = null;
         addProductoId = 0; addFormato = "1KG"; addCantidad = 1;
         productoSearch = ""; productoSearchOpen = false;
+        addMode = "PRODUCTO";
+        addComboId = 0; addComboCantidad = 1;
+        comboSearch = ""; comboSearchOpen = false;
         formWeekDays = new(); formIsPaid = false;
         formError = null; showForm = true;
     }
@@ -1291,6 +1387,59 @@
 
         addProductoId = 0; addFormato = "1KG"; addCantidad = 1;
         productoSearch = ""; productoSearchOpen = false;
+        await Cotizar();
+    }
+
+    // ── Combo: seleccionar y expandir ──
+    private void SelectCombo(int id)
+    {
+        addComboId = id;
+        comboSearch = "";
+        comboSearchOpen = false;
+    }
+
+    private void ClearCombo()
+    {
+        addComboId = 0;
+        addComboCantidad = 1;
+    }
+
+    /// <summary>Expande el combo en N items (uno por linea del combo, multiplicados por addComboCantidad).
+    /// Si el mismo prod+formato+molienda ya existe, suma cantidades.</summary>
+    private async Task AddCombo()
+    {
+        if (addComboId <= 0 || addComboCantidad <= 0) return;
+        var combo = combos?.FirstOrDefault(c => c.Id == addComboId);
+        if (combo is null || combo.Items.Count == 0) return;
+
+        foreach (var ci in combo.Items)
+        {
+            var qty = ci.Cantidad * addComboCantidad;
+            var existing = formItems.FirstOrDefault(i =>
+                i.ProductoId == ci.ProductoId &&
+                i.Formato == ci.Formato &&
+                (i.Molienda ?? "") == (ci.Molienda ?? "") &&
+                i.EsDoyPack == ci.EsDoyPack);
+            if (existing is not null)
+            {
+                existing.Cantidad += qty;
+            }
+            else
+            {
+                formItems.Add(new CafeCotizarItemRequest
+                {
+                    ProductoId = ci.ProductoId,
+                    Formato = ci.Formato,
+                    Cantidad = qty,
+                    Molienda = ci.Molienda,
+                    EsDoyPack = ci.EsDoyPack
+                });
+            }
+        }
+
+        ToastService.Success($"Combo '{combo.Nombre}' agregado ({combo.Items.Count} producto{(combo.Items.Count == 1 ? "" : "s")})");
+        addComboId = 0; addComboCantidad = 1;
+        comboSearch = ""; comboSearchOpen = false;
         await Cotizar();
     }
 

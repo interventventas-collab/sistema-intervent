@@ -1,0 +1,543 @@
+@page "/cafe/combos"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<style>
+    .cli-pick-row:hover { background: #f0f9ff; }
+</style>
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <h3>📦 Combos <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;">(@(combos?.Count ?? 0))</span></h3>
+        <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
+            <input class="form-input" style="min-width: 240px; font-size: 0.85rem;"
+                   @bind="filtroTexto" @bind:event="oninput"
+                   placeholder="🔍 Buscar combo por nombre..." />
+            <button class="btn btn-primary" @onclick="ShowCreate">+ Nuevo Combo</button>
+        </div>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        @if (loading)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">Cargando...</p>
+        }
+        else if (combos is null || combos.Count == 0)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">
+                No hay combos cargados. Tocá <strong>"+ Nuevo Combo"</strong> para crear el primero.
+            </p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Combo</th>
+                            <th style="width: 80px; text-align: center;">Items</th>
+                            <th style="text-align: right;">PVP BAR</th>
+                            <th style="text-align: right;">PVP OTRO</th>
+                            <th>Estado</th>
+                            <th style="width: 130px;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var c in CombosVisibles)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@c.Nombre</strong>
+                                    @if (!string.IsNullOrEmpty(c.Descripcion))
+                                    {
+                                        <div style="font-size: 0.78rem; color: #6b7280;">@c.Descripcion</div>
+                                    }
+                                    @if (c.Items.Count > 0)
+                                    {
+                                        <div style="font-size: 0.72rem; color: #9ca3af; margin-top: 0.2rem;">
+                                            @string.Join(" · ", c.Items.Take(4).Select(i => $"{i.Cantidad}× {i.ProductoNombre} {FormatoLabel(i.Formato)}"))
+                                            @(c.Items.Count > 4 ? $" · +{c.Items.Count - 4} más" : "")
+                                        </div>
+                                    }
+                                </td>
+                                <td style="text-align: center; font-weight: 700;">@c.ItemsCount</td>
+                                <td style="text-align: right; font-weight: 700; color: #1d4ed8;">$@FormatMoney(c.PreviewPrecioBar)</td>
+                                <td style="text-align: right; font-weight: 700; color: #15803d;">$@FormatMoney(c.PreviewPrecioOtro)</td>
+                                <td>
+                                    <span class="status-badge @(c.IsActive ? "status-active" : "status-inactive")">
+                                        @(c.IsActive ? "Activo" : "Inactivo")
+                                    </span>
+                                </td>
+                                <td class="actions-cell">
+                                    <button class="btn-icon btn-edit" @onclick="() => ShowEdit(c)" title="Editar">✎</button>
+                                    <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(c)" title="Eliminar">🗑</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@if (showForm)
+{
+    <div class="modal-overlay" @onclick="CloseForm">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 900px; max-height: 92vh; display: flex; flex-direction: column;">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3 style="margin: 0;">📦 @(editing is null ? "Nuevo combo" : $"Editar combo — {editing.Nombre}")</h3>
+                <button class="btn-close" @onclick="CloseForm">&times;</button>
+            </div>
+            <div class="modal-body" style="overflow-y: auto;">
+                @if (!string.IsNullOrEmpty(formError))
+                {
+                    <div class="form-error">@formError</div>
+                }
+
+                <div class="form-row">
+                    <div class="form-group" style="flex: 2;">
+                        <label class="form-label">Nombre del combo *</label>
+                        <input class="form-input" @bind="formNombre" placeholder="Ej: Pack 3 cafés" />
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Estado</label>
+                        <select class="form-input" @bind="formIsActive">
+                            <option value="true">Activo</option>
+                            <option value="false">Inactivo</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Descripción (opcional)</label>
+                    <textarea class="form-input" rows="2" @bind="formDescripcion" placeholder="Texto opcional que se muestra debajo del nombre..."></textarea>
+                </div>
+
+                @* ── Productos del combo ── *@
+                <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem; margin-bottom: 0.75rem;">
+                    <div style="font-weight: 700; margin-bottom: 0.4rem;">Productos del combo</div>
+
+                    <div class="form-row" style="align-items: end;">
+                        <div class="form-group" style="flex: 2; position: relative;">
+                            <label class="form-label" style="font-size: 0.75rem;">Producto</label>
+                            @if (addProductoId > 0)
+                            {
+                                var pSel = productos?.FirstOrDefault(x => x.Id == addProductoId);
+                                <div style="display: flex; gap: 0.3rem; align-items: center;">
+                                    <div class="form-input" style="flex: 1; background: #ecfdf5; border-color: #10b981; display: flex; align-items: center; gap: 0.5rem;">
+                                        <span style="font-family: monospace; font-weight: 700; color: #1d4ed8;">@(pSel?.Sku ?? "—")</span>
+                                        <strong>@(pSel?.Nombre ?? "?")</strong>
+                                        @if (pSel is not null)
+                                        {
+                                            <span style="font-size: 0.72rem; color: #6b7280;">· @pSel.Categoria</span>
+                                        }
+                                    </div>
+                                    <button class="btn btn-secondary" type="button" @onclick="ClearProducto" title="Quitar">×</button>
+                                </div>
+                            }
+                            else
+                            {
+                                <input class="form-input" @bind="productoSearch" @bind:event="oninput"
+                                       @onfocus="() => productoSearchOpen = true"
+                                       placeholder="🔍 SKU, código de barras, nombre, marca..." />
+                                @if (productoSearchOpen && !string.IsNullOrWhiteSpace(productoSearch))
+                                {
+                                    var pmatches = ProductosMatching(productoSearch).Take(20).ToList();
+                                    <div style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #d1d5db; border-radius: 6px; max-height: 280px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 14px rgba(0,0,0,0.12); margin-top: 0.2rem;">
+                                        @if (pmatches.Count == 0)
+                                        {
+                                            <div style="padding: 0.6rem; color: #6b7280; font-size: 0.85rem;">Sin resultados.</div>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var p in pmatches)
+                                            {
+                                                var pId = p.Id;
+                                                <div class="cli-pick-row" @onclick="() => SelectProducto(pId)"
+                                                     style="padding: 0.4rem 0.6rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem;">
+                                                    <span style="font-family: monospace; color: #1d4ed8; font-weight: 700; margin-right: 0.5rem;">@(p.Sku ?? "—")</span>
+                                                    <strong>@p.Nombre</strong>
+                                                    @if (p.Categoria == "CAFE")
+                                                    {
+                                                        <span style="display:inline-block; padding:0.05rem 0.35rem; background:#fef3c7; color:#92400e; border-radius:999px; font-size:0.65rem; font-weight:700; margin-left: 0.4rem;">☕</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span style="display:inline-block; padding:0.05rem 0.35rem; background:#e0e7ff; color:#3730a3; border-radius:999px; font-size:0.65rem; font-weight:700; margin-left: 0.4rem;">📦</span>
+                                                    }
+                                                    @if (!string.IsNullOrEmpty(p.Marca))
+                                                    {
+                                                        <span style="color: #6b7280; font-size: 0.78rem;"> · @p.Marca</span>
+                                                    }
+                                                </div>
+                                            }
+                                        }
+                                    </div>
+                                }
+                            }
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label" style="font-size: 0.75rem;">Formato</label>
+                            <select class="form-input" @bind="addFormato">
+                                @if (AddProductoCategoria == "CAFE")
+                                {
+                                    <option value="1KG">1 kg</option>
+                                    <option value="MEDIO">1/2 kg</option>
+                                    <option value="CUARTO">1/4 kg</option>
+                                }
+                                else
+                                {
+                                    <option value="UNIT">unidad</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex: 0 0 80px;">
+                            <label class="form-label" style="font-size: 0.75rem;">Cant.</label>
+                            <input class="form-input" type="number" min="1" @bind="addCantidad" style="text-align: right;" />
+                        </div>
+                        <div class="form-group" style="flex: 0 0 110px;">
+                            <button class="btn btn-primary" type="button" @onclick="AddItem" style="width: 100%;">+ Agregar</button>
+                        </div>
+                    </div>
+
+                    @if (formItems.Count == 0)
+                    {
+                        <div style="padding: 0.8rem; text-align: center; color: #9ca3af; font-size: 0.9rem;">
+                            Sin items. Elegí un producto, formato y tocá <strong>+ Agregar</strong>.
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="table-responsive" style="margin-top: 0.5rem;">
+                            <table class="data-table" style="font-size: 0.85rem;">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 70px; text-align: right;">Cant.</th>
+                                        <th>Producto</th>
+                                        <th style="width: 90px;">Formato</th>
+                                        <th style="text-align: right;">PVP BAR</th>
+                                        <th style="text-align: right;">PVP OTRO</th>
+                                        <th style="width: 50px;"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @for (int idx = 0; idx < formItems.Count; idx++)
+                                    {
+                                        var i = idx;
+                                        var it = formItems[i];
+                                        var p = productos?.FirstOrDefault(x => x.Id == it.ProductoId);
+                                        var esCafe = p?.Categoria == "CAFE";
+                                        <tr>
+                                            <td style="text-align: right; font-weight: 700;">@it.Cantidad</td>
+                                            <td>
+                                                <strong>@(p?.Nombre ?? "?")</strong>
+                                                @if (esCafe == true)
+                                                {
+                                                    <div style="display: flex; gap: 0.3rem; align-items: center; margin-top: 0.25rem; flex-wrap: wrap;">
+                                                        <select class="form-input"
+                                                                style="font-size: 0.72rem; padding: 0.15rem 0.3rem; background: #fef3c7; border-color: #d97706; font-weight: 600; max-width: 175px;"
+                                                                value="@(it.Molienda ?? "")"
+                                                                @onchange="@(e => OnItemMoliendaChanged(i, e.Value?.ToString()))">
+                                                            <option value="">☕ (sin especificar)</option>
+                                                            <option value="EN GRANOS">🫘 EN GRANOS</option>
+                                                            <option value="MOLIDO FILTRO">☕ MOLIDO FILTRO</option>
+                                                            <option value="MOLIDO ESPRESS">⚡ MOLIDO ESPRESS</option>
+                                                        </select>
+                                                        <label style="display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.15rem 0.4rem; background: @(it.EsDoyPack ? "#dbeafe" : "#f3f4f6"); border: 1px solid @(it.EsDoyPack ? "#1e40af" : "#d1d5db"); border-radius: 4px; cursor: pointer; font-size: 0.72rem; font-weight: 600; color: @(it.EsDoyPack ? "#1e3a8a" : "#6b7280");">
+                                                            <input type="checkbox" checked="@it.EsDoyPack" @onchange="@(() => ToggleItemDoyPack(i))" style="margin: 0;" />
+                                                            📦 Doy pack
+                                                        </label>
+                                                    </div>
+                                                }
+                                            </td>
+                                            <td>@FormatoLabel(it.Formato)</td>
+                                            <td style="text-align: right; color: #1d4ed8;">$@FormatMoney(PreciarUnitario(p, it.Formato, "BAR") * it.Cantidad)</td>
+                                            <td style="text-align: right; color: #15803d;">$@FormatMoney(PreciarUnitario(p, it.Formato, "OTRO") * it.Cantidad)</td>
+                                            <td><button class="btn-icon btn-delete" type="button" @onclick="() => RemoveItem(i)" title="Quitar">×</button></td>
+                                        </tr>
+                                    }
+                                </tbody>
+                                <tfoot>
+                                    <tr style="background: #f9fafb; font-weight: 800;">
+                                        <td colspan="3" style="text-align: right;">TOTAL combo:</td>
+                                        <td style="text-align: right; color: #1d4ed8;">$@FormatMoney(TotalPreviewBar)</td>
+                                        <td style="text-align: right; color: #15803d;">$@FormatMoney(TotalPreviewOtro)</td>
+                                        <td></td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseForm" disabled="@saving">Cancelar</button>
+                <button class="btn btn-primary" @onclick="DoSave" disabled="@saving">
+                    @(saving ? "Guardando..." : "💾 Guardar combo")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (toDelete is not null)
+{
+    <div class="modal-overlay" @onclick="() => toDelete = null">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: #dc3545; color: white;">
+                <h4 style="margin: 0;">Eliminar combo</h4>
+                <button class="btn-close" @onclick="() => toDelete = null" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Vas a eliminar el combo <strong>@toDelete.Nombre</strong>. Las ventas pasadas que lo usaron NO se tocan (los items quedaron copiados como snapshot).</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => toDelete = null">No</button>
+                <button class="btn btn-danger" @onclick="DoDelete">Sí, eliminar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<CafeComboDto>? combos;
+    private List<CafeProductoDto>? productos;
+    private CafeSettingDto? settings;
+    private bool loading = true;
+    private string filtroTexto = "";
+
+    private List<CafeComboDto> CombosVisibles
+    {
+        get
+        {
+            if (combos is null) return new();
+            if (string.IsNullOrWhiteSpace(filtroTexto)) return combos;
+            var t = filtroTexto.Trim().ToLowerInvariant();
+            return combos.Where(c =>
+                c.Nombre.ToLowerInvariant().Contains(t) ||
+                (c.Descripcion?.ToLowerInvariant().Contains(t) ?? false)).ToList();
+        }
+    }
+
+    // Form
+    private bool showForm, saving;
+    private string? formError;
+    private CafeComboDto? editing;
+    private string formNombre = "";
+    private string formDescripcion = "";
+    private bool formIsActive = true;
+    private List<CafeComboItemRequest> formItems = new();
+
+    // Add item state
+    private int addProductoId;
+    private string addFormato = "1KG";
+    private int addCantidad = 1;
+    private string productoSearch = "";
+    private bool productoSearchOpen;
+
+    private string AddProductoCategoria => productos?.FirstOrDefault(x => x.Id == addProductoId)?.Categoria ?? "CAFE";
+
+    // Delete
+    private CafeComboDto? toDelete;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            productos = (await Api.GetCafeProductosAsync())?.Where(p => p.IsActive).ToList() ?? new();
+            settings = await Api.GetCafeSettingsAsync();
+        }
+        catch { }
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        loading = true;
+        try { combos = await Api.GetCafeCombosAsync() ?? new(); }
+        catch { combos = new(); ToastService.Error("Error al cargar combos"); }
+        loading = false;
+    }
+
+    private void ShowCreate()
+    {
+        editing = null;
+        formNombre = ""; formDescripcion = ""; formIsActive = true;
+        formItems = new();
+        addProductoId = 0; addFormato = "1KG"; addCantidad = 1;
+        productoSearch = ""; productoSearchOpen = false;
+        formError = null;
+        showForm = true;
+    }
+
+    private void ShowEdit(CafeComboDto c)
+    {
+        editing = c;
+        formNombre = c.Nombre;
+        formDescripcion = c.Descripcion ?? "";
+        formIsActive = c.IsActive;
+        formItems = c.Items.OrderBy(i => i.SortOrder).Select(i => new CafeComboItemRequest
+        {
+            ProductoId = i.ProductoId,
+            Formato = i.Formato,
+            Cantidad = i.Cantidad,
+            Molienda = i.Molienda,
+            EsDoyPack = i.EsDoyPack,
+            SortOrder = i.SortOrder
+        }).ToList();
+        addProductoId = 0; addFormato = "1KG"; addCantidad = 1;
+        productoSearch = ""; productoSearchOpen = false;
+        formError = null;
+        showForm = true;
+    }
+
+    private void CloseForm() { if (!saving) showForm = false; }
+
+    private void SelectProducto(int id)
+    {
+        addProductoId = id;
+        var p = productos?.FirstOrDefault(x => x.Id == id);
+        addFormato = p?.Categoria == "CAFE" ? "1KG" : "UNIT";
+        productoSearch = "";
+        productoSearchOpen = false;
+    }
+    private void ClearProducto() { addProductoId = 0; addFormato = "1KG"; }
+
+    private void AddItem()
+    {
+        if (addProductoId <= 0) { formError = "Elegí un producto"; return; }
+        if (addCantidad <= 0) { formError = "Cantidad inválida"; return; }
+        formItems.Add(new CafeComboItemRequest
+        {
+            ProductoId = addProductoId,
+            Formato = addFormato,
+            Cantidad = addCantidad,
+            SortOrder = formItems.Count
+        });
+        addProductoId = 0; addFormato = "1KG"; addCantidad = 1;
+        productoSearch = ""; productoSearchOpen = false;
+        formError = null;
+    }
+
+    private void RemoveItem(int i) { if (i >= 0 && i < formItems.Count) formItems.RemoveAt(i); }
+
+    private void OnItemMoliendaChanged(int i, string? value)
+    {
+        if (i < 0 || i >= formItems.Count) return;
+        formItems[i].Molienda = string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+    private void ToggleItemDoyPack(int i)
+    {
+        if (i < 0 || i >= formItems.Count) return;
+        formItems[i].EsDoyPack = !formItems[i].EsDoyPack;
+    }
+
+    private async Task DoSave()
+    {
+        if (string.IsNullOrWhiteSpace(formNombre)) { formError = "El nombre es obligatorio"; return; }
+        if (formItems.Count == 0) { formError = "Agregá al menos 1 producto"; return; }
+        formError = null; saving = true;
+        try
+        {
+            if (editing is null)
+            {
+                await Api.CreateCafeComboAsync(new CreateCafeComboRequest
+                {
+                    Nombre = formNombre,
+                    Descripcion = formDescripcion,
+                    Items = formItems
+                });
+                ToastService.Success("Combo creado");
+            }
+            else
+            {
+                await Api.UpdateCafeComboAsync(editing.Id, new UpdateCafeComboRequest
+                {
+                    Nombre = formNombre,
+                    Descripcion = formDescripcion,
+                    IsActive = formIsActive,
+                    Items = formItems
+                });
+                ToastService.Success("Combo actualizado");
+            }
+            showForm = false;
+            await Load();
+        }
+        catch (Exception ex) { formError = ex.Message; }
+        finally { saving = false; }
+    }
+
+    private void ConfirmDelete(CafeComboDto c) { toDelete = c; }
+
+    private async Task DoDelete()
+    {
+        if (toDelete is null) return;
+        try
+        {
+            await Api.DeleteCafeComboAsync(toDelete.Id);
+            ToastService.Success("Combo eliminado");
+            toDelete = null;
+            await Load();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); toDelete = null; }
+    }
+
+    private IEnumerable<CafeProductoDto> ProductosMatching(string s)
+    {
+        if (productos is null) return Enumerable.Empty<CafeProductoDto>();
+        var t = s.Trim().ToLowerInvariant();
+        return productos.Where(p =>
+            (p.Sku?.ToLowerInvariant().Contains(t) ?? false) ||
+            (p.Barcode?.ToLowerInvariant().Contains(t) ?? false) ||
+            p.Nombre.ToLowerInvariant().Contains(t) ||
+            (p.Marca?.ToLowerInvariant().Contains(t) ?? false));
+    }
+
+    /// <summary>Calcula precio unitario con la misma lógica del backend (sin acceso al servicio).
+    /// Aproximación cliente para preview en el form — el server siempre re-calcula al guardar/cotizar.</summary>
+    private decimal PreciarUnitario(CafeProductoDto? p, string formato, string tipo)
+    {
+        if (p is null) return 0m;
+        decimal? pvp = tipo == "BAR" ? p.Pvp1 : p.Pvp2;
+        if (!pvp.HasValue) return 0m;
+
+        if (p.Categoria == "CAFE")
+        {
+            var costoFracc = settings?.CostoFraccionamiento ?? 0m;
+            var redondeo = settings?.RedondeoMultiplo ?? 1m;
+            var precio1Kg = pvp.Value;
+            decimal precio = formato switch
+            {
+                "1KG" => precio1Kg,
+                "MEDIO" => precio1Kg / 2m + costoFracc,
+                "CUARTO" => precio1Kg / 4m + costoFracc,
+                _ => precio1Kg
+            };
+            return RedondearArriba(precio, redondeo);
+        }
+        return pvp.Value;
+    }
+
+    private static decimal RedondearArriba(decimal valor, decimal multiplo)
+    {
+        if (multiplo <= 0m) return valor;
+        return Math.Ceiling(valor / multiplo) * multiplo;
+    }
+
+    private decimal TotalPreviewBar => formItems.Sum(i =>
+        PreciarUnitario(productos?.FirstOrDefault(x => x.Id == i.ProductoId), i.Formato, "BAR") * i.Cantidad);
+    private decimal TotalPreviewOtro => formItems.Sum(i =>
+        PreciarUnitario(productos?.FirstOrDefault(x => x.Id == i.ProductoId), i.Formato, "OTRO") * i.Cantidad);
+
+    private static string FormatMoney(decimal v)
+        => v.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+
+    private static string FormatoLabel(string f) => f switch
+    {
+        "1KG" => "1 kg",
+        "MEDIO" => "1/2 kg",
+        "CUARTO" => "1/4 kg",
+        "UNIT" => "u.",
+        _ => f
+    };
+}

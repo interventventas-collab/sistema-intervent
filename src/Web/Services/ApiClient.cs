@@ -494,6 +494,25 @@ public class ApiClient
 
     private class BulkDeleteResponse { public int Deleted { get; set; } }
 
+    // --- Cafe: Combos ---
+    public async Task<List<CafeComboDto>?> GetCafeCombosAsync(bool? activos = null)
+    {
+        var url = "/api/cafe/combos" + (activos == true ? "?activos=true" : "");
+        return await GetAsync<List<CafeComboDto>>(url);
+    }
+
+    public async Task<CafeComboDto?> GetCafeComboAsync(int id)
+        => await GetAsync<CafeComboDto>($"/api/cafe/combos/{id}");
+
+    public async Task<CafeComboDto?> CreateCafeComboAsync(CreateCafeComboRequest req)
+        => await PostAsync<CafeComboDto>("/api/cafe/combos", req);
+
+    public async Task<CafeComboDto?> UpdateCafeComboAsync(int id, UpdateCafeComboRequest req)
+        => await PutAsync<CafeComboDto>($"/api/cafe/combos/{id}", req);
+
+    public async Task<bool> DeleteCafeComboAsync(int id)
+        => await DeleteAsync($"/api/cafe/combos/{id}");
+
     // --- Brands ---
     public async Task<List<BrandDto>?> GetBrandsAsync()
         => await GetAsync<List<BrandDto>>("/api/brands");

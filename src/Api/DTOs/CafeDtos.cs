@@ -197,3 +197,44 @@ public class BulkDeleteCafeVentasRequest
 }
 
 public record DeleteCafeVentaSettingsDto(string AllowedOperator, string Hint);
+
+// ===== Combos =====
+public record CafeComboItemDto(
+    int Id, int ProductoId, string ProductoNombre, string Categoria, string? Marca,
+    string? ProductoSku, decimal? ProductoPvp1, decimal? ProductoPvp2,
+    string Formato, int Cantidad,
+    string? Molienda, bool EsDoyPack,
+    int SortOrder);
+
+public record CafeComboDto(
+    int Id, string Nombre, string? Descripcion,
+    bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt,
+    int ItemsCount,
+    decimal PreviewPrecioBar,    // suma de PVP1*cantidad (con costo de fraccionamiento si aplica)
+    decimal PreviewPrecioOtro,   // suma de PVP2*cantidad
+    List<CafeComboItemDto> Items);
+
+public class CafeComboItemRequest
+{
+    public int ProductoId { get; set; }
+    public string Formato { get; set; } = "1KG";
+    public int Cantidad { get; set; } = 1;
+    public string? Molienda { get; set; }
+    public bool EsDoyPack { get; set; }
+    public int SortOrder { get; set; }
+}
+
+public class CreateCafeComboRequest
+{
+    public string Nombre { get; set; } = string.Empty;
+    public string? Descripcion { get; set; }
+    public List<CafeComboItemRequest> Items { get; set; } = new();
+}
+
+public class UpdateCafeComboRequest
+{
+    public string? Nombre { get; set; }
+    public string? Descripcion { get; set; }
+    public bool? IsActive { get; set; }
+    public List<CafeComboItemRequest>? Items { get; set; }
+}
