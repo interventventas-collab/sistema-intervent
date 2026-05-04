@@ -38,7 +38,7 @@
            Negocio de venta de cafe e insumos, totalmente aislado del resto del ERP. *@
         @if (HasPerm("cafe"))
         {
-            <NavGroup Label="Café" Icon="@SvgIcons.Brand"
+            <NavGroup Label="Ventas por fuera" Icon="@SvgIcons.Brand"
                       HasActiveChild="@(IsActive("/cafe") || IsActive("/cafe/ventas") || IsActive("/cafe/productos") || IsActive("/cafe/clientes") || IsActive("/cafe/configuracion"))">
                 <NavItem Href="/cafe" Label="Inicio" Icon="@SvgIcons.Dashboard"
                          IsActive="@IsActive("/cafe")" OnClick="@(() => NavigateTo("/cafe"))" />
