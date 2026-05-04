@@ -208,18 +208,70 @@
                     </div>
 
                     <div class="form-row" style="align-items: end;">
-                        <div class="form-group" style="flex: 2;">
+                        <div class="form-group" style="flex: 2; position: relative;">
                             <label class="form-label" style="font-size: 0.75rem;">Producto</label>
-                            <select class="form-input" @bind="addProductoId" @bind:after="OnAddProductoChanged">
-                                <option value="0">— Elegí un producto —</option>
-                                @foreach (var p in productos ?? new())
+                            @if (addProductoId > 0)
+                            {
+                                var pSel = productos?.FirstOrDefault(x => x.Id == addProductoId);
+                                <div style="display: flex; gap: 0.3rem; align-items: center;">
+                                    <div class="form-input" style="flex: 1; background: #ecfdf5; border-color: #10b981; display: flex; align-items: center; gap: 0.5rem;">
+                                        <span style="font-family: monospace; font-weight: 700; color: #1d4ed8;">@(pSel?.Sku ?? "—")</span>
+                                        <strong>@(pSel?.Nombre ?? "?")</strong>
+                                        @if (pSel is not null)
+                                        {
+                                            <span style="font-size: 0.72rem; color: #6b7280;">· @pSel.Categoria</span>
+                                            @if (!string.IsNullOrEmpty(pSel.Marca))
+                                            {
+                                                <span style="font-size: 0.72rem; color: #6b7280;">· @pSel.Marca</span>
+                                            }
+                                            <span style="font-size: 0.72rem; color: #6b7280;">· stock: @(pSel.Categoria == "CAFE" ? FormatGramos(pSel.StockGramos) : pSel.StockUnidades + " u.")</span>
+                                        }
+                                    </div>
+                                    <button class="btn btn-secondary" type="button" @onclick="ClearProducto" title="Quitar producto">×</button>
+                                </div>
+                            }
+                            else
+                            {
+                                <input class="form-input" @bind="productoSearch" @bind:event="oninput"
+                                       @onfocus="() => productoSearchOpen = true"
+                                       placeholder="🔍 Buscar por SKU, código de barras, nombre, marca..." />
+                                @if (productoSearchOpen && !string.IsNullOrWhiteSpace(productoSearch))
                                 {
-                                    var stockTxt = p.Categoria == "CAFE"
-                                        ? FormatGramos(p.StockGramos)
-                                        : $"{p.StockUnidades} u.";
-                                    <option value="@p.Id">@p.Nombre (@p.Categoria) — stock: @stockTxt</option>
+                                    var pmatches = ProductosMatching(productoSearch).Take(20).ToList();
+                                    <div style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #d1d5db; border-radius: 6px; max-height: 280px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 14px rgba(0,0,0,0.12); margin-top: 0.2rem;">
+                                        @if (pmatches.Count == 0)
+                                        {
+                                            <div style="padding: 0.6rem; color: #6b7280; font-size: 0.85rem;">Sin resultados.</div>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var p in pmatches)
+                                            {
+                                                var pId = p.Id;
+                                                var stockTxt = p.Categoria == "CAFE" ? FormatGramos(p.StockGramos) : $"{p.StockUnidades} u.";
+                                                <div class="cli-pick-row" @onclick="() => SelectProducto(pId)"
+                                                     style="padding: 0.4rem 0.6rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem;">
+                                                    <span style="font-family: monospace; color: #1d4ed8; font-weight: 700; margin-right: 0.5rem;">@(p.Sku ?? "—")</span>
+                                                    <strong>@p.Nombre</strong>
+                                                    @if (p.Categoria == "CAFE")
+                                                    {
+                                                        <span style="display:inline-block; padding:0.05rem 0.35rem; background:#fef3c7; color:#92400e; border-radius:999px; font-size:0.65rem; font-weight:700; margin-left: 0.4rem;">☕</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span style="display:inline-block; padding:0.05rem 0.35rem; background:#e0e7ff; color:#3730a3; border-radius:999px; font-size:0.65rem; font-weight:700; margin-left: 0.4rem;">📦</span>
+                                                    }
+                                                    @if (!string.IsNullOrEmpty(p.Marca))
+                                                    {
+                                                        <span style="color: #6b7280; font-size: 0.78rem;"> · @p.Marca</span>
+                                                    }
+                                                    <span style="color: #6b7280; font-size: 0.78rem;"> · stock: @stockTxt</span>
+                                                </div>
+                                            }
+                                        }
+                                    </div>
                                 }
-                            </select>
+                            }
                         </div>
                         <div class="form-group" style="flex: 1;">
                             <label class="form-label" style="font-size: 0.75rem;">Formato</label>
@@ -669,6 +721,8 @@
     private int addProductoId;
     private string addFormato = "1KG";
     private int addCantidad = 1;
+    private string productoSearch = "";
+    private bool productoSearchOpen;
 
     private string AddProductoCategoria => productos?.FirstOrDefault(x => x.Id == addProductoId)?.Categoria ?? "CAFE";
 
@@ -757,6 +811,7 @@
         formFecha = DateTime.Today; formDescuento = 0; formObservaciones = "";
         formItems = new(); cotizacion = null;
         addProductoId = 0; addFormato = "1KG"; addCantidad = 1;
+        productoSearch = ""; productoSearchOpen = false;
         formWeekDays = new(); formIsPaid = false;
         formError = null; showForm = true;
     }
@@ -815,6 +870,33 @@
         }
     }
 
+    /// <summary>Selecciona un producto desde el dropdown filtrable.</summary>
+    private void SelectProducto(int id)
+    {
+        addProductoId = id;
+        productoSearch = "";
+        productoSearchOpen = false;
+        OnAddProductoChanged();
+    }
+
+    /// <summary>Vuelve a "sin producto seleccionado" para elegir otro.</summary>
+    private void ClearProducto()
+    {
+        addProductoId = 0;
+        productoSearch = "";
+        productoSearchOpen = false;
+    }
+
+    /// <summary>Filtra productos activos por SKU / código de barras / nombre / marca.</summary>
+    private IEnumerable<CafeProductoDto> ProductosMatching(string q)
+    {
+        if (productos is null) return Enumerable.Empty<CafeProductoDto>();
+        var t = q.Trim();
+        if (string.IsNullOrEmpty(t)) return productos.Where(p => p.IsActive);
+        bool h(string? s) => !string.IsNullOrEmpty(s) && s.Contains(t, StringComparison.OrdinalIgnoreCase);
+        return productos.Where(p => p.IsActive && (h(p.Sku) || h(p.Barcode) || h(p.Nombre) || h(p.Marca)));
+    }
+
     private async Task AddItem()
     {
         if (addProductoId <= 0 || addCantidad <= 0) return;
@@ -827,6 +909,7 @@
         else formItems.Add(new CafeCotizarItemRequest { ProductoId = addProductoId, Formato = addFormato, Cantidad = addCantidad });
 
         addProductoId = 0; addFormato = "1KG"; addCantidad = 1;
+        productoSearch = ""; productoSearchOpen = false;
         await Cotizar();
     }
 
