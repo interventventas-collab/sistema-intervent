@@ -304,9 +304,9 @@
                     <h4 style="margin: 1rem 0 0.5rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase;">📦 Precios</h4>
                     <div class="form-row">
                         <div class="form-group" style="flex: 2;">
-                            <label class="form-label">PVP * — clientes OTRO ($)</label>
+                            <label class="form-label">PVP SUGERIDO POR PROVEEDOR ($) *</label>
                             <input class="form-input" type="number" step="0.01" min="0" @bind="formPvp2" />
-                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Precio de lista a mano. Obligatorio.</p>
+                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Precio de lista. Obligatorio. Lo paga el cliente OTRO.</p>
                         </div>
                         <div class="form-group" style="flex: 1;">
                             <label class="form-label">UxB</label>
@@ -316,26 +316,22 @@
                     </div>
                     <div class="form-row">
                         <div class="form-group" style="flex: 1;">
-                            <label class="form-label">BAR paga</label>
-                            <select class="form-input" @bind="formBarMode">
-                                <option value="PVP">Lo mismo que OTRO (PVP)</option>
-                                <option value="PCT">Costo + % (mayorista)</option>
-                            </select>
+                            <label class="form-label">PVP % SOBRE EL COSTO (BAR / mayorista)</label>
+                            <input class="form-input" type="number" step="0.01" @bind="formBarPct" placeholder="100" />
+                            @if (formCosto > 0 && formBarPct.HasValue)
+                            {
+                                var precioBar = formCosto * (1m + formBarPct.Value / 100m);
+                                <p style="font-size: 0.72rem; color: #1d4ed8; margin: 0.2rem 0 0; font-weight: 600;">
+                                    → BAR paga $@FormatMoney(precioBar)
+                                </p>
+                            }
+                            else if (formCosto > 0)
+                            {
+                                <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
+                                    Vacío = BAR paga lo mismo que OTRO ($@FormatMoney(formPvp2 ?? 0)).
+                                </p>
+                            }
                         </div>
-                        @if (formBarMode == "PCT")
-                        {
-                            <div class="form-group" style="flex: 1;">
-                                <label class="form-label">% sobre costo</label>
-                                <input class="form-input" type="number" step="0.01" @bind="formBarPct" />
-                                @if (formCosto > 0 && formBarPct.HasValue)
-                                {
-                                    var precioBar = formCosto * (1m + formBarPct.Value / 100m);
-                                    <p style="font-size: 0.72rem; color: #1d4ed8; margin: 0.2rem 0 0; font-weight: 600;">
-                                        → BAR paga $@FormatMoney(precioBar)
-                                    </p>
-                                }
-                            </div>
-                        }
                     </div>
                     <div class="form-group">
                         <label class="form-label">Stock (unidades)</label>
@@ -407,8 +403,7 @@
     private decimal formCosto;
     private decimal? formPvp1;
     private decimal? formPvp2;
-    private decimal? formBarPct;     // % sobre costo (solo OTROS)
-    private string formBarMode = "PVP";  // "PVP" | "PCT"
+    private decimal? formBarPct;     // % sobre costo (solo OTROS); null = BAR paga PVP
     private int? formUxB;             // unidades por bulto (solo OTROS)
     private int formOemId;            // 0 = sin OEM origen
     private string oemSearch = "";
@@ -518,7 +513,7 @@
         formNombre = ""; formSku = ""; formBarcode = "";
         formCategoria = "CAFE"; formMarca = "";
         formCosto = 0; formPvp1 = null; formPvp2 = null;
-        formBarPct = null; formBarMode = "PVP"; formUxB = null;
+        formBarPct = 100m; formUxB = null;
         formOemId = 0; oemSearch = ""; oemSearchOpen = false;
         formStockGramos = 0; formStockUnidades = 0;
         formNotas = ""; formIsActive = true;
@@ -532,7 +527,6 @@
         formCategoria = p.Categoria; formMarca = p.Marca ?? "";
         formCosto = p.Costo; formPvp1 = p.Pvp1; formPvp2 = p.Pvp2;
         formBarPct = p.BarPctSobreCosto;
-        formBarMode = p.BarPctSobreCosto.HasValue ? "PCT" : "PVP";
         formUxB = p.UxB;
         formOemId = p.OemId ?? 0; oemSearch = ""; oemSearchOpen = false;
         formStockGramos = p.StockGramos; formStockUnidades = p.StockUnidades;
@@ -550,12 +544,11 @@
         if (formCategoria == "OTROS")
         {
             if (!formPvp2.HasValue || formPvp2.Value < 0) { formError = "Para OTROS el PVP es obligatorio"; return; }
-            if (formBarMode == "PCT" && !formBarPct.HasValue) { formError = "Cargá el % BAR sobre costo o cambiá a 'BAR paga PVP'"; return; }
         }
         saving = true;
         try
         {
-            // Para OTROS, BarPctSobreCosto sale del modo seleccionado.
+            // Para OTROS: si formBarPct tiene valor, lo usamos; si esta vacio, BAR paga lo mismo que OTRO.
             decimal? barPctFinal = null;
             int? uxBFinal = null;
             int? oemIdFinal = null;
@@ -564,8 +557,8 @@
             bool clearOemId = false;
             if (formCategoria == "OTROS")
             {
-                barPctFinal = formBarMode == "PCT" ? formBarPct : null;
-                clearBarPct = formBarMode != "PCT";  // si esta en modo PVP, vaciar el campo
+                barPctFinal = formBarPct;
+                clearBarPct = !formBarPct.HasValue;
                 uxBFinal = formUxB;
                 clearUxB = !formUxB.HasValue;
                 oemIdFinal = formOemId > 0 ? formOemId : null;
