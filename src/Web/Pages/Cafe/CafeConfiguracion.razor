@@ -66,27 +66,40 @@
                 <input class="form-input" @bind="negocioDireccion" />
             </div>
 
-            <h4 style="margin: 1rem 0 0.6rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase;">📱 Mensaje pre-armado de WhatsApp</h4>
-            <p style="font-size: 0.78rem; color: #6b7280; margin: 0 0 0.4rem;">
-                Es el mensaje que aparece pre-cargado cuando el cliente toca <strong>"Contactanos por WhatsApp"</strong> desde el comprobante.
-                Lo escribís acá y el sistema reemplaza los placeholders con los datos de la venta.
+            <h4 style="margin: 1rem 0 0.6rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase;">📱 Mensajes pre-armados de WhatsApp</h4>
+            <p style="font-size: 0.78rem; color: #6b7280; margin: 0 0 0.5rem;">
+                Hay <strong>dos mensajes</strong> distintos en el comprobante. Cada uno se completa solo con los datos de la venta usando los placeholders:
+                <code style="background: #f3f4f6; padding: 0 0.2rem; border-radius: 3px;">{numero}</code> ·
+                <code style="background: #f3f4f6; padding: 0 0.2rem; border-radius: 3px;">{total}</code> ·
+                <code style="background: #f3f4f6; padding: 0 0.2rem; border-radius: 3px;">{cliente}</code> ·
+                <code style="background: #f3f4f6; padding: 0 0.2rem; border-radius: 3px;">{fecha}</code>
             </p>
-            <div class="form-group">
-                <label class="form-label">Texto del mensaje</label>
-                <textarea class="form-input" rows="3" @bind="waTemplate" placeholder="Hola! Te escribo por el comprobante {numero}..."></textarea>
-                <p style="font-size: 0.72rem; color: #6b7280; margin: 0.3rem 0 0;">
-                    <strong>Placeholders disponibles</strong> (escribilos tal cual entre llaves):
-                    <code style="background: #f3f4f6; padding: 0 0.2rem; border-radius: 3px;">{numero}</code> ·
-                    <code style="background: #f3f4f6; padding: 0 0.2rem; border-radius: 3px;">{total}</code> ·
-                    <code style="background: #f3f4f6; padding: 0 0.2rem; border-radius: 3px;">{cliente}</code> ·
-                    <code style="background: #f3f4f6; padding: 0 0.2rem; border-radius: 3px;">{fecha}</code>
+
+            @* ───── Mensaje 1: cliente -> negocio ───── *@
+            <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 0.7rem; margin-bottom: 0.7rem;">
+                <strong style="font-size: 0.85rem;">1. Cliente → Negocio</strong>
+                <p style="font-size: 0.75rem; color: #6b7280; margin: 0.15rem 0 0.4rem;">
+                    Aparece al pie del comprobante en el link <strong>"Contactanos por WhatsApp"</strong>. Lo escribe el <em>cliente</em>, va a tu WhatsApp.
                 </p>
-            </div>
-            <div style="background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 6px; padding: 0.6rem 0.8rem; font-size: 0.85rem; color: #065f46;">
-                <strong>👁 Vista previa</strong> (con datos de ejemplo):
-                <div style="margin-top: 0.3rem; font-style: italic;">
-                    "@WaPreview"
+                <textarea class="form-input" rows="2" @bind="waTemplate" placeholder="Hola! Te escribo por el comprobante {numero}..."></textarea>
+                <div style="background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 4px; padding: 0.4rem 0.6rem; font-size: 0.8rem; color: #065f46; margin-top: 0.4rem;">
+                    👁 Vista previa: <em>"@WaPreview"</em>
                 </div>
+            </div>
+
+            @* ───── Mensaje 2: negocio -> cliente (repartidor) ───── *@
+            <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 0.7rem;">
+                <strong style="font-size: 0.85rem;">2. Negocio → Cliente</strong>
+                <p style="font-size: 0.75rem; color: #6b7280; margin: 0.15rem 0 0.4rem;">
+                    Aparece al lado del teléfono del cliente. Lo escribe <em>vos / el repartidor</em>, va al WhatsApp del cliente.
+                </p>
+                <textarea class="form-input" rows="2" @bind="waTemplateCliente" placeholder="Hola {cliente}! Te escribo por la entrega del comprobante {numero}..."></textarea>
+                <div style="background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 4px; padding: 0.4rem 0.6rem; font-size: 0.8rem; color: #065f46; margin-top: 0.4rem;">
+                    👁 Vista previa: <em>"@WaPreviewCliente"</em>
+                </div>
+                <p style="font-size: 0.72rem; color: #9ca3af; margin: 0.3rem 0 0;">
+                    💡 Si dejás este campo vacío, el icono 📱 al lado del teléfono abre WhatsApp <strong>sin texto pre-cargado</strong> (el repartidor escribe lo que necesite del momento).
+                </p>
             </div>
 
             <hr style="margin: 1rem 0;" />
@@ -116,20 +129,17 @@
     private decimal margenOtro = 60;
     private string negocioNombre = "", negocioTelefono = "", negocioWhatsapp = "", negocioDireccion = "", negocioCuit = "";
     private string waTemplate = "Hola! Te escribo por el comprobante {numero} (total ${total}). Gracias!";
+    private string waTemplateCliente = "Hola {cliente}! Te escribo del negocio por el comprobante {numero}.";
 
-    /// <summary>Vista previa con datos de ejemplo, usando los mismos placeholders que se reemplazan al emitir.</summary>
-    private string WaPreview
-    {
-        get
-        {
-            var t = string.IsNullOrWhiteSpace(waTemplate) ? "Hola! Comprobante {numero}" : waTemplate;
-            return t
-                .Replace("{numero}", "CAFE-2026-0001")
-                .Replace("{total}", "45.000,00")
-                .Replace("{cliente}", "Bar Don Pepe")
-                .Replace("{fecha}", DateTime.Today.ToString("dd/MM/yyyy"));
-        }
-    }
+    private string ApplyPreview(string template) =>
+        (string.IsNullOrWhiteSpace(template) ? "(sin mensaje pre-cargado)" : template)
+            .Replace("{numero}", "CAFE-2026-0001")
+            .Replace("{total}", "45.000,00")
+            .Replace("{cliente}", "Bar Don Pepe")
+            .Replace("{fecha}", DateTime.Today.ToString("dd/MM/yyyy"));
+
+    private string WaPreview => ApplyPreview(waTemplate);
+    private string WaPreviewCliente => ApplyPreview(waTemplateCliente);
 
     protected override async Task OnInitializedAsync()
     {
@@ -149,6 +159,8 @@
                 negocioCuit = s.NegocioCuit ?? "";
                 if (!string.IsNullOrWhiteSpace(s.WhatsappMensajeTemplate))
                     waTemplate = s.WhatsappMensajeTemplate;
+                // Cliente: usar lo guardado tal cual, incluso si esta vacio (significa "sin mensaje").
+                waTemplateCliente = s.WhatsappMensajeClienteTemplate ?? "";
             }
         }
         catch { ToastService.Error("Error al cargar la configuración"); }
@@ -172,7 +184,8 @@
                 NegocioWhatsappNumero = negocioWhatsapp,
                 NegocioDireccion = negocioDireccion,
                 NegocioCuit = negocioCuit,
-                WhatsappMensajeTemplate = waTemplate
+                WhatsappMensajeTemplate = waTemplate,
+                WhatsappMensajeClienteTemplate = waTemplateCliente
             });
             ToastService.Success("Configuración guardada");
         }

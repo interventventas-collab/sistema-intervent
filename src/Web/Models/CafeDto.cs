@@ -88,6 +88,7 @@ public class CafeSettingDto
     public string? NegocioDireccion { get; set; }
     public string? NegocioCuit { get; set; }
     public string? WhatsappMensajeTemplate { get; set; }
+    public string? WhatsappMensajeClienteTemplate { get; set; }
     public DateTime? UpdatedAt { get; set; }
 }
 
@@ -103,6 +104,7 @@ public class UpdateCafeSettingRequest
     public string? NegocioDireccion { get; set; }
     public string? NegocioCuit { get; set; }
     public string? WhatsappMensajeTemplate { get; set; }
+    public string? WhatsappMensajeClienteTemplate { get; set; }
 }
 
 // ===== Ventas =====

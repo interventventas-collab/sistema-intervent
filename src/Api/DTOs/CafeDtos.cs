@@ -67,7 +67,7 @@ public record CafeSettingDto(
     decimal MargenOtrosBarPct, decimal MargenOtrosNoBarPct,
     string? NegocioNombre, string? NegocioTelefono, string? NegocioWhatsappNumero,
     string? NegocioDireccion, string? NegocioCuit,
-    string? WhatsappMensajeTemplate,
+    string? WhatsappMensajeTemplate, string? WhatsappMensajeClienteTemplate,
     DateTime? UpdatedAt);
 
 public class UpdateCafeSettingRequest
@@ -82,6 +82,7 @@ public class UpdateCafeSettingRequest
     public string? NegocioDireccion { get; set; }
     public string? NegocioCuit { get; set; }
     public string? WhatsappMensajeTemplate { get; set; }
+    public string? WhatsappMensajeClienteTemplate { get; set; }
 }
 
 // ===== Ventas =====

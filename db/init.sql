@@ -1870,3 +1870,12 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'ClienteTelefonoSnapshot' AND Object_ID = Object_ID('Cafe_Ventas'))
     ALTER TABLE Cafe_Ventas ADD ClienteTelefonoSnapshot NVARCHAR(50) NULL;
 GO
+
+-- Cafe_Settings: template del mensaje DESDE el negocio AL cliente (uso: repartidor)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'WhatsappMensajeClienteTemplate' AND Object_ID = Object_ID('Cafe_Settings'))
+    ALTER TABLE Cafe_Settings ADD WhatsappMensajeClienteTemplate NVARCHAR(500) NULL;
+GO
+UPDATE Cafe_Settings
+   SET WhatsappMensajeClienteTemplate = N'Hola {cliente}! Te escribo del negocio por el comprobante {numero}.'
+ WHERE Id = 1 AND (WhatsappMensajeClienteTemplate IS NULL OR LTRIM(RTRIM(WhatsappMensajeClienteTemplate)) = '');
+GO

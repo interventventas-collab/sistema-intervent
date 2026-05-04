@@ -21,7 +21,7 @@ public class CafeSettingsController : ControllerBase
         s.MargenOtrosBarPct, s.MargenOtrosNoBarPct,
         s.NegocioNombre, s.NegocioTelefono, s.NegocioWhatsappNumero,
         s.NegocioDireccion, s.NegocioCuit,
-        s.WhatsappMensajeTemplate,
+        s.WhatsappMensajeTemplate, s.WhatsappMensajeClienteTemplate,
         s.UpdatedAt);
 
     [HttpGet]
@@ -49,6 +49,7 @@ public class CafeSettingsController : ControllerBase
         if (req.NegocioDireccion is not null) s.NegocioDireccion = Norm(req.NegocioDireccion);
         if (req.NegocioCuit is not null) s.NegocioCuit = Norm(req.NegocioCuit);
         if (req.WhatsappMensajeTemplate is not null) s.WhatsappMensajeTemplate = Norm(req.WhatsappMensajeTemplate);
+        if (req.WhatsappMensajeClienteTemplate is not null) s.WhatsappMensajeClienteTemplate = Norm(req.WhatsappMensajeClienteTemplate);
         s.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return Ok(Map(s));

@@ -442,7 +442,7 @@
                                     <strong>Tel:</strong>
                                     @if (!string.IsNullOrEmpty(telDigits))
                                     {
-                                        <a href="@($"https://wa.me/{telDigits}")" target="_blank"
+                                        <a href="@BuildClienteWhatsappLink(tel)" target="_blank"
                                            style="color: #25D366; font-weight: 700; text-decoration: none; margin-left: 0.2rem;"
                                            title="Abrir WhatsApp con el cliente">
                                             📱 @tel
@@ -631,28 +631,43 @@
     /// <summary>Default si el usuario nunca configuró un template propio.</summary>
     private const string WaTemplateDefault = "Hola! Te escribo por el comprobante {numero} (total ${total}). Gracias!";
 
+    /// <summary>Reemplaza placeholders de un template con los datos de la venta actual.</summary>
+    private string ApplyWaTemplate(string template)
+    {
+        if (printVenta is null) return template;
+        var totalStr = printVenta.Total.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+        return template
+            .Replace("{numero}", printVenta.Numero ?? "")
+            .Replace("{total}", totalStr)
+            .Replace("{cliente}", printVenta.ClienteNombre ?? "")
+            .Replace("{fecha}", printVenta.Fecha.ToString("dd/MM/yyyy"));
+    }
+
     private string WhatsappLink
     {
         get
         {
             if (!HasWhatsapp || printVenta is null) return "#";
-            // Solo digitos para wa.me (saca +, espacios, guiones, parentesis, etc).
             var num = new string((settings!.NegocioWhatsappNumero ?? "").Where(char.IsDigit).ToArray());
-
             var template = string.IsNullOrWhiteSpace(settings.WhatsappMensajeTemplate)
                 ? WaTemplateDefault
                 : settings.WhatsappMensajeTemplate!;
-
-            var totalStr = printVenta.Total.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
-            var raw = template
-                .Replace("{numero}", printVenta.Numero ?? "")
-                .Replace("{total}", totalStr)
-                .Replace("{cliente}", printVenta.ClienteNombre ?? "")
-                .Replace("{fecha}", printVenta.Fecha.ToString("dd/MM/yyyy"));
-
-            var msg = Uri.EscapeDataString(raw);
+            var msg = Uri.EscapeDataString(ApplyWaTemplate(template));
             return $"https://wa.me/{num}?text={msg}";
         }
+    }
+
+    /// <summary>Link wa.me del telefono del cliente. Usa el template "Negocio → Cliente" si está configurado.</summary>
+    private string BuildClienteWhatsappLink(string? telefono)
+    {
+        if (string.IsNullOrWhiteSpace(telefono)) return "#";
+        var num = new string(telefono.Where(char.IsDigit).ToArray());
+        if (string.IsNullOrEmpty(num)) return "#";
+        var template = settings?.WhatsappMensajeClienteTemplate;
+        if (string.IsNullOrWhiteSpace(template))
+            return $"https://wa.me/{num}";  // sin texto pre-cargado
+        var msg = Uri.EscapeDataString(ApplyWaTemplate(template));
+        return $"https://wa.me/{num}?text={msg}";
     }
 
     // Anular / Eliminar
