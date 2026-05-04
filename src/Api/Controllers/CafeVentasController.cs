@@ -308,7 +308,7 @@ public class CafeVentasController : ControllerBase
         return CondicionesIvaValidas.Contains(v) ? v : "CF";
     }
 
-    private static readonly string[] CondicionesPagoValidas = { "EFECTIVO", "TRANSFERENCIA", "DEBITO", "CREDITO", "CTA_CORRIENTE", "CHEQUE" };
+    private static readonly string[] CondicionesPagoValidas = { "EFECTIVO", "TRANSFERENCIA", "DEBITO", "CREDITO", "CTA_CORRIENTE", "CHEQUE", "V_PRIVADO" };
     private static string NormCondicionPago(string? s)
     {
         if (string.IsNullOrWhiteSpace(s)) return "EFECTIVO";
