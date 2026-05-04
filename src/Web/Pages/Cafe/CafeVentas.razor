@@ -1,8 +1,10 @@
 @page "/cafe/ventas"
 @attribute [Authorize]
+@implements IDisposable
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject IJSRuntime JS
+@inject OperatorService Operator
 
 <style>
     /* Pildoritas de días — siempre disponibles (form de carga + viewer) */
@@ -46,10 +48,46 @@
         }
         else
         {
+            @* Barra de acciones masivas — solo visible cuando hay seleccionadas *@
+            @if (selectedIds.Count > 0)
+            {
+                <div style="background: #1e3a8a; color: white; padding: 0.6rem 1rem; display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; flex-wrap: wrap;">
+                    <div style="font-weight: 700;">
+                        ☑ <strong>@selectedIds.Count</strong> venta@(selectedIds.Count == 1 ? "" : "s") seleccionada@(selectedIds.Count == 1 ? "" : "s")
+                        <span style="font-weight: 400; font-size: 0.82rem; margin-left: 0.5rem; opacity: 0.85;">
+                            Total: <strong>$@FormatMoney(ventas.Where(x => selectedIds.Contains(x.Id)).Sum(x => x.Total))</strong>
+                        </span>
+                    </div>
+                    <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                        @if (CanDelete)
+                        {
+                            <button class="btn" style="background: #b91c1c; color: white; border: none; font-weight: 700;"
+                                    @onclick="OpenBulkDeleteModal">
+                                🗑 Eliminar @selectedIds.Count
+                            </button>
+                        }
+                        else
+                        {
+                            <span style="font-size: 0.78rem; opacity: 0.85;">
+                                Solo @(deleteSettings?.AllowedOperator ?? "OSMAR") puede eliminar.
+                            </span>
+                        }
+                        <button class="btn" style="background: rgba(255,255,255,0.15); color: white; border: 1px solid rgba(255,255,255,0.3);"
+                                @onclick="ClearSelection">
+                            Cancelar
+                        </button>
+                    </div>
+                </div>
+            }
             <div class="table-responsive">
                 <table class="data-table">
                     <thead>
                         <tr>
+                            <th style="width: 36px; text-align: center;">
+                                <input type="checkbox" title="Seleccionar todas"
+                                       checked="@AllVisibleSelected"
+                                       @onchange="ToggleSelectAll" />
+                            </th>
                             <th>Número</th>
                             <th>Fecha</th>
                             <th>Cliente</th>
@@ -57,14 +95,20 @@
                             <th style="text-align: right;">Total</th>
                             <th style="text-align: right;">Margen</th>
                             <th>Estado</th>
-                            <th style="width: 140px;">Acciones</th>
+                            <th style="width: 180px;">Acciones</th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach (var v in ventas)
                         {
                             var anulada = v.Estado == "anulado";
-                            <tr style="@(anulada ? "opacity: 0.55;" : "")">
+                            var sel = selectedIds.Contains(v.Id);
+                            <tr style="@(anulada ? "opacity: 0.55;" : "") @(sel ? "background:#eff6ff;" : "")">
+                                <td style="text-align: center;">
+                                    <input type="checkbox"
+                                           checked="@sel"
+                                           @onchange="@(e => ToggleSelect(v.Id, (bool)(e.Value ?? false)))" />
+                                </td>
                                 <td style="font-family: monospace; font-weight: 700;">@v.Numero</td>
                                 <td>@v.Fecha.ToString("dd/MM/yyyy")</td>
                                 <td><strong>@(v.ClienteNombre ?? "—")</strong></td>
@@ -92,11 +136,14 @@
                                 </td>
                                 <td class="actions-cell">
                                     <button class="btn-icon" style="color: #1d4ed8;" @onclick="() => ShowPrint(v)" title="Ver / imprimir / PDF">🖨</button>
+                                    <button class="btn-icon btn-edit" @onclick="() => OpenEditModal(v)" title="Editar comprobante">✎</button>
                                     @if (!anulada)
                                     {
                                         <button class="btn-icon" style="color: #b45309;" @onclick="() => ConfirmAnular(v)" title="Anular venta">⊘</button>
                                     }
-                                    <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(v)" title="Eliminar">@SvgIcons.AlertCircle</button>
+                                    <button class="btn-icon btn-delete"
+                                            @onclick="() => OpenDeleteModal(v)"
+                                            title="@(CanDelete ? "Eliminar definitivamente" : $"Solo {(deleteSettings?.AllowedOperator ?? "OSMAR")} puede eliminar")">🗑</button>
                                 </td>
                             </tr>
                         }
@@ -728,18 +775,251 @@
     </div>
 }
 
-@if (showDeleteConfirm && toDelete is not null)
+@* ====== ELIMINAR UNA VENTA (con clave, solo OSMAR) ====== *@
+@if (toDelete is not null)
 {
-    <div class="modal-overlay" @onclick="() => showDeleteConfirm = false">
+    <div class="modal-overlay" @onclick="CloseDeleteModal">
         <div class="modal-card modal-small" @onclick:stopPropagation="true">
-            <div class="modal-header" style="background: #dc3545; color: white;">
-                <h4 style="margin: 0;">Eliminar venta</h4>
-                <button class="btn-close" @onclick="() => showDeleteConfirm = false" style="color: white;">&times;</button>
+            <div class="modal-header" style="background: #7f1d1d; color: white;">
+                <h4 style="margin: 0;">🗑 Eliminar comprobante DEFINITIVAMENTE</h4>
+                <button class="btn-close" @onclick="CloseDeleteModal" style="color: white;">&times;</button>
             </div>
-            <div class="modal-body"><p>Vas a eliminar definitivamente <strong>@toDelete.Numero</strong>. Si estaba emitida, el stock vuelve.</p></div>
+            <div class="modal-body">
+                <p>Vas a <strong>borrar</strong> el comprobante <strong>@toDelete.Numero</strong> de @toDelete.Fecha.ToString("dd/MM/yyyy") por <strong>$@FormatMoney(toDelete.Total)</strong>.</p>
+                <p style="color:#b91c1c; font-weight: 600;">⚠ Esta acción NO se puede deshacer. Si la venta estaba emitida, el stock se devuelve.</p>
+                <div class="form-group">
+                    <label class="form-label">Clave secreta *</label>
+                    <input class="form-input" type="password" @bind="deletePassword" @bind:event="oninput"
+                           @onkeydown="OnDeletePasswordKey"
+                           placeholder="Ingresá la clave" autofocus />
+                    @if (!string.IsNullOrEmpty(deleteSettings?.Hint))
+                    {
+                        <p style="font-size: 0.8rem; color: #6b7280; margin: 0.3rem 0 0;">
+                            💡 Pista: <strong>@deleteSettings.Hint</strong>
+                        </p>
+                    }
+                </div>
+                @if (!string.IsNullOrEmpty(deleteError))
+                {
+                    <div class="form-error">@deleteError</div>
+                }
+            </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" @onclick="() => showDeleteConfirm = false">No</button>
-                <button class="btn btn-danger" @onclick="DoDelete">Sí, eliminar</button>
+                <button class="btn btn-secondary" @onclick="CloseDeleteModal" disabled="@isDeleting">Cancelar</button>
+                <button class="btn" style="background: #7f1d1d; color: white; border: none;" @onclick="DoDelete" disabled="@(isDeleting || string.IsNullOrEmpty(deletePassword))">
+                    @(isDeleting ? "Eliminando..." : "🗑 Eliminar definitivamente")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ====== ELIMINAR MASIVAMENTE (con clave) ====== *@
+@if (showBulkDeleteModal)
+{
+    <div class="modal-overlay" @onclick="CloseBulkDeleteModal">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: #7f1d1d; color: white;">
+                <h4 style="margin: 0;">🗑 Eliminar @selectedIds.Count comprobante@(selectedIds.Count == 1 ? "" : "s") DEFINITIVAMENTE</h4>
+                <button class="btn-close" @onclick="CloseBulkDeleteModal" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Vas a <strong>borrar @selectedIds.Count comprobante@(selectedIds.Count == 1 ? "" : "s")</strong> definitivamente.</p>
+                @if (ventas is not null)
+                {
+                    var sel = ventas.Where(x => selectedIds.Contains(x.Id)).ToList();
+                    <ul style="margin: 0.5rem 0; padding-left: 1.2rem; font-size: 0.82rem; max-height: 180px; overflow-y: auto;">
+                        @foreach (var s in sel)
+                        {
+                            <li><span style="font-family: monospace;">@s.Numero</span> · @s.Fecha.ToString("dd/MM/yyyy") · $@FormatMoney(s.Total)</li>
+                        }
+                    </ul>
+                    <p style="font-size: 0.85rem;">Total a eliminar: <strong>$@FormatMoney(sel.Sum(x => x.Total))</strong></p>
+                }
+                <p style="color:#b91c1c; font-weight: 600;">⚠ Esta acción NO se puede deshacer. Si alguna estaba emitida, su stock se devuelve.</p>
+                <div class="form-group">
+                    <label class="form-label">Clave secreta *</label>
+                    <input class="form-input" type="password" @bind="bulkDeletePassword" @bind:event="oninput"
+                           @onkeydown="OnBulkDeletePasswordKey"
+                           placeholder="Ingresá la clave" autofocus />
+                    @if (!string.IsNullOrEmpty(deleteSettings?.Hint))
+                    {
+                        <p style="font-size: 0.8rem; color: #6b7280; margin: 0.3rem 0 0;">
+                            💡 Pista: <strong>@deleteSettings.Hint</strong>
+                        </p>
+                    }
+                </div>
+                @if (!string.IsNullOrEmpty(bulkDeleteError))
+                {
+                    <div class="form-error">@bulkDeleteError</div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseBulkDeleteModal" disabled="@isBulkDeleting">Cancelar</button>
+                <button class="btn" style="background: #7f1d1d; color: white; border: none;"
+                        @onclick="DoBulkDelete"
+                        disabled="@(isBulkDeleting || string.IsNullOrEmpty(bulkDeletePassword))">
+                    @(isBulkDeleting ? "Eliminando..." : $"🗑 Eliminar {selectedIds.Count} definitivamente")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ====== EDITAR COMPROBANTE (metadata, no items) ====== *@
+@if (editVenta is not null)
+{
+    <div class="modal-overlay" @onclick="CloseEditModal">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 720px;">
+            <div class="modal-header" style="background: #1d4ed8; color: white;">
+                <h4 style="margin: 0;">✎ Editar comprobante @editVenta.Numero</h4>
+                <button class="btn-close" @onclick="CloseEditModal" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body" style="overflow-y: auto; max-height: 75vh;">
+                <p style="font-size: 0.82rem; color: #6b7280; margin: 0 0 0.75rem;">
+                    Editás los datos del comprobante (cliente, fecha, tipo, condiciones, observaciones, días, pago).
+                    <strong>Los items y los totales no se modifican</strong> — si necesitás cambiar productos, anulá la venta y emití una nueva.
+                </p>
+
+                @if (!string.IsNullOrEmpty(editError))
+                {
+                    <div class="form-error">@editError</div>
+                }
+
+                @* Datos generales *@
+                <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem; margin-bottom: 0.75rem;">
+                    <div style="font-weight: 700; margin-bottom: 0.4rem;">Datos generales</div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex: 2;">
+                            <label class="form-label">Tipo de comprobante</label>
+                            <select class="form-input" @bind="editTipoComprobante">
+                                <option value="X">X — Cotización / Remito interno (sin IVA)</option>
+                                <option value="FA" disabled>Factura A (próximamente — ARCA)</option>
+                                <option value="FB" disabled>Factura B (próximamente — ARCA)</option>
+                                <option value="FC" disabled>Factura C (próximamente — ARCA)</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Condición IVA</label>
+                            <select class="form-input" @bind="editCondicionIva">
+                                <option value="CF">Consumidor final</option>
+                                <option value="RI">Responsable Inscripto</option>
+                                <option value="MO">Monotributo</option>
+                                <option value="EX">Exento</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Condición de pago</label>
+                            <select class="form-input" @bind="editCondicionPago">
+                                <option value="EFECTIVO">Efectivo</option>
+                                <option value="TRANSFERENCIA">Transferencia</option>
+                                <option value="DEBITO">Tarjeta de débito</option>
+                                <option value="CREDITO">Tarjeta de crédito</option>
+                                <option value="CTA_CORRIENTE">Cuenta corriente</option>
+                                <option value="CHEQUE">Cheque</option>
+                                <option value="V_PRIVADO">*V********</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                @* Cliente y fecha *@
+                <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem; margin-bottom: 0.75rem;">
+                    <div style="font-weight: 700; margin-bottom: 0.4rem;">Cliente y fecha</div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex: 2; position: relative;">
+                            <label class="form-label">Cliente</label>
+                            @if (editClienteId > 0)
+                            {
+                                var ciSel = clientes?.FirstOrDefault(x => x.Id == editClienteId);
+                                <div style="display: flex; gap: 0.3rem; align-items: center;">
+                                    <div class="form-input" style="flex: 1; background: #ecfdf5; border-color: #10b981; display: flex; align-items: center; gap: 0.5rem;">
+                                        <span style="font-family: monospace; font-weight: 700; color: #1d4ed8;">@(ciSel?.Codigo ?? "—")</span>
+                                        <strong>@(ciSel?.Nombre ?? editVenta.ClienteNombre ?? "?")</strong>
+                                        @if (ciSel is not null)
+                                        {
+                                            <span style="font-size: 0.72rem; color: #6b7280;">· @ciSel.Tipo</span>
+                                        }
+                                    </div>
+                                    <button class="btn btn-secondary" type="button" @onclick="() => { editClienteId = 0; editClienteNombre = string.Empty; }" title="Quitar cliente">×</button>
+                                </div>
+                            }
+                            else
+                            {
+                                <input class="form-input" @bind="editClienteSearch" @bind:event="oninput"
+                                       @onfocus="() => editClienteSearchOpen = true"
+                                       placeholder="🔍 Buscar cliente o dejar vacío para 'consumidor final'" />
+                                @if (editClienteSearchOpen && !string.IsNullOrWhiteSpace(editClienteSearch))
+                                {
+                                    var matches = ClientesMatching(editClienteSearch).Take(20).ToList();
+                                    <div style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #d1d5db; border-radius: 6px; max-height: 240px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 14px rgba(0,0,0,0.12); margin-top: 0.2rem;">
+                                        @if (matches.Count == 0)
+                                        {
+                                            <div style="padding: 0.6rem; color: #6b7280; font-size: 0.85rem;">Sin resultados.</div>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var ci in matches)
+                                            {
+                                                var ciId = ci.Id;
+                                                <div class="cli-pick-row" @onclick="() => SelectEditCliente(ciId)"
+                                                     style="padding: 0.4rem 0.6rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem;">
+                                                    <span style="font-family: monospace; color: #1d4ed8; font-weight: 700; margin-right: 0.5rem;">@ci.Codigo</span>
+                                                    <strong>@ci.Nombre</strong>
+                                                    <span style="color: #6b7280; font-size: 0.78rem;"> · @ci.Tipo</span>
+                                                </div>
+                                            }
+                                        }
+                                    </div>
+                                }
+                                <input class="form-input" @bind="editClienteNombre" placeholder="O escribí un nombre libre (consumidor final)..." style="margin-top: 0.3rem;" />
+                            }
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Tipo</label>
+                            <select class="form-input" @bind="editClienteTipo" disabled="@(editClienteId > 0)">
+                                <option value="OTRO">🛒 OTRO</option>
+                                <option value="BAR">🍺 BAR</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Fecha</label>
+                            <input class="form-input" type="date" @bind="editFecha" />
+                        </div>
+                    </div>
+                </div>
+
+                @* Días + pagado + observaciones *@
+                <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem;">
+                    <div style="font-weight: 700; margin-bottom: 0.4rem;">Otros datos</div>
+                    <div class="form-group">
+                        <label class="form-label">Días de visita / reparto</label>
+                        <div style="display: flex; gap: 0.3rem; flex-wrap: wrap;">
+                            @foreach (var d in AllWeekDays)
+                            {
+                                var on = editWeekDays.Contains(d);
+                                var dia = d;
+                                <span class="cafe-day-pill @(on ? "on" : "")" @onclick="() => ToggleEditDay(dia)">@d</span>
+                            }
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label style="display:inline-flex; align-items:center; gap:0.4rem; cursor:pointer;">
+                            <input type="checkbox" @bind="editIsPaid" />
+                            <span>✓ Pagado</span>
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Observaciones</label>
+                        <textarea class="form-input" rows="2" @bind="editObservaciones" placeholder="Texto libre para el comprobante..."></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseEditModal" disabled="@isSavingEdit">Cancelar</button>
+                <button class="btn btn-primary" @onclick="DoEdit" disabled="@isSavingEdit">
+                    @(isSavingEdit ? "Guardando..." : "💾 Guardar cambios")
+                </button>
             </div>
         </div>
     </div>
@@ -828,17 +1108,62 @@
         return $"https://wa.me/{num}?text={msg}";
     }
 
-    // Anular / Eliminar
+    // Anular
     private bool showAnularConfirm;
     private CafeVentaDto? toAnular;
-    private bool showDeleteConfirm;
+
+    // Multi-select
+    private HashSet<int> selectedIds = new();
+    private bool AllVisibleSelected =>
+        ventas is not null && ventas.Count > 0 && ventas.All(v => selectedIds.Contains(v.Id));
+
+    // Eliminar (con clave)
     private CafeVentaDto? toDelete;
+    private string deletePassword = "";
+    private string? deleteError;
+    private bool isDeleting;
+    private DeleteCafeVentaSettingsDto? deleteSettings;
+    private bool CanDelete =>
+        deleteSettings is not null &&
+        !string.IsNullOrWhiteSpace(Operator.Current) &&
+        string.Equals(Operator.Current, deleteSettings.AllowedOperator, StringComparison.OrdinalIgnoreCase);
+
+    // Bulk delete
+    private bool showBulkDeleteModal;
+    private string bulkDeletePassword = "";
+    private string? bulkDeleteError;
+    private bool isBulkDeleting;
+
+    // Edit
+    private CafeVentaDto? editVenta;
+    private DateTime editFecha = DateTime.Today;
+    private int editClienteId;
+    private string editClienteNombre = "";
+    private string editClienteTipo = "OTRO";
+    private string editClienteSearch = "";
+    private bool editClienteSearchOpen;
+    private string editObservaciones = "";
+    private string editTipoComprobante = "X";
+    private string editCondicionIva = "CF";
+    private string editCondicionPago = "EFECTIVO";
+    private HashSet<string> editWeekDays = new();
+    private bool editIsPaid;
+    private string? editError;
+    private bool isSavingEdit;
 
     protected override async Task OnInitializedAsync()
     {
+        await Operator.LoadAsync();
+        Operator.OnChange += OnOperatorChange;
+        try { deleteSettings = await Api.GetCafeDeleteSettingsAsync(); }
+        catch { deleteSettings = new DeleteCafeVentaSettingsDto(); }
         await LoadCatalogos();
         await Load();
     }
+
+    private void OnOperatorChange() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() { Operator.OnChange -= OnOperatorChange; }
 
     private async Task LoadCatalogos()
     {
@@ -1101,18 +1426,185 @@
         finally { showAnularConfirm = false; toAnular = null; }
     }
 
-    private void ConfirmDelete(CafeVentaDto v) { toDelete = v; showDeleteConfirm = true; }
+    // ── Multi-select ──
+    private void ToggleSelect(int id, bool isChecked)
+    {
+        if (isChecked) selectedIds.Add(id);
+        else selectedIds.Remove(id);
+    }
+
+    private void ToggleSelectAll(ChangeEventArgs e)
+    {
+        if (ventas is null) return;
+        var check = (bool)(e.Value ?? false);
+        if (check) foreach (var v in ventas) selectedIds.Add(v.Id);
+        else selectedIds.Clear();
+    }
+
+    private void ClearSelection() => selectedIds.Clear();
+
+    // ── Eliminar UNA (con clave) ──
+    private void OpenDeleteModal(CafeVentaDto v)
+    {
+        if (!CanDelete)
+        {
+            ToastService.Error($"Solo {(deleteSettings?.AllowedOperator ?? "OSMAR")} puede eliminar comprobantes.");
+            return;
+        }
+        toDelete = v;
+        deletePassword = "";
+        deleteError = null;
+    }
+
+    private void CloseDeleteModal()
+    {
+        if (isDeleting) return;
+        toDelete = null;
+        deletePassword = "";
+        deleteError = null;
+    }
+
+    private async Task OnDeletePasswordKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrEmpty(deletePassword) && !isDeleting)
+            await DoDelete();
+    }
+
     private async Task DoDelete()
     {
         if (toDelete is null) return;
+        if (string.IsNullOrEmpty(deletePassword)) { deleteError = "Ingresá la clave"; return; }
+        deleteError = null; isDeleting = true;
         try
         {
-            await Api.DeleteCafeVentaAsync(toDelete.Id);
+            await Api.DeleteCafeVentaAsync(toDelete.Id, deletePassword);
             ToastService.Success("Venta eliminada");
-            await Load(); await LoadCatalogos();
+            selectedIds.Remove(toDelete.Id);
+            toDelete = null;
+            deletePassword = "";
+            await Load();
+            await LoadCatalogos();
         }
-        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
-        finally { showDeleteConfirm = false; toDelete = null; }
+        catch (Exception ex) { deleteError = ex.Message; }
+        finally { isDeleting = false; }
+    }
+
+    // ── Eliminar masivo (con clave) ──
+    private void OpenBulkDeleteModal()
+    {
+        if (!CanDelete)
+        {
+            ToastService.Error($"Solo {(deleteSettings?.AllowedOperator ?? "OSMAR")} puede eliminar comprobantes.");
+            return;
+        }
+        if (selectedIds.Count == 0) return;
+        showBulkDeleteModal = true;
+        bulkDeletePassword = "";
+        bulkDeleteError = null;
+    }
+
+    private void CloseBulkDeleteModal()
+    {
+        if (isBulkDeleting) return;
+        showBulkDeleteModal = false;
+        bulkDeletePassword = "";
+        bulkDeleteError = null;
+    }
+
+    private async Task OnBulkDeletePasswordKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrEmpty(bulkDeletePassword) && !isBulkDeleting)
+            await DoBulkDelete();
+    }
+
+    private async Task DoBulkDelete()
+    {
+        if (string.IsNullOrEmpty(bulkDeletePassword)) { bulkDeleteError = "Ingresá la clave"; return; }
+        if (selectedIds.Count == 0) return;
+        bulkDeleteError = null; isBulkDeleting = true;
+        try
+        {
+            var ids = selectedIds.ToList();
+            var deleted = await Api.BulkDeleteCafeVentasAsync(ids, bulkDeletePassword);
+            ToastService.Success($"✓ {deleted} venta{(deleted == 1 ? "" : "s")} eliminada{(deleted == 1 ? "" : "s")}");
+            selectedIds.Clear();
+            showBulkDeleteModal = false;
+            bulkDeletePassword = "";
+            await Load();
+            await LoadCatalogos();
+        }
+        catch (Exception ex) { bulkDeleteError = ex.Message; }
+        finally { isBulkDeleting = false; }
+    }
+
+    // ── Editar comprobante ──
+    private void OpenEditModal(CafeVentaDto v)
+    {
+        editVenta = v;
+        editFecha = v.Fecha;
+        editClienteId = v.ClienteId ?? 0;
+        editClienteNombre = v.ClienteNombre ?? "";
+        editClienteTipo = string.IsNullOrWhiteSpace(v.ClienteTipo) ? "OTRO" : v.ClienteTipo!;
+        editClienteSearch = "";
+        editClienteSearchOpen = false;
+        editObservaciones = v.Observaciones ?? "";
+        editTipoComprobante = string.IsNullOrWhiteSpace(v.TipoComprobante) ? "X" : v.TipoComprobante;
+        editCondicionIva = string.IsNullOrWhiteSpace(v.CondicionIva) ? "CF" : v.CondicionIva;
+        editCondicionPago = string.IsNullOrWhiteSpace(v.CondicionPago) ? "EFECTIVO" : v.CondicionPago;
+        editWeekDays = string.IsNullOrWhiteSpace(v.WeekDays)
+            ? new HashSet<string>()
+            : v.WeekDays.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(s => s.Trim().ToUpperInvariant()).ToHashSet();
+        editIsPaid = v.IsPaid;
+        editError = null;
+    }
+
+    private void CloseEditModal()
+    {
+        if (isSavingEdit) return;
+        editVenta = null;
+        editError = null;
+    }
+
+    private void SelectEditCliente(int id)
+    {
+        editClienteId = id;
+        var c = clientes?.FirstOrDefault(x => x.Id == id);
+        if (c is not null) editClienteTipo = string.IsNullOrWhiteSpace(c.Tipo) ? "OTRO" : c.Tipo;
+        editClienteSearch = "";
+        editClienteSearchOpen = false;
+    }
+
+    private void ToggleEditDay(string d)
+    {
+        if (!editWeekDays.Add(d)) editWeekDays.Remove(d);
+    }
+
+    private async Task DoEdit()
+    {
+        if (editVenta is null) return;
+        editError = null; isSavingEdit = true;
+        try
+        {
+            var req = new UpdateCafeVentaRequest
+            {
+                Fecha = editFecha,
+                ClienteId = editClienteId > 0 ? editClienteId : 0,
+                ClienteNombreOverride = editClienteId > 0 ? null : (string.IsNullOrWhiteSpace(editClienteNombre) ? "Consumidor final" : editClienteNombre.Trim()),
+                ClienteTipoOverride = editClienteId > 0 ? null : editClienteTipo,
+                Observaciones = editObservaciones,
+                TipoComprobante = editTipoComprobante,
+                CondicionIva = editCondicionIva,
+                CondicionPago = editCondicionPago,
+                WeekDays = string.Join(",", editWeekDays),
+                IsPaid = editIsPaid
+            };
+            await Api.UpdateCafeVentaAsync(editVenta.Id, req);
+            ToastService.Success("Comprobante actualizado");
+            editVenta = null;
+            await Load();
+        }
+        catch (Exception ex) { editError = ex.Message; }
+        finally { isSavingEdit = false; }
     }
 
     // ── Helpers ──

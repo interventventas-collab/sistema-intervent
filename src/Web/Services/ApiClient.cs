@@ -464,8 +464,35 @@ public class ApiClient
     public async Task<CafeVentaDto?> UpdateCafeVentaFlagsAsync(int id, UpdateCafeVentaFlagsRequest req)
         => await PutAsync<CafeVentaDto>($"/api/cafe/ventas/{id}/flags", req);
 
-    public async Task<bool> DeleteCafeVentaAsync(int id)
-        => await DeleteAsync($"/api/cafe/ventas/{id}");
+    public async Task<CafeVentaDto?> UpdateCafeVentaAsync(int id, UpdateCafeVentaRequest req)
+        => await PutAsync<CafeVentaDto>($"/api/cafe/ventas/{id}", req);
+
+    public async Task<DeleteCafeVentaSettingsDto?> GetCafeDeleteSettingsAsync()
+        => await GetAsync<DeleteCafeVentaSettingsDto>("/api/cafe/ventas/delete-settings");
+
+    public async Task<bool> DeleteCafeVentaAsync(int id, string password)
+    {
+        await SetAuthHeaderAsync();
+        var response = await _http.PostAsJsonAsync($"/api/cafe/ventas/{id}/delete", new { password });
+        if (response.IsSuccessStatusCode) return true;
+        await ThrowIfErrorAsync(response);
+        return false;
+    }
+
+    public async Task<int> BulkDeleteCafeVentasAsync(List<int> ids, string password)
+    {
+        await SetAuthHeaderAsync();
+        var response = await _http.PostAsJsonAsync("/api/cafe/ventas/bulk-delete", new { ids, password });
+        if (response.IsSuccessStatusCode)
+        {
+            var json = await response.Content.ReadFromJsonAsync<BulkDeleteResponse>();
+            return json?.Deleted ?? 0;
+        }
+        await ThrowIfErrorAsync(response);
+        return 0;
+    }
+
+    private class BulkDeleteResponse { public int Deleted { get; set; } }
 
     // --- Brands ---
     public async Task<List<BrandDto>?> GetBrandsAsync()

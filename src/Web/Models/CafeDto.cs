@@ -234,3 +234,34 @@ public class UpdateCafeVentaFlagsRequest
     public string? WeekDays { get; set; }
     public bool? IsPaid { get; set; }
 }
+
+public class UpdateCafeVentaRequest
+{
+    public DateTime? Fecha { get; set; }
+    public int? ClienteId { get; set; }
+    public string? ClienteNombreOverride { get; set; }
+    public string? ClienteTipoOverride { get; set; }
+    public string? Observaciones { get; set; }
+    public string? TipoComprobante { get; set; }
+    public string? CondicionIva { get; set; }
+    public string? CondicionPago { get; set; }
+    public string? WeekDays { get; set; }
+    public bool? IsPaid { get; set; }
+}
+
+public class DeleteCafeVentaRequest
+{
+    public string Password { get; set; } = string.Empty;
+}
+
+public class BulkDeleteCafeVentasRequest
+{
+    public List<int> Ids { get; set; } = new();
+    public string Password { get; set; } = string.Empty;
+}
+
+public class DeleteCafeVentaSettingsDto
+{
+    public string AllowedOperator { get; set; } = "OSMAR";
+    public string Hint { get; set; } = string.Empty;
+}

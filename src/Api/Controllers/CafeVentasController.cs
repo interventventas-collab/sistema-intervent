@@ -185,11 +185,126 @@ public class CafeVentasController : ControllerBase
         return Ok(Map(v));
     }
 
-    [HttpDelete("{id:int}")]
-    public async Task<IActionResult> Delete(int id)
+    /// <summary>Devuelve quien puede eliminar y el hint de la clave (sin la clave en si).</summary>
+    [HttpGet("delete-settings")]
+    public async Task<IActionResult> GetDeleteSettings()
+    {
+        var keys = new[] { "sales.delete_allowed_operator", "sales.delete_password_hint" };
+        var settings = await _db.AppSettings.Where(s => keys.Contains(s.Key))
+            .ToDictionaryAsync(s => s.Key, s => s.Value);
+        return Ok(new DeleteCafeVentaSettingsDto(
+            settings.GetValueOrDefault("sales.delete_allowed_operator", "OSMAR"),
+            settings.GetValueOrDefault("sales.delete_password_hint", "")
+        ));
+    }
+
+    /// <summary>Eliminacion definitiva de UNA venta. Requiere operador permitido + clave.</summary>
+    [HttpPost("{id:int}/delete")]
+    public async Task<IActionResult> Delete(int id, [FromBody] DeleteCafeVentaRequest req)
+    {
+        var op = HttpContext.Request.Headers["X-Operator-Name"].ToString();
+        try
+        {
+            await ValidateDeletePermissionAsync(op, req.Password);
+        }
+        catch (UnauthorizedAccessException ex) { return StatusCode(403, new { error = ex.Message }); }
+
+        var v = await _db.CafeVentas.Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == id);
+        if (v is null) return NotFound(new { error = "Venta no encontrada" });
+        await DeleteVentaInternalAsync(v);
+        await _db.SaveChangesAsync();
+        return Ok(new { deleted = true });
+    }
+
+    /// <summary>Eliminacion masiva. Requiere operador permitido + clave.</summary>
+    [HttpPost("bulk-delete")]
+    public async Task<IActionResult> BulkDelete([FromBody] BulkDeleteCafeVentasRequest req)
+    {
+        if (req.Ids is null || req.Ids.Count == 0)
+            return BadRequest(new { error = "No hay ventas seleccionadas" });
+
+        var op = HttpContext.Request.Headers["X-Operator-Name"].ToString();
+        try
+        {
+            await ValidateDeletePermissionAsync(op, req.Password);
+        }
+        catch (UnauthorizedAccessException ex) { return StatusCode(403, new { error = ex.Message }); }
+
+        var ventas = await _db.CafeVentas.Include(x => x.Items)
+            .Where(v => req.Ids.Contains(v.Id))
+            .ToListAsync();
+
+        foreach (var v in ventas)
+            await DeleteVentaInternalAsync(v);
+
+        await _db.SaveChangesAsync();
+        return Ok(new { deleted = ventas.Count });
+    }
+
+    /// <summary>Edita metadata de una venta (NO items). No recalcula precios ni toca stock.</summary>
+    [HttpPut("{id:int}")]
+    public async Task<IActionResult> Update(int id, [FromBody] UpdateCafeVentaRequest req)
     {
         var v = await _db.CafeVentas.Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == id);
         if (v is null) return NotFound(new { error = "Venta no encontrada" });
+
+        if (req.Fecha.HasValue) v.Fecha = req.Fecha.Value.Date;
+        if (req.Observaciones is not null)
+            v.Observaciones = string.IsNullOrWhiteSpace(req.Observaciones) ? null : req.Observaciones.Trim();
+        if (req.TipoComprobante is not null) v.TipoComprobante = NormTipoComprobante(req.TipoComprobante);
+        if (req.CondicionIva is not null) v.CondicionIva = NormCondicionIva(req.CondicionIva);
+        if (req.CondicionPago is not null) v.CondicionPago = NormCondicionPago(req.CondicionPago);
+        if (req.WeekDays is not null) v.WeekDays = NormWeekDays(req.WeekDays);
+        if (req.IsPaid.HasValue) v.IsPaid = req.IsPaid.Value;
+
+        // Cliente: si mandaron ClienteId valido > 0, vinculo al cliente y refresco snapshot.
+        // Si mandaron 0 o null + override, dejo como manual (consumidor final / nombre libre).
+        if (req.ClienteId.HasValue)
+        {
+            if (req.ClienteId.Value > 0)
+            {
+                var cli = await _db.CafeClientes.FindAsync(req.ClienteId.Value);
+                if (cli is null) return BadRequest(new { error = "Cliente no encontrado" });
+                v.ClienteId = cli.Id;
+                v.ClienteNombreSnapshot = cli.Nombre;
+                v.ClienteTipoSnapshot = CafePricingService.ResolverTipo(cli.Tipo);
+                v.ClienteTelefonoSnapshot = cli.Telefono;
+            }
+            else
+            {
+                v.ClienteId = null;
+                v.ClienteNombreSnapshot = string.IsNullOrWhiteSpace(req.ClienteNombreOverride)
+                    ? "Consumidor final" : req.ClienteNombreOverride.Trim();
+                v.ClienteTipoSnapshot = CafePricingService.ResolverTipo(req.ClienteTipoOverride);
+                v.ClienteTelefonoSnapshot = null;
+            }
+        }
+        else if (!v.ClienteId.HasValue && !string.IsNullOrWhiteSpace(req.ClienteNombreOverride))
+        {
+            // sin clienteId previo y mandan nombre nuevo
+            v.ClienteNombreSnapshot = req.ClienteNombreOverride.Trim();
+            if (!string.IsNullOrWhiteSpace(req.ClienteTipoOverride))
+                v.ClienteTipoSnapshot = CafePricingService.ResolverTipo(req.ClienteTipoOverride);
+        }
+
+        v.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(Map(v));
+    }
+
+    private async Task ValidateDeletePermissionAsync(string operatorName, string password)
+    {
+        var allowedOp = (await _db.AppSettings.FindAsync("sales.delete_allowed_operator"))?.Value ?? "OSMAR";
+        var expectedPassword = (await _db.AppSettings.FindAsync("sales.delete_password"))?.Value ?? "";
+
+        if (!string.Equals(operatorName ?? "", allowedOp, StringComparison.OrdinalIgnoreCase))
+            throw new UnauthorizedAccessException($"Solo {allowedOp} puede eliminar comprobantes.");
+        if (string.IsNullOrEmpty(expectedPassword) || password != expectedPassword)
+            throw new UnauthorizedAccessException("Clave incorrecta.");
+    }
+
+    private async Task DeleteVentaInternalAsync(CafeVenta v)
+    {
         // Si estaba emitida, restaurar stock antes de borrar.
         if (v.Estado == "emitido")
         {
@@ -202,8 +317,6 @@ public class CafeVentasController : ControllerBase
             }
         }
         _db.CafeVentas.Remove(v);
-        await _db.SaveChangesAsync();
-        return Ok(new { deleted = true });
     }
 
     // ============================================================
