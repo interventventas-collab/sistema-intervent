@@ -20,7 +20,7 @@ public class CafeOemsController : ControllerBase
     private static CafeOemDto Map(CafeOem o, int variantesCount = 0) => new(
         o.Id, o.Codigo, o.Descripcion, o.Marca,
         o.Costo, o.PvpConIva, o.IvaPct,
-        o.Barcode, o.Proveedor,
+        o.Barcode, o.Proveedor, o.UxB,
         o.IsActive, o.CreatedAt, o.UpdatedAt, o.LastImportAt,
         variantesCount);
 
@@ -96,6 +96,7 @@ public class CafeOemsController : ControllerBase
             IvaPct = req.IvaPct,
             Barcode = string.IsNullOrWhiteSpace(req.Barcode) ? null : req.Barcode.Trim(),
             Proveedor = string.IsNullOrWhiteSpace(req.Proveedor) ? null : req.Proveedor.Trim().ToUpperInvariant(),
+            UxB = req.UxB,
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
@@ -125,6 +126,8 @@ public class CafeOemsController : ControllerBase
         if (req.IvaPct.HasValue) o.IvaPct = req.IvaPct.Value;
         if (req.Barcode is not null) o.Barcode = string.IsNullOrWhiteSpace(req.Barcode) ? null : req.Barcode.Trim();
         if (req.Proveedor is not null) o.Proveedor = string.IsNullOrWhiteSpace(req.Proveedor) ? null : req.Proveedor.Trim().ToUpperInvariant();
+        if (req.UxB.HasValue) o.UxB = req.UxB.Value;
+        else if (req.ClearUxB) o.UxB = null;
         if (req.IsActive.HasValue) o.IsActive = req.IsActive.Value;
         o.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
@@ -196,6 +199,7 @@ public class CafeOemsController : ControllerBase
             var cPvp = Find("precio_venta_con_iva", "pvp", "precio_venta");
             var cIva = Find("iva", "iva_pct");
             var cBarcode = Find("codigo_de_barras", "barcode", "codigo_barras", "ean");
+            var cUxB = Find("uxb", "u_x_b", "unidades_por_bulto", "unidad_por_bulto", "ud_x_bulto", "u_bulto");
 
             if (cCodigo is null) return BadRequest(new { error = "Falta la columna 'codigo_oem' (o 'codigo'/'oem')" });
 
@@ -228,6 +232,8 @@ public class CafeOemsController : ControllerBase
                 var pvp = GetNum(cPvp);
                 var iva = GetNum(cIva);
                 var barcode = Get(cBarcode);
+                var uxbDec = GetNum(cUxB);
+                int? uxb = uxbDec.HasValue ? (int)uxbDec.Value : null;
 
                 if (existentes.TryGetValue(codigo, out var existente))
                 {
@@ -237,6 +243,7 @@ public class CafeOemsController : ControllerBase
                     existente.PvpConIva = pvp;
                     existente.IvaPct = iva;
                     existente.Barcode = barcode ?? existente.Barcode;
+                    existente.UxB = uxb ?? existente.UxB;
                     existente.Proveedor = prov;
                     existente.UpdatedAt = ahora;
                     existente.LastImportAt = ahora;
@@ -253,6 +260,7 @@ public class CafeOemsController : ControllerBase
                         PvpConIva = pvp,
                         IvaPct = iva,
                         Barcode = barcode,
+                        UxB = uxb,
                         Proveedor = prov,
                         IsActive = true,
                         CreatedAt = ahora,

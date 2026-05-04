@@ -254,7 +254,7 @@ public class UpdateCafeComboRequest
 public record CafeOemDto(
     int Id, string Codigo, string? Descripcion, string? Marca,
     decimal Costo, decimal? PvpConIva, decimal? IvaPct,
-    string? Barcode, string? Proveedor,
+    string? Barcode, string? Proveedor, int? UxB,
     bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt, DateTime? LastImportAt,
     int VariantesCount);
 
@@ -268,6 +268,7 @@ public class CreateCafeOemRequest
     public decimal? IvaPct { get; set; }
     public string? Barcode { get; set; }
     public string? Proveedor { get; set; }
+    public int? UxB { get; set; }
 }
 
 public class UpdateCafeOemRequest
@@ -280,6 +281,8 @@ public class UpdateCafeOemRequest
     public decimal? IvaPct { get; set; }
     public string? Barcode { get; set; }
     public string? Proveedor { get; set; }
+    public int? UxB { get; set; }
+    public bool ClearUxB { get; set; }
     public bool? IsActive { get; set; }
 }
 

@@ -34,6 +34,9 @@ public class CafeOem
     [MaxLength(100)]
     public string? Proveedor { get; set; }
 
+    /// <summary>Unidades por bulto. Informativo; se autocompleta a la variante al vincular.</summary>
+    public int? UxB { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

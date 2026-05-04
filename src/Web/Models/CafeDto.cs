@@ -348,6 +348,7 @@ public class CafeOemDto
     public decimal? IvaPct { get; set; }
     public string? Barcode { get; set; }
     public string? Proveedor { get; set; }
+    public int? UxB { get; set; }
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
@@ -365,6 +366,7 @@ public class CreateCafeOemRequest
     public decimal? IvaPct { get; set; }
     public string? Barcode { get; set; }
     public string? Proveedor { get; set; }
+    public int? UxB { get; set; }
 }
 
 public class UpdateCafeOemRequest
@@ -377,6 +379,8 @@ public class UpdateCafeOemRequest
     public decimal? IvaPct { get; set; }
     public string? Barcode { get; set; }
     public string? Proveedor { get; set; }
+    public int? UxB { get; set; }
+    public bool ClearUxB { get; set; }
     public bool? IsActive { get; set; }
 }
 

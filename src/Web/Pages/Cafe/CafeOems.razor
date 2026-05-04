@@ -47,6 +47,7 @@
                             <th style="text-align: right;">Costo</th>
                             <th style="text-align: right;">PVP c/IVA</th>
                             <th style="width: 70px; text-align: center;">IVA %</th>
+                            <th style="width: 70px; text-align: center;">UxB</th>
                             <th style="width: 90px; text-align: center;">Variantes</th>
                             <th style="width: 120px;">Acciones</th>
                         </tr>
@@ -70,6 +71,7 @@
                                 <td style="text-align: right; font-weight: 700;">$@FormatMoney(o.Costo)</td>
                                 <td style="text-align: right; font-weight: 700; color: #15803d;">@(o.PvpConIva.HasValue ? "$" + FormatMoney(o.PvpConIva.Value) : "—")</td>
                                 <td style="text-align: center; font-size: 0.8rem; color: #6b7280;">@(o.IvaPct.HasValue ? o.IvaPct.Value.ToString("0.##") + "%" : "—")</td>
+                                <td style="text-align: center; font-size: 0.85rem; color: #6b7280;">@(o.UxB?.ToString() ?? "—")</td>
                                 <td style="text-align: center;">
                                     @if (o.VariantesCount > 0)
                                     {
@@ -150,6 +152,11 @@
                     <div class="form-group" style="flex: 0 0 100px;">
                         <label class="form-label">IVA %</label>
                         <input class="form-input" type="number" step="0.01" @bind="formIvaPct" />
+                    </div>
+                    <div class="form-group" style="flex: 0 0 100px;">
+                        <label class="form-label">UxB</label>
+                        <input class="form-input" type="number" step="1" min="0" @bind="formUxB" />
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">u/bulto</p>
                     </div>
                 </div>
             </div>
@@ -323,6 +330,7 @@
     private decimal formCosto;
     private decimal? formPvpConIva;
     private decimal? formIvaPct = 21m;
+    private int? formUxB;
 
     // Import
     private bool showImport;
@@ -350,7 +358,7 @@
         editing = null;
         formCodigo = ""; formDescripcion = ""; formMarca = "";
         formProveedor = "COLOMBRARO"; formBarcode = "";
-        formCosto = 0; formPvpConIva = null; formIvaPct = 21m;
+        formCosto = 0; formPvpConIva = null; formIvaPct = 21m; formUxB = null;
         formError = null;
         showForm = true;
     }
@@ -366,6 +374,7 @@
         formCosto = o.Costo;
         formPvpConIva = o.PvpConIva;
         formIvaPct = o.IvaPct;
+        formUxB = o.UxB;
         formError = null;
         showForm = true;
     }
@@ -389,7 +398,8 @@
                     Barcode = formBarcode,
                     Costo = formCosto,
                     PvpConIva = formPvpConIva,
-                    IvaPct = formIvaPct
+                    IvaPct = formIvaPct,
+                    UxB = formUxB
                 });
                 ToastService.Success("OEM creado");
             }
@@ -404,7 +414,9 @@
                     Barcode = formBarcode,
                     Costo = formCosto,
                     PvpConIva = formPvpConIva,
-                    IvaPct = formIvaPct
+                    IvaPct = formIvaPct,
+                    UxB = formUxB,
+                    ClearUxB = !formUxB.HasValue
                 });
                 ToastService.Success("OEM actualizado");
             }

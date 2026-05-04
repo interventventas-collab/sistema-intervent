@@ -61,7 +61,15 @@
                         {
                             var esCafe = p.Categoria == "CAFE";
                             <tr>
-                                <td style="font-family: monospace; font-weight: 700; color: #1d4ed8;">@(p.Sku ?? "—")</td>
+                                <td style="font-family: monospace; font-weight: 700; color: #1d4ed8;">
+                                    @(p.Sku ?? "—")
+                                    @if (!string.IsNullOrEmpty(p.OemCodigo))
+                                    {
+                                        <div style="font-size: 0.66rem; color: #15803d; font-weight: 700; margin-top: 0.15rem;" title="OEM origen">
+                                            <span style="background: #dcfce7; padding: 0.05rem 0.4rem; border-radius: 4px;">OEM @p.OemCodigo</span>
+                                        </div>
+                                    }
+                                </td>
                                 <td>
                                     <strong>@p.Nombre</strong>
                                     @if (!string.IsNullOrEmpty(p.Barcode))
@@ -491,7 +499,8 @@
         oemSearch = "";
     }
 
-    /// <summary>Pisa costo y Pvp2 (PVP de OTRO) con los del OEM origen. Lo pueden tocar despues a mano.</summary>
+    /// <summary>Pisa costo, PVP, UxB y barcode del producto con los del OEM origen.
+    /// Lo pueden tocar despues a mano.</summary>
     private void AutocompletarDesdeOem()
     {
         if (formOemId <= 0) return;
@@ -499,6 +508,8 @@
         if (o is null) return;
         formCosto = o.Costo;
         if (o.PvpConIva.HasValue) formPvp2 = o.PvpConIva.Value;
+        if (o.UxB.HasValue) formUxB = o.UxB.Value;
+        if (!string.IsNullOrWhiteSpace(o.Barcode)) formBarcode = o.Barcode;
     }
 
     private void ShowCreate()

@@ -2030,6 +2030,11 @@ BEGIN
 END
 GO
 
+-- Cafe_Oems: UxB (unidades por bulto) — informativo, se autocompleta a la variante al vincular.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'UxB' AND Object_ID = Object_ID('Cafe_Oems'))
+    ALTER TABLE Cafe_Oems ADD UxB INT NULL;
+GO
+
 -- Cafe_Productos: vinculo opcional al OEM origen.
 -- 1 OEM puede alimentar a N variantes (ej OEM 8733 -> C8733BL, C8733NEG, etc).
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'OemId' AND Object_ID = Object_ID('Cafe_Productos'))
