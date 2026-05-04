@@ -116,6 +116,8 @@ public class CafeVentaItemDto
     public decimal CostoUnitario { get; set; }
     public decimal Subtotal { get; set; }
     public decimal GramosDescontados { get; set; }
+    public string? Molienda { get; set; }
+    public bool EsDoyPack { get; set; }
 }
 
 public class CafeVentaDto
@@ -144,6 +146,8 @@ public class CafeCotizarItemRequest
     public int ProductoId { get; set; }
     public string Formato { get; set; } = "1KG";
     public int Cantidad { get; set; } = 1;
+    public string? Molienda { get; set; }
+    public bool EsDoyPack { get; set; }
 }
 
 public class CafeCotizarRequest
@@ -169,6 +173,8 @@ public class CafeCotizadoItemDto
     public int StockUnidadesDisponible { get; set; }
     public bool StockOk { get; set; }
     public string? Aviso { get; set; }
+    public string? Molienda { get; set; }
+    public bool EsDoyPack { get; set; }
 }
 
 public class CafeCotizadoDto

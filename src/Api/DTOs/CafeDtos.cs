@@ -87,7 +87,8 @@ public record CafeVentaItemDto(
     int Id, int ProductoId, string ProductoNombre, string Categoria,
     string Formato, int Cantidad,
     decimal PrecioUnitario, decimal CostoUnitario, decimal Subtotal,
-    decimal GramosDescontados);
+    decimal GramosDescontados,
+    string? Molienda, bool EsDoyPack);
 
 public record CafeVentaDto(
     int Id, string Numero, DateTime Fecha,
@@ -104,6 +105,8 @@ public class CafeCotizarItemRequest
     public int ProductoId { get; set; }
     public string Formato { get; set; } = "1KG";  // 1KG | MEDIO | CUARTO | UNIT
     public int Cantidad { get; set; } = 1;
+    public string? Molienda { get; set; }   // EN GRANOS | MOLIDO FILTRO | MOLIDO ESPRESS | null
+    public bool EsDoyPack { get; set; }
 }
 
 public class CafeCotizarRequest
@@ -119,7 +122,8 @@ public record CafeCotizadoItemDto(
     string Formato, int Cantidad,
     decimal PrecioUnitario, decimal CostoUnitario, decimal Subtotal,
     decimal GramosNecesarios, decimal StockGramosDisponible, int StockUnidadesDisponible,
-    bool StockOk, string? Aviso);
+    bool StockOk, string? Aviso,
+    string? Molienda, bool EsDoyPack);
 
 public record CafeCotizadoDto(
     string ClienteTipoUsado,  // BAR | OTRO

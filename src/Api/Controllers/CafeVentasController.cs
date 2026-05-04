@@ -29,7 +29,8 @@ public class CafeVentasController : ControllerBase
             i.Id, i.ProductoId, i.ProductoNombreSnapshot, i.Categoria,
             i.Formato, i.Cantidad,
             i.PrecioUnitario, i.CostoUnitario, i.Subtotal,
-            i.GramosDescontados)).ToList());
+            i.GramosDescontados,
+            i.Molienda, i.EsDoyPack)).ToList());
 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null)
@@ -121,7 +122,9 @@ public class CafeVentasController : ControllerBase
                 PrecioUnitario = it.PrecioUnitario,
                 CostoUnitario = it.CostoUnitario,
                 Subtotal = it.Subtotal,
-                GramosDescontados = it.GramosNecesarios
+                GramosDescontados = it.GramosNecesarios,
+                Molienda = NormMolienda(it.Molienda),
+                EsDoyPack = it.EsDoyPack && prod.Categoria == "CAFE"  // doy pack solo aplica a cafe
             });
 
             // Descontar stock
@@ -223,7 +226,7 @@ public class CafeVentasController : ControllerBase
             {
                 cotizadoItems.Add(new CafeCotizadoItemDto(
                     it.ProductoId, "?", "?", it.Formato, it.Cantidad, 0m, 0m, 0m, 0m, 0m, 0,
-                    false, "Formato inválido"));
+                    false, "Formato inválido", NormMolienda(it.Molienda), it.EsDoyPack));
                 todoOk = false;
                 continue;
             }
@@ -233,7 +236,7 @@ public class CafeVentasController : ControllerBase
             {
                 cotizadoItems.Add(new CafeCotizadoItemDto(
                     it.ProductoId, "?", "?", it.Formato, it.Cantidad, 0m, 0m, 0m, 0m, 0m, 0,
-                    false, "Producto no encontrado"));
+                    false, "Producto no encontrado", NormMolienda(it.Molienda), it.EsDoyPack));
                 todoOk = false;
                 continue;
             }
@@ -245,7 +248,8 @@ public class CafeVentasController : ControllerBase
             {
                 cotizadoItems.Add(new CafeCotizadoItemDto(
                     prod.Id, prod.Nombre, prod.Categoria, it.Formato, it.Cantidad, 0m, 0m, 0m, 0m, prod.StockGramos, prod.StockUnidades,
-                    false, esCafe ? "Para café usá 1 kg / 1/2 kg / 1/4 kg" : "Para otros productos usá 'unidad'"));
+                    false, esCafe ? "Para café usá 1 kg / 1/2 kg / 1/4 kg" : "Para otros productos usá 'unidad'",
+                    NormMolienda(it.Molienda), it.EsDoyPack));
                 todoOk = false;
                 continue;
             }
@@ -268,7 +272,8 @@ public class CafeVentasController : ControllerBase
                 prod.Id, prod.Nombre, prod.Categoria, it.Formato, it.Cantidad,
                 precioUnit, costoUnit, subtotalLinea,
                 gramosNecesarios, prod.StockGramos, prod.StockUnidades,
-                stockOk, aviso));
+                stockOk, aviso,
+                NormMolienda(it.Molienda), it.EsDoyPack && esCafe));
 
             subtotal += subtotalLinea;
             costoTotal += costoUnit * it.Cantidad;
@@ -278,6 +283,14 @@ public class CafeVentasController : ControllerBase
         var total = Math.Max(0m, subtotal - desc);
         var margen = total - costoTotal;
         return new CafeCotizadoDto(tipo, subtotal, desc, total, costoTotal, margen, todoOk, cotizadoItems);
+    }
+
+    private static readonly string[] MoliendasValidas = { "EN GRANOS", "MOLIDO FILTRO", "MOLIDO ESPRESS" };
+    private static string? NormMolienda(string? m)
+    {
+        if (string.IsNullOrWhiteSpace(m)) return null;
+        var v = m.Trim().ToUpperInvariant();
+        return MoliendasValidas.Contains(v) ? v : null;
     }
 
     /// <summary>Normaliza CSV de dias: solo deja LUN/MAR/MIE/JUE/VIE/SAB/DOM en mayúscula y sin duplicados.</summary>

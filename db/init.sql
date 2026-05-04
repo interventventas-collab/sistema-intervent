@@ -1848,3 +1848,11 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'IsPaid' AND Object_ID = Object_ID('Cafe_Ventas'))
     ALTER TABLE Cafe_Ventas ADD IsPaid BIT NOT NULL CONSTRAINT DF_CafeVentas_IsPaid DEFAULT 0;
 GO
+
+-- Cafe_VentaItems: agregar Molienda y EsDoyPack
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'Molienda' AND Object_ID = Object_ID('Cafe_VentaItems'))
+    ALTER TABLE Cafe_VentaItems ADD Molienda NVARCHAR(30) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'EsDoyPack' AND Object_ID = Object_ID('Cafe_VentaItems'))
+    ALTER TABLE Cafe_VentaItems ADD EsDoyPack BIT NOT NULL CONSTRAINT DF_CafeVentaItems_EsDoyPack DEFAULT 0;
+GO
