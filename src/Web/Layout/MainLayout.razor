@@ -86,25 +86,7 @@
             </NavGroup>
         }
 
-        @* ═════════════ 4. VENTAS ═════════════ *@
-        @if (HasPerm("ventas") || HasPerm("clientes"))
-        {
-            <NavGroup Label="Ventas" Icon="@SvgIcons.ShoppingBag"
-                      HasActiveChild="@(IsActive("/ventas") || IsActive("/clientes"))">
-                @if (HasPerm("ventas"))
-                {
-                    <NavItem Href="/ventas" Label="Comprobantes" Icon="@SvgIcons.Tag"
-                             IsActive="@IsActive("/ventas")" OnClick="@(() => NavigateTo("/ventas"))" />
-                }
-                @if (HasPerm("clientes"))
-                {
-                    <NavItem Href="/clientes" Label="Clientes" Icon="@SvgIcons.Users"
-                             IsActive="@IsActive("/clientes")" OnClick="@(() => NavigateTo("/clientes"))" />
-                }
-            </NavGroup>
-        }
-
-        @* ═════════════ 5. MERCADOLIBRE ═════════════
+        @* ═════════════ 4. MERCADOLIBRE ═════════════
            Solo visible para INTERVENT (es la unica empresa que vende por ML).
            Si no hay empresa elegida, se sigue mostrando para no esconderlo a usuarios viejos.
            Re-vincular publicaciones vive aca (es una accion de ML, no de inventario). *@
@@ -531,8 +513,6 @@
         { "", "dashboard" },
         { "publicaciones", "publicaciones" },
         { "ordenes", "ordenes" },
-        { "clientes", "clientes" },
-        { "ventas", "ventas" },
         { "tesoreria", "tesoreria" },
         { "empleados", "empleados" },
         { "sueldos", "sueldos" },
