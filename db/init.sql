@@ -1922,3 +1922,14 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'Barcode' AND Object_ID = Object_ID('Cafe_Productos'))
     ALTER TABLE Cafe_Productos ADD Barcode NVARCHAR(100) NULL;
 GO
+
+-- Cafe_Ventas: tipo de comprobante, cond. IVA del cliente, cond. de pago
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'TipoComprobante' AND Object_ID = Object_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD TipoComprobante NVARCHAR(10) NOT NULL CONSTRAINT DF_CafeVentas_TipoComprobante DEFAULT 'X';
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'CondicionIva' AND Object_ID = Object_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD CondicionIva NVARCHAR(20) NOT NULL CONSTRAINT DF_CafeVentas_CondicionIva DEFAULT 'CF';
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'CondicionPago' AND Object_ID = Object_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD CondicionPago NVARCHAR(20) NOT NULL CONSTRAINT DF_CafeVentas_CondicionPago DEFAULT 'EFECTIVO';
+GO

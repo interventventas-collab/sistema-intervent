@@ -41,6 +41,18 @@ public class CafeVenta
     [MaxLength(20)]
     public string Estado { get; set; } = "emitido"; // emitido | anulado
 
+    /// <summary>Tipo de comprobante: X (cotizacion/remito interno), FA, FB, FC.</summary>
+    [MaxLength(10)]
+    public string TipoComprobante { get; set; } = "X";
+
+    /// <summary>Condicion IVA del cliente: CF (consumidor final), RI (responsable inscripto), MO (monotributo), EX (exento).</summary>
+    [MaxLength(20)]
+    public string CondicionIva { get; set; } = "CF";
+
+    /// <summary>Condicion de pago: EFECTIVO, TRANSFERENCIA, DEBITO, CREDITO, CTA_CORRIENTE, CHEQUE.</summary>
+    [MaxLength(20)]
+    public string CondicionPago { get; set; } = "EFECTIVO";
+
     /// <summary>CSV con dias de la semana de visita/reparto (LUN,MAR,MIE,...). Aparece al pie del comprobante.</summary>
     [MaxLength(50)]
     public string? WeekDays { get; set; }

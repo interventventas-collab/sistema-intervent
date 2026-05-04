@@ -112,6 +112,7 @@ public record CafeVentaDto(
     decimal CostoTotal, decimal Margen,
     string? Observaciones, string Estado,
     string? WeekDays, bool IsPaid,
+    string TipoComprobante, string CondicionIva, string CondicionPago,
     DateTime CreatedAt,
     List<CafeVentaItemDto> Items);
 
@@ -158,6 +159,9 @@ public class CreateCafeVentaRequest
     public string? Observaciones { get; set; }
     public string? WeekDays { get; set; }
     public bool IsPaid { get; set; }
+    public string? TipoComprobante { get; set; }
+    public string? CondicionIva { get; set; }
+    public string? CondicionPago { get; set; }
 }
 
 public class UpdateCafeVentaFlagsRequest

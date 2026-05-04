@@ -24,6 +24,7 @@ public class CafeVentasController : ControllerBase
         v.Subtotal, v.Descuento, v.Total, v.CostoTotal, v.Margen,
         v.Observaciones, v.Estado,
         v.WeekDays, v.IsPaid,
+        v.TipoComprobante, v.CondicionIva, v.CondicionPago,
         v.CreatedAt,
         v.Items.Select(i => new CafeVentaItemDto(
             i.Id, i.ProductoId, i.ProductoNombreSnapshot, i.Categoria,
@@ -106,6 +107,9 @@ public class CafeVentasController : ControllerBase
             Estado = "emitido",
             WeekDays = NormWeekDays(req.WeekDays),
             IsPaid = req.IsPaid,
+            TipoComprobante = NormTipoComprobante(req.TipoComprobante),
+            CondicionIva = NormCondicionIva(req.CondicionIva),
+            CondicionPago = NormCondicionPago(req.CondicionPago),
             CreatedAt = DateTime.UtcNow
         };
 
@@ -286,6 +290,30 @@ public class CafeVentasController : ControllerBase
         var total = Math.Max(0m, subtotal - desc);
         var margen = total - costoTotal;
         return new CafeCotizadoDto(tipo, subtotal, desc, total, costoTotal, margen, todoOk, cotizadoItems);
+    }
+
+    private static readonly string[] TiposComprobanteValidos = { "X", "FA", "FB", "FC" };
+    private static string NormTipoComprobante(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "X";
+        var v = s.Trim().ToUpperInvariant();
+        return TiposComprobanteValidos.Contains(v) ? v : "X";
+    }
+
+    private static readonly string[] CondicionesIvaValidas = { "CF", "RI", "MO", "EX" };
+    private static string NormCondicionIva(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "CF";
+        var v = s.Trim().ToUpperInvariant();
+        return CondicionesIvaValidas.Contains(v) ? v : "CF";
+    }
+
+    private static readonly string[] CondicionesPagoValidas = { "EFECTIVO", "TRANSFERENCIA", "DEBITO", "CREDITO", "CTA_CORRIENTE", "CHEQUE" };
+    private static string NormCondicionPago(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "EFECTIVO";
+        var v = s.Trim().ToUpperInvariant();
+        return CondicionesPagoValidas.Contains(v) ? v : "EFECTIVO";
     }
 
     private static readonly string[] MoliendasValidas = { "EN GRANOS", "MOLIDO FILTRO", "MOLIDO ESPRESS" };
