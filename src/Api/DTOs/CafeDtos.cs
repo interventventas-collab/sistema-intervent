@@ -219,7 +219,10 @@ public record DeleteCafeVentaSettingsDto(string AllowedOperator, string Hint);
 // ===== Proveedores =====
 public record CafeProveedorDto(
     int Id, string Nombre, string? Contacto, string? Telefono, string? Email,
-    string? Notas, bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt,
+    string? Notas,
+    string? Cuit, string? CategoriaImpositiva,
+    string? Direccion, string? CodigoPostal, string? Provincia, string? Ciudad, string? Web,
+    bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt,
     int ComprasCount, decimal TotalComprado);
 
 public class CreateCafeProveedorRequest
@@ -229,6 +232,13 @@ public class CreateCafeProveedorRequest
     public string? Telefono { get; set; }
     public string? Email { get; set; }
     public string? Notas { get; set; }
+    public string? Cuit { get; set; }
+    public string? CategoriaImpositiva { get; set; }
+    public string? Direccion { get; set; }
+    public string? CodigoPostal { get; set; }
+    public string? Provincia { get; set; }
+    public string? Ciudad { get; set; }
+    public string? Web { get; set; }
 }
 
 public class UpdateCafeProveedorRequest
@@ -238,6 +248,13 @@ public class UpdateCafeProveedorRequest
     public string? Telefono { get; set; }
     public string? Email { get; set; }
     public string? Notas { get; set; }
+    public string? Cuit { get; set; }
+    public string? CategoriaImpositiva { get; set; }
+    public string? Direccion { get; set; }
+    public string? CodigoPostal { get; set; }
+    public string? Provincia { get; set; }
+    public string? Ciudad { get; set; }
+    public string? Web { get; set; }
     public bool? IsActive { get; set; }
 }
 

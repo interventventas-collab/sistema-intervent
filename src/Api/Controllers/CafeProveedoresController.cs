@@ -48,6 +48,9 @@ public class CafeProveedoresController : ControllerBase
     public async Task<IActionResult> Create([FromBody] CreateCafeProveedorRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.Nombre)) return BadRequest(new { error = "El nombre es obligatorio" });
+        var cuit = NormCuit(req.Cuit);
+        if (cuit is not null && await _db.CafeProveedores.AnyAsync(x => x.Cuit == cuit))
+            return BadRequest(new { error = $"Ya existe un proveedor con el CUIT {cuit}" });
         var p = new CafeProveedor
         {
             Nombre = req.Nombre.Trim(),
@@ -55,6 +58,13 @@ public class CafeProveedoresController : ControllerBase
             Telefono = NullIfEmpty(req.Telefono),
             Email = NullIfEmpty(req.Email),
             Notas = NullIfEmpty(req.Notas),
+            Cuit = cuit,
+            CategoriaImpositiva = NullIfEmpty(req.CategoriaImpositiva)?.ToUpperInvariant(),
+            Direccion = NullIfEmpty(req.Direccion),
+            CodigoPostal = NullIfEmpty(req.CodigoPostal),
+            Provincia = NullIfEmpty(req.Provincia),
+            Ciudad = NullIfEmpty(req.Ciudad),
+            Web = NullIfEmpty(req.Web),
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
@@ -77,6 +87,20 @@ public class CafeProveedoresController : ControllerBase
         if (req.Telefono is not null) p.Telefono = NullIfEmpty(req.Telefono);
         if (req.Email is not null) p.Email = NullIfEmpty(req.Email);
         if (req.Notas is not null) p.Notas = NullIfEmpty(req.Notas);
+        if (req.Cuit is not null)
+        {
+            var nuevoCuit = NormCuit(req.Cuit);
+            if (nuevoCuit is not null && nuevoCuit != p.Cuit
+                && await _db.CafeProveedores.AnyAsync(x => x.Cuit == nuevoCuit && x.Id != id))
+                return BadRequest(new { error = $"Ya existe otro proveedor con el CUIT {nuevoCuit}" });
+            p.Cuit = nuevoCuit;
+        }
+        if (req.CategoriaImpositiva is not null) p.CategoriaImpositiva = NullIfEmpty(req.CategoriaImpositiva)?.ToUpperInvariant();
+        if (req.Direccion is not null) p.Direccion = NullIfEmpty(req.Direccion);
+        if (req.CodigoPostal is not null) p.CodigoPostal = NullIfEmpty(req.CodigoPostal);
+        if (req.Provincia is not null) p.Provincia = NullIfEmpty(req.Provincia);
+        if (req.Ciudad is not null) p.Ciudad = NullIfEmpty(req.Ciudad);
+        if (req.Web is not null) p.Web = NullIfEmpty(req.Web);
         if (req.IsActive.HasValue) p.IsActive = req.IsActive.Value;
         p.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
@@ -106,7 +130,18 @@ public class CafeProveedoresController : ControllerBase
 
     private static CafeProveedorDto Map(CafeProveedor p, int comprasCount, decimal totalComprado) => new(
         p.Id, p.Nombre, p.Contacto, p.Telefono, p.Email, p.Notas,
+        p.Cuit, p.CategoriaImpositiva,
+        p.Direccion, p.CodigoPostal, p.Provincia, p.Ciudad, p.Web,
         p.IsActive, p.CreatedAt, p.UpdatedAt, comprasCount, totalComprado);
 
     private static string? NullIfEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+    /// <summary>Normaliza el CUIT a solo digitos. Devuelve null si despues de limpiar queda vacio
+    /// o si tiene < 8 digitos (no validamos algoritmo de digito verificador, solo presencia).</summary>
+    private static string? NormCuit(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        var digits = new string(s.Where(char.IsDigit).ToArray());
+        return string.IsNullOrEmpty(digits) ? null : digits;
+    }
 }

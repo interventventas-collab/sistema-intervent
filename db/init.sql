@@ -2060,6 +2060,34 @@ BEGIN
 END
 GO
 
+-- Cafe_Proveedores: campos de identidad fiscal y direccion (importacion desde Contabilium).
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'Cuit' AND Object_ID = Object_ID('Cafe_Proveedores'))
+    ALTER TABLE Cafe_Proveedores ADD Cuit NVARCHAR(20) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'CategoriaImpositiva' AND Object_ID = Object_ID('Cafe_Proveedores'))
+    ALTER TABLE Cafe_Proveedores ADD CategoriaImpositiva NVARCHAR(20) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'Direccion' AND Object_ID = Object_ID('Cafe_Proveedores'))
+    ALTER TABLE Cafe_Proveedores ADD Direccion NVARCHAR(300) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'CodigoPostal' AND Object_ID = Object_ID('Cafe_Proveedores'))
+    ALTER TABLE Cafe_Proveedores ADD CodigoPostal NVARCHAR(20) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'Provincia' AND Object_ID = Object_ID('Cafe_Proveedores'))
+    ALTER TABLE Cafe_Proveedores ADD Provincia NVARCHAR(100) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'Ciudad' AND Object_ID = Object_ID('Cafe_Proveedores'))
+    ALTER TABLE Cafe_Proveedores ADD Ciudad NVARCHAR(100) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'Web' AND Object_ID = Object_ID('Cafe_Proveedores'))
+    ALTER TABLE Cafe_Proveedores ADD Web NVARCHAR(200) NULL;
+GO
+SET QUOTED_IDENTIFIER ON;
+GO
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_CafeProveedores_Cuit' AND object_id = OBJECT_ID('Cafe_Proveedores'))
+    CREATE UNIQUE INDEX IX_CafeProveedores_Cuit ON Cafe_Proveedores(Cuit) WHERE Cuit IS NOT NULL;
+GO
+
 -- Compras (cabecera): Estados BORRADOR, CONFIRMADA, PAGADA, ANULADA.
 -- Al confirmar incrementa stock y pisa el costo del producto.
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_Compras' AND xtype='U')

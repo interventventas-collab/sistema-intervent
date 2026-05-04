@@ -293,6 +293,13 @@ public class CafeProveedorDto
     public string? Telefono { get; set; }
     public string? Email { get; set; }
     public string? Notas { get; set; }
+    public string? Cuit { get; set; }
+    public string? CategoriaImpositiva { get; set; }
+    public string? Direccion { get; set; }
+    public string? CodigoPostal { get; set; }
+    public string? Provincia { get; set; }
+    public string? Ciudad { get; set; }
+    public string? Web { get; set; }
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
@@ -307,6 +314,13 @@ public class CreateCafeProveedorRequest
     public string? Telefono { get; set; }
     public string? Email { get; set; }
     public string? Notas { get; set; }
+    public string? Cuit { get; set; }
+    public string? CategoriaImpositiva { get; set; }
+    public string? Direccion { get; set; }
+    public string? CodigoPostal { get; set; }
+    public string? Provincia { get; set; }
+    public string? Ciudad { get; set; }
+    public string? Web { get; set; }
 }
 
 public class UpdateCafeProveedorRequest
@@ -316,6 +330,13 @@ public class UpdateCafeProveedorRequest
     public string? Telefono { get; set; }
     public string? Email { get; set; }
     public string? Notas { get; set; }
+    public string? Cuit { get; set; }
+    public string? CategoriaImpositiva { get; set; }
+    public string? Direccion { get; set; }
+    public string? CodigoPostal { get; set; }
+    public string? Provincia { get; set; }
+    public string? Ciudad { get; set; }
+    public string? Web { get; set; }
     public bool? IsActive { get; set; }
 }
 
