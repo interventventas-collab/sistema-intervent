@@ -289,4 +289,5 @@ public class UpdateCafeOemRequest
 public record CafeOemImportResultDto(
     int Creados, int Actualizados, int Omitidos,
     string? Proveedor,
+    int VariantesPropagadas,
     List<string> Errores);

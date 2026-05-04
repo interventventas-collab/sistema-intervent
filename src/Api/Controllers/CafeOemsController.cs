@@ -24,6 +24,26 @@ public class CafeOemsController : ControllerBase
         o.IsActive, o.CreatedAt, o.UpdatedAt, o.LastImportAt,
         variantesCount);
 
+    /// <summary>Copia los campos heredables del OEM (costo, PVP, UxB, barcode) a todas las variantes vinculadas.
+    /// El % BAR sobre costo es per-variante y NO se toca aca. Devuelve cuantas variantes se actualizaron.</summary>
+    private async Task<int> PropagarAVariantesAsync(int oemId)
+    {
+        var oem = await _db.CafeOems.FindAsync(oemId);
+        if (oem is null) return 0;
+        var variantes = await _db.CafeProductos.Where(p => p.OemId == oemId).ToListAsync();
+        if (variantes.Count == 0) return 0;
+        var ahora = DateTime.UtcNow;
+        foreach (var v in variantes)
+        {
+            v.Costo = oem.Costo;
+            if (oem.PvpConIva.HasValue) v.Pvp2 = oem.PvpConIva.Value;
+            if (oem.UxB.HasValue) v.UxB = oem.UxB.Value;
+            if (!string.IsNullOrWhiteSpace(oem.Barcode)) v.Barcode = oem.Barcode;
+            v.UpdatedAt = ahora;
+        }
+        return variantes.Count;
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] string? proveedor = null, [FromQuery] string? marca = null, [FromQuery] string? q = null)
     {
@@ -131,7 +151,12 @@ public class CafeOemsController : ControllerBase
         if (req.IsActive.HasValue) o.IsActive = req.IsActive.Value;
         o.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
-        return Ok(Map(o));
+
+        // Propagar costo + PVP + UxB + barcode a TODAS las variantes vinculadas.
+        var n = await PropagarAVariantesAsync(o.Id);
+        if (n > 0) await _db.SaveChangesAsync();
+
+        return Ok(Map(o, n));
     }
 
     [HttpDelete("{id:int}")]
@@ -166,6 +191,7 @@ public class CafeOemsController : ControllerBase
         var errores = new List<string>();
         var ahora = DateTime.UtcNow;
 
+        var oemsTocados = new HashSet<int>();
         try
         {
             using var stream = file.OpenReadStream();
@@ -248,6 +274,7 @@ public class CafeOemsController : ControllerBase
                     existente.UpdatedAt = ahora;
                     existente.LastImportAt = ahora;
                     actualizados++;
+                    if (existente.Id != 0) oemsTocados.Add(existente.Id);
                 }
                 else
                 {
@@ -277,9 +304,17 @@ public class CafeOemsController : ControllerBase
         catch (Exception ex)
         {
             errores.Add(ex.Message);
-            return StatusCode(500, new CafeOemImportResultDto(creados, actualizados, omitidos, prov, errores));
+            return StatusCode(500, new CafeOemImportResultDto(creados, actualizados, omitidos, prov, 0, errores));
         }
 
-        return Ok(new CafeOemImportResultDto(creados, actualizados, omitidos, prov, errores));
+        // Propagar a variantes vinculadas SOLO de los OEMs que se actualizaron
+        // (los recien creados no tienen variantes vinculadas todavia).
+        var totalVariantesPropagadas = 0;
+        foreach (var oemId in oemsTocados)
+            totalVariantesPropagadas += await PropagarAVariantesAsync(oemId);
+        if (totalVariantesPropagadas > 0)
+            await _db.SaveChangesAsync();
+
+        return Ok(new CafeOemImportResultDto(creados, actualizados, omitidos, prov, totalVariantesPropagadas, errores));
     }
 }

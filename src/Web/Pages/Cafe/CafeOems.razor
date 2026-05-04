@@ -228,6 +228,10 @@
                                 <li><strong>@importResult.Omitidos</strong> omitidos (filas vacías)</li>
                             }
                             <li>Proveedor: <strong>@importResult.Proveedor</strong></li>
+                            @if (importResult.VariantesPropagadas > 0)
+                            {
+                                <li><strong>@importResult.VariantesPropagadas</strong> variante@(importResult.VariantesPropagadas == 1 ? "" : "s") con precios actualizados (propagación automática)</li>
+                            }
                         </ul>
                     </div>
                     @if (importResult.Errores.Count > 0)
@@ -405,7 +409,7 @@
             }
             else
             {
-                await Api.UpdateCafeOemAsync(editing.Id, new UpdateCafeOemRequest
+                var updated = await Api.UpdateCafeOemAsync(editing.Id, new UpdateCafeOemRequest
                 {
                     Codigo = formCodigo,
                     Descripcion = formDescripcion,
@@ -418,7 +422,10 @@
                     UxB = formUxB,
                     ClearUxB = !formUxB.HasValue
                 });
-                ToastService.Success("OEM actualizado");
+                if (updated is not null && updated.VariantesCount > 0)
+                    ToastService.Success($"OEM actualizado · {updated.VariantesCount} variante{(updated.VariantesCount == 1 ? "" : "s")} propagada{(updated.VariantesCount == 1 ? "" : "s")}");
+                else
+                    ToastService.Success("OEM actualizado");
             }
             showForm = false;
             await Load();
@@ -476,7 +483,10 @@
             // Hasta 100 MB
             using var stream = importFile.OpenReadStream(maxAllowedSize: 100_000_000);
             importResult = await Api.ImportCafeOemsAsync(stream, importFile.Name, importProveedor);
-            ToastService.Success($"✓ {importResult?.Creados ?? 0} nuevos, {importResult?.Actualizados ?? 0} actualizados");
+            var nProp = importResult?.VariantesPropagadas ?? 0;
+            var msg = $"✓ {importResult?.Creados ?? 0} nuevos, {importResult?.Actualizados ?? 0} actualizados";
+            if (nProp > 0) msg += $" · {nProp} variante{(nProp == 1 ? "" : "s")} con precios propagados";
+            ToastService.Success(msg);
             await Load();
         }
         catch (Exception ex) { importError = ex.Message; }

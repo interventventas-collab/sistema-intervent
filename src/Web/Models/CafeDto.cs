@@ -390,5 +390,6 @@ public class CafeOemImportResultDto
     public int Actualizados { get; set; }
     public int Omitidos { get; set; }
     public string? Proveedor { get; set; }
+    public int VariantesPropagadas { get; set; }
     public List<string> Errores { get; set; } = new();
 }
