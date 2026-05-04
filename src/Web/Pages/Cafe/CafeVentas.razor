@@ -25,6 +25,7 @@
         background: #1f2937; color: white; border-color: #1f2937;
         -webkit-print-color-adjust: exact; print-color-adjust: exact;
     }
+    .cli-pick-row:hover { background: #f0f9ff; }
 </style>
 
 <div class="card">
@@ -128,15 +129,61 @@
                         <strong>Cliente y fecha</strong>
                     </div>
                     <div class="form-row">
-                        <div class="form-group" style="flex: 2;">
+                        <div class="form-group" style="flex: 2; position: relative;">
                             <label class="form-label">Cliente</label>
-                            <select class="form-input" @bind="formClienteId" @bind:after="OnClienteChanged">
-                                <option value="0">— Consumidor final —</option>
-                                @foreach (var c in clientes ?? new())
+                            @if (formClienteId > 0)
+                            {
+                                var ciSel = clientes?.FirstOrDefault(x => x.Id == formClienteId);
+                                <div style="display: flex; gap: 0.3rem; align-items: center;">
+                                    <div class="form-input" style="flex: 1; background: #ecfdf5; border-color: #10b981; display: flex; align-items: center; gap: 0.5rem;">
+                                        <span style="font-family: monospace; font-weight: 700; color: #1d4ed8;">@(ciSel?.Codigo ?? "—")</span>
+                                        <strong>@(ciSel?.Nombre ?? "?")</strong>
+                                        @if (ciSel is not null)
+                                        {
+                                            <span style="font-size: 0.72rem; color: #6b7280;">· @ciSel.Tipo</span>
+                                            @if (!string.IsNullOrEmpty(ciSel.Cuit)) { <span style="font-size: 0.72rem; color: #6b7280;">· @ciSel.Cuit</span> }
+                                        }
+                                    </div>
+                                    <button class="btn btn-secondary" type="button" @onclick="ClearCliente" title="Quitar cliente">×</button>
+                                </div>
+                            }
+                            else
+                            {
+                                <input class="form-input" @bind="clienteSearch" @bind:event="oninput"
+                                       @onfocus="() => clienteSearchOpen = true"
+                                       placeholder="🔍 Buscar por código, nombre, CUIT, tel, email — o dejar vacío para consumidor final" />
+                                @if (clienteSearchOpen && !string.IsNullOrWhiteSpace(clienteSearch))
                                 {
-                                    <option value="@c.Id">@c.Nombre (@c.Tipo)</option>
+                                    var matches = ClientesMatching(clienteSearch).Take(20).ToList();
+                                    <div style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #d1d5db; border-radius: 6px; max-height: 280px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 14px rgba(0,0,0,0.12); margin-top: 0.2rem;">
+                                        @if (matches.Count == 0)
+                                        {
+                                            <div style="padding: 0.6rem; color: #6b7280; font-size: 0.85rem;">Sin resultados.</div>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var ci in matches)
+                                            {
+                                                var ciId = ci.Id;
+                                                <div class="cli-pick-row" @onclick="() => SelectCliente(ciId)"
+                                                     style="padding: 0.4rem 0.6rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem;">
+                                                    <span style="font-family: monospace; color: #1d4ed8; font-weight: 700; margin-right: 0.5rem;">@ci.Codigo</span>
+                                                    <strong>@ci.Nombre</strong>
+                                                    <span style="color: #6b7280; font-size: 0.78rem;"> · @ci.Tipo</span>
+                                                    @if (!string.IsNullOrEmpty(ci.Cuit))
+                                                    {
+                                                        <span style="color: #6b7280; font-size: 0.78rem;"> · @ci.Cuit</span>
+                                                    }
+                                                    @if (!string.IsNullOrEmpty(ci.Telefono))
+                                                    {
+                                                        <span style="color: #6b7280; font-size: 0.78rem;"> · 📞 @ci.Telefono</span>
+                                                    }
+                                                </div>
+                                            }
+                                        }
+                                    </div>
                                 }
-                            </select>
+                            }
                         </div>
                         <div class="form-group" style="flex: 1;">
                             <label class="form-label">Tipo</label>
@@ -605,6 +652,8 @@
     private bool showForm, saving;
     private string? formError;
     private int formClienteId;
+    private string clienteSearch = "";
+    private bool clienteSearchOpen;
     private string formClienteTipo = "OTRO";
     private DateTime formFecha = DateTime.Today;
     private decimal formDescuento;
@@ -704,6 +753,7 @@
     private void ShowCreate()
     {
         formClienteId = 0; formClienteTipo = "OTRO";
+        clienteSearch = ""; clienteSearchOpen = false;
         formFecha = DateTime.Today; formDescuento = 0; formObservaciones = "";
         formItems = new(); cotizacion = null;
         addProductoId = 0; addFormato = "1KG"; addCantidad = 1;
@@ -726,6 +776,34 @@
             if (c is not null) formClienteTipo = c.Tipo;
         }
         await Cotizar();
+    }
+
+    /// <summary>Selecciona un cliente del dropdown filtrable.</summary>
+    private async Task SelectCliente(int id)
+    {
+        formClienteId = id;
+        clienteSearch = "";
+        clienteSearchOpen = false;
+        await OnClienteChanged();
+    }
+
+    /// <summary>Vuelve a "consumidor final" (sin cliente).</summary>
+    private async Task ClearCliente()
+    {
+        formClienteId = 0;
+        clienteSearch = "";
+        clienteSearchOpen = false;
+        await OnClienteChanged();
+    }
+
+    /// <summary>Filtra clientes por código / nombre / cuit / telefono / email.</summary>
+    private IEnumerable<CafeClienteDto> ClientesMatching(string q)
+    {
+        if (clientes is null) return Enumerable.Empty<CafeClienteDto>();
+        var t = q.Trim();
+        if (string.IsNullOrEmpty(t)) return clientes;
+        bool h(string? s) => !string.IsNullOrEmpty(s) && s.Contains(t, StringComparison.OrdinalIgnoreCase);
+        return clientes.Where(c => c.IsActive && (h(c.Codigo) || h(c.Nombre) || h(c.Cuit) || h(c.Telefono) || h(c.Email)));
     }
 
     private void OnAddProductoChanged()

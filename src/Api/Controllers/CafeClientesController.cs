@@ -18,7 +18,7 @@ public class CafeClientesController : ControllerBase
     public CafeClientesController(AppDbContext db) { _db = db; }
 
     private static CafeClienteDto Map(CafeCliente c) => new(
-        c.Id, c.Nombre, c.Tipo,
+        c.Id, c.Codigo, c.Nombre, c.Tipo,
         c.Cuit, c.Telefono, c.Email,
         c.Direccion, c.Notas,
         c.IsActive, c.CreatedAt, c.UpdatedAt);
@@ -46,6 +46,7 @@ public class CafeClientesController : ControllerBase
         var tipo = NormTipo(req.Tipo);
         var c = new CafeCliente
         {
+            Codigo = await GenerarCodigoAsync(),
             Nombre = req.Nombre.Trim(),
             Tipo = tipo,
             Cuit = Norm(req.Cuit),
@@ -59,6 +60,25 @@ public class CafeClientesController : ControllerBase
         _db.CafeClientes.Add(c);
         await _db.SaveChangesAsync();
         return Ok(Map(c));
+    }
+
+    /// <summary>
+    /// Devuelve el siguiente codigo secuencial. Pad a 4 digitos para los primeros 9999.
+    /// Si ya existe alguno >= 9999 (improbable pero por las dudas), arranca con 5 digitos.
+    /// </summary>
+    private async Task<string> GenerarCodigoAsync()
+    {
+        var maxNum = await _db.CafeClientes
+            .Where(c => c.Codigo != null)
+            .Select(c => c.Codigo!)
+            .ToListAsync();
+        int max = 0;
+        foreach (var s in maxNum)
+        {
+            if (int.TryParse(s, out var n) && n > max) max = n;
+        }
+        var siguiente = max + 1;
+        return siguiente < 10000 ? siguiente.ToString("D4") : siguiente.ToString();
     }
 
     [HttpPut("{id:int}")]

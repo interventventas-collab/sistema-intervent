@@ -1897,3 +1897,20 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'Marca' AND Object_ID = Object_ID('Cafe_Productos'))
     ALTER TABLE Cafe_Productos ADD Marca NVARCHAR(100) NULL;
 GO
+
+-- Cafe_Clientes: codigo automatico (4 digitos)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'Codigo' AND Object_ID = Object_ID('Cafe_Clientes'))
+    ALTER TABLE Cafe_Clientes ADD Codigo NVARCHAR(20) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_CafeClientes_Codigo' AND object_id = OBJECT_ID('Cafe_Clientes'))
+BEGIN
+    -- Backfill antes de crear el indice unico
+    ;WITH ranked AS (
+        SELECT Id, ROW_NUMBER() OVER (ORDER BY CreatedAt, Id) AS rn
+        FROM Cafe_Clientes WHERE Codigo IS NULL OR Codigo = N''
+    )
+    UPDATE c SET Codigo = RIGHT(N'0000' + CAST(r.rn AS NVARCHAR(10)), 4)
+    FROM Cafe_Clientes c JOIN ranked r ON r.Id = c.Id;
+    CREATE UNIQUE INDEX IX_CafeClientes_Codigo ON Cafe_Clientes(Codigo);
+END
+GO

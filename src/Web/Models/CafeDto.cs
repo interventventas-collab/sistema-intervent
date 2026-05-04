@@ -3,6 +3,7 @@ namespace Web.Models;
 public class CafeClienteDto
 {
     public int Id { get; set; }
+    public string? Codigo { get; set; }
     public string Nombre { get; set; } = "";
     public string Tipo { get; set; } = "OTRO";
     public string? Cuit { get; set; }

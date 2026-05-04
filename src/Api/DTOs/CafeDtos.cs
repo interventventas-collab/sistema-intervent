@@ -2,7 +2,7 @@ namespace Api.DTOs;
 
 // ===== Clientes =====
 public record CafeClienteDto(
-    int Id, string Nombre, string Tipo,
+    int Id, string? Codigo, string Nombre, string Tipo,
     string? Cuit, string? Telefono, string? Email,
     string? Direccion, string? Notas,
     bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt);

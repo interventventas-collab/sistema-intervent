@@ -10,6 +10,10 @@ public class CafeCliente
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public int Id { get; set; }
 
+    /// <summary>Código secuencial autogenerado (formato '0001'). Único, sirve para buscar rápido.</summary>
+    [MaxLength(20)]
+    public string? Codigo { get; set; }
+
     [Required, MaxLength(200)]
     public string Nombre { get; set; } = string.Empty;
 

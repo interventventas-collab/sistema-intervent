@@ -4,9 +4,14 @@
 @inject ToastService ToastService
 
 <div class="card">
-    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-        <h3>👥 Clientes <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;">(@(clientes?.Count ?? 0))</span></h3>
-        <button class="btn btn-primary" @onclick="ShowCreate">+ Nuevo Cliente</button>
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <h3>👥 Clientes <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;">(@(visibles.Count) de @(clientes?.Count ?? 0))</span></h3>
+        <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
+            <input class="form-input" style="min-width: 280px; font-size: 0.9rem;"
+                   @bind="filtro" @bind:event="oninput"
+                   placeholder="🔍 Buscar por código, nombre, CUIT, teléfono, email..." />
+            <button class="btn btn-primary" @onclick="ShowCreate">+ Nuevo Cliente</button>
+        </div>
     </div>
     <div class="card-body" style="padding: 0;">
         @if (loading)
@@ -17,12 +22,19 @@
         {
             <p class="text-muted" style="padding: 1.5rem;">No hay clientes cargados.</p>
         }
+        else if (visibles.Count == 0)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">
+                Sin resultados para "<strong>@filtro</strong>". Probá con otra búsqueda.
+            </p>
+        }
         else
         {
             <div class="table-responsive">
                 <table class="data-table">
                     <thead>
                         <tr>
+                            <th style="width: 80px;">Código</th>
                             <th>Nombre</th>
                             <th>Tipo</th>
                             <th>CUIT/DNI</th>
@@ -34,9 +46,10 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var c in clientes)
+                        @foreach (var c in visibles.Take(maxVisibles))
                         {
                             <tr>
+                                <td style="font-family: monospace; font-weight: 700; color: #1d4ed8;">@(c.Codigo ?? "—")</td>
                                 <td><strong>@c.Nombre</strong></td>
                                 <td>
                                     @if (c.Tipo == "BAR")
@@ -63,6 +76,17 @@
                         }
                     </tbody>
                 </table>
+                @if (visibles.Count > maxVisibles)
+                {
+                    <div style="padding: 0.7rem; text-align: center; background: #f9fafb; border-top: 1px solid #e5e7eb;">
+                        <span style="color: #6b7280; font-size: 0.85rem; margin-right: 0.5rem;">
+                            Mostrando @maxVisibles de @visibles.Count resultados
+                        </span>
+                        <button class="btn btn-secondary" @onclick="() => maxVisibles += 200" style="font-size: 0.85rem;">
+                            Mostrar 200 más
+                        </button>
+                    </div>
+                }
             </div>
         }
     </div>
@@ -164,7 +188,27 @@
 @code {
     private List<CafeClienteDto>? clientes;
     private bool loading = true;
+    private string filtro = "";
+    private int maxVisibles = 100;
     private bool showForm, isEditing, saving;
+
+    /// <summary>Lista filtrada por el buscador (codigo / nombre / cuit / telefono / email).</summary>
+    private List<CafeClienteDto> visibles
+    {
+        get
+        {
+            if (clientes is null) return new();
+            if (string.IsNullOrWhiteSpace(filtro)) return clientes;
+            var f = filtro.Trim();
+            // Comparacion case-insensitive sin acentos sería mas fuerte; arrancamos con Contains simple.
+            bool match(CafeClienteDto c, string q)
+            {
+                bool h(string? s) => !string.IsNullOrEmpty(s) && s.Contains(q, StringComparison.OrdinalIgnoreCase);
+                return h(c.Codigo) || h(c.Nombre) || h(c.Cuit) || h(c.Telefono) || h(c.Email) || h(c.Direccion);
+            }
+            return clientes.Where(c => match(c, f)).ToList();
+        }
+    }
     private string? formError;
     private int? editingId;
     private string formNombre = "", formTipo = "OTRO", formCuit = "", formTelefono = "", formEmail = "", formDireccion = "", formNotas = "";
