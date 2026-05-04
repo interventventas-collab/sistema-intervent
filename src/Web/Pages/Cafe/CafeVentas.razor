@@ -4,6 +4,29 @@
 @inject ToastService ToastService
 @inject IJSRuntime JS
 
+<style>
+    /* Pildoritas de días — siempre disponibles (form de carga + viewer) */
+    .cafe-day-pill {
+        display: inline-flex; align-items: center; justify-content: center;
+        padding: 0.18rem 0.45rem;
+        border: 1px solid #d1d5db;
+        background: white;
+        color: #374151;
+        border-radius: 4px;
+        font-weight: 700;
+        font-size: 0.72rem;
+        cursor: pointer;
+        min-width: 32px;
+        user-select: none;
+        transition: background 0.1s, color 0.1s;
+    }
+    .cafe-day-pill:hover { background: #f3f4f6; }
+    .cafe-day-pill.on {
+        background: #1f2937; color: white; border-color: #1f2937;
+        -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+</style>
+
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
         <h3>🧾 Ventas <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;">(@(ventas?.Count ?? 0))</span></h3>
@@ -313,22 +336,6 @@
             pointer-events: none;
             user-select: none;
             z-index: 5;
-        }
-        /* Pildoritas de días — chicas */
-        .cafe-day-pill {
-            display: inline-flex; align-items: center; justify-content: center;
-            padding: 0.18rem 0.45rem;
-            border: 1px solid #d1d5db;
-            border-radius: 4px;
-            font-weight: 700;
-            font-size: 0.72rem;
-            cursor: pointer;
-            min-width: 32px;
-            user-select: none;
-        }
-        .cafe-day-pill.on {
-            background: #1f2937; color: white; border-color: #1f2937;
-            -webkit-print-color-adjust: exact; print-color-adjust: exact;
         }
         @@media print {
             @@page { size: A4; margin: 12mm; }
