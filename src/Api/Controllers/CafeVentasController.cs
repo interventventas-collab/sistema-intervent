@@ -243,7 +243,8 @@ public class CafeVentasController : ControllerBase
         return Ok(new { deleted = ventas.Count });
     }
 
-    /// <summary>Edita metadata de una venta (NO items). No recalcula precios ni toca stock.</summary>
+    /// <summary>Edita una venta. Si Items != null y la venta esta emitida, reemplaza items + recalcula
+    /// precios + ajusta stock (devuelve los viejos, descuenta los nuevos). Si Items es null, solo metadata.</summary>
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] UpdateCafeVentaRequest req)
     {
@@ -283,14 +284,105 @@ public class CafeVentasController : ControllerBase
         }
         else if (!v.ClienteId.HasValue && !string.IsNullOrWhiteSpace(req.ClienteNombreOverride))
         {
-            // sin clienteId previo y mandan nombre nuevo
             v.ClienteNombreSnapshot = req.ClienteNombreOverride.Trim();
             if (!string.IsNullOrWhiteSpace(req.ClienteTipoOverride))
                 v.ClienteTipoSnapshot = CafePricingService.ResolverTipo(req.ClienteTipoOverride);
         }
 
-        v.UpdatedAt = DateTime.UtcNow;
-        await _db.SaveChangesAsync();
+        // Items: si se envian, reemplazar + ajustar stock + recalcular totales.
+        // Solo aplicable si la venta no esta anulada.
+        if (req.Items is not null)
+        {
+            if (v.Estado != "emitido")
+                return BadRequest(new { error = "No se pueden modificar los items de una venta anulada" });
+            if (req.Items.Count == 0)
+                return BadRequest(new { error = "La venta debe tener al menos un item" });
+
+            using var tx = await _db.Database.BeginTransactionAsync();
+            try
+            {
+                // 1. Devolver stock de los items actuales.
+                foreach (var item in v.Items)
+                {
+                    var prod = await _db.CafeProductos.FindAsync(item.ProductoId);
+                    if (prod is null) continue;
+                    if (prod.Categoria == "CAFE") prod.StockGramos += item.GramosDescontados;
+                    else prod.StockUnidades += item.Cantidad;
+                    prod.UpdatedAt = DateTime.UtcNow;
+                }
+                _db.CafeVentaItems.RemoveRange(v.Items);
+                v.Items.Clear();
+                await _db.SaveChangesAsync();
+
+                // 2. Cotizar items nuevos contra el stock recien restaurado.
+                var settings = await _db.CafeSettings.FindAsync(1) ?? new CafeSetting { Id = 1 };
+                var tipo = v.ClienteTipoSnapshot ?? "OTRO";
+                var descuentoNuevo = req.Descuento ?? v.Descuento;
+                var cot = await CotizarInternoAsync(req.Items, tipo, descuentoNuevo, settings);
+                if (!cot.TodoOk)
+                {
+                    await tx.RollbackAsync();
+                    return BadRequest(new { error = "No hay stock suficiente para alguno de los items nuevos." });
+                }
+
+                // 3. Persistir items nuevos + descontar stock.
+                foreach (var ci in cot.Items)
+                {
+                    var prod = await _db.CafeProductos.FindAsync(ci.ProductoId);
+                    if (prod is null) return BadRequest(new { error = $"Producto {ci.ProductoId} no encontrado" });
+                    v.Items.Add(new CafeVentaItem
+                    {
+                        ProductoId = prod.Id,
+                        ProductoNombreSnapshot = prod.Nombre,
+                        Categoria = prod.Categoria,
+                        Formato = ci.Formato,
+                        Cantidad = ci.Cantidad,
+                        PrecioUnitario = ci.PrecioUnitario,
+                        CostoUnitario = ci.CostoUnitario,
+                        Subtotal = ci.Subtotal,
+                        GramosDescontados = ci.GramosNecesarios,
+                        Molienda = NormMolienda(ci.Molienda),
+                        EsDoyPack = ci.EsDoyPack && prod.Categoria == "CAFE",
+                        DescuentoPct = ci.DescuentoPct
+                    });
+                    if (prod.Categoria == "CAFE")
+                        prod.StockGramos = Math.Max(0m, prod.StockGramos - ci.GramosNecesarios);
+                    else
+                        prod.StockUnidades = Math.Max(0, prod.StockUnidades - ci.Cantidad);
+                    prod.UpdatedAt = DateTime.UtcNow;
+                }
+
+                v.Subtotal = cot.Subtotal;
+                v.Descuento = cot.Descuento;
+                v.Total = cot.Total;
+                v.CostoTotal = cot.CostoTotal;
+                v.Margen = cot.Margen;
+                v.UpdatedAt = DateTime.UtcNow;
+                await _db.SaveChangesAsync();
+                await tx.CommitAsync();
+            }
+            catch
+            {
+                await tx.RollbackAsync();
+                throw;
+            }
+        }
+        else if (req.Descuento.HasValue)
+        {
+            // Solo cambio el descuento global sin tocar items.
+            var d = Math.Max(0m, req.Descuento.Value);
+            v.Descuento = d;
+            v.Total = Math.Max(0m, v.Subtotal - d);
+            v.Margen = v.Total - v.CostoTotal;
+            v.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+        }
+        else
+        {
+            v.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+        }
+
         return Ok(Map(v));
     }
 

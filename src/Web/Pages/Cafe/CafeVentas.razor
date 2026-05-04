@@ -154,14 +154,14 @@
     </div>
 </div>
 
-@* ═══════════════ MODAL NUEVA VENTA ═══════════════ *@
+@* ═══════════════ MODAL NUEVA / EDITAR VENTA ═══════════════ *@
 @if (showForm)
 {
     <div class="modal-overlay" @onclick="CloseForm">
         <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 1000px; max-height: 92vh; display: flex; flex-direction: column;">
-            <div class="modal-header" style="background: whitesmoke;">
-                <h3 style="margin: 0;">🧾 Nueva Venta</h3>
-                <button class="btn-close" @onclick="CloseForm">&times;</button>
+            <div class="modal-header" style="background: @(editingVentaId.HasValue ? "#1d4ed8" : "whitesmoke"); color: @(editingVentaId.HasValue ? "white" : "inherit");">
+                <h3 style="margin: 0;">@(editingVentaId.HasValue ? $"✎ Editar comprobante {editingVentaNumero}" : "🧾 Nueva Venta")</h3>
+                <button class="btn-close" @onclick="CloseForm" style="@(editingVentaId.HasValue ? "color: white;" : "")">&times;</button>
             </div>
             <div class="modal-body" style="overflow-y: auto;">
                 @if (!string.IsNullOrEmpty(formError))
@@ -625,7 +625,9 @@
             <div class="modal-footer">
                 <button class="btn btn-secondary" @onclick="CloseForm" disabled="@saving">Cancelar</button>
                 <button class="btn btn-primary" @onclick="Save" disabled="@(saving || formItems.Count == 0 || cotizacion?.TodoOk != true)">
-                    @(saving ? "Emitiendo..." : "Emitir comprobante")
+                    @(saving
+                        ? (editingVentaId.HasValue ? "Guardando..." : "Emitiendo...")
+                        : (editingVentaId.HasValue ? "💾 Guardar cambios" : "Emitir comprobante"))
                 </button>
             </div>
         </div>
@@ -970,164 +972,7 @@
     </div>
 }
 
-@* ====== EDITAR COMPROBANTE (metadata, no items) ====== *@
-@if (editVenta is not null)
-{
-    <div class="modal-overlay" @onclick="CloseEditModal">
-        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 720px;">
-            <div class="modal-header" style="background: #1d4ed8; color: white;">
-                <h4 style="margin: 0;">✎ Editar comprobante @editVenta.Numero</h4>
-                <button class="btn-close" @onclick="CloseEditModal" style="color: white;">&times;</button>
-            </div>
-            <div class="modal-body" style="overflow-y: auto; max-height: 75vh;">
-                <p style="font-size: 0.82rem; color: #6b7280; margin: 0 0 0.75rem;">
-                    Editás los datos del comprobante (cliente, fecha, tipo, condiciones, observaciones, días, pago).
-                    <strong>Los items y los totales no se modifican</strong> — si necesitás cambiar productos, anulá la venta y emití una nueva.
-                </p>
-
-                @if (!string.IsNullOrEmpty(editError))
-                {
-                    <div class="form-error">@editError</div>
-                }
-
-                @* Datos generales *@
-                <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem; margin-bottom: 0.75rem;">
-                    <div style="font-weight: 700; margin-bottom: 0.4rem;">Datos generales</div>
-                    <div class="form-row">
-                        <div class="form-group" style="flex: 2;">
-                            <label class="form-label">Tipo de comprobante</label>
-                            <select class="form-input" @bind="editTipoComprobante">
-                                <option value="X">X — Cotización / Remito interno (sin IVA)</option>
-                                <option value="FA" disabled>Factura A (próximamente — ARCA)</option>
-                                <option value="FB" disabled>Factura B (próximamente — ARCA)</option>
-                                <option value="FC" disabled>Factura C (próximamente — ARCA)</option>
-                            </select>
-                        </div>
-                        <div class="form-group" style="flex: 1;">
-                            <label class="form-label">Condición IVA</label>
-                            <select class="form-input" @bind="editCondicionIva">
-                                <option value="CF">Consumidor final</option>
-                                <option value="RI">Responsable Inscripto</option>
-                                <option value="MO">Monotributo</option>
-                                <option value="EX">Exento</option>
-                            </select>
-                        </div>
-                        <div class="form-group" style="flex: 1;">
-                            <label class="form-label">Condición de pago</label>
-                            <select class="form-input" @bind="editCondicionPago">
-                                <option value="EFECTIVO">Efectivo</option>
-                                <option value="TRANSFERENCIA">Transferencia</option>
-                                <option value="DEBITO">Tarjeta de débito</option>
-                                <option value="CREDITO">Tarjeta de crédito</option>
-                                <option value="CTA_CORRIENTE">Cuenta corriente</option>
-                                <option value="CHEQUE">Cheque</option>
-                                <option value="V_PRIVADO">*V********</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-
-                @* Cliente y fecha *@
-                <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem; margin-bottom: 0.75rem;">
-                    <div style="font-weight: 700; margin-bottom: 0.4rem;">Cliente y fecha</div>
-                    <div class="form-row">
-                        <div class="form-group" style="flex: 2; position: relative;">
-                            <label class="form-label">Cliente</label>
-                            @if (editClienteId > 0)
-                            {
-                                var ciSel = clientes?.FirstOrDefault(x => x.Id == editClienteId);
-                                <div style="display: flex; gap: 0.3rem; align-items: center;">
-                                    <div class="form-input" style="flex: 1; background: #ecfdf5; border-color: #10b981; display: flex; align-items: center; gap: 0.5rem;">
-                                        <span style="font-family: monospace; font-weight: 700; color: #1d4ed8;">@(ciSel?.Codigo ?? "—")</span>
-                                        <strong>@(ciSel?.Nombre ?? editVenta.ClienteNombre ?? "?")</strong>
-                                        @if (ciSel is not null)
-                                        {
-                                            <span style="font-size: 0.72rem; color: #6b7280;">· @ciSel.Tipo</span>
-                                        }
-                                    </div>
-                                    <button class="btn btn-secondary" type="button" @onclick="() => { editClienteId = 0; editClienteNombre = string.Empty; }" title="Quitar cliente">×</button>
-                                </div>
-                            }
-                            else
-                            {
-                                <input class="form-input" @bind="editClienteSearch" @bind:event="oninput"
-                                       @onfocus="() => editClienteSearchOpen = true"
-                                       placeholder="🔍 Buscar cliente o dejar vacío para 'consumidor final'" />
-                                @if (editClienteSearchOpen && !string.IsNullOrWhiteSpace(editClienteSearch))
-                                {
-                                    var matches = ClientesMatching(editClienteSearch).Take(20).ToList();
-                                    <div style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #d1d5db; border-radius: 6px; max-height: 240px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 14px rgba(0,0,0,0.12); margin-top: 0.2rem;">
-                                        @if (matches.Count == 0)
-                                        {
-                                            <div style="padding: 0.6rem; color: #6b7280; font-size: 0.85rem;">Sin resultados.</div>
-                                        }
-                                        else
-                                        {
-                                            @foreach (var ci in matches)
-                                            {
-                                                var ciId = ci.Id;
-                                                <div class="cli-pick-row" @onclick="() => SelectEditCliente(ciId)"
-                                                     style="padding: 0.4rem 0.6rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem;">
-                                                    <span style="font-family: monospace; color: #1d4ed8; font-weight: 700; margin-right: 0.5rem;">@ci.Codigo</span>
-                                                    <strong>@ci.Nombre</strong>
-                                                    <span style="color: #6b7280; font-size: 0.78rem;"> · @ci.Tipo</span>
-                                                </div>
-                                            }
-                                        }
-                                    </div>
-                                }
-                                <input class="form-input" @bind="editClienteNombre" placeholder="O escribí un nombre libre (consumidor final)..." style="margin-top: 0.3rem;" />
-                            }
-                        </div>
-                        <div class="form-group" style="flex: 1;">
-                            <label class="form-label">Tipo</label>
-                            <select class="form-input" @bind="editClienteTipo" disabled="@(editClienteId > 0)">
-                                <option value="OTRO">🛒 OTRO</option>
-                                <option value="BAR">🍺 BAR</option>
-                            </select>
-                        </div>
-                        <div class="form-group" style="flex: 1;">
-                            <label class="form-label">Fecha</label>
-                            <input class="form-input" type="date" @bind="editFecha" />
-                        </div>
-                    </div>
-                </div>
-
-                @* Días + pagado + observaciones *@
-                <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem;">
-                    <div style="font-weight: 700; margin-bottom: 0.4rem;">Otros datos</div>
-                    <div class="form-group">
-                        <label class="form-label">Días de visita / reparto</label>
-                        <div style="display: flex; gap: 0.3rem; flex-wrap: wrap;">
-                            @foreach (var d in AllWeekDays)
-                            {
-                                var on = editWeekDays.Contains(d);
-                                var dia = d;
-                                <span class="cafe-day-pill @(on ? "on" : "")" @onclick="() => ToggleEditDay(dia)">@d</span>
-                            }
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label style="display:inline-flex; align-items:center; gap:0.4rem; cursor:pointer;">
-                            <input type="checkbox" @bind="editIsPaid" />
-                            <span>✓ Pagado</span>
-                        </label>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Observaciones</label>
-                        <textarea class="form-input" rows="2" @bind="editObservaciones" placeholder="Texto libre para el comprobante..."></textarea>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" @onclick="CloseEditModal" disabled="@isSavingEdit">Cancelar</button>
-                <button class="btn btn-primary" @onclick="DoEdit" disabled="@isSavingEdit">
-                    @(isSavingEdit ? "Guardando..." : "💾 Guardar cambios")
-                </button>
-            </div>
-        </div>
-    </div>
-}
+@* (El modal de edición vive ahora dentro del modal Nueva Venta — mismo form, branchea por editingVentaId) *@
 
 @code {
     private List<CafeVentaDto>? ventas;
@@ -1246,22 +1091,9 @@
     private string? bulkDeleteError;
     private bool isBulkDeleting;
 
-    // Edit
-    private CafeVentaDto? editVenta;
-    private DateTime editFecha = DateTime.Today;
-    private int editClienteId;
-    private string editClienteNombre = "";
-    private string editClienteTipo = "OTRO";
-    private string editClienteSearch = "";
-    private bool editClienteSearchOpen;
-    private string editObservaciones = "";
-    private string editTipoComprobante = "X";
-    private string editCondicionIva = "CF";
-    private string editCondicionPago = "EFECTIVO";
-    private HashSet<string> editWeekDays = new();
-    private bool editIsPaid;
-    private string? editError;
-    private bool isSavingEdit;
+    // Edit (reusa el form de Nueva Venta — branchea por editingVentaId)
+    private int? editingVentaId;
+    private string editingVentaNumero = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -1299,6 +1131,7 @@
 
     private void ShowCreate()
     {
+        editingVentaId = null; editingVentaNumero = "";
         formClienteId = 0; formClienteTipo = "OTRO";
         clienteSearch = ""; clienteSearchOpen = false;
         formFecha = DateTime.Today; formDescuento = 0; formObservaciones = "";
@@ -1318,7 +1151,7 @@
         if (!formWeekDays.Add(d)) formWeekDays.Remove(d);
     }
 
-    private void CloseForm() { showForm = false; formError = null; }
+    private void CloseForm() { showForm = false; formError = null; editingVentaId = null; editingVentaNumero = ""; }
 
     private async Task OnClienteChanged()
     {
@@ -1520,27 +1353,58 @@
         saving = true;
         try
         {
-            var v = await Api.CreateCafeVentaAsync(new CreateCafeVentaRequest
+            var weekCsv = formWeekDays.Count > 0
+                ? string.Join(",", AllWeekDays.Where(d => formWeekDays.Contains(d)))
+                : null;
+
+            CafeVentaDto? v;
+            if (editingVentaId.HasValue)
             {
-                Fecha = formFecha,
-                ClienteId = formClienteId > 0 ? formClienteId : null,
-                ClienteTipoOverride = formClienteTipo,
-                Items = formItems,
-                Descuento = formDescuento,
-                Observaciones = formObservaciones,
-                WeekDays = formWeekDays.Count > 0 ? string.Join(",", AllWeekDays.Where(d => formWeekDays.Contains(d))) : null,
-                IsPaid = formIsPaid,
-                TipoComprobante = formTipoComprobante,
-                CondicionIva = formCondicionIva,
-                CondicionPago = formCondicionPago
-            });
-            if (v is null) { formError = "No se pudo crear"; return; }
-            ToastService.Success($"Venta {v.Numero} emitida — Total ${v.Total:N2}");
+                v = await Api.UpdateCafeVentaAsync(editingVentaId.Value, new UpdateCafeVentaRequest
+                {
+                    Fecha = formFecha,
+                    ClienteId = formClienteId > 0 ? formClienteId : 0,
+                    ClienteTipoOverride = formClienteId > 0 ? null : formClienteTipo,
+                    Items = formItems,
+                    Descuento = formDescuento,
+                    Observaciones = formObservaciones,
+                    WeekDays = weekCsv ?? "",
+                    IsPaid = formIsPaid,
+                    TipoComprobante = formTipoComprobante,
+                    CondicionIva = formCondicionIva,
+                    CondicionPago = formCondicionPago
+                });
+                if (v is null) { formError = "No se pudo actualizar"; return; }
+                ToastService.Success($"Comprobante {v.Numero} actualizado");
+            }
+            else
+            {
+                v = await Api.CreateCafeVentaAsync(new CreateCafeVentaRequest
+                {
+                    Fecha = formFecha,
+                    ClienteId = formClienteId > 0 ? formClienteId : null,
+                    ClienteTipoOverride = formClienteTipo,
+                    Items = formItems,
+                    Descuento = formDescuento,
+                    Observaciones = formObservaciones,
+                    WeekDays = weekCsv,
+                    IsPaid = formIsPaid,
+                    TipoComprobante = formTipoComprobante,
+                    CondicionIva = formCondicionIva,
+                    CondicionPago = formCondicionPago
+                });
+                if (v is null) { formError = "No se pudo crear"; return; }
+                ToastService.Success($"Venta {v.Numero} emitida — Total ${v.Total:N2}");
+            }
+
+            var wasEditing = editingVentaId.HasValue;
             showForm = false;
+            editingVentaId = null;
+            editingVentaNumero = "";
             await LoadCatalogos();
             await Load();
-            // Abrir el viewer/pdf de la venta recién creada
-            printVenta = v;
+            // Si se editó, no abrir el viewer automáticamente; si era nueva venta, sí.
+            if (!wasEditing) printVenta = v;
         }
         catch (Exception ex) { formError = ex.Message; }
         finally { saving = false; }
@@ -1718,74 +1582,43 @@
         finally { isBulkDeleting = false; }
     }
 
-    // ── Editar comprobante ──
-    private void OpenEditModal(CafeVentaDto v)
+    // ── Editar comprobante: precarga el form de Nueva Venta con los datos del comprobante existente ──
+    private async Task OpenEditModal(CafeVentaDto v)
     {
-        editVenta = v;
-        editFecha = v.Fecha;
-        editClienteId = v.ClienteId ?? 0;
-        editClienteNombre = v.ClienteNombre ?? "";
-        editClienteTipo = string.IsNullOrWhiteSpace(v.ClienteTipo) ? "OTRO" : v.ClienteTipo!;
-        editClienteSearch = "";
-        editClienteSearchOpen = false;
-        editObservaciones = v.Observaciones ?? "";
-        editTipoComprobante = string.IsNullOrWhiteSpace(v.TipoComprobante) ? "X" : v.TipoComprobante;
-        editCondicionIva = string.IsNullOrWhiteSpace(v.CondicionIva) ? "CF" : v.CondicionIva;
-        editCondicionPago = string.IsNullOrWhiteSpace(v.CondicionPago) ? "EFECTIVO" : v.CondicionPago;
-        editWeekDays = string.IsNullOrWhiteSpace(v.WeekDays)
+        editingVentaId = v.Id;
+        editingVentaNumero = v.Numero;
+        formClienteId = v.ClienteId ?? 0;
+        formClienteTipo = string.IsNullOrWhiteSpace(v.ClienteTipo) ? "OTRO" : v.ClienteTipo!;
+        clienteSearch = ""; clienteSearchOpen = false;
+        formFecha = v.Fecha;
+        formDescuento = v.Descuento;
+        formObservaciones = v.Observaciones ?? "";
+        formTipoComprobante = string.IsNullOrWhiteSpace(v.TipoComprobante) ? "X" : v.TipoComprobante;
+        formCondicionIva = string.IsNullOrWhiteSpace(v.CondicionIva) ? "CF" : v.CondicionIva;
+        formCondicionPago = string.IsNullOrWhiteSpace(v.CondicionPago) ? "EFECTIVO" : v.CondicionPago;
+        formWeekDays = string.IsNullOrWhiteSpace(v.WeekDays)
             ? new HashSet<string>()
             : v.WeekDays.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(s => s.Trim().ToUpperInvariant()).ToHashSet();
-        editIsPaid = v.IsPaid;
-        editError = null;
-    }
-
-    private void CloseEditModal()
-    {
-        if (isSavingEdit) return;
-        editVenta = null;
-        editError = null;
-    }
-
-    private void SelectEditCliente(int id)
-    {
-        editClienteId = id;
-        var c = clientes?.FirstOrDefault(x => x.Id == id);
-        if (c is not null) editClienteTipo = string.IsNullOrWhiteSpace(c.Tipo) ? "OTRO" : c.Tipo;
-        editClienteSearch = "";
-        editClienteSearchOpen = false;
-    }
-
-    private void ToggleEditDay(string d)
-    {
-        if (!editWeekDays.Add(d)) editWeekDays.Remove(d);
-    }
-
-    private async Task DoEdit()
-    {
-        if (editVenta is null) return;
-        editError = null; isSavingEdit = true;
-        try
+        formIsPaid = v.IsPaid;
+        // Items: convertir a CafeCotizarItemRequest para que el form los muestre y los pueda editar.
+        formItems = v.Items.Select(i => new CafeCotizarItemRequest
         {
-            var req = new UpdateCafeVentaRequest
-            {
-                Fecha = editFecha,
-                ClienteId = editClienteId > 0 ? editClienteId : 0,
-                ClienteNombreOverride = editClienteId > 0 ? null : (string.IsNullOrWhiteSpace(editClienteNombre) ? "Consumidor final" : editClienteNombre.Trim()),
-                ClienteTipoOverride = editClienteId > 0 ? null : editClienteTipo,
-                Observaciones = editObservaciones,
-                TipoComprobante = editTipoComprobante,
-                CondicionIva = editCondicionIva,
-                CondicionPago = editCondicionPago,
-                WeekDays = string.Join(",", editWeekDays),
-                IsPaid = editIsPaid
-            };
-            await Api.UpdateCafeVentaAsync(editVenta.Id, req);
-            ToastService.Success("Comprobante actualizado");
-            editVenta = null;
-            await Load();
-        }
-        catch (Exception ex) { editError = ex.Message; }
-        finally { isSavingEdit = false; }
+            ProductoId = i.ProductoId,
+            Formato = i.Formato,
+            Cantidad = i.Cantidad,
+            Molienda = i.Molienda,
+            EsDoyPack = i.EsDoyPack,
+            DescuentoPct = i.DescuentoPct
+        }).ToList();
+        addProductoId = 0; addFormato = "1KG"; addCantidad = 1;
+        productoSearch = ""; productoSearchOpen = false;
+        addMode = "PRODUCTO";
+        addComboId = 0; addComboCantidad = 1;
+        comboSearch = ""; comboSearchOpen = false;
+        formError = null;
+        showForm = true;
+        // Cotizar para refrescar precios + subtotales en pantalla.
+        await Cotizar();
     }
 
     // ── Helpers ──

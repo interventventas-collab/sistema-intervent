@@ -263,6 +263,8 @@ public class UpdateCafeVentaRequest
     public string? CondicionPago { get; set; }
     public string? WeekDays { get; set; }
     public bool? IsPaid { get; set; }
+    public List<CafeCotizarItemRequest>? Items { get; set; }
+    public decimal? Descuento { get; set; }
 }
 
 public class DeleteCafeVentaRequest

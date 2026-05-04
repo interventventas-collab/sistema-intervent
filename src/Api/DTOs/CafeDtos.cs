@@ -184,7 +184,9 @@ public class UpdateCafeVentaFlagsRequest
     public bool? IsPaid { get; set; }
 }
 
-/// <summary>Edita metadata de una venta ya emitida (NO cambia items ni recalcula precios/stock).</summary>
+/// <summary>Edita una venta. Si se envia Items != null, reemplaza todos los items, recalcula precios
+/// y ajusta stock (devuelve el de los viejos, descuenta el de los nuevos). Si se envia Descuento, lo usa
+/// para el descuento global de la venta. Solo aplica items si Estado = "emitido".</summary>
 public class UpdateCafeVentaRequest
 {
     public DateTime? Fecha { get; set; }
@@ -197,6 +199,8 @@ public class UpdateCafeVentaRequest
     public string? CondicionPago { get; set; }
     public string? WeekDays { get; set; }
     public bool? IsPaid { get; set; }
+    public List<CafeCotizarItemRequest>? Items { get; set; }
+    public decimal? Descuento { get; set; }
 }
 
 public class DeleteCafeVentaRequest
