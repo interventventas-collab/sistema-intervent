@@ -39,7 +39,7 @@
         @if (HasPerm("cafe"))
         {
             <NavGroup Label="Ventas por fuera" Icon="@SvgIcons.Brand"
-                      HasActiveChild="@(IsActive("/cafe") || IsActive("/cafe/ventas") || IsActive("/cafe/productos") || IsActive("/cafe/combos") || IsActive("/cafe/oems") || IsActive("/cafe/clientes") || IsActive("/cafe/configuracion") || IsActive("/cafe/compras") || IsActive("/cafe/proveedores"))">
+                      HasActiveChild="@(IsActive("/cafe") || IsActive("/cafe/ventas") || IsActive("/cafe/productos") || IsActive("/cafe/combos") || IsActive("/cafe/oems") || IsActive("/cafe/clientes") || IsActive("/cafe/configuracion") || IsActive("/cafe/compras") || IsActive("/cafe/proveedores") || IsActive("/cafe/marcas"))">
                 <NavItem Href="/cafe" Label="Inicio" Icon="@SvgIcons.Dashboard"
                          IsActive="@IsActive("/cafe")" OnClick="@(() => NavigateTo("/cafe"))" />
                 <NavItem Href="/cafe/ventas" Label="Ventas" Icon="@SvgIcons.ShoppingBag"
@@ -52,6 +52,8 @@
                          IsActive="@IsActive("/cafe/combos")" OnClick="@(() => NavigateTo("/cafe/combos"))" />
                 <NavItem Href="/cafe/oems" Label="OEMs" Icon="@SvgIcons.Tag"
                          IsActive="@IsActive("/cafe/oems")" OnClick="@(() => NavigateTo("/cafe/oems"))" />
+                <NavItem Href="/cafe/marcas" Label="Marcas" Icon="@SvgIcons.Tag"
+                         IsActive="@IsActive("/cafe/marcas")" OnClick="@(() => NavigateTo("/cafe/marcas"))" />
                 <NavItem Href="/cafe/proveedores" Label="Proveedores" Icon="@SvgIcons.Users"
                          IsActive="@IsActive("/cafe/proveedores")" OnClick="@(() => NavigateTo("/cafe/proveedores"))" />
                 <NavItem Href="/cafe/clientes" Label="Clientes" Icon="@SvgIcons.Users"
@@ -539,6 +541,7 @@
         { "cafe/ventas", "cafe" },
         { "cafe/compras", "cafe" },
         { "cafe/proveedores", "cafe" },
+        { "cafe/marcas", "cafe" },
         { "cafe/productos", "cafe" },
         { "cafe/combos", "cafe" },
         { "cafe/oems", "cafe" },

@@ -2136,6 +2136,72 @@ BEGIN
 END
 GO
 
+-- ═══════════════ MARCAS (entidad propia con FK a proveedor) ═══════════════
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_Marcas' AND xtype='U')
+BEGIN
+    CREATE TABLE Cafe_Marcas (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Nombre NVARCHAR(100) NOT NULL,
+        ProveedorId INT NULL,
+        Notas NVARCHAR(500) NULL,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT FK_CafeMarcas_Proveedor FOREIGN KEY (ProveedorId) REFERENCES Cafe_Proveedores(Id)
+    );
+    CREATE UNIQUE INDEX IX_CafeMarcas_Nombre ON Cafe_Marcas(Nombre);
+    CREATE INDEX IX_CafeMarcas_Proveedor ON Cafe_Marcas(ProveedorId);
+END
+GO
+
+-- Cafe_Productos.MarcaId (FK a Cafe_Marcas, reemplaza Marca texto)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='MarcaId' AND Object_ID=Object_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD MarcaId INT NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name='FK_CafeProductos_Marca')
+    ALTER TABLE Cafe_Productos ADD CONSTRAINT FK_CafeProductos_Marca FOREIGN KEY (MarcaId) REFERENCES Cafe_Marcas(Id);
+GO
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='IX_CafeProductos_MarcaId' AND object_id=OBJECT_ID('Cafe_Productos'))
+    CREATE INDEX IX_CafeProductos_MarcaId ON Cafe_Productos(MarcaId);
+GO
+
+-- Cafe_Oems.MarcaId
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='MarcaId' AND Object_ID=Object_ID('Cafe_Oems'))
+    ALTER TABLE Cafe_Oems ADD MarcaId INT NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name='FK_CafeOems_Marca')
+    ALTER TABLE Cafe_Oems ADD CONSTRAINT FK_CafeOems_Marca FOREIGN KEY (MarcaId) REFERENCES Cafe_Marcas(Id);
+GO
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='IX_CafeOems_MarcaId' AND object_id=OBJECT_ID('Cafe_Oems'))
+    CREATE INDEX IX_CafeOems_MarcaId ON Cafe_Oems(MarcaId);
+GO
+
+-- Migracion one-shot: poblar Cafe_Marcas con DISTINCT de Productos+OEMs y linkear FKs.
+IF NOT EXISTS (SELECT 1 FROM AppSettings WHERE [Key] = 'cafe_marcas_migrated')
+BEGIN
+    INSERT INTO Cafe_Marcas (Nombre, IsActive, CreatedAt)
+    SELECT DISTINCT LTRIM(RTRIM(Marca)), 1, GETUTCDATE()
+    FROM (
+        SELECT Marca FROM Cafe_Productos WHERE Marca IS NOT NULL AND LTRIM(RTRIM(Marca)) <> ''
+        UNION
+        SELECT Marca FROM Cafe_Oems WHERE Marca IS NOT NULL AND LTRIM(RTRIM(Marca)) <> ''
+    ) t
+    WHERE LTRIM(RTRIM(Marca)) NOT IN (SELECT Nombre FROM Cafe_Marcas);
+
+    UPDATE p SET p.MarcaId = m.Id
+    FROM Cafe_Productos p
+    INNER JOIN Cafe_Marcas m ON m.Nombre = LTRIM(RTRIM(p.Marca))
+    WHERE p.Marca IS NOT NULL AND p.MarcaId IS NULL;
+
+    UPDATE o SET o.MarcaId = m.Id
+    FROM Cafe_Oems o
+    INNER JOIN Cafe_Marcas m ON m.Nombre = LTRIM(RTRIM(o.Marca))
+    WHERE o.Marca IS NOT NULL AND o.MarcaId IS NULL;
+
+    INSERT INTO AppSettings ([Key], [Value]) VALUES ('cafe_marcas_migrated', '1');
+END
+GO
+
 -- Cafe_Productos: vinculo opcional al OEM origen.
 -- 1 OEM puede alimentar a N variantes (ej OEM 8733 -> C8733BL, C8733NEG, etc).
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'OemId' AND Object_ID = Object_ID('Cafe_Productos'))

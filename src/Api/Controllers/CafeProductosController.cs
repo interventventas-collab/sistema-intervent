@@ -20,6 +20,7 @@ public class CafeProductosController : ControllerBase
     private static CafeProductoDto Map(CafeProducto p) => new(
         p.Id, p.Sku, p.Barcode,
         p.Nombre, p.Categoria, p.Marca,
+        p.MarcaId, p.MarcaNav?.Nombre,
         p.Costo, p.PrecioPorKg,
         p.Pvp1, p.Pvp2,
         p.BarPctSobreCosto, p.UxB,
@@ -30,7 +31,7 @@ public class CafeProductosController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] string? categoria = null)
     {
-        var q = _db.CafeProductos.Include(p => p.OemNav).AsQueryable();
+        var q = _db.CafeProductos.Include(p => p.OemNav).Include(p => p.MarcaNav).AsQueryable();
         if (!string.IsNullOrWhiteSpace(categoria))
         {
             var c = NormCat(categoria);
@@ -43,7 +44,7 @@ public class CafeProductosController : ControllerBase
     [HttpGet("{id:int}")]
     public async Task<IActionResult> GetById(int id)
     {
-        var p = await _db.CafeProductos.Include(x => x.OemNav).FirstOrDefaultAsync(x => x.Id == id);
+        var p = await _db.CafeProductos.Include(x => x.OemNav).Include(x => x.MarcaNav).FirstOrDefaultAsync(x => x.Id == id);
         if (p is null) return NotFound(new { error = "Producto no encontrado" });
         return Ok(Map(p));
     }
@@ -60,13 +61,17 @@ public class CafeProductosController : ControllerBase
         if (cat == "OTROS" && (!req.Pvp2.HasValue || req.Pvp2.Value < 0))
             return BadRequest(new { error = "Para productos OTROS el PVP es obligatorio" });
 
+        // Resolver MarcaId: si vino MarcaId valido, lo uso. Si no, intento crear marca al vuelo desde el string Marca.
+        var (marcaId, marcaNombre) = await ResolveMarcaAsync(req.MarcaId, req.Marca);
+
         var p = new CafeProducto
         {
             Sku = string.IsNullOrWhiteSpace(req.Sku) ? null : req.Sku.Trim().ToUpperInvariant(),
             Barcode = string.IsNullOrWhiteSpace(req.Barcode) ? null : req.Barcode.Trim(),
             Nombre = req.Nombre.Trim(),
             Categoria = cat,
-            Marca = string.IsNullOrWhiteSpace(req.Marca) ? null : req.Marca.Trim(),
+            Marca = marcaNombre,
+            MarcaId = marcaId,
             Costo = req.Costo,
             PrecioPorKg = req.PrecioPorKg,
             Pvp1 = req.Pvp1,
@@ -82,7 +87,8 @@ public class CafeProductosController : ControllerBase
         };
         _db.CafeProductos.Add(p);
         await _db.SaveChangesAsync();
-        return Ok(Map(p));
+        var saved = await _db.CafeProductos.Include(x => x.OemNav).Include(x => x.MarcaNav).FirstAsync(x => x.Id == p.Id);
+        return Ok(Map(saved));
     }
 
     [HttpPut("{id:int}")]
@@ -98,7 +104,26 @@ public class CafeProductosController : ControllerBase
         if (req.Sku is not null) p.Sku = string.IsNullOrWhiteSpace(req.Sku) ? null : req.Sku.Trim().ToUpperInvariant();
         if (req.Barcode is not null) p.Barcode = string.IsNullOrWhiteSpace(req.Barcode) ? null : req.Barcode.Trim();
         if (req.Categoria is not null) p.Categoria = NormCat(req.Categoria);
-        if (req.Marca is not null) p.Marca = string.IsNullOrWhiteSpace(req.Marca) ? null : req.Marca.Trim();
+        // Marca: si viene MarcaId (incluyendo 0/null+ClearMarcaId), lo aplico. El string Marca queda
+        // sincronizado con el nombre de la marca correspondiente, o null si se desvinculo.
+        if (req.MarcaId.HasValue && req.MarcaId.Value > 0)
+        {
+            var (mid, mnombre) = await ResolveMarcaAsync(req.MarcaId, null);
+            p.MarcaId = mid;
+            p.Marca = mnombre;
+        }
+        else if (req.ClearMarcaId)
+        {
+            p.MarcaId = null;
+            p.Marca = null;
+        }
+        else if (req.Marca is not null)
+        {
+            // Compatibilidad: si solo viene el texto, intento crear/matchear marca por nombre.
+            var (mid, mnombre) = await ResolveMarcaAsync(null, req.Marca);
+            p.MarcaId = mid;
+            p.Marca = mnombre;
+        }
         if (req.Costo.HasValue)
         {
             if (req.Costo.Value < 0) return BadRequest(new { error = "El costo no puede ser negativo" });
@@ -119,7 +144,29 @@ public class CafeProductosController : ControllerBase
         if (req.IsActive.HasValue) p.IsActive = req.IsActive.Value;
         p.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
-        return Ok(Map(p));
+        var saved = await _db.CafeProductos.Include(x => x.OemNav).Include(x => x.MarcaNav).FirstAsync(x => x.Id == p.Id);
+        return Ok(Map(saved));
+    }
+
+    /// <summary>Resuelve marca: si viene un MarcaId valido, lo busca. Si no y viene texto, lo busca/crea
+    /// por nombre. Devuelve (MarcaId, NombreMarca) — null/null si no hay marca.</summary>
+    private async Task<(int?, string?)> ResolveMarcaAsync(int? marcaId, string? marcaTexto)
+    {
+        if (marcaId.HasValue && marcaId.Value > 0)
+        {
+            var existing = await _db.CafeMarcas.FindAsync(marcaId.Value);
+            if (existing is null) return (null, null);
+            return (existing.Id, existing.Nombre);
+        }
+        if (string.IsNullOrWhiteSpace(marcaTexto)) return (null, null);
+        var nombre = marcaTexto.Trim();
+        var match = await _db.CafeMarcas.FirstOrDefaultAsync(m => m.Nombre == nombre);
+        if (match is not null) return (match.Id, match.Nombre);
+        // Crear al vuelo
+        var nuevo = new CafeMarca { Nombre = nombre, IsActive = true, CreatedAt = DateTime.UtcNow };
+        _db.CafeMarcas.Add(nuevo);
+        await _db.SaveChangesAsync();
+        return (nuevo.Id, nuevo.Nombre);
     }
 
     [HttpDelete("{id:int}")]

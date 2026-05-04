@@ -1,0 +1,353 @@
+@page "/cafe/marcas"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<style>
+    .cli-pick-row:hover { background: #f0f9ff; }
+</style>
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <h3>🏷️ Marcas <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;">(@(marcas?.Count ?? 0))</span></h3>
+        <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
+            <input class="form-input" style="min-width: 240px; font-size: 0.85rem;"
+                   @bind="filtroTexto" @bind:event="oninput"
+                   placeholder="🔍 Buscar marca o proveedor..." />
+            <select class="form-input" style="max-width: 200px; font-size: 0.85rem;" @bind="filtroProveedorId">
+                <option value="0">Todos los proveedores</option>
+                <option value="-1">Sin proveedor asignado</option>
+                @if (proveedores is not null)
+                {
+                    @foreach (var p in proveedores.Where(x => x.IsActive).OrderBy(x => x.Nombre))
+                    {
+                        <option value="@p.Id">@p.Nombre</option>
+                    }
+                }
+            </select>
+            <button class="btn btn-primary" @onclick="ShowCreate">+ Nueva marca</button>
+        </div>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        @if (loading)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">Cargando...</p>
+        }
+        else if (marcas is null || marcas.Count == 0)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">No hay marcas. Tocá <strong>+ Nueva marca</strong>.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>Proveedor</th>
+                            <th style="width: 90px; text-align: center;">Productos</th>
+                            <th style="width: 90px; text-align: center;">OEMs</th>
+                            <th>Estado</th>
+                            <th style="width: 110px;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var m in Visibles)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@m.Nombre</strong>
+                                    @if (!string.IsNullOrEmpty(m.Notas))
+                                    {
+                                        <div style="font-size: 0.78rem; color: #6b7280;">@m.Notas</div>
+                                    }
+                                </td>
+                                <td>
+                                    @if (!string.IsNullOrEmpty(m.ProveedorNombre))
+                                    {
+                                        <span style="background: #ecfdf5; color: #166534; padding: 0.15rem 0.55rem; border-radius: 6px; font-size: 0.8rem; font-weight: 600;">🏭 @m.ProveedorNombre</span>
+                                    }
+                                    else
+                                    {
+                                        <span style="color: #9ca3af; font-size: 0.85rem;">—</span>
+                                    }
+                                </td>
+                                <td style="text-align: center;">
+                                    @if (m.ProductosCount > 0)
+                                    {
+                                        <span style="background: #fef3c7; color: #92400e; padding: 0.15rem 0.55rem; border-radius: 999px; font-size: 0.78rem; font-weight: 700;">@m.ProductosCount</span>
+                                    }
+                                    else { <span style="color: #d1d5db;">0</span> }
+                                </td>
+                                <td style="text-align: center;">
+                                    @if (m.OemsCount > 0)
+                                    {
+                                        <span style="background: #dcfce7; color: #166534; padding: 0.15rem 0.55rem; border-radius: 999px; font-size: 0.78rem; font-weight: 700;">@m.OemsCount</span>
+                                    }
+                                    else { <span style="color: #d1d5db;">0</span> }
+                                </td>
+                                <td><span class="status-badge @(m.IsActive ? "status-active" : "status-inactive")">@(m.IsActive ? "Activa" : "Inactiva")</span></td>
+                                <td class="actions-cell">
+                                    <button class="btn-icon btn-edit" @onclick="() => ShowEdit(m)" title="Editar">✎</button>
+                                    <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(m)" title="Eliminar / desactivar">🗑</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@if (showForm)
+{
+    <div class="modal-overlay" @onclick="CloseForm">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 600px;">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3 style="margin: 0;">🏷️ @(editing is null ? "Nueva marca" : $"Editar — {editing.Nombre}")</h3>
+                <button class="btn-close" @onclick="CloseForm">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(formError)) { <div class="form-error">@formError</div> }
+                <div class="form-group">
+                    <label class="form-label">Nombre *</label>
+                    <input class="form-input" @bind="formNombre" placeholder="Ej: COLOMBRARO" />
+                </div>
+                <div class="form-group" style="position: relative;">
+                    <label class="form-label">Proveedor</label>
+                    @if (formProveedorId > 0)
+                    {
+                        var pSel = proveedores?.FirstOrDefault(x => x.Id == formProveedorId);
+                        <div style="display: flex; gap: 0.3rem; align-items: center;">
+                            <div class="form-input" style="flex: 1; background: #ecfdf5; border-color: #10b981; display: flex; align-items: center; gap: 0.5rem;">
+                                <span>🏭</span>
+                                <strong>@(pSel?.Nombre ?? "?")</strong>
+                                @if (!string.IsNullOrEmpty(pSel?.Cuit))
+                                {
+                                    <span style="font-size: 0.72rem; color: #6b7280;">· CUIT @pSel.Cuit</span>
+                                }
+                            </div>
+                            <button class="btn btn-secondary" type="button" @onclick="() => formProveedorId = 0">×</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <input class="form-input" @bind="proveedorSearch" @bind:event="oninput"
+                               @onfocus="() => proveedorSearchOpen = true"
+                               placeholder="🔍 Buscar proveedor o dejar vacío" />
+                        @if (proveedorSearchOpen && !string.IsNullOrWhiteSpace(proveedorSearch))
+                        {
+                            var matches = ProveedoresMatching(proveedorSearch).Take(15).ToList();
+                            <div style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #d1d5db; border-radius: 6px; max-height: 240px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 14px rgba(0,0,0,0.12); margin-top: 0.2rem;">
+                                @if (matches.Count == 0)
+                                {
+                                    <div style="padding: 0.6rem; color: #6b7280; font-size: 0.85rem;">Sin resultados.</div>
+                                }
+                                else
+                                {
+                                    @foreach (var p in matches)
+                                    {
+                                        var pId = p.Id;
+                                        <div class="cli-pick-row" @onclick="() => SelectProveedor(pId)"
+                                             style="padding: 0.4rem 0.6rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem;">
+                                            <strong>@p.Nombre</strong>
+                                            @if (!string.IsNullOrEmpty(p.Cuit))
+                                            {
+                                                <span style="color: #6b7280; font-size: 0.78rem;"> · CUIT @p.Cuit</span>
+                                            }
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        }
+                    }
+                    <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Quién te vende esta marca (opcional).</p>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Notas</label>
+                    <textarea class="form-input" rows="2" @bind="formNotas"></textarea>
+                </div>
+                @if (editing is not null)
+                {
+                    <div class="form-group">
+                        <label class="form-label">Estado</label>
+                        <select class="form-input" @bind="formIsActive">
+                            <option value="true">Activa</option>
+                            <option value="false">Inactiva</option>
+                        </select>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseForm" disabled="@saving">Cancelar</button>
+                <button class="btn btn-primary" @onclick="DoSave" disabled="@saving">@(saving ? "Guardando..." : "💾 Guardar")</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (toDelete is not null)
+{
+    <div class="modal-overlay" @onclick="() => toDelete = null">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: #dc3545; color: white;"><h4 style="margin: 0;">Eliminar marca</h4>
+                <button class="btn-close" @onclick="() => toDelete = null" style="color: white;">&times;</button></div>
+            <div class="modal-body">
+                @{ var n = toDelete.ProductosCount + toDelete.OemsCount; }
+                @if (n > 0)
+                {
+                    <p>La marca <strong>@toDelete.Nombre</strong> está vinculada a <strong>@toDelete.ProductosCount</strong> producto@(toDelete.ProductosCount == 1 ? "" : "s") y <strong>@toDelete.OemsCount</strong> OEM@(toDelete.OemsCount == 1 ? "" : "s").</p>
+                    <p style="color: #b45309; font-weight: 600; font-size: 0.85rem;">Por integridad NO se va a eliminar — se va a <strong>desactivar</strong>. Los productos/OEMs vinculados quedan intactos.</p>
+                }
+                else
+                {
+                    <p>Vas a eliminar definitivamente <strong>@toDelete.Nombre</strong>.</p>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => toDelete = null">No</button>
+                <button class="btn btn-danger" @onclick="DoDelete">Sí</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<CafeMarcaDto>? marcas;
+    private List<CafeProveedorDto>? proveedores;
+    private bool loading = true;
+    private string filtroTexto = "";
+    private int filtroProveedorId = 0;  // 0=todos, -1=sin proveedor
+
+    private bool showForm, saving;
+    private string? formError;
+    private CafeMarcaDto? editing;
+    private string formNombre = "";
+    private int formProveedorId;
+    private string proveedorSearch = "";
+    private bool proveedorSearchOpen;
+    private string formNotas = "";
+    private bool formIsActive = true;
+
+    private CafeMarcaDto? toDelete;
+
+    private List<CafeMarcaDto> Visibles
+    {
+        get
+        {
+            if (marcas is null) return new();
+            IEnumerable<CafeMarcaDto> q = marcas;
+            if (filtroProveedorId > 0) q = q.Where(m => m.ProveedorId == filtroProveedorId);
+            else if (filtroProveedorId == -1) q = q.Where(m => m.ProveedorId == null);
+            if (!string.IsNullOrWhiteSpace(filtroTexto))
+            {
+                var t = filtroTexto.Trim();
+                bool h(string? s) => !string.IsNullOrEmpty(s) && s.Contains(t, StringComparison.OrdinalIgnoreCase);
+                q = q.Where(m => h(m.Nombre) || h(m.ProveedorNombre) || h(m.Notas));
+            }
+            return q.ToList();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { proveedores = await Api.GetCafeProveedoresAsync() ?? new(); } catch { proveedores = new(); }
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        loading = true;
+        try { marcas = await Api.GetCafeMarcasAsync() ?? new(); }
+        catch { marcas = new(); ToastService.Error("Error al cargar"); }
+        loading = false;
+    }
+
+    private void ShowCreate()
+    {
+        editing = null;
+        formNombre = ""; formProveedorId = 0; proveedorSearch = ""; proveedorSearchOpen = false;
+        formNotas = ""; formIsActive = true;
+        formError = null; showForm = true;
+    }
+
+    private void ShowEdit(CafeMarcaDto m)
+    {
+        editing = m;
+        formNombre = m.Nombre;
+        formProveedorId = m.ProveedorId ?? 0;
+        proveedorSearch = ""; proveedorSearchOpen = false;
+        formNotas = m.Notas ?? "";
+        formIsActive = m.IsActive;
+        formError = null; showForm = true;
+    }
+
+    private void CloseForm() { if (!saving) showForm = false; }
+
+    private IEnumerable<CafeProveedorDto> ProveedoresMatching(string s)
+    {
+        if (proveedores is null) return Enumerable.Empty<CafeProveedorDto>();
+        var t = s.Trim();
+        bool h(string? str) => !string.IsNullOrEmpty(str) && str.Contains(t, StringComparison.OrdinalIgnoreCase);
+        return proveedores.Where(p => p.IsActive && (h(p.Nombre) || h(p.Cuit) || h(p.Contacto)));
+    }
+
+    private void SelectProveedor(int id)
+    {
+        formProveedorId = id;
+        proveedorSearch = "";
+        proveedorSearchOpen = false;
+    }
+
+    private async Task DoSave()
+    {
+        if (string.IsNullOrWhiteSpace(formNombre)) { formError = "El nombre es obligatorio"; return; }
+        formError = null; saving = true;
+        try
+        {
+            if (editing is null)
+            {
+                await Api.CreateCafeMarcaAsync(new CreateCafeMarcaRequest
+                {
+                    Nombre = formNombre,
+                    ProveedorId = formProveedorId > 0 ? formProveedorId : null,
+                    Notas = formNotas
+                });
+                ToastService.Success("Marca creada");
+            }
+            else
+            {
+                await Api.UpdateCafeMarcaAsync(editing.Id, new UpdateCafeMarcaRequest
+                {
+                    Nombre = formNombre,
+                    ProveedorId = formProveedorId > 0 ? formProveedorId : null,
+                    ClearProveedor = formProveedorId <= 0,
+                    Notas = formNotas,
+                    IsActive = formIsActive
+                });
+                ToastService.Success("Marca actualizada");
+            }
+            showForm = false;
+            await Load();
+        }
+        catch (Exception ex) { formError = ex.Message; }
+        finally { saving = false; }
+    }
+
+    private void ConfirmDelete(CafeMarcaDto m) => toDelete = m;
+
+    private async Task DoDelete()
+    {
+        if (toDelete is null) return;
+        try
+        {
+            await Api.DeleteCafeMarcaAsync(toDelete.Id);
+            var n = toDelete.ProductosCount + toDelete.OemsCount;
+            ToastService.Success(n > 0 ? "Marca desactivada (tenía vínculos)" : "Marca eliminada");
+            toDelete = null;
+            await Load();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); toDelete = null; }
+    }
+}

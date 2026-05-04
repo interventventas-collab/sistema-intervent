@@ -488,6 +488,24 @@ public class ApiClient
     public async Task<bool> DeleteCafeProveedorAsync(int id)
         => await DeleteAsync($"/api/cafe/proveedores/{id}");
 
+    // --- Cafe: Marcas ---
+    public async Task<List<CafeMarcaDto>?> GetCafeMarcasAsync(bool? activos = null, int? proveedorId = null)
+    {
+        var qs = new List<string>();
+        if (activos == true) qs.Add("activos=true");
+        if (proveedorId.HasValue) qs.Add($"proveedorId={proveedorId.Value}");
+        var url = "/api/cafe/marcas" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+        return await GetAsync<List<CafeMarcaDto>>(url);
+    }
+    public async Task<CafeMarcaDto?> GetCafeMarcaAsync(int id)
+        => await GetAsync<CafeMarcaDto>($"/api/cafe/marcas/{id}");
+    public async Task<CafeMarcaDto?> CreateCafeMarcaAsync(CreateCafeMarcaRequest req)
+        => await PostAsync<CafeMarcaDto>("/api/cafe/marcas", req);
+    public async Task<CafeMarcaDto?> UpdateCafeMarcaAsync(int id, UpdateCafeMarcaRequest req)
+        => await PutAsync<CafeMarcaDto>($"/api/cafe/marcas/{id}", req);
+    public async Task<bool> DeleteCafeMarcaAsync(int id)
+        => await DeleteAsync($"/api/cafe/marcas/{id}");
+
     // --- Cafe: Compras ---
     public async Task<List<CafeCompraDto>?> GetCafeComprasAsync(DateTime? from = null, DateTime? to = null, string? estado = null, int? proveedorId = null)
     {

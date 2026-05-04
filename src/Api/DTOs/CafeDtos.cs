@@ -34,6 +34,7 @@ public class UpdateCafeClienteRequest
 public record CafeProductoDto(
     int Id, string? Sku, string? Barcode,
     string Nombre, string Categoria, string? Marca,
+    int? MarcaId, string? MarcaNombre,
     decimal Costo, decimal? PrecioPorKg,
     decimal? Pvp1, decimal? Pvp2,
     decimal? BarPctSobreCosto, int? UxB,
@@ -49,6 +50,7 @@ public class CreateCafeProductoRequest
     public string Nombre { get; set; } = string.Empty;
     public string Categoria { get; set; } = "CAFE";
     public string? Marca { get; set; }
+    public int? MarcaId { get; set; }
     public decimal Costo { get; set; }
     public decimal? PrecioPorKg { get; set; }
     public decimal? Pvp1 { get; set; }
@@ -68,6 +70,8 @@ public class UpdateCafeProductoRequest
     public string? Nombre { get; set; }
     public string? Categoria { get; set; }
     public string? Marca { get; set; }
+    public int? MarcaId { get; set; }
+    public bool ClearMarcaId { get; set; }
     public decimal? Costo { get; set; }
     public decimal? PrecioPorKg { get; set; }
     public decimal? Pvp1 { get; set; }
@@ -352,6 +356,7 @@ public class UpdateCafeComboRequest
 // ===== OEMs (lista del proveedor) =====
 public record CafeOemDto(
     int Id, string Codigo, string? Descripcion, string? Marca,
+    int? MarcaId, string? MarcaNombre,
     decimal Costo, decimal? PvpConIva, decimal? IvaPct,
     string? Barcode, string? Proveedor, int? UxB,
     bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt, DateTime? LastImportAt,
@@ -362,6 +367,7 @@ public class CreateCafeOemRequest
     public string Codigo { get; set; } = string.Empty;
     public string? Descripcion { get; set; }
     public string? Marca { get; set; }
+    public int? MarcaId { get; set; }
     public decimal Costo { get; set; }
     public decimal? PvpConIva { get; set; }
     public decimal? IvaPct { get; set; }
@@ -375,6 +381,8 @@ public class UpdateCafeOemRequest
     public string? Codigo { get; set; }
     public string? Descripcion { get; set; }
     public string? Marca { get; set; }
+    public int? MarcaId { get; set; }
+    public bool ClearMarcaId { get; set; }
     public decimal? Costo { get; set; }
     public decimal? PvpConIva { get; set; }
     public decimal? IvaPct { get; set; }
@@ -390,3 +398,27 @@ public record CafeOemImportResultDto(
     string? Proveedor,
     int VariantesPropagadas,
     List<string> Errores);
+
+// ===== Marcas =====
+public record CafeMarcaDto(
+    int Id, string Nombre,
+    int? ProveedorId, string? ProveedorNombre,
+    string? Notas, bool IsActive,
+    DateTime CreatedAt, DateTime? UpdatedAt,
+    int ProductosCount, int OemsCount);
+
+public class CreateCafeMarcaRequest
+{
+    public string Nombre { get; set; } = string.Empty;
+    public int? ProveedorId { get; set; }
+    public string? Notas { get; set; }
+}
+
+public class UpdateCafeMarcaRequest
+{
+    public string? Nombre { get; set; }
+    public int? ProveedorId { get; set; }
+    public bool ClearProveedor { get; set; }
+    public string? Notas { get; set; }
+    public bool? IsActive { get; set; }
+}

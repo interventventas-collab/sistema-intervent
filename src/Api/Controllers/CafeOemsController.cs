@@ -19,6 +19,7 @@ public class CafeOemsController : ControllerBase
 
     private static CafeOemDto Map(CafeOem o, int variantesCount = 0) => new(
         o.Id, o.Codigo, o.Descripcion, o.Marca,
+        o.MarcaId, o.MarcaNav?.Nombre,
         o.Costo, o.PvpConIva, o.IvaPct,
         o.Barcode, o.Proveedor, o.UxB,
         o.IsActive, o.CreatedAt, o.UpdatedAt, o.LastImportAt,
@@ -47,7 +48,7 @@ public class CafeOemsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] string? proveedor = null, [FromQuery] string? marca = null, [FromQuery] string? q = null)
     {
-        var query = _db.CafeOems.AsQueryable();
+        var query = _db.CafeOems.Include(o => o.MarcaNav).AsQueryable();
         if (!string.IsNullOrWhiteSpace(proveedor)) query = query.Where(o => o.Proveedor == proveedor);
         if (!string.IsNullOrWhiteSpace(marca)) query = query.Where(o => o.Marca == marca);
         if (!string.IsNullOrWhiteSpace(q))
@@ -74,7 +75,7 @@ public class CafeOemsController : ControllerBase
     [HttpGet("{id:int}")]
     public async Task<IActionResult> GetById(int id)
     {
-        var o = await _db.CafeOems.FindAsync(id);
+        var o = await _db.CafeOems.Include(x => x.MarcaNav).FirstOrDefaultAsync(x => x.Id == id);
         if (o is null) return NotFound(new { error = "OEM no encontrado" });
         var n = await _db.CafeProductos.CountAsync(p => p.OemId == id);
         return Ok(Map(o, n));
@@ -106,11 +107,14 @@ public class CafeOemsController : ControllerBase
         if (await _db.CafeOems.AnyAsync(x => x.Codigo == codigo))
             return BadRequest(new { error = "Ya existe un OEM con ese codigo" });
 
+        var (marcaId, marcaNombre) = await ResolveMarcaAsync(req.MarcaId, req.Marca);
+
         var o = new CafeOem
         {
             Codigo = codigo,
             Descripcion = string.IsNullOrWhiteSpace(req.Descripcion) ? null : req.Descripcion.Trim(),
-            Marca = string.IsNullOrWhiteSpace(req.Marca) ? null : req.Marca.Trim(),
+            Marca = marcaNombre,
+            MarcaId = marcaId,
             Costo = req.Costo,
             PvpConIva = req.PvpConIva,
             IvaPct = req.IvaPct,
@@ -122,7 +126,8 @@ public class CafeOemsController : ControllerBase
         };
         _db.CafeOems.Add(o);
         await _db.SaveChangesAsync();
-        return Ok(Map(o));
+        var saved = await _db.CafeOems.Include(x => x.MarcaNav).FirstAsync(x => x.Id == o.Id);
+        return Ok(Map(saved));
     }
 
     [HttpPut("{id:int}")]
@@ -140,7 +145,20 @@ public class CafeOemsController : ControllerBase
             o.Codigo = nuevo;
         }
         if (req.Descripcion is not null) o.Descripcion = string.IsNullOrWhiteSpace(req.Descripcion) ? null : req.Descripcion.Trim();
-        if (req.Marca is not null) o.Marca = string.IsNullOrWhiteSpace(req.Marca) ? null : req.Marca.Trim();
+        if (req.MarcaId.HasValue && req.MarcaId.Value > 0)
+        {
+            var (mid, mnombre) = await ResolveMarcaAsync(req.MarcaId, null);
+            o.MarcaId = mid; o.Marca = mnombre;
+        }
+        else if (req.ClearMarcaId)
+        {
+            o.MarcaId = null; o.Marca = null;
+        }
+        else if (req.Marca is not null)
+        {
+            var (mid, mnombre) = await ResolveMarcaAsync(null, req.Marca);
+            o.MarcaId = mid; o.Marca = mnombre;
+        }
         if (req.Costo.HasValue) o.Costo = req.Costo.Value;
         if (req.PvpConIva.HasValue) o.PvpConIva = req.PvpConIva.Value;
         if (req.IvaPct.HasValue) o.IvaPct = req.IvaPct.Value;
@@ -156,7 +174,8 @@ public class CafeOemsController : ControllerBase
         var n = await PropagarAVariantesAsync(o.Id);
         if (n > 0) await _db.SaveChangesAsync();
 
-        return Ok(Map(o, n));
+        var saved = await _db.CafeOems.Include(x => x.MarcaNav).FirstAsync(x => x.Id == o.Id);
+        return Ok(Map(saved, n));
     }
 
     [HttpDelete("{id:int}")]
@@ -316,5 +335,24 @@ public class CafeOemsController : ControllerBase
             await _db.SaveChangesAsync();
 
         return Ok(new CafeOemImportResultDto(creados, actualizados, omitidos, prov, totalVariantesPropagadas, errores));
+    }
+
+    /// <summary>Resuelve marca: si viene MarcaId valido la busca; si solo viene texto, busca o crea.</summary>
+    private async Task<(int?, string?)> ResolveMarcaAsync(int? marcaId, string? marcaTexto)
+    {
+        if (marcaId.HasValue && marcaId.Value > 0)
+        {
+            var existing = await _db.CafeMarcas.FindAsync(marcaId.Value);
+            if (existing is null) return (null, null);
+            return (existing.Id, existing.Nombre);
+        }
+        if (string.IsNullOrWhiteSpace(marcaTexto)) return (null, null);
+        var nombre = marcaTexto.Trim();
+        var match = await _db.CafeMarcas.FirstOrDefaultAsync(m => m.Nombre == nombre);
+        if (match is not null) return (match.Id, match.Nombre);
+        var nuevo = new CafeMarca { Nombre = nombre, IsActive = true, CreatedAt = DateTime.UtcNow };
+        _db.CafeMarcas.Add(nuevo);
+        await _db.SaveChangesAsync();
+        return (nuevo.Id, nuevo.Nombre);
     }
 }

@@ -47,6 +47,8 @@ public class CafeProductoDto
     public string Nombre { get; set; } = "";
     public string Categoria { get; set; } = "CAFE";
     public string? Marca { get; set; }
+    public int? MarcaId { get; set; }
+    public string? MarcaNombre { get; set; }
     public decimal Costo { get; set; }
     public decimal? PrecioPorKg { get; set; }
     public decimal? Pvp1 { get; set; }
@@ -70,6 +72,7 @@ public class CreateCafeProductoRequest
     public string Nombre { get; set; } = "";
     public string Categoria { get; set; } = "CAFE";
     public string? Marca { get; set; }
+    public int? MarcaId { get; set; }
     public decimal Costo { get; set; }
     public decimal? PrecioPorKg { get; set; }
     public decimal? Pvp1 { get; set; }
@@ -89,6 +92,8 @@ public class UpdateCafeProductoRequest
     public string? Nombre { get; set; }
     public string? Categoria { get; set; }
     public string? Marca { get; set; }
+    public int? MarcaId { get; set; }
+    public bool ClearMarcaId { get; set; }
     public decimal? Costo { get; set; }
     public decimal? PrecioPorKg { get; set; }
     public decimal? Pvp1 { get; set; }
@@ -481,6 +486,8 @@ public class CafeOemDto
     public string Codigo { get; set; } = "";
     public string? Descripcion { get; set; }
     public string? Marca { get; set; }
+    public int? MarcaId { get; set; }
+    public string? MarcaNombre { get; set; }
     public decimal Costo { get; set; }
     public decimal? PvpConIva { get; set; }
     public decimal? IvaPct { get; set; }
@@ -499,6 +506,7 @@ public class CreateCafeOemRequest
     public string Codigo { get; set; } = "";
     public string? Descripcion { get; set; }
     public string? Marca { get; set; }
+    public int? MarcaId { get; set; }
     public decimal Costo { get; set; }
     public decimal? PvpConIva { get; set; }
     public decimal? IvaPct { get; set; }
@@ -512,6 +520,8 @@ public class UpdateCafeOemRequest
     public string? Codigo { get; set; }
     public string? Descripcion { get; set; }
     public string? Marca { get; set; }
+    public int? MarcaId { get; set; }
+    public bool ClearMarcaId { get; set; }
     public decimal? Costo { get; set; }
     public decimal? PvpConIva { get; set; }
     public decimal? IvaPct { get; set; }
@@ -519,6 +529,37 @@ public class UpdateCafeOemRequest
     public string? Proveedor { get; set; }
     public int? UxB { get; set; }
     public bool ClearUxB { get; set; }
+    public bool? IsActive { get; set; }
+}
+
+// ===== Marcas =====
+public class CafeMarcaDto
+{
+    public int Id { get; set; }
+    public string Nombre { get; set; } = "";
+    public int? ProveedorId { get; set; }
+    public string? ProveedorNombre { get; set; }
+    public string? Notas { get; set; }
+    public bool IsActive { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+    public int ProductosCount { get; set; }
+    public int OemsCount { get; set; }
+}
+
+public class CreateCafeMarcaRequest
+{
+    public string Nombre { get; set; } = "";
+    public int? ProveedorId { get; set; }
+    public string? Notas { get; set; }
+}
+
+public class UpdateCafeMarcaRequest
+{
+    public string? Nombre { get; set; }
+    public int? ProveedorId { get; set; }
+    public bool ClearProveedor { get; set; }
+    public string? Notas { get; set; }
     public bool? IsActive { get; set; }
 }
 

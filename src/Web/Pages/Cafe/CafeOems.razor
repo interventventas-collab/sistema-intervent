@@ -130,10 +130,27 @@
                 <div class="form-row">
                     <div class="form-group" style="flex: 1;">
                         <label class="form-label">Marca</label>
-                        <input class="form-input" @bind="formMarca" list="oem-marcas" />
-                        <datalist id="oem-marcas">
-                            @foreach (var m in marcasExistentes) { <option value="@m" /> }
+                        <input class="form-input" @bind="formMarca" list="oem-marcas-list" />
+                        <datalist id="oem-marcas-list">
+                            @if (marcasCatalog is not null)
+                            {
+                                @foreach (var m in marcasCatalog.Where(x => x.IsActive).OrderBy(x => x.Nombre))
+                                {
+                                    <option value="@m.Nombre" />
+                                }
+                            }
                         </datalist>
+                        @{
+                            var matched = !string.IsNullOrWhiteSpace(formMarca)
+                                ? marcasCatalog?.FirstOrDefault(x => string.Equals(x.Nombre, formMarca?.Trim(), StringComparison.OrdinalIgnoreCase))
+                                : null;
+                        }
+                        @if (matched is not null && !string.IsNullOrEmpty(matched.ProveedorNombre))
+                        {
+                            <p style="font-size: 0.7rem; color: #15803d; margin: 0.2rem 0 0; font-weight: 600;">
+                                ✓ Proveedor: @matched.ProveedorNombre
+                            </p>
+                        }
                     </div>
                     <div class="form-group" style="flex: 1;">
                         <label class="form-label">Código de barras</label>
@@ -299,6 +316,9 @@
         oems.Where(o => !string.IsNullOrWhiteSpace(o.Proveedor))
             .Select(o => o.Proveedor!).Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToList();
+    /// <summary>Catalogo de marcas (Cafe_Marcas). Alimenta el datalist del form.</summary>
+    private List<CafeMarcaDto>? marcasCatalog;
+
     private List<string> marcasExistentes => oems is null ? new() :
         oems.Where(o => !string.IsNullOrWhiteSpace(o.Marca))
             .Select(o => o.Marca!).Distinct(StringComparer.OrdinalIgnoreCase)
@@ -347,7 +367,18 @@
     // Delete
     private CafeOemDto? toDelete;
 
-    protected override async Task OnInitializedAsync() => await Load();
+    protected override async Task OnInitializedAsync()
+    {
+        var loadMarcas = LoadMarcasCatalog();
+        await Load();
+        await loadMarcas;
+    }
+
+    private async Task LoadMarcasCatalog()
+    {
+        try { marcasCatalog = await Api.GetCafeMarcasAsync() ?? new(); }
+        catch { marcasCatalog = new(); }
+    }
 
     private async Task Load()
     {

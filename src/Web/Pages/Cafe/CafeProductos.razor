@@ -199,13 +199,39 @@
                 <div class="form-row">
                     <div class="form-group" style="flex: 1;">
                         <label class="form-label">Marca</label>
-                        <input class="form-input" @bind="formMarca" placeholder="Ej: La Virginia, Frikaf, Colombraro..." list="cafe-marcas" />
-                        <datalist id="cafe-marcas">
-                            @foreach (var m in marcasExistentes) { <option value="@m" /> }
+                        <input class="form-input" @bind="formMarca" placeholder="Ej: La Virginia, Frikaf, Colombraro..." list="cafe-marcas-list" />
+                        <datalist id="cafe-marcas-list">
+                            @if (marcasCatalog is not null)
+                            {
+                                @foreach (var m in marcasCatalog.Where(x => x.IsActive).OrderBy(x => x.Nombre))
+                                {
+                                    <option value="@m.Nombre" />
+                                }
+                            }
                         </datalist>
-                        <p style="font-size: 0.72rem; color: #6b7280; margin: 0.2rem 0 0;">
-                            💡 Si ya cargaste otros productos con la misma marca, te aparece como sugerencia.
-                        </p>
+                        @{
+                            var matched = !string.IsNullOrWhiteSpace(formMarca)
+                                ? marcasCatalog?.FirstOrDefault(x => string.Equals(x.Nombre, formMarca?.Trim(), StringComparison.OrdinalIgnoreCase))
+                                : null;
+                        }
+                        @if (matched is not null)
+                        {
+                            <p style="font-size: 0.72rem; color: #15803d; margin: 0.2rem 0 0; font-weight: 600;">
+                                ✓ Marca existente — proveedor: <strong>@(matched.ProveedorNombre ?? "(sin asignar)")</strong>
+                            </p>
+                        }
+                        else if (!string.IsNullOrWhiteSpace(formMarca))
+                        {
+                            <p style="font-size: 0.72rem; color: #d97706; margin: 0.2rem 0 0;">
+                                ⚠ Marca nueva — se va a crear al guardar. Después podés asignar proveedor desde <strong>Marcas</strong>.
+                            </p>
+                        }
+                        else
+                        {
+                            <p style="font-size: 0.72rem; color: #6b7280; margin: 0.2rem 0 0;">
+                                💡 Empezá a tipear, te aparece la lista de marcas existentes.
+                            </p>
+                        }
                     </div>
                     <div class="form-group" style="flex: 1;">
                         <label class="form-label">Costo ($)</label>
@@ -416,6 +442,8 @@
 
     // Catalogo de OEMs (cargado una sola vez al abrir la pagina)
     private List<CafeOemDto>? oems;
+    /// <summary>Catalogo de marcas (Cafe_Marcas). Alimenta el datalist del form. Se actualiza al refrescar.</summary>
+    private List<CafeMarcaDto>? marcasCatalog;
 
     /// <summary>Marcas existentes (de productos ya cargados), ordenadas alfabéticamente, para el datalist y el filtro.</summary>
     private List<string> marcasExistentes => productos is null
@@ -449,10 +477,18 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // Cargo OEMs en paralelo a productos
+        // Cargo OEMs y catalogo de marcas en paralelo a productos
         var loadOems = LoadOems();
+        var loadMarcas = LoadMarcasCatalog();
         await Load();
         await loadOems;
+        await loadMarcas;
+    }
+
+    private async Task LoadMarcasCatalog()
+    {
+        try { marcasCatalog = await Api.GetCafeMarcasAsync() ?? new(); }
+        catch { marcasCatalog = new(); }
     }
 
     private async Task Load()

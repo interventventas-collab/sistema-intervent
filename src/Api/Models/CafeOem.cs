@@ -19,6 +19,12 @@ public class CafeOem
     [MaxLength(100)]
     public string? Marca { get; set; }
 
+    /// <summary>FK a Cafe_Marcas. Reemplaza progresivamente el campo de texto Marca.</summary>
+    public int? MarcaId { get; set; }
+
+    [ForeignKey(nameof(MarcaId))]
+    public CafeMarca? MarcaNav { get; set; }
+
     [Column(TypeName = "decimal(18,2)")]
     public decimal Costo { get; set; }
 
