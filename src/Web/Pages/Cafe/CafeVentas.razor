@@ -284,7 +284,14 @@
                                     @foreach (var d in AllWeekDays)
                                     {
                                         var on = formWeekDays.Contains(d);
-                                        <span class="cafe-day-pill @(on ? "on" : "")" @onclick="() => ToggleFormDay(d)">@d</span>
+                                        var bg = on ? "#1f2937" : "white";
+                                        var fg = on ? "white" : "#374151";
+                                        var bd = on ? "#1f2937" : "#d1d5db";
+                                        <button type="button"
+                                                @onclick="() => ToggleFormDay(d)"
+                                                style="display: inline-flex; align-items: center; justify-content: center; padding: 0.2rem 0.5rem; border: 1px solid @bd; background: @bg; color: @fg; border-radius: 4px; font-weight: 700; font-size: 0.72rem; cursor: pointer; min-width: 36px; user-select: none;">
+                                            @d
+                                        </button>
                                     }
                                 </div>
                             </div>
@@ -499,15 +506,23 @@
                 }
 
                 @* Dias de visita / reparto al pie (clickeable también ya emitido — se autoguarda) *@
+                @{
+                    var diasActivos = (printVenta.WeekDays ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(s => s.Trim().ToUpperInvariant()).ToHashSet();
+                }
                 <div style="margin-top: 0.7rem; border: 1px solid #d1d5db; padding: 0.4rem 0.6rem; display: flex; gap: 0.3rem; align-items: center; flex-wrap: wrap; justify-content: center;">
                     <span style="font-size: 0.7rem; color: #6b7280; margin-right: 0.3rem;">Días de visita / reparto:</span>
-                    @{
-                        var diasActivos = (printVenta.WeekDays ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(s => s.Trim().ToUpperInvariant()).ToHashSet();
-                    }
                     @foreach (var d in AllWeekDays)
                     {
                         var on = diasActivos.Contains(d);
-                        <span class="cafe-day-pill @(on ? "on" : "")" @onclick="() => ToggleViewerDay(d)" title="Click para tildar/destildar">@d</span>
+                        var bg = on ? "#1f2937" : "white";
+                        var fg = on ? "white" : "#374151";
+                        var bd = on ? "#1f2937" : "#d1d5db";
+                        <button type="button"
+                                @onclick="() => ToggleViewerDay(d)"
+                                title="Click para tildar/destildar"
+                                style="display: inline-flex; align-items: center; justify-content: center; padding: 0.2rem 0.5rem; border: 1px solid @bd; background: @bg; color: @fg; border-radius: 4px; font-weight: 700; font-size: 0.72rem; cursor: pointer; min-width: 36px; user-select: none; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
+                            @d
+                        </button>
                     }
                 </div>
 
