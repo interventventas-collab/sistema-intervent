@@ -1865,3 +1865,8 @@ UPDATE Cafe_Settings
    SET WhatsappMensajeTemplate = N'Hola! Te escribo por el comprobante {numero} (total ${total}). Gracias!'
  WHERE Id = 1 AND (WhatsappMensajeTemplate IS NULL OR LTRIM(RTRIM(WhatsappMensajeTemplate)) = '');
 GO
+
+-- Cafe_Ventas: snapshot del telefono del cliente al momento de emitir
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'ClienteTelefonoSnapshot' AND Object_ID = Object_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD ClienteTelefonoSnapshot NVARCHAR(50) NULL;
+GO

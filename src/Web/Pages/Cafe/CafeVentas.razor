@@ -431,9 +431,29 @@
 
                 @* Cliente *@
                 <div style="border: 1px solid #d1d5db; border-top: 0; padding: 0.6rem; font-size: 0.9rem;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <strong>Cliente:</strong> @(printVenta.ClienteNombre ?? "Consumidor final")
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                        <div style="flex: 1;">
+                            <div><strong>Cliente:</strong> @(printVenta.ClienteNombre ?? "Consumidor final")</div>
+                            @if (!string.IsNullOrWhiteSpace(printVenta.ClienteTelefono))
+                            {
+                                var tel = printVenta.ClienteTelefono!;
+                                var telDigits = new string(tel.Where(char.IsDigit).ToArray());
+                                <div style="margin-top: 0.2rem; font-size: 0.85rem;">
+                                    <strong>Tel:</strong>
+                                    @if (!string.IsNullOrEmpty(telDigits))
+                                    {
+                                        <a href="@($"https://wa.me/{telDigits}")" target="_blank"
+                                           style="color: #25D366; font-weight: 700; text-decoration: none; margin-left: 0.2rem;"
+                                           title="Abrir WhatsApp con el cliente">
+                                            📱 @tel
+                                        </a>
+                                    }
+                                    else
+                                    {
+                                        <span>@tel</span>
+                                    }
+                                </div>
+                            }
                         </div>
                         <div>
                             @if (printVenta.ClienteTipo == "BAR")

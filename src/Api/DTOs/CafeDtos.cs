@@ -94,7 +94,7 @@ public record CafeVentaItemDto(
 
 public record CafeVentaDto(
     int Id, string Numero, DateTime Fecha,
-    int? ClienteId, string? ClienteNombre, string? ClienteTipo,
+    int? ClienteId, string? ClienteNombre, string? ClienteTipo, string? ClienteTelefono,
     decimal Subtotal, decimal Descuento, decimal Total,
     decimal CostoTotal, decimal Margen,
     string? Observaciones, string Estado,

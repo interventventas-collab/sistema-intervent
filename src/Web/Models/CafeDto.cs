@@ -130,6 +130,7 @@ public class CafeVentaDto
     public int? ClienteId { get; set; }
     public string? ClienteNombre { get; set; }
     public string? ClienteTipo { get; set; }
+    public string? ClienteTelefono { get; set; }
     public decimal Subtotal { get; set; }
     public decimal Descuento { get; set; }
     public decimal Total { get; set; }

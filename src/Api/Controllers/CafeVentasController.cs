@@ -20,7 +20,7 @@ public class CafeVentasController : ControllerBase
 
     private static CafeVentaDto Map(CafeVenta v) => new(
         v.Id, v.Numero, v.Fecha,
-        v.ClienteId, v.ClienteNombreSnapshot, v.ClienteTipoSnapshot,
+        v.ClienteId, v.ClienteNombreSnapshot, v.ClienteTipoSnapshot, v.ClienteTelefonoSnapshot,
         v.Subtotal, v.Descuento, v.Total, v.CostoTotal, v.Margen,
         v.Observaciones, v.Estado,
         v.WeekDays, v.IsPaid,
@@ -74,11 +74,13 @@ public class CafeVentasController : ControllerBase
 
         // Resolver datos del cliente
         string? clienteNombre = null;
+        string? clienteTelefono = null;
         if (req.ClienteId.HasValue && req.ClienteId.Value > 0)
         {
             var cli = await _db.CafeClientes.FindAsync(req.ClienteId.Value);
             if (cli is null) return BadRequest(new { error = "Cliente no encontrado" });
             clienteNombre = cli.Nombre;
+            clienteTelefono = cli.Telefono;
             tipo = CafePricingService.ResolverTipo(cli.Tipo);
         }
         else
@@ -94,6 +96,7 @@ public class CafeVentasController : ControllerBase
             ClienteId = req.ClienteId.HasValue && req.ClienteId.Value > 0 ? req.ClienteId.Value : null,
             ClienteNombreSnapshot = clienteNombre,
             ClienteTipoSnapshot = tipo,
+            ClienteTelefonoSnapshot = clienteTelefono,
             Subtotal = cot.Subtotal,
             Descuento = cot.Descuento,
             Total = cot.Total,

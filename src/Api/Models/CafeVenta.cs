@@ -26,6 +26,9 @@ public class CafeVenta
     [MaxLength(20)]
     public string? ClienteTipoSnapshot { get; set; } // BAR | OTRO
 
+    [MaxLength(50)]
+    public string? ClienteTelefonoSnapshot { get; set; }
+
     [Column(TypeName = "decimal(18,2)")] public decimal Subtotal { get; set; }
     [Column(TypeName = "decimal(18,2)")] public decimal Descuento { get; set; }
     [Column(TypeName = "decimal(18,2)")] public decimal Total { get; set; }
