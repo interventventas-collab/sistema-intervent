@@ -457,6 +457,9 @@ public class ApiClient
     public async Task<CafeVentaDto?> AnularCafeVentaAsync(int id)
         => await PostAsync<CafeVentaDto>($"/api/cafe/ventas/{id}/anular", new { });
 
+    public async Task<CafeVentaDto?> UpdateCafeVentaFlagsAsync(int id, UpdateCafeVentaFlagsRequest req)
+        => await PutAsync<CafeVentaDto>($"/api/cafe/ventas/{id}/flags", req);
+
     public async Task<bool> DeleteCafeVentaAsync(int id)
         => await DeleteAsync($"/api/cafe/ventas/{id}");
 

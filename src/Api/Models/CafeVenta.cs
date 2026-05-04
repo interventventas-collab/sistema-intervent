@@ -38,6 +38,13 @@ public class CafeVenta
     [MaxLength(20)]
     public string Estado { get; set; } = "emitido"; // emitido | anulado
 
+    /// <summary>CSV con dias de la semana de visita/reparto (LUN,MAR,MIE,...). Aparece al pie del comprobante.</summary>
+    [MaxLength(50)]
+    public string? WeekDays { get; set; }
+
+    /// <summary>Si esta marcado como pagado (estampa el sello en el PDF).</summary>
+    public bool IsPaid { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 

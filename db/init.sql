@@ -1840,3 +1840,11 @@ BEGIN
     CREATE INDEX IX_CafeVentaItems_Producto ON Cafe_VentaItems (ProductoId);
 END
 GO
+
+-- Cafe_Ventas: agregar WeekDays e IsPaid
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'WeekDays' AND Object_ID = Object_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD WeekDays NVARCHAR(50) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'IsPaid' AND Object_ID = Object_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD IsPaid BIT NOT NULL CONSTRAINT DF_CafeVentas_IsPaid DEFAULT 0;
+GO

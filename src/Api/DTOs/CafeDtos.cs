@@ -95,6 +95,7 @@ public record CafeVentaDto(
     decimal Subtotal, decimal Descuento, decimal Total,
     decimal CostoTotal, decimal Margen,
     string? Observaciones, string Estado,
+    string? WeekDays, bool IsPaid,
     DateTime CreatedAt,
     List<CafeVentaItemDto> Items);
 
@@ -136,4 +137,12 @@ public class CreateCafeVentaRequest
     public List<CafeCotizarItemRequest> Items { get; set; } = new();
     public decimal Descuento { get; set; }
     public string? Observaciones { get; set; }
+    public string? WeekDays { get; set; }
+    public bool IsPaid { get; set; }
+}
+
+public class UpdateCafeVentaFlagsRequest
+{
+    public string? WeekDays { get; set; }
+    public bool? IsPaid { get; set; }
 }

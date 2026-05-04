@@ -22,7 +22,9 @@ public class CafeVentasController : ControllerBase
         v.Id, v.Numero, v.Fecha,
         v.ClienteId, v.ClienteNombreSnapshot, v.ClienteTipoSnapshot,
         v.Subtotal, v.Descuento, v.Total, v.CostoTotal, v.Margen,
-        v.Observaciones, v.Estado, v.CreatedAt,
+        v.Observaciones, v.Estado,
+        v.WeekDays, v.IsPaid,
+        v.CreatedAt,
         v.Items.Select(i => new CafeVentaItemDto(
             i.Id, i.ProductoId, i.ProductoNombreSnapshot, i.Categoria,
             i.Formato, i.Cantidad,
@@ -98,6 +100,8 @@ public class CafeVentasController : ControllerBase
             Margen = cot.Margen,
             Observaciones = string.IsNullOrWhiteSpace(req.Observaciones) ? null : req.Observaciones.Trim(),
             Estado = "emitido",
+            WeekDays = NormWeekDays(req.WeekDays),
+            IsPaid = req.IsPaid,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -132,6 +136,19 @@ public class CafeVentasController : ControllerBase
         await _db.SaveChangesAsync();
 
         return Ok(Map(venta));
+    }
+
+    /// <summary>Toggle de "pagado" y/o "dias de la semana" sobre una venta ya emitida (sin recalcular precios).</summary>
+    [HttpPut("{id:int}/flags")]
+    public async Task<IActionResult> UpdateFlags(int id, [FromBody] UpdateCafeVentaFlagsRequest req)
+    {
+        var v = await _db.CafeVentas.Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == id);
+        if (v is null) return NotFound(new { error = "Venta no encontrada" });
+        if (req.WeekDays is not null) v.WeekDays = NormWeekDays(req.WeekDays);
+        if (req.IsPaid.HasValue) v.IsPaid = req.IsPaid.Value;
+        v.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(Map(v));
     }
 
     [HttpPost("{id:int}/anular")]
@@ -261,6 +278,20 @@ public class CafeVentasController : ControllerBase
         var total = Math.Max(0m, subtotal - desc);
         var margen = total - costoTotal;
         return new CafeCotizadoDto(tipo, subtotal, desc, total, costoTotal, margen, todoOk, cotizadoItems);
+    }
+
+    /// <summary>Normaliza CSV de dias: solo deja LUN/MAR/MIE/JUE/VIE/SAB/DOM en mayúscula y sin duplicados.</summary>
+    private static readonly string[] DiasValidos = { "LUN", "MAR", "MIE", "JUE", "VIE", "SAB", "DOM" };
+    private static string? NormWeekDays(string? csv)
+    {
+        if (string.IsNullOrWhiteSpace(csv)) return null;
+        var list = csv.Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => s.Trim().ToUpperInvariant())
+            .Where(s => DiasValidos.Contains(s))
+            .Distinct()
+            .OrderBy(s => Array.IndexOf(DiasValidos, s))
+            .ToList();
+        return list.Count == 0 ? null : string.Join(",", list);
     }
 
     private async Task<string> GenerarNumeroAsync()
