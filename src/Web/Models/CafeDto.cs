@@ -43,6 +43,7 @@ public class CafeProductoDto
     public int Id { get; set; }
     public string Nombre { get; set; } = "";
     public string Categoria { get; set; } = "CAFE";
+    public string? Marca { get; set; }
     public decimal Costo { get; set; }
     public decimal? PrecioPorKg { get; set; }
     public decimal? Pvp1 { get; set; }
@@ -59,6 +60,7 @@ public class CreateCafeProductoRequest
 {
     public string Nombre { get; set; } = "";
     public string Categoria { get; set; } = "CAFE";
+    public string? Marca { get; set; }
     public decimal Costo { get; set; }
     public decimal? PrecioPorKg { get; set; }
     public decimal? Pvp1 { get; set; }
@@ -72,6 +74,7 @@ public class UpdateCafeProductoRequest
 {
     public string? Nombre { get; set; }
     public string? Categoria { get; set; }
+    public string? Marca { get; set; }
     public decimal? Costo { get; set; }
     public decimal? PrecioPorKg { get; set; }
     public decimal? Pvp1 { get; set; }

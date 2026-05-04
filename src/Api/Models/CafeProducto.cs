@@ -16,6 +16,9 @@ public class CafeProducto
     [Required, MaxLength(20)]
     public string Categoria { get; set; } = "CAFE"; // CAFE | OTROS
 
+    [MaxLength(100)]
+    public string? Marca { get; set; }
+
     [Column(TypeName = "decimal(18,2)")]
     public decimal Costo { get; set; }
 

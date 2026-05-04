@@ -32,7 +32,7 @@ public class UpdateCafeClienteRequest
 
 // ===== Productos =====
 public record CafeProductoDto(
-    int Id, string Nombre, string Categoria,
+    int Id, string Nombre, string Categoria, string? Marca,
     decimal Costo, decimal? PrecioPorKg,
     decimal? Pvp1, decimal? Pvp2,
     decimal StockGramos, int StockUnidades,
@@ -43,6 +43,7 @@ public class CreateCafeProductoRequest
 {
     public string Nombre { get; set; } = string.Empty;
     public string Categoria { get; set; } = "CAFE";
+    public string? Marca { get; set; }
     public decimal Costo { get; set; }
     public decimal? PrecioPorKg { get; set; }
     public decimal? Pvp1 { get; set; }
@@ -56,6 +57,7 @@ public class UpdateCafeProductoRequest
 {
     public string? Nombre { get; set; }
     public string? Categoria { get; set; }
+    public string? Marca { get; set; }
     public decimal? Costo { get; set; }
     public decimal? PrecioPorKg { get; set; }
     public decimal? Pvp1 { get; set; }

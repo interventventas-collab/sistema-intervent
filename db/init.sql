@@ -1892,3 +1892,8 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'Email' AND Object_ID = Object_ID('Cafe_Clientes'))
     ALTER TABLE Cafe_Clientes ADD Email NVARCHAR(255) NULL;
 GO
+
+-- Cafe_Productos: agregar Marca
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'Marca' AND Object_ID = Object_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD Marca NVARCHAR(100) NULL;
+GO

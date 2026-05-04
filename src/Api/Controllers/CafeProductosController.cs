@@ -18,7 +18,8 @@ public class CafeProductosController : ControllerBase
     public CafeProductosController(AppDbContext db) { _db = db; }
 
     private static CafeProductoDto Map(CafeProducto p) => new(
-        p.Id, p.Nombre, p.Categoria, p.Costo, p.PrecioPorKg,
+        p.Id, p.Nombre, p.Categoria, p.Marca,
+        p.Costo, p.PrecioPorKg,
         p.Pvp1, p.Pvp2, p.StockGramos, p.StockUnidades,
         p.Notas, p.IsActive, p.CreatedAt, p.UpdatedAt);
 
@@ -55,6 +56,7 @@ public class CafeProductosController : ControllerBase
         {
             Nombre = req.Nombre.Trim(),
             Categoria = cat,
+            Marca = string.IsNullOrWhiteSpace(req.Marca) ? null : req.Marca.Trim(),
             Costo = req.Costo,
             PrecioPorKg = req.PrecioPorKg,
             Pvp1 = req.Pvp1,
@@ -81,6 +83,7 @@ public class CafeProductosController : ControllerBase
             p.Nombre = req.Nombre.Trim();
         }
         if (req.Categoria is not null) p.Categoria = NormCat(req.Categoria);
+        if (req.Marca is not null) p.Marca = string.IsNullOrWhiteSpace(req.Marca) ? null : req.Marca.Trim();
         if (req.Costo.HasValue)
         {
             if (req.Costo.Value < 0) return BadRequest(new { error = "El costo no puede ser negativo" });

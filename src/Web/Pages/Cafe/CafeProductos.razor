@@ -5,12 +5,16 @@
 
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
-        <h3>☕ Productos <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;">(@(productos?.Count ?? 0))</span></h3>
+        <h3>☕ Productos <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;">(@(productosVisibles.Count))</span></h3>
         <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
             <select class="form-input" style="max-width: 180px; font-size: 0.85rem;" @bind="filtroCategoria" @bind:after="Load">
                 <option value="">Todas las categorías</option>
                 <option value="CAFE">☕ Café</option>
                 <option value="OTROS">📦 Otros / insumos</option>
+            </select>
+            <select class="form-input" style="max-width: 180px; font-size: 0.85rem;" @bind="filtroMarca">
+                <option value="">Todas las marcas</option>
+                @foreach (var m in marcasExistentes) { <option value="@m">@m</option> }
             </select>
             <button class="btn btn-primary" @onclick="ShowCreate">+ Nuevo Producto</button>
         </div>
@@ -34,6 +38,7 @@
                         <tr>
                             <th>Nombre</th>
                             <th>Categoría</th>
+                            <th>Marca</th>
                             <th style="text-align: right;">Costo</th>
                             <th style="text-align: right;">PVP1 (BAR)</th>
                             <th style="text-align: right;">PVP2 (OTRO)</th>
@@ -43,7 +48,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var p in productos)
+                        @foreach (var p in productosVisibles)
                         {
                             var esCafe = p.Categoria == "CAFE";
                             <tr>
@@ -62,6 +67,16 @@
                                     else
                                     {
                                         <span style="display:inline-block; padding:0.15rem 0.5rem; background:#e0e7ff; color:#3730a3; border-radius:999px; font-size:0.72rem; font-weight:700;">📦 OTROS</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (!string.IsNullOrEmpty(p.Marca))
+                                    {
+                                        <span style="display:inline-block; padding:0.15rem 0.5rem; background:#f3f4f6; color:#374151; border-radius:999px; font-size:0.72rem; font-weight:700;">@p.Marca</span>
+                                    }
+                                    else
+                                    {
+                                        <span style="color: #d1d5db;">—</span>
                                     }
                                 </td>
                                 <td style="text-align: right;">$@FormatMoney(p.Costo)</td>
@@ -123,9 +138,21 @@
                     </div>
                 </div>
 
-                <div class="form-group">
-                    <label class="form-label">Costo ($)</label>
-                    <input class="form-input" type="number" step="0.01" min="0" @bind="formCosto" />
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Marca</label>
+                        <input class="form-input" @bind="formMarca" placeholder="Ej: La Virginia, Frikaf, Colombraro..." list="cafe-marcas" />
+                        <datalist id="cafe-marcas">
+                            @foreach (var m in marcasExistentes) { <option value="@m" /> }
+                        </datalist>
+                        <p style="font-size: 0.72rem; color: #6b7280; margin: 0.2rem 0 0;">
+                            💡 Si ya cargaste otros productos con la misma marca, te aparece como sugerencia.
+                        </p>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Costo ($)</label>
+                        <input class="form-input" type="number" step="0.01" min="0" @bind="formCosto" />
+                    </div>
                 </div>
 
                 @if (formCategoria == "CAFE")
@@ -208,6 +235,7 @@
     private List<CafeProductoDto>? productos;
     private bool loading = true;
     private string filtroCategoria = "";
+    private string filtroMarca = "";
     private bool showForm;
     private bool isEditing;
     private bool saving;
@@ -215,6 +243,7 @@
     private int? editingId;
     private string formNombre = "";
     private string formCategoria = "CAFE";
+    private string formMarca = "";
     private decimal formCosto;
     private decimal? formPvp1;
     private decimal? formPvp2;
@@ -222,6 +251,22 @@
     private int formStockUnidades;
     private string formNotas = "";
     private bool formIsActive = true;
+
+    /// <summary>Marcas existentes (de productos ya cargados), ordenadas alfabéticamente, para el datalist y el filtro.</summary>
+    private List<string> marcasExistentes => productos is null
+        ? new()
+        : productos.Where(p => !string.IsNullOrWhiteSpace(p.Marca))
+                   .Select(p => p.Marca!.Trim())
+                   .Distinct(StringComparer.OrdinalIgnoreCase)
+                   .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
+                   .ToList();
+
+    /// <summary>Lista filtrada por marca (la categoría ya viene filtrada del backend).</summary>
+    private List<CafeProductoDto> productosVisibles => productos is null
+        ? new()
+        : (string.IsNullOrEmpty(filtroMarca)
+            ? productos
+            : productos.Where(p => string.Equals(p.Marca, filtroMarca, StringComparison.OrdinalIgnoreCase)).ToList());
     private bool showDeleteConfirm;
     private CafeProductoDto? toDelete;
 
@@ -242,7 +287,7 @@
     private void ShowCreate()
     {
         isEditing = false; editingId = null;
-        formNombre = ""; formCategoria = "CAFE";
+        formNombre = ""; formCategoria = "CAFE"; formMarca = "";
         formCosto = 0; formPvp1 = null; formPvp2 = null;
         formStockGramos = 0; formStockUnidades = 0;
         formNotas = ""; formIsActive = true;
@@ -252,7 +297,7 @@
     private void ShowEdit(CafeProductoDto p)
     {
         isEditing = true; editingId = p.Id;
-        formNombre = p.Nombre; formCategoria = p.Categoria;
+        formNombre = p.Nombre; formCategoria = p.Categoria; formMarca = p.Marca ?? "";
         formCosto = p.Costo; formPvp1 = p.Pvp1; formPvp2 = p.Pvp2;
         formStockGramos = p.StockGramos; formStockUnidades = p.StockUnidades;
         formNotas = p.Notas ?? ""; formIsActive = p.IsActive;
@@ -273,7 +318,7 @@
             {
                 var u = await Api.UpdateCafeProductoAsync(editingId.Value, new UpdateCafeProductoRequest
                 {
-                    Nombre = formNombre, Categoria = formCategoria,
+                    Nombre = formNombre, Categoria = formCategoria, Marca = formMarca,
                     Costo = formCosto, Pvp1 = formPvp1, Pvp2 = formPvp2,
                     StockGramos = formStockGramos, StockUnidades = formStockUnidades,
                     Notas = formNotas, IsActive = formIsActive
@@ -285,7 +330,7 @@
             {
                 var c = await Api.CreateCafeProductoAsync(new CreateCafeProductoRequest
                 {
-                    Nombre = formNombre, Categoria = formCategoria,
+                    Nombre = formNombre, Categoria = formCategoria, Marca = formMarca,
                     Costo = formCosto, Pvp1 = formPvp1, Pvp2 = formPvp2,
                     StockGramos = formCategoria == "CAFE" ? formStockGramos : 0,
                     StockUnidades = formCategoria == "OTROS" ? formStockUnidades : 0,
