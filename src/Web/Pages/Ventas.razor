@@ -801,6 +801,25 @@
                 </div>
             </div>
             <div class="modal-body" id="comprobante-print" style="background: white; position: relative;">
+                @* Estilos que viajan con el innerHTML cuando se imprime via printElement.
+                   Dejan al pie (dias + firmas) fijo al fondo de cada hoja cuando se imprime. *@
+                <style>
+                    .comprobante-fixed-footer { margin-top: 1.5rem; }
+                    @@media print {
+                        body { padding-bottom: 35mm !important; }
+                        .comprobante-fixed-footer {
+                            position: fixed;
+                            bottom: 0;
+                            left: 0;
+                            right: 0;
+                            background: white;
+                            padding-top: 4mm;
+                            padding-bottom: 2mm;
+                            margin: 0;
+                            border-top: 1px solid #d1d5db;
+                        }
+                    }
+                </style>
                 @if (viewerSale.IsCancelled)
                 {
                     <div style="background: #fee2e2; border: 2px solid #b91c1c; color: #7f1d1d; padding: 0.6rem 0.9rem; border-radius: 6px; margin-bottom: 0.6rem; display: flex; align-items: center; gap: 0.5rem;">
@@ -979,7 +998,7 @@
                            una altura minima estable, asi el pie/firmas quedan al fondo aunque
                            la venta tenga pocos items. *@
                         @{
-                            const int MIN_ROWS = 18;
+                            const int MIN_ROWS = 10;
                             int totalCols = 5 + (anyTierDiscount ? 2 : 0) + (anyBonif ? 1 : 0);
                             int rellenos = Math.Max(0, MIN_ROWS - viewerSale.Items.Count);
                         }
@@ -1061,28 +1080,31 @@
                     </div>
                 </div>
 
-                @* Dias de la semana (tildables tambien despues de impreso) *@
-                <div style="margin-top: 0.8rem; display: flex; gap: 0.3rem; justify-content: center; flex-wrap: wrap; align-items: center; padding: 0.5rem; border: 1px solid #d1d5db;">
-                    <span style="font-size: 0.78rem; color: #6b7280; margin-right: 0.4rem;">Días de visita / reparto:</span>
-                    @foreach (var d in AllWeekDays)
-                    {
-                        var isOn = ViewerHasDay(d);
-                        <span class="day-pill @(isOn ? "on" : "")" @onclick="() => ToggleViewerDay(d)" title="Click para tildar/destildar">
-                            @d
-                        </span>
-                    }
-                </div>
-
-                @* Espacios de firma *@
-                <div class="comprobante-firmas" style="margin-top: 1.5rem; display: flex; justify-content: space-around; gap: 2rem;">
-                    <div style="flex: 1; text-align: center;">
-                        <div style="border-top: 1px solid #6b7280; padding-top: 0.3rem; font-size: 0.75rem; color: #6b7280;">
-                            Firma del cliente / Aclaración
-                        </div>
+                @* ===== Pie fijo (al fondo de cada hoja cuando se imprime) ===== *@
+                <div class="comprobante-fixed-footer">
+                    @* Dias de la semana (tildables tambien despues de impreso) *@
+                    <div style="display: flex; gap: 0.3rem; justify-content: center; flex-wrap: wrap; align-items: center; padding: 0.4rem 0.5rem; border: 1px solid #d1d5db;">
+                        <span style="font-size: 0.78rem; color: #6b7280; margin-right: 0.4rem;">Días de visita / reparto:</span>
+                        @foreach (var d in AllWeekDays)
+                        {
+                            var isOn = ViewerHasDay(d);
+                            <span class="day-pill @(isOn ? "on" : "")" @onclick="() => ToggleViewerDay(d)" title="Click para tildar/destildar">
+                                @d
+                            </span>
+                        }
                     </div>
-                    <div style="flex: 1; text-align: center;">
-                        <div style="border-top: 1px solid #6b7280; padding-top: 0.3rem; font-size: 0.75rem; color: #6b7280;">
-                            Firma autorizada
+
+                    @* Espacios de firma *@
+                    <div class="comprobante-firmas" style="margin-top: 0.8rem; display: flex; justify-content: space-around; gap: 2rem;">
+                        <div style="flex: 1; text-align: center;">
+                            <div style="border-top: 1px solid #6b7280; padding-top: 0.3rem; font-size: 0.75rem; color: #6b7280;">
+                                Firma del cliente / Aclaración
+                            </div>
+                        </div>
+                        <div style="flex: 1; text-align: center;">
+                            <div style="border-top: 1px solid #6b7280; padding-top: 0.3rem; font-size: 0.75rem; color: #6b7280;">
+                                Firma autorizada
+                            </div>
                         </div>
                     </div>
                 </div>
