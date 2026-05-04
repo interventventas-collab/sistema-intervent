@@ -5,22 +5,20 @@
 @inject ToastService ToastService
 
 <div class="card">
-    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
-        <h3 style="margin: 0;">
-            🗓️ Calendario de Reservas
-        </h3>
-        <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
-            <button class="btn btn-secondary" @onclick="PrevMes" title="Mes anterior" style="padding: 0.35rem 0.7rem;">◀</button>
-            <button class="btn btn-secondary" @onclick="GoToHoy" style="font-weight: 700;">Hoy</button>
-            <button class="btn btn-secondary" @onclick="NextMes" title="Mes siguiente" style="padding: 0.35rem 0.7rem;">▶</button>
-            <strong style="font-size: 1.05rem; min-width: 170px; text-align: center; text-transform: capitalize;">
+    <div class="alq-cal-header">
+        <h3 style="margin: 0; flex: 1 1 auto;">🗓️ Calendario</h3>
+        <div class="alq-cal-controls">
+            <button class="btn btn-secondary alq-cal-navbtn" @onclick="PrevMes" title="Mes anterior">◀</button>
+            <strong class="alq-cal-monthlabel">
                 @MesNombre(mesActual.Month) @mesActual.Year
             </strong>
-            <label style="display: flex; align-items: center; gap: 0.3rem; font-size: 0.8rem; cursor: pointer; color: #6b7280; margin-left: 0.5rem;">
-                <input type="checkbox" @bind="mostrarOcultas" @bind:after="Reload" />
-                Ver canceladas y finalizadas
-            </label>
+            <button class="btn btn-secondary alq-cal-navbtn" @onclick="NextMes" title="Mes siguiente">▶</button>
+            <button class="btn btn-secondary alq-cal-todaybtn" @onclick="GoToHoy">Hoy</button>
         </div>
+        <label class="alq-cal-filter">
+            <input type="checkbox" @bind="mostrarOcultas" @bind:after="Reload" />
+            <span>Ver canceladas y finalizadas</span>
+        </label>
     </div>
 
     <div class="card-body" style="padding: 0.5rem;">
@@ -33,7 +31,10 @@
             <div class="alq-cal-grid">
                 @foreach (var d in DiasSemana)
                 {
-                    <div class="alq-cal-headcell">@d</div>
+                    <div class="alq-cal-headcell">
+                        <span class="alq-cal-day-long">@d.Long</span>
+                        <span class="alq-cal-day-short">@d.Short</span>
+                    </div>
                 }
                 @for (int i = 0; i < 42; i++)
                 {
@@ -45,47 +46,300 @@
                     <div class="alq-cal-cell @(esDelMes ? "" : "off-month") @(esHoy ? "today" : "")"
                          @onclick="() => OnDayClick(fecha)">
                         <div class="alq-cal-daynum">@fecha.Day</div>
-                        @foreach (var ev in eventos.Take(4))
-                        {
-                            var isStart = ev.FechaEntrega.Date == fecha.Date;
-                            var isEnd = ev.FechaRetiro.Date == fecha.Date;
-                            var (bg, fg) = ColorEstado(ev.Estado);
-                            var anulada = ev.Estado == "cancelado";
-                            <div class="alq-cal-event @(isStart ? "start" : "") @(isEnd ? "end" : "")"
-                                 style="background: @bg; color: @fg; @(anulada ? "text-decoration: line-through; opacity: 0.7;" : "")"
-                                 title="@($"{ev.Numero} · {ev.ClienteNombre} · {FormatRange(ev)}")"
-                                 @onclick:stopPropagation="true"
-                                 @onclick="() => OpenReserva(ev.Id)">
-                                @if (isStart && !string.IsNullOrEmpty(ev.HoraInicio))
-                                {
-                                    <span class="alq-cal-event-time">@ev.HoraInicio</span>
-                                }
-                                <span class="alq-cal-event-name">@ev.ClienteNombre</span>
-                            </div>
-                        }
-                        @if (eventos.Count > 4)
-                        {
-                            <div class="alq-cal-more">+ @(eventos.Count - 4) más</div>
-                        }
+                        @* Vista desktop: chips con texto *@
+                        <div class="alq-cal-events-desktop">
+                            @foreach (var ev in eventos.Take(4))
+                            {
+                                var isStart = ev.FechaEntrega.Date == fecha.Date;
+                                var isEnd = ev.FechaRetiro.Date == fecha.Date;
+                                var (bg, fg) = ColorEstado(ev.Estado);
+                                var anulada = ev.Estado == "cancelado";
+                                <div class="alq-cal-event @(isStart ? "start" : "") @(isEnd ? "end" : "")"
+                                     style="background: @bg; color: @fg; @(anulada ? "text-decoration: line-through; opacity: 0.7;" : "")"
+                                     title="@($"{ev.Numero} · {ev.ClienteNombre} · {FormatRange(ev)}")"
+                                     @onclick:stopPropagation="true"
+                                     @onclick="() => OpenReserva(ev.Id)">
+                                    @if (isStart && !string.IsNullOrEmpty(ev.HoraInicio))
+                                    {
+                                        <span class="alq-cal-event-time">@ev.HoraInicio</span>
+                                    }
+                                    <span class="alq-cal-event-name">@ev.ClienteNombre</span>
+                                </div>
+                            }
+                            @if (eventos.Count > 4)
+                            {
+                                <div class="alq-cal-more">+ @(eventos.Count - 4) más</div>
+                            }
+                        </div>
+                        @* Vista mobile: solo dots de color *@
+                        <div class="alq-cal-events-mobile">
+                            @foreach (var ev in eventos.Take(4))
+                            {
+                                var (bg, _) = ColorEstado(ev.Estado);
+                                <span class="alq-cal-dot" style="background: @bg;"></span>
+                            }
+                            @if (eventos.Count > 4)
+                            {
+                                <span class="alq-cal-dot-more">+@(eventos.Count - 4)</span>
+                            }
+                        </div>
                     </div>
                 }
             </div>
 
             @* Leyenda *@
-            <div style="display: flex; gap: 0.7rem; flex-wrap: wrap; padding: 0.6rem 0.5rem 0.2rem; font-size: 0.78rem; color: #6b7280;">
-                <span><span style="display: inline-block; width: 10px; height: 10px; background: #3b82f6; border-radius: 2px; vertical-align: middle;"></span> Reservado</span>
-                <span><span style="display: inline-block; width: 10px; height: 10px; background: #10b981; border-radius: 2px; vertical-align: middle;"></span> Confirmado</span>
-                <span><span style="display: inline-block; width: 10px; height: 10px; background: #f59e0b; border-radius: 2px; vertical-align: middle;"></span> Entregado</span>
+            <div class="alq-cal-leyenda">
+                <span><span class="alq-cal-leyenda-dot" style="background: #3b82f6;"></span> Reservado</span>
+                <span><span class="alq-cal-leyenda-dot" style="background: #10b981;"></span> Confirmado</span>
+                <span><span class="alq-cal-leyenda-dot" style="background: #f59e0b;"></span> Entregado</span>
                 @if (mostrarOcultas)
                 {
-                    <span><span style="display: inline-block; width: 10px; height: 10px; background: #6b7280; border-radius: 2px; vertical-align: middle;"></span> Finalizado</span>
-                    <span><span style="display: inline-block; width: 10px; height: 10px; background: #ef4444; border-radius: 2px; vertical-align: middle;"></span> Cancelado</span>
+                    <span><span class="alq-cal-leyenda-dot" style="background: #6b7280;"></span> Finalizado</span>
+                    <span><span class="alq-cal-leyenda-dot" style="background: #ef4444;"></span> Cancelado</span>
                 }
-                <span style="margin-left: auto;">💡 Click en un día vacío para crear · Click en un evento para ver detalle</span>
             </div>
         }
     </div>
 </div>
+
+@* ═══════ Modal mobile: detalle del dia tocado ═══════ *@
+@if (diaSeleccionado.HasValue)
+{
+    var dia = diaSeleccionado.Value;
+    var eventosDelDia = EventosDe(dia);
+    <div class="modal-overlay" @onclick="() => diaSeleccionado = null">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h4 style="margin: 0; text-transform: capitalize;">
+                    📅 @($"{DiaNombre(dia.DayOfWeek)} {dia.Day} de {MesNombre(dia.Month)}")
+                </h4>
+                <button class="btn-close" @onclick="() => diaSeleccionado = null">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (eventosDelDia.Count == 0)
+                {
+                    <p class="text-muted" style="margin: 0;">No hay reservas en este día.</p>
+                }
+                else
+                {
+                    <p style="font-size: 0.85rem; color: #6b7280; margin: 0 0 0.5rem;">
+                        @eventosDelDia.Count @(eventosDelDia.Count == 1 ? "reserva" : "reservas") este día — tocá una para abrirla:
+                    </p>
+                    <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                        @foreach (var ev in eventosDelDia)
+                        {
+                            var (bg, fg) = ColorEstado(ev.Estado);
+                            var anulada = ev.Estado == "cancelado";
+                            <button class="alq-cal-day-event" style="background: @bg; color: @fg; @(anulada ? "text-decoration: line-through; opacity: 0.7;" : "")"
+                                    @onclick="() => OpenReserva(ev.Id)">
+                                <div style="font-weight: 800;">@ev.ClienteNombre</div>
+                                <div style="font-size: 0.78rem; opacity: 0.95;">
+                                    @ev.Numero · @FormatRange(ev)
+                                    @if (!string.IsNullOrEmpty(ev.HoraInicio)) { <span> · 🕐 @ev.HoraInicio</span> }
+                                </div>
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => diaSeleccionado = null">Cerrar</button>
+                <button class="btn btn-primary" @onclick="() => CrearEnFecha(dia)">+ Nueva Reserva</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    /* Header del calendario */
+    .alq-cal-header {
+        padding: 0.7rem 1rem;
+        border-bottom: 1px solid #e5e7eb;
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.5rem 0.7rem;
+    }
+    .alq-cal-controls {
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+    }
+    .alq-cal-navbtn { padding: 0.3rem 0.55rem; font-size: 0.85rem; }
+    .alq-cal-todaybtn { padding: 0.3rem 0.7rem; font-size: 0.8rem; font-weight: 700; }
+    .alq-cal-monthlabel {
+        font-size: 1rem;
+        min-width: 130px;
+        text-align: center;
+        text-transform: capitalize;
+    }
+    .alq-cal-filter {
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+        font-size: 0.78rem;
+        cursor: pointer;
+        color: #6b7280;
+        margin-left: auto;
+    }
+
+    /* Grilla */
+    .alq-cal-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 1px;
+        background: #e5e7eb;
+        border: 1px solid #e5e7eb;
+        border-radius: 6px;
+        overflow: hidden;
+    }
+    .alq-cal-headcell {
+        background: #f9fafb;
+        padding: 0.4rem 0.3rem;
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        color: #6b7280;
+        text-align: center;
+        letter-spacing: 0.05em;
+    }
+    .alq-cal-day-short { display: none; }
+    .alq-cal-cell {
+        background: white;
+        min-height: 95px;
+        padding: 0.25rem 0.3rem;
+        cursor: pointer;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        transition: background 0.1s;
+    }
+    .alq-cal-cell:hover { background: #f0f9ff; }
+    .alq-cal-cell.off-month { background: #fafafa; color: #9ca3af; }
+    .alq-cal-cell.off-month:hover { background: #f3f4f6; }
+    .alq-cal-cell.today { background: #fefce8; }
+    .alq-cal-cell.today:hover { background: #fef9c3; }
+    .alq-cal-daynum {
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: #374151;
+        text-align: right;
+        padding: 0 0.15rem;
+    }
+    .alq-cal-cell.off-month .alq-cal-daynum { color: #9ca3af; }
+    .alq-cal-cell.today .alq-cal-daynum {
+        background: #f59e0b;
+        color: white;
+        border-radius: 50%;
+        width: 22px;
+        height: 22px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin-left: auto;
+        font-size: 0.75rem;
+    }
+
+    /* Eventos desktop (chips) */
+    .alq-cal-events-desktop { display: flex; flex-direction: column; gap: 2px; }
+    .alq-cal-events-mobile { display: none; }
+    .alq-cal-event {
+        font-size: 0.72rem;
+        padding: 1px 5px;
+        border-radius: 3px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        cursor: pointer;
+        font-weight: 600;
+        line-height: 1.4;
+    }
+    .alq-cal-event:hover { filter: brightness(0.9); }
+    .alq-cal-event.start { border-left: 3px solid rgba(0,0,0,0.25); }
+    .alq-cal-event.end { border-right: 3px solid rgba(0,0,0,0.25); }
+    .alq-cal-event-time { font-weight: 800; margin-right: 3px; opacity: 0.85; }
+    .alq-cal-event-name { font-weight: 600; }
+    .alq-cal-more {
+        font-size: 0.7rem;
+        color: #6b7280;
+        padding: 0 0.2rem;
+        font-style: italic;
+    }
+
+    /* Leyenda */
+    .alq-cal-leyenda {
+        display: flex;
+        gap: 0.7rem;
+        flex-wrap: wrap;
+        padding: 0.6rem 0.5rem 0.2rem;
+        font-size: 0.78rem;
+        color: #6b7280;
+    }
+    .alq-cal-leyenda-dot {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 2px;
+        vertical-align: middle;
+        margin-right: 2px;
+    }
+
+    /* Mobile detalle del dia */
+    .alq-cal-day-event {
+        text-align: left;
+        padding: 0.5rem 0.7rem;
+        border-radius: 6px;
+        border: none;
+        cursor: pointer;
+        font-size: 0.9rem;
+    }
+
+    /* ═══════ Mobile (≤640px) ═══════ */
+    @@media (max-width: 640px) {
+        .alq-cal-header { padding: 0.5rem 0.6rem; }
+        .alq-cal-header h3 { font-size: 1rem; flex: 1 1 100%; }
+        .alq-cal-controls { flex: 1 1 auto; justify-content: center; }
+        .alq-cal-monthlabel { font-size: 0.95rem; min-width: 100px; }
+        .alq-cal-todaybtn { font-size: 0.75rem; padding: 0.25rem 0.5rem; }
+        .alq-cal-navbtn { padding: 0.25rem 0.5rem; font-size: 0.8rem; }
+        .alq-cal-filter { font-size: 0.72rem; flex: 1 1 100%; justify-content: flex-start; margin-left: 0; }
+
+        .alq-cal-headcell { font-size: 0.65rem; padding: 0.3rem 0.1rem; }
+        .alq-cal-day-long { display: none; }
+        .alq-cal-day-short { display: inline; }
+
+        .alq-cal-cell {
+            min-height: 56px;
+            padding: 0.15rem;
+            gap: 1px;
+        }
+        .alq-cal-daynum { font-size: 0.72rem; }
+        .alq-cal-cell.today .alq-cal-daynum { width: 18px; height: 18px; font-size: 0.7rem; }
+
+        .alq-cal-events-desktop { display: none; }
+        .alq-cal-events-mobile {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2px;
+            justify-content: center;
+            margin-top: auto;
+        }
+        .alq-cal-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .alq-cal-dot-more {
+            font-size: 0.6rem;
+            color: #6b7280;
+            font-weight: 700;
+            line-height: 1;
+        }
+        .alq-cal-leyenda { font-size: 0.72rem; gap: 0.4rem; }
+    }
+</style>
 
 <style>
     .alq-cal-grid {
@@ -176,8 +430,19 @@
     private List<AlqReservaDto>? reservas;
     private bool isLoading = true;
     private bool mostrarOcultas;
+    private DateTime? diaSeleccionado;
 
-    private static readonly string[] DiasSemana = new[] { "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom" };
+    private record DiaSemana(string Long, string Short);
+    private static readonly DiaSemana[] DiasSemana = new[]
+    {
+        new DiaSemana("Lun", "L"),
+        new DiaSemana("Mar", "M"),
+        new DiaSemana("Mié", "M"),
+        new DiaSemana("Jue", "J"),
+        new DiaSemana("Vie", "V"),
+        new DiaSemana("Sáb", "S"),
+        new DiaSemana("Dom", "D")
+    };
 
     // Primer día visible en la grilla (lunes anterior o igual al 1ro del mes)
     private DateTime primerDiaGrilla
@@ -240,14 +505,43 @@
 
     private void OnDayClick(DateTime fecha)
     {
-        // Click en celda vacía → crear nueva reserva con esa fecha
+        var eventos = EventosDe(fecha);
+        if (eventos.Count > 0)
+        {
+            // Día con eventos → abrir modal con la lista (sirve tanto en mobile como en desktop;
+            // en desktop podés además clickear directo el chip para abrir uno solo).
+            diaSeleccionado = fecha;
+        }
+        else
+        {
+            // Día vacío → crear nueva reserva con esa fecha
+            Nav.NavigateTo($"/alquileres/reservas?newDate={fecha:yyyy-MM-dd}");
+        }
+    }
+
+    private void CrearEnFecha(DateTime fecha)
+    {
+        diaSeleccionado = null;
         Nav.NavigateTo($"/alquileres/reservas?newDate={fecha:yyyy-MM-dd}");
     }
 
     private void OpenReserva(int id)
     {
+        diaSeleccionado = null;
         Nav.NavigateTo($"/alquileres/reservas?openId={id}");
     }
+
+    private static string DiaNombre(DayOfWeek d) => d switch
+    {
+        DayOfWeek.Monday => "Lunes",
+        DayOfWeek.Tuesday => "Martes",
+        DayOfWeek.Wednesday => "Miércoles",
+        DayOfWeek.Thursday => "Jueves",
+        DayOfWeek.Friday => "Viernes",
+        DayOfWeek.Saturday => "Sábado",
+        DayOfWeek.Sunday => "Domingo",
+        _ => d.ToString()
+    };
 
     private static string FormatRange(AlqReservaDto r)
     {
