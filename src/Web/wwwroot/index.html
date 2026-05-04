@@ -157,6 +157,20 @@
             setTimeout(function() { URL.revokeObjectURL(href); }, 1000);
         };
 
+        // Recibe los bytes en base64 y dispara un download del navegador. Util para descargar
+        // archivos binarios (xlsx, pdf, etc) generados en el server.
+        window.downloadBytesAsFile = function(filename, base64, mimeType) {
+            var binary = atob(base64);
+            var bytes = new Uint8Array(binary.length);
+            for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            var blob = new Blob([bytes], { type: mimeType || 'application/octet-stream' });
+            var href = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = href; a.download = filename || 'archivo';
+            document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(function() { URL.revokeObjectURL(href); }, 1000);
+        };
+
         window.printElement = function(elementId, title) {
             var el = document.getElementById(elementId);
             if (!el) { alert('No se encontro el comprobante'); return; }

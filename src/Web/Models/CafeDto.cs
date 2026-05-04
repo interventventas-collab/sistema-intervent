@@ -532,6 +532,73 @@ public class UpdateCafeOemRequest
     public bool? IsActive { get; set; }
 }
 
+// ===== Listas de precios =====
+public class CafeListaPreciosFiltroRequest
+{
+    public int? ClienteId { get; set; }
+    public string? Tipo { get; set; }
+    public List<int>? MarcaIds { get; set; }
+    public string? Categoria { get; set; }
+    public string? Observaciones { get; set; }
+}
+
+public class CafeListaPreciosNegocioDto
+{
+    public string? Nombre { get; set; }
+    public string? Telefono { get; set; }
+    public string? WhatsappNumero { get; set; }
+    public string? Direccion { get; set; }
+    public string? Cuit { get; set; }
+}
+
+public class CafeListaPreciosClienteDto
+{
+    public int? Id { get; set; }
+    public string? Codigo { get; set; }
+    public string? Nombre { get; set; }
+    public string Tipo { get; set; } = "OTRO";
+    public string? Telefono { get; set; }
+    public string? Email { get; set; }
+}
+
+public class CafeListaPreciosItemCafeDto
+{
+    public int ProductoId { get; set; }
+    public string? Sku { get; set; }
+    public string Nombre { get; set; } = "";
+    public decimal Precio1Kg { get; set; }
+    public decimal PrecioMedio { get; set; }
+    public decimal PrecioCuarto { get; set; }
+}
+
+public class CafeListaPreciosItemOtroDto
+{
+    public int ProductoId { get; set; }
+    public string? Sku { get; set; }
+    public string Nombre { get; set; } = "";
+    public decimal Precio { get; set; }
+}
+
+public class CafeListaPreciosMarcaGroupDto
+{
+    public int? MarcaId { get; set; }
+    public string MarcaNombre { get; set; } = "";
+    public string? ProveedorNombre { get; set; }
+    public List<CafeListaPreciosItemCafeDto> ItemsCafe { get; set; } = new();
+    public List<CafeListaPreciosItemOtroDto> ItemsOtros { get; set; } = new();
+}
+
+public class CafeListaPreciosPreviewDto
+{
+    public DateTime Fecha { get; set; }
+    public DateTime ValidezHasta { get; set; }
+    public string TipoCliente { get; set; } = "OTRO";
+    public CafeListaPreciosNegocioDto Negocio { get; set; } = new();
+    public CafeListaPreciosClienteDto? Cliente { get; set; }
+    public List<CafeListaPreciosMarcaGroupDto> Grupos { get; set; } = new();
+    public string? Observaciones { get; set; }
+}
+
 // ===== Marcas =====
 public class CafeMarcaDto
 {

@@ -1,0 +1,450 @@
+@page "/cafe/listas-precios"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+
+<style>
+    .cli-pick-row:hover { background: #f0f9ff; }
+    .lp-marca-card { background: white; border: 1px solid #d1d5db; border-radius: 8px; margin-bottom: 0.8rem; overflow: hidden; }
+    .lp-marca-header { background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); padding: 0.5rem 0.8rem; border-bottom: 1px solid #d97706; }
+    .lp-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    .lp-table th { background: #f3f4f6; padding: 6px 10px; text-align: left; border-bottom: 1px solid #d1d5db; font-weight: 700; }
+    .lp-table td { padding: 5px 10px; border-bottom: 1px solid #f3f4f6; }
+    .lp-table tr:last-child td { border-bottom: none; }
+    .lp-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+</style>
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <h3>📋 Listas de precios</h3>
+        @if (preview is not null && step == 2)
+        {
+            <button class="btn btn-secondary" @onclick="() => step = 1">← Modificar filtros</button>
+        }
+    </div>
+    <div class="card-body">
+        @* ═══════════════ PASO 1: FILTROS ═══════════════ *@
+        @if (step == 1)
+        {
+            <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.9rem; margin-bottom: 0.8rem;">
+                <div style="font-weight: 700; margin-bottom: 0.5rem;">¿Para quién es esta lista?</div>
+                <div class="form-row">
+                    <div class="form-group" style="flex: 2; position: relative;">
+                        <label class="form-label">Cliente (opcional)</label>
+                        @if (formClienteId > 0)
+                        {
+                            var ciSel = clientes?.FirstOrDefault(x => x.Id == formClienteId);
+                            <div style="display: flex; gap: 0.3rem; align-items: center;">
+                                <div class="form-input" style="flex: 1; background: #ecfdf5; border-color: #10b981; display: flex; align-items: center; gap: 0.5rem;">
+                                    <span style="font-family: monospace; font-weight: 700; color: #1d4ed8;">@(ciSel?.Codigo ?? "—")</span>
+                                    <strong>@(ciSel?.Nombre ?? "?")</strong>
+                                    @if (ciSel is not null)
+                                    {
+                                        <span style="font-size: 0.72rem; color: #6b7280;">· @ciSel.Tipo</span>
+                                    }
+                                </div>
+                                <button class="btn btn-secondary" type="button" @onclick="ClearCliente" title="Quitar cliente">×</button>
+                            </div>
+                        }
+                        else
+                        {
+                            <input class="form-input" @bind="clienteSearch" @bind:event="oninput"
+                                   @onfocus="() => clienteSearchOpen = true"
+                                   placeholder="🔍 Buscar cliente o dejar vacío para 'general'" />
+                            @if (clienteSearchOpen && !string.IsNullOrWhiteSpace(clienteSearch))
+                            {
+                                var matches = ClientesMatching(clienteSearch).Take(15).ToList();
+                                <div style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #d1d5db; border-radius: 6px; max-height: 280px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 14px rgba(0,0,0,0.12); margin-top: 0.2rem;">
+                                    @if (matches.Count == 0)
+                                    {
+                                        <div style="padding: 0.6rem; color: #6b7280; font-size: 0.85rem;">Sin resultados.</div>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var c in matches)
+                                        {
+                                            var cId = c.Id;
+                                            <div class="cli-pick-row" @onclick="() => SelectCliente(cId)"
+                                                 style="padding: 0.4rem 0.6rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem;">
+                                                <span style="font-family: monospace; color: #1d4ed8; font-weight: 700; margin-right: 0.5rem;">@c.Codigo</span>
+                                                <strong>@c.Nombre</strong>
+                                                <span style="color: #6b7280; font-size: 0.78rem;"> · @c.Tipo</span>
+                                            </div>
+                                        }
+                                    }
+                                </div>
+                            }
+                        }
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Si elegís cliente, se usa su tipo (BAR/OTRO) automáticamente.</p>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Tipo de cliente</label>
+                        <select class="form-input" @bind="formTipo" disabled="@(formClienteId > 0)">
+                            <option value="OTRO">🛒 OTRO (final / retail)</option>
+                            <option value="BAR">🍺 BAR (mayorista)</option>
+                        </select>
+                        @if (formClienteId > 0)
+                        {
+                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Tomado del cliente.</p>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.9rem; margin-bottom: 0.8rem;">
+                <div style="font-weight: 700; margin-bottom: 0.5rem;">¿Qué productos incluir?</div>
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Categoría</label>
+                        <select class="form-input" @bind="formCategoria">
+                            <option value="">Todas (CAFE + OTROS)</option>
+                            <option value="CAFE">Solo CAFE</option>
+                            <option value="OTROS">Solo OTROS</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Marcas (vacío = todas)</label>
+                    <div style="display: flex; flex-wrap: wrap; gap: 0.4rem; padding: 0.4rem; background: white; border: 1px solid #d1d5db; border-radius: 6px;">
+                        @if (marcas is null || marcas.Count == 0)
+                        {
+                            <span style="color: #9ca3af; font-size: 0.85rem;">No hay marcas cargadas.</span>
+                        }
+                        else
+                        {
+                            @foreach (var m in marcas.Where(x => x.IsActive).OrderBy(x => x.Nombre))
+                            {
+                                var mId = m.Id;
+                                var sel = formMarcaIds.Contains(mId);
+                                <label style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.3rem 0.55rem; background: @(sel ? "#dbeafe" : "#f3f4f6"); border: 1px solid @(sel ? "#1d4ed8" : "#d1d5db"); border-radius: 4px; cursor: pointer; font-size: 0.82rem; font-weight: 600; color: @(sel ? "#1e3a8a" : "#374151");">
+                                    <input type="checkbox" checked="@sel" @onchange="@(e => ToggleMarca(mId, (bool)(e.Value ?? false)))" style="margin: 0;" />
+                                    @m.Nombre
+                                    @if (m.ProductosCount + m.OemsCount > 0)
+                                    {
+                                        <span style="font-size: 0.7rem; color: #6b7280; font-weight: 500;">(@(m.ProductosCount) prod)</span>
+                                    }
+                                </label>
+                            }
+                        }
+                    </div>
+                    @if (formMarcaIds.Count > 0)
+                    {
+                        <p style="font-size: 0.72rem; color: #1d4ed8; margin: 0.2rem 0 0;">Filtrando por @formMarcaIds.Count marca@(formMarcaIds.Count == 1 ? "" : "s"). <a href="#" @onclick:preventDefault="true" @onclick="() => formMarcaIds.Clear()" style="color: #dc2626;">limpiar</a></p>
+                    }
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Observaciones / condiciones comerciales (opcional)</label>
+                <textarea class="form-input" rows="3" @bind="formObservaciones"
+                          placeholder="Ej: Precios sujetos a disponibilidad. Seña 50% para reservas. Entrega y retiro a coordinar."></textarea>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.8rem;">
+                <button class="btn btn-primary" @onclick="DoPreview" disabled="@isLoading">
+                    @(isLoading ? "Generando..." : "Generar previsualización →")
+                </button>
+            </div>
+        }
+
+        @* ═══════════════ PASO 2: PREVIEW ═══════════════ *@
+        @if (step == 2 && preview is not null)
+        {
+            <div style="display: flex; gap: 0.5rem; margin-bottom: 0.8rem; flex-wrap: wrap;">
+                <button class="btn" style="background: #1d4ed8; color: white; border: none;" @onclick="DoPrintPdf">📄 Descargar PDF</button>
+                <button class="btn" style="background: #15803d; color: white; border: none;" @onclick="DoExportExcel" disabled="@isExporting">
+                    @(isExporting ? "Exportando..." : "📊 Excel")
+                </button>
+                @if (!string.IsNullOrEmpty(WhatsappLink))
+                {
+                    <a href="@WhatsappLink" target="_blank" class="btn" style="background: #25D366; color: white; border: none; text-decoration: none;">📱 Enviar por WhatsApp</a>
+                }
+                else if (preview.Cliente is not null)
+                {
+                    <span style="font-size: 0.78rem; color: #9ca3af; padding: 0.45rem 0;">⚠ El cliente no tiene teléfono cargado, no se puede enviar por WhatsApp.</span>
+                }
+            </div>
+
+            @* PREVIEW + PDF (mismo HTML, IDs distintos) *@
+            <div id="cafe-lp-print" style="background: white; padding: 1.2rem; border: 1px solid #e5e7eb; border-radius: 8px; max-width: 900px; margin: 0 auto;">
+
+                @* HEADER *@
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; padding-bottom: 0.8rem; border-bottom: 2px solid #1d4ed8;">
+                    <div style="flex: 1;">
+                        <div style="font-size: 1.4rem; font-weight: 800; color: #1e3a8a;">@(preview.Negocio.Nombre ?? "Tu negocio")</div>
+                        <div style="font-size: 0.82rem; color: #4b5563; margin-top: 0.2rem; line-height: 1.5;">
+                            @if (!string.IsNullOrEmpty(preview.Negocio.Direccion)) { <div>📍 @preview.Negocio.Direccion</div> }
+                            @if (!string.IsNullOrEmpty(preview.Negocio.Telefono)) { <span>📞 @preview.Negocio.Telefono</span> }
+                            @if (!string.IsNullOrEmpty(preview.Negocio.WhatsappNumero)) { <span style="margin-left: 0.6rem;">📱 @preview.Negocio.WhatsappNumero</span> }
+                            @if (!string.IsNullOrEmpty(preview.Negocio.Cuit)) { <div>CUIT: @preview.Negocio.Cuit</div> }
+                        </div>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="background: #1d4ed8; color: white; padding: 0.4rem 0.9rem; border-radius: 6px; font-weight: 800; font-size: 1.1rem; letter-spacing: 0.5px;">LISTA DE PRECIOS</div>
+                        <div style="font-size: 0.78rem; color: #6b7280; margin-top: 0.4rem; line-height: 1.5;">
+                            <div><strong>Cliente:</strong> @(preview.Cliente?.Nombre ?? "(General)")</div>
+                            <div><strong>Tipo:</strong> @(preview.TipoCliente == "BAR" ? "🍺 BAR (mayorista)" : "🛒 OTRO (final)")</div>
+                            <div><strong>Fecha:</strong> @preview.Fecha.ToString("dd/MM/yyyy")</div>
+                            <div><strong>Validez:</strong> hasta @preview.ValidezHasta.ToString("dd/MM/yyyy")</div>
+                        </div>
+                    </div>
+                </div>
+
+                @* CUERPO: agrupado por marca *@
+                <div style="margin-top: 1rem;">
+                    @if (preview.Grupos.Count == 0)
+                    {
+                        <div style="padding: 1.5rem; text-align: center; color: #9ca3af; background: #f9fafb; border-radius: 6px;">
+                            No hay productos para los filtros seleccionados.
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var g in preview.Grupos)
+                        {
+                            <div class="lp-marca-card">
+                                <div class="lp-marca-header" style="display: flex; justify-content: space-between; align-items: center;">
+                                    <div>
+                                        <span style="font-weight: 800; color: #78350f; font-size: 0.95rem;">@g.MarcaNombre</span>
+                                        @if (!string.IsNullOrEmpty(g.ProveedorNombre))
+                                        {
+                                            <span style="color: #92400e; font-size: 0.78rem; margin-left: 0.5rem;">· proveedor: <strong>@g.ProveedorNombre</strong></span>
+                                        }
+                                    </div>
+                                    <div style="font-size: 0.72rem; color: #92400e;">@(g.ItemsCafe.Count + g.ItemsOtros.Count) producto@(g.ItemsCafe.Count + g.ItemsOtros.Count == 1 ? "" : "s")</div>
+                                </div>
+                                @if (g.ItemsCafe.Count > 0)
+                                {
+                                    <table class="lp-table">
+                                        <thead>
+                                            <tr>
+                                                <th>☕ Producto</th>
+                                                <th style="width: 100px;">SKU</th>
+                                                <th class="num" style="width: 110px;">1 kg</th>
+                                                <th class="num" style="width: 110px;">1/2 kg</th>
+                                                <th class="num" style="width: 110px;">1/4 kg</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var i in g.ItemsCafe)
+                                            {
+                                                <tr>
+                                                    <td><strong>@i.Nombre</strong></td>
+                                                    <td style="font-family: monospace; color: #6b7280; font-size: 0.78rem;">@(i.Sku ?? "—")</td>
+                                                    <td class="num" style="font-weight: 700;">$@FormatMoney(i.Precio1Kg)</td>
+                                                    <td class="num">$@FormatMoney(i.PrecioMedio)</td>
+                                                    <td class="num">$@FormatMoney(i.PrecioCuarto)</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                }
+                                @if (g.ItemsOtros.Count > 0)
+                                {
+                                    <table class="lp-table">
+                                        <thead>
+                                            <tr>
+                                                <th>📦 Producto</th>
+                                                <th style="width: 100px;">SKU</th>
+                                                <th class="num" style="width: 130px;">Precio</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var i in g.ItemsOtros)
+                                            {
+                                                <tr>
+                                                    <td><strong>@i.Nombre</strong></td>
+                                                    <td style="font-family: monospace; color: #6b7280; font-size: 0.78rem;">@(i.Sku ?? "—")</td>
+                                                    <td class="num" style="font-weight: 700;">$@FormatMoney(i.Precio)</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                }
+                            </div>
+                        }
+                    }
+                </div>
+
+                @* BLOQUE COMERCIAL *@
+                <div style="margin-top: 1rem; padding: 0.8rem 1rem; background: #fef3c7; border: 1px solid #d97706; border-radius: 6px;">
+                    <div style="font-weight: 700; color: #78350f; margin-bottom: 0.4rem; font-size: 0.88rem;">Condiciones comerciales</div>
+                    <ul style="margin: 0; padding-left: 1.2rem; font-size: 0.82rem; color: #78350f; line-height: 1.6;">
+                        <li>Precios válidos hasta el @preview.ValidezHasta.ToString("dd/MM/yyyy"), sujetos a disponibilidad.</li>
+                        <li>Tipo de cliente aplicado: <strong>@(preview.TipoCliente == "BAR" ? "BAR (mayorista)" : "OTRO (consumidor final)")</strong>.</li>
+                        @if (!string.IsNullOrEmpty(preview.Observaciones))
+                        {
+                            foreach (var line in preview.Observaciones.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                            {
+                                <li>@line.Trim()</li>
+                            }
+                        }
+                    </ul>
+                </div>
+
+                @* FOOTER *@
+                <div style="margin-top: 1rem; padding-top: 0.7rem; border-top: 1px dashed #d1d5db; text-align: center; font-size: 0.82rem; color: #4b5563;">
+                    <div style="font-weight: 700; color: #1e3a8a;">Consultanos y armamos tu pedido ☕</div>
+                    @if (!string.IsNullOrEmpty(preview.Negocio.WhatsappNumero))
+                    {
+                        <div style="margin-top: 0.3rem;">
+                            <a href="@PublicWhatsappLink" target="_blank" style="color: #25D366; font-weight: 700; text-decoration: none;">📱 WhatsApp @preview.Negocio.WhatsappNumero</a>
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(preview.Negocio.Telefono) && preview.Negocio.Telefono != preview.Negocio.WhatsappNumero)
+                    {
+                        <div style="margin-top: 0.2rem;">📞 @preview.Negocio.Telefono</div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private int step = 1;
+    private bool isLoading;
+    private bool isExporting;
+
+    // Catalogos
+    private List<CafeClienteDto>? clientes;
+    private List<CafeMarcaDto>? marcas;
+
+    // Filtros
+    private int formClienteId;
+    private string clienteSearch = "";
+    private bool clienteSearchOpen;
+    private string formTipo = "OTRO";
+    private string formCategoria = "";
+    private HashSet<int> formMarcaIds = new();
+    private string formObservaciones = "";
+
+    // Preview
+    private CafeListaPreciosPreviewDto? preview;
+
+    private string WhatsappLink
+    {
+        get
+        {
+            if (preview?.Cliente is null) return "";
+            var tel = preview.Cliente.Telefono;
+            if (string.IsNullOrWhiteSpace(tel)) return "";
+            var num = new string(tel.Where(char.IsDigit).ToArray());
+            if (string.IsNullOrEmpty(num)) return "";
+            var msg = Uri.EscapeDataString($"Hola {preview.Cliente.Nombre}, te paso la lista de precios actualizada 👇");
+            return $"https://wa.me/{num}?text={msg}";
+        }
+    }
+
+    private string PublicWhatsappLink
+    {
+        get
+        {
+            var n = preview?.Negocio.WhatsappNumero;
+            if (string.IsNullOrWhiteSpace(n)) return "#";
+            var num = new string(n.Where(char.IsDigit).ToArray());
+            return string.IsNullOrEmpty(num) ? "#" : $"https://wa.me/{num}";
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            clientes = (await Api.GetCafeClientesAsync())?.Where(c => c.IsActive).ToList() ?? new();
+            marcas = await Api.GetCafeMarcasAsync() ?? new();
+        }
+        catch { ToastService.Error("Error al cargar catálogos"); clientes = new(); marcas = new(); }
+    }
+
+    private IEnumerable<CafeClienteDto> ClientesMatching(string s)
+    {
+        if (clientes is null) return Enumerable.Empty<CafeClienteDto>();
+        var t = s.Trim();
+        bool h(string? str) => !string.IsNullOrEmpty(str) && str.Contains(t, StringComparison.OrdinalIgnoreCase);
+        return clientes.Where(c => h(c.Codigo) || h(c.Nombre) || h(c.Telefono) || h(c.Cuit));
+    }
+
+    private void SelectCliente(int id)
+    {
+        formClienteId = id;
+        var c = clientes?.FirstOrDefault(x => x.Id == id);
+        if (c is not null) formTipo = c.Tipo;
+        clienteSearch = "";
+        clienteSearchOpen = false;
+    }
+
+    private void ClearCliente()
+    {
+        formClienteId = 0;
+        clienteSearch = "";
+    }
+
+    private void ToggleMarca(int id, bool selected)
+    {
+        if (selected) formMarcaIds.Add(id);
+        else formMarcaIds.Remove(id);
+    }
+
+    private async Task DoPreview()
+    {
+        isLoading = true;
+        try
+        {
+            var req = new CafeListaPreciosFiltroRequest
+            {
+                ClienteId = formClienteId > 0 ? formClienteId : null,
+                Tipo = formTipo,
+                MarcaIds = formMarcaIds.Count > 0 ? formMarcaIds.ToList() : null,
+                Categoria = string.IsNullOrEmpty(formCategoria) ? null : formCategoria,
+                Observaciones = formObservaciones
+            };
+            preview = await Api.GetCafeListaPreciosPreviewAsync(req);
+            if (preview is null) { ToastService.Error("No se pudo generar la previsualización"); return; }
+            step = 2;
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { isLoading = false; }
+    }
+
+    private async Task DoPrintPdf()
+    {
+        try
+        {
+            var titulo = $"Lista de precios {preview?.Cliente?.Nombre ?? "general"} {preview?.Fecha:dd-MM-yyyy}";
+            await JS.InvokeVoidAsync("printElement", "cafe-lp-print", titulo);
+        }
+        catch { ToastService.Error("No se pudo abrir la ventana de impresión"); }
+    }
+
+    private async Task DoExportExcel()
+    {
+        if (preview is null) return;
+        isExporting = true;
+        try
+        {
+            var req = new CafeListaPreciosFiltroRequest
+            {
+                ClienteId = formClienteId > 0 ? formClienteId : null,
+                Tipo = formTipo,
+                MarcaIds = formMarcaIds.Count > 0 ? formMarcaIds.ToList() : null,
+                Categoria = string.IsNullOrEmpty(formCategoria) ? null : formCategoria,
+                Observaciones = formObservaciones
+            };
+            var bytes = await Api.ExportCafeListaPreciosExcelAsync(req);
+            if (bytes is null || bytes.Length == 0) { ToastService.Error("No se pudo generar el Excel"); return; }
+            var clienteSlug = preview.Cliente?.Nombre?.ToLowerInvariant().Replace(' ', '-') ?? "general";
+            var filename = $"lista-precios-{clienteSlug}-{preview.Fecha:yyyyMMdd}.xlsx";
+            var b64 = Convert.ToBase64String(bytes);
+            await JS.InvokeVoidAsync("downloadBytesAsFile", filename, b64,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            ToastService.Success("Excel descargado");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { isExporting = false; }
+    }
+
+    private static string FormatMoney(decimal v)
+        => v.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+}

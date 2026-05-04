@@ -506,6 +506,19 @@ public class ApiClient
     public async Task<bool> DeleteCafeMarcaAsync(int id)
         => await DeleteAsync($"/api/cafe/marcas/{id}");
 
+    // --- Cafe: Listas de precios ---
+    public async Task<CafeListaPreciosPreviewDto?> GetCafeListaPreciosPreviewAsync(CafeListaPreciosFiltroRequest req)
+        => await PostAsync<CafeListaPreciosPreviewDto>("/api/cafe/listas-precios/preview", req);
+
+    public async Task<byte[]?> ExportCafeListaPreciosExcelAsync(CafeListaPreciosFiltroRequest req)
+    {
+        await SetAuthHeaderAsync();
+        var response = await _http.PostAsJsonAsync("/api/cafe/listas-precios/export-excel", req);
+        if (response.IsSuccessStatusCode) return await response.Content.ReadAsByteArrayAsync();
+        await ThrowIfErrorAsync(response);
+        return null;
+    }
+
     // --- Cafe: Compras ---
     public async Task<List<CafeCompraDto>?> GetCafeComprasAsync(DateTime? from = null, DateTime? to = null, string? estado = null, int? proveedorId = null)
     {

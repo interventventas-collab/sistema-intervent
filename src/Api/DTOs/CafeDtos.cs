@@ -399,6 +399,46 @@ public record CafeOemImportResultDto(
     int VariantesPropagadas,
     List<string> Errores);
 
+// ===== Listas de precios =====
+public class CafeListaPreciosFiltroRequest
+{
+    public int? ClienteId { get; set; }       // si > 0 toma el tipo del cliente
+    public string? Tipo { get; set; }          // BAR | OTRO — usado si no hay clienteId
+    public List<int>? MarcaIds { get; set; }   // null o vacio = todas
+    public string? Categoria { get; set; }     // CAFE | OTROS | null = ambas
+    public string? Observaciones { get; set; } // texto libre que va en el bloque comercial del PDF
+}
+
+public record CafeListaPreciosNegocioDto(
+    string? Nombre, string? Telefono, string? WhatsappNumero,
+    string? Direccion, string? Cuit);
+
+public record CafeListaPreciosClienteDto(
+    int? Id, string? Codigo, string? Nombre, string Tipo,
+    string? Telefono, string? Email);
+
+public record CafeListaPreciosItemCafeDto(
+    int ProductoId, string? Sku, string Nombre,
+    decimal Precio1Kg, decimal PrecioMedio, decimal PrecioCuarto);
+
+public record CafeListaPreciosItemOtroDto(
+    int ProductoId, string? Sku, string Nombre,
+    decimal Precio);
+
+public record CafeListaPreciosMarcaGroupDto(
+    int? MarcaId, string MarcaNombre, string? ProveedorNombre,
+    List<CafeListaPreciosItemCafeDto> ItemsCafe,
+    List<CafeListaPreciosItemOtroDto> ItemsOtros);
+
+public record CafeListaPreciosPreviewDto(
+    DateTime Fecha,
+    DateTime ValidezHasta,
+    string TipoCliente,
+    CafeListaPreciosNegocioDto Negocio,
+    CafeListaPreciosClienteDto? Cliente,
+    List<CafeListaPreciosMarcaGroupDto> Grupos,
+    string? Observaciones);
+
 // ===== Marcas =====
 public record CafeMarcaDto(
     int Id, string Nombre,
