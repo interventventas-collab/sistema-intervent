@@ -1749,11 +1749,9 @@
     private static string FormatMoney(decimal v)
         => v.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
 
+    /// <summary>UX: siempre mostramos stock de cafe en kg con 2 decimales (regla del usuario).</summary>
     private static string FormatGramos(decimal g)
-    {
-        if (g >= 1000m) return $"{(g / 1000m).ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))} kg";
-        return $"{g:0} g";
-    }
+        => $"{(g / 1000m).ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))} kg";
 
     private static string FormatoLabel(string formato) => formato switch
     {

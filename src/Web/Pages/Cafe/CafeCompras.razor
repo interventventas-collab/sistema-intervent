@@ -1,0 +1,693 @@
+@page "/cafe/compras"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<style>
+    .cli-pick-row:hover { background: #f0f9ff; }
+</style>
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <h3>📥 Compras <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;">(@(compras?.Count ?? 0))</span></h3>
+        <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
+            <select class="form-input" style="max-width: 160px; font-size: 0.85rem;" @bind="filtroEstado" @bind:after="Load">
+                <option value="">Todos los estados</option>
+                <option value="BORRADOR">Borrador</option>
+                <option value="CONFIRMADA">Confirmada</option>
+                <option value="PAGADA">Pagada</option>
+                <option value="ANULADA">Anulada</option>
+            </select>
+            <button class="btn btn-primary" @onclick="ShowCreate">+ Nueva compra</button>
+        </div>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        @if (loading)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">Cargando...</p>
+        }
+        else if (compras is null || compras.Count == 0)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">No hay compras. Tocá <strong>+ Nueva compra</strong>.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 140px;">Número</th>
+                            <th style="width: 100px;">Fecha</th>
+                            <th>Proveedor</th>
+                            <th style="width: 130px;">Comprobante</th>
+                            <th style="width: 70px; text-align: center;">Items</th>
+                            <th style="text-align: right;">Total</th>
+                            <th>Estado</th>
+                            <th style="width: 220px;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var c in compras)
+                        {
+                            <tr>
+                                <td style="font-family: monospace; font-weight: 700;">@c.Numero</td>
+                                <td>@c.Fecha.ToString("dd/MM/yyyy")</td>
+                                <td><strong>@(c.ProveedorNombre ?? "—")</strong></td>
+                                <td style="font-family: monospace; font-size: 0.85rem;">@(c.NumeroComprobante ?? "—")</td>
+                                <td style="text-align: center;">@c.Items.Count</td>
+                                <td style="text-align: right; font-weight: 800;">$@FormatMoney(c.Total)</td>
+                                <td>@EstadoBadge(c.Estado)</td>
+                                <td class="actions-cell" style="white-space: nowrap;">
+                                    <button class="btn-icon" style="color: #1d4ed8;" @onclick="() => ShowView(c)" title="Ver detalle">👁</button>
+                                    @if (c.Estado == "BORRADOR")
+                                    {
+                                        <button class="btn-icon btn-edit" @onclick="() => ShowEdit(c)" title="Editar">✎</button>
+                                        <button class="btn-icon" style="color: #15803d;" @onclick="() => ConfirmarCompra(c)" title="Confirmar (suma stock + actualiza costo)">✓</button>
+                                        <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(c)" title="Eliminar borrador">🗑</button>
+                                    }
+                                    else if (c.Estado == "CONFIRMADA")
+                                    {
+                                        <button class="btn-icon" style="color: #1d4ed8;" @onclick="() => PagarCompra(c)" title="Marcar como pagada">💵</button>
+                                        <button class="btn-icon" style="color: #b45309;" @onclick="() => ConfirmAnular(c)" title="Anular (revierte stock)">⊘</button>
+                                    }
+                                    else if (c.Estado == "PAGADA")
+                                    {
+                                        <button class="btn-icon" style="color: #b45309;" @onclick="() => ConfirmAnular(c)" title="Anular (revierte stock)">⊘</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@* ═══════════════ MODAL NUEVA / EDITAR COMPRA ═══════════════ *@
+@if (showForm)
+{
+    <div class="modal-overlay" @onclick="CloseForm">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 1000px; max-height: 92vh; display: flex; flex-direction: column;">
+            <div class="modal-header" style="background: @(editingId.HasValue ? "#1d4ed8" : "whitesmoke"); color: @(editingId.HasValue ? "white" : "inherit");">
+                <h3 style="margin: 0;">📥 @(editingId.HasValue ? $"Editar borrador {editingNumero}" : "Nueva compra")</h3>
+                <button class="btn-close" @onclick="CloseForm" style="@(editingId.HasValue ? "color: white;" : "")">&times;</button>
+            </div>
+            <div class="modal-body" style="overflow-y: auto;">
+                @if (!string.IsNullOrEmpty(formError)) { <div class="form-error">@formError</div> }
+
+                <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem; margin-bottom: 0.75rem;">
+                    <div style="font-weight: 700; margin-bottom: 0.4rem;">Datos generales</div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex: 2; position: relative;">
+                            <label class="form-label">Proveedor</label>
+                            @if (formProveedorId > 0)
+                            {
+                                var pSel = proveedores?.FirstOrDefault(x => x.Id == formProveedorId);
+                                <div style="display: flex; gap: 0.3rem; align-items: center;">
+                                    <div class="form-input" style="flex: 1; background: #ecfdf5; border-color: #10b981; display: flex; align-items: center; gap: 0.5rem;">
+                                        <span>🏭</span>
+                                        <strong>@(pSel?.Nombre ?? "?")</strong>
+                                        @if (!string.IsNullOrEmpty(pSel?.Telefono))
+                                        {
+                                            <span style="font-size: 0.72rem; color: #6b7280;">· 📞 @pSel.Telefono</span>
+                                        }
+                                    </div>
+                                    <button class="btn btn-secondary" type="button" @onclick="() => formProveedorId = 0">×</button>
+                                </div>
+                            }
+                            else
+                            {
+                                <input class="form-input" @bind="proveedorSearch" @bind:event="oninput"
+                                       @onfocus="() => proveedorSearchOpen = true"
+                                       placeholder="🔍 Buscar proveedor o dejar vacío" />
+                                @if (proveedorSearchOpen && !string.IsNullOrWhiteSpace(proveedorSearch))
+                                {
+                                    var matches = ProveedoresMatching(proveedorSearch).Take(10).ToList();
+                                    <div style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #d1d5db; border-radius: 6px; max-height: 240px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 14px rgba(0,0,0,0.12); margin-top: 0.2rem;">
+                                        @if (matches.Count == 0)
+                                        {
+                                            <div style="padding: 0.6rem; color: #6b7280; font-size: 0.85rem;">Sin resultados. Cargá proveedores en <strong>Proveedores</strong>.</div>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var p in matches)
+                                            {
+                                                var pId = p.Id;
+                                                <div class="cli-pick-row" @onclick="() => SelectProveedor(pId)"
+                                                     style="padding: 0.4rem 0.6rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem;">
+                                                    <strong>@p.Nombre</strong>
+                                                    @if (!string.IsNullOrEmpty(p.Contacto))
+                                                    {
+                                                        <span style="color: #6b7280; font-size: 0.78rem;"> · @p.Contacto</span>
+                                                    }
+                                                    @if (!string.IsNullOrEmpty(p.Telefono))
+                                                    {
+                                                        <span style="color: #6b7280; font-size: 0.78rem;"> · 📞 @p.Telefono</span>
+                                                    }
+                                                </div>
+                                            }
+                                        }
+                                    </div>
+                                }
+                            }
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Fecha</label>
+                            <input class="form-input" type="date" @bind="formFecha" />
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Nº comprobante (proveedor)</label>
+                            <input class="form-input" @bind="formNumeroComprobante" placeholder="Factura/remito (opcional)" />
+                        </div>
+                    </div>
+                </div>
+
+                @* Items *@
+                <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem; margin-bottom: 0.75rem;">
+                    <div style="font-weight: 700; margin-bottom: 0.4rem;">Productos comprados</div>
+
+                    @* Add row *@
+                    <div class="form-row" style="align-items: end;">
+                        <div class="form-group" style="flex: 3; position: relative;">
+                            <label class="form-label" style="font-size: 0.75rem;">Producto</label>
+                            @if (addProductoId > 0)
+                            {
+                                var prod = productos?.FirstOrDefault(x => x.Id == addProductoId);
+                                <div style="display: flex; gap: 0.3rem; align-items: center;">
+                                    <div class="form-input" style="flex: 1; background: #ecfdf5; border-color: #10b981; display: flex; align-items: center; gap: 0.5rem;">
+                                        <span style="font-family: monospace; font-weight: 700; color: #1d4ed8;">@(prod?.Sku ?? "—")</span>
+                                        <strong>@(prod?.Nombre ?? "?")</strong>
+                                        @if (prod is not null)
+                                        {
+                                            <span style="font-size: 0.72rem; color: #6b7280;">· @prod.Categoria</span>
+                                            <span style="font-size: 0.72rem; color: #6b7280;">· stock: @StockText(prod)</span>
+                                            <span style="font-size: 0.72rem; color: #6b7280;">· costo actual: $@FormatMoney(prod.Costo)</span>
+                                        }
+                                    </div>
+                                    <button class="btn btn-secondary" type="button" @onclick="() => { addProductoId = 0; addCantidad = 0; addCostoUnitario = 0; }">×</button>
+                                </div>
+                            }
+                            else
+                            {
+                                <input class="form-input" @bind="productoSearch" @bind:event="oninput"
+                                       @onfocus="() => productoSearchOpen = true"
+                                       placeholder="🔍 SKU, código de barras, nombre, marca..." />
+                                @if (productoSearchOpen && !string.IsNullOrWhiteSpace(productoSearch))
+                                {
+                                    var matches = ProductosMatching(productoSearch).Take(20).ToList();
+                                    <div style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #d1d5db; border-radius: 6px; max-height: 280px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 14px rgba(0,0,0,0.12); margin-top: 0.2rem;">
+                                        @if (matches.Count == 0)
+                                        {
+                                            <div style="padding: 0.6rem; color: #6b7280; font-size: 0.85rem;">Sin resultados.</div>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var p in matches)
+                                            {
+                                                var pId = p.Id;
+                                                <div class="cli-pick-row" @onclick="() => SelectProducto(pId)"
+                                                     style="padding: 0.4rem 0.6rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem;">
+                                                    <span style="font-family: monospace; color: #1d4ed8; font-weight: 700; margin-right: 0.5rem;">@(p.Sku ?? "—")</span>
+                                                    <strong>@p.Nombre</strong>
+                                                    @if (p.Categoria == "CAFE")
+                                                    {
+                                                        <span style="display:inline-block; padding:0.05rem 0.35rem; background:#fef3c7; color:#92400e; border-radius:999px; font-size:0.65rem; font-weight:700; margin-left: 0.4rem;">☕ CAFE</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span style="display:inline-block; padding:0.05rem 0.35rem; background:#e0e7ff; color:#3730a3; border-radius:999px; font-size:0.65rem; font-weight:700; margin-left: 0.4rem;">📦 OTROS</span>
+                                                    }
+                                                    <span style="color: #6b7280; font-size: 0.78rem;"> · stock: @StockText(p)</span>
+                                                    <span style="color: #6b7280; font-size: 0.78rem;"> · costo: $@FormatMoney(p.Costo)</span>
+                                                </div>
+                                            }
+                                        }
+                                    </div>
+                                }
+                            }
+                        </div>
+                        <div class="form-group" style="flex: 0 0 130px;">
+                            <label class="form-label" style="font-size: 0.75rem;">Cantidad @(AddProductoIsCafe ? "(kg)" : "(u.)")</label>
+                            <input class="form-input" type="number" step="@(AddProductoIsCafe ? "0.01" : "1")" min="0" @bind="addCantidad" style="text-align: right;" />
+                        </div>
+                        <div class="form-group" style="flex: 0 0 140px;">
+                            <label class="form-label" style="font-size: 0.75rem;">Costo unit. ($)</label>
+                            <input class="form-input" type="number" step="0.01" min="0" @bind="addCostoUnitario" style="text-align: right;" />
+                        </div>
+                        <div class="form-group" style="flex: 0 0 110px;">
+                            <button class="btn btn-primary" type="button" @onclick="AddItem" style="width: 100%;" disabled="@(addProductoId <= 0 || addCantidad <= 0)">+ Agregar</button>
+                        </div>
+                    </div>
+
+                    @* Items table *@
+                    @if (formItems.Count == 0)
+                    {
+                        <div style="padding: 0.8rem; text-align: center; color: #9ca3af; font-size: 0.9rem;">
+                            Sin items. Elegí un producto, cargá cantidad y costo, tocá <strong>+ Agregar</strong>.
+                        </div>
+                    }
+                    else
+                    {
+                        <table class="data-table" style="font-size: 0.85rem; margin-top: 0.5rem;">
+                            <thead>
+                                <tr>
+                                    <th>Producto</th>
+                                    <th style="width: 100px; text-align: right;">Cantidad</th>
+                                    <th style="width: 130px; text-align: right;">Costo unit.</th>
+                                    <th style="width: 140px; text-align: right;">Subtotal</th>
+                                    <th style="width: 50px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @for (int idx = 0; idx < formItems.Count; idx++)
+                                {
+                                    var i = idx;
+                                    var it = formItems[i];
+                                    var p = productos?.FirstOrDefault(x => x.Id == it.ProductoId);
+                                    var esCafe = p?.Categoria == "CAFE";
+                                    var subtotal = it.Cantidad * it.CostoUnitario;
+                                    <tr>
+                                        <td>
+                                            <strong>@(p?.Nombre ?? "?")</strong>
+                                            <span style="font-size: 0.7rem; color: #6b7280; font-family: monospace; margin-left: 0.4rem;">@(p?.Sku ?? "")</span>
+                                        </td>
+                                        <td style="text-align: right; font-weight: 700;">@it.Cantidad.ToString("0.###") @(esCafe ? "kg" : "u.")</td>
+                                        <td style="text-align: right;">$@FormatMoney(it.CostoUnitario)</td>
+                                        <td style="text-align: right; font-weight: 700;">$@FormatMoney(subtotal)</td>
+                                        <td><button class="btn-icon btn-delete" type="button" @onclick="() => RemoveItem(i)" title="Quitar">×</button></td>
+                                    </tr>
+                                }
+                            </tbody>
+                            <tfoot>
+                                <tr style="background: #f9fafb; font-weight: 800;">
+                                    <td colspan="3" style="text-align: right;">TOTAL:</td>
+                                    <td style="text-align: right; font-size: 1rem;">$@FormatMoney(FormTotal)</td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    }
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Observaciones</label>
+                    <textarea class="form-input" rows="2" @bind="formObservaciones" placeholder="Notas internas (opcional)"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseForm" disabled="@saving">Cancelar</button>
+                <button class="btn btn-primary" @onclick="DoSave" disabled="@(saving || formItems.Count == 0)">
+                    @(saving ? "Guardando..." : "💾 Guardar borrador")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ═══════════════ MODAL VER DETALLE ═══════════════ *@
+@if (viewing is not null)
+{
+    <div class="modal-overlay" @onclick="() => viewing = null">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 850px; max-height: 90vh; display: flex; flex-direction: column;">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3 style="margin: 0;">📥 Compra @viewing.Numero @EstadoBadge(viewing.Estado)</h3>
+                <button class="btn-close" @onclick="() => viewing = null">&times;</button>
+            </div>
+            <div class="modal-body" style="overflow-y: auto;">
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem 1rem; font-size: 0.88rem; margin-bottom: 0.8rem;">
+                    <div><strong>Proveedor:</strong> @(viewing.ProveedorNombre ?? "—")</div>
+                    <div><strong>Fecha:</strong> @viewing.Fecha.ToString("dd/MM/yyyy")</div>
+                    <div><strong>Nº comprobante:</strong> <span style="font-family: monospace;">@(viewing.NumeroComprobante ?? "—")</span></div>
+                    <div><strong>Total:</strong> $@FormatMoney(viewing.Total)</div>
+                    @if (viewing.ConfirmadaAt.HasValue)
+                    {
+                        <div><strong>Confirmada:</strong> @viewing.ConfirmadaAt.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</div>
+                    }
+                    @if (viewing.PagadaAt.HasValue)
+                    {
+                        <div><strong>Pagada:</strong> @viewing.PagadaAt.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</div>
+                    }
+                    @if (viewing.AnuladaAt.HasValue)
+                    {
+                        <div><strong>Anulada:</strong> @viewing.AnuladaAt.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</div>
+                    }
+                </div>
+                @if (!string.IsNullOrEmpty(viewing.Observaciones))
+                {
+                    <div style="font-size: 0.85rem; color: #4b5563; padding: 0.5rem 0.7rem; background: #f9fafb; border-radius: 6px; margin-bottom: 0.6rem;">
+                        <strong>Observaciones:</strong> @viewing.Observaciones
+                    </div>
+                }
+                <table class="data-table" style="font-size: 0.85rem;">
+                    <thead>
+                        <tr>
+                            <th>Producto</th>
+                            <th style="width: 100px; text-align: right;">Cantidad</th>
+                            <th style="width: 130px; text-align: right;">Costo unit.</th>
+                            <th style="width: 140px; text-align: right;">Subtotal</th>
+                            <th style="width: 130px; text-align: right;">Stock actual</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var i in viewing.Items)
+                        {
+                            var esCafe = i.Categoria == "CAFE";
+                            <tr>
+                                <td>
+                                    <strong>@i.ProductoNombre</strong>
+                                    <span style="font-size: 0.7rem; color: #6b7280; font-family: monospace; margin-left: 0.4rem;">@(i.ProductoSku ?? "")</span>
+                                </td>
+                                <td style="text-align: right; font-weight: 700;">@i.Cantidad.ToString("0.###") @(esCafe ? "kg" : "u.")</td>
+                                <td style="text-align: right;">$@FormatMoney(i.CostoUnitario)</td>
+                                <td style="text-align: right; font-weight: 700;">$@FormatMoney(i.Subtotal)</td>
+                                <td style="text-align: right; color: #6b7280; font-size: 0.78rem;">
+                                    @(esCafe ? FormatGramos(i.StockActualGramos) : i.StockActualUnidades + " u.")
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => viewing = null">Cerrar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (toAnular is not null)
+{
+    <div class="modal-overlay" @onclick="() => toAnular = null">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: #b45309; color: white;">
+                <h4 style="margin: 0;">Anular compra</h4>
+                <button class="btn-close" @onclick="() => toAnular = null" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Vas a anular <strong>@toAnular.Numero</strong>.</p>
+                <p style="color: #b45309; font-size: 0.85rem;">⚠ El stock que se sumó al confirmar se va a <strong>revertir</strong>. Los costos de los productos NO se revierten (se mantienen como están ahora).</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => toAnular = null">No</button>
+                <button class="btn btn-danger" @onclick="DoAnular">Sí, anular</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (toDelete is not null)
+{
+    <div class="modal-overlay" @onclick="() => toDelete = null">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: #dc3545; color: white;">
+                <h4 style="margin: 0;">Eliminar borrador</h4>
+                <button class="btn-close" @onclick="() => toDelete = null" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Vas a eliminar el borrador <strong>@toDelete.Numero</strong>. No afecta stock ni costos (solo elimina la cabecera + items del borrador).</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => toDelete = null">No</button>
+                <button class="btn btn-danger" @onclick="DoDelete">Sí</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<CafeCompraDto>? compras;
+    private List<CafeProveedorDto>? proveedores;
+    private List<CafeProductoDto>? productos;
+    private bool loading = true;
+    private string filtroEstado = "";
+
+    // Form (compartido entre create y edit)
+    private bool showForm, saving;
+    private string? formError;
+    private int? editingId;
+    private string editingNumero = "";
+    private int formProveedorId;
+    private string proveedorSearch = "";
+    private bool proveedorSearchOpen;
+    private DateTime formFecha = DateTime.Today;
+    private string formNumeroComprobante = "";
+    private string formObservaciones = "";
+    private List<CafeCompraItemRequest> formItems = new();
+    private decimal FormTotal => formItems.Sum(i => i.Cantidad * i.CostoUnitario);
+
+    // Add item
+    private int addProductoId;
+    private decimal addCantidad;
+    private decimal addCostoUnitario;
+    private string productoSearch = "";
+    private bool productoSearchOpen;
+    private bool AddProductoIsCafe => productos?.FirstOrDefault(x => x.Id == addProductoId)?.Categoria == "CAFE";
+
+    // View / actions
+    private CafeCompraDto? viewing;
+    private CafeCompraDto? toAnular;
+    private CafeCompraDto? toDelete;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCatalogos();
+        await Load();
+    }
+
+    private async Task LoadCatalogos()
+    {
+        try
+        {
+            proveedores = (await Api.GetCafeProveedoresAsync(activos: true)) ?? new();
+            productos = (await Api.GetCafeProductosAsync())?.Where(p => p.IsActive).ToList() ?? new();
+        }
+        catch { }
+    }
+
+    private async Task Load()
+    {
+        loading = true;
+        try
+        {
+            var estado = string.IsNullOrEmpty(filtroEstado) ? null : filtroEstado;
+            compras = await Api.GetCafeComprasAsync(estado: estado) ?? new();
+        }
+        catch { compras = new(); ToastService.Error("Error al cargar compras"); }
+        loading = false;
+    }
+
+    private void ShowCreate()
+    {
+        editingId = null; editingNumero = "";
+        formProveedorId = 0; proveedorSearch = ""; proveedorSearchOpen = false;
+        formFecha = DateTime.Today;
+        formNumeroComprobante = ""; formObservaciones = "";
+        formItems = new();
+        addProductoId = 0; addCantidad = 0; addCostoUnitario = 0;
+        productoSearch = ""; productoSearchOpen = false;
+        formError = null;
+        showForm = true;
+    }
+
+    private void ShowEdit(CafeCompraDto c)
+    {
+        editingId = c.Id; editingNumero = c.Numero;
+        formProveedorId = c.ProveedorId ?? 0;
+        proveedorSearch = ""; proveedorSearchOpen = false;
+        formFecha = c.Fecha;
+        formNumeroComprobante = c.NumeroComprobante ?? "";
+        formObservaciones = c.Observaciones ?? "";
+        formItems = c.Items.Select(i => new CafeCompraItemRequest
+        {
+            ProductoId = i.ProductoId,
+            Cantidad = i.Cantidad,
+            CostoUnitario = i.CostoUnitario
+        }).ToList();
+        addProductoId = 0; addCantidad = 0; addCostoUnitario = 0;
+        productoSearch = ""; productoSearchOpen = false;
+        formError = null;
+        showForm = true;
+    }
+
+    private async Task ShowView(CafeCompraDto c)
+    {
+        try
+        {
+            viewing = await Api.GetCafeCompraAsync(c.Id) ?? c;
+        }
+        catch { viewing = c; }
+    }
+
+    private void CloseForm() { if (!saving) showForm = false; }
+
+    // ── Search helpers ──
+    private IEnumerable<CafeProveedorDto> ProveedoresMatching(string s)
+    {
+        if (proveedores is null) return Enumerable.Empty<CafeProveedorDto>();
+        var t = s.Trim();
+        bool h(string? str) => !string.IsNullOrEmpty(str) && str.Contains(t, StringComparison.OrdinalIgnoreCase);
+        return proveedores.Where(p => p.IsActive && (h(p.Nombre) || h(p.Contacto) || h(p.Telefono)));
+    }
+
+    private IEnumerable<CafeProductoDto> ProductosMatching(string s)
+    {
+        if (productos is null) return Enumerable.Empty<CafeProductoDto>();
+        var t = s.Trim();
+        bool h(string? str) => !string.IsNullOrEmpty(str) && str.Contains(t, StringComparison.OrdinalIgnoreCase);
+        return productos.Where(p => p.IsActive && (h(p.Sku) || h(p.Barcode) || h(p.Nombre) || h(p.Marca)));
+    }
+
+    private void SelectProveedor(int id)
+    {
+        formProveedorId = id;
+        proveedorSearch = "";
+        proveedorSearchOpen = false;
+    }
+
+    private void SelectProducto(int id)
+    {
+        addProductoId = id;
+        var p = productos?.FirstOrDefault(x => x.Id == id);
+        // Sugerencia: precargar el costo actual del producto como "punto de partida".
+        if (p is not null) addCostoUnitario = p.Costo;
+        productoSearch = "";
+        productoSearchOpen = false;
+    }
+
+    private void AddItem()
+    {
+        if (addProductoId <= 0 || addCantidad <= 0) return;
+        var existing = formItems.FirstOrDefault(i => i.ProductoId == addProductoId && i.CostoUnitario == addCostoUnitario);
+        if (existing is not null)
+            existing.Cantidad += addCantidad;
+        else
+            formItems.Add(new CafeCompraItemRequest
+            {
+                ProductoId = addProductoId,
+                Cantidad = addCantidad,
+                CostoUnitario = addCostoUnitario
+            });
+        addProductoId = 0; addCantidad = 0; addCostoUnitario = 0;
+        productoSearch = ""; productoSearchOpen = false;
+    }
+
+    private void RemoveItem(int idx)
+    {
+        if (idx >= 0 && idx < formItems.Count) formItems.RemoveAt(idx);
+    }
+
+    private async Task DoSave()
+    {
+        if (formItems.Count == 0) { formError = "Agregá al menos un producto"; return; }
+        formError = null; saving = true;
+        try
+        {
+            CafeCompraDto? saved;
+            if (editingId.HasValue)
+            {
+                saved = await Api.UpdateCafeCompraAsync(editingId.Value, new UpdateCafeCompraRequest
+                {
+                    ProveedorId = formProveedorId > 0 ? formProveedorId : null,
+                    ClearProveedor = formProveedorId <= 0,
+                    Fecha = formFecha,
+                    NumeroComprobante = formNumeroComprobante,
+                    Observaciones = formObservaciones,
+                    Items = formItems
+                });
+            }
+            else
+            {
+                saved = await Api.CreateCafeCompraAsync(new CreateCafeCompraRequest
+                {
+                    ProveedorId = formProveedorId > 0 ? formProveedorId : null,
+                    Fecha = formFecha,
+                    NumeroComprobante = formNumeroComprobante,
+                    Observaciones = formObservaciones,
+                    Items = formItems
+                });
+            }
+            if (saved is null) { formError = "No se pudo guardar"; return; }
+            ToastService.Success(editingId.HasValue ? $"Borrador {saved.Numero} actualizado" : $"Borrador {saved.Numero} creado");
+            showForm = false;
+            await Load();
+        }
+        catch (Exception ex) { formError = ex.Message; }
+        finally { saving = false; }
+    }
+
+    // ── Acciones de estado ──
+    private async Task ConfirmarCompra(CafeCompraDto c)
+    {
+        try
+        {
+            var updated = await Api.ConfirmarCafeCompraAsync(c.Id);
+            ToastService.Success($"✓ {updated?.Numero} confirmada — stock y costos actualizados");
+            await Load();
+            await LoadCatalogos();  // refrescar productos para tener los costos/stock nuevos
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task PagarCompra(CafeCompraDto c)
+    {
+        try
+        {
+            var updated = await Api.PagarCafeCompraAsync(c.Id);
+            ToastService.Success($"✓ {updated?.Numero} marcada como pagada");
+            await Load();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private void ConfirmAnular(CafeCompraDto c) => toAnular = c;
+
+    private async Task DoAnular()
+    {
+        if (toAnular is null) return;
+        try
+        {
+            await Api.AnularCafeCompraAsync(toAnular.Id);
+            ToastService.Success($"{toAnular.Numero} anulada — stock revertido");
+            toAnular = null;
+            await Load();
+            await LoadCatalogos();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); toAnular = null; }
+    }
+
+    private void ConfirmDelete(CafeCompraDto c) => toDelete = c;
+
+    private async Task DoDelete()
+    {
+        if (toDelete is null) return;
+        try
+        {
+            await Api.DeleteCafeCompraAsync(toDelete.Id);
+            ToastService.Success("Borrador eliminado");
+            toDelete = null;
+            await Load();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); toDelete = null; }
+    }
+
+    // ── Helpers de display ──
+    /// <summary>UX: stock siempre en kg para CAFE / unidades para OTROS — nunca gramos.</summary>
+    private static string StockText(CafeProductoDto p)
+        => p.Categoria == "CAFE" ? FormatGramos(p.StockGramos) : $"{p.StockUnidades} u.";
+
+    private static string FormatGramos(decimal g)
+        => $"{(g / 1000m).ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))} kg";
+
+    private static string FormatMoney(decimal v)
+        => v.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+
+    private static MarkupString EstadoBadge(string e) => e switch
+    {
+        "BORRADOR" => new MarkupString("<span style=\"display:inline-block; padding:0.15rem 0.5rem; background:#f3f4f6; color:#374151; border-radius:999px; font-size:0.7rem; font-weight:700;\">📝 BORRADOR</span>"),
+        "CONFIRMADA" => new MarkupString("<span style=\"display:inline-block; padding:0.15rem 0.5rem; background:#dcfce7; color:#166534; border-radius:999px; font-size:0.7rem; font-weight:700;\">✓ CONFIRMADA</span>"),
+        "PAGADA" => new MarkupString("<span style=\"display:inline-block; padding:0.15rem 0.5rem; background:#dbeafe; color:#1e40af; border-radius:999px; font-size:0.7rem; font-weight:700;\">💵 PAGADA</span>"),
+        "ANULADA" => new MarkupString("<span style=\"display:inline-block; padding:0.15rem 0.5rem; background:#fee2e2; color:#991b1b; border-radius:999px; font-size:0.7rem; font-weight:700;\">⊘ ANULADA</span>"),
+        _ => new MarkupString(e)
+    };
+}

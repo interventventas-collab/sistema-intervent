@@ -2040,6 +2040,74 @@ IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'UxB' AND Object_ID = Obje
     ALTER TABLE Cafe_Oems ADD UxB INT NULL;
 GO
 
+-- ═══════════════ MODULO COMPRAS ═══════════════
+-- Proveedores: entidad simple con datos de contacto.
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_Proveedores' AND xtype='U')
+BEGIN
+    CREATE TABLE Cafe_Proveedores (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Nombre NVARCHAR(200) NOT NULL,
+        Contacto NVARCHAR(200) NULL,
+        Telefono NVARCHAR(50) NULL,
+        Email NVARCHAR(200) NULL,
+        Notas NVARCHAR(500) NULL,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        UpdatedAt DATETIME2 NULL
+    );
+    CREATE INDEX IX_CafeProveedores_Nombre ON Cafe_Proveedores(Nombre);
+    CREATE INDEX IX_CafeProveedores_IsActive ON Cafe_Proveedores(IsActive);
+END
+GO
+
+-- Compras (cabecera): Estados BORRADOR, CONFIRMADA, PAGADA, ANULADA.
+-- Al confirmar incrementa stock y pisa el costo del producto.
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_Compras' AND xtype='U')
+BEGIN
+    CREATE TABLE Cafe_Compras (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Numero NVARCHAR(20) NOT NULL,                  -- COMPRA-AAAA-NNNN
+        ProveedorId INT NULL,
+        ProveedorNombreSnapshot NVARCHAR(200) NULL,
+        Fecha DATETIME2 NOT NULL,
+        NumeroComprobante NVARCHAR(50) NULL,           -- factura/remito del proveedor
+        Estado NVARCHAR(20) NOT NULL DEFAULT 'BORRADOR',
+        Total DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Observaciones NVARCHAR(500) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        UpdatedAt DATETIME2 NULL,
+        ConfirmadaAt DATETIME2 NULL,
+        PagadaAt DATETIME2 NULL,
+        AnuladaAt DATETIME2 NULL,
+        CONSTRAINT FK_CafeCompras_Proveedor FOREIGN KEY (ProveedorId) REFERENCES Cafe_Proveedores(Id)
+    );
+    CREATE UNIQUE INDEX IX_CafeCompras_Numero ON Cafe_Compras(Numero);
+    CREATE INDEX IX_CafeCompras_Fecha ON Cafe_Compras(Fecha);
+    CREATE INDEX IX_CafeCompras_Estado ON Cafe_Compras(Estado);
+    CREATE INDEX IX_CafeCompras_Proveedor ON Cafe_Compras(ProveedorId);
+END
+GO
+
+-- Items de compra: Cantidad en kg para CAFE, en unidades para OTROS.
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_CompraItems' AND xtype='U')
+BEGIN
+    CREATE TABLE Cafe_CompraItems (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        CompraId INT NOT NULL,
+        ProductoId INT NOT NULL,
+        ProductoNombreSnapshot NVARCHAR(200) NOT NULL,
+        Categoria NVARCHAR(20) NOT NULL,
+        Cantidad DECIMAL(18,3) NOT NULL,
+        CostoUnitario DECIMAL(18,2) NOT NULL,
+        Subtotal DECIMAL(18,2) NOT NULL,
+        CONSTRAINT FK_CafeCompraItems_Compra FOREIGN KEY (CompraId) REFERENCES Cafe_Compras(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_CafeCompraItems_Producto FOREIGN KEY (ProductoId) REFERENCES Cafe_Productos(Id)
+    );
+    CREATE INDEX IX_CafeCompraItems_Compra ON Cafe_CompraItems(CompraId);
+    CREATE INDEX IX_CafeCompraItems_Producto ON Cafe_CompraItems(ProductoId);
+END
+GO
+
 -- Cafe_Productos: vinculo opcional al OEM origen.
 -- 1 OEM puede alimentar a N variantes (ej OEM 8733 -> C8733BL, C8733NEG, etc).
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'OemId' AND Object_ID = Object_ID('Cafe_Productos'))

@@ -473,6 +473,47 @@ public class ApiClient
     public async Task<List<CafeTopProductoClienteDto>?> GetCafeTopProductosByClienteAsync(int clienteId, int count = 10)
         => await GetAsync<List<CafeTopProductoClienteDto>>($"/api/cafe/ventas/top-productos-cliente/{clienteId}?count={count}");
 
+    // --- Cafe: Proveedores ---
+    public async Task<List<CafeProveedorDto>?> GetCafeProveedoresAsync(bool? activos = null)
+    {
+        var url = "/api/cafe/proveedores" + (activos == true ? "?activos=true" : "");
+        return await GetAsync<List<CafeProveedorDto>>(url);
+    }
+    public async Task<CafeProveedorDto?> GetCafeProveedorAsync(int id)
+        => await GetAsync<CafeProveedorDto>($"/api/cafe/proveedores/{id}");
+    public async Task<CafeProveedorDto?> CreateCafeProveedorAsync(CreateCafeProveedorRequest req)
+        => await PostAsync<CafeProveedorDto>("/api/cafe/proveedores", req);
+    public async Task<CafeProveedorDto?> UpdateCafeProveedorAsync(int id, UpdateCafeProveedorRequest req)
+        => await PutAsync<CafeProveedorDto>($"/api/cafe/proveedores/{id}", req);
+    public async Task<bool> DeleteCafeProveedorAsync(int id)
+        => await DeleteAsync($"/api/cafe/proveedores/{id}");
+
+    // --- Cafe: Compras ---
+    public async Task<List<CafeCompraDto>?> GetCafeComprasAsync(DateTime? from = null, DateTime? to = null, string? estado = null, int? proveedorId = null)
+    {
+        var qs = new List<string>();
+        if (from.HasValue) qs.Add($"from={from.Value:yyyy-MM-dd}");
+        if (to.HasValue) qs.Add($"to={to.Value:yyyy-MM-dd}");
+        if (!string.IsNullOrEmpty(estado)) qs.Add($"estado={Uri.EscapeDataString(estado)}");
+        if (proveedorId.HasValue) qs.Add($"proveedorId={proveedorId.Value}");
+        var url = "/api/cafe/compras" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+        return await GetAsync<List<CafeCompraDto>>(url);
+    }
+    public async Task<CafeCompraDto?> GetCafeCompraAsync(int id)
+        => await GetAsync<CafeCompraDto>($"/api/cafe/compras/{id}");
+    public async Task<CafeCompraDto?> CreateCafeCompraAsync(CreateCafeCompraRequest req)
+        => await PostAsync<CafeCompraDto>("/api/cafe/compras", req);
+    public async Task<CafeCompraDto?> UpdateCafeCompraAsync(int id, UpdateCafeCompraRequest req)
+        => await PutAsync<CafeCompraDto>($"/api/cafe/compras/{id}", req);
+    public async Task<bool> DeleteCafeCompraAsync(int id)
+        => await DeleteAsync($"/api/cafe/compras/{id}");
+    public async Task<CafeCompraDto?> ConfirmarCafeCompraAsync(int id)
+        => await PostAsync<CafeCompraDto>($"/api/cafe/compras/{id}/confirmar", new { });
+    public async Task<CafeCompraDto?> PagarCafeCompraAsync(int id)
+        => await PostAsync<CafeCompraDto>($"/api/cafe/compras/{id}/pagar", new { });
+    public async Task<CafeCompraDto?> AnularCafeCompraAsync(int id)
+        => await PostAsync<CafeCompraDto>($"/api/cafe/compras/{id}/anular", new { });
+
     public async Task<bool> DeleteCafeVentaAsync(int id, string password)
     {
         await SetAuthHeaderAsync();

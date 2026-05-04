@@ -227,9 +227,8 @@
                         </div>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Stock (gramos)</label>
-                        <input class="form-input" type="number" step="1" min="0" @bind="formStockGramos" />
-                        <p style="font-size: 0.72rem; color: #6b7280; margin: 0.2rem 0 0;">@FormatGramos(formStockGramos)</p>
+                        <label class="form-label">Stock (kg)</label>
+                        <input class="form-input" type="number" step="0.001" min="0" @bind="formStockKg" />
                     </div>
                 }
                 else
@@ -405,6 +404,8 @@
     private decimal? formPvp2;
     private decimal? formBarPct;     // % sobre costo (solo OTROS); null = BAR paga PVP
     private int? formUxB;             // unidades por bulto (solo OTROS)
+    /// <summary>UX: el usuario SIEMPRE carga stock de cafe en kg. Internamente guardamos gramos.</summary>
+    private decimal formStockKg;
     private int formOemId;            // 0 = sin OEM origen
     private string oemSearch = "";
     private bool oemSearchOpen;
@@ -516,6 +517,7 @@
         formBarPct = 100m; formUxB = null;
         formOemId = 0; oemSearch = ""; oemSearchOpen = false;
         formStockGramos = 0; formStockUnidades = 0;
+        formStockKg = 0;
         formNotas = ""; formIsActive = true;
         formError = null; showForm = true;
     }
@@ -530,6 +532,7 @@
         formUxB = p.UxB;
         formOemId = p.OemId ?? 0; oemSearch = ""; oemSearchOpen = false;
         formStockGramos = p.StockGramos; formStockUnidades = p.StockUnidades;
+        formStockKg = Math.Round(p.StockGramos / 1000m, 3, MidpointRounding.AwayFromZero);
         formNotas = p.Notas ?? ""; formIsActive = p.IsActive;
         formError = null; showForm = true;
     }
@@ -574,6 +577,10 @@
 
             if (isEditing && editingId.HasValue)
             {
+                // UX: el usuario carga CAFE en kg → convertimos a gramos para guardar.
+                var stockGramosFinal = formCategoria == "CAFE"
+                    ? Math.Round(formStockKg * 1000m, 3, MidpointRounding.AwayFromZero)
+                    : 0m;
                 var u = await Api.UpdateCafeProductoAsync(editingId.Value, new UpdateCafeProductoRequest
                 {
                     Sku = formSku, Barcode = formBarcode,
@@ -582,7 +589,8 @@
                     BarPctSobreCosto = barPctFinal, ClearBarPctSobreCosto = clearBarPct,
                     UxB = uxBFinal, ClearUxB = clearUxB,
                     OemId = oemIdFinal, ClearOemId = clearOemId,
-                    StockGramos = formStockGramos, StockUnidades = formStockUnidades,
+                    StockGramos = stockGramosFinal,
+                    StockUnidades = formCategoria == "OTROS" ? formStockUnidades : 0,
                     Notas = formNotas, IsActive = formIsActive
                 });
                 if (u is null) { formError = "No se pudo actualizar"; return; }
@@ -590,6 +598,9 @@
             }
             else
             {
+                var stockGramosFinal = formCategoria == "CAFE"
+                    ? Math.Round(formStockKg * 1000m, 3, MidpointRounding.AwayFromZero)
+                    : 0m;
                 var c = await Api.CreateCafeProductoAsync(new CreateCafeProductoRequest
                 {
                     Sku = formSku, Barcode = formBarcode,
@@ -598,7 +609,7 @@
                     BarPctSobreCosto = barPctFinal,
                     UxB = uxBFinal,
                     OemId = oemIdFinal,
-                    StockGramos = formCategoria == "CAFE" ? formStockGramos : 0,
+                    StockGramos = stockGramosFinal,
                     StockUnidades = formCategoria == "OTROS" ? formStockUnidades : 0,
                     Notas = formNotas
                 });
@@ -629,9 +640,8 @@
     private static string FormatMoney(decimal v)
         => v.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
 
+    /// <summary>UX: siempre mostramos stock de cafe en kg con 2 decimales (regla del usuario).
+    /// Internamente almacenamos en gramos pero NO se exponen al usuario.</summary>
     private static string FormatGramos(decimal g)
-    {
-        if (g >= 1000m) return $"{(g / 1000m).ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))} kg";
-        return $"{g:0} g";
-    }
+        => $"{(g / 1000m).ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))} kg";
 }

@@ -284,6 +284,102 @@ public class DeleteCafeVentaSettingsDto
     public string Hint { get; set; } = string.Empty;
 }
 
+// ===== Proveedores =====
+public class CafeProveedorDto
+{
+    public int Id { get; set; }
+    public string Nombre { get; set; } = "";
+    public string? Contacto { get; set; }
+    public string? Telefono { get; set; }
+    public string? Email { get; set; }
+    public string? Notas { get; set; }
+    public bool IsActive { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+    public int ComprasCount { get; set; }
+    public decimal TotalComprado { get; set; }
+}
+
+public class CreateCafeProveedorRequest
+{
+    public string Nombre { get; set; } = "";
+    public string? Contacto { get; set; }
+    public string? Telefono { get; set; }
+    public string? Email { get; set; }
+    public string? Notas { get; set; }
+}
+
+public class UpdateCafeProveedorRequest
+{
+    public string? Nombre { get; set; }
+    public string? Contacto { get; set; }
+    public string? Telefono { get; set; }
+    public string? Email { get; set; }
+    public string? Notas { get; set; }
+    public bool? IsActive { get; set; }
+}
+
+// ===== Compras =====
+public class CafeCompraItemDto
+{
+    public int Id { get; set; }
+    public int ProductoId { get; set; }
+    public string ProductoNombre { get; set; } = "";
+    public string? ProductoSku { get; set; }
+    public string Categoria { get; set; } = "OTROS";
+    public decimal Cantidad { get; set; }
+    public decimal CostoUnitario { get; set; }
+    public decimal Subtotal { get; set; }
+    public decimal StockActualGramos { get; set; }
+    public int StockActualUnidades { get; set; }
+    public decimal CostoActualProducto { get; set; }
+}
+
+public class CafeCompraDto
+{
+    public int Id { get; set; }
+    public string Numero { get; set; } = "";
+    public int? ProveedorId { get; set; }
+    public string? ProveedorNombre { get; set; }
+    public DateTime Fecha { get; set; }
+    public string? NumeroComprobante { get; set; }
+    public string Estado { get; set; } = "BORRADOR";
+    public decimal Total { get; set; }
+    public string? Observaciones { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+    public DateTime? ConfirmadaAt { get; set; }
+    public DateTime? PagadaAt { get; set; }
+    public DateTime? AnuladaAt { get; set; }
+    public List<CafeCompraItemDto> Items { get; set; } = new();
+}
+
+public class CafeCompraItemRequest
+{
+    public int ProductoId { get; set; }
+    public decimal Cantidad { get; set; }
+    public decimal CostoUnitario { get; set; }
+}
+
+public class CreateCafeCompraRequest
+{
+    public int? ProveedorId { get; set; }
+    public DateTime? Fecha { get; set; }
+    public string? NumeroComprobante { get; set; }
+    public string? Observaciones { get; set; }
+    public List<CafeCompraItemRequest> Items { get; set; } = new();
+}
+
+public class UpdateCafeCompraRequest
+{
+    public int? ProveedorId { get; set; }
+    public bool ClearProveedor { get; set; }
+    public DateTime? Fecha { get; set; }
+    public string? NumeroComprobante { get; set; }
+    public string? Observaciones { get; set; }
+    public List<CafeCompraItemRequest>? Items { get; set; }
+}
+
 public class CafeTopProductoClienteDto
 {
     public int ProductoId { get; set; }

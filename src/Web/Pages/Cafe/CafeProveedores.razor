@@ -1,0 +1,255 @@
+@page "/cafe/proveedores"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <h3>🏭 Proveedores <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;">(@(proveedores?.Count ?? 0))</span></h3>
+        <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
+            <input class="form-input" style="min-width: 240px; font-size: 0.85rem;"
+                   @bind="filtroTexto" @bind:event="oninput"
+                   placeholder="🔍 Buscar nombre, contacto, tel, email..." />
+            <button class="btn btn-primary" @onclick="ShowCreate">+ Nuevo proveedor</button>
+        </div>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        @if (loading)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">Cargando...</p>
+        }
+        else if (proveedores is null || proveedores.Count == 0)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">No hay proveedores. Tocá <strong>+ Nuevo proveedor</strong>.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>Contacto</th>
+                            <th style="width: 130px;">Teléfono</th>
+                            <th>Email</th>
+                            <th style="width: 90px; text-align: center;">Compras</th>
+                            <th style="text-align: right;">Total comprado</th>
+                            <th>Estado</th>
+                            <th style="width: 110px;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in Visibles)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@p.Nombre</strong>
+                                    @if (!string.IsNullOrEmpty(p.Notas))
+                                    {
+                                        <div style="font-size: 0.78rem; color: #6b7280;">@p.Notas</div>
+                                    }
+                                </td>
+                                <td style="font-size: 0.85rem;">@(p.Contacto ?? "—")</td>
+                                <td style="font-family: monospace; font-size: 0.85rem;">
+                                    @if (!string.IsNullOrEmpty(p.Telefono))
+                                    {
+                                        <a href="https://wa.me/@(new string(p.Telefono.Where(char.IsDigit).ToArray()))" target="_blank" style="color: #25D366; text-decoration: none;">📱 @p.Telefono</a>
+                                    }
+                                    else { <span style="color: #d1d5db;">—</span> }
+                                </td>
+                                <td style="font-size: 0.85rem;">@(p.Email ?? "—")</td>
+                                <td style="text-align: center;">
+                                    @if (p.ComprasCount > 0)
+                                    {
+                                        <span style="background: #dcfce7; color: #15803d; padding: 0.15rem 0.55rem; border-radius: 999px; font-size: 0.78rem; font-weight: 700;">@p.ComprasCount</span>
+                                    }
+                                    else { <span style="color: #d1d5db;">0</span> }
+                                </td>
+                                <td style="text-align: right; font-weight: 700;">@(p.TotalComprado > 0 ? "$" + FormatMoney(p.TotalComprado) : "—")</td>
+                                <td><span class="status-badge @(p.IsActive ? "status-active" : "status-inactive")">@(p.IsActive ? "Activo" : "Inactivo")</span></td>
+                                <td class="actions-cell">
+                                    <button class="btn-icon btn-edit" @onclick="() => ShowEdit(p)" title="Editar">✎</button>
+                                    <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(p)" title="Eliminar / desactivar">🗑</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@if (showForm)
+{
+    <div class="modal-overlay" @onclick="CloseForm">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 600px;">
+            <div class="modal-header" style="background: whitesmoke;">
+                <h3 style="margin: 0;">🏭 @(editing is null ? "Nuevo proveedor" : $"Editar — {editing.Nombre}")</h3>
+                <button class="btn-close" @onclick="CloseForm">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(formError)) { <div class="form-error">@formError</div> }
+                <div class="form-group">
+                    <label class="form-label">Nombre *</label>
+                    <input class="form-input" @bind="formNombre" placeholder="Ej: Colombraro SA" />
+                </div>
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Contacto</label>
+                        <input class="form-input" @bind="formContacto" placeholder="Persona de contacto (opcional)" />
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Teléfono / WhatsApp</label>
+                        <input class="form-input" @bind="formTelefono" placeholder="Ej: 11 1234-5678" />
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <input class="form-input" type="email" @bind="formEmail" placeholder="ventas@empresa.com" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Notas</label>
+                    <textarea class="form-input" rows="2" @bind="formNotas"></textarea>
+                </div>
+                @if (editing is not null)
+                {
+                    <div class="form-group">
+                        <label class="form-label">Estado</label>
+                        <select class="form-input" @bind="formIsActive">
+                            <option value="true">Activo</option>
+                            <option value="false">Inactivo</option>
+                        </select>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseForm" disabled="@saving">Cancelar</button>
+                <button class="btn btn-primary" @onclick="DoSave" disabled="@saving">@(saving ? "Guardando..." : "💾 Guardar")</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (toDelete is not null)
+{
+    <div class="modal-overlay" @onclick="() => toDelete = null">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: #dc3545; color: white;"><h4 style="margin: 0;">Eliminar proveedor</h4>
+                <button class="btn-close" @onclick="() => toDelete = null" style="color: white;">&times;</button></div>
+            <div class="modal-body">
+                @if (toDelete.ComprasCount > 0)
+                {
+                    <p>El proveedor <strong>@toDelete.Nombre</strong> tiene <strong>@toDelete.ComprasCount</strong> compra@(toDelete.ComprasCount == 1 ? "" : "s") asociada@(toDelete.ComprasCount == 1 ? "" : "s").</p>
+                    <p style="color: #b45309; font-weight: 600; font-size: 0.85rem;">Por seguridad NO se va a eliminar — se va a <strong>desactivar</strong> para que no aparezca al crear nuevas compras. El historial queda intacto.</p>
+                }
+                else
+                {
+                    <p>Vas a eliminar definitivamente <strong>@toDelete.Nombre</strong>.</p>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => toDelete = null">No</button>
+                <button class="btn btn-danger" @onclick="DoDelete">Sí</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<CafeProveedorDto>? proveedores;
+    private bool loading = true;
+    private string filtroTexto = "";
+
+    private bool showForm, saving;
+    private string? formError;
+    private CafeProveedorDto? editing;
+    private string formNombre = "";
+    private string formContacto = "";
+    private string formTelefono = "";
+    private string formEmail = "";
+    private string formNotas = "";
+    private bool formIsActive = true;
+
+    private CafeProveedorDto? toDelete;
+
+    private List<CafeProveedorDto> Visibles
+    {
+        get
+        {
+            if (proveedores is null) return new();
+            if (string.IsNullOrWhiteSpace(filtroTexto)) return proveedores;
+            var t = filtroTexto.Trim();
+            bool h(string? s) => !string.IsNullOrEmpty(s) && s.Contains(t, StringComparison.OrdinalIgnoreCase);
+            return proveedores.Where(p => h(p.Nombre) || h(p.Contacto) || h(p.Telefono) || h(p.Email) || h(p.Notas)).ToList();
+        }
+    }
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        loading = true;
+        try { proveedores = await Api.GetCafeProveedoresAsync() ?? new(); }
+        catch { proveedores = new(); ToastService.Error("Error al cargar"); }
+        loading = false;
+    }
+
+    private void ShowCreate()
+    {
+        editing = null;
+        formNombre = ""; formContacto = ""; formTelefono = ""; formEmail = ""; formNotas = "";
+        formIsActive = true; formError = null; showForm = true;
+    }
+
+    private void ShowEdit(CafeProveedorDto p)
+    {
+        editing = p;
+        formNombre = p.Nombre; formContacto = p.Contacto ?? ""; formTelefono = p.Telefono ?? "";
+        formEmail = p.Email ?? ""; formNotas = p.Notas ?? ""; formIsActive = p.IsActive;
+        formError = null; showForm = true;
+    }
+
+    private void CloseForm() { if (!saving) showForm = false; }
+
+    private async Task DoSave()
+    {
+        if (string.IsNullOrWhiteSpace(formNombre)) { formError = "El nombre es obligatorio"; return; }
+        formError = null; saving = true;
+        try
+        {
+            if (editing is null)
+            {
+                await Api.CreateCafeProveedorAsync(new CreateCafeProveedorRequest { Nombre = formNombre, Contacto = formContacto, Telefono = formTelefono, Email = formEmail, Notas = formNotas });
+                ToastService.Success("Proveedor creado");
+            }
+            else
+            {
+                await Api.UpdateCafeProveedorAsync(editing.Id, new UpdateCafeProveedorRequest { Nombre = formNombre, Contacto = formContacto, Telefono = formTelefono, Email = formEmail, Notas = formNotas, IsActive = formIsActive });
+                ToastService.Success("Proveedor actualizado");
+            }
+            showForm = false;
+            await Load();
+        }
+        catch (Exception ex) { formError = ex.Message; }
+        finally { saving = false; }
+    }
+
+    private void ConfirmDelete(CafeProveedorDto p) => toDelete = p;
+
+    private async Task DoDelete()
+    {
+        if (toDelete is null) return;
+        try
+        {
+            await Api.DeleteCafeProveedorAsync(toDelete.Id);
+            ToastService.Success(toDelete.ComprasCount > 0 ? "Proveedor desactivado (tenía compras)" : "Proveedor eliminado");
+            toDelete = null;
+            await Load();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); toDelete = null; }
+    }
+
+    private static string FormatMoney(decimal v)
+        => v.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+}

@@ -216,6 +216,71 @@ public class BulkDeleteCafeVentasRequest
 
 public record DeleteCafeVentaSettingsDto(string AllowedOperator, string Hint);
 
+// ===== Proveedores =====
+public record CafeProveedorDto(
+    int Id, string Nombre, string? Contacto, string? Telefono, string? Email,
+    string? Notas, bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt,
+    int ComprasCount, decimal TotalComprado);
+
+public class CreateCafeProveedorRequest
+{
+    public string Nombre { get; set; } = string.Empty;
+    public string? Contacto { get; set; }
+    public string? Telefono { get; set; }
+    public string? Email { get; set; }
+    public string? Notas { get; set; }
+}
+
+public class UpdateCafeProveedorRequest
+{
+    public string? Nombre { get; set; }
+    public string? Contacto { get; set; }
+    public string? Telefono { get; set; }
+    public string? Email { get; set; }
+    public string? Notas { get; set; }
+    public bool? IsActive { get; set; }
+}
+
+// ===== Compras =====
+public record CafeCompraItemDto(
+    int Id, int ProductoId, string ProductoNombre, string? ProductoSku, string Categoria,
+    decimal Cantidad, decimal CostoUnitario, decimal Subtotal,
+    decimal StockActualGramos, int StockActualUnidades, decimal CostoActualProducto);
+
+public record CafeCompraDto(
+    int Id, string Numero, int? ProveedorId, string? ProveedorNombre,
+    DateTime Fecha, string? NumeroComprobante, string Estado, decimal Total,
+    string? Observaciones,
+    DateTime CreatedAt, DateTime? UpdatedAt,
+    DateTime? ConfirmadaAt, DateTime? PagadaAt, DateTime? AnuladaAt,
+    List<CafeCompraItemDto> Items);
+
+public class CafeCompraItemRequest
+{
+    public int ProductoId { get; set; }
+    public decimal Cantidad { get; set; }
+    public decimal CostoUnitario { get; set; }
+}
+
+public class CreateCafeCompraRequest
+{
+    public int? ProveedorId { get; set; }
+    public DateTime? Fecha { get; set; }
+    public string? NumeroComprobante { get; set; }
+    public string? Observaciones { get; set; }
+    public List<CafeCompraItemRequest> Items { get; set; } = new();
+}
+
+public class UpdateCafeCompraRequest
+{
+    public int? ProveedorId { get; set; }
+    public bool ClearProveedor { get; set; }
+    public DateTime? Fecha { get; set; }
+    public string? NumeroComprobante { get; set; }
+    public string? Observaciones { get; set; }
+    public List<CafeCompraItemRequest>? Items { get; set; }
+}
+
 /// <summary>Producto que el cliente compro mas seguido (sugerencia para el form de Nueva Venta).</summary>
 public record CafeTopProductoClienteDto(
     int ProductoId, string? Sku, string Nombre, string Categoria, string? Marca,
