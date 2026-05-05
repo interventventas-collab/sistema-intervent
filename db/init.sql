@@ -2225,3 +2225,35 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_CafeProductos_OemId' AND object_id = OBJECT_ID('Cafe_Productos'))
     CREATE INDEX IX_CafeProductos_OemId ON Cafe_Productos(OemId);
 GO
+
+-- MeliItems: soporte de variantes.
+-- Cuando una publicacion tiene variations en MeLi, cada variante se almacena como una
+-- fila independiente combinando MeliItemId (padre) + VariationId. La fila padre (sin
+-- variantes) o las publicaciones simples mantienen VariationId NULL.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'VariationId' AND Object_ID = Object_ID('MeliItems'))
+    ALTER TABLE MeliItems ADD VariationId NVARCHAR(50) NULL;
+GO
+-- Atributos visibles de la variante (ej: "Negro", "Blanco / Talle XL").
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'VariationAttributes' AND Object_ID = Object_ID('MeliItems'))
+    ALTER TABLE MeliItems ADD VariationAttributes NVARCHAR(500) NULL;
+GO
+
+-- El indice unico viejo (solo MeliItemId) debe pasar a (MeliItemId, VariationId).
+IF EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_MeliItems_MeliItemId' AND object_id = OBJECT_ID('MeliItems'))
+    DROP INDEX IX_MeliItems_MeliItemId ON MeliItems;
+GO
+-- Filtered indexes requieren QUOTED_IDENTIFIER ON.
+SET QUOTED_IDENTIFIER ON;
+GO
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_MeliItems_MeliItemId_VariationId' AND object_id = OBJECT_ID('MeliItems'))
+    CREATE UNIQUE INDEX IX_MeliItems_MeliItemId_VariationId
+        ON MeliItems (MeliItemId, VariationId)
+        WHERE VariationId IS NOT NULL;
+GO
+-- Indice unico para filas sin variante (publicacion simple o registro padre).
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_MeliItems_MeliItemId_NoVariation' AND object_id = OBJECT_ID('MeliItems'))
+    CREATE UNIQUE INDEX IX_MeliItems_MeliItemId_NoVariation
+        ON MeliItems (MeliItemId)
+        WHERE VariationId IS NULL;
+GO
+

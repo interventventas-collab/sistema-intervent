@@ -24,6 +24,10 @@ public class MeliItem
     public string? UserProductId { get; set; }
     public string? FamilyId { get; set; }
     public string? FamilyName { get; set; }
+    // Cuando una publicacion tiene variantes, hay una fila por variante. Null si la
+    // publicacion no tiene variantes (item simple).
+    public string? VariationId { get; set; }
+    public string? VariationAttributes { get; set; }
     public DateTime? DateCreated { get; set; }
     public DateTime? LastUpdated { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

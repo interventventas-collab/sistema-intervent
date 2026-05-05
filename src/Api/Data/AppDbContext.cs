@@ -122,7 +122,9 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<MeliItem>(entity =>
         {
-            entity.HasIndex(i => i.MeliItemId).IsUnique();
+            // Index no-unique: una publicacion puede tener varias filas (una por variante).
+            // La unicidad real (MeliItemId + VariationId) se maneja con indices filtrados en init.sql.
+            entity.HasIndex(i => i.MeliItemId);
             entity.HasIndex(i => i.MeliAccountId);
             entity.HasIndex(i => i.Status);
             entity.HasIndex(i => i.UserProductId);

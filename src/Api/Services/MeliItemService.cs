@@ -934,6 +934,45 @@ public class MeliItemService
         return synced;
     }
 
+    // SKU: prioriza atributo SELLER_SKU, cae a seller_custom_field si no esta.
+    private static string? ExtractSku(JsonElement element)
+    {
+        if (element.TryGetProperty("attributes", out var attrs) && attrs.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var attr in attrs.EnumerateArray())
+            {
+                var attrId = attr.TryGetProperty("id", out var aid) ? aid.GetString() : null;
+                if (attrId == "SELLER_SKU")
+                {
+                    var v = attr.TryGetProperty("value_name", out var vn) && vn.ValueKind != JsonValueKind.Null
+                        ? vn.GetString() : null;
+                    if (!string.IsNullOrEmpty(v)) return v;
+                }
+            }
+        }
+        if (element.TryGetProperty("seller_custom_field", out var scf) && scf.ValueKind != JsonValueKind.Null)
+        {
+            var v = scf.GetString();
+            if (!string.IsNullOrEmpty(v)) return v;
+        }
+        return null;
+    }
+
+    // "Negro / Talle XL" a partir de attribute_combinations o values.
+    private static string? ExtractVariationAttributes(JsonElement variation)
+    {
+        if (!variation.TryGetProperty("attribute_combinations", out var combos) || combos.ValueKind != JsonValueKind.Array)
+            return null;
+        var parts = new List<string>();
+        foreach (var c in combos.EnumerateArray())
+        {
+            var name = c.TryGetProperty("value_name", out var vn) && vn.ValueKind != JsonValueKind.Null
+                ? vn.GetString() : null;
+            if (!string.IsNullOrEmpty(name)) parts.Add(name);
+        }
+        return parts.Count > 0 ? string.Join(" / ", parts) : null;
+    }
+
     private async Task<int> UpsertItemAsync(int accountId, JsonElement item)
     {
         var meliItemId = item.GetProperty("id").GetString() ?? "";
@@ -957,27 +996,7 @@ public class MeliItemService
             ? cat.GetString() : null;
         var permalink = item.TryGetProperty("permalink", out var pl) && pl.ValueKind != JsonValueKind.Null
             ? pl.GetString() : null;
-        // SKU: prioritize SELLER_SKU attribute, fallback to seller_custom_field
-        string? sku = null;
-        if (item.TryGetProperty("attributes", out var attrs) && attrs.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var attr in attrs.EnumerateArray())
-            {
-                var attrId = attr.TryGetProperty("id", out var aid) ? aid.GetString() : null;
-                if (attrId == "SELLER_SKU")
-                {
-                    sku = attr.TryGetProperty("value_name", out var vn) && vn.ValueKind != JsonValueKind.Null
-                        ? vn.GetString() : null;
-                    break;
-                }
-            }
-        }
-        // Fallback to seller_custom_field if SELLER_SKU attribute not found
-        if (string.IsNullOrEmpty(sku))
-        {
-            sku = item.TryGetProperty("seller_custom_field", out var scf) && scf.ValueKind != JsonValueKind.Null
-                ? scf.GetString() : null;
-        }
+        var parentSku = ExtractSku(item);
         var dateCreated = item.TryGetProperty("date_created", out var dc) && dc.ValueKind != JsonValueKind.Null
             ? dc.GetDateTime() : (DateTime?)null;
         var lastUpdated = item.TryGetProperty("last_updated", out var lu) && lu.ValueKind != JsonValueKind.Null
@@ -1038,7 +1057,116 @@ public class MeliItemService
             freeShipping = shipping.TryGetProperty("free_shipping", out var fs) && fs.ValueKind == JsonValueKind.True;
         }
 
-        var existing = await _db.MeliItems.FirstOrDefaultAsync(i => i.MeliItemId == meliItemId);
+        // Detectar variantes. Si tiene variantes, grabamos una fila por variante (con su
+        // VariationId y su SKU). Si no, grabamos una fila simple (VariationId NULL).
+        var hasVariations = item.TryGetProperty("variations", out var variations)
+            && variations.ValueKind == JsonValueKind.Array
+            && variations.GetArrayLength() > 0;
+
+        // Pictures por variante (variation.picture_ids -> resolver thumbnail).
+        // Mantenemos un map id->secure_url usando item.pictures cuando esta disponible.
+        Dictionary<string, string>? pictureMap = null;
+        if (hasVariations && item.TryGetProperty("pictures", out var pics) && pics.ValueKind == JsonValueKind.Array)
+        {
+            pictureMap = new Dictionary<string, string>();
+            foreach (var p in pics.EnumerateArray())
+            {
+                var pid = p.TryGetProperty("id", out var pidEl) && pidEl.ValueKind != JsonValueKind.Null
+                    ? pidEl.GetString() : null;
+                var secure = p.TryGetProperty("secure_url", out var su) && su.ValueKind != JsonValueKind.Null
+                    ? su.GetString() : null;
+                if (!string.IsNullOrEmpty(pid) && !string.IsNullOrEmpty(secure))
+                    pictureMap[pid!] = secure!;
+            }
+        }
+
+        if (!hasVariations)
+        {
+            await UpsertSingleRowAsync(
+                accountId, meliItemId, variationId: null, variationAttributes: null,
+                title, categoryId, price, originalPrice, currencyId,
+                availableQty, soldQty, status, condition, listingTypeId,
+                thumbnail, permalink, parentSku, userProductId, familyId, familyName,
+                installmentTag, freeShipping, dateCreated, lastUpdated);
+            return 1;
+        }
+
+        // Set de variation ids encontrados en MeLi para limpiar filas viejas.
+        var seenVariationIds = new HashSet<string>();
+        int rowsUpserted = 0;
+        foreach (var v in variations.EnumerateArray())
+        {
+            string? vId = null;
+            if (v.TryGetProperty("id", out var vidEl) && vidEl.ValueKind != JsonValueKind.Null)
+            {
+                vId = vidEl.ValueKind == JsonValueKind.Number
+                    ? vidEl.GetInt64().ToString()
+                    : vidEl.GetString();
+            }
+            if (string.IsNullOrEmpty(vId)) continue;
+            seenVariationIds.Add(vId!);
+
+            var vSku = ExtractSku(v) ?? parentSku;
+            var vPrice = v.TryGetProperty("price", out var vpr) && vpr.ValueKind != JsonValueKind.Null
+                ? vpr.GetDecimal() : price;
+            var vOriginal = v.TryGetProperty("original_price", out var vop) && vop.ValueKind != JsonValueKind.Null
+                ? vop.GetDecimal() : originalPrice;
+            var vQty = v.TryGetProperty("available_quantity", out var vaq) && vaq.ValueKind != JsonValueKind.Null
+                ? vaq.GetInt32() : 0;
+            var vSold = v.TryGetProperty("sold_quantity", out var vsq) && vsq.ValueKind != JsonValueKind.Null
+                ? vsq.GetInt32() : 0;
+            var vAttrs = ExtractVariationAttributes(v);
+
+            // Thumbnail por variante: tomar primer picture_id y resolverlo.
+            var vThumb = thumbnail;
+            if (pictureMap is not null && v.TryGetProperty("picture_ids", out var pidArr) && pidArr.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var pidEl in pidArr.EnumerateArray())
+                {
+                    var pidStr = pidEl.GetString();
+                    if (!string.IsNullOrEmpty(pidStr) && pictureMap.TryGetValue(pidStr!, out var url))
+                    {
+                        vThumb = url.StartsWith("http://") ? "https://" + url[7..] : url;
+                        break;
+                    }
+                }
+            }
+
+            await UpsertSingleRowAsync(
+                accountId, meliItemId, vId, vAttrs,
+                title, categoryId, vPrice, vOriginal, currencyId,
+                vQty, vSold, status, condition, listingTypeId,
+                vThumb, permalink, vSku, userProductId, familyId, familyName,
+                installmentTag, freeShipping, dateCreated, lastUpdated);
+            rowsUpserted++;
+        }
+
+        // Limpieza: si la publicacion paso de simple -> con variantes, borrar la fila vieja sin variante.
+        var stale = await _db.MeliItems
+            .Where(i => i.MeliItemId == meliItemId && i.VariationId == null)
+            .ToListAsync();
+        if (stale.Count > 0) _db.MeliItems.RemoveRange(stale);
+
+        // Limpieza: variantes que dejaron de existir en MeLi.
+        var existingVariants = await _db.MeliItems
+            .Where(i => i.MeliItemId == meliItemId && i.VariationId != null)
+            .ToListAsync();
+        var toRemove = existingVariants.Where(i => !seenVariationIds.Contains(i.VariationId!)).ToList();
+        if (toRemove.Count > 0) _db.MeliItems.RemoveRange(toRemove);
+
+        return rowsUpserted;
+    }
+
+    private async Task UpsertSingleRowAsync(
+        int accountId, string meliItemId, string? variationId, string? variationAttributes,
+        string title, string? categoryId, decimal price, decimal? originalPrice, string currencyId,
+        int availableQty, int soldQty, string status, string? condition, string? listingTypeId,
+        string? thumbnail, string? permalink, string? sku, string? userProductId,
+        string? familyId, string? familyName, string? installmentTag, bool freeShipping,
+        DateTime? dateCreated, DateTime? lastUpdated)
+    {
+        var existing = await _db.MeliItems
+            .FirstOrDefaultAsync(i => i.MeliItemId == meliItemId && i.VariationId == variationId);
 
         if (existing is not null)
         {
@@ -1061,6 +1189,7 @@ public class MeliItemService
             existing.InstallmentTag = installmentTag;
             existing.FreeShipping = freeShipping;
             existing.LastUpdated = lastUpdated;
+            existing.VariationAttributes = variationAttributes;
             existing.UpdatedAt = DateTime.UtcNow;
         }
         else
@@ -1069,6 +1198,8 @@ public class MeliItemService
             {
                 MeliItemId = meliItemId,
                 MeliAccountId = accountId,
+                VariationId = variationId,
+                VariationAttributes = variationAttributes,
                 Title = title,
                 CategoryId = categoryId,
                 Price = price,
@@ -1091,8 +1222,6 @@ public class MeliItemService
                 LastUpdated = lastUpdated
             });
         }
-
-        return 1;
     }
 
     public async Task<ListingCostDto> GetListingCostsAsync(string meliItemId)
