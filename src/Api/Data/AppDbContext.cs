@@ -13,6 +13,9 @@ public class AppDbContext : DbContext
     public DbSet<MeliAccount> MeliAccounts => Set<MeliAccount>();
     public DbSet<MeliOrder> MeliOrders => Set<MeliOrder>();
     public DbSet<MeliItem> MeliItems => Set<MeliItem>();
+    public DbSet<ContabProducto> ContabProductos => Set<ContabProducto>();
+    public DbSet<ContabCombo> ContabCombos => Set<ContabCombo>();
+    public DbSet<ContabComboItem> ContabComboItems => Set<ContabComboItem>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<Product> Products => Set<Product>();
     public DbSet<Supplier> Suppliers => Set<Supplier>();
@@ -138,6 +141,26 @@ public class AppDbContext : DbContext
                   .WithMany(p => p.MeliItems)
                   .HasForeignKey(i => i.ProductId)
                   .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<ContabProducto>(entity =>
+        {
+            entity.ToTable("Contab_Productos");
+            entity.HasIndex(p => p.Sku).IsUnique();
+            entity.HasIndex(p => p.SkuPadre);
+        });
+
+        modelBuilder.Entity<ContabCombo>(entity =>
+        {
+            entity.ToTable("Contab_Combos");
+            entity.HasIndex(c => c.SkuCombo).IsUnique();
+        });
+
+        modelBuilder.Entity<ContabComboItem>(entity =>
+        {
+            entity.ToTable("Contab_ComboItems");
+            entity.HasIndex(i => i.SkuCombo);
+            entity.HasIndex(i => i.SkuComponente);
         });
 
         modelBuilder.Entity<Product>(entity =>

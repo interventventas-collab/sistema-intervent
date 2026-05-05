@@ -1,0 +1,202 @@
+@page "/cafe/cotejo"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <h3>🔎 Cotejo MercadoLibre &harr; Contabilium</h3>
+        <div style="display: flex; gap: 0.5rem;">
+            <button class="btn btn-secondary" @onclick="LoadResumen" disabled="@isBusy">Refrescar</button>
+            <button class="btn btn-primary" @onclick="ImportarStaging" disabled="@isBusy">
+                @(isBusy ? "Cargando..." : "Cargar Excels de Contabilium")
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        @if (resumen is null)
+        {
+            <p style="color:#6b7280;">Tocá <b>"Cargar Excels de Contabilium"</b> la primera vez. Eso lee los archivos de la carpeta <code>base de datos contabilium</code> y los guarda para cotejarlos contra MercadoLibre.</p>
+        }
+        else
+        {
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0.7rem; margin-bottom: 1rem;">
+                <div class="stat-mini" style="--c:#1e3a8a;">
+                    <div class="stat-mini-num">@resumen.TotalPublicaciones</div>
+                    <div class="stat-mini-lbl">Publicaciones MeLi</div>
+                </div>
+                <div class="stat-mini" style="--c:#0e7490;">
+                    <div class="stat-mini-num">@resumen.Producto</div>
+                    <div class="stat-mini-lbl">Productos</div>
+                </div>
+                <div class="stat-mini" style="--c:#7c3aed;">
+                    <div class="stat-mini-num">@resumen.Combo</div>
+                    <div class="stat-mini-lbl">Combos</div>
+                </div>
+                <div class="stat-mini" style="--c:#b91c1c;">
+                    <div class="stat-mini-num">@resumen.Huerfano</div>
+                    <div class="stat-mini-lbl">Huérfanos</div>
+                </div>
+                <div class="stat-mini" style="--c:#9ca3af;">
+                    <div class="stat-mini-num">@resumen.SinSku</div>
+                    <div class="stat-mini-lbl">Sin SKU</div>
+                </div>
+                <div class="stat-mini" style="--c:#d97706;">
+                    <div class="stat-mini-num">@resumen.CombosConComponentesFaltantes</div>
+                    <div class="stat-mini-lbl">Combos con componentes faltantes</div>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin-bottom: 0.7rem;">
+                <select class="form-input" @bind="categoria" @bind:after="LoadListado" style="max-width: 180px;">
+                    <option value="todos">Todas las filas</option>
+                    <option value="producto">Solo Productos</option>
+                    <option value="combo">Solo Combos</option>
+                    <option value="huerfano">Solo Huérfanos</option>
+                    <option value="sin_sku">Solo sin SKU</option>
+                </select>
+                <input class="form-input" placeholder="Buscar (SKU / titulo / MLA)" @bind="buscar" @bind:event="oninput" style="flex: 1; min-width: 240px;" />
+                <button class="btn btn-secondary" @onclick="LoadListado" disabled="@isBusy">Buscar</button>
+            </div>
+
+            @if (listado is null)
+            {
+                <p style="color:#6b7280;">Cargando listado...</p>
+            }
+            else if (listado.Count == 0)
+            {
+                <p style="color:#6b7280;">Sin resultados con esos filtros.</p>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="data-table" style="font-size: 0.85rem;">
+                        <thead>
+                            <tr>
+                                <th style="width:90px;">Tipo</th>
+                                <th style="width:120px;">SKU MeLi</th>
+                                <th>Publicación MeLi</th>
+                                <th style="width:90px;">Stock MeLi</th>
+                                <th>Match en Contabilium</th>
+                                <th style="width:110px;">Precio Contab</th>
+                                <th style="width:90px;">Stock Contab</th>
+                                <th style="width:80px;">Vinculado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var f in listado)
+                        {
+                            <tr style="@(f.ComboTieneFaltantes ? "background:#fef3c7;" : "")">
+                                <td>
+                                    @if (f.Categoria == "producto")
+                                    {
+                                        <span class="badge" style="background:#dbeafe;color:#1e40af;">Producto</span>
+                                    }
+                                    else if (f.Categoria == "combo")
+                                    {
+                                        <span class="badge" style="background:#ede9fe;color:#6d28d9;">Combo</span>
+                                        @if (f.ComboTieneFaltantes)
+                                        {
+                                            <span title="Algun componente del combo no esta en productos de Contabilium" style="color:#b45309;font-weight:700;">⚠</span>
+                                        }
+                                    }
+                                    else if (f.Categoria == "huerfano")
+                                    {
+                                        <span class="badge" style="background:#fee2e2;color:#b91c1c;">Huérfano</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge" style="background:#f3f4f6;color:#4b5563;">Sin SKU</span>
+                                    }
+                                </td>
+                                <td><code style="font-size:0.82rem;">@(f.Sku ?? "—")</code></td>
+                                <td>
+                                    <a href="https://articulo.mercadolibre.com.ar/@(f.MeliItemId.Replace("MLA","MLA-"))" target="_blank" style="color:#1e40af;">@f.Title</a>
+                                    @if (!string.IsNullOrEmpty(f.VariationAttributes))
+                                    {
+                                        <div style="font-size:0.75rem;color:#6b7280;">↳ @f.VariationAttributes</div>
+                                    }
+                                </td>
+                                <td>@f.AvailableQuantity</td>
+                                <td>@(f.ContabNombre ?? "—")</td>
+                                <td>@(f.ContabPrecioFinal.HasValue ? $"$ {f.ContabPrecioFinal:N2}" : "—")</td>
+                                <td>@(f.ContabStock.HasValue ? f.ContabStock.Value.ToString("N0") : "—")</td>
+                                <td>
+                                    @if (f.ProductIdVinculado.HasValue || f.ComboIdVinculado.HasValue)
+                                    {
+                                        <span style="color:#16a34a;font-weight:700;">✓</span>
+                                    }
+                                    else
+                                    {
+                                        <span style="color:#9ca3af;">—</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+                <p style="font-size:0.8rem;color:#6b7280;margin-top:0.4rem;">
+                    Mostrando @listado.Count fila(s). Subi el límite con un buscador específico para ver más.
+                </p>
+            }
+        }
+    </div>
+</div>
+
+<style>
+    .stat-mini { background: white; border: 1px solid var(--c, #e5e7eb); border-left: 4px solid var(--c, #1e3a8a); border-radius: 6px; padding: 0.6rem 0.8rem; }
+    .stat-mini-num { font-size: 1.45rem; font-weight: 800; color: var(--c, #1e3a8a); line-height: 1; }
+    .stat-mini-lbl { font-size: 0.78rem; color: #6b7280; margin-top: 0.2rem; }
+    .badge { padding: 0.15rem 0.45rem; border-radius: 6px; font-size: 0.75rem; font-weight: 700; }
+</style>
+
+@code {
+    private CotejoResumenDto? resumen;
+    private List<CotejoFilaDto>? listado;
+    private string categoria = "todos";
+    private string buscar = "";
+    private bool isBusy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadResumen();
+    }
+
+    private async Task LoadResumen()
+    {
+        try
+        {
+            resumen = await Api.GetCotejoResumenAsync();
+            if (resumen is not null && resumen.ProductosCargados > 0)
+                await LoadListado();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task LoadListado()
+    {
+        try
+        {
+            listado = await Api.GetCotejoListadoAsync(categoria, string.IsNullOrWhiteSpace(buscar) ? null : buscar);
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task ImportarStaging()
+    {
+        isBusy = true;
+        try
+        {
+            var r = await Api.ImportContabiliumStagingAsync();
+            if (r is not null)
+            {
+                ToastService.Success($"Cargado: {r.Productos} productos, {r.Combos} combos, {r.ComboItems} componentes.");
+                if (r.Warnings.Count > 0) ToastService.Error(string.Join(" / ", r.Warnings));
+            }
+            await LoadResumen();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { isBusy = false; }
+    }
+}

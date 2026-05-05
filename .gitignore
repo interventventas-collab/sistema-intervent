@@ -3,3 +3,4 @@
 # .NET build outputs
 **/bin/
 **/obj/
+.claude/

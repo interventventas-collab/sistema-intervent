@@ -2226,6 +2226,79 @@ IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_CafeProductos_OemId' A
     CREATE INDEX IX_CafeProductos_OemId ON Cafe_Productos(OemId);
 GO
 
+-- =============================================================================
+-- Contabilium: tablas de staging para cotejo SKU MeLi <-> Contabilium.
+-- Solo guardan lo descargado de los Excels. Las tablas reales (Products, Combos)
+-- se siguen creando aparte cuando el usuario decide vincular.
+-- =============================================================================
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Contab_Productos' AND xtype='U')
+BEGIN
+    CREATE TABLE Contab_Productos (
+        Id INT PRIMARY KEY IDENTITY(1,1),
+        Sku NVARCHAR(100) NOT NULL,
+        SkuPadre NVARCHAR(100) NULL,
+        Tipo NVARCHAR(50) NULL,
+        Nombre NVARCHAR(500) NULL,
+        Atributo1 NVARCHAR(100) NULL,
+        VarianteAtributo1 NVARCHAR(200) NULL,
+        Atributo2 NVARCHAR(100) NULL,
+        VarianteAtributo2 NVARCHAR(200) NULL,
+        CodigoBarras NVARCHAR(100) NULL,
+        CodigoOem NVARCHAR(100) NULL,
+        Estado NVARCHAR(20) NULL,
+        CostoInterno DECIMAL(18,4) NULL,
+        Precio DECIMAL(18,4) NULL,
+        Iva DECIMAL(18,4) NULL,
+        PrecioFinal DECIMAL(18,4) NULL,
+        Stock DECIMAL(18,4) NULL,
+        Rubro NVARCHAR(200) NULL,
+        SubRubro NVARCHAR(200) NULL,
+        Proveedor NVARCHAR(200) NULL,
+        Descripcion NVARCHAR(MAX) NULL,
+        ImportedAt DATETIME2 NOT NULL DEFAULT GETDATE()
+    );
+    CREATE UNIQUE INDEX UX_ContabProductos_Sku ON Contab_Productos(Sku);
+    CREATE INDEX IX_ContabProductos_SkuPadre ON Contab_Productos(SkuPadre);
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Contab_Combos' AND xtype='U')
+BEGIN
+    CREATE TABLE Contab_Combos (
+        Id INT PRIMARY KEY IDENTITY(1,1),
+        SkuCombo NVARCHAR(100) NOT NULL,
+        Nombre NVARCHAR(500) NULL,
+        Descripcion NVARCHAR(MAX) NULL,
+        Estado NVARCHAR(20) NULL,
+        CostoInterno DECIMAL(18,4) NULL,
+        Rentabilidad DECIMAL(18,4) NULL,
+        PrecioUnitario DECIMAL(18,4) NULL,
+        Iva DECIMAL(18,4) NULL,
+        PrecioFinal DECIMAL(18,4) NULL,
+        PrecioAutomatico BIT NULL,
+        ImportedAt DATETIME2 NOT NULL DEFAULT GETDATE()
+    );
+    CREATE UNIQUE INDEX UX_ContabCombos_Sku ON Contab_Combos(SkuCombo);
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Contab_ComboItems' AND xtype='U')
+BEGIN
+    CREATE TABLE Contab_ComboItems (
+        Id INT PRIMARY KEY IDENTITY(1,1),
+        SkuCombo NVARCHAR(100) NOT NULL,
+        SkuComponente NVARCHAR(100) NOT NULL, -- corresponde a la columna "Codigo" de Contabilium
+        NombreComponente NVARCHAR(500) NULL,
+        Cantidad DECIMAL(18,4) NOT NULL DEFAULT 1,
+        CostoInternoComponente DECIMAL(18,4) NULL,
+        PrecioComponente DECIMAL(18,4) NULL,
+        ImportedAt DATETIME2 NOT NULL DEFAULT GETDATE()
+    );
+    CREATE INDEX IX_ContabComboItems_Combo ON Contab_ComboItems(SkuCombo);
+    CREATE INDEX IX_ContabComboItems_Comp ON Contab_ComboItems(SkuComponente);
+END
+GO
+
 -- MeliItems: soporte de variantes.
 -- Cuando una publicacion tiene variations en MeLi, cada variante se almacena como una
 -- fila independiente combinando MeliItemId (padre) + VariationId. La fila padre (sin

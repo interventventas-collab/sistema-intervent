@@ -513,6 +513,23 @@ public class ApiClient
     public async Task<CafeConsultaResultDto?> ConsultarCafeAsync(string query)
         => await PostAsync<CafeConsultaResultDto>("/api/cafe/consultas", new CafeConsultaRequest { Query = query });
 
+    // --- Cotejo MeLi <-> Contabilium ---
+    public async Task<CotejoImportResultDto?> ImportContabiliumStagingAsync()
+        => await PostAsync<CotejoImportResultDto>("/api/meli/cotejo/import-staging", new { });
+
+    public async Task<CotejoResumenDto?> GetCotejoResumenAsync()
+        => await GetAsync<CotejoResumenDto>("/api/meli/cotejo/resumen");
+
+    public async Task<List<CotejoFilaDto>?> GetCotejoListadoAsync(string categoria = "todos", string? buscar = null, int take = 200)
+    {
+        var qs = new List<string> { $"categoria={Uri.EscapeDataString(categoria)}", $"take={take}" };
+        if (!string.IsNullOrWhiteSpace(buscar)) qs.Add($"buscar={Uri.EscapeDataString(buscar)}");
+        return await GetAsync<List<CotejoFilaDto>>("/api/meli/cotejo/listar?" + string.Join("&", qs));
+    }
+
+    public async Task<ComboDetalleDto?> GetCotejoComboDetalleAsync(string skuCombo)
+        => await GetAsync<ComboDetalleDto>($"/api/meli/cotejo/combo/{Uri.EscapeDataString(skuCombo)}");
+
     public async Task<byte[]?> ExportCafeListaPreciosExcelAsync(CafeListaPreciosFiltroRequest req)
     {
         await SetAuthHeaderAsync();

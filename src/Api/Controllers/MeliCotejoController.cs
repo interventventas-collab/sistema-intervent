@@ -1,0 +1,60 @@
+using Api.Services;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+
+namespace Api.Controllers;
+
+[ApiController]
+[Route("api/meli/cotejo")]
+[Authorize]
+public class MeliCotejoController : ControllerBase
+{
+    private readonly ContabiliumStagingService _staging;
+    private readonly ContabiliumCotejoService _cotejo;
+
+    public MeliCotejoController(ContabiliumStagingService staging, ContabiliumCotejoService cotejo)
+    {
+        _staging = staging;
+        _cotejo = cotejo;
+    }
+
+    // Carga (o re-carga) los excels desde /data/files/base de datos contabilium/.
+    [HttpPost("import-staging")]
+    public async Task<IActionResult> ImportStaging()
+    {
+        try
+        {
+            var result = await _staging.ImportFromDefaultFolderAsync();
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpGet("resumen")]
+    public async Task<IActionResult> Resumen()
+    {
+        return Ok(await _cotejo.ResumenAsync());
+    }
+
+    [HttpGet("listar")]
+    public async Task<IActionResult> Listar(
+        [FromQuery] string categoria = "todos",
+        [FromQuery] string? buscar = null,
+        [FromQuery] int? meliAccountId = null,
+        [FromQuery] int take = 200)
+    {
+        var rows = await _cotejo.ListarAsync(categoria, buscar, meliAccountId, take);
+        return Ok(rows);
+    }
+
+    [HttpGet("combo/{skuCombo}")]
+    public async Task<IActionResult> DetalleCombo(string skuCombo)
+    {
+        var det = await _cotejo.DetalleComboAsync(skuCombo);
+        if (det is null) return NotFound();
+        return Ok(det);
+    }
+}
