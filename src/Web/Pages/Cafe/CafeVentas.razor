@@ -758,12 +758,22 @@
                 @* Cabecera *@
                 <div style="border: 1px solid #d1d5db; padding: 0.85rem;">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem;">
-                        <div style="flex: 1;">
-                            <h2 style="margin: 0; font-size: 1.5rem; font-weight: 800;">@(string.IsNullOrEmpty(settings.NegocioNombre) ? "Café e insumos" : settings.NegocioNombre)</h2>
-                            <div style="font-size: 0.78rem; color: #6b7280; margin-top: 0.2rem; line-height: 1.45;">
-                                @if (!string.IsNullOrEmpty(settings.NegocioDireccion)) { <div>@settings.NegocioDireccion</div> }
-                                @if (!string.IsNullOrEmpty(settings.NegocioTelefono)) { <div>Tel: @settings.NegocioTelefono</div> }
-                                @if (!string.IsNullOrEmpty(settings.NegocioCuit)) { <div>CUIT: @settings.NegocioCuit</div> }
+                        <div style="flex: 1; display: flex; gap: 0.7rem; align-items: flex-start;">
+                            @if (!string.IsNullOrEmpty(settings.NegocioLogoUrl))
+                            {
+                                <img src="@settings.NegocioLogoUrl" alt="Logo"
+                                     style="max-height: 70px; max-width: 130px; object-fit: contain; flex: 0 0 auto;"
+                                     onerror="this.style.display='none'" />
+                            }
+                            <div style="flex: 1;">
+                                <h2 style="margin: 0; font-size: 1.5rem; font-weight: 800;">@(string.IsNullOrEmpty(settings.NegocioNombre) ? "Café e insumos" : settings.NegocioNombre)</h2>
+                                <div style="font-size: 0.78rem; color: #6b7280; margin-top: 0.2rem; line-height: 1.45;">
+                                    @if (!string.IsNullOrEmpty(settings.NegocioDireccion)) { <div>@settings.NegocioDireccion</div> }
+                                    @if (!string.IsNullOrEmpty(settings.NegocioTelefono)) { <div>Tel: @settings.NegocioTelefono</div> }
+                                    @if (!string.IsNullOrEmpty(settings.NegocioEmail)) { <div>@settings.NegocioEmail</div> }
+                                    @if (!string.IsNullOrEmpty(settings.NegocioWeb)) { <div>@settings.NegocioWeb</div> }
+                                    @if (!string.IsNullOrEmpty(settings.NegocioCuit)) { <div>CUIT: @settings.NegocioCuit</div> }
+                                </div>
                             </div>
                         </div>
                         <div style="text-align: right;">
