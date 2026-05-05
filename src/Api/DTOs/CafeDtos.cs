@@ -31,6 +31,7 @@ public class UpdateCafeClienteRequest
 }
 
 // ===== Productos =====
+// Convencion: Pvp1, Pvp2 se guardan SIN IVA. La UI calcula el con-IVA usando IvaPct.
 public record CafeProductoDto(
     int Id, string? Sku, string? Barcode,
     string Nombre, string Categoria, string? Marca,
@@ -41,6 +42,7 @@ public record CafeProductoDto(
     int? OemId, string? OemCodigo,
     decimal StockGramos, int StockUnidades,
     string? Notas, bool IsActive,
+    decimal IvaPct,
     DateTime CreatedAt, DateTime? UpdatedAt);
 
 public class CreateCafeProductoRequest
@@ -61,6 +63,7 @@ public class CreateCafeProductoRequest
     public decimal? StockGramos { get; set; }
     public int? StockUnidades { get; set; }
     public string? Notas { get; set; }
+    public decimal? IvaPct { get; set; }
 }
 
 public class UpdateCafeProductoRequest
@@ -86,6 +89,7 @@ public class UpdateCafeProductoRequest
     public int? StockUnidades { get; set; }
     public string? Notas { get; set; }
     public bool? IsActive { get; set; }
+    public decimal? IvaPct { get; set; }
 }
 
 // ===== Settings =====

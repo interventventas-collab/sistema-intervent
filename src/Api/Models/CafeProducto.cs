@@ -37,11 +37,17 @@ public class CafeProducto
     [Column(TypeName = "decimal(18,2)")]
     public decimal? PrecioPorKg { get; set; }
 
+    /// <summary>PVP 1 — clientes BAR. Se guarda SIN IVA. El precio con IVA se calcula con IvaPct.</summary>
     [Column(TypeName = "decimal(18,2)")]
     public decimal? Pvp1 { get; set; }
 
+    /// <summary>PVP 2 — otros clientes. Se guarda SIN IVA. El precio con IVA se calcula con IvaPct.</summary>
     [Column(TypeName = "decimal(18,2)")]
     public decimal? Pvp2 { get; set; }
+
+    /// <summary>IVA % aplicable al producto. Default 21, opcional 10.5 para alimentos.</summary>
+    [Column(TypeName = "decimal(5,2)")]
+    public decimal IvaPct { get; set; } = 21m;
 
     /// <summary>Solo OTROS: % sobre costo para clientes BAR. NULL = BAR paga PVP (Pvp2).</summary>
     [Column(TypeName = "decimal(7,2)")]

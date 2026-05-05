@@ -104,8 +104,22 @@
                                 <td style="text-align: right;">$@FormatMoney(p.Costo)</td>
                                 @if (esCafe)
                                 {
-                                    <td style="text-align: right; font-weight: 700; color: #1d4ed8;">@(p.Pvp1.HasValue ? "$" + FormatMoney(p.Pvp1.Value) + "/kg" : "—")</td>
-                                    <td style="text-align: right; font-weight: 700; color: #15803d;">@(p.Pvp2.HasValue ? "$" + FormatMoney(p.Pvp2.Value) + "/kg" : "—")</td>
+                                    <td style="text-align: right; font-weight: 700; color: #1d4ed8;">
+                                        @if (p.Pvp1.HasValue)
+                                        {
+                                            <div>$@FormatMoney(p.Pvp1.Value)/kg</div>
+                                            <div style="font-size: 0.7rem; color: #6b7280; font-weight: 500;">c/IVA $@FormatMoney(p.Pvp1ConIva!.Value)</div>
+                                        }
+                                        else { <span>—</span> }
+                                    </td>
+                                    <td style="text-align: right; font-weight: 700; color: #15803d;">
+                                        @if (p.Pvp2.HasValue)
+                                        {
+                                            <div>$@FormatMoney(p.Pvp2.Value)/kg</div>
+                                            <div style="font-size: 0.7rem; color: #6b7280; font-weight: 500;">c/IVA $@FormatMoney(p.Pvp2ConIva!.Value)</div>
+                                        }
+                                        else { <span>—</span> }
+                                    </td>
                                 }
                                 else
                                 {
@@ -113,20 +127,28 @@
                                         @if (p.BarPctSobreCosto.HasValue)
                                         {
                                             var precioBar = p.Costo * (1m + p.BarPctSobreCosto.Value / 100m);
-                                            <span>$@FormatMoney(precioBar)</span>
-                                            <div style="font-size: 0.66rem; color: #6b7280; font-weight: 500;">+@p.BarPctSobreCosto.Value.ToString("0.##")% s/costo</div>
+                                            var precioBarConIva = Math.Round(precioBar * (1 + p.IvaPct / 100m), 2);
+                                            <div>$@FormatMoney(precioBar)</div>
+                                            <div style="font-size: 0.66rem; color: #6b7280; font-weight: 500;">+@p.BarPctSobreCosto.Value.ToString("0.##")% · c/IVA $@FormatMoney(precioBarConIva)</div>
                                         }
                                         else if (p.Pvp2.HasValue)
                                         {
-                                            <span style="color: #6b7280;">$@FormatMoney(p.Pvp2.Value)</span>
-                                            <div style="font-size: 0.66rem; color: #9ca3af; font-weight: 500;">igual a OTRO</div>
+                                            <div style="color: #6b7280;">$@FormatMoney(p.Pvp2.Value)</div>
+                                            <div style="font-size: 0.66rem; color: #9ca3af; font-weight: 500;">igual a OTRO · c/IVA $@FormatMoney(p.Pvp2ConIva!.Value)</div>
                                         }
                                         else
                                         {
                                             <span>—</span>
                                         }
                                     </td>
-                                    <td style="text-align: right; font-weight: 700; color: #15803d;">@(p.Pvp2.HasValue ? "$" + FormatMoney(p.Pvp2.Value) : "—")</td>
+                                    <td style="text-align: right; font-weight: 700; color: #15803d;">
+                                        @if (p.Pvp2.HasValue)
+                                        {
+                                            <div>$@FormatMoney(p.Pvp2.Value)</div>
+                                            <div style="font-size: 0.7rem; color: #6b7280; font-weight: 500;">c/IVA $@FormatMoney(p.Pvp2ConIva!.Value)</div>
+                                        }
+                                        else { <span>—</span> }
+                                    </td>
                                 }
                                 <td style="text-align: right; color: #6b7280; font-size: 0.85rem;">@(esCafe ? "—" : (p.UxB?.ToString() ?? "—"))</td>
                                 <td style="text-align: right; font-weight: 700;">
@@ -244,15 +266,34 @@
                 {
                     <h4 style="margin: 1rem 0 0.5rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase;">☕ Precios por kg</h4>
                     <div class="form-row">
-                        <div class="form-group" style="flex: 1;">
-                            <label class="form-label">PVP 1 — clientes BAR (con IVA, $/kg)</label>
-                            <input class="form-input" type="number" step="0.01" min="0" @bind="formPvp1" />
-                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Precio final por kg que paga el cliente BAR.</p>
+                        <div class="form-group" style="flex: 0 0 130px;">
+                            <label class="form-label">IVA %</label>
+                            <select class="form-input" @bind="formIvaPct">
+                                <option value="21">21%</option>
+                                <option value="10.5">10.5%</option>
+                            </select>
                         </div>
                         <div class="form-group" style="flex: 1;">
-                            <label class="form-label">PVP 2 — otros clientes (con IVA, $/kg)</label>
+                            <label class="form-label">PVP 1 — clientes BAR (sin IVA, $/kg)</label>
+                            <input class="form-input" type="number" step="0.01" min="0" @bind="formPvp1" />
+                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
+                                @if (formPvp1.HasValue)
+                                {
+                                    <span>Con IVA: <b>$@FormatMoney(Math.Round(formPvp1.Value * (1 + formIvaPct / 100m), 2))</b>/kg</span>
+                                }
+                                else { <span>Precio por kg, sin IVA. El con IVA se calcula automáticamente.</span> }
+                            </p>
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">PVP 2 — otros clientes (sin IVA, $/kg)</label>
                             <input class="form-input" type="number" step="0.01" min="0" @bind="formPvp2" />
-                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Precio final por kg que paga el cliente OTRO.</p>
+                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
+                                @if (formPvp2.HasValue)
+                                {
+                                    <span>Con IVA: <b>$@FormatMoney(Math.Round(formPvp2.Value * (1 + formIvaPct / 100m), 2))</b>/kg</span>
+                                }
+                                else { <span>Precio por kg, sin IVA. El con IVA se calcula automáticamente.</span> }
+                            </p>
                         </div>
                     </div>
                     <div class="form-group">
@@ -331,10 +372,23 @@
 
                     <h4 style="margin: 1rem 0 0.5rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase;">📦 Precios</h4>
                     <div class="form-row">
+                        <div class="form-group" style="flex: 0 0 130px;">
+                            <label class="form-label">IVA %</label>
+                            <select class="form-input" @bind="formIvaPct">
+                                <option value="21">21%</option>
+                                <option value="10.5">10.5%</option>
+                            </select>
+                        </div>
                         <div class="form-group" style="flex: 2;">
-                            <label class="form-label">PVP SUGERIDO POR PROVEEDOR (con IVA, $) *</label>
+                            <label class="form-label">PVP SUGERIDO POR PROVEEDOR (sin IVA, $) *</label>
                             <input class="form-input" type="number" step="0.01" min="0" @bind="formPvp2" />
-                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Precio de lista, IVA incluido. Obligatorio. Lo paga el cliente OTRO.</p>
+                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
+                                @if (formPvp2.HasValue)
+                                {
+                                    <span>Con IVA: <b>$@FormatMoney(Math.Round(formPvp2.Value * (1 + formIvaPct / 100m), 2))</b></span>
+                                }
+                                else { <span>Precio de lista sin IVA. Obligatorio. Lo paga el cliente OTRO.</span> }
+                            </p>
                         </div>
                         <div class="form-group" style="flex: 1;">
                             <label class="form-label">UxB</label>
@@ -431,6 +485,7 @@
     private decimal formCosto;
     private decimal? formPvp1;
     private decimal? formPvp2;
+    private decimal formIvaPct = 21m;
     private decimal? formBarPct;     // % sobre costo (solo OTROS); null = BAR paga PVP
     private int? formUxB;             // unidades por bulto (solo OTROS)
     /// <summary>UX: el usuario SIEMPRE carga stock de cafe en kg. Internamente guardamos gramos.</summary>
@@ -542,7 +597,13 @@
         var o = oems?.FirstOrDefault(x => x.Id == formOemId);
         if (o is null) return;
         formCosto = o.Costo;
-        if (o.PvpConIva.HasValue) formPvp2 = o.PvpConIva.Value;
+        // OEM guarda PVP con IVA — convertimos a sin IVA para alinear con la convencion del producto.
+        if (o.PvpConIva.HasValue)
+        {
+            var iva = o.IvaPct ?? 21m;
+            formPvp2 = iva > 0 ? Math.Round(o.PvpConIva.Value / (1 + iva / 100m), 2) : o.PvpConIva.Value;
+            formIvaPct = iva == 10.5m ? 10.5m : 21m;
+        }
         if (o.UxB.HasValue) formUxB = o.UxB.Value;
         if (!string.IsNullOrWhiteSpace(o.Barcode)) formBarcode = o.Barcode;
     }
@@ -553,6 +614,7 @@
         formNombre = ""; formSku = ""; formBarcode = "";
         formCategoria = "CAFE"; formMarca = "";
         formCosto = 0; formPvp1 = null; formPvp2 = null;
+        formIvaPct = 21m;
         formBarPct = 100m; formUxB = null;
         formOemId = 0; oemSearch = ""; oemSearchOpen = false;
         formStockGramos = 0; formStockUnidades = 0;
@@ -567,6 +629,7 @@
         formNombre = p.Nombre; formSku = p.Sku ?? ""; formBarcode = p.Barcode ?? "";
         formCategoria = p.Categoria; formMarca = p.Marca ?? "";
         formCosto = p.Costo; formPvp1 = p.Pvp1; formPvp2 = p.Pvp2;
+        formIvaPct = p.IvaPct == 10.5m ? 10.5m : 21m;
         formBarPct = p.BarPctSobreCosto;
         formUxB = p.UxB;
         formOemId = p.OemId ?? 0; oemSearch = ""; oemSearchOpen = false;
@@ -630,7 +693,8 @@
                     OemId = oemIdFinal, ClearOemId = clearOemId,
                     StockGramos = stockGramosFinal,
                     StockUnidades = formCategoria == "OTROS" ? formStockUnidades : 0,
-                    Notas = formNotas, IsActive = formIsActive
+                    Notas = formNotas, IsActive = formIsActive,
+                    IvaPct = formIvaPct
                 });
                 if (u is null) { formError = "No se pudo actualizar"; return; }
                 ToastService.Success("Producto actualizado");
@@ -650,7 +714,8 @@
                     OemId = oemIdFinal,
                     StockGramos = stockGramosFinal,
                     StockUnidades = formCategoria == "OTROS" ? formStockUnidades : 0,
-                    Notas = formNotas
+                    Notas = formNotas,
+                    IvaPct = formIvaPct
                 });
                 if (c is null) { formError = "No se pudo crear"; return; }
                 ToastService.Success("Producto creado");

@@ -61,8 +61,13 @@ public class CafeProductoDto
     public int StockUnidades { get; set; }
     public string? Notas { get; set; }
     public bool IsActive { get; set; }
+    public decimal IvaPct { get; set; } = 21m;
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
+
+    // Calculados — Pvp1/Pvp2 se guardan SIN IVA. Multiplicar por (1 + IvaPct/100) da el con IVA.
+    public decimal? Pvp1ConIva => Pvp1.HasValue ? Math.Round(Pvp1.Value * (1 + IvaPct / 100m), 2) : null;
+    public decimal? Pvp2ConIva => Pvp2.HasValue ? Math.Round(Pvp2.Value * (1 + IvaPct / 100m), 2) : null;
 }
 
 public class CreateCafeProductoRequest
@@ -83,6 +88,7 @@ public class CreateCafeProductoRequest
     public decimal? StockGramos { get; set; }
     public int? StockUnidades { get; set; }
     public string? Notas { get; set; }
+    public decimal? IvaPct { get; set; }
 }
 
 public class UpdateCafeProductoRequest
@@ -108,6 +114,7 @@ public class UpdateCafeProductoRequest
     public int? StockUnidades { get; set; }
     public string? Notas { get; set; }
     public bool? IsActive { get; set; }
+    public decimal? IvaPct { get; set; }
 }
 
 public class CafeSettingDto

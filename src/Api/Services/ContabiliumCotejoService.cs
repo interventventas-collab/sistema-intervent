@@ -307,6 +307,16 @@ public class ContabiliumCotejoService
                     continue;
                 }
 
+                // Convencion: Pvp1/Pvp2 se guardan SIN IVA. En Contabilium "Precio" es sin IVA
+                // y "PrecioFinal" es con IVA. Si "Precio" viene null usamos PrecioFinal/(1+iva/100).
+                decimal? pvpSinIva = contab.Precio;
+                if (pvpSinIva is null && contab.PrecioFinal.HasValue)
+                {
+                    var ivaFrac = (contab.Iva ?? 21m) / 100m;
+                    pvpSinIva = ivaFrac > 0 ? Math.Round(contab.PrecioFinal.Value / (1 + ivaFrac), 2) : contab.PrecioFinal;
+                }
+                var ivaProd = (contab.Iva.HasValue && contab.Iva.Value == 10.5m) ? 10.5m : 21m;
+
                 producto = new CafeProducto
                 {
                     Sku = sku,
@@ -316,7 +326,8 @@ public class ContabiliumCotejoService
                     MarcaId = req.MarcaId,
                     Marca = marcaNombre, // texto legacy, igual a la marca elegida
                     Costo = contab.CostoInterno ?? 0m,
-                    Pvp1 = contab.PrecioFinal,
+                    Pvp2 = pvpSinIva,
+                    IvaPct = ivaProd,
                     StockUnidades = (int)Math.Round(contab.Stock ?? 0m),
                     StockGramos = 0m,
                     Notas = string.IsNullOrWhiteSpace(contab.Proveedor) ? null : $"Proveedor Contabilium: {contab.Proveedor}",

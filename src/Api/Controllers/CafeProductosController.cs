@@ -26,7 +26,7 @@ public class CafeProductosController : ControllerBase
         p.BarPctSobreCosto, p.UxB,
         p.OemId, p.OemNav?.Codigo,
         p.StockGramos, p.StockUnidades,
-        p.Notas, p.IsActive, p.CreatedAt, p.UpdatedAt);
+        p.Notas, p.IsActive, p.IvaPct, p.CreatedAt, p.UpdatedAt);
 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] string? categoria = null)
@@ -82,6 +82,7 @@ public class CafeProductosController : ControllerBase
             StockGramos = Math.Max(0m, req.StockGramos ?? 0m),
             StockUnidades = Math.Max(0, req.StockUnidades ?? 0),
             Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim(),
+            IvaPct = NormalizeIva(req.IvaPct),
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
@@ -142,6 +143,7 @@ public class CafeProductosController : ControllerBase
         if (req.StockUnidades.HasValue) p.StockUnidades = Math.Max(0, req.StockUnidades.Value);
         if (req.Notas is not null) p.Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim();
         if (req.IsActive.HasValue) p.IsActive = req.IsActive.Value;
+        if (req.IvaPct.HasValue) p.IvaPct = NormalizeIva(req.IvaPct);
         p.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         var saved = await _db.CafeProductos.Include(x => x.OemNav).Include(x => x.MarcaNav).FirstAsync(x => x.Id == p.Id);
@@ -184,5 +186,14 @@ public class CafeProductosController : ControllerBase
         if (string.IsNullOrWhiteSpace(c)) return "CAFE";
         var v = c.Trim().ToUpperInvariant();
         return CategoriasValidas.Contains(v) ? v : "CAFE";
+    }
+
+    // IVA permitido: 21 (default) o 10.5. Cualquier otro valor cae a 21.
+    private static decimal NormalizeIva(decimal? iva)
+    {
+        if (!iva.HasValue) return 21m;
+        var v = iva.Value;
+        if (v == 10.5m) return 10.5m;
+        return 21m;
     }
 }

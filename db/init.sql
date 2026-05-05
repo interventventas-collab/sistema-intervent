@@ -2226,6 +2226,12 @@ IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_CafeProductos_OemId' A
     CREATE INDEX IX_CafeProductos_OemId ON Cafe_Productos(OemId);
 GO
 
+-- Cafe_Productos: IVA % por producto. Default 21%, opcional 10.5% para alimentos.
+-- Convencion: Pvp1 y Pvp2 se guardan SIN IVA. El precio con IVA se calcula al mostrar.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'IvaPct' AND Object_ID = Object_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD IvaPct DECIMAL(5,2) NOT NULL DEFAULT 21;
+GO
+
 -- =============================================================================
 -- Contabilium: tablas de staging para cotejo SKU MeLi <-> Contabilium.
 -- Solo guardan lo descargado de los Excels. Las tablas reales (Products, Combos)
