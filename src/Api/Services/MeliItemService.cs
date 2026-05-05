@@ -553,7 +553,8 @@ public class MeliItemService
         var http = _httpFactory.CreateClient();
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-        var response = await http.GetAsync($"https://api.mercadolibre.com/items/{meliItemId}");
+        // include_attributes=all expone atributos como SELLER_SKU que el endpoint default oculta.
+        var response = await http.GetAsync($"https://api.mercadolibre.com/items/{meliItemId}?include_attributes=all");
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             throw new Exception($"La publicacion {meliItemId} no existe en MercadoLibre.");
         if (!response.IsSuccessStatusCode)
@@ -754,7 +755,8 @@ public class MeliItemService
             var batch = allItemIds.Skip(i).Take(20).ToList();
             var idsParam = string.Join(",", batch);
 
-            var response = await http.GetAsync($"https://api.mercadolibre.com/items?ids={idsParam}");
+            // include_attributes=all expone SELLER_SKU (a nivel item y variantes).
+            var response = await http.GetAsync($"https://api.mercadolibre.com/items?ids={idsParam}&include_attributes=all");
             if (!response.IsSuccessStatusCode)
                 continue;
 
