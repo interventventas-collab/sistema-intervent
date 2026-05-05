@@ -39,7 +39,7 @@
         @if (HasPerm("cafe"))
         {
             <NavGroup Label="Ventas por fuera" Icon="@SvgIcons.Brand"
-                      HasActiveChild="@(IsActive("/cafe") || IsActive("/cafe/ventas") || IsActive("/cafe/productos") || IsActive("/cafe/combos") || IsActive("/cafe/oems") || IsActive("/cafe/clientes") || IsActive("/cafe/configuracion") || IsActive("/cafe/compras") || IsActive("/cafe/proveedores") || IsActive("/cafe/marcas") || IsActive("/cafe/listas-precios") || IsActive("/cafe/consultas") || IsActive("/cafe/cotejo") || IsActive("/cafe/descuentos"))">
+                      HasActiveChild="@(IsActive("/cafe") || IsActive("/cafe/ventas") || IsActive("/cafe/productos") || IsActive("/cafe/combos") || IsActive("/cafe/oems") || IsActive("/cafe/clientes") || IsActive("/cafe/configuracion") || IsActive("/cafe/compras") || IsActive("/cafe/proveedores") || IsActive("/cafe/marcas") || IsActive("/cafe/listas-precios") || IsActive("/cafe/consultas") || IsActive("/cafe/cotejo") || IsActive("/cafe/descuentos") || IsActive("/cafe/kits"))">
                 <NavItem Href="/cafe" Label="Inicio" Icon="@SvgIcons.Dashboard"
                          IsActive="@IsActive("/cafe")" OnClick="@(() => NavigateTo("/cafe"))" />
                 <NavItem Href="/cafe/consultas" Label="Consultas" Icon="@SvgIcons.Tag"
@@ -58,6 +58,8 @@
                          IsActive="@IsActive("/cafe/productos")" OnClick="@(() => NavigateTo("/cafe/productos"))" />
                 <NavItem Href="/cafe/combos" Label="Combos" Icon="@SvgIcons.Package"
                          IsActive="@IsActive("/cafe/combos")" OnClick="@(() => NavigateTo("/cafe/combos"))" />
+                <NavItem Href="/cafe/kits" Label="Kits" Icon="@SvgIcons.Package"
+                         IsActive="@IsActive("/cafe/kits")" OnClick="@(() => NavigateTo("/cafe/kits"))" />
                 <NavItem Href="/cafe/oems" Label="OEMs" Icon="@SvgIcons.Tag"
                          IsActive="@IsActive("/cafe/oems")" OnClick="@(() => NavigateTo("/cafe/oems"))" />
                 <NavItem Href="/cafe/marcas" Label="Marcas" Icon="@SvgIcons.Tag"
@@ -556,6 +558,7 @@
         { "cafe/descuentos", "cafe" },
         { "cafe/productos", "cafe" },
         { "cafe/combos", "cafe" },
+        { "cafe/kits", "cafe" },
         { "cafe/oems", "cafe" },
         { "cafe/clientes", "cafe" },
         { "cafe/configuracion", "cafe" },

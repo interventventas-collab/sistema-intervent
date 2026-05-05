@@ -1,0 +1,466 @@
+@page "/cafe/kits"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div class="card">
+    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+        <h3>🧰 Kits <span style="font-weight:500; font-size:0.85rem; color:#6b7280;">(@(kits?.Count ?? 0))</span></h3>
+        <div style="display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
+            <input class="form-input" style="min-width:240px; font-size:0.85rem;"
+                   @bind="filtroTexto" @bind:event="oninput"
+                   placeholder="🔍 SKU o nombre..." />
+            <button class="btn btn-secondary" @onclick="Load" disabled="@isBusy">Refrescar</button>
+            <button class="btn btn-primary" @onclick="ShowCreate">+ Nuevo Kit</button>
+        </div>
+    </div>
+    <div class="card-body" style="padding:0;">
+        @if (kits is null)
+        {
+            <p style="padding:1.5rem; color:#6b7280;">Cargando...</p>
+        }
+        else if (kitsVisibles.Count == 0)
+        {
+            <p style="padding:1.5rem; color:#6b7280;">
+                No hay kits cargados. Podés crearlos desde la pantalla de <a href="/cafe/cotejo">Cotejo MeLi</a>
+                (botón "Crear N kit(s)") o tocando <strong>"+ Nuevo Kit"</strong> arriba.
+            </p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="data-table" style="font-size:0.88rem;">
+                    <thead>
+                        <tr>
+                            <th style="width:120px;">SKU</th>
+                            <th>Nombre</th>
+                            <th>Marca</th>
+                            <th>Componentes</th>
+                            <th style="text-align:right;" title="Suma de los costos de los componentes">Costo s/IVA</th>
+                            <th style="text-align:right;">PVP s/IVA</th>
+                            <th style="text-align:right;" title="MIN(stock componente / cantidad)">Stock virtual</th>
+                            <th style="width:120px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var k in kitsVisibles)
+                    {
+                        <tr style="@(!k.IsActive ? "opacity:0.5;" : "")">
+                            <td><code style="font-size:0.82rem;">@k.Sku</code></td>
+                            <td><strong>@k.Nombre</strong></td>
+                            <td><span style="font-size:0.78rem; color:#6b7280;">@(k.MarcaNombre ?? k.Marca ?? "—")</span></td>
+                            <td style="font-size:0.8rem;">
+                                @foreach (var i in k.Items)
+                                {
+                                    <div>
+                                        <code>@i.ProductoSku</code> ×@FormatCantidad(i.Cantidad)
+                                        <span style="color:#6b7280; font-size:0.75rem;"> (stock @i.ProductoStock → @i.KitsPosibles kits)</span>
+                                    </div>
+                                }
+                            </td>
+                            <td style="text-align:right;">$@FormatMoney(k.CostoCalculado)</td>
+                            <td style="text-align:right; font-weight:700; color:#15803d;">
+                                @if (k.Pvp2.HasValue)
+                                {
+                                    <div>$@FormatMoney(k.Pvp2.Value)</div>
+                                    <div style="font-size:0.7rem; color:#6b7280; font-weight:500;">c/IVA $@FormatMoney(k.Pvp2ConIva!.Value)</div>
+                                }
+                                else { <span>—</span> }
+                            </td>
+                            <td style="text-align:right; font-weight:700; color:#1d4ed8;">@k.StockVirtual</td>
+                            <td>
+                                <button class="btn btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.78rem;"
+                                        @onclick="() => ShowEdit(k)">Editar</button>
+                                <button class="btn btn-danger" style="padding:0.2rem 0.5rem; font-size:0.78rem;"
+                                        @onclick="() => AskDelete(k)">🗑</button>
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@if (showForm)
+{
+    <div class="modal-overlay" @onclick="CloseForm">
+        <div class="modal-card" style="max-width:760px;" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>@(isEditing ? "Editar Kit" : "Nuevo Kit")</h3>
+                <button class="btn-close" @onclick="CloseForm">×</button>
+            </div>
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(formError))
+                {
+                    <div class="form-error">@formError</div>
+                }
+
+                <div class="form-row">
+                    <div class="form-group" style="flex:1;">
+                        <label class="form-label">SKU *</label>
+                        <input class="form-input" @bind="formSku" disabled="@isEditing" />
+                    </div>
+                    <div class="form-group" style="flex:2;">
+                        <label class="form-label">Nombre *</label>
+                        <input class="form-input" @bind="formNombre" />
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group" style="flex:1;">
+                        <label class="form-label">Categoría</label>
+                        <select class="form-input" @bind="formCategoria">
+                            <option value="OTROS">📦 Otros</option>
+                            <option value="CAFE">☕ Café</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex:2;">
+                        <label class="form-label">Marca</label>
+                        <select class="form-input" @bind="formMarcaIdStr">
+                            <option value="">— Sin marca —</option>
+                            @if (marcas is not null)
+                            {
+                                @foreach (var m in marcas.OrderBy(x => x.Nombre))
+                                {
+                                    <option value="@m.Id">@m.Nombre</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group" style="flex:0 0 130px;">
+                        <label class="form-label">IVA %</label>
+                        <select class="form-input" @bind="formIvaPctStr">
+                            <option value="21">21%</option>
+                            <option value="10.5">10.5%</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex:1;">
+                        <label class="form-label">PVP (sin IVA, $)</label>
+                        <input class="form-input" type="number" step="0.01" min="0" @bind="formPvp2" />
+                        <p style="font-size:0.7rem; color:#6b7280; margin:0.2rem 0 0;">
+                            @if (formPvp2.HasValue)
+                            {
+                                <span>Con IVA: <b>$@FormatMoney(Math.Round(formPvp2.Value * (1 + ParseIva(formIvaPctStr) / 100m), 2))</b></span>
+                            }
+                            else { <span>Precio que paga el cliente. El con IVA se calcula automáticamente.</span> }
+                        </p>
+                    </div>
+                </div>
+
+                <h4 style="margin:1rem 0 0.5rem; color:#6b7280; font-size:0.85rem; text-transform:uppercase;">📦 Componentes del kit</h4>
+
+                @if (formItems.Count == 0)
+                {
+                    <div style="padding:0.8rem; text-align:center; color:#9ca3af; font-size:0.9rem; background:#f9fafb; border-radius:6px;">
+                        Sin componentes. Agregá productos abajo.
+                    </div>
+                }
+                else
+                {
+                    <table class="data-table" style="font-size:0.85rem;">
+                        <thead>
+                            <tr>
+                                <th>Componente</th>
+                                <th style="width:130px; text-align:right;">Cantidad</th>
+                                <th style="width:50px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var i in formItems)
+                        {
+                            var capturado = i;
+                            var prod = productosCatalogo?.FirstOrDefault(p => p.Id == i.ProductoId);
+                            <tr>
+                                <td>
+                                    @if (prod is not null)
+                                    {
+                                        <div><code>@prod.Sku</code> <span>· @prod.Nombre</span></div>
+                                        <div style="font-size:0.72rem; color:#6b7280;">stock actual: @prod.StockUnidades</div>
+                                    }
+                                    else
+                                    {
+                                        <span style="color:#b91c1c;">Producto Id @i.ProductoId no encontrado</span>
+                                    }
+                                </td>
+                                <td>
+                                    <input class="form-input" type="number" step="0.001" min="0.001"
+                                           value="@capturado.Cantidad"
+                                           @oninput="@((ChangeEventArgs e) => UpdateCantidad(capturado, e.Value?.ToString()))"
+                                           style="text-align:right;" />
+                                </td>
+                                <td>
+                                    <button class="btn btn-danger" style="padding:0.2rem 0.4rem; font-size:0.8rem;"
+                                            @onclick="() => formItems.Remove(capturado)">×</button>
+                                </td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                }
+
+                <div style="display:flex; gap:0.5rem; margin-top:0.6rem; align-items:center;">
+                    <select class="form-input" @bind="formAddProductoId" style="flex:1;">
+                        <option value="0">— Elegí un producto —</option>
+                        @if (productosCatalogo is not null)
+                        {
+                            @foreach (var p in productosCatalogo
+                                .Where(p => p.IsActive && !formItems.Any(fi => fi.ProductoId == p.Id))
+                                .OrderBy(p => p.Sku))
+                            {
+                                <option value="@p.Id">@p.Sku · @p.Nombre</option>
+                            }
+                        }
+                    </select>
+                    <input class="form-input" type="number" step="0.001" min="0.001"
+                           @bind="formAddCantidad" style="max-width:120px; text-align:right;" />
+                    <button class="btn btn-primary" @onclick="AddComponente"
+                            disabled="@(formAddProductoId <= 0)">+ Agregar</button>
+                </div>
+
+                <div class="form-group" style="margin-top:0.8rem;">
+                    <label class="form-label">Notas</label>
+                    <input class="form-input" @bind="formNotas" placeholder="Notas internas (opcional)" />
+                </div>
+
+                @if (isEditing)
+                {
+                    <div class="form-group" style="margin-top:0.5rem;">
+                        <label style="display:flex; gap:0.4rem; align-items:center;">
+                            <input type="checkbox" @bind="formIsActive" />
+                            <span>Kit activo</span>
+                        </label>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseForm" disabled="@isBusy">Cancelar</button>
+                <button class="btn btn-primary" @onclick="Save" disabled="@isBusy">
+                    @(isBusy ? "Guardando..." : "Guardar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showDeleteConfirm && toDelete is not null)
+{
+    <div class="modal-overlay" @onclick="() => showDeleteConfirm = false">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header"><h3>Eliminar kit</h3></div>
+            <div class="modal-body">
+                ¿Eliminar el kit <strong>@toDelete.Sku — @toDelete.Nombre</strong>?
+                <div style="font-size:0.8rem; color:#6b7280; margin-top:0.3rem;">
+                    Si está vinculado a publicaciones de MeLi, se desactiva en lugar de eliminar.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showDeleteConfirm = false">Cancelar</button>
+                <button class="btn btn-danger" @onclick="DoDelete">Eliminar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<CafeKitDto>? kits;
+    private List<CafeMarcaDto>? marcas;
+    private List<CafeProductoDto>? productosCatalogo;
+    private string filtroTexto = "";
+    private bool isBusy;
+
+    private bool showForm;
+    private bool isEditing;
+    private int? editingId;
+    private string? formError;
+
+    private string formSku = "";
+    private string formNombre = "";
+    private string formCategoria = "OTROS";
+    private string formMarcaIdStr = "";
+    private string formIvaPctStr = "21";
+    private decimal? formPvp2;
+    private string formNotas = "";
+    private bool formIsActive = true;
+    private List<CafeKitItemRequest> formItems = new();
+    private int formAddProductoId;
+    private decimal formAddCantidad = 1m;
+
+    private bool showDeleteConfirm;
+    private CafeKitDto? toDelete;
+
+    private List<CafeKitDto> kitsVisibles
+    {
+        get
+        {
+            if (kits is null) return new();
+            if (string.IsNullOrWhiteSpace(filtroTexto)) return kits;
+            var t = filtroTexto.Trim().ToLower();
+            return kits.Where(k =>
+                k.Sku.ToLower().Contains(t) ||
+                k.Nombre.ToLower().Contains(t)
+            ).ToList();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.WhenAll(Load(), LoadMarcas(), LoadProductos());
+    }
+
+    private async Task Load()
+    {
+        try { kits = await Api.GetCafeKitsAsync(); }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task LoadMarcas()
+    {
+        try { marcas = await Api.GetCafeMarcasAsync(activos: true); }
+        catch { }
+    }
+
+    private async Task LoadProductos()
+    {
+        try { productosCatalogo = await Api.GetCafeProductosAsync(); }
+        catch { }
+    }
+
+    private void ShowCreate()
+    {
+        isEditing = false; editingId = null;
+        formSku = ""; formNombre = ""; formCategoria = "OTROS";
+        formMarcaIdStr = ""; formIvaPctStr = "21";
+        formPvp2 = null; formNotas = "";
+        formIsActive = true;
+        formItems.Clear();
+        formAddProductoId = 0; formAddCantidad = 1m;
+        formError = null; showForm = true;
+    }
+
+    private void ShowEdit(CafeKitDto k)
+    {
+        isEditing = true; editingId = k.Id;
+        formSku = k.Sku; formNombre = k.Nombre;
+        formCategoria = k.Categoria;
+        formMarcaIdStr = k.MarcaId?.ToString() ?? "";
+        formIvaPctStr = k.IvaPct == 10.5m ? "10.5" : "21";
+        formPvp2 = k.Pvp2;
+        formNotas = k.Notas ?? "";
+        formIsActive = k.IsActive;
+        formItems = k.Items.Select(i => new CafeKitItemRequest
+        {
+            Id = i.Id,
+            ProductoId = i.ProductoId,
+            Cantidad = i.Cantidad
+        }).ToList();
+        formAddProductoId = 0; formAddCantidad = 1m;
+        formError = null; showForm = true;
+    }
+
+    private void CloseForm() { showForm = false; formError = null; }
+
+    private void AddComponente()
+    {
+        if (formAddProductoId <= 0 || formAddCantidad <= 0) return;
+        if (formItems.Any(i => i.ProductoId == formAddProductoId)) return;
+        formItems.Add(new CafeKitItemRequest
+        {
+            ProductoId = formAddProductoId,
+            Cantidad = formAddCantidad
+        });
+        formAddProductoId = 0; formAddCantidad = 1m;
+    }
+
+    private void UpdateCantidad(CafeKitItemRequest item, string? raw)
+    {
+        if (decimal.TryParse(raw, System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var v) && v > 0)
+            item.Cantidad = v;
+        else if (decimal.TryParse(raw, out var v2) && v2 > 0)
+            item.Cantidad = v2;
+    }
+
+    private async Task Save()
+    {
+        formError = null;
+        if (string.IsNullOrWhiteSpace(formSku)) { formError = "El SKU es obligatorio"; return; }
+        if (string.IsNullOrWhiteSpace(formNombre)) { formError = "El nombre es obligatorio"; return; }
+        if (formItems.Count == 0) { formError = "Agregá al menos un componente"; return; }
+
+        int? marcaId = null;
+        if (int.TryParse(formMarcaIdStr, out var mid)) marcaId = mid;
+        decimal iva = ParseIva(formIvaPctStr);
+
+        isBusy = true;
+        try
+        {
+            if (isEditing && editingId.HasValue)
+            {
+                var u = await Api.UpdateCafeKitAsync(editingId.Value, new UpdateCafeKitRequest
+                {
+                    Sku = formSku,
+                    Nombre = formNombre,
+                    Categoria = formCategoria,
+                    MarcaId = marcaId,
+                    ClearMarcaId = marcaId is null,
+                    IvaPct = iva,
+                    Pvp2 = formPvp2,
+                    Notas = formNotas,
+                    IsActive = formIsActive,
+                    Items = formItems
+                });
+                if (u is null) { formError = "No se pudo actualizar"; return; }
+                ToastService.Success("Kit actualizado");
+            }
+            else
+            {
+                var c = await Api.CreateCafeKitAsync(new CreateCafeKitRequest
+                {
+                    Sku = formSku,
+                    Nombre = formNombre,
+                    Categoria = formCategoria,
+                    MarcaId = marcaId,
+                    IvaPct = iva,
+                    Pvp2 = formPvp2,
+                    Notas = formNotas,
+                    Items = formItems
+                });
+                if (c is null) { formError = "No se pudo crear"; return; }
+                ToastService.Success("Kit creado");
+            }
+            showForm = false;
+            await Load();
+        }
+        catch (Exception ex) { formError = ex.Message; }
+        finally { isBusy = false; }
+    }
+
+    private void AskDelete(CafeKitDto k) { toDelete = k; showDeleteConfirm = true; }
+
+    private async Task DoDelete()
+    {
+        if (toDelete is null) return;
+        try
+        {
+            await Api.DeleteCafeKitAsync(toDelete.Id);
+            ToastService.Success("Kit eliminado / desactivado");
+            await Load();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { showDeleteConfirm = false; toDelete = null; }
+    }
+
+    private static decimal ParseIva(string s) =>
+        decimal.Parse(s, System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string FormatMoney(decimal v) =>
+        v.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+
+    private static string FormatCantidad(decimal v) =>
+        v == Math.Floor(v) ? ((int)v).ToString() : v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+}

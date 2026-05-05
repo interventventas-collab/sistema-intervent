@@ -540,6 +540,25 @@ public class ApiClient
     public async Task<CrearKitsCotejoResultDto?> CrearKitsCotejoAsync(CrearKitsCotejoRequest req)
         => await PostAsync<CrearKitsCotejoResultDto>("/api/meli/cotejo/crear-kits", req);
 
+    // --- Kits (productos compuestos / BOM) ---
+    public async Task<List<CafeKitDto>?> GetCafeKitsAsync(bool? activos = null, string? categoria = null)
+    {
+        var qs = new List<string>();
+        if (activos == true) qs.Add("activos=true");
+        if (!string.IsNullOrWhiteSpace(categoria)) qs.Add($"categoria={Uri.EscapeDataString(categoria)}");
+        var url = "/api/cafe/kits" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+        return await GetAsync<List<CafeKitDto>>(url);
+    }
+
+    public async Task<CafeKitDto?> CreateCafeKitAsync(CreateCafeKitRequest req)
+        => await PostAsync<CafeKitDto>("/api/cafe/kits", req);
+
+    public async Task<CafeKitDto?> UpdateCafeKitAsync(int id, UpdateCafeKitRequest req)
+        => await PutAsync<CafeKitDto>($"/api/cafe/kits/{id}", req);
+
+    public async Task<bool> DeleteCafeKitAsync(int id)
+        => await DeleteAsync($"/api/cafe/kits/{id}");
+
     // --- Descuentos por canal x marca ---
     public async Task<CafeDescuentoGrillaResponse?> GetDescuentosGrillaAsync()
         => await GetAsync<CafeDescuentoGrillaResponse>("/api/cafe/descuentos/grilla");

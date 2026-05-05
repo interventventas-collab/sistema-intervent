@@ -666,6 +666,81 @@ public class UpdateCafeMarcaRequest
     public bool? BloqueaDescuento { get; set; }
 }
 
+// === Kits (productos compuestos / BOM) ===
+public class CafeKitDto
+{
+    public int Id { get; set; }
+    public string Sku { get; set; } = "";
+    public string Nombre { get; set; } = "";
+    public string? Descripcion { get; set; }
+    public string Categoria { get; set; } = "OTROS";
+    public string? Marca { get; set; }
+    public int? MarcaId { get; set; }
+    public string? MarcaNombre { get; set; }
+    public decimal? Pvp1 { get; set; }
+    public decimal? Pvp2 { get; set; }
+    public decimal IvaPct { get; set; } = 21m;
+    public string? Notas { get; set; }
+    public bool IsActive { get; set; } = true;
+    public int StockVirtual { get; set; }
+    public decimal CostoCalculado { get; set; }
+    public List<CafeKitItemDto> Items { get; set; } = new();
+    public DateTime CreatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+
+    public decimal? Pvp2ConIva => Pvp2.HasValue ? Math.Round(Pvp2.Value * (1 + IvaPct / 100m), 2) : null;
+}
+
+public class CafeKitItemDto
+{
+    public int Id { get; set; }
+    public int ProductoId { get; set; }
+    public string? ProductoSku { get; set; }
+    public string ProductoNombre { get; set; } = "";
+    public int ProductoStock { get; set; }
+    public decimal Cantidad { get; set; }
+    public int KitsPosibles { get; set; }
+}
+
+public class CafeKitItemRequest
+{
+    public int? Id { get; set; }
+    public int ProductoId { get; set; }
+    public decimal Cantidad { get; set; } = 1m;
+}
+
+public class CreateCafeKitRequest
+{
+    public string Sku { get; set; } = "";
+    public string Nombre { get; set; } = "";
+    public string? Descripcion { get; set; }
+    public string Categoria { get; set; } = "OTROS";
+    public string? Marca { get; set; }
+    public int? MarcaId { get; set; }
+    public decimal? Pvp1 { get; set; }
+    public decimal? Pvp2 { get; set; }
+    public decimal? IvaPct { get; set; }
+    public string? Notas { get; set; }
+    public List<CafeKitItemRequest> Items { get; set; } = new();
+}
+
+public class UpdateCafeKitRequest
+{
+    public string? Sku { get; set; }
+    public string? Nombre { get; set; }
+    public string? Descripcion { get; set; }
+    public string? Categoria { get; set; }
+    public string? Marca { get; set; }
+    public int? MarcaId { get; set; }
+    public bool ClearMarcaId { get; set; }
+    public decimal? Pvp1 { get; set; }
+    public decimal? Pvp2 { get; set; }
+    public decimal? IvaPct { get; set; }
+    public string? Notas { get; set; }
+    public bool? IsActive { get; set; }
+    public List<CafeKitItemRequest>? Items { get; set; }
+}
+
 public class CafeHistorialPrecioDto
 {
     public int Id { get; set; }
