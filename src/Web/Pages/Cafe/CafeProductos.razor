@@ -47,9 +47,9 @@
                             <th>Nombre</th>
                             <th>Categoría</th>
                             <th>Marca</th>
-                            <th style="text-align: right;">Costo</th>
-                            <th style="text-align: right;">PVP BAR</th>
-                            <th style="text-align: right;">PVP OTRO</th>
+                            <th style="text-align: right;" title="Sin IVA">Costo s/IVA</th>
+                            <th style="text-align: right;" title="Con IVA">PVP BAR c/IVA</th>
+                            <th style="text-align: right;" title="Con IVA">PVP OTRO c/IVA</th>
                             <th style="text-align: right; width: 70px;">UxB</th>
                             <th style="text-align: right;">Stock</th>
                             <th>Estado</th>
@@ -234,8 +234,9 @@
                         }
                     </div>
                     <div class="form-group" style="flex: 1;">
-                        <label class="form-label">Costo ($)</label>
+                        <label class="form-label">Costo (sin IVA) ($)</label>
                         <input class="form-input" type="number" step="0.01" min="0" @bind="formCosto" />
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Costo interno del producto, sin IVA.</p>
                     </div>
                 </div>
 
@@ -244,12 +245,14 @@
                     <h4 style="margin: 1rem 0 0.5rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase;">☕ Precios por kg</h4>
                     <div class="form-row">
                         <div class="form-group" style="flex: 1;">
-                            <label class="form-label">PVP 1 — clientes BAR ($/kg)</label>
+                            <label class="form-label">PVP 1 — clientes BAR (con IVA, $/kg)</label>
                             <input class="form-input" type="number" step="0.01" min="0" @bind="formPvp1" />
+                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Precio final por kg que paga el cliente BAR.</p>
                         </div>
                         <div class="form-group" style="flex: 1;">
-                            <label class="form-label">PVP 2 — otros clientes ($/kg)</label>
+                            <label class="form-label">PVP 2 — otros clientes (con IVA, $/kg)</label>
                             <input class="form-input" type="number" step="0.01" min="0" @bind="formPvp2" />
+                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Precio final por kg que paga el cliente OTRO.</p>
                         </div>
                     </div>
                     <div class="form-group">
@@ -275,10 +278,10 @@
                                         {
                                             <span style="font-size: 0.72rem; color: #6b7280;">· @oSel.Marca</span>
                                         }
-                                        <span style="font-size: 0.72rem; color: #6b7280;">· costo $@FormatMoney(oSel.Costo)</span>
+                                        <span style="font-size: 0.72rem; color: #6b7280;" title="Sin IVA">· costo s/IVA $@FormatMoney(oSel.Costo)</span>
                                         @if (oSel.PvpConIva.HasValue)
                                         {
-                                            <span style="font-size: 0.72rem; color: #15803d;">· PVP $@FormatMoney(oSel.PvpConIva.Value)</span>
+                                            <span style="font-size: 0.72rem; color: #15803d;" title="Con IVA">· PVP c/IVA $@FormatMoney(oSel.PvpConIva.Value)</span>
                                         }
                                     }
                                 </div>
@@ -312,10 +315,10 @@
                                                 {
                                                     <span style="color:#6b7280; font-size:0.78rem;"> · @o.Marca</span>
                                                 }
-                                                <span style="color:#6b7280; font-size:0.78rem;"> · costo $@FormatMoney(o.Costo)</span>
+                                                <span style="color:#6b7280; font-size:0.78rem;" title="Sin IVA"> · costo s/IVA $@FormatMoney(o.Costo)</span>
                                                 @if (o.PvpConIva.HasValue)
                                                 {
-                                                    <span style="color:#15803d; font-size:0.78rem;"> · PVP $@FormatMoney(o.PvpConIva.Value)</span>
+                                                    <span style="color:#15803d; font-size:0.78rem;" title="Con IVA"> · PVP c/IVA $@FormatMoney(o.PvpConIva.Value)</span>
                                                 }
                                             </div>
                                         }
@@ -329,9 +332,9 @@
                     <h4 style="margin: 1rem 0 0.5rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase;">📦 Precios</h4>
                     <div class="form-row">
                         <div class="form-group" style="flex: 2;">
-                            <label class="form-label">PVP SUGERIDO POR PROVEEDOR ($) *</label>
+                            <label class="form-label">PVP SUGERIDO POR PROVEEDOR (con IVA, $) *</label>
                             <input class="form-input" type="number" step="0.01" min="0" @bind="formPvp2" />
-                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Precio de lista. Obligatorio. Lo paga el cliente OTRO.</p>
+                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Precio de lista, IVA incluido. Obligatorio. Lo paga el cliente OTRO.</p>
                         </div>
                         <div class="form-group" style="flex: 1;">
                             <label class="form-label">UxB</label>

@@ -232,7 +232,7 @@
                             <input class="form-input" type="number" step="@(AddProductoIsCafe ? "0.01" : "1")" min="0" @bind="addCantidad" style="text-align: right;" />
                         </div>
                         <div class="form-group" style="flex: 0 0 140px;">
-                            <label class="form-label" style="font-size: 0.75rem;">Costo unit. ($)</label>
+                            <label class="form-label" style="font-size: 0.75rem;">Costo unit. (sin IVA, $)</label>
                             <input class="form-input" type="number" step="0.01" min="0" @bind="addCostoUnitario" style="text-align: right;" />
                         </div>
                         <div class="form-group" style="flex: 0 0 110px;">
@@ -254,8 +254,8 @@
                                 <tr>
                                     <th>Producto</th>
                                     <th style="width: 100px; text-align: right;">Cantidad</th>
-                                    <th style="width: 130px; text-align: right;">Costo unit.</th>
-                                    <th style="width: 140px; text-align: right;">Subtotal</th>
+                                    <th style="width: 130px; text-align: right;" title="Sin IVA">Costo unit. s/IVA</th>
+                                    <th style="width: 140px; text-align: right;" title="Sin IVA">Subtotal s/IVA</th>
                                     <th style="width: 50px;"></th>
                                 </tr>
                             </thead>
@@ -344,8 +344,8 @@
                         <tr>
                             <th>Producto</th>
                             <th style="width: 100px; text-align: right;">Cantidad</th>
-                            <th style="width: 130px; text-align: right;">Costo unit.</th>
-                            <th style="width: 140px; text-align: right;">Subtotal</th>
+                            <th style="width: 130px; text-align: right;" title="Sin IVA">Costo unit. s/IVA</th>
+                            <th style="width: 140px; text-align: right;" title="Sin IVA">Subtotal s/IVA</th>
                             <th style="width: 130px; text-align: right;">Stock actual</th>
                         </tr>
                     </thead>

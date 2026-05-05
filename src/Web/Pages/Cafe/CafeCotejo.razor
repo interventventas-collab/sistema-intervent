@@ -55,9 +55,16 @@
                     <option value="huerfano">Solo Huérfanos</option>
                     <option value="sin_sku">Solo sin SKU</option>
                 </select>
-                <input class="form-input" placeholder="Buscar (SKU / titulo / MLA)" @bind="buscar" @bind:event="oninput" style="flex: 1; min-width: 220px;" />
-                <input class="form-input" placeholder="Filtrar por marca de Contab" @bind="filtroMarcaContab" @bind:event="oninput" style="max-width: 240px;" />
-                <button class="btn btn-secondary" @onclick="LoadListado" disabled="@isBusy">Buscar</button>
+                <input class="form-input" placeholder="Buscar (SKU / titulo / MLA)"
+                       value="@buscar" @oninput="@(e => buscar = e.Value?.ToString() ?? "")"
+                       @onkeydown="OnFilterKey"
+                       style="flex: 1; min-width: 220px;" />
+                <input class="form-input" placeholder="Filtrar por marca de Contab"
+                       value="@filtroMarcaContab" @oninput="@(e => filtroMarcaContab = e.Value?.ToString() ?? "")"
+                       @onkeydown="OnFilterKey"
+                       style="max-width: 240px;" />
+                <button class="btn btn-primary" @onclick="LoadListado" disabled="@isBusy">Aplicar filtros</button>
+                <button class="btn btn-secondary" @onclick="LimpiarFiltros" disabled="@isBusy">Limpiar</button>
             </div>
 
             @if (listado is null)
@@ -277,6 +284,19 @@
             if (on) seleccion.Add(f.Sku!);
             else seleccion.Remove(f.Sku!);
         }
+    }
+
+    private async Task OnFilterKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await LoadListado();
+    }
+
+    private async Task LimpiarFiltros()
+    {
+        categoria = "todos";
+        buscar = "";
+        filtroMarcaContab = "";
+        await LoadListado();
     }
 
     private async Task ImportarStaging()
