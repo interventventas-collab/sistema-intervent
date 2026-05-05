@@ -10,6 +10,10 @@
             <input class="form-input" style="min-width:240px; font-size:0.85rem;"
                    @bind="filtroTexto" @bind:event="oninput"
                    placeholder="🔍 SKU o nombre..." />
+            <button class="btn @(modoEdicion ? "btn-warning" : "btn-secondary")"
+                    @onclick="() => modoEdicion = !modoEdicion" title="Edicion rapida de marca y SKU">
+                @(modoEdicion ? "🔓 Edicion ON" : "🔒 Edicion OFF")
+            </button>
             <button class="btn btn-secondary" @onclick="Load" disabled="@isBusy">Refrescar</button>
             <button class="btn btn-primary" @onclick="ShowCreate">+ Nuevo Kit</button>
         </div>
@@ -47,8 +51,39 @@
                     {
                         <tr style="@(!k.IsActive ? "opacity:0.5;" : "")">
                             <td><code style="font-size:0.82rem;">@k.Sku</code></td>
-                            <td><strong>@k.Nombre</strong></td>
-                            <td><span style="font-size:0.78rem; color:#6b7280;">@(k.MarcaNombre ?? k.Marca ?? "—")</span></td>
+                            <td>
+                                @if (modoEdicion)
+                                {
+                                    <input class="form-input" style="font-size:0.85rem;"
+                                           value="@k.Nombre"
+                                           @onchange="@(async (e) => await GuardarNombre(k, e.Value?.ToString()))" />
+                                }
+                                else
+                                {
+                                    <strong>@k.Nombre</strong>
+                                }
+                            </td>
+                            <td>
+                                @if (modoEdicion)
+                                {
+                                    <select class="form-input" style="font-size:0.82rem;"
+                                            value="@(k.MarcaId?.ToString() ?? "")"
+                                            @onchange="@(async (e) => await GuardarMarca(k, e.Value?.ToString()))">
+                                        <option value="">— Sin marca —</option>
+                                        @if (marcas is not null)
+                                        {
+                                            @foreach (var m in marcas.OrderBy(x => x.Nombre))
+                                            {
+                                                <option value="@m.Id">@m.Nombre</option>
+                                            }
+                                        }
+                                    </select>
+                                }
+                                else
+                                {
+                                    <span style="font-size:0.78rem; color:#6b7280;">@(k.MarcaNombre ?? k.Marca ?? "—")</span>
+                                }
+                            </td>
                             <td style="font-size:0.8rem;">
                                 @foreach (var i in k.Items)
                                 {
@@ -293,6 +328,8 @@
     private bool showDeleteConfirm;
     private CafeKitDto? toDelete;
 
+    private bool modoEdicion;
+
     private List<CafeKitDto> kitsVisibles
     {
         get
@@ -453,6 +490,43 @@
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { showDeleteConfirm = false; toDelete = null; }
+    }
+
+    private async Task GuardarMarca(CafeKitDto k, string? marcaIdRaw)
+    {
+        int? newMarcaId = null;
+        if (int.TryParse(marcaIdRaw, out var mid)) newMarcaId = mid;
+        try
+        {
+            var u = await Api.UpdateCafeKitAsync(k.Id, new UpdateCafeKitRequest
+            {
+                MarcaId = newMarcaId,
+                ClearMarcaId = newMarcaId is null
+            });
+            if (u is not null)
+            {
+                k.MarcaId = u.MarcaId;
+                k.MarcaNombre = u.MarcaNombre;
+                k.Marca = u.Marca;
+                ToastService.Success($"{k.Sku}: marca actualizada");
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task GuardarNombre(CafeKitDto k, string? nuevo)
+    {
+        if (string.IsNullOrWhiteSpace(nuevo) || nuevo.Trim() == k.Nombre) return;
+        try
+        {
+            var u = await Api.UpdateCafeKitAsync(k.Id, new UpdateCafeKitRequest { Nombre = nuevo.Trim() });
+            if (u is not null)
+            {
+                k.Nombre = u.Nombre;
+                ToastService.Success($"{k.Sku}: nombre actualizado");
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
     }
 
     private static decimal ParseIva(string s) =>
