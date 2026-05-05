@@ -199,10 +199,31 @@
             w.document.write(el.innerHTML);
             w.document.write('</body></html>');
             w.document.close();
-            // Damos un pequenio respiro para que carguen los estilos antes de imprimir.
-            setTimeout(function() {
-                try { w.focus(); w.print(); } catch (e) { /* algunos browsers tiran error si la ventana se cierra antes */ }
-            }, 350);
+
+            // Esperar a que carguen las imagenes (logo, etc) antes de imprimir.
+            // Si una imagen tarda mas de 3s, igual seguimos para no colgar el print.
+            var doPrint = function() {
+                try { w.focus(); w.print(); } catch (e) { /* el browser puede cerrar la ventana antes */ }
+            };
+            var imgs = w.document.images;
+            if (!imgs || imgs.length === 0) {
+                setTimeout(doPrint, 200);
+                return;
+            }
+            var pending = imgs.length;
+            var done = false;
+            var finishOne = function() {
+                if (done) return;
+                pending--;
+                if (pending <= 0) { done = true; setTimeout(doPrint, 100); }
+            };
+            for (var i = 0; i < imgs.length; i++) {
+                var img = imgs[i];
+                if (img.complete && img.naturalWidth > 0) { finishOne(); }
+                else { img.addEventListener('load', finishOne); img.addEventListener('error', finishOne); }
+            }
+            // Salvaguarda: si todo el chequeo tarda mas de 3s, imprimimos igual.
+            setTimeout(function() { if (!done) { done = true; doPrint(); } }, 3000);
         };
 
         window.filesDownload = {
