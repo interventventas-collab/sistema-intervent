@@ -1,0 +1,167 @@
+@page "/cafe/consultas"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div class="card">
+    <div class="card-header">
+        <h3>🔍 Consultas rápidas</h3>
+    </div>
+    <div class="card-body">
+        <div style="max-width: 800px; margin: 0 auto;">
+            <p style="color: #6b7280; font-size: 0.88rem; margin-bottom: 0.6rem;">
+                Preguntá en lenguaje natural — el asistente busca en tu base.
+            </p>
+
+            <div style="display: flex; gap: 0.4rem; margin-bottom: 0.6rem;">
+                <input class="form-input" style="flex: 1; font-size: 1rem; padding: 0.6rem 0.8rem;"
+                       @bind="query" @bind:event="oninput"
+                       @onkeydown="OnKey"
+                       placeholder="Ej: cuanto debe Cuchiflito · stock café Frikaf · ventas hoy" autofocus />
+                <button class="btn btn-primary" @onclick="DoQuery" disabled="@(string.IsNullOrWhiteSpace(query) || isLoading)">
+                    @(isLoading ? "..." : "Consultar")
+                </button>
+                @if (resultado is not null)
+                {
+                    <button class="btn btn-secondary" @onclick="Clear">Limpiar</button>
+                }
+            </div>
+
+            @if (resultado is null)
+            {
+                <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.9rem;">
+                    <div style="font-weight: 700; margin-bottom: 0.5rem; color: #4b5563; font-size: 0.85rem;">💡 Probá con alguno de estos:</div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
+                        @foreach (var ej in ejemplos)
+                        {
+                            var qtxt = ej;
+                            <button type="button" class="btn"
+                                    style="background: white; border: 1px solid #d1d5db; padding: 0.3rem 0.6rem; font-size: 0.82rem; border-radius: 6px; color: #374151;"
+                                    @onclick="() => RunExample(qtxt)">@ej</button>
+                        }
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 1rem; margin-top: 0.4rem;">
+                    @* Header del resultado *@
+                    <div style="margin-bottom: 0.7rem; display: flex; justify-content: space-between; align-items: flex-start; gap: 0.8rem; flex-wrap: wrap;">
+                        <div style="flex: 1;">
+                            <h3 style="margin: 0; font-size: 1.05rem; color: #1e3a8a;">@resultado.Titulo</h3>
+                            @if (!string.IsNullOrEmpty(resultado.Subtitulo))
+                            {
+                                <p style="margin: 0.2rem 0 0; font-size: 0.85rem; color: #6b7280;">@resultado.Subtitulo</p>
+                            }
+                        </div>
+                        @if (!string.IsNullOrEmpty(resultado.Total))
+                        {
+                            <div style="background: #fef3c7; color: #78350f; padding: 0.4rem 0.8rem; border-radius: 8px; font-weight: 800; font-size: 1.1rem;">
+                                Total: @resultado.Total
+                            </div>
+                        }
+                    </div>
+
+                    @if (resultado.Tipo == "tabla" && resultado.Filas.Count > 0)
+                    {
+                        <div class="table-responsive">
+                            <table class="data-table" style="font-size: 0.88rem;">
+                                <thead>
+                                    <tr>
+                                        @foreach (var c in resultado.Columnas) { <th>@c</th> }
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var fila in resultado.Filas)
+                                    {
+                                        <tr>
+                                            @foreach (var c in resultado.Columnas)
+                                            {
+                                                <td>@(fila.TryGetValue(c, out var v) ? v : "")</td>
+                                            }
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else if (resultado.Tipo == "ficha" && resultado.Datos.Count > 0)
+                    {
+                        <table class="data-table" style="font-size: 0.9rem;">
+                            <tbody>
+                                @foreach (var d in resultado.Datos)
+                                {
+                                    <tr>
+                                        <td style="font-weight: 700; color: #4b5563; width: 200px; background: #f9fafb;">@d.Key</td>
+                                        <td>@d.Value</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                    else if (resultado.Tipo == "ayuda" && resultado.Ayuda.Count > 0)
+                    {
+                        <div style="display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem;">
+                            @foreach (var a in resultado.Ayuda)
+                            {
+                                var qtxt = a;
+                                <button type="button" class="btn"
+                                        style="background: white; border: 1px solid #d1d5db; padding: 0.3rem 0.6rem; font-size: 0.82rem; border-radius: 6px; color: #374151;"
+                                        @onclick="() => RunExample(qtxt)">@a</button>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private string query = "";
+    private bool isLoading;
+    private CafeConsultaResultDto? resultado;
+
+    private static readonly string[] ejemplos = new[]
+    {
+        "cuanto debe Cuchiflito",
+        "stock café Frikaf",
+        "ventas hoy",
+        "ventas mes",
+        "compras pendientes",
+        "clientes con deuda",
+        "top productos Cuchiflito",
+        "producto F1",
+        "proveedor Colombraro"
+    };
+
+    private async Task OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(query) && !isLoading)
+            await DoQuery();
+    }
+
+    private async Task DoQuery()
+    {
+        if (string.IsNullOrWhiteSpace(query)) return;
+        isLoading = true;
+        try
+        {
+            resultado = await Api.ConsultarCafeAsync(query);
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { isLoading = false; }
+    }
+
+    private async Task RunExample(string ej)
+    {
+        query = ej;
+        await DoQuery();
+    }
+
+    private void Clear()
+    {
+        query = "";
+        resultado = null;
+    }
+}

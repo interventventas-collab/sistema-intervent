@@ -403,6 +403,29 @@ public record CafeOemImportResultDto(
     int VariantesPropagadas,
     List<string> Errores);
 
+// ===== Consultas (busqueda interna en lenguaje natural) =====
+public class CafeConsultaRequest
+{
+    public string Query { get; set; } = string.Empty;
+}
+
+public class CafeConsultaResultDto
+{
+    /// <summary>Como renderizar: "tabla" | "ficha" | "vacio" | "ayuda" | "error".</summary>
+    public string Tipo { get; set; } = "vacio";
+    public string Titulo { get; set; } = "";
+    public string? Subtitulo { get; set; }
+    public string? Total { get; set; }
+    /// <summary>Headers de la tabla (en orden). Si Tipo=tabla.</summary>
+    public List<string> Columnas { get; set; } = new();
+    /// <summary>Filas de la tabla. Cada fila es un dict {columna => valor formateado}. Si Tipo=tabla.</summary>
+    public List<Dictionary<string, string>> Filas { get; set; } = new();
+    /// <summary>Para Tipo=ficha: pares clave/valor.</summary>
+    public List<KeyValuePair<string, string>> Datos { get; set; } = new();
+    /// <summary>Lista de ejemplos cuando no se encuentra nada o no se entiende.</summary>
+    public List<string> Ayuda { get; set; } = new();
+}
+
 // ===== Listas de precios =====
 public class CafeListaPreciosFiltroRequest
 {

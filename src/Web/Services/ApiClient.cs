@@ -510,6 +510,9 @@ public class ApiClient
     public async Task<CafeListaPreciosPreviewDto?> GetCafeListaPreciosPreviewAsync(CafeListaPreciosFiltroRequest req)
         => await PostAsync<CafeListaPreciosPreviewDto>("/api/cafe/listas-precios/preview", req);
 
+    public async Task<CafeConsultaResultDto?> ConsultarCafeAsync(string query)
+        => await PostAsync<CafeConsultaResultDto>("/api/cafe/consultas", new CafeConsultaRequest { Query = query });
+
     public async Task<byte[]?> ExportCafeListaPreciosExcelAsync(CafeListaPreciosFiltroRequest req)
     {
         await SetAuthHeaderAsync();

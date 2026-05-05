@@ -538,6 +538,24 @@ public class UpdateCafeOemRequest
     public bool? IsActive { get; set; }
 }
 
+// ===== Consultas =====
+public class CafeConsultaRequest
+{
+    public string Query { get; set; } = "";
+}
+
+public class CafeConsultaResultDto
+{
+    public string Tipo { get; set; } = "vacio";
+    public string Titulo { get; set; } = "";
+    public string? Subtitulo { get; set; }
+    public string? Total { get; set; }
+    public List<string> Columnas { get; set; } = new();
+    public List<Dictionary<string, string>> Filas { get; set; } = new();
+    public List<KeyValuePair<string, string>> Datos { get; set; } = new();
+    public List<string> Ayuda { get; set; } = new();
+}
+
 // ===== Listas de precios =====
 public class CafeListaPreciosFiltroRequest
 {
