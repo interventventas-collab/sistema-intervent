@@ -81,8 +81,8 @@
                     <div class="form-group" style="flex: 1;">
                         <label class="form-label">Tipo de cliente</label>
                         <select class="form-input" @bind="formTipo" disabled="@(formClienteId > 0)">
-                            <option value="OTRO">🛒 OTRO (final / retail)</option>
-                            <option value="BAR">🍺 BAR (mayorista)</option>
+                            <option value="OTRO">🏢 Comercial</option>
+                            <option value="BAR">🍺 BAR</option>
                         </select>
                         @if (formClienteId > 0)
                         {
@@ -196,7 +196,7 @@
                         <div style="background: #1d4ed8; color: white; padding: 0.4rem 0.9rem; border-radius: 6px; font-weight: 800; font-size: 1.1rem; letter-spacing: 0.5px;">LISTA DE PRECIOS</div>
                         <div style="font-size: 0.78rem; color: #6b7280; margin-top: 0.4rem; line-height: 1.5;">
                             <div><strong>Cliente:</strong> @(preview.Cliente?.Nombre ?? "(General)")</div>
-                            <div><strong>Tipo:</strong> @(preview.TipoCliente == "BAR" ? "🍺 BAR (mayorista)" : "🛒 OTRO (final)")</div>
+                            <div><strong>Tipo:</strong> @(preview.TipoCliente == "BAR" ? "🍺 BAR" : "🏢 Comercial")</div>
                             <div><strong>Fecha:</strong> @preview.Fecha.ToString("dd/MM/yyyy")</div>
                             <div><strong>Validez:</strong> hasta @preview.ValidezHasta.ToString("dd/MM/yyyy")</div>
                         </div>
@@ -284,7 +284,7 @@
                     <div style="font-weight: 700; color: #78350f; margin-bottom: 0.4rem; font-size: 0.88rem;">Condiciones comerciales</div>
                     <ul style="margin: 0; padding-left: 1.2rem; font-size: 0.82rem; color: #78350f; line-height: 1.6;">
                         <li>Precios válidos hasta el @preview.ValidezHasta.ToString("dd/MM/yyyy"), sujetos a disponibilidad.</li>
-                        <li>Tipo de cliente aplicado: <strong>@(preview.TipoCliente == "BAR" ? "BAR (mayorista)" : "OTRO (consumidor final)")</strong>.</li>
+                        <li>Tipo de cliente aplicado: <strong>@(preview.TipoCliente == "BAR" ? "BAR" : "Comercial")</strong>.</li>
                         @if (!string.IsNullOrEmpty(preview.Observaciones))
                         {
                             foreach (var line in preview.Observaciones.Split('\n', StringSplitOptions.RemoveEmptyEntries))
