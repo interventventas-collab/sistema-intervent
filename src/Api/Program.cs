@@ -104,6 +104,7 @@ builder.Services.AddScoped<MeliAccountService>();
 builder.Services.AddScoped<MeliOrderService>();
 builder.Services.AddScoped<MeliItemService>();
 builder.Services.AddScoped<ContabiliumStagingService>();
+builder.Services.AddScoped<CafeKitService>();
 builder.Services.AddScoped<ContabiliumCotejoService>();
 builder.Services.AddScoped<AuditLogService>();
 builder.Services.AddScoped<ScheduledProcessService>();

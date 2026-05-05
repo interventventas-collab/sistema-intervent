@@ -66,6 +66,64 @@ public class CreateCafeProductoRequest
     public decimal? IvaPct { get; set; }
 }
 
+// ===== Kits (productos compuestos / BOM) =====
+public record CafeKitDto(
+    int Id, string Sku, string Nombre, string? Descripcion,
+    string Categoria, string? Marca, int? MarcaId, string? MarcaNombre,
+    decimal? Pvp1, decimal? Pvp2, decimal IvaPct,
+    string? Notas, bool IsActive,
+    int StockVirtual, decimal CostoCalculado,
+    List<CafeKitItemDto> Items,
+    DateTime CreatedAt, DateTime? UpdatedAt);
+
+public record CafeKitItemDto(
+    int Id,
+    int ProductoId,
+    string? ProductoSku,
+    string ProductoNombre,
+    int ProductoStock,
+    decimal Cantidad,
+    int KitsPosibles); // floor(stock / cantidad) — cuantos kits permite armar este componente
+
+public class CafeKitItemRequest
+{
+    public int? Id { get; set; }
+    public int ProductoId { get; set; }
+    public decimal Cantidad { get; set; } = 1m;
+}
+
+public class CreateCafeKitRequest
+{
+    public string Sku { get; set; } = "";
+    public string Nombre { get; set; } = "";
+    public string? Descripcion { get; set; }
+    public string Categoria { get; set; } = "OTROS";
+    public string? Marca { get; set; }
+    public int? MarcaId { get; set; }
+    public decimal? Pvp1 { get; set; }
+    public decimal? Pvp2 { get; set; }
+    public decimal? IvaPct { get; set; }
+    public string? Notas { get; set; }
+    public List<CafeKitItemRequest> Items { get; set; } = new();
+}
+
+public class UpdateCafeKitRequest
+{
+    public string? Sku { get; set; }
+    public string? Nombre { get; set; }
+    public string? Descripcion { get; set; }
+    public string? Categoria { get; set; }
+    public string? Marca { get; set; }
+    public int? MarcaId { get; set; }
+    public bool ClearMarcaId { get; set; }
+    public decimal? Pvp1 { get; set; }
+    public decimal? Pvp2 { get; set; }
+    public decimal? IvaPct { get; set; }
+    public string? Notas { get; set; }
+    public bool? IsActive { get; set; }
+    public List<CafeKitItemRequest>? Items { get; set; }
+}
+
 public record CafeHistorialPrecioDto(
     int Id,
     decimal? Pvp1Anterior, decimal? Pvp2Anterior, decimal? CostoAnterior, decimal? IvaPctAnterior,
