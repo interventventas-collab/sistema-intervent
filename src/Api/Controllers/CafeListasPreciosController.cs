@@ -150,10 +150,6 @@ public class CafeListasPreciosController : ControllerBase
         ws.Cell(row, 1).Value = "Fecha:";
         ws.Cell(row, 1).Style.Font.Bold = true;
         ws.Cell(row, 2).Value = p.Fecha.ToString("dd/MM/yyyy");
-        row++;
-        ws.Cell(row, 1).Value = "Validez:";
-        ws.Cell(row, 1).Style.Font.Bold = true;
-        ws.Cell(row, 2).Value = "Hasta " + p.ValidezHasta.ToString("dd/MM/yyyy");
         row += 2;
 
         // Cuerpo
@@ -234,6 +230,13 @@ public class CafeListasPreciosController : ControllerBase
             ws.Cell(row, 1).Style.Alignment.WrapText = true;
             row++;
         }
+
+        // Disclaimer fijo
+        ws.Cell(row, 1).Value = "Los precios pueden variar sin previo aviso.";
+        ws.Cell(row, 1).Style.Font.Italic = true;
+        ws.Cell(row, 1).Style.Font.FontColor = XLColor.FromHtml("#6b7280");
+        ws.Range(row, 1, row, 5).Merge();
+        row++;
 
         ws.Columns().AdjustToContents();
         ws.Column(1).Width = Math.Min(45, ws.Column(1).Width);

@@ -201,7 +201,6 @@
                             <div><strong>Cliente:</strong> @(preview.Cliente?.Nombre ?? "(General)")</div>
                             <div><strong>Tipo:</strong> @(preview.TipoCliente == "BAR" ? "🍺 BAR" : "🏢 Comercial")</div>
                             <div><strong>Fecha:</strong> @preview.Fecha.ToString("dd/MM/yyyy")</div>
-                            <div><strong>Validez:</strong> hasta @preview.ValidezHasta.ToString("dd/MM/yyyy")</div>
                         </div>
                     </div>
                 </div>
@@ -291,7 +290,7 @@
                 <div style="margin-top: 0.8rem; padding: 0.8rem 1rem; background: #fef3c7; border: 1px solid #d97706; border-radius: 6px;">
                     <div style="font-weight: 700; color: #78350f; margin-bottom: 0.4rem; font-size: 0.88rem;">Condiciones comerciales</div>
                     <ul style="margin: 0; padding-left: 1.2rem; font-size: 0.82rem; color: #78350f; line-height: 1.6;">
-                        <li>Precios válidos hasta el @preview.ValidezHasta.ToString("dd/MM/yyyy"), sujetos a disponibilidad.</li>
+                        <li>Los precios pueden variar sin previo aviso.</li>
                         <li>Tipo de cliente aplicado: <strong>@(preview.TipoCliente == "BAR" ? "BAR" : "Comercial")</strong>.</li>
                         @if (!string.IsNullOrEmpty(preview.Observaciones))
                         {
