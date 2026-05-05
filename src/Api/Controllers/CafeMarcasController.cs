@@ -81,12 +81,14 @@ public class CafeMarcasController : ControllerBase
     {
         var m = await _db.CafeMarcas.FindAsync(id);
         if (m is null) return NotFound(new { error = "Marca no encontrada" });
+        bool nombreChanged = false;
         if (req.Nombre is not null)
         {
             var nuevo = req.Nombre.Trim();
             if (string.IsNullOrEmpty(nuevo)) return BadRequest(new { error = "El nombre no puede estar vacio" });
             if (nuevo != m.Nombre && await _db.CafeMarcas.AnyAsync(x => x.Nombre == nuevo && x.Id != id))
                 return BadRequest(new { error = $"Ya existe otra marca con el nombre '{nuevo}'" });
+            if (nuevo != m.Nombre) nombreChanged = true;
             m.Nombre = nuevo;
         }
         if (req.ProveedorId.HasValue && req.ProveedorId.Value > 0)
@@ -103,6 +105,17 @@ public class CafeMarcasController : ControllerBase
         if (req.IsActive.HasValue) m.IsActive = req.IsActive.Value;
         m.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
+
+        // Si el nombre cambio, propagar a los productos y OEMs vinculados (sincroniza el campo texto cacheado).
+        if (nombreChanged)
+        {
+            var ahora = DateTime.UtcNow;
+            var prods = await _db.CafeProductos.Where(p => p.MarcaId == id).ToListAsync();
+            foreach (var p in prods) { p.Marca = m.Nombre; p.UpdatedAt = ahora; }
+            var oems = await _db.CafeOems.Where(o => o.MarcaId == id).ToListAsync();
+            foreach (var o in oems) { o.Marca = m.Nombre; o.UpdatedAt = ahora; }
+            if (prods.Count > 0 || oems.Count > 0) await _db.SaveChangesAsync();
+        }
 
         var saved = await _db.CafeMarcas.Include(x => x.ProveedorNav).FirstAsync(x => x.Id == m.Id);
         var prodN = await _db.CafeProductos.CountAsync(p => p.MarcaId == id);
