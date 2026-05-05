@@ -69,6 +69,8 @@ public class AppDbContext : DbContext
     public DbSet<CafeMarca> CafeMarcas => Set<CafeMarca>();
     public DbSet<CafeDescuentoCliente> CafeDescuentosCliente => Set<CafeDescuentoCliente>();
     public DbSet<CafeHistorialPrecio> CafeHistorialPrecios => Set<CafeHistorialPrecio>();
+    public DbSet<CafeKit> CafeKits => Set<CafeKit>();
+    public DbSet<CafeKitItem> CafeKitItems => Set<CafeKitItem>();
     public DbSet<CafeProveedor> CafeProveedores => Set<CafeProveedor>();
     public DbSet<CafeCompra> CafeCompras => Set<CafeCompra>();
     public DbSet<CafeCompraItem> CafeCompraItems => Set<CafeCompraItem>();
@@ -149,6 +151,11 @@ public class AppDbContext : DbContext
                   .HasForeignKey(i => i.CafeProductoId)
                   .OnDelete(DeleteBehavior.SetNull);
             entity.HasIndex(i => i.CafeComboId);
+            entity.HasIndex(i => i.CafeKitId);
+            entity.HasOne(i => i.CafeKit)
+                  .WithMany()
+                  .HasForeignKey(i => i.CafeKitId)
+                  .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<ContabProducto>(entity =>

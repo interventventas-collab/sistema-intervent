@@ -44,7 +44,9 @@ public class MeliItem
     public int? CafeProductoId { get; set; }
     public CafeProducto? CafeProducto { get; set; }
 
-    public int? CafeComboId { get; set; }
+    public int? CafeComboId { get; set; }   // Promo de cafe fraccionado (Cafe_Combos)
+    public int? CafeKitId { get; set; }     // Kit compuesto / BOM (Cafe_Kits)
+    public CafeKit? CafeKit { get; set; }
 
     public MeliAccount? MeliAccount { get; set; }
 }

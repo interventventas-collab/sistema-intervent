@@ -2237,6 +2237,62 @@ IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'BloqueaDescuento' AND Obj
     ALTER TABLE Cafe_Marcas ADD BloqueaDescuento BIT NOT NULL DEFAULT 0;
 GO
 
+-- =============================================================================
+-- Kits del modulo Cafe (productos compuestos con BOM/Bill of Materials).
+-- Distinto de Cafe_Combos que son "promos" de cafe fraccionado (1kg/medio/cuarto).
+-- Cafe_Kits: SKU compuesto (ej: 1925 = cesto + tapa). Stock virtual = MIN(componente / cantidad).
+-- Cafe_KitItems: lista de productos simples que conforman el kit, con cantidad cada uno.
+-- =============================================================================
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_Kits' AND xtype='U')
+BEGIN
+    CREATE TABLE Cafe_Kits (
+        Id INT PRIMARY KEY IDENTITY(1,1),
+        Sku NVARCHAR(100) NOT NULL,
+        Nombre NVARCHAR(500) NOT NULL,
+        Descripcion NVARCHAR(MAX) NULL,
+        Categoria NVARCHAR(20) NOT NULL DEFAULT 'OTROS',
+        Marca NVARCHAR(100) NULL,
+        MarcaId INT NULL,
+        Pvp1 DECIMAL(18,2) NULL,
+        Pvp2 DECIMAL(18,2) NULL,
+        IvaPct DECIMAL(5,2) NOT NULL DEFAULT 21,
+        Notas NVARCHAR(500) NULL,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT FK_CafeKits_Marca FOREIGN KEY (MarcaId) REFERENCES Cafe_Marcas(Id) ON DELETE SET NULL
+    );
+    CREATE UNIQUE INDEX UX_CafeKits_Sku ON Cafe_Kits(Sku);
+    CREATE INDEX IX_CafeKits_MarcaId ON Cafe_Kits(MarcaId);
+END
+GO
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_KitItems' AND xtype='U')
+BEGIN
+    CREATE TABLE Cafe_KitItems (
+        Id INT PRIMARY KEY IDENTITY(1,1),
+        KitId INT NOT NULL,
+        ProductoId INT NOT NULL,
+        Cantidad DECIMAL(18,3) NOT NULL DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        CONSTRAINT FK_KitItems_Kit FOREIGN KEY (KitId) REFERENCES Cafe_Kits(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_KitItems_Producto FOREIGN KEY (ProductoId) REFERENCES Cafe_Productos(Id)
+    );
+    CREATE UNIQUE INDEX UX_CafeKitItems_KitProd ON Cafe_KitItems(KitId, ProductoId);
+    CREATE INDEX IX_CafeKitItems_Producto ON Cafe_KitItems(ProductoId);
+END
+GO
+-- MeliItems.CafeKitId: vinculacion publicacion MeLi -> Kit
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'CafeKitId' AND Object_ID = Object_ID('MeliItems'))
+    ALTER TABLE MeliItems ADD CafeKitId INT NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_MeliItems_CafeKit')
+   AND EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_Kits' AND xtype='U')
+    ALTER TABLE MeliItems ADD CONSTRAINT FK_MeliItems_CafeKit FOREIGN KEY (CafeKitId) REFERENCES Cafe_Kits(Id) ON DELETE SET NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_MeliItems_CafeKitId' AND object_id = OBJECT_ID('MeliItems'))
+    CREATE INDEX IX_MeliItems_CafeKitId ON MeliItems(CafeKitId);
+GO
+
 -- Historial de cambios de precio por producto Cafe.
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_HistorialPrecios' AND xtype='U')
 BEGIN
