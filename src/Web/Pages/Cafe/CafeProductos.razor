@@ -469,7 +469,7 @@
 @if (showHistorial && histProducto is not null)
 {
     <div class="modal-overlay" @onclick="CerrarHistorial">
-        <div class="modal-content" style="max-width: 720px;" @onclick:stopPropagation="true">
+        <div class="modal-card" style="max-width: 720px;" @onclick:stopPropagation="true">
             <div class="modal-header">
                 <h3>📈 Historial de precios — @histProducto.Nombre</h3>
                 <button class="btn-close" @onclick="CerrarHistorial">×</button>
