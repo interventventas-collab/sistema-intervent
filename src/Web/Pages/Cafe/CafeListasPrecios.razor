@@ -170,7 +170,10 @@
             <div id="cafe-lp-print" style="background: white; padding: 1.2rem; border: 1px solid #e5e7eb; border-radius: 8px; max-width: 900px; margin: 0 auto;">
 
                 @* HEADER *@
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; padding-bottom: 0.8rem; border-bottom: 2px solid #1d4ed8;">
+                @{
+                    var tituloColor = preview.TipoCliente == "BAR" ? "#000" : "#15803d";
+                }
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; padding-bottom: 0.8rem; border-bottom: 2px solid @tituloColor;">
                     <div style="flex: 1; display: flex; gap: 0.8rem; align-items: flex-start;">
                         @if (!string.IsNullOrEmpty(preview.Negocio.LogoUrl))
                         {
@@ -179,7 +182,7 @@
                                  onerror="this.style.display='none'" />
                         }
                         <div style="flex: 1;">
-                            <div style="font-size: 1.4rem; font-weight: 800; color: #1e3a8a;">@(preview.Negocio.Nombre ?? "Tu negocio")</div>
+                            <div style="font-size: 1.4rem; font-weight: 800; color: #000;">@(preview.Negocio.Nombre ?? "Tu negocio")</div>
                             <div style="font-size: 0.82rem; color: #4b5563; margin-top: 0.2rem; line-height: 1.6;">
                                 @if (!string.IsNullOrEmpty(preview.Negocio.Direccion)) { <div>📍 @preview.Negocio.Direccion</div> }
                                 <div>
@@ -193,7 +196,7 @@
                         </div>
                     </div>
                     <div style="text-align: right;">
-                        <div style="background: #1d4ed8; color: white; padding: 0.4rem 0.9rem; border-radius: 6px; font-weight: 800; font-size: 1.1rem; letter-spacing: 0.5px;">LISTA DE PRECIOS</div>
+                        <div style="background: @tituloColor; color: white; padding: 0.4rem 0.9rem; border-radius: 6px; font-weight: 800; font-size: 1.1rem; letter-spacing: 0.5px;">LISTA DE PRECIOS</div>
                         <div style="font-size: 0.78rem; color: #6b7280; margin-top: 0.4rem; line-height: 1.5;">
                             <div><strong>Cliente:</strong> @(preview.Cliente?.Nombre ?? "(General)")</div>
                             <div><strong>Tipo:</strong> @(preview.TipoCliente == "BAR" ? "🍺 BAR" : "🏢 Comercial")</div>
@@ -279,8 +282,13 @@
                     }
                 </div>
 
+                @* AVISO IVA — siempre visible *@
+                <div style="margin-top: 1rem; padding: 0.55rem; text-align: center; font-weight: 800; font-size: 0.95rem; color: #b91c1c; border: 2px solid #b91c1c; border-radius: 6px; background: #fef2f2; letter-spacing: 0.5px;">
+                    ⚠ LOS PRECIOS NO INCLUYEN IVA
+                </div>
+
                 @* BLOQUE COMERCIAL *@
-                <div style="margin-top: 1rem; padding: 0.8rem 1rem; background: #fef3c7; border: 1px solid #d97706; border-radius: 6px;">
+                <div style="margin-top: 0.8rem; padding: 0.8rem 1rem; background: #fef3c7; border: 1px solid #d97706; border-radius: 6px;">
                     <div style="font-weight: 700; color: #78350f; margin-bottom: 0.4rem; font-size: 0.88rem;">Condiciones comerciales</div>
                     <ul style="margin: 0; padding-left: 1.2rem; font-size: 0.82rem; color: #78350f; line-height: 1.6;">
                         <li>Precios válidos hasta el @preview.ValidezHasta.ToString("dd/MM/yyyy"), sujetos a disponibilidad.</li>

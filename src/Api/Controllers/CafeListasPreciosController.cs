@@ -216,6 +216,14 @@ public class CafeListasPreciosController : ControllerBase
             row++;
         }
 
+        // Aviso IVA fijo, siempre visible
+        ws.Cell(row, 1).Value = "⚠ LOS PRECIOS NO INCLUYEN IVA";
+        ws.Cell(row, 1).Style.Font.Bold = true;
+        ws.Cell(row, 1).Style.Font.FontColor = XLColor.FromHtml("#b91c1c");
+        ws.Cell(row, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        ws.Range(row, 1, row, 5).Merge();
+        row += 2;
+
         if (!string.IsNullOrEmpty(p.Observaciones))
         {
             ws.Cell(row, 1).Value = "Observaciones:";
