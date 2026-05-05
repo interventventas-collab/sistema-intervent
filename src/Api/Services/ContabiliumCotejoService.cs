@@ -82,7 +82,8 @@ public class ContabiliumCotejoService
         int? ProductIdVinculado,
         int? ComboIdVinculado,
         int? CafeProductoIdVinculado,
-        int? CafeComboIdVinculado);
+        int? CafeComboIdVinculado,
+        int? CafeKitIdVinculado);
 
     public async Task<List<CotejoFila>> ListarAsync(string categoria = "todos", string? buscar = null, int? meliAccountId = null, int take = 200, string? marcaContab = null)
     {
@@ -146,7 +147,7 @@ public class ContabiliumCotejoService
             {
                 i.Id, i.MeliItemId, i.VariationId, i.VariationAttributes,
                 i.Title, i.Sku, i.Price, i.AvailableQuantity, i.ProductId, i.ComboId,
-                i.CafeProductoId, i.CafeComboId
+                i.CafeProductoId, i.CafeComboId, i.CafeKitId
             })
             .ToListAsync();
 
@@ -205,7 +206,7 @@ public class ContabiliumCotejoService
                 r.Id, r.MeliItemId, r.VariationId, r.VariationAttributes,
                 r.Title, r.Sku, cat, r.Price, r.AvailableQuantity,
                 cName, cMarca, cPF, cStock, comboBroken,
-                r.ProductId, r.ComboId, r.CafeProductoId, r.CafeComboId));
+                r.ProductId, r.ComboId, r.CafeProductoId, r.CafeComboId, r.CafeKitId));
 
             if (rows.Count >= take) break;
         }
@@ -256,6 +257,14 @@ public class ContabiliumCotejoService
 
     public record CrearProductosRequest(List<string> Skus, int? MarcaId, string? Categoria);
     public record CrearProductosResultado(int Creados, int Vinculados, int Omitidos, List<string> Detalles);
+
+    public record CrearKitsRequest(List<string> Skus, int? MarcaId, string? Categoria);
+    public record CrearKitsResultado(
+        int KitsCreados,
+        int VinculadosMeli,
+        int ComponentesCreados,
+        int Omitidos,
+        List<string> Detalles);
 
     // Crea CafeProductos en lote a partir de los SKU seleccionados (que tienen pareja
     // como producto en Contab_Productos). Vincula despues TODAS las MeliItems con
@@ -356,5 +365,175 @@ public class ContabiliumCotejoService
         }
 
         return new CrearProductosResultado(creados, vinculados, omitidos, detalles);
+    }
+
+    // Crea Kits (productos compuestos) en lote a partir de SKU de combos.
+    // Para cada SKU:
+    //  1. Busca el combo en Contab_Combos.
+    //  2. Para cada componente: si el producto no existe en Cafe_Productos, lo crea
+    //     desde Contab_Productos (con marca y categoria de la request).
+    //  3. Crea el Cafe_Kit con sus Cafe_KitItems.
+    //  4. Vincula todas las MeliItems con ese SKU al Cafe_Kit creado.
+    public async Task<CrearKitsResultado> CrearKitsBatchAsync(CrearKitsRequest req)
+    {
+        var detalles = new List<string>();
+        int kitsCreados = 0, vinculados = 0, componentesCreados = 0, omitidos = 0;
+
+        var categoriaFinal = string.IsNullOrWhiteSpace(req.Categoria) ? "OTROS" : req.Categoria.Trim().ToUpperInvariant();
+        if (categoriaFinal != "CAFE" && categoriaFinal != "OTROS") categoriaFinal = "OTROS";
+
+        string? marcaNombre = null;
+        if (req.MarcaId.HasValue)
+        {
+            marcaNombre = await _db.CafeMarcas
+                .Where(m => m.Id == req.MarcaId.Value)
+                .Select(m => m.Nombre)
+                .FirstOrDefaultAsync();
+            if (marcaNombre is null)
+                throw new InvalidOperationException("La marca seleccionada no existe.");
+        }
+
+        foreach (var skuRaw in req.Skus.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var sku = skuRaw.Trim();
+            if (string.IsNullOrEmpty(sku)) continue;
+
+            // Si ya hay un kit con ese SKU, no lo recreamos: solo re-vinculamos.
+            var existingKit = await _db.CafeKits.FirstOrDefaultAsync(k => k.Sku == sku);
+            CafeKit kit;
+            if (existingKit is not null)
+            {
+                kit = existingKit;
+                detalles.Add($"{sku}: kit ya existia, solo vinculo.");
+                omitidos++;
+            }
+            else
+            {
+                // Buscar combo en Contabilium con sus componentes
+                var combo = await _db.ContabCombos.FirstOrDefaultAsync(c => c.SkuCombo == sku);
+                if (combo is null)
+                {
+                    detalles.Add($"{sku}: no esta en Contab_Combos, omito.");
+                    omitidos++;
+                    continue;
+                }
+                var compsContab = await _db.ContabComboItems
+                    .Where(ci => ci.SkuCombo == sku)
+                    .ToListAsync();
+                if (compsContab.Count == 0)
+                {
+                    detalles.Add($"{sku}: el combo no tiene componentes definidos, omito.");
+                    omitidos++;
+                    continue;
+                }
+
+                // Asegurar que cada componente exista como Cafe_Producto.
+                var itemsKit = new List<CafeKitItem>();
+                bool faltoAlgo = false;
+                foreach (var comp in compsContab)
+                {
+                    var cafeProd = await _db.CafeProductos.FirstOrDefaultAsync(p => p.Sku == comp.SkuComponente);
+                    if (cafeProd is null)
+                    {
+                        // Crear desde Contab_Productos si existe ahi.
+                        var contabProd = await _db.ContabProductos.FirstOrDefaultAsync(p => p.Sku == comp.SkuComponente);
+                        if (contabProd is null)
+                        {
+                            detalles.Add($"{sku}: componente {comp.SkuComponente} no esta ni en Cafe_Productos ni en Contab_Productos, omito kit.");
+                            faltoAlgo = true; break;
+                        }
+
+                        decimal? pvpSinIva = contabProd.Precio.HasValue ? Math.Round(contabProd.Precio.Value, 0) : null;
+                        if (pvpSinIva is null && contabProd.PrecioFinal.HasValue)
+                        {
+                            var ivaFrac = (contabProd.Iva ?? 21m) / 100m;
+                            pvpSinIva = ivaFrac > 0
+                                ? Math.Round(contabProd.PrecioFinal.Value / (1 + ivaFrac), 0)
+                                : Math.Round(contabProd.PrecioFinal.Value, 0);
+                        }
+                        var ivaProd = (contabProd.Iva.HasValue && contabProd.Iva.Value == 10.5m) ? 10.5m : 21m;
+
+                        cafeProd = new CafeProducto
+                        {
+                            Sku = comp.SkuComponente,
+                            Nombre = string.IsNullOrWhiteSpace(contabProd.Nombre) ? comp.SkuComponente : contabProd.Nombre!,
+                            Barcode = contabProd.CodigoBarras,
+                            Categoria = categoriaFinal,
+                            MarcaId = req.MarcaId,
+                            Marca = marcaNombre,
+                            Costo = contabProd.CostoInterno.HasValue ? Math.Round(contabProd.CostoInterno.Value, 0) : 0m,
+                            Pvp2 = pvpSinIva,
+                            IvaPct = ivaProd,
+                            StockUnidades = (int)Math.Round(contabProd.Stock ?? 0m),
+                            StockGramos = 0m,
+                            Notas = string.IsNullOrWhiteSpace(contabProd.Proveedor)
+                                ? $"Componente del kit {sku}"
+                                : $"Componente del kit {sku} · Proveedor Contabilium: {contabProd.Proveedor}",
+                            IsActive = true,
+                            CreatedAt = DateTime.UtcNow
+                        };
+                        _db.CafeProductos.Add(cafeProd);
+                        await _db.SaveChangesAsync();
+                        componentesCreados++;
+                        detalles.Add($"  · creado componente {comp.SkuComponente}");
+                    }
+
+                    itemsKit.Add(new CafeKitItem
+                    {
+                        ProductoId = cafeProd.Id,
+                        Cantidad = comp.Cantidad
+                    });
+                }
+                if (faltoAlgo) { omitidos++; continue; }
+
+                // Datos del kit a partir del combo de Contabilium.
+                decimal? pvpKitSinIva = null;
+                if (combo.PrecioFinal.HasValue)
+                {
+                    var ivaFrac = (combo.Iva ?? 21m) / 100m;
+                    pvpKitSinIva = ivaFrac > 0
+                        ? Math.Round(combo.PrecioFinal.Value / (1 + ivaFrac), 0)
+                        : Math.Round(combo.PrecioFinal.Value, 0);
+                }
+                else if (combo.PrecioUnitario.HasValue)
+                {
+                    pvpKitSinIva = Math.Round(combo.PrecioUnitario.Value, 0);
+                }
+                var ivaKit = (combo.Iva.HasValue && combo.Iva.Value == 10.5m) ? 10.5m : 21m;
+
+                kit = new CafeKit
+                {
+                    Sku = sku,
+                    Nombre = string.IsNullOrWhiteSpace(combo.Nombre) ? sku : combo.Nombre!,
+                    Descripcion = combo.Descripcion,
+                    Categoria = categoriaFinal,
+                    MarcaId = req.MarcaId,
+                    Marca = marcaNombre,
+                    Pvp2 = pvpKitSinIva,
+                    IvaPct = ivaKit,
+                    Notas = "Importado del cotejo de Contabilium",
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow,
+                    Items = itemsKit
+                };
+                _db.CafeKits.Add(kit);
+                await _db.SaveChangesAsync();
+                kitsCreados++;
+                detalles.Add($"{sku}: kit creado con {itemsKit.Count} componente(s).");
+            }
+
+            // Vincular publicaciones MeLi con ese SKU al kit
+            var pubs = await _db.MeliItems
+                .Where(i => i.Sku == sku && i.CafeKitId == null)
+                .ToListAsync();
+            foreach (var p in pubs) p.CafeKitId = kit.Id;
+            if (pubs.Count > 0)
+            {
+                await _db.SaveChangesAsync();
+                vinculados += pubs.Count;
+            }
+        }
+
+        return new CrearKitsResultado(kitsCreados, vinculados, componentesCreados, omitidos, detalles);
     }
 }

@@ -67,6 +67,22 @@ public class MeliCotejoController : ControllerBase
         }
     }
 
+    [HttpPost("crear-kits")]
+    public async Task<IActionResult> CrearKits([FromBody] ContabiliumCotejoService.CrearKitsRequest req)
+    {
+        try
+        {
+            if (req.Skus is null || req.Skus.Count == 0)
+                return BadRequest(new { error = "No seleccionaste ningun SKU." });
+            var result = await _cotejo.CrearKitsBatchAsync(req);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpGet("combo/{skuCombo}")]
     public async Task<IActionResult> DetalleCombo(string skuCombo)
     {

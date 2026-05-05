@@ -42,6 +42,7 @@ public class CotejoFilaDto
     public int? ComboIdVinculado { get; set; }
     public int? CafeProductoIdVinculado { get; set; }
     public int? CafeComboIdVinculado { get; set; }
+    public int? CafeKitIdVinculado { get; set; }
 }
 
 public class CrearProductosCotejoRequest
@@ -55,6 +56,22 @@ public class CrearProductosCotejoResultDto
 {
     public int Creados { get; set; }
     public int Vinculados { get; set; }
+    public int Omitidos { get; set; }
+    public List<string> Detalles { get; set; } = new();
+}
+
+public class CrearKitsCotejoRequest
+{
+    public List<string> Skus { get; set; } = new();
+    public int? MarcaId { get; set; }
+    public string? Categoria { get; set; }
+}
+
+public class CrearKitsCotejoResultDto
+{
+    public int KitsCreados { get; set; }
+    public int VinculadosMeli { get; set; }
+    public int ComponentesCreados { get; set; }
     public int Omitidos { get; set; }
     public List<string> Detalles { get; set; } = new();
 }

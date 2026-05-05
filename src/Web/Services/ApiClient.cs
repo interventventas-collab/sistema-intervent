@@ -537,6 +537,9 @@ public class ApiClient
     public async Task<CrearProductosCotejoResultDto?> CrearProductosCotejoAsync(CrearProductosCotejoRequest req)
         => await PostAsync<CrearProductosCotejoResultDto>("/api/meli/cotejo/crear-productos", req);
 
+    public async Task<CrearKitsCotejoResultDto?> CrearKitsCotejoAsync(CrearKitsCotejoRequest req)
+        => await PostAsync<CrearKitsCotejoResultDto>("/api/meli/cotejo/crear-kits", req);
+
     // --- Descuentos por canal x marca ---
     public async Task<CafeDescuentoGrillaResponse?> GetDescuentosGrillaAsync()
         => await GetAsync<CafeDescuentoGrillaResponse>("/api/cafe/descuentos/grilla");

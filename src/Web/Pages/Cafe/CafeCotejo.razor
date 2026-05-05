@@ -80,7 +80,7 @@
                 <!-- Barra de seleccion masiva -->
                 <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center; margin-bottom:0.7rem; padding:0.6rem 0.7rem; background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px;">
                     <span style="font-weight:700; color:#374151;">
-                        @SeleccionadosCount seleccionado(s) de @ListadoCreables creable(s)
+                        @SeleccionadosCount seleccionado(s) — @SelProductosCount productos · @SelKitsCount kits
                     </span>
                     <span style="flex:1;"></span>
 
@@ -100,8 +100,13 @@
                         }
                     </select>
 
-                    <button class="btn btn-primary" @onclick="CrearSeleccionados" disabled="@(SeleccionadosCount == 0 || isBusy)">
-                        @(isBusy ? "Creando..." : $"Crear {SeleccionadosCount} producto(s)")
+                    <button class="btn btn-primary" @onclick="CrearProductosSeleccionados"
+                            disabled="@(SelProductosCount == 0 || isBusy)" title="Solo crea filas tipo 'producto'">
+                        @(isBusy ? "Creando..." : $"Crear {SelProductosCount} producto(s)")
+                    </button>
+                    <button class="btn btn-primary" @onclick="CrearKitsSeleccionados"
+                            disabled="@(SelKitsCount == 0 || isBusy)" title="Solo crea filas tipo 'combo' (= kit en el ERP)">
+                        @(isBusy ? "Creando..." : $"Crear {SelKitsCount} kit(s)")
                     </button>
                 </div>
 
@@ -171,7 +176,7 @@
                                 <td>@(f.ContabPrecioFinal.HasValue ? $"$ {f.ContabPrecioFinal:N2}" : "—")</td>
                                 <td>@(f.ContabStock.HasValue ? f.ContabStock.Value.ToString("N0") : "—")</td>
                                 <td>
-                                    @if (f.CafeProductoIdVinculado.HasValue || f.CafeComboIdVinculado.HasValue)
+                                    @if (f.CafeProductoIdVinculado.HasValue || f.CafeComboIdVinculado.HasValue || f.CafeKitIdVinculado.HasValue)
                                     {
                                         <span title="Vinculado al modulo Cafe" style="color:#16a34a;font-weight:700;">✓</span>
                                     }
@@ -224,10 +229,18 @@
     private bool AllSelected => listado is not null && ListadoCreables > 0
         && listado.Where(EsCreable).All(f => seleccion.Contains(f.Sku!));
 
+    private int SelProductosCount => listado is null ? 0
+        : listado.Count(f => seleccion.Contains(f.Sku ?? "") && f.Categoria == "producto");
+    private int SelKitsCount => listado is null ? 0
+        : listado.Count(f => seleccion.Contains(f.Sku ?? "") && f.Categoria == "combo");
+
+    // Es creable: producto sin vincular a CafeProducto, o combo sin vincular a CafeKit.
     private bool EsCreable(CotejoFilaDto f)
-        => f.Categoria == "producto"
-           && !string.IsNullOrEmpty(f.Sku)
-           && !f.CafeProductoIdVinculado.HasValue;
+        => !string.IsNullOrEmpty(f.Sku)
+           && (
+                (f.Categoria == "producto" && !f.CafeProductoIdVinculado.HasValue)
+                || (f.Categoria == "combo" && !f.CafeKitIdVinculado.HasValue)
+              );
 
     protected override async Task OnInitializedAsync()
     {
@@ -316,9 +329,13 @@
         finally { isBusy = false; }
     }
 
-    private async Task CrearSeleccionados()
+    private async Task CrearProductosSeleccionados()
     {
-        if (seleccion.Count == 0) return;
+        if (listado is null) return;
+        var skusProductos = listado
+            .Where(f => seleccion.Contains(f.Sku ?? "") && f.Categoria == "producto")
+            .Select(f => f.Sku!).Distinct().ToList();
+        if (skusProductos.Count == 0) return;
         isBusy = true;
         try
         {
@@ -327,15 +344,48 @@
 
             var req = new CrearProductosCotejoRequest
             {
-                Skus = seleccion.ToList(),
+                Skus = skusProductos,
                 MarcaId = marcaId,
                 Categoria = categoriaACrear
             };
             var r = await Api.CrearProductosCotejoAsync(req);
             if (r is not null)
             {
-                ToastService.Success($"Creados: {r.Creados} · Vinculados: {r.Vinculados} · Omitidos: {r.Omitidos}");
-                seleccion.Clear();
+                ToastService.Success($"Productos creados: {r.Creados} · Vinculados: {r.Vinculados} · Omitidos: {r.Omitidos}");
+                foreach (var s in skusProductos) seleccion.Remove(s);
+                await Task.WhenAll(LoadResumen(), LoadListado());
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { isBusy = false; }
+    }
+
+    private async Task CrearKitsSeleccionados()
+    {
+        if (listado is null) return;
+        var skusCombos = listado
+            .Where(f => seleccion.Contains(f.Sku ?? "") && f.Categoria == "combo")
+            .Select(f => f.Sku!).Distinct().ToList();
+        if (skusCombos.Count == 0) return;
+        isBusy = true;
+        try
+        {
+            int? marcaId = null;
+            if (int.TryParse(marcaIdACrear, out var mid)) marcaId = mid;
+
+            var req = new CrearKitsCotejoRequest
+            {
+                Skus = skusCombos,
+                MarcaId = marcaId,
+                Categoria = categoriaACrear
+            };
+            var r = await Api.CrearKitsCotejoAsync(req);
+            if (r is not null)
+            {
+                ToastService.Success(
+                    $"Kits creados: {r.KitsCreados} · Componentes nuevos: {r.ComponentesCreados} · " +
+                    $"Vinculados a MeLi: {r.VinculadosMeli} · Omitidos: {r.Omitidos}");
+                foreach (var s in skusCombos) seleccion.Remove(s);
                 await Task.WhenAll(LoadResumen(), LoadListado());
             }
         }
