@@ -2330,3 +2330,22 @@ IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_MeliItems_MeliItemId_N
         WHERE VariationId IS NULL;
 GO
 
+-- MeliItems: vinculo nuevo a Cafe_Productos / Cafe_Combos (la base "nueva" del modulo Cafe).
+-- Coexiste con ProductId/ComboId (que apuntan al sistema generico legacy).
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'CafeProductoId' AND Object_ID = Object_ID('MeliItems'))
+    ALTER TABLE MeliItems ADD CafeProductoId INT NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'CafeComboId' AND Object_ID = Object_ID('MeliItems'))
+    ALTER TABLE MeliItems ADD CafeComboId INT NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_MeliItems_CafeProducto')
+   AND EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_Productos' AND xtype='U')
+    ALTER TABLE MeliItems ADD CONSTRAINT FK_MeliItems_CafeProducto FOREIGN KEY (CafeProductoId) REFERENCES Cafe_Productos(Id) ON DELETE SET NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_MeliItems_CafeProductoId' AND object_id = OBJECT_ID('MeliItems'))
+    CREATE INDEX IX_MeliItems_CafeProductoId ON MeliItems(CafeProductoId);
+GO
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_MeliItems_CafeComboId' AND object_id = OBJECT_ID('MeliItems'))
+    CREATE INDEX IX_MeliItems_CafeComboId ON MeliItems(CafeComboId);
+GO
+

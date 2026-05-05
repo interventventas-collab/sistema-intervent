@@ -1,4 +1,5 @@
 using Api.Data;
+using Api.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace Api.Services;
@@ -72,13 +73,18 @@ public class ContabiliumCotejoService
         decimal Price,
         int AvailableQuantity,
         string? ContabNombre,
+        // Solo informativo: el campo "Proveedor" de Contabilium, que el usuario suele
+        // usar como marca/fabricante (ej: "COLOMBRARO HERMANOS S.A.").
+        string? MarcaContab,
         decimal? ContabPrecioFinal,
         decimal? ContabStock,
         bool ComboTieneFaltantes,
         int? ProductIdVinculado,
-        int? ComboIdVinculado);
+        int? ComboIdVinculado,
+        int? CafeProductoIdVinculado,
+        int? CafeComboIdVinculado);
 
-    public async Task<List<CotejoFila>> ListarAsync(string categoria = "todos", string? buscar = null, int? meliAccountId = null, int take = 200)
+    public async Task<List<CotejoFila>> ListarAsync(string categoria = "todos", string? buscar = null, int? meliAccountId = null, int take = 200, string? marcaContab = null)
     {
         // Set de combos con problemas para marcar la fila.
         var brokenCombosSql = await _db.ContabComboItems
@@ -98,6 +104,15 @@ public class ContabiliumCotejoService
                 (i.Sku != null && i.Sku.ToLower().Contains(needle)) ||
                 i.Title.ToLower().Contains(needle) ||
                 i.MeliItemId.ToLower().Contains(needle));
+        }
+
+        // Filtro por marca de Contabilium (campo Proveedor) — solo aplicable si la fila
+        // matchea con un producto de Contab.
+        if (!string.IsNullOrWhiteSpace(marcaContab))
+        {
+            var mc = marcaContab.Trim();
+            q = q.Where(i => i.Sku != null && i.Sku != ""
+                && _db.ContabProductos.Any(p => p.Sku == i.Sku && p.Proveedor == mc));
         }
 
         // Filtro por categoria a nivel SQL (subqueries contra Contab_*).
@@ -130,7 +145,8 @@ public class ContabiliumCotejoService
             .Select(i => new
             {
                 i.Id, i.MeliItemId, i.VariationId, i.VariationAttributes,
-                i.Title, i.Sku, i.Price, i.AvailableQuantity, i.ProductId, i.ComboId
+                i.Title, i.Sku, i.Price, i.AvailableQuantity, i.ProductId, i.ComboId,
+                i.CafeProductoId, i.CafeComboId
             })
             .ToListAsync();
 
@@ -140,9 +156,9 @@ public class ContabiliumCotejoService
 
         var contabProds = await _db.ContabProductos
             .Where(p => skus.Contains(p.Sku.ToLower()))
-            .Select(p => new { p.Sku, p.Nombre, p.PrecioFinal, p.Stock })
+            .Select(p => new { p.Sku, p.Nombre, p.PrecioFinal, p.Stock, p.Proveedor })
             .ToListAsync();
-        var prodLookup = contabProds.ToDictionary(p => p.Sku.ToLowerInvariant(), p => (p.Nombre, p.PrecioFinal, p.Stock));
+        var prodLookup = contabProds.ToDictionary(p => p.Sku.ToLowerInvariant(), p => (p.Nombre, p.PrecioFinal, p.Stock, p.Proveedor));
 
         var contabCombos = await _db.ContabCombos
             .Where(c => skus.Contains(c.SkuCombo.ToLower()))
@@ -156,6 +172,7 @@ public class ContabiliumCotejoService
             var skuLower = r.Sku?.Trim().ToLowerInvariant();
             string cat;
             string? cName = null;
+            string? cMarca = null;
             decimal? cPF = null;
             decimal? cStock = null;
             bool comboBroken = false;
@@ -177,6 +194,7 @@ public class ContabiliumCotejoService
                 cName = pv.Nombre;
                 cPF = pv.PrecioFinal;
                 cStock = pv.Stock;
+                cMarca = pv.Proveedor;
             }
             else
             {
@@ -186,7 +204,8 @@ public class ContabiliumCotejoService
             rows.Add(new CotejoFila(
                 r.Id, r.MeliItemId, r.VariationId, r.VariationAttributes,
                 r.Title, r.Sku, cat, r.Price, r.AvailableQuantity,
-                cName, cPF, cStock, comboBroken, r.ProductId, r.ComboId));
+                cName, cMarca, cPF, cStock, comboBroken,
+                r.ProductId, r.ComboId, r.CafeProductoId, r.CafeComboId));
 
             if (rows.Count >= take) break;
         }
@@ -233,5 +252,95 @@ public class ContabiliumCotejoService
 
         var faltantes = componentes.Count(c => !c.ExisteEnContabilium);
         return new ComboDetalle(combo.SkuCombo, combo.Nombre, combo.PrecioFinal, componentes, faltantes);
+    }
+
+    public record CrearProductosRequest(List<string> Skus, int? MarcaId, string? Categoria);
+    public record CrearProductosResultado(int Creados, int Vinculados, int Omitidos, List<string> Detalles);
+
+    // Crea CafeProductos en lote a partir de los SKU seleccionados (que tienen pareja
+    // como producto en Contab_Productos). Vincula despues TODAS las MeliItems con
+    // ese SKU al CafeProducto creado, asi compartis stock entre publicaciones.
+    public async Task<CrearProductosResultado> CrearProductosBatchAsync(CrearProductosRequest req)
+    {
+        var detalles = new List<string>();
+        int creados = 0, vinculados = 0, omitidos = 0;
+
+        var categoriaFinal = string.IsNullOrWhiteSpace(req.Categoria) ? "OTROS" : req.Categoria.Trim().ToUpperInvariant();
+        if (categoriaFinal != "CAFE" && categoriaFinal != "OTROS") categoriaFinal = "OTROS";
+
+        // Marca: si vino MarcaId, busco el nombre en Cafe_Marcas para tambien escribir el
+        // campo legacy "Marca" (texto). Si no, queda sin marca.
+        string? marcaNombre = null;
+        if (req.MarcaId.HasValue)
+        {
+            marcaNombre = await _db.CafeMarcas
+                .Where(m => m.Id == req.MarcaId.Value)
+                .Select(m => m.Nombre)
+                .FirstOrDefaultAsync();
+            if (marcaNombre is null)
+                throw new InvalidOperationException("La marca seleccionada no existe.");
+        }
+
+        foreach (var skuRaw in req.Skus.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var sku = skuRaw.Trim();
+            if (string.IsNullOrEmpty(sku)) continue;
+
+            // Si ya hay un CafeProducto con ese SKU, no lo duplicamos.
+            var existente = await _db.CafeProductos.FirstOrDefaultAsync(p => p.Sku == sku);
+
+            CafeProducto producto;
+            if (existente is not null)
+            {
+                producto = existente;
+                detalles.Add($"{sku}: ya existia, solo vinculo.");
+                omitidos++;
+            }
+            else
+            {
+                // Tomamos los datos de Contabilium.
+                var contab = await _db.ContabProductos.FirstOrDefaultAsync(p => p.Sku == sku);
+                if (contab is null)
+                {
+                    detalles.Add($"{sku}: no esta en Contab_Productos, omito.");
+                    omitidos++;
+                    continue;
+                }
+
+                producto = new CafeProducto
+                {
+                    Sku = sku,
+                    Nombre = string.IsNullOrWhiteSpace(contab.Nombre) ? sku : contab.Nombre!,
+                    Barcode = contab.CodigoBarras,
+                    Categoria = categoriaFinal,
+                    MarcaId = req.MarcaId,
+                    Marca = marcaNombre, // texto legacy, igual a la marca elegida
+                    Costo = contab.CostoInterno ?? 0m,
+                    Pvp1 = contab.PrecioFinal,
+                    StockUnidades = (int)Math.Round(contab.Stock ?? 0m),
+                    StockGramos = 0m,
+                    Notas = string.IsNullOrWhiteSpace(contab.Proveedor) ? null : $"Proveedor Contabilium: {contab.Proveedor}",
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow
+                };
+                _db.CafeProductos.Add(producto);
+                await _db.SaveChangesAsync();
+                creados++;
+                detalles.Add($"{sku}: creado.");
+            }
+
+            // Vincular todas las MeliItems con ese SKU al CafeProducto.
+            var pubs = await _db.MeliItems
+                .Where(i => i.Sku == sku && i.CafeProductoId == null)
+                .ToListAsync();
+            foreach (var p in pubs) p.CafeProductoId = producto.Id;
+            if (pubs.Count > 0)
+            {
+                await _db.SaveChangesAsync();
+                vinculados += pubs.Count;
+            }
+        }
+
+        return new CrearProductosResultado(creados, vinculados, omitidos, detalles);
     }
 }

@@ -34,11 +34,29 @@ public class CotejoFilaDto
     public decimal Price { get; set; }
     public int AvailableQuantity { get; set; }
     public string? ContabNombre { get; set; }
+    public string? MarcaContab { get; set; }
     public decimal? ContabPrecioFinal { get; set; }
     public decimal? ContabStock { get; set; }
     public bool ComboTieneFaltantes { get; set; }
     public int? ProductIdVinculado { get; set; }
     public int? ComboIdVinculado { get; set; }
+    public int? CafeProductoIdVinculado { get; set; }
+    public int? CafeComboIdVinculado { get; set; }
+}
+
+public class CrearProductosCotejoRequest
+{
+    public List<string> Skus { get; set; } = new();
+    public int? MarcaId { get; set; }
+    public string? Categoria { get; set; }
+}
+
+public class CrearProductosCotejoResultDto
+{
+    public int Creados { get; set; }
+    public int Vinculados { get; set; }
+    public int Omitidos { get; set; }
+    public List<string> Detalles { get; set; } = new();
 }
 
 public class ComboComponenteDto

@@ -55,7 +55,8 @@
                     <option value="huerfano">Solo Huérfanos</option>
                     <option value="sin_sku">Solo sin SKU</option>
                 </select>
-                <input class="form-input" placeholder="Buscar (SKU / titulo / MLA)" @bind="buscar" @bind:event="oninput" style="flex: 1; min-width: 240px;" />
+                <input class="form-input" placeholder="Buscar (SKU / titulo / MLA)" @bind="buscar" @bind:event="oninput" style="flex: 1; min-width: 220px;" />
+                <input class="form-input" placeholder="Filtrar por marca de Contab" @bind="filtroMarcaContab" @bind:event="oninput" style="max-width: 240px;" />
                 <button class="btn btn-secondary" @onclick="LoadListado" disabled="@isBusy">Buscar</button>
             </div>
 
@@ -69,15 +70,47 @@
             }
             else
             {
+                <!-- Barra de seleccion masiva -->
+                <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center; margin-bottom:0.7rem; padding:0.6rem 0.7rem; background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px;">
+                    <span style="font-weight:700; color:#374151;">
+                        @SeleccionadosCount seleccionado(s) de @ListadoCreables creable(s)
+                    </span>
+                    <span style="flex:1;"></span>
+
+                    <select class="form-input" @bind="categoriaACrear" style="max-width:130px;">
+                        <option value="OTROS">Categoria: OTROS</option>
+                        <option value="CAFE">Categoria: CAFE</option>
+                    </select>
+
+                    <select class="form-input" @bind="marcaIdACrear" style="max-width:240px;">
+                        <option value="">— Sin marca —</option>
+                        @if (marcas is not null)
+                        {
+                            @foreach (var m in marcas.OrderBy(x => x.Nombre))
+                            {
+                                <option value="@m.Id">@m.Nombre</option>
+                            }
+                        }
+                    </select>
+
+                    <button class="btn btn-primary" @onclick="CrearSeleccionados" disabled="@(SeleccionadosCount == 0 || isBusy)">
+                        @(isBusy ? "Creando..." : $"Crear {SeleccionadosCount} producto(s)")
+                    </button>
+                </div>
+
                 <div class="table-responsive">
                     <table class="data-table" style="font-size: 0.85rem;">
                         <thead>
                             <tr>
-                                <th style="width:90px;">Tipo</th>
+                                <th style="width:32px;">
+                                    <input type="checkbox" @onchange="ToggleAll" checked="@AllSelected" disabled="@(ListadoCreables == 0)" />
+                                </th>
+                                <th style="width:80px;">Tipo</th>
                                 <th style="width:120px;">SKU MeLi</th>
                                 <th>Publicación MeLi</th>
-                                <th style="width:90px;">Stock MeLi</th>
+                                <th style="width:80px;">Stock MeLi</th>
                                 <th>Match en Contabilium</th>
+                                <th style="width:160px;">Marca Contab</th>
                                 <th style="width:110px;">Precio Contab</th>
                                 <th style="width:90px;">Stock Contab</th>
                                 <th style="width:80px;">Vinculado</th>
@@ -86,7 +119,15 @@
                         <tbody>
                         @foreach (var f in listado)
                         {
+                            var creable = EsCreable(f);
                             <tr style="@(f.ComboTieneFaltantes ? "background:#fef3c7;" : "")">
+                                <td>
+                                    @if (creable)
+                                    {
+                                        <input type="checkbox" checked="@(seleccion.Contains(f.Sku!))"
+                                               @onchange="@(e => Toggle(f.Sku!, (bool)e.Value!))" />
+                                    }
+                                </td>
                                 <td>
                                     @if (f.Categoria == "producto")
                                     {
@@ -119,12 +160,17 @@
                                 </td>
                                 <td>@f.AvailableQuantity</td>
                                 <td>@(f.ContabNombre ?? "—")</td>
+                                <td style="font-size:0.78rem;color:#6b7280;">@(f.MarcaContab ?? "—")</td>
                                 <td>@(f.ContabPrecioFinal.HasValue ? $"$ {f.ContabPrecioFinal:N2}" : "—")</td>
                                 <td>@(f.ContabStock.HasValue ? f.ContabStock.Value.ToString("N0") : "—")</td>
                                 <td>
-                                    @if (f.ProductIdVinculado.HasValue || f.ComboIdVinculado.HasValue)
+                                    @if (f.CafeProductoIdVinculado.HasValue || f.CafeComboIdVinculado.HasValue)
                                     {
-                                        <span style="color:#16a34a;font-weight:700;">✓</span>
+                                        <span title="Vinculado al modulo Cafe" style="color:#16a34a;font-weight:700;">✓</span>
+                                    }
+                                    else if (f.ProductIdVinculado.HasValue || f.ComboIdVinculado.HasValue)
+                                    {
+                                        <span title="Vinculado al sistema legacy" style="color:#9ca3af;">≈</span>
                                     }
                                     else
                                     {
@@ -138,6 +184,7 @@
                 </div>
                 <p style="font-size:0.8rem;color:#6b7280;margin-top:0.4rem;">
                     Mostrando @listado.Count fila(s). Subi el límite con un buscador específico para ver más.
+                    <span style="margin-left:0.6rem; color:#9ca3af;">"Marca Contab" es solo informativo (es el "Proveedor" del Excel) — la marca real se asigna desde el dropdown de arriba.</span>
                 </p>
             }
         }
@@ -154,13 +201,36 @@
 @code {
     private CotejoResumenDto? resumen;
     private List<CotejoFilaDto>? listado;
+    private List<CafeMarcaDto>? marcas;
     private string categoria = "todos";
     private string buscar = "";
+    private string filtroMarcaContab = "";
     private bool isBusy;
+
+    // Seleccion masiva
+    private HashSet<string> seleccion = new(StringComparer.OrdinalIgnoreCase);
+    private string categoriaACrear = "OTROS";
+    private string marcaIdACrear = ""; // string para bind del select
+
+    private int SeleccionadosCount => seleccion.Count;
+    private int ListadoCreables => listado?.Count(EsCreable) ?? 0;
+    private bool AllSelected => listado is not null && ListadoCreables > 0
+        && listado.Where(EsCreable).All(f => seleccion.Contains(f.Sku!));
+
+    private bool EsCreable(CotejoFilaDto f)
+        => f.Categoria == "producto"
+           && !string.IsNullOrEmpty(f.Sku)
+           && !f.CafeProductoIdVinculado.HasValue;
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadResumen();
+        await Task.WhenAll(LoadResumen(), LoadMarcas());
+    }
+
+    private async Task LoadMarcas()
+    {
+        try { marcas = await Api.GetCafeMarcasAsync(activos: true); }
+        catch (Exception ex) { ToastService.Error("Error cargando marcas: " + ex.Message); }
     }
 
     private async Task LoadResumen()
@@ -178,9 +248,35 @@
     {
         try
         {
-            listado = await Api.GetCotejoListadoAsync(categoria, string.IsNullOrWhiteSpace(buscar) ? null : buscar);
+            listado = await Api.GetCotejoListadoAsync(
+                categoria,
+                string.IsNullOrWhiteSpace(buscar) ? null : buscar,
+                marcaContab: string.IsNullOrWhiteSpace(filtroMarcaContab) ? null : filtroMarcaContab);
+            // Limpiamos seleccion de SKUs que ya no estan en la vista actual.
+            if (listado is not null)
+            {
+                var visibles = listado.Where(EsCreable).Select(f => f.Sku!).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                seleccion.IntersectWith(visibles);
+            }
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private void Toggle(string sku, bool on)
+    {
+        if (on) seleccion.Add(sku);
+        else seleccion.Remove(sku);
+    }
+
+    private void ToggleAll(ChangeEventArgs e)
+    {
+        var on = (bool)(e.Value ?? false);
+        if (listado is null) return;
+        foreach (var f in listado.Where(EsCreable))
+        {
+            if (on) seleccion.Add(f.Sku!);
+            else seleccion.Remove(f.Sku!);
+        }
     }
 
     private async Task ImportarStaging()
@@ -195,6 +291,33 @@
                 if (r.Warnings.Count > 0) ToastService.Error(string.Join(" / ", r.Warnings));
             }
             await LoadResumen();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { isBusy = false; }
+    }
+
+    private async Task CrearSeleccionados()
+    {
+        if (seleccion.Count == 0) return;
+        isBusy = true;
+        try
+        {
+            int? marcaId = null;
+            if (int.TryParse(marcaIdACrear, out var mid)) marcaId = mid;
+
+            var req = new CrearProductosCotejoRequest
+            {
+                Skus = seleccion.ToList(),
+                MarcaId = marcaId,
+                Categoria = categoriaACrear
+            };
+            var r = await Api.CrearProductosCotejoAsync(req);
+            if (r is not null)
+            {
+                ToastService.Success($"Creados: {r.Creados} · Vinculados: {r.Vinculados} · Omitidos: {r.Omitidos}");
+                seleccion.Clear();
+                await Task.WhenAll(LoadResumen(), LoadListado());
+            }
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { isBusy = false; }

@@ -520,15 +520,19 @@ public class ApiClient
     public async Task<CotejoResumenDto?> GetCotejoResumenAsync()
         => await GetAsync<CotejoResumenDto>("/api/meli/cotejo/resumen");
 
-    public async Task<List<CotejoFilaDto>?> GetCotejoListadoAsync(string categoria = "todos", string? buscar = null, int take = 200)
+    public async Task<List<CotejoFilaDto>?> GetCotejoListadoAsync(string categoria = "todos", string? buscar = null, int take = 200, string? marcaContab = null)
     {
         var qs = new List<string> { $"categoria={Uri.EscapeDataString(categoria)}", $"take={take}" };
         if (!string.IsNullOrWhiteSpace(buscar)) qs.Add($"buscar={Uri.EscapeDataString(buscar)}");
+        if (!string.IsNullOrWhiteSpace(marcaContab)) qs.Add($"marcaContab={Uri.EscapeDataString(marcaContab)}");
         return await GetAsync<List<CotejoFilaDto>>("/api/meli/cotejo/listar?" + string.Join("&", qs));
     }
 
     public async Task<ComboDetalleDto?> GetCotejoComboDetalleAsync(string skuCombo)
         => await GetAsync<ComboDetalleDto>($"/api/meli/cotejo/combo/{Uri.EscapeDataString(skuCombo)}");
+
+    public async Task<CrearProductosCotejoResultDto?> CrearProductosCotejoAsync(CrearProductosCotejoRequest req)
+        => await PostAsync<CrearProductosCotejoResultDto>("/api/meli/cotejo/crear-productos", req);
 
     public async Task<byte[]?> ExportCafeListaPreciosExcelAsync(CafeListaPreciosFiltroRequest req)
     {

@@ -40,5 +40,11 @@ public class MeliItem
     public int? ComboId { get; set; }
     public Combo? Combo { get; set; }
 
+    // Vinculo nuevo al modulo Cafe (sistema actual). Coexiste con ProductId/ComboId del sistema legacy.
+    public int? CafeProductoId { get; set; }
+    public CafeProducto? CafeProducto { get; set; }
+
+    public int? CafeComboId { get; set; }
+
     public MeliAccount? MeliAccount { get; set; }
 }

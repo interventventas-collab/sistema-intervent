@@ -141,6 +141,12 @@ public class AppDbContext : DbContext
                   .WithMany(p => p.MeliItems)
                   .HasForeignKey(i => i.ProductId)
                   .OnDelete(DeleteBehavior.SetNull);
+            entity.HasIndex(i => i.CafeProductoId);
+            entity.HasOne(i => i.CafeProducto)
+                  .WithMany()
+                  .HasForeignKey(i => i.CafeProductoId)
+                  .OnDelete(DeleteBehavior.SetNull);
+            entity.HasIndex(i => i.CafeComboId);
         });
 
         modelBuilder.Entity<ContabProducto>(entity =>

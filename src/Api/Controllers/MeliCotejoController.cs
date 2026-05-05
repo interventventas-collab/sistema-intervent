@@ -44,10 +44,27 @@ public class MeliCotejoController : ControllerBase
         [FromQuery] string categoria = "todos",
         [FromQuery] string? buscar = null,
         [FromQuery] int? meliAccountId = null,
-        [FromQuery] int take = 200)
+        [FromQuery] int take = 200,
+        [FromQuery] string? marcaContab = null)
     {
-        var rows = await _cotejo.ListarAsync(categoria, buscar, meliAccountId, take);
+        var rows = await _cotejo.ListarAsync(categoria, buscar, meliAccountId, take, marcaContab);
         return Ok(rows);
+    }
+
+    [HttpPost("crear-productos")]
+    public async Task<IActionResult> CrearProductos([FromBody] ContabiliumCotejoService.CrearProductosRequest req)
+    {
+        try
+        {
+            if (req.Skus is null || req.Skus.Count == 0)
+                return BadRequest(new { error = "No seleccionaste ningun SKU." });
+            var result = await _cotejo.CrearProductosBatchAsync(req);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 
     [HttpGet("combo/{skuCombo}")]
