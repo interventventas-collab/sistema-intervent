@@ -475,7 +475,7 @@ public record CafeListaPreciosPreviewDto(
 public record CafeMarcaDto(
     int Id, string Nombre,
     int? ProveedorId, string? ProveedorNombre,
-    string? Notas, bool IsActive,
+    string? Notas, bool IsActive, bool BloqueaDescuento,
     DateTime CreatedAt, DateTime? UpdatedAt,
     int ProductosCount, int OemsCount);
 
@@ -493,4 +493,32 @@ public class UpdateCafeMarcaRequest
     public bool ClearProveedor { get; set; }
     public string? Notas { get; set; }
     public bool? IsActive { get; set; }
+    public bool? BloqueaDescuento { get; set; }
+}
+
+// ===== Descuentos por canal x marca =====
+public record CafeDescuentoClienteDto(
+    int Id,
+    string TipoCliente,
+    int? MarcaId,
+    string? MarcaNombre,
+    bool MarcaBloqueaDescuento,
+    decimal DescuentoPct);
+
+// Vista grilla: una fila por marca activa, columnas con el descuento por tipo de cliente.
+public record CafeDescuentoGrillaFila(
+    int? MarcaId,                 // null = fila "(general)"
+    string MarcaNombre,           // "(General — todas las marcas)" para la fila general
+    bool BloqueaDescuento,
+    Dictionary<string, decimal?> DescuentoPorTipo);  // { "BAR": 25, "OTRO": 25 }
+
+public record CafeDescuentoGrillaResponse(
+    List<string> Tipos,
+    List<CafeDescuentoGrillaFila> Filas);
+
+public class UpsertDescuentoRequest
+{
+    public string TipoCliente { get; set; } = "OTRO";
+    public int? MarcaId { get; set; }   // null = general
+    public decimal DescuentoPct { get; set; }
 }

@@ -1,0 +1,151 @@
+@page "/cafe/descuentos"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div class="card">
+    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+        <h3>💸 Descuentos por canal</h3>
+        <div style="display:flex; gap:0.5rem;">
+            <button class="btn btn-secondary" @onclick="Load" disabled="@isBusy">Refrescar</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <p style="color:#6b7280; font-size:0.9rem;">
+            Cada celda es el descuento % que paga ese tipo de cliente para esa marca.
+            La fila <b>"General"</b> es el descuento por default — aplica a todas las marcas que no tengan su propio override.
+            Las marcas marcadas con 🔒 tienen descuentos bloqueados (siempre se cobra el 100%).
+        </p>
+
+        @if (data is null)
+        {
+            <p style="color:#6b7280;">Cargando...</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="data-table" style="font-size:0.92rem;">
+                    <thead>
+                        <tr>
+                            <th style="width:280px;">Marca</th>
+                            @foreach (var t in data.Tipos)
+                            {
+                                <th style="text-align:center; min-width:140px;">Tipo: @t</th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var fila in data.Filas)
+                    {
+                        var esGeneral = fila.MarcaId is null;
+                        <tr style="@(esGeneral ? "background:#eff6ff; font-weight:700;" : "")">
+                            <td>
+                                @if (fila.BloqueaDescuento)
+                                {
+                                    <span title="Bloqueada — no acepta descuentos">🔒</span>
+                                    <span>&nbsp;</span>
+                                }
+                                @fila.MarcaNombre
+                            </td>
+                            @foreach (var t in data.Tipos)
+                            {
+                                <td style="text-align:center;">
+                                    @if (fila.BloqueaDescuento)
+                                    {
+                                        <span style="color:#9ca3af;">— bloqueada —</span>
+                                    }
+                                    else
+                                    {
+                                        var key = $"{(fila.MarcaId?.ToString() ?? "G")}-{t}";
+                                        <div style="display:flex; align-items:center; gap:0.25rem; justify-content:center;">
+                                            <input class="form-input"
+                                                   type="number" step="0.01" min="0" max="100"
+                                                   style="max-width:90px; text-align:right;"
+                                                   value="@(GetVal(fila, t))"
+                                                   @oninput="@(e => SetEdit(key, e.Value?.ToString()))" />
+                                            <span style="font-size:0.85rem; color:#6b7280;">%</span>
+                                            @if (HasEdit(key))
+                                            {
+                                                <button class="btn btn-primary" style="padding:0.2rem 0.4rem; font-size:0.78rem;"
+                                                        @onclick="() => Save(fila, t, key)" disabled="@isBusy">✓</button>
+                                            }
+                                        </div>
+                                    }
+                                </td>
+                            }
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+
+            <p style="font-size:0.78rem; color:#6b7280; margin-top:0.6rem;">
+                Tocá un valor para editarlo y luego apretá <b>✓</b> para guardar.
+                Vacío = usar el descuento general de ese tipo.
+            </p>
+        }
+    </div>
+</div>
+
+@code {
+    private CafeDescuentoGrillaResponse? data;
+    private Dictionary<string, string> ediciones = new();
+    private bool isBusy;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        try
+        {
+            data = await Api.GetDescuentosGrillaAsync();
+            ediciones.Clear();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private string GetVal(CafeDescuentoGrillaFila fila, string tipo)
+    {
+        var key = $"{(fila.MarcaId?.ToString() ?? "G")}-{tipo}";
+        if (ediciones.TryGetValue(key, out var edited)) return edited;
+        if (fila.DescuentoPorTipo.TryGetValue(tipo, out var v) && v.HasValue)
+            return v.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return "";
+    }
+
+    private void SetEdit(string key, string? newVal) => ediciones[key] = newVal ?? "";
+
+    private bool HasEdit(string key) => ediciones.ContainsKey(key);
+
+    private async Task Save(CafeDescuentoGrillaFila fila, string tipo, string key)
+    {
+        if (!ediciones.TryGetValue(key, out var raw)) return;
+        if (!decimal.TryParse(raw, System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out var pct))
+        {
+            // intento con cultura local (por si tipean con coma)
+            if (!decimal.TryParse(raw, out pct))
+            {
+                ToastService.Error("Valor invalido");
+                return;
+            }
+        }
+        if (pct < 0 || pct > 100) { ToastService.Error("El descuento debe estar entre 0 y 100"); return; }
+
+        isBusy = true;
+        try
+        {
+            await Api.UpsertDescuentoAsync(new UpsertDescuentoRequest
+            {
+                TipoCliente = tipo,
+                MarcaId = fila.MarcaId,
+                DescuentoPct = pct
+            });
+            ToastService.Success($"Descuento guardado para {tipo} / {fila.MarcaNombre}");
+            ediciones.Remove(key);
+            await Load();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { isBusy = false; }
+    }
+}

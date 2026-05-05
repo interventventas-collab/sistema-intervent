@@ -2232,6 +2232,43 @@ IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'IvaPct' AND Object_ID = O
     ALTER TABLE Cafe_Productos ADD IvaPct DECIMAL(5,2) NOT NULL DEFAULT 21;
 GO
 
+-- Cafe_Marcas: bloqueo de descuento. Marcas propias (Frikaf) nunca dan descuento.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'BloqueaDescuento' AND Object_ID = Object_ID('Cafe_Marcas'))
+    ALTER TABLE Cafe_Marcas ADD BloqueaDescuento BIT NOT NULL DEFAULT 0;
+GO
+
+-- Tabla de descuentos por tipo de cliente (BAR / OTRO) y opcionalmente por marca.
+-- MarcaId NULL = descuento general para ese tipo (aplica a todas las marcas que no tengan override).
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_DescuentosCliente' AND xtype='U')
+BEGIN
+    CREATE TABLE Cafe_DescuentosCliente (
+        Id INT PRIMARY KEY IDENTITY(1,1),
+        TipoCliente NVARCHAR(20) NOT NULL,
+        MarcaId INT NULL,
+        DescuentoPct DECIMAL(7,2) NOT NULL DEFAULT 0,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT FK_DescCliente_Marca FOREIGN KEY (MarcaId) REFERENCES Cafe_Marcas(Id) ON DELETE CASCADE
+    );
+END
+GO
+SET QUOTED_IDENTIFIER ON;
+GO
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'UX_DescCliente_TipoMarca' AND object_id = OBJECT_ID('Cafe_DescuentosCliente'))
+    CREATE UNIQUE INDEX UX_DescCliente_TipoMarca ON Cafe_DescuentosCliente(TipoCliente, MarcaId) WHERE MarcaId IS NOT NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'UX_DescCliente_TipoDefault' AND object_id = OBJECT_ID('Cafe_DescuentosCliente'))
+    CREATE UNIQUE INDEX UX_DescCliente_TipoDefault ON Cafe_DescuentosCliente(TipoCliente) WHERE MarcaId IS NULL;
+GO
+
+-- Seed inicial: 25% para BAR y OTRO. Solo se carga si la tabla esta vacia.
+IF NOT EXISTS (SELECT 1 FROM Cafe_DescuentosCliente)
+BEGIN
+    INSERT INTO Cafe_DescuentosCliente (TipoCliente, MarcaId, DescuentoPct) VALUES ('BAR', NULL, 25);
+    INSERT INTO Cafe_DescuentosCliente (TipoCliente, MarcaId, DescuentoPct) VALUES ('OTRO', NULL, 25);
+END
+GO
+
 -- =============================================================================
 -- Contabilium: tablas de staging para cotejo SKU MeLi <-> Contabilium.
 -- Solo guardan lo descargado de los Excels. Las tablas reales (Products, Combos)

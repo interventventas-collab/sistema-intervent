@@ -534,6 +534,19 @@ public class ApiClient
     public async Task<CrearProductosCotejoResultDto?> CrearProductosCotejoAsync(CrearProductosCotejoRequest req)
         => await PostAsync<CrearProductosCotejoResultDto>("/api/meli/cotejo/crear-productos", req);
 
+    // --- Descuentos por canal x marca ---
+    public async Task<CafeDescuentoGrillaResponse?> GetDescuentosGrillaAsync()
+        => await GetAsync<CafeDescuentoGrillaResponse>("/api/cafe/descuentos/grilla");
+
+    public async Task<bool> UpsertDescuentoAsync(UpsertDescuentoRequest req)
+    {
+        await SetAuthHeaderAsync();
+        var response = await _http.PostAsJsonAsync("/api/cafe/descuentos", req);
+        if (response.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return false; }
+        if (!response.IsSuccessStatusCode) await ThrowIfErrorAsync(response);
+        return true;
+    }
+
     public async Task<byte[]?> ExportCafeListaPreciosExcelAsync(CafeListaPreciosFiltroRequest req)
     {
         await SetAuthHeaderAsync();

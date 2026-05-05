@@ -24,6 +24,9 @@ public class CafeMarca
 
     public bool IsActive { get; set; } = true;
 
+    /// <summary>Marcas propias (Frikaf) bloquean descuentos: siempre se cobra 100%.</summary>
+    public bool BloqueaDescuento { get; set; } = false;
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

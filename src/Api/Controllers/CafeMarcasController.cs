@@ -103,6 +103,7 @@ public class CafeMarcasController : ControllerBase
         }
         if (req.Notas is not null) m.Notas = NullIfEmpty(req.Notas);
         if (req.IsActive.HasValue) m.IsActive = req.IsActive.Value;
+        if (req.BloqueaDescuento.HasValue) m.BloqueaDescuento = req.BloqueaDescuento.Value;
         m.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
 
@@ -147,7 +148,7 @@ public class CafeMarcasController : ControllerBase
     private static CafeMarcaDto Map(CafeMarca m, int productosCount, int oemsCount) => new(
         m.Id, m.Nombre,
         m.ProveedorId, m.ProveedorNav?.Nombre,
-        m.Notas, m.IsActive, m.CreatedAt, m.UpdatedAt,
+        m.Notas, m.IsActive, m.BloqueaDescuento, m.CreatedAt, m.UpdatedAt,
         productosCount, oemsCount);
 
     private static string? NullIfEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();

@@ -642,6 +642,7 @@ public class CafeMarcaDto
     public string? ProveedorNombre { get; set; }
     public string? Notas { get; set; }
     public bool IsActive { get; set; }
+    public bool BloqueaDescuento { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
     public int ProductosCount { get; set; }
@@ -662,6 +663,7 @@ public class UpdateCafeMarcaRequest
     public bool ClearProveedor { get; set; }
     public string? Notas { get; set; }
     public bool? IsActive { get; set; }
+    public bool? BloqueaDescuento { get; set; }
 }
 
 public class CafeOemImportResultDto
@@ -672,4 +674,26 @@ public class CafeOemImportResultDto
     public string? Proveedor { get; set; }
     public int VariantesPropagadas { get; set; }
     public List<string> Errores { get; set; } = new();
+}
+
+// === Descuentos por tipo de cliente y marca ===
+public class CafeDescuentoGrillaFila
+{
+    public int? MarcaId { get; set; }
+    public string MarcaNombre { get; set; } = "";
+    public bool BloqueaDescuento { get; set; }
+    public Dictionary<string, decimal?> DescuentoPorTipo { get; set; } = new();
+}
+
+public class CafeDescuentoGrillaResponse
+{
+    public List<string> Tipos { get; set; } = new();
+    public List<CafeDescuentoGrillaFila> Filas { get; set; } = new();
+}
+
+public class UpsertDescuentoRequest
+{
+    public string TipoCliente { get; set; } = "OTRO";
+    public int? MarcaId { get; set; }
+    public decimal DescuentoPct { get; set; }
 }

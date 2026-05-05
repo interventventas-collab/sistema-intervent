@@ -39,13 +39,15 @@
         @if (HasPerm("cafe"))
         {
             <NavGroup Label="Ventas por fuera" Icon="@SvgIcons.Brand"
-                      HasActiveChild="@(IsActive("/cafe") || IsActive("/cafe/ventas") || IsActive("/cafe/productos") || IsActive("/cafe/combos") || IsActive("/cafe/oems") || IsActive("/cafe/clientes") || IsActive("/cafe/configuracion") || IsActive("/cafe/compras") || IsActive("/cafe/proveedores") || IsActive("/cafe/marcas") || IsActive("/cafe/listas-precios") || IsActive("/cafe/consultas") || IsActive("/cafe/cotejo"))">
+                      HasActiveChild="@(IsActive("/cafe") || IsActive("/cafe/ventas") || IsActive("/cafe/productos") || IsActive("/cafe/combos") || IsActive("/cafe/oems") || IsActive("/cafe/clientes") || IsActive("/cafe/configuracion") || IsActive("/cafe/compras") || IsActive("/cafe/proveedores") || IsActive("/cafe/marcas") || IsActive("/cafe/listas-precios") || IsActive("/cafe/consultas") || IsActive("/cafe/cotejo") || IsActive("/cafe/descuentos"))">
                 <NavItem Href="/cafe" Label="Inicio" Icon="@SvgIcons.Dashboard"
                          IsActive="@IsActive("/cafe")" OnClick="@(() => NavigateTo("/cafe"))" />
                 <NavItem Href="/cafe/consultas" Label="Consultas" Icon="@SvgIcons.Tag"
                          IsActive="@IsActive("/cafe/consultas")" OnClick="@(() => NavigateTo("/cafe/consultas"))" />
                 <NavItem Href="/cafe/cotejo" Label="Cotejo MeLi" Icon="@SvgIcons.Tag"
                          IsActive="@IsActive("/cafe/cotejo")" OnClick="@(() => NavigateTo("/cafe/cotejo"))" />
+                <NavItem Href="/cafe/descuentos" Label="Descuentos" Icon="@SvgIcons.Tag"
+                         IsActive="@IsActive("/cafe/descuentos")" OnClick="@(() => NavigateTo("/cafe/descuentos"))" />
                 <NavItem Href="/cafe/ventas" Label="Ventas" Icon="@SvgIcons.ShoppingBag"
                          IsActive="@IsActive("/cafe/ventas")" OnClick="@(() => NavigateTo("/cafe/ventas"))" />
                 <NavItem Href="/cafe/listas-precios" Label="Listas de precios" Icon="@SvgIcons.Tag"
@@ -551,6 +553,7 @@
         { "cafe/listas-precios", "cafe" },
         { "cafe/consultas", "cafe" },
         { "cafe/cotejo", "cafe" },
+        { "cafe/descuentos", "cafe" },
         { "cafe/productos", "cafe" },
         { "cafe/combos", "cafe" },
         { "cafe/oems", "cafe" },
