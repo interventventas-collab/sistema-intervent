@@ -14,6 +14,10 @@
             <input class="form-input" style="min-width: 240px; font-size: 0.85rem;"
                    @bind="filtroTexto" @bind:event="oninput"
                    placeholder="🔍 Buscar combo por nombre..." />
+            <button class="btn @(modoEdicion ? "btn-warning" : "btn-secondary")"
+                    @onclick="() => modoEdicion = !modoEdicion" title="Edicion rapida del nombre">
+                @(modoEdicion ? "🔓 Edicion ON" : "🔒 Edicion OFF")
+            </button>
             <button class="btn btn-primary" @onclick="ShowCreate">+ Nuevo Combo</button>
         </div>
     </div>
@@ -47,7 +51,16 @@
                         {
                             <tr>
                                 <td>
-                                    <strong>@c.Nombre</strong>
+                                    @if (modoEdicion)
+                                    {
+                                        <input class="form-input" style="font-size:0.85rem;"
+                                               value="@c.Nombre"
+                                               @onchange="@(async (e) => await GuardarNombreCombo(c, e.Value?.ToString()))" />
+                                    }
+                                    else
+                                    {
+                                        <strong>@c.Nombre</strong>
+                                    }
                                     @if (!string.IsNullOrEmpty(c.Descripcion))
                                     {
                                         <div style="font-size: 0.78rem; color: #6b7280;">@c.Descripcion</div>
@@ -305,6 +318,22 @@
     private CafeSettingDto? settings;
     private bool loading = true;
     private string filtroTexto = "";
+    private bool modoEdicion;
+
+    private async Task GuardarNombreCombo(CafeComboDto c, string? nuevo)
+    {
+        if (string.IsNullOrWhiteSpace(nuevo) || nuevo.Trim() == c.Nombre) return;
+        try
+        {
+            var u = await Api.UpdateCafeComboAsync(c.Id, new UpdateCafeComboRequest { Nombre = nuevo.Trim() });
+            if (u is not null)
+            {
+                c.Nombre = u.Nombre;
+                ToastService.Success($"Combo actualizado");
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
 
     private List<CafeComboDto> CombosVisibles
     {
