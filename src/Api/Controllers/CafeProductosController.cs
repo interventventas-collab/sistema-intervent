@@ -49,6 +49,25 @@ public class CafeProductosController : ControllerBase
         return Ok(Map(p));
     }
 
+    [HttpGet("{id:int}/historial-precios")]
+    public async Task<IActionResult> HistorialPrecios(int id)
+    {
+        if (!await _db.CafeProductos.AnyAsync(p => p.Id == id))
+            return NotFound(new { error = "Producto no encontrado" });
+
+        var rows = await _db.CafeHistorialPrecios
+            .Where(h => h.ProductoId == id)
+            .OrderByDescending(h => h.ChangedAt)
+            .Select(h => new CafeHistorialPrecioDto(
+                h.Id,
+                h.Pvp1Anterior, h.Pvp2Anterior, h.CostoAnterior, h.IvaPctAnterior,
+                h.Pvp1Nuevo, h.Pvp2Nuevo, h.CostoNuevo, h.IvaPctNuevo,
+                h.ChangedAt, h.ChangedBy, h.Motivo))
+            .ToListAsync();
+
+        return Ok(rows);
+    }
+
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateCafeProductoRequest req)
     {
@@ -97,6 +116,9 @@ public class CafeProductosController : ControllerBase
     {
         var p = await _db.CafeProductos.FindAsync(id);
         if (p is null) return NotFound(new { error = "Producto no encontrado" });
+
+        // Snapshot de los valores ANTERIORES para grabar historial si cambian.
+        var oldPvp1 = p.Pvp1; var oldPvp2 = p.Pvp2; var oldCosto = p.Costo; var oldIva = p.IvaPct;
         if (req.Nombre is not null)
         {
             if (string.IsNullOrWhiteSpace(req.Nombre)) return BadRequest(new { error = "El nombre no puede ser vacio" });
@@ -145,6 +167,21 @@ public class CafeProductosController : ControllerBase
         if (req.IsActive.HasValue) p.IsActive = req.IsActive.Value;
         if (req.IvaPct.HasValue) p.IvaPct = NormalizeIva(req.IvaPct);
         p.UpdatedAt = DateTime.UtcNow;
+
+        // Si algun precio cambio, grabar historial.
+        bool precioCambio = oldPvp1 != p.Pvp1 || oldPvp2 != p.Pvp2 || oldCosto != p.Costo || oldIva != p.IvaPct;
+        if (precioCambio)
+        {
+            _db.CafeHistorialPrecios.Add(new CafeHistorialPrecio
+            {
+                ProductoId = p.Id,
+                Pvp1Anterior = oldPvp1, Pvp2Anterior = oldPvp2, CostoAnterior = oldCosto, IvaPctAnterior = oldIva,
+                Pvp1Nuevo = p.Pvp1, Pvp2Nuevo = p.Pvp2, CostoNuevo = p.Costo, IvaPctNuevo = p.IvaPct,
+                ChangedAt = DateTime.UtcNow,
+                ChangedBy = User?.Identity?.Name ?? "Sistema"
+            });
+        }
+
         await _db.SaveChangesAsync();
         var saved = await _db.CafeProductos.Include(x => x.OemNav).Include(x => x.MarcaNav).FirstAsync(x => x.Id == p.Id);
         return Ok(Map(saved));

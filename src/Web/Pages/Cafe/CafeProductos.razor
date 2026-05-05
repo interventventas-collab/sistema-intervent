@@ -101,10 +101,10 @@
                                         <span style="color: #d1d5db;">—</span>
                                     }
                                 </td>
-                                <td style="text-align: right;">$@FormatMoney(p.Costo)</td>
+                                <td style="text-align: right;" class="precio-clickeable" title="Ver historial" @onclick="() => ShowHistorial(p)">$@FormatMoney(p.Costo)</td>
                                 @if (esCafe)
                                 {
-                                    <td style="text-align: right; font-weight: 700; color: #1d4ed8;">
+                                    <td style="text-align: right; font-weight: 700; color: #1d4ed8;" class="precio-clickeable" title="Ver historial" @onclick="() => ShowHistorial(p)">
                                         @if (p.Pvp1.HasValue)
                                         {
                                             <div>$@FormatMoney(p.Pvp1.Value)/kg</div>
@@ -112,7 +112,7 @@
                                         }
                                         else { <span>—</span> }
                                     </td>
-                                    <td style="text-align: right; font-weight: 700; color: #15803d;">
+                                    <td style="text-align: right; font-weight: 700; color: #15803d;" class="precio-clickeable" title="Ver historial" @onclick="() => ShowHistorial(p)">
                                         @if (p.Pvp2.HasValue)
                                         {
                                             <div>$@FormatMoney(p.Pvp2.Value)/kg</div>
@@ -123,7 +123,7 @@
                                 }
                                 else
                                 {
-                                    <td style="text-align: right; font-weight: 700; color: #1d4ed8;">
+                                    <td style="text-align: right; font-weight: 700; color: #1d4ed8;" class="precio-clickeable" title="Ver historial" @onclick="() => ShowHistorial(p)">
                                         @if (p.BarPctSobreCosto.HasValue)
                                         {
                                             var precioBar = p.Costo * (1m + p.BarPctSobreCosto.Value / 100m);
@@ -141,7 +141,7 @@
                                             <span>—</span>
                                         }
                                     </td>
-                                    <td style="text-align: right; font-weight: 700; color: #15803d;">
+                                    <td style="text-align: right; font-weight: 700; color: #15803d;" class="precio-clickeable" title="Ver historial" @onclick="() => ShowHistorial(p)">
                                         @if (p.Pvp2.HasValue)
                                         {
                                             <div>$@FormatMoney(p.Pvp2.Value)</div>
@@ -466,6 +466,85 @@
     </div>
 }
 
+@if (showHistorial && histProducto is not null)
+{
+    <div class="modal-overlay" @onclick="CerrarHistorial">
+        <div class="modal-content" style="max-width: 720px;" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>📈 Historial de precios — @histProducto.Nombre</h3>
+                <button class="btn-close" @onclick="CerrarHistorial">×</button>
+            </div>
+            <div class="modal-body">
+                <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:0.7rem; margin-bottom:0.8rem;">
+                    <div style="font-size:0.78rem; color:#6b7280; margin-bottom:0.2rem;">Precio actual</div>
+                    <div style="display:flex; gap:1.2rem; flex-wrap:wrap;">
+                        <div><b>Costo:</b> $@FormatMoney(histProducto.Costo)</div>
+                        @if (histProducto.Pvp1.HasValue)
+                        {
+                            <div><b>BARES:</b> $@FormatMoney(histProducto.Pvp1.Value)</div>
+                        }
+                        @if (histProducto.Pvp2.HasValue)
+                        {
+                            <div><b>SUGERIDO:</b> $@FormatMoney(histProducto.Pvp2.Value)</div>
+                        }
+                        <div><b>IVA:</b> @histProducto.IvaPct%</div>
+                    </div>
+                </div>
+
+                @if (historial is null)
+                {
+                    <p style="color:#6b7280;">Cargando...</p>
+                }
+                else if (historial.Count == 0)
+                {
+                    <p style="color:#6b7280;">Aún no hay cambios registrados para este producto.</p>
+                }
+                else
+                {
+                    <table class="data-table" style="font-size:0.85rem;">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>BARES</th>
+                                <th>SUGERIDO</th>
+                                <th>Costo</th>
+                                <th>IVA</th>
+                                <th>Por</th>
+                                <th>Motivo</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var h in historial)
+                        {
+                            <tr>
+                                <td style="white-space:nowrap;">@h.ChangedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                                <td>@RenderDelta(h.Pvp1Anterior, h.Pvp1Nuevo)</td>
+                                <td>@RenderDelta(h.Pvp2Anterior, h.Pvp2Nuevo)</td>
+                                <td>@RenderDelta(h.CostoAnterior, h.CostoNuevo)</td>
+                                <td style="font-size:0.8rem; color:#6b7280;">
+                                    @if (h.IvaPctAnterior != h.IvaPctNuevo) { <span>@h.IvaPctAnterior% → <b>@h.IvaPctNuevo%</b></span> }
+                                    else { <span>@h.IvaPctNuevo%</span> }
+                                </td>
+                                <td style="font-size:0.8rem; color:#6b7280;">@(h.ChangedBy ?? "—")</td>
+                                <td style="font-size:0.78rem; color:#6b7280;">@(h.Motivo ?? "—")</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CerrarHistorial">Cerrar</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .precio-clickeable { cursor: pointer; }
+    .precio-clickeable:hover { background: #f0f9ff; }
+</style>
+
 @code {
     private List<CafeProductoDto>? productos;
     private bool loading = true;
@@ -535,6 +614,37 @@
     }
     private bool showDeleteConfirm;
     private CafeProductoDto? toDelete;
+
+    // Historial de precios
+    private bool showHistorial;
+    private CafeProductoDto? histProducto;
+    private List<CafeHistorialPrecioDto>? historial;
+
+    private async Task ShowHistorial(CafeProductoDto p)
+    {
+        histProducto = p;
+        historial = null;
+        showHistorial = true;
+        try { historial = await Api.GetCafeProductoHistorialAsync(p.Id) ?? new(); }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); historial = new(); }
+    }
+
+    private void CerrarHistorial()
+    {
+        showHistorial = false;
+        histProducto = null;
+        historial = null;
+    }
+
+    private MarkupString RenderDelta(decimal? anterior, decimal? nuevo)
+    {
+        if (anterior == nuevo)
+            return new MarkupString(nuevo.HasValue ? $"$ {FormatMoney(nuevo.Value)}" : "—");
+        var ant = anterior.HasValue ? $"$ {FormatMoney(anterior.Value)}" : "—";
+        var nue = nuevo.HasValue ? $"$ {FormatMoney(nuevo.Value)}" : "—";
+        var color = (nuevo ?? 0m) > (anterior ?? 0m) ? "#15803d" : "#b91c1c";
+        return new MarkupString($"<span style=\"color:#9ca3af; text-decoration:line-through;\">{ant}</span> → <b style=\"color:{color};\">{nue}</b>");
+    }
 
     protected override async Task OnInitializedAsync()
     {

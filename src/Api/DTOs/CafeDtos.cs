@@ -66,6 +66,12 @@ public class CreateCafeProductoRequest
     public decimal? IvaPct { get; set; }
 }
 
+public record CafeHistorialPrecioDto(
+    int Id,
+    decimal? Pvp1Anterior, decimal? Pvp2Anterior, decimal? CostoAnterior, decimal? IvaPctAnterior,
+    decimal? Pvp1Nuevo, decimal? Pvp2Nuevo, decimal? CostoNuevo, decimal? IvaPctNuevo,
+    DateTime ChangedAt, string? ChangedBy, string? Motivo);
+
 public class UpdateCafeProductoRequest
 {
     public string? Sku { get; set; }

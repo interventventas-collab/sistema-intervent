@@ -2237,6 +2237,30 @@ IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'BloqueaDescuento' AND Obj
     ALTER TABLE Cafe_Marcas ADD BloqueaDescuento BIT NOT NULL DEFAULT 0;
 GO
 
+-- Historial de cambios de precio por producto Cafe.
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_HistorialPrecios' AND xtype='U')
+BEGIN
+    CREATE TABLE Cafe_HistorialPrecios (
+        Id INT PRIMARY KEY IDENTITY(1,1),
+        ProductoId INT NOT NULL,
+        Pvp1Anterior DECIMAL(18,2) NULL,
+        Pvp2Anterior DECIMAL(18,2) NULL,
+        CostoAnterior DECIMAL(18,2) NULL,
+        IvaPctAnterior DECIMAL(5,2) NULL,
+        Pvp1Nuevo DECIMAL(18,2) NULL,
+        Pvp2Nuevo DECIMAL(18,2) NULL,
+        CostoNuevo DECIMAL(18,2) NULL,
+        IvaPctNuevo DECIMAL(5,2) NULL,
+        ChangedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        ChangedBy NVARCHAR(100) NULL,
+        Motivo NVARCHAR(500) NULL,
+        CONSTRAINT FK_HistPrecios_Producto FOREIGN KEY (ProductoId) REFERENCES Cafe_Productos(Id) ON DELETE CASCADE
+    );
+    CREATE INDEX IX_HistPrecios_ProductoId ON Cafe_HistorialPrecios(ProductoId);
+    CREATE INDEX IX_HistPrecios_ChangedAt ON Cafe_HistorialPrecios(ChangedAt DESC);
+END
+GO
+
 -- Tabla de descuentos por tipo de cliente (BAR / OTRO) y opcionalmente por marca.
 -- MarcaId NULL = descuento general para ese tipo (aplica a todas las marcas que no tengan override).
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_DescuentosCliente' AND xtype='U')

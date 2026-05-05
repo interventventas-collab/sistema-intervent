@@ -666,6 +666,22 @@ public class UpdateCafeMarcaRequest
     public bool? BloqueaDescuento { get; set; }
 }
 
+public class CafeHistorialPrecioDto
+{
+    public int Id { get; set; }
+    public decimal? Pvp1Anterior { get; set; }
+    public decimal? Pvp2Anterior { get; set; }
+    public decimal? CostoAnterior { get; set; }
+    public decimal? IvaPctAnterior { get; set; }
+    public decimal? Pvp1Nuevo { get; set; }
+    public decimal? Pvp2Nuevo { get; set; }
+    public decimal? CostoNuevo { get; set; }
+    public decimal? IvaPctNuevo { get; set; }
+    public DateTime ChangedAt { get; set; }
+    public string? ChangedBy { get; set; }
+    public string? Motivo { get; set; }
+}
+
 public class CafeOemImportResultDto
 {
     public int Creados { get; set; }

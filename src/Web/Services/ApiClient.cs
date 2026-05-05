@@ -432,6 +432,9 @@ public class ApiClient
     public async Task<bool> DeleteCafeProductoAsync(int id)
         => await DeleteAsync($"/api/cafe/productos/{id}");
 
+    public async Task<List<CafeHistorialPrecioDto>?> GetCafeProductoHistorialAsync(int id)
+        => await GetAsync<List<CafeHistorialPrecioDto>>($"/api/cafe/productos/{id}/historial-precios");
+
     // --- Cafe: Settings ---
     public async Task<CafeSettingDto?> GetCafeSettingsAsync()
         => await GetAsync<CafeSettingDto>("/api/cafe/settings");
