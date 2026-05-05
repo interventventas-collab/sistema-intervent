@@ -76,11 +76,21 @@
                 </div>
             </div>
             <div class="form-group">
-                <label class="form-label">Logo (URL de la imagen)</label>
-                <input class="form-input" @bind="negocioLogoUrl" placeholder="https://... o /api/files/download?path=branding/logo.png" />
+                <label class="form-label">Logo</label>
+                <div style="display: flex; gap: 0.4rem; align-items: stretch;">
+                    <input class="form-input" style="flex: 1;" @bind="negocioLogoUrl" placeholder="URL de la imagen" />
+                    <label class="btn btn-secondary" style="margin: 0; cursor: pointer;">
+                        @(isUploadingLogo ? "Subiendo..." : "📤 Subir imagen")
+                        <InputFile OnChange="OnLogoFileChange" accept="image/*" style="display: none;" />
+                    </label>
+                </div>
                 <p style="font-size: 0.72rem; color: #6b7280; margin: 0.2rem 0 0;">
-                    Pegá una URL pública (ej. de tu sitio o de un servicio de hosting de imágenes). Aparece en el header de las listas de precios y comprobantes.
+                    Subí desde tu PC con el botón de la derecha o pegá una URL pública. Aparece en el header de listas de precios y comprobantes.
                 </p>
+                @if (!string.IsNullOrEmpty(uploadLogoError))
+                {
+                    <p style="font-size: 0.78rem; color: #b91c1c; margin: 0.3rem 0 0;">⚠ @uploadLogoError</p>
+                }
                 @if (!string.IsNullOrWhiteSpace(negocioLogoUrl))
                 {
                     <div style="margin-top: 0.5rem; padding: 0.5rem; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; display: inline-block;">
@@ -154,6 +164,8 @@
     private decimal margenOtro = 60;
     private string negocioNombre = "", negocioTelefono = "", negocioWhatsapp = "", negocioDireccion = "", negocioCuit = "";
     private string negocioEmail = "", negocioWeb = "", negocioLogoUrl = "";
+    private bool isUploadingLogo;
+    private string? uploadLogoError;
     private string waTemplate = "Hola! Te escribo por el comprobante {numero} (total ${total}). Gracias!";
     private string waTemplateCliente = "Hola {cliente}! Te escribo del negocio por el comprobante {numero}.";
 
@@ -223,6 +235,41 @@
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { saving = false; }
+    }
+
+    /// <summary>Sube la imagen del logo a /data/files/branding/cafe-logo-{ts}.{ext} y completa el campo
+    /// negocioLogoUrl con la URL de descarga interna. El usuario debe apretar Guardar despues
+    /// para que persista en Cafe_Settings.</summary>
+    private async Task OnLogoFileChange(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null) return;
+        if (file.Size > 5 * 1024 * 1024) { uploadLogoError = "El archivo supera los 5 MB."; return; }
+        uploadLogoError = null;
+        isUploadingLogo = true;
+        try
+        {
+            var ext = System.IO.Path.GetExtension(file.Name);
+            if (string.IsNullOrEmpty(ext)) ext = ".png";
+            var ts = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
+            var serverName = $"cafe-logo-{ts}{ext.ToLowerInvariant()}";
+            using var stream = file.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+            var result = await Api.UploadFilesAsync("branding", new[] { (serverName, (System.IO.Stream)stream, file.Size) });
+            var ok = result?.FirstOrDefault(r => r.Success);
+            if (ok is null || string.IsNullOrEmpty(ok.Path))
+            {
+                uploadLogoError = result?.FirstOrDefault()?.Error ?? "No se pudo subir la imagen.";
+                return;
+            }
+            // ok.Path es algo como "branding/cafe-logo-...png"
+            negocioLogoUrl = Api.BuildFilesDownloadUrl(ok.Path);
+            ToastService.Success("Logo subido. Tocá Guardar para persistir en Configuración.");
+        }
+        catch (Exception ex)
+        {
+            uploadLogoError = ex.Message;
+        }
+        finally { isUploadingLogo = false; }
     }
 
     private decimal Calc(decimal precioKg, decimal fraccion)
