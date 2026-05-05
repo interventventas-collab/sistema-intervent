@@ -189,6 +189,34 @@ public class CafeKitsController : ControllerBase
         return Ok(await _service.MapAsync(saved));
     }
 
+    // Descuenta stock de los componentes para "vender" N kits.
+    // Util para testing manual y para integraciones (MeLi orders, ventas, etc).
+    [HttpPost("{id:int}/descontar")]
+    public async Task<IActionResult> Descontar(int id, [FromQuery] int cantidad = 1)
+    {
+        try
+        {
+            var movimientos = await _service.DescontarStockPorVentaAsync(id, cantidad);
+            return Ok(new
+            {
+                kitId = id,
+                cantidad,
+                movimientos = movimientos.Select(m => new
+                {
+                    productoId = m.productoId,
+                    sku = m.sku,
+                    descontado = m.cantidadDescontada,
+                    stockAntes = m.stockAntes,
+                    stockDespues = m.stockDespues
+                })
+            });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
