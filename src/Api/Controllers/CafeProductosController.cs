@@ -37,8 +37,39 @@ public class CafeProductosController : ControllerBase
             var c = NormCat(categoria);
             q = q.Where(p => p.Categoria == c);
         }
-        var list = await q.OrderBy(p => p.Categoria).ThenBy(p => p.Nombre).ToListAsync();
+        var list = await q.ToListAsync();
+        // Orden natural por SKU (F1, F2, F3, ..., F10, F11) y luego por nombre.
+        // Productos sin SKU caen al final, ordenados por nombre.
+        list = list
+            .OrderBy(p => p.Categoria)
+            .ThenBy(p => string.IsNullOrEmpty(p.Sku) ? 1 : 0)
+            .ThenBy(p => SkuLetras(p.Sku))
+            .ThenBy(p => SkuNumero(p.Sku))
+            .ThenBy(p => p.Sku)
+            .ThenBy(p => p.Nombre)
+            .ToList();
         return Ok(list.Select(Map).ToList());
+    }
+
+    // "F1" → "F", "C8733NEG" → "C", "PAL50COLOR" → "PAL"
+    private static string SkuLetras(string? sku)
+    {
+        if (string.IsNullOrEmpty(sku)) return "";
+        var i = 0;
+        while (i < sku.Length && !char.IsDigit(sku[i])) i++;
+        return sku.Substring(0, i).ToUpperInvariant();
+    }
+
+    // "F1" → 1, "F11" → 11, "C8733NEG" → 8733, "ABC" → 0
+    private static int SkuNumero(string? sku)
+    {
+        if (string.IsNullOrEmpty(sku)) return 0;
+        var i = 0;
+        while (i < sku.Length && !char.IsDigit(sku[i])) i++;
+        var start = i;
+        while (i < sku.Length && char.IsDigit(sku[i])) i++;
+        if (i == start) return 0;
+        return int.TryParse(sku.AsSpan(start, i - start), out var n) ? n : 0;
     }
 
     [HttpGet("{id:int}")]

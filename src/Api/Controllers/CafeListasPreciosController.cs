@@ -92,7 +92,11 @@ public class CafeListasPreciosController : ControllerBase
                 var proveedor = m?.ProveedorNav?.Nombre;
 
                 var cafes = g.Where(p => p.Categoria == "CAFE")
-                    .OrderBy(p => p.Nombre)
+                    .OrderBy(p => string.IsNullOrEmpty(p.Sku) ? 1 : 0)
+                    .ThenBy(p => SkuLetras(p.Sku))
+                    .ThenBy(p => SkuNumero(p.Sku))
+                    .ThenBy(p => p.Sku)
+                    .ThenBy(p => p.Nombre)
                     .Select(p => new CafeListaPreciosItemCafeDto(
                         p.Id, p.Sku, p.Nombre,
                         CafePricingService.CalcularPrecioUnitario(p, "1KG", tipo, settings),
@@ -100,7 +104,11 @@ public class CafeListasPreciosController : ControllerBase
                         CafePricingService.CalcularPrecioUnitario(p, "CUARTO", tipo, settings)))
                     .ToList();
                 var otros = g.Where(p => p.Categoria == "OTROS")
-                    .OrderBy(p => p.Nombre)
+                    .OrderBy(p => string.IsNullOrEmpty(p.Sku) ? 1 : 0)
+                    .ThenBy(p => SkuLetras(p.Sku))
+                    .ThenBy(p => SkuNumero(p.Sku))
+                    .ThenBy(p => p.Sku)
+                    .ThenBy(p => p.Nombre)
                     .Select(p => new CafeListaPreciosItemOtroDto(
                         p.Id, p.Sku, p.Nombre,
                         CafePricingService.CalcularPrecioUnitario(p, "UNIT", tipo, settings)))
@@ -250,5 +258,24 @@ public class CafeListasPreciosController : ControllerBase
     {
         var clean = new string(s.Where(c => char.IsLetterOrDigit(c) || c == ' ' || c == '-').ToArray());
         return clean.Replace(' ', '-').ToLowerInvariant();
+    }
+
+    // Orden natural de SKU: "F1" → letras "F", numero 1; "F11" → letras "F", numero 11.
+    private static string SkuLetras(string? sku)
+    {
+        if (string.IsNullOrEmpty(sku)) return "";
+        var i = 0;
+        while (i < sku.Length && !char.IsDigit(sku[i])) i++;
+        return sku.Substring(0, i).ToUpperInvariant();
+    }
+    private static int SkuNumero(string? sku)
+    {
+        if (string.IsNullOrEmpty(sku)) return 0;
+        var i = 0;
+        while (i < sku.Length && !char.IsDigit(sku[i])) i++;
+        var start = i;
+        while (i < sku.Length && char.IsDigit(sku[i])) i++;
+        if (i == start) return 0;
+        return int.TryParse(sku.AsSpan(start, i - start), out var n) ? n : 0;
     }
 }
