@@ -291,6 +291,29 @@ public class FilesController : ControllerBase
         if (!System.IO.File.Exists(full)) return NotFound();
         var name = Path.GetFileName(full);
         var stream = System.IO.File.OpenRead(full);
-        return File(stream, "application/octet-stream", name);
+        // Inferir Content-Type por extension. Sin esto las imagenes no se renderizan via <img src>
+        // en algunos browsers (rechazan application/octet-stream).
+        var contentType = MimeFromExtension(Path.GetExtension(name));
+        return File(stream, contentType, name);
     }
+
+    private static string MimeFromExtension(string? ext) => (ext?.ToLowerInvariant()) switch
+    {
+        ".png" => "image/png",
+        ".jpg" or ".jpeg" => "image/jpeg",
+        ".gif" => "image/gif",
+        ".webp" => "image/webp",
+        ".svg" => "image/svg+xml",
+        ".bmp" => "image/bmp",
+        ".ico" => "image/x-icon",
+        ".pdf" => "application/pdf",
+        ".csv" => "text/csv",
+        ".txt" => "text/plain",
+        ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".xls" => "application/vnd.ms-excel",
+        ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".doc" => "application/msword",
+        ".json" => "application/json",
+        _ => "application/octet-stream"
+    };
 }
