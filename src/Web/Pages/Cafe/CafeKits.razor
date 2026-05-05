@@ -10,6 +10,17 @@
             <input class="form-input" style="min-width:240px; font-size:0.85rem;"
                    @bind="filtroTexto" @bind:event="oninput"
                    placeholder="🔍 SKU o nombre..." />
+            <select class="form-input" style="max-width:180px; font-size:0.85rem;" @bind="filtroMarca">
+                <option value="">Todas las marcas</option>
+                <option value="__sin__">— Sin marca —</option>
+                @if (marcas is not null)
+                {
+                    @foreach (var m in marcas.OrderBy(x => x.Nombre))
+                    {
+                        <option value="@m.Nombre">@m.Nombre</option>
+                    }
+                }
+            </select>
             <button class="btn @(modoEdicion ? "btn-warning" : "btn-secondary")"
                     @onclick="() => modoEdicion = !modoEdicion" title="Edicion rapida de marca y SKU">
                 @(modoEdicion ? "🔓 Edicion ON" : "🔒 Edicion OFF")
@@ -350,6 +361,7 @@
     private List<CafeMarcaDto>? marcas;
     private List<CafeProductoDto>? productosCatalogo;
     private string filtroTexto = "";
+    private string filtroMarca = "";
     private bool isBusy;
 
     private bool showForm;
@@ -435,12 +447,17 @@
         get
         {
             if (kits is null) return new();
-            if (string.IsNullOrWhiteSpace(filtroTexto)) return kits;
-            var t = filtroTexto.Trim().ToLower();
-            return kits.Where(k =>
-                k.Sku.ToLower().Contains(t) ||
-                k.Nombre.ToLower().Contains(t)
-            ).ToList();
+            IEnumerable<CafeKitDto> q = kits;
+            if (filtroMarca == "__sin__")
+                q = q.Where(k => string.IsNullOrWhiteSpace(k.MarcaNombre) && !k.MarcaId.HasValue);
+            else if (!string.IsNullOrEmpty(filtroMarca))
+                q = q.Where(k => string.Equals(k.MarcaNombre, filtroMarca, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrWhiteSpace(filtroTexto))
+            {
+                var t = filtroTexto.Trim().ToLower();
+                q = q.Where(k => k.Sku.ToLower().Contains(t) || k.Nombre.ToLower().Contains(t));
+            }
+            return q.ToList();
         }
     }
 

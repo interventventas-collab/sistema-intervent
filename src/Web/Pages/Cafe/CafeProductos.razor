@@ -21,6 +21,7 @@
             </select>
             <select class="form-input" style="max-width: 180px; font-size: 0.85rem;" @bind="filtroMarca">
                 <option value="">Todas las marcas</option>
+                <option value="__sin__">— Sin marca —</option>
                 @foreach (var m in marcasExistentes) { <option value="@m">@m</option> }
             </select>
             <button class="btn @(modoEdicion ? "btn-warning" : "btn-secondary")"
@@ -763,7 +764,9 @@
         {
             if (productos is null) return new();
             IEnumerable<CafeProductoDto> q = productos;
-            if (!string.IsNullOrEmpty(filtroMarca))
+            if (filtroMarca == "__sin__")
+                q = q.Where(p => string.IsNullOrWhiteSpace(p.Marca) && !p.MarcaId.HasValue);
+            else if (!string.IsNullOrEmpty(filtroMarca))
                 q = q.Where(p => string.Equals(p.Marca, filtroMarca, StringComparison.OrdinalIgnoreCase));
             if (!string.IsNullOrWhiteSpace(filtroTexto))
             {
