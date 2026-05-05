@@ -268,7 +268,7 @@
                     <div class="form-row">
                         <div class="form-group" style="flex: 0 0 130px;">
                             <label class="form-label">IVA %</label>
-                            <select class="form-input" @bind="formIvaPct">
+                            <select class="form-input" @bind="formIvaPctStr">
                                 <option value="21">21%</option>
                                 <option value="10.5">10.5%</option>
                             </select>
@@ -374,7 +374,7 @@
                     <div class="form-row">
                         <div class="form-group" style="flex: 0 0 130px;">
                             <label class="form-label">IVA %</label>
-                            <select class="form-input" @bind="formIvaPct">
+                            <select class="form-input" @bind="formIvaPctStr">
                                 <option value="21">21%</option>
                                 <option value="10.5">10.5%</option>
                             </select>
@@ -485,7 +485,10 @@
     private decimal formCosto;
     private decimal? formPvp1;
     private decimal? formPvp2;
-    private decimal formIvaPct = 21m;
+    // Bind como string para evitar que el "." de "10.5" lo lea el browser en es-AR como 105.
+    // Convertimos via InvariantCulture al guardar.
+    private string formIvaPctStr = "21";
+    private decimal formIvaPct => decimal.Parse(formIvaPctStr, System.Globalization.CultureInfo.InvariantCulture);
     private decimal? formBarPct;     // % sobre costo (solo OTROS); null = BAR paga PVP
     private int? formUxB;             // unidades por bulto (solo OTROS)
     /// <summary>UX: el usuario SIEMPRE carga stock de cafe en kg. Internamente guardamos gramos.</summary>
@@ -602,7 +605,7 @@
         {
             var iva = o.IvaPct ?? 21m;
             formPvp2 = iva > 0 ? Math.Round(o.PvpConIva.Value / (1 + iva / 100m), 2) : o.PvpConIva.Value;
-            formIvaPct = iva == 10.5m ? 10.5m : 21m;
+            formIvaPctStr = iva == 10.5m ? "10.5" : "21";
         }
         if (o.UxB.HasValue) formUxB = o.UxB.Value;
         if (!string.IsNullOrWhiteSpace(o.Barcode)) formBarcode = o.Barcode;
@@ -614,7 +617,7 @@
         formNombre = ""; formSku = ""; formBarcode = "";
         formCategoria = "CAFE"; formMarca = "";
         formCosto = 0; formPvp1 = null; formPvp2 = null;
-        formIvaPct = 21m;
+        formIvaPctStr = "21";
         formBarPct = 100m; formUxB = null;
         formOemId = 0; oemSearch = ""; oemSearchOpen = false;
         formStockGramos = 0; formStockUnidades = 0;
@@ -629,7 +632,7 @@
         formNombre = p.Nombre; formSku = p.Sku ?? ""; formBarcode = p.Barcode ?? "";
         formCategoria = p.Categoria; formMarca = p.Marca ?? "";
         formCosto = p.Costo; formPvp1 = p.Pvp1; formPvp2 = p.Pvp2;
-        formIvaPct = p.IvaPct == 10.5m ? 10.5m : 21m;
+        formIvaPctStr = p.IvaPct == 10.5m ? "10.5" : "21";
         formBarPct = p.BarPctSobreCosto;
         formUxB = p.UxB;
         formOemId = p.OemId ?? 0; oemSearch = ""; oemSearchOpen = false;
