@@ -32,10 +32,45 @@
         }
         else
         {
+            @if (modoEdicion)
+            {
+                <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center; padding:0.6rem 0.7rem; background:#fef3c7; border:1px solid #f59e0b; border-radius:6px; margin:0.5rem;">
+                    <span style="font-weight:700; color:#78350f;">
+                        🔓 Edición ON · @selKits.Count seleccionado(s) de @kitsVisibles.Count visible(s)
+                    </span>
+                    <span style="flex:1;"></span>
+
+                    <button class="btn btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.78rem;"
+                            @onclick="SeleccionarTodosVisibles" disabled="@(kitsVisibles.Count == 0)">Seleccionar visibles</button>
+                    <button class="btn btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.78rem;"
+                            @onclick="LimpiarSeleccion" disabled="@(selKits.Count == 0)">Limpiar</button>
+
+                    <select class="form-input" @bind="bulkMarcaIdStr" style="max-width:240px; font-size:0.85rem;">
+                        <option value="">— Sin marca —</option>
+                        @if (marcas is not null)
+                        {
+                            @foreach (var m in marcas.OrderBy(x => x.Nombre))
+                            {
+                                <option value="@m.Id">@m.Nombre</option>
+                            }
+                        }
+                    </select>
+                    <button class="btn btn-primary" @onclick="AplicarMarcaABulk"
+                            disabled="@(selKits.Count == 0 || isBusyBulk)">
+                        @(isBusyBulk ? "Aplicando..." : $"Aplicar marca a {selKits.Count}")
+                    </button>
+                </div>
+            }
             <div class="table-responsive">
                 <table class="data-table" style="font-size:0.88rem;">
                     <thead>
                         <tr>
+                            @if (modoEdicion)
+                            {
+                                <th style="width:32px;">
+                                    <input type="checkbox" @onchange="ToggleAllVisibles" checked="@TodosVisiblesSeleccionados" />
+                                </th>
+                            }
                             <th style="width:120px;">SKU</th>
                             <th>Nombre</th>
                             <th>Marca</th>
@@ -49,7 +84,16 @@
                     <tbody>
                     @foreach (var k in kitsVisibles)
                     {
+                        var capturado = k;
                         <tr style="@(!k.IsActive ? "opacity:0.5;" : "")">
+                            @if (modoEdicion)
+                            {
+                                <td>
+                                    <input type="checkbox"
+                                           checked="@selKits.Contains(capturado.Id)"
+                                           @onchange="@((ChangeEventArgs e) => ToggleKit(capturado.Id, (bool)e.Value!))" />
+                                </td>
+                            }
                             <td><code style="font-size:0.82rem;">@k.Sku</code></td>
                             <td>
                                 @if (modoEdicion)
@@ -329,6 +373,62 @@
     private CafeKitDto? toDelete;
 
     private bool modoEdicion;
+    private HashSet<int> selKits = new();
+    private string bulkMarcaIdStr = "";
+    private bool isBusyBulk;
+
+    private bool TodosVisiblesSeleccionados =>
+        kitsVisibles.Count > 0 && kitsVisibles.All(k => selKits.Contains(k.Id));
+
+    private void ToggleKit(int id, bool on)
+    {
+        if (on) selKits.Add(id); else selKits.Remove(id);
+    }
+
+    private void ToggleAllVisibles(ChangeEventArgs e)
+    {
+        var on = (bool)(e.Value ?? false);
+        if (on) foreach (var k in kitsVisibles) selKits.Add(k.Id);
+        else foreach (var k in kitsVisibles) selKits.Remove(k.Id);
+    }
+
+    private void SeleccionarTodosVisibles()
+    {
+        foreach (var k in kitsVisibles) selKits.Add(k.Id);
+    }
+
+    private void LimpiarSeleccion() => selKits.Clear();
+
+    private async Task AplicarMarcaABulk()
+    {
+        if (selKits.Count == 0) return;
+        int? newMarcaId = null;
+        if (int.TryParse(bulkMarcaIdStr, out var mid)) newMarcaId = mid;
+
+        var ids = selKits.ToList();
+        isBusyBulk = true;
+        int ok = 0, fail = 0;
+        try
+        {
+            foreach (var id in ids)
+            {
+                try
+                {
+                    await Api.UpdateCafeKitAsync(id, new UpdateCafeKitRequest
+                    {
+                        MarcaId = newMarcaId,
+                        ClearMarcaId = newMarcaId is null
+                    });
+                    ok++;
+                }
+                catch { fail++; }
+            }
+            ToastService.Success($"Marca aplicada — OK: {ok} · Fallidos: {fail}");
+            selKits.Clear();
+            await Load();
+        }
+        finally { isBusyBulk = false; }
+    }
 
     private List<CafeKitDto> kitsVisibles
     {

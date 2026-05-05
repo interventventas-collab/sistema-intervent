@@ -43,10 +43,45 @@
         }
         else
         {
+            @if (modoEdicion)
+            {
+                <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center; padding:0.6rem 0.7rem; background:#fef3c7; border:1px solid #f59e0b; border-radius:6px; margin:0.5rem;">
+                    <span style="font-weight:700; color:#78350f;">
+                        🔓 Edición ON · @selProductos.Count seleccionado(s) de @productosVisibles.Count visible(s)
+                    </span>
+                    <span style="flex:1;"></span>
+
+                    <button class="btn btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.78rem;"
+                            @onclick="SeleccionarTodosVisibles" disabled="@(productosVisibles.Count == 0)">Seleccionar visibles</button>
+                    <button class="btn btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.78rem;"
+                            @onclick="LimpiarSeleccion" disabled="@(selProductos.Count == 0)">Limpiar</button>
+
+                    <select class="form-input" @bind="bulkMarcaIdStr" style="max-width:240px; font-size:0.85rem;">
+                        <option value="">— Sin marca —</option>
+                        @if (marcasCatalog is not null)
+                        {
+                            @foreach (var m in marcasCatalog.OrderBy(x => x.Nombre))
+                            {
+                                <option value="@m.Id">@m.Nombre</option>
+                            }
+                        }
+                    </select>
+                    <button class="btn btn-primary" @onclick="AplicarMarcaABulk"
+                            disabled="@(selProductos.Count == 0 || isBusyBulk)">
+                        @(isBusyBulk ? "Aplicando..." : $"Aplicar marca a {selProductos.Count}")
+                    </button>
+                </div>
+            }
             <div class="table-responsive">
                 <table class="data-table">
                     <thead>
                         <tr>
+                            @if (modoEdicion)
+                            {
+                                <th style="width:32px;">
+                                    <input type="checkbox" @onchange="ToggleAllVisibles" checked="@TodosVisiblesSeleccionados" />
+                                </th>
+                            }
                             <th style="width: 100px;">SKU</th>
                             <th>Nombre</th>
                             <th>Categoría</th>
@@ -64,7 +99,16 @@
                         @foreach (var p in productosVisibles)
                         {
                             var esCafe = p.Categoria == "CAFE";
+                            var capturado = p;
                             <tr>
+                                @if (modoEdicion)
+                                {
+                                    <td>
+                                        <input type="checkbox"
+                                               checked="@selProductos.Contains(capturado.Id)"
+                                               @onchange="@((ChangeEventArgs e) => ToggleProducto(capturado.Id, (bool)e.Value!))" />
+                                    </td>
+                                }
                                 <td style="font-family: monospace; font-weight: 700; color: #1d4ed8;">
                                     @(p.Sku ?? "—")
                                     @if (!string.IsNullOrEmpty(p.OemCodigo))
@@ -577,6 +621,62 @@
     private List<CafeProductoDto>? productos;
     private bool loading = true;
     private bool modoEdicion;
+    private HashSet<int> selProductos = new();
+    private string bulkMarcaIdStr = "";
+    private bool isBusyBulk;
+
+    private bool TodosVisiblesSeleccionados =>
+        productosVisibles.Count > 0 && productosVisibles.All(p => selProductos.Contains(p.Id));
+
+    private void ToggleProducto(int id, bool on)
+    {
+        if (on) selProductos.Add(id); else selProductos.Remove(id);
+    }
+
+    private void ToggleAllVisibles(ChangeEventArgs e)
+    {
+        var on = (bool)(e.Value ?? false);
+        if (on) foreach (var p in productosVisibles) selProductos.Add(p.Id);
+        else foreach (var p in productosVisibles) selProductos.Remove(p.Id);
+    }
+
+    private void SeleccionarTodosVisibles()
+    {
+        foreach (var p in productosVisibles) selProductos.Add(p.Id);
+    }
+
+    private void LimpiarSeleccion() => selProductos.Clear();
+
+    private async Task AplicarMarcaABulk()
+    {
+        if (selProductos.Count == 0) return;
+        int? newMarcaId = null;
+        if (int.TryParse(bulkMarcaIdStr, out var mid)) newMarcaId = mid;
+
+        var ids = selProductos.ToList();
+        isBusyBulk = true;
+        int ok = 0, fail = 0;
+        try
+        {
+            foreach (var id in ids)
+            {
+                try
+                {
+                    await Api.UpdateCafeProductoAsync(id, new UpdateCafeProductoRequest
+                    {
+                        MarcaId = newMarcaId,
+                        ClearMarcaId = newMarcaId is null
+                    });
+                    ok++;
+                }
+                catch { fail++; }
+            }
+            ToastService.Success($"Marca aplicada — OK: {ok} · Fallidos: {fail}");
+            selProductos.Clear();
+            await Load();
+        }
+        finally { isBusyBulk = false; }
+    }
 
     private async Task GuardarNombreProducto(CafeProductoDto p, string? nuevo)
     {
