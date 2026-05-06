@@ -2513,3 +2513,26 @@ IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_MeliItems_CafeComboId'
     CREATE INDEX IX_MeliItems_CafeComboId ON MeliItems(CafeComboId);
 GO
 
+-- Cafe_Clientes: campos extra para facturacion y comprobantes.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='RazonSocial' AND Object_ID=Object_ID('Cafe_Clientes'))
+    ALTER TABLE Cafe_Clientes ADD RazonSocial NVARCHAR(200) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='DomicilioEntrega' AND Object_ID=Object_ID('Cafe_Clientes'))
+    ALTER TABLE Cafe_Clientes ADD DomicilioEntrega NVARCHAR(500) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ComentariosComprobante' AND Object_ID=Object_ID('Cafe_Clientes'))
+    ALTER TABLE Cafe_Clientes ADD ComentariosComprobante NVARCHAR(MAX) NULL;
+GO
+
+-- Cafe_Ventas: snapshots de los nuevos campos del cliente (para que el comprobante
+-- histórico no cambie si después editas el cliente).
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ClienteRazonSocialSnapshot' AND Object_ID=Object_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD ClienteRazonSocialSnapshot NVARCHAR(200) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ClienteDomicilioEntregaSnapshot' AND Object_ID=Object_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD ClienteDomicilioEntregaSnapshot NVARCHAR(500) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ClienteComentariosComprobante' AND Object_ID=Object_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD ClienteComentariosComprobante NVARCHAR(MAX) NULL;
+GO
+

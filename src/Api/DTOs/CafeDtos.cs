@@ -2,31 +2,38 @@ namespace Api.DTOs;
 
 // ===== Clientes =====
 public record CafeClienteDto(
-    int Id, string? Codigo, string Nombre, string Tipo,
+    int Id, string? Codigo, string Nombre, string? RazonSocial, string Tipo,
     string? Cuit, string? Telefono, string? Email,
-    string? Direccion, string? Notas,
+    string? Direccion, string? DomicilioEntrega,
+    string? Notas, string? ComentariosComprobante,
     bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt);
 
 public class CreateCafeClienteRequest
 {
     public string Nombre { get; set; } = string.Empty;
+    public string? RazonSocial { get; set; }
     public string Tipo { get; set; } = "OTRO";
     public string? Cuit { get; set; }
     public string? Telefono { get; set; }
     public string? Email { get; set; }
     public string? Direccion { get; set; }
+    public string? DomicilioEntrega { get; set; }
     public string? Notas { get; set; }
+    public string? ComentariosComprobante { get; set; }
 }
 
 public class UpdateCafeClienteRequest
 {
     public string? Nombre { get; set; }
+    public string? RazonSocial { get; set; }
     public string? Tipo { get; set; }
     public string? Cuit { get; set; }
     public string? Telefono { get; set; }
     public string? Email { get; set; }
     public string? Direccion { get; set; }
+    public string? DomicilioEntrega { get; set; }
     public string? Notas { get; set; }
+    public string? ComentariosComprobante { get; set; }
     public bool? IsActive { get; set; }
 }
 
@@ -202,7 +209,10 @@ public record CafeVentaDto(
     string? WeekDays, bool IsPaid,
     string TipoComprobante, string CondicionIva, string CondicionPago,
     DateTime CreatedAt,
-    List<CafeVentaItemDto> Items);
+    List<CafeVentaItemDto> Items,
+    string? ClienteRazonSocial,
+    string? ClienteDomicilioEntrega,
+    string? ClienteComentariosComprobante);
 
 public class CafeCotizarItemRequest
 {

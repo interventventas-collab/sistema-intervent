@@ -107,8 +107,9 @@
                 }
                 <div class="form-row">
                     <div class="form-group" style="flex: 2;">
-                        <label class="form-label">Nombre *</label>
+                        <label class="form-label">Nombre fantasía *</label>
                         <input class="form-input" @bind="formNombre" placeholder="Ej: Bar Don Pepe" autofocus />
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Nombre comercial / cómo lo conocés.</p>
                     </div>
                     <div class="form-group" style="flex: 1;">
                         <label class="form-label">Tipo *</label>
@@ -117,9 +118,14 @@
                             <option value="OTRO">🏢 Comercial</option>
                         </select>
                         <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
-                            BAR usa <strong>PVP1</strong>, Comercial usa <strong>PVP2</strong>.
+                            Define qué descuento aplica según las reglas de precios.
                         </p>
                     </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Razón social (legal)</label>
+                    <input class="form-input" @bind="formRazonSocial" placeholder="Ej: PEPITO Y CIA. S.A." />
+                    <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Si se carga, aparece en facturas y proformas. Si está vacío, se usa el nombre fantasía.</p>
                 </div>
                 <div class="form-row">
                     <div class="form-group" style="flex: 1;">
@@ -142,12 +148,26 @@
                     </div>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Dirección</label>
+                    <label class="form-label">Dirección fiscal</label>
                     <input class="form-input" @bind="formDireccion" placeholder="Calle, número, barrio..." />
+                    <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Domicilio fiscal del cliente (la dirección legal).</p>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Notas</label>
-                    <textarea class="form-input" @bind="formNotas" rows="2" placeholder="Notas internas (opcional)"></textarea>
+                    <label class="form-label">Domicilio de entrega</label>
+                    <input class="form-input" @bind="formDomicilioEntrega" placeholder="Donde se entregan los pedidos (si difiere del fiscal)" />
+                    <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Si está vacío, se usa la dirección fiscal.</p>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Notas internas</label>
+                    <textarea class="form-input" @bind="formNotas" rows="2" placeholder="Notas que solo ves vos (no aparecen en comprobante)"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Comentarios para comprobante</label>
+                    <textarea class="form-input" @bind="formComentariosComprobante" rows="2"
+                              placeholder="Ej: Entregar antes de las 11 hs · Solicitar firma del recepcionista"></textarea>
+                    <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
+                        Estos comentarios <strong>aparecen en TODOS los comprobantes</strong> de este cliente.
+                    </p>
                 </div>
                 @if (isEditing)
                 {
@@ -212,6 +232,7 @@
     private string? formError;
     private int? editingId;
     private string formNombre = "", formTipo = "OTRO", formCuit = "", formTelefono = "", formEmail = "", formDireccion = "", formNotas = "";
+    private string formRazonSocial = "", formDomicilioEntrega = "", formComentariosComprobante = "";
     private bool formIsActive = true;
     private bool showDeleteConfirm;
     private CafeClienteDto? toDelete;
@@ -230,6 +251,7 @@
     {
         isEditing = false; editingId = null;
         formNombre = ""; formTipo = "OTRO"; formCuit = ""; formTelefono = ""; formEmail = ""; formDireccion = ""; formNotas = "";
+        formRazonSocial = ""; formDomicilioEntrega = ""; formComentariosComprobante = "";
         formIsActive = true; formError = null; showForm = true;
     }
 
@@ -239,6 +261,9 @@
         formNombre = c.Nombre; formTipo = c.Tipo;
         formCuit = c.Cuit ?? ""; formTelefono = c.Telefono ?? ""; formEmail = c.Email ?? "";
         formDireccion = c.Direccion ?? ""; formNotas = c.Notas ?? "";
+        formRazonSocial = c.RazonSocial ?? "";
+        formDomicilioEntrega = c.DomicilioEntrega ?? "";
+        formComentariosComprobante = c.ComentariosComprobante ?? "";
         formIsActive = c.IsActive; formError = null; showForm = true;
     }
 
@@ -255,9 +280,11 @@
             {
                 var u = await Api.UpdateCafeClienteAsync(editingId.Value, new UpdateCafeClienteRequest
                 {
-                    Nombre = formNombre, Tipo = formTipo,
+                    Nombre = formNombre, RazonSocial = formRazonSocial, Tipo = formTipo,
                     Cuit = formCuit, Telefono = formTelefono, Email = formEmail,
-                    Direccion = formDireccion, Notas = formNotas, IsActive = formIsActive
+                    Direccion = formDireccion, DomicilioEntrega = formDomicilioEntrega,
+                    Notas = formNotas, ComentariosComprobante = formComentariosComprobante,
+                    IsActive = formIsActive
                 });
                 if (u is null) { formError = "No se pudo actualizar"; return; }
                 ToastService.Success("Cliente actualizado");
@@ -266,9 +293,10 @@
             {
                 var c = await Api.CreateCafeClienteAsync(new CreateCafeClienteRequest
                 {
-                    Nombre = formNombre, Tipo = formTipo,
+                    Nombre = formNombre, RazonSocial = formRazonSocial, Tipo = formTipo,
                     Cuit = formCuit, Telefono = formTelefono, Email = formEmail,
-                    Direccion = formDireccion, Notas = formNotas
+                    Direccion = formDireccion, DomicilioEntrega = formDomicilioEntrega,
+                    Notas = formNotas, ComentariosComprobante = formComentariosComprobante
                 });
                 if (c is null) { formError = "No se pudo crear"; return; }
                 ToastService.Success("Cliente creado");

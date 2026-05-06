@@ -4,13 +4,16 @@ public class CafeClienteDto
 {
     public int Id { get; set; }
     public string? Codigo { get; set; }
-    public string Nombre { get; set; } = "";
+    public string Nombre { get; set; } = "";       // nombre fantasía / comercial
+    public string? RazonSocial { get; set; }       // razón social (legal)
     public string Tipo { get; set; } = "OTRO";
     public string? Cuit { get; set; }
     public string? Telefono { get; set; }
     public string? Email { get; set; }
     public string? Direccion { get; set; }
+    public string? DomicilioEntrega { get; set; }
     public string? Notas { get; set; }
+    public string? ComentariosComprobante { get; set; }
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
@@ -19,23 +22,29 @@ public class CafeClienteDto
 public class CreateCafeClienteRequest
 {
     public string Nombre { get; set; } = "";
+    public string? RazonSocial { get; set; }
     public string Tipo { get; set; } = "OTRO";
     public string? Cuit { get; set; }
     public string? Telefono { get; set; }
     public string? Email { get; set; }
     public string? Direccion { get; set; }
+    public string? DomicilioEntrega { get; set; }
     public string? Notas { get; set; }
+    public string? ComentariosComprobante { get; set; }
 }
 
 public class UpdateCafeClienteRequest
 {
     public string? Nombre { get; set; }
+    public string? RazonSocial { get; set; }
     public string? Tipo { get; set; }
     public string? Cuit { get; set; }
     public string? Telefono { get; set; }
     public string? Email { get; set; }
     public string? Direccion { get; set; }
+    public string? DomicilioEntrega { get; set; }
     public string? Notas { get; set; }
+    public string? ComentariosComprobante { get; set; }
     public bool? IsActive { get; set; }
 }
 
@@ -195,6 +204,9 @@ public class CafeVentaDto
     public string CondicionPago { get; set; } = "EFECTIVO";
     public DateTime CreatedAt { get; set; }
     public List<CafeVentaItemDto> Items { get; set; } = new();
+    public string? ClienteRazonSocial { get; set; }
+    public string? ClienteDomicilioEntrega { get; set; }
+    public string? ClienteComentariosComprobante { get; set; }
 }
 
 public class CafeCotizarItemRequest

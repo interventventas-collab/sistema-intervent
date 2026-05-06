@@ -796,7 +796,19 @@
                 <div style="border: 1px solid #d1d5db; border-top: 0; padding: 0.6rem; font-size: 0.9rem;">
                     <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
                         <div style="flex: 1;">
-                            <div><strong>Cliente:</strong> @(printVenta.ClienteNombre ?? "Consumidor final")</div>
+                            @if (!string.IsNullOrWhiteSpace(printVenta.ClienteRazonSocial))
+                            {
+                                <div><strong>Razón social:</strong> @printVenta.ClienteRazonSocial</div>
+                                <div style="font-size:0.85rem; color:#4b5563;"><strong>Nombre fantasía:</strong> @(printVenta.ClienteNombre ?? "—")</div>
+                            }
+                            else
+                            {
+                                <div><strong>Cliente:</strong> @(printVenta.ClienteNombre ?? "Consumidor final")</div>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(printVenta.ClienteDomicilioEntrega))
+                            {
+                                <div style="margin-top:0.2rem; font-size:0.85rem;"><strong>Entrega en:</strong> @printVenta.ClienteDomicilioEntrega</div>
+                            }
                             @if (!string.IsNullOrWhiteSpace(printVenta.ClienteTelefono))
                             {
                                 var tel = printVenta.ClienteTelefono!;
@@ -918,6 +930,13 @@
                     <div style="margin-top: 0.4rem; padding: 0.4rem 0.7rem; background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; font-size: 0.78rem; color: #92400e;">
                         ⚠ <strong>Proforma — preview de cómo quedaría con IVA cuando emitas factura por ARCA.</strong>
                         Para esta vista se aplica 21% al neto. Cuando se emita la factura real, los productos con IVA 10,5% (alimentos) se discriminarán por separado.
+                    </div>
+                }
+
+                @if (!string.IsNullOrEmpty(printVenta.ClienteComentariosComprobante))
+                {
+                    <div style="margin-top: 0.5rem; border-left: 4px solid #f59e0b; background: #fef3c7; padding: 0.5rem 0.7rem; font-size: 0.85rem; color: #78350f;">
+                        <strong>📝 @printVenta.ClienteComentariosComprobante</strong>
                     </div>
                 }
 

@@ -18,9 +18,10 @@ public class CafeClientesController : ControllerBase
     public CafeClientesController(AppDbContext db) { _db = db; }
 
     private static CafeClienteDto Map(CafeCliente c) => new(
-        c.Id, c.Codigo, c.Nombre, c.Tipo,
+        c.Id, c.Codigo, c.Nombre, c.RazonSocial, c.Tipo,
         c.Cuit, c.Telefono, c.Email,
-        c.Direccion, c.Notas,
+        c.Direccion, c.DomicilioEntrega,
+        c.Notas, c.ComentariosComprobante,
         c.IsActive, c.CreatedAt, c.UpdatedAt);
 
     [HttpGet]
@@ -48,12 +49,15 @@ public class CafeClientesController : ControllerBase
         {
             Codigo = await GenerarCodigoAsync(),
             Nombre = req.Nombre.Trim(),
+            RazonSocial = Norm(req.RazonSocial),
             Tipo = tipo,
             Cuit = Norm(req.Cuit),
             Telefono = Norm(req.Telefono),
             Email = Norm(req.Email),
             Direccion = Norm(req.Direccion),
+            DomicilioEntrega = Norm(req.DomicilioEntrega),
             Notas = Norm(req.Notas),
+            ComentariosComprobante = Norm(req.ComentariosComprobante),
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
@@ -91,12 +95,15 @@ public class CafeClientesController : ControllerBase
             if (string.IsNullOrWhiteSpace(req.Nombre)) return BadRequest(new { error = "El nombre no puede ser vacio" });
             c.Nombre = req.Nombre.Trim();
         }
+        if (req.RazonSocial is not null) c.RazonSocial = Norm(req.RazonSocial);
         if (req.Tipo is not null) c.Tipo = NormTipo(req.Tipo);
         if (req.Cuit is not null) c.Cuit = Norm(req.Cuit);
         if (req.Telefono is not null) c.Telefono = Norm(req.Telefono);
         if (req.Email is not null) c.Email = Norm(req.Email);
         if (req.Direccion is not null) c.Direccion = Norm(req.Direccion);
+        if (req.DomicilioEntrega is not null) c.DomicilioEntrega = Norm(req.DomicilioEntrega);
         if (req.Notas is not null) c.Notas = Norm(req.Notas);
+        if (req.ComentariosComprobante is not null) c.ComentariosComprobante = Norm(req.ComentariosComprobante);
         if (req.IsActive.HasValue) c.IsActive = req.IsActive.Value;
         c.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();

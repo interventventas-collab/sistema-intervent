@@ -32,7 +32,10 @@ public class CafeVentasController : ControllerBase
             i.PrecioUnitario, i.CostoUnitario, i.Subtotal,
             i.GramosDescontados,
             i.Molienda, i.EsDoyPack,
-            i.DescuentoPct)).ToList());
+            i.DescuentoPct)).ToList(),
+        v.ClienteRazonSocialSnapshot,
+        v.ClienteDomicilioEntregaSnapshot,
+        v.ClienteComentariosComprobante);
 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null)
@@ -130,12 +133,18 @@ public class CafeVentasController : ControllerBase
         // Resolver datos del cliente
         string? clienteNombre = null;
         string? clienteTelefono = null;
+        string? clienteRazonSocial = null;
+        string? clienteDomicilioEntrega = null;
+        string? clienteComentariosComprobante = null;
         if (req.ClienteId.HasValue && req.ClienteId.Value > 0)
         {
             var cli = await _db.CafeClientes.FindAsync(req.ClienteId.Value);
             if (cli is null) return BadRequest(new { error = "Cliente no encontrado" });
             clienteNombre = cli.Nombre;
             clienteTelefono = cli.Telefono;
+            clienteRazonSocial = cli.RazonSocial;
+            clienteDomicilioEntrega = cli.DomicilioEntrega;
+            clienteComentariosComprobante = cli.ComentariosComprobante;
             tipo = CafePricingService.ResolverTipo(cli.Tipo);
         }
         else
@@ -152,6 +161,9 @@ public class CafeVentasController : ControllerBase
             ClienteNombreSnapshot = clienteNombre,
             ClienteTipoSnapshot = tipo,
             ClienteTelefonoSnapshot = clienteTelefono,
+            ClienteRazonSocialSnapshot = clienteRazonSocial,
+            ClienteDomicilioEntregaSnapshot = clienteDomicilioEntrega,
+            ClienteComentariosComprobante = clienteComentariosComprobante,
             Subtotal = cot.Subtotal,
             Descuento = cot.Descuento,
             Total = cot.Total,
@@ -325,6 +337,9 @@ public class CafeVentasController : ControllerBase
                 v.ClienteNombreSnapshot = cli.Nombre;
                 v.ClienteTipoSnapshot = CafePricingService.ResolverTipo(cli.Tipo);
                 v.ClienteTelefonoSnapshot = cli.Telefono;
+                v.ClienteRazonSocialSnapshot = cli.RazonSocial;
+                v.ClienteDomicilioEntregaSnapshot = cli.DomicilioEntrega;
+                v.ClienteComentariosComprobante = cli.ComentariosComprobante;
             }
             else
             {
@@ -333,6 +348,9 @@ public class CafeVentasController : ControllerBase
                     ? "Consumidor final" : req.ClienteNombreOverride.Trim();
                 v.ClienteTipoSnapshot = CafePricingService.ResolverTipo(req.ClienteTipoOverride);
                 v.ClienteTelefonoSnapshot = null;
+                v.ClienteRazonSocialSnapshot = null;
+                v.ClienteDomicilioEntregaSnapshot = null;
+                v.ClienteComentariosComprobante = null;
             }
         }
         else if (!v.ClienteId.HasValue && !string.IsNullOrWhiteSpace(req.ClienteNombreOverride))
