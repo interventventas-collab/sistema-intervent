@@ -4,7 +4,9 @@ namespace Api.DTOs;
 public record CafeClienteDto(
     int Id, string? Codigo, string Nombre, string? RazonSocial, string Tipo,
     string? Cuit, string? Telefono, string? Email,
-    string? Direccion, string? DomicilioEntrega,
+    string? Direccion, string? Localidad, string? Ciudad, string? Cp,
+    string? CondicionIvaDefault,
+    string? DomicilioEntrega,
     string? Notas, string? ComentariosComprobante,
     bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt);
 
@@ -17,6 +19,10 @@ public class CreateCafeClienteRequest
     public string? Telefono { get; set; }
     public string? Email { get; set; }
     public string? Direccion { get; set; }
+    public string? Localidad { get; set; }
+    public string? Ciudad { get; set; }
+    public string? Cp { get; set; }
+    public string? CondicionIvaDefault { get; set; }
     public string? DomicilioEntrega { get; set; }
     public string? Notas { get; set; }
     public string? ComentariosComprobante { get; set; }
@@ -31,6 +37,10 @@ public class UpdateCafeClienteRequest
     public string? Telefono { get; set; }
     public string? Email { get; set; }
     public string? Direccion { get; set; }
+    public string? Localidad { get; set; }
+    public string? Ciudad { get; set; }
+    public string? Cp { get; set; }
+    public string? CondicionIvaDefault { get; set; }
     public string? DomicilioEntrega { get; set; }
     public string? Notas { get; set; }
     public string? ComentariosComprobante { get; set; }
@@ -171,6 +181,9 @@ public record CafeSettingDto(
     string? NegocioDireccion, string? NegocioCuit,
     string? NegocioEmail, string? NegocioWeb, string? NegocioLogoUrl,
     string? WhatsappMensajeTemplate, string? WhatsappMensajeClienteTemplate,
+    string? NegocioRazonSocial, string? NegocioCondicionIva,
+    string? NegocioIngresosBrutos, DateTime? NegocioInicioActividad,
+    string? NegocioLocalidad, string? NegocioCp,
     DateTime? UpdatedAt);
 
 public class UpdateCafeSettingRequest
@@ -189,6 +202,12 @@ public class UpdateCafeSettingRequest
     public string? NegocioLogoUrl { get; set; }
     public string? WhatsappMensajeTemplate { get; set; }
     public string? WhatsappMensajeClienteTemplate { get; set; }
+    public string? NegocioRazonSocial { get; set; }
+    public string? NegocioCondicionIva { get; set; }
+    public string? NegocioIngresosBrutos { get; set; }
+    public DateTime? NegocioInicioActividad { get; set; }
+    public string? NegocioLocalidad { get; set; }
+    public string? NegocioCp { get; set; }
 }
 
 // ===== Ventas =====
@@ -212,7 +231,12 @@ public record CafeVentaDto(
     List<CafeVentaItemDto> Items,
     string? ClienteRazonSocial,
     string? ClienteDomicilioEntrega,
-    string? ClienteComentariosComprobante);
+    string? ClienteComentariosComprobante,
+    string? ClienteCuit,
+    string? ClienteDireccion,
+    string? ClienteLocalidad,
+    string? ClienteCiudad,
+    string? ClienteCp);
 
 public class CafeCotizarItemRequest
 {

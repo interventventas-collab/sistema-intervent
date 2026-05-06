@@ -20,7 +20,9 @@ public class CafeClientesController : ControllerBase
     private static CafeClienteDto Map(CafeCliente c) => new(
         c.Id, c.Codigo, c.Nombre, c.RazonSocial, c.Tipo,
         c.Cuit, c.Telefono, c.Email,
-        c.Direccion, c.DomicilioEntrega,
+        c.Direccion, c.Localidad, c.Ciudad, c.Cp,
+        c.CondicionIvaDefault,
+        c.DomicilioEntrega,
         c.Notas, c.ComentariosComprobante,
         c.IsActive, c.CreatedAt, c.UpdatedAt);
 
@@ -55,6 +57,10 @@ public class CafeClientesController : ControllerBase
             Telefono = Norm(req.Telefono),
             Email = Norm(req.Email),
             Direccion = Norm(req.Direccion),
+            Localidad = Norm(req.Localidad),
+            Ciudad = Norm(req.Ciudad),
+            Cp = Norm(req.Cp),
+            CondicionIvaDefault = Norm(req.CondicionIvaDefault),
             DomicilioEntrega = Norm(req.DomicilioEntrega),
             Notas = Norm(req.Notas),
             ComentariosComprobante = Norm(req.ComentariosComprobante),
@@ -101,6 +107,10 @@ public class CafeClientesController : ControllerBase
         if (req.Telefono is not null) c.Telefono = Norm(req.Telefono);
         if (req.Email is not null) c.Email = Norm(req.Email);
         if (req.Direccion is not null) c.Direccion = Norm(req.Direccion);
+        if (req.Localidad is not null) c.Localidad = Norm(req.Localidad);
+        if (req.Ciudad is not null) c.Ciudad = Norm(req.Ciudad);
+        if (req.Cp is not null) c.Cp = Norm(req.Cp);
+        if (req.CondicionIvaDefault is not null) c.CondicionIvaDefault = Norm(req.CondicionIvaDefault);
         if (req.DomicilioEntrega is not null) c.DomicilioEntrega = Norm(req.DomicilioEntrega);
         if (req.Notas is not null) c.Notas = Norm(req.Notas);
         if (req.ComentariosComprobante is not null) c.ComentariosComprobante = Norm(req.ComentariosComprobante);

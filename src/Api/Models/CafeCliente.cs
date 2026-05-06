@@ -37,6 +37,19 @@ public class CafeCliente
     [MaxLength(300)]
     public string? Direccion { get; set; }
 
+    [MaxLength(150)]
+    public string? Localidad { get; set; }
+
+    [MaxLength(150)]
+    public string? Ciudad { get; set; }
+
+    [MaxLength(20)]
+    public string? Cp { get; set; }
+
+    /// <summary>Condición IVA por default del cliente (CF, RI, MO, EX). Se usa al crear venta si no se especifica.</summary>
+    [MaxLength(20)]
+    public string? CondicionIvaDefault { get; set; }
+
     /// <summary>Domicilio donde se entregan los pedidos (puede ser distinto del Direccion fiscal).</summary>
     [MaxLength(500)]
     public string? DomicilioEntrega { get; set; }

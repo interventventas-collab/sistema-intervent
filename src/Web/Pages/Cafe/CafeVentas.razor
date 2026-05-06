@@ -756,7 +756,7 @@
                     <div class="cafe-pagado-stamp">PAGADO</div>
                 }
 
-                @* Cabecera *@
+                @* Cabecera: identidad del NEGOCIO (emisor) — datos fiscales completos para factura *@
                 <div style="border: 1px solid #d1d5db; padding: 0.85rem;">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem;">
                         <div style="flex: 1; display: flex; gap: 0.7rem; align-items: flex-start;">
@@ -767,13 +767,52 @@
                                      onerror="this.style.display='none'" />
                             }
                             <div style="flex: 1;">
-                                <h2 style="margin: 0; font-size: 1.5rem; font-weight: 800;">@(string.IsNullOrEmpty(settings.NegocioNombre) ? "Café e insumos" : settings.NegocioNombre)</h2>
-                                <div style="font-size: 0.78rem; color: #6b7280; margin-top: 0.2rem; line-height: 1.45;">
-                                    @if (!string.IsNullOrEmpty(settings.NegocioDireccion)) { <div>@settings.NegocioDireccion</div> }
-                                    @if (!string.IsNullOrEmpty(settings.NegocioTelefono)) { <div>Tel: @settings.NegocioTelefono</div> }
-                                    @if (!string.IsNullOrEmpty(settings.NegocioEmail)) { <div>@settings.NegocioEmail</div> }
-                                    @if (!string.IsNullOrEmpty(settings.NegocioWeb)) { <div>@settings.NegocioWeb</div> }
-                                    @if (!string.IsNullOrEmpty(settings.NegocioCuit)) { <div>CUIT: @settings.NegocioCuit</div> }
+                                @{
+                                    var negNombreFantasia = string.IsNullOrEmpty(settings.NegocioNombre) ? "Café e insumos" : settings.NegocioNombre!;
+                                    var negRazonSocial = string.IsNullOrWhiteSpace(settings.NegocioRazonSocial) ? negNombreFantasia : settings.NegocioRazonSocial!;
+                                }
+                                <h2 style="margin: 0; font-size: 1.4rem; font-weight: 800; line-height: 1.15;">@negRazonSocial</h2>
+                                @if (!string.IsNullOrWhiteSpace(settings.NegocioRazonSocial) && !string.IsNullOrEmpty(settings.NegocioNombre))
+                                {
+                                    <div style="font-size: 0.85rem; color: #4b5563; margin-top: 0.1rem;"><em>@settings.NegocioNombre</em></div>
+                                }
+                                <div style="font-size: 0.78rem; color: #4b5563; margin-top: 0.3rem; line-height: 1.5;">
+                                    @if (!string.IsNullOrEmpty(settings.NegocioDireccion))
+                                    {
+                                        var locCp = string.Join(" - ", new[] { settings.NegocioLocalidad, settings.NegocioCp }
+                                            .Where(x => !string.IsNullOrWhiteSpace(x)));
+                                        <div>@settings.NegocioDireccion@(string.IsNullOrEmpty(locCp) ? "" : " · " + locCp)</div>
+                                    }
+                                    else if (!string.IsNullOrWhiteSpace(settings.NegocioLocalidad) || !string.IsNullOrWhiteSpace(settings.NegocioCp))
+                                    {
+                                        <div>@string.Join(" - ", new[] { settings.NegocioLocalidad, settings.NegocioCp }.Where(x => !string.IsNullOrWhiteSpace(x)))</div>
+                                    }
+                                    @if (!string.IsNullOrEmpty(settings.NegocioCuit) || !string.IsNullOrEmpty(settings.NegocioCondicionIva))
+                                    {
+                                        <div>
+                                            @if (!string.IsNullOrEmpty(settings.NegocioCuit)) { <span><strong>CUIT:</strong> @settings.NegocioCuit</span> }
+                                            @if (!string.IsNullOrEmpty(settings.NegocioCuit) && !string.IsNullOrEmpty(settings.NegocioCondicionIva)) { <span> · </span> }
+                                            @if (!string.IsNullOrEmpty(settings.NegocioCondicionIva)) { <span><strong>Cond. IVA:</strong> @CondicionIvaLabel(settings.NegocioCondicionIva!)</span> }
+                                        </div>
+                                    }
+                                    @if (!string.IsNullOrEmpty(settings.NegocioIngresosBrutos) || settings.NegocioInicioActividad.HasValue)
+                                    {
+                                        <div>
+                                            @if (!string.IsNullOrEmpty(settings.NegocioIngresosBrutos)) { <span><strong>IIBB:</strong> @settings.NegocioIngresosBrutos</span> }
+                                            @if (!string.IsNullOrEmpty(settings.NegocioIngresosBrutos) && settings.NegocioInicioActividad.HasValue) { <span> · </span> }
+                                            @if (settings.NegocioInicioActividad.HasValue) { <span><strong>Inicio actividad:</strong> @settings.NegocioInicioActividad.Value.ToString("dd/MM/yyyy")</span> }
+                                        </div>
+                                    }
+                                    @if (!string.IsNullOrEmpty(settings.NegocioTelefono) || !string.IsNullOrEmpty(settings.NegocioEmail) || !string.IsNullOrEmpty(settings.NegocioWeb))
+                                    {
+                                        <div style="margin-top: 0.15rem; color: #6b7280;">
+                                            @if (!string.IsNullOrEmpty(settings.NegocioTelefono)) { <span>Tel: @settings.NegocioTelefono</span> }
+                                            @if (!string.IsNullOrEmpty(settings.NegocioTelefono) && (!string.IsNullOrEmpty(settings.NegocioEmail) || !string.IsNullOrEmpty(settings.NegocioWeb))) { <span> · </span> }
+                                            @if (!string.IsNullOrEmpty(settings.NegocioEmail)) { <span>@settings.NegocioEmail</span> }
+                                            @if (!string.IsNullOrEmpty(settings.NegocioEmail) && !string.IsNullOrEmpty(settings.NegocioWeb)) { <span> · </span> }
+                                            @if (!string.IsNullOrEmpty(settings.NegocioWeb)) { <span>@settings.NegocioWeb</span> }
+                                        </div>
+                                    }
                                 </div>
                             </div>
                         </div>
@@ -792,28 +831,39 @@
                     </div>
                 </div>
 
-                @* Cliente *@
+                @* Cliente: identidad del RECEPTOR — datos fiscales (sin domicilio de entrega: ese va al pie) *@
                 <div style="border: 1px solid #d1d5db; border-top: 0; padding: 0.6rem; font-size: 0.9rem;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem; flex-wrap: wrap;">
                         <div style="flex: 1;">
                             @if (!string.IsNullOrWhiteSpace(printVenta.ClienteRazonSocial))
                             {
-                                <div><strong>Razón social:</strong> @printVenta.ClienteRazonSocial</div>
-                                <div style="font-size:0.85rem; color:#4b5563;"><strong>Nombre fantasía:</strong> @(printVenta.ClienteNombre ?? "—")</div>
+                                <div style="font-size: 1rem;"><strong>@printVenta.ClienteRazonSocial</strong></div>
+                                <div style="font-size: 0.82rem; color: #6b7280;"><em>@(printVenta.ClienteNombre ?? "—")</em></div>
                             }
                             else
                             {
-                                <div><strong>Cliente:</strong> @(printVenta.ClienteNombre ?? "Consumidor final")</div>
+                                <div style="font-size: 1rem;"><strong>@(printVenta.ClienteNombre ?? "Consumidor final")</strong></div>
                             }
-                            @if (!string.IsNullOrWhiteSpace(printVenta.ClienteDomicilioEntrega))
+                            @{
+                                var lineas = new List<string>();
+                                if (!string.IsNullOrWhiteSpace(printVenta.ClienteCuit)) lineas.Add("CUIT/DNI: " + printVenta.ClienteCuit);
+                                if (!string.IsNullOrWhiteSpace(printVenta.ClienteDireccion)) lineas.Add(printVenta.ClienteDireccion!);
+                                var locCli = string.Join(" - ",
+                                    new[] { printVenta.ClienteLocalidad, printVenta.ClienteCiudad, printVenta.ClienteCp }
+                                        .Where(x => !string.IsNullOrWhiteSpace(x)));
+                                if (!string.IsNullOrEmpty(locCli)) lineas.Add(locCli);
+                            }
+                            @if (lineas.Count > 0)
                             {
-                                <div style="margin-top:0.2rem; font-size:0.85rem;"><strong>Entrega en:</strong> @printVenta.ClienteDomicilioEntrega</div>
+                                <div style="font-size: 0.82rem; color: #4b5563; margin-top: 0.2rem; line-height: 1.45;">
+                                    @foreach (var l in lineas) { <div>@l</div> }
+                                </div>
                             }
                             @if (!string.IsNullOrWhiteSpace(printVenta.ClienteTelefono))
                             {
                                 var tel = printVenta.ClienteTelefono!;
                                 var telDigits = new string(tel.Where(char.IsDigit).ToArray());
-                                <div style="margin-top: 0.2rem; font-size: 0.85rem;">
+                                <div style="margin-top: 0.2rem; font-size: 0.82rem;">
                                     <strong>Tel:</strong>
                                     @if (!string.IsNullOrEmpty(telDigits))
                                     {
@@ -930,6 +980,13 @@
                     <div style="margin-top: 0.4rem; padding: 0.4rem 0.7rem; background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; font-size: 0.78rem; color: #92400e;">
                         ⚠ <strong>Proforma — preview de cómo quedaría con IVA cuando emitas factura por ARCA.</strong>
                         Para esta vista se aplica 21% al neto. Cuando se emita la factura real, los productos con IVA 10,5% (alimentos) se discriminarán por separado.
+                    </div>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(printVenta.ClienteDomicilioEntrega))
+                {
+                    <div style="margin-top: 0.5rem; border: 1px solid #d1d5db; padding: 0.5rem 0.7rem; font-size: 0.85rem; background: #f9fafb;">
+                        <strong>🚚 Entrega en:</strong> @printVenta.ClienteDomicilioEntrega
                     </div>
                 }
 

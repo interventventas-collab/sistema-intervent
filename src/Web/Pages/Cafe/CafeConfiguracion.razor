@@ -40,15 +40,40 @@
                 </div>
             </div>
 
-            <h4 style="margin: 1rem 0 0.6rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase;">Datos del negocio (para el PDF)</h4>
+            <h4 style="margin: 1rem 0 0.6rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase;">Datos del negocio (para comprobantes)</h4>
             <div class="form-row">
                 <div class="form-group" style="flex: 2;">
-                    <label class="form-label">Nombre del negocio</label>
-                    <input class="form-input" @bind="negocioNombre" placeholder="Ej: Café Premium SRL" />
+                    <label class="form-label">Nombre fantasía</label>
+                    <input class="form-input" @bind="negocioNombre" placeholder="Ej: Frikaf" />
                 </div>
                 <div class="form-group" style="flex: 1;">
                     <label class="form-label">CUIT</label>
                     <input class="form-input" @bind="negocioCuit" placeholder="Ej: 30-12345678-9" />
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group" style="flex: 2;">
+                    <label class="form-label">Razón social (legal)</label>
+                    <input class="form-input" @bind="negocioRazonSocial" placeholder="Ej: PALANICA HERMANOS S.R.L." />
+                </div>
+                <div class="form-group" style="flex: 1;">
+                    <label class="form-label">Condición frente al IVA</label>
+                    <select class="form-input" @bind="negocioCondicionIva">
+                        <option value="">— Sin especificar —</option>
+                        <option value="RI">Responsable Inscripto</option>
+                        <option value="MO">Monotributo</option>
+                        <option value="EX">Exento</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group" style="flex: 1;">
+                    <label class="form-label">Ingresos Brutos</label>
+                    <input class="form-input" @bind="negocioIngresosBrutos" placeholder="Nro de IIBB" />
+                </div>
+                <div class="form-group" style="flex: 1;">
+                    <label class="form-label">Inicio de actividad</label>
+                    <input class="form-input" type="date" @bind="negocioInicioActividad" />
                 </div>
             </div>
             <div class="form-row">
@@ -62,8 +87,18 @@
                 </div>
             </div>
             <div class="form-group">
-                <label class="form-label">Dirección</label>
-                <input class="form-input" @bind="negocioDireccion" />
+                <label class="form-label">Dirección fiscal</label>
+                <input class="form-input" @bind="negocioDireccion" placeholder="Calle, número, piso/dpto" />
+            </div>
+            <div class="form-row">
+                <div class="form-group" style="flex: 2;">
+                    <label class="form-label">Localidad</label>
+                    <input class="form-input" @bind="negocioLocalidad" placeholder="Ciudad Autónoma de Buenos Aires" />
+                </div>
+                <div class="form-group" style="flex: 1;">
+                    <label class="form-label">CP</label>
+                    <input class="form-input" @bind="negocioCp" placeholder="1050" />
+                </div>
             </div>
             <div class="form-row">
                 <div class="form-group" style="flex: 1;">
@@ -164,6 +199,9 @@
     private decimal margenOtro = 60;
     private string negocioNombre = "", negocioTelefono = "", negocioWhatsapp = "", negocioDireccion = "", negocioCuit = "";
     private string negocioEmail = "", negocioWeb = "", negocioLogoUrl = "";
+    private string negocioRazonSocial = "", negocioCondicionIva = "", negocioIngresosBrutos = "";
+    private DateTime? negocioInicioActividad;
+    private string negocioLocalidad = "", negocioCp = "";
     private bool isUploadingLogo;
     private string? uploadLogoError;
     private string waTemplate = "Hola! Te escribo por el comprobante {numero} (total ${total}). Gracias!";
@@ -198,6 +236,12 @@
                 negocioEmail = s.NegocioEmail ?? "";
                 negocioWeb = s.NegocioWeb ?? "";
                 negocioLogoUrl = s.NegocioLogoUrl ?? "";
+                negocioRazonSocial = s.NegocioRazonSocial ?? "";
+                negocioCondicionIva = s.NegocioCondicionIva ?? "";
+                negocioIngresosBrutos = s.NegocioIngresosBrutos ?? "";
+                negocioInicioActividad = s.NegocioInicioActividad;
+                negocioLocalidad = s.NegocioLocalidad ?? "";
+                negocioCp = s.NegocioCp ?? "";
                 if (!string.IsNullOrWhiteSpace(s.WhatsappMensajeTemplate))
                     waTemplate = s.WhatsappMensajeTemplate;
                 // Cliente: usar lo guardado tal cual, incluso si esta vacio (significa "sin mensaje").
@@ -228,6 +272,12 @@
                 NegocioEmail = negocioEmail,
                 NegocioWeb = negocioWeb,
                 NegocioLogoUrl = negocioLogoUrl,
+                NegocioRazonSocial = negocioRazonSocial,
+                NegocioCondicionIva = negocioCondicionIva,
+                NegocioIngresosBrutos = negocioIngresosBrutos,
+                NegocioInicioActividad = negocioInicioActividad,
+                NegocioLocalidad = negocioLocalidad,
+                NegocioCp = negocioCp,
                 WhatsappMensajeTemplate = waTemplate,
                 WhatsappMensajeClienteTemplate = waTemplateCliente
             });

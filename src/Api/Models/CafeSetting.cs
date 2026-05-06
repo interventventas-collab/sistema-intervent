@@ -36,6 +36,28 @@ public class CafeSetting
     [MaxLength(50)]
     public string? NegocioCuit { get; set; }
 
+    /// <summary>Razón social legal (puede coincidir con el nombre fantasía o no).</summary>
+    [MaxLength(200)]
+    public string? NegocioRazonSocial { get; set; }
+
+    /// <summary>Condición frente al IVA: "RI" (Responsable Inscripto), "MO" (Monotributo), "EX" (Exento).</summary>
+    [MaxLength(50)]
+    public string? NegocioCondicionIva { get; set; }
+
+    /// <summary>Número/dato de Ingresos Brutos.</summary>
+    [MaxLength(50)]
+    public string? NegocioIngresosBrutos { get; set; }
+
+    /// <summary>Fecha de inicio de actividad (para cabecera de factura).</summary>
+    [System.ComponentModel.DataAnnotations.Schema.Column(TypeName = "date")]
+    public DateTime? NegocioInicioActividad { get; set; }
+
+    [MaxLength(150)]
+    public string? NegocioLocalidad { get; set; }
+
+    [MaxLength(20)]
+    public string? NegocioCp { get; set; }
+
     [MaxLength(200)]
     public string? NegocioEmail { get; set; }
 

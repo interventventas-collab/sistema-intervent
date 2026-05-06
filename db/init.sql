@@ -2513,9 +2513,41 @@ IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_MeliItems_CafeComboId'
     CREATE INDEX IX_MeliItems_CafeComboId ON MeliItems(CafeComboId);
 GO
 
+-- Cafe_Settings: campos fiscales del negocio para emitir comprobantes/facturas.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='NegocioRazonSocial' AND Object_ID=Object_ID('Cafe_Settings'))
+    ALTER TABLE Cafe_Settings ADD NegocioRazonSocial NVARCHAR(200) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='NegocioCondicionIva' AND Object_ID=Object_ID('Cafe_Settings'))
+    ALTER TABLE Cafe_Settings ADD NegocioCondicionIva NVARCHAR(50) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='NegocioIngresosBrutos' AND Object_ID=Object_ID('Cafe_Settings'))
+    ALTER TABLE Cafe_Settings ADD NegocioIngresosBrutos NVARCHAR(50) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='NegocioInicioActividad' AND Object_ID=Object_ID('Cafe_Settings'))
+    ALTER TABLE Cafe_Settings ADD NegocioInicioActividad DATE NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='NegocioLocalidad' AND Object_ID=Object_ID('Cafe_Settings'))
+    ALTER TABLE Cafe_Settings ADD NegocioLocalidad NVARCHAR(150) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='NegocioCp' AND Object_ID=Object_ID('Cafe_Settings'))
+    ALTER TABLE Cafe_Settings ADD NegocioCp NVARCHAR(20) NULL;
+GO
+
 -- Cafe_Clientes: campos extra para facturacion y comprobantes.
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='RazonSocial' AND Object_ID=Object_ID('Cafe_Clientes'))
     ALTER TABLE Cafe_Clientes ADD RazonSocial NVARCHAR(200) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='Localidad' AND Object_ID=Object_ID('Cafe_Clientes'))
+    ALTER TABLE Cafe_Clientes ADD Localidad NVARCHAR(150) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='Ciudad' AND Object_ID=Object_ID('Cafe_Clientes'))
+    ALTER TABLE Cafe_Clientes ADD Ciudad NVARCHAR(150) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='Cp' AND Object_ID=Object_ID('Cafe_Clientes'))
+    ALTER TABLE Cafe_Clientes ADD Cp NVARCHAR(20) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='CondicionIvaDefault' AND Object_ID=Object_ID('Cafe_Clientes'))
+    ALTER TABLE Cafe_Clientes ADD CondicionIvaDefault NVARCHAR(20) NULL;
 GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='DomicilioEntrega' AND Object_ID=Object_ID('Cafe_Clientes'))
     ALTER TABLE Cafe_Clientes ADD DomicilioEntrega NVARCHAR(500) NULL;
@@ -2536,3 +2568,20 @@ IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ClienteComentariosComproban
     ALTER TABLE Cafe_Ventas ADD ClienteComentariosComprobante NVARCHAR(MAX) NULL;
 GO
 
+
+-- Cafe_Ventas: snapshots fiscales del cliente al emitir (para comprobante completo).
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ClienteCuitSnapshot' AND Object_ID=Object_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD ClienteCuitSnapshot NVARCHAR(50) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ClienteDireccionSnapshot' AND Object_ID=Object_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD ClienteDireccionSnapshot NVARCHAR(300) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ClienteLocalidadSnapshot' AND Object_ID=Object_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD ClienteLocalidadSnapshot NVARCHAR(150) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ClienteCiudadSnapshot' AND Object_ID=Object_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD ClienteCiudadSnapshot NVARCHAR(150) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ClienteCpSnapshot' AND Object_ID=Object_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD ClienteCpSnapshot NVARCHAR(20) NULL;
+GO

@@ -35,7 +35,12 @@ public class CafeVentasController : ControllerBase
             i.DescuentoPct)).ToList(),
         v.ClienteRazonSocialSnapshot,
         v.ClienteDomicilioEntregaSnapshot,
-        v.ClienteComentariosComprobante);
+        v.ClienteComentariosComprobante,
+        v.ClienteCuitSnapshot,
+        v.ClienteDireccionSnapshot,
+        v.ClienteLocalidadSnapshot,
+        v.ClienteCiudadSnapshot,
+        v.ClienteCpSnapshot);
 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null)
@@ -136,6 +141,11 @@ public class CafeVentasController : ControllerBase
         string? clienteRazonSocial = null;
         string? clienteDomicilioEntrega = null;
         string? clienteComentariosComprobante = null;
+        string? clienteCuit = null;
+        string? clienteDireccion = null;
+        string? clienteLocalidad = null;
+        string? clienteCiudad = null;
+        string? clienteCp = null;
         if (req.ClienteId.HasValue && req.ClienteId.Value > 0)
         {
             var cli = await _db.CafeClientes.FindAsync(req.ClienteId.Value);
@@ -145,6 +155,11 @@ public class CafeVentasController : ControllerBase
             clienteRazonSocial = cli.RazonSocial;
             clienteDomicilioEntrega = cli.DomicilioEntrega;
             clienteComentariosComprobante = cli.ComentariosComprobante;
+            clienteCuit = cli.Cuit;
+            clienteDireccion = cli.Direccion;
+            clienteLocalidad = cli.Localidad;
+            clienteCiudad = cli.Ciudad;
+            clienteCp = cli.Cp;
             tipo = CafePricingService.ResolverTipo(cli.Tipo);
         }
         else
@@ -164,6 +179,11 @@ public class CafeVentasController : ControllerBase
             ClienteRazonSocialSnapshot = clienteRazonSocial,
             ClienteDomicilioEntregaSnapshot = clienteDomicilioEntrega,
             ClienteComentariosComprobante = clienteComentariosComprobante,
+            ClienteCuitSnapshot = clienteCuit,
+            ClienteDireccionSnapshot = clienteDireccion,
+            ClienteLocalidadSnapshot = clienteLocalidad,
+            ClienteCiudadSnapshot = clienteCiudad,
+            ClienteCpSnapshot = clienteCp,
             Subtotal = cot.Subtotal,
             Descuento = cot.Descuento,
             Total = cot.Total,
@@ -340,6 +360,11 @@ public class CafeVentasController : ControllerBase
                 v.ClienteRazonSocialSnapshot = cli.RazonSocial;
                 v.ClienteDomicilioEntregaSnapshot = cli.DomicilioEntrega;
                 v.ClienteComentariosComprobante = cli.ComentariosComprobante;
+                v.ClienteCuitSnapshot = cli.Cuit;
+                v.ClienteDireccionSnapshot = cli.Direccion;
+                v.ClienteLocalidadSnapshot = cli.Localidad;
+                v.ClienteCiudadSnapshot = cli.Ciudad;
+                v.ClienteCpSnapshot = cli.Cp;
             }
             else
             {
@@ -351,6 +376,11 @@ public class CafeVentasController : ControllerBase
                 v.ClienteRazonSocialSnapshot = null;
                 v.ClienteDomicilioEntregaSnapshot = null;
                 v.ClienteComentariosComprobante = null;
+                v.ClienteCuitSnapshot = null;
+                v.ClienteDireccionSnapshot = null;
+                v.ClienteLocalidadSnapshot = null;
+                v.ClienteCiudadSnapshot = null;
+                v.ClienteCpSnapshot = null;
             }
         }
         else if (!v.ClienteId.HasValue && !string.IsNullOrWhiteSpace(req.ClienteNombreOverride))

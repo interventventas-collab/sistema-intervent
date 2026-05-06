@@ -152,6 +152,31 @@
                     <input class="form-input" @bind="formDireccion" placeholder="Calle, número, barrio..." />
                     <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Domicilio fiscal del cliente (la dirección legal).</p>
                 </div>
+                <div class="form-row">
+                    <div class="form-group" style="flex: 2;">
+                        <label class="form-label">Localidad</label>
+                        <input class="form-input" @bind="formLocalidad" placeholder="Ej: La Plata" />
+                    </div>
+                    <div class="form-group" style="flex: 2;">
+                        <label class="form-label">Ciudad / Provincia</label>
+                        <input class="form-input" @bind="formCiudad" placeholder="Ej: Buenos Aires" />
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">CP</label>
+                        <input class="form-input" @bind="formCp" placeholder="1900" />
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Condición frente al IVA</label>
+                    <select class="form-input" @bind="formCondicionIvaDefault">
+                        <option value="">— Sin especificar —</option>
+                        <option value="RI">Responsable Inscripto</option>
+                        <option value="MO">Monotributo</option>
+                        <option value="EX">Exento</option>
+                        <option value="CF">Consumidor Final</option>
+                    </select>
+                    <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Default que se sugiere al emitir comprobantes para este cliente.</p>
+                </div>
                 <div class="form-group">
                     <label class="form-label">Domicilio de entrega</label>
                     <input class="form-input" @bind="formDomicilioEntrega" placeholder="Donde se entregan los pedidos (si difiere del fiscal)" />
@@ -233,6 +258,7 @@
     private int? editingId;
     private string formNombre = "", formTipo = "OTRO", formCuit = "", formTelefono = "", formEmail = "", formDireccion = "", formNotas = "";
     private string formRazonSocial = "", formDomicilioEntrega = "", formComentariosComprobante = "";
+    private string formLocalidad = "", formCiudad = "", formCp = "", formCondicionIvaDefault = "";
     private bool formIsActive = true;
     private bool showDeleteConfirm;
     private CafeClienteDto? toDelete;
@@ -252,6 +278,7 @@
         isEditing = false; editingId = null;
         formNombre = ""; formTipo = "OTRO"; formCuit = ""; formTelefono = ""; formEmail = ""; formDireccion = ""; formNotas = "";
         formRazonSocial = ""; formDomicilioEntrega = ""; formComentariosComprobante = "";
+        formLocalidad = ""; formCiudad = ""; formCp = ""; formCondicionIvaDefault = "";
         formIsActive = true; formError = null; showForm = true;
     }
 
@@ -264,6 +291,8 @@
         formRazonSocial = c.RazonSocial ?? "";
         formDomicilioEntrega = c.DomicilioEntrega ?? "";
         formComentariosComprobante = c.ComentariosComprobante ?? "";
+        formLocalidad = c.Localidad ?? ""; formCiudad = c.Ciudad ?? "";
+        formCp = c.Cp ?? ""; formCondicionIvaDefault = c.CondicionIvaDefault ?? "";
         formIsActive = c.IsActive; formError = null; showForm = true;
     }
 
@@ -283,6 +312,8 @@
                     Nombre = formNombre, RazonSocial = formRazonSocial, Tipo = formTipo,
                     Cuit = formCuit, Telefono = formTelefono, Email = formEmail,
                     Direccion = formDireccion, DomicilioEntrega = formDomicilioEntrega,
+                    Localidad = formLocalidad, Ciudad = formCiudad, Cp = formCp,
+                    CondicionIvaDefault = formCondicionIvaDefault,
                     Notas = formNotas, ComentariosComprobante = formComentariosComprobante,
                     IsActive = formIsActive
                 });
@@ -296,6 +327,8 @@
                     Nombre = formNombre, RazonSocial = formRazonSocial, Tipo = formTipo,
                     Cuit = formCuit, Telefono = formTelefono, Email = formEmail,
                     Direccion = formDireccion, DomicilioEntrega = formDomicilioEntrega,
+                    Localidad = formLocalidad, Ciudad = formCiudad, Cp = formCp,
+                    CondicionIvaDefault = formCondicionIvaDefault,
                     Notas = formNotas, ComentariosComprobante = formComentariosComprobante
                 });
                 if (c is null) { formError = "No se pudo crear"; return; }

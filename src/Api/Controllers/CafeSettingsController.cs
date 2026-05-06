@@ -23,6 +23,9 @@ public class CafeSettingsController : ControllerBase
         s.NegocioDireccion, s.NegocioCuit,
         s.NegocioEmail, s.NegocioWeb, s.NegocioLogoUrl,
         s.WhatsappMensajeTemplate, s.WhatsappMensajeClienteTemplate,
+        s.NegocioRazonSocial, s.NegocioCondicionIva,
+        s.NegocioIngresosBrutos, s.NegocioInicioActividad,
+        s.NegocioLocalidad, s.NegocioCp,
         s.UpdatedAt);
 
     [HttpGet]
@@ -54,6 +57,12 @@ public class CafeSettingsController : ControllerBase
         if (req.NegocioLogoUrl is not null) s.NegocioLogoUrl = Norm(req.NegocioLogoUrl);
         if (req.WhatsappMensajeTemplate is not null) s.WhatsappMensajeTemplate = Norm(req.WhatsappMensajeTemplate);
         if (req.WhatsappMensajeClienteTemplate is not null) s.WhatsappMensajeClienteTemplate = Norm(req.WhatsappMensajeClienteTemplate);
+        if (req.NegocioRazonSocial is not null) s.NegocioRazonSocial = Norm(req.NegocioRazonSocial);
+        if (req.NegocioCondicionIva is not null) s.NegocioCondicionIva = Norm(req.NegocioCondicionIva);
+        if (req.NegocioIngresosBrutos is not null) s.NegocioIngresosBrutos = Norm(req.NegocioIngresosBrutos);
+        if (req.NegocioInicioActividad.HasValue) s.NegocioInicioActividad = req.NegocioInicioActividad;
+        if (req.NegocioLocalidad is not null) s.NegocioLocalidad = Norm(req.NegocioLocalidad);
+        if (req.NegocioCp is not null) s.NegocioCp = Norm(req.NegocioCp);
         s.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return Ok(Map(s));

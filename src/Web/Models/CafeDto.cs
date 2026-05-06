@@ -4,13 +4,17 @@ public class CafeClienteDto
 {
     public int Id { get; set; }
     public string? Codigo { get; set; }
-    public string Nombre { get; set; } = "";       // nombre fantasía / comercial
-    public string? RazonSocial { get; set; }       // razón social (legal)
+    public string Nombre { get; set; } = "";
+    public string? RazonSocial { get; set; }
     public string Tipo { get; set; } = "OTRO";
     public string? Cuit { get; set; }
     public string? Telefono { get; set; }
     public string? Email { get; set; }
     public string? Direccion { get; set; }
+    public string? Localidad { get; set; }
+    public string? Ciudad { get; set; }
+    public string? Cp { get; set; }
+    public string? CondicionIvaDefault { get; set; }
     public string? DomicilioEntrega { get; set; }
     public string? Notas { get; set; }
     public string? ComentariosComprobante { get; set; }
@@ -28,6 +32,10 @@ public class CreateCafeClienteRequest
     public string? Telefono { get; set; }
     public string? Email { get; set; }
     public string? Direccion { get; set; }
+    public string? Localidad { get; set; }
+    public string? Ciudad { get; set; }
+    public string? Cp { get; set; }
+    public string? CondicionIvaDefault { get; set; }
     public string? DomicilioEntrega { get; set; }
     public string? Notas { get; set; }
     public string? ComentariosComprobante { get; set; }
@@ -42,6 +50,10 @@ public class UpdateCafeClienteRequest
     public string? Telefono { get; set; }
     public string? Email { get; set; }
     public string? Direccion { get; set; }
+    public string? Localidad { get; set; }
+    public string? Ciudad { get; set; }
+    public string? Cp { get; set; }
+    public string? CondicionIvaDefault { get; set; }
     public string? DomicilioEntrega { get; set; }
     public string? Notas { get; set; }
     public string? ComentariosComprobante { get; set; }
@@ -142,6 +154,12 @@ public class CafeSettingDto
     public string? NegocioLogoUrl { get; set; }
     public string? WhatsappMensajeTemplate { get; set; }
     public string? WhatsappMensajeClienteTemplate { get; set; }
+    public string? NegocioRazonSocial { get; set; }
+    public string? NegocioCondicionIva { get; set; }
+    public string? NegocioIngresosBrutos { get; set; }
+    public DateTime? NegocioInicioActividad { get; set; }
+    public string? NegocioLocalidad { get; set; }
+    public string? NegocioCp { get; set; }
     public DateTime? UpdatedAt { get; set; }
 }
 
@@ -161,6 +179,12 @@ public class UpdateCafeSettingRequest
     public string? NegocioLogoUrl { get; set; }
     public string? WhatsappMensajeTemplate { get; set; }
     public string? WhatsappMensajeClienteTemplate { get; set; }
+    public string? NegocioRazonSocial { get; set; }
+    public string? NegocioCondicionIva { get; set; }
+    public string? NegocioIngresosBrutos { get; set; }
+    public DateTime? NegocioInicioActividad { get; set; }
+    public string? NegocioLocalidad { get; set; }
+    public string? NegocioCp { get; set; }
 }
 
 // ===== Ventas =====
@@ -207,6 +231,11 @@ public class CafeVentaDto
     public string? ClienteRazonSocial { get; set; }
     public string? ClienteDomicilioEntrega { get; set; }
     public string? ClienteComentariosComprobante { get; set; }
+    public string? ClienteCuit { get; set; }
+    public string? ClienteDireccion { get; set; }
+    public string? ClienteLocalidad { get; set; }
+    public string? ClienteCiudad { get; set; }
+    public string? ClienteCp { get; set; }
 }
 
 public class CafeCotizarItemRequest
