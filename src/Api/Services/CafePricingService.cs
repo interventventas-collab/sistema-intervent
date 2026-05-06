@@ -76,29 +76,20 @@ public static class CafePricingService
         {
             // CAFE:
             //   - lista_kg = Pvp1 (= "lista 100%")
-            //   - lista_formato = lista_kg/N + costoFracc (lo que veria el cliente como "lista" del formato)
-            //   - final_kg = lista_kg × (1 − desc/100)
-            //   - final_formato = final_kg/N + costoFracc (descuento solo a la parte kg, no al costo de fraccionamiento)
-            //   - redondeo arriba a multiplo configurable.
+            //   - lista_formato = lista_kg/N + costoFracc
+            //   - final = lista_formato × (1 − desc/100)  (math limpia: el descuento aplica al total del formato)
+            //   - SIN redondeo arriba — para que la matematica del comprobante cuadre exacto.
             var listaKg = producto.Pvp1 ?? producto.Pvp2 ?? producto.PrecioPorKg ?? 0m;
-            var finalKg = listaKg * (1m - desc / 100m);
 
-            decimal listaFmt = formato switch
+            lista = formato switch
             {
                 FORMATO_1KG => listaKg,
                 FORMATO_MEDIO => (listaKg / 2m) + settings.CostoFraccionamiento,
                 FORMATO_CUARTO => (listaKg / 4m) + settings.CostoFraccionamiento,
                 _ => 0m
             };
-            decimal finalFmt = formato switch
-            {
-                FORMATO_1KG => finalKg,
-                FORMATO_MEDIO => (finalKg / 2m) + settings.CostoFraccionamiento,
-                FORMATO_CUARTO => (finalKg / 4m) + settings.CostoFraccionamiento,
-                _ => 0m
-            };
-            lista = RedondearArriba(listaFmt, settings.RedondeoMultiplo);
-            final = RedondearArriba(finalFmt, settings.RedondeoMultiplo);
+            lista = Math.Round(lista, 2, MidpointRounding.AwayFromZero);
+            final = Math.Round(lista * (1m - desc / 100m), 2, MidpointRounding.AwayFromZero);
         }
         else
         {
