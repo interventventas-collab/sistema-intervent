@@ -576,6 +576,22 @@ public class ApiClient
         return true;
     }
 
+    // --- Reglas de precios ---
+    public async Task<CafeReglasPreciosResponse?> GetReglasPreciosAsync()
+        => await GetAsync<CafeReglasPreciosResponse>("/api/cafe/reglas-precios");
+
+    public async Task<bool> UpsertReglaPrecioAsync(UpsertReglaPrecioRequest req)
+    {
+        await SetAuthHeaderAsync();
+        var response = await _http.PostAsJsonAsync("/api/cafe/reglas-precios", req);
+        if (response.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return false; }
+        if (!response.IsSuccessStatusCode) await ThrowIfErrorAsync(response);
+        return true;
+    }
+
+    public async Task<bool> DeleteReglaPrecioAsync(int id)
+        => await DeleteAsync($"/api/cafe/reglas-precios/{id}");
+
     public async Task<byte[]?> ExportCafeListaPreciosExcelAsync(CafeListaPreciosFiltroRequest req)
     {
         await SetAuthHeaderAsync();

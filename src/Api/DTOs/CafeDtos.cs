@@ -589,3 +589,16 @@ public class UpsertDescuentoRequest
     public int? MarcaId { get; set; }   // null = general
     public decimal DescuentoPct { get; set; }
 }
+
+// ===== Reglas de precios (tipo cliente x categoria x marca opcional) =====
+public record CafeReglaPrecioDto(
+    int Id, string TipoCliente, string Categoria,
+    int? MarcaId, string? MarcaNombre, decimal DescuentoPct);
+
+public class UpsertReglaPrecioRequest
+{
+    public string TipoCliente { get; set; } = "OTRO";
+    public string Categoria { get; set; } = "OTROS";
+    public int? MarcaId { get; set; }
+    public decimal DescuentoPct { get; set; }
+}

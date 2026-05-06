@@ -2242,6 +2242,42 @@ IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'MargenPctSobreCosto' AND 
     ALTER TABLE Cafe_Marcas ADD MargenPctSobreCosto DECIMAL(7,2) NOT NULL DEFAULT 100;
 GO
 
+-- Reglas de precios: matriz tipo cliente x categoria (CAFE/OTROS) -> % descuento.
+-- Opcionalmente con MarcaId para override puntual por marca.
+-- Aplica sobre Pvp1 (lista 100%) del producto. Reemplaza Cafe_DescuentosCliente y MargenPctSobreCosto.
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_ReglasPrecios' AND xtype='U')
+BEGIN
+    CREATE TABLE Cafe_ReglasPrecios (
+        Id INT PRIMARY KEY IDENTITY(1,1),
+        TipoCliente NVARCHAR(20) NOT NULL,
+        Categoria NVARCHAR(20) NOT NULL,
+        MarcaId INT NULL,
+        DescuentoPct DECIMAL(7,2) NOT NULL DEFAULT 0,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT FK_ReglasPrecios_Marca FOREIGN KEY (MarcaId) REFERENCES Cafe_Marcas(Id) ON DELETE CASCADE
+    );
+END
+GO
+SET QUOTED_IDENTIFIER ON;
+GO
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='UX_ReglasPrecios_General' AND object_id=OBJECT_ID('Cafe_ReglasPrecios'))
+    CREATE UNIQUE INDEX UX_ReglasPrecios_General ON Cafe_ReglasPrecios(TipoCliente, Categoria) WHERE MarcaId IS NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='UX_ReglasPrecios_Override' AND object_id=OBJECT_ID('Cafe_ReglasPrecios'))
+    CREATE UNIQUE INDEX UX_ReglasPrecios_Override ON Cafe_ReglasPrecios(TipoCliente, Categoria, MarcaId) WHERE MarcaId IS NOT NULL;
+GO
+
+-- Seed default de reglas: BAR/Comercial x CAFE/OTROS.
+IF NOT EXISTS (SELECT 1 FROM Cafe_ReglasPrecios)
+BEGIN
+    INSERT INTO Cafe_ReglasPrecios (TipoCliente, Categoria, DescuentoPct) VALUES ('BAR',  'CAFE',  50);
+    INSERT INTO Cafe_ReglasPrecios (TipoCliente, Categoria, DescuentoPct) VALUES ('BAR',  'OTROS', 50);
+    INSERT INTO Cafe_ReglasPrecios (TipoCliente, Categoria, DescuentoPct) VALUES ('OTRO', 'CAFE',  40);
+    INSERT INTO Cafe_ReglasPrecios (TipoCliente, Categoria, DescuentoPct) VALUES ('OTRO', 'OTROS', 50);
+END
+GO
+
 -- =============================================================================
 -- Kits del modulo Cafe (productos compuestos con BOM/Bill of Materials).
 -- Distinto de Cafe_Combos que son "promos" de cafe fraccionado (1kg/medio/cuarto).

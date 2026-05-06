@@ -51,58 +51,62 @@ public static class CafePricingService
 
     /// <summary>
     /// Desglose de precio: lista (sin descuento), descuento %, precio final.
-    /// Para CAFE no aplica descuento (sigue con Pvp1/Pvp2 directo).
-    /// Para OTROS:
-    ///   - BAR  -> lista = costo × (1 + marcaMargen/100)
-    ///   - OTRO -> lista = Pvp2 manual (sugerido proveedor); fallback a costo × margen si no hay
-    ///   - descuento se aplica sobre lista (de la matriz Cafe_DescuentosCliente).
+    ///
+    /// Modelo unificado (CAFE y OTROS):
+    ///   1. Lista = Pvp1 del producto (la "lista 100%"). Para fracciones de cafe, se calcula
+    ///      sobre Pvp1/2 + costo fraccionamiento, redondeado.
+    ///   2. Descuento = se busca en la matriz Cafe_ReglasPrecios por (tipo cliente, categoria producto, marcaId)
+    ///      con jerarquia: override por marca > regla general por categoria. La marca con
+    ///      BloqueaDescuento prendido fuerza descuento = 0.
+    ///   3. Precio final = lista × (1 − desc/100).
+    ///
+    /// Pvp2 (sugerido proveedor) se conserva en el producto solo como referencia interna
+    /// — NO se usa en el motor.
     /// </summary>
     public record PrecioBreakdown(decimal PrecioLista, decimal DescuentoPct, decimal PrecioFinal);
 
     public static PrecioBreakdown CalcularPrecioBreakdown(
         CafeProducto producto, string formato, string tipoCliente, CafeSetting settings,
-        decimal? marcaMargenPctSobreCosto = null,
         decimal descuentoPct = 0m)
     {
-        decimal lista;
+        var desc = Math.Max(0m, Math.Min(100m, descuentoPct));
+        decimal lista, final;
+
         if (producto.Categoria == "CAFE")
         {
-            // CAFE: misma logica que siempre (Pvp1/Pvp2 directo). No aplica descuento por canal.
-            decimal pvpKg;
-            if (tipoCliente == TIPO_BAR)
-                pvpKg = producto.Pvp1 ?? producto.Pvp2 ?? producto.PrecioPorKg ?? 0m;
-            else
-                pvpKg = producto.Pvp2 ?? producto.Pvp1 ?? producto.PrecioPorKg ?? 0m;
+            // CAFE:
+            //   - lista_kg = Pvp1 (= "lista 100%")
+            //   - lista_formato = lista_kg/N + costoFracc (lo que veria el cliente como "lista" del formato)
+            //   - final_kg = lista_kg × (1 − desc/100)
+            //   - final_formato = final_kg/N + costoFracc (descuento solo a la parte kg, no al costo de fraccionamiento)
+            //   - redondeo arriba a multiplo configurable.
+            var listaKg = producto.Pvp1 ?? producto.Pvp2 ?? producto.PrecioPorKg ?? 0m;
+            var finalKg = listaKg * (1m - desc / 100m);
 
-            decimal precio = formato switch
+            decimal listaFmt = formato switch
             {
-                FORMATO_1KG => pvpKg,
-                FORMATO_MEDIO => (pvpKg / 2m) + settings.CostoFraccionamiento,
-                FORMATO_CUARTO => (pvpKg / 4m) + settings.CostoFraccionamiento,
+                FORMATO_1KG => listaKg,
+                FORMATO_MEDIO => (listaKg / 2m) + settings.CostoFraccionamiento,
+                FORMATO_CUARTO => (listaKg / 4m) + settings.CostoFraccionamiento,
                 _ => 0m
             };
-            lista = RedondearArriba(precio, settings.RedondeoMultiplo);
-            return new PrecioBreakdown(lista, 0m, lista);
-        }
-
-        // OTROS
-        var margen = marcaMargenPctSobreCosto ?? 100m;
-        if (tipoCliente == TIPO_BAR)
-        {
-            // BAR paga PVP por % (costo × (1 + margen marca)).
-            lista = Math.Round(producto.Costo * (1m + margen / 100m), 2, MidpointRounding.AwayFromZero);
+            decimal finalFmt = formato switch
+            {
+                FORMATO_1KG => finalKg,
+                FORMATO_MEDIO => (finalKg / 2m) + settings.CostoFraccionamiento,
+                FORMATO_CUARTO => (finalKg / 4m) + settings.CostoFraccionamiento,
+                _ => 0m
+            };
+            lista = RedondearArriba(listaFmt, settings.RedondeoMultiplo);
+            final = RedondearArriba(finalFmt, settings.RedondeoMultiplo);
         }
         else
         {
-            // OTRO paga PVP manual (sugerido proveedor / OEM). Fallback a PVP por % si no hay manual.
-            if (producto.Pvp2.HasValue && producto.Pvp2.Value > 0m)
-                lista = producto.Pvp2.Value;
-            else
-                lista = Math.Round(producto.Costo * (1m + margen / 100m), 2, MidpointRounding.AwayFromZero);
+            // OTROS: lista = Pvp1 (fallback Pvp2). Sin fraccionamiento.
+            lista = producto.Pvp1 ?? producto.Pvp2 ?? 0m;
+            final = Math.Round(lista * (1m - desc / 100m), 2, MidpointRounding.AwayFromZero);
         }
 
-        var desc = Math.Max(0m, Math.Min(100m, descuentoPct));
-        var final = Math.Round(lista * (1m - desc / 100m), 2, MidpointRounding.AwayFromZero);
         return new PrecioBreakdown(lista, desc, final);
     }
 

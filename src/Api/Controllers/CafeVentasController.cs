@@ -486,19 +486,20 @@ public class CafeVentasController : ControllerBase
         decimal subtotal = 0m, costoTotal = 0m;
         bool todoOk = true;
 
-        // Pre-cargar marcas (para margen y bloqueo de descuento) y descuentos por canal+marca.
+        // Pre-cargar marcas (para bloqueo de descuento) y reglas de precios.
         var marcas = await _db.CafeMarcas.ToDictionaryAsync(m => m.Id);
-        var descuentosMatriz = await _db.CafeDescuentosCliente.ToListAsync();
+        var reglas = await _db.CafeReglasPrecios.ToListAsync();
 
-        decimal ResolverDescuentoMatriz(int? marcaId)
+        decimal ResolverDescuento(string categoria, int? marcaId)
         {
-            // Si la marca bloquea descuentos, 0.
-            if (marcaId.HasValue && marcas.TryGetValue(marcaId.Value, out var ma) && ma.BloqueaDescuento) return 0m;
-            // Override por marca.
-            var override_ = descuentosMatriz.FirstOrDefault(d => d.TipoCliente == tipo && d.MarcaId == marcaId);
-            if (override_ is not null) return override_.DescuentoPct;
-            // Default por tipo (MarcaId null).
-            var general = descuentosMatriz.FirstOrDefault(d => d.TipoCliente == tipo && d.MarcaId == null);
+            // Override por marca + categoria.
+            if (marcaId.HasValue)
+            {
+                var override_ = reglas.FirstOrDefault(r => r.TipoCliente == tipo && r.Categoria == categoria && r.MarcaId == marcaId);
+                if (override_ is not null) return override_.DescuentoPct;
+            }
+            // Regla general (sin marca).
+            var general = reglas.FirstOrDefault(r => r.TipoCliente == tipo && r.Categoria == categoria && r.MarcaId == null);
             return general?.DescuentoPct ?? 0m;
         }
 
@@ -540,18 +541,12 @@ public class CafeVentasController : ControllerBase
                 continue;
             }
 
-            // Resolver margen de la marca (default 100%) para calcular PVP por % en OTROS.
-            decimal? marcaMargen = null;
-            if (prod.MarcaId.HasValue && marcas.TryGetValue(prod.MarcaId.Value, out var marcaProd))
-                marcaMargen = marcaProd.MargenPctSobreCosto;
-
-            // Descuento: el manual del request si lo hay; si no, el de la matriz.
-            // Para CAFE, el descuento NO se aplica desde la matriz (sigue manual).
+            // Descuento: manual del request si lo hay > 0; si no, el de la matriz reglas (cliente x categoria x marca).
             var descPct = descPctManual;
-            if (descPct == 0 && prod.Categoria != "CAFE")
-                descPct = ResolverDescuentoMatriz(prod.MarcaId);
+            if (descPct == 0)
+                descPct = ResolverDescuento(prod.Categoria, prod.MarcaId);
 
-            var breakdown = CafePricingService.CalcularPrecioBreakdown(prod, it.Formato, tipo, settings, marcaMargen, descPct);
+            var breakdown = CafePricingService.CalcularPrecioBreakdown(prod, it.Formato, tipo, settings, descPct);
             var precioUnit = breakdown.PrecioLista;     // lista (sin descuento) — lo que se ve en P. Unitario
             var costoUnit = CafePricingService.CalcularCostoUnitario(prod, it.Formato);
             var subtotalLinea = Math.Round(breakdown.PrecioFinal * it.Cantidad, 2, MidpointRounding.AwayFromZero);

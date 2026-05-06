@@ -791,3 +791,29 @@ public class UpsertDescuentoRequest
     public int? MarcaId { get; set; }
     public decimal DescuentoPct { get; set; }
 }
+
+// === Reglas de precios ===
+public class CafeReglaPrecioDto
+{
+    public int Id { get; set; }
+    public string TipoCliente { get; set; } = "OTRO";
+    public string Categoria { get; set; } = "OTROS";
+    public int? MarcaId { get; set; }
+    public string? MarcaNombre { get; set; }
+    public decimal DescuentoPct { get; set; }
+}
+
+public class CafeReglasPreciosResponse
+{
+    public List<string> TiposCliente { get; set; } = new();
+    public List<string> Categorias { get; set; } = new();
+    public List<CafeReglaPrecioDto> Reglas { get; set; } = new();
+}
+
+public class UpsertReglaPrecioRequest
+{
+    public string TipoCliente { get; set; } = "OTRO";
+    public string Categoria { get; set; } = "OTROS";
+    public int? MarcaId { get; set; }
+    public decimal DescuentoPct { get; set; }
+}
