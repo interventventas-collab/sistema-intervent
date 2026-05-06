@@ -515,11 +515,13 @@ public record CafeListaPreciosClienteDto(
 
 public record CafeListaPreciosItemCafeDto(
     int ProductoId, string? Sku, string Nombre,
-    decimal Precio1Kg, decimal PrecioMedio, decimal PrecioCuarto);
+    decimal Precio1Kg, decimal PrecioMedio, decimal PrecioCuarto,
+    decimal Lista1Kg, decimal ListaMedio, decimal ListaCuarto,
+    decimal DescuentoPct);
 
 public record CafeListaPreciosItemOtroDto(
     int ProductoId, string? Sku, string Nombre,
-    decimal Precio);
+    decimal Precio, decimal Lista, decimal DescuentoPct);
 
 public record CafeListaPreciosMarcaGroupDto(
     int? MarcaId, string MarcaNombre, string? ProveedorNombre,

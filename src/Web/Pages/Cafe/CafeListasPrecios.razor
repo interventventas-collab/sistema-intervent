@@ -205,6 +205,17 @@
                     </div>
                 </div>
 
+                @* BANNER DE DESCUENTOS aplicados *@
+                @{
+                    var descMax = ResumenDescuentos(preview);
+                }
+                @if (!string.IsNullOrEmpty(descMax))
+                {
+                    <div style="margin-top: 0.7rem; padding: 0.6rem 0.9rem; background: linear-gradient(90deg,#dcfce7,#bbf7d0); border: 1px solid #16a34a; border-radius: 6px; color: #14532d; font-size: 0.88rem;">
+                        💰 <strong>Descuentos aplicados</strong> — @descMax
+                    </div>
+                }
+
                 @* CUERPO: agrupado por marca *@
                 <div style="margin-top: 1rem;">
                     @if (preview.Grupos.Count == 0)
@@ -246,9 +257,9 @@
                                                 <tr>
                                                     <td><strong>@i.Nombre</strong></td>
                                                     <td style="font-family: monospace; color: #6b7280; font-size: 0.78rem;">@(i.Sku ?? "—")</td>
-                                                    <td class="num" style="font-weight: 700;">$@FormatMoney(i.Precio1Kg)</td>
-                                                    <td class="num">$@FormatMoney(i.PrecioMedio)</td>
-                                                    <td class="num">$@FormatMoney(i.PrecioCuarto)</td>
+                                                    <td class="num">@RenderPrecioConLista(i.Lista1Kg, i.Precio1Kg, i.DescuentoPct)</td>
+                                                    <td class="num">@RenderPrecioConLista(i.ListaMedio, i.PrecioMedio, i.DescuentoPct)</td>
+                                                    <td class="num">@RenderPrecioConLista(i.ListaCuarto, i.PrecioCuarto, i.DescuentoPct)</td>
                                                 </tr>
                                             }
                                         </tbody>
@@ -270,7 +281,7 @@
                                                 <tr>
                                                     <td><strong>@i.Nombre</strong></td>
                                                     <td style="font-family: monospace; color: #6b7280; font-size: 0.78rem;">@(i.Sku ?? "—")</td>
-                                                    <td class="num" style="font-weight: 700;">$@FormatMoney(i.Precio)</td>
+                                                    <td class="num">@RenderPrecioConLista(i.Lista, i.Precio, i.DescuentoPct)</td>
                                                 </tr>
                                             }
                                         </tbody>
@@ -474,4 +485,31 @@
 
     private static string FormatMoney(decimal v)
         => v.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+
+    // Resumen textual de descuentos por categoria, ej: "-50% en CAFÉ · -50% en OTROS".
+    // Se calcula a partir de la primera fila de cada categoria que tenga descuento aplicado.
+    private static string? ResumenDescuentos(CafeListaPreciosPreviewDto p)
+    {
+        var partes = new List<string>();
+        decimal? descCafe = null, descOtros = null;
+        foreach (var g in p.Grupos)
+        {
+            foreach (var c in g.ItemsCafe) { if (descCafe is null && c.DescuentoPct > 0) descCafe = c.DescuentoPct; }
+            foreach (var o in g.ItemsOtros) { if (descOtros is null && o.DescuentoPct > 0) descOtros = o.DescuentoPct; }
+        }
+        if (descCafe.HasValue) partes.Add($"-{descCafe.Value:0.##}% en ☕ CAFÉ");
+        if (descOtros.HasValue) partes.Add($"-{descOtros.Value:0.##}% en 📦 OTROS");
+        return partes.Count == 0 ? null : string.Join(" · ", partes);
+    }
+
+    // Render: si hay descuento, muestra la lista tachada arriba y el precio final destacado abajo.
+    // Si no hay descuento (0), solo muestra el precio.
+    private MarkupString RenderPrecioConLista(decimal lista, decimal final, decimal desc)
+    {
+        if (desc <= 0 || lista == final)
+            return new MarkupString($"<strong>${FormatMoney(final)}</strong>");
+        return new MarkupString(
+            $"<div style=\"font-size:0.78rem; color:#9ca3af; text-decoration:line-through; line-height:1.1;\">${FormatMoney(lista)}</div>" +
+            $"<div style=\"font-weight:700; color:#15803d; line-height:1.2;\">${FormatMoney(final)}</div>");
+    }
 }

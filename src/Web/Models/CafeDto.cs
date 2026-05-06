@@ -603,6 +603,10 @@ public class CafeListaPreciosItemCafeDto
     public decimal Precio1Kg { get; set; }
     public decimal PrecioMedio { get; set; }
     public decimal PrecioCuarto { get; set; }
+    public decimal Lista1Kg { get; set; }
+    public decimal ListaMedio { get; set; }
+    public decimal ListaCuarto { get; set; }
+    public decimal DescuentoPct { get; set; }
 }
 
 public class CafeListaPreciosItemOtroDto
@@ -611,6 +615,8 @@ public class CafeListaPreciosItemOtroDto
     public string? Sku { get; set; }
     public string Nombre { get; set; } = "";
     public decimal Precio { get; set; }
+    public decimal Lista { get; set; }
+    public decimal DescuentoPct { get; set; }
 }
 
 public class CafeListaPreciosMarcaGroupDto

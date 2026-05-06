@@ -95,8 +95,13 @@ public class CafeListasPreciosController : ControllerBase
             return gen?.DescuentoPct ?? 0m;
         }
 
-        decimal PrecioFinal(CafeProducto p, string formato)
-            => CafePricingService.CalcularPrecioBreakdown(p, formato, tipo, settings, Descuento(p.Categoria, p.MarcaId)).PrecioFinal;
+        // Devuelve (lista, final, descPct) para un producto y formato.
+        (decimal lista, decimal final, decimal desc) Breakdown(CafeProducto p, string formato)
+        {
+            var d = Descuento(p.Categoria, p.MarcaId);
+            var b = CafePricingService.CalcularPrecioBreakdown(p, formato, tipo, settings, d);
+            return (b.PrecioLista, b.PrecioFinal, b.DescuentoPct);
+        }
 
         // Agrupar por marca. Productos sin marca van bajo "(Sin marca)".
         var grupos = productos
@@ -113,11 +118,17 @@ public class CafeListasPreciosController : ControllerBase
                     .ThenBy(p => SkuNumero(p.Sku))
                     .ThenBy(p => p.Sku)
                     .ThenBy(p => p.Nombre)
-                    .Select(p => new CafeListaPreciosItemCafeDto(
-                        p.Id, p.Sku, p.Nombre,
-                        PrecioFinal(p, "1KG"),
-                        PrecioFinal(p, "MEDIO"),
-                        PrecioFinal(p, "CUARTO")))
+                    .Select(p =>
+                    {
+                        var b1 = Breakdown(p, "1KG");
+                        var b2 = Breakdown(p, "MEDIO");
+                        var b3 = Breakdown(p, "CUARTO");
+                        return new CafeListaPreciosItemCafeDto(
+                            p.Id, p.Sku, p.Nombre,
+                            b1.final, b2.final, b3.final,
+                            b1.lista, b2.lista, b3.lista,
+                            b1.desc);
+                    })
                     .ToList();
                 var otros = g.Where(p => p.Categoria == "OTROS")
                     .OrderBy(p => string.IsNullOrEmpty(p.Sku) ? 1 : 0)
@@ -125,8 +136,11 @@ public class CafeListasPreciosController : ControllerBase
                     .ThenBy(p => SkuNumero(p.Sku))
                     .ThenBy(p => p.Sku)
                     .ThenBy(p => p.Nombre)
-                    .Select(p => new CafeListaPreciosItemOtroDto(
-                        p.Id, p.Sku, p.Nombre, PrecioFinal(p, "UNIT")))
+                    .Select(p =>
+                    {
+                        var b = Breakdown(p, "UNIT");
+                        return new CafeListaPreciosItemOtroDto(p.Id, p.Sku, p.Nombre, b.final, b.lista, b.desc);
+                    })
                     .ToList();
                 return new CafeListaPreciosMarcaGroupDto(g.Key, nombre, proveedor, cafes, otros);
             })
@@ -173,6 +187,26 @@ public class CafeListasPreciosController : ControllerBase
         ws.Cell(row, 1).Value = "Fecha:";
         ws.Cell(row, 1).Style.Font.Bold = true;
         ws.Cell(row, 2).Value = p.Fecha.ToString("dd/MM/yyyy");
+        row++;
+
+        // Banner de descuentos aplicados (si hay)
+        decimal? descCafe = null, descOtros = null;
+        foreach (var gx in p.Grupos)
+        {
+            foreach (var c in gx.ItemsCafe) { if (descCafe is null && c.DescuentoPct > 0) descCafe = c.DescuentoPct; }
+            foreach (var o in gx.ItemsOtros) { if (descOtros is null && o.DescuentoPct > 0) descOtros = o.DescuentoPct; }
+        }
+        if (descCafe.HasValue || descOtros.HasValue)
+        {
+            var partes = new List<string>();
+            if (descCafe.HasValue) partes.Add($"-{descCafe.Value:0.##}% en CAFÉ");
+            if (descOtros.HasValue) partes.Add($"-{descOtros.Value:0.##}% en OTROS");
+            row++;
+            ws.Cell(row, 1).Value = "💰 Descuentos aplicados: " + string.Join(" · ", partes);
+            ws.Cell(row, 1).Style.Font.Bold = true;
+            ws.Cell(row, 1).Style.Font.FontColor = XLColor.FromHtml("#15803d");
+            ws.Range(row, 1, row, 5).Merge();
+        }
         row += 2;
 
         // Cuerpo
