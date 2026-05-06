@@ -39,6 +39,13 @@ public class MeliCotejoController : ControllerBase
         return Ok(await _cotejo.ResumenAsync());
     }
 
+    /// <summary>Lista distinct de marcas (Proveedor) cargadas en Contabilium para el dropdown del filtro.</summary>
+    [HttpGet("marcas-contab")]
+    public async Task<IActionResult> MarcasContab()
+    {
+        return Ok(await _cotejo.GetMarcasContabAsync());
+    }
+
     [HttpGet("listar")]
     public async Task<IActionResult> Listar(
         [FromQuery] string categoria = "todos",

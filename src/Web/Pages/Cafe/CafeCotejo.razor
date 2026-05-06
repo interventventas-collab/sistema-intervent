@@ -94,10 +94,16 @@
                        value="@buscar" @oninput="@(e => buscar = e.Value?.ToString() ?? "")"
                        @onkeydown="OnFilterKey"
                        style="flex: 1; min-width: 220px;" />
-                <input class="form-input" placeholder="Filtrar por marca de Contab"
-                       value="@filtroMarcaContab" @oninput="@(e => filtroMarcaContab = e.Value?.ToString() ?? "")"
-                       @onkeydown="OnFilterKey"
-                       style="max-width: 240px;" />
+                <select class="form-input" @bind="filtroMarcaContab" @bind:after="LoadListado" style="max-width: 240px;">
+                    <option value="">Marca: todas</option>
+                    @if (marcasContab is not null)
+                    {
+                        @foreach (var m in marcasContab)
+                        {
+                            <option value="@m">@m</option>
+                        }
+                    }
+                </select>
                 <button class="btn btn-primary" @onclick="LoadListado" disabled="@isBusy">Aplicar filtros</button>
                 <button class="btn btn-secondary" @onclick="LimpiarFiltros" disabled="@isBusy">Limpiar</button>
             </div>
@@ -252,6 +258,7 @@
     private string categoria = "todos";
     private string buscar = "";
     private string filtroMarcaContab = "";
+    private List<string>? marcasContab;
     private string filtroVinculacion = "";
     private bool isBusy;
 
@@ -280,13 +287,19 @@
 
     protected override async Task OnInitializedAsync()
     {
-        await Task.WhenAll(LoadResumen(), LoadMarcas());
+        await Task.WhenAll(LoadResumen(), LoadMarcas(), LoadMarcasContab());
     }
 
     private async Task LoadMarcas()
     {
         try { marcas = await Api.GetCafeMarcasAsync(activos: true); }
         catch (Exception ex) { ToastService.Error("Error cargando marcas: " + ex.Message); }
+    }
+
+    private async Task LoadMarcasContab()
+    {
+        try { marcasContab = await Api.GetCotejoMarcasContabAsync(); }
+        catch { /* silencioso: si todavia no se cargaron Contab Excels, lista vacia */ }
     }
 
     private async Task LoadResumen()

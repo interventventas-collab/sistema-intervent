@@ -529,6 +529,9 @@ public class ApiClient
     public async Task<CotejoResumenDto?> GetCotejoResumenAsync()
         => await GetAsync<CotejoResumenDto>("/api/meli/cotejo/resumen");
 
+    public async Task<List<string>?> GetCotejoMarcasContabAsync()
+        => await GetAsync<List<string>>("/api/meli/cotejo/marcas-contab");
+
     public async Task<List<CotejoFilaDto>?> GetCotejoListadoAsync(string categoria = "todos", string? buscar = null, int take = 200, string? marcaContab = null, string? vinculacion = null)
     {
         var qs = new List<string> { $"categoria={Uri.EscapeDataString(categoria)}", $"take={take}" };

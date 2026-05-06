@@ -102,6 +102,17 @@ public class ContabiliumCotejoService
         int? CafeComboIdVinculado,
         int? CafeKitIdVinculado);
 
+    /// <summary>Devuelve la lista distinct de marcas (Proveedor) cargadas en Contab_Productos, ordenadas alfabeticamente.</summary>
+    public async Task<List<string>> GetMarcasContabAsync()
+    {
+        return await _db.ContabProductos
+            .Where(p => p.Proveedor != null && p.Proveedor != "")
+            .Select(p => p.Proveedor!)
+            .Distinct()
+            .OrderBy(m => m)
+            .ToListAsync();
+    }
+
     public async Task<List<CotejoFila>> ListarAsync(string categoria = "todos", string? buscar = null, int? meliAccountId = null, int take = 200, string? marcaContab = null, string? vinculacion = null)
     {
         // Set de combos con problemas para marcar la fila.
