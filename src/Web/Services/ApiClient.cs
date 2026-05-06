@@ -1852,6 +1852,10 @@ public class ApiClient
     public async Task<object?> RefreshCafeMeliLogisticAsync(int cafeProductoId)
         => await PostAsync<object>($"/api/cafe/productos/{cafeProductoId}/refresh-meli-logistic", new { });
 
+    public async Task<RenameMeliSkuResultDto?> RenameMeliSkuAsync(int cafeProductoId, List<int>? meliItemIds = null)
+        => await PostAsync<RenameMeliSkuResultDto>($"/api/cafe/productos/{cafeProductoId}/rename-meli-sku",
+            new { meliItemIds });
+
     // ===== MeLi Questions =====
     public async Task<MeliQuestionsUnreadDto?> GetMeliQuestionsUnreadCountAsync()
         => await GetAsync<MeliQuestionsUnreadDto>("/api/meli/questions/unread-count");

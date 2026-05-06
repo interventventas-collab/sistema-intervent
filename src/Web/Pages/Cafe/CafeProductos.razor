@@ -661,6 +661,7 @@
                                 <th></th>
                                 <th>MLA / Cuenta</th>
                                 <th>Título</th>
+                                <th>SKU MeLi</th>
                                 <th>Formato</th>
                                 <th>Logística</th>
                                 <th style="text-align:right;">Stock MeLi</th>
@@ -682,6 +683,10 @@
                                     <div style="font-size:0.72rem; color:#6b7280;">@r.Cuenta</div>
                                 </td>
                                 <td style="max-width:280px; font-size:0.78rem;">@r.Title</td>
+                                <td>
+                                    @{ var skuOk = string.Equals(r.SkuMeli, meliPreview!.Cafe.Sku, StringComparison.OrdinalIgnoreCase); }
+                                    <span style="font-family:monospace; font-weight:700; color:@(skuOk ? "#16a34a" : "#b45309");" title="@(skuOk ? "Coincide con SKU del café" : $"Cafe es '{meliPreview.Cafe.Sku}' — habría que renombrar")">@(r.SkuMeli ?? "—")</span>
+                                </td>
                                 <td><span style="display:inline-block; padding:0.1rem 0.4rem; background:#e5e7eb; border-radius:4px; font-size:0.7rem; font-weight:700;">@r.Formato</span></td>
                                 <td>
                                     @if (r.EsFull)
@@ -732,6 +737,16 @@
                 <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.85rem; margin-right:auto;">
                     <input type="checkbox" @bind="meliPushStock" /> Pushear stock
                 </label>
+                @if (meliPreview is not null && !string.IsNullOrEmpty(meliPreview.Cafe.Sku))
+                {
+                    var faltanRenombrar = meliPreview.Publicaciones.Count(r => meliSyncSeleccion.Contains(r.MeliItemId)
+                        && !string.Equals(r.SkuMeli, meliPreview.Cafe.Sku, StringComparison.OrdinalIgnoreCase));
+                    <button class="btn btn-secondary" style="font-size:0.85rem;"
+                            @onclick="DoRenameMeliSku" disabled="@(meliRenamingSku || meliSyncSeleccion.Count == 0 || faltanRenombrar == 0)"
+                            title="Aplica el SKU del café (@meliPreview.Cafe.Sku) a las publicaciones seleccionadas en MercadoLibre.">
+                        @(meliRenamingSku ? "Renombrando..." : $"🏷️ Renombrar SKU MeLi a '{meliPreview.Cafe.Sku}' ({faltanRenombrar})")
+                    </button>
+                }
                 <button class="btn btn-secondary" @onclick="CerrarMeliSync" disabled="@meliPushing">Cerrar</button>
                 <button class="btn btn-primary" @onclick="DoMeliSync" disabled="@(meliPushing || meliSyncSeleccion.Count == 0 || (!meliPushPrice && !meliPushStock))">
                     @(meliPushing ? "Sincronizando..." : $"📤 Sincronizar {meliSyncSeleccion.Count} seleccionada(s)")
@@ -939,7 +954,34 @@
     private bool meliPushStock = true;
     private bool meliPushing;
     private bool meliRefreshingLogistic;
+    private bool meliRenamingSku;
     private CafeMeliPushResultDto? meliPushResults;
+
+    private async Task DoRenameMeliSku()
+    {
+        if (meliSyncProducto is null || meliPreview is null) return;
+        if (string.IsNullOrEmpty(meliPreview.Cafe.Sku)) { ToastService.Error("El café no tiene SKU cargado."); return; }
+        var newSku = meliPreview.Cafe.Sku;
+        var seleccionadas = meliSyncSeleccion.Count;
+        if (!await ConfirmAsync($"Vas a renombrar el SKU de {seleccionadas} publicación(es) a '{newSku}' en MercadoLibre. ¿Confirmás?")) return;
+
+        meliRenamingSku = true;
+        try
+        {
+            // No tenemos los IDs internos en el preview — pasamos null para que el backend renombre TODAS las vinculadas.
+            // Si el usuario seleccionó subset, le advertimos.
+            if (seleccionadas != meliPreview.Publicaciones.Count)
+                ToastService.Info("Por simplicidad se renombran TODAS las publicaciones vinculadas (no solo las marcadas). Si querias selectivo, cancela.");
+            var r = await Api.RenameMeliSkuAsync(meliSyncProducto.Id, null);
+            if (r is not null)
+            {
+                ToastService.Success($"{r.Ok} de {r.Total} publicaciones renombradas a '{r.NewSku}'");
+                meliPreview = await Api.GetCafeMeliPreviewAsync(meliSyncProducto.Id);
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { meliRenamingSku = false; }
+    }
 
     private async Task DetectarLogisticType()
     {

@@ -124,6 +124,7 @@ public class CafeProductosController : ControllerBase
                 formato,
                 logisticType = it.LogisticType,
                 esFull,
+                skuMeli = it.Sku,
                 stockMeli = it.AvailableQuantity,
                 stockNuevo,
                 stockDelta = stockNuevo - it.AvailableQuantity,
@@ -202,6 +203,85 @@ public class CafeProductosController : ControllerBase
     }
 
     public record PushMeliRequest(List<int>? MeliItemIds, bool PushPrice = true, bool PushStock = true);
+
+    public record RenameMeliSkuRequest(List<int>? MeliItemIds);
+
+    /// <summary>
+    /// Renombra el SKU en MeLi para las publicaciones vinculadas a este cafe, aplicando el SKU del cafe.
+    /// Usa seller_custom_field + attributes[SELLER_SKU] para cubrir categorias viejas y nuevas.
+    /// </summary>
+    [HttpPost("{id:int}/rename-meli-sku")]
+    public async Task<IActionResult> RenameMeliSku(int id, [FromBody] RenameMeliSkuRequest req,
+        [FromServices] Api.Services.MeliAccountService accountService,
+        [FromServices] IHttpClientFactory httpFactory)
+    {
+        var cafe = await _db.CafeProductos.FirstOrDefaultAsync(p => p.Id == id);
+        if (cafe is null) return NotFound(new { error = "Cafe no encontrado" });
+        if (string.IsNullOrWhiteSpace(cafe.Sku)) return BadRequest(new { error = "El cafe no tiene SKU cargado." });
+
+        var newSku = cafe.Sku.Trim().ToUpperInvariant();
+        var q = _db.MeliItems.Include(i => i.MeliAccount).Where(i => i.CafeProductoId == id && i.Status == "active");
+        if (req.MeliItemIds is not null && req.MeliItemIds.Count > 0)
+        {
+            var ids = req.MeliItemIds;
+            q = q.Where(i => ids.Contains(i.Id));
+        }
+        var items = await q.ToListAsync();
+
+        int ok = 0;
+        var details = new List<object>();
+        foreach (var item in items)
+        {
+            try
+            {
+                if (item.MeliAccount is null) { details.Add(new { item.MeliItemId, success = false, message = "sin cuenta" }); continue; }
+                if (string.Equals(item.Sku, newSku, StringComparison.OrdinalIgnoreCase))
+                { details.Add(new { item.MeliItemId, success = true, message = "ya tenia el SKU correcto", oldSku = item.Sku, newSku }); ok++; continue; }
+                var token = await accountService.GetValidTokenAsync(item.MeliAccount);
+                if (token is null) { details.Add(new { item.MeliItemId, success = false, message = "sin token" }); continue; }
+
+                var http = httpFactory.CreateClient();
+                http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+                // Pushear ambos: seller_custom_field (legacy) + attributes[SELLER_SKU] (categorias nuevas).
+                var payload = new
+                {
+                    seller_custom_field = newSku,
+                    attributes = new[] { new { id = "SELLER_SKU", value_name = newSku } }
+                };
+                var json = System.Text.Json.JsonSerializer.Serialize(payload);
+                var content = new System.Net.Http.StringContent(json, System.Text.Encoding.UTF8, "application/json");
+                var resp = await http.PutAsync($"https://api.mercadolibre.com/items/{item.MeliItemId}", content);
+                if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized || resp.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                {
+                    var newTok = await accountService.GetValidTokenAsync(item.MeliAccount, forceRefresh: true);
+                    if (newTok is not null)
+                    {
+                        http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", newTok);
+                        content = new System.Net.Http.StringContent(json, System.Text.Encoding.UTF8, "application/json");
+                        resp = await http.PutAsync($"https://api.mercadolibre.com/items/{item.MeliItemId}", content);
+                    }
+                }
+                if (!resp.IsSuccessStatusCode)
+                {
+                    var body = await resp.Content.ReadAsStringAsync();
+                    details.Add(new { item.MeliItemId, success = false, message = $"http {(int)resp.StatusCode}: {body.Substring(0, Math.Min(body.Length, 200))}" });
+                    continue;
+                }
+                var oldSku = item.Sku;
+                item.Sku = newSku;
+                item.UpdatedAt = DateTime.UtcNow;
+                ok++;
+                details.Add(new { item.MeliItemId, success = true, message = "renombrado", oldSku, newSku });
+            }
+            catch (Exception ex)
+            {
+                details.Add(new { item.MeliItemId, success = false, message = ex.Message });
+            }
+        }
+        await _db.SaveChangesAsync();
+        return Ok(new { total = items.Count, ok, newSku, results = details });
+    }
 
     /// <summary>
     /// Pushea precio + stock a las publicaciones MeLi vinculadas al cafe.

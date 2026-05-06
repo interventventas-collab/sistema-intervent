@@ -24,6 +24,7 @@ public class CafeMeliPreviewRow
     public string Formato { get; set; } = "1KG";
     public string? LogisticType { get; set; }
     public bool EsFull { get; set; }
+    public string? SkuMeli { get; set; }
     public int StockMeli { get; set; }
     public int StockNuevo { get; set; }
     public int StockDelta { get; set; }
@@ -47,4 +48,21 @@ public class CafeMeliPushResultRow
     public string? Message { get; set; }
     public decimal? PushedPrice { get; set; }
     public int? PushedStock { get; set; }
+}
+
+public class RenameMeliSkuResultDto
+{
+    public int Total { get; set; }
+    public int Ok { get; set; }
+    public string? NewSku { get; set; }
+    public List<RenameMeliSkuResultRow> Results { get; set; } = new();
+}
+
+public class RenameMeliSkuResultRow
+{
+    public string MeliItemId { get; set; } = "";
+    public bool Success { get; set; }
+    public string? Message { get; set; }
+    public string? OldSku { get; set; }
+    public string? NewSku { get; set; }
 }
