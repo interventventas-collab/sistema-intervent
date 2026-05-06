@@ -579,7 +579,7 @@ public class CafeVentasController : ControllerBase
         return new CafeCotizadoDto(tipo, subtotal, desc, total, costoTotal, margen, todoOk, cotizadoItems);
     }
 
-    private static readonly string[] TiposComprobanteValidos = { "X", "FA", "FB", "FC" };
+    private static readonly string[] TiposComprobanteValidos = { "X", "PRO", "FA", "FB", "FC" };
     private static string NormTipoComprobante(string? s)
     {
         if (string.IsNullOrWhiteSpace(s)) return "X";

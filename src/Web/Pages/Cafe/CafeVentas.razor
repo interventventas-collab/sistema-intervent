@@ -180,6 +180,7 @@
                             <label class="form-label">Tipo de comprobante *</label>
                             <select class="form-input" @bind="formTipoComprobante">
                                 <option value="X">X — Cotización / Remito interno (sin IVA)</option>
+                                <option value="PRO">PRO — Proforma con IVA (preview)</option>
                                 <option value="FA" disabled>Factura A (próximamente — ARCA)</option>
                                 <option value="FB" disabled>Factura B (próximamente — ARCA)</option>
                                 <option value="FC" disabled>Factura C (próximamente — ARCA)</option>
@@ -867,10 +868,17 @@
                 </table>
 
                 @* Totales *@
+                @{
+                    bool esProforma = printVenta.TipoComprobante == "PRO";
+                    decimal netoSinIva = printVenta.Total;
+                    decimal iva21 = Math.Round(netoSinIva * 0.21m, 2, MidpointRounding.AwayFromZero);
+                    decimal totalConIva = netoSinIva + iva21;
+                }
                 <div style="display: flex; justify-content: flex-end; margin-top: 0.5rem;">
-                    <div style="min-width: 320px; border: 1px solid #d1d5db; padding: 0.6rem 0.8rem;">
+                    <div style="min-width: 340px; border: 1px solid #d1d5db; padding: 0.6rem 0.8rem;">
                         <div style="display: flex; justify-content: space-between; font-size: 0.9rem; padding: 0.15rem 0;">
-                            <span>Subtotal:</span><strong>$@FormatMoney(printVenta.Subtotal)</strong>
+                            <span>Subtotal @(esProforma ? "(neto sin IVA)" : ""):</span>
+                            <strong>$@FormatMoney(printVenta.Subtotal)</strong>
                         </div>
                         @if (printVenta.Descuento > 0)
                         {
@@ -878,10 +886,26 @@
                                 <span>Descuento:</span><span>− $@FormatMoney(printVenta.Descuento)</span>
                             </div>
                         }
-                        <hr style="margin: 0.4rem 0; border: none; border-top: 2px solid #1f2937;" />
-                        <div style="display: flex; justify-content: space-between; font-size: 1.15rem; font-weight: 800; color: #059669;">
-                            <span>TOTAL:</span><span>$@FormatMoney(printVenta.Total)</span>
-                        </div>
+                        @if (esProforma)
+                        {
+                            <div style="display: flex; justify-content: space-between; font-size: 0.9rem; padding: 0.15rem 0;">
+                                <span>Neto gravado (sin IVA):</span><strong>$@FormatMoney(netoSinIva)</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; font-size: 0.9rem; padding: 0.15rem 0; color: #1d4ed8;">
+                                <span>IVA 21% (estimado):</span><span>$@FormatMoney(iva21)</span>
+                            </div>
+                            <hr style="margin: 0.4rem 0; border: none; border-top: 2px solid #1f2937;" />
+                            <div style="display: flex; justify-content: space-between; font-size: 1.15rem; font-weight: 800; color: #059669;">
+                                <span>TOTAL c/IVA:</span><span>$@FormatMoney(totalConIva)</span>
+                            </div>
+                        }
+                        else
+                        {
+                            <hr style="margin: 0.4rem 0; border: none; border-top: 2px solid #1f2937;" />
+                            <div style="display: flex; justify-content: space-between; font-size: 1.15rem; font-weight: 800; color: #059669;">
+                                <span>TOTAL:</span><span>$@FormatMoney(printVenta.Total)</span>
+                            </div>
+                        }
                         <hr style="margin: 0.4rem 0; border: none; border-top: 1px dashed #d1d5db;" />
                         <div style="display: flex; justify-content: space-between; font-size: 0.85rem;">
                             <span style="color: #6b7280;">Condición de pago:</span>
@@ -889,6 +913,13 @@
                         </div>
                     </div>
                 </div>
+                @if (esProforma)
+                {
+                    <div style="margin-top: 0.4rem; padding: 0.4rem 0.7rem; background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; font-size: 0.78rem; color: #92400e;">
+                        ⚠ <strong>Proforma — preview de cómo quedaría con IVA cuando emitas factura por ARCA.</strong>
+                        Para esta vista se aplica 21% al neto. Cuando se emita la factura real, los productos con IVA 10,5% (alimentos) se discriminarán por separado.
+                    </div>
+                }
 
                 @if (!string.IsNullOrEmpty(printVenta.Observaciones))
                 {
@@ -1800,13 +1831,14 @@
 
     private static string TipoComprobanteCorto(string t) => t switch
     {
-        "FA" => "A", "FB" => "B", "FC" => "C", _ => "X"
+        "FA" => "A", "FB" => "B", "FC" => "C", "PRO" => "P", _ => "X"
     };
     private static string TipoComprobanteLargo(string t) => t switch
     {
         "FA" => "FACTURA",
         "FB" => "FACTURA",
         "FC" => "FACTURA",
+        "PRO" => "PROFORMA",
         _ => "COMPROBANTE"
     };
     private static string CondicionIvaLabel(string c) => c switch
