@@ -557,7 +557,11 @@
                                         var formItem = formItems[i];
                                         var esCafe = ci.Categoria == "CAFE";
                                         <tr style="@(rojo ? "background: #fef2f2;" : "")">
-                                            <td style="text-align: right; font-weight: 700;">@ci.Cantidad</td>
+                                            <td style="text-align: right;">
+                                                <input class="form-input" type="number" step="1" min="1"
+                                                       style="width: 70px; text-align: right; padding: 0.25rem 0.4rem; font-size: 0.9rem; font-weight: 700;"
+                                                       value="@formItem.Cantidad" @onchange="@(e => OnItemCantidadChanged(i, e.Value?.ToString()))" />
+                                            </td>
                                             <td>
                                                 <strong>@ci.ProductoNombre</strong>
                                                 @if (esCafe)
@@ -1579,6 +1583,15 @@
             decimal.TryParse(value.Replace(",", "."), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out d);
         }
         formItems[idx].DescuentoPct = Math.Clamp(d, 0m, 100m);
+        await Cotizar();
+    }
+
+    private async Task OnItemCantidadChanged(int idx, string? value)
+    {
+        if (idx < 0 || idx >= formItems.Count) return;
+        int q = 1;
+        if (!string.IsNullOrWhiteSpace(value)) int.TryParse(value, out q);
+        formItems[idx].Cantidad = Math.Max(1, q);
         await Cotizar();
     }
 
