@@ -82,6 +82,22 @@ public class CafeListasPreciosController : ControllerBase
         var marcas = await _db.CafeMarcas.Include(m => m.ProveedorNav)
             .Where(m => marcaIds.Contains(m.Id)).ToDictionaryAsync(m => m.Id);
 
+        // Cargar reglas de precios para resolver el descuento por (tipo cliente x categoria x marca).
+        var reglas = await _db.CafeReglasPrecios.ToListAsync();
+        decimal Descuento(string categoria, int? marcaId)
+        {
+            if (marcaId.HasValue)
+            {
+                var ov = reglas.FirstOrDefault(r => r.TipoCliente == tipo && r.Categoria == categoria && r.MarcaId == marcaId);
+                if (ov is not null) return ov.DescuentoPct;
+            }
+            var gen = reglas.FirstOrDefault(r => r.TipoCliente == tipo && r.Categoria == categoria && r.MarcaId == null);
+            return gen?.DescuentoPct ?? 0m;
+        }
+
+        decimal PrecioFinal(CafeProducto p, string formato)
+            => CafePricingService.CalcularPrecioBreakdown(p, formato, tipo, settings, Descuento(p.Categoria, p.MarcaId)).PrecioFinal;
+
         // Agrupar por marca. Productos sin marca van bajo "(Sin marca)".
         var grupos = productos
             .GroupBy(p => p.MarcaId)
@@ -99,9 +115,9 @@ public class CafeListasPreciosController : ControllerBase
                     .ThenBy(p => p.Nombre)
                     .Select(p => new CafeListaPreciosItemCafeDto(
                         p.Id, p.Sku, p.Nombre,
-                        CafePricingService.CalcularPrecioUnitario(p, "1KG", tipo, settings),
-                        CafePricingService.CalcularPrecioUnitario(p, "MEDIO", tipo, settings),
-                        CafePricingService.CalcularPrecioUnitario(p, "CUARTO", tipo, settings)))
+                        PrecioFinal(p, "1KG"),
+                        PrecioFinal(p, "MEDIO"),
+                        PrecioFinal(p, "CUARTO")))
                     .ToList();
                 var otros = g.Where(p => p.Categoria == "OTROS")
                     .OrderBy(p => string.IsNullOrEmpty(p.Sku) ? 1 : 0)
@@ -110,8 +126,7 @@ public class CafeListasPreciosController : ControllerBase
                     .ThenBy(p => p.Sku)
                     .ThenBy(p => p.Nombre)
                     .Select(p => new CafeListaPreciosItemOtroDto(
-                        p.Id, p.Sku, p.Nombre,
-                        CafePricingService.CalcularPrecioUnitario(p, "UNIT", tipo, settings)))
+                        p.Id, p.Sku, p.Nombre, PrecioFinal(p, "UNIT")))
                     .ToList();
                 return new CafeListaPreciosMarcaGroupDto(g.Key, nombre, proveedor, cafes, otros);
             })
