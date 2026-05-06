@@ -20,6 +20,12 @@ public class CotejoResumenDto
     public int CombosConComponentesFaltantes { get; set; }
     public int ProductosCargados { get; set; }
     public int CombosCargados { get; set; }
+    public int ProductoVinculados { get; set; }
+    public int ComboVinculados { get; set; }
+    public int VinculablesTotal { get; set; }
+    public int VinculadosTotal { get; set; }
+    public int PorcentajeVinculado => VinculablesTotal == 0 ? 0
+        : (int)Math.Round(VinculadosTotal * 100.0 / VinculablesTotal);
 }
 
 public class CotejoFilaDto

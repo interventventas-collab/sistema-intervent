@@ -523,11 +523,12 @@ public class ApiClient
     public async Task<CotejoResumenDto?> GetCotejoResumenAsync()
         => await GetAsync<CotejoResumenDto>("/api/meli/cotejo/resumen");
 
-    public async Task<List<CotejoFilaDto>?> GetCotejoListadoAsync(string categoria = "todos", string? buscar = null, int take = 200, string? marcaContab = null)
+    public async Task<List<CotejoFilaDto>?> GetCotejoListadoAsync(string categoria = "todos", string? buscar = null, int take = 200, string? marcaContab = null, string? vinculacion = null)
     {
         var qs = new List<string> { $"categoria={Uri.EscapeDataString(categoria)}", $"take={take}" };
         if (!string.IsNullOrWhiteSpace(buscar)) qs.Add($"buscar={Uri.EscapeDataString(buscar)}");
         if (!string.IsNullOrWhiteSpace(marcaContab)) qs.Add($"marcaContab={Uri.EscapeDataString(marcaContab)}");
+        if (!string.IsNullOrWhiteSpace(vinculacion)) qs.Add($"vinculacion={Uri.EscapeDataString(vinculacion)}");
         return await GetAsync<List<CotejoFilaDto>>("/api/meli/cotejo/listar?" + string.Join("&", qs));
     }
 

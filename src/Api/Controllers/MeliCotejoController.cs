@@ -45,9 +45,10 @@ public class MeliCotejoController : ControllerBase
         [FromQuery] string? buscar = null,
         [FromQuery] int? meliAccountId = null,
         [FromQuery] int take = 200,
-        [FromQuery] string? marcaContab = null)
+        [FromQuery] string? marcaContab = null,
+        [FromQuery] string? vinculacion = null)
     {
-        var rows = await _cotejo.ListarAsync(categoria, buscar, meliAccountId, take, marcaContab);
+        var rows = await _cotejo.ListarAsync(categoria, buscar, meliAccountId, take, marcaContab, vinculacion);
         return Ok(rows);
     }
 

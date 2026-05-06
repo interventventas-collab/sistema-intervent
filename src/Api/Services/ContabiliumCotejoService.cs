@@ -24,7 +24,12 @@ public class ContabiliumCotejoService
         int Huerfano,
         int CombosConComponentesFaltantes,
         int ProductosCargados,
-        int CombosCargados);
+        int CombosCargados,
+        // Progreso de vinculacion
+        int ProductoVinculados,    // pubs categoria=producto con CafeProductoId
+        int ComboVinculados,       // pubs categoria=combo con CafeKitId
+        int VinculablesTotal,      // producto + combo (excluye huerfanos y sin SKU)
+        int VinculadosTotal);      // suma de productoVinc + comboVinc
 
     public async Task<CotejoResumen> ResumenAsync()
     {
@@ -33,7 +38,7 @@ public class ContabiliumCotejoService
 
         var pubs = await _db.MeliItems
             .Where(i => i.Status == "active")
-            .Select(i => new { i.MeliItemId, i.VariationId, i.Sku })
+            .Select(i => new { i.MeliItemId, i.VariationId, i.Sku, i.CafeProductoId, i.CafeKitId })
             .ToListAsync();
 
         var skusContabProductos = await _db.ContabProductos.Select(p => p.Sku.ToLower()).ToListAsync();
@@ -42,24 +47,36 @@ public class ContabiliumCotejoService
         var setCombo = new HashSet<string>(skusContabCombos);
 
         int sinSku = 0, prod = 0, combo = 0, huerfano = 0;
+        int prodVinc = 0, comboVinc = 0;
         foreach (var p in pubs)
         {
             var s = p.Sku?.Trim().ToLowerInvariant();
             if (string.IsNullOrEmpty(s)) { sinSku++; continue; }
-            if (setCombo.Contains(s)) combo++;
-            else if (setProd.Contains(s)) prod++;
+            if (setCombo.Contains(s))
+            {
+                combo++;
+                if (p.CafeKitId.HasValue) comboVinc++;
+            }
+            else if (setProd.Contains(s))
+            {
+                prod++;
+                if (p.CafeProductoId.HasValue) prodVinc++;
+            }
             else huerfano++;
         }
 
-        // Combos con componentes faltantes: cualquier ComponenteSku que no este en
-        // Contab_Productos. Se cuenta el combo solo una vez aunque le falten varios.
         var brokenCombos = await _db.ContabComboItems
             .Where(ci => !_db.ContabProductos.Any(p => p.Sku == ci.SkuComponente))
             .Select(ci => ci.SkuCombo)
             .Distinct()
             .CountAsync();
 
-        return new CotejoResumen(pubs.Count, sinSku, prod, combo, huerfano, brokenCombos, prodCount, combosCount);
+        var vinculables = prod + combo;
+        var vinculados = prodVinc + comboVinc;
+
+        return new CotejoResumen(
+            pubs.Count, sinSku, prod, combo, huerfano, brokenCombos, prodCount, combosCount,
+            prodVinc, comboVinc, vinculables, vinculados);
     }
 
     public record CotejoFila(
@@ -85,7 +102,7 @@ public class ContabiliumCotejoService
         int? CafeComboIdVinculado,
         int? CafeKitIdVinculado);
 
-    public async Task<List<CotejoFila>> ListarAsync(string categoria = "todos", string? buscar = null, int? meliAccountId = null, int take = 200, string? marcaContab = null)
+    public async Task<List<CotejoFila>> ListarAsync(string categoria = "todos", string? buscar = null, int? meliAccountId = null, int take = 200, string? marcaContab = null, string? vinculacion = null)
     {
         // Set de combos con problemas para marcar la fila.
         var brokenCombosSql = await _db.ContabComboItems
@@ -114,6 +131,17 @@ public class ContabiliumCotejoService
             var mc = marcaContab.Trim();
             q = q.Where(i => i.Sku != null && i.Sku != ""
                 && _db.ContabProductos.Any(p => p.Sku == i.Sku && p.Proveedor == mc));
+        }
+
+        // Filtro por estado de vinculacion al modulo Cafe.
+        switch (vinculacion)
+        {
+            case "vinculados":
+                q = q.Where(i => i.CafeProductoId != null || i.CafeKitId != null);
+                break;
+            case "sin_vincular":
+                q = q.Where(i => i.CafeProductoId == null && i.CafeKitId == null);
+                break;
         }
 
         // Filtro por categoria a nivel SQL (subqueries contra Contab_*).
