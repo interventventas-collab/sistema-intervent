@@ -176,6 +176,7 @@
             var r = await Api.GetMeliQuestionsUnreadCountAsync();
             consecutiveErrors = 0;
             if (r is null) return;
+            var prevTotal = unread.Total;
             // Detectar nuevas preguntas: count creció vs polling anterior → ding
             if (r.NotSeen > lastCount && lastCount >= 0)
             {
@@ -183,6 +184,20 @@
             }
             lastCount = r.NotSeen;
             unread = r;
+
+            // Si el modal esta abierto y el total cambio (subio o bajo), refrescar la lista
+            // para que el usuario vea preguntas que se respondieron por fuera o nuevas que llegaron.
+            if (showModal && r.Total != prevTotal)
+            {
+                try
+                {
+                    questions = await Api.GetMeliQuestionsAsync("UNANSWERED") ?? new();
+                    foreach (var q in questions)
+                        if (!answerDrafts.ContainsKey(q.Id)) answerDrafts[q.Id] = "";
+                }
+                catch { /* tolerar */ }
+            }
+
             StateHasChanged();
         }
         catch
