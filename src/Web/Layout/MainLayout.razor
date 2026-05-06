@@ -310,6 +310,7 @@
             }
         </div>
         <div class="topbar-actions">
+            <MeliQuestionsBell />
             @if (UploadProgress.IsUploading)
             {
                 <div class="topbar-upload-indicator" @onclick="() => UploadProgress.RequestReopen()" title="Ver detalle de subida">

@@ -2617,7 +2617,7 @@ GO
 -- Job: sincronizar preguntas de MeLi (UNANSWERED) cada 1 minuto
 IF NOT EXISTS (SELECT * FROM ScheduledProcesses WHERE Code = 'SyncMeliQuestions')
 BEGIN
-    INSERT INTO ScheduledProcesses (Code, Name, Description, TriggerType, IntervalMinutes, IsEnabled)
-    VALUES ('SyncMeliQuestions', 'Sincronizar Preguntas MeLi', 'Polea cada 1 minuto las preguntas sin responder de todas las cuentas conectadas, para que la campanita y el sonido avisen al usuario', 'Interval', 1, 1);
+    INSERT INTO ScheduledProcesses (Code, Name, Description, TriggerType, IntervalMinutes, IsEnabled, NextRunAt)
+    VALUES ('SyncMeliQuestions', 'Sincronizar Preguntas MeLi', 'Polea cada 1 minuto las preguntas sin responder de todas las cuentas conectadas, para que la campanita y el sonido avisen al usuario', 'Interval', 1, 1, SYSUTCDATETIME());
 END
 GO

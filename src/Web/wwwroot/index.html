@@ -258,6 +258,32 @@
             pageName = titles[path] || 'Dashboard';
             document.title = brandName + ' - ' + pageName;
         };
+
+        // Ding cortito para notificacion de preguntas MeLi (sin necesidad de archivo .mp3 — Web Audio API)
+        window.playMeliDing = function () {
+            try {
+                var Ctx = window.AudioContext || window.webkitAudioContext;
+                if (!Ctx) return;
+                var ctx = new Ctx();
+                var t = ctx.currentTime;
+                // Dos tonos cortos: do agudo + sol agudo
+                [880, 1175].forEach(function (freq, i) {
+                    var osc = ctx.createOscillator();
+                    var gain = ctx.createGain();
+                    osc.connect(gain); gain.connect(ctx.destination);
+                    osc.type = 'sine';
+                    osc.frequency.value = freq;
+                    var start = t + i * 0.18;
+                    var dur = 0.16;
+                    gain.gain.setValueAtTime(0, start);
+                    gain.gain.linearRampToValueAtTime(0.22, start + 0.02);
+                    gain.gain.exponentialRampToValueAtTime(0.001, start + dur);
+                    osc.start(start);
+                    osc.stop(start + dur + 0.02);
+                });
+                setTimeout(function () { ctx.close(); }, 800);
+            } catch (e) { /* noop */ }
+        };
     </script>
 </body>
 </html>

@@ -1,0 +1,265 @@
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+@implements IDisposable
+
+@if (canShow)
+{
+    <button class="topbar-bell" @onclick="OpenModal" title="@(unread.Total) preguntas sin responder en MercadoLibre">
+        <i class="fa-solid fa-bell"></i>
+        @if (unread.NotSeen > 0)
+        {
+            <span class="topbar-bell-badge topbar-bell-badge-pulse">@(unread.NotSeen > 99 ? "99+" : unread.NotSeen.ToString())</span>
+        }
+        else if (unread.Total > 0)
+        {
+            <span class="topbar-bell-badge">@(unread.Total > 99 ? "99+" : unread.Total.ToString())</span>
+        }
+    </button>
+}
+
+@if (showModal)
+{
+    <div class="modal-overlay" @onclick="CloseModal">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 760px; max-height: 88vh; display: flex; flex-direction: column;">
+            <div class="modal-header" style="background: #fff7e6;">
+                <h3 style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+                    <i class="fa-solid fa-bell" style="color: #d97706;"></i>
+                    Preguntas de MercadoLibre
+                    @if (unread.Total > 0)
+                    {
+                        <span style="background: #dc2626; color: white; font-size: 0.75rem; padding: 0.1rem 0.5rem; border-radius: 999px;">@unread.Total sin responder</span>
+                    }
+                </h3>
+                <div style="display: flex; gap: 0.4rem; align-items: center;">
+                    <button class="btn btn-secondary" style="font-size: 0.78rem; padding: 0.3rem 0.6rem;" @onclick="RefreshNow" disabled="@refreshing">
+                        @(refreshing ? "Buscando..." : "🔄 Refrescar")
+                    </button>
+                    <button class="btn-close" @onclick="CloseModal">&times;</button>
+                </div>
+            </div>
+            <div class="modal-body" style="overflow-y: auto;">
+                @if (loadingList)
+                {
+                    <p class="text-muted">Cargando preguntas...</p>
+                }
+                else if (questions is null || questions.Count == 0)
+                {
+                    <div style="text-align: center; padding: 2rem; color: #6b7280;">
+                        <div style="font-size: 3rem; margin-bottom: 0.5rem;">✅</div>
+                        <strong>No hay preguntas sin responder</strong>
+                        <p style="font-size: 0.85rem; margin-top: 0.4rem;">Cuando algún cliente pregunte por una publicación de MercadoLibre, vas a verla acá.</p>
+                    </div>
+                }
+                else
+                {
+                    @foreach (var q in questions)
+                    {
+                        <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.7rem; margin-bottom: 0.7rem; background: @(q.IsNew ? "#fef3c7" : "white");">
+                            @* Header: cuenta + item *@
+                            <div style="display: flex; gap: 0.6rem; align-items: flex-start; margin-bottom: 0.5rem;">
+                                @if (!string.IsNullOrEmpty(q.ItemThumbnail))
+                                {
+                                    <img src="@q.ItemThumbnail" alt="" style="width: 48px; height: 48px; object-fit: cover; border-radius: 4px; flex: 0 0 auto;" onerror="this.style.display='none'" />
+                                }
+                                <div style="flex: 1; min-width: 0;">
+                                    <a href="@q.MeliUrl" target="_blank" style="font-weight: 700; color: #1d4ed8; text-decoration: none; font-size: 0.88rem;" title="Abrir publicación en MeLi">
+                                        @(string.IsNullOrEmpty(q.ItemTitle) ? q.ItemId : q.ItemTitle)
+                                    </a>
+                                    <div style="font-size: 0.72rem; color: #6b7280;">
+                                        @(q.AccountNickname ?? "—") · de <strong>@(q.FromNickname ?? "Usuario")</strong> · @FormatRelative(q.DateCreated)
+                                        @if (q.IsNew)
+                                        {
+                                            <span style="background: #dc2626; color: white; padding: 0.05rem 0.35rem; border-radius: 4px; margin-left: 0.4rem; font-size: 0.65rem; font-weight: 700;">NUEVA</span>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+
+                            @* Pregunta *@
+                            <div style="background: #f9fafb; border-left: 3px solid #6b7280; padding: 0.5rem 0.7rem; font-size: 0.92rem; margin-bottom: 0.5rem;">
+                                <strong>P:</strong> @q.Text
+                            </div>
+
+                            @* Respuesta inline *@
+                            @if (answeredIds.Contains(q.Id))
+                            {
+                                <div style="background: #ecfdf5; border-left: 3px solid #10b981; padding: 0.5rem 0.7rem; font-size: 0.9rem; color: #065f46;">
+                                    ✅ <strong>Respondida</strong>
+                                </div>
+                            }
+                            else
+                            {
+                                <textarea class="form-input" rows="2" placeholder="Escribí tu respuesta..."
+                                          @bind="answerDrafts[q.Id]" @bind:event="oninput"
+                                          style="font-size: 0.9rem;"></textarea>
+                                <div style="display: flex; gap: 0.4rem; justify-content: flex-end; margin-top: 0.3rem;">
+                                    <button class="btn btn-primary" style="font-size: 0.85rem; padding: 0.35rem 0.8rem;"
+                                            @onclick="() => Answer(q)" disabled="@(sendingId == q.Id || string.IsNullOrWhiteSpace(GetDraft(q.Id)))">
+                                        @(sendingId == q.Id ? "Enviando..." : "📤 Responder")
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .topbar-bell {
+        position: relative;
+        background: transparent;
+        border: none;
+        padding: 0.4rem 0.6rem;
+        cursor: pointer;
+        color: #4b5563;
+        font-size: 1.1rem;
+        border-radius: 6px;
+        transition: background 0.15s;
+    }
+    .topbar-bell:hover { background: #f3f4f6; color: #1f2937; }
+    .topbar-bell-badge {
+        position: absolute;
+        top: 0.05rem;
+        right: 0.1rem;
+        background: #6b7280;
+        color: white;
+        font-size: 0.65rem;
+        font-weight: 700;
+        padding: 0.1rem 0.35rem;
+        border-radius: 999px;
+        min-width: 1.1rem;
+        text-align: center;
+        line-height: 1;
+    }
+    .topbar-bell-badge-pulse {
+        background: #dc2626;
+        animation: bell-pulse 1.4s infinite;
+    }
+    @@keyframes bell-pulse {
+        0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220,38,38,0.6); }
+        50% { transform: scale(1.1); box-shadow: 0 0 0 6px rgba(220,38,38,0); }
+    }
+</style>
+
+@code {
+    private MeliQuestionsUnreadDto unread = new();
+    private int lastCount;
+    private bool canShow = true; // toggle si endpoint falla varias veces seguidas
+    private int consecutiveErrors;
+    private bool showModal;
+    private bool loadingList;
+    private bool refreshing;
+    private List<MeliQuestionDto>? questions;
+    private Dictionary<int, string> answerDrafts = new();
+    private HashSet<int> answeredIds = new();
+    private int? sendingId;
+    private System.Threading.Timer? timer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await PollOnceAsync();
+        // Polling cada 30s
+        timer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(PollOnceAsync);
+        }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+    }
+
+    private async Task PollOnceAsync()
+    {
+        try
+        {
+            var r = await Api.GetMeliQuestionsUnreadCountAsync();
+            consecutiveErrors = 0;
+            if (r is null) return;
+            // Detectar nuevas preguntas: count creció vs polling anterior → ding
+            if (r.NotSeen > lastCount && lastCount >= 0)
+            {
+                await PlayDing();
+            }
+            lastCount = r.NotSeen;
+            unread = r;
+            StateHasChanged();
+        }
+        catch
+        {
+            consecutiveErrors++;
+            if (consecutiveErrors >= 3) canShow = false;
+        }
+    }
+
+    private string GetDraft(int id) => answerDrafts.TryGetValue(id, out var v) ? v : "";
+
+    private async Task OpenModal()
+    {
+        showModal = true;
+        loadingList = true;
+        try
+        {
+            questions = await Api.GetMeliQuestionsAsync("UNANSWERED") ?? new();
+            // Marcar como vistas: la campanita deja de pulsar pero el count total sigue
+            await Api.MarkMeliQuestionsSeenAsync();
+            unread.NotSeen = 0;
+            lastCount = 0;
+        }
+        catch (Exception ex) { ToastService.Error("Error al cargar preguntas: " + ex.Message); }
+        finally { loadingList = false; }
+    }
+
+    private void CloseModal() { showModal = false; }
+
+    private async Task RefreshNow()
+    {
+        refreshing = true;
+        try
+        {
+            await Api.SyncMeliQuestionsNowAsync();
+            questions = await Api.GetMeliQuestionsAsync("UNANSWERED") ?? new();
+            var r = await Api.GetMeliQuestionsUnreadCountAsync();
+            if (r is not null) { unread = r; lastCount = r.NotSeen; }
+            ToastService.Success("Lista actualizada");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { refreshing = false; }
+    }
+
+    private async Task Answer(MeliQuestionDto q)
+    {
+        var draft = GetDraft(q.Id);
+        if (string.IsNullOrWhiteSpace(draft)) return;
+        sendingId = q.Id;
+        try
+        {
+            var ok = await Api.AnswerMeliQuestionAsync(q.Id, draft);
+            if (ok)
+            {
+                answeredIds.Add(q.Id);
+                unread.Total = Math.Max(0, unread.Total - 1);
+                ToastService.Success("Respuesta enviada");
+            }
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo enviar: " + ex.Message); }
+        finally { sendingId = null; }
+    }
+
+    private async Task PlayDing()
+    {
+        try { await JS.InvokeVoidAsync("playMeliDing"); } catch { }
+    }
+
+    private static string FormatRelative(DateTime utc)
+    {
+        var d = DateTime.UtcNow - utc;
+        if (d.TotalMinutes < 1) return "ahora";
+        if (d.TotalMinutes < 60) return $"hace {(int)d.TotalMinutes} min";
+        if (d.TotalHours < 24) return $"hace {(int)d.TotalHours} h";
+        if (d.TotalDays < 7) return $"hace {(int)d.TotalDays} d";
+        return utc.ToLocalTime().ToString("dd/MM/yyyy");
+    }
+
+    public void Dispose() => timer?.Dispose();
+}

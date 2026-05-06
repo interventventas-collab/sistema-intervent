@@ -1832,4 +1832,25 @@ public class ApiClient
         return await response.Content.ReadFromJsonAsync<BulkPublishResponse>();
     }
 
+    // ===== MeLi Questions =====
+    public async Task<MeliQuestionsUnreadDto?> GetMeliQuestionsUnreadCountAsync()
+        => await GetAsync<MeliQuestionsUnreadDto>("/api/meli/questions/unread-count");
+
+    public async Task<List<MeliQuestionDto>?> GetMeliQuestionsAsync(string status = "UNANSWERED")
+        => await GetAsync<List<MeliQuestionDto>>($"/api/meli/questions?status={status}");
+
+    public async Task<bool> AnswerMeliQuestionAsync(int id, string text)
+    {
+        var r = await PostAsync<object>($"/api/meli/questions/{id}/answer", new { text });
+        return r is not null;
+    }
+
+    public async Task MarkMeliQuestionsSeenAsync()
+    {
+        await PostAsync<object>("/api/meli/questions/mark-seen", new { });
+    }
+
+    public async Task<object?> SyncMeliQuestionsNowAsync()
+        => await PostAsync<object>("/api/meli/questions/sync-now", new { });
+
 }
