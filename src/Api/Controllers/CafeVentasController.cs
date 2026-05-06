@@ -486,16 +486,33 @@ public class CafeVentasController : ControllerBase
         decimal subtotal = 0m, costoTotal = 0m;
         bool todoOk = true;
 
+        // Pre-cargar marcas (para margen y bloqueo de descuento) y descuentos por canal+marca.
+        var marcas = await _db.CafeMarcas.ToDictionaryAsync(m => m.Id);
+        var descuentosMatriz = await _db.CafeDescuentosCliente.ToListAsync();
+
+        decimal ResolverDescuentoMatriz(int? marcaId)
+        {
+            // Si la marca bloquea descuentos, 0.
+            if (marcaId.HasValue && marcas.TryGetValue(marcaId.Value, out var ma) && ma.BloqueaDescuento) return 0m;
+            // Override por marca.
+            var override_ = descuentosMatriz.FirstOrDefault(d => d.TipoCliente == tipo && d.MarcaId == marcaId);
+            if (override_ is not null) return override_.DescuentoPct;
+            // Default por tipo (MarcaId null).
+            var general = descuentosMatriz.FirstOrDefault(d => d.TipoCliente == tipo && d.MarcaId == null);
+            return general?.DescuentoPct ?? 0m;
+        }
+
         foreach (var it in items)
         {
             if (it.Cantidad <= 0) continue;
-            // Clamp el descuento a 0..100
-            var descPct = Math.Clamp(it.DescuentoPct, 0m, 100m);
+            // Descuento manual override. Si viene 0 desde el request, se calcula automaticamente
+            // de la matriz por tipo cliente x marca del producto.
+            var descPctManual = Math.Clamp(it.DescuentoPct, 0m, 100m);
             if (!FormatosValidos.Contains(it.Formato))
             {
                 cotizadoItems.Add(new CafeCotizadoItemDto(
                     it.ProductoId, "?", "?", it.Formato, it.Cantidad, 0m, 0m, 0m, 0m, 0m, 0,
-                    false, "Formato inválido", NormMolienda(it.Molienda), it.EsDoyPack, descPct));
+                    false, "Formato inválido", NormMolienda(it.Molienda), it.EsDoyPack, descPctManual));
                 todoOk = false;
                 continue;
             }
@@ -505,7 +522,7 @@ public class CafeVentasController : ControllerBase
             {
                 cotizadoItems.Add(new CafeCotizadoItemDto(
                     it.ProductoId, "?", "?", it.Formato, it.Cantidad, 0m, 0m, 0m, 0m, 0m, 0,
-                    false, "Producto no encontrado", NormMolienda(it.Molienda), it.EsDoyPack, descPct));
+                    false, "Producto no encontrado", NormMolienda(it.Molienda), it.EsDoyPack, descPctManual));
                 todoOk = false;
                 continue;
             }
@@ -518,19 +535,26 @@ public class CafeVentasController : ControllerBase
                 cotizadoItems.Add(new CafeCotizadoItemDto(
                     prod.Id, prod.Nombre, prod.Categoria, it.Formato, it.Cantidad, 0m, 0m, 0m, 0m, prod.StockGramos, prod.StockUnidades,
                     false, esCafe ? "Para café usá 1 kg / 1/2 kg / 1/4 kg" : "Para otros productos usá 'unidad'",
-                    NormMolienda(it.Molienda), it.EsDoyPack, descPct));
+                    NormMolienda(it.Molienda), it.EsDoyPack, descPctManual));
                 todoOk = false;
                 continue;
             }
 
-            var precioUnit = CafePricingService.CalcularPrecioUnitario(prod, it.Formato, tipo, settings);
+            // Resolver margen de la marca (default 100%) para calcular PVP por % en OTROS.
+            decimal? marcaMargen = null;
+            if (prod.MarcaId.HasValue && marcas.TryGetValue(prod.MarcaId.Value, out var marcaProd))
+                marcaMargen = marcaProd.MargenPctSobreCosto;
+
+            // Descuento: el manual del request si lo hay; si no, el de la matriz.
+            // Para CAFE, el descuento NO se aplica desde la matriz (sigue manual).
+            var descPct = descPctManual;
+            if (descPct == 0 && prod.Categoria != "CAFE")
+                descPct = ResolverDescuentoMatriz(prod.MarcaId);
+
+            var breakdown = CafePricingService.CalcularPrecioBreakdown(prod, it.Formato, tipo, settings, marcaMargen, descPct);
+            var precioUnit = breakdown.PrecioLista;     // lista (sin descuento) — lo que se ve en P. Unitario
             var costoUnit = CafePricingService.CalcularCostoUnitario(prod, it.Formato);
-            // PrecioUnitario queda como precio de lista (sin descuento) — lo que se ve antes del descuento.
-            // El descuento se aplica solo al Subtotal: subtotal = precioUnit * cantidad * (1 - desc%/100).
-            var subtotalSinDesc = precioUnit * it.Cantidad;
-            var subtotalLinea = descPct > 0
-                ? Math.Round(subtotalSinDesc * (1m - descPct / 100m), 2, MidpointRounding.AwayFromZero)
-                : subtotalSinDesc;
+            var subtotalLinea = Math.Round(breakdown.PrecioFinal * it.Cantidad, 2, MidpointRounding.AwayFromZero);
             var gramosNecesarios = esCafe ? CafePricingService.GramosPorUnidad(it.Formato) * it.Cantidad : 0m;
             var stockOk = esCafe ? gramosNecesarios <= prod.StockGramos + 0.001m : it.Cantidad <= prod.StockUnidades;
             string? aviso = null;

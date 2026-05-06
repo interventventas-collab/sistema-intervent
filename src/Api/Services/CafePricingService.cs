@@ -49,12 +49,25 @@ public static class CafePricingService
         _ => formato
     };
 
-    /// <summary>Calcula el precio unitario de un item segun el motor.</summary>
-    public static decimal CalcularPrecioUnitario(CafeProducto producto, string formato, string tipoCliente, CafeSetting settings)
+    /// <summary>
+    /// Desglose de precio: lista (sin descuento), descuento %, precio final.
+    /// Para CAFE no aplica descuento (sigue con Pvp1/Pvp2 directo).
+    /// Para OTROS:
+    ///   - BAR  -> lista = costo × (1 + marcaMargen/100)
+    ///   - OTRO -> lista = Pvp2 manual (sugerido proveedor); fallback a costo × margen si no hay
+    ///   - descuento se aplica sobre lista (de la matriz Cafe_DescuentosCliente).
+    /// </summary>
+    public record PrecioBreakdown(decimal PrecioLista, decimal DescuentoPct, decimal PrecioFinal);
+
+    public static PrecioBreakdown CalcularPrecioBreakdown(
+        CafeProducto producto, string formato, string tipoCliente, CafeSetting settings,
+        decimal? marcaMargenPctSobreCosto = null,
+        decimal descuentoPct = 0m)
     {
+        decimal lista;
         if (producto.Categoria == "CAFE")
         {
-            // PVP/kg segun tipo de cliente. Si falta el PVP elegido, cae al otro como fallback.
+            // CAFE: misma logica que siempre (Pvp1/Pvp2 directo). No aplica descuento por canal.
             decimal pvpKg;
             if (tipoCliente == TIPO_BAR)
                 pvpKg = producto.Pvp1 ?? producto.Pvp2 ?? producto.PrecioPorKg ?? 0m;
@@ -68,29 +81,34 @@ public static class CafePricingService
                 FORMATO_CUARTO => (pvpKg / 4m) + settings.CostoFraccionamiento,
                 _ => 0m
             };
-            return RedondearArriba(precio, settings.RedondeoMultiplo);
+            lista = RedondearArriba(precio, settings.RedondeoMultiplo);
+            return new PrecioBreakdown(lista, 0m, lista);
         }
-        else // OTROS (PVP por producto)
+
+        // OTROS
+        var margen = marcaMargenPctSobreCosto ?? 100m;
+        if (tipoCliente == TIPO_BAR)
         {
-            // OTRO siempre paga el PVP fijo (Pvp2). Si por algun motivo el producto no tiene PVP cargado,
-            // caemos a costo + margen global como salvaguarda (no deberia ocurrir luego de la migracion).
-            var pvp = producto.Pvp2 ?? Math.Round(
-                producto.Costo * (1m + settings.MargenOtrosNoBarPct / 100m),
-                2, MidpointRounding.AwayFromZero);
-
-            if (tipoCliente == TIPO_BAR)
-            {
-                if (producto.BarPctSobreCosto.HasValue)
-                {
-                    var precioBar = producto.Costo * (1m + producto.BarPctSobreCosto.Value / 100m);
-                    return Math.Round(precioBar, 2, MidpointRounding.AwayFromZero);
-                }
-                return pvp;  // BAR sin % cargado -> paga lo mismo que OTRO
-            }
-
-            return pvp;
+            // BAR paga PVP por % (costo × (1 + margen marca)).
+            lista = Math.Round(producto.Costo * (1m + margen / 100m), 2, MidpointRounding.AwayFromZero);
         }
+        else
+        {
+            // OTRO paga PVP manual (sugerido proveedor / OEM). Fallback a PVP por % si no hay manual.
+            if (producto.Pvp2.HasValue && producto.Pvp2.Value > 0m)
+                lista = producto.Pvp2.Value;
+            else
+                lista = Math.Round(producto.Costo * (1m + margen / 100m), 2, MidpointRounding.AwayFromZero);
+        }
+
+        var desc = Math.Max(0m, Math.Min(100m, descuentoPct));
+        var final = Math.Round(lista * (1m - desc / 100m), 2, MidpointRounding.AwayFromZero);
+        return new PrecioBreakdown(lista, desc, final);
     }
+
+    /// <summary>Calcula el precio unitario final (compat con codigo existente).</summary>
+    public static decimal CalcularPrecioUnitario(CafeProducto producto, string formato, string tipoCliente, CafeSetting settings)
+        => CalcularPrecioBreakdown(producto, formato, tipoCliente, settings).PrecioFinal;
 
     /// <summary>Costo unitario que va al item (para calcular margen).</summary>
     public static decimal CalcularCostoUnitario(CafeProducto producto, string formato)
