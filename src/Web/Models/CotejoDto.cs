@@ -73,6 +73,13 @@ public class CrearKitsCotejoRequest
     public string? Categoria { get; set; }
 }
 
+public class VincularOemsResultDto
+{
+    public int Procesados { get; set; }
+    public int Vinculados { get; set; }
+    public List<string> Detalles { get; set; } = new();
+}
+
 public class CrearKitsCotejoResultDto
 {
     public int KitsCreados { get; set; }

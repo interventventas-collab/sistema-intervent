@@ -357,6 +357,17 @@ public class ContabiliumCotejoService
                 }
                 var ivaProd = (contab.Iva.HasValue && contab.Iva.Value == 10.5m) ? 10.5m : 21m;
 
+                // Deducir OemId desde el SKU (ej: C8733NEG -> OEM 8733).
+                int? oemId = null;
+                var oemCodigo = ExtraerCodigoOemDesdeSku(sku);
+                if (!string.IsNullOrEmpty(oemCodigo))
+                {
+                    oemId = await _db.CafeOems
+                        .Where(o => o.Codigo == oemCodigo)
+                        .Select(o => (int?)o.Id)
+                        .FirstOrDefaultAsync();
+                }
+
                 producto = new CafeProducto
                 {
                     Sku = sku,
@@ -368,6 +379,7 @@ public class ContabiliumCotejoService
                     Costo = contab.CostoInterno.HasValue ? Math.Round(contab.CostoInterno.Value, 0) : 0m,
                     Pvp2 = pvpSinIva,
                     IvaPct = ivaProd,
+                    OemId = oemId,
                     StockUnidades = (int)Math.Round(contab.Stock ?? 0m),
                     StockGramos = 0m,
                     Notas = string.IsNullOrWhiteSpace(contab.Proveedor) ? null : $"Proveedor Contabilium: {contab.Proveedor}",
@@ -377,7 +389,7 @@ public class ContabiliumCotejoService
                 _db.CafeProductos.Add(producto);
                 await _db.SaveChangesAsync();
                 creados++;
-                detalles.Add($"{sku}: creado.");
+                detalles.Add(oemId.HasValue ? $"{sku}: creado (OEM {oemCodigo})." : $"{sku}: creado.");
             }
 
             // Vincular todas las MeliItems con ese SKU al CafeProducto.
@@ -393,6 +405,54 @@ public class ContabiliumCotejoService
         }
 
         return new CrearProductosResultado(creados, vinculados, omitidos, detalles);
+    }
+
+    // Deduce el codigo OEM a partir del SKU. Para SKU tipo "C8733NEG", "C9335GR-FULL", "C9150NEGX10":
+    // toma la primera secuencia de digitos despues del primer caracter (si es letra).
+    // Devuelve null si no encuentra digitos.
+    public static string? ExtraerCodigoOemDesdeSku(string? sku)
+    {
+        if (string.IsNullOrEmpty(sku)) return null;
+        var s = sku.Trim();
+        // Saltar prefijo de letras (C, CC, etc).
+        var i = 0;
+        while (i < s.Length && char.IsLetter(s[i])) i++;
+        var start = i;
+        while (i < s.Length && char.IsDigit(s[i])) i++;
+        if (i == start) return null;
+        return s.Substring(start, i - start);
+    }
+
+    public record VincularOemsResultado(int Procesados, int Vinculados, List<string> Detalles);
+
+    // Vincula automaticamente OemId a los CafeProductos que no tengan OEM cargado,
+    // deduciendo el codigo OEM del SKU y buscando coincidencia en Cafe_Oems.
+    public async Task<VincularOemsResultado> VincularOemsAutomaticoAsync()
+    {
+        var productosSinOem = await _db.CafeProductos
+            .Where(p => p.OemId == null && p.Sku != null && p.Sku != "")
+            .ToListAsync();
+
+        // Index de OEMs por codigo
+        var oems = await _db.CafeOems.ToListAsync();
+        var oemsByCodigo = oems.ToDictionary(o => o.Codigo, o => o.Id, StringComparer.OrdinalIgnoreCase);
+
+        var detalles = new List<string>();
+        int vinculados = 0;
+        foreach (var p in productosSinOem)
+        {
+            var codigo = ExtraerCodigoOemDesdeSku(p.Sku);
+            if (string.IsNullOrEmpty(codigo)) continue;
+            if (!oemsByCodigo.TryGetValue(codigo, out var oemId)) continue;
+
+            p.OemId = oemId;
+            p.UpdatedAt = DateTime.UtcNow;
+            vinculados++;
+            detalles.Add($"{p.Sku} -> OEM {codigo}");
+        }
+
+        if (vinculados > 0) await _db.SaveChangesAsync();
+        return new VincularOemsResultado(productosSinOem.Count, vinculados, detalles);
     }
 
     // Crea Kits (productos compuestos) en lote a partir de SKU de combos.
@@ -481,6 +541,17 @@ public class ContabiliumCotejoService
                         }
                         var ivaProd = (contabProd.Iva.HasValue && contabProd.Iva.Value == 10.5m) ? 10.5m : 21m;
 
+                        // Deducir OemId del componente desde su SKU.
+                        int? compOemId = null;
+                        var compOemCodigo = ExtraerCodigoOemDesdeSku(comp.SkuComponente);
+                        if (!string.IsNullOrEmpty(compOemCodigo))
+                        {
+                            compOemId = await _db.CafeOems
+                                .Where(o => o.Codigo == compOemCodigo)
+                                .Select(o => (int?)o.Id)
+                                .FirstOrDefaultAsync();
+                        }
+
                         cafeProd = new CafeProducto
                         {
                             Sku = comp.SkuComponente,
@@ -492,6 +563,7 @@ public class ContabiliumCotejoService
                             Costo = contabProd.CostoInterno.HasValue ? Math.Round(contabProd.CostoInterno.Value, 0) : 0m,
                             Pvp2 = pvpSinIva,
                             IvaPct = ivaProd,
+                            OemId = compOemId,
                             StockUnidades = (int)Math.Round(contabProd.Stock ?? 0m),
                             StockGramos = 0m,
                             Notas = string.IsNullOrWhiteSpace(contabProd.Proveedor)
@@ -503,7 +575,9 @@ public class ContabiliumCotejoService
                         _db.CafeProductos.Add(cafeProd);
                         await _db.SaveChangesAsync();
                         componentesCreados++;
-                        detalles.Add($"  · creado componente {comp.SkuComponente}");
+                        detalles.Add(compOemId.HasValue
+                            ? $"  · creado componente {comp.SkuComponente} (OEM {compOemCodigo})"
+                            : $"  · creado componente {comp.SkuComponente}");
                     }
 
                     itemsKit.Add(new CafeKitItem

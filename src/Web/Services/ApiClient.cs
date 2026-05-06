@@ -541,6 +541,9 @@ public class ApiClient
     public async Task<CrearKitsCotejoResultDto?> CrearKitsCotejoAsync(CrearKitsCotejoRequest req)
         => await PostAsync<CrearKitsCotejoResultDto>("/api/meli/cotejo/crear-kits", req);
 
+    public async Task<VincularOemsResultDto?> VincularOemsAutomaticoAsync()
+        => await PostAsync<VincularOemsResultDto>("/api/meli/cotejo/vincular-oems", new { });
+
     // --- Kits (productos compuestos / BOM) ---
     public async Task<List<CafeKitDto>?> GetCafeKitsAsync(bool? activos = null, string? categoria = null)
     {

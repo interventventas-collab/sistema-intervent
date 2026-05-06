@@ -68,6 +68,20 @@ public class MeliCotejoController : ControllerBase
         }
     }
 
+    [HttpPost("vincular-oems")]
+    public async Task<IActionResult> VincularOems()
+    {
+        try
+        {
+            var result = await _cotejo.VincularOemsAutomaticoAsync();
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpPost("crear-kits")]
     public async Task<IActionResult> CrearKits([FromBody] ContabiliumCotejoService.CrearKitsRequest req)
     {

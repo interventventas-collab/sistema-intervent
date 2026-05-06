@@ -8,6 +8,9 @@
         <h3>🔎 Cotejo MercadoLibre &harr; Contabilium</h3>
         <div style="display: flex; gap: 0.5rem;">
             <button class="btn btn-secondary" @onclick="LoadResumen" disabled="@isBusy">Refrescar</button>
+            <button class="btn btn-secondary" @onclick="VincularOems" disabled="@isBusy" title="Detecta y vincula OEMs en productos sin OEM (ej: C8733NEG -> OEM 8733)">
+                🔗 Vincular OEMs
+            </button>
             <button class="btn btn-primary" @onclick="ImportarStaging" disabled="@isBusy">
                 @(isBusy ? "Cargando..." : "Cargar Excels de Contabilium")
             </button>
@@ -345,6 +348,20 @@
         filtroMarcaContab = "";
         filtroVinculacion = "";
         await LoadListado();
+    }
+
+    private async Task VincularOems()
+    {
+        isBusy = true;
+        try
+        {
+            var r = await Api.VincularOemsAutomaticoAsync();
+            if (r is not null)
+                ToastService.Success($"OEMs vinculados: {r.Vinculados} de {r.Procesados} productos sin OEM.");
+            await LoadListado();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { isBusy = false; }
     }
 
     private async Task ImportarStaging()
