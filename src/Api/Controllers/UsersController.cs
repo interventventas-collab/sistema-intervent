@@ -67,6 +67,20 @@ public class UsersController : ControllerBase
         return NoContent();
     }
 
+    public record ResetPasswordRequest(string NewPassword);
+
+    /// <summary>Reset administrativo: setea una clave nueva para un usuario que la olvido.</summary>
+    [HttpPost("{id:int}/reset-password")]
+    public async Task<IActionResult> ResetPassword(int id, [FromBody] ResetPasswordRequest req)
+    {
+        if (!IsAdmin()) return Forbid();
+        if (string.IsNullOrWhiteSpace(req.NewPassword) || req.NewPassword.Length < 6)
+            return BadRequest(new { message = "La clave debe tener al menos 6 caracteres" });
+        var ok = await _userService.ResetPasswordAsync(id, req.NewPassword);
+        if (!ok) return NotFound(new { message = "Usuario no encontrado" });
+        return Ok(new { ok = true });
+    }
+
     private bool IsAdmin()
     {
         return User.FindFirst(ClaimTypes.Role)?.Value == "admin";

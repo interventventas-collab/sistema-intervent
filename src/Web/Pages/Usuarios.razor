@@ -50,6 +50,9 @@
                                     <button class="btn-icon btn-edit" @onclick="() => ShowEditForm(user)" title="Editar">
                                         @SvgIcons.Settings
                                     </button>
+                                    <button class="btn-icon" style="color: #f59e0b;" @onclick="() => ShowResetPassword(user)" title="Resetear clave">
+                                        🔑
+                                    </button>
                                     @if (user.Username != "admin")
                                     {
                                         <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(user)" title="Eliminar">
@@ -165,6 +168,41 @@
     </div>
 }
 
+@if (showResetPassword && userToReset is not null)
+{
+    <div class="modal-overlay" @onclick="CancelReset">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: #fef3c7;">
+                <h3>🔑 Resetear clave</h3>
+                <button class="btn-close" @onclick="CancelReset">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 0.6rem;">
+                    Vas a setear una clave nueva para <strong>@userToReset.Username</strong>.
+                    Pasásela al usuario para que entre con esta clave y la cambie desde su perfil.
+                </p>
+                <div class="form-group">
+                    <label class="form-label">Clave nueva (mínimo 6 caracteres)</label>
+                    <input class="form-input" type="text" @bind="resetPasswordValue" autofocus />
+                    <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
+                        💡 La mostramos en texto plano a propósito para que la veas y puedas pasarla.
+                    </p>
+                </div>
+                @if (!string.IsNullOrEmpty(resetError))
+                {
+                    <div class="form-error">@resetError</div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CancelReset" disabled="@isResetting">Cancelar</button>
+                <button class="btn btn-primary" @onclick="DoResetPassword" disabled="@isResetting">
+                    @(isResetting ? "Reseteando..." : "Resetear clave")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private List<UserManageDto>? users;
     private List<RoleDto>? roles;
@@ -187,6 +225,56 @@
     // Delete
     private bool showDeleteConfirm;
     private UserManageDto? userToDelete;
+
+    // Reset password
+    private bool showResetPassword;
+    private UserManageDto? userToReset;
+    private string resetPasswordValue = "";
+    private string? resetError;
+    private bool isResetting;
+
+    private void ShowResetPassword(UserManageDto user)
+    {
+        userToReset = user;
+        resetPasswordValue = "";
+        resetError = null;
+        showResetPassword = true;
+    }
+
+    private void CancelReset()
+    {
+        showResetPassword = false;
+        userToReset = null;
+        resetPasswordValue = "";
+        resetError = null;
+    }
+
+    private async Task DoResetPassword()
+    {
+        if (userToReset is null) return;
+        if (string.IsNullOrWhiteSpace(resetPasswordValue) || resetPasswordValue.Length < 6)
+        {
+            resetError = "La clave debe tener al menos 6 caracteres";
+            return;
+        }
+        isResetting = true;
+        resetError = null;
+        try
+        {
+            var ok = await Api.ResetUserPasswordAsync(userToReset.Id, resetPasswordValue);
+            if (ok)
+            {
+                ToastService.Success($"Clave reseteada para {userToReset.Username}. Pasale la clave nueva.");
+                CancelReset();
+            }
+            else
+            {
+                resetError = "No se pudo resetear la clave";
+            }
+        }
+        catch (Exception ex) { resetError = ex.Message; }
+        finally { isResetting = false; }
+    }
 
     protected override async Task OnInitializedAsync()
     {

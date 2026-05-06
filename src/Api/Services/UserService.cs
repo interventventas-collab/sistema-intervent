@@ -133,4 +133,18 @@ public class UserService
         await _db.SaveChangesAsync();
         return true;
     }
+
+    /// <summary>
+    /// Reset administrativo de password — el admin setea una clave nueva para un usuario
+    /// que la olvido. El usuario despues la deberia cambiar desde su perfil.
+    /// </summary>
+    public async Task<bool> ResetPasswordAsync(int userId, string newPassword)
+    {
+        if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 6) return false;
+        var user = await _db.Users.FindAsync(userId);
+        if (user is null) return false;
+        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
+        await _db.SaveChangesAsync();
+        return true;
+    }
 }

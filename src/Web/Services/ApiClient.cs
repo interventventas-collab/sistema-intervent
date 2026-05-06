@@ -70,6 +70,12 @@ public class ApiClient
         return await DeleteAsync($"/api/users/{id}");
     }
 
+    public async Task<bool> ResetUserPasswordAsync(int id, string newPassword)
+    {
+        var r = await PostAsync<object>($"/api/users/{id}/reset-password", new { newPassword });
+        return r is not null;
+    }
+
     // --- Roles ---
     public async Task<List<RoleDto>?> GetRolesAsync()
     {
