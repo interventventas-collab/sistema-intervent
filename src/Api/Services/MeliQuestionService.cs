@@ -58,9 +58,14 @@ public class MeliQuestionService
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         int synced = 0, neu = 0;
         int offset = 0; int limit = 50; bool hasMore = true;
+
+        // Track de las preguntas UNANSWERED que vimos en MeLi en este sync.
+        // Si una pregunta nuestra esta UNANSWERED pero NO aparece en este conjunto,
+        // significa que fue respondida (o eliminada) en MeLi por fuera de la app.
+        var seenInMeli = new HashSet<long>();
+
         while (hasMore)
         {
-            // Solo UNANSWERED — las respondidas no nos interesan para la campanita
             var url = $"https://api.mercadolibre.com/my/received_questions/search?status=UNANSWERED&limit={limit}&offset={offset}";
             var response = await http.GetAsync(url);
             if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized || response.StatusCode == System.Net.HttpStatusCode.Forbidden)
@@ -88,6 +93,7 @@ public class MeliQuestionService
             {
                 foreach (var q in qs.EnumerateArray())
                 {
+                    if (q.TryGetProperty("id", out var idEl)) seenInMeli.Add(idEl.GetInt64());
                     var (s, n) = await UpsertAsync(account.Id, q);
                     synced += s; neu += n;
                 }
@@ -97,6 +103,37 @@ public class MeliQuestionService
             offset += limit;
             hasMore = offset < total && total > 0;
         }
+
+        // Reconciliar: traer las locales UNANSWERED de esta cuenta que NO aparecieron en MeLi.
+        // Para cada una, GET /questions/{id} y actualizar status + answer.
+        var localUnanswered = await _db.MeliQuestions
+            .Where(x => x.MeliAccountId == account.Id && x.Status == "UNANSWERED")
+            .Select(x => new { x.Id, x.MeliQuestionId })
+            .ToListAsync();
+        var stale = localUnanswered.Where(x => !seenInMeli.Contains(x.MeliQuestionId)).ToList();
+        foreach (var s in stale)
+        {
+            try
+            {
+                var url = $"https://api.mercadolibre.com/questions/{s.MeliQuestionId}";
+                var resp = await http.GetAsync(url);
+                if (resp.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    // Pregunta eliminada en MeLi — la marcamos como DELETED para que desaparezca
+                    var loc = await _db.MeliQuestions.FindAsync(s.Id);
+                    if (loc is not null) { loc.Status = "DELETED"; loc.LastSyncedAt = DateTime.UtcNow; }
+                    continue;
+                }
+                if (!resp.IsSuccessStatusCode) continue;
+                var body = await resp.Content.ReadAsStringAsync();
+                var qDoc = JsonDocument.Parse(body).RootElement;
+                await UpsertAsync(account.Id, qDoc);
+                synced++;
+            }
+            catch { /* tolerar errores aislados, seguimos con el siguiente */ }
+        }
+        await _db.SaveChangesAsync();
+
         return (synced, neu);
     }
 
