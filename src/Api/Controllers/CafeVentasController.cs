@@ -471,7 +471,7 @@ public class CafeVentasController : ControllerBase
         else if (req.Descuento.HasValue)
         {
             // Solo cambio el descuento global sin tocar items.
-            var d = Math.Max(0m, req.Descuento.Value);
+            var d = Math.Min(v.Subtotal, Math.Abs(req.Descuento.Value));
             v.Descuento = d;
             v.Total = Math.Max(0m, v.Subtotal - d);
             v.Margen = v.Total - v.CostoTotal;
@@ -621,7 +621,7 @@ public class CafeVentasController : ControllerBase
             costoTotal += costoUnit * it.Cantidad;
         }
 
-        var desc = Math.Max(0m, descuento);
+        var desc = Math.Min(subtotal, Math.Abs(descuento));
         var total = Math.Max(0m, subtotal - desc);
         var margen = total - costoTotal;
         return new CafeCotizadoDto(tipo, subtotal, desc, total, costoTotal, margen, todoOk, cotizadoItems);

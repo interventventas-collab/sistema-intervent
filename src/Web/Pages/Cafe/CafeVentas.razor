@@ -658,8 +658,10 @@
                                     <strong>$@FormatMoney(cotizacion.Subtotal)</strong>
                                 </div>
                                 <div class="venta-totals-row">
-                                    <span>Descuento ($):</span>
-                                    <input class="form-input" type="number" step="0.01" min="0" @bind="formDescuento" @bind:after="Cotizar"
+                                    <span>Descuento ($):
+                                        <span style="font-size:0.7rem; color:#9ca3af; font-weight:400;">monto a restar</span>
+                                    </span>
+                                    <input class="form-input" type="number" step="0.01" @bind="formDescuento" @bind:after="Cotizar"
                                            style="text-align: right; max-width: 130px; font-weight: 700;" />
                                 </div>
                                 <hr style="margin: 0.5rem 0; border: none; border-top: 2px solid #1f2937;" />
