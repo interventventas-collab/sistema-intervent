@@ -201,6 +201,9 @@
         try
         {
             questions = await Api.GetMeliQuestionsAsync("UNANSWERED") ?? new();
+            // Pre-popular drafts: @bind sobre un Dictionary[key] lanza KeyNotFoundException si la key no existe
+            foreach (var q in questions)
+                if (!answerDrafts.ContainsKey(q.Id)) answerDrafts[q.Id] = "";
             // Marcar como vistas: la campanita deja de pulsar pero el count total sigue
             await Api.MarkMeliQuestionsSeenAsync();
             unread.NotSeen = 0;
@@ -219,6 +222,8 @@
         {
             await Api.SyncMeliQuestionsNowAsync();
             questions = await Api.GetMeliQuestionsAsync("UNANSWERED") ?? new();
+            foreach (var q in questions)
+                if (!answerDrafts.ContainsKey(q.Id)) answerDrafts[q.Id] = "";
             var r = await Api.GetMeliQuestionsUnreadCountAsync();
             if (r is not null) { unread = r; lastCount = r.NotSeen; }
             ToastService.Success("Lista actualizada");
