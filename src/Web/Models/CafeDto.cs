@@ -643,6 +643,7 @@ public class CafeMarcaDto
     public string? Notas { get; set; }
     public bool IsActive { get; set; }
     public bool BloqueaDescuento { get; set; }
+    public decimal MargenPctSobreCosto { get; set; } = 100m;
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
     public int ProductosCount { get; set; }
@@ -654,6 +655,7 @@ public class CreateCafeMarcaRequest
     public string Nombre { get; set; } = "";
     public int? ProveedorId { get; set; }
     public string? Notas { get; set; }
+    public decimal? MargenPctSobreCosto { get; set; }
 }
 
 public class UpdateCafeMarcaRequest
@@ -664,6 +666,7 @@ public class UpdateCafeMarcaRequest
     public string? Notas { get; set; }
     public bool? IsActive { get; set; }
     public bool? BloqueaDescuento { get; set; }
+    public decimal? MargenPctSobreCosto { get; set; }
 }
 
 // === Kits (productos compuestos / BOM) ===

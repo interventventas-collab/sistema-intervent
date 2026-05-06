@@ -2236,6 +2236,11 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'BloqueaDescuento' AND Object_ID = Object_ID('Cafe_Marcas'))
     ALTER TABLE Cafe_Marcas ADD BloqueaDescuento BIT NOT NULL DEFAULT 0;
 GO
+-- Cafe_Marcas: margen sobre costo (% para PVP automatico de productos OTROS).
+-- Default 100% (PVP = costo × 2). Editable por marca.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'MargenPctSobreCosto' AND Object_ID = Object_ID('Cafe_Marcas'))
+    ALTER TABLE Cafe_Marcas ADD MargenPctSobreCosto DECIMAL(7,2) NOT NULL DEFAULT 100;
+GO
 
 -- =============================================================================
 -- Kits del modulo Cafe (productos compuestos con BOM/Bill of Materials).

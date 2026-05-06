@@ -540,6 +540,7 @@ public record CafeMarcaDto(
     int Id, string Nombre,
     int? ProveedorId, string? ProveedorNombre,
     string? Notas, bool IsActive, bool BloqueaDescuento,
+    decimal MargenPctSobreCosto,
     DateTime CreatedAt, DateTime? UpdatedAt,
     int ProductosCount, int OemsCount);
 
@@ -548,6 +549,7 @@ public class CreateCafeMarcaRequest
     public string Nombre { get; set; } = string.Empty;
     public int? ProveedorId { get; set; }
     public string? Notas { get; set; }
+    public decimal? MargenPctSobreCosto { get; set; }
 }
 
 public class UpdateCafeMarcaRequest
@@ -558,6 +560,7 @@ public class UpdateCafeMarcaRequest
     public string? Notas { get; set; }
     public bool? IsActive { get; set; }
     public bool? BloqueaDescuento { get; set; }
+    public decimal? MargenPctSobreCosto { get; set; }
 }
 
 // ===== Descuentos por canal x marca =====

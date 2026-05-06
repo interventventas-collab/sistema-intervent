@@ -164,6 +164,16 @@
                     }
                     <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Quién te vende esta marca (opcional).</p>
                 </div>
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Margen % sobre costo (productos OTROS)</label>
+                        <input class="form-input" type="number" step="0.01" min="0" @bind="formMargenPct" placeholder="100" />
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
+                            % de margen para calcular el "PVP por %" de productos OTROS de esta marca.
+                            Default 100 (PVP = costo × 2). Ej: 80 → costo × 1,80.
+                        </p>
+                    </div>
+                </div>
                 <div class="form-group">
                     <label class="form-label">Notas</label>
                     <textarea class="form-input" rows="2" @bind="formNotas"></textarea>
@@ -228,6 +238,7 @@
     private string proveedorSearch = "";
     private bool proveedorSearchOpen;
     private string formNotas = "";
+    private decimal formMargenPct = 100m;
     private bool formIsActive = true;
 
     private CafeMarcaDto? toDelete;
@@ -268,7 +279,7 @@
     {
         editing = null;
         formNombre = ""; formProveedorId = 0; proveedorSearch = ""; proveedorSearchOpen = false;
-        formNotas = ""; formIsActive = true;
+        formNotas = ""; formIsActive = true; formMargenPct = 100m;
         formError = null; showForm = true;
     }
 
@@ -280,6 +291,7 @@
         proveedorSearch = ""; proveedorSearchOpen = false;
         formNotas = m.Notas ?? "";
         formIsActive = m.IsActive;
+        formMargenPct = m.MargenPctSobreCosto;
         formError = null; showForm = true;
     }
 
@@ -312,7 +324,8 @@
                 {
                     Nombre = formNombre,
                     ProveedorId = formProveedorId > 0 ? formProveedorId : null,
-                    Notas = formNotas
+                    Notas = formNotas,
+                    MargenPctSobreCosto = formMargenPct
                 });
                 ToastService.Success("Marca creada");
             }
@@ -324,7 +337,8 @@
                     ProveedorId = formProveedorId > 0 ? formProveedorId : null,
                     ClearProveedor = formProveedorId <= 0,
                     Notas = formNotas,
-                    IsActive = formIsActive
+                    IsActive = formIsActive,
+                    MargenPctSobreCosto = formMargenPct
                 });
                 ToastService.Success("Marca actualizada");
             }

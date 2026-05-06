@@ -27,6 +27,11 @@ public class CafeMarca
     /// <summary>Marcas propias (Frikaf) bloquean descuentos: siempre se cobra 100%.</summary>
     public bool BloqueaDescuento { get; set; } = false;
 
+    /// <summary>% de margen sobre el costo para calcular el "PVP por %" de productos OTROS de esta marca.
+    /// Default 100% (PVP = costo × 2).</summary>
+    [System.ComponentModel.DataAnnotations.Schema.Column(TypeName = "decimal(7,2)")]
+    public decimal MargenPctSobreCosto { get; set; } = 100m;
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }
