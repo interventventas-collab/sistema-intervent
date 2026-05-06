@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @inject ApiClient Api
 @inject ToastService ToastService
+@inject CpService CpService
 
 <div class="card">
     <div class="card-header">
@@ -91,13 +92,16 @@
                 <input class="form-input" @bind="negocioDireccion" placeholder="Calle, número, piso/dpto" />
             </div>
             <div class="form-row">
-                <div class="form-group" style="flex: 2;">
-                    <label class="form-label">Localidad</label>
-                    <input class="form-input" @bind="negocioLocalidad" placeholder="Ciudad Autónoma de Buenos Aires" />
-                </div>
                 <div class="form-group" style="flex: 1;">
                     <label class="form-label">CP</label>
-                    <input class="form-input" @bind="negocioCp" placeholder="1050" />
+                    <input class="form-input" value="@negocioCp"
+                           @oninput="@(e => OnNegocioCpInput(e.Value?.ToString()))"
+                           maxlength="4" placeholder="1050" />
+                    <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">4 dígitos. Auto-completa localidad y provincia.</p>
+                </div>
+                <div class="form-group" style="flex: 2;">
+                    <label class="form-label">Localidad</label>
+                    <input class="form-input" @bind="negocioLocalidad" placeholder="Ej: La Plata" />
                 </div>
             </div>
             <div class="form-row">
@@ -202,6 +206,19 @@
     private string negocioRazonSocial = "", negocioCondicionIva = "", negocioIngresosBrutos = "";
     private DateTime? negocioInicioActividad;
     private string negocioLocalidad = "", negocioCp = "";
+
+    private async Task OnNegocioCpInput(string? value)
+    {
+        var v = (value ?? "").Trim();
+        if (v.Length > 4) v = v.Substring(0, 4);
+        negocioCp = v;
+        if (v.Length == 4 && v.All(char.IsDigit))
+        {
+            var hit = await CpService.LookupAsync(v);
+            if (hit is not null && string.IsNullOrWhiteSpace(negocioLocalidad))
+                negocioLocalidad = hit.l + (string.IsNullOrEmpty(hit.p) ? "" : ", " + hit.p);
+        }
+    }
     private bool isUploadingLogo;
     private string? uploadLogoError;
     private string waTemplate = "Hola! Te escribo por el comprobante {numero} (total ${total}). Gracias!";

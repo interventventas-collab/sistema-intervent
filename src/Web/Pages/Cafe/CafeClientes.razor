@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @inject ApiClient Api
 @inject ToastService ToastService
+@inject CpService CpService
 
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
@@ -153,17 +154,20 @@
                     <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Domicilio fiscal del cliente (la dirección legal).</p>
                 </div>
                 <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">CP</label>
+                        <input class="form-input" value="@formCp"
+                               @oninput="@(e => OnFormCpInput(e.Value?.ToString()))"
+                               maxlength="4" placeholder="1900" />
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">4 dígitos. Auto-completa.</p>
+                    </div>
                     <div class="form-group" style="flex: 2;">
                         <label class="form-label">Localidad</label>
                         <input class="form-input" @bind="formLocalidad" placeholder="Ej: La Plata" />
                     </div>
                     <div class="form-group" style="flex: 2;">
-                        <label class="form-label">Ciudad / Provincia</label>
+                        <label class="form-label">Provincia</label>
                         <input class="form-input" @bind="formCiudad" placeholder="Ej: Buenos Aires" />
-                    </div>
-                    <div class="form-group" style="flex: 1;">
-                        <label class="form-label">CP</label>
-                        <input class="form-input" @bind="formCp" placeholder="1900" />
                     </div>
                 </div>
                 <div class="form-group">
@@ -259,6 +263,22 @@
     private string formNombre = "", formTipo = "OTRO", formCuit = "", formTelefono = "", formEmail = "", formDireccion = "", formNotas = "";
     private string formRazonSocial = "", formDomicilioEntrega = "", formComentariosComprobante = "";
     private string formLocalidad = "", formCiudad = "", formCp = "", formCondicionIvaDefault = "";
+
+    private async Task OnFormCpInput(string? value)
+    {
+        var v = (value ?? "").Trim();
+        if (v.Length > 4) v = v.Substring(0, 4);
+        formCp = v;
+        if (v.Length == 4 && v.All(char.IsDigit))
+        {
+            var hit = await CpService.LookupAsync(v);
+            if (hit is not null)
+            {
+                if (string.IsNullOrWhiteSpace(formLocalidad)) formLocalidad = hit.l;
+                if (string.IsNullOrWhiteSpace(formCiudad)) formCiudad = hit.p;
+            }
+        }
+    }
     private bool formIsActive = true;
     private bool showDeleteConfirm;
     private CafeClienteDto? toDelete;

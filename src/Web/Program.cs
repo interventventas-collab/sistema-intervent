@@ -24,5 +24,6 @@ builder.Services.AddScoped<BrandSettingsService>();
 builder.Services.AddScoped<OperatorService>();
 builder.Services.AddScoped<CurrentCompanyService>();
 builder.Services.AddSingleton<UploadProgressService>();
+builder.Services.AddScoped<CpService>();
 
 await builder.Build().RunAsync();
