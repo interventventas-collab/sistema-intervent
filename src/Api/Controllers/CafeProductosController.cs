@@ -81,6 +81,99 @@ public class CafeProductosController : ControllerBase
         return Ok(Map(p));
     }
 
+    /// <summary>
+    /// Preview de sincronizacion a MeLi: lista todas las publicaciones vinculadas a este cafe,
+    /// con el stock+precio actual en MeLi vs el que se va a pushear.
+    /// </summary>
+    [HttpGet("{id:int}/meli-preview")]
+    public async Task<IActionResult> MeliPreview(int id)
+    {
+        var cafe = await _db.CafeProductos.FirstOrDefaultAsync(p => p.Id == id);
+        if (cafe is null) return NotFound(new { error = "Cafe no encontrado" });
+        var settings = await _db.CafeSettings.FindAsync(1) ?? new Models.CafeSetting { Id = 1 };
+
+        var items = await _db.MeliItems
+            .Include(i => i.MeliAccount)
+            .Where(i => i.CafeProductoId == id && i.Status == "active")
+            .OrderBy(i => i.CafeFormato).ThenBy(i => i.MeliItemId)
+            .ToListAsync();
+
+        var listaKg = cafe.Pvp1 ?? cafe.Pvp2 ?? cafe.PrecioPorKg ?? 0m;
+        var rows = items.Select(it =>
+        {
+            var formato = string.IsNullOrEmpty(it.CafeFormato) ? "1KG" : it.CafeFormato;
+            decimal precioSinIva = formato switch
+            {
+                "1KG" => listaKg,
+                "MEDIO" => Math.Round(listaKg / 2m + settings.CostoFraccionamiento, 2, MidpointRounding.AwayFromZero),
+                "CUARTO" => Math.Round(listaKg / 4m + settings.CostoFraccionamiento, 2, MidpointRounding.AwayFromZero),
+                _ => listaKg
+            };
+            decimal precioConIva = cafe.IvaPct > 0
+                ? Math.Round(precioSinIva * (1m + cafe.IvaPct / 100m), 2, MidpointRounding.AwayFromZero)
+                : precioSinIva;
+            int gramosPorUnidad = formato switch { "MEDIO" => 500, "CUARTO" => 250, _ => 1000 };
+            int stockNuevo = (int)Math.Floor(cafe.StockGramos / gramosPorUnidad);
+
+            return new
+            {
+                meliItemId = it.MeliItemId,
+                title = it.Title,
+                cuenta = it.MeliAccount != null ? it.MeliAccount.Nickname : "—",
+                formato,
+                stockMeli = it.AvailableQuantity,
+                stockNuevo,
+                stockDelta = stockNuevo - it.AvailableQuantity,
+                precioMeli = it.Price,
+                precioNuevo = precioConIva,
+                precioDelta = precioConIva - it.Price,
+                cambia = stockNuevo != it.AvailableQuantity || precioConIva != it.Price
+            };
+        }).ToList();
+
+        return Ok(new
+        {
+            cafe = new { id = cafe.Id, sku = cafe.Sku, nombre = cafe.Nombre, stockGramos = cafe.StockGramos, pvp1 = cafe.Pvp1, ivaPct = cafe.IvaPct },
+            publicaciones = rows
+        });
+    }
+
+    public record PushMeliRequest(List<int>? MeliItemIds, bool PushPrice = true, bool PushStock = true);
+
+    /// <summary>
+    /// Pushea precio + stock a las publicaciones MeLi vinculadas al cafe.
+    /// Si no se pasan IDs, pushea todas. Devuelve resultado por publicacion.
+    /// </summary>
+    [HttpPost("{id:int}/push-meli")]
+    public async Task<IActionResult> PushMeli(int id, [FromBody] PushMeliRequest req, [FromServices] Api.Services.MeliItemService meliService)
+    {
+        if (!await _db.CafeProductos.AnyAsync(p => p.Id == id))
+            return NotFound(new { error = "Cafe no encontrado" });
+
+        var q = _db.MeliItems.Where(i => i.CafeProductoId == id && i.Status == "active");
+        if (req.MeliItemIds is not null && req.MeliItemIds.Count > 0)
+        {
+            var ids = req.MeliItemIds;
+            q = q.Where(i => ids.Contains(i.Id));
+        }
+        var items = await q.ToListAsync();
+
+        var results = new List<object>();
+        foreach (var it in items)
+        {
+            try
+            {
+                var r = await meliService.PushFromProductAsync(it.Id, req.PushPrice, req.PushStock);
+                results.Add(new { meliItemId = it.MeliItemId, success = r.Success, message = r.Message, pushedPrice = r.PushedPrice, pushedStock = r.PushedStock });
+            }
+            catch (Exception ex)
+            {
+                results.Add(new { meliItemId = it.MeliItemId, success = false, message = ex.Message, pushedPrice = (decimal?)null, pushedStock = (int?)null });
+            }
+        }
+        return Ok(new { total = items.Count, ok = results.Count(r => (bool)r.GetType().GetProperty("success")!.GetValue(r)!), results });
+    }
+
     [HttpGet("{id:int}/historial-precios")]
     public async Task<IActionResult> HistorialPrecios(int id)
     {

@@ -2621,3 +2621,9 @@ BEGIN
     VALUES ('SyncMeliQuestions', 'Sincronizar Preguntas MeLi', 'Polea cada 1 minuto las preguntas sin responder de todas las cuentas conectadas, para que la campanita y el sonido avisen al usuario', 'Interval', 1, 1, SYSUTCDATETIME());
 END
 GO
+
+-- MeliItems: formato del cafe (1KG | MEDIO | CUARTO) que representa cada publicacion vinculada
+-- a un CafeProducto. Sirve para el push de stock + precio desde el modulo cafe.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='CafeFormato' AND Object_ID=Object_ID('MeliItems'))
+    ALTER TABLE MeliItems ADD CafeFormato NVARCHAR(10) NULL;
+GO

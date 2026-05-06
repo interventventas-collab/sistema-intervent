@@ -44,6 +44,10 @@ public class MeliItem
     public int? CafeProductoId { get; set; }
     public CafeProducto? CafeProducto { get; set; }
 
+    /// <summary>Formato del cafe que representa esta publicacion: 1KG | MEDIO | CUARTO. Null = no aplica.</summary>
+    [System.ComponentModel.DataAnnotations.MaxLength(10)]
+    public string? CafeFormato { get; set; }
+
     public int? CafeComboId { get; set; }   // Promo de cafe fraccionado (Cafe_Combos)
     public int? CafeKitId { get; set; }     // Kit compuesto / BOM (Cafe_Kits)
     public CafeKit? CafeKit { get; set; }

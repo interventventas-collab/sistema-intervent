@@ -1755,8 +1755,8 @@ public class MeliItemService
             .FirstOrDefaultAsync(i => i.Id == meliItemId);
 
         if (item is null) throw new InvalidOperationException("Publicacion no encontrada.");
-        if (item.ProductId is null && item.ComboId is null)
-            throw new InvalidOperationException("Esta publicacion no tiene producto ni combo vinculado todavia.");
+        if (item.ProductId is null && item.ComboId is null && item.CafeProductoId is null)
+            throw new InvalidOperationException("Esta publicacion no tiene producto, combo ni cafe vinculado todavia.");
         if (item.MeliAccount is null) throw new InvalidOperationException("La cuenta de MeLi no esta cargada.");
 
         // Construir payload segun la fuente vinculada.
@@ -1764,7 +1764,38 @@ public class MeliItemService
         decimal? priceWithVat = null;
         int? stockToPush = null;
 
-        if (item.ProductId.HasValue)
+        if (item.CafeProductoId.HasValue)
+        {
+            var cafe = await _db.CafeProductos.FirstOrDefaultAsync(p => p.Id == item.CafeProductoId.Value);
+            if (cafe is null) throw new InvalidOperationException("El cafe vinculado no existe.");
+            var settings = await _db.CafeSettings.FindAsync(1) ?? new Models.CafeSetting { Id = 1 };
+            var formato = string.IsNullOrEmpty(item.CafeFormato) ? "1KG" : item.CafeFormato;
+
+            if (pushPrice)
+            {
+                // Motor del cafe: lista_kg = Pvp1; para 1/2 y 1/4, agrega costoFracc.
+                var listaKg = cafe.Pvp1 ?? cafe.Pvp2 ?? cafe.PrecioPorKg ?? 0m;
+                decimal precioSinIva = formato switch
+                {
+                    "1KG" => listaKg,
+                    "MEDIO" => Math.Round(listaKg / 2m + settings.CostoFraccionamiento, 2, MidpointRounding.AwayFromZero),
+                    "CUARTO" => Math.Round(listaKg / 4m + settings.CostoFraccionamiento, 2, MidpointRounding.AwayFromZero),
+                    _ => listaKg
+                };
+                var rate = cafe.IvaPct;
+                priceWithVat = rate > 0m
+                    ? Math.Round(precioSinIva * (1m + rate / 100m), 2, MidpointRounding.AwayFromZero)
+                    : precioSinIva;
+                payloadDict["price"] = priceWithVat;
+            }
+            if (pushStock)
+            {
+                int gramosPorUnidad = formato switch { "MEDIO" => 500, "CUARTO" => 250, _ => 1000 };
+                stockToPush = (int)Math.Floor(cafe.StockGramos / gramosPorUnidad);
+                payloadDict["available_quantity"] = stockToPush.Value;
+            }
+        }
+        else if (item.ProductId.HasValue)
         {
             var product = await _db.Products.FirstOrDefaultAsync(p => p.Id == item.ProductId.Value);
             if (product is null) throw new InvalidOperationException("El producto vinculado no existe.");
@@ -1871,7 +1902,7 @@ public class MeliItemService
         await _db.SaveChangesAsync();
 
         await _auditLog.LogAsync("MeliItem", item.MeliItemId, "PUSH_FROM_LINKED",
-            JsonSerializer.Serialize(new { productId = item.ProductId, comboId = item.ComboId, pushPrice, pushStock, priceWithVat, stock = stockToPush }));
+            JsonSerializer.Serialize(new { productId = item.ProductId, comboId = item.ComboId, cafeProductoId = item.CafeProductoId, cafeFormato = item.CafeFormato, pushPrice, pushStock, priceWithVat, stock = stockToPush }));
 
         return new MeliPushResult(true, "Publicacion actualizada en MeLi.", priceWithVat, pushStock ? stockToPush : null);
     }

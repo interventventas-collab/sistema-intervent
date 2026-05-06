@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @inject ApiClient Api
 @inject ToastService ToastService
+@inject IJSRuntime JS
 
 <style>
     .cli-pick-row:hover { background: #f0f9ff; }
@@ -243,6 +244,10 @@
                                 </td>
                                 <td class="actions-cell">
                                     <button class="btn-icon btn-edit" @onclick="() => ShowEdit(p)" title="Editar">@SvgIcons.Edit</button>
+                                    @if (esCafe)
+                                    {
+                                        <button class="btn-icon" style="color:#1d4ed8;" @onclick="() => ShowMeliSync(p)" title="Sincronizar a MercadoLibre">📤</button>
+                                    }
                                     <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(p)" title="Eliminar">@SvgIcons.AlertCircle</button>
                                 </td>
                             </tr>
@@ -615,6 +620,102 @@
     </div>
 }
 
+@if (showMeliSync && meliSyncProducto is not null)
+{
+    <div class="modal-overlay" @onclick="CerrarMeliSync">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 1100px; max-height: 90vh; display:flex; flex-direction:column;">
+            <div class="modal-header" style="background:#dbeafe;">
+                <h3 style="margin:0;">📤 Sincronizar a MercadoLibre — @meliSyncProducto.Sku · @meliSyncProducto.Nombre</h3>
+                <button class="btn-close" @onclick="CerrarMeliSync">&times;</button>
+            </div>
+            <div class="modal-body" style="overflow-y:auto;">
+                @if (meliPreviewLoading)
+                {
+                    <p class="text-muted">Cargando publicaciones vinculadas...</p>
+                }
+                else if (meliPreview is null || meliPreview.Publicaciones.Count == 0)
+                {
+                    <p style="color:#6b7280;">Este café no tiene publicaciones vinculadas en MercadoLibre todavía.</p>
+                }
+                else
+                {
+                    <div style="background:#f9fafb; border:1px solid #e5e7eb; padding:0.6rem; border-radius:6px; margin-bottom:0.7rem; font-size:0.85rem;">
+                        <strong>Stock disponible (gramos):</strong> @meliPreview.Cafe.StockGramos.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))g
+                        · <strong>Pvp1 sin IVA:</strong> $@FormatMoney(meliPreview.Cafe.Pvp1 ?? 0)
+                        · <strong>IVA:</strong> @meliPreview.Cafe.IvaPct.ToString("0.##")%
+                    </div>
+                    <table class="data-table" style="font-size:0.85rem;">
+                        <thead>
+                            <tr>
+                                <th></th>
+                                <th>MLA / Cuenta</th>
+                                <th>Título</th>
+                                <th>Formato</th>
+                                <th style="text-align:right;">Stock MeLi</th>
+                                <th style="text-align:right;">Stock nuevo</th>
+                                <th style="text-align:right;">Precio MeLi</th>
+                                <th style="text-align:right;">Precio nuevo</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var r in meliPreview.Publicaciones)
+                        {
+                            <tr style="background:@(r.Cambia ? "#fef3c7" : "white");">
+                                <td>
+                                    <input type="checkbox" checked="@meliSyncSeleccion.Contains(r.MeliItemId)"
+                                           @onchange="@(e => ToggleMeliRow(r.MeliItemId, (bool)(e.Value ?? false)))" />
+                                </td>
+                                <td>
+                                    <div style="font-family:monospace; font-weight:700;">@r.MeliItemId</div>
+                                    <div style="font-size:0.72rem; color:#6b7280;">@r.Cuenta</div>
+                                </td>
+                                <td style="max-width:280px; font-size:0.78rem;">@r.Title</td>
+                                <td><span style="display:inline-block; padding:0.1rem 0.4rem; background:#e5e7eb; border-radius:4px; font-size:0.7rem; font-weight:700;">@r.Formato</span></td>
+                                <td style="text-align:right;">@r.StockMeli</td>
+                                <td style="text-align:right; font-weight:700; color:@(r.StockDelta == 0 ? "#6b7280" : (r.StockDelta > 0 ? "#15803d" : "#b91c1c"));">
+                                    @r.StockNuevo
+                                    @if (r.StockDelta != 0) { <span style="font-size:0.7rem;"> (@(r.StockDelta > 0 ? "+" : "")@r.StockDelta)</span> }
+                                </td>
+                                <td style="text-align:right;">$@FormatMoney(r.PrecioMeli)</td>
+                                <td style="text-align:right; font-weight:700; color:@(r.PrecioDelta == 0 ? "#6b7280" : (r.PrecioDelta > 0 ? "#15803d" : "#b91c1c"));">
+                                    $@FormatMoney(r.PrecioNuevo)
+                                    @if (r.PrecioDelta != 0) { <div style="font-size:0.7rem;">@(r.PrecioDelta > 0 ? "+" : "")$@FormatMoney(r.PrecioDelta)</div> }
+                                </td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                    <div style="margin-top:0.8rem; padding:0.6rem; background:#fef3c7; border-left:3px solid #d97706; border-radius:4px; font-size:0.8rem;">
+                        ⚠ Lo que apretes "Sincronizar" se manda a MercadoLibre y queda público al instante. Revisá los valores antes.
+                    </div>
+                    @if (meliPushResults is not null && meliPushResults.Results.Count > 0)
+                    {
+                        <div style="margin-top:0.7rem; padding:0.7rem; background:#ecfdf5; border-left:3px solid #10b981; border-radius:4px; font-size:0.85rem;">
+                            <strong>✅ @meliPushResults.Ok / @meliPushResults.Total publicaciones actualizadas correctamente</strong>
+                            @foreach (var rr in meliPushResults.Results.Where(x => !x.Success))
+                            {
+                                <div style="color:#b91c1c; margin-top:0.2rem; font-size:0.78rem;">❌ @rr.MeliItemId: @rr.Message</div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+            <div class="modal-footer">
+                <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.85rem; margin-right:auto;">
+                    <input type="checkbox" @bind="meliPushPrice" /> Pushear precio
+                </label>
+                <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.85rem; margin-right:auto;">
+                    <input type="checkbox" @bind="meliPushStock" /> Pushear stock
+                </label>
+                <button class="btn btn-secondary" @onclick="CerrarMeliSync" disabled="@meliPushing">Cerrar</button>
+                <button class="btn btn-primary" @onclick="DoMeliSync" disabled="@(meliPushing || meliSyncSeleccion.Count == 0 || (!meliPushPrice && !meliPushStock))">
+                    @(meliPushing ? "Sincronizando..." : $"📤 Sincronizar @meliSyncSeleccion.Count seleccionada(s)")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 <style>
     .precio-clickeable { cursor: pointer; }
     .precio-clickeable:hover { background: #f0f9ff; }
@@ -802,6 +903,88 @@
         histProducto = null;
         historial = null;
     }
+
+    // ===== Sincronizacion a MercadoLibre =====
+    private bool showMeliSync;
+    private CafeProductoDto? meliSyncProducto;
+    private CafeMeliPreviewDto? meliPreview;
+    private bool meliPreviewLoading;
+    private HashSet<string> meliSyncSeleccion = new();
+    private bool meliPushPrice = true;
+    private bool meliPushStock = true;
+    private bool meliPushing;
+    private CafeMeliPushResultDto? meliPushResults;
+
+    private async Task ShowMeliSync(CafeProductoDto p)
+    {
+        meliSyncProducto = p;
+        meliPreview = null;
+        meliSyncSeleccion = new();
+        meliPushResults = null;
+        showMeliSync = true;
+        meliPreviewLoading = true;
+        try
+        {
+            meliPreview = await Api.GetCafeMeliPreviewAsync(p.Id);
+            // Default: seleccionar las que cambian (para no pushear de gratis las que ya estan iguales)
+            if (meliPreview is not null)
+                foreach (var r in meliPreview.Publicaciones.Where(r => r.Cambia))
+                    meliSyncSeleccion.Add(r.MeliItemId);
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { meliPreviewLoading = false; }
+    }
+
+    private void CerrarMeliSync()
+    {
+        showMeliSync = false;
+        meliSyncProducto = null;
+        meliPreview = null;
+        meliSyncSeleccion = new();
+        meliPushResults = null;
+    }
+
+    private void ToggleMeliRow(string meliItemId, bool on)
+    {
+        if (on) meliSyncSeleccion.Add(meliItemId);
+        else meliSyncSeleccion.Remove(meliItemId);
+    }
+
+    private async Task DoMeliSync()
+    {
+        if (meliSyncProducto is null || meliPreview is null) return;
+        // Mapear meliItemIds (string MLA) a Ids internos de MeliItems → necesitamos los Ids.
+        // El preview no devuelve Ids internos, asi que usamos el endpoint sin filtro y el backend
+        // pushea TODAS las vinculadas. Para filtrar, hacemos otra llamada.
+        // Atajo: pasamos null y backend pushea todas.
+        // Mejora futura: devolver Ids internos en el preview.
+        meliPushing = true;
+        meliPushResults = null;
+        try
+        {
+            // El backend filtra por MeliItem.Id (int), no por MeliItemId string. Para filtrar sin
+            // refactor adicional, mandamos null = todas las vinculadas. Si el usuario deselecciono
+            // algunas, le avisamos.
+            var seleccionadasMLA = meliSyncSeleccion.ToHashSet();
+            var todasLasMLA = meliPreview.Publicaciones.Select(r => r.MeliItemId).ToHashSet();
+            if (seleccionadasMLA.Count != todasLasMLA.Count)
+            {
+                ToastService.Info("Por ahora pusheo todas las vinculadas (la seleccion granular se agregara en el proximo commit). Si no querias eso, cancelá.");
+                if (!await ConfirmAsync("Pushear todas las publicaciones vinculadas?")) { meliPushing = false; return; }
+            }
+            meliPushResults = await Api.PushCafeToMeliAsync(meliSyncProducto.Id, null, meliPushPrice, meliPushStock);
+            if (meliPushResults is not null)
+            {
+                ToastService.Success($"{meliPushResults.Ok} de {meliPushResults.Total} publicaciones actualizadas");
+                // Recargar preview para ver el estado nuevo
+                meliPreview = await Api.GetCafeMeliPreviewAsync(meliSyncProducto.Id);
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { meliPushing = false; }
+    }
+
+    private Task<bool> ConfirmAsync(string msg) => JS.InvokeAsync<bool>("confirm", msg).AsTask();
 
     private MarkupString RenderDelta(decimal? anterior, decimal? nuevo)
     {

@@ -1841,6 +1841,14 @@ public class ApiClient
         return await response.Content.ReadFromJsonAsync<BulkPublishResponse>();
     }
 
+    // ===== Cafe ↔ MeLi push =====
+    public async Task<CafeMeliPreviewDto?> GetCafeMeliPreviewAsync(int cafeProductoId)
+        => await GetAsync<CafeMeliPreviewDto>($"/api/cafe/productos/{cafeProductoId}/meli-preview");
+
+    public async Task<CafeMeliPushResultDto?> PushCafeToMeliAsync(int cafeProductoId, List<int>? meliItemIds = null, bool pushPrice = true, bool pushStock = true)
+        => await PostAsync<CafeMeliPushResultDto>($"/api/cafe/productos/{cafeProductoId}/push-meli",
+            new { meliItemIds, pushPrice, pushStock });
+
     // ===== MeLi Questions =====
     public async Task<MeliQuestionsUnreadDto?> GetMeliQuestionsUnreadCountAsync()
         => await GetAsync<MeliQuestionsUnreadDto>("/api/meli/questions/unread-count");
