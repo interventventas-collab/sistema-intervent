@@ -215,7 +215,7 @@
         if (v.Length == 4 && v.All(char.IsDigit))
         {
             var hit = await CpService.LookupAsync(v);
-            if (hit is not null && string.IsNullOrWhiteSpace(negocioLocalidad))
+            if (hit is not null)
                 negocioLocalidad = hit.l + (string.IsNullOrEmpty(hit.p) ? "" : ", " + hit.p);
         }
     }

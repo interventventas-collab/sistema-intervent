@@ -274,8 +274,8 @@
             var hit = await CpService.LookupAsync(v);
             if (hit is not null)
             {
-                if (string.IsNullOrWhiteSpace(formLocalidad)) formLocalidad = hit.l;
-                if (string.IsNullOrWhiteSpace(formCiudad)) formCiudad = hit.p;
+                formLocalidad = hit.l;
+                formCiudad = hit.p;
             }
         }
     }
