@@ -103,6 +103,7 @@ builder.Services.AddHttpClient();
 builder.Services.AddScoped<MeliAccountService>();
 builder.Services.AddScoped<MeliOrderService>();
 builder.Services.AddScoped<MeliItemService>();
+builder.Services.AddScoped<MeliQuestionService>();
 builder.Services.AddScoped<ContabiliumStagingService>();
 builder.Services.AddScoped<CafeKitService>();
 builder.Services.AddScoped<ContabiliumCotejoService>();
@@ -144,6 +145,7 @@ builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(optio
 // Background Jobs
 builder.Services.AddSingleton<IScheduledJob, SyncMeliOrdersJob>();
 builder.Services.AddSingleton<IScheduledJob, SyncMeliItemsJob>();
+builder.Services.AddSingleton<IScheduledJob, SyncMeliQuestionsJob>();
 builder.Services.AddSingleton<IScheduledJob, ProcessOrderStockJob>();
 builder.Services.AddSingleton<IScheduledJob, BackupDatabaseJob>();
 builder.Services.AddHostedService<ProcessSchedulerService>();

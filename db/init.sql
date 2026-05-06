@@ -2585,3 +2585,39 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ClienteCpSnapshot' AND Object_ID=Object_ID('Cafe_Ventas'))
     ALTER TABLE Cafe_Ventas ADD ClienteCpSnapshot NVARCHAR(20) NULL;
 GO
+
+-- ===== MeliQuestions: preguntas de MercadoLibre con notificacion + respuesta desde la app =====
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='MeliQuestions')
+BEGIN
+    CREATE TABLE MeliQuestions (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        MeliQuestionId BIGINT NOT NULL,
+        MeliAccountId INT NOT NULL,
+        ItemId NVARCHAR(50) NOT NULL,
+        ItemTitle NVARCHAR(500) NULL,
+        ItemThumbnail NVARCHAR(500) NULL,
+        FromUserId BIGINT NOT NULL,
+        FromNickname NVARCHAR(100) NULL,
+        Text NVARCHAR(MAX) NOT NULL,
+        AnswerText NVARCHAR(MAX) NULL,
+        Status NVARCHAR(30) NOT NULL CONSTRAINT DF_MeliQuestions_Status DEFAULT 'UNANSWERED',
+        DateCreated DATETIME2 NOT NULL,
+        DateAnswered DATETIME2 NULL,
+        SeenAt DATETIME2 NULL,
+        LastSyncedAt DATETIME2 NOT NULL CONSTRAINT DF_MeliQuestions_LastSync DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT UQ_MeliQuestions_QuestionId UNIQUE (MeliQuestionId),
+        CONSTRAINT FK_MeliQuestions_MeliAccount FOREIGN KEY (MeliAccountId) REFERENCES MeliAccounts(Id)
+    );
+    CREATE INDEX IX_MeliQuestions_Status ON MeliQuestions(Status);
+    CREATE INDEX IX_MeliQuestions_DateCreated ON MeliQuestions(DateCreated DESC);
+    CREATE INDEX IX_MeliQuestions_AccountId ON MeliQuestions(MeliAccountId);
+END
+GO
+
+-- Job: sincronizar preguntas de MeLi (UNANSWERED) cada 1 minuto
+IF NOT EXISTS (SELECT * FROM ScheduledProcesses WHERE Code = 'SyncMeliQuestions')
+BEGIN
+    INSERT INTO ScheduledProcesses (Code, Name, Description, TriggerType, IntervalMinutes, IsEnabled)
+    VALUES ('SyncMeliQuestions', 'Sincronizar Preguntas MeLi', 'Polea cada 1 minuto las preguntas sin responder de todas las cuentas conectadas, para que la campanita y el sonido avisen al usuario', 'Interval', 1, 1);
+END
+GO

@@ -13,6 +13,7 @@ public class AppDbContext : DbContext
     public DbSet<MeliAccount> MeliAccounts => Set<MeliAccount>();
     public DbSet<MeliOrder> MeliOrders => Set<MeliOrder>();
     public DbSet<MeliItem> MeliItems => Set<MeliItem>();
+    public DbSet<MeliQuestion> MeliQuestions => Set<MeliQuestion>();
     public DbSet<ContabProducto> ContabProductos => Set<ContabProducto>();
     public DbSet<ContabCombo> ContabCombos => Set<ContabCombo>();
     public DbSet<ContabComboItem> ContabComboItems => Set<ContabComboItem>();
