@@ -709,7 +709,7 @@
                 </label>
                 <button class="btn btn-secondary" @onclick="CerrarMeliSync" disabled="@meliPushing">Cerrar</button>
                 <button class="btn btn-primary" @onclick="DoMeliSync" disabled="@(meliPushing || meliSyncSeleccion.Count == 0 || (!meliPushPrice && !meliPushStock))">
-                    @(meliPushing ? "Sincronizando..." : $"📤 Sincronizar @meliSyncSeleccion.Count seleccionada(s)")
+                    @(meliPushing ? "Sincronizando..." : $"📤 Sincronizar {meliSyncSeleccion.Count} seleccionada(s)")
                 </button>
             </div>
         </div>
