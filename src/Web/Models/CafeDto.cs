@@ -86,9 +86,18 @@ public class CafeProductoDto
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 
+    // Datos del OEM (si esta vinculado). Permiten mostrar el sugerido del OEM en el listado.
+    public decimal? OemPvpConIva { get; set; }
+    public decimal? OemIvaPct { get; set; }
+
     // Calculados — Pvp1/Pvp2 se guardan SIN IVA. Multiplicar por (1 + IvaPct/100) da el con IVA.
     public decimal? Pvp1ConIva => Pvp1.HasValue ? Math.Round(Pvp1.Value * (1 + IvaPct / 100m), 2) : null;
     public decimal? Pvp2ConIva => Pvp2.HasValue ? Math.Round(Pvp2.Value * (1 + IvaPct / 100m), 2) : null;
+
+    // OEM "sin IVA" calculado a partir del PvpConIva del OEM. Cuando hay OEM linkeado, este es el "sugerido real".
+    public decimal? OemPvpSinIva => OemPvpConIva.HasValue && OemIvaPct.HasValue && OemIvaPct.Value > 0
+        ? Math.Round(OemPvpConIva.Value / (1 + OemIvaPct.Value / 100m), 2)
+        : OemPvpConIva;
 }
 
 public class CreateCafeProductoRequest

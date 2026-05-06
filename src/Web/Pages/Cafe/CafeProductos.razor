@@ -196,29 +196,31 @@
                                 }
                                 else
                                 {
+                                    @* PVP BARES: costo × (1 + (BarPctSobreCosto ?? 100)/100). Default 100% si no hay margen específico. *@
                                     <td style="text-align: right; font-weight: 700; color: #1d4ed8;" class="precio-clickeable" title="Ver historial" @onclick="() => ShowHistorial(p)">
-                                        @if (p.BarPctSobreCosto.HasValue)
+                                        @if (p.Costo > 0)
                                         {
-                                            var precioBar = p.Costo * (1m + p.BarPctSobreCosto.Value / 100m);
+                                            var pctBar = p.BarPctSobreCosto ?? 100m;
+                                            var precioBar = Math.Round(p.Costo * (1m + pctBar / 100m), 2);
                                             var precioBarConIva = Math.Round(precioBar * (1 + p.IvaPct / 100m), 2);
                                             <div>$@FormatMoney(precioBar)</div>
-                                            <div style="font-size: 0.66rem; color: #6b7280; font-weight: 500;">+@p.BarPctSobreCosto.Value.ToString("0.##")% · c/IVA $@FormatMoney(precioBarConIva)</div>
+                                            <div style="font-size: 0.66rem; color: #6b7280; font-weight: 500;">
+                                                +@pctBar.ToString("0.##")%@(p.BarPctSobreCosto.HasValue ? "" : " (default)") · c/IVA $@FormatMoney(precioBarConIva)
+                                            </div>
+                                        }
+                                        else { <span>—</span> }
+                                    </td>
+                                    @* PVP SUGERIDO: del OEM si está vinculado (lo "real"); fallback al Pvp2 cargado en el producto. *@
+                                    <td style="text-align: right; font-weight: 700; color: #15803d;" class="precio-clickeable" title="Ver historial" @onclick="() => ShowHistorial(p)">
+                                        @if (p.OemPvpConIva.HasValue)
+                                        {
+                                            <div>$@FormatMoney(p.OemPvpSinIva!.Value)</div>
+                                            <div style="font-size: 0.7rem; color: #6b7280; font-weight: 500;">del OEM · c/IVA $@FormatMoney(p.OemPvpConIva.Value)</div>
                                         }
                                         else if (p.Pvp2.HasValue)
                                         {
-                                            <div style="color: #6b7280;">$@FormatMoney(p.Pvp2.Value)</div>
-                                            <div style="font-size: 0.66rem; color: #9ca3af; font-weight: 500;">igual a OTRO · c/IVA $@FormatMoney(p.Pvp2ConIva!.Value)</div>
-                                        }
-                                        else
-                                        {
-                                            <span>—</span>
-                                        }
-                                    </td>
-                                    <td style="text-align: right; font-weight: 700; color: #15803d;" class="precio-clickeable" title="Ver historial" @onclick="() => ShowHistorial(p)">
-                                        @if (p.Pvp2.HasValue)
-                                        {
                                             <div>$@FormatMoney(p.Pvp2.Value)</div>
-                                            <div style="font-size: 0.7rem; color: #6b7280; font-weight: 500;">c/IVA $@FormatMoney(p.Pvp2ConIva!.Value)</div>
+                                            <div style="font-size: 0.7rem; color: #9ca3af; font-weight: 500;">sin OEM · c/IVA $@FormatMoney(p.Pvp2ConIva!.Value)</div>
                                         }
                                         else { <span>—</span> }
                                     </td>

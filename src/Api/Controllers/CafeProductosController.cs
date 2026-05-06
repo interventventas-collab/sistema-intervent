@@ -26,7 +26,8 @@ public class CafeProductosController : ControllerBase
         p.BarPctSobreCosto, p.UxB,
         p.OemId, p.OemNav?.Codigo,
         p.StockGramos, p.StockUnidades,
-        p.Notas, p.IsActive, p.IvaPct, p.CreatedAt, p.UpdatedAt);
+        p.Notas, p.IsActive, p.IvaPct, p.CreatedAt, p.UpdatedAt,
+        p.OemNav?.PvpConIva, p.OemNav?.IvaPct);
 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] string? categoria = null)

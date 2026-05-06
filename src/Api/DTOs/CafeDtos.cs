@@ -60,7 +60,8 @@ public record CafeProductoDto(
     decimal StockGramos, int StockUnidades,
     string? Notas, bool IsActive,
     decimal IvaPct,
-    DateTime CreatedAt, DateTime? UpdatedAt);
+    DateTime CreatedAt, DateTime? UpdatedAt,
+    decimal? OemPvpConIva = null, decimal? OemIvaPct = null);
 
 public class CreateCafeProductoRequest
 {
