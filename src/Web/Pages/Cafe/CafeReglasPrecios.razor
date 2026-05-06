@@ -72,11 +72,7 @@
                 Si una marca debería tener un descuento distinto al general, agregalo acá.
             </p>
 
-            @{
-                var overrides = data.Reglas.Where(r => r.MarcaId.HasValue)
-                    .OrderBy(r => r.TipoCliente).ThenBy(r => r.Categoria).ThenBy(r => r.MarcaNombre).ToList();
-            }
-            @if (overrides.Count == 0)
+            @if (Overrides.Count == 0)
             {
                 <p style="font-size:0.82rem; color:#9ca3af; padding:0.5rem 0;">No hay excepciones cargadas.</p>
             }
@@ -93,7 +89,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                    @foreach (var o in overrides)
+                    @foreach (var o in Overrides)
                     {
                         var key = $"{o.TipoCliente}|{o.Categoria}|{o.MarcaId}";
                         <tr>
@@ -157,6 +153,11 @@
     private List<CafeMarcaDto>? marcas;
     private Dictionary<string, string> ediciones = new();
     private bool isBusy;
+
+    private List<CafeReglaPrecioDto> Overrides => data is null
+        ? new()
+        : data.Reglas.Where(r => r.MarcaId.HasValue)
+            .OrderBy(r => r.TipoCliente).ThenBy(r => r.Categoria).ThenBy(r => r.MarcaNombre).ToList();
 
     private string addTipo = "BAR";
     private string addCategoria = "CAFE";
