@@ -22,6 +22,8 @@ public class CafeMeliPreviewRow
     public string Title { get; set; } = "";
     public string? Cuenta { get; set; }
     public string Formato { get; set; } = "1KG";
+    public string? LogisticType { get; set; }
+    public bool EsFull { get; set; }
     public int StockMeli { get; set; }
     public int StockNuevo { get; set; }
     public int StockDelta { get; set; }

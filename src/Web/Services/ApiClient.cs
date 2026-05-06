@@ -1849,6 +1849,9 @@ public class ApiClient
         => await PostAsync<CafeMeliPushResultDto>($"/api/cafe/productos/{cafeProductoId}/push-meli",
             new { meliItemIds, pushPrice, pushStock });
 
+    public async Task<object?> RefreshCafeMeliLogisticAsync(int cafeProductoId)
+        => await PostAsync<object>($"/api/cafe/productos/{cafeProductoId}/refresh-meli-logistic", new { });
+
     // ===== MeLi Questions =====
     public async Task<MeliQuestionsUnreadDto?> GetMeliQuestionsUnreadCountAsync()
         => await GetAsync<MeliQuestionsUnreadDto>("/api/meli/questions/unread-count");

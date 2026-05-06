@@ -48,6 +48,10 @@ public class MeliItem
     [System.ComponentModel.DataAnnotations.MaxLength(10)]
     public string? CafeFormato { get; set; }
 
+    /// <summary>Tipo de logistica MeLi: fulfillment (Full) | drop_off | cross_docking | xd_drop_off | not_specified. Null = todavia no consultado.</summary>
+    [System.ComponentModel.DataAnnotations.MaxLength(30)]
+    public string? LogisticType { get; set; }
+
     public int? CafeComboId { get; set; }   // Promo de cafe fraccionado (Cafe_Combos)
     public int? CafeKitId { get; set; }     // Kit compuesto / BOM (Cafe_Kits)
     public CafeKit? CafeKit { get; set; }

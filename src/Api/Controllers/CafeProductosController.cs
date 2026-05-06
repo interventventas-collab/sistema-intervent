@@ -115,12 +115,15 @@ public class CafeProductosController : ControllerBase
             int gramosPorUnidad = formato switch { "MEDIO" => 500, "CUARTO" => 250, _ => 1000 };
             int stockNuevo = (int)Math.Floor(cafe.StockGramos / gramosPorUnidad);
 
+            bool esFull = string.Equals(it.LogisticType, "fulfillment", StringComparison.OrdinalIgnoreCase);
             return new
             {
                 meliItemId = it.MeliItemId,
                 title = it.Title,
                 cuenta = it.MeliAccount != null ? it.MeliAccount.Nickname : "—",
                 formato,
+                logisticType = it.LogisticType,
+                esFull,
                 stockMeli = it.AvailableQuantity,
                 stockNuevo,
                 stockDelta = stockNuevo - it.AvailableQuantity,
@@ -136,6 +139,66 @@ public class CafeProductosController : ControllerBase
             cafe = new { id = cafe.Id, sku = cafe.Sku, nombre = cafe.Nombre, stockGramos = cafe.StockGramos, pvp1 = cafe.Pvp1, ivaPct = cafe.IvaPct },
             publicaciones = rows
         });
+    }
+
+    /// <summary>
+    /// Consulta a MeLi el tipo de logistica (Full, drop_off, etc.) de cada publicacion vinculada al cafe
+    /// y actualiza la columna LogisticType. Necesario para no pushear stock a publicaciones Full.
+    /// </summary>
+    [HttpPost("{id:int}/refresh-meli-logistic")]
+    public async Task<IActionResult> RefreshMeliLogistic(int id, [FromServices] Api.Services.MeliAccountService accountService, [FromServices] IHttpClientFactory httpFactory)
+    {
+        var items = await _db.MeliItems
+            .Include(i => i.MeliAccount)
+            .Where(i => i.CafeProductoId == id && i.Status == "active")
+            .ToListAsync();
+        if (items.Count == 0) return Ok(new { updated = 0, items = new object[0] });
+
+        int updated = 0;
+        var details = new List<object>();
+        foreach (var item in items)
+        {
+            try
+            {
+                if (item.MeliAccount is null) { details.Add(new { item.MeliItemId, error = "sin cuenta" }); continue; }
+                var token = await accountService.GetValidTokenAsync(item.MeliAccount);
+                if (token is null) { details.Add(new { item.MeliItemId, error = "sin token" }); continue; }
+
+                var http = httpFactory.CreateClient();
+                http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                var url = $"https://api.mercadolibre.com/items/{item.MeliItemId}?attributes=shipping";
+                var resp = await http.GetAsync(url);
+                if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized || resp.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                {
+                    var newTok = await accountService.GetValidTokenAsync(item.MeliAccount, forceRefresh: true);
+                    if (newTok is not null)
+                    {
+                        http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", newTok);
+                        resp = await http.GetAsync(url);
+                    }
+                }
+                if (!resp.IsSuccessStatusCode) { details.Add(new { item.MeliItemId, error = $"http {(int)resp.StatusCode}" }); continue; }
+
+                var body = await resp.Content.ReadAsStringAsync();
+                var doc = System.Text.Json.JsonDocument.Parse(body).RootElement;
+                string? logistic = null;
+                if (doc.TryGetProperty("shipping", out var sh) && sh.ValueKind == System.Text.Json.JsonValueKind.Object)
+                {
+                    if (sh.TryGetProperty("logistic_type", out var lt) && lt.ValueKind == System.Text.Json.JsonValueKind.String)
+                        logistic = lt.GetString();
+                }
+                item.LogisticType = logistic;
+                item.UpdatedAt = DateTime.UtcNow;
+                updated++;
+                details.Add(new { item.MeliItemId, logistic });
+            }
+            catch (Exception ex)
+            {
+                details.Add(new { item.MeliItemId, error = ex.Message });
+            }
+        }
+        await _db.SaveChangesAsync();
+        return Ok(new { updated, total = items.Count, items = details });
     }
 
     public record PushMeliRequest(List<int>? MeliItemIds, bool PushPrice = true, bool PushStock = true);

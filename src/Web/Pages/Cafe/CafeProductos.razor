@@ -639,11 +639,22 @@
                 }
                 else
                 {
-                    <div style="background:#f9fafb; border:1px solid #e5e7eb; padding:0.6rem; border-radius:6px; margin-bottom:0.7rem; font-size:0.85rem;">
-                        <strong>Stock disponible (gramos):</strong> @meliPreview.Cafe.StockGramos.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))g
-                        · <strong>Pvp1 sin IVA:</strong> $@FormatMoney(meliPreview.Cafe.Pvp1 ?? 0)
-                        · <strong>IVA:</strong> @meliPreview.Cafe.IvaPct.ToString("0.##")%
+                    <div style="background:#f9fafb; border:1px solid #e5e7eb; padding:0.6rem; border-radius:6px; margin-bottom:0.7rem; font-size:0.85rem; display:flex; justify-content:space-between; align-items:center; gap:0.6rem;">
+                        <div>
+                            <strong>Stock disponible (gramos):</strong> @meliPreview.Cafe.StockGramos.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))g
+                            · <strong>Pvp1 sin IVA:</strong> $@FormatMoney(meliPreview.Cafe.Pvp1 ?? 0)
+                            · <strong>IVA:</strong> @meliPreview.Cafe.IvaPct.ToString("0.##")%
+                        </div>
+                        <button class="btn btn-secondary" style="font-size:0.78rem; padding:0.3rem 0.6rem;" @onclick="DetectarLogisticType" disabled="@meliRefreshingLogistic">
+                            @(meliRefreshingLogistic ? "Detectando..." : "🔍 Detectar Full / Propio")
+                        </button>
                     </div>
+                    @if (meliPreview.Publicaciones.Any(p => string.IsNullOrEmpty(p.LogisticType)))
+                    {
+                        <div style="background:#fee2e2; border-left:3px solid #b91c1c; padding:0.5rem 0.7rem; margin-bottom:0.7rem; font-size:0.78rem; color:#7f1d1d;">
+                            ⚠ Hay publicaciones sin tipo de logística cargado. Tocá <strong>"🔍 Detectar Full / Propio"</strong> antes de sincronizar para que el sistema sepa cuáles son Full (no pushea stock a Full).
+                        </div>
+                    }
                     <table class="data-table" style="font-size:0.85rem;">
                         <thead>
                             <tr>
@@ -651,6 +662,7 @@
                                 <th>MLA / Cuenta</th>
                                 <th>Título</th>
                                 <th>Formato</th>
+                                <th>Logística</th>
                                 <th style="text-align:right;">Stock MeLi</th>
                                 <th style="text-align:right;">Stock nuevo</th>
                                 <th style="text-align:right;">Precio MeLi</th>
@@ -671,10 +683,23 @@
                                 </td>
                                 <td style="max-width:280px; font-size:0.78rem;">@r.Title</td>
                                 <td><span style="display:inline-block; padding:0.1rem 0.4rem; background:#e5e7eb; border-radius:4px; font-size:0.7rem; font-weight:700;">@r.Formato</span></td>
+                                <td>
+                                    @if (r.EsFull)
+                                    { <span style="display:inline-block; padding:0.1rem 0.4rem; background:#fef3c7; border:1px solid #d97706; border-radius:4px; font-size:0.7rem; font-weight:700; color:#92400e;" title="Mercado Envíos Full — el stock lo administra MeLi, no se puede pushear stock desde acá">🏢 FULL</span> }
+                                    else if (string.IsNullOrEmpty(r.LogisticType))
+                                    { <span style="font-size:0.7rem; color:#9ca3af;">— sin detectar —</span> }
+                                    else
+                                    { <span style="display:inline-block; padding:0.1rem 0.4rem; background:#dcfce7; border:1px solid #16a34a; border-radius:4px; font-size:0.7rem; font-weight:700; color:#166534;" title="@r.LogisticType">🚚 Propio</span> }
+                                </td>
                                 <td style="text-align:right;">@r.StockMeli</td>
-                                <td style="text-align:right; font-weight:700; color:@(r.StockDelta == 0 ? "#6b7280" : (r.StockDelta > 0 ? "#15803d" : "#b91c1c"));">
-                                    @r.StockNuevo
-                                    @if (r.StockDelta != 0) { <span style="font-size:0.7rem;"> (@(r.StockDelta > 0 ? "+" : "")@r.StockDelta)</span> }
+                                <td style="text-align:right; font-weight:700; color:@(r.EsFull ? "#9ca3af" : (r.StockDelta == 0 ? "#6b7280" : (r.StockDelta > 0 ? "#15803d" : "#b91c1c")));">
+                                    @if (r.EsFull)
+                                    { <span style="text-decoration:line-through; font-size:0.78rem;">@r.StockNuevo</span> <span style="font-size:0.65rem; color:#92400e;"> (Full)</span> }
+                                    else
+                                    {
+                                        @r.StockNuevo
+                                        @if (r.StockDelta != 0) { <span style="font-size:0.7rem;"> (@(r.StockDelta > 0 ? "+" : "")@r.StockDelta)</span> }
+                                    }
                                 </td>
                                 <td style="text-align:right;">$@FormatMoney(r.PrecioMeli)</td>
                                 <td style="text-align:right; font-weight:700; color:@(r.PrecioDelta == 0 ? "#6b7280" : (r.PrecioDelta > 0 ? "#15803d" : "#b91c1c"));">
@@ -913,7 +938,22 @@
     private bool meliPushPrice = true;
     private bool meliPushStock = true;
     private bool meliPushing;
+    private bool meliRefreshingLogistic;
     private CafeMeliPushResultDto? meliPushResults;
+
+    private async Task DetectarLogisticType()
+    {
+        if (meliSyncProducto is null) return;
+        meliRefreshingLogistic = true;
+        try
+        {
+            await Api.RefreshCafeMeliLogisticAsync(meliSyncProducto.Id);
+            meliPreview = await Api.GetCafeMeliPreviewAsync(meliSyncProducto.Id);
+            ToastService.Success("Tipo de logística detectado para todas las publicaciones");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { meliRefreshingLogistic = false; }
+    }
 
     private async Task ShowMeliSync(CafeProductoDto p)
     {

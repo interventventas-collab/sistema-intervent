@@ -2627,3 +2627,9 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='CafeFormato' AND Object_ID=Object_ID('MeliItems'))
     ALTER TABLE MeliItems ADD CafeFormato NVARCHAR(10) NULL;
 GO
+
+-- MeliItems: tipo de logistica (fulfillment=Full / drop_off / cross_docking / etc.)
+-- Sirve para no pushear stock a publicaciones Full (la API estandar no lo permite).
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='LogisticType' AND Object_ID=Object_ID('MeliItems'))
+    ALTER TABLE MeliItems ADD LogisticType NVARCHAR(30) NULL;
+GO

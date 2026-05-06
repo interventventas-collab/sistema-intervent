@@ -1770,6 +1770,13 @@ public class MeliItemService
             if (cafe is null) throw new InvalidOperationException("El cafe vinculado no existe.");
             var settings = await _db.CafeSettings.FindAsync(1) ?? new Models.CafeSetting { Id = 1 };
             var formato = string.IsNullOrEmpty(item.CafeFormato) ? "1KG" : item.CafeFormato;
+            // Si es Full (Mercado Envios Full), el stock lo administra ML — no se puede pushear via API estandar de items.
+            bool esFull = string.Equals(item.LogisticType, "fulfillment", StringComparison.OrdinalIgnoreCase);
+            if (esFull && pushStock && !pushPrice)
+            {
+                return new MeliPushResult(false, "Esta publicación es Full — el stock lo administra MercadoLibre y no se puede actualizar desde acá.", null, null);
+            }
+            if (esFull && pushStock) pushStock = false;
 
             if (pushPrice)
             {
