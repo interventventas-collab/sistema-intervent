@@ -108,10 +108,10 @@
            Solo visible para INTERVENT (es la unica empresa que vende por ML).
            Si no hay empresa elegida, se sigue mostrando para no esconderlo a usuarios viejos.
            Re-vincular publicaciones vive aca (es una accion de ML, no de inventario). *@
-        @if ((HasPerm("publicaciones") || HasPerm("ordenes") || HasPerm("import-productos")) && (!Company.HasCompany || string.Equals(Company.Current, "INTERVENT", StringComparison.OrdinalIgnoreCase)))
+        @if ((HasPerm("publicaciones") || HasPerm("ordenes") || HasPerm("import-productos") || HasPerm("mapeo")) && (!Company.HasCompany || string.Equals(Company.Current, "INTERVENT", StringComparison.OrdinalIgnoreCase)))
         {
             <NavGroup Label="MercadoLibre" Icon="@SvgIcons.Store"
-                      HasActiveChild="@(IsActive("/publicaciones") || IsActive("/ordenes") || IsActive("/relink-meli-orphans"))">
+                      HasActiveChild="@(IsActive("/publicaciones") || IsActive("/ordenes") || IsActive("/relink-meli-orphans") || IsActive("/mapeo"))">
                 @if (HasPerm("publicaciones"))
                 {
                     <NavItem Href="/publicaciones" Label="Publicaciones" Icon="@SvgIcons.Tag"
@@ -121,6 +121,11 @@
                 {
                     <NavItem Href="/ordenes" Label="Ordenes" Icon="@SvgIcons.ShoppingBag"
                              IsActive="@IsActive("/ordenes")" OnClick="@(() => NavigateTo("/ordenes"))" />
+                }
+                @if (HasPerm("mapeo"))
+                {
+                    <NavItem Href="/mapeo" Label="Mapeo" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive("/mapeo")" OnClick="@(() => NavigateTo("/mapeo"))" />
                 }
                 @if (HasPerm("import-productos"))
                 {
@@ -532,6 +537,7 @@
         { "", "dashboard" },
         { "publicaciones", "publicaciones" },
         { "ordenes", "ordenes" },
+        { "mapeo", "mapeo" },
         { "tesoreria", "tesoreria" },
         { "empleados", "empleados" },
         { "sueldos", "sueldos" },

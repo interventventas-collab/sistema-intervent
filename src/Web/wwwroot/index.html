@@ -9,6 +9,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
     <link rel="stylesheet" href="css/app.css" />
 </head>
 <body>
@@ -19,6 +21,56 @@
     </div>
 
     <script src="_framework/blazor.webassembly.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script>
+        // Helper para el modulo de Mapeo Flex
+        window.mapeoFlex = (function () {
+            let map = null;
+            let layer = null;
+            let dotNetRef = null;
+            return {
+                init(elementId, dotnetHelper) {
+                    dotNetRef = dotnetHelper;
+                    if (map) { map.remove(); map = null; }
+                    map = L.map(elementId).setView([-34.6037, -58.3816], 11); // CABA por default
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        maxZoom: 19,
+                        attribution: '© OpenStreetMap'
+                    }).addTo(map);
+                    layer = L.layerGroup().addTo(map);
+                },
+                renderMarkers(items) {
+                    if (!map || !layer) return;
+                    layer.clearLayers();
+                    const bounds = [];
+                    for (const it of items) {
+                        if (it.lat == null || it.lng == null) continue;
+                        const color = it.color || '#1d4ed8';
+                        const icon = L.divIcon({
+                            className: 'mapeo-marker',
+                            html: `<div style="background:${color};color:white;border:2px solid white;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.75rem;box-shadow:0 1px 4px rgba(0,0,0,0.4);">${it.label || ''}</div>`,
+                            iconSize: [30, 30], iconAnchor: [15, 15]
+                        });
+                        const m = L.marker([it.lat, it.lng], { icon })
+                            .addTo(layer)
+                            .bindPopup(it.popupHtml || '');
+                        m.on('click', () => { if (dotNetRef) dotNetRef.invokeMethodAsync('OnMarkerClicked', it.id); });
+                        bounds.push([it.lat, it.lng]);
+                    }
+                    if (bounds.length > 0) map.fitBounds(bounds, { padding: [40, 40] });
+                },
+                focusOn(lat, lng, zoom) {
+                    if (!map) return;
+                    map.setView([lat, lng], zoom || 16);
+                },
+                destroy() {
+                    if (map) { map.remove(); map = null; layer = null; }
+                    dotNetRef = null;
+                }
+            };
+        })();
+    </script>
     <script>
         window.copyToClipboard = function(text) {
             if (navigator.clipboard && window.isSecureContext) {

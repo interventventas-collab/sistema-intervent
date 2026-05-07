@@ -1,0 +1,284 @@
+@page "/mapeo"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<style>
+    .mapeo-layout { display: grid; grid-template-columns: 360px 1fr; gap: 0.7rem; height: calc(100vh - 7rem); min-height: 480px; }
+    .mapeo-side { background: white; border: 1px solid #e5e7eb; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; }
+    .mapeo-side-header { padding: 0.6rem 0.7rem; background: #f9fafb; border-bottom: 1px solid #e5e7eb; }
+    .mapeo-side-list { flex: 1; overflow-y: auto; padding: 0.3rem; }
+    .mapeo-card { padding: 0.5rem 0.6rem; border: 1px solid transparent; border-radius: 6px; cursor: pointer; margin-bottom: 0.3rem; font-size: 0.78rem; }
+    .mapeo-card:hover { background: #f0f9ff; border-color: #93c5fd; }
+    .mapeo-card.activa { background: #dbeafe; border-color: #1d4ed8; }
+    .mapeo-map { background: white; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
+    #leafletMap { width: 100%; height: 100%; }
+    .mapeo-status-pill { display: inline-block; padding: 0.05rem 0.4rem; border-radius: 4px; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; }
+</style>
+
+<div class="card" style="margin-bottom: 0.5rem;">
+    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+        <h3 style="margin:0;">🗺️ Mapeo — Envíos Flex</h3>
+        <div style="display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
+            <select class="form-input" style="max-width:130px; font-size:0.85rem;" @bind="diasFiltro" @bind:after="LoadAndRender">
+                <option value="1">Hoy</option>
+                <option value="3">Últimos 3 días</option>
+                <option value="7">Últimos 7 días</option>
+                <option value="15">Últimos 15 días</option>
+            </select>
+            <select class="form-input" style="max-width:170px; font-size:0.85rem;" @bind="filtroInterno" @bind:after="LoadAndRender">
+                <option value="">Estado: todos</option>
+                <option value="pending">Pendiente</option>
+                <option value="en_ruta">En ruta</option>
+                <option value="entregado">Entregado</option>
+                <option value="no_encontrado">No encontrado</option>
+                <option value="reprogramado">Reprogramado</option>
+            </select>
+            <button class="btn btn-secondary" style="font-size:0.85rem;" @onclick="LoadAndRender" disabled="@isLoading">
+                @(isLoading ? "Cargando..." : "🔄 Refrescar lista")
+            </button>
+            <button class="btn btn-primary" style="font-size:0.85rem;" @onclick="SyncFromMeli" disabled="@isSyncing">
+                @(isSyncing ? "Sincronizando..." : "📥 Traer envíos de MeLi")
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="mapeo-layout">
+    <div class="mapeo-side">
+        <div class="mapeo-side-header">
+            <strong>@(shipments?.Count ?? 0) envíos</strong>
+            <span style="font-size:0.72rem; color:#6b7280;">
+                @(shipments?.Count(s => s.Latitude.HasValue && s.Longitude.HasValue) ?? 0) con geo
+            </span>
+        </div>
+        <div class="mapeo-side-list">
+            @if (isLoading) { <p class="text-muted" style="padding:0.7rem;">Cargando...</p> }
+            else if (shipments is null || shipments.Count == 0)
+            {
+                <div style="padding:1rem; text-align:center; color:#6b7280;">
+                    <div style="font-size:2rem;">📭</div>
+                    Todavía no hay envíos cargados. Tocá <strong>"Traer envíos de MeLi"</strong>.
+                </div>
+            }
+            else
+            {
+                @foreach (var s in shipments)
+                {
+                    var act = activeShipmentId == s.Id;
+                    <div class="mapeo-card @(act ? "activa" : "")" @onclick="() => OnSelectFromList(s)">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.4rem;">
+                            <strong>@(s.ReceiverName ?? "—")</strong>
+                            <span class="mapeo-status-pill" style="@StatusStyle(s.InternalStatus)">@StatusLabel(s.InternalStatus)</span>
+                        </div>
+                        <div style="color:#4b5563; margin-top:0.15rem;">@(s.AddressLine ?? "—")</div>
+                        <div style="color:#6b7280; font-size:0.72rem; margin-top:0.1rem;">
+                            @(s.City ?? "—") · CP @(s.ZipCode ?? "—")
+                            @if (!string.IsNullOrEmpty(s.GeolocationType) && s.GeolocationType != "ROOFTOP")
+                            { <span style="color:#d97706;"> · ⚠ geo @s.GeolocationType.ToLower()</span> }
+                        </div>
+                        @if (s.EstimatedDeliveryLimit.HasValue)
+                        {
+                            <div style="color:#6b7280; font-size:0.7rem; margin-top:0.1rem;">SLA: @s.EstimatedDeliveryLimit.Value.ToLocalTime().ToString("dd/MM HH:mm")</div>
+                        }
+                    </div>
+                }
+            }
+        </div>
+    </div>
+    <div class="mapeo-map">
+        <div id="leafletMap"></div>
+    </div>
+</div>
+
+@if (showDetail && selected is not null)
+{
+    <div class="modal-overlay" @onclick="() => showDetail = false">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3 style="margin:0;">📦 Envío @selected.MeliShipmentId</h3>
+                <button class="btn-close" @onclick="() => showDetail = false">&times;</button>
+            </div>
+            <div class="modal-body" style="font-size:0.88rem;">
+                <p><strong>@(selected.ReceiverName ?? "—")</strong></p>
+                <p style="color:#4b5563; margin:0.2rem 0;">@selected.AddressLine</p>
+                <p style="color:#6b7280; font-size:0.78rem; margin:0;">
+                    @selected.Neighborhood @(string.IsNullOrEmpty(selected.Neighborhood) ? "" : "·") @selected.City · @selected.State · CP @selected.ZipCode
+                </p>
+                @if (!string.IsNullOrEmpty(selected.ReceiverPhone))
+                {
+                    var tel = selected.ReceiverPhone!;
+                    var digits = new string(tel.Where(char.IsDigit).ToArray());
+                    <p style="margin:0.4rem 0;"><strong>📞 Tel:</strong>
+                        <a href="@($"https://wa.me/{digits}")" target="_blank" style="color:#25D366; font-weight:700;">@tel (WhatsApp)</a>
+                    </p>
+                }
+                @if (!string.IsNullOrEmpty(selected.Comment))
+                {
+                    <p style="background:#fef3c7; border-left:3px solid #d97706; padding:0.4rem 0.6rem; margin:0.4rem 0; font-size:0.82rem;">
+                        💬 <strong>Comentario del comprador:</strong> @selected.Comment
+                    </p>
+                }
+                <p style="margin:0.4rem 0;"><strong>Items:</strong> @(selected.ItemsSummary ?? "—")</p>
+                @if (selected.OrderTotal.HasValue)
+                { <p style="margin:0.2rem 0;"><strong>Total:</strong> $@selected.OrderTotal.Value.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))</p> }
+                <p style="margin:0.2rem 0;"><strong>Tracking:</strong> @(selected.TrackingNumber ?? "—")</p>
+                <p style="margin:0.2rem 0;"><strong>Estado MeLi:</strong> @selected.Status / @(selected.Substatus ?? "—")</p>
+
+                <hr style="margin:0.7rem 0;" />
+
+                <div class="form-group">
+                    <label class="form-label">Estado interno (lo controlas vos)</label>
+                    <select class="form-input" @bind="selected.InternalStatus">
+                        <option value="pending">Pendiente</option>
+                        <option value="en_ruta">En ruta</option>
+                        <option value="entregado">Entregado</option>
+                        <option value="no_encontrado">No encontrado</option>
+                        <option value="reprogramado">Reprogramado</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Notas internas</label>
+                    <textarea class="form-input" rows="2" @bind="selected.Notes" placeholder="Ej: tocar timbre 3 veces, dejar en portería..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showDetail = false">Cancelar</button>
+                <button class="btn btn-primary" @onclick="GuardarEstadoInterno" disabled="@isSavingDetail">
+                    @(isSavingDetail ? "Guardando..." : "Guardar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<MeliShipmentDto>? shipments;
+    private bool isLoading, isSyncing, isSavingDetail;
+    private string diasFiltro = "7";
+    private string filtroInterno = "";
+    private DotNetObjectReference<Mapeo>? selfRef;
+    private bool mapInitialized;
+
+    private MeliShipmentDto? selected;
+    private bool showDetail;
+    private int? activeShipmentId;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            selfRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("mapeoFlex.init", "leafletMap", selfRef);
+            mapInitialized = true;
+            await LoadAndRender();
+        }
+    }
+
+    private async Task LoadAndRender()
+    {
+        isLoading = true;
+        try
+        {
+            int days = int.TryParse(diasFiltro, out var d) ? d : 7;
+            shipments = await Api.GetMeliFlexShipmentsAsync(days, string.IsNullOrEmpty(filtroInterno) ? null : filtroInterno) ?? new();
+            if (mapInitialized) await RenderMap();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { isLoading = false; }
+    }
+
+    private async Task RenderMap()
+    {
+        if (shipments is null) return;
+        var data = shipments.Where(s => s.Latitude.HasValue && s.Longitude.HasValue).Select((s, i) => new
+        {
+            id = s.Id,
+            lat = s.Latitude,
+            lng = s.Longitude,
+            label = (i + 1).ToString(),
+            color = ColorFor(s.InternalStatus),
+            popupHtml = $"<div style='font-size:0.8rem;'><strong>{System.Net.WebUtility.HtmlEncode(s.ReceiverName ?? "—")}</strong><br/>{System.Net.WebUtility.HtmlEncode(s.AddressLine ?? "")}<br/><em>{System.Net.WebUtility.HtmlEncode(s.City ?? "")}</em></div>"
+        }).ToArray();
+        await JS.InvokeVoidAsync("mapeoFlex.renderMarkers", new object[] { data });
+    }
+
+    private static string ColorFor(string s) => s switch
+    {
+        "en_ruta" => "#d97706",
+        "entregado" => "#15803d",
+        "no_encontrado" => "#b91c1c",
+        "reprogramado" => "#7c3aed",
+        _ => "#1d4ed8"
+    };
+
+    private static string StatusLabel(string s) => s switch
+    {
+        "en_ruta" => "En ruta",
+        "entregado" => "Entregado",
+        "no_encontrado" => "No encontró",
+        "reprogramado" => "Reprogramado",
+        _ => "Pendiente"
+    };
+
+    private static string StatusStyle(string s)
+    {
+        var c = ColorFor(s);
+        return $"background:{c}33; color:{c};";
+    }
+
+    private async Task OnSelectFromList(MeliShipmentDto s)
+    {
+        activeShipmentId = s.Id;
+        selected = s;
+        showDetail = true;
+        if (s.Latitude.HasValue && s.Longitude.HasValue)
+            await JS.InvokeVoidAsync("mapeoFlex.focusOn", (double)s.Latitude.Value, (double)s.Longitude.Value, 16);
+    }
+
+    [JSInvokable]
+    public Task OnMarkerClicked(int id)
+    {
+        var s = shipments?.FirstOrDefault(x => x.Id == id);
+        if (s is not null) { activeShipmentId = id; selected = s; showDetail = true; StateHasChanged(); }
+        return Task.CompletedTask;
+    }
+
+    private async Task SyncFromMeli()
+    {
+        isSyncing = true;
+        try
+        {
+            int days = int.TryParse(diasFiltro, out var d) ? d : 7;
+            var r = await Api.SyncMeliFlexShipmentsAsync(days, 200);
+            if (r is not null)
+            {
+                ToastService.Success($"Sincronizados {r.TotalFlex} Flex (de {r.TotalSynced} envíos)");
+                await LoadAndRender();
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { isSyncing = false; }
+    }
+
+    private async Task GuardarEstadoInterno()
+    {
+        if (selected is null) return;
+        isSavingDetail = true;
+        try
+        {
+            var ok = await Api.UpdateMeliShipmentInternalStatusAsync(selected.Id, selected.InternalStatus, selected.Notes);
+            if (ok) { ToastService.Success("Estado actualizado"); showDetail = false; await RenderMap(); }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { isSavingDetail = false; }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("mapeoFlex.destroy"); } catch { }
+        selfRef?.Dispose();
+    }
+}

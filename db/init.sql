@@ -2633,3 +2633,53 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='LogisticType' AND Object_ID=Object_ID('MeliItems'))
     ALTER TABLE MeliItems ADD LogisticType NVARCHAR(30) NULL;
 GO
+
+-- ===== MeliShipments: snapshot de envios para el mapa de rutas =====
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='MeliShipments')
+BEGIN
+    CREATE TABLE MeliShipments (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        MeliShipmentId BIGINT NOT NULL,
+        MeliAccountId INT NOT NULL,
+        MeliOrderId BIGINT NULL,
+        Status NVARCHAR(40) NULL,
+        Substatus NVARCHAR(40) NULL,
+        LogisticType NVARCHAR(30) NULL,
+        TrackingNumber NVARCHAR(60) NULL,
+        ReceiverName NVARCHAR(200) NULL,
+        ReceiverPhone NVARCHAR(50) NULL,
+        AddressLine NVARCHAR(300) NULL,
+        StreetName NVARCHAR(200) NULL,
+        StreetNumber NVARCHAR(20) NULL,
+        Neighborhood NVARCHAR(150) NULL,
+        City NVARCHAR(150) NULL,
+        State NVARCHAR(150) NULL,
+        ZipCode NVARCHAR(20) NULL,
+        Latitude DECIMAL(10,7) NULL,
+        Longitude DECIMAL(10,7) NULL,
+        GeolocationType NVARCHAR(50) NULL,
+        Comment NVARCHAR(500) NULL,
+        ItemsSummary NVARCHAR(500) NULL,
+        OrderTotal DECIMAL(18,2) NULL,
+        DateCreated DATETIME2 NULL,
+        DateReadyToShip DATETIME2 NULL,
+        DateShipped DATETIME2 NULL,
+        DateDelivered DATETIME2 NULL,
+        EstimatedDeliveryFinal DATETIME2 NULL,
+        EstimatedDeliveryLimit DATETIME2 NULL,
+        InternalStatus NVARCHAR(30) NOT NULL CONSTRAINT DF_MeliShipments_InternalStatus DEFAULT 'pending',
+        Notes NVARCHAR(MAX) NULL,
+        LastSyncedAt DATETIME2 NOT NULL CONSTRAINT DF_MeliShipments_LastSync DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT UQ_MeliShipments_ShipId UNIQUE (MeliShipmentId),
+        CONSTRAINT FK_MeliShipments_Account FOREIGN KEY (MeliAccountId) REFERENCES MeliAccounts(Id)
+    );
+    CREATE INDEX IX_MeliShipments_LogisticType ON MeliShipments(LogisticType);
+    CREATE INDEX IX_MeliShipments_Status ON MeliShipments(Status);
+    CREATE INDEX IX_MeliShipments_DateCreated ON MeliShipments(DateCreated DESC);
+END
+GO
+
+-- Permiso de menu para el modulo de mapeo (rutas Flex)
+IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId=1 AND MenuKey='mapeo')
+    INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'mapeo');
+GO
