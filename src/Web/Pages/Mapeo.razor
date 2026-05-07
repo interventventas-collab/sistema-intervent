@@ -136,11 +136,9 @@ else
 <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.5rem; padding:0.4rem 0.6rem; background:white; border:1px solid #e5e7eb; border-radius:8px;">
     <div style="display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
         <span style="font-size:0.78rem; color:#6b7280; font-weight:600;">Entregar:</span>
-        <select class="form-input" style="max-width:160px; font-size:0.78rem; padding:0.2rem 0.4rem;" @bind="diasFiltro" @bind:after="LoadAndRender">
+        <select class="form-input" style="max-width:140px; font-size:0.78rem; padding:0.2rem 0.4rem;" @bind="diasFiltro" @bind:after="LoadAndRender">
             <option value="today">Hoy</option>
             <option value="tomorrow">Mañana</option>
-            <option value="next3">Próximos 3 días</option>
-            <option value="next7">Próximos 7 días</option>
             <option value="overdue">⚠ Atrasados</option>
             <option value="all">Todos</option>
         </select>
@@ -318,7 +316,11 @@ else
                         </div>
                         @if (s.EstimatedDeliveryLimit.HasValue)
                         {
-                            <div style="color:#6b7280; font-size:0.7rem; margin-top:0.1rem;">SLA: @s.EstimatedDeliveryLimit.Value.ToLocalTime().ToString("dd/MM HH:mm")</div>
+                            var slaLocal = s.EstimatedDeliveryLimit.Value.ToLocalTime();
+                            var (slaBg, slaColor, slaLabel) = SlaStyle(slaLocal);
+                            <div style="display:inline-block; margin-top:0.2rem; padding:0.1rem 0.4rem; background:@slaBg; color:@slaColor; border-radius:4px; font-size:0.7rem; font-weight:700;">
+                                @slaLabel @slaLocal.ToString("dd/MM HH:mm")
+                            </div>
                         }
                     </div>
                 }
@@ -1225,6 +1227,17 @@ else
             }
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    /// <summary>Color, fondo y etiqueta del badge según el SLA del envío.</summary>
+    private static (string Bg, string Fg, string Label) SlaStyle(DateTime slaLocal)
+    {
+        var today = DateTime.Now.Date;
+        var sla = slaLocal.Date;
+        if (sla < today) return ("#fee2e2", "#b91c1c", "🚨 Vencido");
+        if (sla == today) return ("#fef3c7", "#92400e", "⏰ Hoy");
+        if (sla == today.AddDays(1)) return ("#dbeafe", "#1e40af", "📅 Mañana");
+        return ("#f3f4f6", "#374151", "📆");
     }
 
     private static string OriginLabel(string o) => o switch
