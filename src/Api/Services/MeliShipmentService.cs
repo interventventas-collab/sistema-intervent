@@ -34,10 +34,64 @@ public class MeliShipmentService
                 if (token is null) { errors.Add($"Token expirado: {account.Nickname}"); totalErrors++; continue; }
                 var (s, f) = await SyncForAccountAsync(account, token, daysBack, maxOrdersPerAccount);
                 totalSynced += s; totalFlex += f;
+
+                // ======= REFRESH de pendientes =======
+                // Volver a consultar a MeLi los shipments que tenemos en nuestra base con
+                // estado NO terminal (no delivered/cancelled). Si MeLi ya los marcó como
+                // delivered (porque el chofer los entregó por la app oficial de Flex), acá
+                // se refleja sin esperar al siguiente sync de orders.
+                try
+                {
+                    var refreshed = await RefreshPendingForAccountAsync(account, token);
+                    totalSynced += refreshed;
+                }
+                catch (Exception exR) { errors.Add($"{account.Nickname} (refresh): {exR.Message}"); }
             }
             catch (Exception ex) { errors.Add($"{account.Nickname}: {ex.Message}"); totalErrors++; }
         }
         return new MeliShipmentSyncResult(totalSynced, totalFlex, totalErrors, errors);
+    }
+
+    /// <summary>
+    /// Recorre los shipments locales con estado no terminal y los re-consulta uno por uno a MeLi.
+    /// Sirve para captar transiciones tipo "shipped → delivered" que pasaron en MeLi después del último sync.
+    /// </summary>
+    private async Task<int> RefreshPendingForAccountAsync(MeliAccount account, string token)
+    {
+        var http = _httpFactory.CreateClient();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var pending = await _db.MeliShipments
+            .Where(s => s.MeliAccountId == account.Id
+                     && s.LogisticType == "self_service"
+                     && s.Status != "delivered" && s.Status != "cancelled" && s.Status != null)
+            .Select(s => new { s.Id, s.MeliShipmentId, s.MeliOrderId, s.OrderTotal, s.ItemsSummary, s.BuyerNickname })
+            .ToListAsync();
+
+        int updated = 0;
+        foreach (var p in pending)
+        {
+            try
+            {
+                var resp = await http.GetAsync($"https://api.mercadolibre.com/shipments/{p.MeliShipmentId}");
+                if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized || resp.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                {
+                    var newTok = await _accountService.GetValidTokenAsync(account, forceRefresh: true);
+                    if (newTok is null) continue;
+                    token = newTok;
+                    http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                    resp = await http.GetAsync($"https://api.mercadolibre.com/shipments/{p.MeliShipmentId}");
+                }
+                if (!resp.IsSuccessStatusCode) continue;
+                var body = await resp.Content.ReadAsStringAsync();
+                var doc = JsonDocument.Parse(body).RootElement;
+                await UpsertShipmentAsync(account.Id, p.MeliOrderId ?? 0, p.OrderTotal, p.ItemsSummary, p.BuyerNickname, doc);
+                updated++;
+            }
+            catch { /* tolerar */ }
+        }
+        await _db.SaveChangesAsync();
+        return updated;
     }
 
     private async Task<(int synced, int flex)> SyncForAccountAsync(MeliAccount account, string token, int daysBack, int maxOrders)
