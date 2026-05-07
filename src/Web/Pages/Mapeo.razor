@@ -58,6 +58,12 @@
             <button class="btn btn-secondary" style="font-size:0.85rem;" @onclick="OpenAddStopModal" title="Agregar parada al mapa (favorito o manual)">
                 ➕ Agregar parada
             </button>
+            <button class="btn btn-secondary" style="font-size:0.85rem;" @onclick="ImportFlexAsStops" disabled="@importingFlex" title="Trae los Flex pendientes a la lista de paradas para asignarles repartidor">
+                @(importingFlex ? "..." : "📥 Sumar Flex a paradas")
+            </button>
+            <button class="btn btn-primary" style="font-size:0.85rem;" @onclick="OpenArmarRutaModal" title="Asignar paradas a repartidores y optimizar orden">
+                📋 Armar ruta
+            </button>
             <button class="btn btn-primary" style="font-size:0.85rem;" @onclick="SyncFromMeli" disabled="@isSyncing">
                 @(isSyncing ? "Sincronizando..." : "📥 Traer envíos de MeLi")
             </button>
@@ -154,6 +160,95 @@
         <div id="leafletMap"></div>
     </div>
 </div>
+
+@if (showArmarRutaModal)
+{
+    <div class="modal-overlay" @onclick="() => showArmarRutaModal = false">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width:1100px; max-height:92vh; display:flex; flex-direction:column;">
+            <div class="modal-header" style="background:#dbeafe;">
+                <h3 style="margin:0;">📋 Armar ruta — @(stops?.Count ?? 0) paradas · @(drivers?.Count(d => d.IsActive) ?? 0) repartidores</h3>
+                <button class="btn-close" @onclick="() => showArmarRutaModal = false">&times;</button>
+            </div>
+            <div class="modal-body" style="overflow-y:auto;">
+                @if ((drivers?.Count(d => d.IsActive) ?? 0) == 0)
+                {
+                    <div style="background:#fee2e2; border-left:3px solid #b91c1c; padding:0.7rem; margin-bottom:0.7rem; font-size:0.9rem;">
+                        ⚠ No tenés repartidores activos. Andá a <strong>👥 Repartidores</strong> arriba y agregá al menos uno.
+                    </div>
+                }
+                else if ((stops?.Count ?? 0) == 0)
+                {
+                    <div style="background:#fef3c7; border-left:3px solid #d97706; padding:0.7rem; margin-bottom:0.7rem; font-size:0.9rem;">
+                        ⚠ No hay paradas. Tocá <strong>📥 Sumar Flex a paradas</strong> o <strong>➕ Agregar parada</strong> arriba.
+                    </div>
+                }
+                else
+                {
+                    <div style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.8rem; padding:0.5rem; background:#f9fafb; border-radius:6px;">
+                        <button class="btn btn-secondary" style="font-size:0.85rem;" @onclick="DoAutoAssign" disabled="@routeBusy" title="Reparte las paradas SIN driver entre los repartidores activos por cercanía geográfica (k-means)">
+                            @(routeBusy ? "..." : "🧠 Repartir auto (sin asignar)")
+                        </button>
+                        <button class="btn btn-secondary" style="font-size:0.85rem;" @onclick="DoAutoAssignAll" disabled="@routeBusy" title="Reasigna TODAS las paradas (incluso las que ya tenían driver)">
+                            🔄 Reasignar todas
+                        </button>
+                        <button class="btn btn-secondary" style="font-size:0.85rem;" @onclick="DoOptimizeAll" disabled="@routeBusy" title="Calcula el mejor orden por driver desde tu punto de partida (nearest-neighbor)">
+                            ⚡ Optimizar orden
+                        </button>
+                        <button class="btn btn-secondary" style="font-size:0.85rem; color:#b91c1c;" @onclick="DoUnassignAll" disabled="@routeBusy" title="Quita todas las asignaciones">
+                            🗑 Limpiar
+                        </button>
+                    </div>
+
+                    @foreach (var g in stops!.GroupBy(s => s.AssignedDriverId).OrderBy(g => g.Key.HasValue ? 0 : 1).ThenBy(g => g.Key))
+                    {
+                        var driver = g.Key.HasValue ? drivers!.FirstOrDefault(d => d.Id == g.Key.Value) : null;
+                        var headerColor = driver?.Color ?? "#9ca3af";
+                        var headerLabel = driver?.Nombre ?? "🚫 Sin asignar";
+                        <div style="margin-bottom:0.7rem; border:1px solid #e5e7eb; border-radius:8px; overflow:hidden;">
+                            <div style="padding:0.5rem 0.7rem; background:@(headerColor)22; border-bottom:1px solid @headerColor; display:flex; justify-content:space-between; align-items:center;">
+                                <strong style="color:@headerColor;">@headerLabel · @g.Count() parada(s)</strong>
+                                @if (driver is not null)
+                                {
+                                    <button class="btn btn-secondary" style="font-size:0.72rem; padding:0.15rem 0.4rem;" @onclick="() => DoOptimizeDriver(driver.Id)" disabled="@routeBusy" title="Optimizar solo este driver">⚡</button>
+                                }
+                            </div>
+                            <table class="data-table" style="font-size:0.8rem; margin:0;">
+                                <thead><tr><th style="width:60px;">Orden</th><th>Parada</th><th>Dirección</th><th style="width:170px;">Repartidor</th></tr></thead>
+                                <tbody>
+                                @foreach (var s in g.OrderBy(x => x.OrderInRoute ?? int.MaxValue).ThenBy(x => x.Id))
+                                {
+                                    <tr>
+                                        <td style="text-align:center; font-weight:700; font-size:0.95rem; color:@headerColor;">@(s.OrderInRoute?.ToString() ?? "—")</td>
+                                        <td>
+                                            <strong>@(s.Alias ?? s.ContactName ?? "Parada")</strong>
+                                            <div style="font-size:0.7rem; color:#9ca3af;">@OriginLabel(s.Origin)</div>
+                                        </td>
+                                        <td style="font-size:0.78rem;">@s.Direccion</td>
+                                        <td>
+                                            <select class="form-input" style="font-size:0.78rem; padding:0.15rem 0.3rem;"
+                                                    value="@(s.AssignedDriverId?.ToString() ?? "")"
+                                                    @onchange="@(e => OnAssignDriver(s, e.Value?.ToString()))">
+                                                <option value="">— Sin asignar —</option>
+                                                @foreach (var d in drivers!.Where(x => x.IsActive))
+                                                {
+                                                    <option value="@d.Id" selected="@(s.AssignedDriverId == d.Id)">@d.Nombre</option>
+                                                }
+                                            </select>
+                                        </td>
+                                    </tr>
+                                }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showArmarRutaModal = false">Cerrar</button>
+            </div>
+        </div>
+    </div>
+}
 
 @if (showAddStopModal)
 {
@@ -535,6 +630,9 @@
     private decimal addStopLat = 0, addStopLng = 0;
     private bool addStopGeocoding, addStopAlsoSaveFav;
     private List<GeocodeResultDto>? addStopGeocodeResults;
+
+    // Armar ruta
+    private bool showArmarRutaModal, importingFlex, routeBusy;
     private string newFavAlias = "", newFavQuery = "", newFavDireccion = "", newFavContact = "", newFavPhone = "", newFavNotas = "";
     private decimal newFavLat = 0m, newFavLng = 0m;
     private bool favGeocoding;
@@ -593,20 +691,20 @@
             color = ColorFor(EffectiveKey(s)),
             popupHtml = $"<div style='font-size:0.8rem;'><strong>{System.Net.WebUtility.HtmlEncode(s.ReceiverName ?? "—")}</strong><br/>{System.Net.WebUtility.HtmlEncode(s.AddressLine ?? "")}<br/><em>{System.Net.WebUtility.HtmlEncode(s.City ?? "")}</em></div>"
         }));
-        // Stops adicionales (favoritos / manuales) — id negativo para no chocar con shipments
+        // Stops (incluye los Flex importados + favoritos + manuales)
+        // Si tienen driver asignado: color del driver y label = número de orden.
+        // Si no: naranja con ★.
         if (stops is not null)
         {
-            int idx = 1;
             list.AddRange(stops.Select(st => (object)new
             {
                 id = -1000 - st.Id,
                 lat = st.Latitude,
                 lng = st.Longitude,
-                label = "★",
+                label = st.OrderInRoute.HasValue ? st.OrderInRoute.Value.ToString() : "★",
                 color = string.IsNullOrEmpty(st.AssignedDriverColor) ? "#d97706" : st.AssignedDriverColor,
-                popupHtml = $"<div style='font-size:0.8rem;'><strong>{System.Net.WebUtility.HtmlEncode(st.Alias ?? st.ContactName ?? "Parada")}</strong><br/>{System.Net.WebUtility.HtmlEncode(st.Direccion)}{(string.IsNullOrEmpty(st.Telefono) ? "" : $"<br/>📞 {System.Net.WebUtility.HtmlEncode(st.Telefono)}")}</div>"
+                popupHtml = $"<div style='font-size:0.8rem;'><strong>{System.Net.WebUtility.HtmlEncode(st.Alias ?? st.ContactName ?? "Parada")}</strong>{(st.AssignedDriverName is null ? "" : $" <span style='color:{st.AssignedDriverColor}'>· {System.Net.WebUtility.HtmlEncode(st.AssignedDriverName)}{(st.OrderInRoute.HasValue ? $" #{st.OrderInRoute}" : "")}</span>")}<br/>{System.Net.WebUtility.HtmlEncode(st.Direccion)}{(string.IsNullOrEmpty(st.Telefono) ? "" : $"<br/>📞 {System.Net.WebUtility.HtmlEncode(st.Telefono)}")}</div>"
             }));
-            _ = idx;
         }
         await JS.InvokeVoidAsync("mapeoFlex.renderMarkers", new object[] { list.ToArray() });
     }
@@ -741,6 +839,107 @@
             }
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private static string OriginLabel(string o) => o switch
+    {
+        "flex" => "📦 MeLi Flex",
+        "favorito" => "⭐ Favorito",
+        "venta_cafe" => "☕ Café",
+        _ => "✏️ Manual"
+    };
+
+    private async Task ImportFlexAsStops()
+    {
+        importingFlex = true;
+        try
+        {
+            await Api.ImportFlexAsStopsAsync(15);
+            await LoadStops();
+            ToastService.Success("Flex pendientes agregados a la lista de paradas");
+            await RenderMap();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { importingFlex = false; }
+    }
+
+    private void OpenArmarRutaModal() => showArmarRutaModal = true;
+
+    private async Task OnAssignDriver(MapeoStopDto s, string? value)
+    {
+        int? did = int.TryParse(value, out var v) && v > 0 ? v : null;
+        s.AssignedDriverId = did;
+        var d = did.HasValue ? drivers?.FirstOrDefault(x => x.Id == did.Value) : null;
+        s.AssignedDriverName = d?.Nombre;
+        s.AssignedDriverColor = d?.Color;
+        try
+        {
+            await Api.UpdateMapeoStopAsync(s.Id, new { assignedDriverId = did ?? 0 });
+            await RenderMap();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task DoAutoAssign() => await DoAutoAssignInternal(false);
+    private async Task DoAutoAssignAll() => await DoAutoAssignInternal(true);
+
+    private async Task DoAutoAssignInternal(bool reassignAll)
+    {
+        routeBusy = true;
+        try
+        {
+            await Api.AutoAssignStopsAsync(reassignAll);
+            await LoadStops();
+            ToastService.Success("Paradas repartidas entre los repartidores");
+            await RenderMap();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { routeBusy = false; }
+    }
+
+    private async Task DoOptimizeAll()
+    {
+        routeBusy = true;
+        try
+        {
+            await Api.OptimizeStopsOrderAsync(null);
+            await LoadStops();
+            ToastService.Success("Orden optimizado para todos los repartidores");
+            await RenderMap();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { routeBusy = false; }
+    }
+
+    private async Task DoOptimizeDriver(int driverId)
+    {
+        routeBusy = true;
+        try
+        {
+            await Api.OptimizeStopsOrderAsync(driverId);
+            await LoadStops();
+            ToastService.Success("Orden optimizado");
+            await RenderMap();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { routeBusy = false; }
+    }
+
+    private async Task DoUnassignAll()
+    {
+        if (!await ConfirmAsync("Quitar TODAS las asignaciones de drivers y orden?")) return;
+        routeBusy = true;
+        try
+        {
+            var ids = stops?.Select(s => s.Id).ToList() ?? new();
+            if (ids.Count > 0) await Api.AssignBulkStopsAsync(ids, null);
+            // Limpiar tambien el orden via update individual (no tan crítico, pero prolijo)
+            await LoadStops();
+            ToastService.Success("Asignaciones limpiadas");
+            await RenderMap();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { routeBusy = false; }
     }
 
     private async Task DeleteStop(MapeoStopDto s)

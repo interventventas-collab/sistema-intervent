@@ -1936,6 +1936,18 @@ public class ApiClient
     public async Task<object?> ImportFlexAsStopsAsync(int days = 7)
         => await PostAsync<object>($"/api/mapeo/stops/import-flex?days={days}", new { });
 
+    public async Task<object?> AssignBulkStopsAsync(List<int> stopIds, int? driverId)
+        => await PostAsync<object>("/api/mapeo/stops/assign-bulk", new { stopIds, driverId });
+
+    public async Task<object?> AutoAssignStopsAsync(bool reassignAll = false)
+        => await PostAsync<object>($"/api/mapeo/stops/auto-assign?reassignAll={reassignAll.ToString().ToLower()}", new { });
+
+    public async Task<object?> OptimizeStopsOrderAsync(int? driverId = null)
+    {
+        var url = "/api/mapeo/stops/optimize-order" + (driverId.HasValue && driverId.Value > 0 ? $"?driverId={driverId.Value}" : "");
+        return await PostAsync<object>(url, new { });
+    }
+
     // ===== MeLi Questions =====
     public async Task<MeliQuestionsUnreadDto?> GetMeliQuestionsUnreadCountAsync()
         => await GetAsync<MeliQuestionsUnreadDto>("/api/meli/questions/unread-count");
