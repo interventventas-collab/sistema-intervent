@@ -2721,3 +2721,30 @@ BEGIN
     CREATE INDEX IX_MapeoFavoritos_Alias ON MapeoFavoritos(Alias);
 END
 GO
+
+-- ===== Mapeo: paradas (puede venir de Flex, favorito, venta cafe o manual) =====
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='MapeoStops')
+BEGIN
+    CREATE TABLE MapeoStops (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        -- Origen: 'flex' (referencia a MeliShipmentId), 'favorito', 'venta_cafe', 'manual'.
+        Origin NVARCHAR(20) NOT NULL,
+        OriginRefId NVARCHAR(50) NULL,
+        Alias NVARCHAR(100) NULL,
+        Direccion NVARCHAR(300) NOT NULL,
+        Latitude DECIMAL(10,7) NOT NULL,
+        Longitude DECIMAL(10,7) NOT NULL,
+        ContactName NVARCHAR(150) NULL,
+        Telefono NVARCHAR(50) NULL,
+        Notas NVARCHAR(500) NULL,
+        InternalStatus NVARCHAR(30) NOT NULL CONSTRAINT DF_MapeoStops_Status DEFAULT 'pending',
+        AssignedDriverId INT NULL,
+        OrderInRoute INT NULL,
+        CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_MapeoStops_Created DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT FK_MapeoStops_Driver FOREIGN KEY (AssignedDriverId) REFERENCES MapeoDrivers(Id) ON DELETE SET NULL
+    );
+    CREATE INDEX IX_MapeoStops_Origin ON MapeoStops(Origin, OriginRefId);
+    CREATE INDEX IX_MapeoStops_Driver ON MapeoStops(AssignedDriverId);
+END
+GO

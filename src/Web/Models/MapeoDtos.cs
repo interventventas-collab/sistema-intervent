@@ -9,6 +9,26 @@ public class MapeoDriverDto
     public bool IsActive { get; set; } = true;
 }
 
+public class MapeoStopDto
+{
+    public int Id { get; set; }
+    public string Origin { get; set; } = "manual";
+    public string? OriginRefId { get; set; }
+    public string? Alias { get; set; }
+    public string Direccion { get; set; } = "";
+    public decimal Latitude { get; set; }
+    public decimal Longitude { get; set; }
+    public string? ContactName { get; set; }
+    public string? Telefono { get; set; }
+    public string? Notas { get; set; }
+    public string InternalStatus { get; set; } = "pending";
+    public int? AssignedDriverId { get; set; }
+    public string? AssignedDriverName { get; set; }
+    public string? AssignedDriverColor { get; set; }
+    public int? OrderInRoute { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
 public class MapeoFavoritoDto
 {
     public int Id { get; set; }

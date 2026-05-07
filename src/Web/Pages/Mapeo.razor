@@ -55,6 +55,9 @@
             <button class="btn btn-secondary" style="font-size:0.85rem;" @onclick="OpenFavoritosModal" title="Direcciones favoritas">
                 ⭐ Favoritos (@(favoritos?.Count ?? 0))
             </button>
+            <button class="btn btn-secondary" style="font-size:0.85rem;" @onclick="OpenAddStopModal" title="Agregar parada al mapa (favorito o manual)">
+                ➕ Agregar parada
+            </button>
             <button class="btn btn-primary" style="font-size:0.85rem;" @onclick="SyncFromMeli" disabled="@isSyncing">
                 @(isSyncing ? "Sincronizando..." : "📥 Traer envíos de MeLi")
             </button>
@@ -64,10 +67,14 @@
 
 <div class="mapeo-layout">
     <div class="mapeo-side">
-        <div class="mapeo-side-header">
-            <strong>@(shipments?.Count ?? 0) envíos</strong>
+        <div class="mapeo-side-header" style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+                <strong>@(shipments?.Count ?? 0) Flex</strong>
+                <span style="color:#9ca3af;">·</span>
+                <strong>@(stops?.Count ?? 0) paradas</strong>
+            </div>
             <span style="font-size:0.72rem; color:#6b7280;">
-                @(shipments?.Count(s => s.Latitude.HasValue && s.Longitude.HasValue) ?? 0) con geo
+                @(shipments?.Count(s => s.Latitude.HasValue && s.Longitude.HasValue) ?? 0) + @(stops?.Count ?? 0) en mapa
             </span>
         </div>
         <div class="mapeo-side-list">
@@ -81,6 +88,29 @@
             }
             else
             {
+                @if (stops is not null && stops.Count > 0)
+                {
+                    <div style="padding:0.4rem 0.6rem; background:#fef3c7; border-bottom:1px solid #fde68a; font-size:0.72rem; font-weight:700; color:#92400e; text-transform:uppercase;">
+                        ⭐ Paradas adicionales (@stops.Count)
+                    </div>
+                    @foreach (var st in stops)
+                    {
+                        <div class="mapeo-card" style="border-left:3px solid #d97706;">
+                            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.4rem;">
+                                <strong>@(st.Alias ?? st.ContactName ?? "Parada")</strong>
+                                <button class="btn-icon btn-delete" style="font-size:0.7rem;" @onclick="() => DeleteStop(st)" title="Quitar">×</button>
+                            </div>
+                            <div style="color:#4b5563; margin-top:0.15rem;">@st.Direccion</div>
+                            @if (!string.IsNullOrEmpty(st.Telefono))
+                            { <div style="font-size:0.72rem; color:#6b7280;">📞 @st.Telefono</div> }
+                            @if (!string.IsNullOrEmpty(st.Notas))
+                            { <div style="font-size:0.7rem; color:#9ca3af;">📝 @st.Notas</div> }
+                        </div>
+                    }
+                    <div style="padding:0.4rem 0.6rem; background:#dbeafe; border-bottom:1px solid #93c5fd; font-size:0.72rem; font-weight:700; color:#1e40af; text-transform:uppercase; margin-top:0.3rem;">
+                        📦 Envíos Flex (@shipments.Count)
+                    </div>
+                }
                 @foreach (var s in shipments)
                 {
                     var act = activeShipmentId == s.Id;
@@ -124,6 +154,87 @@
         <div id="leafletMap"></div>
     </div>
 </div>
+
+@if (showAddStopModal)
+{
+    <div class="modal-overlay" @onclick="() => showAddStopModal = false">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width:620px;">
+            <div class="modal-header" style="background:#fef3c7;">
+                <h3 style="margin:0;">➕ Agregar parada al mapa</h3>
+                <button class="btn-close" @onclick="() => showAddStopModal = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="display:flex; gap:0.4rem; margin-bottom:0.7rem;">
+                    <button class="btn @(addStopTab == "favorito" ? "btn-primary" : "btn-secondary")" style="flex:1;" @onclick="@(() => addStopTab = "favorito")">⭐ Desde favoritos</button>
+                    <button class="btn @(addStopTab == "manual" ? "btn-primary" : "btn-secondary")" style="flex:1;" @onclick="@(() => addStopTab = "manual")">✏️ Tipear nueva</button>
+                </div>
+                @if (addStopTab == "favorito")
+                {
+                    @if (favoritos is null || favoritos.Count == 0)
+                    {
+                        <p style="text-align:center; color:#6b7280; padding:1rem;">No tenés favoritos. Tocá ⭐ Favoritos arriba para crearlos.</p>
+                    }
+                    else
+                    {
+                        <input class="form-input" @bind="addStopFavSearch" @bind:event="oninput" placeholder="Buscar..." style="margin-bottom:0.5rem;" />
+                        <div style="max-height:340px; overflow-y:auto;">
+                            @foreach (var f in favoritos.Where(x => string.IsNullOrEmpty(addStopFavSearch)
+                                || x.Alias.Contains(addStopFavSearch, StringComparison.OrdinalIgnoreCase)
+                                || x.Direccion.Contains(addStopFavSearch, StringComparison.OrdinalIgnoreCase)))
+                            {
+                                <div style="border:1px solid #e5e7eb; padding:0.5rem 0.7rem; border-radius:6px; margin-bottom:0.3rem; cursor:pointer;"
+                                     @onclick="() => AddStopFromFavorito(f)" title="Click para agregar al mapa">
+                                    <strong>@f.Alias</strong>
+                                    <div style="font-size:0.78rem; color:#4b5563;">@f.Direccion</div>
+                                    @if (!string.IsNullOrEmpty(f.Telefono))
+                                    { <div style="font-size:0.7rem; color:#6b7280;">📞 @f.Telefono</div> }
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="form-group">
+                        <label class="form-label">Buscar dirección</label>
+                        <div style="display:flex; gap:0.4rem;">
+                            <input class="form-input" @bind="addStopQuery" placeholder="Calle 123, Ciudad" @onkeydown="OnAddStopGeocodeKey" style="flex:1;" />
+                            <button class="btn btn-secondary" @onclick="DoAddStopGeocode" disabled="@addStopGeocoding">@(addStopGeocoding ? "..." : "🔍")</button>
+                        </div>
+                    </div>
+                    @if (addStopGeocodeResults is not null && addStopGeocodeResults.Count > 0)
+                    {
+                        <div style="border:1px solid #e5e7eb; border-radius:6px; max-height:140px; overflow-y:auto; margin-bottom:0.5rem;">
+                            @foreach (var r in addStopGeocodeResults)
+                            {
+                                <div style="padding:0.3rem 0.5rem; border-bottom:1px solid #f3f4f6; cursor:pointer; font-size:0.78rem;"
+                                     @onclick="() => PickAddStopGeocode(r)">@r.DisplayName</div>
+                            }
+                        </div>
+                    }
+                    @if (addStopLat != 0 || addStopLng != 0)
+                    {
+                        <div style="font-size:0.75rem; color:#15803d; margin-bottom:0.4rem;">✓ @addStopDireccion (@addStopLat.ToString("0.####") , @addStopLng.ToString("0.####"))</div>
+                    }
+                    <div class="form-group"><label class="form-label">Alias / Cliente</label><input class="form-input" @bind="addStopAlias" placeholder="Bar Don Pepe" /></div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex:1;"><label class="form-label">Contacto</label><input class="form-input" @bind="addStopContact" placeholder="Pepe" /></div>
+                        <div class="form-group" style="flex:1;"><label class="form-label">Tel</label><input class="form-input" @bind="addStopPhone" /></div>
+                    </div>
+                    <div class="form-group"><label class="form-label">Notas (instrucciones, comentarios)</label><input class="form-input" @bind="addStopNotas" /></div>
+                    <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.78rem; color:#6b7280;">
+                        <input type="checkbox" @bind="addStopAlsoSaveFav" /> También guardar como favorito
+                    </label>
+                    <button class="btn btn-primary" style="width:100%; margin-top:0.5rem;" @onclick="AddStopManual"
+                            disabled="@(addStopLat == 0 && addStopLng == 0)">+ Agregar parada</button>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showAddStopModal = false">Cerrar</button>
+            </div>
+        </div>
+    </div>
+}
 
 @if (showDriversModal)
 {
@@ -414,6 +525,16 @@
     // Favoritos
     private List<MapeoFavoritoDto>? favoritos;
     private bool showFavoritosModal;
+
+    // Stops adicionales (paradas no-Flex)
+    private List<MapeoStopDto>? stops;
+    private bool showAddStopModal;
+    private string addStopTab = "favorito";
+    private string addStopFavSearch = "";
+    private string addStopQuery = "", addStopDireccion = "", addStopAlias = "", addStopContact = "", addStopPhone = "", addStopNotas = "";
+    private decimal addStopLat = 0, addStopLng = 0;
+    private bool addStopGeocoding, addStopAlsoSaveFav;
+    private List<GeocodeResultDto>? addStopGeocodeResults;
     private string newFavAlias = "", newFavQuery = "", newFavDireccion = "", newFavContact = "", newFavPhone = "", newFavNotas = "";
     private decimal newFavLat = 0m, newFavLng = 0m;
     private bool favGeocoding;
@@ -429,6 +550,7 @@
             try { startPoint = await Api.GetMapeoStartPointAsync(); } catch { }
             await LoadDrivers();
             await LoadFavoritos();
+            await LoadStops();
             await LoadAndRender();
         }
     }
@@ -471,6 +593,21 @@
             color = ColorFor(EffectiveKey(s)),
             popupHtml = $"<div style='font-size:0.8rem;'><strong>{System.Net.WebUtility.HtmlEncode(s.ReceiverName ?? "—")}</strong><br/>{System.Net.WebUtility.HtmlEncode(s.AddressLine ?? "")}<br/><em>{System.Net.WebUtility.HtmlEncode(s.City ?? "")}</em></div>"
         }));
+        // Stops adicionales (favoritos / manuales) — id negativo para no chocar con shipments
+        if (stops is not null)
+        {
+            int idx = 1;
+            list.AddRange(stops.Select(st => (object)new
+            {
+                id = -1000 - st.Id,
+                lat = st.Latitude,
+                lng = st.Longitude,
+                label = "★",
+                color = string.IsNullOrEmpty(st.AssignedDriverColor) ? "#d97706" : st.AssignedDriverColor,
+                popupHtml = $"<div style='font-size:0.8rem;'><strong>{System.Net.WebUtility.HtmlEncode(st.Alias ?? st.ContactName ?? "Parada")}</strong><br/>{System.Net.WebUtility.HtmlEncode(st.Direccion)}{(string.IsNullOrEmpty(st.Telefono) ? "" : $"<br/>📞 {System.Net.WebUtility.HtmlEncode(st.Telefono)}")}</div>"
+            }));
+            _ = idx;
+        }
         await JS.InvokeVoidAsync("mapeoFlex.renderMarkers", new object[] { list.ToArray() });
     }
 
@@ -535,6 +672,91 @@
 
     private async Task LoadDrivers() { try { drivers = await Api.GetMapeoDriversAsync() ?? new(); } catch { drivers = new(); } }
     private async Task LoadFavoritos() { try { favoritos = await Api.GetMapeoFavoritosAsync() ?? new(); } catch { favoritos = new(); } }
+    private async Task LoadStops() { try { stops = await Api.GetMapeoStopsAsync() ?? new(); } catch { stops = new(); } }
+
+    // ===== Agregar parada (manual o desde favorito) =====
+    private void OpenAddStopModal()
+    {
+        addStopTab = (favoritos?.Count ?? 0) > 0 ? "favorito" : "manual";
+        addStopFavSearch = ""; addStopQuery = ""; addStopDireccion = ""; addStopAlias = "";
+        addStopContact = ""; addStopPhone = ""; addStopNotas = "";
+        addStopLat = 0; addStopLng = 0; addStopAlsoSaveFav = false;
+        addStopGeocodeResults = null;
+        showAddStopModal = true;
+    }
+
+    private async Task OnAddStopGeocodeKey(KeyboardEventArgs e) { if (e.Key == "Enter") await DoAddStopGeocode(); }
+
+    private async Task DoAddStopGeocode()
+    {
+        if (string.IsNullOrWhiteSpace(addStopQuery)) return;
+        addStopGeocoding = true;
+        try { addStopGeocodeResults = await Api.GeocodeAsync(addStopQuery) ?? new(); }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { addStopGeocoding = false; }
+    }
+
+    private void PickAddStopGeocode(GeocodeResultDto r)
+    {
+        addStopDireccion = r.DisplayName;
+        addStopLat = r.Lat;
+        addStopLng = r.Lng;
+        addStopGeocodeResults = null;
+    }
+
+    private async Task AddStopFromFavorito(MapeoFavoritoDto f)
+    {
+        try
+        {
+            var s = await Api.CreateMapeoStopAsync("favorito", f.Id.ToString(), f.Alias, f.Direccion, f.Latitude, f.Longitude,
+                f.ContactName, f.Telefono, f.Notas);
+            if (s is not null) { stops!.Insert(0, s); ToastService.Success($"'{f.Alias}' agregado al mapa"); await RenderMap(); }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task AddStopManual()
+    {
+        if (addStopLat == 0 && addStopLng == 0) return;
+        try
+        {
+            var s = await Api.CreateMapeoStopAsync("manual", null, addStopAlias, addStopDireccion, addStopLat, addStopLng,
+                addStopContact, addStopPhone, addStopNotas);
+            if (s is not null)
+            {
+                stops!.Insert(0, s);
+                if (addStopAlsoSaveFav && !string.IsNullOrWhiteSpace(addStopAlias))
+                {
+                    var f = await Api.CreateMapeoFavoritoAsync(new MapeoFavoritoDto
+                    {
+                        Alias = addStopAlias, Direccion = addStopDireccion,
+                        Latitude = addStopLat, Longitude = addStopLng,
+                        ContactName = addStopContact, Telefono = addStopPhone, Notas = addStopNotas
+                    });
+                    if (f is not null) { favoritos!.Insert(0, f); }
+                }
+                ToastService.Success("Parada agregada al mapa");
+                showAddStopModal = false;
+                await RenderMap();
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task DeleteStop(MapeoStopDto s)
+    {
+        if (!await ConfirmAsync($"Quitar '{s.Alias ?? s.Direccion}' del mapa?")) return;
+        try
+        {
+            if (await Api.DeleteMapeoStopAsync(s.Id))
+            {
+                stops?.Remove(s);
+                ToastService.Success("Parada quitada");
+                await RenderMap();
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
 
     private async Task OpenDriversModal() { await LoadDrivers(); showDriversModal = true; }
     private async Task OpenFavoritosModal() { await LoadFavoritos(); showFavoritosModal = true; }

@@ -23,6 +23,41 @@ public class MapeoDriver
     public DateTime? UpdatedAt { get; set; }
 }
 
+[Table("MapeoStops")]
+public class MapeoStop
+{
+    [Key]
+    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public int Id { get; set; }
+
+    /// <summary>flex | favorito | venta_cafe | manual</summary>
+    [Required, MaxLength(20)] public string Origin { get; set; } = "manual";
+
+    /// <summary>Id del origen (MeliShipmentId, FavoritoId, CafeVentaId, o null para manual).</summary>
+    [MaxLength(50)] public string? OriginRefId { get; set; }
+
+    [MaxLength(100)] public string? Alias { get; set; }
+
+    [Required, MaxLength(300)] public string Direccion { get; set; } = string.Empty;
+
+    [Column(TypeName = "decimal(10,7)")] public decimal Latitude { get; set; }
+    [Column(TypeName = "decimal(10,7)")] public decimal Longitude { get; set; }
+
+    [MaxLength(150)] public string? ContactName { get; set; }
+    [MaxLength(50)] public string? Telefono { get; set; }
+    [MaxLength(500)] public string? Notas { get; set; }
+
+    [MaxLength(30)] public string InternalStatus { get; set; } = "pending";
+
+    public int? AssignedDriverId { get; set; }
+    [ForeignKey(nameof(AssignedDriverId))] public MapeoDriver? AssignedDriver { get; set; }
+
+    public int? OrderInRoute { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? UpdatedAt { get; set; }
+}
+
 [Table("MapeoFavoritos")]
 public class MapeoFavorito
 {

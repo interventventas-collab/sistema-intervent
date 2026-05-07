@@ -1912,6 +1912,30 @@ public class ApiClient
     public async Task<bool> DeleteMapeoFavoritoAsync(int id)
         => await DeleteAsync($"/api/mapeo/favoritos/{id}");
 
+    // ===== Mapeo: Stops (paradas a repartir) =====
+    public async Task<List<MapeoStopDto>?> GetMapeoStopsAsync(int? driverId = null, string? internalStatus = null)
+    {
+        var qs = new List<string>();
+        if (driverId.HasValue) qs.Add($"driverId={driverId.Value}");
+        if (!string.IsNullOrWhiteSpace(internalStatus)) qs.Add($"internalStatus={Uri.EscapeDataString(internalStatus)}");
+        var url = "/api/mapeo/stops" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+        return await GetAsync<List<MapeoStopDto>>(url);
+    }
+    public async Task<MapeoStopDto?> CreateMapeoStopAsync(string origin, string? originRefId, string? alias,
+        string direccion, decimal lat, decimal lng, string? contact, string? tel, string? notas)
+        => await PostAsync<MapeoStopDto>("/api/mapeo/stops", new {
+            origin, originRefId, alias, direccion, latitude = lat, longitude = lng,
+            contactName = contact, telefono = tel, notas
+        });
+    public async Task<MapeoStopDto?> UpdateMapeoStopAsync(int id, object req)
+        => await PutAsync<MapeoStopDto>($"/api/mapeo/stops/{id}", req);
+    public async Task<bool> DeleteMapeoStopAsync(int id)
+        => await DeleteAsync($"/api/mapeo/stops/{id}");
+    public async Task<bool> ClearMapeoStopsAsync()
+        => await DeleteAsync("/api/mapeo/stops");
+    public async Task<object?> ImportFlexAsStopsAsync(int days = 7)
+        => await PostAsync<object>($"/api/mapeo/stops/import-flex?days={days}", new { });
+
     // ===== MeLi Questions =====
     public async Task<MeliQuestionsUnreadDto?> GetMeliQuestionsUnreadCountAsync()
         => await GetAsync<MeliQuestionsUnreadDto>("/api/meli/questions/unread-count");
