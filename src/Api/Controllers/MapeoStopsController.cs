@@ -261,6 +261,41 @@ public class MapeoStopsController : ControllerBase
         return Ok(new { optimized });
     }
 
+    /// <summary>
+    /// Aplica el filtro por modo de entrega (today / tomorrow / overdue / all) usando EstimatedDeliveryLimit.
+    /// Refleja la misma logica que MeliShipmentsController.ListFlex para mantener coherencia entre vistas.
+    /// </summary>
+    private IQueryable<MeliShipment> ApplyDeliveryModeFilter(IQueryable<MeliShipment> q, string mode)
+    {
+        var nowLocal = DateTime.UtcNow.AddHours(-3); // Argentina
+        var todayLocal = nowLocal.Date;
+        switch ((mode ?? "today").ToLowerInvariant())
+        {
+            case "today":
+                {
+                    var t1 = todayLocal.AddHours(3);
+                    var t2 = todayLocal.AddDays(1).AddHours(3);
+                    return q.Where(s => (s.EstimatedDeliveryLimit ?? s.DateCreated) >= t1
+                                     && (s.EstimatedDeliveryLimit ?? s.DateCreated) < t2);
+                }
+            case "tomorrow":
+                {
+                    var t1 = todayLocal.AddDays(1).AddHours(3);
+                    var t2 = todayLocal.AddDays(2).AddHours(3);
+                    return q.Where(s => (s.EstimatedDeliveryLimit ?? s.DateCreated) >= t1
+                                     && (s.EstimatedDeliveryLimit ?? s.DateCreated) < t2);
+                }
+            case "overdue":
+                {
+                    var nowUtc = DateTime.UtcNow;
+                    return q.Where(s => s.EstimatedDeliveryLimit != null && s.EstimatedDeliveryLimit < nowUtc);
+                }
+            case "all":
+            default:
+                return q;
+        }
+    }
+
     /// <summary>Distancia haversine en km (aproximada).</summary>
     private static double Hav(double lat1, double lng1, double lat2, double lng2)
     {
@@ -276,19 +311,15 @@ public class MapeoStopsController : ControllerBase
 
     /// <summary>Cuenta cuantos Flex pendientes hay para importar (dado un rango de dias). Sirve para el preview antes de confirmar.</summary>
     [HttpGet("import-flex-preview")]
-    public async Task<IActionResult> ImportFlexPreview([FromQuery] int days = 1)
+    public async Task<IActionResult> ImportFlexPreview([FromQuery] string mode = "today")
     {
-        // Filtra por fecha límite de ENTREGA (EstimatedDeliveryLimit), no por fecha de venta.
-        // Ventana: desde HOY hasta los próximos N días.
-        var nowLocal = DateTime.UtcNow.AddHours(-3);
-        var todayUtc = nowLocal.Date.AddHours(3);
-        var hastaUtc = todayUtc.AddDays(days);
-        var ships = await _db.MeliShipments
+        // Mismo modo que el filtro principal del Mapeo: today / tomorrow / overdue / all.
+        var q = _db.MeliShipments
             .Where(s => s.LogisticType == "self_service"
                      && s.Status != "delivered" && s.Status != "cancelled"
-                     && s.Latitude != null && s.Longitude != null
-                     && (s.EstimatedDeliveryLimit ?? s.DateCreated) >= todayUtc
-                     && (s.EstimatedDeliveryLimit ?? s.DateCreated) < hastaUtc)
+                     && s.Latitude != null && s.Longitude != null);
+        q = ApplyDeliveryModeFilter(q, mode);
+        var ships = await q
             .Select(s => new { s.MeliShipmentId, s.ReceiverName, s.City, s.AddressLine })
             .ToListAsync();
         var existingRefs = await _db.MapeoStops
@@ -308,17 +339,14 @@ public class MapeoStopsController : ControllerBase
 
     /// <summary>Importa todos los shipments Flex pendientes como paradas (si todavía no existen).</summary>
     [HttpPost("import-flex")]
-    public async Task<IActionResult> ImportFlex([FromQuery] int days = 7)
+    public async Task<IActionResult> ImportFlex([FromQuery] string mode = "today")
     {
-        var nowLocal = DateTime.UtcNow.AddHours(-3);
-        var todayUtc = nowLocal.Date.AddHours(3);
-        var hastaUtc = todayUtc.AddDays(days);
-        var ships = await _db.MeliShipments
+        var q = _db.MeliShipments
             .Where(s => s.LogisticType == "self_service"
                      && s.Status != "delivered" && s.Status != "cancelled"
-                     && s.Latitude != null && s.Longitude != null
-                     && (s.EstimatedDeliveryLimit ?? s.DateCreated) >= todayUtc
-                     && (s.EstimatedDeliveryLimit ?? s.DateCreated) < hastaUtc)
+                     && s.Latitude != null && s.Longitude != null);
+        q = ApplyDeliveryModeFilter(q, mode);
+        var ships = await q
             .ToListAsync();
         // Excluir las que ya están como stops
         var existingRefs = await _db.MapeoStops

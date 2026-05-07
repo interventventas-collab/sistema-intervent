@@ -457,10 +457,10 @@ else
                 <div class="form-group">
                     <label class="form-label">Período a importar</label>
                     <select class="form-input" @bind="importFlexDays" @bind:after="LoadImportPreview">
-                        <option value="1">Hoy (último día)</option>
-                        <option value="3">Últimos 3 días</option>
-                        <option value="7">Últimos 7 días</option>
-                        <option value="15">Últimos 15 días</option>
+                        <option value="today">Hoy</option>
+                        <option value="tomorrow">Mañana</option>
+                        <option value="overdue">⚠ Atrasados</option>
+                        <option value="all">Todos los pendientes</option>
                     </select>
                 </div>
                 @if (importPreview is null)
@@ -980,7 +980,7 @@ else
 
     // Importar Flex
     private bool showImportFlexModal;
-    private string importFlexDays = "1";
+    private string importFlexDays = "today"; // se reemplaza al abrir el modal con el filtro principal
     private ImportFlexPreviewDto? importPreview;
 
     private bool reseteandoTodo;
@@ -1422,7 +1422,8 @@ else
 
     private async Task OpenImportFlexModal()
     {
-        importFlexDays = "1";
+        // Arranca con el mismo modo que el filtro principal del Mapeo
+        importFlexDays = diasFiltro;
         importPreview = null;
         showImportFlexModal = true;
         await LoadImportPreview();
@@ -1430,19 +1431,17 @@ else
 
     private async Task LoadImportPreview()
     {
-        if (!int.TryParse(importFlexDays, out var d)) d = 1;
         importPreview = null;
-        try { importPreview = await Api.ImportFlexPreviewAsync(d); }
+        try { importPreview = await Api.ImportFlexPreviewAsync(importFlexDays); }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
     }
 
     private async Task ConfirmImportFlex()
     {
-        if (!int.TryParse(importFlexDays, out var d)) d = 1;
         importingFlex = true;
         try
         {
-            await Api.ImportFlexAsStopsAsync(d);
+            await Api.ImportFlexAsStopsAsync(importFlexDays);
             await LoadStops();
             ToastService.Success($"Importados {importPreview?.AImportar ?? 0} Flex a la lista de paradas");
             showImportFlexModal = false;
