@@ -25,6 +25,8 @@ public class MeliShipment
 
     [MaxLength(200)] public string? ReceiverName { get; set; }
     [MaxLength(50)] public string? ReceiverPhone { get; set; }
+    /// <summary>Nickname del comprador en MeLi (para cotejar con el panel).</summary>
+    [MaxLength(100)] public string? BuyerNickname { get; set; }
 
     [MaxLength(300)] public string? AddressLine { get; set; }
     [MaxLength(200)] public string? StreetName { get; set; }

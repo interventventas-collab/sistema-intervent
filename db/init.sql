@@ -2683,3 +2683,8 @@ GO
 IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId=1 AND MenuKey='mapeo')
     INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'mapeo');
 GO
+
+-- MeliShipments: nickname del comprador (para cotejar con el panel de MeLi)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='BuyerNickname' AND Object_ID=Object_ID('MeliShipments'))
+    ALTER TABLE MeliShipments ADD BuyerNickname NVARCHAR(100) NULL;
+GO

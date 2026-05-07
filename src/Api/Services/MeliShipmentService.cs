@@ -87,6 +87,10 @@ public class MeliShipmentService
 
                 long orderId = order.TryGetProperty("id", out var oid) && oid.ValueKind == JsonValueKind.Number ? oid.GetInt64() : 0;
                 decimal? orderTotal = order.TryGetProperty("total_amount", out var ta) && ta.ValueKind == JsonValueKind.Number ? ta.GetDecimal() : null;
+                string? buyerNickname = null;
+                if (order.TryGetProperty("buyer", out var by) && by.ValueKind == JsonValueKind.Object
+                    && by.TryGetProperty("nickname", out var bn) && bn.ValueKind == JsonValueKind.String)
+                    buyerNickname = bn.GetString();
 
                 // Resumen breve de items: "2x 1Kg Cafe ... + 1x ..."
                 string? itemsSummary = null;
@@ -117,7 +121,7 @@ public class MeliShipmentService
                 bool isFlex = shipDoc.TryGetProperty("logistic_type", out var lt) && lt.ValueKind == JsonValueKind.String && lt.GetString() == "self_service";
                 if (!isFlex) continue;
 
-                await UpsertShipmentAsync(account.Id, orderId, orderTotal, itemsSummary, shipDoc);
+                await UpsertShipmentAsync(account.Id, orderId, orderTotal, itemsSummary, buyerNickname, shipDoc);
                 synced++; flex++;
             }
             await _db.SaveChangesAsync();
@@ -127,7 +131,7 @@ public class MeliShipmentService
         return (synced, flex);
     }
 
-    private async Task UpsertShipmentAsync(int accountId, long orderId, decimal? orderTotal, string? itemsSummary, JsonElement sh)
+    private async Task UpsertShipmentAsync(int accountId, long orderId, decimal? orderTotal, string? itemsSummary, string? buyerNickname, JsonElement sh)
     {
         long sid = sh.GetProperty("id").GetInt64();
         var existing = await _db.MeliShipments.FirstOrDefaultAsync(x => x.MeliShipmentId == sid);
@@ -136,6 +140,7 @@ public class MeliShipmentService
         existing.MeliOrderId = orderId == 0 ? null : orderId;
         if (orderTotal.HasValue) existing.OrderTotal = orderTotal;
         if (itemsSummary is not null) existing.ItemsSummary = itemsSummary;
+        if (!string.IsNullOrEmpty(buyerNickname)) existing.BuyerNickname = buyerNickname;
 
         existing.Status = sh.TryGetProperty("status", out var st) ? st.GetString() : null;
         existing.Substatus = sh.TryGetProperty("substatus", out var sst) ? sst.GetString() : null;

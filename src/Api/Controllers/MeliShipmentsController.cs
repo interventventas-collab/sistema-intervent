@@ -44,6 +44,7 @@ public class MeliShipmentsController : ControllerBase
             trackingNumber = s.TrackingNumber,
             receiverName = s.ReceiverName,
             receiverPhone = s.ReceiverPhone,
+            buyerNickname = s.BuyerNickname,
             addressLine = s.AddressLine,
             neighborhood = s.Neighborhood,
             city = s.City,

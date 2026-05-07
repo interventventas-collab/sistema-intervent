@@ -73,6 +73,12 @@
                             <strong>@(s.ReceiverName ?? "—")</strong>
                             <span class="mapeo-status-pill" style="@StatusStyle(s.InternalStatus)">@StatusLabel(s.InternalStatus)</span>
                         </div>
+                        <div style="font-size:0.7rem; color:#6b7280; margin-top:0.1rem; display:flex; gap:0.5rem; flex-wrap:wrap;">
+                            @if (!string.IsNullOrEmpty(s.BuyerNickname))
+                            { <span title="Nickname del comprador en MeLi">👤 <strong>@s.BuyerNickname</strong></span> }
+                            @if (s.MeliOrderId.HasValue)
+                            { <span title="Numero de venta MeLi" style="font-family:monospace;">🧾 @s.MeliOrderId.Value</span> }
+                        </div>
                         <div style="color:#4b5563; margin-top:0.15rem;">@(s.AddressLine ?? "—")</div>
                         <div style="color:#6b7280; font-size:0.72rem; margin-top:0.1rem;">
                             @(s.City ?? "—") · CP @(s.ZipCode ?? "—")
@@ -102,6 +108,15 @@
                 <button class="btn-close" @onclick="() => showDetail = false">&times;</button>
             </div>
             <div class="modal-body" style="font-size:0.88rem;">
+                @if (selected.MeliOrderId.HasValue || !string.IsNullOrEmpty(selected.BuyerNickname))
+                {
+                    <div style="background:#f0f9ff; border:1px solid #bfdbfe; padding:0.4rem 0.6rem; border-radius:6px; margin-bottom:0.5rem; font-size:0.78rem; display:flex; gap:0.6rem; flex-wrap:wrap;">
+                        @if (!string.IsNullOrEmpty(selected.BuyerNickname))
+                        { <span>👤 <strong>@selected.BuyerNickname</strong></span> }
+                        @if (selected.MeliOrderId.HasValue)
+                        { <span style="font-family:monospace;">🧾 N° venta: <strong>@selected.MeliOrderId.Value</strong></span> }
+                    </div>
+                }
                 <p><strong>@(selected.ReceiverName ?? "—")</strong></p>
                 <p style="color:#4b5563; margin:0.2rem 0;">@selected.AddressLine</p>
                 <p style="color:#6b7280; font-size:0.78rem; margin:0;">

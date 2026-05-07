@@ -12,6 +12,7 @@ public class MeliShipmentDto
     public string? TrackingNumber { get; set; }
     public string? ReceiverName { get; set; }
     public string? ReceiverPhone { get; set; }
+    public string? BuyerNickname { get; set; }
     public string? AddressLine { get; set; }
     public string? Neighborhood { get; set; }
     public string? City { get; set; }
