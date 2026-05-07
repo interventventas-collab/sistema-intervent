@@ -11,7 +11,8 @@ public static class MenuDefinition
         new MenuGroup("mercadolibre", "MercadoLibre", new[]
         {
             new MenuItem("publicaciones", "Publicaciones", "/publicaciones"),
-            new MenuItem("ordenes", "Ordenes", "/ordenes")
+            new MenuItem("ordenes", "Ordenes", "/ordenes"),
+            new MenuItem("mapeo", "Mapeo", "/mapeo")
         }),
         new MenuGroup("inventario", "Productos y Servicios", new[]
         {
