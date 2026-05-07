@@ -1950,6 +1950,15 @@ public class ApiClient
         return await PostAsync<object>(url, new { });
     }
 
+    public async Task<object?> AssignVehicleSlotAsync(int stopId, int? slot)
+        => await PutAsync<object>($"/api/mapeo/stops/{stopId}/vehicle-slot", new { slot });
+
+    public async Task<object?> ClearVehicleAssignmentsAsync()
+        => await PostAsync<object>("/api/mapeo/stops/clear-vehicle-assignments", new { });
+
+    public async Task<object?> AssignDriverToSlotAsync(int slot, int? driverId)
+        => await PostAsync<object>("/api/mapeo/stops/assign-driver-to-slot", new { slot, driverId });
+
     // ===== MeLi Questions =====
     public async Task<MeliQuestionsUnreadDto?> GetMeliQuestionsUnreadCountAsync()
         => await GetAsync<MeliQuestionsUnreadDto>("/api/meli/questions/unread-count");

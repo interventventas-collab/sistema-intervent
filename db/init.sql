@@ -2748,3 +2748,8 @@ BEGIN
     CREATE INDEX IX_MapeoStops_Driver ON MapeoStops(AssignedDriverId);
 END
 GO
+
+-- MapeoStops: slot del vehículo del día (asignación visual ad-hoc, separa el "vehículo" del "chofer").
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='AssignedVehicleSlot' AND Object_ID=Object_ID('MapeoStops'))
+    ALTER TABLE MapeoStops ADD AssignedVehicleSlot INT NULL;
+GO

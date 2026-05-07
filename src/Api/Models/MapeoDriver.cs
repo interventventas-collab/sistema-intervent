@@ -52,6 +52,9 @@ public class MapeoStop
     public int? AssignedDriverId { get; set; }
     [ForeignKey(nameof(AssignedDriverId))] public MapeoDriver? AssignedDriver { get; set; }
 
+    /// <summary>Slot del vehiculo del dia (1..N). El chofer se asigna despues al slot, no al stop directo.</summary>
+    public int? AssignedVehicleSlot { get; set; }
+
     public int? OrderInRoute { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

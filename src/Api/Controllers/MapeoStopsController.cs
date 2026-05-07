@@ -17,13 +17,13 @@ public class MapeoStopsController : ControllerBase
     public record StopDto(int Id, string Origin, string? OriginRefId, string? Alias, string Direccion,
         decimal Latitude, decimal Longitude, string? ContactName, string? Telefono, string? Notas,
         string InternalStatus, int? AssignedDriverId, string? AssignedDriverName, string? AssignedDriverColor,
-        int? OrderInRoute, DateTime CreatedAt);
+        int? AssignedVehicleSlot, int? OrderInRoute, DateTime CreatedAt);
 
     private static StopDto Map(MapeoStop s) => new(
         s.Id, s.Origin, s.OriginRefId, s.Alias, s.Direccion, s.Latitude, s.Longitude,
         s.ContactName, s.Telefono, s.Notas, s.InternalStatus,
         s.AssignedDriverId, s.AssignedDriver?.Nombre, s.AssignedDriver?.Color,
-        s.OrderInRoute, s.CreatedAt);
+        s.AssignedVehicleSlot, s.OrderInRoute, s.CreatedAt);
 
     [HttpGet]
     public async Task<IActionResult> List([FromQuery] int? driverId = null, [FromQuery] string? internalStatus = null)
@@ -102,6 +102,45 @@ public class MapeoStopsController : ControllerBase
     {
         await _db.MapeoStops.ExecuteDeleteAsync();
         return Ok(new { ok = true });
+    }
+
+    // ===== Asignacion visual a vehiculos (slot) =====
+    public record AssignSlotRequest(int? Slot);
+
+    [HttpPut("{id:int}/vehicle-slot")]
+    public async Task<IActionResult> AssignSlot(int id, [FromBody] AssignSlotRequest req)
+    {
+        var s = await _db.MapeoStops.FindAsync(id);
+        if (s is null) return NotFound(new { error = "Parada no encontrada" });
+        s.AssignedVehicleSlot = req.Slot.HasValue && req.Slot.Value > 0 ? req.Slot.Value : null;
+        s.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, slot = s.AssignedVehicleSlot });
+    }
+
+    [HttpPost("clear-vehicle-assignments")]
+    public async Task<IActionResult> ClearVehicleAssignments()
+    {
+        await _db.MapeoStops.ExecuteUpdateAsync(set => set
+            .SetProperty(s => s.AssignedVehicleSlot, (int?)null)
+            .SetProperty(s => s.UpdatedAt, DateTime.UtcNow));
+        return Ok(new { ok = true });
+    }
+
+    public record AssignDriverToSlotRequest(int Slot, int? DriverId);
+
+    /// <summary>Asigna un chofer a todas las paradas de un slot (vehículo del día).</summary>
+    [HttpPost("assign-driver-to-slot")]
+    public async Task<IActionResult> AssignDriverToSlot([FromBody] AssignDriverToSlotRequest req)
+    {
+        if (req.Slot <= 0) return BadRequest(new { error = "Slot inválido" });
+        int? did = req.DriverId.HasValue && req.DriverId.Value > 0 ? req.DriverId.Value : null;
+        var n = await _db.MapeoStops
+            .Where(s => s.AssignedVehicleSlot == req.Slot)
+            .ExecuteUpdateAsync(set => set
+                .SetProperty(s => s.AssignedDriverId, did)
+                .SetProperty(s => s.UpdatedAt, DateTime.UtcNow));
+        return Ok(new { ok = true, updated = n });
     }
 
     public record AssignBulkRequest(List<int> StopIds, int? DriverId);

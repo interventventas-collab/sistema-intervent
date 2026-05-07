@@ -61,6 +61,10 @@
             <button class="btn btn-secondary" style="font-size:0.85rem;" @onclick="OpenImportFlexModal" title="Trae los Flex pendientes a la lista de paradas para asignarles repartidor">
                 📥 Sumar Flex a paradas
             </button>
+            <button class="btn @(modoAsignacion ? "btn-primary" : "btn-secondary")" style="font-size:0.85rem;"
+                    @onclick="ToggleModoAsignacion" title="Asignar envíos a vehículos clickeando los marcadores del mapa">
+                @(modoAsignacion ? "✓ Modo asignación" : "🚚 Modo asignación")
+            </button>
             <button class="btn btn-primary" style="font-size:0.85rem;" @onclick="OpenArmarRutaModal" title="Asignar paradas a repartidores y optimizar orden">
                 📋 Armar ruta
             </button>
@@ -70,6 +74,45 @@
         </div>
     </div>
 </div>
+
+@if (modoAsignacion)
+{
+    <div class="card" style="margin-bottom:0.5rem; background:#fffbeb; border:1px solid #fcd34d;">
+        <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; padding:0.5rem 0.7rem;">
+            <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                <span style="font-weight:700;">🚚 Asignación visual:</span>
+                <select class="form-input" style="font-size:0.85rem; max-width:130px;" @bind="cantidadVehiculos">
+                    @for (int n = 1; n <= 10; n++)
+                    { <option value="@n">@n vehículo(s)</option> }
+                </select>
+                <div style="display:flex; gap:0.3rem; flex-wrap:wrap;">
+                    @for (int i = 1; i <= cantidadVehiculos; i++)
+                    {
+                        var slot = i;
+                        var color = VehicleColor(slot);
+                        var sel = vehiculoSeleccionado == slot;
+                        var count = stops?.Count(s => s.AssignedVehicleSlot == slot) ?? 0;
+                        <button class="btn" style="padding:0.25rem 0.6rem; font-size:0.85rem; font-weight:700;
+                                background:@(sel ? color : color + "33"); color:@(sel ? "white" : color);
+                                border:2px solid @color; border-radius:6px; cursor:pointer;"
+                                @onclick="() => SeleccionarVehiculo(slot)">
+                            🚐 V@(slot)<span style="opacity:0.85; margin-left:0.3rem;">(@count)</span>
+                        </button>
+                    }
+                </div>
+            </div>
+            <div style="display:flex; gap:0.4rem;">
+                <button class="btn btn-secondary" style="font-size:0.78rem;" @onclick="ClearVehicleAssignments" disabled="@assigningSlot">🗑 Limpiar asignación</button>
+                <button class="btn btn-primary" style="font-size:0.78rem;" @onclick="OpenAssignDriversModal">👤 Asignar choferes →</button>
+            </div>
+        </div>
+        <div style="padding:0.4rem 0.7rem; font-size:0.78rem; color:#92400e;">
+            Tocá un globito en el mapa para asignarlo a <strong>V@vehiculoSeleccionado</strong>. Click de nuevo para desasignar.
+            @if ((stops?.Count(s => s.AssignedVehicleSlot == null) ?? 0) > 0)
+            { <span style="color:#6b7280;"> · @stops!.Count(s => s.AssignedVehicleSlot == null) sin asignar</span> }
+        </div>
+    </div>
+}
 
 <div class="mapeo-layout">
     <div class="mapeo-side">
@@ -160,6 +203,50 @@
         <div id="leafletMap"></div>
     </div>
 </div>
+
+@if (showAssignDriversModal)
+{
+    <div class="modal-overlay" @onclick="() => showAssignDriversModal = false">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width:560px;">
+            <div class="modal-header" style="background:#dbeafe;">
+                <h3 style="margin:0;">👤 Asignar choferes a vehículos</h3>
+                <button class="btn-close" @onclick="() => showAssignDriversModal = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if ((drivers?.Count(d => d.IsActive) ?? 0) == 0)
+                {
+                    <div style="background:#fee2e2; padding:0.6rem; border-left:3px solid #b91c1c; font-size:0.85rem;">
+                        ⚠ No hay choferes cargados. Volvé y agregá en <strong>👥 Repartidores</strong>.
+                    </div>
+                }
+                else
+                {
+                    @for (int i = 1; i <= cantidadVehiculos; i++)
+                    {
+                        var slot = i;
+                        var color = VehicleColor(slot);
+                        var count = stops?.Count(s => s.AssignedVehicleSlot == slot) ?? 0;
+                        var currentDriverId = stops?.FirstOrDefault(s => s.AssignedVehicleSlot == slot)?.AssignedDriverId;
+                        <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem; padding:0.5rem; background:@(color)11; border:1px solid @color; border-radius:6px;">
+                            <strong style="color:@color; min-width:60px;">🚐 V@slot</strong>
+                            <span style="font-size:0.78rem; color:#6b7280;">@count parada(s)</span>
+                            <select class="form-input" style="flex:1;" @onchange="@(e => SaveDriverForSlot(slot, e.Value?.ToString()))">
+                                <option value="">— Sin chofer —</option>
+                                @foreach (var d in drivers!.Where(x => x.IsActive))
+                                {
+                                    <option value="@d.Id" selected="@(currentDriverId == d.Id)">@d.Nombre</option>
+                                }
+                            </select>
+                        </div>
+                    }
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" @onclick="() => showAssignDriversModal = false">Listo</button>
+            </div>
+        </div>
+    </div>
+}
 
 @if (showImportFlexModal)
 {
@@ -698,6 +785,19 @@
     private bool showImportFlexModal;
     private string importFlexDays = "1";
     private ImportFlexPreviewDto? importPreview;
+
+    // Modo asignación visual
+    private bool modoAsignacion;
+    private int cantidadVehiculos = 2;
+    private int vehiculoSeleccionado = 1;
+    private bool assigningSlot;
+    private bool showAssignDriversModal;
+
+    private static readonly string[] VEHICLE_COLORS = {
+        "#1d4ed8", "#dc2626", "#16a34a", "#d97706", "#7c3aed",
+        "#0891b2", "#be185d", "#65a30d", "#ea580c", "#4338ca"
+    };
+    private static string VehicleColor(int slot) => VEHICLE_COLORS[(slot - 1) % VEHICLE_COLORS.Length];
     private string newFavAlias = "", newFavQuery = "", newFavDireccion = "", newFavContact = "", newFavPhone = "", newFavNotas = "";
     private decimal newFavLat = 0m, newFavLng = 0m;
     private bool favGeocoding;
@@ -761,14 +861,21 @@
         // Si no: naranja con ★.
         if (stops is not null)
         {
-            list.AddRange(stops.Select(st => (object)new
-            {
-                id = -1000 - st.Id,
-                lat = st.Latitude,
-                lng = st.Longitude,
-                label = st.OrderInRoute.HasValue ? st.OrderInRoute.Value.ToString() : "★",
-                color = string.IsNullOrEmpty(st.AssignedDriverColor) ? "#d97706" : st.AssignedDriverColor,
-                popupHtml = $"<div style='font-size:0.8rem;'><strong>{System.Net.WebUtility.HtmlEncode(st.Alias ?? st.ContactName ?? "Parada")}</strong>{(st.AssignedDriverName is null ? "" : $" <span style='color:{st.AssignedDriverColor}'>· {System.Net.WebUtility.HtmlEncode(st.AssignedDriverName)}{(st.OrderInRoute.HasValue ? $" #{st.OrderInRoute}" : "")}</span>")}<br/>{System.Net.WebUtility.HtmlEncode(st.Direccion)}{(string.IsNullOrEmpty(st.Telefono) ? "" : $"<br/>📞 {System.Net.WebUtility.HtmlEncode(st.Telefono)}")}</div>"
+            list.AddRange(stops.Select(st => {
+                // Prioridad de color: 1) vehiculo asignado, 2) driver asignado, 3) naranja default
+                string color = st.AssignedVehicleSlot.HasValue ? VehicleColor(st.AssignedVehicleSlot.Value)
+                              : (string.IsNullOrEmpty(st.AssignedDriverColor) ? "#d97706" : st.AssignedDriverColor!);
+                string label = st.OrderInRoute.HasValue ? st.OrderInRoute.Value.ToString()
+                              : (st.AssignedVehicleSlot.HasValue ? "V" + st.AssignedVehicleSlot : "★");
+                return (object)new
+                {
+                    id = -1000 - st.Id,
+                    lat = st.Latitude,
+                    lng = st.Longitude,
+                    label,
+                    color,
+                    popupHtml = $"<div style='font-size:0.8rem;'><strong>{System.Net.WebUtility.HtmlEncode(st.Alias ?? st.ContactName ?? "Parada")}</strong>{(st.AssignedVehicleSlot.HasValue ? $" <span style='color:{color}'>· V{st.AssignedVehicleSlot}</span>" : "")}{(st.AssignedDriverName is null ? "" : $" · {System.Net.WebUtility.HtmlEncode(st.AssignedDriverName)}")}<br/>{System.Net.WebUtility.HtmlEncode(st.Direccion)}{(string.IsNullOrEmpty(st.Telefono) ? "" : $"<br/>📞 {System.Net.WebUtility.HtmlEncode(st.Telefono)}")}</div>"
+                };
             }));
         }
         await JS.InvokeVoidAsync("mapeoFlex.renderMarkers", new object[] { list.ToArray() });
@@ -826,11 +933,20 @@
     }
 
     [JSInvokable]
-    public Task OnMarkerClicked(int id)
+    public async Task OnMarkerClicked(int id)
     {
+        // Markers de stops adicionales tienen id negativo (-1000 - st.Id)
+        if (id <= -1000)
+        {
+            var stopId = -1000 - id;
+            var st = stops?.FirstOrDefault(x => x.Id == stopId);
+            if (st is null) return;
+            if (modoAsignacion) { await OnMarkerAssign(st); return; }
+            // Sino: por ahora no hay detalle de stops, podríamos abrirlo después.
+            return;
+        }
         var s = shipments?.FirstOrDefault(x => x.Id == id);
         if (s is not null) { activeShipmentId = id; selected = s; showDetail = true; StateHasChanged(); }
-        return Task.CompletedTask;
     }
 
     private async Task LoadDrivers() { try { drivers = await Api.GetMapeoDriversAsync() ?? new(); } catch { drivers = new(); } }
@@ -913,6 +1029,62 @@
         "venta_cafe" => "☕ Café",
         _ => "✏️ Manual"
     };
+
+    // ===== Modo asignación visual =====
+    private async Task ToggleModoAsignacion()
+    {
+        modoAsignacion = !modoAsignacion;
+        if (modoAsignacion)
+        {
+            var maxSlot = stops?.Where(s => s.AssignedVehicleSlot.HasValue).Max(s => s.AssignedVehicleSlot) ?? 0;
+            if (maxSlot > cantidadVehiculos) cantidadVehiculos = maxSlot;
+        }
+        await RenderMap();
+    }
+
+    private void SeleccionarVehiculo(int slot) { vehiculoSeleccionado = slot; }
+
+    private async Task OnMarkerAssign(MapeoStopDto s)
+    {
+        assigningSlot = true;
+        try
+        {
+            int? newSlot = (s.AssignedVehicleSlot == vehiculoSeleccionado) ? null : vehiculoSeleccionado;
+            await Api.AssignVehicleSlotAsync(s.Id, newSlot);
+            s.AssignedVehicleSlot = newSlot;
+            await RenderMap();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { assigningSlot = false; }
+    }
+
+    private async Task ClearVehicleAssignments()
+    {
+        if (!await ConfirmAsync("Limpiar todas las asignaciones de vehículos?")) return;
+        try
+        {
+            await Api.ClearVehicleAssignmentsAsync();
+            if (stops is not null) foreach (var s in stops) s.AssignedVehicleSlot = null;
+            await RenderMap();
+            ToastService.Success("Limpiado");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private void OpenAssignDriversModal() => showAssignDriversModal = true;
+
+    private async Task SaveDriverForSlot(int slot, string? driverIdStr)
+    {
+        int? did = int.TryParse(driverIdStr, out var v) && v > 0 ? v : null;
+        try
+        {
+            await Api.AssignDriverToSlotAsync(slot, did);
+            await LoadStops();
+            await RenderMap();
+            ToastService.Success($"Chofer asignado a V{slot}");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
 
     private async Task OpenImportFlexModal()
     {

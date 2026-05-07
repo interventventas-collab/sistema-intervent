@@ -25,6 +25,7 @@ public class MapeoStopDto
     public int? AssignedDriverId { get; set; }
     public string? AssignedDriverName { get; set; }
     public string? AssignedDriverColor { get; set; }
+    public int? AssignedVehicleSlot { get; set; }
     public int? OrderInRoute { get; set; }
     public DateTime CreatedAt { get; set; }
 }
