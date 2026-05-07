@@ -27,6 +27,11 @@
     .stepper-chip:hover { background: #f3f4f6; }
     .stepper-chip.completado { background: #ecfdf5; border-color: #10b981; color: #047857; }
     .stepper-chip.actual { background: #dbeafe; border-color: #1d4ed8; color: #1d4ed8; animation: stepper-pulse 1.6s infinite; }
+    /* Chip grande — usado como toolbar principal del stepper */
+    .stepper-chip-big { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.55rem 0.9rem; border-radius: 8px; font-size: 0.92rem; font-weight: 700; cursor: pointer; border: 2px solid #e5e7eb; background: white; color: #4b5563; transition: all 0.15s; }
+    .stepper-chip-big:hover { background: #f3f4f6; border-color: #93c5fd; color: #1d4ed8; transform: translateY(-1px); }
+    .stepper-chip-big.completado { background: #ecfdf5; border-color: #10b981; color: #047857; }
+    .stepper-chip-big.actual { background: #dbeafe; border-color: #1d4ed8; color: #1d4ed8; animation: stepper-pulse 1.6s infinite; }
     .stepper-chip-num { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:50%; background:#e5e7eb; color:#6b7280; font-size:0.7rem; font-weight:800; }
     .stepper-chip.completado .stepper-chip-num { background: #10b981; color: white; }
     .stepper-chip.actual .stepper-chip-num { background: #1d4ed8; color: white; }
@@ -58,6 +63,16 @@
     int paradasAsignadas = stops?.Count(s => s.AssignedDriverId.HasValue) ?? 0;
 }
 
+@* ═════════ Header chico (titulo + reset chiquito) ═════════ *@
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
+    <h3 style="margin:0;">🗺️ Mapeo — Envíos Flex</h3>
+    <button class="btn" style="font-size:0.75rem; background:transparent; color:#b91c1c; border:1px solid #fca5a5; padding:0.25rem 0.5rem;"
+            @onclick="EmpezarDesdeCero" disabled="@reseteandoTodo"
+            title="Borra todas las paradas y asignaciones para arrancar de cero (no toca repartidores ni favoritos)">
+        @(reseteandoTodo ? "Borrando..." : "🆕 Empezar desde cero")
+    </button>
+</div>
+
 @if (allDone && !stepperExpanded)
 {
     <div class="stepper stepper-collapsed">
@@ -72,107 +87,115 @@
 }
 else
 {
-    <div class="stepper">
-        <div class="stepper-chip @(step1Done ? "completado" : (currentStep == 1 ? "actual" : ""))"
-             title="Paso 1: traer envíos Flex desde MercadoLibre" @onclick="() => HighlightStep(1)">
+    @* ═════════ Stepper grande — ES la toolbar de acciones del día ═════════ *@
+    <div class="stepper" style="padding:0.7rem;">
+        <div class="stepper-chip-big @(step1Done ? "completado" : (currentStep == 1 ? "actual" : ""))"
+             title="Traer envíos Flex desde MercadoLibre" @onclick="SyncFromMeli">
             <span class="stepper-chip-num">@(step1Done ? "✓" : "1")</span>
-            📥 Flex
+            📥 Traer Flex
+            @if (step1Done) { <span style="font-size:0.7rem; opacity:0.85; margin-left:0.25rem;">(@(shipments?.Count ?? 0))</span> }
         </div>
         <span class="stepper-arrow">›</span>
 
-        <div class="stepper-chip @(step2Done ? "completado" : (currentStep == 2 ? "actual" : ""))"
-             title="Paso 2: sumar Flex a paradas (y opcionalmente agregar más manuales)" @onclick="() => HighlightStep(2)">
+        <div class="stepper-chip-big @(step2Done ? "completado" : (currentStep == 2 ? "actual" : ""))"
+             title="Sumar Flex a paradas o agregar manuales" @onclick="OpenImportFlexModal">
             <span class="stepper-chip-num">@(step2Done ? "✓" : "2")</span>
             🛣 Paradas
+            @if (step2Done) { <span style="font-size:0.7rem; opacity:0.85; margin-left:0.25rem;">(@(stops?.Count ?? 0))</span> }
         </div>
         <span class="stepper-arrow">›</span>
 
-        <div class="stepper-chip @(step3Done ? "completado" : (currentStep == 3 ? "actual" : ""))"
-             title="Paso 3: modo asignación visual — pintar paradas por vehículo" @onclick="() => HighlightStep(3)">
+        <div class="stepper-chip-big @(step3Done ? "completado" : (currentStep == 3 ? "actual" : ""))"
+             title="Asignar envíos a vehículos clickeando en el mapa" @onclick="ToggleModoAsignacion">
             <span class="stepper-chip-num">@(step3Done ? "✓" : "3")</span>
-            🚚 Vehículos
+            🚚 Asignar V.
+            @{
+                int vehUsados = stops?.Where(s => s.AssignedVehicleSlot.HasValue).Select(s => s.AssignedVehicleSlot).Distinct().Count() ?? 0;
+            }
+            @if (step3Done) { <span style="font-size:0.7rem; opacity:0.85; margin-left:0.25rem;">(@vehUsados)</span> }
         </div>
         <span class="stepper-arrow">›</span>
 
-        <div class="stepper-chip @(step4Done ? "completado" : (currentStep == 4 ? "actual" : ""))"
-             title="Paso 4: asignar chofer a cada vehículo" @onclick="() => HighlightStep(4)">
+        <div class="stepper-chip-big @(step4Done ? "completado" : (currentStep == 4 ? "actual" : ""))"
+             title="Asignar chofer a cada vehículo" @onclick="OpenAssignDriversModal">
             <span class="stepper-chip-num">@(step4Done ? "✓" : "4")</span>
             👤 Choferes
+            @if (step4Done) { <span style="font-size:0.7rem; opacity:0.85; margin-left:0.25rem;">(@chofers)</span> }
         </div>
         <span class="stepper-arrow">›</span>
 
-        <div class="stepper-chip @(step5Done ? "completado" : (currentStep == 5 ? "actual" : ""))"
-             title="Paso 5: copiar link y mandar por WhatsApp" @onclick="() => HighlightStep(5)">
+        <div class="stepper-chip-big @(step5Done ? "completado" : (currentStep == 5 ? "actual" : ""))"
+             title="Copiar y mandar links por WhatsApp" @onclick="OpenAssignDriversModal">
             <span class="stepper-chip-num">@(step5Done ? "✓" : "5")</span>
             💬 Mandar
         </div>
-
-        @if (allDone)
-        {
-            <button class="btn" style="font-size:0.78rem; background:transparent; border:1px solid #d1d5db; color:#6b7280; margin-left:auto;" @onclick="() => stepperExpanded = false">Ocultar</button>
-        }
     </div>
 }
 
-<div class="card" style="margin-bottom: 0.5rem;">
-    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
-        <h3 style="margin:0;">🗺️ Mapeo — Envíos Flex</h3>
-        <div style="display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
-            <select class="form-input" style="max-width:130px; font-size:0.85rem;" @bind="diasFiltro" @bind:after="LoadAndRender">
-                <option value="1">Hoy</option>
-                <option value="3">Últimos 3 días</option>
-                <option value="7">Últimos 7 días</option>
-                <option value="15">Últimos 15 días</option>
-            </select>
-            <select class="form-input" style="max-width:170px; font-size:0.85rem;" @bind="filtroInterno" @bind:after="LoadAndRender">
-                <option value="">Estado: todos</option>
-                <option value="pending">Pendiente</option>
-                <option value="en_ruta">En ruta</option>
-                <option value="entregado">Entregado</option>
-                <option value="no_encontrado">No encontrado</option>
-                <option value="reprogramado">Reprogramado</option>
-            </select>
-            <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.85rem;">
-                <input type="checkbox" @bind="excluirEntregados" @bind:after="LoadAndRender" />
-                Ocultar entregados/cancelados
-            </label>
-            <button class="btn btn-secondary" style="font-size:0.85rem;" @onclick="LoadAndRender" disabled="@isLoading">
-                @(isLoading ? "Cargando..." : "🔄 Refrescar lista")
-            </button>
-            <button class="btn btn-secondary" style="font-size:0.85rem;" @onclick="OpenStartPointModal" title="Configurar punto de partida del reparto">
-                @(startPoint?.Lat.HasValue == true ? "📍 Punto de partida ✓" : "📍 Punto de partida")
-            </button>
-            <button class="btn btn-secondary" style="font-size:0.85rem;" @onclick="OpenPublicUrlModal" title="URL pública del sistema (para que los links que mandás a los choferes sean limpios)">
-                @(string.IsNullOrEmpty(publicBaseUrl) ? "🌐 URL pública" : "🌐 URL pública ✓")
-            </button>
-            <button class="btn btn-secondary" style="font-size:0.85rem;" @onclick="OpenDriversModal" title="Repartidores">
-                👥 Repartidores (@(drivers?.Count ?? 0))
-            </button>
-            <button class="btn btn-secondary" style="font-size:0.85rem;" @onclick="OpenFavoritosModal" title="Direcciones favoritas">
-                ⭐ Favoritos (@(favoritos?.Count ?? 0))
-            </button>
-            <button class="btn btn-secondary" style="font-size:0.85rem;" @onclick="OpenAddStopModal" title="Agregar parada al mapa (favorito o manual)">
-                ➕ Agregar parada
-            </button>
-            <button class="btn btn-secondary" style="font-size:0.85rem;" @onclick="OpenImportFlexModal" title="Trae los Flex pendientes a la lista de paradas para asignarles repartidor">
-                📥 Sumar Flex a paradas
-            </button>
-            <button class="btn @(modoAsignacion ? "btn-primary" : "btn-secondary")" style="font-size:0.85rem;"
-                    @onclick="ToggleModoAsignacion" title="Asignar envíos a vehículos clickeando los marcadores del mapa">
-                @(modoAsignacion ? "✓ Modo asignación" : "🚚 Modo asignación")
-            </button>
-            <button class="btn btn-primary" style="font-size:0.85rem;" @onclick="OpenArmarRutaModal" title="Asignar paradas a repartidores y optimizar orden">
-                📋 Armar ruta
-            </button>
-            <button class="btn" style="font-size:0.85rem; background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5;"
-                    @onclick="EmpezarDesdeCero" disabled="@reseteandoTodo"
-                    title="Borra todas las paradas y asignaciones para arrancar de cero (no toca repartidores ni favoritos)">
-                @(reseteandoTodo ? "Borrando..." : "🆕 Empezar desde cero")
-            </button>
-            <button class="btn btn-primary" style="font-size:0.85rem;" @onclick="SyncFromMeli" disabled="@isSyncing">
-                @(isSyncing ? "Sincronizando..." : "📥 Traer envíos de MeLi")
-            </button>
-        </div>
+@* ═════════ Filtros (chiquitos) + Setup colapsado ═════════ *@
+<div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.5rem; padding:0.4rem 0.6rem; background:white; border:1px solid #e5e7eb; border-radius:8px;">
+    <div style="display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
+        <span style="font-size:0.78rem; color:#6b7280; font-weight:600;">Mostrar:</span>
+        <select class="form-input" style="max-width:120px; font-size:0.78rem; padding:0.2rem 0.4rem;" @bind="diasFiltro" @bind:after="LoadAndRender">
+            <option value="1">Hoy</option>
+            <option value="3">3 días</option>
+            <option value="7">7 días</option>
+            <option value="15">15 días</option>
+        </select>
+        <select class="form-input" style="max-width:140px; font-size:0.78rem; padding:0.2rem 0.4rem;" @bind="filtroInterno" @bind:after="LoadAndRender">
+            <option value="">Estado: todos</option>
+            <option value="pending">Pendiente</option>
+            <option value="en_ruta">En ruta</option>
+            <option value="entregado">Entregado</option>
+            <option value="no_encontrado">No encontrado</option>
+            <option value="reprogramado">Reprogramado</option>
+        </select>
+        <label style="display:flex; align-items:center; gap:0.25rem; font-size:0.78rem; color:#374151;">
+            <input type="checkbox" @bind="excluirEntregados" @bind:after="LoadAndRender" />
+            Ocultar entregados
+        </label>
+        <button class="btn" style="font-size:0.75rem; padding:0.2rem 0.5rem; background:transparent; border:1px solid #d1d5db; color:#374151;"
+                @onclick="LoadAndRender" disabled="@isLoading" title="Refrescar lista local">
+            @(isLoading ? "..." : "🔄")
+        </button>
+    </div>
+
+    @* Menú colapsado de Configuración (cosas de 1 vez) *@
+    <div style="position:relative;">
+        <button class="btn" style="font-size:0.78rem; padding:0.25rem 0.6rem; background:#f3f4f6; border:1px solid #d1d5db; color:#374151;"
+                @onclick="() => showConfigMenu = !showConfigMenu" title="Setup inicial — se hace una vez">
+            ⚙ Configuración ▾
+        </button>
+        @if (showConfigMenu)
+        {
+            <div style="position:absolute; top:100%; right:0; margin-top:0.3rem; background:white; border:1px solid #e5e7eb; border-radius:6px; box-shadow:0 4px 12px rgba(0,0,0,0.1); padding:0.3rem; min-width:230px; z-index:50;">
+                <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
+                        @onclick="@(() => { showConfigMenu = false; OpenStartPointModal(); })">
+                    <span>📍 Punto de partida</span>
+                    @if (startPoint?.Lat.HasValue == true) { <span style="color:#16a34a;">✓</span> }
+                </button>
+                <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
+                        @onclick="@(() => { showConfigMenu = false; OpenPublicUrlModal(); })">
+                    <span>🌐 URL pública</span>
+                    @if (!string.IsNullOrEmpty(publicBaseUrl)) { <span style="color:#16a34a;">✓</span> }
+                </button>
+                <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
+                        @onclick="@(async () => { showConfigMenu = false; await OpenDriversModal(); })">
+                    <span>👥 Repartidores</span>
+                    <span style="color:#6b7280; font-size:0.72rem;">@(drivers?.Count ?? 0)</span>
+                </button>
+                <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
+                        @onclick="@(async () => { showConfigMenu = false; await OpenFavoritosModal(); })">
+                    <span>⭐ Favoritos</span>
+                    <span style="color:#6b7280; font-size:0.72rem;">@(favoritos?.Count ?? 0)</span>
+                </button>
+                <hr style="margin:0.3rem 0; border:none; border-top:1px solid #f3f4f6;" />
+                <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
+                        @onclick="@(() => { showConfigMenu = false; OpenAddStopModal(); })">
+                    <span>➕ Agregar parada manual</span>
+                </button>
+            </div>
+        }
     </div>
 </div>
 
@@ -959,6 +982,7 @@ else
     private bool reseteandoTodo;
     // Stepper inteligente
     private bool stepperExpanded = false; // cuando todo está OK, se contrae a 1 línea
+    private bool showConfigMenu = false; // dropdown ⚙ Configuración
     // URL pública para los links de los choferes (ej: https://midominio.com)
     private string? publicBaseUrl;
     private bool showPublicUrlModal;
