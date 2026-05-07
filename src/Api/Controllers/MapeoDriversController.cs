@@ -14,7 +14,7 @@ public class MapeoDriversController : ControllerBase
     private readonly AppDbContext _db;
     public MapeoDriversController(AppDbContext db) { _db = db; }
 
-    public record DriverDto(int Id, string Nombre, string? Telefono, string Color, bool IsActive);
+    public record DriverDto(int Id, string Nombre, string? Telefono, string Color, bool IsActive, string? ShareToken);
     public record CreateDriverRequest(string Nombre, string? Telefono, string? Color);
     public record UpdateDriverRequest(string? Nombre, string? Telefono, string? Color, bool? IsActive);
 
@@ -22,7 +22,7 @@ public class MapeoDriversController : ControllerBase
     public async Task<IActionResult> ListDrivers()
     {
         var list = await _db.MapeoDrivers.OrderBy(d => d.Nombre).ToListAsync();
-        return Ok(list.Select(d => new DriverDto(d.Id, d.Nombre, d.Telefono, d.Color, d.IsActive)));
+        return Ok(list.Select(d => new DriverDto(d.Id, d.Nombre, d.Telefono, d.Color, d.IsActive, d.ShareToken)));
     }
 
     [HttpPost("drivers")]
@@ -39,7 +39,7 @@ public class MapeoDriversController : ControllerBase
         };
         _db.MapeoDrivers.Add(d);
         await _db.SaveChangesAsync();
-        return Ok(new DriverDto(d.Id, d.Nombre, d.Telefono, d.Color, d.IsActive));
+        return Ok(new DriverDto(d.Id, d.Nombre, d.Telefono, d.Color, d.IsActive, d.ShareToken));
     }
 
     [HttpPut("drivers/{id:int}")]
@@ -53,7 +53,7 @@ public class MapeoDriversController : ControllerBase
         if (req.IsActive.HasValue) d.IsActive = req.IsActive.Value;
         d.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
-        return Ok(new DriverDto(d.Id, d.Nombre, d.Telefono, d.Color, d.IsActive));
+        return Ok(new DriverDto(d.Id, d.Nombre, d.Telefono, d.Color, d.IsActive, d.ShareToken));
     }
 
     [HttpDelete("drivers/{id:int}")]
@@ -64,6 +64,24 @@ public class MapeoDriversController : ControllerBase
         _db.MapeoDrivers.Remove(d);
         await _db.SaveChangesAsync();
         return Ok(new { ok = true });
+    }
+
+    /// <summary>
+    /// Devuelve (o genera si no existe) el ShareToken del chofer.
+    /// </summary>
+    [HttpPost("drivers/{id:int}/share-token")]
+    public async Task<IActionResult> GenerateShareToken(int id, [FromQuery] bool regenerate = false)
+    {
+        var d = await _db.MapeoDrivers.FindAsync(id);
+        if (d is null) return NotFound(new { error = "Repartidor no encontrado" });
+        if (regenerate || string.IsNullOrEmpty(d.ShareToken))
+        {
+            // Token random URL-safe
+            d.ShareToken = Convert.ToBase64String(Guid.NewGuid().ToByteArray()).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+            d.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+        }
+        return Ok(new { token = d.ShareToken });
     }
 
     // ===== Favoritos =====

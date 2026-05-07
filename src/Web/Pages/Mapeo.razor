@@ -3,6 +3,7 @@
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject IJSRuntime JS
+@inject NavigationManager Navigation
 @implements IAsyncDisposable
 
 <style>
@@ -227,16 +228,40 @@
                         var color = VehicleColor(slot);
                         var count = stops?.Count(s => s.AssignedVehicleSlot == slot) ?? 0;
                         var currentDriverId = stops?.FirstOrDefault(s => s.AssignedVehicleSlot == slot)?.AssignedDriverId;
-                        <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem; padding:0.5rem; background:@(color)11; border:1px solid @color; border-radius:6px;">
-                            <strong style="color:@color; min-width:60px;">🚐 V@slot</strong>
-                            <span style="font-size:0.78rem; color:#6b7280;">@count parada(s)</span>
-                            <select class="form-input" style="flex:1;" @onchange="@(e => SaveDriverForSlot(slot, e.Value?.ToString()))">
-                                <option value="">— Sin chofer —</option>
-                                @foreach (var d in drivers!.Where(x => x.IsActive))
-                                {
-                                    <option value="@d.Id" selected="@(currentDriverId == d.Id)">@d.Nombre</option>
-                                }
-                            </select>
+                        var driverObj = currentDriverId.HasValue ? drivers?.FirstOrDefault(d => d.Id == currentDriverId.Value) : null;
+                        <div style="margin-bottom:0.5rem; padding:0.5rem; background:@(color)11; border:1px solid @color; border-radius:6px;">
+                            <div style="display:flex; align-items:center; gap:0.5rem;">
+                                <strong style="color:@color; min-width:60px;">🚐 V@slot</strong>
+                                <span style="font-size:0.78rem; color:#6b7280;">@count parada(s)</span>
+                                <select class="form-input" style="flex:1;" @onchange="@(e => SaveDriverForSlot(slot, e.Value?.ToString()))">
+                                    <option value="">— Sin chofer —</option>
+                                    @foreach (var d in drivers!.Where(x => x.IsActive))
+                                    {
+                                        <option value="@d.Id" selected="@(currentDriverId == d.Id)">@d.Nombre</option>
+                                    }
+                                </select>
+                            </div>
+                            @if (driverObj is not null && count > 0)
+                            {
+                                var link = string.IsNullOrEmpty(driverObj.ShareToken) ? null : $"{Navigation.BaseUri}r/{driverObj.ShareToken}";
+                                <div style="margin-top:0.4rem; display:flex; gap:0.3rem; flex-wrap:wrap; align-items:center;">
+                                    @if (link is null)
+                                    {
+                                        <button class="btn btn-secondary" style="font-size:0.78rem;" @onclick="() => GenerateLink(driverObj)">🔗 Generar link</button>
+                                    }
+                                    else
+                                    {
+                                        <input class="form-input" readonly value="@link" style="flex:1; font-size:0.72rem; padding:0.2rem 0.4rem;" />
+                                        <button class="btn btn-secondary" style="font-size:0.78rem;" @onclick="() => CopyLink(link)">📋 Copiar</button>
+                                        @if (!string.IsNullOrEmpty(driverObj.Telefono))
+                                        {
+                                            var digits = new string(driverObj.Telefono.Where(char.IsDigit).ToArray());
+                                            var waMsg = Uri.EscapeDataString($"Hola {driverObj.Nombre}! Esta es tu ruta de hoy ({count} paradas):\n{link}");
+                                            <a class="btn btn-secondary" style="font-size:0.78rem; background:#25D366; color:white; border:none;" target="_blank" href="@($"https://wa.me/{digits}?text={waMsg}")">💬 WhatsApp</a>
+                                        }
+                                    }
+                                </div>
+                            }
                         </div>
                     }
                 }
@@ -1079,11 +1104,36 @@
         try
         {
             await Api.AssignDriverToSlotAsync(slot, did);
+            // Si se asignó un driver, generamos token automáticamente para tener el link listo
+            if (did.HasValue)
+            {
+                var d = drivers?.FirstOrDefault(x => x.Id == did.Value);
+                if (d is not null && string.IsNullOrEmpty(d.ShareToken))
+                {
+                    d.ShareToken = await Api.GenerateMapeoDriverShareTokenAsync(did.Value);
+                }
+            }
             await LoadStops();
             await RenderMap();
             ToastService.Success($"Chofer asignado a V{slot}");
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task GenerateLink(MapeoDriverDto d)
+    {
+        try
+        {
+            d.ShareToken = await Api.GenerateMapeoDriverShareTokenAsync(d.Id);
+            ToastService.Success("Link generado");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task CopyLink(string link)
+    {
+        try { await JS.InvokeVoidAsync("copyToClipboard", link); ToastService.Success("Link copiado"); }
+        catch { ToastService.Error("No se pudo copiar"); }
     }
 
     private async Task OpenImportFlexModal()

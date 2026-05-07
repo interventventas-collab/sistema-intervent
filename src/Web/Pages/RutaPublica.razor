@@ -1,0 +1,162 @@
+@page "/r/{token}"
+@layout Web.Layout.LoginLayout
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+@* Pagina publica para que el chofer abra su ruta desde el celular sin login.
+   No requiere autenticacion — el ShareToken hace de credencial. *@
+
+<style>
+    body { background: #f3f4f6; }
+    .ruta-wrap { max-width: 720px; margin: 0 auto; padding: 0.6rem; }
+    .ruta-card { background: white; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 0.6rem; padding: 0.7rem; }
+    .stop-card { border-left: 4px solid #1d4ed8; }
+    .stop-entregado { border-left-color: #15803d; opacity: 0.65; background: #f0fdf4; }
+    .stop-no_encontrado { border-left-color: #b91c1c; background: #fef2f2; }
+    .stop-reprogramado { border-left-color: #7c3aed; background: #faf5ff; }
+    .stop-en_ruta { border-left-color: #d97706; background: #fffbeb; }
+    .ruta-actions { display:flex; gap:0.3rem; flex-wrap:wrap; margin-top:0.5rem; }
+    .ruta-btn { display:inline-flex; align-items:center; gap:0.3rem; padding:0.5rem 0.8rem; font-size:0.88rem; font-weight:600; border-radius:6px; cursor:pointer; text-decoration:none; border:none; }
+    .ruta-btn-call { background:#1d4ed8; color:white; }
+    .ruta-btn-wa { background:#25D366; color:white; }
+    .ruta-btn-map { background:#374151; color:white; }
+    .ruta-btn-status { background:#f3f4f6; color:#1f2937; border:1px solid #d1d5db; }
+    .ruta-btn-status.activo { background:#1d4ed8; color:white; border-color:#1d4ed8; }
+    .ruta-num { display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:50%; background:#1d4ed8; color:white; font-weight:700; flex:0 0 auto; }
+</style>
+
+<div class="ruta-wrap">
+    @if (loading)
+    {
+        <p style="text-align:center; padding:2rem;">Cargando ruta...</p>
+    }
+    else if (route is null)
+    {
+        <div class="ruta-card" style="text-align:center;">
+            <h2>🚫 Link inválido</h2>
+            <p>El link puede haber expirado o haber sido regenerado. Pedí uno nuevo a tu coordinador.</p>
+        </div>
+    }
+    else
+    {
+        <div class="ruta-card" style="background:@(route.DriverColor); color:white;">
+            <h2 style="margin:0;">🚚 @route.DriverNombre</h2>
+            <p style="margin:0.2rem 0 0; font-size:0.85rem; opacity:0.9;">
+                @route.Stops.Count parada(s) hoy ·
+                @route.Stops.Count(s => s.InternalStatus == "entregado") entregadas ·
+                @route.Stops.Count(s => s.InternalStatus == "pending" || s.InternalStatus == "en_ruta") pendientes
+            </p>
+        </div>
+
+        @if (!string.IsNullOrEmpty(route.StartAddress))
+        {
+            <div class="ruta-card" style="background:#dcfce7; border-left:4px solid #15803d;">
+                <strong>📍 Punto de partida</strong>
+                <div style="font-size:0.85rem; color:#166534;">@route.StartAddress</div>
+                @if (route.StartLat.HasValue && route.StartLng.HasValue)
+                {
+                    <a class="ruta-btn ruta-btn-map" style="margin-top:0.3rem;" target="_blank"
+                       href="https://www.google.com/maps/dir/?api=1&origin=@route.StartLat,@route.StartLng">
+                        🗺 Empezar ruta en Google Maps
+                    </a>
+                }
+            </div>
+        }
+
+        @foreach (var s in route.Stops)
+        {
+            var statusCss = s.InternalStatus switch { "entregado"=>"stop-entregado", "no_encontrado"=>"stop-no_encontrado", "reprogramado"=>"stop-reprogramado", "en_ruta"=>"stop-en_ruta", _=>"" };
+            <div class="ruta-card stop-card @statusCss">
+                <div style="display:flex; gap:0.5rem; align-items:flex-start;">
+                    <span class="ruta-num" style="background:@route.DriverColor;">@(s.OrderInRoute?.ToString() ?? "·")</span>
+                    <div style="flex:1; min-width:0;">
+                        <strong>@(s.Alias ?? s.ContactName ?? "Parada")</strong>
+                        @if (s.InternalStatus == "entregado") { <span style="margin-left:0.3rem; color:#15803d;">✅</span> }
+                        <div style="color:#4b5563; font-size:0.88rem;">@s.Direccion</div>
+                        @if (!string.IsNullOrEmpty(s.Comprador) || !string.IsNullOrEmpty(s.NumeroVenta))
+                        {
+                            <div style="font-size:0.75rem; color:#6b7280; margin-top:0.2rem;">
+                                @if (!string.IsNullOrEmpty(s.Comprador)) { <span>👤 @s.Comprador</span> }
+                                @if (!string.IsNullOrEmpty(s.NumeroVenta)) { <span> · 🧾 @s.NumeroVenta</span> }
+                            </div>
+                        }
+                        @if (!string.IsNullOrEmpty(s.Notas))
+                        {
+                            <div style="font-size:0.82rem; background:#fef3c7; padding:0.3rem 0.5rem; border-radius:4px; margin-top:0.4rem; color:#78350f;">
+                                💬 @s.Notas
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <div class="ruta-actions">
+                    @if (!string.IsNullOrEmpty(s.Telefono))
+                    {
+                        var digits = new string(s.Telefono.Where(char.IsDigit).ToArray());
+                        <a class="ruta-btn ruta-btn-call" href="tel:@s.Telefono">📞 Llamar</a>
+                        @if (!string.IsNullOrEmpty(digits))
+                        {
+                            <a class="ruta-btn ruta-btn-wa" target="_blank" href="@($"https://wa.me/{digits}")">💬 WhatsApp</a>
+                        }
+                    }
+                    <a class="ruta-btn ruta-btn-map" target="_blank"
+                       href="@($"https://www.google.com/maps/dir/?api=1&destination={s.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture)},{s.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture)}")">
+                        🗺 Ir
+                    </a>
+                </div>
+
+                <div class="ruta-actions" style="margin-top:0.4rem;">
+                    @{ string[] sts = new[] {"pending","en_ruta","entregado","no_encontrado","reprogramado"}; }
+                    @foreach (var st in sts)
+                    {
+                        var label = st switch { "pending"=>"⏳", "en_ruta"=>"🚗", "entregado"=>"✅ Entregado", "no_encontrado"=>"❌ No encontró", "reprogramado"=>"🔁 Reprogramar", _=>st };
+                        var cls = s.InternalStatus == st ? "ruta-btn ruta-btn-status activo" : "ruta-btn ruta-btn-status";
+                        <button class="@cls" @onclick="() => SetStatus(s, st)" disabled="@updating">@label</button>
+                    }
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public string Token { get; set; } = "";
+    private PublicRouteDto? route;
+    private bool loading = true;
+    private bool updating;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        loading = true;
+        try
+        {
+            var resp = await Http.GetAsync($"api/public/route/{Uri.EscapeDataString(Token)}");
+            if (resp.IsSuccessStatusCode)
+                route = await resp.Content.ReadFromJsonAsync<PublicRouteDto>();
+            else route = null;
+        }
+        catch { route = null; }
+        finally { loading = false; }
+    }
+
+    private async Task SetStatus(PublicStopDto s, string newStatus)
+    {
+        var prev = s.InternalStatus;
+        s.InternalStatus = newStatus;
+        updating = true;
+        try
+        {
+            var payload = System.Text.Json.JsonSerializer.Serialize(new { internalStatus = newStatus, notes = (string?)null });
+            var content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json");
+            var resp = await Http.PostAsync($"api/public/route/{Uri.EscapeDataString(Token)}/stop/{s.Id}", content);
+            if (!resp.IsSuccessStatusCode) s.InternalStatus = prev;
+        }
+        catch { s.InternalStatus = prev; }
+        finally { updating = false; }
+    }
+}

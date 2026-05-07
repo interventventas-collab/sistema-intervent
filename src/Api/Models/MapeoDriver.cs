@@ -18,6 +18,9 @@ public class MapeoDriver
     /// <summary>Color hex para distinguir al repartidor en el mapa (#1d4ed8 default).</summary>
     [MaxLength(10)] public string Color { get; set; } = "#1d4ed8";
 
+    /// <summary>Token publico para compartir el link de la ruta del chofer (sin login).</summary>
+    [MaxLength(64)] public string? ShareToken { get; set; }
+
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }

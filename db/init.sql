@@ -2753,3 +2753,11 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='AssignedVehicleSlot' AND Object_ID=Object_ID('MapeoStops'))
     ALTER TABLE MapeoStops ADD AssignedVehicleSlot INT NULL;
 GO
+
+-- MapeoDrivers: token compartible para que el chofer acceda a su ruta sin login
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ShareToken' AND Object_ID=Object_ID('MapeoDrivers'))
+    ALTER TABLE MapeoDrivers ADD ShareToken NVARCHAR(64) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='UX_MapeoDrivers_ShareToken')
+    CREATE UNIQUE INDEX UX_MapeoDrivers_ShareToken ON MapeoDrivers(ShareToken) WHERE ShareToken IS NOT NULL;
+GO

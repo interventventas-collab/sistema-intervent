@@ -1895,6 +1895,12 @@ public class ApiClient
         => await PutAsync<MapeoDriverDto>($"/api/mapeo/drivers/{id}", new { nombre, telefono, color, isActive });
     public async Task<bool> DeleteMapeoDriverAsync(int id)
         => await DeleteAsync($"/api/mapeo/drivers/{id}");
+    public async Task<string?> GenerateMapeoDriverShareTokenAsync(int id, bool regenerate = false)
+    {
+        var r = await PostAsync<TokenResponse>($"/api/mapeo/drivers/{id}/share-token?regenerate={regenerate.ToString().ToLower()}", new { });
+        return r?.Token;
+    }
+    private class TokenResponse { public string? Token { get; set; } }
 
     // ===== Mapeo: Favoritos =====
     public async Task<List<MapeoFavoritoDto>?> GetMapeoFavoritosAsync(string? q = null)
