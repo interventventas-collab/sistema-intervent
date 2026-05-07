@@ -20,6 +20,7 @@
     .ruta-btn-call { background:#1d4ed8; color:white; }
     .ruta-btn-wa { background:#25D366; color:white; }
     .ruta-btn-map { background:#374151; color:white; }
+    .ruta-btn-waze { background:#33CCFF; color:white; }
     .ruta-btn-status { background:#f3f4f6; color:#1f2937; border:1px solid #d1d5db; }
     .ruta-btn-status.activo { background:#1d4ed8; color:white; border-color:#1d4ed8; }
     .ruta-num { display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:50%; background:#1d4ed8; color:white; font-weight:700; flex:0 0 auto; }
@@ -55,10 +56,18 @@
                 <div style="font-size:0.85rem; color:#166534;">@route.StartAddress</div>
                 @if (route.StartLat.HasValue && route.StartLng.HasValue)
                 {
-                    <a class="ruta-btn ruta-btn-map" style="margin-top:0.3rem;" target="_blank"
-                       href="https://www.google.com/maps/dir/?api=1&origin=@route.StartLat,@route.StartLng">
-                        🗺 Empezar ruta en Google Maps
-                    </a>
+                    var sLatS = route.StartLat.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    var sLngS = route.StartLng.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    <div style="display:flex; gap:0.3rem; margin-top:0.4rem; flex-wrap:wrap;">
+                        <a class="ruta-btn ruta-btn-map" target="_blank"
+                           href="@($"https://www.google.com/maps/dir/?api=1&origin={sLatS},{sLngS}")">
+                            🗺 Maps
+                        </a>
+                        <a class="ruta-btn ruta-btn-waze" target="_blank"
+                           href="@($"https://waze.com/ul?ll={sLatS},{sLngS}&navigate=yes")">
+                            🚦 Waze
+                        </a>
+                    </div>
                 }
             </div>
         }
@@ -99,9 +108,17 @@
                             <a class="ruta-btn ruta-btn-wa" target="_blank" href="@($"https://wa.me/{digits}")">💬 WhatsApp</a>
                         }
                     }
+                    @{
+                        var latS = s.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                        var lngS = s.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    }
                     <a class="ruta-btn ruta-btn-map" target="_blank"
-                       href="@($"https://www.google.com/maps/dir/?api=1&destination={s.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture)},{s.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture)}")">
-                        🗺 Ir
+                       href="@($"https://www.google.com/maps/dir/?api=1&destination={latS},{lngS}")">
+                        🗺 Maps
+                    </a>
+                    <a class="ruta-btn ruta-btn-waze" target="_blank"
+                       href="@($"https://waze.com/ul?ll={latS},{lngS}&navigate=yes")">
+                        🚦 Waze
                     </a>
                 </div>
 
