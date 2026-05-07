@@ -21,7 +21,8 @@ public class MeliShipmentsController : ControllerBase
     public async Task<IActionResult> ListFlex(
         [FromQuery] string? status = null,
         [FromQuery] string? internalStatus = null,
-        [FromQuery] int days = 7)
+        [FromQuery] int days = 7,
+        [FromQuery] bool excludeDelivered = false)
     {
         var since = DateTime.UtcNow.AddDays(-days);
         var q = _db.MeliShipments
@@ -30,6 +31,7 @@ public class MeliShipmentsController : ControllerBase
             .Where(s => s.DateCreated == null || s.DateCreated >= since);
         if (!string.IsNullOrWhiteSpace(status)) q = q.Where(s => s.Status == status);
         if (!string.IsNullOrWhiteSpace(internalStatus)) q = q.Where(s => s.InternalStatus == internalStatus);
+        if (excludeDelivered) q = q.Where(s => s.Status != "delivered" && s.Status != "cancelled");
 
         var list = await q.OrderByDescending(s => s.DateCreated).Take(500).ToListAsync();
         return Ok(list.Select(s => new

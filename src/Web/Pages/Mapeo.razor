@@ -39,6 +39,10 @@
                 <option value="no_encontrado">No encontrado</option>
                 <option value="reprogramado">Reprogramado</option>
             </select>
+            <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.85rem;">
+                <input type="checkbox" @bind="excluirEntregados" @bind:after="LoadAndRender" />
+                Ocultar entregados/cancelados
+            </label>
             <button class="btn btn-secondary" style="font-size:0.85rem;" @onclick="LoadAndRender" disabled="@isLoading">
                 @(isLoading ? "Cargando..." : "🔄 Refrescar lista")
             </button>
@@ -74,7 +78,7 @@
                     <div class="mapeo-card @(act ? "activa" : "")" @onclick="() => OnSelectFromList(s)">
                         <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.4rem;">
                             <strong>@(s.ReceiverName ?? "—")</strong>
-                            <span class="mapeo-status-pill" style="@StatusStyle(s.InternalStatus)">@StatusLabel(s.InternalStatus)</span>
+                            <span class="mapeo-status-pill" style="@EffectiveStatusStyle(s)">@EffectiveStatusLabel(s)</span>
                         </div>
                         <div style="font-size:0.7rem; color:#6b7280; margin-top:0.1rem; display:flex; gap:0.4rem; flex-wrap:wrap;">
                             @if (!string.IsNullOrEmpty(s.BuyerNickname))
@@ -197,6 +201,7 @@
     private bool isLoading, isSyncing, isSavingDetail;
     private string diasFiltro = "7";
     private string filtroInterno = "";
+    private bool excluirEntregados = false;
     private DotNetObjectReference<Mapeo>? selfRef;
     private bool mapInitialized;
 
@@ -221,7 +226,7 @@
         try
         {
             int days = int.TryParse(diasFiltro, out var d) ? d : 7;
-            shipments = await Api.GetMeliFlexShipmentsAsync(days, string.IsNullOrEmpty(filtroInterno) ? null : filtroInterno) ?? new();
+            shipments = await Api.GetMeliFlexShipmentsAsync(days, string.IsNullOrEmpty(filtroInterno) ? null : filtroInterno, excluirEntregados) ?? new();
             if (mapInitialized) await RenderMap();
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
@@ -237,7 +242,7 @@
             lat = s.Latitude,
             lng = s.Longitude,
             label = (i + 1).ToString(),
-            color = ColorFor(s.InternalStatus),
+            color = ColorFor(EffectiveKey(s)),
             popupHtml = $"<div style='font-size:0.8rem;'><strong>{System.Net.WebUtility.HtmlEncode(s.ReceiverName ?? "—")}</strong><br/>{System.Net.WebUtility.HtmlEncode(s.AddressLine ?? "")}<br/><em>{System.Net.WebUtility.HtmlEncode(s.City ?? "")}</em></div>"
         }).ToArray();
         await JS.InvokeVoidAsync("mapeoFlex.renderMarkers", new object[] { data });
@@ -249,6 +254,7 @@
         "entregado" => "#15803d",
         "no_encontrado" => "#b91c1c",
         "reprogramado" => "#7c3aed",
+        "cancelled" => "#6b7280",
         _ => "#1d4ed8"
     };
 
@@ -258,6 +264,7 @@
         "entregado" => "Entregado",
         "no_encontrado" => "No encontró",
         "reprogramado" => "Reprogramado",
+        "cancelled" => "Cancelado",
         _ => "Pendiente"
     };
 
@@ -266,6 +273,22 @@
         var c = ColorFor(s);
         return $"background:{c}33; color:{c};";
     }
+
+    /// <summary>
+    /// El estado "efectivo" combina lo que dice MeLi (delivered/cancelled gana sobre tu pending)
+    /// con el estado interno que vos vas marcando manualmente.
+    /// Asi una venta entregada en MeLi aparece como "Entregado" aunque vos no la hayas tocado.
+    /// </summary>
+    private static string EffectiveKey(MeliShipmentDto s)
+    {
+        if (string.Equals(s.Status, "delivered", StringComparison.OrdinalIgnoreCase)) return "entregado";
+        if (string.Equals(s.Status, "cancelled", StringComparison.OrdinalIgnoreCase)) return "cancelled";
+        // Si el usuario ya marcó algo (no es "pending"), respetamos su estado interno.
+        if (!string.Equals(s.InternalStatus, "pending", StringComparison.OrdinalIgnoreCase)) return s.InternalStatus;
+        return "pending";
+    }
+    private static string EffectiveStatusLabel(MeliShipmentDto s) => StatusLabel(EffectiveKey(s));
+    private static string EffectiveStatusStyle(MeliShipmentDto s) => StatusStyle(EffectiveKey(s));
 
     private async Task OnSelectFromList(MeliShipmentDto s)
     {
