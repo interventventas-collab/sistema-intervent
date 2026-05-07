@@ -1874,6 +1874,18 @@ public class ApiClient
         return r is not null;
     }
 
+    public async Task<StartPointDto?> GetMapeoStartPointAsync()
+        => await GetAsync<StartPointDto>("/api/meli/shipments/start-point");
+
+    public async Task<bool> SetMapeoStartPointAsync(string? address, decimal? lat, decimal? lng)
+    {
+        var r = await PutAsync<object>("/api/meli/shipments/start-point", new { address, lat, lng });
+        return r is not null;
+    }
+
+    public async Task<List<GeocodeResultDto>?> GeocodeAsync(string query)
+        => await GetAsync<List<GeocodeResultDto>>($"/api/meli/shipments/geocode?q={Uri.EscapeDataString(query)}");
+
     // ===== MeLi Questions =====
     public async Task<MeliQuestionsUnreadDto?> GetMeliQuestionsUnreadCountAsync()
         => await GetAsync<MeliQuestionsUnreadDto>("/api/meli/questions/unread-count");

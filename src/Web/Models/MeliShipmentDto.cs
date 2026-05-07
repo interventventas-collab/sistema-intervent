@@ -40,3 +40,17 @@ public class MeliShipmentSyncResultDto
     public int TotalErrors { get; set; }
     public List<string> Errores { get; set; } = new();
 }
+
+public class StartPointDto
+{
+    public string? Address { get; set; }
+    public decimal? Lat { get; set; }
+    public decimal? Lng { get; set; }
+}
+
+public class GeocodeResultDto
+{
+    public string DisplayName { get; set; } = "";
+    public decimal Lat { get; set; }
+    public decimal Lng { get; set; }
+}

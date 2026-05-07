@@ -78,6 +78,70 @@ public class MeliShipmentsController : ControllerBase
         return Ok(new { totalSynced = r.TotalSynced, totalFlex = r.TotalFlex, totalErrors = r.TotalErrors, errores = r.Errors });
     }
 
+    public record StartPointDto(string? Address, decimal? Lat, decimal? Lng);
+
+    /// <summary>Devuelve el punto de partida configurado para el mapa de rutas.</summary>
+    [HttpGet("start-point")]
+    public async Task<IActionResult> GetStartPoint()
+    {
+        var addr = (await _db.AppSettings.FindAsync("mapeo.start.address"))?.Value;
+        var latStr = (await _db.AppSettings.FindAsync("mapeo.start.lat"))?.Value;
+        var lngStr = (await _db.AppSettings.FindAsync("mapeo.start.lng"))?.Value;
+        decimal? lat = decimal.TryParse(latStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var la) ? la : null;
+        decimal? lng = decimal.TryParse(lngStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var lo) ? lo : null;
+        return Ok(new StartPointDto(addr, lat, lng));
+    }
+
+    /// <summary>Setea el punto de partida (direccion + coordenadas).</summary>
+    [HttpPut("start-point")]
+    public async Task<IActionResult> SetStartPoint([FromBody] StartPointDto req)
+    {
+        async Task Upsert(string key, string? value)
+        {
+            var existing = await _db.AppSettings.FindAsync(key);
+            if (existing is null) _db.AppSettings.Add(new Api.Models.AppSetting { Key = key, Value = value ?? "", UpdatedAt = DateTime.UtcNow });
+            else { existing.Value = value ?? ""; existing.UpdatedAt = DateTime.UtcNow; }
+        }
+        await Upsert("mapeo.start.address", req.Address);
+        await Upsert("mapeo.start.lat", req.Lat?.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        await Upsert("mapeo.start.lng", req.Lng?.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    public record GeocodeResult(string DisplayName, decimal Lat, decimal Lng);
+
+    /// <summary>Busca una direccion en OpenStreetMap (Nominatim, gratis) y devuelve hasta 5 candidatos con coordenadas.</summary>
+    [HttpGet("geocode")]
+    public async Task<IActionResult> Geocode([FromQuery] string q, [FromServices] IHttpClientFactory httpFactory)
+    {
+        if (string.IsNullOrWhiteSpace(q)) return BadRequest(new { error = "Tenes que escribir una direccion" });
+        var http = httpFactory.CreateClient();
+        // Nominatim pide un User-Agent identificable; buscamos en Argentina por default.
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("ai-ml-app/1.0 (mapeo flex)");
+        var url = $"https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=ar&q={Uri.EscapeDataString(q)}";
+        try
+        {
+            var resp = await http.GetAsync(url);
+            if (!resp.IsSuccessStatusCode) return Ok(new List<GeocodeResult>());
+            var body = await resp.Content.ReadAsStringAsync();
+            var doc = System.Text.Json.JsonDocument.Parse(body).RootElement;
+            var list = new List<GeocodeResult>();
+            foreach (var el in doc.EnumerateArray())
+            {
+                string? display = el.TryGetProperty("display_name", out var dn) ? dn.GetString() : null;
+                string? latS = el.TryGetProperty("lat", out var la) ? la.GetString() : null;
+                string? lonS = el.TryGetProperty("lon", out var lo) ? lo.GetString() : null;
+                if (display is null || latS is null || lonS is null) continue;
+                if (!decimal.TryParse(latS, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var lat)) continue;
+                if (!decimal.TryParse(lonS, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var lng)) continue;
+                list.Add(new GeocodeResult(display, lat, lng));
+            }
+            return Ok(list);
+        }
+        catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
     public record UpdateInternalStatusRequest(string InternalStatus, string? Notes);
 
     /// <summary>Actualiza el estado interno (en_ruta/entregado/no_encontrado/etc.) y notas del envio.</summary>

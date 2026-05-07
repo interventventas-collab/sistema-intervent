@@ -46,6 +46,9 @@
             <button class="btn btn-secondary" style="font-size:0.85rem;" @onclick="LoadAndRender" disabled="@isLoading">
                 @(isLoading ? "Cargando..." : "🔄 Refrescar lista")
             </button>
+            <button class="btn btn-secondary" style="font-size:0.85rem;" @onclick="OpenStartPointModal" title="Configurar punto de partida del reparto">
+                @(startPoint?.Lat.HasValue == true ? "📍 Punto de partida ✓" : "📍 Punto de partida")
+            </button>
             <button class="btn btn-primary" style="font-size:0.85rem;" @onclick="SyncFromMeli" disabled="@isSyncing">
                 @(isSyncing ? "Sincronizando..." : "📥 Traer envíos de MeLi")
             </button>
@@ -115,6 +118,65 @@
         <div id="leafletMap"></div>
     </div>
 </div>
+
+@if (showStartPointModal)
+{
+    <div class="modal-overlay" @onclick="CloseStartPointModal">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background:#dcfce7;">
+                <h3 style="margin:0;">📍 Punto de partida</h3>
+                <button class="btn-close" @onclick="CloseStartPointModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="color:#6b7280; font-size:0.85rem; margin:0 0 0.5rem;">
+                    Es el lugar desde donde salís a repartir. Aparece como casita verde 🏠 en el mapa para que veas la ruta desde ahí.
+                </p>
+                <div class="form-group">
+                    <label class="form-label">Buscar dirección</label>
+                    <div style="display:flex; gap:0.4rem;">
+                        <input class="form-input" @bind="geocodeQuery" placeholder="Calle 123, Ciudad, Provincia" @onkeydown="OnGeocodeKey" style="flex:1;" />
+                        <button class="btn btn-secondary" @onclick="DoGeocode" disabled="@geocoding">@(geocoding ? "..." : "🔍")</button>
+                    </div>
+                    <p style="font-size:0.7rem; color:#6b7280; margin:0.2rem 0 0;">Buscamos en OpenStreetMap (gratis, ~5 candidatos).</p>
+                </div>
+                @if (geocodeResults is not null && geocodeResults.Count > 0)
+                {
+                    <div style="border:1px solid #e5e7eb; border-radius:6px; max-height:160px; overflow-y:auto; margin-bottom:0.5rem;">
+                        @foreach (var r in geocodeResults)
+                        {
+                            <div style="padding:0.4rem 0.6rem; border-bottom:1px solid #f3f4f6; cursor:pointer; font-size:0.8rem;"
+                                 @onclick="() => PickGeocode(r)" title="Usar esta dirección">
+                                <strong>@r.DisplayName</strong>
+                                <div style="font-size:0.7rem; color:#9ca3af;">@r.Lat.ToString("0.######") , @r.Lng.ToString("0.######")</div>
+                            </div>
+                        }
+                    </div>
+                }
+                <div class="form-group">
+                    <label class="form-label">Dirección a guardar</label>
+                    <input class="form-input" @bind="formStartAddress" />
+                </div>
+                <div class="form-row">
+                    <div class="form-group" style="flex:1;">
+                        <label class="form-label">Latitud</label>
+                        <input class="form-input" @bind="formStartLat" placeholder="-34.603722" />
+                    </div>
+                    <div class="form-group" style="flex:1;">
+                        <label class="form-label">Longitud</label>
+                        <input class="form-input" @bind="formStartLng" placeholder="-58.381592" />
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="ClearStartPoint" disabled="@savingStartPoint">Borrar</button>
+                <button class="btn btn-secondary" @onclick="CloseStartPointModal" disabled="@savingStartPoint">Cancelar</button>
+                <button class="btn btn-primary" @onclick="SaveStartPoint" disabled="@savingStartPoint">
+                    @(savingStartPoint ? "Guardando..." : "Guardar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
 
 @if (showDetail && selected is not null)
 {
@@ -209,6 +271,13 @@
     private bool showDetail;
     private int? activeShipmentId;
 
+    // Punto de partida
+    private StartPointDto? startPoint;
+    private bool showStartPointModal, savingStartPoint, geocoding;
+    private string formStartAddress = "", formStartLat = "", formStartLng = "";
+    private string geocodeQuery = "";
+    private List<GeocodeResultDto>? geocodeResults;
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
@@ -216,6 +285,7 @@
             selfRef = DotNetObjectReference.Create(this);
             await JS.InvokeVoidAsync("mapeoFlex.init", "leafletMap", selfRef);
             mapInitialized = true;
+            try { startPoint = await Api.GetMapeoStartPointAsync(); } catch { }
             await LoadAndRender();
         }
     }
@@ -236,7 +306,20 @@
     private async Task RenderMap()
     {
         if (shipments is null) return;
-        var data = shipments.Where(s => s.Latitude.HasValue && s.Longitude.HasValue).Select((s, i) => new
+        var list = new List<object>();
+        if (startPoint?.Lat is not null && startPoint?.Lng is not null)
+        {
+            list.Add(new
+            {
+                id = -1,
+                lat = startPoint.Lat,
+                lng = startPoint.Lng,
+                label = "🏠",
+                color = "#15803d",
+                popupHtml = $"<div style='font-size:0.85rem;'><strong>📍 Punto de partida</strong><br/>{System.Net.WebUtility.HtmlEncode(startPoint.Address ?? "")}</div>"
+            });
+        }
+        list.AddRange(shipments.Where(s => s.Latitude.HasValue && s.Longitude.HasValue).Select((s, i) => (object)new
         {
             id = s.Id,
             lat = s.Latitude,
@@ -244,8 +327,8 @@
             label = (i + 1).ToString(),
             color = ColorFor(EffectiveKey(s)),
             popupHtml = $"<div style='font-size:0.8rem;'><strong>{System.Net.WebUtility.HtmlEncode(s.ReceiverName ?? "—")}</strong><br/>{System.Net.WebUtility.HtmlEncode(s.AddressLine ?? "")}<br/><em>{System.Net.WebUtility.HtmlEncode(s.City ?? "")}</em></div>"
-        }).ToArray();
-        await JS.InvokeVoidAsync("mapeoFlex.renderMarkers", new object[] { data });
+        }));
+        await JS.InvokeVoidAsync("mapeoFlex.renderMarkers", new object[] { list.ToArray() });
     }
 
     private static string ColorFor(string s) => s switch
@@ -305,6 +388,81 @@
         var s = shipments?.FirstOrDefault(x => x.Id == id);
         if (s is not null) { activeShipmentId = id; selected = s; showDetail = true; StateHasChanged(); }
         return Task.CompletedTask;
+    }
+
+    private void OpenStartPointModal()
+    {
+        formStartAddress = startPoint?.Address ?? "";
+        formStartLat = startPoint?.Lat?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "";
+        formStartLng = startPoint?.Lng?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "";
+        geocodeQuery = formStartAddress;
+        geocodeResults = null;
+        showStartPointModal = true;
+    }
+    private void CloseStartPointModal() { showStartPointModal = false; geocodeResults = null; }
+
+    private async Task OnGeocodeKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await DoGeocode();
+    }
+
+    private async Task DoGeocode()
+    {
+        if (string.IsNullOrWhiteSpace(geocodeQuery)) return;
+        geocoding = true;
+        try
+        {
+            geocodeResults = await Api.GeocodeAsync(geocodeQuery) ?? new();
+            if (geocodeResults.Count == 0) ToastService.Info("Sin resultados — probá ser más específico (calle, ciudad, provincia).");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { geocoding = false; }
+    }
+
+    private void PickGeocode(GeocodeResultDto r)
+    {
+        formStartAddress = r.DisplayName;
+        formStartLat = r.Lat.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        formStartLng = r.Lng.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private async Task SaveStartPoint()
+    {
+        decimal? lat = decimal.TryParse(formStartLat, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var la) ? la : null;
+        decimal? lng = decimal.TryParse(formStartLng, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var lo) ? lo : null;
+        if (!lat.HasValue || !lng.HasValue) { ToastService.Error("Faltan latitud o longitud (buscá la dirección y elegí una opción)."); return; }
+        savingStartPoint = true;
+        try
+        {
+            var ok = await Api.SetMapeoStartPointAsync(formStartAddress, lat, lng);
+            if (ok)
+            {
+                startPoint = new StartPointDto { Address = formStartAddress, Lat = lat, Lng = lng };
+                ToastService.Success("Punto de partida guardado");
+                showStartPointModal = false;
+                await RenderMap();
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { savingStartPoint = false; }
+    }
+
+    private async Task ClearStartPoint()
+    {
+        savingStartPoint = true;
+        try
+        {
+            var ok = await Api.SetMapeoStartPointAsync(null, null, null);
+            if (ok)
+            {
+                startPoint = new StartPointDto();
+                ToastService.Success("Punto de partida borrado");
+                showStartPointModal = false;
+                await RenderMap();
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { savingStartPoint = false; }
     }
 
     private async Task CopyValue(string value, string label)
