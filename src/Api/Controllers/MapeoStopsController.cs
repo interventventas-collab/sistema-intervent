@@ -235,6 +235,33 @@ public class MapeoStopsController : ControllerBase
         return R * 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
     }
 
+    /// <summary>Cuenta cuantos Flex pendientes hay para importar (dado un rango de dias). Sirve para el preview antes de confirmar.</summary>
+    [HttpGet("import-flex-preview")]
+    public async Task<IActionResult> ImportFlexPreview([FromQuery] int days = 1)
+    {
+        var since = DateTime.UtcNow.AddDays(-days);
+        var ships = await _db.MeliShipments
+            .Where(s => s.LogisticType == "self_service"
+                     && s.Status != "delivered" && s.Status != "cancelled"
+                     && s.Latitude != null && s.Longitude != null
+                     && (s.DateCreated == null || s.DateCreated >= since))
+            .Select(s => new { s.MeliShipmentId, s.ReceiverName, s.City, s.AddressLine })
+            .ToListAsync();
+        var existingRefs = await _db.MapeoStops
+            .Where(s => s.Origin == "flex")
+            .Select(s => s.OriginRefId)
+            .ToListAsync();
+        var existingSet = new HashSet<string?>(existingRefs);
+        var nuevos = ships.Where(x => !existingSet.Contains(x.MeliShipmentId.ToString())).ToList();
+        return Ok(new
+        {
+            total = ships.Count,
+            yaCargados = ships.Count - nuevos.Count,
+            aImportar = nuevos.Count,
+            sample = nuevos.Take(5).Select(x => new { x.ReceiverName, x.City, x.AddressLine })
+        });
+    }
+
     /// <summary>Importa todos los shipments Flex pendientes como paradas (si todavía no existen).</summary>
     [HttpPost("import-flex")]
     public async Task<IActionResult> ImportFlex([FromQuery] int days = 7)

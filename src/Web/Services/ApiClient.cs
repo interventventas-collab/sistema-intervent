@@ -1935,6 +1935,8 @@ public class ApiClient
         => await DeleteAsync("/api/mapeo/stops");
     public async Task<object?> ImportFlexAsStopsAsync(int days = 7)
         => await PostAsync<object>($"/api/mapeo/stops/import-flex?days={days}", new { });
+    public async Task<ImportFlexPreviewDto?> ImportFlexPreviewAsync(int days = 1)
+        => await GetAsync<ImportFlexPreviewDto>($"/api/mapeo/stops/import-flex-preview?days={days}");
 
     public async Task<object?> AssignBulkStopsAsync(List<int> stopIds, int? driverId)
         => await PostAsync<object>("/api/mapeo/stops/assign-bulk", new { stopIds, driverId });

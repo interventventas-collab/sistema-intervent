@@ -58,8 +58,8 @@
             <button class="btn btn-secondary" style="font-size:0.85rem;" @onclick="OpenAddStopModal" title="Agregar parada al mapa (favorito o manual)">
                 ➕ Agregar parada
             </button>
-            <button class="btn btn-secondary" style="font-size:0.85rem;" @onclick="ImportFlexAsStops" disabled="@importingFlex" title="Trae los Flex pendientes a la lista de paradas para asignarles repartidor">
-                @(importingFlex ? "..." : "📥 Sumar Flex a paradas")
+            <button class="btn btn-secondary" style="font-size:0.85rem;" @onclick="OpenImportFlexModal" title="Trae los Flex pendientes a la lista de paradas para asignarles repartidor">
+                📥 Sumar Flex a paradas
             </button>
             <button class="btn btn-primary" style="font-size:0.85rem;" @onclick="OpenArmarRutaModal" title="Asignar paradas a repartidores y optimizar orden">
                 📋 Armar ruta
@@ -160,6 +160,66 @@
         <div id="leafletMap"></div>
     </div>
 </div>
+
+@if (showImportFlexModal)
+{
+    <div class="modal-overlay" @onclick="() => showImportFlexModal = false">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background:#dbeafe;">
+                <h3 style="margin:0;">📥 Sumar Flex a paradas</h3>
+                <button class="btn-close" @onclick="() => showImportFlexModal = false">&times;</button>
+            </div>
+            <div class="modal-body" style="font-size:0.9rem;">
+                <div class="form-group">
+                    <label class="form-label">Período a importar</label>
+                    <select class="form-input" @bind="importFlexDays" @bind:after="LoadImportPreview">
+                        <option value="1">Hoy (último día)</option>
+                        <option value="3">Últimos 3 días</option>
+                        <option value="7">Últimos 7 días</option>
+                        <option value="15">Últimos 15 días</option>
+                    </select>
+                </div>
+                @if (importPreview is null)
+                {
+                    <p class="text-muted" style="text-align:center;">Cargando preview...</p>
+                }
+                else
+                {
+                    <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; padding:0.6rem; margin-bottom:0.6rem;">
+                        <div style="font-size:0.85rem;">
+                            <strong>📊 Encontrados:</strong> @importPreview.Total Flex en el período<br/>
+                            <strong>✅ Ya en paradas:</strong> @importPreview.YaCargados<br/>
+                            <strong style="color:#15803d; font-size:1.05rem;">➕ A importar: @importPreview.AImportar</strong>
+                        </div>
+                    </div>
+                    @if (importPreview.AImportar == 0)
+                    {
+                        <p style="color:#6b7280; text-align:center; padding:0.5rem;">No hay Flex nuevos para importar en este período.</p>
+                    }
+                    else if (importPreview.Sample.Count > 0)
+                    {
+                        <div style="font-size:0.78rem; color:#6b7280; margin-bottom:0.3rem;">Primeros @importPreview.Sample.Count de @importPreview.AImportar:</div>
+                        <ul style="font-size:0.78rem; color:#4b5563; padding-left:1.2rem; margin:0;">
+                            @foreach (var s in importPreview.Sample)
+                            {
+                                <li><strong>@(s.ReceiverName ?? "—")</strong> · @(s.City ?? "") · @(s.AddressLine ?? "")</li>
+                            }
+                            @if (importPreview.AImportar > importPreview.Sample.Count)
+                            { <li style="color:#9ca3af;">... y @(importPreview.AImportar - importPreview.Sample.Count) más</li> }
+                        </ul>
+                    }
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showImportFlexModal = false" disabled="@importingFlex">Cancelar</button>
+                <button class="btn btn-primary" @onclick="ConfirmImportFlex"
+                        disabled="@(importingFlex || importPreview is null || importPreview.AImportar == 0)">
+                    @(importingFlex ? "Importando..." : $"Importar {(importPreview?.AImportar ?? 0)}")
+                </button>
+            </div>
+        </div>
+    </div>
+}
 
 @if (showArmarRutaModal)
 {
@@ -633,6 +693,11 @@
 
     // Armar ruta
     private bool showArmarRutaModal, importingFlex, routeBusy;
+
+    // Importar Flex
+    private bool showImportFlexModal;
+    private string importFlexDays = "1";
+    private ImportFlexPreviewDto? importPreview;
     private string newFavAlias = "", newFavQuery = "", newFavDireccion = "", newFavContact = "", newFavPhone = "", newFavNotas = "";
     private decimal newFavLat = 0m, newFavLng = 0m;
     private bool favGeocoding;
@@ -849,14 +914,32 @@
         _ => "✏️ Manual"
     };
 
-    private async Task ImportFlexAsStops()
+    private async Task OpenImportFlexModal()
     {
+        importFlexDays = "1";
+        importPreview = null;
+        showImportFlexModal = true;
+        await LoadImportPreview();
+    }
+
+    private async Task LoadImportPreview()
+    {
+        if (!int.TryParse(importFlexDays, out var d)) d = 1;
+        importPreview = null;
+        try { importPreview = await Api.ImportFlexPreviewAsync(d); }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task ConfirmImportFlex()
+    {
+        if (!int.TryParse(importFlexDays, out var d)) d = 1;
         importingFlex = true;
         try
         {
-            await Api.ImportFlexAsStopsAsync(15);
+            await Api.ImportFlexAsStopsAsync(d);
             await LoadStops();
-            ToastService.Success("Flex pendientes agregados a la lista de paradas");
+            ToastService.Success($"Importados {importPreview?.AImportar ?? 0} Flex a la lista de paradas");
+            showImportFlexModal = false;
             await RenderMap();
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }

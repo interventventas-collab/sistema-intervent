@@ -29,6 +29,21 @@ public class MapeoStopDto
     public DateTime CreatedAt { get; set; }
 }
 
+public class ImportFlexPreviewDto
+{
+    public int Total { get; set; }
+    public int YaCargados { get; set; }
+    public int AImportar { get; set; }
+    public List<ImportFlexSampleDto> Sample { get; set; } = new();
+}
+
+public class ImportFlexSampleDto
+{
+    public string? ReceiverName { get; set; }
+    public string? City { get; set; }
+    public string? AddressLine { get; set; }
+}
+
 public class MapeoFavoritoDto
 {
     public int Id { get; set; }
