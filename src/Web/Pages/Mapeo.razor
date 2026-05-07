@@ -251,12 +251,16 @@
                                     }
                                     else
                                     {
-                                        <input class="form-input" readonly value="@link" style="flex:1; font-size:0.72rem; padding:0.2rem 0.4rem;" />
+                                        <a href="@link" target="_blank" rel="noopener noreferrer"
+                                           style="flex:1; font-size:0.72rem; padding:0.3rem 0.5rem; background:#f0f9ff; border:1px solid #93c5fd; border-radius:4px; color:#1d4ed8; text-decoration:none; font-family:monospace; word-break:break-all;"
+                                           title="Tocá para abrir la ruta en otra pestaña">
+                                            🔗 @link
+                                        </a>
                                         <button class="btn btn-secondary" style="font-size:0.78rem;" @onclick="() => CopyLink(link)">📋 Copiar</button>
                                         @if (!string.IsNullOrEmpty(driverObj.Telefono))
                                         {
                                             var digits = new string(driverObj.Telefono.Where(char.IsDigit).ToArray());
-                                            var waMsg = Uri.EscapeDataString($"Hola {driverObj.Nombre}! Esta es tu ruta de hoy ({count} paradas):\n{link}");
+                                            var waMsg = Uri.EscapeDataString($"Hola {driverObj.Nombre}! Esta es tu ruta de hoy ({count} paradas): {link}");
                                             <a class="btn btn-secondary" style="font-size:0.78rem; background:#25D366; color:white; border:none;" target="_blank" href="@($"https://wa.me/{digits}?text={waMsg}")">💬 WhatsApp</a>
                                         }
                                     }
