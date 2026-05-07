@@ -97,11 +97,17 @@ else
         </div>
         <span class="stepper-arrow">›</span>
 
-        <div class="stepper-chip-big @(step2Done ? "completado" : (currentStep == 2 ? "actual" : ""))"
-             title="Sumar Flex a paradas o agregar manuales" @onclick="OpenImportFlexModal">
-            <span class="stepper-chip-num">@(step2Done ? "✓" : "2")</span>
-            🛣 Paradas
-            @if (step2Done) { <span style="font-size:0.7rem; opacity:0.85; margin-left:0.25rem;">(@(stops?.Count ?? 0))</span> }
+        <div style="display:flex; flex-direction:column; align-items:center; gap:0.15rem;">
+            <div class="stepper-chip-big @(step2Done ? "completado" : (currentStep == 2 ? "actual" : ""))"
+                 title="Sumar Flex de MercadoLibre" @onclick="OpenImportFlexModal">
+                <span class="stepper-chip-num">@(step2Done ? "✓" : "2")</span>
+                🛣 Paradas
+                @if (step2Done) { <span style="font-size:0.7rem; opacity:0.85; margin-left:0.25rem;">(@(stops?.Count ?? 0))</span> }
+            </div>
+            <button class="btn" style="font-size:0.7rem; padding:0.1rem 0.4rem; background:transparent; color:#1d4ed8; border:none; text-decoration:underline; cursor:pointer;"
+                    @onclick="OpenAddStopModal" title="Sumar una parada que no está en MeLi (cliente WhatsApp, café, etc.)">
+                + manual
+            </button>
         </div>
         <span class="stepper-arrow">›</span>
 
@@ -188,11 +194,6 @@ else
                         @onclick="@(async () => { showConfigMenu = false; await OpenFavoritosModal(); })">
                     <span>⭐ Favoritos</span>
                     <span style="color:#6b7280; font-size:0.72rem;">@(favoritos?.Count ?? 0)</span>
-                </button>
-                <hr style="margin:0.3rem 0; border:none; border-top:1px solid #f3f4f6;" />
-                <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
-                        @onclick="@(() => { showConfigMenu = false; OpenAddStopModal(); })">
-                    <span>➕ Agregar parada manual</span>
                 </button>
             </div>
         }
