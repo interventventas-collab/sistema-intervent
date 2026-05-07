@@ -2688,3 +2688,36 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='BuyerNickname' AND Object_ID=Object_ID('MeliShipments'))
     ALTER TABLE MeliShipments ADD BuyerNickname NVARCHAR(100) NULL;
 GO
+
+-- ===== Mapeo: Repartidores y libreta de direcciones favoritas =====
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='MapeoDrivers')
+BEGIN
+    CREATE TABLE MapeoDrivers (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Nombre NVARCHAR(100) NOT NULL,
+        Telefono NVARCHAR(50) NULL,
+        Color NVARCHAR(10) NOT NULL CONSTRAINT DF_MapeoDrivers_Color DEFAULT '#1d4ed8',
+        IsActive BIT NOT NULL CONSTRAINT DF_MapeoDrivers_Active DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_MapeoDrivers_Created DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NULL
+    );
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='MapeoFavoritos')
+BEGIN
+    CREATE TABLE MapeoFavoritos (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Alias NVARCHAR(100) NOT NULL,
+        Direccion NVARCHAR(300) NOT NULL,
+        Latitude DECIMAL(10,7) NOT NULL,
+        Longitude DECIMAL(10,7) NOT NULL,
+        ContactName NVARCHAR(150) NULL,
+        Telefono NVARCHAR(50) NULL,
+        Notas NVARCHAR(500) NULL,
+        IsActive BIT NOT NULL CONSTRAINT DF_MapeoFavoritos_Active DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_MapeoFavoritos_Created DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NULL
+    );
+    CREATE INDEX IX_MapeoFavoritos_Alias ON MapeoFavoritos(Alias);
+END
+GO

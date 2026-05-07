@@ -1886,6 +1886,32 @@ public class ApiClient
     public async Task<List<GeocodeResultDto>?> GeocodeAsync(string query)
         => await GetAsync<List<GeocodeResultDto>>($"/api/meli/shipments/geocode?q={Uri.EscapeDataString(query)}");
 
+    // ===== Mapeo: Drivers =====
+    public async Task<List<MapeoDriverDto>?> GetMapeoDriversAsync()
+        => await GetAsync<List<MapeoDriverDto>>("/api/mapeo/drivers");
+    public async Task<MapeoDriverDto?> CreateMapeoDriverAsync(string nombre, string? telefono, string? color)
+        => await PostAsync<MapeoDriverDto>("/api/mapeo/drivers", new { nombre, telefono, color });
+    public async Task<MapeoDriverDto?> UpdateMapeoDriverAsync(int id, string? nombre, string? telefono, string? color, bool? isActive)
+        => await PutAsync<MapeoDriverDto>($"/api/mapeo/drivers/{id}", new { nombre, telefono, color, isActive });
+    public async Task<bool> DeleteMapeoDriverAsync(int id)
+        => await DeleteAsync($"/api/mapeo/drivers/{id}");
+
+    // ===== Mapeo: Favoritos =====
+    public async Task<List<MapeoFavoritoDto>?> GetMapeoFavoritosAsync(string? q = null)
+        => await GetAsync<List<MapeoFavoritoDto>>("/api/mapeo/favoritos" + (string.IsNullOrWhiteSpace(q) ? "" : $"?q={Uri.EscapeDataString(q)}"));
+    public async Task<MapeoFavoritoDto?> CreateMapeoFavoritoAsync(MapeoFavoritoDto f)
+        => await PostAsync<MapeoFavoritoDto>("/api/mapeo/favoritos", new {
+            alias = f.Alias, direccion = f.Direccion, latitude = f.Latitude, longitude = f.Longitude,
+            contactName = f.ContactName, telefono = f.Telefono, notas = f.Notas
+        });
+    public async Task<MapeoFavoritoDto?> UpdateMapeoFavoritoAsync(int id, MapeoFavoritoDto f)
+        => await PutAsync<MapeoFavoritoDto>($"/api/mapeo/favoritos/{id}", new {
+            alias = f.Alias, direccion = f.Direccion, latitude = f.Latitude, longitude = f.Longitude,
+            contactName = f.ContactName, telefono = f.Telefono, notas = f.Notas, isActive = f.IsActive
+        });
+    public async Task<bool> DeleteMapeoFavoritoAsync(int id)
+        => await DeleteAsync($"/api/mapeo/favoritos/{id}");
+
     // ===== MeLi Questions =====
     public async Task<MeliQuestionsUnreadDto?> GetMeliQuestionsUnreadCountAsync()
         => await GetAsync<MeliQuestionsUnreadDto>("/api/meli/questions/unread-count");

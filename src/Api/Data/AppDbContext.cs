@@ -15,6 +15,8 @@ public class AppDbContext : DbContext
     public DbSet<MeliItem> MeliItems => Set<MeliItem>();
     public DbSet<MeliQuestion> MeliQuestions => Set<MeliQuestion>();
     public DbSet<MeliShipment> MeliShipments => Set<MeliShipment>();
+    public DbSet<MapeoDriver> MapeoDrivers => Set<MapeoDriver>();
+    public DbSet<MapeoFavorito> MapeoFavoritos => Set<MapeoFavorito>();
     public DbSet<ContabProducto> ContabProductos => Set<ContabProducto>();
     public DbSet<ContabCombo> ContabCombos => Set<ContabCombo>();
     public DbSet<ContabComboItem> ContabComboItems => Set<ContabComboItem>();

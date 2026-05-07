@@ -49,6 +49,12 @@
             <button class="btn btn-secondary" style="font-size:0.85rem;" @onclick="OpenStartPointModal" title="Configurar punto de partida del reparto">
                 @(startPoint?.Lat.HasValue == true ? "📍 Punto de partida ✓" : "📍 Punto de partida")
             </button>
+            <button class="btn btn-secondary" style="font-size:0.85rem;" @onclick="OpenDriversModal" title="Repartidores">
+                👥 Repartidores (@(drivers?.Count ?? 0))
+            </button>
+            <button class="btn btn-secondary" style="font-size:0.85rem;" @onclick="OpenFavoritosModal" title="Direcciones favoritas">
+                ⭐ Favoritos (@(favoritos?.Count ?? 0))
+            </button>
             <button class="btn btn-primary" style="font-size:0.85rem;" @onclick="SyncFromMeli" disabled="@isSyncing">
                 @(isSyncing ? "Sincronizando..." : "📥 Traer envíos de MeLi")
             </button>
@@ -118,6 +124,128 @@
         <div id="leafletMap"></div>
     </div>
 </div>
+
+@if (showDriversModal)
+{
+    <div class="modal-overlay" @onclick="() => showDriversModal = false">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width:640px;">
+            <div class="modal-header" style="background:#dbeafe;">
+                <h3 style="margin:0;">👥 Repartidores</h3>
+                <button class="btn-close" @onclick="() => showDriversModal = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:flex-end; margin-bottom:0.7rem; padding:0.5rem; background:#f9fafb; border-radius:6px;">
+                    <div class="form-group" style="flex:2;"><label class="form-label">Nombre *</label><input class="form-input" @bind="newDriverName" placeholder="Juan" /></div>
+                    <div class="form-group" style="flex:1;"><label class="form-label">Tel</label><input class="form-input" @bind="newDriverPhone" placeholder="5491100000000" /></div>
+                    <div class="form-group" style="flex:0 0 80px;"><label class="form-label">Color</label><input type="color" class="form-input" style="height:38px; padding:0.2rem;" @bind="newDriverColor" /></div>
+                    <button class="btn btn-primary" @onclick="AddDriver" disabled="@(string.IsNullOrWhiteSpace(newDriverName))" style="height:38px;">+ Agregar</button>
+                </div>
+                @if (drivers is null || drivers.Count == 0)
+                { <p style="text-align:center; color:#6b7280; padding:1rem;">No hay repartidores cargados todavía.</p> }
+                else
+                {
+                    <table class="data-table" style="font-size:0.85rem;">
+                        <thead><tr><th></th><th>Nombre</th><th>Tel</th><th>Activo</th><th></th></tr></thead>
+                        <tbody>
+                        @foreach (var d in drivers)
+                        {
+                            <tr>
+                                <td><input type="color" @bind="d.Color" style="width:30px; height:24px; border:none; padding:0;" /></td>
+                                <td><input class="form-input" style="font-size:0.85rem; padding:0.2rem 0.4rem;" @bind="d.Nombre" /></td>
+                                <td><input class="form-input" style="font-size:0.85rem; padding:0.2rem 0.4rem;" @bind="d.Telefono" /></td>
+                                <td style="text-align:center;"><input type="checkbox" @bind="d.IsActive" /></td>
+                                <td style="white-space:nowrap;">
+                                    <button class="btn btn-secondary" style="font-size:0.75rem; padding:0.2rem 0.5rem;" @onclick="() => SaveDriver(d)">💾</button>
+                                    <button class="btn btn-danger" style="font-size:0.75rem; padding:0.2rem 0.5rem;" @onclick="() => DeleteDriver(d)">🗑</button>
+                                </td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showDriversModal = false">Cerrar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showFavoritosModal)
+{
+    <div class="modal-overlay" @onclick="() => showFavoritosModal = false">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width:780px;">
+            <div class="modal-header" style="background:#fef3c7;">
+                <h3 style="margin:0;">⭐ Direcciones favoritas</h3>
+                <button class="btn-close" @onclick="() => showFavoritosModal = false">&times;</button>
+            </div>
+            <div class="modal-body" style="max-height:65vh; overflow-y:auto;">
+                <div style="background:#f9fafb; border:1px solid #e5e7eb; padding:0.6rem; border-radius:6px; margin-bottom:0.7rem;">
+                    <strong style="font-size:0.85rem;">Agregar nueva dirección</strong>
+                    <div class="form-group">
+                        <label class="form-label">Alias (corto)</label>
+                        <input class="form-input" @bind="newFavAlias" placeholder="Cafetería Don Pepe" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Buscar dirección</label>
+                        <div style="display:flex; gap:0.4rem;">
+                            <input class="form-input" @bind="newFavQuery" placeholder="Calle 123, Ciudad" @onkeydown="OnFavGeocodeKey" style="flex:1;" />
+                            <button class="btn btn-secondary" @onclick="DoFavGeocode" disabled="@favGeocoding">@(favGeocoding ? "..." : "🔍")</button>
+                        </div>
+                    </div>
+                    @if (favGeocodeResults is not null && favGeocodeResults.Count > 0)
+                    {
+                        <div style="border:1px solid #e5e7eb; border-radius:6px; max-height:120px; overflow-y:auto; margin-bottom:0.5rem;">
+                            @foreach (var r in favGeocodeResults)
+                            {
+                                <div style="padding:0.3rem 0.5rem; border-bottom:1px solid #f3f4f6; cursor:pointer; font-size:0.78rem;"
+                                     @onclick="() => PickFavGeocode(r)">@r.DisplayName</div>
+                            }
+                        </div>
+                    }
+                    @if (newFavLat != 0 || newFavLng != 0)
+                    {
+                        <div style="font-size:0.75rem; color:#15803d;">✓ @newFavDireccion (@newFavLat.ToString("0.####") , @newFavLng.ToString("0.####"))</div>
+                    }
+                    <div class="form-row" style="margin-top:0.4rem;">
+                        <div class="form-group" style="flex:1;"><label class="form-label">Contacto</label><input class="form-input" @bind="newFavContact" placeholder="Pepe" /></div>
+                        <div class="form-group" style="flex:1;"><label class="form-label">Tel</label><input class="form-input" @bind="newFavPhone" /></div>
+                    </div>
+                    <div class="form-group"><label class="form-label">Notas</label><input class="form-input" @bind="newFavNotas" placeholder="Tocar timbre 3 veces" /></div>
+                    <button class="btn btn-primary" style="width:100%;" @onclick="AddFavorito" disabled="@(string.IsNullOrWhiteSpace(newFavAlias) || (newFavLat == 0 && newFavLng == 0))">+ Guardar favorito</button>
+                </div>
+                @if (favoritos is null || favoritos.Count == 0)
+                { <p style="text-align:center; color:#6b7280; padding:1rem;">No hay favoritos cargados todavía.</p> }
+                else
+                {
+                    @foreach (var f in favoritos)
+                    {
+                        <div style="border:1px solid #e5e7eb; padding:0.5rem 0.7rem; border-radius:6px; margin-bottom:0.4rem;">
+                            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.4rem;">
+                                <div>
+                                    <strong>@f.Alias</strong> · <span style="font-size:0.78rem; color:#4b5563;">@f.Direccion</span>
+                                    @if (!string.IsNullOrEmpty(f.ContactName) || !string.IsNullOrEmpty(f.Telefono))
+                                    {
+                                        <div style="font-size:0.75rem; color:#6b7280;">
+                                            @if (!string.IsNullOrEmpty(f.ContactName)) { <span>👤 @f.ContactName</span> }
+                                            @if (!string.IsNullOrEmpty(f.Telefono)) { <span> · 📞 @f.Telefono</span> }
+                                        </div>
+                                    }
+                                    @if (!string.IsNullOrEmpty(f.Notas))
+                                    { <div style="font-size:0.72rem; color:#9ca3af;">📝 @f.Notas</div> }
+                                </div>
+                                <button class="btn btn-danger" style="font-size:0.75rem; padding:0.2rem 0.5rem;" @onclick="() => DeleteFavorito(f)">🗑</button>
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showFavoritosModal = false">Cerrar</button>
+            </div>
+        </div>
+    </div>
+}
 
 @if (showStartPointModal)
 {
@@ -278,6 +406,19 @@
     private string geocodeQuery = "";
     private List<GeocodeResultDto>? geocodeResults;
 
+    // Drivers
+    private List<MapeoDriverDto>? drivers;
+    private bool showDriversModal;
+    private string newDriverName = "", newDriverPhone = "", newDriverColor = "#1d4ed8";
+
+    // Favoritos
+    private List<MapeoFavoritoDto>? favoritos;
+    private bool showFavoritosModal;
+    private string newFavAlias = "", newFavQuery = "", newFavDireccion = "", newFavContact = "", newFavPhone = "", newFavNotas = "";
+    private decimal newFavLat = 0m, newFavLng = 0m;
+    private bool favGeocoding;
+    private List<GeocodeResultDto>? favGeocodeResults;
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
@@ -286,6 +427,8 @@
             await JS.InvokeVoidAsync("mapeoFlex.init", "leafletMap", selfRef);
             mapInitialized = true;
             try { startPoint = await Api.GetMapeoStartPointAsync(); } catch { }
+            await LoadDrivers();
+            await LoadFavoritos();
             await LoadAndRender();
         }
     }
@@ -389,6 +532,94 @@
         if (s is not null) { activeShipmentId = id; selected = s; showDetail = true; StateHasChanged(); }
         return Task.CompletedTask;
     }
+
+    private async Task LoadDrivers() { try { drivers = await Api.GetMapeoDriversAsync() ?? new(); } catch { drivers = new(); } }
+    private async Task LoadFavoritos() { try { favoritos = await Api.GetMapeoFavoritosAsync() ?? new(); } catch { favoritos = new(); } }
+
+    private async Task OpenDriversModal() { await LoadDrivers(); showDriversModal = true; }
+    private async Task OpenFavoritosModal() { await LoadFavoritos(); showFavoritosModal = true; }
+
+    private async Task AddDriver()
+    {
+        if (string.IsNullOrWhiteSpace(newDriverName)) return;
+        try
+        {
+            var d = await Api.CreateMapeoDriverAsync(newDriverName, string.IsNullOrWhiteSpace(newDriverPhone) ? null : newDriverPhone, newDriverColor);
+            if (d is not null) { drivers ??= new(); drivers.Add(d); newDriverName = ""; newDriverPhone = ""; ToastService.Success("Repartidor agregado"); }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task SaveDriver(MapeoDriverDto d)
+    {
+        try
+        {
+            await Api.UpdateMapeoDriverAsync(d.Id, d.Nombre, d.Telefono, d.Color, d.IsActive);
+            ToastService.Success("Guardado");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task DeleteDriver(MapeoDriverDto d)
+    {
+        if (!await ConfirmAsync($"Eliminar al repartidor '{d.Nombre}'?")) return;
+        try { if (await Api.DeleteMapeoDriverAsync(d.Id)) { drivers?.Remove(d); ToastService.Success("Eliminado"); } }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task OnFavGeocodeKey(KeyboardEventArgs e) { if (e.Key == "Enter") await DoFavGeocode(); }
+
+    private async Task DoFavGeocode()
+    {
+        if (string.IsNullOrWhiteSpace(newFavQuery)) return;
+        favGeocoding = true;
+        try { favGeocodeResults = await Api.GeocodeAsync(newFavQuery) ?? new(); }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { favGeocoding = false; }
+    }
+
+    private void PickFavGeocode(GeocodeResultDto r)
+    {
+        newFavDireccion = r.DisplayName;
+        newFavLat = r.Lat;
+        newFavLng = r.Lng;
+        favGeocodeResults = null;
+    }
+
+    private async Task AddFavorito()
+    {
+        if (string.IsNullOrWhiteSpace(newFavAlias) || (newFavLat == 0 && newFavLng == 0)) return;
+        try
+        {
+            var dto = new MapeoFavoritoDto
+            {
+                Alias = newFavAlias.Trim(),
+                Direccion = newFavDireccion,
+                Latitude = newFavLat, Longitude = newFavLng,
+                ContactName = string.IsNullOrWhiteSpace(newFavContact) ? null : newFavContact.Trim(),
+                Telefono = string.IsNullOrWhiteSpace(newFavPhone) ? null : newFavPhone.Trim(),
+                Notas = string.IsNullOrWhiteSpace(newFavNotas) ? null : newFavNotas.Trim()
+            };
+            var f = await Api.CreateMapeoFavoritoAsync(dto);
+            if (f is not null)
+            {
+                favoritos ??= new(); favoritos.Insert(0, f);
+                newFavAlias = ""; newFavQuery = ""; newFavDireccion = ""; newFavContact = ""; newFavPhone = ""; newFavNotas = "";
+                newFavLat = 0; newFavLng = 0; favGeocodeResults = null;
+                ToastService.Success("Favorito guardado");
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task DeleteFavorito(MapeoFavoritoDto f)
+    {
+        if (!await ConfirmAsync($"Eliminar '{f.Alias}'?")) return;
+        try { if (await Api.DeleteMapeoFavoritoAsync(f.Id)) { favoritos?.Remove(f); ToastService.Success("Eliminado"); } }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private Task<bool> ConfirmAsync(string msg) => JS.InvokeAsync<bool>("confirm", msg).AsTask();
 
     private void OpenStartPointModal()
     {
