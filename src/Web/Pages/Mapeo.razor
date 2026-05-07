@@ -340,7 +340,7 @@ else
         {
             <div style="position:absolute; top:0.5rem; left:0.5rem; right:0.5rem; z-index:500; display:flex; gap:0.3rem; flex-wrap:wrap; padding:0.4rem 0.5rem; background:rgba(255,255,255,0.96); border:1px solid #e5e7eb; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.08);">
                 <span style="font-size:0.75rem; color:#6b7280; font-weight:600; align-self:center;">Mostrar en mapa:</span>
-                <button class="btn" style="font-size:0.78rem; padding:0.2rem 0.55rem; font-weight:700; border-radius:999px; border:1.5px solid @(vehiculoFiltro == null ? "#1d4ed8" : "#d1d5db"); background:@(vehiculoFiltro == null ? "#1d4ed8" : "white"); color:@(vehiculoFiltro == null ? "white" : "#374151");"
+                <button class="btn" style="font-size:0.78rem; padding:0.2rem 0.55rem; font-weight:700; border-radius:999px; border:1.5px solid @(vehiculoFiltro == null ? "#1f2937" : "#d1d5db"); background:@(vehiculoFiltro == null ? "#1f2937" : "white"); color:@(vehiculoFiltro == null ? "white" : "#374151");"
                         @onclick="@(() => SetVehiculoFiltro(null))">
                     Todos (@stops!.Count(s => s.Latitude != 0))
                 </button>
