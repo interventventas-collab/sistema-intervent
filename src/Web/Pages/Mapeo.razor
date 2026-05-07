@@ -69,6 +69,11 @@
             <button class="btn btn-primary" style="font-size:0.85rem;" @onclick="OpenArmarRutaModal" title="Asignar paradas a repartidores y optimizar orden">
                 📋 Armar ruta
             </button>
+            <button class="btn" style="font-size:0.85rem; background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5;"
+                    @onclick="EmpezarDesdeCero" disabled="@reseteandoTodo"
+                    title="Borra todas las paradas y asignaciones para arrancar de cero (no toca repartidores ni favoritos)">
+                @(reseteandoTodo ? "Borrando..." : "🆕 Empezar desde cero")
+            </button>
             <button class="btn btn-primary" style="font-size:0.85rem;" @onclick="SyncFromMeli" disabled="@isSyncing">
                 @(isSyncing ? "Sincronizando..." : "📥 Traer envíos de MeLi")
             </button>
@@ -815,6 +820,8 @@
     private string importFlexDays = "1";
     private ImportFlexPreviewDto? importPreview;
 
+    private bool reseteandoTodo;
+
     // Modo asignación visual
     private bool modoAsignacion;
     private int cantidadVehiculos = 2;
@@ -1058,6 +1065,22 @@
         "venta_cafe" => "☕ Café",
         _ => "✏️ Manual"
     };
+
+    private async Task EmpezarDesdeCero()
+    {
+        if (!await ConfirmAsync("¿Borrar TODAS las paradas y asignaciones para arrancar de cero?\n\nNo se borran tus repartidores ni favoritos — solo lo que estás armando hoy.")) return;
+        reseteandoTodo = true;
+        try
+        {
+            await Api.ClearMapeoStopsAsync();
+            stops = new();
+            modoAsignacion = false;
+            await RenderMap();
+            ToastService.Success("Mapeo reseteado. Arrancá de nuevo.");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { reseteandoTodo = false; }
+    }
 
     // ===== Modo asignación visual =====
     private async Task ToggleModoAsignacion()
