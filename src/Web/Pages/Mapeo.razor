@@ -20,7 +20,99 @@
     .copy-chip { display: inline-flex; align-items: center; gap: 0.2rem; padding: 0.05rem 0.35rem; background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 4px; cursor: pointer; transition: all 0.12s; }
     .copy-chip:hover { background: #dbeafe; border-color: #1d4ed8; color: #1d4ed8; }
     .copy-chip:active { background: #bfdbfe; transform: scale(0.97); }
+
+    /* Stepper inteligente */
+    .stepper { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; padding: 0.5rem 0.7rem; background: white; border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 0.5rem; }
+    .stepper-chip { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.3rem 0.6rem; border-radius: 999px; font-size: 0.78rem; font-weight: 600; cursor: pointer; border: 1.5px solid #e5e7eb; background: #f9fafb; color: #6b7280; transition: all 0.15s; }
+    .stepper-chip:hover { background: #f3f4f6; }
+    .stepper-chip.completado { background: #ecfdf5; border-color: #10b981; color: #047857; }
+    .stepper-chip.actual { background: #dbeafe; border-color: #1d4ed8; color: #1d4ed8; animation: stepper-pulse 1.6s infinite; }
+    .stepper-chip-num { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:50%; background:#e5e7eb; color:#6b7280; font-size:0.7rem; font-weight:800; }
+    .stepper-chip.completado .stepper-chip-num { background: #10b981; color: white; }
+    .stepper-chip.actual .stepper-chip-num { background: #1d4ed8; color: white; }
+    .stepper-arrow { color: #d1d5db; font-size: 0.85rem; }
+    .stepper-collapsed { background: #ecfdf5; border-color: #10b981; padding: 0.4rem 0.7rem; font-size: 0.85rem; color: #065f46; display: flex; justify-content: space-between; align-items: center; }
+    @@keyframes stepper-pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(29,78,216,0.5); }
+        50% { box-shadow: 0 0 0 5px rgba(29,78,216,0); }
+    }
+    /* Spotlight para el boton actual */
+    .stepper-spotlight { animation: spotlight 1.4s infinite; box-shadow: 0 0 0 0 rgba(217,119,6,0.7); border-radius: 6px; }
+    @@keyframes spotlight {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(217,119,6,0.7); }
+        50% { box-shadow: 0 0 0 8px rgba(217,119,6,0); }
+    }
 </style>
+
+@{
+    // Estado de cada paso (auto-deteccion)
+    var step1Done = (shipments?.Count ?? 0) > 0; // Hay Flex traidos
+    var step2Done = (stops?.Count ?? 0) > 0; // Hay paradas en la lista
+    var step3Done = (stops?.Any(s => s.AssignedVehicleSlot.HasValue) ?? false); // Hay paradas asignadas a vehiculos
+    var step4Done = (stops?.Any(s => s.AssignedDriverId.HasValue) ?? false); // Hay choferes asignados
+    var step5Done = step4Done && (drivers?.Any(d => !string.IsNullOrEmpty(d.ShareToken) && (stops?.Any(s => s.AssignedDriverId == d.Id) ?? false)) ?? false);
+    var allDone = step1Done && step2Done && step3Done && step4Done && step5Done;
+    int currentStep = !step1Done ? 1 : !step2Done ? 2 : !step3Done ? 3 : !step4Done ? 4 : !step5Done ? 5 : 0;
+
+    int chofers = stops?.Where(s => s.AssignedDriverId.HasValue).Select(s => s.AssignedDriverId).Distinct().Count() ?? 0;
+    int paradasAsignadas = stops?.Count(s => s.AssignedDriverId.HasValue) ?? 0;
+}
+
+@if (allDone && !stepperExpanded)
+{
+    <div class="stepper stepper-collapsed">
+        <div>
+            ✅ <strong>Ruta lista</strong>
+            · @chofers chofer(es)
+            · @paradasAsignadas parada(s) asignada(s)
+            · Links generados
+        </div>
+        <button class="btn" style="font-size:0.78rem; background:transparent; border:1px solid #047857; color:#047857;" @onclick="() => stepperExpanded = true">Ver pasos</button>
+    </div>
+}
+else
+{
+    <div class="stepper">
+        <div class="stepper-chip @(step1Done ? "completado" : (currentStep == 1 ? "actual" : ""))"
+             title="Paso 1: traer envíos Flex desde MercadoLibre" @onclick="() => HighlightStep(1)">
+            <span class="stepper-chip-num">@(step1Done ? "✓" : "1")</span>
+            📥 Flex
+        </div>
+        <span class="stepper-arrow">›</span>
+
+        <div class="stepper-chip @(step2Done ? "completado" : (currentStep == 2 ? "actual" : ""))"
+             title="Paso 2: sumar Flex a paradas (y opcionalmente agregar más manuales)" @onclick="() => HighlightStep(2)">
+            <span class="stepper-chip-num">@(step2Done ? "✓" : "2")</span>
+            🛣 Paradas
+        </div>
+        <span class="stepper-arrow">›</span>
+
+        <div class="stepper-chip @(step3Done ? "completado" : (currentStep == 3 ? "actual" : ""))"
+             title="Paso 3: modo asignación visual — pintar paradas por vehículo" @onclick="() => HighlightStep(3)">
+            <span class="stepper-chip-num">@(step3Done ? "✓" : "3")</span>
+            🚚 Vehículos
+        </div>
+        <span class="stepper-arrow">›</span>
+
+        <div class="stepper-chip @(step4Done ? "completado" : (currentStep == 4 ? "actual" : ""))"
+             title="Paso 4: asignar chofer a cada vehículo" @onclick="() => HighlightStep(4)">
+            <span class="stepper-chip-num">@(step4Done ? "✓" : "4")</span>
+            👤 Choferes
+        </div>
+        <span class="stepper-arrow">›</span>
+
+        <div class="stepper-chip @(step5Done ? "completado" : (currentStep == 5 ? "actual" : ""))"
+             title="Paso 5: copiar link y mandar por WhatsApp" @onclick="() => HighlightStep(5)">
+            <span class="stepper-chip-num">@(step5Done ? "✓" : "5")</span>
+            💬 Mandar
+        </div>
+
+        @if (allDone)
+        {
+            <button class="btn" style="font-size:0.78rem; background:transparent; border:1px solid #d1d5db; color:#6b7280; margin-left:auto;" @onclick="() => stepperExpanded = false">Ocultar</button>
+        }
+    </div>
+}
 
 <div class="card" style="margin-bottom: 0.5rem;">
     <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
@@ -865,6 +957,8 @@
     private ImportFlexPreviewDto? importPreview;
 
     private bool reseteandoTodo;
+    // Stepper inteligente
+    private bool stepperExpanded = false; // cuando todo está OK, se contrae a 1 línea
     // URL pública para los links de los choferes (ej: https://midominio.com)
     private string? publicBaseUrl;
     private bool showPublicUrlModal;
@@ -1154,6 +1248,41 @@
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { savingPublicUrl = false; }
+    }
+
+    /// <summary>
+    /// Resalta el botón asociado al paso del stepper (efecto spotlight pulsante).
+    /// El usuario click en un chip y ve "tocá ESE botón" sin texto largo.
+    /// </summary>
+    private async Task HighlightStep(int step)
+    {
+        // Mapeo step -> selector de boton:
+        // 1 → "📥 Sumar Flex a paradas" (importacion + Flex)
+        // 2 → "➕ Agregar parada" (sumar más manuales)
+        // 3 → "🚚 Modo asignación"
+        // 4 → "👤 Asignar choferes"
+        // 5 → modal de asignar choferes (donde están los links)
+        try
+        {
+            await JS.InvokeVoidAsync("eval", $@"
+                (function() {{
+                    var step = {step};
+                    var labels = {{1:'Sumar Flex', 2:'Agregar parada', 3:'Modo asignación', 4:'Armar ruta', 5:'Armar ruta'}};
+                    var label = labels[step];
+                    var allBtns = document.querySelectorAll('button');
+                    var target = null;
+                    for (var i = 0; i < allBtns.length; i++) {{
+                        if (allBtns[i].textContent.indexOf(label) >= 0) {{ target = allBtns[i]; break; }}
+                    }}
+                    if (target) {{
+                        target.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+                        target.classList.add('stepper-spotlight');
+                        setTimeout(function() {{ target.classList.remove('stepper-spotlight'); }}, 4500);
+                    }}
+                }})();
+            ");
+        }
+        catch { }
     }
 
     private async Task EmpezarDesdeCero()
