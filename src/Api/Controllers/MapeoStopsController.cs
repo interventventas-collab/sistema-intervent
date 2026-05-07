@@ -278,12 +278,17 @@ public class MapeoStopsController : ControllerBase
     [HttpGet("import-flex-preview")]
     public async Task<IActionResult> ImportFlexPreview([FromQuery] int days = 1)
     {
-        var since = DateTime.UtcNow.AddDays(-days);
+        // Filtra por fecha límite de ENTREGA (EstimatedDeliveryLimit), no por fecha de venta.
+        // Ventana: desde HOY hasta los próximos N días.
+        var nowLocal = DateTime.UtcNow.AddHours(-3);
+        var todayUtc = nowLocal.Date.AddHours(3);
+        var hastaUtc = todayUtc.AddDays(days);
         var ships = await _db.MeliShipments
             .Where(s => s.LogisticType == "self_service"
                      && s.Status != "delivered" && s.Status != "cancelled"
                      && s.Latitude != null && s.Longitude != null
-                     && (s.DateCreated == null || s.DateCreated >= since))
+                     && (s.EstimatedDeliveryLimit ?? s.DateCreated) >= todayUtc
+                     && (s.EstimatedDeliveryLimit ?? s.DateCreated) < hastaUtc)
             .Select(s => new { s.MeliShipmentId, s.ReceiverName, s.City, s.AddressLine })
             .ToListAsync();
         var existingRefs = await _db.MapeoStops
@@ -305,12 +310,15 @@ public class MapeoStopsController : ControllerBase
     [HttpPost("import-flex")]
     public async Task<IActionResult> ImportFlex([FromQuery] int days = 7)
     {
-        var since = DateTime.UtcNow.AddDays(-days);
+        var nowLocal = DateTime.UtcNow.AddHours(-3);
+        var todayUtc = nowLocal.Date.AddHours(3);
+        var hastaUtc = todayUtc.AddDays(days);
         var ships = await _db.MeliShipments
             .Where(s => s.LogisticType == "self_service"
                      && s.Status != "delivered" && s.Status != "cancelled"
                      && s.Latitude != null && s.Longitude != null
-                     && (s.DateCreated == null || s.DateCreated >= since))
+                     && (s.EstimatedDeliveryLimit ?? s.DateCreated) >= todayUtc
+                     && (s.EstimatedDeliveryLimit ?? s.DateCreated) < hastaUtc)
             .ToListAsync();
         // Excluir las que ya están como stops
         var existingRefs = await _db.MapeoStops

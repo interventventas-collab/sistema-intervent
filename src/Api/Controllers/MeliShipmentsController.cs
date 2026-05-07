@@ -21,19 +21,75 @@ public class MeliShipmentsController : ControllerBase
     public async Task<IActionResult> ListFlex(
         [FromQuery] string? status = null,
         [FromQuery] string? internalStatus = null,
-        [FromQuery] int days = 7,
+        [FromQuery] string mode = "today",
         [FromQuery] bool excludeDelivered = false)
     {
-        var since = DateTime.UtcNow.AddDays(-days);
+        // mode = today | tomorrow | next3 | next7 | overdue | all
+        // Filtra por EstimatedDeliveryLimit (la fecha límite de entrega que MeLi compromete al comprador).
+        // Fallback: si EstimatedDeliveryLimit es null, usa DateCreated.
+        var nowLocal = DateTime.UtcNow.AddHours(-3); // Ajuste a hora Argentina
+        var todayLocal = nowLocal.Date;
+
         var q = _db.MeliShipments
             .Include(s => s.MeliAccount)
-            .Where(s => s.LogisticType == "self_service")
-            .Where(s => s.DateCreated == null || s.DateCreated >= since);
+            .Where(s => s.LogisticType == "self_service");
+
+        switch (mode.ToLowerInvariant())
+        {
+            case "today":
+                {
+                    var t1 = todayLocal.AddHours(3); // back to UTC
+                    var t2 = todayLocal.AddDays(1).AddHours(3);
+                    q = q.Where(s => (s.EstimatedDeliveryLimit ?? s.DateCreated) >= t1
+                                  && (s.EstimatedDeliveryLimit ?? s.DateCreated) < t2);
+                    break;
+                }
+            case "tomorrow":
+                {
+                    var t1 = todayLocal.AddDays(1).AddHours(3);
+                    var t2 = todayLocal.AddDays(2).AddHours(3);
+                    q = q.Where(s => (s.EstimatedDeliveryLimit ?? s.DateCreated) >= t1
+                                  && (s.EstimatedDeliveryLimit ?? s.DateCreated) < t2);
+                    break;
+                }
+            case "next3":
+                {
+                    var t1 = todayLocal.AddHours(3);
+                    var t2 = todayLocal.AddDays(3).AddHours(3);
+                    q = q.Where(s => (s.EstimatedDeliveryLimit ?? s.DateCreated) >= t1
+                                  && (s.EstimatedDeliveryLimit ?? s.DateCreated) < t2);
+                    break;
+                }
+            case "next7":
+                {
+                    var t1 = todayLocal.AddHours(3);
+                    var t2 = todayLocal.AddDays(7).AddHours(3);
+                    q = q.Where(s => (s.EstimatedDeliveryLimit ?? s.DateCreated) >= t1
+                                  && (s.EstimatedDeliveryLimit ?? s.DateCreated) < t2);
+                    break;
+                }
+            case "overdue":
+                {
+                    // Vencidos: SLA pasado y NO entregado
+                    var nowUtc = DateTime.UtcNow;
+                    q = q.Where(s => s.EstimatedDeliveryLimit != null
+                                  && s.EstimatedDeliveryLimit < nowUtc
+                                  && s.Status != "delivered" && s.Status != "cancelled");
+                    break;
+                }
+            case "all":
+            default:
+                // Sin filtro adicional de fecha
+                break;
+        }
+
         if (!string.IsNullOrWhiteSpace(status)) q = q.Where(s => s.Status == status);
         if (!string.IsNullOrWhiteSpace(internalStatus)) q = q.Where(s => s.InternalStatus == internalStatus);
         if (excludeDelivered) q = q.Where(s => s.Status != "delivered" && s.Status != "cancelled");
 
-        var list = await q.OrderByDescending(s => s.DateCreated).Take(500).ToListAsync();
+        var list = await q
+            .OrderBy(s => s.EstimatedDeliveryLimit ?? s.DateCreated)
+            .Take(500).ToListAsync();
         return Ok(list.Select(s => new
         {
             id = s.Id,

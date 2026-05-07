@@ -1857,9 +1857,9 @@ public class ApiClient
             new { meliItemIds });
 
     // ===== MeLi Shipments (Mapeo Flex) =====
-    public async Task<List<MeliShipmentDto>?> GetMeliFlexShipmentsAsync(int days = 7, string? internalStatus = null, bool excludeDelivered = false)
+    public async Task<List<MeliShipmentDto>?> GetMeliFlexShipmentsAsync(string mode = "today", string? internalStatus = null, bool excludeDelivered = false)
     {
-        var qs = new List<string> { $"days={days}" };
+        var qs = new List<string> { $"mode={Uri.EscapeDataString(mode)}" };
         if (!string.IsNullOrWhiteSpace(internalStatus)) qs.Add($"internalStatus={Uri.EscapeDataString(internalStatus)}");
         if (excludeDelivered) qs.Add("excludeDelivered=true");
         return await GetAsync<List<MeliShipmentDto>>("/api/meli/shipments/flex?" + string.Join("&", qs));

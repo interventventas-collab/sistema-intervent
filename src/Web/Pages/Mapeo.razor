@@ -135,12 +135,14 @@ else
 @* ═════════ Filtros (chiquitos) + Setup colapsado ═════════ *@
 <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.5rem; padding:0.4rem 0.6rem; background:white; border:1px solid #e5e7eb; border-radius:8px;">
     <div style="display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
-        <span style="font-size:0.78rem; color:#6b7280; font-weight:600;">Mostrar:</span>
-        <select class="form-input" style="max-width:120px; font-size:0.78rem; padding:0.2rem 0.4rem;" @bind="diasFiltro" @bind:after="LoadAndRender">
-            <option value="1">Hoy</option>
-            <option value="3">3 días</option>
-            <option value="7">7 días</option>
-            <option value="15">15 días</option>
+        <span style="font-size:0.78rem; color:#6b7280; font-weight:600;">Entregar:</span>
+        <select class="form-input" style="max-width:160px; font-size:0.78rem; padding:0.2rem 0.4rem;" @bind="diasFiltro" @bind:after="LoadAndRender">
+            <option value="today">Hoy</option>
+            <option value="tomorrow">Mañana</option>
+            <option value="next3">Próximos 3 días</option>
+            <option value="next7">Próximos 7 días</option>
+            <option value="overdue">⚠ Atrasados</option>
+            <option value="all">Todos</option>
         </select>
         <select class="form-input" style="max-width:140px; font-size:0.78rem; padding:0.2rem 0.4rem;" @bind="filtroInterno" @bind:after="LoadAndRender">
             <option value="">Estado: todos</option>
@@ -935,7 +937,7 @@ else
 @code {
     private List<MeliShipmentDto>? shipments;
     private bool isLoading, isSyncing, isSavingDetail;
-    private string diasFiltro = "1";          // Default: solo de HOY
+    private string diasFiltro = "today";       // Default: ENTREGAR hoy
     private string filtroInterno = "pending";   // Default: solo PENDIENTES
     private bool excluirEntregados = true;      // Default: ocultar entregados/cancelados
     private DotNetObjectReference<Mapeo>? selfRef;
@@ -1027,8 +1029,7 @@ else
         isLoading = true;
         try
         {
-            int days = int.TryParse(diasFiltro, out var d) ? d : 7;
-            shipments = await Api.GetMeliFlexShipmentsAsync(days, string.IsNullOrEmpty(filtroInterno) ? null : filtroInterno, excluirEntregados) ?? new();
+            shipments = await Api.GetMeliFlexShipmentsAsync(diasFiltro, string.IsNullOrEmpty(filtroInterno) ? null : filtroInterno, excluirEntregados) ?? new();
             if (mapInitialized) await RenderMap();
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
