@@ -327,7 +327,45 @@ else
             }
         </div>
     </div>
-    <div class="mapeo-map">
+    <div class="mapeo-map" style="position:relative;">
+        @{
+            var vehiclesActivos = stops?.Where(s => s.AssignedVehicleSlot.HasValue)
+                .GroupBy(s => s.AssignedVehicleSlot!.Value)
+                .OrderBy(g => g.Key)
+                .Select(g => new { Slot = g.Key, Count = g.Count() })
+                .ToList();
+        }
+        @if (vehiclesActivos is not null && vehiclesActivos.Count > 0)
+        {
+            <div style="position:absolute; top:0.5rem; left:0.5rem; right:0.5rem; z-index:500; display:flex; gap:0.3rem; flex-wrap:wrap; padding:0.4rem 0.5rem; background:rgba(255,255,255,0.96); border:1px solid #e5e7eb; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+                <span style="font-size:0.75rem; color:#6b7280; font-weight:600; align-self:center;">Mostrar en mapa:</span>
+                <button class="btn" style="font-size:0.78rem; padding:0.2rem 0.55rem; font-weight:700; border-radius:999px; border:1.5px solid @(vehiculoFiltro == null ? "#1d4ed8" : "#d1d5db"); background:@(vehiculoFiltro == null ? "#1d4ed8" : "white"); color:@(vehiculoFiltro == null ? "white" : "#374151");"
+                        @onclick="@(() => SetVehiculoFiltro(null))">
+                    Todos (@stops!.Count(s => s.Latitude != 0))
+                </button>
+                @foreach (var v in vehiclesActivos)
+                {
+                    var slot = v.Slot;
+                    var color = VehicleColor(slot);
+                    var sel = vehiculoFiltro == slot;
+                    <button class="btn" style="font-size:0.78rem; padding:0.2rem 0.55rem; font-weight:700; border-radius:999px; border:2px solid @color; background:@(sel ? color : "white"); color:@(sel ? "white" : color);"
+                            @onclick="@(() => SetVehiculoFiltro(slot))">
+                        🚐 V@slot (@v.Count)
+                    </button>
+                }
+                @{
+                    var sinAsignar = stops!.Count(s => !s.AssignedVehicleSlot.HasValue);
+                }
+                @if (sinAsignar > 0)
+                {
+                    var selSin = vehiculoFiltro == 0; // 0 = "sin asignar"
+                    <button class="btn" style="font-size:0.78rem; padding:0.2rem 0.55rem; font-weight:700; border-radius:999px; border:2px dashed #9ca3af; background:@(selSin ? "#9ca3af" : "white"); color:@(selSin ? "white" : "#6b7280");"
+                            @onclick="@(() => SetVehiculoFiltro(0))">
+                        ❓ Sin asignar (@sinAsignar)
+                    </button>
+                }
+            </div>
+        }
         <div id="leafletMap"></div>
     </div>
 </div>
@@ -556,13 +594,24 @@ else
                                     <button class="btn btn-secondary" style="font-size:0.72rem; padding:0.15rem 0.4rem;" @onclick="() => DoOptimizeDriver(driver.Id)" disabled="@routeBusy" title="Optimizar solo este driver">⚡</button>
                                 }
                             </div>
+                            @{
+                                var sortedStops = g.OrderBy(x => x.OrderInRoute ?? int.MaxValue).ThenBy(x => x.Id).ToList();
+                            }
                             <table class="data-table" style="font-size:0.8rem; margin:0;">
-                                <thead><tr><th style="width:60px;">Orden</th><th>Parada</th><th>Dirección</th><th style="width:170px;">Repartidor</th></tr></thead>
+                                <thead><tr><th style="width:90px;">Orden</th><th>Parada</th><th>Dirección</th><th style="width:170px;">Repartidor</th></tr></thead>
                                 <tbody>
-                                @foreach (var s in g.OrderBy(x => x.OrderInRoute ?? int.MaxValue).ThenBy(x => x.Id))
+                                @for (int idx = 0; idx < sortedStops.Count; idx++)
                                 {
+                                    var s = sortedStops[idx];
+                                    var localIdx = idx;
                                     <tr>
-                                        <td style="text-align:center; font-weight:700; font-size:0.95rem; color:@headerColor;">@(s.OrderInRoute?.ToString() ?? "—")</td>
+                                        <td style="white-space:nowrap;">
+                                            <span style="font-weight:700; font-size:0.95rem; color:@headerColor; margin-right:0.3rem;">@(s.OrderInRoute?.ToString() ?? "—")</span>
+                                            <button class="btn-icon" style="font-size:0.85rem; padding:0; width:22px; height:22px;" disabled="@(localIdx == 0 || routeBusy)"
+                                                    @onclick="() => MoveStop(sortedStops, localIdx, -1)" title="Subir">▲</button>
+                                            <button class="btn-icon" style="font-size:0.85rem; padding:0; width:22px; height:22px;" disabled="@(localIdx == sortedStops.Count - 1 || routeBusy)"
+                                                    @onclick="() => MoveStop(sortedStops, localIdx, +1)" title="Bajar">▼</button>
+                                        </td>
                                         <td>
                                             <strong>@(s.Alias ?? s.ContactName ?? "Parada")</strong>
                                             <div style="font-size:0.7rem; color:#9ca3af;">@OriginLabel(s.Origin)</div>
@@ -987,6 +1036,14 @@ else
     // Stepper inteligente
     private bool stepperExpanded = false; // cuando todo está OK, se contrae a 1 línea
     private bool showConfigMenu = false; // dropdown ⚙ Configuración
+    // Filtro de vehículo en el mapa: null = todos, 0 = sin asignar, >0 = slot N
+    private int? vehiculoFiltro = null;
+    private async Task SetVehiculoFiltro(int? slot)
+    {
+        vehiculoFiltro = slot;
+        await RenderMap();
+        StateHasChanged();
+    }
     // URL pública para los links de los choferes (ej: https://midominio.com)
     private string? publicBaseUrl;
     private bool showPublicUrlModal;
@@ -1068,7 +1125,12 @@ else
         // Si no: naranja con ★.
         if (stops is not null)
         {
-            list.AddRange(stops.Select(st => {
+            // Filtro de vehículo: null=todos, 0=sin asignar, >0=slot
+            var stopsFiltrados = stops.Where(st =>
+                vehiculoFiltro == null ||
+                (vehiculoFiltro == 0 && !st.AssignedVehicleSlot.HasValue) ||
+                (vehiculoFiltro > 0 && st.AssignedVehicleSlot == vehiculoFiltro));
+            list.AddRange(stopsFiltrados.Select(st => {
                 // Prioridad de color: 1) vehiculo asignado, 2) driver asignado, 3) naranja default
                 string color = st.AssignedVehicleSlot.HasValue ? VehicleColor(st.AssignedVehicleSlot.Value)
                               : (string.IsNullOrEmpty(st.AssignedDriverColor) ? "#d97706" : st.AssignedDriverColor!);
@@ -1493,6 +1555,38 @@ else
             await Api.OptimizeStopsOrderAsync(null);
             await LoadStops();
             ToastService.Success("Orden optimizado para todos los repartidores");
+            await RenderMap();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { routeBusy = false; }
+    }
+
+    /// <summary>
+    /// Mueve una parada arriba (delta=-1) o abajo (delta=+1) dentro del mismo driver.
+    /// Reordena toda la lista del driver y persiste los nuevos OrderInRoute.
+    /// </summary>
+    private async Task MoveStop(List<MapeoStopDto> sortedList, int idx, int delta)
+    {
+        var newIdx = idx + delta;
+        if (newIdx < 0 || newIdx >= sortedList.Count) return;
+        // Swap in memory
+        var tmp = sortedList[idx];
+        sortedList[idx] = sortedList[newIdx];
+        sortedList[newIdx] = tmp;
+        // Renumerar 1..N en orden actual
+        routeBusy = true;
+        try
+        {
+            for (int i = 0; i < sortedList.Count; i++)
+            {
+                var s = sortedList[i];
+                int nuevoOrden = i + 1;
+                if (s.OrderInRoute != nuevoOrden)
+                {
+                    s.OrderInRoute = nuevoOrden;
+                    await Api.UpdateMapeoStopAsync(s.Id, new { orderInRoute = nuevoOrden });
+                }
+            }
             await RenderMap();
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
