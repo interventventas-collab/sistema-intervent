@@ -16,6 +16,9 @@
     .mapeo-map { background: white; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
     #leafletMap { width: 100%; height: 100%; }
     .mapeo-status-pill { display: inline-block; padding: 0.05rem 0.4rem; border-radius: 4px; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; }
+    .copy-chip { display: inline-flex; align-items: center; gap: 0.2rem; padding: 0.05rem 0.35rem; background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 4px; cursor: pointer; transition: all 0.12s; }
+    .copy-chip:hover { background: #dbeafe; border-color: #1d4ed8; color: #1d4ed8; }
+    .copy-chip:active { background: #bfdbfe; transform: scale(0.97); }
 </style>
 
 <div class="card" style="margin-bottom: 0.5rem;">
@@ -73,11 +76,21 @@
                             <strong>@(s.ReceiverName ?? "—")</strong>
                             <span class="mapeo-status-pill" style="@StatusStyle(s.InternalStatus)">@StatusLabel(s.InternalStatus)</span>
                         </div>
-                        <div style="font-size:0.7rem; color:#6b7280; margin-top:0.1rem; display:flex; gap:0.5rem; flex-wrap:wrap;">
+                        <div style="font-size:0.7rem; color:#6b7280; margin-top:0.1rem; display:flex; gap:0.4rem; flex-wrap:wrap;">
                             @if (!string.IsNullOrEmpty(s.BuyerNickname))
-                            { <span title="Nickname del comprador en MeLi">👤 <strong>@s.BuyerNickname</strong></span> }
+                            {
+                                <span class="copy-chip" title="Click: copiar nickname"
+                                      @onclick="@(e => CopyValue(s.BuyerNickname!, "Comprador"))" @onclick:stopPropagation="true">
+                                    👤 <strong>@s.BuyerNickname</strong> 📋
+                                </span>
+                            }
                             @if (s.MeliOrderId.HasValue)
-                            { <span title="Numero de venta MeLi" style="font-family:monospace;">🧾 @s.MeliOrderId.Value</span> }
+                            {
+                                <span class="copy-chip" title="Click: copiar N° de venta" style="font-family:monospace;"
+                                      @onclick="@(e => CopyValue(s.MeliOrderId.Value.ToString(), "N° venta"))" @onclick:stopPropagation="true">
+                                    🧾 @s.MeliOrderId.Value 📋
+                                </span>
+                            }
                         </div>
                         <div style="color:#4b5563; margin-top:0.15rem;">@(s.AddressLine ?? "—")</div>
                         <div style="color:#6b7280; font-size:0.72rem; margin-top:0.1rem;">
@@ -110,11 +123,21 @@
             <div class="modal-body" style="font-size:0.88rem;">
                 @if (selected.MeliOrderId.HasValue || !string.IsNullOrEmpty(selected.BuyerNickname))
                 {
-                    <div style="background:#f0f9ff; border:1px solid #bfdbfe; padding:0.4rem 0.6rem; border-radius:6px; margin-bottom:0.5rem; font-size:0.78rem; display:flex; gap:0.6rem; flex-wrap:wrap;">
+                    <div style="background:#f0f9ff; border:1px solid #bfdbfe; padding:0.4rem 0.6rem; border-radius:6px; margin-bottom:0.5rem; font-size:0.82rem; display:flex; gap:0.5rem; flex-wrap:wrap;">
                         @if (!string.IsNullOrEmpty(selected.BuyerNickname))
-                        { <span>👤 <strong>@selected.BuyerNickname</strong></span> }
+                        {
+                            <span class="copy-chip" title="Click: copiar nickname"
+                                  @onclick="@(e => CopyValue(selected.BuyerNickname!, "Comprador"))">
+                                👤 <strong>@selected.BuyerNickname</strong> 📋
+                            </span>
+                        }
                         @if (selected.MeliOrderId.HasValue)
-                        { <span style="font-family:monospace;">🧾 N° venta: <strong>@selected.MeliOrderId.Value</strong></span> }
+                        {
+                            <span class="copy-chip" title="Click: copiar N° de venta" style="font-family:monospace;"
+                                  @onclick="@(e => CopyValue(selected.MeliOrderId.Value.ToString(), "N° venta"))">
+                                🧾 <strong>@selected.MeliOrderId.Value</strong> 📋
+                            </span>
+                        }
                     </div>
                 }
                 <p><strong>@(selected.ReceiverName ?? "—")</strong></p>
@@ -259,6 +282,16 @@
         var s = shipments?.FirstOrDefault(x => x.Id == id);
         if (s is not null) { activeShipmentId = id; selected = s; showDetail = true; StateHasChanged(); }
         return Task.CompletedTask;
+    }
+
+    private async Task CopyValue(string value, string label)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("copyToClipboard", value);
+            ToastService.Success($"{label} copiado: {value}");
+        }
+        catch { ToastService.Error("No se pudo copiar"); }
     }
 
     private async Task SyncFromMeli()
