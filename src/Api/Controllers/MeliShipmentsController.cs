@@ -109,6 +109,30 @@ public class MeliShipmentsController : ControllerBase
         return Ok(new { ok = true });
     }
 
+    public record PublicBaseUrlDto(string? Url);
+
+    /// <summary>
+    /// URL pública del sistema (https://midominio.com) para armar los links de los choferes.
+    /// Si no está seteada, se usa la URL del navegador del admin (que puede ser localhost:3000 — feo).
+    /// </summary>
+    [HttpGet("public-base-url")]
+    public async Task<IActionResult> GetPublicBaseUrl()
+    {
+        var url = (await _db.AppSettings.FindAsync("mapeo.public_base_url"))?.Value;
+        return Ok(new PublicBaseUrlDto(url));
+    }
+
+    [HttpPut("public-base-url")]
+    public async Task<IActionResult> SetPublicBaseUrl([FromBody] PublicBaseUrlDto req)
+    {
+        var existing = await _db.AppSettings.FindAsync("mapeo.public_base_url");
+        var v = string.IsNullOrWhiteSpace(req.Url) ? "" : req.Url.Trim().TrimEnd('/');
+        if (existing is null) _db.AppSettings.Add(new Api.Models.AppSetting { Key = "mapeo.public_base_url", Value = v, UpdatedAt = DateTime.UtcNow });
+        else { existing.Value = v; existing.UpdatedAt = DateTime.UtcNow; }
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
     public record GeocodeResult(string DisplayName, decimal Lat, decimal Lng);
 
     /// <summary>Busca una direccion en OpenStreetMap (Nominatim, gratis) y devuelve hasta 5 candidatos con coordenadas.</summary>

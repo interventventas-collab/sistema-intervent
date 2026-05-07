@@ -50,6 +50,9 @@
             <button class="btn btn-secondary" style="font-size:0.85rem;" @onclick="OpenStartPointModal" title="Configurar punto de partida del reparto">
                 @(startPoint?.Lat.HasValue == true ? "📍 Punto de partida ✓" : "📍 Punto de partida")
             </button>
+            <button class="btn btn-secondary" style="font-size:0.85rem;" @onclick="OpenPublicUrlModal" title="URL pública del sistema (para que los links que mandás a los choferes sean limpios)">
+                @(string.IsNullOrEmpty(publicBaseUrl) ? "🌐 URL pública" : "🌐 URL pública ✓")
+            </button>
             <button class="btn btn-secondary" style="font-size:0.85rem;" @onclick="OpenDriversModal" title="Repartidores">
                 👥 Repartidores (@(drivers?.Count ?? 0))
             </button>
@@ -210,6 +213,46 @@
     </div>
 </div>
 
+@if (showPublicUrlModal)
+{
+    <div class="modal-overlay" @onclick="() => showPublicUrlModal = false">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background:#dbeafe;">
+                <h3 style="margin:0;">🌐 URL pública del sistema</h3>
+                <button class="btn-close" @onclick="() => showPublicUrlModal = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size:0.85rem; color:#4b5563; margin:0 0 0.6rem;">
+                    Es la dirección pública del sistema desde la que los <strong>choferes van a abrir sus rutas</strong>.
+                    Si no la configurás, los links salen con la URL que tenés vos en el navegador
+                    (ej: <code style="background:#f3f4f6; padding:0 0.2rem;">@Navigation.BaseUri</code>) — y eso falla
+                    si tiene IP/puerto raros.
+                </p>
+                <div class="form-group">
+                    <label class="form-label">URL pública (sin barra final)</label>
+                    <input class="form-input" @bind="formPublicUrl" placeholder="https://midominio.com" />
+                    <p style="font-size:0.7rem; color:#6b7280; margin:0.2rem 0 0;">
+                        Idealmente con HTTPS y sin puerto. Ejemplos válidos:
+                        <code>https://palanica.com.ar</code> o <code>https://app.frikaf.com</code>.
+                    </p>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(formPublicUrl))
+                {
+                    <div style="background:#ecfdf5; border:1px solid #a7f3d0; padding:0.5rem; border-radius:6px; font-size:0.8rem;">
+                        Vista previa del link:<br/>
+                        <code style="word-break:break-all;">@(formPublicUrl.TrimEnd('/'))/r/<em>token</em></code>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="ClearPublicUrl" disabled="@savingPublicUrl">Borrar</button>
+                <button class="btn btn-secondary" @onclick="() => showPublicUrlModal = false" disabled="@savingPublicUrl">Cancelar</button>
+                <button class="btn btn-primary" @onclick="SavePublicUrl" disabled="@savingPublicUrl">@(savingPublicUrl ? "Guardando..." : "Guardar")</button>
+            </div>
+        </div>
+    </div>
+}
+
 @if (showAssignDriversModal)
 {
     <div class="modal-overlay" @onclick="() => showAssignDriversModal = false">
@@ -248,7 +291,8 @@
                             </div>
                             @if (driverObj is not null && count > 0)
                             {
-                                var link = string.IsNullOrEmpty(driverObj.ShareToken) ? null : $"{Navigation.BaseUri}r/{driverObj.ShareToken}";
+                                var baseForLink = !string.IsNullOrWhiteSpace(publicBaseUrl) ? publicBaseUrl + "/" : Navigation.BaseUri;
+                                var link = string.IsNullOrEmpty(driverObj.ShareToken) ? null : $"{baseForLink}r/{driverObj.ShareToken}";
                                 <div style="margin-top:0.4rem; display:flex; gap:0.3rem; flex-wrap:wrap; align-items:center;">
                                     @if (link is null)
                                     {
@@ -821,6 +865,11 @@
     private ImportFlexPreviewDto? importPreview;
 
     private bool reseteandoTodo;
+    // URL pública para los links de los choferes (ej: https://midominio.com)
+    private string? publicBaseUrl;
+    private bool showPublicUrlModal;
+    private string formPublicUrl = "";
+    private bool savingPublicUrl;
 
     // Modo asignación visual
     private bool modoAsignacion;
@@ -847,6 +896,7 @@
             await JS.InvokeVoidAsync("mapeoFlex.init", "leafletMap", selfRef);
             mapInitialized = true;
             try { startPoint = await Api.GetMapeoStartPointAsync(); } catch { }
+            try { var pu = await Api.GetMapeoPublicBaseUrlAsync(); publicBaseUrl = string.IsNullOrWhiteSpace(pu?.Url) ? null : pu.Url; } catch { }
             await LoadDrivers();
             await LoadFavoritos();
             await LoadStops();
@@ -1065,6 +1115,46 @@
         "venta_cafe" => "☕ Café",
         _ => "✏️ Manual"
     };
+
+    private void OpenPublicUrlModal()
+    {
+        formPublicUrl = publicBaseUrl ?? "";
+        showPublicUrlModal = true;
+    }
+
+    private async Task SavePublicUrl()
+    {
+        savingPublicUrl = true;
+        try
+        {
+            var v = formPublicUrl?.Trim().TrimEnd('/');
+            if (await Api.SetMapeoPublicBaseUrlAsync(v))
+            {
+                publicBaseUrl = string.IsNullOrEmpty(v) ? null : v;
+                ToastService.Success("URL pública guardada");
+                showPublicUrlModal = false;
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { savingPublicUrl = false; }
+    }
+
+    private async Task ClearPublicUrl()
+    {
+        savingPublicUrl = true;
+        try
+        {
+            if (await Api.SetMapeoPublicBaseUrlAsync(null))
+            {
+                publicBaseUrl = null;
+                formPublicUrl = "";
+                ToastService.Success("URL pública borrada");
+                showPublicUrlModal = false;
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { savingPublicUrl = false; }
+    }
 
     private async Task EmpezarDesdeCero()
     {

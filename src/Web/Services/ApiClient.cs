@@ -1886,6 +1886,14 @@ public class ApiClient
     public async Task<List<GeocodeResultDto>?> GeocodeAsync(string query)
         => await GetAsync<List<GeocodeResultDto>>($"/api/meli/shipments/geocode?q={Uri.EscapeDataString(query)}");
 
+    public async Task<PublicBaseUrlDto?> GetMapeoPublicBaseUrlAsync()
+        => await GetAsync<PublicBaseUrlDto>("/api/meli/shipments/public-base-url");
+    public async Task<bool> SetMapeoPublicBaseUrlAsync(string? url)
+    {
+        var r = await PutAsync<object>("/api/meli/shipments/public-base-url", new { url });
+        return r is not null;
+    }
+
     // ===== Mapeo: Drivers =====
     public async Task<List<MapeoDriverDto>?> GetMapeoDriversAsync()
         => await GetAsync<List<MapeoDriverDto>>("/api/mapeo/drivers");

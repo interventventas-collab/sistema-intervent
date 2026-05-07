@@ -41,6 +41,11 @@ public class MeliShipmentSyncResultDto
     public List<string> Errores { get; set; } = new();
 }
 
+public class PublicBaseUrlDto
+{
+    public string? Url { get; set; }
+}
+
 public class StartPointDto
 {
     public string? Address { get; set; }
