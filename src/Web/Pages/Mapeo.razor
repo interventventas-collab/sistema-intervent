@@ -111,14 +111,23 @@ else
         </div>
         <span class="stepper-arrow">›</span>
 
-        <div class="stepper-chip-big @(step3Done ? "completado" : (currentStep == 3 ? "actual" : ""))"
-             title="Asignar envíos a vehículos clickeando en el mapa" @onclick="ToggleModoAsignacion">
-            <span class="stepper-chip-num">@(step3Done ? "✓" : "3")</span>
-            🚚 Asignar V.
-            @{
-                int vehUsados = stops?.Where(s => s.AssignedVehicleSlot.HasValue).Select(s => s.AssignedVehicleSlot).Distinct().Count() ?? 0;
+        <div style="display:flex; flex-direction:column; align-items:center; gap:0.15rem;">
+            <div class="stepper-chip-big @(step3Done ? "completado" : (currentStep == 3 ? "actual" : ""))"
+                 title="Asignar envíos a vehículos clickeando en el mapa" @onclick="ToggleModoAsignacion">
+                <span class="stepper-chip-num">@(step3Done ? "✓" : "3")</span>
+                🚚 Asignar V.
+                @{
+                    int vehUsados = stops?.Where(s => s.AssignedVehicleSlot.HasValue).Select(s => s.AssignedVehicleSlot).Distinct().Count() ?? 0;
+                }
+                @if (step3Done) { <span style="font-size:0.7rem; opacity:0.85; margin-left:0.25rem;">(@vehUsados)</span> }
+            </div>
+            @if (step3Done)
+            {
+                <button class="btn" style="font-size:0.7rem; padding:0.1rem 0.4rem; background:transparent; color:#1d4ed8; border:none; text-decoration:underline; cursor:pointer;"
+                        @onclick="ToggleModoOrden" title="Numerar el orden de visita tocando los marcadores en secuencia">
+                    🔢 ordenar
+                </button>
             }
-            @if (step3Done) { <span style="font-size:0.7rem; opacity:0.85; margin-left:0.25rem;">(@vehUsados)</span> }
         </div>
         <span class="stepper-arrow">›</span>
 
@@ -244,6 +253,35 @@ else
             Tocá un globito en el mapa para asignarlo a <strong>V@vehiculoSeleccionado</strong>. Click de nuevo para desasignar.
             @if ((stops?.Count(s => s.AssignedVehicleSlot == null) ?? 0) > 0)
             { <span style="color:#6b7280;"> · @stops!.Count(s => s.AssignedVehicleSlot == null) sin asignar</span> }
+        </div>
+    </div>
+}
+
+@if (modoOrden && step3Done)
+{
+    var slot = ordenVehiculoSeleccionado;
+    var vColor = VehicleColor(slot);
+    var stopsDelV = stops?.Where(s => s.AssignedVehicleSlot == slot).ToList() ?? new();
+    var maxOrden = stopsDelV.Max(s => s.OrderInRoute ?? 0);
+    var proximoOrden = maxOrden + 1;
+    <div class="card" style="margin-bottom:0.5rem; background:#dbeafe; border:1px solid @vColor;">
+        <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; padding:0.5rem 0.7rem;">
+            <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                <span style="font-weight:700; color:@vColor;">🔢 Modo orden:</span>
+                <select class="form-input" style="font-size:0.85rem; max-width:130px;" @bind="ordenVehiculoSeleccionado" @bind:after="OnVehiculoOrdenChanged">
+                    @foreach (var v in stops!.Where(s => s.AssignedVehicleSlot.HasValue).Select(s => s.AssignedVehicleSlot!.Value).Distinct().OrderBy(x => x))
+                    { <option value="@v">🚐 V@(v) (@(stops!.Count(s => s.AssignedVehicleSlot == v)) paradas)</option> }
+                </select>
+                <span style="font-size:0.85rem; padding:0.2rem 0.5rem; background:white; border:1.5px solid @vColor; border-radius:6px; color:@vColor; font-weight:700;">
+                    Próximo: #@proximoOrden
+                </span>
+                <button class="btn btn-secondary" style="font-size:0.78rem;" @onclick="ResetOrdenDelVehiculo" disabled="@assigningSlot">🔄 Reiniciar orden</button>
+            </div>
+            <button class="btn btn-secondary" style="font-size:0.78rem;" @onclick="ToggleModoOrden">✓ Salir del modo orden</button>
+        </div>
+        <div style="padding:0.4rem 0.7rem; font-size:0.78rem; color:#1e40af;">
+            Tocá los marcadores del V@(slot) en el orden que querés que el chofer los visite.
+            Click en uno ya numerado lo desnumera (los siguientes se renumeran).
         </div>
     </div>
 }
@@ -1184,6 +1222,9 @@ else
 
     // Modo asignación visual
     private bool modoAsignacion;
+    // Modo orden visual (numerar paradas con clicks en el mapa)
+    private bool modoOrden;
+    private int ordenVehiculoSeleccionado = 1;
     private int cantidadVehiculos = 2;
     private int vehiculoSeleccionado = 1;
     private bool assigningSlot;
@@ -1354,8 +1395,8 @@ else
             var stopId = -1000 - id;
             var st = stops?.FirstOrDefault(x => x.Id == stopId);
             if (st is null) return;
+            if (modoOrden) { await OnMarkerOrden(st); return; }
             if (modoAsignacion) { await OnMarkerAssign(st); return; }
-            // Sino: por ahora no hay detalle de stops, podríamos abrirlo después.
             return;
         }
         var s = shipments?.FirstOrDefault(x => x.Id == id);
@@ -1632,6 +1673,99 @@ else
     }
 
     private void SeleccionarVehiculo(int slot) { vehiculoSeleccionado = slot; }
+
+    // ===== Modo orden visual =====
+    private async Task ToggleModoOrden()
+    {
+        modoOrden = !modoOrden;
+        if (modoOrden)
+        {
+            // Si activamos, salir del modo asignación, y elegir un vehículo por default
+            modoAsignacion = false;
+            // Elegir el primer vehículo asignado
+            var firstSlot = stops?.Where(s => s.AssignedVehicleSlot.HasValue)
+                .Select(s => s.AssignedVehicleSlot!.Value).OrderBy(x => x).FirstOrDefault();
+            if (firstSlot.HasValue && firstSlot.Value > 0) ordenVehiculoSeleccionado = firstSlot.Value;
+            // Filtrar mapa al vehículo elegido
+            vehiculoFiltro = ordenVehiculoSeleccionado;
+        }
+        else
+        {
+            vehiculoFiltro = null; // volver a "Todos"
+        }
+        await RenderMap();
+    }
+
+    private async Task OnVehiculoOrdenChanged()
+    {
+        vehiculoFiltro = ordenVehiculoSeleccionado;
+        await RenderMap();
+    }
+
+    /// <summary>Click en un marker en modo orden — asigna o desasigna el siguiente número.</summary>
+    private async Task OnMarkerOrden(MapeoStopDto s)
+    {
+        if (s.AssignedVehicleSlot != ordenVehiculoSeleccionado)
+        {
+            ToastService.Info($"Esa parada no es del V{ordenVehiculoSeleccionado}");
+            return;
+        }
+        assigningSlot = true;
+        try
+        {
+            if (s.OrderInRoute.HasValue)
+            {
+                // Ya tiene orden — desnumerarla y reordenar las siguientes (-1 a las que tenían orden mayor)
+                int removedOrder = s.OrderInRoute.Value;
+                s.OrderInRoute = null;
+                await Api.UpdateMapeoStopAsync(s.Id, new { orderInRoute = 0 });
+                // Ajustar las siguientes
+                if (stops is not null)
+                {
+                    foreach (var other in stops.Where(x => x.AssignedVehicleSlot == ordenVehiculoSeleccionado
+                                                       && x.Id != s.Id
+                                                       && x.OrderInRoute.HasValue
+                                                       && x.OrderInRoute.Value > removedOrder))
+                    {
+                        var nuevo = other.OrderInRoute!.Value - 1;
+                        other.OrderInRoute = nuevo;
+                        await Api.UpdateMapeoStopAsync(other.Id, new { orderInRoute = nuevo });
+                    }
+                }
+            }
+            else
+            {
+                // Asignar el siguiente número
+                int max = stops!.Where(x => x.AssignedVehicleSlot == ordenVehiculoSeleccionado)
+                    .Max(x => x.OrderInRoute ?? 0);
+                int proximo = max + 1;
+                s.OrderInRoute = proximo;
+                await Api.UpdateMapeoStopAsync(s.Id, new { orderInRoute = proximo });
+            }
+            await RenderMap();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { assigningSlot = false; }
+    }
+
+    private async Task ResetOrdenDelVehiculo()
+    {
+        if (!await ConfirmAsync($"Borrar el orden manual del V{ordenVehiculoSeleccionado}?")) return;
+        assigningSlot = true;
+        try
+        {
+            var paradas = stops?.Where(x => x.AssignedVehicleSlot == ordenVehiculoSeleccionado && x.OrderInRoute.HasValue).ToList() ?? new();
+            foreach (var s in paradas)
+            {
+                s.OrderInRoute = null;
+                await Api.UpdateMapeoStopAsync(s.Id, new { orderInRoute = 0 });
+            }
+            await RenderMap();
+            ToastService.Success("Orden reiniciado");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { assigningSlot = false; }
+    }
 
     private async Task OnMarkerAssign(MapeoStopDto s)
     {
