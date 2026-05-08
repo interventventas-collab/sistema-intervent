@@ -1211,6 +1211,14 @@ else
     private async Task SetVehiculoFiltro(int? slot)
     {
         vehiculoFiltro = slot;
+        // Si estamos en modo orden y clickearon un V real (1, 2, 3...), sincronizamos
+        // el dropdown del modo orden — asi clickear el chip "V2" arriba del mapa
+        // efectivamente cambia el vehiculo activo del modo orden y deja numerar V2.
+        if (modoOrden && slot.HasValue && slot.Value > 0)
+        {
+            ordenVehiculoSeleccionado = slot.Value;
+            await AutoOptimizarSiHaceFalta(slot.Value);
+        }
         await RenderMap();
         StateHasChanged();
     }
