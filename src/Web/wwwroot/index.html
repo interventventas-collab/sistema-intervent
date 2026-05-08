@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-    <link rel="stylesheet" href="css/app.css?v=20260507c" />
+    <link rel="stylesheet" href="css/app.css?v=20260508a" />
 </head>
 <body>
     <div id="app">
@@ -44,19 +44,55 @@
                     if (!map || !layer) return;
                     layer.clearLayers();
                     const bounds = [];
+                    // Agrupar por coordenada (redondeada a 5 decimales = ~1.1m).
+                    // Asi dos paradas en la misma direccion se muestran como un solo
+                    // globito con badge "+N" y el popup lista todas las paradas del punto.
+                    const groups = new Map();
                     for (const it of items) {
                         if (it.lat == null || it.lng == null) continue;
-                        const color = it.color || '#1d4ed8';
+                        const key = `${(+it.lat).toFixed(5)},${(+it.lng).toFixed(5)}`;
+                        if (!groups.has(key)) groups.set(key, []);
+                        groups.get(key).push(it);
+                    }
+                    for (const group of groups.values()) {
+                        const first = group[0];
+                        const color = first.color || '#1d4ed8';
+                        const extras = group.length - 1;
+                        // HTML del globito principal + badge "+N" arriba a la derecha si hay agrupados.
+                        const mainHtml = `<div style="background:${color};color:white;border:2px solid white;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.75rem;box-shadow:0 1px 4px rgba(0,0,0,0.4);">${first.label || ''}</div>`;
+                        const badgeHtml = extras > 0
+                            ? `<div style="position:absolute;top:-6px;right:-8px;background:#dc2626;color:white;border:2px solid white;border-radius:999px;min-width:18px;height:18px;padding:0 4px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.62rem;box-shadow:0 1px 3px rgba(0,0,0,0.35);">+${extras}</div>`
+                            : '';
+                        const wrapHtml = `<div style="position:relative;width:30px;height:30px;">${mainHtml}${badgeHtml}</div>`;
                         const icon = L.divIcon({
                             className: 'mapeo-marker',
-                            html: `<div style="background:${color};color:white;border:2px solid white;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.75rem;box-shadow:0 1px 4px rgba(0,0,0,0.4);">${it.label || ''}</div>`,
-                            iconSize: [30, 30], iconAnchor: [15, 15]
+                            html: wrapHtml,
+                            // Si hay badge, agrandamos un toque la caja del icono para que el
+                            // badge no se recorte; el anchor sigue apuntando al centro real.
+                            iconSize: extras > 0 ? [40, 40] : [30, 30],
+                            iconAnchor: extras > 0 ? [15, 15] : [15, 15]
                         });
-                        const m = L.marker([it.lat, it.lng], { icon })
+                        // Popup: si hay 1 solo, popup tal cual; si hay varios, los concatenamos
+                        // con un separador y un encabezado "N entregas en este domicilio".
+                        let popupHtml;
+                        if (group.length === 1) {
+                            popupHtml = first.popupHtml || '';
+                        } else {
+                            const header = `<div style="font-size:0.78rem;font-weight:800;color:#dc2626;margin-bottom:0.4rem;padding-bottom:0.3rem;border-bottom:1px solid #fecaca;">⚠ ${group.length} entregas en este domicilio</div>`;
+                            const items = group.map((g, idx) =>
+                                `<div style="${idx > 0 ? 'border-top:1px dashed #e5e7eb;margin-top:0.4rem;padding-top:0.4rem;' : ''}">${g.popupHtml || ''}</div>`
+                            ).join('');
+                            popupHtml = `<div style="max-width:280px;max-height:280px;overflow-y:auto;">${header}${items}</div>`;
+                        }
+                        const m = L.marker([first.lat, first.lng], { icon })
                             .addTo(layer)
-                            .bindPopup(it.popupHtml || '');
-                        m.on('click', () => { if (dotNetRef) dotNetRef.invokeMethodAsync('OnMarkerClicked', it.id); });
-                        bounds.push([it.lat, it.lng]);
+                            .bindPopup(popupHtml);
+                        // Click: dispara el handler del primero del grupo. Si hay agrupados
+                        // y la accion es "modo orden" o "modo asignacion", el usuario tendra
+                        // que actuar uno por uno desde el panel lateral o repetir el click
+                        // (Leaflet abre el popup primero, luego el click navega).
+                        m.on('click', () => { if (dotNetRef) dotNetRef.invokeMethodAsync('OnMarkerClicked', first.id); });
+                        bounds.push([first.lat, first.lng]);
                     }
                     if (bounds.length > 0) map.fitBounds(bounds, { padding: [40, 40] });
                 },
