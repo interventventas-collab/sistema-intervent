@@ -2013,13 +2013,26 @@ button {
    ============================================================ */
 .modal-overlay {
   position: fixed;
-  inset: 0;
+  /* Explicitos por compatibilidad — algunos browsers no resuelven 'inset:0'
+     correctamente cuando hay layouts grid de altura calc(100vh - X) atras. */
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1500; /* Por encima de Leaflet (controles ~1000). */
+  /* Por encima de Leaflet (controles 1000) y cualquier overlay absoluto de la page. */
+  z-index: 9000;
   animation: fadeIn 0.2s ease;
+  overflow-y: auto;
+}
+
+.modal-card {
+  /* Asegurar que el card del modal queda por encima del overlay y de Leaflet. */
+  position: relative;
+  z-index: 1;
 }
 
 .modal-card {
