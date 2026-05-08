@@ -100,6 +100,19 @@ public class MapeoStopsController : ControllerBase
     [HttpDelete]
     public async Task<IActionResult> ClearAll()
     {
+        // Snapshot automático antes de borrar — para no perder lo que armó el usuario
+        try
+        {
+            var snap = await MapeoSnapshotsController.BuildSnapshotAsync(_db, "Auto-guardado antes de Empezar desde cero",
+                User.Identity?.IsAuthenticated == true ? User.Identity?.Name : null);
+            if (snap is not null)
+            {
+                _db.MapeoRouteSnapshots.Add(snap);
+                await _db.SaveChangesAsync();
+            }
+        }
+        catch { /* tolerar — preferimos limpiar igual */ }
+
         await _db.MapeoStops.ExecuteDeleteAsync();
         return Ok(new { ok = true });
     }

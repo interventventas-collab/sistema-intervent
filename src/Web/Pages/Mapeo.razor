@@ -195,6 +195,15 @@ else
                     <span>⭐ Favoritos</span>
                     <span style="color:#6b7280; font-size:0.72rem;">@(favoritos?.Count ?? 0)</span>
                 </button>
+                <hr style="margin:0.3rem 0; border:none; border-top:1px solid #f3f4f6;" />
+                <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
+                        @onclick="@(async () => { showConfigMenu = false; await OpenHistorialModal(); })">
+                    <span>📚 Historial de rutas</span>
+                </button>
+                <button class="btn" style="display:flex; width:100%; justify-content:space-between; align-items:center; font-size:0.82rem; padding:0.4rem 0.6rem; background:transparent; color:#1f2937; border:none; text-align:left;"
+                        @onclick="@(async () => { showConfigMenu = false; await GuardarSnapshotAhora(); })" disabled="@savingSnapshot">
+                    <span>@(savingSnapshot ? "Guardando..." : "💾 Guardar foto de la ruta actual")</span>
+                </button>
             </div>
         }
     </div>
@@ -370,6 +379,101 @@ else
         <div id="leafletMap"></div>
     </div>
 </div>
+
+@if (showHistorialModal)
+{
+    <div class="modal-overlay" @onclick="() => showHistorialModal = false">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width:760px; max-height:85vh; display:flex; flex-direction:column;">
+            <div class="modal-header" style="background:#dbeafe;">
+                <h3 style="margin:0;">📚 Historial de rutas</h3>
+                <button class="btn-close" @onclick="() => showHistorialModal = false">&times;</button>
+            </div>
+            <div class="modal-body" style="overflow-y:auto;">
+                @if (snapshots is null) { <p class="text-muted" style="text-align:center;">Cargando...</p> }
+                else if (snapshots.Count == 0)
+                {
+                    <div style="text-align:center; padding:2rem; color:#6b7280;">
+                        <div style="font-size:3rem;">📭</div>
+                        <strong>No hay rutas guardadas todavía</strong>
+                        <p style="font-size:0.85rem; margin-top:0.4rem;">Cuando armes una ruta y aprietes "Empezar desde cero", el sistema guarda foto automática. También podés guardar manualmente desde ⚙ Configuración → 💾 Guardar foto.</p>
+                    </div>
+                }
+                else
+                {
+                    <table class="data-table" style="font-size:0.85rem;">
+                        <thead>
+                            <tr><th>Fecha y hora</th><th>Vehículos</th><th>Paradas</th><th>Choferes</th><th>Notas</th><th></th></tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var s in snapshots)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@s.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</strong>
+                                    @if (!string.IsNullOrEmpty(s.CreatedByUsername))
+                                    { <div style="font-size:0.7rem; color:#6b7280;">por @s.CreatedByUsername</div> }
+                                </td>
+                                <td style="text-align:center;">@s.VehiclesCount</td>
+                                <td style="text-align:center;"><strong>@s.StopsCount</strong></td>
+                                <td style="text-align:center;">@s.DriversCount</td>
+                                <td style="font-size:0.75rem; color:#6b7280;">@(s.Notes ?? "—")</td>
+                                <td style="white-space:nowrap;">
+                                    <button class="btn btn-secondary" style="font-size:0.72rem; padding:0.2rem 0.5rem;"
+                                            @onclick="() => OpenSnapshotDetail(s.Id)">👁 Ver</button>
+                                    <button class="btn btn-danger" style="font-size:0.72rem; padding:0.2rem 0.5rem;"
+                                            @onclick="() => DeleteSnapshot(s)">🗑</button>
+                                </td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showHistorialModal = false">Cerrar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showSnapshotDetail && snapshotDetail is not null)
+{
+    <div class="modal-overlay" @onclick="() => showSnapshotDetail = false">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width:900px; max-height:88vh; display:flex; flex-direction:column;">
+            <div class="modal-header" style="background:#f0f9ff;">
+                <h3 style="margin:0;">📋 @snapshotDetail.Title</h3>
+                <button class="btn-close" @onclick="() => showSnapshotDetail = false">&times;</button>
+            </div>
+            <div class="modal-body" style="overflow-y:auto;">
+                <p style="font-size:0.85rem; color:#4b5563;">
+                    @snapshotDetail.StopsCount paradas · @snapshotDetail.VehiclesCount vehículos · @snapshotDetail.DriversCount choferes
+                    · @snapshotDetail.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                </p>
+                <table class="data-table" style="font-size:0.78rem;">
+                    <thead>
+                        <tr><th>Orden</th><th>Vehículo</th><th>Chofer</th><th>Parada</th><th>Dirección</th><th>Estado</th></tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var s in snapshotDetail.Stops.OrderBy(x => x.AssignedDriverId ?? int.MaxValue).ThenBy(x => x.OrderInRoute ?? int.MaxValue).ThenBy(x => x.Id))
+                    {
+                        <tr>
+                            <td style="text-align:center; font-weight:700;">@(s.OrderInRoute?.ToString() ?? "—")</td>
+                            <td>@(s.AssignedVehicleSlot.HasValue ? "V" + s.AssignedVehicleSlot : "—")</td>
+                            <td>@(s.AssignedDriverName ?? "—")</td>
+                            <td>@(s.Alias ?? s.ContactName ?? "—")</td>
+                            <td>@s.Direccion</td>
+                            <td>@s.InternalStatus</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showSnapshotDetail = false">Cerrar</button>
+            </div>
+        </div>
+    </div>
+}
 
 @if (showPublicUrlModal)
 {
@@ -1034,6 +1138,33 @@ else
     private ImportFlexPreviewDto? importPreview;
 
     private bool reseteandoTodo;
+    // Historial de rutas (snapshots)
+    private bool showHistorialModal, showSnapshotDetail, savingSnapshot;
+    private List<MapeoSnapshotListItemDto>? snapshots;
+    private SnapshotDetailVm? snapshotDetail;
+
+    private class SnapshotDetailVm
+    {
+        public int Id { get; set; }
+        public string Title { get; set; } = "";
+        public int StopsCount { get; set; }
+        public int VehiclesCount { get; set; }
+        public int DriversCount { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public List<SnapshotStopVm> Stops { get; set; } = new();
+    }
+    private class SnapshotStopVm
+    {
+        public int Id { get; set; }
+        public string? Alias { get; set; }
+        public string Direccion { get; set; } = "";
+        public string? ContactName { get; set; }
+        public string InternalStatus { get; set; } = "pending";
+        public int? AssignedDriverId { get; set; }
+        public string? AssignedDriverName { get; set; }
+        public int? AssignedVehicleSlot { get; set; }
+        public int? OrderInRoute { get; set; }
+    }
     // Stepper inteligente
     private bool stepperExpanded = false; // cuando todo está OK, se contrae a 1 línea
     private bool showConfigMenu = false; // dropdown ⚙ Configuración
@@ -1396,6 +1527,80 @@ else
             ");
         }
         catch { }
+    }
+
+    // ===== Snapshots / Historial =====
+    private async Task OpenHistorialModal()
+    {
+        showHistorialModal = true;
+        try { snapshots = await Api.GetMapeoSnapshotsAsync(60) ?? new(); }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task GuardarSnapshotAhora()
+    {
+        savingSnapshot = true;
+        try
+        {
+            var r = await Api.CreateMapeoSnapshotAsync("Guardado manual");
+            if (r is not null) ToastService.Success("Foto de la ruta guardada");
+            else ToastService.Info("No hay paradas para guardar");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { savingSnapshot = false; }
+    }
+
+    private async Task OpenSnapshotDetail(int id)
+    {
+        try
+        {
+            var raw = await Api.GetMapeoSnapshotDetailAsync(id);
+            if (raw is null) return;
+            // El endpoint devuelve {id, title, stopsCount, ..., stops: [...]}
+            // Re-serializo para tener un objeto fuerte tipado.
+            var json = System.Text.Json.JsonSerializer.Serialize(raw);
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            snapshotDetail = new SnapshotDetailVm
+            {
+                Id = root.GetProperty("id").GetInt32(),
+                Title = root.GetProperty("title").GetString() ?? "",
+                StopsCount = root.GetProperty("stopsCount").GetInt32(),
+                VehiclesCount = root.GetProperty("vehiclesCount").GetInt32(),
+                DriversCount = root.GetProperty("driversCount").GetInt32(),
+                CreatedAt = root.GetProperty("createdAt").GetDateTime(),
+                Stops = root.TryGetProperty("stops", out var stopsArr) && stopsArr.ValueKind == System.Text.Json.JsonValueKind.Array
+                    ? stopsArr.EnumerateArray().Select(s => new SnapshotStopVm
+                    {
+                        Id = s.TryGetProperty("id", out var i) ? i.GetInt32() : 0,
+                        Alias = s.TryGetProperty("alias", out var a) && a.ValueKind == System.Text.Json.JsonValueKind.String ? a.GetString() : null,
+                        Direccion = s.TryGetProperty("direccion", out var d) ? d.GetString() ?? "" : "",
+                        ContactName = s.TryGetProperty("contactName", out var c) && c.ValueKind == System.Text.Json.JsonValueKind.String ? c.GetString() : null,
+                        InternalStatus = s.TryGetProperty("internalStatus", out var st) && st.ValueKind == System.Text.Json.JsonValueKind.String ? st.GetString() ?? "pending" : "pending",
+                        AssignedDriverId = s.TryGetProperty("assignedDriverId", out var di) && di.ValueKind == System.Text.Json.JsonValueKind.Number ? di.GetInt32() : null,
+                        AssignedDriverName = s.TryGetProperty("assignedDriverName", out var dn) && dn.ValueKind == System.Text.Json.JsonValueKind.String ? dn.GetString() : null,
+                        AssignedVehicleSlot = s.TryGetProperty("assignedVehicleSlot", out var vs) && vs.ValueKind == System.Text.Json.JsonValueKind.Number ? vs.GetInt32() : null,
+                        OrderInRoute = s.TryGetProperty("orderInRoute", out var or) && or.ValueKind == System.Text.Json.JsonValueKind.Number ? or.GetInt32() : null
+                    }).ToList()
+                    : new()
+            };
+            showSnapshotDetail = true;
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task DeleteSnapshot(MapeoSnapshotListItemDto s)
+    {
+        if (!await ConfirmAsync($"Borrar el historial '{s.Title}'?")) return;
+        try
+        {
+            if (await Api.DeleteMapeoSnapshotAsync(s.Id))
+            {
+                snapshots?.Remove(s);
+                ToastService.Success("Eliminado del historial");
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
     }
 
     private async Task EmpezarDesdeCero()

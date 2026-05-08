@@ -74,6 +74,18 @@ public class ImportFlexSampleDto
     public string? AddressLine { get; set; }
 }
 
+public class MapeoSnapshotListItemDto
+{
+    public int Id { get; set; }
+    public string Title { get; set; } = "";
+    public int StopsCount { get; set; }
+    public int VehiclesCount { get; set; }
+    public int DriversCount { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public string? CreatedByUsername { get; set; }
+    public string? Notes { get; set; }
+}
+
 public class MapeoFavoritoDto
 {
     public int Id { get; set; }

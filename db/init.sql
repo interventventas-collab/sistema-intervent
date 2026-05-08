@@ -2761,3 +2761,21 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='UX_MapeoDrivers_ShareToken')
     CREATE UNIQUE INDEX UX_MapeoDrivers_ShareToken ON MapeoDrivers(ShareToken) WHERE ShareToken IS NOT NULL;
 GO
+
+-- ===== Mapeo: snapshots de rutas armadas (historial) =====
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='MapeoRouteSnapshots')
+BEGIN
+    CREATE TABLE MapeoRouteSnapshots (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Title NVARCHAR(200) NOT NULL,
+        StopsCount INT NOT NULL,
+        VehiclesCount INT NOT NULL,
+        DriversCount INT NOT NULL,
+        StopsJson NVARCHAR(MAX) NOT NULL,
+        CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_MapeoSnap_Created DEFAULT SYSUTCDATETIME(),
+        CreatedByUsername NVARCHAR(100) NULL,
+        Notes NVARCHAR(500) NULL
+    );
+    CREATE INDEX IX_MapeoSnap_Created ON MapeoRouteSnapshots(CreatedAt DESC);
+END
+GO

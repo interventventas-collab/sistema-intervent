@@ -1926,6 +1926,16 @@ public class ApiClient
     public async Task<bool> DeleteMapeoFavoritoAsync(int id)
         => await DeleteAsync($"/api/mapeo/favoritos/{id}");
 
+    // ===== Mapeo: Snapshots (historial de rutas) =====
+    public async Task<List<MapeoSnapshotListItemDto>?> GetMapeoSnapshotsAsync(int days = 30)
+        => await GetAsync<List<MapeoSnapshotListItemDto>>($"/api/mapeo/snapshots?days={days}");
+    public async Task<object?> CreateMapeoSnapshotAsync(string? notes = null)
+        => await PostAsync<object>("/api/mapeo/snapshots", new { notes });
+    public async Task<bool> DeleteMapeoSnapshotAsync(int id)
+        => await DeleteAsync($"/api/mapeo/snapshots/{id}");
+    public async Task<object?> GetMapeoSnapshotDetailAsync(int id)
+        => await GetAsync<object>($"/api/mapeo/snapshots/{id}");
+
     // ===== Mapeo: Stops (paradas a repartir) =====
     public async Task<List<MapeoStopDto>?> GetMapeoStopsAsync(int? driverId = null, string? internalStatus = null)
     {

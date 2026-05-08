@@ -18,6 +18,7 @@ public class AppDbContext : DbContext
     public DbSet<MapeoDriver> MapeoDrivers => Set<MapeoDriver>();
     public DbSet<MapeoFavorito> MapeoFavoritos => Set<MapeoFavorito>();
     public DbSet<MapeoStop> MapeoStops => Set<MapeoStop>();
+    public DbSet<MapeoRouteSnapshot> MapeoRouteSnapshots => Set<MapeoRouteSnapshot>();
     public DbSet<ContabProducto> ContabProductos => Set<ContabProducto>();
     public DbSet<ContabCombo> ContabCombos => Set<ContabCombo>();
     public DbSet<ContabComboItem> ContabComboItems => Set<ContabComboItem>();
