@@ -235,7 +235,7 @@ public class MapeoStopsController : ControllerBase
     /// Optimiza el orden de las paradas de un driver (o de todos) usando nearest-neighbor desde el punto de partida.
     /// </summary>
     [HttpPost("optimize-order")]
-    public async Task<IActionResult> OptimizeOrder([FromQuery] int? driverId = null)
+    public async Task<IActionResult> OptimizeOrder([FromQuery] int? driverId = null, [FromQuery] int? vehicleSlot = null)
     {
         // Punto de partida (de AppSettings)
         double? startLat = null, startLng = null;
@@ -244,21 +244,32 @@ public class MapeoStopsController : ControllerBase
         if (double.TryParse(latStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var la)) startLat = la;
         if (double.TryParse(lngStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var lo)) startLng = lo;
 
-        // Si especificaron driver, optimizamos solo ese; si no, optimizamos todos los que tienen stops asignados.
-        IEnumerable<int?> driverIds;
-        if (driverId.HasValue && driverId.Value > 0) driverIds = new int?[] { driverId.Value };
-        else driverIds = await _db.MapeoStops.Where(s => s.AssignedDriverId != null)
-            .Select(s => s.AssignedDriverId).Distinct().ToListAsync();
+        // Determinar grupos a optimizar: por VEHICULO (slot) si vino, o por DRIVER si vino, o todos los drivers.
+        var grupos = new List<List<MapeoStop>>();
+        if (vehicleSlot.HasValue && vehicleSlot.Value > 0)
+        {
+            var stopsV = await _db.MapeoStops.Where(s => s.AssignedVehicleSlot == vehicleSlot.Value).ToListAsync();
+            if (stopsV.Count > 0) grupos.Add(stopsV);
+        }
+        else
+        {
+            IEnumerable<int?> driverIds;
+            if (driverId.HasValue && driverId.Value > 0) driverIds = new int?[] { driverId.Value };
+            else driverIds = await _db.MapeoStops.Where(s => s.AssignedDriverId != null)
+                .Select(s => s.AssignedDriverId).Distinct().ToListAsync();
+            foreach (var did in driverIds)
+            {
+                var stopsD = await _db.MapeoStops.Where(s => s.AssignedDriverId == did).ToListAsync();
+                if (stopsD.Count > 0) grupos.Add(stopsD);
+            }
+        }
 
         int optimized = 0;
-        foreach (var did in driverIds)
+        foreach (var grupo in grupos)
         {
-            var stopsD = await _db.MapeoStops.Where(s => s.AssignedDriverId == did).ToListAsync();
-            if (stopsD.Count == 0) continue;
-            // Punto inicial: si no hay startPoint, tomamos el primer stop como inicio.
-            double curLat = startLat ?? (double)stopsD[0].Latitude;
-            double curLng = startLng ?? (double)stopsD[0].Longitude;
-            var remaining = new List<MapeoStop>(stopsD);
+            double curLat = startLat ?? (double)grupo[0].Latitude;
+            double curLng = startLng ?? (double)grupo[0].Longitude;
+            var remaining = new List<MapeoStop>(grupo);
             int order = 1;
             while (remaining.Count > 0)
             {

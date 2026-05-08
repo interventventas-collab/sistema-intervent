@@ -1680,18 +1680,16 @@ else
         modoOrden = !modoOrden;
         if (modoOrden)
         {
-            // Si activamos, salir del modo asignación, y elegir un vehículo por default
             modoAsignacion = false;
-            // Elegir el primer vehículo asignado
             var firstSlot = stops?.Where(s => s.AssignedVehicleSlot.HasValue)
                 .Select(s => s.AssignedVehicleSlot!.Value).OrderBy(x => x).FirstOrDefault();
             if (firstSlot.HasValue && firstSlot.Value > 0) ordenVehiculoSeleccionado = firstSlot.Value;
-            // Filtrar mapa al vehículo elegido
             vehiculoFiltro = ordenVehiculoSeleccionado;
+            await AutoOptimizarSiHaceFalta(ordenVehiculoSeleccionado);
         }
         else
         {
-            vehiculoFiltro = null; // volver a "Todos"
+            vehiculoFiltro = null;
         }
         await RenderMap();
     }
@@ -1699,7 +1697,28 @@ else
     private async Task OnVehiculoOrdenChanged()
     {
         vehiculoFiltro = ordenVehiculoSeleccionado;
+        await AutoOptimizarSiHaceFalta(ordenVehiculoSeleccionado);
         await RenderMap();
+    }
+
+    /// <summary>
+    /// Si el vehículo NO tiene orden asignado todavía, lo pre-numera por cercanía al punto de partida.
+    /// Si ya hay orden manual previo (cualquiera tiene OrderInRoute), no toca nada.
+    /// </summary>
+    private async Task AutoOptimizarSiHaceFalta(int slot)
+    {
+        if (stops is null) return;
+        var stopsDelV = stops.Where(s => s.AssignedVehicleSlot == slot).ToList();
+        if (stopsDelV.Count == 0) return;
+        bool yaTieneOrden = stopsDelV.Any(s => s.OrderInRoute.HasValue);
+        if (yaTieneOrden) return;
+        try
+        {
+            await Api.OptimizeStopsOrderAsync(null, slot);
+            await LoadStops();
+            ToastService.Info($"V{slot}: pre-numerado por cercanía. Editá tocando los puntos.");
+        }
+        catch { /* tolerar */ }
     }
 
     /// <summary>Click en un marker en modo orden — asigna o desasigna el siguiente número.</summary>
