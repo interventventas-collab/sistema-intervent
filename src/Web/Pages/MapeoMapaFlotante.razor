@@ -1,0 +1,188 @@
+@page "/mapeo/mapa-flotante"
+@attribute [Authorize]
+@layout Web.Layout.LoginLayout
+@inject ApiClient Api
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@*
+    Página standalone del mapa de Mapeo Flex — pensada para abrir en una ventana
+    aparte (usuario con doble pantalla la tira al monitor 2). Re-fetchea las
+    paradas cada 5 segundos así refleja los cambios que hagas en la pantalla
+    principal sin tener que recargar.
+
+    Layout: usa LoginLayout (sin sidebar ni topbar) así el mapa toma toda la
+    ventana. NO requiere reloguearse — la cookie httpOnly viaja igual.
+*@
+
+<style>
+    html, body { margin:0; padding:0; height:100%; overflow:hidden; }
+    .flotante-wrap { position:fixed; inset:0; display:flex; flex-direction:column; }
+    .flotante-bar { display:flex; align-items:center; justify-content:space-between; padding:0.4rem 0.7rem; background:#1f2937; color:white; font-size:0.85rem; gap:0.5rem; flex-wrap:wrap; }
+    .flotante-bar strong { font-weight:700; }
+    .flotante-chip { display:inline-flex; align-items:center; gap:0.3rem; padding:0.15rem 0.5rem; border-radius:999px; background:rgba(255,255,255,0.12); font-size:0.75rem; }
+    .flotante-map { flex:1; position:relative; }
+    #leafletMapaFlotante { width:100%; height:100%; }
+    .flotante-refresh { display:inline-flex; align-items:center; gap:0.3rem; padding:0.2rem 0.55rem; border-radius:6px; background:#10b981; color:white; border:none; cursor:pointer; font-size:0.75rem; font-weight:700; }
+    .flotante-refresh:hover { background:#059669; }
+    .flotante-veh-filter { display:inline-flex; gap:0.25rem; flex-wrap:wrap; }
+    .flotante-veh-btn { padding:0.15rem 0.45rem; border-radius:999px; border:1.5px solid rgba(255,255,255,0.4); background:transparent; color:white; cursor:pointer; font-size:0.72rem; font-weight:700; }
+    .flotante-veh-btn.activo { background:white; color:#1f2937; border-color:white; }
+</style>
+
+<div class="flotante-wrap">
+    <div class="flotante-bar">
+        <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;">
+            <strong>🗺️ Mapa Flex</strong>
+            <span class="flotante-chip">@(stops?.Count ?? 0) paradas</span>
+            @if (vehiclesActivos is not null && vehiclesActivos.Count > 0)
+            {
+                <div class="flotante-veh-filter">
+                    <button class="flotante-veh-btn @(filtroSlot is null ? "activo" : "")" @onclick="() => SetFiltro(null)">Todos</button>
+                    @foreach (var v in vehiclesActivos)
+                    {
+                        var slot = v.Slot;
+                        var sel = filtroSlot == slot;
+                        var color = VehicleColor(slot);
+                        <button class="flotante-veh-btn @(sel ? "activo" : "")"
+                                style="@(sel ? $"background:{color};border-color:{color};" : $"border-color:{color};color:{color};background:white;")"
+                                @onclick="() => SetFiltro(slot)">V@(slot)</button>
+                    }
+                </div>
+            }
+        </div>
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+            <span style="font-size:0.7rem; opacity:0.7;">Auto-refresh @autoRefreshSeg s</span>
+            <button class="flotante-refresh" @onclick="ManualRefresh" disabled="@isLoading">
+                @(isLoading ? "..." : "🔄 Actualizar")
+            </button>
+        </div>
+    </div>
+    <div class="flotante-map">
+        <div id="leafletMapaFlotante"></div>
+    </div>
+</div>
+
+@code {
+    private List<MapeoStopDto>? stops;
+    private StartPointDto? startPoint;
+    private List<VehiculoActivo>? vehiclesActivos;
+    private int? filtroSlot = null;
+    private bool isLoading = true;
+    private bool mapInited = false;
+    private const int autoRefreshSeg = 5;
+    private System.Threading.Timer? timer;
+
+    private record VehiculoActivo(int Slot, int Count);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAll();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Inicializar Leaflet en el contenedor de esta página (id distinto al de Mapeo
+            // para no chocar si el usuario abriera ambos en la misma ventana).
+            await JS.InvokeVoidAsync("mapeoFlex.init", "leafletMapaFlotante", null);
+            mapInited = true;
+            await RenderMap();
+            // Polling: cada N segundos refresca los stops y re-renderiza markers.
+            timer = new System.Threading.Timer(async _ =>
+            {
+                await InvokeAsync(async () =>
+                {
+                    await LoadStops();
+                    await RenderMap();
+                    StateHasChanged();
+                });
+            }, null, autoRefreshSeg * 1000, autoRefreshSeg * 1000);
+        }
+    }
+
+    private async Task LoadAll()
+    {
+        isLoading = true;
+        try
+        {
+            startPoint = await Api.GetMapeoStartPointAsync();
+            await LoadStops();
+        }
+        catch { }
+        finally { isLoading = false; }
+    }
+
+    private async Task LoadStops()
+    {
+        try
+        {
+            stops = await Api.GetMapeoStopsAsync() ?? new();
+            vehiclesActivos = stops.Where(s => s.AssignedVehicleSlot.HasValue)
+                .GroupBy(s => s.AssignedVehicleSlot!.Value)
+                .OrderBy(g => g.Key)
+                .Select(g => new VehiculoActivo(g.Key, g.Count()))
+                .ToList();
+        }
+        catch { stops ??= new(); }
+    }
+
+    private async Task ManualRefresh()
+    {
+        isLoading = true;
+        StateHasChanged();
+        await LoadAll();
+        await RenderMap();
+        isLoading = false;
+    }
+
+    private void SetFiltro(int? slot)
+    {
+        filtroSlot = slot;
+        _ = RenderMap();
+    }
+
+    private async Task RenderMap()
+    {
+        if (!mapInited || stops is null) return;
+        var list = new List<object>();
+        if (startPoint?.Lat is not null && startPoint?.Lng is not null)
+        {
+            list.Add(new { id = -1, lat = startPoint.Lat, lng = startPoint.Lng, label = "🏠", color = "#15803d", popupHtml = $"<strong>📍 Punto de partida</strong>" });
+        }
+        var stopsFiltrados = stops.Where(st =>
+            filtroSlot == null ||
+            (filtroSlot == 0 && !st.AssignedVehicleSlot.HasValue) ||
+            (filtroSlot > 0 && st.AssignedVehicleSlot == filtroSlot));
+        list.AddRange(stopsFiltrados.Select(st =>
+        {
+            string color = st.AssignedVehicleSlot.HasValue ? VehicleColor(st.AssignedVehicleSlot.Value)
+                          : (string.IsNullOrEmpty(st.AssignedDriverColor) ? "#d97706" : st.AssignedDriverColor!);
+            string label = st.OrderInRoute.HasValue ? st.OrderInRoute.Value.ToString()
+                          : (st.AssignedVehicleSlot.HasValue ? "V" + st.AssignedVehicleSlot : "★");
+            return (object)new
+            {
+                id = -1000 - st.Id,
+                lat = st.Latitude,
+                lng = st.Longitude,
+                label,
+                color,
+                popupHtml = $"<div style='font-size:0.85rem;'><strong>{System.Net.WebUtility.HtmlEncode(st.Alias ?? st.ContactName ?? "Parada")}</strong>{(st.AssignedVehicleSlot.HasValue ? $" · V{st.AssignedVehicleSlot}" : "")}{(st.AssignedDriverName is null ? "" : $" · {System.Net.WebUtility.HtmlEncode(st.AssignedDriverName)}")}<br/>{System.Net.WebUtility.HtmlEncode(st.Direccion)}{(string.IsNullOrEmpty(st.Telefono) ? "" : $"<br/>📞 {System.Net.WebUtility.HtmlEncode(st.Telefono)}")}</div>"
+            };
+        }));
+        await JS.InvokeVoidAsync("mapeoFlex.renderMarkers", new object[] { list.ToArray() });
+    }
+
+    private static readonly string[] VEHICLE_COLORS = {
+        "#1d4ed8", "#dc2626", "#16a34a", "#d97706", "#7c3aed",
+        "#0891b2", "#be185d", "#65a30d", "#ea580c", "#4338ca"
+    };
+    private static string VehicleColor(int slot) => VEHICLE_COLORS[(slot - 1) % VEHICLE_COLORS.Length];
+
+    public async ValueTask DisposeAsync()
+    {
+        timer?.Dispose();
+        try { await JS.InvokeVoidAsync("mapeoFlex.destroy"); } catch { }
+    }
+}

@@ -412,6 +412,11 @@ else
                         ❓ Sin asignar (@sinAsignar)
                     </button>
                 }
+                @* Botón para abrir el mapa en una ventana aparte (ideal para doble pantalla) *@
+                <button class="btn" style="margin-left:auto; font-size:0.78rem; padding:0.2rem 0.55rem; font-weight:700; border-radius:6px; border:1.5px solid #1d4ed8; background:#dbeafe; color:#1d4ed8;"
+                        @onclick="AbrirMapaFlotante" title="Abrir el mapa en una ventana separada (podés moverla a otro monitor)">
+                    🪟 Abrir en otra ventana
+                </button>
             </div>
         }
         <div id="leafletMap"></div>
@@ -1208,6 +1213,17 @@ else
     private bool showConfigMenu = false; // dropdown ⚙ Configuración
     // Filtro de vehículo en el mapa: null = todos, 0 = sin asignar, >0 = slot N
     private int? vehiculoFiltro = null;
+    /// <summary>
+    /// Abre /mapeo/mapa-flotante en una ventana separada del browser. El usuario puede
+    /// arrastrarla al segundo monitor — el mapa se auto-refresca cada 5 segundos así
+    /// refleja los cambios que vayas haciendo en la pantalla principal sin recargar.
+    /// </summary>
+    private async Task AbrirMapaFlotante()
+    {
+        await JS.InvokeVoidAsync("open", "/mapeo/mapa-flotante", "mapeoMapaFlotante",
+            "width=1400,height=900,menubar=no,toolbar=no,location=no,status=no");
+    }
+
     private async Task SetVehiculoFiltro(int? slot)
     {
         vehiculoFiltro = slot;
