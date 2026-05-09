@@ -1627,6 +1627,7 @@ BEGIN
         MontoHsExtra DECIMAL(18,2) NOT NULL DEFAULT 0,
         Comision DECIMAL(18,2) NOT NULL DEFAULT 0,
         Bonos DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Aguinaldo DECIMAL(18,2) NOT NULL DEFAULT 0,
         DescuentoFaltas DECIMAL(18,2) NOT NULL DEFAULT 0,
         Adelantos DECIMAL(18,2) NOT NULL DEFAULT 0,
         OtrosDescuentos DECIMAL(18,2) NOT NULL DEFAULT 0,
@@ -1642,6 +1643,15 @@ BEGIN
     );
     CREATE INDEX IX_NomLiq_AnioMes ON Nom_Liquidaciones (Anio, Mes);
     CREATE INDEX IX_NomLiq_Estado ON Nom_Liquidaciones (Estado);
+END
+GO
+
+-- Migracion: si la tabla ya existia (instalacion vieja), agregar la columna
+-- Aguinaldo. Default 0 asi liquidaciones existentes no se rompen.
+IF EXISTS (SELECT * FROM sysobjects WHERE name='Nom_Liquidaciones' AND xtype='U')
+   AND NOT EXISTS (SELECT * FROM sys.columns WHERE Name='Aguinaldo' AND Object_ID=OBJECT_ID('Nom_Liquidaciones'))
+BEGIN
+    ALTER TABLE Nom_Liquidaciones ADD Aguinaldo DECIMAL(18,2) NOT NULL DEFAULT 0;
 END
 GO
 

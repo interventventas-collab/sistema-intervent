@@ -176,21 +176,25 @@
                             <strong style="display: block; margin: 0.7rem 0 0.4rem;">Conceptos del mes</strong>
                             <div class="form-row">
                                 <div class="form-group" style="flex: 1;">
-                                    <label class="form-label">Comisión ($)</label>
+                                    <label class="form-label">☕ Comisión ($)</label>
                                     <input class="form-input" type="number" step="0.01" min="0" @bind="formComision" />
                                 </div>
                                 <div class="form-group" style="flex: 1;">
-                                    <label class="form-label">Bonos ($)</label>
+                                    <label class="form-label">🎁 Bonos ($)</label>
                                     <input class="form-input" type="number" step="0.01" min="0" @bind="formBonos" />
+                                </div>
+                                <div class="form-group" style="flex: 1;">
+                                    <label class="form-label">🎄 Aguinaldo ($)</label>
+                                    <input class="form-input" type="number" step="0.01" min="0" @bind="formAguinaldo" />
                                 </div>
                             </div>
                             <div class="form-row">
                                 <div class="form-group" style="flex: 1;">
-                                    <label class="form-label">Adelantos ($)</label>
+                                    <label class="form-label">💸 Adelantos ($)</label>
                                     <input class="form-input" type="number" step="0.01" min="0" @bind="formAdelantos" />
                                 </div>
                                 <div class="form-group" style="flex: 1;">
-                                    <label class="form-label">Otros descuentos ($)</label>
+                                    <label class="form-label">📝 Otros descuentos ($)</label>
                                     <input class="form-input" type="number" step="0.01" min="0" @bind="formOtros" />
                                 </div>
                             </div>
@@ -221,6 +225,10 @@
                             <div class="venta-totals-row" style="font-size: 0.85rem;">
                                 <span>+ Bonos:</span>
                                 <span style="color: #059669;">$@FormatMoney(formBonos)</span>
+                            </div>
+                            <div class="venta-totals-row" style="font-size: 0.85rem;">
+                                <span>+ Aguinaldo:</span>
+                                <span style="color: #059669;">$@FormatMoney(formAguinaldo)</span>
                             </div>
                             <hr style="margin: 0.4rem 0; border: none; border-top: 1px solid #d1d5db;" />
                             <div class="venta-totals-row" style="font-weight: 700; color: #059669;">
@@ -434,6 +442,7 @@
     private decimal formDiasVacaciones;
     private decimal formComision;
     private decimal formBonos;
+    private decimal formAguinaldo;
     private decimal formAdelantos;
     private decimal formOtros;
     private string formNotas = "";
@@ -482,7 +491,7 @@
     private decimal MontoHsExtra => Math.Round(formHorasExtra * HoraExtraConRecargo, 2, MidpointRounding.AwayFromZero);
     private decimal DiaProporcional => SueldoBaseEmp / 30m;
     private decimal DescuentoFaltas => Math.Round(formDiasAusencia * DiaProporcional, 2, MidpointRounding.AwayFromZero);
-    private decimal TotalGanado => SueldoBaseEmp + MontoHsExtra + formComision + formBonos;
+    private decimal TotalGanado => SueldoBaseEmp + MontoHsExtra + formComision + formBonos + formAguinaldo;
     private decimal TotalDescuentos => DescuentoFaltas + formAdelantos + formOtros;
     private decimal NetoAPagar => Math.Max(0m, TotalGanado - TotalDescuentos);
 
@@ -533,6 +542,7 @@
         formDiasVacaciones = l.DiasVacaciones;
         formComision = l.Comision;
         formBonos = l.Bonos;
+        formAguinaldo = l.Aguinaldo;
         formAdelantos = l.Adelantos;
         formOtros = l.OtrosDescuentos;
         formNotas = l.Notas ?? "";
@@ -544,7 +554,7 @@
         formEmpleadoId = 0;
         formHorasTrabajadas = 0; formHorasExtra = 0; formRecargoPct = 50m;
         formDiasAusencia = 0; formDiasVacaciones = 0;
-        formComision = 0; formBonos = 0; formAdelantos = 0; formOtros = 0;
+        formComision = 0; formBonos = 0; formAguinaldo = 0; formAdelantos = 0; formOtros = 0;
         formNotas = "";
         pagoFecha = DateTime.Today; pagoMetodo = "efectivo"; pagoMonto = 0; pagoNotas = "";
         formError = null;
@@ -571,6 +581,7 @@
                     DiasVacaciones = formDiasVacaciones,
                     Comision = formComision,
                     Bonos = formBonos,
+                    Aguinaldo = formAguinaldo,
                     Adelantos = formAdelantos,
                     OtrosDescuentos = formOtros,
                     Notas = formNotas
@@ -587,7 +598,7 @@
                     HorasTrabajadas = formHorasTrabajadas, HorasExtra = formHorasExtra,
                     RecargoHsExtraPct = formRecargoPct,
                     DiasAusencia = formDiasAusencia, DiasVacaciones = formDiasVacaciones,
-                    Comision = formComision, Bonos = formBonos,
+                    Comision = formComision, Bonos = formBonos, Aguinaldo = formAguinaldo,
                     Adelantos = formAdelantos, OtrosDescuentos = formOtros,
                     Notas = formNotas
                 });

@@ -70,6 +70,7 @@ public class NomLiquidacionesController : ControllerBase
             DiasVacaciones = Math.Max(0m, req.DiasVacaciones),
             Comision = Math.Max(0m, req.Comision),
             Bonos = Math.Max(0m, req.Bonos),
+            Aguinaldo = Math.Max(0m, req.Aguinaldo),
             Adelantos = Math.Max(0m, req.Adelantos),
             OtrosDescuentos = Math.Max(0m, req.OtrosDescuentos),
             Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim(),
@@ -102,6 +103,7 @@ public class NomLiquidacionesController : ControllerBase
         if (req.DiasVacaciones.HasValue) liq.DiasVacaciones = Math.Max(0m, req.DiasVacaciones.Value);
         if (req.Comision.HasValue) liq.Comision = Math.Max(0m, req.Comision.Value);
         if (req.Bonos.HasValue) liq.Bonos = Math.Max(0m, req.Bonos.Value);
+        if (req.Aguinaldo.HasValue) liq.Aguinaldo = Math.Max(0m, req.Aguinaldo.Value);
         if (req.Adelantos.HasValue) liq.Adelantos = Math.Max(0m, req.Adelantos.Value);
         if (req.OtrosDescuentos.HasValue) liq.OtrosDescuentos = Math.Max(0m, req.OtrosDescuentos.Value);
         if (req.Notas is not null) liq.Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim();
@@ -237,7 +239,7 @@ public class NomLiquidacionesController : ControllerBase
     ///  - Hora extra con recargo = ValorHora * (1 + RecargoHsExtraPct/100)
     ///  - Monto hs extra = HorasExtra * HoraExtraConRecargo
     ///  - Descuento por dia de ausencia = DiasAusencia * (SueldoBase / 30)
-    ///  - TOTAL GANADO = Base + MontoHsExtra + Comision + Bonos
+    ///  - TOTAL GANADO = Base + MontoHsExtra + Comision + Bonos + Aguinaldo
     ///  - TOTAL DESCUENTOS = DescuentoFaltas + Adelantos + OtrosDescuentos
     ///  - NETO = Ganado - Descuentos
     /// </summary>
@@ -248,7 +250,7 @@ public class NomLiquidacionesController : ControllerBase
         liq.MontoHsExtra = Math.Round(liq.HorasExtra * hsExtraConRecargo, 2, MidpointRounding.AwayFromZero);
         var diaProporcional = emp.SueldoBase / 30m;
         liq.DescuentoFaltas = Math.Round(liq.DiasAusencia * diaProporcional, 2, MidpointRounding.AwayFromZero);
-        liq.TotalGanado = liq.SueldoBase + liq.MontoHsExtra + liq.Comision + liq.Bonos;
+        liq.TotalGanado = liq.SueldoBase + liq.MontoHsExtra + liq.Comision + liq.Bonos + liq.Aguinaldo;
         liq.TotalDescuentos = liq.DescuentoFaltas + liq.Adelantos + liq.OtrosDescuentos;
         liq.NetoAPagar = Math.Round(liq.TotalGanado - liq.TotalDescuentos, 2, MidpointRounding.AwayFromZero);
     }
@@ -262,6 +264,7 @@ public class NomLiquidacionesController : ControllerBase
             l.HorasTrabajadas, l.HorasExtra, l.RecargoHsExtraPct,
             l.DiasAusencia, l.DiasVacaciones,
             l.SueldoBase, l.MontoHsExtra, l.Comision, l.Bonos,
+            l.Aguinaldo,
             l.DescuentoFaltas, l.Adelantos, l.OtrosDescuentos,
             l.TotalGanado, l.TotalDescuentos, l.NetoAPagar,
             l.Estado, l.Notas,

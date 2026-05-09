@@ -48,6 +48,9 @@ public class NomLiquidacion
     public decimal Bonos { get; set; }
 
     [Column(TypeName = "decimal(18,2)")]
+    public decimal Aguinaldo { get; set; }
+
+    [Column(TypeName = "decimal(18,2)")]
     public decimal DescuentoFaltas { get; set; }
 
     [Column(TypeName = "decimal(18,2)")]

@@ -68,6 +68,7 @@ public class NomLiquidacionDto
     public decimal MontoHsExtra { get; set; }
     public decimal Comision { get; set; }
     public decimal Bonos { get; set; }
+    public decimal Aguinaldo { get; set; }
     public decimal DescuentoFaltas { get; set; }
     public decimal Adelantos { get; set; }
     public decimal OtrosDescuentos { get; set; }
@@ -95,6 +96,7 @@ public class CreateNomLiquidacionRequest
     public decimal DiasVacaciones { get; set; }
     public decimal Comision { get; set; }
     public decimal Bonos { get; set; }
+    public decimal Aguinaldo { get; set; }
     public decimal Adelantos { get; set; }
     public decimal OtrosDescuentos { get; set; }
     public string? Notas { get; set; }
@@ -109,6 +111,7 @@ public class UpdateNomLiquidacionRequest
     public decimal? DiasVacaciones { get; set; }
     public decimal? Comision { get; set; }
     public decimal? Bonos { get; set; }
+    public decimal? Aguinaldo { get; set; }
     public decimal? Adelantos { get; set; }
     public decimal? OtrosDescuentos { get; set; }
     public string? Estado { get; set; }

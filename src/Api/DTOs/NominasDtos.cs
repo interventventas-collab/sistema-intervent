@@ -42,6 +42,7 @@ public record NomLiquidacionDto(
     decimal HorasTrabajadas, decimal HorasExtra, decimal RecargoHsExtraPct,
     decimal DiasAusencia, decimal DiasVacaciones,
     decimal SueldoBase, decimal MontoHsExtra, decimal Comision, decimal Bonos,
+    decimal Aguinaldo,
     decimal DescuentoFaltas, decimal Adelantos, decimal OtrosDescuentos,
     decimal TotalGanado, decimal TotalDescuentos, decimal NetoAPagar,
     string Estado, string? Notas,
@@ -61,6 +62,7 @@ public class CreateNomLiquidacionRequest
     public decimal DiasVacaciones { get; set; }
     public decimal Comision { get; set; }
     public decimal Bonos { get; set; }
+    public decimal Aguinaldo { get; set; }
     public decimal Adelantos { get; set; }
     public decimal OtrosDescuentos { get; set; }
     public string? Notas { get; set; }
@@ -75,6 +77,7 @@ public class UpdateNomLiquidacionRequest
     public decimal? DiasVacaciones { get; set; }
     public decimal? Comision { get; set; }
     public decimal? Bonos { get; set; }
+    public decimal? Aguinaldo { get; set; }
     public decimal? Adelantos { get; set; }
     public decimal? OtrosDescuentos { get; set; }
     public string? Estado { get; set; }
