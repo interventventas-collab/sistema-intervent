@@ -26,7 +26,7 @@ public class NomLiquidacion
     public decimal HorasExtra { get; set; }
 
     [Column(TypeName = "decimal(8,2)")]
-    public decimal RecargoHsExtraPct { get; set; } = 50m;
+    public decimal RecargoHsExtraPct { get; set; } = 0m;
 
     [Column(TypeName = "decimal(5,2)")]
     public decimal DiasAusencia { get; set; }

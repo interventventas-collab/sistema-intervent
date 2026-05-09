@@ -1620,7 +1620,7 @@ BEGIN
         Mes INT NOT NULL,
         HorasTrabajadas DECIMAL(8,2) NOT NULL DEFAULT 0,
         HorasExtra DECIMAL(8,2) NOT NULL DEFAULT 0,
-        RecargoHsExtraPct DECIMAL(8,2) NOT NULL DEFAULT 50,
+        RecargoHsExtraPct DECIMAL(8,2) NOT NULL DEFAULT 0,
         DiasAusencia DECIMAL(5,2) NOT NULL DEFAULT 0,
         DiasVacaciones DECIMAL(5,2) NOT NULL DEFAULT 0,
         SueldoBase DECIMAL(18,2) NOT NULL DEFAULT 0,

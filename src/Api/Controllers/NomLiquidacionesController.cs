@@ -65,7 +65,7 @@ public class NomLiquidacionesController : ControllerBase
             Mes = req.Mes,
             HorasTrabajadas = Math.Max(0m, req.HorasTrabajadas),
             HorasExtra = Math.Max(0m, req.HorasExtra),
-            RecargoHsExtraPct = req.RecargoHsExtraPct ?? 50m,
+            RecargoHsExtraPct = req.RecargoHsExtraPct ?? 0m,
             DiasAusencia = Math.Max(0m, req.DiasAusencia),
             DiasVacaciones = Math.Max(0m, req.DiasVacaciones),
             Comision = Math.Max(0m, req.Comision),
