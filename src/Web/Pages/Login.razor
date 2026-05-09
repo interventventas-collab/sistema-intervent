@@ -3,13 +3,22 @@
 @inject AuthService AuthService
 @inject NavigationManager Navigation
 @inject ToastService ToastService
+@inject ApiClient Api
+@inject BrandSettingsService BrandSettings
 
 <div class="login-card" role="main">
-    <div class="login-header">
+    <div class="login-header" style="@HeaderStyle">
         <div class="login-logo" aria-hidden="true">
-            @SvgIcons.Brand
+            @if (BrandSettings.HasCustomLogo)
+            {
+                <img src="@BrandSettings.BrandLogo" alt="Logo" class="login-logo-img" />
+            }
+            else
+            {
+                @SvgIcons.GetByName(BrandSettings.BrandIcon)
+            }
         </div>
-        <h1>Tu Marca</h1>
+        <h1>@BrandSettings.BrandName</h1>
         <p>Panel de administracion</p>
     </div>
 
@@ -48,9 +57,20 @@
     private string? errorMessage;
     private bool isLoading;
 
+    private string HeaderStyle => $"background: linear-gradient(135deg, {BrandSettings.PrimaryColor}, {BrandSettings.SidebarBgColor});";
+
     protected override async Task OnInitializedAsync()
     {
-        // Redirect if already authenticated
+        try
+        {
+            var settings = await Api.GetSettingsAsync();
+            if (settings is not null)
+            {
+                BrandSettings.LoadFromSettings(settings);
+            }
+        }
+        catch { }
+
         if (await AuthService.IsSessionValidAsync())
         {
             Navigation.NavigateTo("/");

@@ -134,7 +134,7 @@ public class MeliShipmentsController : ControllerBase
         return Ok(new { totalSynced = r.TotalSynced, totalFlex = r.TotalFlex, totalErrors = r.TotalErrors, errores = r.Errors });
     }
 
-    public record StartPointDto(string? Address, decimal? Lat, decimal? Lng);
+    public record StartPointDto(string? Address, decimal? Lat, decimal? Lng, string? Time);
 
     /// <summary>Devuelve el punto de partida configurado para el mapa de rutas.</summary>
     [HttpGet("start-point")]
@@ -143,12 +143,13 @@ public class MeliShipmentsController : ControllerBase
         var addr = (await _db.AppSettings.FindAsync("mapeo.start.address"))?.Value;
         var latStr = (await _db.AppSettings.FindAsync("mapeo.start.lat"))?.Value;
         var lngStr = (await _db.AppSettings.FindAsync("mapeo.start.lng"))?.Value;
+        var time = (await _db.AppSettings.FindAsync("mapeo.start.time"))?.Value;
         decimal? lat = decimal.TryParse(latStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var la) ? la : null;
         decimal? lng = decimal.TryParse(lngStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var lo) ? lo : null;
-        return Ok(new StartPointDto(addr, lat, lng));
+        return Ok(new StartPointDto(addr, lat, lng, string.IsNullOrWhiteSpace(time) ? null : time));
     }
 
-    /// <summary>Setea el punto de partida (direccion + coordenadas).</summary>
+    /// <summary>Setea el punto de partida (direccion + coordenadas + horario).</summary>
     [HttpPut("start-point")]
     public async Task<IActionResult> SetStartPoint([FromBody] StartPointDto req)
     {
@@ -161,6 +162,7 @@ public class MeliShipmentsController : ControllerBase
         await Upsert("mapeo.start.address", req.Address);
         await Upsert("mapeo.start.lat", req.Lat?.ToString(System.Globalization.CultureInfo.InvariantCulture));
         await Upsert("mapeo.start.lng", req.Lng?.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        await Upsert("mapeo.start.time", req.Time);
         await _db.SaveChangesAsync();
         return Ok(new { ok = true });
     }

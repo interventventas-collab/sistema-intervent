@@ -51,6 +51,7 @@ public class StartPointDto
     public string? Address { get; set; }
     public decimal? Lat { get; set; }
     public decimal? Lng { get; set; }
+    public string? Time { get; set; }
 }
 
 public class GeocodeResultDto

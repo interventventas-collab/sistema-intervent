@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-    <link rel="stylesheet" href="css/app.css?v=20260508a" />
+    <link rel="stylesheet" href="css/app.css?v=20260509a" />
 </head>
 <body>
     <div id="app">
@@ -28,16 +28,48 @@
         window.mapeoFlex = (function () {
             let map = null;
             let layer = null;
+            let zonesLayer = null;
             let dotNetRef = null;
+            // Paleta categorica que se cicla por feature (orden alfabetico),
+            // asi vecinos en el mapa quedan con colores distintos.
+            const ZONE_COLORS = [
+                '#1d4ed8','#16a34a','#dc2626','#9333ea','#ea580c','#0891b2',
+                '#ca8a04','#db2777','#65a30d','#7c3aed','#0d9488','#b91c1c'
+            ];
+            function loadZones() {
+                if (!map) return;
+                fetch('/data/amba-zonas.geojson', { cache: 'force-cache' })
+                    .then(r => r.ok ? r.json() : null)
+                    .then(geo => {
+                        if (!geo || !map) return;
+                        let i = 0;
+                        zonesLayer = L.geoJSON(geo, {
+                            bubblingMouseEvents: true,
+                            style: () => ({
+                                color: '#9ca3af', weight: 1, opacity: 0.6,
+                                fillColor: ZONE_COLORS[(i++) % ZONE_COLORS.length],
+                                fillOpacity: 0.22
+                            }),
+                            onEachFeature: (f, lyr) => {
+                                const name = (f.properties && f.properties.name) || '';
+                                if (name) lyr.bindTooltip(name, { sticky: true, direction: 'top', className: 'zona-tooltip' });
+                            }
+                        });
+                        zonesLayer.addTo(map);
+                        if (zonesLayer.bringToBack) zonesLayer.bringToBack();
+                    })
+                    .catch(() => { /* si falla, el mapa funciona igual sin zonas */ });
+            }
             return {
                 init(elementId, dotnetHelper) {
                     dotNetRef = dotnetHelper;
-                    if (map) { map.remove(); map = null; }
+                    if (map) { map.remove(); map = null; zonesLayer = null; }
                     map = L.map(elementId).setView([-34.6037, -58.3816], 11); // CABA por default
                     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                         maxZoom: 19,
                         attribution: '© OpenStreetMap'
                     }).addTo(map);
+                    loadZones();
                     layer = L.layerGroup().addTo(map);
                 },
                 renderMarkers(items) {
