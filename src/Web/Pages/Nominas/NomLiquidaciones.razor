@@ -328,8 +328,39 @@
 
                         @if (editingLiq.Saldo > 0.01m && editingLiq.Estado != "anulada")
                         {
+                            var presupuestoConcepto = PresupuestoConcepto(pagoConcepto, editingLiq);
+                            var pagadoConcepto = PagadoEnConcepto(pagoConcepto, editingLiq);
+                            var pendienteConcepto = Math.Max(0m, presupuestoConcepto - pagadoConcepto);
+
                             <div style="background: white; border: 1px solid #d1d5db; border-radius: 6px; padding: 0.5rem;">
                                 <strong style="font-size: 0.85rem;">Registrar nuevo pago</strong>
+
+                                @* Indicador del saldo pendiente para el concepto seleccionado *@
+                                <div style="margin-top: 0.4rem; padding: 0.4rem 0.6rem; border-radius: 6px; font-size: 0.82rem;
+                                            background: @(pendienteConcepto > 0 ? "#fef3c7" : "#dcfce7");
+                                            border: 1px solid @(pendienteConcepto > 0 ? "#fbbf24" : "#86efac");
+                                            color: @(pendienteConcepto > 0 ? "#78350f" : "#166534"); display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                                    <span>
+                                        @ConceptoIcono(pagoConcepto) <strong>@ConceptoLabel(pagoConcepto):</strong>
+                                        @if (presupuestoConcepto > 0)
+                                        {
+                                            <span> Presupuestado $@FormatMoney(presupuestoConcepto) · Ya pagado $@FormatMoney(pagadoConcepto) · </span>
+                                            <strong>Pendiente $@FormatMoney(pendienteConcepto)</strong>
+                                        }
+                                        else
+                                        {
+                                            <span> Esta liquidación no tiene importe cargado en este concepto.</span>
+                                        }
+                                    </span>
+                                    @if (pendienteConcepto > 0.01m)
+                                    {
+                                        <button class="btn btn-secondary" type="button" @onclick="() => UsarPendienteConcepto(pendienteConcepto)"
+                                                style="font-size: 0.72rem; padding: 0.15rem 0.55rem; background: white;">
+                                            Usar $@FormatMoney(pendienteConcepto)
+                                        </button>
+                                    }
+                                </div>
+
                                 <div class="form-row" style="margin-top: 0.4rem; align-items: end;">
                                     <div class="form-group" style="flex: 1;">
                                         <label class="form-label" style="font-size: 0.75rem;">Fecha</label>
@@ -375,8 +406,8 @@
                                     </div>
                                 </div>
                                 <p style="font-size: 0.75rem; color: #6b7280; margin: 0.3rem 0 0;">
-                                    💡 Tip: tocá "Usar saldo" para pagar el saldo completo en este concepto.
-                                    <button class="btn btn-secondary" type="button" @onclick="UsarSaldoCompleto" style="font-size: 0.75rem; padding: 0.15rem 0.5rem; margin-left: 0.3rem;">Usar saldo $@FormatMoney(editingLiq.Saldo)</button>
+                                    💡 Si querés pagar todo lo que queda de la liquidación (todos los conceptos juntos):
+                                    <button class="btn btn-secondary" type="button" @onclick="UsarSaldoCompleto" style="font-size: 0.72rem; padding: 0.15rem 0.5rem; margin-left: 0.3rem;">Usar saldo total $@FormatMoney(editingLiq.Saldo)</button>
                                 </p>
                             </div>
                         }
@@ -633,6 +664,37 @@
     {
         if (editingLiq is not null) pagoMonto = Math.Round(editingLiq.Saldo, 2);
     }
+
+    /// <summary>
+    /// Pone en el campo Monto lo que falta pagar del concepto actualmente seleccionado.
+    /// </summary>
+    private void UsarPendienteConcepto(decimal pendiente)
+    {
+        pagoMonto = Math.Round(pendiente, 2);
+    }
+
+    /// <summary>
+    /// Devuelve cuánto presupuesta la liquidación para un concepto dado
+    /// (sueldo base, hs extras, comisión, bonos, etc.). Asi sabemos cuánto deberíamos
+    /// pagar en total bajo ese concepto.
+    /// </summary>
+    private static decimal PresupuestoConcepto(string concepto, NomLiquidacionDto liq) => concepto switch
+    {
+        "sueldo" => liq.SueldoBase,
+        "horas_extra" => liq.MontoHsExtra,
+        "comision_cafe" => liq.Comision,
+        "bono" => liq.Bonos,
+        "aguinaldo" => liq.Aguinaldo,
+        "adelanto" => liq.Adelantos,
+        "otro" => liq.OtrosDescuentos,
+        _ => 0m
+    };
+
+    /// <summary>
+    /// Suma de los pagos ya registrados en el mismo concepto.
+    /// </summary>
+    private static decimal PagadoEnConcepto(string concepto, NomLiquidacionDto liq)
+        => liq.Pagos.Where(p => p.Concepto == concepto).Sum(p => p.Monto);
 
     private async Task AddPago()
     {
