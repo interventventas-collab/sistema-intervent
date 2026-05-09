@@ -30,6 +30,11 @@ public class NomEmpleado
     [Column(TypeName = "decimal(8,2)")]
     public decimal? ComisionPorcentaje { get; set; }
 
+    // Tarifa que el empleado cobra por cada kg de café vendido. Se multiplica
+    // por KgCafe de la liquidacion para calcular la Comision del mes.
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal ComisionPorKg { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

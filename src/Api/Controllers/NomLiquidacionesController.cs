@@ -68,7 +68,7 @@ public class NomLiquidacionesController : ControllerBase
             RecargoHsExtraPct = req.RecargoHsExtraPct ?? 0m,
             DiasAusencia = Math.Max(0m, req.DiasAusencia),
             DiasVacaciones = Math.Max(0m, req.DiasVacaciones),
-            Comision = Math.Max(0m, req.Comision),
+            KgCafe = Math.Max(0m, req.KgCafe),
             Bonos = Math.Max(0m, req.Bonos),
             Aguinaldo = Math.Max(0m, req.Aguinaldo),
             Adelantos = Math.Max(0m, req.Adelantos),
@@ -101,7 +101,7 @@ public class NomLiquidacionesController : ControllerBase
         if (req.RecargoHsExtraPct.HasValue) liq.RecargoHsExtraPct = Math.Max(0m, req.RecargoHsExtraPct.Value);
         if (req.DiasAusencia.HasValue) liq.DiasAusencia = Math.Max(0m, req.DiasAusencia.Value);
         if (req.DiasVacaciones.HasValue) liq.DiasVacaciones = Math.Max(0m, req.DiasVacaciones.Value);
-        if (req.Comision.HasValue) liq.Comision = Math.Max(0m, req.Comision.Value);
+        if (req.KgCafe.HasValue) liq.KgCafe = Math.Max(0m, req.KgCafe.Value);
         if (req.Bonos.HasValue) liq.Bonos = Math.Max(0m, req.Bonos.Value);
         if (req.Aguinaldo.HasValue) liq.Aguinaldo = Math.Max(0m, req.Aguinaldo.Value);
         if (req.Adelantos.HasValue) liq.Adelantos = Math.Max(0m, req.Adelantos.Value);
@@ -248,6 +248,8 @@ public class NomLiquidacionesController : ControllerBase
         liq.SueldoBase = emp.SueldoBase;
         var hsExtraConRecargo = emp.ValorHora * (1m + liq.RecargoHsExtraPct / 100m);
         liq.MontoHsExtra = Math.Round(liq.HorasExtra * hsExtraConRecargo, 2, MidpointRounding.AwayFromZero);
+        // Comision auto-calc: kg de café del mes × tarifa por kg del empleado.
+        liq.Comision = Math.Round(liq.KgCafe * emp.ComisionPorKg, 2, MidpointRounding.AwayFromZero);
         var diaProporcional = emp.SueldoBase / 30m;
         liq.DescuentoFaltas = Math.Round(liq.DiasAusencia * diaProporcional, 2, MidpointRounding.AwayFromZero);
         liq.TotalGanado = liq.SueldoBase + liq.MontoHsExtra + liq.Comision + liq.Bonos + liq.Aguinaldo;
@@ -263,6 +265,7 @@ public class NomLiquidacionesController : ControllerBase
             l.Anio, l.Mes,
             l.HorasTrabajadas, l.HorasExtra, l.RecargoHsExtraPct,
             l.DiasAusencia, l.DiasVacaciones,
+            l.KgCafe,
             l.SueldoBase, l.MontoHsExtra, l.Comision, l.Bonos,
             l.Aguinaldo,
             l.DescuentoFaltas, l.Adelantos, l.OtrosDescuentos,

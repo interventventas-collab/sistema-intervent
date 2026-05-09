@@ -1603,11 +1603,28 @@ BEGIN
         SueldoBase DECIMAL(18,2) NOT NULL DEFAULT 0,
         ValorHora DECIMAL(18,2) NOT NULL DEFAULT 0,
         ComisionPorcentaje DECIMAL(8,2) NULL,
+        ComisionPorKg DECIMAL(18,2) NOT NULL DEFAULT 0,
         IsActive BIT NOT NULL DEFAULT 1,
         CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
         UpdatedAt DATETIME2 NULL
     );
     CREATE INDEX IX_NomEmpleados_Nombre ON Nom_Empleados (Nombre);
+END
+GO
+
+-- Migracion: agregar ComisionPorKg a Nom_Empleados (instalaciones existentes)
+IF EXISTS (SELECT * FROM sysobjects WHERE name='Nom_Empleados' AND xtype='U')
+   AND NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ComisionPorKg' AND Object_ID=OBJECT_ID('Nom_Empleados'))
+BEGIN
+    ALTER TABLE Nom_Empleados ADD ComisionPorKg DECIMAL(18,2) NOT NULL DEFAULT 0;
+END
+GO
+
+-- Migracion: agregar KgCafe a Nom_Liquidaciones (instalaciones existentes)
+IF EXISTS (SELECT * FROM sysobjects WHERE name='Nom_Liquidaciones' AND xtype='U')
+   AND NOT EXISTS (SELECT * FROM sys.columns WHERE Name='KgCafe' AND Object_ID=OBJECT_ID('Nom_Liquidaciones'))
+BEGIN
+    ALTER TABLE Nom_Liquidaciones ADD KgCafe DECIMAL(18,2) NOT NULL DEFAULT 0;
 END
 GO
 
@@ -1625,6 +1642,7 @@ BEGIN
         DiasVacaciones DECIMAL(5,2) NOT NULL DEFAULT 0,
         SueldoBase DECIMAL(18,2) NOT NULL DEFAULT 0,
         MontoHsExtra DECIMAL(18,2) NOT NULL DEFAULT 0,
+        KgCafe DECIMAL(18,2) NOT NULL DEFAULT 0,
         Comision DECIMAL(18,2) NOT NULL DEFAULT 0,
         Bonos DECIMAL(18,2) NOT NULL DEFAULT 0,
         Aguinaldo DECIMAL(18,2) NOT NULL DEFAULT 0,

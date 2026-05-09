@@ -34,6 +34,11 @@ public class NomLiquidacion
     [Column(TypeName = "decimal(5,2)")]
     public decimal DiasVacaciones { get; set; }
 
+    // Kg de café vendidos por el empleado en el mes. Se multiplica por
+    // empleado.ComisionPorKg para calcular Comision automáticamente.
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal KgCafe { get; set; }
+
     // Conceptos calculados
     [Column(TypeName = "decimal(18,2)")]
     public decimal SueldoBase { get; set; }

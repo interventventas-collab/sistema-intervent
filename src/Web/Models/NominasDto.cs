@@ -10,6 +10,7 @@ public class NomEmpleadoDto
     public decimal SueldoBase { get; set; }
     public decimal ValorHora { get; set; }
     public decimal? ComisionPorcentaje { get; set; }
+    public decimal ComisionPorKg { get; set; }
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
@@ -24,6 +25,7 @@ public class CreateNomEmpleadoRequest
     public decimal SueldoBase { get; set; }
     public decimal ValorHora { get; set; }
     public decimal? ComisionPorcentaje { get; set; }
+    public decimal ComisionPorKg { get; set; }
 }
 
 public class UpdateNomEmpleadoRequest
@@ -35,6 +37,7 @@ public class UpdateNomEmpleadoRequest
     public decimal? SueldoBase { get; set; }
     public decimal? ValorHora { get; set; }
     public decimal? ComisionPorcentaje { get; set; }
+    public decimal? ComisionPorKg { get; set; }
     public bool? IsActive { get; set; }
 }
 
@@ -64,6 +67,7 @@ public class NomLiquidacionDto
     public decimal RecargoHsExtraPct { get; set; }
     public decimal DiasAusencia { get; set; }
     public decimal DiasVacaciones { get; set; }
+    public decimal KgCafe { get; set; }
     public decimal SueldoBase { get; set; }
     public decimal MontoHsExtra { get; set; }
     public decimal Comision { get; set; }
@@ -94,7 +98,7 @@ public class CreateNomLiquidacionRequest
     public decimal? RecargoHsExtraPct { get; set; }
     public decimal DiasAusencia { get; set; }
     public decimal DiasVacaciones { get; set; }
-    public decimal Comision { get; set; }
+    public decimal KgCafe { get; set; }
     public decimal Bonos { get; set; }
     public decimal Aguinaldo { get; set; }
     public decimal Adelantos { get; set; }
@@ -109,7 +113,7 @@ public class UpdateNomLiquidacionRequest
     public decimal? RecargoHsExtraPct { get; set; }
     public decimal? DiasAusencia { get; set; }
     public decimal? DiasVacaciones { get; set; }
-    public decimal? Comision { get; set; }
+    public decimal? KgCafe { get; set; }
     public decimal? Bonos { get; set; }
     public decimal? Aguinaldo { get; set; }
     public decimal? Adelantos { get; set; }

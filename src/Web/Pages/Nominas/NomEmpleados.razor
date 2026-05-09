@@ -34,7 +34,7 @@
                             <th>Ingreso</th>
                             <th style="text-align: right;">Sueldo base</th>
                             <th style="text-align: right;">Valor hora</th>
-                            <th style="text-align: right;">% Comisión</th>
+                            <th style="text-align: right;">☕ Com. x kg</th>
                             <th>Estado</th>
                             <th style="width: 130px;">Acciones</th>
                         </tr>
@@ -49,7 +49,7 @@
                                 <td style="font-size: 0.85rem;">@e.FechaIngreso.ToString("dd/MM/yyyy")</td>
                                 <td style="text-align: right; font-weight: 700;">$@FormatMoney(e.SueldoBase)</td>
                                 <td style="text-align: right;">$@FormatMoney(e.ValorHora)</td>
-                                <td style="text-align: right; color: #6b7280;">@(e.ComisionPorcentaje.HasValue ? $"{e.ComisionPorcentaje.Value:0.##}%" : "—")</td>
+                                <td style="text-align: right; color: #6b7280;">@(e.ComisionPorKg > 0 ? $"${FormatMoney(e.ComisionPorKg)}" : "—")</td>
                                 <td>
                                     <span class="status-badge @(e.IsActive ? "status-active" : "status-inactive")">
                                         @(e.IsActive ? "Activo" : "Inactivo")
@@ -113,9 +113,9 @@
                         <p style="font-size: 0.75rem; color: #6b7280; margin: 0.2rem 0 0;">Se usa para calcular las horas extra.</p>
                     </div>
                     <div class="form-group" style="flex: 1;">
-                        <label class="form-label">% Comisión (opcional)</label>
-                        <input class="form-input" type="number" step="0.01" min="0" @bind="formComisionPct" placeholder="Ej: 5" />
-                        <p style="font-size: 0.75rem; color: #6b7280; margin: 0.2rem 0 0;">Default que aparece al liquidar.</p>
+                        <label class="form-label">☕ Comisión por kg de café ($)</label>
+                        <input class="form-input" type="number" step="0.01" min="0" @bind="formComisionPorKg" placeholder="Ej: 200" />
+                        <p style="font-size: 0.75rem; color: #6b7280; margin: 0.2rem 0 0;">Se multiplica por los kg vendidos en la liquidación.</p>
                     </div>
                 </div>
                 @if (isEditing)
@@ -174,6 +174,7 @@
     private decimal formSueldoBase;
     private decimal formValorHora;
     private decimal? formComisionPct;
+    private decimal formComisionPorKg;
     private bool formIsActive = true;
     private bool showDeleteConfirm;
     private NomEmpleadoDto? empToDelete;
@@ -193,7 +194,7 @@
         isEditing = false; editingId = null;
         formNombre = ""; formDocumento = ""; formPuesto = "";
         formFechaIngreso = DateTime.Today;
-        formSueldoBase = 0m; formValorHora = 0m; formComisionPct = null;
+        formSueldoBase = 0m; formValorHora = 0m; formComisionPct = null; formComisionPorKg = 0m;
         formIsActive = true;
         formError = null; showForm = true;
     }
@@ -203,7 +204,8 @@
         isEditing = true; editingId = e.Id;
         formNombre = e.Nombre; formDocumento = e.Documento ?? ""; formPuesto = e.Puesto ?? "";
         formFechaIngreso = e.FechaIngreso.Date;
-        formSueldoBase = e.SueldoBase; formValorHora = e.ValorHora; formComisionPct = e.ComisionPorcentaje;
+        formSueldoBase = e.SueldoBase; formValorHora = e.ValorHora;
+        formComisionPct = e.ComisionPorcentaje; formComisionPorKg = e.ComisionPorKg;
         formIsActive = e.IsActive;
         formError = null; showForm = true;
     }
@@ -224,6 +226,7 @@
                     Nombre = formNombre, Documento = formDocumento, Puesto = formPuesto,
                     FechaIngreso = formFechaIngreso, SueldoBase = formSueldoBase,
                     ValorHora = formValorHora, ComisionPorcentaje = formComisionPct,
+                    ComisionPorKg = formComisionPorKg,
                     IsActive = formIsActive
                 });
                 if (updated is null) { formError = "No se pudo actualizar"; return; }
@@ -235,7 +238,8 @@
                 {
                     Nombre = formNombre, Documento = formDocumento, Puesto = formPuesto,
                     FechaIngreso = formFechaIngreso, SueldoBase = formSueldoBase,
-                    ValorHora = formValorHora, ComisionPorcentaje = formComisionPct
+                    ValorHora = formValorHora, ComisionPorcentaje = formComisionPct,
+                    ComisionPorKg = formComisionPorKg
                 });
                 if (created is null) { formError = "No se pudo crear"; return; }
                 ToastService.Success("Empleado creado");

@@ -174,8 +174,11 @@
                             <strong style="display: block; margin: 0.7rem 0 0.4rem;">Conceptos del mes</strong>
                             <div class="form-row">
                                 <div class="form-group" style="flex: 1;">
-                                    <label class="form-label">☕ Comisión ($)</label>
-                                    <input class="form-input" type="number" step="0.01" min="0" @bind="formComision" />
+                                    <label class="form-label">☕ Kg de café vendidos</label>
+                                    <input class="form-input" type="number" step="0.01" min="0" @bind="formKgCafe" />
+                                    <p style="font-size: 0.72rem; color: #6b7280; margin: 0.2rem 0 0;">
+                                        Comisión = @formKgCafe kg × $@FormatMoney(ComisionPorKgEmp) = <strong style="color: #059669;">$@FormatMoney(ComisionCalculada)</strong>
+                                    </p>
                                 </div>
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">🎁 Bonos ($)</label>
@@ -217,8 +220,8 @@
                                 <span style="color: #059669;">$@FormatMoney(MontoHsExtra)</span>
                             </div>
                             <div class="venta-totals-row" style="font-size: 0.85rem;">
-                                <span>+ Comisión:</span>
-                                <span style="color: #059669;">$@FormatMoney(formComision)</span>
+                                <span>+ Comisión (@formKgCafe kg × $@FormatMoney(ComisionPorKgEmp)):</span>
+                                <span style="color: #059669;">$@FormatMoney(ComisionCalculada)</span>
                             </div>
                             <div class="venta-totals-row" style="font-size: 0.85rem;">
                                 <span>+ Bonos:</span>
@@ -438,7 +441,7 @@
     private decimal formRecargoPct = 0m;
     private decimal formDiasAusencia;
     private decimal formDiasVacaciones;
-    private decimal formComision;
+    private decimal formKgCafe;
     private decimal formBonos;
     private decimal formAguinaldo;
     private decimal formAdelantos;
@@ -485,11 +488,13 @@
 
     private decimal SueldoBaseEmp => empleados?.FirstOrDefault(e => e.Id == formEmpleadoId)?.SueldoBase ?? 0m;
     private decimal ValorHoraEmp => empleados?.FirstOrDefault(e => e.Id == formEmpleadoId)?.ValorHora ?? 0m;
+    private decimal ComisionPorKgEmp => empleados?.FirstOrDefault(e => e.Id == formEmpleadoId)?.ComisionPorKg ?? 0m;
     private decimal HoraExtraConRecargo => Math.Round(ValorHoraEmp * (1m + formRecargoPct / 100m), 2, MidpointRounding.AwayFromZero);
     private decimal MontoHsExtra => Math.Round(formHorasExtra * HoraExtraConRecargo, 2, MidpointRounding.AwayFromZero);
+    private decimal ComisionCalculada => Math.Round(formKgCafe * ComisionPorKgEmp, 2, MidpointRounding.AwayFromZero);
     private decimal DiaProporcional => SueldoBaseEmp / 30m;
     private decimal DescuentoFaltas => Math.Round(formDiasAusencia * DiaProporcional, 2, MidpointRounding.AwayFromZero);
-    private decimal TotalGanado => SueldoBaseEmp + MontoHsExtra + formComision + formBonos + formAguinaldo;
+    private decimal TotalGanado => SueldoBaseEmp + MontoHsExtra + ComisionCalculada + formBonos + formAguinaldo;
     private decimal TotalDescuentos => DescuentoFaltas + formAdelantos + formOtros;
     private decimal NetoAPagar => Math.Max(0m, TotalGanado - TotalDescuentos);
 
@@ -538,7 +543,7 @@
         formRecargoPct = 0m; // siempre 0 — el campo recargo se removio del form, la hora extra paga el valor hora tal cual
         formDiasAusencia = l.DiasAusencia;
         formDiasVacaciones = l.DiasVacaciones;
-        formComision = l.Comision;
+        formKgCafe = l.KgCafe;
         formBonos = l.Bonos;
         formAguinaldo = l.Aguinaldo;
         formAdelantos = l.Adelantos;
@@ -552,7 +557,7 @@
         formEmpleadoId = 0;
         formHorasTrabajadas = 0; formHorasExtra = 0; formRecargoPct = 0m;
         formDiasAusencia = 0; formDiasVacaciones = 0;
-        formComision = 0; formBonos = 0; formAguinaldo = 0; formAdelantos = 0; formOtros = 0;
+        formKgCafe = 0; formBonos = 0; formAguinaldo = 0; formAdelantos = 0; formOtros = 0;
         formNotas = "";
         pagoFecha = DateTime.Today; pagoMetodo = "efectivo"; pagoMonto = 0; pagoNotas = "";
         formError = null;
@@ -577,7 +582,7 @@
                     RecargoHsExtraPct = formRecargoPct,
                     DiasAusencia = formDiasAusencia,
                     DiasVacaciones = formDiasVacaciones,
-                    Comision = formComision,
+                    KgCafe = formKgCafe,
                     Bonos = formBonos,
                     Aguinaldo = formAguinaldo,
                     Adelantos = formAdelantos,
@@ -596,7 +601,7 @@
                     HorasTrabajadas = formHorasTrabajadas, HorasExtra = formHorasExtra,
                     RecargoHsExtraPct = formRecargoPct,
                     DiasAusencia = formDiasAusencia, DiasVacaciones = formDiasVacaciones,
-                    Comision = formComision, Bonos = formBonos, Aguinaldo = formAguinaldo,
+                    KgCafe = formKgCafe, Bonos = formBonos, Aguinaldo = formAguinaldo,
                     Adelantos = formAdelantos, OtrosDescuentos = formOtros,
                     Notas = formNotas
                 });
