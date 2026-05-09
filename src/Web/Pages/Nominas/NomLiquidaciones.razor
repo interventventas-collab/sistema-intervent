@@ -30,6 +30,61 @@
             <button class="btn btn-primary" @onclick="ShowCreate">+ Nueva Liquidación</button>
         </div>
     </div>
+    @* ═══════════ Panel resumen pendiente por concepto ═══════════ *@
+    @if (liqs is not null && liqs.Count > 0)
+    {
+        var liqsActivas = liqs.Where(l => l.Estado != "anulada").ToList();
+        var totalPend = liqsActivas.Sum(l => l.Saldo);
+        var totalGanado = liqsActivas.Sum(l => l.TotalGanado);
+        var totalPagado = liqsActivas.Sum(l => l.TotalPagado);
+        var resumen = new[]
+        {
+            new { Cod = "sueldo", Label = "💰 Sueldos", Pend = liqsActivas.Sum(l => Math.Max(0m, l.SueldoBase - l.Pagos.Where(p => p.Concepto == "sueldo").Sum(p => p.Monto))) },
+            new { Cod = "horas_extra", Label = "⏰ Horas extras", Pend = liqsActivas.Sum(l => Math.Max(0m, l.MontoHsExtra - l.Pagos.Where(p => p.Concepto == "horas_extra").Sum(p => p.Monto))) },
+            new { Cod = "comision_cafe", Label = "☕ Comisión café", Pend = liqsActivas.Sum(l => Math.Max(0m, l.Comision - l.Pagos.Where(p => p.Concepto == "comision_cafe").Sum(p => p.Monto))) },
+            new { Cod = "bono", Label = "🎁 Bonos", Pend = liqsActivas.Sum(l => Math.Max(0m, l.Bonos - l.Pagos.Where(p => p.Concepto == "bono").Sum(p => p.Monto))) },
+            new { Cod = "aguinaldo", Label = "🎄 Aguinaldo", Pend = liqsActivas.Sum(l => Math.Max(0m, l.Aguinaldo - l.Pagos.Where(p => p.Concepto == "aguinaldo").Sum(p => p.Monto))) }
+        };
+        var algoPendiente = totalPend > 0.01m;
+        var bgGradient = algoPendiente ? "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)" : "linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%)";
+        var borderColor = algoPendiente ? "#fbbf24" : "#22c55e";
+        var titleColor = algoPendiente ? "#78350f" : "#14532d";
+        var amountColor = algoPendiente ? "#b45309" : "#15803d";
+
+        <div style="padding: 1rem 1.2rem; background: @bgGradient; border-bottom: 1px solid @borderColor;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 0.7rem;">
+                <div>
+                    <div style="font-size: 0.72rem; color: @titleColor; text-transform: uppercase; font-weight: 700;">Total a pagar (Ganado)</div>
+                    <div style="font-size: 1.3rem; font-weight: 800; color: #059669;">$@FormatMoney(totalGanado)</div>
+                </div>
+                <div>
+                    <div style="font-size: 0.72rem; color: @titleColor; text-transform: uppercase; font-weight: 700;">Ya pagado</div>
+                    <div style="font-size: 1.3rem; font-weight: 800; color: #1d4ed8;">$@FormatMoney(totalPagado)</div>
+                </div>
+                <div>
+                    <div style="font-size: 0.72rem; color: @titleColor; text-transform: uppercase; font-weight: 700;">@(algoPendiente ? "📊 Pendiente" : "✅ Sin saldo pendiente")</div>
+                    <div style="font-size: 1.7rem; font-weight: 900; color: @amountColor;">$@FormatMoney(totalPend)</div>
+                </div>
+            </div>
+            @if (algoPendiente)
+            {
+                <div style="font-size: 0.78rem; color: @titleColor; font-weight: 700; margin-bottom: 0.35rem; text-transform: uppercase;">Desglose por concepto:</div>
+                <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                    @foreach (var rc in resumen.Where(x => x.Pend > 0.01m))
+                    {
+                        <span style="padding: 0.4rem 0.75rem; background: white; border-radius: 999px; font-size: 0.88rem; box-shadow: 0 1px 4px rgba(0,0,0,0.1); color: #1f2937; border: 1px solid #fbbf24;">
+                            @rc.Label: <strong style="color: #b45309;">$@FormatMoney(rc.Pend)</strong>
+                        </span>
+                    }
+                    @if (!resumen.Any(x => x.Pend > 0.01m))
+                    {
+                        <span style="color: #6b7280; font-size: 0.85rem;">El saldo viene de descuentos negativos o ajustes — revisá las liquidaciones.</span>
+                    }
+                </div>
+            }
+        </div>
+    }
+
     <div class="card-body" style="padding: 0;">
         @if (isLoading)
         {
@@ -74,7 +129,33 @@
                                 <td style="text-align: right; color: #dc2626;">$@FormatMoney(l.TotalDescuentos)</td>
                                 <td style="text-align: right; font-weight: 800; color: #1d4ed8;">$@FormatMoney(l.NetoAPagar)</td>
                                 <td style="text-align: right;">$@FormatMoney(l.TotalPagado)</td>
-                                <td style="text-align: right; font-weight: 700; color: @(l.Saldo > 0.01m ? "#dc2626" : "#059669");">$@FormatMoney(l.Saldo)</td>
+                                <td style="text-align: right;">
+                                    <div style="font-weight: 700; color: @(l.Saldo > 0.01m ? "#dc2626" : "#059669");">$@FormatMoney(l.Saldo)</div>
+                                    @if (l.Saldo > 0.01m)
+                                    {
+                                        var chipsRow = new[]
+                                        {
+                                            new { Cod = "sueldo", Icono = "💰", Pend = Math.Max(0m, l.SueldoBase - l.Pagos.Where(p => p.Concepto == "sueldo").Sum(p => p.Monto)) },
+                                            new { Cod = "horas_extra", Icono = "⏰", Pend = Math.Max(0m, l.MontoHsExtra - l.Pagos.Where(p => p.Concepto == "horas_extra").Sum(p => p.Monto)) },
+                                            new { Cod = "comision_cafe", Icono = "☕", Pend = Math.Max(0m, l.Comision - l.Pagos.Where(p => p.Concepto == "comision_cafe").Sum(p => p.Monto)) },
+                                            new { Cod = "bono", Icono = "🎁", Pend = Math.Max(0m, l.Bonos - l.Pagos.Where(p => p.Concepto == "bono").Sum(p => p.Monto)) },
+                                            new { Cod = "aguinaldo", Icono = "🎄", Pend = Math.Max(0m, l.Aguinaldo - l.Pagos.Where(p => p.Concepto == "aguinaldo").Sum(p => p.Monto)) }
+                                        };
+                                        var conPend = chipsRow.Where(c => c.Pend > 0.01m).ToList();
+                                        if (conPend.Count > 0)
+                                        {
+                                            <div style="display: flex; gap: 0.2rem; flex-wrap: wrap; justify-content: flex-end; margin-top: 0.25rem;">
+                                                @foreach (var c in conPend)
+                                                {
+                                                    <span title="@ConceptoLabel(c.Cod) pendiente"
+                                                          style="font-size: 0.7rem; padding: 0.1rem 0.4rem; background: #fef3c7; border: 1px solid #fbbf24; border-radius: 999px; color: #78350f; white-space: nowrap;">
+                                                        @c.Icono $@FormatMoney(c.Pend)
+                                                    </span>
+                                                }
+                                            </div>
+                                        }
+                                    }
+                                </td>
                                 <td>@EstadoBadge(l.Estado)</td>
                                 <td class="actions-cell" @onclick:stopPropagation="true">
                                     <button class="btn-icon btn-edit" @onclick="() => ShowEdit(l)" title="Ver / editar">@SvgIcons.Edit</button>
