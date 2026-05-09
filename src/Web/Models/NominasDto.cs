@@ -45,6 +45,8 @@ public class NomPagoDto
     public DateTime FechaPago { get; set; }
     public string Metodo { get; set; } = "";
     public decimal Monto { get; set; }
+    public string Concepto { get; set; } = "sueldo";
+    public string? Detalle { get; set; }
     public string? Notas { get; set; }
     public DateTime CreatedAt { get; set; }
 }
@@ -119,6 +121,8 @@ public class CreateNomPagoRequest
     public DateTime? FechaPago { get; set; }
     public string Metodo { get; set; } = "efectivo";
     public decimal Monto { get; set; }
+    public string Concepto { get; set; } = "sueldo";
+    public string? Detalle { get; set; }
     public string? Notas { get; set; }
 }
 

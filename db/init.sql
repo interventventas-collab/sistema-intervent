@@ -1653,12 +1653,32 @@ BEGIN
         FechaPago DATE NOT NULL,
         Metodo NVARCHAR(50) NOT NULL,
         Monto DECIMAL(18,2) NOT NULL,
+        Concepto NVARCHAR(30) NOT NULL DEFAULT 'sueldo',
+        Detalle NVARCHAR(500) NULL,
         Notas NVARCHAR(500) NULL,
         CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
         CONSTRAINT FK_NomPago_Liq FOREIGN KEY (LiquidacionId) REFERENCES Nom_Liquidaciones(Id) ON DELETE CASCADE
     );
     CREATE INDEX IX_NomPago_Liq ON Nom_Pagos (LiquidacionId);
     CREATE INDEX IX_NomPago_Fecha ON Nom_Pagos (FechaPago);
+END
+GO
+
+-- Migracion: si la tabla Nom_Pagos ya existe (instalaciones viejas), agregamos
+-- las columnas Concepto y Detalle. Concepto NOT NULL con default 'sueldo' asi
+-- los pagos previos quedan etiquetados como sueldo (el usuario puede borrarlos
+-- y recrearlos con el concepto correcto si necesita).
+IF EXISTS (SELECT * FROM sysobjects WHERE name='Nom_Pagos' AND xtype='U')
+   AND NOT EXISTS (SELECT * FROM sys.columns WHERE Name='Concepto' AND Object_ID=OBJECT_ID('Nom_Pagos'))
+BEGIN
+    ALTER TABLE Nom_Pagos ADD Concepto NVARCHAR(30) NOT NULL DEFAULT 'sueldo';
+END
+GO
+
+IF EXISTS (SELECT * FROM sysobjects WHERE name='Nom_Pagos' AND xtype='U')
+   AND NOT EXISTS (SELECT * FROM sys.columns WHERE Name='Detalle' AND Object_ID=OBJECT_ID('Nom_Pagos'))
+BEGIN
+    ALTER TABLE Nom_Pagos ADD Detalle NVARCHAR(500) NULL;
 END
 GO
 

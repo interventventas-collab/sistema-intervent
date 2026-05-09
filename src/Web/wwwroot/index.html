@@ -133,7 +133,7 @@
                     map.setView([lat, lng], zoom || 16);
                 },
                 destroy() {
-                    if (map) { map.remove(); map = null; layer = null; }
+                    if (map) { map.remove(); map = null; layer = null; zonesLayer = null; }
                     dotNetRef = null;
                 }
             };

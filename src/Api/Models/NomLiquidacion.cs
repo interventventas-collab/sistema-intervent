@@ -97,6 +97,15 @@ public class NomPago
     [Column(TypeName = "decimal(18,2)")]
     public decimal Monto { get; set; }
 
+    // Concepto del pago — para diferenciar en concepto de qué se paga.
+    // Valores: sueldo | comision_cafe | horas_extra | bono | adelanto | aguinaldo | otro
+    [Required, MaxLength(30)]
+    public string Concepto { get; set; } = "sueldo";
+
+    // Detalle libre del concepto (ej: "kg de cafe vendidos en marzo: 120kg").
+    [MaxLength(500)]
+    public string? Detalle { get; set; }
+
     [MaxLength(500)]
     public string? Notas { get; set; }
 

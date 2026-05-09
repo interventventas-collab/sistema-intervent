@@ -153,12 +153,19 @@ public class NomLiquidacionesController : ControllerBase
         if (req.Monto > saldo + 0.01m)
             return BadRequest(new { error = $"El monto excede el saldo pendiente (${saldo:N2})" });
 
+        // Concepto: validamos contra la lista permitida; si viene vacio o invalido, default a "sueldo".
+        var conceptosValidos = new HashSet<string> { "sueldo", "comision_cafe", "horas_extra", "bono", "adelanto", "aguinaldo", "otro" };
+        var concepto = (req.Concepto ?? "sueldo").Trim().ToLowerInvariant();
+        if (!conceptosValidos.Contains(concepto)) concepto = "otro";
+
         var pago = new NomPago
         {
             LiquidacionId = req.LiquidacionId,
             FechaPago = (req.FechaPago ?? DateTime.Today).Date,
             Metodo = req.Metodo.Trim().ToLowerInvariant(),
             Monto = req.Monto,
+            Concepto = concepto,
+            Detalle = string.IsNullOrWhiteSpace(req.Detalle) ? null : req.Detalle.Trim(),
             Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim(),
             CreatedAt = DateTime.UtcNow
         };
@@ -261,6 +268,8 @@ public class NomLiquidacionesController : ControllerBase
             totalPagado, l.NetoAPagar - totalPagado,
             l.CreatedAt, l.UpdatedAt,
             l.Pagos.OrderByDescending(p => p.FechaPago).Select(p => new NomPagoDto(
-                p.Id, p.LiquidacionId, p.FechaPago, p.Metodo, p.Monto, p.Notas, p.CreatedAt)).ToList());
+                p.Id, p.LiquidacionId, p.FechaPago, p.Metodo, p.Monto,
+                p.Concepto, p.Detalle,
+                p.Notas, p.CreatedAt)).ToList());
     }
 }

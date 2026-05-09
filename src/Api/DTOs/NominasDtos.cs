@@ -32,7 +32,9 @@ public class UpdateNomEmpleadoRequest
 
 // ===== Liquidaciones =====
 public record NomPagoDto(
-    int Id, int LiquidacionId, DateTime FechaPago, string Metodo, decimal Monto, string? Notas, DateTime CreatedAt);
+    int Id, int LiquidacionId, DateTime FechaPago, string Metodo, decimal Monto,
+    string Concepto, string? Detalle,
+    string? Notas, DateTime CreatedAt);
 
 public record NomLiquidacionDto(
     int Id, int EmpleadoId, string EmpleadoNombre, string? EmpleadoPuesto,
@@ -86,6 +88,8 @@ public class CreateNomPagoRequest
     public DateTime? FechaPago { get; set; }
     public string Metodo { get; set; } = "efectivo";
     public decimal Monto { get; set; }
+    public string Concepto { get; set; } = "sueldo";
+    public string? Detalle { get; set; }
     public string? Notas { get; set; }
 }
 

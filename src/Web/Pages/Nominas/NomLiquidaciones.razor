@@ -269,13 +269,30 @@
 
                         @if (editingLiq.Pagos.Count > 0)
                         {
+                            var porConcepto = editingLiq.Pagos.GroupBy(x => x.Concepto)
+                                .Select(g => new { Concepto = g.Key, Monto = g.Sum(x => x.Monto) })
+                                .OrderByDescending(x => x.Monto).ToList();
+
+                            if (porConcepto.Count > 1)
+                            {
+                                <div style="display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.5rem; padding: 0.4rem; background: white; border-radius: 6px; border: 1px solid #e5e7eb;">
+                                    <span style="font-size: 0.72rem; color: #6b7280; align-self: center; font-weight: 600;">Pagado por concepto:</span>
+                                    @foreach (var pc in porConcepto)
+                                    {
+                                        <span style="font-size: 0.78rem; padding: 0.15rem 0.5rem; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 999px; color: #0369a1; font-weight: 600;">
+                                            @ConceptoIcono(pc.Concepto) @ConceptoLabel(pc.Concepto): <strong>$@FormatMoney(pc.Monto)</strong>
+                                        </span>
+                                    }
+                                </div>
+                            }
                             <table class="data-table" style="font-size: 0.85rem; margin-bottom: 0.5rem;">
                                 <thead>
                                     <tr>
                                         <th>Fecha</th>
+                                        <th>Concepto</th>
                                         <th>Método</th>
                                         <th style="text-align: right;">Monto</th>
-                                        <th>Notas</th>
+                                        <th>Detalle / Notas</th>
                                         <th style="width: 50px;"></th>
                                     </tr>
                                 </thead>
@@ -284,9 +301,13 @@
                                     {
                                         <tr>
                                             <td>@p.FechaPago.ToString("dd/MM/yyyy")</td>
+                                            <td style="white-space: nowrap;">@ConceptoIcono(p.Concepto) @ConceptoLabel(p.Concepto)</td>
                                             <td style="text-transform: capitalize;">@p.Metodo</td>
                                             <td style="text-align: right; font-weight: 700;">$@FormatMoney(p.Monto)</td>
-                                            <td style="color: #6b7280; font-size: 0.78rem;">@(p.Notas ?? "")</td>
+                                            <td style="color: #6b7280; font-size: 0.78rem;">
+                                                @if (!string.IsNullOrEmpty(p.Detalle)) { <div>@p.Detalle</div> }
+                                                @if (!string.IsNullOrEmpty(p.Notas)) { <div style="color: #9ca3af; font-style: italic;">@p.Notas</div> }
+                                            </td>
                                             <td>
                                                 <button class="btn-icon btn-delete" @onclick="() => DeletePago(p.Id)" title="Borrar pago">×</button>
                                             </td>
@@ -305,6 +326,18 @@
                                         <label class="form-label" style="font-size: 0.75rem;">Fecha</label>
                                         <input class="form-input" type="date" @bind="pagoFecha" />
                                     </div>
+                                    <div class="form-group" style="flex: 1.4;">
+                                        <label class="form-label" style="font-size: 0.75rem;">Concepto *</label>
+                                        <select class="form-input" @bind="pagoConcepto">
+                                            <option value="sueldo">💰 Sueldo</option>
+                                            <option value="comision_cafe">☕ Comisión café (kg)</option>
+                                            <option value="horas_extra">⏰ Horas extras</option>
+                                            <option value="bono">🎁 Bono</option>
+                                            <option value="adelanto">💸 Adelanto</option>
+                                            <option value="aguinaldo">🎄 Aguinaldo</option>
+                                            <option value="otro">📝 Otro</option>
+                                        </select>
+                                    </div>
                                     <div class="form-group" style="flex: 1;">
                                         <label class="form-label" style="font-size: 0.75rem;">Método</label>
                                         <select class="form-input" @bind="pagoMetodo">
@@ -318,16 +351,22 @@
                                         <label class="form-label" style="font-size: 0.75rem;">Monto ($)</label>
                                         <input class="form-input" type="number" step="0.01" min="0.01" @bind="pagoMonto" />
                                     </div>
-                                    <div class="form-group" style="flex: 2;">
-                                        <label class="form-label" style="font-size: 0.75rem;">Notas (opcional)</label>
-                                        <input class="form-input" @bind="pagoNotas" placeholder="Ej: Numero de comprobante, Banco..." />
-                                    </div>
                                     <div class="form-group" style="flex: 0 0 110px;">
                                         <button class="btn btn-primary" type="button" @onclick="AddPago" style="width: 100%;">+ Pagar</button>
                                     </div>
                                 </div>
+                                <div class="form-row" style="margin-top: 0.4rem;">
+                                    <div class="form-group" style="flex: 2;">
+                                        <label class="form-label" style="font-size: 0.75rem;">Detalle del concepto (opcional)</label>
+                                        <input class="form-input" @bind="pagoDetalle" placeholder="Ej: 120kg café marzo, 15hs extras del 5/4..." />
+                                    </div>
+                                    <div class="form-group" style="flex: 2;">
+                                        <label class="form-label" style="font-size: 0.75rem;">Notas (opcional)</label>
+                                        <input class="form-input" @bind="pagoNotas" placeholder="Ej: Nº comprobante, banco..." />
+                                    </div>
+                                </div>
                                 <p style="font-size: 0.75rem; color: #6b7280; margin: 0.3rem 0 0;">
-                                    💡 Tip: tocá "Pagar todo" para usar el saldo completo.
+                                    💡 Tip: tocá "Usar saldo" para pagar el saldo completo en este concepto.
                                     <button class="btn btn-secondary" type="button" @onclick="UsarSaldoCompleto" style="font-size: 0.75rem; padding: 0.15rem 0.5rem; margin-left: 0.3rem;">Usar saldo $@FormatMoney(editingLiq.Saldo)</button>
                                 </p>
                             </div>
@@ -402,8 +441,34 @@
     // Pago form
     private DateTime pagoFecha = DateTime.Today;
     private string pagoMetodo = "efectivo";
+    private string pagoConcepto = "sueldo";
     private decimal pagoMonto;
+    private string pagoDetalle = "";
     private string pagoNotas = "";
+
+    private static string ConceptoLabel(string c) => c switch
+    {
+        "sueldo" => "Sueldo",
+        "comision_cafe" => "Comisión café",
+        "horas_extra" => "Horas extras",
+        "bono" => "Bono",
+        "adelanto" => "Adelanto",
+        "aguinaldo" => "Aguinaldo",
+        "otro" => "Otro",
+        _ => c
+    };
+
+    private static string ConceptoIcono(string c) => c switch
+    {
+        "sueldo" => "💰",
+        "comision_cafe" => "☕",
+        "horas_extra" => "⏰",
+        "bono" => "🎁",
+        "adelanto" => "💸",
+        "aguinaldo" => "🎄",
+        "otro" => "📝",
+        _ => "•"
+    };
 
     // Delete
     private bool showDeleteConfirm;
@@ -554,11 +619,14 @@
                 FechaPago = pagoFecha,
                 Metodo = pagoMetodo,
                 Monto = pagoMonto,
+                Concepto = pagoConcepto,
+                Detalle = pagoDetalle,
                 Notas = pagoNotas
             });
             if (updated is null) { ToastService.Error("No se pudo registrar el pago"); return; }
             editingLiq = updated;
-            pagoFecha = DateTime.Today; pagoMetodo = "efectivo"; pagoMonto = 0; pagoNotas = "";
+            pagoFecha = DateTime.Today; pagoMetodo = "efectivo"; pagoConcepto = "sueldo";
+            pagoMonto = 0; pagoDetalle = ""; pagoNotas = "";
             ToastService.Success("Pago registrado");
             await Load();
         }
