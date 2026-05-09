@@ -11,6 +11,7 @@ public class NomEmpleadoDto
     public decimal ValorHora { get; set; }
     public decimal? ComisionPorcentaje { get; set; }
     public decimal ComisionPorKg { get; set; }
+    public decimal BonoFijo { get; set; }
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
@@ -26,6 +27,7 @@ public class CreateNomEmpleadoRequest
     public decimal ValorHora { get; set; }
     public decimal? ComisionPorcentaje { get; set; }
     public decimal ComisionPorKg { get; set; }
+    public decimal BonoFijo { get; set; }
 }
 
 public class UpdateNomEmpleadoRequest
@@ -38,6 +40,7 @@ public class UpdateNomEmpleadoRequest
     public decimal? ValorHora { get; set; }
     public decimal? ComisionPorcentaje { get; set; }
     public decimal? ComisionPorKg { get; set; }
+    public decimal? BonoFijo { get; set; }
     public bool? IsActive { get; set; }
 }
 

@@ -1604,6 +1604,7 @@ BEGIN
         ValorHora DECIMAL(18,2) NOT NULL DEFAULT 0,
         ComisionPorcentaje DECIMAL(8,2) NULL,
         ComisionPorKg DECIMAL(18,2) NOT NULL DEFAULT 0,
+        BonoFijo DECIMAL(18,2) NOT NULL DEFAULT 0,
         IsActive BIT NOT NULL DEFAULT 1,
         CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
         UpdatedAt DATETIME2 NULL
@@ -1617,6 +1618,14 @@ IF EXISTS (SELECT * FROM sysobjects WHERE name='Nom_Empleados' AND xtype='U')
    AND NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ComisionPorKg' AND Object_ID=OBJECT_ID('Nom_Empleados'))
 BEGIN
     ALTER TABLE Nom_Empleados ADD ComisionPorKg DECIMAL(18,2) NOT NULL DEFAULT 0;
+END
+GO
+
+-- Migracion: agregar BonoFijo a Nom_Empleados (instalaciones existentes)
+IF EXISTS (SELECT * FROM sysobjects WHERE name='Nom_Empleados' AND xtype='U')
+   AND NOT EXISTS (SELECT * FROM sys.columns WHERE Name='BonoFijo' AND Object_ID=OBJECT_ID('Nom_Empleados'))
+BEGIN
+    ALTER TABLE Nom_Empleados ADD BonoFijo DECIMAL(18,2) NOT NULL DEFAULT 0;
 END
 GO
 

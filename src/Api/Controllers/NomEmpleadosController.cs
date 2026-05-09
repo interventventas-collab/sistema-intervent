@@ -19,7 +19,7 @@ public class NomEmpleadosController : ControllerBase
     private static NomEmpleadoDto Map(NomEmpleado e) => new(
         e.Id, e.Nombre, e.Documento, e.Puesto, e.FechaIngreso,
         e.SueldoBase, e.ValorHora, e.ComisionPorcentaje,
-        e.ComisionPorKg,
+        e.ComisionPorKg, e.BonoFijo,
         e.IsActive, e.CreatedAt, e.UpdatedAt);
 
     [HttpGet]
@@ -55,6 +55,7 @@ public class NomEmpleadosController : ControllerBase
             ValorHora = req.ValorHora,
             ComisionPorcentaje = req.ComisionPorcentaje,
             ComisionPorKg = Math.Max(0m, req.ComisionPorKg),
+            BonoFijo = Math.Max(0m, req.BonoFijo),
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
@@ -89,6 +90,7 @@ public class NomEmpleadosController : ControllerBase
         }
         if (req.ComisionPorcentaje.HasValue) e.ComisionPorcentaje = req.ComisionPorcentaje.Value;
         if (req.ComisionPorKg.HasValue) e.ComisionPorKg = Math.Max(0m, req.ComisionPorKg.Value);
+        if (req.BonoFijo.HasValue) e.BonoFijo = Math.Max(0m, req.BonoFijo.Value);
         if (req.IsActive.HasValue) e.IsActive = req.IsActive.Value;
         e.UpdatedAt = DateTime.UtcNow;
 

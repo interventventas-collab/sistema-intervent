@@ -35,6 +35,7 @@
                             <th style="text-align: right;">Sueldo base</th>
                             <th style="text-align: right;">Valor hora</th>
                             <th style="text-align: right;">☕ Com. x kg</th>
+                            <th style="text-align: right;">🎁 Bono fijo</th>
                             <th>Estado</th>
                             <th style="width: 130px;">Acciones</th>
                         </tr>
@@ -50,6 +51,7 @@
                                 <td style="text-align: right; font-weight: 700;">$@FormatMoney(e.SueldoBase)</td>
                                 <td style="text-align: right;">$@FormatMoney(e.ValorHora)</td>
                                 <td style="text-align: right; color: #6b7280;">@(e.ComisionPorKg > 0 ? $"${FormatMoney(e.ComisionPorKg)}" : "—")</td>
+                                <td style="text-align: right; color: #6b7280;">@(e.BonoFijo > 0 ? $"${FormatMoney(e.BonoFijo)}" : "—")</td>
                                 <td>
                                     <span class="status-badge @(e.IsActive ? "status-active" : "status-inactive")">
                                         @(e.IsActive ? "Activo" : "Inactivo")
@@ -118,6 +120,13 @@
                         <p style="font-size: 0.75rem; color: #6b7280; margin: 0.2rem 0 0;">Se multiplica por los kg vendidos en la liquidación.</p>
                     </div>
                 </div>
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">🎁 Bono fijo mensual ($)</label>
+                        <input class="form-input" type="number" step="0.01" min="0" @bind="formBonoFijo" placeholder="Ej: 100000 — dejar en 0 si no tiene bono fijo" />
+                        <p style="font-size: 0.75rem; color: #6b7280; margin: 0.2rem 0 0;">Se pre-carga en "Bonos" cada vez que crees una liquidación nueva del empleado. Podés sobrescribir el monto en la liquidación si un mes es distinto.</p>
+                    </div>
+                </div>
                 @if (isEditing)
                 {
                     <div class="form-group">
@@ -175,6 +184,7 @@
     private decimal formValorHora;
     private decimal? formComisionPct;
     private decimal formComisionPorKg;
+    private decimal formBonoFijo;
     private bool formIsActive = true;
     private bool showDeleteConfirm;
     private NomEmpleadoDto? empToDelete;
@@ -194,7 +204,7 @@
         isEditing = false; editingId = null;
         formNombre = ""; formDocumento = ""; formPuesto = "";
         formFechaIngreso = DateTime.Today;
-        formSueldoBase = 0m; formValorHora = 0m; formComisionPct = null; formComisionPorKg = 0m;
+        formSueldoBase = 0m; formValorHora = 0m; formComisionPct = null; formComisionPorKg = 0m; formBonoFijo = 0m;
         formIsActive = true;
         formError = null; showForm = true;
     }
@@ -206,6 +216,7 @@
         formFechaIngreso = e.FechaIngreso.Date;
         formSueldoBase = e.SueldoBase; formValorHora = e.ValorHora;
         formComisionPct = e.ComisionPorcentaje; formComisionPorKg = e.ComisionPorKg;
+        formBonoFijo = e.BonoFijo;
         formIsActive = e.IsActive;
         formError = null; showForm = true;
     }
@@ -227,6 +238,7 @@
                     FechaIngreso = formFechaIngreso, SueldoBase = formSueldoBase,
                     ValorHora = formValorHora, ComisionPorcentaje = formComisionPct,
                     ComisionPorKg = formComisionPorKg,
+                    BonoFijo = formBonoFijo,
                     IsActive = formIsActive
                 });
                 if (updated is null) { formError = "No se pudo actualizar"; return; }
@@ -239,7 +251,8 @@
                     Nombre = formNombre, Documento = formDocumento, Puesto = formPuesto,
                     FechaIngreso = formFechaIngreso, SueldoBase = formSueldoBase,
                     ValorHora = formValorHora, ComisionPorcentaje = formComisionPct,
-                    ComisionPorKg = formComisionPorKg
+                    ComisionPorKg = formComisionPorKg,
+                    BonoFijo = formBonoFijo
                 });
                 if (created is null) { formError = "No se pudo crear"; return; }
                 ToastService.Success("Empleado creado");

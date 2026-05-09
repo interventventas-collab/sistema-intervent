@@ -114,7 +114,7 @@
                     <div class="form-row">
                         <div class="form-group" style="flex: 2;">
                             <label class="form-label">Empleado *</label>
-                            <select class="form-input" @bind="formEmpleadoId" disabled="@isEditing">
+                            <select class="form-input" @bind="formEmpleadoId" @bind:after="OnEmpleadoElegido" disabled="@isEditing">
                                 <option value="0">— Elegí un empleado —</option>
                                 @foreach (var e in empleados ?? new())
                                 {
@@ -485,6 +485,19 @@
     private NomLiquidacionDto? liqToDelete;
 
     private static int[] Anios => Enumerable.Range(DateTime.Today.Year - 3, 5).ToArray();
+
+    /// <summary>
+    /// Cuando el usuario elige un empleado en una liquidacion NUEVA, pre-cargamos
+    /// el campo "Bonos" con el bono fijo mensual del empleado (si tiene). Si el mes
+    /// es distinto, el usuario puede sobrescribir el monto.
+    /// </summary>
+    private void OnEmpleadoElegido()
+    {
+        if (isEditing) return; // en edicion no pisamos lo que ya esta cargado
+        var emp = empleados?.FirstOrDefault(e => e.Id == formEmpleadoId);
+        if (emp is null) return;
+        if (emp.BonoFijo > 0) formBonos = emp.BonoFijo;
+    }
 
     private decimal SueldoBaseEmp => empleados?.FirstOrDefault(e => e.Id == formEmpleadoId)?.SueldoBase ?? 0m;
     private decimal ValorHoraEmp => empleados?.FirstOrDefault(e => e.Id == formEmpleadoId)?.ValorHora ?? 0m;

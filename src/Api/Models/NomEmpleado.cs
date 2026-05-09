@@ -35,6 +35,11 @@ public class NomEmpleado
     [Column(TypeName = "decimal(18,2)")]
     public decimal ComisionPorKg { get; set; }
 
+    // Bono fijo mensual del empleado (algunos lo tienen fijo, ej: $100.000).
+    // Se pre-carga en el campo Bonos al crear una liquidacion nueva — el usuario puede sobrescribir.
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal BonoFijo { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

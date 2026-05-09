@@ -5,7 +5,7 @@ public record NomEmpleadoDto(
     int Id, string Nombre, string? Documento, string? Puesto,
     DateTime FechaIngreso,
     decimal SueldoBase, decimal ValorHora, decimal? ComisionPorcentaje,
-    decimal ComisionPorKg,
+    decimal ComisionPorKg, decimal BonoFijo,
     bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt);
 
 public class CreateNomEmpleadoRequest
@@ -18,6 +18,7 @@ public class CreateNomEmpleadoRequest
     public decimal ValorHora { get; set; }
     public decimal? ComisionPorcentaje { get; set; }
     public decimal ComisionPorKg { get; set; }
+    public decimal BonoFijo { get; set; }
 }
 
 public class UpdateNomEmpleadoRequest
@@ -30,6 +31,7 @@ public class UpdateNomEmpleadoRequest
     public decimal? ValorHora { get; set; }
     public decimal? ComisionPorcentaje { get; set; }
     public decimal? ComisionPorKg { get; set; }
+    public decimal? BonoFijo { get; set; }
     public bool? IsActive { get; set; }
 }
 
