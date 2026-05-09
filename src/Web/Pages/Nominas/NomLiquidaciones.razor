@@ -330,12 +330,12 @@
                                         <label class="form-label" style="font-size: 0.75rem;">Concepto *</label>
                                         <select class="form-input" @bind="pagoConcepto">
                                             <option value="sueldo">💰 Sueldo</option>
-                                            <option value="comision_cafe">☕ Comisión café (kg)</option>
                                             <option value="horas_extra">⏰ Horas extras</option>
-                                            <option value="bono">🎁 Bono</option>
-                                            <option value="adelanto">💸 Adelanto</option>
+                                            <option value="comision_cafe">☕ Comisión</option>
+                                            <option value="bono">🎁 Bonos</option>
+                                            <option value="adelanto">💸 Adelantos</option>
                                             <option value="aguinaldo">🎄 Aguinaldo</option>
-                                            <option value="otro">📝 Otro</option>
+                                            <option value="otro">📝 Otros descuentos</option>
                                         </select>
                                     </div>
                                     <div class="form-group" style="flex: 1;">
@@ -449,12 +449,12 @@
     private static string ConceptoLabel(string c) => c switch
     {
         "sueldo" => "Sueldo",
-        "comision_cafe" => "Comisión café",
         "horas_extra" => "Horas extras",
-        "bono" => "Bono",
-        "adelanto" => "Adelanto",
+        "comision_cafe" => "Comisión",
+        "bono" => "Bonos",
+        "adelanto" => "Adelantos",
         "aguinaldo" => "Aguinaldo",
-        "otro" => "Otro",
+        "otro" => "Otros descuentos",
         _ => c
     };
 
