@@ -137,3 +137,28 @@ public class ArcaRangoFechasRequest
     public string? Desde { get; set; }
     public string? Hasta { get; set; }
 }
+
+// ===== ARCA Webservice (.pfx) =====
+public class ArcaWebserviceAccountDto
+{
+    public int Id { get; set; }
+    public string Cuit { get; set; } = "";
+    public string? Alias { get; set; }
+    public string FileName { get; set; } = "";
+    public string FilePath { get; set; } = "";
+    public string? Password { get; set; }
+    public string Environment { get; set; } = "production";
+    public DateTime? ExpiresAt { get; set; }
+    public bool IsActive { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+}
+
+public class UpdateArcaWebserviceAccountRequest
+{
+    public string? Alias { get; set; }
+    /// <summary>Si null no toca la pass; si "" la blanquea.</summary>
+    public string? Password { get; set; }
+    public string? Environment { get; set; }
+    public bool? IsActive { get; set; }
+}

@@ -156,6 +156,40 @@ BEGIN
 END
 GO
 
+-- ArcaWebserviceAccounts table — certificados .pfx para autenticarse contra
+-- los webservices de ARCA. Cada CUIT puede tener varios certificados (distintos
+-- alias/ambientes). El archivo .pfx vive en disco bajo "Certificados ARCA/<cuit>/".
+-- Aca solo guardamos el path relativo + metadata. Environment = production | homologation.
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ArcaWebserviceAccounts' AND xtype='U')
+BEGIN
+    CREATE TABLE ArcaWebserviceAccounts (
+        Id INT PRIMARY KEY IDENTITY(1,1),
+        Cuit NVARCHAR(11) NOT NULL,
+        Alias NVARCHAR(100) NULL,
+        FileName NVARCHAR(255) NOT NULL,
+        FilePath NVARCHAR(500) NOT NULL,
+        Password NVARCHAR(500) NULL,
+        Environment NVARCHAR(20) NOT NULL DEFAULT 'production',
+        ExpiresAt DATETIME2 NULL,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT UQ_ArcaWS_CuitFile UNIQUE (Cuit, FileName)
+    );
+    CREATE INDEX IX_ArcaWS_Cuit ON ArcaWebserviceAccounts (Cuit);
+END
+GO
+
+-- Migracion: si la tabla ArcaWebserviceAccounts ya existe pero le falta la
+-- columna Environment (instalaciones que probaron una version intermedia),
+-- agregarla con default 'production'.
+IF EXISTS (SELECT * FROM sysobjects WHERE name='ArcaWebserviceAccounts' AND xtype='U')
+   AND NOT EXISTS (SELECT * FROM sys.columns WHERE Name='Environment' AND Object_ID=OBJECT_ID('ArcaWebserviceAccounts'))
+BEGIN
+    ALTER TABLE ArcaWebserviceAccounts ADD Environment NVARCHAR(20) NOT NULL DEFAULT 'production';
+END
+GO
+
 -- MeliOrders table
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='MeliOrders' AND xtype='U')
 BEGIN

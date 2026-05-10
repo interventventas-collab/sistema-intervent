@@ -1105,6 +1105,51 @@ public class ApiClient
     public async Task<ArcaTestStatusDto?> GetArcaTestStatusAsync()
         => await GetAsync<ArcaTestStatusDto>("/api/arca/test/status");
 
+    // --- ARCA Webservice (certificados .pfx) ---
+    public async Task<List<ArcaWebserviceAccountDto>?> GetArcaWebserviceAccountsAsync()
+        => await GetAsync<List<ArcaWebserviceAccountDto>>("/api/arca-webservice/accounts");
+
+    public async Task<(bool ok, string? error, ArcaWebserviceAccountDto? dto)> UploadArcaWebserviceAccountAsync(
+        string cuit, string? alias, string? password, string environment, Stream fileStream, string fileName)
+    {
+        await SetAuthHeaderAsync();
+        using var content = new MultipartFormDataContent();
+        var streamContent = new StreamContent(fileStream);
+        streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/x-pkcs12");
+        content.Add(streamContent, "file", fileName);
+        content.Add(new StringContent(cuit ?? ""), "cuit");
+        if (!string.IsNullOrEmpty(alias)) content.Add(new StringContent(alias), "alias");
+        if (!string.IsNullOrEmpty(password)) content.Add(new StringContent(password), "password");
+        content.Add(new StringContent(string.IsNullOrEmpty(environment) ? "production" : environment), "environment");
+
+        var response = await _http.PostAsync("/api/arca-webservice/accounts", content);
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            await HandleUnauthorizedAsync();
+            return (false, "Sesión expirada", null);
+        }
+        if (response.IsSuccessStatusCode)
+        {
+            var dto = await response.Content.ReadFromJsonAsync<ArcaWebserviceAccountDto>();
+            return (true, null, dto);
+        }
+        var body = await response.Content.ReadAsStringAsync();
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("error", out var err))
+                return (false, err.GetString(), null);
+        }
+        catch { }
+        return (false, body, null);
+    }
+
+    public async Task<ArcaWebserviceAccountDto?> UpdateArcaWebserviceAccountAsync(int id, UpdateArcaWebserviceAccountRequest req)
+        => await PutAsync<ArcaWebserviceAccountDto>($"/api/arca-webservice/accounts/{id}", req);
+
+    public async Task<bool> DeleteArcaWebserviceAccountAsync(int id)
+        => await DeleteAsync($"/api/arca-webservice/accounts/{id}");
+
     /// <summary>Dispara la descarga de Mis Comprobantes (Emitidos + Recibidos) — pollear status.</summary>
     public async Task<(bool ok, string? error)> StartArcaComprobantesAsync(int accountId, ArcaRangoFechasRequest rango)
     {

@@ -61,3 +61,32 @@ public class UpdateArcaAccountRequest
     public string? Password { get; set; }
     public bool? IsActive { get; set; }
 }
+
+// ===== ARCA (webservice) — certificados .pfx =====
+// Atención: Password sí se devuelve al DTO porque el modal de edición debe poder
+// mostrarla con el ojito 👁. Si en algún momento querés que sea read-only, sacala.
+public record ArcaWebserviceAccountDto(
+    int Id,
+    string Cuit,
+    string? Alias,
+    string FileName,
+    string FilePath,
+    string? Password,
+    string Environment,
+    DateTime? ExpiresAt,
+    bool IsActive,
+    DateTime CreatedAt,
+    DateTime? UpdatedAt
+);
+
+/// <summary>Body de update — solo los campos editables (no FileName ni Cuit ni FilePath).</summary>
+public class UpdateArcaWebserviceAccountRequest
+{
+    [MaxLength(100)]
+    public string? Alias { get; set; }
+    /// <summary>Si viene null, NO se toca la contraseña actual. Si viene "" se setea como vacía.</summary>
+    public string? Password { get; set; }
+    [MaxLength(20)]
+    public string? Environment { get; set; }
+    public bool? IsActive { get; set; }
+}

@@ -76,6 +76,16 @@
                                 </div>
                             </button>
                         }
+                        @if (arcaWsId == 0)
+                        {
+                            <button class="add-integration-option" @onclick="() => AddIntegration_ArcaWs()">
+                                <span class="integration-logo-icon arca-ws-logo" style="width:28px;height:28px;font-size:0.55rem; text-align:center; line-height:1.05; padding:2px;">ARCA<br/>WS</span>
+                                <div>
+                                    <strong>ARCA (webservice)</strong>
+                                    <small>Certificados .pfx para los webservices de ARCA</small>
+                                </div>
+                            </button>
+                        }
                     </div>
                 }
             </div>
@@ -471,6 +481,103 @@
                 else
                 {
                     <p class="text-muted" style="padding: 1rem 1.5rem;">No hay cuentas cargadas todavía. Tocá <strong>"+ Agregar cuenta"</strong> para sumar la primera.</p>
+                }
+            </div>
+        }
+        else
+        {
+            <div style="padding: 1rem 1.5rem;">
+                <p class="text-muted">La integración está inactiva. Tocá <strong>Configurar</strong> para activarla.</p>
+            </div>
+        }
+    </div>
+    }
+
+    <!-- ARCA Webservice (.pfx) — solo si esta configurada -->
+    @if (arcaWsId > 0)
+    {
+    <div class="integration-card @(arcaWsActive ? "integration-active" : "")">
+        <div class="integration-card-header">
+            <div class="integration-logo">
+                <span class="integration-logo-icon arca-ws-logo" style="text-align:center; line-height:1.05; padding:2px; font-size:0.85rem;">ARCA<br/>WS</span>
+            </div>
+            <div class="integration-info">
+                <h3>ARCA (webservice)</h3>
+                <p>Certificados .pfx para autenticarse contra los webservices de ARCA. Cargá uno por CUIT/ambiente; el archivo se guarda en <strong>Archivos → Certificados ARCA → &lt;CUIT&gt;</strong>.</p>
+            </div>
+            <div class="integration-header-actions">
+                <span class="status-badge @(arcaWsActive ? "status-active" : "status-inactive")">
+                    @(arcaWsActive ? "Activa" : "Inactiva")
+                </span>
+                <button class="btn btn-secondary btn-sm" @onclick="OpenArcaWsConfigModal">Configurar</button>
+            </div>
+        </div>
+
+        @if (arcaWsActive)
+        {
+            <div class="integration-accounts">
+                <div class="integration-accounts-header">
+                    <h4>Certificados cargados</h4>
+                    <button class="btn btn-primary" @onclick="OpenArcaWsAddCertModal">+ Cargar certificado</button>
+                </div>
+
+                @if (arcaWsCerts is not null && arcaWsCerts.Count > 0)
+                {
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>CUIT</th>
+                                    <th>Alias</th>
+                                    <th>Archivo</th>
+                                    <th>Ambiente</th>
+                                    <th>Vencimiento</th>
+                                    <th>Estado</th>
+                                    <th>Cargado</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var c in arcaWsCerts)
+                                {
+                                    var (vencColor, vencTexto) = VencimientoEstilo(c.ExpiresAt);
+                                    var ambienteEsHom = string.Equals(c.Environment, "homologation", StringComparison.OrdinalIgnoreCase);
+                                    <tr>
+                                        <td><strong>@FormatCuit(c.Cuit)</strong></td>
+                                        <td>@(string.IsNullOrEmpty(c.Alias) ? "—" : c.Alias)</td>
+                                        <td style="font-family: monospace; font-size: 0.82rem;">@c.FileName</td>
+                                        <td>
+                                            <span class="status-badge"
+                                                  style="background: @(ambienteEsHom ? "#fef3c7" : "#dbeafe"); color: @(ambienteEsHom ? "#92400e" : "#1e40af"); border: 1px solid @(ambienteEsHom ? "#fcd34d" : "#93c5fd");">
+                                                @(ambienteEsHom ? "Homologación" : "Producción")
+                                            </span>
+                                        </td>
+                                        <td><span style="color: @vencColor; font-weight: 600;">@vencTexto</span></td>
+                                        <td>
+                                            <span class="status-badge @(c.IsActive ? "status-active" : "status-inactive")">
+                                                @(c.IsActive ? "Activo" : "Inactivo")
+                                            </span>
+                                        </td>
+                                        <td>@c.CreatedAt.ToString("dd/MM/yyyy")</td>
+                                        <td>
+                                            <div class="actions-cell">
+                                                <button class="btn-icon btn-edit" @onclick="() => OpenArcaWsEditCertModal(c)" title="Editar">
+                                                    @SvgIcons.Edit
+                                                </button>
+                                                <button class="btn-icon btn-delete" @onclick="() => DeleteArcaWsCert(c.Id, c.FileName)" title="Eliminar">
+                                                    @SvgIcons.AlertCircle
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else
+                {
+                    <p class="text-muted" style="padding: 1rem 1.5rem;">No hay certificados cargados todavía. Tocá <strong>"+ Cargar certificado"</strong>.</p>
                 }
             </div>
         }
@@ -1325,6 +1432,137 @@
 }
 
 
+<!-- Modal: Configuración ARCA Webservice -->
+@if (showArcaWsConfigModal)
+{
+    <div class="modal-overlay" @onclick="CloseArcaWsConfigModal">
+        <div class="modal-card" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>Configuración de ARCA (webservice)</h3>
+                <button class="btn-close" @onclick="CloseArcaWsConfigModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(arcaWsError))
+                {
+                    <div class="form-error">@arcaWsError</div>
+                }
+                <p class="text-muted" style="margin-bottom: 1rem;">
+                    Subí los certificados .pfx que usás para los webservices de ARCA (factura electrónica, padrón, etc.). Cada uno se asocia a un CUIT y un ambiente (Producción / Homologación).
+                </p>
+                <div class="form-group">
+                    <label class="form-label">
+                        <input type="checkbox" @bind="arcaWsActive" /> Integración activa
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                @if (arcaWsId > 0)
+                {
+                    <button class="btn btn-danger" @onclick="DeleteArcaWsIntegration" disabled="@arcaWsSaving">
+                        Eliminar integración
+                    </button>
+                }
+                <button class="btn btn-secondary" @onclick="CloseArcaWsConfigModal">Cancelar</button>
+                <button class="btn btn-primary" @onclick="SaveArcaWsConfig" disabled="@arcaWsSaving">
+                    @(arcaWsSaving ? "Guardando..." : "Guardar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Modal: Cargar / Editar certificado .pfx -->
+@if (showArcaWsCertModal)
+{
+    <div class="modal-overlay" @onclick="CloseArcaWsCertModal">
+        <div class="modal-card" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>@(arcaWsIsEditing ? "Editar certificado" : "Cargar certificado")</h3>
+                <button class="btn-close" @onclick="CloseArcaWsCertModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(arcaWsCertError))
+                {
+                    <div class="form-error">@arcaWsCertError</div>
+                }
+                <div class="form-group">
+                    <label class="form-label">CUIT *</label>
+                    <input type="text" class="form-input" @bind="arcaWsFormCuit"
+                           placeholder="Ej: 30-71593809-1" maxlength="13"
+                           disabled="@arcaWsIsEditing" />
+                    @if (arcaWsIsEditing)
+                    {
+                        <span class="input-hint">El CUIT no se puede cambiar; eliminá el certificado y cargá uno nuevo si necesitás cambiarlo.</span>
+                    }
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Alias (opcional)</label>
+                    <input type="text" class="form-input" @bind="arcaWsFormAlias"
+                           placeholder="Ej: Facturación electrónica producción" maxlength="100" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Ambiente *</label>
+                    <select class="form-input" @bind="arcaWsFormEnvironment">
+                        <option value="production">Producción</option>
+                        <option value="homologation">Homologación</option>
+                    </select>
+                </div>
+
+                @if (!arcaWsIsEditing)
+                {
+                    <div class="form-group">
+                        <label class="form-label">Archivo .pfx *</label>
+                        <InputFile OnChange="OnArcaWsFilePicked" accept=".pfx" class="form-input" />
+                        @if (!string.IsNullOrEmpty(arcaWsSelectedFileName))
+                        {
+                            <span class="input-hint">Seleccionado: <strong>@arcaWsSelectedFileName</strong></span>
+                        }
+                        else
+                        {
+                            <span class="input-hint">Tamaño máximo 10 MB.</span>
+                        }
+                    </div>
+                }
+
+                <div class="form-group">
+                    <label class="form-label">Contraseña del .pfx (opcional)</label>
+                    <div style="position: relative;">
+                        <input type="@(arcaWsShowPassword ? "text" : "password")"
+                               class="form-input" @bind="arcaWsFormPassword"
+                               placeholder="Si el .pfx tiene clave de exportación, ponela acá"
+                               style="padding-right: 2.4rem;" />
+                        <button type="button" class="btn-icon"
+                                @onclick="() => arcaWsShowPassword = !arcaWsShowPassword"
+                                style="position: absolute; right: 0.4rem; top: 50%; transform: translateY(-50%); background: transparent; border: none;"
+                                title="@(arcaWsShowPassword ? "Ocultar" : "Mostrar")">
+                            <i class="fa-solid @(arcaWsShowPassword ? "fa-eye-slash" : "fa-eye")"></i>
+                        </button>
+                    </div>
+                    @if (arcaWsIsEditing)
+                    {
+                        <span class="input-hint">Si la dejás como está, no se modifica.</span>
+                    }
+                </div>
+
+                @if (arcaWsIsEditing)
+                {
+                    <div class="form-group">
+                        <label class="form-label">
+                            <input type="checkbox" @bind="arcaWsFormIsActive" /> Certificado activo
+                        </label>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseArcaWsCertModal" disabled="@arcaWsSaving2">Cancelar</button>
+                <button class="btn btn-primary" @onclick="SaveArcaWsCert" disabled="@arcaWsSaving2">
+                    @(arcaWsSaving2 ? "Guardando..." : (arcaWsIsEditing ? "Guardar cambios" : "Cargar certificado"))
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 <!-- Modal: Configuracion Email SMTP -->
 @if (showEmailModal)
 {
@@ -1492,6 +1730,29 @@
     private string arcaScreenshotUrl = "";       // URL con cache-buster, refresca en cada poll
     private CancellationTokenSource? arcaPollCts;
 
+    // ----- ARCA Webservice (.pfx) -----
+    private int arcaWsId;                                  // Id en `Integrations` con Provider="arca-webservice"
+    private bool arcaWsActive;
+    private bool showArcaWsConfigModal;
+    private bool arcaWsSaving;
+    private string? arcaWsError;
+    private List<ArcaWebserviceAccountDto>? arcaWsCerts;
+
+    // Modal: cargar / editar certificado
+    private bool showArcaWsCertModal;
+    private bool arcaWsIsEditing;
+    private int? arcaWsEditingId;
+    private string arcaWsFormCuit = "";
+    private string arcaWsFormAlias = "";
+    private string arcaWsFormPassword = "";
+    private string arcaWsFormEnvironment = "production";
+    private bool arcaWsFormIsActive = true;
+    private bool arcaWsShowPassword;                       // toggle del ojito 👁
+    private IBrowserFile? arcaWsSelectedFile;
+    private string arcaWsSelectedFileName = "";
+    private bool arcaWsSaving2;                            // saving del modal del cert
+    private string? arcaWsCertError;
+
     // Modos del modal: "test" (login + RUT) | "comprobantes" (descarga CSV)
     private string arcaTestMode = "test";
     // Fases del modal cuando mode = "comprobantes": "configurar" → "corriendo" → "resultado"
@@ -1531,8 +1792,8 @@
 
     // Add integration menu
     private bool showAddMenu;
-    private bool HasConfiguredIntegrations => mlId > 0 || openaiId > 0 || claudeId > 0 || emailId > 0 || waLinked || arcaId > 0;
-    private bool HasAvailableIntegrations => mlId == 0 || openaiId == 0 || claudeId == 0 || emailId == 0 || !waLinked || arcaId == 0;
+    private bool HasConfiguredIntegrations => mlId > 0 || openaiId > 0 || claudeId > 0 || emailId > 0 || waLinked || arcaId > 0 || arcaWsId > 0;
+    private bool HasAvailableIntegrations => mlId == 0 || openaiId == 0 || claudeId == 0 || emailId == 0 || !waLinked || arcaId == 0 || arcaWsId == 0;
 
     // Test user flow
     private bool showTestUserModal;
@@ -1572,6 +1833,7 @@
         await LoadAccounts();
         await LoadWhatsApp();
         await LoadArca();
+        await LoadArcaWs();
     }
 
     // --- WhatsApp methods ---
@@ -3015,6 +3277,319 @@
         arcaCompFase = "configurar";
         arcaPollCts?.Cancel();
         arcaPollCts = null;
+    }
+
+    // ============================================================
+    // ARCA Webservice (.pfx) — métodos
+    // ============================================================
+
+    private async Task LoadArcaWs()
+    {
+        try
+        {
+            var integration = await Api.GetIntegrationAsync("arca-webservice");
+            if (integration is not null)
+            {
+                arcaWsId = integration.Id;
+                arcaWsActive = integration.IsActive;
+            }
+            else
+            {
+                arcaWsId = 0;
+                arcaWsActive = false;
+            }
+        }
+        catch { }
+        await LoadArcaWsCerts();
+    }
+
+    private async Task LoadArcaWsCerts()
+    {
+        try { arcaWsCerts = await Api.GetArcaWebserviceAccountsAsync(); }
+        catch { arcaWsCerts = new(); }
+    }
+
+    private async Task AddIntegration_ArcaWs()
+    {
+        showAddMenu = false;
+        if (arcaWsId == 0)
+        {
+            try
+            {
+                var result = await Api.SaveIntegrationAsync(new SaveIntegrationRequest
+                {
+                    Provider = "arca-webservice",
+                    IsActive = true
+                });
+                if (result is not null)
+                {
+                    arcaWsId = result.Id;
+                    arcaWsActive = result.IsActive;
+                    ToastService.Success("ARCA (webservice) agregada — ahora podés cargar certificados");
+                }
+            }
+            catch
+            {
+                ToastService.Error("No se pudo agregar la integración");
+            }
+        }
+        await LoadArcaWsCerts();
+    }
+
+    private void OpenArcaWsConfigModal()
+    {
+        arcaWsError = null;
+        showArcaWsConfigModal = true;
+    }
+
+    private void CloseArcaWsConfigModal()
+    {
+        showArcaWsConfigModal = false;
+        arcaWsError = null;
+    }
+
+    private async Task SaveArcaWsConfig()
+    {
+        arcaWsError = null;
+        arcaWsSaving = true;
+        try
+        {
+            var result = await Api.SaveIntegrationAsync(new SaveIntegrationRequest
+            {
+                Provider = "arca-webservice",
+                IsActive = arcaWsActive
+            });
+            if (result is not null)
+            {
+                arcaWsId = result.Id;
+                arcaWsActive = result.IsActive;
+                ToastService.Success("Configuración guardada");
+                showArcaWsConfigModal = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            arcaWsError = "Error al guardar: " + ex.Message;
+        }
+        finally
+        {
+            arcaWsSaving = false;
+        }
+    }
+
+    private async Task DeleteArcaWsIntegration()
+    {
+        if (!await ConfirmAsync("¿Eliminar la integración? Se borrarán todos los certificados cargados.")) return;
+        arcaWsSaving = true;
+        try
+        {
+            // Borrar certificados primero (no hay cascade — borra archivos del disco)
+            if (arcaWsCerts is not null)
+            {
+                foreach (var c in arcaWsCerts)
+                {
+                    try { await Api.DeleteArcaWebserviceAccountAsync(c.Id); } catch { }
+                }
+            }
+            var deleted = await Api.DeleteIntegrationAsync("arca-webservice");
+            if (deleted)
+            {
+                arcaWsId = 0;
+                arcaWsActive = false;
+                arcaWsCerts = new();
+                showArcaWsConfigModal = false;
+                ToastService.Success("Integración eliminada");
+            }
+        }
+        catch
+        {
+            arcaWsError = "Error al eliminar la integración";
+        }
+        finally
+        {
+            arcaWsSaving = false;
+        }
+    }
+
+    private void OpenArcaWsAddCertModal()
+    {
+        arcaWsIsEditing = false;
+        arcaWsEditingId = null;
+        arcaWsFormCuit = "";
+        arcaWsFormAlias = "";
+        arcaWsFormPassword = "";
+        arcaWsFormEnvironment = "production";
+        arcaWsFormIsActive = true;
+        arcaWsShowPassword = false;
+        arcaWsSelectedFile = null;
+        arcaWsSelectedFileName = "";
+        arcaWsCertError = null;
+        showArcaWsCertModal = true;
+    }
+
+    private void OpenArcaWsEditCertModal(ArcaWebserviceAccountDto c)
+    {
+        arcaWsIsEditing = true;
+        arcaWsEditingId = c.Id;
+        arcaWsFormCuit = c.Cuit;
+        arcaWsFormAlias = c.Alias ?? "";
+        arcaWsFormPassword = c.Password ?? "";  // precargada
+        arcaWsFormEnvironment = string.IsNullOrEmpty(c.Environment) ? "production" : c.Environment;
+        arcaWsFormIsActive = c.IsActive;
+        arcaWsShowPassword = false;
+        arcaWsSelectedFile = null;
+        arcaWsSelectedFileName = "";
+        arcaWsCertError = null;
+        showArcaWsCertModal = true;
+    }
+
+    private void CloseArcaWsCertModal()
+    {
+        showArcaWsCertModal = false;
+        arcaWsCertError = null;
+        arcaWsSelectedFile = null;
+        arcaWsSelectedFileName = "";
+    }
+
+    private void OnArcaWsFilePicked(InputFileChangeEventArgs e)
+    {
+        var f = e.File;
+        if (f is null)
+        {
+            arcaWsSelectedFile = null;
+            arcaWsSelectedFileName = "";
+            return;
+        }
+        if (!f.Name.EndsWith(".pfx", StringComparison.OrdinalIgnoreCase))
+        {
+            arcaWsCertError = "El archivo debe terminar en .pfx";
+            arcaWsSelectedFile = null;
+            arcaWsSelectedFileName = "";
+            return;
+        }
+        if (f.Size > 10 * 1024 * 1024)
+        {
+            arcaWsCertError = "El archivo supera el máximo de 10 MB";
+            arcaWsSelectedFile = null;
+            arcaWsSelectedFileName = "";
+            return;
+        }
+        arcaWsCertError = null;
+        arcaWsSelectedFile = f;
+        arcaWsSelectedFileName = f.Name;
+    }
+
+    private async Task SaveArcaWsCert()
+    {
+        arcaWsCertError = null;
+
+        if (!arcaWsIsEditing)
+        {
+            // Carga nueva: necesitamos archivo + CUIT
+            var cuitDigits = new string((arcaWsFormCuit ?? "").Where(char.IsDigit).ToArray());
+            if (cuitDigits.Length != 11)
+            {
+                arcaWsCertError = "El CUIT debe tener 11 dígitos";
+                return;
+            }
+            if (arcaWsSelectedFile is null)
+            {
+                arcaWsCertError = "Tenés que elegir un archivo .pfx";
+                return;
+            }
+            arcaWsSaving2 = true;
+            try
+            {
+                using var stream = arcaWsSelectedFile.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+                var (ok, error, dto) = await Api.UploadArcaWebserviceAccountAsync(
+                    cuitDigits,
+                    arcaWsFormAlias,
+                    arcaWsFormPassword,
+                    arcaWsFormEnvironment,
+                    stream,
+                    arcaWsSelectedFile.Name);
+                if (!ok)
+                {
+                    arcaWsCertError = error ?? "No se pudo cargar el certificado";
+                    return;
+                }
+                ToastService.Success("Certificado cargado");
+                showArcaWsCertModal = false;
+                await LoadArcaWsCerts();
+            }
+            catch (Exception ex)
+            {
+                arcaWsCertError = ex.Message;
+            }
+            finally
+            {
+                arcaWsSaving2 = false;
+            }
+        }
+        else
+        {
+            // Editar — solo metadata (alias, password, environment, isActive)
+            if (!arcaWsEditingId.HasValue) return;
+            arcaWsSaving2 = true;
+            try
+            {
+                var updated = await Api.UpdateArcaWebserviceAccountAsync(arcaWsEditingId.Value, new UpdateArcaWebserviceAccountRequest
+                {
+                    Alias = arcaWsFormAlias,
+                    Password = arcaWsFormPassword, // si lo dejás igual a lo precargado, igual va; el back acepta ""/null como "no tocar" según convenga
+                    Environment = arcaWsFormEnvironment,
+                    IsActive = arcaWsFormIsActive
+                });
+                if (updated is null)
+                {
+                    arcaWsCertError = "No se pudo actualizar el certificado";
+                    return;
+                }
+                ToastService.Success("Certificado actualizado");
+                showArcaWsCertModal = false;
+                await LoadArcaWsCerts();
+            }
+            catch (Exception ex)
+            {
+                arcaWsCertError = ex.Message;
+            }
+            finally
+            {
+                arcaWsSaving2 = false;
+            }
+        }
+    }
+
+    private async Task DeleteArcaWsCert(int id, string fileName)
+    {
+        if (!await ConfirmAsync($"¿Eliminar el certificado '{fileName}'? También se borra el archivo del disco.")) return;
+        try
+        {
+            var deleted = await Api.DeleteArcaWebserviceAccountAsync(id);
+            if (deleted)
+            {
+                ToastService.Success("Certificado eliminado");
+                await LoadArcaWsCerts();
+            }
+        }
+        catch
+        {
+            ToastService.Error("Error al eliminar el certificado");
+        }
+    }
+
+    /// <summary>
+    /// Devuelve (color, texto) según vencimiento del cert: rojo si vencido,
+    /// naranja si quedan menos de 30 días, verde si queda más, gris si no se pudo leer.
+    /// </summary>
+    private static (string color, string texto) VencimientoEstilo(DateTime? expiresAt)
+    {
+        if (!expiresAt.HasValue) return ("#6b7280", "No detectada");
+        var days = (expiresAt.Value.Date - DateTime.Today).Days;
+        var fmt = expiresAt.Value.ToString("dd/MM/yyyy");
+        if (days < 0) return ("#dc2626", $"⚠ Vencido el {fmt}");
+        if (days < 30) return ("#ea580c", $"⏰ Vence el {fmt} ({days} día{(days == 1 ? "" : "s")})");
+        return ("#059669", fmt);
     }
 
     /// <summary>Formatea "yyyy-MM-dd" → "dd/MM/yyyy". Si no parsea, devuelve tal cual.</summary>
