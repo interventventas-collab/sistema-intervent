@@ -1080,6 +1080,31 @@ public class ApiClient
     public async Task<bool> DeleteArcaAccountAsync(int id)
         => await DeleteAsync($"/api/arca/accounts/{id}");
 
+    /// <summary>Dispara el test (login + scraping) — responde inmediato. Pollear status.</summary>
+    public async Task<(bool ok, string? error)> StartArcaTestAsync(int accountId)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsync($"/api/arca/accounts/{accountId}/test", null);
+        if (resp.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            await HandleUnauthorizedAsync();
+            return (false, "Sesión expirada");
+        }
+        if (resp.IsSuccessStatusCode) return (true, null);
+        var body = await resp.Content.ReadAsStringAsync();
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("error", out var err))
+                return (false, err.GetString());
+        }
+        catch { }
+        return (false, body);
+    }
+
+    public async Task<ArcaTestStatusDto?> GetArcaTestStatusAsync()
+        => await GetAsync<ArcaTestStatusDto>("/api/arca/test/status");
+
     // --- MercadoLibre Orders ---
     public async Task<MeliOrdersResponse?> GetMeliOrdersAsync(DateTime from, DateTime to, int? accountId = null)
     {

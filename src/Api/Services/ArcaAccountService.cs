@@ -47,6 +47,16 @@ public class ArcaAccountService
         return a is null ? null : Map(a);
     }
 
+    /// <summary>
+    /// Devuelve la contraseña en claro de la cuenta. SOLO para uso del scraper:
+    /// nunca exponer esto en un DTO público ni en respuestas al frontend.
+    /// </summary>
+    public async Task<string?> GetPasswordAsync(int id)
+    {
+        var a = await _db.ArcaAccounts.FindAsync(id);
+        return a?.Password;
+    }
+
     public async Task<(bool ok, string? error, ArcaAccountDto? dto)> CreateAsync(CreateArcaAccountRequest req)
     {
         var cuit = NormalizeCuit(req.Cuit);

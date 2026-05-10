@@ -436,6 +436,262 @@ async function sendWhatsAppMessage(phone, text) {
   return { success: false, message: lastError };
 }
 
+// ============================================================
+// ARCA (ex AFIP) — Test de login + scraping del Registro Único Tributario.
+// Usa un browser ISOLADO (no comparte contexto con WhatsApp). Single-test
+// concurrente: si hay uno corriendo, el segundo recibe 409.
+// El cliente pollea /arca/test/status cada ~1.5s para ver progreso, y
+// /arca/test/screenshot para mostrar lo que ve el browser en vivo.
+// ============================================================
+
+const arcaState = {
+  browser: null,
+  context: null,
+  page: null,        // página activa actual (login → portal → RUT)
+  running: false,
+  step: 'Iniciando...',
+  result: null,      // { ok: true, titular, domicilios, actividades } | { ok: false, error }
+  startedAt: null,
+};
+
+async function closeArcaBrowserSafely() {
+  try { if (arcaState.page && !arcaState.page.isClosed()) await arcaState.page.close().catch(() => {}); } catch {}
+  try { if (arcaState.context) await arcaState.context.close().catch(() => {}); } catch {}
+  try { if (arcaState.browser) await arcaState.browser.close().catch(() => {}); } catch {}
+  arcaState.page = null;
+  arcaState.context = null;
+  arcaState.browser = null;
+}
+
+// POST /arca/test/start - body: { cuit, cuitLogin, password }
+app.post('/arca/test/start', async (req, res) => {
+  if (arcaState.running) {
+    return res.status(409).json({ error: 'Ya hay una prueba en curso' });
+  }
+  const { cuit, cuitLogin, password } = req.body || {};
+  if (!cuit || !password) {
+    return res.status(400).json({ error: 'Faltan cuit y/o password' });
+  }
+  arcaState.running = true;
+  arcaState.step = 'Iniciando...';
+  arcaState.result = null;
+  arcaState.startedAt = Date.now();
+  res.json({ ok: true });
+
+  // Correr el test en background; la respuesta ya volvió.
+  runArcaTest({ cuit, cuitLogin, password }).catch(async (err) => {
+    console.error('[arca] error inesperado:', err);
+    arcaState.result = { ok: false, error: err?.message || 'Error desconocido' };
+  }).finally(async () => {
+    await closeArcaBrowserSafely();
+    arcaState.running = false;
+    if (!arcaState.result) {
+      arcaState.result = { ok: false, error: 'Test interrumpido' };
+    }
+    arcaState.step = arcaState.result?.ok ? 'Listo' : 'Error';
+  });
+});
+
+// GET /arca/test/status
+app.get('/arca/test/status', (req, res) => {
+  res.json({
+    running: arcaState.running,
+    step: arcaState.step,
+    result: arcaState.result,
+  });
+});
+
+// GET /arca/test/screenshot
+app.get('/arca/test/screenshot', async (req, res) => {
+  try {
+    if (!arcaState.page || arcaState.page.isClosed()) {
+      return res.status(404).send('Sin página activa');
+    }
+    const buffer = await arcaState.page.screenshot({ type: 'png', fullPage: false }).catch(() => null);
+    if (!buffer) return res.status(404).send('No se pudo capturar');
+    res.set('Content-Type', 'image/png');
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+    res.send(buffer);
+  } catch (err) {
+    res.status(500).send('Error: ' + err.message);
+  }
+});
+
+async function runArcaTest({ cuit, cuitLogin, password }) {
+  const usuarioLogin = (cuitLogin && cuitLogin.length === 11) ? cuitLogin : cuit;
+  const cuitPrincipal = cuit;
+
+  arcaState.step = 'Abriendo navegador...';
+  const browser = await chromium.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-blink-features=AutomationControlled'],
+  });
+  const context = await browser.newContext({
+    userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    viewport: { width: 1280, height: 800 },
+  });
+  const page = await context.newPage();
+  arcaState.browser = browser;
+  arcaState.context = context;
+  arcaState.page = page;
+
+  arcaState.step = 'Abriendo página de login de ARCA...';
+  await page.goto('https://auth.afip.gob.ar/contribuyente_/login.xhtml', {
+    waitUntil: 'domcontentloaded',
+    timeout: 30000,
+  });
+
+  arcaState.step = `Ingresando CUIT ${usuarioLogin}...`;
+  await page.locator('input[name="F1:username"]').fill(usuarioLogin, { timeout: 5000 });
+  await page.locator('input[name="F1:btnSiguiente"]').click({ timeout: 5000 });
+
+  // Esperar que aparezca el campo password (puede tardar un toque la transición)
+  arcaState.step = 'Ingresando contraseña...';
+  await page.locator('input[name="F1:password"]').waitFor({ state: 'visible', timeout: 10000 });
+  await page.locator('input[name="F1:password"]').fill(password, { timeout: 5000 });
+  await page.locator('input[name="F1:btnIngresar"]').click({ timeout: 5000 });
+
+  // Esperar navegación o aparición de un error en la misma URL
+  arcaState.step = 'Verificando login...';
+  await page.waitForLoadState('domcontentloaded', { timeout: 30000 }).catch(() => {});
+  await sleep(1500); // un toque de margen para errores en la misma página
+
+  if (page.url().includes('login.xhtml')) {
+    // Intentar leer el mensaje de error
+    let errMsg = 'Login fallido — verificá CUIT y contraseña';
+    try {
+      const errText = await page.locator('.alert-danger, .error, #F1\\:msg').first().textContent({ timeout: 1500 });
+      if (errText && errText.trim()) errMsg = `Login fallido: ${errText.trim()}`;
+    } catch {}
+    throw new Error(errMsg);
+  }
+
+  // Si CUIT Login es distinto al CUIT principal, hay que elegir la representación
+  if (usuarioLogin !== cuitPrincipal) {
+    arcaState.step = `Seleccionando representación CUIT ${cuitPrincipal}...`;
+    // El selector puede aparecer como una lista de opciones con el CUIT visible.
+    // Probamos varios patrones razonables con timeout corto.
+    const cuitFmt = cuitPrincipal.length === 11
+      ? `${cuitPrincipal.slice(0, 2)}-${cuitPrincipal.slice(2, 10)}-${cuitPrincipal.slice(10)}`
+      : cuitPrincipal;
+    const candidates = [
+      page.locator(`a:has-text("${cuitFmt}")`).first(),
+      page.locator(`button:has-text("${cuitFmt}")`).first(),
+      page.locator(`a:has-text("${cuitPrincipal}")`).first(),
+      page.locator(`button:has-text("${cuitPrincipal}")`).first(),
+      page.locator(`li:has-text("${cuitFmt}")`).first(),
+      page.locator(`li:has-text("${cuitPrincipal}")`).first(),
+    ];
+    let clicked = false;
+    for (const c of candidates) {
+      try {
+        await c.waitFor({ state: 'visible', timeout: 3000 });
+        await c.click({ timeout: 3000 });
+        clicked = true;
+        break;
+      } catch {}
+    }
+    if (!clicked) {
+      // Puede ser que no haga falta seleccionar (logueó directo)
+      console.log('[arca] no se encontró selector de representación, sigo igual');
+    }
+    await page.waitForLoadState('domcontentloaded', { timeout: 15000 }).catch(() => {});
+    await sleep(1500);
+  }
+
+  // Click en "Registro Único Tributario" — abre nueva pestaña
+  arcaState.step = 'Abriendo Registro Único Tributario...';
+  const rutLink = page.locator('a:has-text("Registro Único Tributario"), a:has-text("Registro Unico Tributario"), a[title*="Registro Único Tributario" i], a[title*="Registro Unico Tributario" i]').first();
+
+  let rutPage;
+  try {
+    const newPagePromise = context.waitForEvent('page', { timeout: 15000 });
+    await rutLink.click({ timeout: 5000 });
+    rutPage = await newPagePromise;
+  } catch (err) {
+    throw new Error('No se encontró el link "Registro Único Tributario" después del login');
+  }
+
+  arcaState.page = rutPage; // que el screenshot capture la nueva pestaña
+  arcaState.step = 'Cargando datos del CUIT...';
+  await rutPage.waitForLoadState('domcontentloaded', { timeout: 30000 }).catch(() => {});
+  await rutPage.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+  await sleep(2000);
+
+  arcaState.step = 'Leyendo datos del Registro Único Tributario...';
+  const data = await scrapeRutData(rutPage);
+
+  arcaState.step = 'Cerrando ventana del RUT...';
+  await rutPage.close().catch(() => {});
+  arcaState.page = page;
+
+  arcaState.step = 'Volviendo al portal...';
+  await page.goto('https://portalcf.cloud.afip.gob.ar/portal/app/', { timeout: 15000 }).catch(() => {});
+  await sleep(500);
+
+  arcaState.result = { ok: true, ...data };
+  arcaState.step = 'Listo';
+}
+
+/// Lee el texto plano de la página y extrae con regex titular, domicilios y actividades.
+async function scrapeRutData(page) {
+  let bodyText = '';
+  try {
+    bodyText = await page.locator('body').innerText({ timeout: 5000 });
+  } catch {}
+
+  // ---- Titular ----
+  let titular = null;
+  const titularPatterns = [
+    /Apellido y Nombre\s*:?\s*([^\n\r]+)/i,
+    /Apellido y nombre\s*:?\s*([^\n\r]+)/i,
+    /Razón Social\s*:?\s*([^\n\r]+)/i,
+    /Razon Social\s*:?\s*([^\n\r]+)/i,
+    /Nombre\s*:?\s*([^\n\r]+)/i,
+  ];
+  for (const re of titularPatterns) {
+    const m = bodyText.match(re);
+    if (m && m[1] && m[1].trim().length > 1) {
+      titular = m[1].trim();
+      break;
+    }
+  }
+
+  // ---- Domicilios ----
+  // Cada bloque tiene "Tipo domicilio nacional: X", luego dirección, luego "Tipo domicilio provincial: Y"
+  const domicilios = [];
+  const domRegex = /Tipo domicilio nacional\s*:?\s*([^\n\r]+)([\s\S]*?)Tipo domicilio provincial\s*:?\s*([^\n\r]+)/gi;
+  let m;
+  while ((m = domRegex.exec(bodyText)) !== null) {
+    const tipo = m[1].trim();
+    const middle = m[2].trim();
+    const provincial = m[3].trim();
+    // La dirección suele ser la primera línea con contenido del bloque medio.
+    const lines = middle.split(/\n/).map(l => l.trim()).filter(l =>
+      l.length > 0 &&
+      !/^Tipo /i.test(l) &&
+      !/^Domicilio$/i.test(l) &&
+      l.length < 250
+    );
+    const direccion = lines.length > 0 ? lines.join(' · ') : '—';
+    domicilios.push({ tipo, direccion, jurisdiccion: provincial });
+  }
+
+  // ---- Actividades ----
+  const actividades = [];
+  const actRegex = /Actividad (?:nacional|principal|secundaria)\s*:?\s*([\s\S]+?)Inicio de actividad\s*:?\s*(\d{2}\/\d{4})/gi;
+  while ((m = actRegex.exec(bodyText)) !== null) {
+    const descRaw = m[1].trim();
+    // Tomar la primera línea no vacía como descripción
+    const desc = descRaw.split(/\n/).map(l => l.trim()).filter(l => l.length > 0)[0] || descRaw;
+    actividades.push({ descripcion: desc, fechaInicio: m[2] });
+  }
+
+  return { titular, domicilios, actividades };
+}
+
 // --- Restauración de sesión al arrancar ---
 async function tryRestoreSession() {
   if (!fs.existsSync(STORAGE_STATE_PATH)) return;

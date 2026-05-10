@@ -85,3 +85,33 @@ public class UpdateArcaAccountRequest
     public string? Password { get; set; }
     public bool? IsActive { get; set; }
 }
+
+// ===== ARCA test (login + scraping) =====
+public class ArcaTestStatusDto
+{
+    public bool Running { get; set; }
+    public string Step { get; set; } = "";
+    public ArcaTestResultDto? Result { get; set; }
+}
+
+public class ArcaTestResultDto
+{
+    public bool Ok { get; set; }
+    public string? Error { get; set; }
+    public string? Titular { get; set; }
+    public List<ArcaDomicilioDto>? Domicilios { get; set; }
+    public List<ArcaActividadDto>? Actividades { get; set; }
+}
+
+public class ArcaDomicilioDto
+{
+    public string Tipo { get; set; } = "";
+    public string Direccion { get; set; } = "";
+    public string Jurisdiccion { get; set; } = "";
+}
+
+public class ArcaActividadDto
+{
+    public string Descripcion { get; set; } = "";
+    public string FechaInicio { get; set; } = "";
+}

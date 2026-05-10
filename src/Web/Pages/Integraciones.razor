@@ -440,6 +440,13 @@
                                         <td>@a.CreatedAt.ToString("dd/MM/yyyy")</td>
                                         <td>
                                             <div class="actions-cell">
+                                                <button class="btn btn-secondary btn-sm"
+                                                        style="font-size: 0.75rem; padding: 0.2rem 0.55rem;"
+                                                        @onclick="() => StartArcaTest(a)"
+                                                        disabled="@arcaTestRunning"
+                                                        title="Verifica login y trae datos del Registro Único Tributario">
+                                                    🔍 Probar Login
+                                                </button>
                                                 <button class="btn-icon btn-edit" @onclick="() => OpenArcaEditAccountModal(a)" title="Editar">
                                                     @SvgIcons.Edit
                                                 </button>
@@ -1034,6 +1041,114 @@
     </div>
 }
 
+<!-- Modal: Probar Login ARCA — modal grande, encoge cuando termina -->
+@if (showArcaTestModal)
+{
+    var isFinishedOk = arcaTestResult is not null && arcaTestResult.Ok;
+    var isFinishedErr = arcaTestResult is not null && !arcaTestResult.Ok;
+    var modalMaxWidth = (isFinishedOk || isFinishedErr) ? "720px" : "1100px";
+    var screenshotVisible = arcaTestRunning && !string.IsNullOrEmpty(arcaTestStep)
+                            && !arcaTestStep.StartsWith("Iniciando", StringComparison.OrdinalIgnoreCase)
+                            && !arcaTestStep.StartsWith("Abriendo navegador", StringComparison.OrdinalIgnoreCase);
+
+    <div class="modal-overlay" @onclick="CloseArcaTestModal">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: @modalMaxWidth;">
+            <div class="modal-header">
+                <h3>🔍 Prueba de login ARCA — @arcaTestCuit</h3>
+                <button class="btn-close" @onclick="CloseArcaTestModal" disabled="@arcaTestRunning">&times;</button>
+            </div>
+            <div class="modal-body">
+                @* ─── Mientras corre ─── *@
+                @if (arcaTestRunning)
+                {
+                    <div style="display: flex; align-items: center; gap: 0.8rem; padding: 0.7rem 0.9rem; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; margin-bottom: 1rem;">
+                        <div style="width: 24px; height: 24px; border: 3px solid #bfdbfe; border-top-color: #1d4ed8; border-radius: 50%; animation: spin 1s linear infinite; flex-shrink: 0;"></div>
+                        <div>
+                            <strong style="color: #1e3a8a;">@arcaTestStep</strong>
+                            <div style="font-size: 0.75rem; color: #6b7280;">El navegador del servidor está trabajando — abajo ves lo que ve.</div>
+                        </div>
+                    </div>
+
+                    @if (screenshotVisible)
+                    {
+                        <div style="background: #1f2937; border-radius: 8px; padding: 0.5rem; text-align: center;">
+                            <img src="@arcaScreenshotUrl" alt="Lo que ve el navegador"
+                                 style="max-width: 100%; max-height: 60vh; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.4);"
+                                 onerror="this.style.visibility='hidden'" onload="this.style.visibility='visible'" />
+                        </div>
+                    }
+                }
+                else if (isFinishedErr)
+                {
+                    <div class="form-error" style="padding: 0.8rem; font-size: 0.9rem;">
+                        <strong>❌ Falló la prueba:</strong>
+                        <div style="margin-top: 0.3rem;">@arcaTestResult!.Error</div>
+                    </div>
+                }
+                else if (isFinishedOk)
+                {
+                    <div class="form-success" style="padding: 0.8rem 1rem; margin-bottom: 1rem;">
+                        <strong>✅ Login OK — datos traídos del Registro Único Tributario</strong>
+                    </div>
+
+                    <div style="margin-bottom: 1rem;">
+                        <small class="text-muted" style="text-transform: uppercase; font-weight: 700; font-size: 0.7rem;">Titular</small>
+                        <div style="font-size: 1.1rem; font-weight: 700;">@(string.IsNullOrEmpty(arcaTestResult!.Titular) ? "—" : arcaTestResult.Titular)</div>
+                    </div>
+
+                    @if (arcaTestResult.Domicilios is not null && arcaTestResult.Domicilios.Count > 0)
+                    {
+                        <div style="margin-bottom: 1rem;">
+                            <small class="text-muted" style="text-transform: uppercase; font-weight: 700; font-size: 0.7rem;">Domicilios</small>
+                            <table class="data-table" style="font-size: 0.85rem; margin-top: 0.3rem;">
+                                <thead>
+                                    <tr><th>Tipo</th><th>Dirección</th><th>Jurisdicción</th></tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var d in arcaTestResult.Domicilios)
+                                    {
+                                        <tr>
+                                            <td>@d.Tipo</td>
+                                            <td>@d.Direccion</td>
+                                            <td>@d.Jurisdiccion</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+
+                    @if (arcaTestResult.Actividades is not null && arcaTestResult.Actividades.Count > 0)
+                    {
+                        <div>
+                            <small class="text-muted" style="text-transform: uppercase; font-weight: 700; font-size: 0.7rem;">Actividades</small>
+                            <table class="data-table" style="font-size: 0.85rem; margin-top: 0.3rem;">
+                                <thead>
+                                    <tr><th>Descripción</th><th>Inicio</th></tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var a in arcaTestResult.Actividades)
+                                    {
+                                        <tr>
+                                            <td>@a.Descripcion</td>
+                                            <td>@a.FechaInicio</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseArcaTestModal" disabled="@arcaTestRunning">
+                    @(arcaTestRunning ? "Probando..." : "Cerrar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 <!-- Modal: Configuracion Email SMTP -->
 @if (showEmailModal)
 {
@@ -1191,6 +1306,15 @@
     private bool arcaFormIsActive = true;
     private bool arcaAccountSaving;
     private string? arcaAccountError;
+
+    // Modal: Probar Login (test del scraper)
+    private bool showArcaTestModal;
+    private bool arcaTestRunning;
+    private string arcaTestStep = "";
+    private string arcaTestCuit = "";
+    private ArcaTestResultDto? arcaTestResult;
+    private string arcaScreenshotUrl = "";    // URL con cache-buster, refresca en cada poll
+    private CancellationTokenSource? arcaPollCts;
 
     // Email SMTP config fields
     private int emailId;
@@ -1474,6 +1598,12 @@
         {
             waPollCts?.Cancel();
             waPollCts?.Dispose();
+        }
+        catch { }
+        try
+        {
+            arcaPollCts?.Cancel();
+            arcaPollCts?.Dispose();
         }
         catch { }
         await Task.CompletedTask;
@@ -2533,6 +2663,102 @@
         {
             ToastService.Error("Error al eliminar la cuenta");
         }
+    }
+
+    // ============================================================
+    // Test de login ARCA (scraping)
+    // ============================================================
+
+    private async Task StartArcaTest(ArcaAccountDto account)
+    {
+        if (arcaTestRunning) return;
+        if (!account.HasPassword)
+        {
+            ToastService.Error("Esta cuenta no tiene contraseña cargada. Editala primero.");
+            return;
+        }
+
+        // Reset state
+        arcaTestCuit = FormatCuit(account.Cuit);
+        arcaTestStep = "Iniciando...";
+        arcaTestResult = null;
+        arcaTestRunning = true;
+        arcaScreenshotUrl = "";
+        showArcaTestModal = true;
+        StateHasChanged();
+
+        var (ok, error) = await Api.StartArcaTestAsync(account.Id);
+        if (!ok)
+        {
+            arcaTestRunning = false;
+            arcaTestResult = new ArcaTestResultDto { Ok = false, Error = error ?? "No se pudo iniciar la prueba" };
+            StateHasChanged();
+            return;
+        }
+
+        // Disparar polling
+        arcaPollCts?.Cancel();
+        arcaPollCts = new CancellationTokenSource();
+        _ = PollArcaTestAsync(arcaPollCts.Token);
+    }
+
+    private async Task PollArcaTestAsync(CancellationToken ct)
+    {
+        // Hasta ~3 minutos por las dudas; el server timeoutea antes
+        var deadline = DateTime.UtcNow.AddMinutes(4);
+        while (!ct.IsCancellationRequested && DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                await Task.Delay(1500, ct);
+            }
+            catch (TaskCanceledException) { return; }
+            if (ct.IsCancellationRequested) return;
+
+            ArcaTestStatusDto? status = null;
+            try { status = await Api.GetArcaTestStatusAsync(); }
+            catch { /* ignorar errores transitorios */ }
+
+            if (status is null) continue;
+
+            // Refrescar screenshot con cache-buster solo si está corriendo
+            if (status.Running)
+            {
+                arcaScreenshotUrl = $"/api/arca/test/screenshot?t={DateTime.UtcNow.Ticks}";
+            }
+
+            arcaTestStep = string.IsNullOrEmpty(status.Step) ? "Procesando..." : status.Step;
+
+            // Si terminó (running=false y hay result), salir del loop
+            if (!status.Running && status.Result is not null)
+            {
+                arcaTestRunning = false;
+                arcaTestResult = status.Result;
+                arcaScreenshotUrl = "";
+                StateHasChanged();
+                return;
+            }
+
+            StateHasChanged();
+        }
+
+        // Timeout local (si el server quedó colgado)
+        if (arcaTestRunning)
+        {
+            arcaTestRunning = false;
+            arcaTestResult = new ArcaTestResultDto { Ok = false, Error = "Timeout esperando respuesta del servidor" };
+            StateHasChanged();
+        }
+    }
+
+    private void CloseArcaTestModal()
+    {
+        if (arcaTestRunning) return; // no permitir cerrar mientras corre
+        showArcaTestModal = false;
+        arcaTestResult = null;
+        arcaTestStep = "";
+        arcaPollCts?.Cancel();
+        arcaPollCts = null;
     }
 
     /// <summary>Formatea CUIT 30715938091 -> 30-71593809-1 para mostrar.</summary>

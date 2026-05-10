@@ -102,6 +102,7 @@ builder.Services.AddScoped<IntegrationService>();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<MeliAccountService>();
 builder.Services.AddScoped<ArcaAccountService>();
+builder.Services.AddSingleton<ArcaScrapingService>();
 builder.Services.AddScoped<MeliOrderService>();
 builder.Services.AddScoped<MeliItemService>();
 builder.Services.AddScoped<MeliQuestionService>();
