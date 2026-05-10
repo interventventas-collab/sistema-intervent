@@ -93,6 +93,26 @@ public class ArcaController : ControllerBase
         if (!ok) return BadRequest(new { error });
         return Ok(new { ok = true });
     }
+
+    /// <summary>
+    /// Dispara el flujo "Mis Comprobantes" para una cuenta — login + descarga
+    /// de Emitidos y Recibidos según rango. Responde inmediato; el cliente
+    /// pollea /api/arca/test/status para ver progreso y resultado.
+    /// </summary>
+    [HttpPost("{id:int}/comprobantes")]
+    public async Task<IActionResult> StartComprobantes(int id, [FromBody] RangoFechasRequest rango)
+    {
+        var dto = await _service.GetByIdAsync(id);
+        if (dto is null) return NotFound(new { error = "Cuenta no encontrada" });
+        if (!dto.HasPassword) return BadRequest(new { error = "Esta cuenta no tiene contraseña cargada" });
+
+        var password = await _service.GetPasswordAsync(id);
+        if (string.IsNullOrEmpty(password)) return BadRequest(new { error = "No se pudo leer la contraseña" });
+
+        var (ok, error) = await _scraping.StartComprobantesAsync(dto.Cuit, dto.CuitLogin, password, rango ?? new RangoFechasRequest());
+        if (!ok) return BadRequest(new { error });
+        return Ok(new { ok = true });
+    }
 }
 
 // ============================================================

@@ -101,6 +101,11 @@ public class ArcaTestResultDto
     public string? Titular { get; set; }
     public List<ArcaDomicilioDto>? Domicilios { get; set; }
     public List<ArcaActividadDto>? Actividades { get; set; }
+    // Comprobantes
+    public List<ArcaComprobanteDto>? Emitidos { get; set; }
+    public List<ArcaComprobanteDto>? Recibidos { get; set; }
+    public string? RangoDesde { get; set; }
+    public string? RangoHasta { get; set; }
 }
 
 public class ArcaDomicilioDto
@@ -114,4 +119,21 @@ public class ArcaActividadDto
 {
     public string Descripcion { get; set; } = "";
     public string FechaInicio { get; set; } = "";
+}
+
+public class ArcaComprobanteDto
+{
+    public string Fecha { get; set; } = "";
+    public string NroDoc { get; set; } = "";
+    public string Denominacion { get; set; } = "";
+    public decimal? ImpNeto { get; set; }
+    public decimal? TotalIva { get; set; }
+    public decimal? ImpTotal { get; set; }
+}
+
+public class ArcaRangoFechasRequest
+{
+    public string Tipo { get; set; } = "30dias";
+    public string? Desde { get; set; }
+    public string? Hasta { get; set; }
 }

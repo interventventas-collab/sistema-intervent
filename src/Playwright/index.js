@@ -6,6 +6,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright');
+const AdmZip = require('adm-zip');
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 const DATA_DIR = '/data/whatsapp-session';
@@ -463,23 +464,30 @@ async function closeArcaBrowserSafely() {
   arcaState.browser = null;
 }
 
-// POST /arca/test/start - body: { cuit, cuitLogin, password }
+// POST /arca/test/start - body: { cuit, cuitLogin, password, action?, rangoFechas? }
+//   action: "test" (default — login + RUT) | "comprobantes" (login + Mis Comprobantes)
+//   rangoFechas: { tipo: "30dias"|"60dias"|"90dias"|"custom", desde?, hasta? }
+//                solo se usa si action === "comprobantes"
 app.post('/arca/test/start', async (req, res) => {
   if (arcaState.running) {
     return res.status(409).json({ error: 'Ya hay una prueba en curso' });
   }
-  const { cuit, cuitLogin, password } = req.body || {};
+  const { cuit, cuitLogin, password, action, rangoFechas } = req.body || {};
   if (!cuit || !password) {
     return res.status(400).json({ error: 'Faltan cuit y/o password' });
   }
+  const accion = (action === 'comprobantes') ? 'comprobantes' : 'test';
   arcaState.running = true;
   arcaState.step = 'Iniciando...';
   arcaState.result = null;
   arcaState.startedAt = Date.now();
   res.json({ ok: true });
 
-  // Correr el test en background; la respuesta ya volvió.
-  runArcaTest({ cuit, cuitLogin, password }).catch(async (err) => {
+  const runner = (accion === 'comprobantes')
+    ? runArcaComprobantes({ cuit, cuitLogin, password, rangoFechas })
+    : runArcaTest({ cuit, cuitLogin, password });
+
+  runner.catch(async (err) => {
     console.error('[arca] error inesperado:', err);
     arcaState.result = { ok: false, error: err?.message || 'Error desconocido' };
   }).finally(async () => {
@@ -519,7 +527,9 @@ app.get('/arca/test/screenshot', async (req, res) => {
   }
 });
 
-async function runArcaTest({ cuit, cuitLogin, password }) {
+/// Lanza un browser nuevo aislado y hace login en ARCA. Devuelve { browser, context, page }
+/// con la sesión iniciada en el portal. Tira excepción si el login falla.
+async function arcaLoginAndOpenPortal({ cuit, cuitLogin, password }) {
   const usuarioLogin = (cuitLogin && cuitLogin.length === 11) ? cuitLogin : cuit;
   const cuitPrincipal = cuit;
 
@@ -531,6 +541,7 @@ async function runArcaTest({ cuit, cuitLogin, password }) {
   const context = await browser.newContext({
     userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     viewport: { width: 1280, height: 800 },
+    acceptDownloads: true,
   });
   const page = await context.newPage();
   arcaState.browser = browser;
@@ -547,19 +558,16 @@ async function runArcaTest({ cuit, cuitLogin, password }) {
   await page.locator('input[name="F1:username"]').fill(usuarioLogin, { timeout: 5000 });
   await page.locator('input[name="F1:btnSiguiente"]').click({ timeout: 5000 });
 
-  // Esperar que aparezca el campo password (puede tardar un toque la transición)
   arcaState.step = 'Ingresando contraseña...';
   await page.locator('input[name="F1:password"]').waitFor({ state: 'visible', timeout: 10000 });
   await page.locator('input[name="F1:password"]').fill(password, { timeout: 5000 });
   await page.locator('input[name="F1:btnIngresar"]').click({ timeout: 5000 });
 
-  // Esperar navegación o aparición de un error en la misma URL
   arcaState.step = 'Verificando login...';
   await page.waitForLoadState('domcontentloaded', { timeout: 30000 }).catch(() => {});
-  await sleep(1500); // un toque de margen para errores en la misma página
+  await sleep(1500);
 
   if (page.url().includes('login.xhtml')) {
-    // Intentar leer el mensaje de error
     let errMsg = 'Login fallido — verificá CUIT y contraseña';
     try {
       const errText = await page.locator('.alert-danger, .error, #F1\\:msg').first().textContent({ timeout: 1500 });
@@ -568,11 +576,9 @@ async function runArcaTest({ cuit, cuitLogin, password }) {
     throw new Error(errMsg);
   }
 
-  // Si CUIT Login es distinto al CUIT principal, hay que elegir la representación
+  // Si CUIT Login es distinto al CUIT principal, elegir la representación
   if (usuarioLogin !== cuitPrincipal) {
     arcaState.step = `Seleccionando representación CUIT ${cuitPrincipal}...`;
-    // El selector puede aparecer como una lista de opciones con el CUIT visible.
-    // Probamos varios patrones razonables con timeout corto.
     const cuitFmt = cuitPrincipal.length === 11
       ? `${cuitPrincipal.slice(0, 2)}-${cuitPrincipal.slice(2, 10)}-${cuitPrincipal.slice(10)}`
       : cuitPrincipal;
@@ -593,13 +599,17 @@ async function runArcaTest({ cuit, cuitLogin, password }) {
         break;
       } catch {}
     }
-    if (!clicked) {
-      // Puede ser que no haga falta seleccionar (logueó directo)
-      console.log('[arca] no se encontró selector de representación, sigo igual');
-    }
+    if (!clicked) console.log('[arca] no se encontró selector de representación, sigo igual');
     await page.waitForLoadState('domcontentloaded', { timeout: 15000 }).catch(() => {});
     await sleep(1500);
   }
+
+  return { browser, context, page };
+}
+
+async function runArcaTest({ cuit, cuitLogin, password }) {
+  const cuitPrincipal = cuit;
+  const { context, page } = await arcaLoginAndOpenPortal({ cuit, cuitLogin, password });
 
   // Click en "Registro Único Tributario" — abre nueva pestaña
   arcaState.step = 'Abriendo Registro Único Tributario...';
@@ -690,6 +700,438 @@ async function scrapeRutData(page) {
   }
 
   return { titular, domicilios, actividades };
+}
+
+// ============================================================
+// ARCA — Mis Comprobantes (Emitidos + Recibidos)
+// ============================================================
+
+async function runArcaComprobantes({ cuit, cuitLogin, password, rangoFechas }) {
+  const { context, page } = await arcaLoginAndOpenPortal({ cuit, cuitLogin, password });
+
+  // Asegurarse de estar en el portal — si quedamos en otra URL después del login
+  arcaState.step = 'Abriendo portal de ARCA...';
+  if (!page.url().includes('portalcf.cloud.afip.gob.ar/portal/app')) {
+    await page.goto('https://portalcf.cloud.afip.gob.ar/portal/app/', {
+      waitUntil: 'domcontentloaded',
+      timeout: 30000,
+    }).catch(() => {});
+    await sleep(1500);
+  }
+
+  // ---- Buscar "Mis Comprobantes" en el buscador del portal ----
+  arcaState.step = 'Buscando "Mis Comprobantes"...';
+  // Estrategia: getByRole('combobox', { name: 'Buscador' }) primero, luego fallbacks
+  let buscador = null;
+  const buscadorCandidates = [
+    page.getByRole('combobox', { name: 'Buscador' }),
+    page.getByPlaceholder(/necesit/i),
+    page.getByPlaceholder(/rámite/i),
+    page.locator('input[type="search"]'),
+  ];
+  for (const c of buscadorCandidates) {
+    try {
+      await c.waitFor({ state: 'visible', timeout: 3000 });
+      buscador = c;
+      break;
+    } catch {}
+  }
+  if (!buscador) throw new Error('No se encontró el buscador del portal');
+
+  await buscador.click();
+  // IMPORTANTE: NO usar fill() acá — el autocomplete del portal no responde bien.
+  // Hay que tipear con delay para que dispare el filtro.
+  await page.keyboard.type('Mis comprobantes', { delay: 50 });
+  await sleep(1000);
+
+  arcaState.step = 'Abriendo "Mis Comprobantes"...';
+  // El item del autocomplete suele decir "Mis Comprobantes Consulta de ..." o similar
+  const linkCandidates = [
+    page.getByRole('link', { name: /Mis Comprobantes/i }).first(),
+    page.locator('a:has-text("Mis Comprobantes")').first(),
+    page.locator('li:has-text("Mis Comprobantes") a').first(),
+  ];
+
+  let popupPage;
+  let opened = false;
+  for (const link of linkCandidates) {
+    try {
+      await link.waitFor({ state: 'visible', timeout: 4000 });
+      const popupPromise = context.waitForEvent('page', { timeout: 15000 });
+      await link.click({ timeout: 4000 });
+      popupPage = await popupPromise;
+      opened = true;
+      break;
+    } catch {}
+  }
+  if (!opened || !popupPage) throw new Error('No se pudo abrir "Mis Comprobantes"');
+
+  arcaState.page = popupPage; // que el screenshot capture la nueva ventana
+  await popupPage.waitForLoadState('domcontentloaded', { timeout: 30000 }).catch(() => {});
+  await sleep(2000);
+
+  // ---- Seleccionar empresa por CUIT ----
+  arcaState.step = `Seleccionando empresa CUIT ${cuit}...`;
+  const cuitFmt = cuit.length === 11
+    ? `${cuit.slice(0, 2)}-${cuit.slice(2, 10)}-${cuit.slice(10)}`
+    : cuit;
+  const empresaCandidates = [
+    popupPage.locator(`a:has-text("${cuitFmt}")`).first(),
+    popupPage.locator(`a:has-text("${cuit}")`).first(),
+    popupPage.locator(`button:has-text("${cuitFmt}")`).first(),
+  ];
+  let empresaClicked = false;
+  for (const c of empresaCandidates) {
+    try {
+      await c.waitFor({ state: 'visible', timeout: 4000 });
+      await c.click({ timeout: 3000 });
+      empresaClicked = true;
+      break;
+    } catch {}
+  }
+  if (!empresaClicked) {
+    console.log('[arca] no se encontró link de empresa, puede que ya esté seleccionada');
+  }
+  await popupPage.waitForLoadState('domcontentloaded', { timeout: 15000 }).catch(() => {});
+  await sleep(1500);
+
+  // Resolver rango de fechas → texto a clickear o desde/hasta
+  const rango = (rangoFechas || {});
+  const tipoRango = rango.tipo || '30dias';
+  const labelRango = (() => {
+    if (tipoRango === '30dias') return 'Últimos 30 Días';
+    if (tipoRango === '60dias') return 'Últimos 60 Días';
+    if (tipoRango === '90dias') return 'Últimos 90 Días';
+    return null; // custom
+  })();
+
+  // ---- Descargar Emitidos ----
+  arcaState.step = 'Abriendo sección "Emitidos"...';
+  const emitidosBuf = await descargarSeccion(popupPage, 'Emitidos', { tipoRango, labelRango, desde: rango.desde, hasta: rango.hasta });
+
+  // ---- Volver al menú principal ----
+  arcaState.step = 'Volviendo al menú principal...';
+  try {
+    await popupPage.getByRole('link', { name: /Menú Principal/i }).first().click({ timeout: 5000 });
+    await popupPage.waitForLoadState('domcontentloaded', { timeout: 15000 }).catch(() => {});
+    await sleep(1500);
+  } catch {
+    console.log('[arca] no se encontró link "Menú Principal", sigo');
+  }
+
+  // ---- Descargar Recibidos ----
+  arcaState.step = 'Abriendo sección "Recibidos"...';
+  const recibidosBuf = await descargarSeccion(popupPage, 'Recibidos', { tipoRango, labelRango, desde: rango.desde, hasta: rango.hasta });
+
+  arcaState.step = 'Procesando archivos descargados...';
+  const emitidos = emitidosBuf ? parseComprobantesCsv(emitidosBuf, 'emitido') : [];
+  const recibidos = recibidosBuf ? parseComprobantesCsv(recibidosBuf, 'recibido') : [];
+
+  arcaState.step = 'Cerrando ventana...';
+  await popupPage.close().catch(() => {});
+  arcaState.page = page;
+
+  // Calcular rango efectivo en formato ISO para mostrar en el modal
+  const { isoDesde, isoHasta } = calcularRangoIso(tipoRango, rango.desde, rango.hasta);
+
+  arcaState.result = {
+    ok: true,
+    emitidos,
+    recibidos,
+    rangoDesde: isoDesde,
+    rangoHasta: isoHasta,
+  };
+  arcaState.step = 'Listo';
+}
+
+/// Click en la sección (Emitidos o Recibidos), elegir rango, buscar, descargar CSV.
+/// Devuelve un Buffer con el contenido bruto del archivo descargado, o null si falló.
+async function descargarSeccion(popupPage, seccion, opts) {
+  const re = new RegExp(seccion, 'i');
+  const seccionLink = popupPage.getByRole('link', { name: re }).first();
+  await seccionLink.waitFor({ state: 'visible', timeout: 8000 });
+  await seccionLink.click({ timeout: 5000 });
+  await popupPage.waitForLoadState('domcontentloaded', { timeout: 15000 }).catch(() => {});
+  await sleep(1500);
+
+  // Abrir el calendario / textbox de fechas
+  arcaState.step = `${seccion} — Eligiendo rango de fechas...`;
+  const calendarioCandidates = [
+    popupPage.getByRole('textbox', { name: /Fecha del Comprobante/i }),
+    popupPage.locator('#btnCalendarioFechaEmision i'),
+    popupPage.locator('#btnCalendarioFechaEmision'),
+    popupPage.locator('input[name*="echa"]').first(),
+  ];
+  let abierto = false;
+  for (const c of calendarioCandidates) {
+    try {
+      await c.waitFor({ state: 'visible', timeout: 3000 });
+      await c.click({ timeout: 3000 });
+      abierto = true;
+      break;
+    } catch {}
+  }
+  if (!abierto) throw new Error(`${seccion}: no se encontró el selector de fecha`);
+
+  await sleep(800);
+
+  if (opts.labelRango) {
+    // Click directo en "Últimos X Días"
+    try {
+      await popupPage.getByText(opts.labelRango, { exact: false }).first().click({ timeout: 5000 });
+    } catch (err) {
+      throw new Error(`${seccion}: no se pudo seleccionar "${opts.labelRango}"`);
+    }
+  } else if (opts.desde && opts.hasta) {
+    // Custom: tipear desde / hasta. ARCA usa formato dd/mm/yyyy.
+    const desdeStr = formatDdMmYyyy(opts.desde);
+    const hastaStr = formatDdMmYyyy(opts.hasta);
+    const inputs = await popupPage.locator('input[type="text"]:visible').all();
+    // Heurística: hay 2 inputs de fecha visibles en el calendario abierto.
+    // Limpiar y tipear cada uno.
+    const dateInputs = [];
+    for (const inp of inputs) {
+      const placeholder = await inp.getAttribute('placeholder').catch(() => '');
+      const name = await inp.getAttribute('name').catch(() => '');
+      if (/echa|esde|asta/i.test((placeholder || '') + (name || ''))) {
+        dateInputs.push(inp);
+      }
+    }
+    if (dateInputs.length >= 2) {
+      await dateInputs[0].click();
+      await dateInputs[0].fill('').catch(() => {});
+      await popupPage.keyboard.type(desdeStr, { delay: 30 });
+      await dateInputs[1].click();
+      await dateInputs[1].fill('').catch(() => {});
+      await popupPage.keyboard.type(hastaStr, { delay: 30 });
+    } else {
+      // Fallback: buscar botón "Aplicar" del calendario después de tipear en el primero
+      console.log('[arca] no se encontraron 2 inputs de fecha, usando 30 días por default');
+      await popupPage.getByText('Últimos 30 Días').first().click({ timeout: 5000 }).catch(() => {});
+    }
+    await sleep(500);
+  } else {
+    // No hay rango → usar 30 días por default
+    await popupPage.getByText('Últimos 30 Días').first().click({ timeout: 5000 }).catch(() => {});
+  }
+
+  await sleep(800);
+
+  // Click en Buscar
+  arcaState.step = `${seccion} — Buscando comprobantes...`;
+  await popupPage.getByRole('button', { name: /Buscar/i }).first().click({ timeout: 5000 });
+  await popupPage.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
+  await sleep(2000);
+
+  // Click en CSV → dispara download
+  arcaState.step = `${seccion} — Descargando archivo CSV...`;
+  let buffer = null;
+  try {
+    const downloadPromise = popupPage.waitForEvent('download', { timeout: 30000 });
+    await popupPage.getByRole('button', { name: /^CSV$/i }).first().click({ timeout: 5000 });
+    const download = await downloadPromise;
+    const tmpPath = await download.path();
+    if (tmpPath) {
+      buffer = fs.readFileSync(tmpPath);
+    }
+  } catch (err) {
+    console.log(`[arca] ${seccion}: no se pudo descargar CSV (puede que no haya comprobantes en el rango): ${err.message}`);
+    return null;
+  }
+  return buffer;
+}
+
+/// Parsea el buffer descargado (puede ser ZIP o CSV directo) en un array de comprobantes.
+function parseComprobantesCsv(buffer, tipo) {
+  if (!buffer || buffer.length === 0) return [];
+
+  // Detectar magic bytes de ZIP: PK\x03\x04
+  const isZip = buffer.length >= 4 &&
+                buffer[0] === 0x50 && buffer[1] === 0x4B &&
+                buffer[2] === 0x03 && buffer[3] === 0x04;
+
+  let csvText = '';
+  if (isZip) {
+    try {
+      const zip = new AdmZip(buffer);
+      const entries = zip.getEntries();
+      const csvEntry = entries.find(e => /\.csv$/i.test(e.entryName));
+      if (!csvEntry) {
+        console.log('[arca] ZIP sin entrada .csv');
+        return [];
+      }
+      // Leer como latin1 (ARCA usa ISO-8859-1)
+      const raw = csvEntry.getData();
+      csvText = raw.toString('latin1');
+    } catch (err) {
+      console.log('[arca] error descomprimiendo ZIP:', err.message);
+      return [];
+    }
+  } else {
+    csvText = buffer.toString('latin1');
+  }
+
+  // Quitar BOM si está
+  if (csvText.charCodeAt(0) === 0xFEFF) csvText = csvText.slice(1);
+
+  const rows = parseCsvText(csvText);
+  if (rows.length < 2) return [];
+
+  const headers = rows[0].map(h => normalizeHeader(h));
+  // Index helpers
+  const findCol = (...keywords) => {
+    for (let i = 0; i < headers.length; i++) {
+      const h = headers[i];
+      if (keywords.every(k => h.includes(k))) return i;
+    }
+    return -1;
+  };
+
+  const idxFecha = findCol('fecha');
+  // "Nro Doc Receptor" / "Nro Doc Emisor"
+  const idxNroDoc = (tipo === 'recibido')
+    ? (findCol('nro', 'doc', 'emisor') >= 0 ? findCol('nro', 'doc', 'emisor') : findCol('nro', 'doc'))
+    : (findCol('nro', 'doc', 'receptor') >= 0 ? findCol('nro', 'doc', 'receptor') : findCol('nro', 'doc'));
+  // Denominación con fallback a columna 9 (índice 8)
+  let idxDeno = (tipo === 'recibido')
+    ? findCol('denominacion', 'emisor')
+    : findCol('denominacion', 'receptor');
+  if (idxDeno < 0) idxDeno = findCol('denominacion');
+  if (idxDeno < 0 && headers.length > 8) idxDeno = 8;
+  const idxNeto = findCol('neto', 'gravado');
+  const idxIva = (() => {
+    let i = findCol('total', 'iva');
+    if (i < 0) i = findCol('iva');
+    return i;
+  })();
+  const idxTotal = (() => {
+    // Total general (no IVA) — buscar "imp total" o "total" sin "iva"
+    let i = findCol('imp', 'total');
+    if (i < 0) {
+      for (let j = headers.length - 1; j >= 0; j--) {
+        if (headers[j].includes('total') && !headers[j].includes('iva') && !headers[j].includes('neto')) {
+          i = j; break;
+        }
+      }
+    }
+    return i;
+  })();
+
+  const result = [];
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r];
+    if (!row || row.length === 0) continue;
+    const all = row.map(c => (c ?? '').trim()).filter(c => c.length > 0);
+    if (all.length === 0) continue;
+
+    result.push({
+      fecha: idxFecha >= 0 ? (row[idxFecha] || '').trim() : '',
+      nroDoc: idxNroDoc >= 0 ? (row[idxNroDoc] || '').trim() : '',
+      denominacion: idxDeno >= 0 ? (row[idxDeno] || '').trim() : '',
+      impNeto: idxNeto >= 0 ? parseDecimalArg(row[idxNeto]) : null,
+      totalIva: idxIva >= 0 ? parseDecimalArg(row[idxIva]) : null,
+      impTotal: idxTotal >= 0 ? parseDecimalArg(row[idxTotal]) : null,
+    });
+  }
+  return result;
+}
+
+/// Parser de CSV simple — soporta separador , o ;, valores con comillas y comillas escapadas.
+function parseCsvText(text) {
+  const lines = [];
+  // Detectar separador con la primera línea
+  const firstNl = text.indexOf('\n');
+  const firstLine = firstNl >= 0 ? text.slice(0, firstNl) : text;
+  const countSemi = (firstLine.match(/;/g) || []).length;
+  const countComma = (firstLine.match(/,/g) || []).length;
+  const sep = countSemi > countComma ? ';' : ',';
+
+  let cur = [];
+  let buf = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { buf += '"'; i++; }
+        else inQuotes = false;
+      } else {
+        buf += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === sep) {
+        cur.push(buf); buf = '';
+      } else if (ch === '\n') {
+        cur.push(buf); buf = '';
+        if (cur.length > 1 || (cur.length === 1 && cur[0].trim().length > 0)) lines.push(cur);
+        cur = [];
+      } else if (ch === '\r') {
+        // ignorar
+      } else {
+        buf += ch;
+      }
+    }
+  }
+  // Última fila
+  if (buf.length > 0 || cur.length > 0) {
+    cur.push(buf);
+    if (cur.length > 1 || (cur.length === 1 && cur[0].trim().length > 0)) lines.push(cur);
+  }
+  return lines;
+}
+
+/// "fecha de emisión" → "fechadeemision"; saca acentos, espacios y no-alfanumérico
+function normalizeHeader(h) {
+  if (!h) return '';
+  return h.toString()
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+/// Convierte "1.234,56" o "1234.56" a número. Devuelve null si no se puede.
+function parseDecimalArg(raw) {
+  if (raw === null || raw === undefined) return null;
+  const s = String(raw).trim().replace(/\s/g, '');
+  if (s === '' || s === '-') return null;
+  // Si tiene tanto punto como coma → punto es miles, coma es decimal (formato AR)
+  // Si solo tiene coma → coma es decimal
+  // Si solo tiene punto → punto es decimal
+  let normalized = s;
+  if (s.includes('.') && s.includes(',')) {
+    normalized = s.replace(/\./g, '').replace(',', '.');
+  } else if (s.includes(',')) {
+    normalized = s.replace(',', '.');
+  }
+  const n = Number(normalized);
+  return Number.isFinite(n) ? n : null;
+}
+
+function formatDdMmYyyy(isoOrAny) {
+  // Acepta yyyy-MM-dd o dd/MM/yyyy
+  const s = String(isoOrAny || '');
+  const isoMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) return `${isoMatch[3]}/${isoMatch[2]}/${isoMatch[1]}`;
+  return s;
+}
+
+function calcularRangoIso(tipo, desde, hasta) {
+  const today = new Date();
+  const ymd = (d) => {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+  if (tipo === 'custom' && desde && hasta) {
+    return { isoDesde: desde, isoHasta: hasta };
+  }
+  const dias = tipo === '60dias' ? 60 : tipo === '90dias' ? 90 : 30;
+  const d = new Date(today);
+  d.setDate(today.getDate() - dias);
+  return { isoDesde: ymd(d), isoHasta: ymd(today) };
 }
 
 // --- Restauración de sesión al arrancar ---
