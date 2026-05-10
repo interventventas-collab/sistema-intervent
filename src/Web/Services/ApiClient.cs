@@ -1067,6 +1067,19 @@ public class ApiClient
         return await DeleteAsync($"/api/meli/accounts/{id}");
     }
 
+    // --- ARCA (scraping) Accounts ---
+    public async Task<List<ArcaAccountDto>?> GetArcaAccountsAsync()
+        => await GetAsync<List<ArcaAccountDto>>("/api/arca/accounts");
+
+    public async Task<ArcaAccountDto?> CreateArcaAccountAsync(CreateArcaAccountRequest request)
+        => await PostAsync<ArcaAccountDto>("/api/arca/accounts", request);
+
+    public async Task<ArcaAccountDto?> UpdateArcaAccountAsync(int id, UpdateArcaAccountRequest request)
+        => await PutAsync<ArcaAccountDto>($"/api/arca/accounts/{id}", request);
+
+    public async Task<bool> DeleteArcaAccountAsync(int id)
+        => await DeleteAsync($"/api/arca/accounts/{id}");
+
     // --- MercadoLibre Orders ---
     public async Task<MeliOrdersResponse?> GetMeliOrdersAsync(DateTime from, DateTime to, int? accountId = null)
     {

@@ -66,6 +66,16 @@
                                 </div>
                             </button>
                         }
+                        @if (arcaId == 0)
+                        {
+                            <button class="add-integration-option" @onclick="() => AddIntegration_Arca()">
+                                <span class="integration-logo-icon arca-logo" style="width:28px;height:28px;font-size:0.7rem;">AR</span>
+                                <div>
+                                    <strong>ARCA (scraping)</strong>
+                                    <small>Login automatizado a ARCA (ex AFIP) con CUIT y clave</small>
+                                </div>
+                            </button>
+                        }
                     </div>
                 }
             </div>
@@ -364,6 +374,98 @@
                 <button class="btn btn-secondary btn-sm" @onclick="UnlinkWhatsApp" disabled="@waBusy">Desvincular</button>
             </div>
         </div>
+    </div>
+    }
+
+    <!-- ARCA (scraping) — solo si esta configurada -->
+    @if (arcaId > 0)
+    {
+    <div class="integration-card @(arcaActive ? "integration-active" : "")">
+        <div class="integration-card-header">
+            <div class="integration-logo">
+                <span class="integration-logo-icon arca-logo">AR</span>
+            </div>
+            <div class="integration-info">
+                <h3>ARCA (scraping)</h3>
+                <p>Login automatizado a ARCA (ex AFIP). Cargá uno o varios CUITs con su clave; si tu usuario representa a otro CUIT, agregá el "CUIT Login" aparte.</p>
+            </div>
+            <div class="integration-header-actions">
+                <span class="status-badge @(arcaActive ? "status-active" : "status-inactive")">
+                    @(arcaActive ? "Activa" : "Inactiva")
+                </span>
+                <button class="btn btn-secondary btn-sm" @onclick="OpenArcaConfigModal">Configurar</button>
+            </div>
+        </div>
+
+        @if (arcaActive)
+        {
+            <div class="integration-accounts">
+                <div class="integration-accounts-header">
+                    <h4>Cuentas conectadas</h4>
+                    <button class="btn btn-primary" @onclick="OpenArcaAddAccountModal">+ Agregar cuenta</button>
+                </div>
+
+                @if (arcaAccounts is not null && arcaAccounts.Count > 0)
+                {
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>CUIT</th>
+                                    <th>CUIT Login</th>
+                                    <th>Alias</th>
+                                    <th>Contraseña</th>
+                                    <th>Estado</th>
+                                    <th>Fecha</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var a in arcaAccounts)
+                                {
+                                    <tr>
+                                        <td><strong>@FormatCuit(a.Cuit)</strong></td>
+                                        <td>@(string.IsNullOrEmpty(a.CuitLogin) ? "—" : FormatCuit(a.CuitLogin))</td>
+                                        <td>@(string.IsNullOrEmpty(a.Alias) ? "—" : a.Alias)</td>
+                                        <td>
+                                            <span class="status-badge @(a.HasPassword ? "status-active" : "status-inactive")">
+                                                @(a.HasPassword ? "Cargada" : "Falta")
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span class="status-badge @(a.IsActive ? "status-active" : "status-inactive")">
+                                                @(a.IsActive ? "Activa" : "Inactiva")
+                                            </span>
+                                        </td>
+                                        <td>@a.CreatedAt.ToString("dd/MM/yyyy")</td>
+                                        <td>
+                                            <div class="actions-cell">
+                                                <button class="btn-icon btn-edit" @onclick="() => OpenArcaEditAccountModal(a)" title="Editar">
+                                                    @SvgIcons.Edit
+                                                </button>
+                                                <button class="btn-icon btn-delete" @onclick="() => DeleteArcaAccount(a.Id, a.Cuit)" title="Eliminar">
+                                                    @SvgIcons.AlertCircle
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else
+                {
+                    <p class="text-muted" style="padding: 1rem 1.5rem;">No hay cuentas cargadas todavía. Tocá <strong>"+ Agregar cuenta"</strong> para sumar la primera.</p>
+                }
+            </div>
+        }
+        else
+        {
+            <div style="padding: 1rem 1.5rem;">
+                <p class="text-muted">La integración está inactiva. Tocá <strong>Configurar</strong> para activarla.</p>
+            </div>
+        }
     </div>
     }
 </div>
@@ -834,6 +936,104 @@
     </div>
 }
 
+<!-- Modal: Configuracion ARCA (activar/desactivar/eliminar) -->
+@if (showArcaConfigModal)
+{
+    <div class="modal-overlay" @onclick="CloseArcaConfigModal">
+        <div class="modal-card" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>Configuración de ARCA</h3>
+                <button class="btn-close" @onclick="CloseArcaConfigModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(arcaError))
+                {
+                    <div class="form-error">@arcaError</div>
+                }
+                <p class="text-muted" style="margin-bottom: 1rem;">
+                    ARCA (ex AFIP) usa scraping para loguearte automáticamente. Cargá una o más cuentas en la grilla con su CUIT y clave; si tu usuario representa a otro CUIT distinto, dejá ese CUIT en "CUIT Login".
+                </p>
+                <div class="form-group">
+                    <label class="form-label">
+                        <input type="checkbox" @bind="arcaActive" /> Integración activa
+                    </label>
+                    <span class="input-hint">Si la desactivás, la card queda visible pero no se permite cargar cuentas nuevas.</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                @if (arcaId > 0)
+                {
+                    <button class="btn btn-danger" @onclick="DeleteArcaIntegration" disabled="@arcaSaving">
+                        Eliminar integración
+                    </button>
+                }
+                <button class="btn btn-secondary" @onclick="CloseArcaConfigModal">Cancelar</button>
+                <button class="btn btn-primary" @onclick="SaveArcaConfig" disabled="@arcaSaving">
+                    @(arcaSaving ? "Guardando..." : "Guardar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Modal: Agregar / Editar cuenta ARCA -->
+@if (showArcaAccountModal)
+{
+    <div class="modal-overlay" @onclick="CloseArcaAccountModal">
+        <div class="modal-card" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>@(arcaIsEditingAccount ? "Editar cuenta de ARCA" : "Agregar cuenta de ARCA")</h3>
+                <button class="btn-close" @onclick="CloseArcaAccountModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(arcaAccountError))
+                {
+                    <div class="form-error">@arcaAccountError</div>
+                }
+                <div class="form-group">
+                    <label class="form-label">CUIT *</label>
+                    <input type="text" class="form-input" @bind="arcaFormCuit"
+                           placeholder="Ej: 30-71593809-1 o 30715938091" maxlength="13" />
+                    <span class="input-hint">11 dígitos. Los guiones se sacan automáticamente.</span>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">CUIT Login (opcional)</label>
+                    <input type="text" class="form-input" @bind="arcaFormCuitLogin"
+                           placeholder="Solo si loguea con un CUIT distinto y luego representa al de arriba" maxlength="13" />
+                    <span class="input-hint">Dejalo vacío si tu CUIT loguea con su propia clave.</span>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Alias (opcional)</label>
+                    <input type="text" class="form-input" @bind="arcaFormAlias"
+                           placeholder="Ej: Estudio contable, Empresa principal" maxlength="100" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Contraseña @(arcaIsEditingAccount ? "" : "*")</label>
+                    <div class="input-with-hint">
+                        <input type="password" class="form-input" @bind="arcaFormPassword"
+                               placeholder="@(arcaFormHasPassword ? "••••••••  (ya configurada)" : "Clave fiscal")" />
+                        @if (arcaFormHasPassword)
+                        {
+                            <span class="input-hint">Dejala en blanco para mantener la actual.</span>
+                        }
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">
+                        <input type="checkbox" @bind="arcaFormIsActive" /> Cuenta activa
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseArcaAccountModal" disabled="@arcaAccountSaving">Cancelar</button>
+                <button class="btn btn-primary" @onclick="SaveArcaAccount" disabled="@arcaAccountSaving">
+                    @(arcaAccountSaving ? "Guardando..." : (arcaIsEditingAccount ? "Guardar cambios" : "Agregar cuenta"))
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 <!-- Modal: Configuracion Email SMTP -->
 @if (showEmailModal)
 {
@@ -971,6 +1171,27 @@
     private bool loadingClaudeModels;
     private string? claudeModelsError;
 
+    // ARCA (scraping) state
+    private int arcaId;                          // Id del registro en `Integrations` con Provider="arca"
+    private bool arcaActive;                     // toggle de la integración
+    private bool showArcaConfigModal;            // modal "Configurar" (activar/desactivar/eliminar)
+    private bool arcaSaving;
+    private string? arcaError;
+    private List<ArcaAccountDto>? arcaAccounts;  // grilla de cuentas
+
+    // Modal: agregar/editar cuenta ARCA
+    private bool showArcaAccountModal;
+    private bool arcaIsEditingAccount;
+    private int? arcaEditingAccountId;
+    private string arcaFormCuit = "";
+    private string arcaFormCuitLogin = "";
+    private string arcaFormAlias = "";
+    private string arcaFormPassword = "";
+    private bool arcaFormHasPassword;            // en edición: indica si ya hay una guardada
+    private bool arcaFormIsActive = true;
+    private bool arcaAccountSaving;
+    private string? arcaAccountError;
+
     // Email SMTP config fields
     private int emailId;
     private bool emailActive;
@@ -1000,8 +1221,8 @@
 
     // Add integration menu
     private bool showAddMenu;
-    private bool HasConfiguredIntegrations => mlId > 0 || openaiId > 0 || claudeId > 0 || emailId > 0 || waLinked;
-    private bool HasAvailableIntegrations => mlId == 0 || openaiId == 0 || claudeId == 0 || emailId == 0 || !waLinked;
+    private bool HasConfiguredIntegrations => mlId > 0 || openaiId > 0 || claudeId > 0 || emailId > 0 || waLinked || arcaId > 0;
+    private bool HasAvailableIntegrations => mlId == 0 || openaiId == 0 || claudeId == 0 || emailId == 0 || !waLinked || arcaId == 0;
 
     // Test user flow
     private bool showTestUserModal;
@@ -1040,6 +1261,7 @@
         await LoadEmail();
         await LoadAccounts();
         await LoadWhatsApp();
+        await LoadArca();
     }
 
     // --- WhatsApp methods ---
@@ -2051,5 +2273,280 @@
         {
             deletingAccount = false;
         }
+    }
+
+    // ============================================================
+    // ARCA (scraping) — métodos
+    // ============================================================
+
+    private async Task LoadArca()
+    {
+        try
+        {
+            var integration = await Api.GetIntegrationAsync("arca");
+            if (integration is not null)
+            {
+                arcaId = integration.Id;
+                arcaActive = integration.IsActive;
+            }
+            else
+            {
+                arcaId = 0;
+                arcaActive = false;
+            }
+        }
+        catch { }
+        await LoadArcaAccounts();
+    }
+
+    private async Task LoadArcaAccounts()
+    {
+        try { arcaAccounts = await Api.GetArcaAccountsAsync(); }
+        catch { arcaAccounts = new(); }
+    }
+
+    private async Task AddIntegration_Arca()
+    {
+        showAddMenu = false;
+        // Si todavía no existe la fila en `Integrations`, la creamos como activa
+        // así la card aparece de una. El Configurar permite después desactivarla
+        // o eliminarla.
+        if (arcaId == 0)
+        {
+            try
+            {
+                var result = await Api.SaveIntegrationAsync(new SaveIntegrationRequest
+                {
+                    Provider = "arca",
+                    IsActive = true
+                });
+                if (result is not null)
+                {
+                    arcaId = result.Id;
+                    arcaActive = result.IsActive;
+                    ToastService.Success("ARCA agregada — ahora podés cargar tus cuentas");
+                }
+            }
+            catch
+            {
+                ToastService.Error("No se pudo agregar la integración ARCA");
+            }
+        }
+        await LoadArcaAccounts();
+    }
+
+    private void OpenArcaConfigModal()
+    {
+        arcaError = null;
+        showArcaConfigModal = true;
+    }
+
+    private void CloseArcaConfigModal()
+    {
+        showArcaConfigModal = false;
+        arcaError = null;
+    }
+
+    private async Task SaveArcaConfig()
+    {
+        arcaError = null;
+        arcaSaving = true;
+        try
+        {
+            var result = await Api.SaveIntegrationAsync(new SaveIntegrationRequest
+            {
+                Provider = "arca",
+                IsActive = arcaActive
+            });
+            if (result is not null)
+            {
+                arcaId = result.Id;
+                arcaActive = result.IsActive;
+                ToastService.Success("Configuración de ARCA guardada");
+                showArcaConfigModal = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            arcaError = "Error al guardar: " + ex.Message;
+        }
+        finally
+        {
+            arcaSaving = false;
+        }
+    }
+
+    private async Task DeleteArcaIntegration()
+    {
+        if (!await ConfirmAsync("¿Eliminar la integración ARCA? Las cuentas cargadas también se borran.")) return;
+        arcaSaving = true;
+        try
+        {
+            // Borramos cada cuenta primero (no hay cascade por design)
+            if (arcaAccounts is not null)
+            {
+                foreach (var a in arcaAccounts)
+                {
+                    try { await Api.DeleteArcaAccountAsync(a.Id); } catch { }
+                }
+            }
+            var deleted = await Api.DeleteIntegrationAsync("arca");
+            if (deleted)
+            {
+                arcaId = 0;
+                arcaActive = false;
+                arcaAccounts = new();
+                showArcaConfigModal = false;
+                ToastService.Success("Integración ARCA eliminada");
+            }
+        }
+        catch
+        {
+            arcaError = "Error al eliminar la integración";
+        }
+        finally
+        {
+            arcaSaving = false;
+        }
+    }
+
+    private void OpenArcaAddAccountModal()
+    {
+        arcaIsEditingAccount = false;
+        arcaEditingAccountId = null;
+        arcaFormCuit = "";
+        arcaFormCuitLogin = "";
+        arcaFormAlias = "";
+        arcaFormPassword = "";
+        arcaFormHasPassword = false;
+        arcaFormIsActive = true;
+        arcaAccountError = null;
+        showArcaAccountModal = true;
+    }
+
+    private void OpenArcaEditAccountModal(ArcaAccountDto a)
+    {
+        arcaIsEditingAccount = true;
+        arcaEditingAccountId = a.Id;
+        arcaFormCuit = a.Cuit;
+        arcaFormCuitLogin = a.CuitLogin ?? "";
+        arcaFormAlias = a.Alias ?? "";
+        arcaFormPassword = "";
+        arcaFormHasPassword = a.HasPassword;
+        arcaFormIsActive = a.IsActive;
+        arcaAccountError = null;
+        showArcaAccountModal = true;
+    }
+
+    private void CloseArcaAccountModal()
+    {
+        showArcaAccountModal = false;
+        arcaAccountError = null;
+    }
+
+    private async Task SaveArcaAccount()
+    {
+        arcaAccountError = null;
+
+        // Normalización rápida del lado cliente — el server vuelve a normalizar.
+        var cuitDigits = new string((arcaFormCuit ?? "").Where(char.IsDigit).ToArray());
+        if (cuitDigits.Length != 11)
+        {
+            arcaAccountError = "El CUIT debe tener 11 dígitos";
+            return;
+        }
+        var cuitLoginDigits = new string((arcaFormCuitLogin ?? "").Where(char.IsDigit).ToArray());
+        if (!string.IsNullOrWhiteSpace(arcaFormCuitLogin) && cuitLoginDigits.Length != 11)
+        {
+            arcaAccountError = "El CUIT Login debe tener 11 dígitos (o dejarlo vacío)";
+            return;
+        }
+
+        arcaAccountSaving = true;
+        try
+        {
+            if (arcaIsEditingAccount && arcaEditingAccountId.HasValue)
+            {
+                var updated = await Api.UpdateArcaAccountAsync(arcaEditingAccountId.Value, new UpdateArcaAccountRequest
+                {
+                    Cuit = cuitDigits,
+                    CuitLogin = string.IsNullOrWhiteSpace(arcaFormCuitLogin) ? "" : cuitLoginDigits,
+                    Alias = arcaFormAlias,
+                    Password = string.IsNullOrWhiteSpace(arcaFormPassword) ? null : arcaFormPassword,
+                    IsActive = arcaFormIsActive
+                });
+                if (updated is null)
+                {
+                    arcaAccountError = "No se pudo actualizar la cuenta";
+                    return;
+                }
+                ToastService.Success("Cuenta de ARCA actualizada");
+            }
+            else
+            {
+                if (string.IsNullOrWhiteSpace(arcaFormPassword))
+                {
+                    arcaAccountError = "La contraseña es obligatoria";
+                    return;
+                }
+                var created = await Api.CreateArcaAccountAsync(new CreateArcaAccountRequest
+                {
+                    Cuit = cuitDigits,
+                    CuitLogin = string.IsNullOrWhiteSpace(arcaFormCuitLogin) ? null : cuitLoginDigits,
+                    Alias = arcaFormAlias,
+                    Password = arcaFormPassword,
+                    IsActive = arcaFormIsActive
+                });
+                if (created is null)
+                {
+                    arcaAccountError = "No se pudo crear la cuenta";
+                    return;
+                }
+                ToastService.Success("Cuenta de ARCA agregada");
+            }
+            showArcaAccountModal = false;
+            await LoadArcaAccounts();
+        }
+        catch (Exception ex)
+        {
+            arcaAccountError = ex.Message;
+        }
+        finally
+        {
+            arcaAccountSaving = false;
+        }
+    }
+
+    private async Task DeleteArcaAccount(int id, string cuit)
+    {
+        if (!await ConfirmAsync($"¿Eliminar la cuenta CUIT {FormatCuit(cuit)}?")) return;
+        try
+        {
+            var deleted = await Api.DeleteArcaAccountAsync(id);
+            if (deleted)
+            {
+                ToastService.Success("Cuenta eliminada");
+                await LoadArcaAccounts();
+            }
+        }
+        catch
+        {
+            ToastService.Error("Error al eliminar la cuenta");
+        }
+    }
+
+    /// <summary>Formatea CUIT 30715938091 -> 30-71593809-1 para mostrar.</summary>
+    private static string FormatCuit(string? raw)
+    {
+        var digits = new string((raw ?? "").Where(char.IsDigit).ToArray());
+        if (digits.Length != 11) return raw ?? "";
+        return $"{digits[..2]}-{digits[2..10]}-{digits[10..]}";
+    }
+
+    /// <summary>Confirmación nativa del browser (simple, sin modal custom).</summary>
+    private async Task<bool> ConfirmAsync(string message)
+    {
+        try { return await JS.InvokeAsync<bool>("confirm", message); }
+        catch { return false; }
     }
 }

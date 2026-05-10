@@ -11,6 +11,7 @@ public class AppDbContext : DbContext
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<Integration> Integrations => Set<Integration>();
     public DbSet<MeliAccount> MeliAccounts => Set<MeliAccount>();
+    public DbSet<ArcaAccount> ArcaAccounts => Set<ArcaAccount>();
     public DbSet<MeliOrder> MeliOrders => Set<MeliOrder>();
     public DbSet<MeliItem> MeliItems => Set<MeliItem>();
     public DbSet<MeliQuestion> MeliQuestions => Set<MeliQuestion>();

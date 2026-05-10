@@ -136,6 +136,26 @@ BEGIN
 END
 GO
 
+-- ArcaAccounts table — cuentas de ARCA (ex AFIP) para login automatizado por scraping.
+-- Cada fila representa una combinación CUIT + CUIT Login (algunos usuarios loguean
+-- con un CUIT y luego representan a otro). Si CuitLogin es NULL, loguea con el
+-- mismo Cuit. La password se guarda en texto porque el scraper la usa en runtime.
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ArcaAccounts' AND xtype='U')
+BEGIN
+    CREATE TABLE ArcaAccounts (
+        Id INT PRIMARY KEY IDENTITY(1,1),
+        Cuit NVARCHAR(11) NOT NULL,
+        CuitLogin NVARCHAR(11) NULL,
+        Alias NVARCHAR(100) NULL,
+        Password NVARCHAR(MAX) NOT NULL,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL
+    );
+    CREATE INDEX IX_ArcaAccounts_Cuit ON ArcaAccounts (Cuit);
+END
+GO
+
 -- MeliOrders table
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='MeliOrders' AND xtype='U')
 BEGIN

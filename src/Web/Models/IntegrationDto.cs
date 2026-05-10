@@ -53,3 +53,35 @@ public class ClaudeModelDto
     public string Id { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
 }
+
+// ===== ARCA (scraping) =====
+public class ArcaAccountDto
+{
+    public int Id { get; set; }
+    public string Cuit { get; set; } = string.Empty;
+    public string? CuitLogin { get; set; }
+    public string? Alias { get; set; }
+    public bool HasPassword { get; set; }
+    public bool IsActive { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+}
+
+public class CreateArcaAccountRequest
+{
+    public string Cuit { get; set; } = string.Empty;
+    public string? CuitLogin { get; set; }
+    public string? Alias { get; set; }
+    public string Password { get; set; } = string.Empty;
+    public bool IsActive { get; set; } = true;
+}
+
+public class UpdateArcaAccountRequest
+{
+    public string? Cuit { get; set; }
+    public string? CuitLogin { get; set; }
+    public string? Alias { get; set; }
+    /// <summary>Si null o vacío, no se cambia la contraseña.</summary>
+    public string? Password { get; set; }
+    public bool? IsActive { get; set; }
+}
