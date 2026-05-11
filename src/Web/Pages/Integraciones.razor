@@ -1757,9 +1757,15 @@
                 }
                 else if (!arcaWsTestResult.Success)
                 {
-                    <div class="form-error" style="padding: 0.8rem; font-size: 0.9rem;">
-                        <strong>❌ No se pudo validar el certificado:</strong>
-                        <div style="margin-top: 0.3rem;">@arcaWsTestResult.Error</div>
+                    @* Si el error empieza con ✅ es realmente un "login OK pero falta autorizar el servicio" — usamos amarillo en lugar de rojo. *@
+                    var esFaltaAutorizacion = arcaWsTestResult.Error?.StartsWith("✅") == true;
+                    var bg = esFaltaAutorizacion ? "#fef3c7" : "#fee2e2";
+                    var border = esFaltaAutorizacion ? "#fbbf24" : "#fca5a5";
+                    var color = esFaltaAutorizacion ? "#78350f" : "#7f1d1d";
+                    var titulo = esFaltaAutorizacion ? "Falta un paso más en ARCA" : "No se pudo validar el certificado";
+                    <div style="padding: 0.8rem 1rem; background: @bg; border: 1px solid @border; border-radius: 8px; color: @color;">
+                        <strong>@titulo</strong>
+                        <div style="margin-top: 0.4rem; white-space: pre-wrap; font-size: 0.9rem; line-height: 1.5;">@arcaWsTestResult.Error</div>
                     </div>
                 }
                 else

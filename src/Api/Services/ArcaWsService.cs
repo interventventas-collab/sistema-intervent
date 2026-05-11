@@ -270,6 +270,23 @@ public class ArcaWsService
         // Mensaje habitual: "El CEE ya posee un TA válido para el acceso al WSN solicitado"
         if (raw.Contains("ya posee un TA", StringComparison.OrdinalIgnoreCase))
             return "Esperá unos minutos (entre 2 y 10) antes de reintentar — es un límite del propio WSAA.";
+
+        // "Computador no autorizado a acceder al servicio" — el cert no está vinculado al WS en
+        // "Administrador de Relaciones de Clave Fiscal" de ARCA. Le explicamos al usuario qué hacer.
+        if (raw.Contains("no autorizado", StringComparison.OrdinalIgnoreCase) ||
+            raw.Contains("acceder al servicio", StringComparison.OrdinalIgnoreCase))
+        {
+            return "✅ Login OK — pero el certificado todavía NO tiene habilitado el servicio \"Factura Electrónica\" (wsfe). " +
+                   "Para autorizarlo:\n\n" +
+                   "1. Entrá a https://auth.afip.gob.ar/contribuyente_/login.xhtml con tu CUIT y clave fiscal.\n" +
+                   "2. Buscá el servicio \"Administrador de Relaciones de Clave Fiscal\".\n" +
+                   "3. Tocá ADHERIR SERVICIO → \"AFIP\" → \"WebServices\" → \"Facturación Electrónica (wsfe)\".\n" +
+                   "4. En \"Computador Fiscal\" elegí el certificado que subiste a este sistema (alias).\n" +
+                   "5. Confirmá. Esperá 5-10 minutos y volvé a probar acá.\n\n" +
+                   "Si tu certificado opera en nombre de OTRA empresa, además tenés que delegar la relación: " +
+                   "entrar como representante del CUIT objetivo y vincular el mismo certificado.";
+        }
+
         if (raw.Contains("generationTime", StringComparison.OrdinalIgnoreCase))
             return "Error en la firma del pedido (generationTime). Reintentá; si persiste avisame.";
         if (raw.Contains("computador local", StringComparison.OrdinalIgnoreCase) || raw.Contains("alias", StringComparison.OrdinalIgnoreCase))
