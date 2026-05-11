@@ -320,10 +320,16 @@ public class CafeCotizacionPdfService
                                 t.Span("Para esta vista se aplica 21% al neto. Cuando se emita la factura real, los productos con IVA 10,5% (alimentos) se discriminarán por separado.").FontColor("#92400e").FontSize(8);
                             });
                     }
+                });
 
+                // ───── FOOTER (fijo al pie de la página) ─────
+                // Los bloques de Entrega / Observaciones / Días de visita van ACÁ
+                // para que queden siempre pegados al pie, no apretados contra los totales.
+                page.Footer().Column(fc =>
+                {
                     if (!string.IsNullOrWhiteSpace(v.ClienteDomicilioEntregaSnapshot))
                     {
-                        col.Item().PaddingTop(5).Border(1).BorderColor(Colors.Grey.Lighten1)
+                        fc.Item().PaddingTop(5).Border(1).BorderColor(Colors.Grey.Lighten1)
                             .Background(Colors.Grey.Lighten4).Padding(5).Text(t =>
                             {
                                 t.Span("🚚 Entrega en: ").SemiBold();
@@ -333,7 +339,7 @@ public class CafeCotizacionPdfService
 
                     if (!string.IsNullOrEmpty(v.ClienteComentariosComprobante))
                     {
-                        col.Item().PaddingTop(5).BorderLeft(3).BorderColor(Colors.Orange.Darken1)
+                        fc.Item().PaddingTop(5).BorderLeft(3).BorderColor(Colors.Orange.Darken1)
                             .Background(Colors.Orange.Lighten4).Padding(5).Text(t =>
                             {
                                 t.Span("📝 ").SemiBold();
@@ -343,7 +349,7 @@ public class CafeCotizacionPdfService
 
                     if (!string.IsNullOrEmpty(v.Observaciones))
                     {
-                        col.Item().PaddingTop(5).Border(1).BorderColor(Colors.Grey.Lighten1).Padding(5).Text(t =>
+                        fc.Item().PaddingTop(5).Border(1).BorderColor(Colors.Grey.Lighten1).Padding(5).Text(t =>
                         {
                             t.Span("Observaciones: ").SemiBold();
                             t.Span(v.Observaciones!);
@@ -351,7 +357,7 @@ public class CafeCotizacionPdfService
                     }
 
                     // Días de visita / reparto
-                    col.Item().PaddingTop(8).Border(1).BorderColor(Colors.Grey.Lighten1).Padding(5).Row(row =>
+                    fc.Item().PaddingTop(5).Border(1).BorderColor(Colors.Grey.Lighten1).Padding(5).Row(row =>
                     {
                         row.AutoItem().AlignMiddle().PaddingRight(6).Text("Días de visita / reparto:")
                             .FontSize(8).FontColor(Colors.Grey.Darken1);
@@ -366,17 +372,17 @@ public class CafeCotizacionPdfService
                                 .Text(d).Bold().FontSize(8).FontColor(fg);
                         }
                     });
-                });
 
-                // ───── FOOTER ─────
-                page.Footer().PaddingTop(6).BorderTop(1).BorderColor(Colors.Grey.Lighten2).PaddingTop(4).AlignCenter().Text(t =>
-                {
-                    t.Span("Gracias por tu compra ☕").FontSize(8).FontColor(Colors.Grey.Darken1);
-                    if (!string.IsNullOrEmpty(cfg.NegocioWhatsappNumero))
+                    // Línea final con "Gracias por tu compra"
+                    fc.Item().PaddingTop(8).BorderTop(1).BorderColor(Colors.Grey.Lighten2).PaddingTop(4).AlignCenter().Text(t =>
                     {
-                        t.Span("   ·   ").FontSize(8).FontColor(Colors.Grey.Darken1);
-                        t.Span("Contactanos por WhatsApp").FontSize(8).FontColor("#25D366").Bold();
-                    }
+                        t.Span("Gracias por tu compra ☕").FontSize(8).FontColor(Colors.Grey.Darken1);
+                        if (!string.IsNullOrEmpty(cfg.NegocioWhatsappNumero))
+                        {
+                            t.Span("   ·   ").FontSize(8).FontColor(Colors.Grey.Darken1);
+                            t.Span("Contactanos por WhatsApp").FontSize(8).FontColor("#25D366").Bold();
+                        }
+                    });
                 });
             });
         }).GeneratePdf();
