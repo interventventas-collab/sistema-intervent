@@ -83,6 +83,31 @@ public class CafeVenta
     /// <summary>Si esta marcado como pagado (estampa el sello en el PDF).</summary>
     public bool IsPaid { get; set; }
 
+    // ============================================================
+    // ARCA — datos de la factura emitida (solo aplica si TipoComprobante in FA/FB/FC)
+    // ============================================================
+    /// <summary>"no_aplica" (X/PRO) | "pendiente" (rechazado o aún no emitido) | "autorizado" | "rechazado"</summary>
+    [MaxLength(20)]
+    public string ArcaEstado { get; set; } = "no_aplica";
+
+    /// <summary>Código de Autorización Electrónica devuelto por ARCA (14 dígitos).</summary>
+    [MaxLength(20)]
+    public string? ArcaCae { get; set; }
+
+    public DateTime? ArcaCaeVto { get; set; }
+
+    /// <summary>Punto de venta usado para emitir (ej: 2).</summary>
+    public int? ArcaPtoVta { get; set; }
+
+    /// <summary>Número de comprobante asignado por ARCA (correlativo).</summary>
+    public int? ArcaCbteNro { get; set; }
+
+    /// <summary>1=Factura A, 6=Factura B, 11=Factura C — mapeado desde TipoComprobante.</summary>
+    public int? ArcaCbteTipoNum { get; set; }
+
+    [MaxLength(1000)]
+    public string? ArcaError { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 

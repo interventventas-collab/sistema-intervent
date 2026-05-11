@@ -493,6 +493,9 @@ public class ApiClient
     public async Task<CafeVentaDto?> AnularCafeVentaAsync(int id)
         => await PostAsync<CafeVentaDto>($"/api/cafe/ventas/{id}/anular", new { });
 
+    public async Task<CafeVentaDto?> RetryArcaCafeVentaAsync(int id)
+        => await PostAsync<CafeVentaDto>($"/api/cafe/ventas/{id}/retry-arca", new { });
+
     public async Task<CafeVentaDto?> UpdateCafeVentaFlagsAsync(int id, UpdateCafeVentaFlagsRequest req)
         => await PutAsync<CafeVentaDto>($"/api/cafe/ventas/{id}/flags", req);
 

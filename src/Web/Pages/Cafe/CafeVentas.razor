@@ -103,7 +103,8 @@
                         {
                             var anulada = v.Estado == "anulado";
                             var sel = selectedIds.Contains(v.Id);
-                            <tr style="@(anulada ? "opacity: 0.55;" : "") @(sel ? "background:#eff6ff;" : "")">
+                            var pendienteArca = v.ArcaEstado == "pendiente";
+                            <tr style="@(anulada ? "opacity: 0.55;" : "") @(sel ? "background:#eff6ff;" : (pendienteArca ? "background:#fff7ed;" : ""))">
                                 <td style="text-align: center;">
                                     <input type="checkbox"
                                            checked="@sel"
@@ -132,6 +133,14 @@
                                     else
                                     {
                                         <span style="display:inline-block; padding:0.15rem 0.5rem; background:#dcfce7; color:#166534; border-radius:999px; font-size:0.7rem; font-weight:700;">✅ EMITIDA</span>
+                                    }
+                                    @if (v.ArcaEstado == "autorizado")
+                                    {
+                                        <span style="display:inline-block; padding:0.15rem 0.5rem; background:#dbeafe; color:#1e40af; border-radius:999px; font-size:0.7rem; font-weight:700; margin-left:0.2rem;" title="@($"CAE {v.ArcaCae} · {(v.ArcaPtoVta ?? 0):00000}-{(v.ArcaCbteNro ?? 0):00000000}")">📜 CAE ✓</span>
+                                    }
+                                    else if (v.ArcaEstado == "pendiente")
+                                    {
+                                        <span style="display:inline-block; padding:0.15rem 0.5rem; background:#fed7aa; color:#9a3412; border-radius:999px; font-size:0.7rem; font-weight:700; margin-left:0.2rem;" title="@v.ArcaError">⚠ ARCA pendiente</span>
                                     }
                                 </td>
                                 <td class="actions-cell">
@@ -756,6 +765,34 @@
                     <div style="background: #fee2e2; border: 2px solid #b91c1c; color: #7f1d1d; padding: 0.6rem 0.9rem; border-radius: 6px; margin-bottom: 0.6rem; font-weight: 800;">
                         ⚠ COMPROBANTE ANULADO
                     </div>
+                }
+                @* ARCA estado banner — solo si es FA/FB/FC *@
+                @if (printVenta.TipoComprobante is "FA" or "FB" or "FC")
+                {
+                    @if (printVenta.ArcaEstado == "autorizado")
+                    {
+                        <div class="no-print" style="background: #dcfce7; border: 1px solid #86efac; padding: 0.6rem 0.9rem; border-radius: 6px; margin-bottom: 0.6rem;">
+                            <strong style="color: #166534;">✅ Factura autorizada en ARCA</strong>
+                            <div style="font-size: 0.85rem; color: #166534; margin-top: 0.2rem;">
+                                <strong>CAE:</strong> <span style="font-family: monospace;">@printVenta.ArcaCae</span> ·
+                                <strong>Vto:</strong> @(printVenta.ArcaCaeVto?.ToString("dd/MM/yyyy") ?? "—") ·
+                                <strong>Nro ARCA:</strong> @($"{(printVenta.ArcaPtoVta ?? 0):00000}-{(printVenta.ArcaCbteNro ?? 0):00000000}")
+                            </div>
+                        </div>
+                    }
+                    else if (printVenta.ArcaEstado == "pendiente")
+                    {
+                        <div class="no-print" style="background: #fed7aa; border: 2px solid #fb923c; padding: 0.7rem 0.9rem; border-radius: 6px; margin-bottom: 0.6rem; display: flex; justify-content: space-between; align-items: center; gap: 0.8rem; flex-wrap: wrap;">
+                            <div style="flex: 1; min-width: 240px;">
+                                <strong style="color: #9a3412;">⚠ Factura PENDIENTE — no se autorizó en ARCA todavía</strong>
+                                <div style="font-size: 0.8rem; color: #7c2d12; margin-top: 0.2rem; white-space: pre-wrap;">@printVenta.ArcaError</div>
+                            </div>
+                            <button class="btn btn-primary" style="font-size: 0.85rem; background: #ea580c; border: none;"
+                                    @onclick="RetryArca" disabled="@arcaRetrying">
+                                @(arcaRetrying ? "Reintentando..." : "🔄 Reintentar emisión")
+                            </button>
+                        </div>
+                    }
                 }
                 @if (printVenta.IsPaid && printVenta.Estado != "anulado")
                 {
@@ -1717,6 +1754,28 @@
             await Load();
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private bool arcaRetrying;
+    private async Task RetryArca()
+    {
+        if (printVenta is null || arcaRetrying) return;
+        arcaRetrying = true;
+        try
+        {
+            var updated = await Api.RetryArcaCafeVentaAsync(printVenta.Id);
+            if (updated is not null)
+            {
+                printVenta = updated;
+                if (updated.ArcaEstado == "autorizado")
+                    ToastService.Success($"Factura autorizada — CAE {updated.ArcaCae}");
+                else
+                    ToastService.Error("ARCA: " + (updated.ArcaError ?? "sigue pendiente"));
+            }
+            await Load();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { arcaRetrying = false; }
     }
 
     private async Task ToggleViewerDay(string d)

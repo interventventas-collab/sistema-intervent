@@ -237,7 +237,14 @@ public record CafeVentaDto(
     string? ClienteDireccion,
     string? ClienteLocalidad,
     string? ClienteCiudad,
-    string? ClienteCp);
+    string? ClienteCp,
+    string ArcaEstado,
+    string? ArcaCae,
+    DateTime? ArcaCaeVto,
+    int? ArcaPtoVta,
+    int? ArcaCbteNro,
+    int? ArcaCbteTipoNum,
+    string? ArcaError);
 
 public class CafeCotizarItemRequest
 {

@@ -1969,6 +1969,20 @@ BEGIN
 END
 GO
 
+-- Migracion: columnas ARCA en Cafe_Ventas (factura electronica emitida desde el modulo Cafe)
+IF EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_Ventas' AND xtype='U')
+   AND NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ArcaEstado' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+BEGIN
+    ALTER TABLE Cafe_Ventas ADD ArcaEstado NVARCHAR(20) NOT NULL DEFAULT 'no_aplica';
+    ALTER TABLE Cafe_Ventas ADD ArcaCae NVARCHAR(20) NULL;
+    ALTER TABLE Cafe_Ventas ADD ArcaCaeVto DATETIME2 NULL;
+    ALTER TABLE Cafe_Ventas ADD ArcaPtoVta INT NULL;
+    ALTER TABLE Cafe_Ventas ADD ArcaCbteNro INT NULL;
+    ALTER TABLE Cafe_Ventas ADD ArcaCbteTipoNum INT NULL;
+    ALTER TABLE Cafe_Ventas ADD ArcaError NVARCHAR(1000) NULL;
+END
+GO
+
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_VentaItems' AND xtype='U')
 BEGIN
     CREATE TABLE Cafe_VentaItems (

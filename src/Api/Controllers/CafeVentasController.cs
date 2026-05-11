@@ -15,12 +15,23 @@ public class CafeVentasController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly CafeCotizacionPdfService _pdfService;
+    private readonly ArcaInvoiceService _arcaInvoiceService;
+    private readonly ArcaInvoicePdfService _arcaPdfService;
+    private readonly ArcaEmisorService _emisorService;
     private static readonly string[] FormatosValidos = { "1KG", "MEDIO", "CUARTO", "UNIT" };
 
-    public CafeVentasController(AppDbContext db, CafeCotizacionPdfService pdfService)
+    public CafeVentasController(
+        AppDbContext db,
+        CafeCotizacionPdfService pdfService,
+        ArcaInvoiceService arcaInvoiceService,
+        ArcaInvoicePdfService arcaPdfService,
+        ArcaEmisorService emisorService)
     {
         _db = db;
         _pdfService = pdfService;
+        _arcaInvoiceService = arcaInvoiceService;
+        _arcaPdfService = arcaPdfService;
+        _emisorService = emisorService;
     }
 
     private static CafeVentaDto Map(CafeVenta v) => new(
@@ -45,7 +56,14 @@ public class CafeVentasController : ControllerBase
         v.ClienteDireccionSnapshot,
         v.ClienteLocalidadSnapshot,
         v.ClienteCiudadSnapshot,
-        v.ClienteCpSnapshot);
+        v.ClienteCpSnapshot,
+        v.ArcaEstado,
+        v.ArcaCae,
+        v.ArcaCaeVto,
+        v.ArcaPtoVta,
+        v.ArcaCbteNro,
+        v.ArcaCbteTipoNum,
+        v.ArcaError);
 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null)
@@ -77,8 +95,101 @@ public class CafeVentasController : ControllerBase
         var v = await _db.CafeVentas.Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == id);
         if (v is null) return NotFound(new { error = "Venta no encontrada" });
         var cfg = await _db.CafeSettings.FindAsync(1);
+
+        // Si la venta es Factura A/B/C y está autorizada en ARCA → PDF de factura ARCA con CAE+QR.
+        // Si no → PDF de cotización interno (lo que ya tenías).
+        var esFacturaArca = v.TipoComprobante is "FA" or "FB" or "FC";
+        var autorizada = v.ArcaEstado == "autorizado"
+                         && !string.IsNullOrEmpty(v.ArcaCae)
+                         && v.ArcaCbteNro.HasValue
+                         && v.ArcaPtoVta.HasValue
+                         && v.ArcaCbteTipoNum.HasValue;
+
+        if (esFacturaArca && autorizada)
+        {
+            var pdfBytes = BuildArcaPdf(v, cfg!);
+            return File(pdfBytes, "application/pdf", $"{v.Numero}.pdf");
+        }
+
         var bytes = _pdfService.GenerarPdfBytes(v, cfg);
         return File(bytes, "application/pdf", $"{v.Numero}.pdf");
+    }
+
+    /// <summary>
+    /// Arma el PdfEmisor + PdfComprobante + PdfReceptor a partir de los datos de la venta
+    /// del Café y los datos del negocio, y genera el PDF de factura ARCA (con CAE y QR).
+    /// </summary>
+    private byte[] BuildArcaPdf(CafeVenta v, CafeSetting cfg)
+    {
+        var ficha = _emisorService.GetEntityByCuitAsync(cfg?.NegocioCuit ?? "").GetAwaiter().GetResult();
+        var emisor = new PdfEmisor
+        {
+            Cuit = ficha?.Cuit ?? new string((cfg?.NegocioCuit ?? "").Where(char.IsDigit).ToArray()),
+            RazonSocial = ficha?.RazonSocial ?? cfg?.NegocioRazonSocial ?? cfg?.NegocioNombre ?? "—",
+            CondicionIva = ficha?.CondicionIva ?? "Responsable Inscripto",
+            Domicilio = ficha?.Domicilio ?? cfg?.NegocioDireccion,
+            IIBBTipo = ficha?.IIBBTipo,
+            IIBBNumero = ficha?.IIBBNumero ?? cfg?.NegocioIngresosBrutos,
+            InicioActividades = ficha?.InicioActividades ?? cfg?.NegocioInicioActividad,
+            LogoBytes = _emisorService.TryGetLogoBytes(ficha?.LogoPath),
+        };
+
+        var letra = ArcaInvoicePdfService.LetraDelTipo(v.ArcaCbteTipoNum ?? 0);
+        var comp = new PdfComprobante
+        {
+            CbteTipoNro = v.ArcaCbteTipoNum ?? 0,
+            CbteTipoNombre = ArcaWsService.NombreCbte(v.ArcaCbteTipoNum ?? 0),
+            PtoVta = v.ArcaPtoVta ?? 0,
+            CbteNro = v.ArcaCbteNro ?? 0,
+            Fecha = v.Fecha.ToString("yyyyMMdd"),
+            Concepto = 1,
+            ImpNeto = v.Total,
+            ImpTotal = v.Total, // El total ya viene calculado; ARCA validó que cuadre
+            Cae = v.ArcaCae,
+            CaeVto = v.ArcaCaeVto?.ToString("yyyyMMdd") ?? "",
+        };
+
+        foreach (var it in v.Items)
+        {
+            var puConDesc = it.DescuentoPct > 0 && it.Cantidad > 0
+                ? Math.Round(it.Subtotal / it.Cantidad, 2, MidpointRounding.AwayFromZero)
+                : it.PrecioUnitario;
+            var desc = it.ProductoNombreSnapshot;
+            if (!string.IsNullOrEmpty(it.Molienda)) desc += $" — {it.Molienda}";
+            if (it.EsDoyPack) desc += " (d.p.)";
+            desc += $" · {it.Formato}";
+
+            comp.Items.Add(new PdfItem
+            {
+                Descripcion = desc,
+                Cantidad = it.Cantidad,
+                PrecioUnitario = puConDesc,
+                AlicPct = letra == "C" ? 0 : 21m, // Hardcoded 21% — coherente con la emisión
+            });
+        }
+        if (letra == "A")
+        {
+            var iva = Math.Round(v.Total * 0.21m / 1.21m, 2, MidpointRounding.AwayFromZero);
+            comp.IvasDesglosados.Add(new PdfIvaDesglose { Pct = 21m, Importe = iva });
+        }
+
+        var docTipoR = 99;
+        var docNroR = "0";
+        var cuitCli = new string((v.ClienteCuitSnapshot ?? "").Where(char.IsDigit).ToArray());
+        if (cuitCli.Length == 11) { docTipoR = 80; docNroR = cuitCli; }
+
+        var receptor = new PdfReceptor
+        {
+            DocTipo = docTipoR,
+            DocNro = docNroR,
+            Nombre = !string.IsNullOrWhiteSpace(v.ClienteRazonSocialSnapshot)
+                ? v.ClienteRazonSocialSnapshot
+                : (v.ClienteNombreSnapshot ?? "Consumidor Final"),
+            Domicilio = v.ClienteDireccionSnapshot,
+            CondicionIvaId = v.CondicionIva switch { "RI" => 1, "EX" => 4, "MO" => 6, "CF" => 5, _ => 5 },
+        };
+
+        return _arcaPdfService.GenerarPdfBytes(emisor, comp, receptor, false);
     }
 
     /// <summary>Devuelve los productos que mas compro un cliente (combinacion ProductoId+Formato),
@@ -253,7 +364,179 @@ public class CafeVentasController : ControllerBase
         _db.CafeVentas.Add(venta);
         await _db.SaveChangesAsync();
 
+        // ============================================================
+        // Si es Factura A/B/C, intentar emitir contra ARCA inmediatamente.
+        // No bloquea el guardado: si ARCA rechaza, la venta queda como
+        // "pendiente" y el usuario puede reintentar.
+        // ============================================================
+        if (venta.TipoComprobante is "FA" or "FB" or "FC")
+        {
+            await EmitirArcaAsync(venta);
+        }
+
         return Ok(Map(venta));
+    }
+
+    /// <summary>
+    /// Emite la factura contra ARCA usando el certificado activo del CUIT del negocio Café.
+    /// NO tira excepciones — si falla, deja la venta marcada como "pendiente" con error.
+    /// </summary>
+    private async Task EmitirArcaAsync(CafeVenta venta)
+    {
+        try
+        {
+            // 1. Resolver el CUIT del emisor (del CafeSetting)
+            var cfg = await _db.CafeSettings.FindAsync(1);
+            var cuitEmisor = cfg?.NegocioCuit;
+            if (string.IsNullOrWhiteSpace(cuitEmisor))
+            {
+                venta.ArcaEstado = "pendiente";
+                venta.ArcaError = "Falta cargar el CUIT en Café → Configuración del negocio.";
+                await _db.SaveChangesAsync();
+                return;
+            }
+
+            // 2. Buscar el certificado ARCA activo para ese CUIT
+            var cuitDigits = new string(cuitEmisor.Where(char.IsDigit).ToArray());
+            var arcaAccount = await _db.ArcaWebserviceAccounts
+                .Where(a => a.Cuit == cuitDigits && a.IsActive)
+                .OrderByDescending(a => a.Environment == "production")
+                .FirstOrDefaultAsync();
+            if (arcaAccount is null)
+            {
+                venta.ArcaEstado = "pendiente";
+                venta.ArcaError = $"No hay un certificado ARCA activo para el CUIT {cuitDigits}. Cargá uno en Integraciones → ARCA (webservice).";
+                await _db.SaveChangesAsync();
+                return;
+            }
+
+            // 3. Mapear tipo de comprobante: FA→1, FB→6, FC→11
+            int cbteTipo = venta.TipoComprobante switch
+            {
+                "FA" => 1,
+                "FB" => 6,
+                "FC" => 11,
+                _ => 0
+            };
+            if (cbteTipo == 0)
+            {
+                venta.ArcaEstado = "pendiente";
+                venta.ArcaError = $"Tipo de comprobante {venta.TipoComprobante} no mapeable a ARCA.";
+                await _db.SaveChangesAsync();
+                return;
+            }
+
+            // 4. Mapear DocTipo y CondIVA del receptor
+            //    - Si tiene CUIT cargado → DocTipo 80 (CUIT)
+            //    - Si no → DocTipo 99 (CF) con DocNro 0
+            int docTipo;
+            string docNro;
+            var cuitCli = new string((venta.ClienteCuitSnapshot ?? "").Where(char.IsDigit).ToArray());
+            if (cuitCli.Length == 11)
+            {
+                docTipo = 80;
+                docNro = cuitCli;
+            }
+            else
+            {
+                docTipo = 99;
+                docNro = "0";
+            }
+
+            // CondicionIVAReceptorId — ARCA usa códigos específicos (RG 5616)
+            int condIvaReceptor = venta.CondicionIva switch
+            {
+                "RI" => 1,   // Responsable Inscripto
+                "EX" => 4,   // Sujeto Exento
+                "CF" => 5,   // Consumidor Final
+                "MO" => 6,   // Monotributo
+                _ => 5,
+            };
+
+            // 5. Mapear items. Precios del Café se asumen SIN IVA. Alícuota = 21% por default.
+            //    El descuento por item se aplica al precio unitario antes de pasarlo a ARCA.
+            var items = new List<EmitirComprobanteItemDto>();
+            foreach (var it in venta.Items)
+            {
+                var puConDesc = it.DescuentoPct > 0 && it.Cantidad > 0
+                    ? Math.Round(it.Subtotal / it.Cantidad, 2, MidpointRounding.AwayFromZero)
+                    : it.PrecioUnitario;
+
+                var desc = it.ProductoNombreSnapshot;
+                if (!string.IsNullOrEmpty(it.Molienda)) desc += $" — {it.Molienda}";
+                if (it.EsDoyPack) desc += " (d.p.)";
+                desc += $" · {it.Formato}";
+
+                items.Add(new EmitirComprobanteItemDto
+                {
+                    Descripcion = desc,
+                    Cantidad = it.Cantidad,
+                    PrecioUnitario = puConDesc,
+                    AlicIvaId = 5, // 21% — hardcoded por ahora, se mejora con campo AlicIvaPct por producto después
+                });
+            }
+
+            // 6. Armar el request y llamar al ArcaInvoiceService
+            var req = new EmitirComprobanteRequest
+            {
+                PtoVta = 2, // PtoVta fijo para Café (configurable después si hace falta)
+                CbteTipo = cbteTipo,
+                Concepto = 1, // Productos
+                DocTipo = docTipo,
+                DocNro = docNro,
+                ReceptorNombre = !string.IsNullOrWhiteSpace(venta.ClienteRazonSocialSnapshot)
+                    ? venta.ClienteRazonSocialSnapshot!
+                    : (venta.ClienteNombreSnapshot ?? "Consumidor Final"),
+                ReceptorDomicilio = venta.ClienteDireccionSnapshot,
+                CondicionIVAReceptorId = condIvaReceptor,
+                Items = items,
+            };
+
+            var resultado = await _arcaInvoiceService.EmitirComprobanteAsync(arcaAccount.Id, req);
+
+            // 7. Persistir resultado
+            if (resultado.Success)
+            {
+                venta.ArcaEstado = "autorizado";
+                venta.ArcaCae = resultado.Cae;
+                if (DateTime.TryParseExact(resultado.CaeVto, "yyyyMMdd",
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out var caeVto))
+                    venta.ArcaCaeVto = caeVto;
+                venta.ArcaPtoVta = resultado.PtoVta;
+                venta.ArcaCbteNro = resultado.CbteNro;
+                venta.ArcaCbteTipoNum = resultado.CbteTipo;
+                venta.ArcaError = string.IsNullOrEmpty(resultado.Observaciones) ? null : resultado.Observaciones;
+            }
+            else
+            {
+                venta.ArcaEstado = "pendiente";
+                venta.ArcaError = resultado.Error ?? "ARCA rechazó la factura.";
+            }
+            venta.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            venta.ArcaEstado = "pendiente";
+            venta.ArcaError = "Error inesperado: " + ex.Message;
+            venta.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+        }
+    }
+
+    /// <summary>Reintentar emisión ARCA para una venta que quedó pendiente.</summary>
+    [HttpPost("{id:int}/retry-arca")]
+    public async Task<IActionResult> RetryArca(int id)
+    {
+        var v = await _db.CafeVentas.Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == id);
+        if (v is null) return NotFound(new { error = "Venta no encontrada" });
+        if (v.TipoComprobante is not ("FA" or "FB" or "FC"))
+            return BadRequest(new { error = "Esta venta no es factura, no se puede emitir contra ARCA." });
+        if (v.ArcaEstado == "autorizado")
+            return BadRequest(new { error = "La venta ya está autorizada con CAE " + v.ArcaCae });
+        await EmitirArcaAsync(v);
+        return Ok(Map(v));
     }
 
     /// <summary>Toggle de "pagado" y/o "dias de la semana" sobre una venta ya emitida (sin recalcular precios).</summary>

@@ -245,6 +245,14 @@ public class CafeVentaDto
     public string? ClienteLocalidad { get; set; }
     public string? ClienteCiudad { get; set; }
     public string? ClienteCp { get; set; }
+    // ARCA — solo cargado si TipoComprobante in FA/FB/FC
+    public string ArcaEstado { get; set; } = "no_aplica";
+    public string? ArcaCae { get; set; }
+    public DateTime? ArcaCaeVto { get; set; }
+    public int? ArcaPtoVta { get; set; }
+    public int? ArcaCbteNro { get; set; }
+    public int? ArcaCbteTipoNum { get; set; }
+    public string? ArcaError { get; set; }
 }
 
 public class CafeCotizarItemRequest
