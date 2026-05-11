@@ -39,7 +39,12 @@ public class CafeCotizacionPdfService
         decimal iva21 = Math.Round(netoSinIva * 0.21m, 2, MidpointRounding.AwayFromZero);
         decimal totalConIva = netoSinIva + iva21;
 
-        var logoBytes = TryLoadLogoBytes(cfg.NegocioLogoUrl);
+        // Carga del logo con fallback. Intenta:
+        //   1) NegocioLogoUrl del CafeSetting (formato: /api/files/download?path=...)
+        //   2) Si no está, "Logos Empresa/{CUIT}/logo.<ext>" del FileStorage (el logo subido en la ficha
+        //      ARCA Emisor) — así no hay que cargar el mismo logo en dos lugares.
+        var logoBytes = TryLoadLogoBytes(cfg.NegocioLogoUrl)
+                        ?? TryLoadLogoFallback(cfg.NegocioCuit);
         var diasActivos = (v.WeekDays ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
             .Select(s => s.Trim().ToUpperInvariant()).ToHashSet();
         var allDays = new[] { "LUN", "MAR", "MIE", "JUE", "VIE", "SAB", "DOM" };
@@ -392,9 +397,36 @@ public class CafeCotizacionPdfService
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "No se pudo cargar el logo del negocio Café");
+            _logger.LogDebug(ex, "No se pudo cargar el logo del negocio Café (NegocioLogoUrl)");
             return null;
         }
+    }
+
+    /// <summary>
+    /// Fallback: si no se pudo cargar el logo del CafeSetting, intentamos cargar el de la
+    /// ficha de empresa ARCA Emisor (Logos Empresa/{CUIT}/logo.<ext>). Así con un solo logo
+    /// cargado en la ficha alcanza para los dos PDFs (Café y ARCA).
+    /// </summary>
+    private byte[]? TryLoadLogoFallback(string? cuitRaw)
+    {
+        if (string.IsNullOrWhiteSpace(cuitRaw)) return null;
+        var cuit = new string(cuitRaw.Where(char.IsDigit).ToArray());
+        if (cuit.Length != 11) return null;
+        try
+        {
+            var ext = new[] { ".png", ".jpg", ".jpeg", ".webp", ".svg" };
+            foreach (var e in ext)
+            {
+                var rel = $"Logos Empresa/{cuit}/logo{e}";
+                var abs = _files.ResolveSafe(rel);
+                if (File.Exists(abs)) return File.ReadAllBytes(abs);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "No se pudo cargar el logo fallback de ficha de empresa");
+        }
+        return null;
     }
 
     private static string TipoComprobanteCorto(string t) => t switch
