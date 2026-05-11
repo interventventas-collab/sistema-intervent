@@ -102,6 +102,38 @@ public class GenerateCsrRequest
 
 public record GenerateCsrResponseDto(int Id, string FileName, string CsrPem, string Subject);
 
+// ===== Ficha de empresa emisora =====
+public record ArcaEmisorDto(
+    int Id,
+    string Cuit,
+    string? RazonSocial,
+    string CondicionIva,
+    string? Domicilio,
+    string? IIBBTipo,
+    string? IIBBNumero,
+    DateTime? InicioActividades,
+    string? LogoPath,
+    DateTime CreatedAt,
+    DateTime? UpdatedAt
+);
+
+public class UpsertArcaEmisorRequest
+{
+    [Required, MaxLength(20)]
+    public string Cuit { get; set; } = string.Empty;
+    [MaxLength(200)]
+    public string? RazonSocial { get; set; }
+    [MaxLength(50)]
+    public string CondicionIva { get; set; } = "Responsable Inscripto";
+    [MaxLength(300)]
+    public string? Domicilio { get; set; }
+    [MaxLength(20)]
+    public string? IIBBTipo { get; set; }
+    [MaxLength(30)]
+    public string? IIBBNumero { get; set; }
+    public DateTime? InicioActividades { get; set; }
+}
+
 // ===== Test de certificado (WSAA + WSFEv1) =====
 public class TestCertificateResultDto
 {

@@ -177,6 +177,33 @@ public class GenerateArcaCsrResponseDto
     public string Subject { get; set; } = "";
 }
 
+// Ficha de empresa emisora (datos legales que van en el PDF)
+public class ArcaEmisorDto
+{
+    public int Id { get; set; }
+    public string Cuit { get; set; } = "";
+    public string? RazonSocial { get; set; }
+    public string CondicionIva { get; set; } = "Responsable Inscripto";
+    public string? Domicilio { get; set; }
+    public string? IIBBTipo { get; set; }
+    public string? IIBBNumero { get; set; }
+    public DateTime? InicioActividades { get; set; }
+    public string? LogoPath { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+}
+
+public class UpsertArcaEmisorRequest
+{
+    public string Cuit { get; set; } = "";
+    public string? RazonSocial { get; set; }
+    public string CondicionIva { get; set; } = "Responsable Inscripto";
+    public string? Domicilio { get; set; }
+    public string? IIBBTipo { get; set; }
+    public string? IIBBNumero { get; set; }
+    public DateTime? InicioActividades { get; set; }
+}
+
 // Test de certificado contra WSAA + WSFEv1
 public class TestCertificateResultDto
 {

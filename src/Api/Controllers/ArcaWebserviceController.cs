@@ -20,19 +20,44 @@ public class ArcaWebserviceController : ControllerBase
     private readonly ArcaInvoiceService _invoiceService;
     private readonly ArcaInvoicePdfService _pdfService;
     private readonly FileStorageService _files;
+    private readonly ArcaEmisorService _emisorService;
 
     public ArcaWebserviceController(
         ArcaWebserviceAccountService service,
         ArcaWsService ws,
         ArcaInvoiceService invoiceService,
         ArcaInvoicePdfService pdfService,
-        FileStorageService files)
+        FileStorageService files,
+        ArcaEmisorService emisorService)
     {
         _service = service;
         _ws = ws;
         _invoiceService = invoiceService;
         _pdfService = pdfService;
         _files = files;
+        _emisorService = emisorService;
+    }
+
+    /// <summary>Arma el PdfEmisor consultando primero la ficha de empresa cargada (si existe).</summary>
+    private async Task<PdfEmisor> BuildPdfEmisorAsync(ArcaWebserviceAccountDto account, bool isHomo)
+    {
+        var ficha = await _emisorService.GetEntityByCuitAsync(account.Cuit);
+        var razonSocial = ficha?.RazonSocial
+                          ?? (string.IsNullOrEmpty(account.Alias) ? $"CUIT {account.Cuit}" : account.Alias!);
+        var condicionIva = ficha?.CondicionIva ?? "Responsable Inscripto";
+        if (isHomo) condicionIva += " (HOMO)";
+
+        return new PdfEmisor
+        {
+            Cuit = account.Cuit,
+            RazonSocial = razonSocial,
+            CondicionIva = condicionIva,
+            Domicilio = ficha?.Domicilio,
+            IIBBTipo = ficha?.IIBBTipo,
+            IIBBNumero = ficha?.IIBBNumero,
+            InicioActividades = ficha?.InicioActividades,
+            LogoBytes = _emisorService.TryGetLogoBytes(ficha?.LogoPath),
+        };
     }
 
     [HttpGet("accounts")]
@@ -156,17 +181,9 @@ public class ArcaWebserviceController : ControllerBase
             if (account is not null)
             {
                 var isHomo = string.Equals(account.Environment, "homologation", StringComparison.OrdinalIgnoreCase);
-                // Para emisor usamos lo que tenemos (cert + cuit + alias).
-                // Los datos completos del emisor (razón social, condición IVA, domicilio)
-                // se podrían cargar después desde una tabla de empresas; para la prueba
-                // los completamos con defaults razonables.
-                var emisor = new PdfEmisor
-                {
-                    Cuit = account.Cuit,
-                    RazonSocial = string.IsNullOrEmpty(account.Alias) ? $"CUIT {account.Cuit}" : account.Alias!,
-                    CondicionIva = isHomo ? "Responsable Inscripto (HOMO)" : "Responsable Inscripto",
-                    Domicilio = null,
-                };
+                // Tomar los datos del emisor desde la "Ficha de Empresa" (ArcaEmisor por CUIT).
+                // Si no hay ficha cargada, cae a defaults razonables.
+                var emisor = await BuildPdfEmisorAsync(account, isHomo);
                 var comp = new PdfComprobante
                 {
                     CbteTipoNro = result.CbteTipo,
@@ -262,12 +279,7 @@ public class ArcaWebserviceController : ControllerBase
         var letra = ArcaInvoicePdfService.LetraDelTipo(req.CbteTipo);
         var isHomo = string.Equals(account.Environment, "homologation", StringComparison.OrdinalIgnoreCase);
 
-        var emisor = new PdfEmisor
-        {
-            Cuit = account.Cuit,
-            RazonSocial = string.IsNullOrEmpty(account.Alias) ? $"CUIT {account.Cuit}" : account.Alias!,
-            CondicionIva = isHomo ? "Responsable Inscripto (HOMO)" : "Responsable Inscripto",
-        };
+        var emisor = await BuildPdfEmisorAsync(account, isHomo);
 
         var comp = new PdfComprobante
         {

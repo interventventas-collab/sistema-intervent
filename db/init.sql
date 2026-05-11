@@ -208,6 +208,27 @@ BEGIN
 END
 GO
 
+-- ArcaEmisores — datos legales del emisor (Razón social, IIBB, Domicilio, etc.)
+-- que van en el header del PDF. Una fila por CUIT (UNIQUE Cuit).
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ArcaEmisores' AND xtype='U')
+BEGIN
+    CREATE TABLE ArcaEmisores (
+        Id INT PRIMARY KEY IDENTITY(1,1),
+        Cuit NVARCHAR(11) NOT NULL,
+        RazonSocial NVARCHAR(200) NULL,
+        CondicionIva NVARCHAR(50) NOT NULL DEFAULT 'Responsable Inscripto',
+        Domicilio NVARCHAR(300) NULL,
+        IIBBTipo NVARCHAR(20) NULL,
+        IIBBNumero NVARCHAR(30) NULL,
+        InicioActividades DATETIME2 NULL,
+        LogoPath NVARCHAR(500) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT UQ_ArcaEmisores_Cuit UNIQUE (Cuit)
+    );
+END
+GO
+
 -- MeliOrders table
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='MeliOrders' AND xtype='U')
 BEGIN

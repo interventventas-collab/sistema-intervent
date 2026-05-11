@@ -1200,6 +1200,47 @@ public class ApiClient
     public async Task<ComprobanteEmitidoDto?> GenerateArcaComprobanteAsync(int accountId, EmitirComprobanteRequest req)
         => await PostAsync<ComprobanteEmitidoDto>($"/api/arca-webservice/accounts/{accountId}/generate-comprobante", req);
 
+    // --- ARCA Emisor (ficha de empresa) ---
+    public async Task<List<ArcaEmisorDto>?> GetArcaEmisoresAsync()
+        => await GetAsync<List<ArcaEmisorDto>>("/api/arca-emisor");
+
+    public async Task<ArcaEmisorDto?> GetArcaEmisorAsync(string cuit)
+        => await GetAsync<ArcaEmisorDto>($"/api/arca-emisor/{cuit}");
+
+    public async Task<ArcaEmisorDto?> UpsertArcaEmisorAsync(UpsertArcaEmisorRequest req)
+        => await PostAsync<ArcaEmisorDto>("/api/arca-emisor", req);
+
+    public async Task<(bool ok, string? error, ArcaEmisorDto? dto)> UploadArcaEmisorLogoAsync(string cuit, Stream stream, string fileName, string contentType)
+    {
+        await SetAuthHeaderAsync();
+        using var content = new MultipartFormDataContent();
+        var streamContent = new StreamContent(stream);
+        streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(string.IsNullOrEmpty(contentType) ? "application/octet-stream" : contentType);
+        content.Add(streamContent, "file", fileName);
+        var resp = await _http.PostAsync($"/api/arca-emisor/{cuit}/logo", content);
+        if (resp.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            await HandleUnauthorizedAsync();
+            return (false, "Sesión expirada", null);
+        }
+        if (resp.IsSuccessStatusCode)
+        {
+            var dto = await resp.Content.ReadFromJsonAsync<ArcaEmisorDto>();
+            return (true, null, dto);
+        }
+        var body = await resp.Content.ReadAsStringAsync();
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("error", out var err)) return (false, err.GetString(), null);
+        }
+        catch { }
+        return (false, body, null);
+    }
+
+    public async Task<bool> DeleteArcaEmisorLogoAsync(string cuit)
+        => await DeleteAsync($"/api/arca-emisor/{cuit}/logo");
+
     /// <summary>Devuelve bytes del PDF de un comprobante autorizado, o null si fallo.</summary>
     public async Task<(byte[]? bytes, string? error)> GetArcaComprobantePdfAsync(int accountId, int ptoVta, int cbteTipo, int cbteNro)
     {

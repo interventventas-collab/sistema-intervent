@@ -44,15 +44,28 @@ public class ArcaInvoicePdfService
                 {
                     col.Item().Row(row =>
                     {
-                        // Izquierda — emisor
+                        // Izquierda — emisor (con logo arriba si tiene)
                         row.RelativeItem().Column(c =>
                         {
-                            c.Item().Text("ORIGINAL").FontSize(8).SemiBold();
+                            if (emisor.LogoBytes is not null && emisor.LogoBytes.Length > 0)
+                            {
+                                c.Item().Height(50).AlignLeft().Image(emisor.LogoBytes).FitHeight();
+                            }
+                            c.Item().PaddingTop(4).Text("ORIGINAL").FontSize(8).SemiBold();
                             c.Item().Text(emisor.RazonSocial).FontSize(13).Bold();
                             c.Item().Text($"CUIT: {FormatCuit(emisor.Cuit)}").FontSize(9);
                             c.Item().Text($"Condición IVA: {emisor.CondicionIva}").FontSize(9);
                             if (!string.IsNullOrEmpty(emisor.Domicilio))
                                 c.Item().Text(emisor.Domicilio!).FontSize(9);
+                            if (!string.IsNullOrEmpty(emisor.IIBBNumero))
+                            {
+                                var label = string.IsNullOrEmpty(emisor.IIBBTipo) ? "IIBB" : $"IIBB {emisor.IIBBTipo}";
+                                c.Item().Text($"{label}: {emisor.IIBBNumero}").FontSize(9);
+                            }
+                            if (emisor.InicioActividades.HasValue)
+                            {
+                                c.Item().Text($"Inicio de actividades: {emisor.InicioActividades.Value:dd/MM/yyyy}").FontSize(9);
+                            }
                         });
 
                         // Centro — letra grande con borde
@@ -90,7 +103,8 @@ public class ArcaInvoicePdfService
                             r.RelativeItem().AlignRight().Text(t =>
                             {
                                 t.Span($"{NombreDocTipo(receptor.DocTipo)}: ").SemiBold();
-                                t.Span(receptor.DocNro ?? "—");
+                                // CUIT con guiones; otros docs van crudos
+                                t.Span(receptor.DocTipo == 80 ? FormatCuit(receptor.DocNro) : (receptor.DocNro ?? "—"));
                             });
                         });
                         if (!string.IsNullOrEmpty(receptor.Domicilio))
@@ -328,6 +342,12 @@ public class PdfEmisor
     public string RazonSocial { get; set; } = "";
     public string CondicionIva { get; set; } = "Responsable Inscripto";
     public string? Domicilio { get; set; }
+    /// <summary>Tipo de IIBB: "CM" (Convenio Multilateral) o "Local".</summary>
+    public string? IIBBTipo { get; set; }
+    public string? IIBBNumero { get; set; }
+    public DateTime? InicioActividades { get; set; }
+    /// <summary>Bytes del logo (PNG/JPG/WEBP). Null si no hay logo.</summary>
+    public byte[]? LogoBytes { get; set; }
 }
 
 public class PdfReceptor

@@ -519,6 +519,9 @@
                 <div class="integration-accounts-header">
                     <h4>Certificados cargados</h4>
                     <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                        <button class="btn btn-secondary" @onclick="OpenArcaEmisorModal" title="Cargar razón social, domicilio, IIBB, logo, etc. — se usan en el header del PDF">
+                            📇 Datos de empresa emisora
+                        </button>
                         <button class="btn btn-secondary" @onclick="OpenArcaWsWizardModal" title="Generar clave privada + CSR, después de subirlo a ARCA volvés con el .crt para armar el .pfx">
                             🔧 Generar nuevo certificado
                         </button>
@@ -1162,6 +1165,117 @@
                 <button class="btn btn-primary" @onclick="SaveArcaAccount" disabled="@arcaAccountSaving">
                     @(arcaAccountSaving ? "Guardando..." : (arcaIsEditingAccount ? "Guardar cambios" : "Agregar cuenta"))
                 </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Modal: Ficha de empresa emisora (datos para el header del PDF) -->
+@if (showArcaEmisorModal)
+{
+    <div class="modal-overlay" @onclick="CloseArcaEmisorModal">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 720px;">
+            <div class="modal-header">
+                <h3>📇 Datos de empresa emisora</h3>
+                <button class="btn-close" @onclick="CloseArcaEmisorModal" disabled="@arcaEmisorSaving">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted" style="margin-bottom: 0.8rem;">
+                    Estos datos aparecen en el <strong>header del PDF</strong> de cada factura/comprobante.
+                    Cargá una ficha por CUIT — todos los certificados de ese CUIT comparten estos datos.
+                </p>
+
+                <div class="form-group">
+                    <label class="form-label">CUIT *</label>
+                    <select class="form-input" @bind="arcaEmisorCuitSelected" @bind:after="OnArcaEmisorCuitChanged">
+                        <option value="">— Elegí un CUIT —</option>
+                        @foreach (var cuit in arcaEmisorCuitsDisponibles)
+                        {
+                            <option value="@cuit">@FormatCuit(cuit)</option>
+                        }
+                    </select>
+                    <span class="input-hint">Los CUITs se toman de los certificados que tenés cargados.</span>
+                </div>
+
+                @if (!string.IsNullOrEmpty(arcaEmisorCuitSelected))
+                {
+                    @if (!string.IsNullOrEmpty(arcaEmisorError))
+                    {
+                        <div class="form-error">@arcaEmisorError</div>
+                    }
+                    @if (arcaEmisorSavedOk)
+                    {
+                        <div class="form-success">Guardado correctamente</div>
+                    }
+
+                    <div class="form-row">
+                        <div class="form-group" style="flex: 2;">
+                            <label class="form-label">Razón Social *</label>
+                            <input class="form-input" @bind="arcaEmisorForm.RazonSocial" maxlength="200" placeholder="Ej: PALANICA HERMANOS S.R.L." />
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Condición IVA</label>
+                            <select class="form-input" @bind="arcaEmisorForm.CondicionIva">
+                                <option value="Responsable Inscripto">Responsable Inscripto</option>
+                                <option value="Responsable Monotributo">Responsable Monotributo</option>
+                                <option value="Sujeto Exento">Sujeto Exento</option>
+                                <option value="Monotributo Social">Monotributo Social</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Domicilio Comercial</label>
+                        <input class="form-input" @bind="arcaEmisorForm.Domicilio" maxlength="300"
+                               placeholder="Ej: Av. Siempreviva 1234, CABA, C1234ABC" />
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">IIBB tipo</label>
+                            <select class="form-input" @bind="arcaEmisorForm.IIBBTipo">
+                                <option value="">—</option>
+                                <option value="CM">Convenio Multilateral</option>
+                                <option value="Local">Local / Provincial</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex: 2;">
+                            <label class="form-label">IIBB número</label>
+                            <input class="form-input" @bind="arcaEmisorForm.IIBBNumero" maxlength="30"
+                                   placeholder="Ej: 901-123456-7" />
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Inicio de actividades</label>
+                            <input type="date" class="form-input" @bind="arcaEmisorFormInicioAct" />
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Logo (opcional)</label>
+                        @if (!string.IsNullOrEmpty(arcaEmisorActual?.LogoPath))
+                        {
+                            <div style="display: flex; align-items: center; gap: 0.7rem; padding: 0.4rem 0.6rem; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; margin-bottom: 0.4rem;">
+                                <span style="font-weight: 600; color: #047857;">✓ Logo cargado</span>
+                                <span style="font-family: monospace; font-size: 0.78rem; color: #6b7280;">@arcaEmisorActual.LogoPath</span>
+                                <button class="btn btn-secondary btn-sm" style="margin-left: auto; font-size: 0.78rem;"
+                                        @onclick="DeleteArcaEmisorLogo" disabled="@arcaEmisorLogoBusy">
+                                    🗑 Quitar
+                                </button>
+                            </div>
+                        }
+                        <InputFile OnChange="OnArcaEmisorLogoPicked" accept=".png,.jpg,.jpeg,.webp,.svg" class="form-input" />
+                        <span class="input-hint">PNG / JPG / WEBP / SVG. Máximo 5 MB. Se carga ni bien elegís el archivo.</span>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseArcaEmisorModal" disabled="@arcaEmisorSaving">Cerrar</button>
+                @if (!string.IsNullOrEmpty(arcaEmisorCuitSelected))
+                {
+                    <button class="btn btn-primary" @onclick="SaveArcaEmisor" disabled="@arcaEmisorSaving">
+                        @(arcaEmisorSaving ? "Guardando..." : "Guardar ficha")
+                    </button>
+                }
             </div>
         </div>
     </div>
@@ -2468,6 +2582,18 @@
         (2, "Nota Débito A"),  (7, "Nota Débito B"),  (12, "Nota Débito C"),
         (3, "Nota Crédito A"), (8, "Nota Crédito B"), (13, "Nota Crédito C"),
     };
+
+    // Ficha de empresa emisora (datos legales para el PDF)
+    private bool showArcaEmisorModal;
+    private bool arcaEmisorSaving;
+    private bool arcaEmisorLogoBusy;
+    private bool arcaEmisorSavedOk;
+    private string? arcaEmisorError;
+    private List<string> arcaEmisorCuitsDisponibles = new();
+    private string arcaEmisorCuitSelected = "";
+    private UpsertArcaEmisorRequest arcaEmisorForm = new();
+    private DateTime? arcaEmisorFormInicioAct;
+    private ArcaEmisorDto? arcaEmisorActual;
 
     // Wizard de generación de certificado nuevo (Paso 1 → CSR, Paso 2 → ARCA, Paso 3 → .crt → .pfx)
     private bool showArcaWsWizard;
@@ -4562,6 +4688,166 @@
         if (s.Length == 8 && s.All(char.IsDigit))
             return $"{s.Substring(6, 2)}/{s.Substring(4, 2)}/{s.Substring(0, 4)}";
         return s;
+    }
+
+    // ============================================================
+    // Ficha de empresa emisora (datos para el header del PDF)
+    // ============================================================
+
+    private async Task OpenArcaEmisorModal()
+    {
+        showArcaEmisorModal = true;
+        arcaEmisorError = null;
+        arcaEmisorSavedOk = false;
+        arcaEmisorCuitSelected = "";
+        arcaEmisorForm = new UpsertArcaEmisorRequest { CondicionIva = "Responsable Inscripto" };
+        arcaEmisorActual = null;
+        arcaEmisorFormInicioAct = null;
+        // CUITs disponibles = los CUITs de los certificados cargados
+        arcaEmisorCuitsDisponibles = (arcaWsCerts ?? new()).Select(c => c.Cuit).Distinct().OrderBy(x => x).ToList();
+        // Si hay uno solo, lo pre-seleccionamos
+        if (arcaEmisorCuitsDisponibles.Count == 1)
+        {
+            arcaEmisorCuitSelected = arcaEmisorCuitsDisponibles[0];
+            await OnArcaEmisorCuitChanged();
+        }
+    }
+
+    private void CloseArcaEmisorModal()
+    {
+        if (arcaEmisorSaving || arcaEmisorLogoBusy) return;
+        showArcaEmisorModal = false;
+        arcaEmisorError = null;
+        arcaEmisorSavedOk = false;
+    }
+
+    /// <summary>Cuando el usuario elige un CUIT en el dropdown, traemos su ficha (si existe).</summary>
+    private async Task OnArcaEmisorCuitChanged()
+    {
+        arcaEmisorError = null;
+        arcaEmisorSavedOk = false;
+        arcaEmisorActual = null;
+        if (string.IsNullOrEmpty(arcaEmisorCuitSelected))
+        {
+            arcaEmisorForm = new UpsertArcaEmisorRequest { CondicionIva = "Responsable Inscripto" };
+            arcaEmisorFormInicioAct = null;
+            return;
+        }
+
+        try
+        {
+            arcaEmisorActual = await Api.GetArcaEmisorAsync(arcaEmisorCuitSelected);
+        }
+        catch { arcaEmisorActual = null; }
+
+        if (arcaEmisorActual is not null)
+        {
+            arcaEmisorForm = new UpsertArcaEmisorRequest
+            {
+                Cuit = arcaEmisorActual.Cuit,
+                RazonSocial = arcaEmisorActual.RazonSocial,
+                CondicionIva = arcaEmisorActual.CondicionIva,
+                Domicilio = arcaEmisorActual.Domicilio,
+                IIBBTipo = arcaEmisorActual.IIBBTipo,
+                IIBBNumero = arcaEmisorActual.IIBBNumero,
+                InicioActividades = arcaEmisorActual.InicioActividades,
+            };
+            arcaEmisorFormInicioAct = arcaEmisorActual.InicioActividades;
+        }
+        else
+        {
+            arcaEmisorForm = new UpsertArcaEmisorRequest
+            {
+                Cuit = arcaEmisorCuitSelected,
+                CondicionIva = "Responsable Inscripto",
+            };
+            arcaEmisorFormInicioAct = null;
+        }
+    }
+
+    private async Task SaveArcaEmisor()
+    {
+        arcaEmisorError = null;
+        arcaEmisorSavedOk = false;
+        if (string.IsNullOrEmpty(arcaEmisorCuitSelected))
+        {
+            arcaEmisorError = "Elegí un CUIT primero";
+            return;
+        }
+        arcaEmisorForm.Cuit = arcaEmisorCuitSelected;
+        arcaEmisorForm.InicioActividades = arcaEmisorFormInicioAct;
+        arcaEmisorSaving = true;
+        try
+        {
+            var dto = await Api.UpsertArcaEmisorAsync(arcaEmisorForm);
+            if (dto is null) { arcaEmisorError = "No se pudo guardar"; return; }
+            arcaEmisorActual = dto;
+            arcaEmisorSavedOk = true;
+            ToastService.Success("Ficha guardada");
+        }
+        catch (Exception ex)
+        {
+            arcaEmisorError = ex.Message;
+        }
+        finally
+        {
+            arcaEmisorSaving = false;
+        }
+    }
+
+    private async Task OnArcaEmisorLogoPicked(InputFileChangeEventArgs e)
+    {
+        if (string.IsNullOrEmpty(arcaEmisorCuitSelected))
+        {
+            arcaEmisorError = "Elegí un CUIT primero";
+            return;
+        }
+        var f = e.File;
+        if (f is null) return;
+        if (f.Size > 5 * 1024 * 1024)
+        {
+            arcaEmisorError = "El archivo supera el máximo de 5 MB";
+            return;
+        }
+        arcaEmisorError = null;
+        arcaEmisorLogoBusy = true;
+        try
+        {
+            using var stream = f.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+            var (ok, error, dto) = await Api.UploadArcaEmisorLogoAsync(arcaEmisorCuitSelected, stream, f.Name, f.ContentType ?? "application/octet-stream");
+            if (!ok || dto is null) { arcaEmisorError = error ?? "No se pudo cargar el logo"; return; }
+            arcaEmisorActual = dto;
+            ToastService.Success("Logo cargado");
+        }
+        catch (Exception ex)
+        {
+            arcaEmisorError = ex.Message;
+        }
+        finally
+        {
+            arcaEmisorLogoBusy = false;
+        }
+    }
+
+    private async Task DeleteArcaEmisorLogo()
+    {
+        if (string.IsNullOrEmpty(arcaEmisorCuitSelected)) return;
+        if (!await ConfirmAsync("¿Quitar el logo cargado?")) return;
+        arcaEmisorLogoBusy = true;
+        try
+        {
+            await Api.DeleteArcaEmisorLogoAsync(arcaEmisorCuitSelected);
+            if (arcaEmisorActual is not null) arcaEmisorActual.LogoPath = null;
+            ToastService.Success("Logo eliminado");
+        }
+        catch (Exception ex)
+        {
+            arcaEmisorError = ex.Message;
+        }
+        finally
+        {
+            arcaEmisorLogoBusy = false;
+        }
     }
 
     // ============================================================
