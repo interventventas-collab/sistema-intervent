@@ -229,3 +229,45 @@ public class ComprobanteDetalleDto
     public string CaeVto { get; set; } = "";
     public string Resultado { get; set; } = "";
 }
+
+// ===== Emisión de comprobante =====
+public class EmitirComprobanteItemDto
+{
+    public string Descripcion { get; set; } = "";
+    public decimal Cantidad { get; set; } = 1;
+    public decimal PrecioUnitario { get; set; }
+    public int AlicIvaId { get; set; } = 5;
+}
+
+public class EmitirComprobanteRequest
+{
+    public int PtoVta { get; set; }
+    public int CbteTipo { get; set; }
+    public int Concepto { get; set; } = 1;
+    public int DocTipo { get; set; } = 99;
+    public string DocNro { get; set; } = "0";
+    public string ReceptorNombre { get; set; } = "Consumidor Final";
+    public string? ReceptorDomicilio { get; set; }
+    public int CondicionIVAReceptorId { get; set; } = 5;
+    public List<EmitirComprobanteItemDto> Items { get; set; } = new();
+}
+
+public class ComprobanteEmitidoDto
+{
+    public bool Success { get; set; }
+    public string? Error { get; set; }
+    public string? Observaciones { get; set; }
+    public int CbteTipo { get; set; }
+    public string CbteTipoNombre { get; set; } = "";
+    public int PtoVta { get; set; }
+    public int CbteNro { get; set; }
+    public string? Cae { get; set; }
+    public string? CaeVto { get; set; }
+    public string? Resultado { get; set; }
+    public decimal ImpNeto { get; set; }
+    public decimal ImpIVA { get; set; }
+    public decimal ImpTotal { get; set; }
+    public string Fecha { get; set; } = "";
+    public string? PdfPath { get; set; }
+    public string? PdfDownloadUrl { get; set; }
+}

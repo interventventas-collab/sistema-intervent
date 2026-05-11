@@ -106,6 +106,8 @@ builder.Services.AddSingleton<ArcaScrapingService>();
 builder.Services.AddScoped<ArcaWebserviceAccountService>();
 builder.Services.AddSingleton<ArcaWsTokenCache>();
 builder.Services.AddScoped<ArcaWsService>();
+builder.Services.AddScoped<ArcaInvoiceService>();
+builder.Services.AddSingleton<ArcaInvoicePdfService>();
 builder.Services.AddScoped<MeliOrderService>();
 builder.Services.AddScoped<MeliItemService>();
 builder.Services.AddScoped<MeliQuestionService>();

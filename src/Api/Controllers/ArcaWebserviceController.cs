@@ -17,11 +17,22 @@ public class ArcaWebserviceController : ControllerBase
 {
     private readonly ArcaWebserviceAccountService _service;
     private readonly ArcaWsService _ws;
+    private readonly ArcaInvoiceService _invoiceService;
+    private readonly ArcaInvoicePdfService _pdfService;
+    private readonly FileStorageService _files;
 
-    public ArcaWebserviceController(ArcaWebserviceAccountService service, ArcaWsService ws)
+    public ArcaWebserviceController(
+        ArcaWebserviceAccountService service,
+        ArcaWsService ws,
+        ArcaInvoiceService invoiceService,
+        ArcaInvoicePdfService pdfService,
+        FileStorageService files)
     {
         _service = service;
         _ws = ws;
+        _invoiceService = invoiceService;
+        _pdfService = pdfService;
+        _files = files;
     }
 
     [HttpGet("accounts")]
@@ -122,6 +133,108 @@ public class ArcaWebserviceController : ControllerBase
     public async Task<IActionResult> TestCertificate(int id)
     {
         var result = await _ws.TestCertificateAsync(id);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Emite un comprobante electrónico contra ARCA y genera el PDF correspondiente.
+    /// Orquesta ArcaInvoiceService (emisión) + ArcaInvoicePdfService (PDF).
+    /// </summary>
+    [HttpPost("accounts/{id:int}/generate-comprobante")]
+    public async Task<IActionResult> GenerateComprobante(int id, [FromBody] EmitirComprobanteRequest req)
+    {
+        if (req is null) return BadRequest(new { error = "Falta el body" });
+
+        // 1. Emisión contra ARCA
+        var result = await _invoiceService.EmitirComprobanteAsync(id, req);
+        if (!result.Success) return Ok(result); // devolver el detalle del error al frontend
+
+        // 2. Si autorizó OK, generar el PDF
+        try
+        {
+            var account = await _service.GetByIdAsync(id);
+            if (account is not null)
+            {
+                var isHomo = string.Equals(account.Environment, "homologation", StringComparison.OrdinalIgnoreCase);
+                // Para emisor usamos lo que tenemos (cert + cuit + alias).
+                // Los datos completos del emisor (razón social, condición IVA, domicilio)
+                // se podrían cargar después desde una tabla de empresas; para la prueba
+                // los completamos con defaults razonables.
+                var emisor = new PdfEmisor
+                {
+                    Cuit = account.Cuit,
+                    RazonSocial = string.IsNullOrEmpty(account.Alias) ? $"CUIT {account.Cuit}" : account.Alias!,
+                    CondicionIva = isHomo ? "Responsable Inscripto (HOMO)" : "Responsable Inscripto",
+                    Domicilio = null,
+                };
+                var comp = new PdfComprobante
+                {
+                    CbteTipoNro = result.CbteTipo,
+                    CbteTipoNombre = result.CbteTipoNombre,
+                    PtoVta = result.PtoVta,
+                    CbteNro = result.CbteNro,
+                    Fecha = result.Fecha,
+                    Concepto = req.Concepto,
+                    ImpNeto = result.ImpNeto,
+                    ImpTotal = result.ImpTotal,
+                    Cae = result.Cae,
+                    CaeVto = result.CaeVto,
+                };
+                foreach (var it in req.Items)
+                {
+                    comp.Items.Add(new PdfItem
+                    {
+                        Descripcion = it.Descripcion,
+                        Cantidad = it.Cantidad,
+                        PrecioUnitario = it.PrecioUnitario,
+                        AlicPct = ArcaInvoiceService.AlicuotaPct(it.AlicIvaId),
+                    });
+                }
+                // IVA desglosado para Factura A
+                var letra = ArcaInvoicePdfService.LetraDelTipo(result.CbteTipo);
+                if (letra == "A")
+                {
+                    var grupos = req.Items.GroupBy(i => ArcaInvoiceService.AlicuotaPct(i.AlicIvaId))
+                        .Select(g => new PdfIvaDesglose
+                        {
+                            Pct = g.Key,
+                            Importe = Math.Round(g.Sum(x => x.Cantidad * x.PrecioUnitario) * g.Key / 100m, 2, MidpointRounding.AwayFromZero),
+                        });
+                    comp.IvasDesglosados.AddRange(grupos);
+                }
+                var receptor = new PdfReceptor
+                {
+                    DocTipo = req.DocTipo,
+                    DocNro = req.DocNro,
+                    Nombre = req.ReceptorNombre,
+                    Domicilio = req.ReceptorDomicilio,
+                    CondicionIvaId = req.CondicionIVAReceptorId,
+                };
+
+                var pdfBytes = _pdfService.GenerarPdfBytes(emisor, comp, receptor, isHomo);
+
+                // Guardar PDF en disco
+                var folderRel = "Comprobantes de Prueba ARCA";
+                var folderAbs = _files.ResolveSafe(folderRel);
+                Directory.CreateDirectory(folderAbs);
+                var fileName = $"{account.Cuit} - {result.CbteTipoNombre} - {result.PtoVta:00000}-{result.CbteNro:00000000}.pdf";
+                fileName = FileStorageService.SanitizeName(fileName);
+                var fileAbs = Path.Combine(folderAbs, fileName);
+                await System.IO.File.WriteAllBytesAsync(fileAbs, pdfBytes);
+
+                var relPath = $"{folderRel}/{fileName}";
+                result.PdfPath = relPath;
+                result.PdfDownloadUrl = $"/api/files/download?path={Uri.EscapeDataString(relPath)}";
+            }
+        }
+        catch (Exception ex)
+        {
+            // PDF falla, pero la emisión fue exitosa — devolvemos OK con un warning
+            result.Error = "Comprobante autorizado pero hubo un problema generando el PDF: " + ex.Message;
+            result.PdfPath = null;
+            result.PdfDownloadUrl = null;
+        }
+
         return Ok(result);
     }
 

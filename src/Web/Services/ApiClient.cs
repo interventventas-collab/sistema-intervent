@@ -1197,6 +1197,9 @@ public class ApiClient
     public async Task<UltimosComprobantesResultDto?> GetArcaLastComprobantesAsync(int accountId, UltimosComprobantesRequest req)
         => await PostAsync<UltimosComprobantesResultDto>($"/api/arca-webservice/accounts/{accountId}/last-comprobantes", req);
 
+    public async Task<ComprobanteEmitidoDto?> GenerateArcaComprobanteAsync(int accountId, EmitirComprobanteRequest req)
+        => await PostAsync<ComprobanteEmitidoDto>($"/api/arca-webservice/accounts/{accountId}/generate-comprobante", req);
+
     public async Task<(bool ok, string? error, ArcaWebserviceAccountDto? dto)> FinalizeArcaCsrAsync(
         int csrId, Stream crtStream, string crtFileName, string? password, string environment, string? alias)
     {

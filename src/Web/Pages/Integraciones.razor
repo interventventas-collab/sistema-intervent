@@ -1801,6 +1801,11 @@
                                     @(arcaWsSubLoading ? "Cargando..." : "Cargar últimos 5")
                                 </button>
                             </div>
+                            <div class="form-group" style="flex: 0 0 220px; align-self: flex-end;">
+                                <button class="btn btn-secondary" style="width: 100%;" @onclick="OpenArcaWsGenerarModal">
+                                    🧾 Generar Comprobante de Prueba
+                                </button>
+                            </div>
                         </div>
 
                         @if (arcaWsSubError is not null)
@@ -1998,6 +2003,224 @@
         </div>
     </div>
 
+}
+
+<!-- Modal: Generar Comprobante de Prueba ARCA -->
+@if (showArcaWsGenerarModal)
+{
+    <div class="modal-overlay" @onclick="CloseArcaWsGenerarModal">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 920px; max-height: 92vh; display: flex; flex-direction: column;">
+            <div class="modal-header">
+                <h3>🧾 Generar Comprobante de Prueba — @arcaWsTestCertLabel</h3>
+                <button class="btn-close" @onclick="CloseArcaWsGenerarModal" disabled="@arcaWsGenLoading">&times;</button>
+            </div>
+            <div class="modal-body" style="overflow-y: auto;">
+
+                @* ─── ESTADO: cargando ─── *@
+                @if (arcaWsGenLoading)
+                {
+                    <div style="display: flex; align-items: center; gap: 0.8rem; padding: 0.7rem 0.9rem; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px;">
+                        <div style="width: 24px; height: 24px; border: 3px solid #bfdbfe; border-top-color: #1d4ed8; border-radius: 50%; animation: spin 1s linear infinite; flex-shrink: 0;"></div>
+                        <strong style="color: #1e3a8a;">Emitiendo comprobante contra ARCA y generando PDF...</strong>
+                    </div>
+                }
+                @* ─── ESTADO: resultado ─── *@
+                else if (arcaWsGenResult is not null)
+                {
+                    @if (arcaWsGenResult.Success)
+                    {
+                        <div class="form-success" style="padding: 0.8rem 1rem; margin-bottom: 1rem;">
+                            <strong>✅ Comprobante autorizado</strong>
+                            @if (!string.IsNullOrEmpty(arcaWsGenResult.Observaciones))
+                            {
+                                <div style="font-size: 0.82rem; margin-top: 0.3rem; color: #92400e;">⚠ Observaciones: @arcaWsGenResult.Observaciones</div>
+                            }
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem 1.4rem; margin-bottom: 1rem;">
+                            <div><small class="text-muted">Tipo</small><div><strong>@arcaWsGenResult.CbteTipoNombre</strong></div></div>
+                            <div><small class="text-muted">Nro</small><div><strong>@($"{arcaWsGenResult.PtoVta:00000}-{arcaWsGenResult.CbteNro:00000000}")</strong></div></div>
+                            <div><small class="text-muted">CAE</small><div style="font-family: monospace;"><strong>@arcaWsGenResult.Cae</strong></div></div>
+                            <div><small class="text-muted">Vto. CAE</small><div><strong>@FormatYyyymmddOrEmpty(arcaWsGenResult.CaeVto)</strong></div></div>
+                            <div><small class="text-muted">Importe Total</small><div style="font-size: 1.1rem; color: #059669;"><strong>$ @FormatMoneyOrEmpty(arcaWsGenResult.ImpTotal)</strong></div></div>
+                            <div><small class="text-muted">Resultado</small><div><strong>@arcaWsGenResult.Resultado</strong></div></div>
+                        </div>
+                        @if (!string.IsNullOrEmpty(arcaWsGenResult.PdfDownloadUrl))
+                        {
+                            <a class="btn btn-primary" href="@arcaWsGenResult.PdfDownloadUrl" target="_blank" rel="noopener">
+                                ⬇ Descargar PDF
+                            </a>
+                        }
+                        else if (!string.IsNullOrEmpty(arcaWsGenResult.Error))
+                        {
+                            <div style="background: #fef3c7; border: 1px solid #fbbf24; padding: 0.6rem; border-radius: 6px; font-size: 0.85rem; color: #78350f;">
+                                ⚠ @arcaWsGenResult.Error
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="form-error" style="padding: 0.8rem; font-size: 0.9rem;">
+                            <strong>❌ No se pudo emitir el comprobante:</strong>
+                            <div style="margin-top: 0.3rem; white-space: pre-wrap;">@arcaWsGenResult.Error</div>
+                        </div>
+                    }
+                }
+                @* ─── ESTADO: formulario ─── *@
+                else
+                {
+                    <div style="background: #fef3c7; border: 1px solid #fbbf24; padding: 0.5rem 0.7rem; border-radius: 6px; font-size: 0.82rem; color: #78350f; margin-bottom: 0.8rem;">
+                        ⚠ Estás en <strong>homologación</strong>. El comprobante se va a emitir contra el ambiente de pruebas de ARCA (sin valor fiscal).
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(arcaWsGenError))
+                    {
+                        <div class="form-error">@arcaWsGenError</div>
+                    }
+
+                    <div class="form-row">
+                        <div class="form-group" style="flex: 1.4;">
+                            <label class="form-label">Tipo de comprobante *</label>
+                            <select class="form-input" @bind="arcaWsGenCbteTipo">
+                                <option value="1">Factura A</option>
+                                <option value="6">Factura B</option>
+                                <option value="11">Factura C</option>
+                                <option value="2">Nota Débito A</option>
+                                <option value="7">Nota Débito B</option>
+                                <option value="12">Nota Débito C</option>
+                                <option value="3">Nota Crédito A</option>
+                                <option value="8">Nota Crédito B</option>
+                                <option value="13">Nota Crédito C</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex: 0 0 110px;">
+                            <label class="form-label">PtoVta *</label>
+                            <input type="number" min="1" class="form-input" @bind="arcaWsGenPtoVta" />
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Concepto *</label>
+                            <select class="form-input" @bind="arcaWsGenConcepto">
+                                <option value="1">Productos</option>
+                                <option value="2">Servicios</option>
+                                <option value="3">Productos y Servicios</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <h4 style="margin: 1rem 0 0.4rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase;">Receptor</h4>
+                    <div class="form-row">
+                        <div class="form-group" style="flex: 0 0 140px;">
+                            <label class="form-label">Tipo doc</label>
+                            <select class="form-input" @bind="arcaWsGenDocTipo">
+                                <option value="80">CUIT</option>
+                                <option value="96">DNI</option>
+                                <option value="99">Consumidor Final</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Nro doc</label>
+                            <input type="text" class="form-input" @bind="arcaWsGenDocNro" disabled="@(arcaWsGenDocTipo == 99)" />
+                        </div>
+                        <div class="form-group" style="flex: 2;">
+                            <label class="form-label">Razón social / Nombre</label>
+                            <input type="text" class="form-input" @bind="arcaWsGenReceptorNombre" />
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex: 2;">
+                            <label class="form-label">Domicilio (opcional)</label>
+                            <input type="text" class="form-input" @bind="arcaWsGenReceptorDomicilio" />
+                        </div>
+                        <div class="form-group" style="flex: 2;">
+                            <label class="form-label">Condición IVA del receptor *</label>
+                            <select class="form-input" @bind="arcaWsGenCondicionIVA">
+                                <option value="1">Responsable Inscripto</option>
+                                <option value="6">Responsable Monotributo</option>
+                                <option value="13">Monotributista Social</option>
+                                <option value="16">Monotributo Trab. Indep. Promovido</option>
+                                <option value="4">Sujeto Exento</option>
+                                <option value="5">Consumidor Final</option>
+                                <option value="7">Sujeto No Categorizado</option>
+                                <option value="8">Proveedor del Exterior</option>
+                                <option value="9">Cliente del Exterior</option>
+                                <option value="10">IVA Liberado Ley 19.640</option>
+                                <option value="15">IVA No Alcanzado</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <h4 style="margin: 1rem 0 0.4rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase;">Items</h4>
+                    <table class="data-table" style="font-size: 0.85rem; table-layout: fixed; width: 100%;">
+                        <thead>
+                            <tr>
+                                <th>Descripción</th>
+                                <th style="width: 80px;">Cantidad</th>
+                                <th style="width: 110px;">Precio Unit.</th>
+                                <th style="width: 110px;">Alícuota IVA</th>
+                                <th style="width: 100px; text-align: right;">Subtotal</th>
+                                <th style="width: 36px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @for (int i = 0; i < arcaWsGenItems.Count; i++)
+                            {
+                                var idx = i;
+                                var it = arcaWsGenItems[idx];
+                                var sub = Math.Round(it.Cantidad * it.PrecioUnitario, 2);
+                                <tr>
+                                    <td><input class="form-input" style="font-size: 0.85rem; padding: 0.3rem;" @bind="it.Descripcion" /></td>
+                                    <td><input class="form-input" type="number" step="0.01" min="0" style="font-size: 0.85rem; padding: 0.3rem;" @bind="it.Cantidad" /></td>
+                                    <td><input class="form-input" type="number" step="0.01" min="0" style="font-size: 0.85rem; padding: 0.3rem;" @bind="it.PrecioUnitario" /></td>
+                                    <td>
+                                        <select class="form-input" style="font-size: 0.82rem; padding: 0.3rem;" @bind="it.AlicIvaId">
+                                            <option value="3">0%</option>
+                                            <option value="4">10.5%</option>
+                                            <option value="5">21%</option>
+                                            <option value="6">27%</option>
+                                            <option value="8">5%</option>
+                                            <option value="9">2.5%</option>
+                                        </select>
+                                    </td>
+                                    <td style="text-align: right; font-weight: 600;">$ @sub.ToString("N2", new System.Globalization.CultureInfo("es-AR"))</td>
+                                    <td>
+                                        <button class="btn-icon btn-delete" @onclick="() => arcaWsGenItems.RemoveAt(idx)" disabled="@(arcaWsGenItems.Count <= 1)" title="Eliminar item">×</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                    <button class="btn btn-secondary btn-sm" style="margin-top: 0.4rem;" @onclick="AgregarArcaWsItem">+ Agregar item</button>
+
+                    var esTipoC = arcaWsGenCbteTipo == 11 || arcaWsGenCbteTipo == 12 || arcaWsGenCbteTipo == 13;
+                    var neto = arcaWsGenItems.Sum(i => Math.Round(i.Cantidad * i.PrecioUnitario, 2));
+                    var iva = esTipoC ? 0m : arcaWsGenItems.Sum(i => Math.Round(Math.Round(i.Cantidad * i.PrecioUnitario, 2) * (i.AlicIvaId switch { 3 => 0m, 4 => 10.5m, 5 => 21m, 6 => 27m, 8 => 5m, 9 => 2.5m, _ => 21m }) / 100m, 2));
+                    var total = esTipoC ? neto : neto + iva;
+
+                    <div style="margin-top: 1rem; padding: 0.6rem 0.9rem; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; text-align: right;">
+                        <div style="font-size: 0.88rem;">Neto: <strong>$ @neto.ToString("N2", new System.Globalization.CultureInfo("es-AR"))</strong></div>
+                        @if (!esTipoC)
+                        {
+                            <div style="font-size: 0.88rem;">IVA: <strong>$ @iva.ToString("N2", new System.Globalization.CultureInfo("es-AR"))</strong></div>
+                        }
+                        <div style="font-size: 1.1rem; margin-top: 0.2rem; color: #059669;">Total: <strong>$ @total.ToString("N2", new System.Globalization.CultureInfo("es-AR"))</strong></div>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                @if (arcaWsGenResult is not null && !arcaWsGenLoading)
+                {
+                    <button class="btn btn-secondary" @onclick="ResetArcaWsGenForm">Generar otro</button>
+                    <button class="btn btn-primary" @onclick="CloseArcaWsGenerarModal">Cerrar</button>
+                }
+                else
+                {
+                    <button class="btn btn-secondary" @onclick="CloseArcaWsGenerarModal" disabled="@arcaWsGenLoading">Cancelar</button>
+                    <button class="btn btn-primary" @onclick="EmitirArcaWsComprobante" disabled="@arcaWsGenLoading">
+                        @(arcaWsGenLoading ? "Emitiendo..." : "Generar y autorizar")
+                    </button>
+                }
+            </div>
+        </div>
+    </div>
 }
 
 <!-- Modal: Configuracion Email SMTP -->
@@ -2204,6 +2427,21 @@
     // Form homologación
     private int arcaWsHomoPtoVta = 1;
     private int arcaWsHomoCbteTipo = 1;
+
+    // Generar comprobante de prueba
+    private bool showArcaWsGenerarModal;
+    private bool arcaWsGenLoading;
+    private string? arcaWsGenError;
+    private ComprobanteEmitidoDto? arcaWsGenResult;
+    private int arcaWsGenCbteTipo = 6;
+    private int arcaWsGenPtoVta = 1;
+    private int arcaWsGenConcepto = 1;
+    private int arcaWsGenDocTipo = 99;
+    private string arcaWsGenDocNro = "0";
+    private string arcaWsGenReceptorNombre = "Consumidor Final";
+    private string arcaWsGenReceptorDomicilio = "";
+    private int arcaWsGenCondicionIVA = 5;
+    private List<EmitirComprobanteItemDto> arcaWsGenItems = new();
     private static readonly (int Id, string Label)[] arcaWsTiposDisponibles = new[]
     {
         (1, "Factura A"),  (6, "Factura B"),  (11, "Factura C"), (51, "Factura M"),
@@ -4173,6 +4411,109 @@
         51 => "Factura M",
         _ => $"Tipo {tipo}",
     };
+
+    // ============================================================
+    // Generar Comprobante de Prueba
+    // ============================================================
+
+    private void OpenArcaWsGenerarModal()
+    {
+        arcaWsGenError = null;
+        arcaWsGenResult = null;
+        arcaWsGenLoading = false;
+        arcaWsGenCbteTipo = 6;
+        arcaWsGenPtoVta = arcaWsHomoPtoVta; // hereda el del form de "Cargar últimos 5"
+        arcaWsGenConcepto = 1;
+        arcaWsGenDocTipo = 99;
+        arcaWsGenDocNro = "0";
+        arcaWsGenReceptorNombre = "Consumidor Final";
+        arcaWsGenReceptorDomicilio = "";
+        arcaWsGenCondicionIVA = 5;
+        arcaWsGenItems = new List<EmitirComprobanteItemDto>
+        {
+            new() { Descripcion = "Producto de prueba", Cantidad = 1, PrecioUnitario = 1000, AlicIvaId = 5 }
+        };
+        showArcaWsGenerarModal = true;
+    }
+
+    private void CloseArcaWsGenerarModal()
+    {
+        if (arcaWsGenLoading) return;
+        showArcaWsGenerarModal = false;
+        arcaWsGenError = null;
+        arcaWsGenResult = null;
+    }
+
+    private void ResetArcaWsGenForm()
+    {
+        arcaWsGenResult = null;
+        arcaWsGenError = null;
+        // mantiene los datos del receptor por si quiere emitir varios seguidos
+    }
+
+    private void AgregarArcaWsItem()
+    {
+        arcaWsGenItems.Add(new EmitirComprobanteItemDto { Cantidad = 1, PrecioUnitario = 0, AlicIvaId = 5 });
+    }
+
+    private async Task EmitirArcaWsComprobante()
+    {
+        arcaWsGenError = null;
+        // Validaciones básicas
+        if (arcaWsGenPtoVta <= 0) { arcaWsGenError = "PtoVta inválido"; return; }
+        if (arcaWsGenItems.Count == 0) { arcaWsGenError = "Tenés que cargar al menos 1 item"; return; }
+        if (arcaWsGenItems.Any(i => string.IsNullOrWhiteSpace(i.Descripcion))) { arcaWsGenError = "Hay items sin descripción"; return; }
+        if (arcaWsGenItems.Any(i => i.Cantidad <= 0 || i.PrecioUnitario < 0)) { arcaWsGenError = "Cantidades / precios inválidos"; return; }
+        if (arcaWsGenDocTipo != 99 && string.IsNullOrWhiteSpace(arcaWsGenDocNro)) { arcaWsGenError = "Falta el Nº de documento del receptor"; return; }
+
+        var req = new EmitirComprobanteRequest
+        {
+            PtoVta = arcaWsGenPtoVta,
+            CbteTipo = arcaWsGenCbteTipo,
+            Concepto = arcaWsGenConcepto,
+            DocTipo = arcaWsGenDocTipo,
+            DocNro = arcaWsGenDocTipo == 99 ? "0" : (arcaWsGenDocNro ?? "0"),
+            ReceptorNombre = string.IsNullOrWhiteSpace(arcaWsGenReceptorNombre) ? "Consumidor Final" : arcaWsGenReceptorNombre,
+            ReceptorDomicilio = string.IsNullOrWhiteSpace(arcaWsGenReceptorDomicilio) ? null : arcaWsGenReceptorDomicilio,
+            CondicionIVAReceptorId = arcaWsGenCondicionIVA,
+            Items = arcaWsGenItems.Select(i => new EmitirComprobanteItemDto
+            {
+                Descripcion = i.Descripcion,
+                Cantidad = i.Cantidad,
+                PrecioUnitario = i.PrecioUnitario,
+                AlicIvaId = i.AlicIvaId
+            }).ToList(),
+        };
+
+        arcaWsGenLoading = true;
+        StateHasChanged();
+        try
+        {
+            arcaWsGenResult = await Api.GenerateArcaComprobanteAsync(arcaWsTestAccountId, req);
+            if (arcaWsGenResult is null)
+            {
+                arcaWsGenError = "No se recibió respuesta del servidor";
+            }
+        }
+        catch (Exception ex)
+        {
+            arcaWsGenError = ex.Message;
+        }
+        finally
+        {
+            arcaWsGenLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>"yyyymmdd" → "dd/mm/yyyy". Vacío si null/empty.</summary>
+    private static string FormatYyyymmddOrEmpty(string? s)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        if (s.Length == 8 && s.All(char.IsDigit))
+            return $"{s.Substring(6, 2)}/{s.Substring(4, 2)}/{s.Substring(0, 4)}";
+        return s;
+    }
 
     // ============================================================
     // Wizard de generación de certificado (clave privada + CSR + .pfx)

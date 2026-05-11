@@ -170,7 +170,8 @@ public class ArcaWsService
     // Carga del .pfx desde disco
     // ============================================================
 
-    private X509Certificate2 LoadCertificate(Models.ArcaWebserviceAccount account)
+    /// <summary>Internal — usado también desde ArcaInvoiceService.</summary>
+    internal X509Certificate2 LoadCertificate(Models.ArcaWebserviceAccount account)
     {
         var abs = _files.ResolveSafe(account.FilePath);
         var bytes = File.ReadAllBytes(abs);
@@ -179,6 +180,16 @@ public class ArcaWsService
         catch { }
         return new X509Certificate2(bytes, "", X509KeyStorageFlags.EphemeralKeySet);
     }
+
+    /// <summary>Internal — usado también desde ArcaInvoiceService para autenticar antes de emitir.</summary>
+    internal Task<ArcaWsTokenCache.CachedTa> GetTaInternalAsync(Models.ArcaWebserviceAccount account, X509Certificate2 cert, string service)
+        => GetTaAsync(account, cert, service);
+
+    /// <summary>Internal — wsfev1 url para el ambiente.</summary>
+    internal static string GetWsfeUrl(string environment)
+        => string.Equals(environment, "homologation", StringComparison.OrdinalIgnoreCase) ? WSFE_HOMO : WSFE_PROD;
+
+    internal const string FE_SERVICE_NAME = FE_SERVICE;
 
     // ============================================================
     // WSAA — login (CMS firmado del TRA)
