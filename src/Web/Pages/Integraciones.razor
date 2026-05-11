@@ -1838,6 +1838,7 @@
                                                     <th style="font-family: monospace;">CAE</th>
                                                     <th style="width: 95px;">Vto CAE</th>
                                                     <th style="width: 90px;">Resultado</th>
+                                                    <th style="width: 60px;"></th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -1858,6 +1859,14 @@
                                                             <span style="color: @(resOk ? "#059669" : "#dc2626"); font-weight: 700;">
                                                                 @(resOk ? "Aprobado" : (string.Equals(c.Resultado, "R", StringComparison.OrdinalIgnoreCase) ? "Rechazado" : c.Resultado))
                                                             </span>
+                                                        </td>
+                                                        <td>
+                                                            <button class="btn btn-secondary btn-sm" style="font-size: 0.7rem; padding: 0.15rem 0.45rem;"
+                                                                    @onclick="() => VerPdfComprobante(arcaWsHomoPtoVta, c.CbteTipoNro, c.CbteNro)"
+                                                                    disabled="@arcaWsPdfLoading"
+                                                                    title="Generar y abrir PDF en pestaña nueva">
+                                                                📄 PDF
+                                                            </button>
                                                         </td>
                                                     </tr>
                                                 }
@@ -1953,6 +1962,7 @@
                                                                             <th style="font-family: monospace;">CAE</th>
                                                                             <th style="width: 95px;">Vto CAE</th>
                                                                             <th style="width: 90px;">Resultado</th>
+                                                                            <th style="width: 60px;"></th>
                                                                         </tr>
                                                                     </thead>
                                                                     <tbody>
@@ -1973,6 +1983,14 @@
                                                                                     <span style="color: @(resOkx ? "#059669" : "#dc2626"); font-weight: 700;">
                                                                                         @(resOkx ? "Aprobado" : (string.Equals(c.Resultado, "R", StringComparison.OrdinalIgnoreCase) ? "Rechazado" : c.Resultado))
                                                                                     </span>
+                                                                                </td>
+                                                                                <td>
+                                                                                    <button class="btn btn-secondary btn-sm" style="font-size: 0.7rem; padding: 0.15rem 0.45rem;"
+                                                                                            @onclick="() => VerPdfComprobante(p.Nro, c.CbteTipoNro, c.CbteNro)"
+                                                                                            disabled="@arcaWsPdfLoading"
+                                                                                            title="Generar y abrir PDF en pestaña nueva">
+                                                                                        📄 PDF
+                                                                                    </button>
                                                                                 </td>
                                                                             </tr>
                                                                         }
@@ -2427,6 +2445,8 @@
     // Form homologación
     private int arcaWsHomoPtoVta = 1;
     private int arcaWsHomoCbteTipo = 1;
+    // PDF loading
+    private bool arcaWsPdfLoading;
 
     // Generar comprobante de prueba
     private bool showArcaWsGenerarModal;
@@ -4400,6 +4420,35 @@
         finally
         {
             arcaWsSubLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// Genera (vía endpoint) el PDF del comprobante y lo abre en una pestaña nueva
+    /// con un blob URL. Se reusa para producción y homologación.
+    /// </summary>
+    private async Task VerPdfComprobante(int ptoVta, int cbteTipo, int cbteNro)
+    {
+        if (arcaWsPdfLoading) return;
+        arcaWsPdfLoading = true;
+        try
+        {
+            var (bytes, error) = await Api.GetArcaComprobantePdfAsync(arcaWsTestAccountId, ptoVta, cbteTipo, cbteNro);
+            if (bytes is null)
+            {
+                ToastService.Error("No se pudo generar el PDF: " + (error ?? "error desconocido"));
+                return;
+            }
+            var b64 = Convert.ToBase64String(bytes);
+            await JS.InvokeVoidAsync("openPdfInNewTab", b64);
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error generando PDF: " + ex.Message);
+        }
+        finally
+        {
+            arcaWsPdfLoading = false;
         }
     }
 

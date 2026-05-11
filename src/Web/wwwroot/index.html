@@ -291,6 +291,19 @@
             setTimeout(function() { URL.revokeObjectURL(href); }, 1000);
         };
 
+        // Recibe bytes en base64 y abre el PDF en una pestaña nueva del browser.
+        // Útil para "previsualizar" PDFs sin forzar la descarga.
+        window.openPdfInNewTab = function(base64) {
+            var binary = atob(base64);
+            var bytes = new Uint8Array(binary.length);
+            for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            var blob = new Blob([bytes], { type: 'application/pdf' });
+            var url = URL.createObjectURL(blob);
+            window.open(url, '_blank');
+            // Liberamos la URL después de 60s para no acumular memoria
+            setTimeout(function() { URL.revokeObjectURL(url); }, 60000);
+        };
+
         window.printElement = function(elementId, title) {
             var el = document.getElementById(elementId);
             if (!el) { alert('No se encontro el comprobante'); return; }

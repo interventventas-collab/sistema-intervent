@@ -191,6 +191,46 @@ public class ArcaWsService
 
     internal const string FE_SERVICE_NAME = FE_SERVICE;
 
+    /// <summary>
+    /// Trae todos los datos de un comprobante autorizado para generarle el PDF.
+    /// FECompConsultar NO devuelve el detalle de items (por API limitation de ARCA),
+    /// así que solo recuperamos los totales, doc receptor, CAE, etc.
+    /// </summary>
+    public async Task<ComprobantePdfDataDto> GetComprobanteForPdfAsync(int accountId, int ptoVta, int cbteTipo, int cbteNro)
+    {
+        var account = await _db.ArcaWebserviceAccounts.FindAsync(accountId);
+        if (account is null) return new ComprobantePdfDataDto { Success = false, Error = "Cuenta no encontrada" };
+
+        try
+        {
+            using var cert = LoadCertificate(account);
+            var ta = await GetTaAsync(account, cert, FE_SERVICE);
+            var doc = await CallFECompConsultarAsync(account, ta, ptoVta, cbteTipo, cbteNro);
+            ThrowIfWsfeErrors(doc);
+            var result = doc.Descendants().FirstOrDefault(e => e.Name.LocalName == "ResultGet");
+            if (result is null) return new ComprobantePdfDataDto { Success = false, Error = "Comprobante no encontrado" };
+
+            return new ComprobantePdfDataDto
+            {
+                Success = true,
+                DocTipo = int.TryParse(El(result, "DocTipo"), out var dt) ? dt : 99,
+                DocNro = El(result, "DocNro") ?? "0",
+                Concepto = int.TryParse(El(result, "Concepto"), out var c) ? c : 1,
+                FechaYyyymmdd = El(result, "CbteFch") ?? "",
+                CaeVtoYyyymmdd = El(result, "FchVto") ?? "",
+                Cae = El(result, "CodAutorizacion") ?? "",
+                ImpNeto = ParseDecimal(El(result, "ImpNeto")) ?? 0m,
+                ImpIVA = ParseDecimal(El(result, "ImpIVA")) ?? 0m,
+                ImpTotal = ParseDecimal(El(result, "ImpTotal")) ?? 0m,
+                Resultado = El(result, "Resultado") ?? "",
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ComprobantePdfDataDto { Success = false, Error = ex.Message };
+        }
+    }
+
     // ============================================================
     // WSAA — login (CMS firmado del TRA)
     // ============================================================

@@ -187,6 +187,29 @@ public class EmitirComprobanteRequest
     public List<EmitirComprobanteItemDto> Items { get; set; } = new();
 }
 
+public class ComprobantePdfDataDto
+{
+    public bool Success { get; set; }
+    public string? Error { get; set; }
+    public int DocTipo { get; set; }
+    public string DocNro { get; set; } = "0";
+    public int Concepto { get; set; } = 1;
+    public string FechaYyyymmdd { get; set; } = "";
+    public string CaeVtoYyyymmdd { get; set; } = "";
+    public string Cae { get; set; } = "";
+    public decimal ImpNeto { get; set; }
+    public decimal ImpIVA { get; set; }
+    public decimal ImpTotal { get; set; }
+    public string Resultado { get; set; } = "";
+}
+
+public class ComprobantePdfRequest
+{
+    public int PtoVta { get; set; }
+    public int CbteTipo { get; set; }
+    public int CbteNro { get; set; }
+}
+
 public class ComprobanteEmitidoDto
 {
     public bool Success { get; set; }

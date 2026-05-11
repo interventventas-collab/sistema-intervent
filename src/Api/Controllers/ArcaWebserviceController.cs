@@ -238,6 +238,88 @@ public class ArcaWebserviceController : ControllerBase
         return Ok(result);
     }
 
+    /// <summary>
+    /// Genera y devuelve un PDF "consultativo" de un comprobante ya autorizado.
+    /// Como FECompConsultar de ARCA no devuelve el detalle de items, el PDF se arma
+    /// con UN solo item sintético "Operación facturada" + los totales reales + CAE + QR.
+    /// El PDF sirve legalmente (tiene el CAE y QR) pero el detalle de items se reemplaza
+    /// por una leyenda. Para PDFs completos con line items, hay que emitir el comprobante
+    /// desde el sistema y guardar el detalle.
+    /// </summary>
+    [HttpPost("accounts/{id:int}/comprobante-pdf")]
+    public async Task<IActionResult> ComprobantePdf(int id, [FromBody] ComprobantePdfRequest req)
+    {
+        if (req is null) return BadRequest(new { error = "Falta el body" });
+        if (req.PtoVta <= 0 || req.CbteTipo <= 0 || req.CbteNro <= 0)
+            return BadRequest(new { error = "PtoVta / CbteTipo / CbteNro inválidos" });
+
+        var account = await _service.GetByIdAsync(id);
+        if (account is null) return NotFound(new { error = "Cuenta no encontrada" });
+
+        var data = await _ws.GetComprobanteForPdfAsync(id, req.PtoVta, req.CbteTipo, req.CbteNro);
+        if (!data.Success) return BadRequest(new { error = data.Error });
+
+        var letra = ArcaInvoicePdfService.LetraDelTipo(req.CbteTipo);
+        var isHomo = string.Equals(account.Environment, "homologation", StringComparison.OrdinalIgnoreCase);
+
+        var emisor = new PdfEmisor
+        {
+            Cuit = account.Cuit,
+            RazonSocial = string.IsNullOrEmpty(account.Alias) ? $"CUIT {account.Cuit}" : account.Alias!,
+            CondicionIva = isHomo ? "Responsable Inscripto (HOMO)" : "Responsable Inscripto",
+        };
+
+        var comp = new PdfComprobante
+        {
+            CbteTipoNro = req.CbteTipo,
+            CbteTipoNombre = ArcaWsService.NombreCbte(req.CbteTipo),
+            PtoVta = req.PtoVta,
+            CbteNro = req.CbteNro,
+            Fecha = data.FechaYyyymmdd,
+            Concepto = data.Concepto,
+            ImpNeto = data.ImpNeto,
+            ImpTotal = data.ImpTotal,
+            Cae = data.Cae,
+            CaeVto = data.CaeVtoYyyymmdd,
+        };
+
+        // Item sintético (FECompConsultar no devuelve los originales)
+        if (letra == "A")
+        {
+            var alicPct = data.ImpNeto > 0 ? Math.Round(data.ImpIVA / data.ImpNeto * 100m, 2) : 21m;
+            comp.Items.Add(new PdfItem
+            {
+                Descripcion = "Operación facturada (detalle de items no disponible en la consulta a ARCA)",
+                Cantidad = 1,
+                PrecioUnitario = data.ImpNeto,
+                AlicPct = alicPct,
+            });
+            comp.IvasDesglosados.Add(new PdfIvaDesglose { Pct = alicPct, Importe = data.ImpIVA });
+        }
+        else
+        {
+            comp.Items.Add(new PdfItem
+            {
+                Descripcion = "Operación facturada (detalle de items no disponible en la consulta a ARCA)",
+                Cantidad = 1,
+                PrecioUnitario = data.ImpTotal,
+                AlicPct = 0,
+            });
+        }
+
+        var receptor = new PdfReceptor
+        {
+            DocTipo = data.DocTipo,
+            DocNro = data.DocNro,
+            Nombre = "—",
+            CondicionIvaId = letra == "A" ? 1 : 5, // Factura A → RI; B/C → CF por default
+        };
+
+        var pdfBytes = _pdfService.GenerarPdfBytes(emisor, comp, receptor, isHomo);
+        return File(pdfBytes, "application/pdf",
+            $"{account.Cuit}-{ArcaWsService.NombreCbte(req.CbteTipo)}-{req.PtoVta:00000}-{req.CbteNro:00000000}.pdf");
+    }
+
     /// <summary>Trae los últimos N comprobantes de un PtoVta + CbteTipo.</summary>
     [HttpPost("accounts/{id:int}/last-comprobantes")]
     public async Task<IActionResult> LastComprobantes(int id, [FromBody] UltimosComprobantesRequest req)

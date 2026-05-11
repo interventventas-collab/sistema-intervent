@@ -1200,6 +1200,33 @@ public class ApiClient
     public async Task<ComprobanteEmitidoDto?> GenerateArcaComprobanteAsync(int accountId, EmitirComprobanteRequest req)
         => await PostAsync<ComprobanteEmitidoDto>($"/api/arca-webservice/accounts/{accountId}/generate-comprobante", req);
 
+    /// <summary>Devuelve bytes del PDF de un comprobante autorizado, o null si fallo.</summary>
+    public async Task<(byte[]? bytes, string? error)> GetArcaComprobantePdfAsync(int accountId, int ptoVta, int cbteTipo, int cbteNro)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync(
+            $"/api/arca-webservice/accounts/{accountId}/comprobante-pdf",
+            new { ptoVta, cbteTipo, cbteNro });
+        if (resp.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            await HandleUnauthorizedAsync();
+            return (null, "Sesión expirada");
+        }
+        if (resp.IsSuccessStatusCode)
+        {
+            return (await resp.Content.ReadAsByteArrayAsync(), null);
+        }
+        var body = await resp.Content.ReadAsStringAsync();
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("error", out var err))
+                return (null, err.GetString());
+        }
+        catch { }
+        return (null, body);
+    }
+
     public async Task<(bool ok, string? error, ArcaWebserviceAccountDto? dto)> FinalizeArcaCsrAsync(
         int csrId, Stream crtStream, string crtFileName, string? password, string environment, string? alias)
     {
