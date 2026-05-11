@@ -192,7 +192,8 @@
                                 <option value="PRO">PRO — Proforma con IVA (preview)</option>
                                 <option value="FA">Factura A — emite por ARCA (con CAE)</option>
                                 <option value="FB">Factura B — emite por ARCA (con CAE)</option>
-                                <option value="FC">Factura C — emite por ARCA (con CAE)</option>
+                                @* Factura C es para monotributistas — PALANICA es Responsable Inscripto, no aplica.
+                                   Si en el futuro hay un CUIT MO, se vuelve a habilitar segun NegocioCondicionIva. *@
                             </select>
                         </div>
                         <div class="form-group" style="flex: 1;">
