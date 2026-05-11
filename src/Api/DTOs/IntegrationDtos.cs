@@ -101,3 +101,58 @@ public class GenerateCsrRequest
 }
 
 public record GenerateCsrResponseDto(int Id, string FileName, string CsrPem, string Subject);
+
+// ===== Test de certificado (WSAA + WSFEv1) =====
+public class TestCertificateResultDto
+{
+    public bool Success { get; set; }
+    public string? Error { get; set; }
+    /// <summary>true si la cuenta es de homologación — UI muestra form manual en lugar de PtoVta.</summary>
+    public bool IsHomologation { get; set; }
+    public List<PuntoVentaInfoDto> Puntos { get; set; } = new();
+}
+
+public class PuntoVentaInfoDto
+{
+    public int Nro { get; set; }
+    public string EmisionTipo { get; set; } = "";
+    public bool Bloqueado { get; set; }
+    public string? FchBaja { get; set; }
+    /// <summary>Tipo del último comprobante encontrado (texto legible, ej "Factura A").</summary>
+    public string? UltimoCbteTipo { get; set; }
+    public int UltimoCbteTipoNro { get; set; }
+    public int UltimoCbteNro { get; set; }
+    public string? UltimaFecha { get; set; }
+}
+
+public class UltimosComprobantesRequest
+{
+    public int PtoVta { get; set; }
+    public int CbteTipo { get; set; }
+    public int? UltimoNro { get; set; }
+    public int Cantidad { get; set; } = 5;
+}
+
+public class UltimosComprobantesResultDto
+{
+    public bool Success { get; set; }
+    public string? Error { get; set; }
+    public List<ComprobanteDetalleDto> Comprobantes { get; set; } = new();
+}
+
+public class ComprobanteDetalleDto
+{
+    public int CbteTipoNro { get; set; }
+    public string CbteTipo { get; set; } = "";
+    public int CbteNro { get; set; }
+    public string Fecha { get; set; } = "";
+    public string DocNro { get; set; } = "";
+    public decimal? ImpNeto { get; set; }
+    public decimal? ImpIVA { get; set; }
+    public decimal? ImpTrib { get; set; }
+    public decimal? ImpTotal { get; set; }
+    public string MonId { get; set; } = "PES";
+    public string Cae { get; set; } = "";
+    public string CaeVto { get; set; } = "";
+    public string Resultado { get; set; } = "";
+}

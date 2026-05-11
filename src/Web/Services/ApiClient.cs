@@ -1191,6 +1191,12 @@ public class ApiClient
         return (bytes, null);
     }
 
+    public async Task<TestCertificateResultDto?> TestArcaCertificateAsync(int accountId)
+        => await PostAsync<TestCertificateResultDto>($"/api/arca-webservice/accounts/{accountId}/test-certificate", new { });
+
+    public async Task<UltimosComprobantesResultDto?> GetArcaLastComprobantesAsync(int accountId, UltimosComprobantesRequest req)
+        => await PostAsync<UltimosComprobantesResultDto>($"/api/arca-webservice/accounts/{accountId}/last-comprobantes", req);
+
     public async Task<(bool ok, string? error, ArcaWebserviceAccountDto? dto)> FinalizeArcaCsrAsync(
         int csrId, Stream crtStream, string crtFileName, string? password, string environment, string? alias)
     {

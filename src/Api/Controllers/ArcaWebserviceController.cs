@@ -16,8 +16,13 @@ namespace Api.Controllers;
 public class ArcaWebserviceController : ControllerBase
 {
     private readonly ArcaWebserviceAccountService _service;
+    private readonly ArcaWsService _ws;
 
-    public ArcaWebserviceController(ArcaWebserviceAccountService service) { _service = service; }
+    public ArcaWebserviceController(ArcaWebserviceAccountService service, ArcaWsService ws)
+    {
+        _service = service;
+        _ws = ws;
+    }
 
     [HttpGet("accounts")]
     public async Task<IActionResult> GetAll()
@@ -103,6 +108,32 @@ public class ArcaWebserviceController : ControllerBase
         var result = await _service.GetCsrDownloadAsync(id);
         if (result is null) return NotFound(new { error = "Pedido no encontrado" });
         return File(result.Value.bytes, "application/x-pem-file", result.Value.fileName);
+    }
+
+    // ============================================================
+    // Probar certificado contra WSAA + WSFEv1
+    // ============================================================
+
+    /// <summary>
+    /// Autentica el .pfx contra WSAA y trae los puntos de venta (producción)
+    /// o devuelve IsHomologation=true para que la UI muestre el form manual.
+    /// </summary>
+    [HttpPost("accounts/{id:int}/test-certificate")]
+    public async Task<IActionResult> TestCertificate(int id)
+    {
+        var result = await _ws.TestCertificateAsync(id);
+        return Ok(result);
+    }
+
+    /// <summary>Trae los últimos N comprobantes de un PtoVta + CbteTipo.</summary>
+    [HttpPost("accounts/{id:int}/last-comprobantes")]
+    public async Task<IActionResult> LastComprobantes(int id, [FromBody] UltimosComprobantesRequest req)
+    {
+        if (req is null) return BadRequest(new { error = "Falta el body" });
+        if (req.PtoVta <= 0) return BadRequest(new { error = "PtoVta inválido" });
+        if (req.CbteTipo <= 0) return BadRequest(new { error = "CbteTipo inválido" });
+        var result = await _ws.GetUltimosComprobantesAsync(id, req.PtoVta, req.CbteTipo, req.UltimoNro, req.Cantidad);
+        return Ok(result);
     }
 
     /// <summary>

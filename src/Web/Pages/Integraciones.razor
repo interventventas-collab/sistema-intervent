@@ -566,6 +566,13 @@
                                         <td>@c.CreatedAt.ToString("dd/MM/yyyy")</td>
                                         <td>
                                             <div class="actions-cell">
+                                                <button class="btn btn-secondary btn-sm"
+                                                        style="font-size: 0.74rem; padding: 0.2rem 0.5rem;"
+                                                        @onclick="() => StartArcaWsTestCert(c)"
+                                                        disabled="@arcaWsTestLoading"
+                                                        title="Verifica certificado contra WSAA y trae puntos de venta">
+                                                    🔐 Probar Certificado
+                                                </button>
                                                 <button class="btn-icon btn-edit" @onclick="() => OpenArcaWsEditCertModal(c)" title="Editar">
                                                     @SvgIcons.Edit
                                                 </button>
@@ -1726,6 +1733,267 @@
     </div>
 }
 
+<!-- Modal: Probar Certificado ARCA Webservice (WSAA + WSFEv1) -->
+@if (showArcaWsTestModal)
+{
+    <div class="modal-overlay" @onclick="CloseArcaWsTestModal">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 1100px; max-height: 92vh; display: flex; flex-direction: column;">
+            <div class="modal-header">
+                <h3>🔐 Probar Certificado — @arcaWsTestCertLabel</h3>
+                <button class="btn-close" @onclick="CloseArcaWsTestModal" disabled="@arcaWsTestLoading">&times;</button>
+            </div>
+            <div class="modal-body" style="overflow-y: auto;">
+
+                @if (arcaWsTestLoading)
+                {
+                    <div style="display: flex; align-items: center; gap: 0.8rem; padding: 0.7rem 0.9rem; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px;">
+                        <div style="width: 24px; height: 24px; border: 3px solid #bfdbfe; border-top-color: #1d4ed8; border-radius: 50%; animation: spin 1s linear infinite; flex-shrink: 0;"></div>
+                        <strong style="color: #1e3a8a;">Conectando con ARCA (WSAA → WSFEv1)...</strong>
+                    </div>
+                }
+                else if (arcaWsTestResult is null)
+                {
+                    <p class="text-muted">Sin resultados todavía.</p>
+                }
+                else if (!arcaWsTestResult.Success)
+                {
+                    <div class="form-error" style="padding: 0.8rem; font-size: 0.9rem;">
+                        <strong>❌ No se pudo validar el certificado:</strong>
+                        <div style="margin-top: 0.3rem;">@arcaWsTestResult.Error</div>
+                    </div>
+                }
+                else
+                {
+                    <div class="form-success" style="padding: 0.7rem 1rem; margin-bottom: 0.9rem;">
+                        <strong>✅ Certificado válido — autenticado correctamente contra ARCA</strong>
+                    </div>
+
+                    @* ═════════════════════ HOMOLOGACIÓN ═════════════════════ *@
+                    @if (arcaWsTestResult.IsHomologation)
+                    {
+                        <div style="background: #fef3c7; border: 1px solid #fbbf24; border-radius: 8px; padding: 0.7rem 0.9rem; font-size: 0.86rem; color: #78350f; margin-bottom: 1rem;">
+                            En <strong>homologación</strong> los puntos de venta son libres y <code>FEParamGetPtosVenta</code> no los devuelve.
+                            Indicá manualmente el PtoVta y el tipo de comprobante para consultar los últimos.
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label">PtoVta</label>
+                                <input type="number" min="1" class="form-input" @bind="arcaWsHomoPtoVta" />
+                            </div>
+                            <div class="form-group" style="flex: 2;">
+                                <label class="form-label">Tipo de comprobante</label>
+                                <select class="form-input" @bind="arcaWsHomoCbteTipo">
+                                    @foreach (var t in arcaWsTiposDisponibles)
+                                    {
+                                        <option value="@t.Id">@t.Label</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="form-group" style="flex: 0 0 160px; align-self: flex-end;">
+                                <button class="btn btn-primary" style="width: 100%;" @onclick="CargarUltimosHomo" disabled="@arcaWsSubLoading">
+                                    @(arcaWsSubLoading ? "Cargando..." : "Cargar últimos 5")
+                                </button>
+                            </div>
+                        </div>
+
+                        @if (arcaWsSubError is not null)
+                        {
+                            <div class="form-error" style="margin-top: 0.5rem;">@arcaWsSubError</div>
+                        }
+                        @if (arcaWsSubComprobantes is not null)
+                        {
+                            <div style="margin-top: 0.8rem; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
+                                <div style="padding: 0.4rem 0.7rem; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-weight: 700; font-size: 0.82rem;">
+                                    Detalle últimos comprobantes — PtoVta @arcaWsHomoPtoVta · @CbteNombre(arcaWsHomoCbteTipo)
+                                </div>
+                                @if (arcaWsSubComprobantes.Count == 0)
+                                {
+                                    <div style="padding: 0.6rem; text-align: center; color: #6b7280; font-size: 0.85rem;">Sin comprobantes.</div>
+                                }
+                                else
+                                {
+                                    <div style="overflow-y: auto; max-height: 300px;">
+                                        <table class="data-table" style="font-size: 0.78rem; margin: 0;">
+                                            <thead>
+                                                <tr>
+                                                    <th>Tipo</th>
+                                                    <th style="width: 80px;">Nro</th>
+                                                    <th style="width: 90px;">Fecha</th>
+                                                    <th>Doc Receptor</th>
+                                                    <th style="text-align: right;">Imp Neto</th>
+                                                    <th style="text-align: right;">IVA</th>
+                                                    <th style="text-align: right;">Imp Total</th>
+                                                    <th style="font-family: monospace;">CAE</th>
+                                                    <th style="width: 95px;">Vto CAE</th>
+                                                    <th style="width: 90px;">Resultado</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var c in arcaWsSubComprobantes)
+                                                {
+                                                    var resOk = string.Equals(c.Resultado, "A", StringComparison.OrdinalIgnoreCase);
+                                                    <tr>
+                                                        <td>@c.CbteTipo</td>
+                                                        <td>@c.CbteNro</td>
+                                                        <td>@c.Fecha</td>
+                                                        <td>@c.DocNro</td>
+                                                        <td style="text-align: right;">@FormatMoneyOrEmpty(c.ImpNeto)</td>
+                                                        <td style="text-align: right;">@FormatMoneyOrEmpty(c.ImpIVA)</td>
+                                                        <td style="text-align: right; font-weight: 600;">@FormatMoneyOrEmpty(c.ImpTotal)</td>
+                                                        <td style="font-family: monospace;">@c.Cae</td>
+                                                        <td>@c.CaeVto</td>
+                                                        <td>
+                                                            <span style="color: @(resOk ? "#059669" : "#dc2626"); font-weight: 700;">
+                                                                @(resOk ? "Aprobado" : (string.Equals(c.Resultado, "R", StringComparison.OrdinalIgnoreCase) ? "Rechazado" : c.Resultado))
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    }
+                    @* ═════════════════════ PRODUCCIÓN ═════════════════════ *@
+                    else
+                    {
+                        <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 0.6rem 0.9rem; font-size: 0.82rem; color: #075985; margin-bottom: 0.8rem;">
+                            ℹ Estos son los puntos de venta autorizados para emitir comprobantes vía <code>WSFEv1</code>. Pueden existir otros puntos de venta del CUIT (ej: <em>Factura en Línea</em>) que no se exponen por este web service.
+                        </div>
+
+                        @if (arcaWsTestResult.Puntos.Count == 0)
+                        {
+                            <p class="text-muted">El CUIT no tiene puntos de venta autorizados para WSFEv1.</p>
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="data-table" style="font-size: 0.85rem;">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 60px;">Nro</th>
+                                            <th>Tipo Emisión</th>
+                                            <th style="width: 90px;">Bloqueado</th>
+                                            <th style="width: 120px;">Fecha Baja</th>
+                                            <th>Último Comprobante</th>
+                                            <th style="width: 110px;">Última Fecha</th>
+                                            <th style="width: 130px;"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var p in arcaWsTestResult.Puntos)
+                                        {
+                                            var rowKey = $"{p.Nro}:{p.UltimoCbteTipoNro}";
+                                            var expanded = arcaWsExpandedKey == rowKey;
+                                            <tr>
+                                                <td><strong>@p.Nro</strong></td>
+                                                <td>@p.EmisionTipo</td>
+                                                <td>
+                                                    @if (p.Bloqueado) { <span style="color: #dc2626; font-weight: 700;">Sí</span> }
+                                                    else { <span style="color: #6b7280;">—</span> }
+                                                </td>
+                                                <td>@(p.FchBaja ?? "—")</td>
+                                                <td>
+                                                    @if (p.UltimoCbteNro > 0)
+                                                    {
+                                                        <span>@p.UltimoCbteTipo Nro <strong>@p.UltimoCbteNro</strong></span>
+                                                    }
+                                                    else { <span class="text-muted">Sin comprobantes</span> }
+                                                </td>
+                                                <td>@(p.UltimaFecha ?? "—")</td>
+                                                <td>
+                                                    @if (p.UltimoCbteNro > 0)
+                                                    {
+                                                        <button class="btn btn-secondary btn-sm" style="font-size: 0.72rem;"
+                                                                @onclick="() => VerUltimos5(p)"
+                                                                disabled="@arcaWsSubLoading">
+                                                            @(expanded ? "Ocultar" : "Ver últimos 5")
+                                                        </button>
+                                                    }
+                                                </td>
+                                            </tr>
+                                            @if (expanded && arcaWsSubComprobantes is not null)
+                                            {
+                                                <tr>
+                                                    <td colspan="7" style="background: #f9fafb; padding: 0.5rem;">
+                                                        <div style="font-weight: 700; font-size: 0.82rem; margin-bottom: 0.3rem; color: #374151;">
+                                                            Detalle últimos comprobantes — PtoVta @p.Nro · @p.UltimoCbteTipo
+                                                        </div>
+                                                        @if (arcaWsSubComprobantes.Count == 0)
+                                                        {
+                                                            <div style="padding: 0.5rem; text-align: center; color: #6b7280; font-size: 0.85rem;">Sin comprobantes.</div>
+                                                        }
+                                                        else
+                                                        {
+                                                            <div style="overflow-y: auto; max-height: 300px;">
+                                                                <table class="data-table" style="font-size: 0.78rem; margin: 0;">
+                                                                    <thead>
+                                                                        <tr>
+                                                                            <th>Tipo</th>
+                                                                            <th style="width: 80px;">Nro</th>
+                                                                            <th style="width: 90px;">Fecha</th>
+                                                                            <th>Doc Receptor</th>
+                                                                            <th style="text-align: right;">Imp Neto</th>
+                                                                            <th style="text-align: right;">IVA</th>
+                                                                            <th style="text-align: right;">Imp Total</th>
+                                                                            <th style="font-family: monospace;">CAE</th>
+                                                                            <th style="width: 95px;">Vto CAE</th>
+                                                                            <th style="width: 90px;">Resultado</th>
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody>
+                                                                        @foreach (var c in arcaWsSubComprobantes)
+                                                                        {
+                                                                            var resOkx = string.Equals(c.Resultado, "A", StringComparison.OrdinalIgnoreCase);
+                                                                            <tr>
+                                                                                <td>@c.CbteTipo</td>
+                                                                                <td>@c.CbteNro</td>
+                                                                                <td>@c.Fecha</td>
+                                                                                <td>@c.DocNro</td>
+                                                                                <td style="text-align: right;">@FormatMoneyOrEmpty(c.ImpNeto)</td>
+                                                                                <td style="text-align: right;">@FormatMoneyOrEmpty(c.ImpIVA)</td>
+                                                                                <td style="text-align: right; font-weight: 600;">@FormatMoneyOrEmpty(c.ImpTotal)</td>
+                                                                                <td style="font-family: monospace;">@c.Cae</td>
+                                                                                <td>@c.CaeVto</td>
+                                                                                <td>
+                                                                                    <span style="color: @(resOkx ? "#059669" : "#dc2626"); font-weight: 700;">
+                                                                                        @(resOkx ? "Aprobado" : (string.Equals(c.Resultado, "R", StringComparison.OrdinalIgnoreCase) ? "Rechazado" : c.Resultado))
+                                                                                    </span>
+                                                                                </td>
+                                                                            </tr>
+                                                                        }
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        }
+                                                    </td>
+                                                </tr>
+                                            }
+                                            @if (expanded && arcaWsSubError is not null)
+                                            {
+                                                <tr>
+                                                    <td colspan="7"><div class="form-error">@arcaWsSubError</div></td>
+                                                </tr>
+                                            }
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    }
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseArcaWsTestModal" disabled="@arcaWsTestLoading">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+}
+
 <!-- Modal: Configuracion Email SMTP -->
 @if (showEmailModal)
 {
@@ -1915,6 +2183,27 @@
     private string arcaWsSelectedFileName = "";
     private bool arcaWsSaving2;                            // saving del modal del cert
     private string? arcaWsCertError;
+
+    // Test de certificado (WSAA + WSFEv1)
+    private bool showArcaWsTestModal;
+    private bool arcaWsTestLoading;
+    private int arcaWsTestAccountId;
+    private string arcaWsTestCertLabel = "";
+    private TestCertificateResultDto? arcaWsTestResult;
+    // Sub-grilla últimos 5
+    private string? arcaWsExpandedKey;
+    private List<ComprobanteDetalleDto>? arcaWsSubComprobantes;
+    private bool arcaWsSubLoading;
+    private string? arcaWsSubError;
+    // Form homologación
+    private int arcaWsHomoPtoVta = 1;
+    private int arcaWsHomoCbteTipo = 1;
+    private static readonly (int Id, string Label)[] arcaWsTiposDisponibles = new[]
+    {
+        (1, "Factura A"),  (6, "Factura B"),  (11, "Factura C"), (51, "Factura M"),
+        (2, "Nota Débito A"),  (7, "Nota Débito B"),  (12, "Nota Débito C"),
+        (3, "Nota Crédito A"), (8, "Nota Crédito B"), (13, "Nota Crédito C"),
+    };
 
     // Wizard de generación de certificado nuevo (Paso 1 → CSR, Paso 2 → ARCA, Paso 3 → .crt → .pfx)
     private bool showArcaWsWizard;
@@ -3760,6 +4049,124 @@
             ToastService.Error("Error al eliminar el certificado");
         }
     }
+
+    // ============================================================
+    // Probar Certificado (WSAA + WSFEv1)
+    // ============================================================
+
+    private async Task StartArcaWsTestCert(ArcaWebserviceAccountDto cert)
+    {
+        if (arcaWsTestLoading) return;
+        arcaWsTestAccountId = cert.Id;
+        var ambiente = string.Equals(cert.Environment, "homologation", StringComparison.OrdinalIgnoreCase) ? "Homologación" : "Producción";
+        arcaWsTestCertLabel = $"{FormatCuit(cert.Cuit)} · {cert.Alias ?? cert.FileName} · {ambiente}";
+        arcaWsTestResult = null;
+        arcaWsExpandedKey = null;
+        arcaWsSubComprobantes = null;
+        arcaWsSubError = null;
+        arcaWsTestLoading = true;
+        showArcaWsTestModal = true;
+        StateHasChanged();
+
+        try
+        {
+            arcaWsTestResult = await Api.TestArcaCertificateAsync(cert.Id);
+        }
+        catch (Exception ex)
+        {
+            arcaWsTestResult = new TestCertificateResultDto { Success = false, Error = ex.Message };
+        }
+        finally
+        {
+            arcaWsTestLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CloseArcaWsTestModal()
+    {
+        if (arcaWsTestLoading || arcaWsSubLoading) return;
+        showArcaWsTestModal = false;
+        arcaWsTestResult = null;
+        arcaWsExpandedKey = null;
+        arcaWsSubComprobantes = null;
+        arcaWsSubError = null;
+    }
+
+    private async Task VerUltimos5(PuntoVentaInfoDto p)
+    {
+        if (arcaWsSubLoading) return;
+        var key = $"{p.Nro}:{p.UltimoCbteTipoNro}";
+        if (arcaWsExpandedKey == key)
+        {
+            // Toggle: ocultar
+            arcaWsExpandedKey = null;
+            arcaWsSubComprobantes = null;
+            arcaWsSubError = null;
+            return;
+        }
+        arcaWsExpandedKey = key;
+        arcaWsSubComprobantes = null;
+        arcaWsSubError = null;
+        arcaWsSubLoading = true;
+        try
+        {
+            var resp = await Api.GetArcaLastComprobantesAsync(arcaWsTestAccountId, new UltimosComprobantesRequest
+            {
+                PtoVta = p.Nro,
+                CbteTipo = p.UltimoCbteTipoNro,
+                UltimoNro = p.UltimoCbteNro,
+                Cantidad = 5
+            });
+            if (resp is null || !resp.Success) arcaWsSubError = resp?.Error ?? "Error desconocido";
+            else arcaWsSubComprobantes = resp.Comprobantes;
+        }
+        catch (Exception ex)
+        {
+            arcaWsSubError = ex.Message;
+        }
+        finally
+        {
+            arcaWsSubLoading = false;
+        }
+    }
+
+    private async Task CargarUltimosHomo()
+    {
+        if (arcaWsSubLoading) return;
+        arcaWsSubComprobantes = null;
+        arcaWsSubError = null;
+        arcaWsSubLoading = true;
+        try
+        {
+            var resp = await Api.GetArcaLastComprobantesAsync(arcaWsTestAccountId, new UltimosComprobantesRequest
+            {
+                PtoVta = arcaWsHomoPtoVta,
+                CbteTipo = arcaWsHomoCbteTipo,
+                UltimoNro = null, // el back lo busca con FECompUltimoAutorizado
+                Cantidad = 5
+            });
+            if (resp is null || !resp.Success) arcaWsSubError = resp?.Error ?? "Error desconocido";
+            else arcaWsSubComprobantes = resp.Comprobantes;
+        }
+        catch (Exception ex)
+        {
+            arcaWsSubError = ex.Message;
+        }
+        finally
+        {
+            arcaWsSubLoading = false;
+        }
+    }
+
+    private static string CbteNombre(int tipo) => tipo switch
+    {
+        1 => "Factura A", 2 => "Nota Débito A", 3 => "Nota Crédito A",
+        6 => "Factura B", 7 => "Nota Débito B", 8 => "Nota Crédito B",
+        11 => "Factura C", 12 => "Nota Débito C", 13 => "Nota Crédito C",
+        51 => "Factura M",
+        _ => $"Tipo {tipo}",
+    };
 
     // ============================================================
     // Wizard de generación de certificado (clave privada + CSR + .pfx)
