@@ -82,4 +82,60 @@ public class ArcaWebserviceController : ControllerBase
         if (!deleted) return NotFound(new { error = "Certificado no encontrado" });
         return NoContent();
     }
+
+    // ============================================================
+    // Wizard: generar CSR → bajar .csr → subir .crt → finalizar .pfx
+    // ============================================================
+
+    /// <summary>Paso 1: genera la clave privada + el CSR y guarda el pedido temporal.</summary>
+    [HttpPost("csr")]
+    public async Task<IActionResult> GenerateCsr([FromBody] GenerateCsrRequest req)
+    {
+        var (ok, error, dto) = await _service.GenerateCsrAsync(req?.Cuit ?? "", req?.Alias);
+        if (!ok) return BadRequest(new { error });
+        return Ok(dto);
+    }
+
+    /// <summary>Paso 2: descarga el .csr generado para subirlo a ARCA.</summary>
+    [HttpGet("csr/{id:int}/download")]
+    public async Task<IActionResult> DownloadCsr(int id)
+    {
+        var result = await _service.GetCsrDownloadAsync(id);
+        if (result is null) return NotFound(new { error = "Pedido no encontrado" });
+        return File(result.Value.bytes, "application/x-pem-file", result.Value.fileName);
+    }
+
+    /// <summary>
+    /// Paso 3: combina la clave privada del pedido con el .crt recibido de ARCA,
+    /// genera el .pfx final, lo guarda en disco y crea el registro definitivo
+    /// en ArcaWebserviceAccounts. Elimina el pedido temporal.
+    /// </summary>
+    [HttpPost("csr/{id:int}/finalize")]
+    [RequestSizeLimit(15 * 1024 * 1024)] // 15 MB
+    public async Task<IActionResult> FinalizeCsr(
+        int id,
+        [FromForm] IFormFile? crt,
+        [FromForm] string? password,
+        [FromForm] string? environment,
+        [FromForm] string? alias)
+    {
+        if (crt is null || crt.Length == 0)
+            return BadRequest(new { error = "Falta el archivo .crt" });
+
+        byte[] bytes;
+        using (var ms = new MemoryStream())
+        {
+            await crt.CopyToAsync(ms);
+            bytes = ms.ToArray();
+        }
+
+        var (ok, error, dto) = await _service.FinalizeCsrAsync(id, bytes, password, environment, alias);
+        if (!ok)
+        {
+            if (error?.StartsWith("Pedido de CSR no encontrado") == true)
+                return NotFound(new { error });
+            return BadRequest(new { error });
+        }
+        return Ok(dto);
+    }
 }

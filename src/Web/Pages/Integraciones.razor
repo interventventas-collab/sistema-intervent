@@ -518,7 +518,12 @@
             <div class="integration-accounts">
                 <div class="integration-accounts-header">
                     <h4>Certificados cargados</h4>
-                    <button class="btn btn-primary" @onclick="OpenArcaWsAddCertModal">+ Cargar certificado</button>
+                    <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                        <button class="btn btn-secondary" @onclick="OpenArcaWsWizardModal" title="Generar clave privada + CSR, después de subirlo a ARCA volvés con el .crt para armar el .pfx">
+                            🔧 Generar nuevo certificado
+                        </button>
+                        <button class="btn btn-primary" @onclick="OpenArcaWsAddCertModal">+ Cargar certificado</button>
+                    </div>
                 </div>
 
                 @if (arcaWsCerts is not null && arcaWsCerts.Count > 0)
@@ -1563,6 +1568,164 @@
     </div>
 }
 
+<!-- Modal: Wizard de generación de certificado ARCA -->
+@if (showArcaWsWizard)
+{
+    <div class="modal-overlay" @onclick="CloseArcaWsWizardModal">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 720px;">
+            <div class="modal-header">
+                <h3>🔧 Generar nuevo certificado de ARCA</h3>
+                <button class="btn-close" @onclick="CloseArcaWsWizardModal" disabled="@arcaWsWizardBusy">&times;</button>
+            </div>
+
+            @* ─── Stepper ─── *@
+            <div style="display: flex; gap: 0.5rem; padding: 0.7rem 1.2rem 0; align-items: center;">
+                @for (int i = 1; i <= 3; i++)
+                {
+                    var s = i;
+                    var done = arcaWsWizardStep > s;
+                    var active = arcaWsWizardStep == s;
+                    var bg = done ? "#10b981" : active ? "#1d4ed8" : "#e5e7eb";
+                    var color = (done || active) ? "white" : "#6b7280";
+                    var label = s == 1 ? "Generar CSR" : s == 2 ? "Subir a ARCA" : "Cargar .crt";
+                    <div style="display: flex; align-items: center; gap: 0.4rem;">
+                        <span style="display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: @bg; color: @color; font-weight: 800; font-size: 0.78rem;">@(done ? "✓" : s.ToString())</span>
+                        <span style="font-size: 0.85rem; font-weight: 600; color: @(active ? "#1d4ed8" : "#6b7280");">@label</span>
+                    </div>
+                    @if (s < 3)
+                    {
+                        <span style="flex: 0 0 24px; height: 2px; background: @(done ? "#10b981" : "#e5e7eb");"></span>
+                    }
+                }
+            </div>
+
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(arcaWsWizardError))
+                {
+                    <div class="form-error">@arcaWsWizardError</div>
+                }
+
+                @* ═══════════════ Paso 1: generar CSR ═══════════════ *@
+                @if (arcaWsWizardStep == 1)
+                {
+                    <p class="text-muted">
+                        Generamos para vos una <strong>clave privada RSA 2048</strong> y un
+                        <strong>CSR firmado con SHA-256</strong>. Después lo subís a ARCA y te
+                        devuelve el certificado (.crt) que combinamos con la clave acá para
+                        armar el .pfx final.
+                    </p>
+                    <div class="form-group">
+                        <label class="form-label">CUIT *</label>
+                        <input type="text" class="form-input" @bind="arcaWsWizardCuit"
+                               placeholder="Ej: 30-71593809-1" maxlength="13" />
+                        <span class="input-hint">11 dígitos. Los guiones se sacan automáticamente.</span>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Alias *</label>
+                        <input type="text" class="form-input" @bind="arcaWsWizardAlias"
+                               placeholder="Ej: MI_EMPRESA" maxlength="100" />
+                        <span class="input-hint">Se usa como nombre interno y forma parte del subject del CSR.</span>
+                    </div>
+                }
+
+                @* ═══════════════ Paso 2: descargar CSR + ir a ARCA ═══════════════ *@
+                else if (arcaWsWizardStep == 2)
+                {
+                    <div class="form-success" style="padding: 0.7rem 1rem; margin-bottom: 0.9rem;">
+                        <strong>✅ CSR generado correctamente</strong>
+                    </div>
+                    <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.7rem 0.9rem; margin-bottom: 1rem;">
+                        <div style="font-size: 0.72rem; color: #6b7280; text-transform: uppercase; font-weight: 700; margin-bottom: 0.3rem;">Subject</div>
+                        <div style="font-family: monospace; font-size: 0.82rem; word-break: break-all;">@(arcaWsWizardCsrSubject ?? "—")</div>
+                    </div>
+
+                    <button class="btn btn-primary" @onclick="DownloadArcaWsCsr" disabled="@arcaWsWizardBusy" style="margin-bottom: 1rem;">
+                        ⬇ Descargar archivo CSR
+                    </button>
+
+                    <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 0.9rem; font-size: 0.88rem;">
+                        <strong style="display: block; margin-bottom: 0.5rem;">Ahora subilo a ARCA:</strong>
+                        <ol style="margin: 0; padding-left: 1.2rem; line-height: 1.7;">
+                            <li>Ingresá a <a href="https://auth.afip.gob.ar/contribuyente_/login.xhtml" target="_blank" rel="noopener" style="color: #1d4ed8; text-decoration: underline;">auth.afip.gob.ar/contribuyente_/login.xhtml</a></li>
+                            <li>Buscá y entrá al servicio <strong>"Administración de Certificados Digitales"</strong></li>
+                            <li>Solicitá un nuevo certificado y subí el archivo <strong>.csr</strong> que descargaste</li>
+                            <li>ARCA te devuelve un archivo <strong>.crt</strong>. Guardalo a mano</li>
+                            <li>Volvé acá y tocá <strong>"Ya tengo el .crt"</strong></li>
+                        </ol>
+                    </div>
+                }
+
+                @* ═══════════════ Paso 3: subir .crt y generar .pfx ═══════════════ *@
+                else if (arcaWsWizardStep == 3)
+                {
+                    <p class="text-muted">Subí el archivo <strong>.crt</strong> que te devolvió ARCA. Vamos a combinarlo con la clave privada que generamos antes y crear el .pfx final.</p>
+
+                    <div class="form-group">
+                        <label class="form-label">Archivo .crt de ARCA *</label>
+                        <label class="arca-ws-file-drop" style="display: block; padding: 1rem; border: 2px dashed #93c5fd; border-radius: 8px; background: #eff6ff; cursor: pointer; text-align: center; transition: all 0.15s;">
+                            <InputFile OnChange="OnArcaWsWizardCrtPicked" accept=".crt,.cer,.pem" style="display: none;" />
+                            @if (string.IsNullOrEmpty(arcaWsWizardCrtFileName))
+                            {
+                                <span style="display: block; font-weight: 600; color: #1d4ed8; margin-bottom: 0.2rem;">📎 Elegir archivo .crt</span>
+                                <span style="font-size: 0.78rem; color: #6b7280;">Acepta .crt, .cer o .pem (PEM o DER binario)</span>
+                            }
+                            else
+                            {
+                                <span style="display: block; font-weight: 700; color: #047857; margin-bottom: 0.2rem;">✓ @arcaWsWizardCrtFileName</span>
+                                <span style="font-size: 0.78rem; color: #6b7280;">Click para cambiar el archivo</span>
+                            }
+                        </label>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Ambiente *</label>
+                            <select class="form-input" @bind="arcaWsWizardEnvironment">
+                                <option value="production">Producción</option>
+                                <option value="homologation">Homologación</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Alias final</label>
+                            <input type="text" class="form-input" @bind="arcaWsWizardAliasFinal" maxlength="100" />
+                            <span class="input-hint">Se usa como nombre del .pfx en disco.</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Contraseña del .pfx (opcional)</label>
+                        <input type="password" class="form-input" @bind="arcaWsWizardPfxPassword"
+                               placeholder="Dejalo vacío si no querés protegerlo con clave" />
+                        <span class="input-hint">Si dejás esto vacío, el .pfx queda sin contraseña.</span>
+                    </div>
+                }
+            </div>
+
+            <div class="modal-footer">
+                @if (arcaWsWizardStep == 1)
+                {
+                    <button class="btn btn-secondary" @onclick="CloseArcaWsWizardModal" disabled="@arcaWsWizardBusy">Cancelar</button>
+                    <button class="btn btn-primary" @onclick="ArcaWsWizardStep1Submit" disabled="@arcaWsWizardBusy">
+                        @(arcaWsWizardBusy ? "Generando..." : "Generar CSR")
+                    </button>
+                }
+                else if (arcaWsWizardStep == 2)
+                {
+                    <button class="btn btn-secondary" @onclick="CloseArcaWsWizardModal" disabled="@arcaWsWizardBusy">Cerrar y continuar luego</button>
+                    <button class="btn btn-primary" @onclick="() => arcaWsWizardStep = 3" disabled="@arcaWsWizardBusy">Ya tengo el .crt →</button>
+                }
+                else if (arcaWsWizardStep == 3)
+                {
+                    <button class="btn btn-secondary" @onclick="() => arcaWsWizardStep = 2" disabled="@arcaWsWizardBusy">← Volver</button>
+                    <button class="btn btn-primary" @onclick="ArcaWsWizardStep3Submit" disabled="@arcaWsWizardBusy">
+                        @(arcaWsWizardBusy ? "Generando .pfx..." : "Crear .pfx y agregar")
+                    </button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
 <!-- Modal: Configuracion Email SMTP -->
 @if (showEmailModal)
 {
@@ -1752,6 +1915,26 @@
     private string arcaWsSelectedFileName = "";
     private bool arcaWsSaving2;                            // saving del modal del cert
     private string? arcaWsCertError;
+
+    // Wizard de generación de certificado nuevo (Paso 1 → CSR, Paso 2 → ARCA, Paso 3 → .crt → .pfx)
+    private bool showArcaWsWizard;
+    private int arcaWsWizardStep = 1;
+    private bool arcaWsWizardBusy;
+    private string? arcaWsWizardError;
+    // Paso 1
+    private string arcaWsWizardCuit = "";
+    private string arcaWsWizardAlias = "";
+    // Paso 2
+    private int? arcaWsWizardCsrId;
+    private string? arcaWsWizardCsrFileName;
+    private string? arcaWsWizardCsrSubject;
+    private string? arcaWsWizardCsrPem;
+    // Paso 3
+    private IBrowserFile? arcaWsWizardCrtFile;
+    private string arcaWsWizardCrtFileName = "";
+    private string arcaWsWizardEnvironment = "production";
+    private string arcaWsWizardAliasFinal = "";
+    private string arcaWsWizardPfxPassword = "";
 
     // Modos del modal: "test" (login + RUT) | "comprobantes" (descarga CSV)
     private string arcaTestMode = "test";
@@ -3575,6 +3758,150 @@
         catch
         {
             ToastService.Error("Error al eliminar el certificado");
+        }
+    }
+
+    // ============================================================
+    // Wizard de generación de certificado (clave privada + CSR + .pfx)
+    // ============================================================
+
+    private void OpenArcaWsWizardModal()
+    {
+        arcaWsWizardStep = 1;
+        arcaWsWizardBusy = false;
+        arcaWsWizardError = null;
+        arcaWsWizardCuit = "";
+        arcaWsWizardAlias = "";
+        arcaWsWizardCsrId = null;
+        arcaWsWizardCsrFileName = null;
+        arcaWsWizardCsrSubject = null;
+        arcaWsWizardCsrPem = null;
+        arcaWsWizardCrtFile = null;
+        arcaWsWizardCrtFileName = "";
+        arcaWsWizardEnvironment = "production";
+        arcaWsWizardAliasFinal = "";
+        arcaWsWizardPfxPassword = "";
+        showArcaWsWizard = true;
+    }
+
+    private void CloseArcaWsWizardModal()
+    {
+        if (arcaWsWizardBusy) return;
+        showArcaWsWizard = false;
+        arcaWsWizardError = null;
+    }
+
+    private async Task ArcaWsWizardStep1Submit()
+    {
+        arcaWsWizardError = null;
+        var cuitDigits = new string((arcaWsWizardCuit ?? "").Where(char.IsDigit).ToArray());
+        if (cuitDigits.Length != 11)
+        {
+            arcaWsWizardError = "El CUIT debe tener 11 dígitos";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(arcaWsWizardAlias))
+        {
+            arcaWsWizardError = "El alias es obligatorio";
+            return;
+        }
+
+        arcaWsWizardBusy = true;
+        try
+        {
+            var (ok, error, dto) = await Api.GenerateArcaCsrAsync(cuitDigits, arcaWsWizardAlias.Trim());
+            if (!ok || dto is null)
+            {
+                arcaWsWizardError = error ?? "No se pudo generar el CSR";
+                return;
+            }
+            arcaWsWizardCsrId = dto.Id;
+            arcaWsWizardCsrFileName = dto.FileName;
+            arcaWsWizardCsrSubject = dto.Subject;
+            arcaWsWizardCsrPem = dto.CsrPem;
+            // Precargar el alias final del paso 3 con el que escribió en el paso 1
+            arcaWsWizardAliasFinal = arcaWsWizardAlias.Trim();
+            arcaWsWizardStep = 2;
+        }
+        catch (Exception ex)
+        {
+            arcaWsWizardError = ex.Message;
+        }
+        finally
+        {
+            arcaWsWizardBusy = false;
+        }
+    }
+
+    private async Task DownloadArcaWsCsr()
+    {
+        if (string.IsNullOrEmpty(arcaWsWizardCsrPem) || string.IsNullOrEmpty(arcaWsWizardCsrFileName)) return;
+        try
+        {
+            await JS.InvokeVoidAsync("downloadTextFile", arcaWsWizardCsrFileName, arcaWsWizardCsrPem, "application/x-pem-file");
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("No se pudo descargar: " + ex.Message);
+        }
+    }
+
+    private void OnArcaWsWizardCrtPicked(InputFileChangeEventArgs e)
+    {
+        arcaWsWizardError = null;
+        var f = e.File;
+        if (f is null) { arcaWsWizardCrtFile = null; arcaWsWizardCrtFileName = ""; return; }
+        // Aceptamos .crt, .cer, .pem (no validamos extensión estricto: el back parsea
+        // PEM o DER igual). Pero rechazamos lo que claramente no es un certificado.
+        if (f.Size > 5 * 1024 * 1024)
+        {
+            arcaWsWizardError = "El archivo es muy grande (max 5 MB)";
+            return;
+        }
+        arcaWsWizardCrtFile = f;
+        arcaWsWizardCrtFileName = f.Name;
+    }
+
+    private async Task ArcaWsWizardStep3Submit()
+    {
+        arcaWsWizardError = null;
+        if (!arcaWsWizardCsrId.HasValue)
+        {
+            arcaWsWizardError = "No hay un pedido de CSR activo. Volvé al paso 1.";
+            return;
+        }
+        if (arcaWsWizardCrtFile is null)
+        {
+            arcaWsWizardError = "Tenés que elegir el archivo .crt que te devolvió ARCA";
+            return;
+        }
+        arcaWsWizardBusy = true;
+        try
+        {
+            using var stream = arcaWsWizardCrtFile.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+            var (ok, error, dto) = await Api.FinalizeArcaCsrAsync(
+                arcaWsWizardCsrId.Value,
+                stream,
+                arcaWsWizardCrtFile.Name,
+                arcaWsWizardPfxPassword,
+                arcaWsWizardEnvironment,
+                arcaWsWizardAliasFinal);
+            if (!ok || dto is null)
+            {
+                arcaWsWizardError = error ?? "No se pudo generar el .pfx";
+                return;
+            }
+            ToastService.Success("Certificado generado y agregado a la lista");
+            showArcaWsWizard = false;
+            await LoadArcaWsCerts();
+        }
+        catch (Exception ex)
+        {
+            arcaWsWizardError = ex.Message;
+        }
+        finally
+        {
+            arcaWsWizardBusy = false;
         }
     }
 

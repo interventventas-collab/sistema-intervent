@@ -2,7 +2,9 @@ using Api.Data;
 using Api.DTOs;
 using Api.Models;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
 
 namespace Api.Services;
 
@@ -220,6 +222,198 @@ public class ArcaWebserviceAccountService
         // Fallback ridículo: timestamp
         var fallback = $"{stem}-{DateTime.UtcNow.Ticks}{ext}";
         return (fallback, Path.Combine(folderAbs, fallback));
+    }
+
+    // ============================================================
+    // Wizard de generación de certificado (clave privada + CSR + .pfx)
+    // ============================================================
+
+    /// <summary>
+    /// Paso 1 del wizard: genera RSA 2048 + CSR firmado con SHA256/PKCS1 con
+    /// el subject `C=AR, O={alias}, CN={alias}, OID.2.5.4.5=CUIT {cuit}`.
+    /// Guarda la key + CSR en ArcaCsrRequests para que el usuario pueda ir
+    /// a ARCA, descargar el .crt y volver más tarde a finalizar.
+    /// </summary>
+    public async Task<(bool ok, string? error, GenerateCsrResponseDto? dto)> GenerateCsrAsync(string cuitRaw, string? aliasRaw)
+    {
+        var cuit = NormalizeCuit(cuitRaw);
+        if (cuit is null) return (false, "El CUIT debe tener 11 dígitos", null);
+        var alias = (aliasRaw ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(alias)) return (false, "El alias es obligatorio", null);
+
+        try
+        {
+            using var rsa = RSA.Create(2048);
+            // RFC 4514: escapamos caracteres reservados en el componente DN para
+            // que parsee bien aunque el alias tenga comas, signos =, etc.
+            var aliasEsc = EscapeDnComponent(alias);
+            var subjectStr = $"C=AR, O={aliasEsc}, CN={aliasEsc}, OID.2.5.4.5=CUIT {cuit}";
+            var dn = new X500DistinguishedName(subjectStr);
+            var req = new CertificateRequest(dn, rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+
+            var csrPem = req.CreateSigningRequestPem();
+            var privateKeyPem = rsa.ExportPkcs8PrivateKeyPem();
+
+            var entity = new ArcaCsrRequest
+            {
+                Cuit = cuit,
+                Alias = alias,
+                PrivateKeyPem = privateKeyPem,
+                CsrPem = csrPem,
+                CreatedAt = DateTime.UtcNow,
+            };
+            _db.ArcaCsrRequests.Add(entity);
+            await _db.SaveChangesAsync();
+
+            var fileName = $"{cuit}_{FileStorageService.SanitizeName(alias)}.csr";
+            var dto = new GenerateCsrResponseDto(entity.Id, fileName, csrPem, dn.Name);
+            return (true, null, dto);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generando CSR");
+            return (false, "No se pudo generar el CSR: " + ex.Message, null);
+        }
+    }
+
+    /// <summary>Para el endpoint de descarga del .csr.</summary>
+    public async Task<(byte[] bytes, string fileName)?> GetCsrDownloadAsync(int id)
+    {
+        var entity = await _db.ArcaCsrRequests.FindAsync(id);
+        if (entity is null) return null;
+        var fileName = $"{entity.Cuit}_{FileStorageService.SanitizeName(entity.Alias)}.csr";
+        return (Encoding.UTF8.GetBytes(entity.CsrPem), fileName);
+    }
+
+    /// <summary>
+    /// Paso 3 del wizard: combina la clave privada del pedido con el .crt
+    /// devuelto por ARCA, genera el .pfx, lo guarda en disco y crea el
+    /// registro en ArcaWebserviceAccounts. Después borra el pedido de CSR.
+    /// </summary>
+    public async Task<(bool ok, string? error, ArcaWebserviceAccountDto? dto)> FinalizeCsrAsync(
+        int csrId, byte[] crtBytes, string? password, string? environment, string? aliasOverride)
+    {
+        var entity = await _db.ArcaCsrRequests.FindAsync(csrId);
+        if (entity is null) return (false, "Pedido de CSR no encontrado (puede que haya sido finalizado o eliminado)", null);
+
+        if (crtBytes is null || crtBytes.Length == 0)
+            return (false, "Falta el archivo .crt", null);
+
+        // ---- Parsear el .crt (PEM o DER) ----
+        X509Certificate2 cert;
+        try
+        {
+            var asString = Encoding.UTF8.GetString(crtBytes);
+            if (asString.Contains("-----BEGIN CERTIFICATE-----"))
+                cert = X509Certificate2.CreateFromPem(asString);
+            else
+                cert = new X509Certificate2(crtBytes);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error parseando .crt");
+            return (false, "No se pudo leer el archivo .crt — ¿es un certificado válido?", null);
+        }
+
+        // ---- Combinar con la clave privada y exportar como .pfx ----
+        byte[] pfxBytes;
+        try
+        {
+            using var rsa = RSA.Create();
+            rsa.ImportFromPem(entity.PrivateKeyPem);
+            using var certWithKey = cert.CopyWithPrivateKey(rsa);
+            pfxBytes = certWithKey.Export(X509ContentType.Pfx, password ?? "");
+        }
+        catch (Exception ex)
+        {
+            cert.Dispose();
+            _logger.LogWarning(ex, "Error combinando clave privada con .crt");
+            return (false, "La clave privada no corresponde al certificado. ¿Subiste el .crt que ARCA devolvió para este pedido?", null);
+        }
+        finally
+        {
+            cert.Dispose();
+        }
+
+        // ---- Validar parseo del .pfx + leer vencimiento ----
+        DateTime? expiresAt = null;
+        try
+        {
+            using var validate = new X509Certificate2(pfxBytes, password ?? "", X509KeyStorageFlags.EphemeralKeySet);
+            expiresAt = validate.NotAfter;
+        }
+        catch (Exception ex)
+        {
+            // Best-effort: no fallar si no se puede re-validar, el .pfx ya fue exportado
+            _logger.LogDebug(ex, "No se pudo re-validar el .pfx generado, dejo ExpiresAt en null");
+        }
+
+        // ---- Guardar el .pfx en disco ----
+        var aliasFinal = string.IsNullOrWhiteSpace(aliasOverride) ? entity.Alias : aliasOverride.Trim();
+        string safeName;
+        try { safeName = FileStorageService.SanitizeName($"{aliasFinal}.pfx"); }
+        catch { return (false, "Alias inválido para usar como nombre de archivo", null); }
+
+        var folderRel = $"{CertsRootFolder}/{entity.Cuit}";
+        var folderAbs = _files.ResolveSafe(folderRel);
+        Directory.CreateDirectory(folderAbs);
+
+        var (finalName, finalAbs) = ResolveUniqueFile(folderAbs, safeName);
+        var relPath = $"{folderRel}/{finalName}";
+
+        try
+        {
+            await File.WriteAllBytesAsync(finalAbs, pfxBytes);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "No se pudo guardar el .pfx generado");
+            return (false, "No se pudo guardar el .pfx en disco: " + ex.Message, null);
+        }
+
+        // ---- Crear el registro en ArcaWebserviceAccounts + borrar el pedido ----
+        var account = new ArcaWebserviceAccount
+        {
+            Cuit = entity.Cuit,
+            Alias = aliasFinal,
+            FileName = finalName,
+            FilePath = relPath,
+            Password = string.IsNullOrEmpty(password) ? null : password,
+            Environment = NormalizeEnvironment(environment),
+            ExpiresAt = expiresAt,
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow,
+        };
+        _db.ArcaWebserviceAccounts.Add(account);
+
+        // La clave privada ya no se necesita más — quedó embebida en el .pfx
+        _db.ArcaCsrRequests.Remove(entity);
+
+        await _db.SaveChangesAsync();
+        return (true, null, Map(account));
+    }
+
+    /// <summary>
+    /// Escapa caracteres reservados de un componente DN (RFC 4514). Sin esto,
+    /// un alias con "," o "=" rompe el parseo de X500DistinguishedName.
+    /// </summary>
+    private static string EscapeDnComponent(string s)
+    {
+        var sb = new StringBuilder();
+        for (int i = 0; i < s.Length; i++)
+        {
+            var c = s[i];
+            if (c == '\\' || c == ',' || c == '=' || c == '+' ||
+                c == '<' || c == '>' || c == '#' || c == ';' || c == '"')
+            {
+                sb.Append('\\').Append(c);
+            }
+            else
+            {
+                sb.Append(c);
+            }
+        }
+        return sb.ToString();
     }
 
     /// <summary>

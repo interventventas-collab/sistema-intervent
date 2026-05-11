@@ -190,6 +190,24 @@ BEGIN
 END
 GO
 
+-- ArcaCsrRequests — pedidos de CSR temporales del wizard de generacion de
+-- certificado. Cuando el usuario arranca el wizard se crea una clave privada
+-- RSA + CSR aca; cuando vuelve con el .crt de ARCA, combinamos cert + key,
+-- generamos el .pfx y BORRAMOS esta fila.
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ArcaCsrRequests' AND xtype='U')
+BEGIN
+    CREATE TABLE ArcaCsrRequests (
+        Id INT PRIMARY KEY IDENTITY(1,1),
+        Cuit NVARCHAR(11) NOT NULL,
+        Alias NVARCHAR(100) NOT NULL,
+        PrivateKeyPem NVARCHAR(MAX) NOT NULL,
+        CsrPem NVARCHAR(MAX) NOT NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE()
+    );
+    CREATE INDEX IX_ArcaCsr_Cuit ON ArcaCsrRequests (Cuit);
+END
+GO
+
 -- MeliOrders table
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='MeliOrders' AND xtype='U')
 BEGIN

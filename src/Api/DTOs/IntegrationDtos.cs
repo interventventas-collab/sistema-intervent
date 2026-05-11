@@ -90,3 +90,14 @@ public class UpdateArcaWebserviceAccountRequest
     public string? Environment { get; set; }
     public bool? IsActive { get; set; }
 }
+
+// ===== Wizard de generación de certificado =====
+public class GenerateCsrRequest
+{
+    [Required, MaxLength(20)]
+    public string Cuit { get; set; } = string.Empty;
+    [Required, MaxLength(100)]
+    public string Alias { get; set; } = string.Empty;
+}
+
+public record GenerateCsrResponseDto(int Id, string FileName, string CsrPem, string Subject);

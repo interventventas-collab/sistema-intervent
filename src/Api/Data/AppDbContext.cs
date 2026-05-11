@@ -13,6 +13,7 @@ public class AppDbContext : DbContext
     public DbSet<MeliAccount> MeliAccounts => Set<MeliAccount>();
     public DbSet<ArcaAccount> ArcaAccounts => Set<ArcaAccount>();
     public DbSet<ArcaWebserviceAccount> ArcaWebserviceAccounts => Set<ArcaWebserviceAccount>();
+    public DbSet<ArcaCsrRequest> ArcaCsrRequests => Set<ArcaCsrRequest>();
     public DbSet<MeliOrder> MeliOrders => Set<MeliOrder>();
     public DbSet<MeliItem> MeliItems => Set<MeliItem>();
     public DbSet<MeliQuestion> MeliQuestions => Set<MeliQuestion>();

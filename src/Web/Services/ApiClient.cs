@@ -1150,6 +1150,81 @@ public class ApiClient
     public async Task<bool> DeleteArcaWebserviceAccountAsync(int id)
         => await DeleteAsync($"/api/arca-webservice/accounts/{id}");
 
+    // Wizard de generación de certificado (CSR → .crt → .pfx)
+    public async Task<(bool ok, string? error, GenerateArcaCsrResponseDto? dto)> GenerateArcaCsrAsync(string cuit, string alias)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync("/api/arca-webservice/csr", new { cuit, alias });
+        if (resp.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            await HandleUnauthorizedAsync();
+            return (false, "Sesión expirada", null);
+        }
+        if (resp.IsSuccessStatusCode)
+        {
+            var dto = await resp.Content.ReadFromJsonAsync<GenerateArcaCsrResponseDto>();
+            return (true, null, dto);
+        }
+        var body = await resp.Content.ReadAsStringAsync();
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("error", out var err))
+                return (false, err.GetString(), null);
+        }
+        catch { }
+        return (false, body, null);
+    }
+
+    /// <summary>Devuelve los bytes del .csr generado (para descargar desde Blazor).</summary>
+    public async Task<(byte[]? bytes, string? error)> DownloadArcaCsrAsync(int csrId)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.GetAsync($"/api/arca-webservice/csr/{csrId}/download");
+        if (resp.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            await HandleUnauthorizedAsync();
+            return (null, "Sesión expirada");
+        }
+        if (!resp.IsSuccessStatusCode) return (null, $"HTTP {(int)resp.StatusCode}");
+        var bytes = await resp.Content.ReadAsByteArrayAsync();
+        return (bytes, null);
+    }
+
+    public async Task<(bool ok, string? error, ArcaWebserviceAccountDto? dto)> FinalizeArcaCsrAsync(
+        int csrId, Stream crtStream, string crtFileName, string? password, string environment, string? alias)
+    {
+        await SetAuthHeaderAsync();
+        using var content = new MultipartFormDataContent();
+        var streamContent = new StreamContent(crtStream);
+        streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+        content.Add(streamContent, "crt", crtFileName);
+        if (!string.IsNullOrEmpty(password)) content.Add(new StringContent(password), "password");
+        content.Add(new StringContent(string.IsNullOrEmpty(environment) ? "production" : environment), "environment");
+        if (!string.IsNullOrEmpty(alias)) content.Add(new StringContent(alias), "alias");
+
+        var resp = await _http.PostAsync($"/api/arca-webservice/csr/{csrId}/finalize", content);
+        if (resp.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            await HandleUnauthorizedAsync();
+            return (false, "Sesión expirada", null);
+        }
+        if (resp.IsSuccessStatusCode)
+        {
+            var dto = await resp.Content.ReadFromJsonAsync<ArcaWebserviceAccountDto>();
+            return (true, null, dto);
+        }
+        var body = await resp.Content.ReadAsStringAsync();
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("error", out var err))
+                return (false, err.GetString(), null);
+        }
+        catch { }
+        return (false, body, null);
+    }
+
     /// <summary>Dispara la descarga de Mis Comprobantes (Emitidos + Recibidos) — pollear status.</summary>
     public async Task<(bool ok, string? error)> StartArcaComprobantesAsync(int accountId, ArcaRangoFechasRequest rango)
     {

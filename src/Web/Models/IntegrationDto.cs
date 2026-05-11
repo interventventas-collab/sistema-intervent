@@ -162,3 +162,17 @@ public class UpdateArcaWebserviceAccountRequest
     public string? Environment { get; set; }
     public bool? IsActive { get; set; }
 }
+
+public class GenerateArcaCsrRequest
+{
+    public string Cuit { get; set; } = "";
+    public string Alias { get; set; } = "";
+}
+
+public class GenerateArcaCsrResponseDto
+{
+    public int Id { get; set; }
+    public string FileName { get; set; } = "";
+    public string CsrPem { get; set; } = "";
+    public string Subject { get; set; } = "";
+}
