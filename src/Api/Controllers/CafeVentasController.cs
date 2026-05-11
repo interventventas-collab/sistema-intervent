@@ -443,8 +443,24 @@ public class CafeVentasController : ControllerBase
                 docNro = "0";
             }
 
-            // CondicionIVAReceptorId — ARCA usa códigos específicos (RG 5616)
-            int condIvaReceptor = venta.CondicionIva switch
+            // CondicionIVAReceptorId — ARCA usa códigos específicos (RG 5616).
+            // Si la venta tiene cliente cargado, leemos la Cond IVA ACTUAL del cliente
+            // (no el snapshot guardado en la venta), así si el usuario actualizó la ficha
+            // del cliente entre la primera emisión fallida y un reintento, ese cambio
+            // se aplica automáticamente. Esto es clave para el caso en que ARCA rechazó
+            // por condición IVA inválida y el usuario corrigió la ficha.
+            var condIvaActual = venta.CondicionIva;
+            if (venta.ClienteId.HasValue)
+            {
+                var cli = await _db.CafeClientes.FindAsync(venta.ClienteId.Value);
+                if (cli is not null && !string.IsNullOrEmpty(cli.CondicionIvaDefault))
+                {
+                    condIvaActual = cli.CondicionIvaDefault!;
+                    // También actualizo el snapshot de la venta para que coincida
+                    venta.CondicionIva = cli.CondicionIvaDefault!;
+                }
+            }
+            int condIvaReceptor = condIvaActual switch
             {
                 "RI" => 1,   // Responsable Inscripto
                 "EX" => 4,   // Sujeto Exento
