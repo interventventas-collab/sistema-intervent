@@ -14,9 +14,14 @@ namespace Api.Controllers;
 public class CafeVentasController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly CafeCotizacionPdfService _pdfService;
     private static readonly string[] FormatosValidos = { "1KG", "MEDIO", "CUARTO", "UNIT" };
 
-    public CafeVentasController(AppDbContext db) { _db = db; }
+    public CafeVentasController(AppDbContext db, CafeCotizacionPdfService pdfService)
+    {
+        _db = db;
+        _pdfService = pdfService;
+    }
 
     private static CafeVentaDto Map(CafeVenta v) => new(
         v.Id, v.Numero, v.Fecha,
@@ -58,6 +63,22 @@ public class CafeVentasController : ControllerBase
         var v = await _db.CafeVentas.Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == id);
         if (v is null) return NotFound(new { error = "Venta no encontrada" });
         return Ok(Map(v));
+    }
+
+    /// <summary>
+    /// Genera el PDF de la cotización / proforma / comprobante interno usando QuestPDF.
+    /// Devuelve los bytes inline para que el frontend lo abra en una pestaña nueva.
+    /// Cuando avancemos con factura ARCA real (FA/FB/FC), ese tipo de venta va a usar
+    /// otro endpoint (el de ARCA) — este es solo para los tipos X y PRO.
+    /// </summary>
+    [HttpGet("{id:int}/pdf")]
+    public async Task<IActionResult> GetPdf(int id)
+    {
+        var v = await _db.CafeVentas.Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == id);
+        if (v is null) return NotFound(new { error = "Venta no encontrada" });
+        var cfg = await _db.CafeSettings.FindAsync(1);
+        var bytes = _pdfService.GenerarPdfBytes(v, cfg);
+        return File(bytes, "application/pdf", $"{v.Numero}.pdf");
     }
 
     /// <summary>Devuelve los productos que mas compro un cliente (combinacion ProductoId+Formato),

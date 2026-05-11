@@ -1738,8 +1738,25 @@
 
     private async Task DoPrint()
     {
-        try { await JS.InvokeVoidAsync("printElement", "cafe-print", $"Comprobante {printVenta?.Numero}"); }
-        catch { ToastService.Error("No se pudo abrir la ventana de impresión"); }
+        if (printVenta is null) return;
+        try
+        {
+            // Pide el PDF generado en el servidor (QuestPDF) y lo abre en pestaña nueva.
+            // Las facturas reales ARCA (FA/FB/FC) en el futuro tendrán otro endpoint;
+            // por ahora todos los tipos pasan por el endpoint del módulo Café.
+            var (bytes, error) = await Api.GetCafeVentaPdfAsync(printVenta.Id);
+            if (bytes is null)
+            {
+                ToastService.Error("No se pudo generar el PDF: " + (error ?? "error desconocido"));
+                return;
+            }
+            var b64 = Convert.ToBase64String(bytes);
+            await JS.InvokeVoidAsync("openPdfInNewTab", b64);
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error generando PDF: " + ex.Message);
+        }
     }
 
     private void ConfirmAnular(CafeVentaDto v) { toAnular = v; showAnularConfirm = true; }

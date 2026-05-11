@@ -109,6 +109,7 @@ builder.Services.AddScoped<ArcaWsService>();
 builder.Services.AddScoped<ArcaInvoiceService>();
 builder.Services.AddSingleton<ArcaInvoicePdfService>();
 builder.Services.AddScoped<ArcaEmisorService>();
+builder.Services.AddSingleton<CafeCotizacionPdfService>();
 builder.Services.AddScoped<MeliOrderService>();
 builder.Services.AddScoped<MeliItemService>();
 builder.Services.AddScoped<MeliQuestionService>();

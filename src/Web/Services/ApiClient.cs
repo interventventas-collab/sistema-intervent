@@ -461,6 +461,29 @@ public class ApiClient
     public async Task<CafeVentaDto?> GetCafeVentaAsync(int id)
         => await GetAsync<CafeVentaDto>($"/api/cafe/ventas/{id}");
 
+    /// <summary>Devuelve los bytes del PDF de una venta Café (cotización/proforma) o null si fallo.</summary>
+    public async Task<(byte[]? bytes, string? error)> GetCafeVentaPdfAsync(int id)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.GetAsync($"/api/cafe/ventas/{id}/pdf");
+        if (resp.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            await HandleUnauthorizedAsync();
+            return (null, "Sesión expirada");
+        }
+        if (resp.IsSuccessStatusCode)
+            return (await resp.Content.ReadAsByteArrayAsync(), null);
+        var body = await resp.Content.ReadAsStringAsync();
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("error", out var err))
+                return (null, err.GetString());
+        }
+        catch { }
+        return (null, body);
+    }
+
     public async Task<CafeCotizadoDto?> CotizarCafeAsync(CafeCotizarRequest request)
         => await PostAsync<CafeCotizadoDto>("/api/cafe/ventas/cotizar", request);
 
