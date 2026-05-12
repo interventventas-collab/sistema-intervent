@@ -150,14 +150,16 @@ public class ArcaInvoicePdfService
                     }
                     else
                     {
-                        // B / C — el "Precio U." se muestra SIN IVA (como se carga en el sistema).
-                        // El IVA aparece desglosado en el footer junto con el Importe Total.
+                        // B / C — el "Precio U." y "Subtotal" se muestran CON IVA INCLUIDO
+                        // (estilo Contabilium / Régimen de Transparencia Fiscal Ley 27.743).
+                        // El cliente ve directamente lo que paga; el IVA queda "contenido"
+                        // y se informa abajo. En letra C la alícuota es 0, así que no cambia.
                         table.ColumnsDefinition(cols =>
                         {
                             cols.RelativeColumn(6);   // Descripción
                             cols.ConstantColumn(55);  // Cantidad
-                            cols.ConstantColumn(85);  // Precio U. (sin IVA)
-                            cols.ConstantColumn(90);  // Subtotal (sin IVA)
+                            cols.ConstantColumn(85);  // Precio U. (con IVA)
+                            cols.ConstantColumn(90);  // Subtotal (con IVA)
                         });
                         table.Header(h =>
                         {
@@ -168,12 +170,13 @@ public class ArcaInvoicePdfService
                         });
                         foreach (var it in comp.Items)
                         {
-                            var pcu = it.PrecioUnitario;
-                            var sub = Math.Round(it.Cantidad * pcu, 2, MidpointRounding.AwayFromZero);
+                            var pct = esTipoC ? 0m : it.AlicPct;
+                            var pcuConIva = Math.Round(it.PrecioUnitario * (1 + pct / 100m), 2, MidpointRounding.AwayFromZero);
+                            var subConIva = Math.Round(it.Cantidad * pcuConIva, 2, MidpointRounding.AwayFromZero);
                             table.Cell().BorderBottom(0.3f).Padding(2).Text(it.Descripcion);
                             table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text(it.Cantidad.ToString("N2", new CultureInfo("es-AR")));
-                            table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text("$ " + pcu.ToString("N2", new CultureInfo("es-AR")));
-                            table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text("$ " + sub.ToString("N2", new CultureInfo("es-AR")));
+                            table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text("$ " + pcuConIva.ToString("N2", new CultureInfo("es-AR")));
+                            table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text("$ " + subConIva.ToString("N2", new CultureInfo("es-AR")));
                         }
                     }
                 });
@@ -184,16 +187,25 @@ public class ArcaInvoicePdfService
                     // Totales
                     col.Item().AlignRight().Column(c =>
                     {
-                        // Si hay IVA desglosado, lo mostramos. Para letra A es obligatorio
-                        // y va con el rótulo oficial "Importe Neto Gravado". Para letra B
-                        // es informativo y va con "Subtotal sin IVA".
                         if (comp.IvasDesglosados.Count > 0)
                         {
-                            var labelNeto = discriminaIva ? "Importe Neto Gravado" : "Subtotal sin IVA";
-                            c.Item().Text($"{labelNeto}: $ {comp.ImpNeto.ToString("N2", new CultureInfo("es-AR"))}");
-                            foreach (var iva in comp.IvasDesglosados)
+                            if (discriminaIva)
                             {
-                                c.Item().Text($"IVA {iva.Pct.ToString("0.##")}%: $ {iva.Importe.ToString("N2", new CultureInfo("es-AR"))}");
+                                // Letra A: IVA discriminado por norma — Importe Neto Gravado + IVA por alícuota.
+                                c.Item().Text($"Importe Neto Gravado: $ {comp.ImpNeto.ToString("N2", new CultureInfo("es-AR"))}");
+                                foreach (var iva in comp.IvasDesglosados)
+                                {
+                                    c.Item().Text($"IVA {iva.Pct.ToString("0.##")}%: $ {iva.Importe.ToString("N2", new CultureInfo("es-AR"))}");
+                                }
+                            }
+                            else
+                            {
+                                // Letra B: estilo Régimen de Transparencia Fiscal (Ley 27.743).
+                                // El IVA NO se discrimina al cliente — el precio en la fila ya
+                                // viene con IVA incluido. Sólo se informa cuánto IVA está "contenido"
+                                // dentro de ese total.
+                                var ivaContenido = comp.IvasDesglosados.Sum(iva => iva.Importe);
+                                c.Item().Text($"IVA contenido: $ {ivaContenido.ToString("N2", new CultureInfo("es-AR"))}").FontSize(8).Italic();
                             }
                         }
                         c.Item().PaddingTop(2).Text($"Importe Total: $ {comp.ImpTotal.ToString("N2", new CultureInfo("es-AR"))}").FontSize(11).Bold();
