@@ -104,10 +104,15 @@
                             var anulada = v.Estado == "anulado";
                             var sel = selectedIds.Contains(v.Id);
                             var pendienteArca = v.ArcaEstado == "pendiente";
+                            // Comprobantes con CAE de ARCA no se pueden borrar ni anular —
+                            // están en el libro IVA Ventas de ARCA. Solo se revierten con NC.
+                            var tieneCae = v.ArcaEstado == "autorizado";
                             <tr style="@(anulada ? "opacity: 0.55;" : "") @(sel ? "background:#eff6ff;" : (pendienteArca ? "background:#fff7ed;" : ""))">
                                 <td style="text-align: center;">
                                     <input type="checkbox"
                                            checked="@sel"
+                                           disabled="@tieneCae"
+                                           title="@(tieneCae ? "Comprobante con CAE de ARCA — no se puede eliminar. Generá una Nota de Crédito." : "")"
                                            @onchange="@(e => ToggleSelect(v.Id, (bool)(e.Value ?? false)))" />
                                 </td>
                                 <td style="font-family: monospace; font-weight: 700;">@v.Numero</td>
@@ -146,13 +151,26 @@
                                 <td class="actions-cell">
                                     <button class="btn-icon" style="color: #1d4ed8;" @onclick="() => ShowPrint(v)" title="Ver / imprimir / PDF">🖨</button>
                                     <button class="btn-icon btn-edit" @onclick="() => OpenEditModal(v)" title="Editar comprobante">✎</button>
-                                    @if (!anulada)
+                                    @if (!anulada && !tieneCae)
                                     {
                                         <button class="btn-icon" style="color: #b45309;" @onclick="() => ConfirmAnular(v)" title="Anular venta">⊘</button>
                                     }
-                                    <button class="btn-icon btn-delete"
-                                            @onclick="() => OpenDeleteModal(v)"
-                                            title="@(CanDelete ? "Eliminar definitivamente" : $"Solo {(deleteSettings?.AllowedOperator ?? "OSMAR")} puede eliminar")">🗑</button>
+                                    else if (!anulada && tieneCae)
+                                    {
+                                        <button class="btn-icon" style="color: #9ca3af; cursor: not-allowed;" disabled
+                                                title="Comprobante con CAE de ARCA — no se puede anular. Generá una Nota de Crédito.">⊘</button>
+                                    }
+                                    @if (!tieneCae)
+                                    {
+                                        <button class="btn-icon btn-delete"
+                                                @onclick="() => OpenDeleteModal(v)"
+                                                title="@(CanDelete ? "Eliminar definitivamente" : $"Solo {(deleteSettings?.AllowedOperator ?? "OSMAR")} puede eliminar")">🗑</button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn-icon" style="color: #9ca3af; cursor: not-allowed;" disabled
+                                                title="Comprobante con CAE de ARCA — no se puede eliminar. Generá una Nota de Crédito.">🗑</button>
+                                    }
                                 </td>
                             </tr>
                         }

@@ -591,6 +591,11 @@ public class CafeVentasController : ControllerBase
         if (v is null) return NotFound(new { error = "Venta no encontrada" });
         if (v.Estado == "anulado") return BadRequest(new { error = "Ya estaba anulada" });
 
+        // Comprobantes con CAE de ARCA: no se pueden anular desde acá — están en el libro
+        // IVA Ventas de ARCA. La única forma de revertirlos es emitiendo una Nota de Crédito.
+        if (v.ArcaEstado == "autorizado")
+            return BadRequest(new { error = $"El comprobante tiene CAE de ARCA ({v.ArcaCae}). Para revertirlo hay que emitir una Nota de Crédito." });
+
         // Restaurar stock
         foreach (var it in v.Items)
         {
@@ -634,6 +639,9 @@ public class CafeVentasController : ControllerBase
 
         var v = await _db.CafeVentas.Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == id);
         if (v is null) return NotFound(new { error = "Venta no encontrada" });
+        // Comprobantes con CAE de ARCA: no se pueden borrar. Solo NC.
+        if (v.ArcaEstado == "autorizado")
+            return BadRequest(new { error = $"El comprobante tiene CAE de ARCA ({v.ArcaCae}). No se puede eliminar; hay que emitir una Nota de Crédito." });
         await DeleteVentaInternalAsync(v);
         await _db.SaveChangesAsync();
         return Ok(new { deleted = true });
@@ -657,11 +665,24 @@ public class CafeVentasController : ControllerBase
             .Where(v => req.Ids.Contains(v.Id))
             .ToListAsync();
 
-        foreach (var v in ventas)
+        // Filtrar las que tienen CAE — esas no se pueden borrar. Si hay alguna,
+        // avisar pero seguir con las demás (mejor experiencia que abortar todo).
+        var conCae = ventas.Where(v => v.ArcaEstado == "autorizado").ToList();
+        var borrables = ventas.Where(v => v.ArcaEstado != "autorizado").ToList();
+
+        foreach (var v in borrables)
             await DeleteVentaInternalAsync(v);
 
         await _db.SaveChangesAsync();
-        return Ok(new { deleted = ventas.Count });
+        return Ok(new
+        {
+            deleted = borrables.Count,
+            skipped = conCae.Count,
+            skippedNumbers = conCae.Select(v => v.Numero).ToList(),
+            warning = conCae.Count > 0
+                ? $"{conCae.Count} comprobante(s) con CAE de ARCA no se borraron. Para revertirlos hay que emitir Nota de Crédito."
+                : null
+        });
     }
 
     /// <summary>Edita una venta. Si Items != null y la venta esta emitida, reemplaza items + recalcula
