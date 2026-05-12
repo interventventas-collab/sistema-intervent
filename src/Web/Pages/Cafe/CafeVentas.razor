@@ -151,6 +151,8 @@
                                 <td class="actions-cell">
                                     <button class="btn-icon" style="color: #1d4ed8;" @onclick="() => ShowPrint(v)" title="Ver / imprimir / PDF">🖨</button>
                                     <button class="btn-icon btn-edit" @onclick="() => OpenEditModal(v)" title="Editar comprobante">✎</button>
+                                    <button class="btn-icon" style="color: #16a34a;" @onclick="() => DuplicarComprobante(v)"
+                                            title="Duplicar este comprobante en una venta nueva editable">📋</button>
                                     @if (!anulada && !tieneCae)
                                     {
                                         <button class="btn-icon" style="color: #b45309;" @onclick="() => ConfirmAnular(v)" title="Anular venta">⊘</button>
@@ -187,7 +189,20 @@
     <div class="modal-overlay" @onclick="CloseForm">
         <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 1000px; max-height: 92vh; display: flex; flex-direction: column;">
             <div class="modal-header" style="background: @(editingVentaId.HasValue ? "#1d4ed8" : "whitesmoke"); color: @(editingVentaId.HasValue ? "white" : "inherit");">
-                <h3 style="margin: 0;">@(editingVentaId.HasValue ? $"✎ Editar comprobante {editingVentaNumero}" : "🧾 Nueva Venta")</h3>
+                <h3 style="margin: 0;">
+                    @if (editingVentaId.HasValue)
+                    {
+                        <span>✎ Editar comprobante @editingVentaNumero</span>
+                    }
+                    else if (!string.IsNullOrEmpty(duplicadoDeNumero))
+                    {
+                        <span>📋 Nueva Venta <span style="font-weight: 400; font-size: 0.85rem; color: #6b7280;">— duplicado de <strong style="color: #16a34a;">@duplicadoDeNumero</strong></span></span>
+                    }
+                    else
+                    {
+                        <span>🧾 Nueva Venta</span>
+                    }
+                </h3>
                 <button class="btn-close" @onclick="CloseForm" style="@(editingVentaId.HasValue ? "color: white;" : "")">&times;</button>
             </div>
             <div class="modal-body" style="overflow-y: auto;">
@@ -1383,7 +1398,7 @@
 
     private void ShowCreate()
     {
-        editingVentaId = null; editingVentaNumero = "";
+        editingVentaId = null; editingVentaNumero = ""; duplicadoDeNumero = null;
         unpaidPrevSales = new(); topProductsForClient = new(); includePrevBalanceInNotes = true;
         formClienteId = 0; formClienteTipo = "OTRO";
         clienteSearch = ""; clienteSearchOpen = false;
@@ -1404,7 +1419,57 @@
         if (!formWeekDays.Add(d)) formWeekDays.Remove(d);
     }
 
-    private void CloseForm() { showForm = false; formError = null; editingVentaId = null; editingVentaNumero = ""; }
+    private void CloseForm() { showForm = false; formError = null; editingVentaId = null; editingVentaNumero = ""; duplicadoDeNumero = null; }
+
+    /// <summary>Numero del comprobante origen cuando se está duplicando (para mostrar "Duplicado de X" en el modal).</summary>
+    private string? duplicadoDeNumero;
+
+    /// <summary>Pide al backend un payload con los datos del comprobante a duplicar y abre
+    /// el modal de Nueva Venta pre-cargado con esos datos. La venta NUEVA se crea recién
+    /// cuando el usuario aprieta "Emitir comprobante" en el modal (descuenta stock + ARCA si corresponde).</summary>
+    private async Task DuplicarComprobante(CafeVentaDto v)
+    {
+        try
+        {
+            var payload = await Api.DuplicarCafeVentaAsync(v.Id);
+            if (payload is null)
+            {
+                ToastService.Error("No se pudo obtener los datos para duplicar.");
+                return;
+            }
+            // Limpiar el form (como ShowCreate) pero con los datos del payload
+            editingVentaId = null; editingVentaNumero = "";
+            duplicadoDeNumero = payload.OrigenNumero;
+            unpaidPrevSales = new(); topProductsForClient = new(); includePrevBalanceInNotes = true;
+            formClienteId = payload.ClienteId ?? 0;
+            formClienteTipo = payload.ClienteTipo;
+            clienteSearch = ""; clienteSearchOpen = false;
+            formFecha = DateTime.Today; // fecha de HOY, no la del original
+            formDescuento = 0;
+            formObservaciones = payload.Observaciones ?? "";
+            formTipoComprobante = payload.TipoComprobante;
+            formCondicionIva = payload.CondicionIva;
+            formCondicionPago = payload.CondicionPago;
+            formItems = payload.Items.ToList();
+            cotizacion = null;
+            addProductoId = 0; addFormato = "1KG"; addCantidad = 1;
+            productoSearch = ""; productoSearchOpen = false;
+            addMode = "PRODUCTO";
+            addComboId = 0; addComboCantidad = 1;
+            comboSearch = ""; comboSearchOpen = false;
+            formWeekDays = (payload.WeekDays ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(s => s.Trim().ToUpperInvariant()).ToHashSet();
+            formIsPaid = false; // empezás impago, el cobro de la nueva es independiente
+            formError = null; showForm = true;
+            // Cargar info del cliente (productos top, deudas, condIva default si cambió)
+            if (formClienteId > 0) await OnClienteChanged();
+            else await Cotizar();
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error al duplicar: " + ex.Message);
+        }
+    }
 
     private async Task OnClienteChanged()
     {
@@ -1975,6 +2040,7 @@
     {
         editingVentaId = v.Id;
         editingVentaNumero = v.Numero;
+        duplicadoDeNumero = null;
         formClienteId = v.ClienteId ?? 0;
         formClienteTipo = string.IsNullOrWhiteSpace(v.ClienteTipo) ? "OTRO" : v.ClienteTipo!;
         clienteSearch = ""; clienteSearchOpen = false;

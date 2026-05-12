@@ -496,6 +496,11 @@ public class ApiClient
     public async Task<CafeVentaDto?> RetryArcaCafeVentaAsync(int id)
         => await PostAsync<CafeVentaDto>($"/api/cafe/ventas/{id}/retry-arca", new { });
 
+    /// <summary>Pide al backend un payload pre-armado para duplicar el comprobante.
+    /// NO crea la venta — solo devuelve los datos para llenar el modal de Nueva Venta.</summary>
+    public async Task<DuplicarVentaPayloadDto?> DuplicarCafeVentaAsync(int id)
+        => await PostAsync<DuplicarVentaPayloadDto>($"/api/cafe/ventas/{id}/duplicar", new { });
+
     public async Task<CafeVentaDto?> UpdateCafeVentaFlagsAsync(int id, UpdateCafeVentaFlagsRequest req)
         => await PutAsync<CafeVentaDto>($"/api/cafe/ventas/{id}/flags", req);
 

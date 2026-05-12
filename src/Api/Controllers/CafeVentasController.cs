@@ -582,6 +582,44 @@ public class CafeVentasController : ControllerBase
         return Ok(Map(v));
     }
 
+    /// <summary>
+    /// Devuelve un payload pre-armado para duplicar un comprobante. El frontend usa esto
+    /// para abrir el modal de "Nueva venta" con los mismos datos (cliente, items, tipo, etc).
+    /// NO crea ninguna venta nueva — eso ocurre cuando el usuario confirma desde el modal.
+    /// Si el comprobante original era FA/FB/FC con CAE, igual se duplica como si fuera nueva
+    /// (sin CAE) — el nuevo va a necesitar su propio CAE al emitirse.
+    /// </summary>
+    [HttpPost("{id:int}/duplicar")]
+    public async Task<IActionResult> Duplicar(int id)
+    {
+        var v = await _db.CafeVentas.Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == id);
+        if (v is null) return NotFound(new { error = "Venta no encontrada" });
+
+        var items = v.Items.Select(i => new CafeCotizarItemRequest
+        {
+            ProductoId = i.ProductoId,
+            Formato = i.Formato,
+            Cantidad = i.Cantidad,
+            Molienda = i.Molienda,
+            EsDoyPack = i.EsDoyPack,
+            DescuentoPct = i.DescuentoPct
+        }).ToList();
+
+        var payload = new DuplicarVentaPayloadDto(
+            ClienteId: v.ClienteId,
+            ClienteNombre: v.ClienteNombreSnapshot,
+            ClienteTipo: v.ClienteTipoSnapshot ?? "OTRO",
+            TipoComprobante: v.TipoComprobante,
+            CondicionIva: v.CondicionIva,
+            CondicionPago: v.CondicionPago,
+            WeekDays: v.WeekDays,
+            Observaciones: v.Observaciones,
+            Items: items,
+            OrigenNumero: v.Numero);
+
+        return Ok(payload);
+    }
+
     /// <summary>Toggle de "pagado" y/o "dias de la semana" sobre una venta ya emitida (sin recalcular precios).</summary>
     [HttpPut("{id:int}/flags")]
     public async Task<IActionResult> UpdateFlags(int id, [FromBody] UpdateCafeVentaFlagsRequest req)

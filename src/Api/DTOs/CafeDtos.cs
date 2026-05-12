@@ -646,3 +646,19 @@ public class UpsertReglaPrecioRequest
     public int? MarcaId { get; set; }
     public decimal DescuentoPct { get; set; }
 }
+
+// ===== Duplicar comprobante =====
+/// <summary>Payload que devuelve el endpoint duplicar — datos pre-armados para que el
+/// frontend abra el modal de "Nueva venta" con todo cargado. NO crea la venta nueva
+/// en la DB; eso ocurre cuando el usuario confirma desde el modal.</summary>
+public record DuplicarVentaPayloadDto(
+    int? ClienteId,
+    string? ClienteNombre,
+    string ClienteTipo,
+    string TipoComprobante,
+    string CondicionIva,
+    string CondicionPago,
+    string? WeekDays,
+    string? Observaciones,
+    List<CafeCotizarItemRequest> Items,
+    string? OrigenNumero);   // ej "CAFE-2026-0001" — solo para mostrar en el modal "Duplicado de X"
