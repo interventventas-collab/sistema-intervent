@@ -28,6 +28,11 @@ public class ArcaPadronService
     private const string PADRON_A13_URL = "https://aws.afip.gov.ar/sr-padron/webservices/personaServiceA13";
     private const string PADRON_SERVICE_NAME = "ws_sr_padron_a13";
 
+    // Servicio Constancia de Inscripción — devuelve datos COMPLETOS incluyendo impuestos
+    // y datos de monotributo (la Condición IVA real). Requiere autorización aparte.
+    private const string CONSTANCIA_URL = "https://aws.afip.gov.ar/sr-padron/webservices/wsconscompuesta";
+    private const string CONSTANCIA_SERVICE_NAME = "ws_sr_constancia_inscripcion";
+
     public ArcaPadronService(AppDbContext db, ArcaWsService ws,
         IHttpClientFactory httpFactory, ILogger<ArcaPadronService> logger)
     {
@@ -74,17 +79,35 @@ public class ArcaPadronService
                 + "Detalle: " + ex.Message);
         }
 
-        // Construir SOAP y llamar al webservice
-        var soap = BuildGetPersonaSoap(ta.Token, ta.Sign, account.Cuit, clean);
+        // Construir SOAP y llamar al webservice. Probamos primero getPersona_v2 que
+        // devuelve impuestos / datos de monotributo. Si falla, caemos al getPersona
+        // clásico (datos básicos solamente).
         XDocument doc;
         try
         {
-            doc = await CallPadronAsync(soap);
+            var soapV2 = BuildGetPersonaSoap(ta.Token, ta.Sign, account.Cuit, clean, "getPersona_v2");
+            doc = await CallPadronAsync(soapV2);
+            // Si la respuesta tiene fault o no devolvió <persona>, caemos al método clásico
+            if (doc.Descendants().FirstOrDefault(e => e.Name.LocalName == "persona") is null)
+            {
+                _logger.LogInformation("getPersona_v2 sin <persona>, reintentando con getPersona");
+                var soapV1 = BuildGetPersonaSoap(ta.Token, ta.Sign, account.Cuit, clean, "getPersona");
+                doc = await CallPadronAsync(soapV1);
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Llamada al padrón A13 falló");
-            return Err("Error consultando padrón ARCA: " + ex.Message);
+            _logger.LogWarning(ex, "getPersona_v2 falló, reintentando con getPersona clásico");
+            try
+            {
+                var soapV1 = BuildGetPersonaSoap(ta.Token, ta.Sign, account.Cuit, clean, "getPersona");
+                doc = await CallPadronAsync(soapV1);
+            }
+            catch (Exception ex2)
+            {
+                _logger.LogWarning(ex2, "getPersona también falló");
+                return Err("Error consultando padrón ARCA: " + ex2.Message);
+            }
         }
 
         // Parsear respuesta. La estructura típica:
@@ -103,23 +126,22 @@ public class ArcaPadronService
             return Err(errMsg?.Value ?? "ARCA no devolvió datos para ese CUIT.");
         }
 
-        // Razón social: si es persona física usamos "apellido + ' ' + nombre",
-        // si es persona jurídica usamos "razonSocial".
+        // Razón social: si es persona jurídica usamos <razonSocial>;
+        // si es persona física, padron devuelve <nombre> y <apellido> por separado.
+        // Armamos "NOMBRE APELLIDO" (orden natural en Argentina, como lo muestra Contabilium).
         string? razonSocial = El(persona, "razonSocial");
         if (string.IsNullOrWhiteSpace(razonSocial))
         {
             var nombre = El(persona, "nombre")?.Trim();
             var apellido = El(persona, "apellido")?.Trim();
-            // Padron devuelve "apellido nombre" en separado — armamos "NOMBRE APELLIDO"
-            // (orden natural en argentina) si los dos vienen, sino lo que tengamos.
             if (!string.IsNullOrEmpty(nombre) && !string.IsNullOrEmpty(apellido))
                 razonSocial = $"{nombre} {apellido}";
             else
                 razonSocial = nombre ?? apellido;
         }
 
-        // Domicilio fiscal — el padrón puede traer varios <domicilio>, usamos el primero
-        // (el fiscal) o, si tiene tipo, el de tipo "FISCAL".
+        // Domicilio fiscal — el padrón trae <domicilio> (varios). Tomamos el de
+        // tipoDomicilio=FISCAL, o el primero si no hay etiqueta.
         var domicilios = persona.Descendants().Where(e => e.Name.LocalName == "domicilio").ToList();
         var domFiscal = domicilios.FirstOrDefault(d =>
             string.Equals(El(d, "tipoDomicilio"), "FISCAL", StringComparison.OrdinalIgnoreCase))
@@ -129,7 +151,8 @@ public class ArcaPadronService
         if (domFiscal is not null)
         {
             direccion = El(domFiscal, "direccion");
-            codPostal = El(domFiscal, "codPostal");
+            // ARCA usa <codigoPostal> en el padrón A13 (no <codPostal>). Probamos ambos por las dudas.
+            codPostal = El(domFiscal, "codigoPostal") ?? El(domFiscal, "codPostal");
             localidad = El(domFiscal, "localidad");
             provincia = El(domFiscal, "descripcionProvincia");
         }
@@ -149,6 +172,25 @@ public class ArcaPadronService
             .FirstOrDefault(e => e.Name.LocalName == "fechaInscripcion")?.Value;
         if (DateTime.TryParse(fechaInscripcion, out var fi)) inicioActividades = fi;
 
+        // ---- Complemento: si la Condición IVA quedó nula, consultar ws_sr_constancia_inscripcion ----
+        // El padrón A13 a veces no devuelve impuestos. La Constancia sí. Si el certificado tiene
+        // ese servicio autorizado, lo aprovechamos; si no, simplemente seguimos sin Condición IVA.
+        if (string.IsNullOrEmpty(condicionIva))
+        {
+            try
+            {
+                var condFromConstancia = await TryResolverCondicionIvaConstanciaAsync(account, clean);
+                if (!string.IsNullOrEmpty(condFromConstancia))
+                {
+                    condicionIva = condFromConstancia;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogInformation("Constancia de inscripción no disponible (capaz no autorizada): {Msg}", ex.Message);
+            }
+        }
+
         return new ArcaPadronResult
         {
             Found = true,
@@ -165,6 +207,61 @@ public class ArcaPadronService
         };
     }
 
+    /// <summary>
+    /// Consulta el servicio ws_sr_constancia_inscripcion para obtener la Condición IVA real
+    /// (con impuestos + datos de monotributo). Devuelve null si no se puede determinar.
+    /// </summary>
+    private async Task<string?> TryResolverCondicionIvaConstanciaAsync(Models.ArcaWebserviceAccount account, string cuitConsulta)
+    {
+        // Autenticar contra WSAA para el servicio de constancia (TA distinto al de A13).
+        ArcaWsTokenCache.CachedTa ta;
+        using (var cert = _ws.LoadCertificate(account))
+        {
+            ta = await _ws.GetTaInternalAsync(account, cert, CONSTANCIA_SERVICE_NAME);
+        }
+
+        // Llamar al endpoint de Constancia. Usa el mismo formato SOAP que el padrón.
+        var soap = BuildConstanciaSoap(ta.Token, ta.Sign, account.Cuit, cuitConsulta);
+        var doc = await CallConstanciaAsync(soap);
+
+        var persona = doc.Descendants().FirstOrDefault(e => e.Name.LocalName == "persona");
+        if (persona is null) return null;
+
+        return ResolverCondicionIva(persona);
+    }
+
+    private static string BuildConstanciaSoap(string token, string sign, string cuitRepresentado, string cuitConsulta)
+    {
+        // El servicio Constancia usa namespace propio y operación getPersona.
+        return $@"<?xml version=""1.0"" encoding=""UTF-8""?>
+<soapenv:Envelope xmlns:soapenv=""http://schemas.xmlsoap.org/soap/envelope/"" xmlns:cons=""http://ar.gov.afip.dif.WSConsCompuesta/"">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <cons:getPersona>
+      <cons:token>{System.Security.SecurityElement.Escape(token)}</cons:token>
+      <cons:sign>{System.Security.SecurityElement.Escape(sign)}</cons:sign>
+      <cons:cuitRepresentada>{cuitRepresentado}</cons:cuitRepresentada>
+      <cons:idPersona>{cuitConsulta}</cons:idPersona>
+    </cons:getPersona>
+  </soapenv:Body>
+</soapenv:Envelope>";
+    }
+
+    private async Task<XDocument> CallConstanciaAsync(string soap)
+    {
+        var http = _httpFactory.CreateClient();
+        http.Timeout = TimeSpan.FromSeconds(30);
+        using var content = new StringContent(soap, System.Text.Encoding.UTF8, "text/xml");
+        content.Headers.ContentType!.CharSet = "utf-8";
+        var req = new HttpRequestMessage(HttpMethod.Post, CONSTANCIA_URL) { Content = content };
+        req.Headers.Add("SOAPAction", "\"\"");
+        var resp = await http.SendAsync(req);
+        var body = await resp.Content.ReadAsStringAsync();
+        if (!resp.IsSuccessStatusCode)
+            throw new Exception($"HTTP {(int)resp.StatusCode} de ARCA: {body}");
+        return XDocument.Parse(body);
+    }
+
     // ============================================================
     // Helpers
     // ============================================================
@@ -176,51 +273,60 @@ public class ArcaPadronService
 
     /// <summary>
     /// Determina la condición IVA del contribuyente a partir de los impuestos/categorías
-    /// que devuelve el padrón. Devuelve uno de: "RI", "MO", "EX", "CF", o null.
+    /// que devuelve el padrón. Devuelve uno de: "RI", "MO", "EX", "CF", o null si no se
+    /// pudo determinar (en ese caso el usuario lo carga a mano).
     /// </summary>
     private static string? ResolverCondicionIva(XElement persona)
     {
-        // Categorías de monotributo: si tiene <categoria> activa con tipo "MONOTRIBUTO" → MO.
-        var monotrib = persona.Descendants()
+        // 1. Datos de monotributo (estructura del getPersona_v2): si hay <datosMonotributo>
+        //    activo → MO. También puede aparecer como <categoria> con descripcion "MONOTRIB...".
+        var monotribV2 = persona.Descendants()
+            .Where(e => e.Name.LocalName == "datosMonotributo")
+            .Any(e => El(e, "estado") is null
+                      || string.Equals(El(e, "estado"), "ACTIVO", StringComparison.OrdinalIgnoreCase));
+        if (monotribV2) return "MO";
+
+        var monotribCat = persona.Descendants()
             .Any(e => e.Name.LocalName == "categoria"
-                && (El(e, "estado") == "ACTIVO" || El(e, "estado") == null)
+                && (El(e, "estado") == null || string.Equals(El(e, "estado"), "ACTIVO", StringComparison.OrdinalIgnoreCase))
                 && (El(e, "idImpuesto")?.StartsWith("20") == true
                     || (El(e, "descripcionCategoria")?.Contains("monotrib", StringComparison.OrdinalIgnoreCase) ?? false)));
-        if (monotrib) return "MO";
+        if (monotribCat) return "MO";
 
-        // Impuestos: idImpuesto 30 = IVA Responsable Inscripto activo → RI.
-        //            idImpuesto 32 = IVA Sujeto Exento → EX.
+        // 2. Impuestos activos (estructura del getPersona_v2):
+        //    idImpuesto 30 / 31 = IVA Responsable Inscripto → RI
+        //    idImpuesto 32      = IVA Sujeto Exento → EX
+        //    También buscamos por descripcionImpuesto que contiene "IVA" + "INSCRIPTO" / "EXENTO".
         var impuestos = persona.Descendants().Where(e => e.Name.LocalName == "impuesto").ToList();
         foreach (var imp in impuestos)
         {
-            var id = El(imp, "idImpuesto");
             var estado = El(imp, "estado");
             if (estado != null && !string.Equals(estado, "ACTIVO", StringComparison.OrdinalIgnoreCase))
                 continue;
-            if (id == "30") return "RI";
-            if (id == "32") return "EX";
+            var id = El(imp, "idImpuesto");
+            var desc = (El(imp, "descripcionImpuesto") ?? "").ToUpperInvariant();
+            if (id == "30" || id == "31" || (desc.Contains("IVA") && desc.Contains("INSCRIPTO"))) return "RI";
+            if (id == "32" || (desc.Contains("IVA") && desc.Contains("EXENTO"))) return "EX";
         }
 
-        // Si no hay impuesto IVA cargado pero es persona física → suele ser Consumidor Final.
-        var tipoPersona = El(persona, "tipoPersona");
-        if (string.Equals(tipoPersona, "FISICA", StringComparison.OrdinalIgnoreCase))
-            return "CF";
-
+        // 3. Si no se pudo determinar, devolvemos null. El usuario decide a mano en el form.
+        //    (Antes asumíamos "CF" para personas físicas, pero eso falla con monotributistas
+        //     cuyo IVA no está expuesto en getPersona — mejor pedir confirmación humana.)
         return null;
     }
 
-    private static string BuildGetPersonaSoap(string token, string sign, string cuitRepresentado, string cuitConsulta)
+    private static string BuildGetPersonaSoap(string token, string sign, string cuitRepresentado, string cuitConsulta, string operation)
     {
         return $@"<?xml version=""1.0"" encoding=""UTF-8""?>
 <soapenv:Envelope xmlns:soapenv=""http://schemas.xmlsoap.org/soap/envelope/"" xmlns:a13=""http://a13.soap.ws.server.puc.sr/"">
   <soapenv:Header/>
   <soapenv:Body>
-    <a13:getPersona>
+    <a13:{operation}>
       <token>{System.Security.SecurityElement.Escape(token)}</token>
       <sign>{System.Security.SecurityElement.Escape(sign)}</sign>
       <cuitRepresentada>{cuitRepresentado}</cuitRepresentada>
       <idPersona>{cuitConsulta}</idPersona>
-    </a13:getPersona>
+    </a13:{operation}>
   </soapenv:Body>
 </soapenv:Envelope>";
     }
