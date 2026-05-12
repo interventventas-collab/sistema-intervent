@@ -1394,6 +1394,9 @@ else
                               : (string.IsNullOrEmpty(st.AssignedDriverColor) ? "#d97706" : st.AssignedDriverColor!);
                 string label = st.OrderInRoute.HasValue ? st.OrderInRoute.Value.ToString()
                               : (st.AssignedVehicleSlot.HasValue ? "V" + st.AssignedVehicleSlot : "★");
+                // Forma del marker: TRIÁNGULO si NO viene de Flex (favorito/manual/cliente-cafe/etc),
+                // CÍRCULO si es un envío Flex importado. Así el operador distingue visualmente.
+                string shape = st.Origin == "flex" ? "circle" : "triangle";
                 return (object)new
                 {
                     id = -1000 - st.Id,
@@ -1401,6 +1404,7 @@ else
                     lng = st.Longitude,
                     label,
                     color,
+                    shape,
                     popupHtml = $"<div style='font-size:0.8rem;'><strong>{System.Net.WebUtility.HtmlEncode(st.Alias ?? st.ContactName ?? "Parada")}</strong>{(st.AssignedVehicleSlot.HasValue ? $" <span style='color:{color}'>· V{st.AssignedVehicleSlot}</span>" : "")}{(st.AssignedDriverName is null ? "" : $" · {System.Net.WebUtility.HtmlEncode(st.AssignedDriverName)}")}<br/>{System.Net.WebUtility.HtmlEncode(st.Direccion)}{(string.IsNullOrEmpty(st.Telefono) ? "" : $"<br/>📞 {System.Net.WebUtility.HtmlEncode(st.Telefono)}")}</div>"
                 };
             }));
