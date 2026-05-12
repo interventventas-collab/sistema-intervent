@@ -94,11 +94,15 @@ public static class CafePricingService
         else
         {
             // OTROS — modelo NUEVO (2 precios directos según tipo cliente).
-            // Si PrecioBar/PrecioOtro están cargados, los uso directo (sin matriz).
-            // Si están NULL caigo al modelo LEGACY (Pvp1/Pvp2 + matriz).
-            decimal? precioDirecto = tipoCliente == TIPO_BAR
-                ? producto.PrecioBar
-                : producto.PrecioOtro;
+            //   - Cliente BAR: usa PrecioBar si está cargado; sino, FALLBACK a PrecioOtro
+            //     (porque "el sugerido es el que cobramos a cualquier cliente por defecto").
+            //   - Cliente OTRO: usa siempre PrecioOtro.
+            // Si NI siquiera PrecioOtro está cargado, caemos al modelo LEGACY (Pvp1/Pvp2 + matriz).
+            decimal? precioDirecto;
+            if (tipoCliente == TIPO_BAR)
+                precioDirecto = producto.PrecioBar ?? producto.PrecioOtro;
+            else
+                precioDirecto = producto.PrecioOtro;
 
             if (precioDirecto.HasValue)
             {

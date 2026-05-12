@@ -769,7 +769,24 @@
                                                        style="width: 80px; text-align: right; padding: 0.25rem 0.4rem; font-size: 0.85rem;"
                                                        value="@formItem.DescuentoPct" @onchange="@(e => OnItemDescuentoChanged(i, e.Value?.ToString()))" />
                                             </td>
-                                            <td style="text-align: right; font-weight: 700;">$@FormatMoney(ci.Subtotal)</td>
+                                            <td style="text-align: right; font-weight: 700;">
+                                                <div>$@FormatMoney(ci.Subtotal)</div>
+                                                @{
+                                                    var costoLinea = ci.CostoUnitario * ci.Cantidad;
+                                                    var margenLinea = ci.Subtotal - costoLinea;
+                                                    var margenPctLinea = costoLinea > 0
+                                                        ? Math.Round((ci.Subtotal / costoLinea - 1m) * 100m, 1, MidpointRounding.AwayFromZero)
+                                                        : 0m;
+                                                    var colorMargen = margenPctLinea >= 50m ? "#16a34a" : (margenPctLinea >= 20m ? "#d97706" : "#dc2626");
+                                                }
+                                                @if (costoLinea > 0)
+                                                {
+                                                    <div style="font-size: 0.7rem; font-weight: 500; color: @colorMargen; margin-top: 0.15rem;"
+                                                         title="Margen sobre costo: ganancia $@FormatMoney(margenLinea)">
+                                                        Margen: @margenPctLinea%
+                                                    </div>
+                                                }
+                                            </td>
                                             <td><button class="btn-icon btn-delete" type="button" @onclick="() => RemoveItem(i)" title="Quitar">×</button></td>
                                         </tr>
                                     }
@@ -843,7 +860,14 @@
                                 </div>
                                 <div class="venta-totals-row" style="font-size: 0.95rem; font-weight: 700; color: @(cotizacion.Margen >= 0 ? "#15803d" : "#b91c1c");">
                                     <span>Margen:</span>
-                                    <span>$@FormatMoney(cotizacion.Margen)</span>
+                                    <span>
+                                        $@FormatMoney(cotizacion.Margen)
+                                        @if (cotizacion.CostoTotal > 0)
+                                        {
+                                            var margenPctGlobal = Math.Round((cotizacion.Total / cotizacion.CostoTotal - 1m) * 100m, 1, MidpointRounding.AwayFromZero);
+                                            <span style="font-size: 0.78rem; font-weight: 500; margin-left: 0.4rem; opacity: 0.85;">(@margenPctGlobal%)</span>
+                                        }
+                                    </span>
                                 </div>
                             </div>
                         }
