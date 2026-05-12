@@ -17,13 +17,14 @@ public class MapeoStopsController : ControllerBase
     public record StopDto(int Id, string Origin, string? OriginRefId, string? Alias, string Direccion,
         decimal Latitude, decimal Longitude, string? ContactName, string? Telefono, string? Notas,
         string InternalStatus, int? AssignedDriverId, string? AssignedDriverName, string? AssignedDriverColor,
-        int? AssignedVehicleSlot, int? OrderInRoute, DateTime CreatedAt);
+        int? AssignedVehicleSlot, int? OrderInRoute, DateTime CreatedAt,
+        string? Localidad = null);
 
     private static StopDto Map(MapeoStop s) => new(
         s.Id, s.Origin, s.OriginRefId, s.Alias, s.Direccion, s.Latitude, s.Longitude,
         s.ContactName, s.Telefono, s.Notas, s.InternalStatus,
         s.AssignedDriverId, s.AssignedDriver?.Nombre, s.AssignedDriver?.Color,
-        s.AssignedVehicleSlot, s.OrderInRoute, s.CreatedAt);
+        s.AssignedVehicleSlot, s.OrderInRoute, s.CreatedAt, s.Localidad);
 
     [HttpGet]
     public async Task<IActionResult> List([FromQuery] int? driverId = null, [FromQuery] string? internalStatus = null)
@@ -36,7 +37,8 @@ public class MapeoStopsController : ControllerBase
     }
 
     public record CreateStopRequest(string Origin, string? OriginRefId, string? Alias, string Direccion,
-        decimal Latitude, decimal Longitude, string? ContactName, string? Telefono, string? Notas);
+        decimal Latitude, decimal Longitude, string? ContactName, string? Telefono, string? Notas,
+        string? Localidad = null);
 
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateStopRequest req)
@@ -49,6 +51,7 @@ public class MapeoStopsController : ControllerBase
             OriginRefId = req.OriginRefId,
             Alias = string.IsNullOrWhiteSpace(req.Alias) ? null : req.Alias.Trim(),
             Direccion = req.Direccion.Trim(),
+            Localidad = string.IsNullOrWhiteSpace(req.Localidad) ? null : req.Localidad.Trim(),
             Latitude = req.Latitude,
             Longitude = req.Longitude,
             ContactName = string.IsNullOrWhiteSpace(req.ContactName) ? null : req.ContactName.Trim(),
@@ -389,6 +392,7 @@ public class MapeoStopsController : ControllerBase
                 OriginRefId = refId,
                 Alias = sh.ReceiverName,
                 Direccion = sh.AddressLine ?? $"{sh.City} CP {sh.ZipCode}",
+                Localidad = string.IsNullOrWhiteSpace(sh.City) ? null : sh.City,
                 Latitude = sh.Latitude!.Value,
                 Longitude = sh.Longitude!.Value,
                 ContactName = sh.ReceiverName,

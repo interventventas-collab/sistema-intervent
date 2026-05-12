@@ -57,6 +57,8 @@ public class MapeoStopDto
     public int? AssignedVehicleSlot { get; set; }
     public int? OrderInRoute { get; set; }
     public DateTime CreatedAt { get; set; }
+    /// <summary>Localidad / ciudad de la parada — para agrupar la lista lateral por zona.</summary>
+    public string? Localidad { get; set; }
 }
 
 public class ImportFlexPreviewDto

@@ -43,6 +43,10 @@ public class MapeoStop
 
     [Required, MaxLength(300)] public string Direccion { get; set; } = string.Empty;
 
+    /// <summary>Localidad/ciudad de la parada — útil para agrupar la lista por zona.
+    /// Para Flex importados se toma de MeliShipment.City; para favoritos/manuales puede quedar null.</summary>
+    [MaxLength(150)] public string? Localidad { get; set; }
+
     [Column(TypeName = "decimal(10,7)")] public decimal Latitude { get; set; }
     [Column(TypeName = "decimal(10,7)")] public decimal Longitude { get; set; }
 

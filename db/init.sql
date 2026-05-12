@@ -2983,6 +2983,11 @@ IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='AssignedVehicleSlot' AND Ob
     ALTER TABLE MapeoStops ADD AssignedVehicleSlot INT NULL;
 GO
 
+-- MapeoStops: Localidad para agrupar la lista lateral por zona/ciudad.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='Localidad' AND Object_ID=Object_ID('MapeoStops'))
+    ALTER TABLE MapeoStops ADD Localidad NVARCHAR(150) NULL;
+GO
+
 -- MapeoDrivers: token compartible para que el chofer acceda a su ruta sin login
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ShareToken' AND Object_ID=Object_ID('MapeoDrivers'))
     ALTER TABLE MapeoDrivers ADD ShareToken NVARCHAR(64) NULL;
