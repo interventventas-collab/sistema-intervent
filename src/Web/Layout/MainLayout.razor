@@ -11,7 +11,13 @@
 @inject CurrentCompanyService Company
 @implements IDisposable
 
-<aside class="sidebar @(sidebarOpen ? "open" : "") @(sidebarCollapsed ? "collapsed" : "")" id="sidebar">
+<aside class="sidebar @(sidebarOpen ? "open" : "") @(sidebarCollapsed ? "collapsed" : "") @(IsDevEnvironment ? "sidebar-dev" : "")" id="sidebar">
+    @if (IsDevEnvironment)
+    {
+        <div class="dev-environment-banner" title="Estás en el entorno de DESARROLLO. Los datos NO son los de producción.">
+            🛠 DESARROLLO
+        </div>
+    }
     <div class="sidebar-brand">
         @if (BrandSettings.HasCustomLogo)
         {
@@ -516,6 +522,25 @@
 <AssistantWidget />
 
 @code {
+    /// <summary>True si la app está corriendo en el entorno de DESARROLLO (puerto 3000 o
+    /// el host es una IP en vez de un dominio). En ese caso se muestra un banner visible
+    /// "DESARROLLO" y el sidebar tiene fondo distinto para evitar confundirlo con producción
+    /// (app.palanica.com.ar).</summary>
+    private bool IsDevEnvironment
+    {
+        get
+        {
+            var uri = new Uri(Navigation.BaseUri);
+            // Cualquier acceso al puerto 3000 = dev (docker-compose dev)
+            if (uri.Port == 3000) return true;
+            // Acceso vía IP en vez de dominio = típico de testing remoto contra dev
+            if (System.Net.IPAddress.TryParse(uri.Host, out _)) return true;
+            // localhost también es dev
+            if (uri.Host == "localhost" || uri.Host == "127.0.0.1") return true;
+            return false;
+        }
+    }
+
     private bool sidebarOpen;
     private bool sidebarCollapsed;
     private bool userMenuOpen;

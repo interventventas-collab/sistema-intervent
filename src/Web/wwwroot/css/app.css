@@ -247,6 +247,35 @@ button {
   overflow: hidden;
 }
 
+/* ═════════════ DEV: indicador visible de entorno desarrollo ═════════════ */
+/* Cuando la app corre en localhost:3000 o desde IP, el sidebar tiene este fondo
+   distintivo (verde/azul) para que nunca se confunda con producción. */
+.sidebar.sidebar-dev {
+  background: linear-gradient(180deg, #064e3b 0%, #134e4a 100%);
+  border-right: 3px solid #10b981;
+}
+.dev-environment-banner {
+  background: #fbbf24;
+  color: #78350f;
+  font-weight: 800;
+  font-size: 0.78rem;
+  letter-spacing: 0.1em;
+  padding: 0.4rem 0.6rem;
+  text-align: center;
+  border-bottom: 2px solid #d97706;
+  text-shadow: 0 1px 0 rgba(255,255,255,0.3);
+  animation: dev-banner-pulse 2.5s ease-in-out infinite;
+}
+@keyframes dev-banner-pulse {
+  0%, 100% { background: #fbbf24; }
+  50% { background: #fde047; }
+}
+.sidebar.sidebar-dev.collapsed .dev-environment-banner {
+  font-size: 0.55rem;
+  letter-spacing: 0.02em;
+  padding: 0.3rem 0.2rem;
+}
+
 .sidebar-brand {
   display: flex;
   align-items: center;
