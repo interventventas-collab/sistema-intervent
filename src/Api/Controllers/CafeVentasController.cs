@@ -135,6 +135,18 @@ public class CafeVentasController : ControllerBase
         };
 
         var letra = ArcaInvoicePdfService.LetraDelTipo(v.ArcaCbteTipoNum ?? 0);
+
+        // Los precios del Café se cargan SIN IVA, por convención. Recalculamos
+        // neto/IVA/total acá igual que lo hizo ArcaInvoiceService al emitir
+        // contra ARCA, para que el PDF muestre los montos coherentes con el CAE
+        // (y el QR del comprobante lleve el mismo Importe Total que tiene ARCA).
+        //   - Letra A / B: total = neto + 21%
+        //   - Letra C:     total = neto (sin IVA)
+        decimal neto = v.Total;
+        decimal ivaPct = letra == "C" ? 0m : 21m;
+        decimal ivaImporte = Math.Round(neto * ivaPct / 100m, 2, MidpointRounding.AwayFromZero);
+        decimal totalConIva = neto + ivaImporte;
+
         var comp = new PdfComprobante
         {
             CbteTipoNro = v.ArcaCbteTipoNum ?? 0,
@@ -143,8 +155,8 @@ public class CafeVentasController : ControllerBase
             CbteNro = v.ArcaCbteNro ?? 0,
             Fecha = v.Fecha.ToString("yyyyMMdd"),
             Concepto = 1,
-            ImpNeto = v.Total,
-            ImpTotal = v.Total, // El total ya viene calculado; ARCA validó que cuadre
+            ImpNeto = neto,
+            ImpTotal = totalConIva,
             Cae = v.ArcaCae,
             CaeVto = v.ArcaCaeVto?.ToString("yyyyMMdd") ?? "",
         };
@@ -167,10 +179,14 @@ public class CafeVentasController : ControllerBase
                 AlicPct = letra == "C" ? 0 : 21m, // Hardcoded 21% — coherente con la emisión
             });
         }
-        if (letra == "A")
+        // Desglose IVA en el footer del PDF:
+        //   - Letra A: obligatorio por norma (también la tabla muestra precio sin IVA).
+        //   - Letra B: lo agregamos como info al cliente (precio en tabla va con IVA incluido,
+        //     pero abajo vemos Neto + IVA + Total para que cuadre todo).
+        //   - Letra C: sin IVA, no aplica.
+        if (letra is "A" or "B")
         {
-            var iva = Math.Round(v.Total * 0.21m / 1.21m, 2, MidpointRounding.AwayFromZero);
-            comp.IvasDesglosados.Add(new PdfIvaDesglose { Pct = 21m, Importe = iva });
+            comp.IvasDesglosados.Add(new PdfIvaDesglose { Pct = 21m, Importe = ivaImporte });
         }
 
         var docTipoR = 99;

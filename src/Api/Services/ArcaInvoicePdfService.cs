@@ -185,9 +185,13 @@ public class ArcaInvoicePdfService
                     // Totales
                     col.Item().AlignRight().Column(c =>
                     {
-                        if (discriminaIva)
+                        // Si hay IVA desglosado, lo mostramos. Para letra A es obligatorio
+                        // y va con el rótulo oficial "Importe Neto Gravado". Para letra B
+                        // es informativo y va con "Subtotal sin IVA".
+                        if (comp.IvasDesglosados.Count > 0)
                         {
-                            c.Item().Text($"Importe Neto Gravado: $ {comp.ImpNeto.ToString("N2", new CultureInfo("es-AR"))}");
+                            var labelNeto = discriminaIva ? "Importe Neto Gravado" : "Subtotal sin IVA";
+                            c.Item().Text($"{labelNeto}: $ {comp.ImpNeto.ToString("N2", new CultureInfo("es-AR"))}");
                             foreach (var iva in comp.IvasDesglosados)
                             {
                                 c.Item().Text($"IVA {iva.Pct.ToString("0.##")}%: $ {iva.Importe.ToString("N2", new CultureInfo("es-AR"))}");
