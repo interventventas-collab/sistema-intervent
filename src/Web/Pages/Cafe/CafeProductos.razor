@@ -337,7 +337,9 @@
                     </div>
                     <div class="form-group" style="flex: 1;">
                         <label class="form-label">Costo (sin IVA) ($)</label>
-                        <input class="form-input" type="number" step="0.01" min="0" @bind="formCosto" />
+                        <input class="form-input" type="number" step="0.01" min="0"
+                               value="@formCosto"
+                               @oninput="@(e => OnCostoChanged(e.Value?.ToString()))" />
                         <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Costo interno del producto, sin IVA.</p>
                     </div>
                 </div>
@@ -474,7 +476,7 @@
                                 <div style="display: flex; gap: 0.3rem; align-items: stretch;">
                                     <input class="form-input" type="number" step="0.01" min="0"
                                            value="@formPrecioBar"
-                                           @onchange="@(e => OnPrecioBarChanged(e.Value?.ToString()))"
+                                           @oninput="@(e => OnPrecioBarChanged(e.Value?.ToString()))"
                                            placeholder="0,00" style="flex: 1 1 auto; min-width: 0;" />
                                     @if (formCosto > 0)
                                     {
@@ -490,7 +492,7 @@
                                         <label style="font-size: 0.7rem; color: #166534; font-weight: 600; white-space: nowrap;">Margen %:</label>
                                         <input class="form-input" type="number" step="0.1" min="0"
                                                value="@(formMargenBar?.ToString("0.##"))"
-                                               @onchange="@(e => OnMargenBarChanged(e.Value?.ToString()))"
+                                               @oninput="@(e => OnMargenBarChanged(e.Value?.ToString()))"
                                                placeholder="100"
                                                style="flex: 1 1 auto; min-width: 0; padding: 0.2rem 0.4rem; font-size: 0.8rem;" />
                                     </div>
@@ -509,7 +511,7 @@
                                 <div style="display: flex; gap: 0.3rem; align-items: stretch;">
                                     <input class="form-input" type="number" step="0.01" min="0"
                                            value="@formPrecioOtro"
-                                           @onchange="@(e => OnPrecioOtroChanged(e.Value?.ToString()))"
+                                           @oninput="@(e => OnPrecioOtroChanged(e.Value?.ToString()))"
                                            placeholder="0,00" style="flex: 1 1 auto; min-width: 0;" />
                                     @if (formCosto > 0)
                                     {
@@ -524,7 +526,7 @@
                                         <label style="font-size: 0.7rem; color: #166534; font-weight: 600; white-space: nowrap;">Margen %:</label>
                                         <input class="form-input" type="number" step="0.1" min="0"
                                                value="@(formMargenOtro?.ToString("0.##"))"
-                                               @onchange="@(e => OnMargenOtroChanged(e.Value?.ToString()))"
+                                               @oninput="@(e => OnMargenOtroChanged(e.Value?.ToString()))"
                                                placeholder="100"
                                                style="flex: 1 1 auto; min-width: 0; padding: 0.2rem 0.4rem; font-size: 0.8rem;" />
                                     </div>
@@ -929,6 +931,23 @@
     // Márgenes editables: derivados del precio + costo. Sincronizados bidireccionalmente.
     private decimal? formMargenBar;
     private decimal? formMargenOtro;
+
+    /// <summary>El usuario cambió el costo. Recalculamos los márgenes (los precios quedan
+    /// fijos — el costo nuevo es la referencia para el % de margen contra los precios actuales).</summary>
+    private void OnCostoChanged(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) { formCosto = 0m; return; }
+        if (!decimal.TryParse(value.Replace(",", "."), System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var c) || c < 0m) return;
+        formCosto = c;
+        // Recalcular márgenes contra los precios existentes
+        formMargenBar = (formPrecioBar.HasValue && formCosto > 0)
+            ? Math.Round((formPrecioBar.Value / formCosto - 1m) * 100m, 2, MidpointRounding.AwayFromZero)
+            : (decimal?)null;
+        formMargenOtro = (formPrecioOtro.HasValue && formCosto > 0)
+            ? Math.Round((formPrecioOtro.Value / formCosto - 1m) * 100m, 2, MidpointRounding.AwayFromZero)
+            : (decimal?)null;
+    }
 
     private void SetPrecioBar(decimal precio)
     {
