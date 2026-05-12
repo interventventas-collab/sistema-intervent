@@ -57,12 +57,34 @@ public class CafeCotizacionPdfService
                 page.Margin(20);
                 page.DefaultTextStyle(t => t.FontSize(9));
 
+                // ─── Marca de agua diagonal "PROFORMA" para evitar que se confunda con factura ───
+                // Solo aplica a tipo PRO. El tipo X tiene su propia leyenda y los tipos FA/FB/FC
+                // van por otro PDF (ArcaInvoicePdfService) y no llegan acá.
+                if (esProforma)
+                {
+                    page.Background().AlignCenter().AlignMiddle().Element(e =>
+                        e.Rotate(-30).Text("PROFORMA").FontSize(120).Bold().FontColor(Colors.Grey.Lighten2));
+                }
+
                 page.Header().Column(col =>
                 {
                     if (v.Estado == "anulado")
                     {
                         col.Item().Background(Colors.Red.Lighten4).Border(2).BorderColor(Colors.Red.Darken2)
                             .Padding(6).AlignCenter().Text("⚠ COMPROBANTE ANULADO").FontSize(11).Bold().FontColor(Colors.Red.Darken3);
+                    }
+
+                    // Banner claro de "DOCUMENTO SIN VALOR FISCAL" para Proforma (y para tipo X).
+                    // Es lo primero que ve el cliente — ningún malentendido posible.
+                    if (esProforma || v.TipoComprobante == "X")
+                    {
+                        var bannerText = esProforma
+                            ? "📋 DOCUMENTO SIN VALOR FISCAL — PROFORMA NO APTA PARA ARCA"
+                            : "📋 DOCUMENTO INTERNO — NO VÁLIDO COMO FACTURA";
+                        col.Item().PaddingBottom(4).Background(Colors.Orange.Lighten4)
+                            .Border(1).BorderColor(Colors.Orange.Medium)
+                            .Padding(5).AlignCenter()
+                            .Text(bannerText).FontSize(9).Bold().FontColor(Colors.Orange.Darken3);
                     }
 
                     // ─── Bloque emisor + tipo de comprobante ───
