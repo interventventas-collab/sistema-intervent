@@ -23,6 +23,7 @@ public class MeliOrderDto
     public string? ItemThumbnailUrl { get; set; }
     public string? ShippingStatus { get; set; }
     public string? ShippingSubstatus { get; set; }
+    public string? ShippingMode { get; set; }
 }
 
 public class MeliOrdersResponse

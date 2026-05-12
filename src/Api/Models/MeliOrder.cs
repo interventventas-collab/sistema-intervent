@@ -21,6 +21,8 @@ public class MeliOrder
     public long? PackId { get; set; }
     public string? ShippingStatus { get; set; }
     public string? ShippingSubstatus { get; set; }
+    /// <summary>Modo de envio segun MeLi: me1, me2, custom, not_specified. Util para marcar ordenes ME1 en la grilla.</summary>
+    public string? ShippingMode { get; set; }
     public bool StockDiscounted { get; set; } = false;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }

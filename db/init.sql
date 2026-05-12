@@ -293,6 +293,24 @@ BEGIN
 END
 GO
 
+-- Add ShippingMode column (me1, me2, custom, not_specified) para marcar ordenes ME1 en la grilla
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('MeliOrders') AND name = 'ShippingMode')
+BEGIN
+    ALTER TABLE MeliOrders ADD ShippingMode NVARCHAR(30) NULL;
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='IX_MeliOrders_ShippingMode')
+    CREATE INDEX IX_MeliOrders_ShippingMode ON MeliOrders(ShippingMode);
+GO
+
+-- Backfill ShippingMode desde MeliShipments para ordenes ya sincronizadas (matchea por ShippingId).
+-- Solo corre cuando hay shipments con Mode populado (la pantalla me1 ya hizo al menos un sync).
+UPDATE o SET o.ShippingMode = s.Mode
+FROM MeliOrders o
+JOIN MeliShipments s ON s.MeliShipmentId = o.ShippingId
+WHERE o.ShippingMode IS NULL AND s.Mode IS NOT NULL;
+GO
+
 -- MeliItems table
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='MeliItems' AND xtype='U')
 BEGIN

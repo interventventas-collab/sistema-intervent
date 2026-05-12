@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @inject ApiClient Api
 @inject ToastService ToastService
+@inject NavigationManager Nav
 
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
@@ -265,8 +266,17 @@
                         {
                             @if (group.IsPack)
                             {
-                                <tr class="pack-header-row clickable-row" @onclick="() => ShowPackDetail(group.PackId!.Value)">
-                                    <td><strong>Pack @group.PackId</strong></td>
+                                var packIsMe1 = group.Orders.Any(o => o.ShippingMode == "me1");
+                                <tr class="pack-header-row clickable-row @(packIsMe1 ? "row-me1" : "")" @onclick="() => ShowPackDetail(group.PackId!.Value)">
+                                    <td>
+                                        <strong>Pack @group.PackId</strong>
+                                        @if (packIsMe1)
+                                        {
+                                            <span class="badge-me1" title="Envio ME1 - click para gestionar entrega"
+                                                  @onclick:stopPropagation="true"
+                                                  @onclick="@(() => Nav.NavigateTo("/meli/me1/entregas"))">🏎 ME1</span>
+                                        }
+                                    </td>
                                     <td>@group.Orders.First().DateCreated.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
                                     <td>@group.Orders.First().AccountNickname</td>
                                     <td>@group.Orders.First().BuyerNickname</td>
@@ -321,8 +331,17 @@
                             else
                             {
                                 var order = group.Orders.First();
-                                <tr class="clickable-row" @onclick="() => ShowOrderDetail(order.MeliOrderId)">
-                                    <td><strong>@order.MeliOrderId</strong></td>
+                                var isMe1 = order.ShippingMode == "me1";
+                                <tr class="clickable-row @(isMe1 ? "row-me1" : "")" @onclick="() => ShowOrderDetail(order.MeliOrderId)">
+                                    <td>
+                                        <strong>@order.MeliOrderId</strong>
+                                        @if (isMe1)
+                                        {
+                                            <span class="badge-me1" title="Envio ME1 - click para gestionar entrega"
+                                                  @onclick:stopPropagation="true"
+                                                  @onclick="@(() => Nav.NavigateTo("/meli/me1/entregas"))">🏎 ME1</span>
+                                        }
+                                    </td>
                                     <td>@order.DateCreated.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
                                     <td>@order.AccountNickname</td>
                                     <td>@order.BuyerNickname</td>
@@ -872,6 +891,34 @@
     }
     .clickable-row:hover {
         background-color: #f0f4ff !important;
+    }
+
+    /* Filas ME1: envios manuales del vendedor — fondo durazno sutil para distinguirlas a simple vista */
+    .row-me1 {
+        background-color: #fff7ed !important;
+        border-left: 3px solid #f97316 !important;
+    }
+    .row-me1:hover {
+        background-color: #ffedd5 !important;
+    }
+
+    /* Badge "ME1" al lado del numero de orden/pack */
+    .badge-me1 {
+        display: inline-block;
+        background: #f97316;
+        color: white;
+        font-size: 0.7rem;
+        font-weight: 700;
+        padding: 0.12rem 0.45rem;
+        border-radius: 10px;
+        margin-left: 0.4rem;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: background 0.15s, transform 0.1s;
+    }
+    .badge-me1:hover {
+        background: #ea580c;
+        transform: scale(1.05);
     }
 
     /* Modal */

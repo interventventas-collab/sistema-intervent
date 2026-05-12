@@ -51,7 +51,8 @@ public class MeliOrderService
                     x.Order.ShippingId, x.Order.PackId,
                     item != null ? item.Thumbnail : null,
                     x.Order.ShippingStatus,
-                    x.Order.ShippingSubstatus))
+                    x.Order.ShippingSubstatus,
+                    x.Order.ShippingMode))
             .ToListAsync();
 
         return new MeliOrdersResponse(orders, total);
@@ -392,9 +393,10 @@ public class MeliOrderService
             && shId.ValueKind != JsonValueKind.Null
             ? shId.GetInt64() : (long?)null;
 
-        // Fetch shipping status + substatus from shipments API
+        // Fetch shipping status + substatus + mode from shipments API
         string? shippingStatus = null;
         string? shippingSubstatus = null;
+        string? shippingMode = null;
         if (shippingId.HasValue)
         {
             try
@@ -408,6 +410,8 @@ public class MeliOrderService
                         shippingStatus = shipSt.GetString();
                     if (shipDoc.TryGetProperty("substatus", out var shipSub) && shipSub.ValueKind != JsonValueKind.Null)
                         shippingSubstatus = shipSub.GetString();
+                    if (shipDoc.TryGetProperty("mode", out var shipMd) && shipMd.ValueKind != JsonValueKind.Null)
+                        shippingMode = shipMd.GetString();
                 }
             }
             catch { /* ignore shipping fetch errors */ }
@@ -442,6 +446,7 @@ public class MeliOrderService
                 existing.PackId = packId;
                 existing.ShippingStatus = shippingStatus;
                 existing.ShippingSubstatus = shippingSubstatus;
+                existing.ShippingMode = shippingMode;
                 existing.UpdatedAt = DateTime.UtcNow;
             }
             else
@@ -465,7 +470,8 @@ public class MeliOrderService
                     ShippingId = shippingId,
                     PackId = packId,
                     ShippingStatus = shippingStatus,
-                    ShippingSubstatus = shippingSubstatus
+                    ShippingSubstatus = shippingSubstatus,
+                    ShippingMode = shippingMode
                 });
             }
             count++;
