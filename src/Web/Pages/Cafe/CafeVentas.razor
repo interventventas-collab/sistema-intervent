@@ -2366,7 +2366,13 @@
             Cantidad = i.Cantidad,
             Molienda = i.Molienda,
             EsDoyPack = i.EsDoyPack,
-            DescuentoPct = i.DescuentoPct
+            DescuentoPct = i.DescuentoPct,
+            // Preservamos el PrecioUnitario guardado en el item:
+            //   - Concepto libre: es la ÚNICA fuente del precio (no hay producto del catálogo).
+            //   - Producto del catálogo: preservamos el precio histórico del comprobante.
+            //     Si el catálogo cambió desde la emisión, queremos respetar el precio original
+            //     al editar — no recalcularlo. El usuario puede pisarlo desde el input si quiere.
+            PrecioUnitarioOverride = i.PrecioUnitario
         }).ToList();
         addProductoId = 0; addFormato = "1KG"; addCantidad = 1;
         productoSearch = ""; productoSearchOpen = false;
