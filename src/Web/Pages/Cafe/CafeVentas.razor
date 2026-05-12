@@ -33,9 +33,71 @@
 
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
-        <h3>🧾 Ventas <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;">(@(ventas?.Count ?? 0))</span></h3>
+        <h3>🧾 Ventas
+            <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;">
+                (@VentasFiltradas.Count@(HayFiltrosActivos ? $" de {ventas?.Count ?? 0}" : ""))
+            </span>
+        </h3>
         <button class="btn btn-primary" @onclick="ShowCreate">+ Nueva Venta</button>
     </div>
+    @* ─── Barra de filtros ─── *@
+    @if (ventas is not null && ventas.Count > 0)
+    {
+        <div style="background: #f9fafb; border-bottom: 1px solid #e5e7eb; padding: 0.6rem 1rem; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: end;">
+            <div style="display: flex; flex-direction: column; gap: 0.15rem; min-width: 130px;">
+                <label style="font-size: 0.7rem; color: #6b7280; font-weight: 600;">Desde</label>
+                <input type="date" class="form-input" style="padding: 0.3rem 0.5rem; font-size: 0.85rem;"
+                       value="@(filtroFechaDesde?.ToString("yyyy-MM-dd"))"
+                       @onchange="@(e => filtroFechaDesde = string.IsNullOrEmpty(e.Value?.ToString()) ? null : DateTime.Parse(e.Value.ToString()!))" />
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 0.15rem; min-width: 130px;">
+                <label style="font-size: 0.7rem; color: #6b7280; font-weight: 600;">Hasta</label>
+                <input type="date" class="form-input" style="padding: 0.3rem 0.5rem; font-size: 0.85rem;"
+                       value="@(filtroFechaHasta?.ToString("yyyy-MM-dd"))"
+                       @onchange="@(e => filtroFechaHasta = string.IsNullOrEmpty(e.Value?.ToString()) ? null : DateTime.Parse(e.Value.ToString()!))" />
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 0.15rem; flex: 1; min-width: 200px;">
+                <label style="font-size: 0.7rem; color: #6b7280; font-weight: 600;">Cliente / Nº / CUIT / dirección</label>
+                <input class="form-input" style="padding: 0.3rem 0.5rem; font-size: 0.85rem;"
+                       @bind="filtroCliente" @bind:event="oninput"
+                       placeholder="Buscar..." />
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 0.15rem; min-width: 120px;">
+                <label style="font-size: 0.7rem; color: #6b7280; font-weight: 600;">Tipo</label>
+                <select class="form-input" style="padding: 0.3rem 0.5rem; font-size: 0.85rem;" @bind="filtroTipo">
+                    <option value="TODOS">Todos</option>
+                    <option value="X">Cotización (X)</option>
+                    <option value="PRO">Proforma</option>
+                    <option value="FA">Factura A</option>
+                    <option value="FB">Factura B</option>
+                    <option value="FC">Factura C</option>
+                </select>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 0.15rem; min-width: 110px;">
+                <label style="font-size: 0.7rem; color: #6b7280; font-weight: 600;">Estado</label>
+                <select class="form-input" style="padding: 0.3rem 0.5rem; font-size: 0.85rem;" @bind="filtroEstado">
+                    <option value="TODOS">Todos</option>
+                    <option value="emitido">Emitida</option>
+                    <option value="anulado">Anulada</option>
+                </select>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 0.15rem; min-width: 130px;">
+                <label style="font-size: 0.7rem; color: #6b7280; font-weight: 600;">CAE</label>
+                <select class="form-input" style="padding: 0.3rem 0.5rem; font-size: 0.85rem;" @bind="filtroCae">
+                    <option value="TODOS">Todas</option>
+                    <option value="CON_CAE">📜 Con CAE</option>
+                    <option value="SIN_CAE">Sin CAE (X / PRO)</option>
+                    <option value="PENDIENTE">⚠ ARCA pendiente</option>
+                </select>
+            </div>
+            @if (HayFiltrosActivos)
+            {
+                <button class="btn btn-secondary" @onclick="LimpiarFiltros"
+                        style="padding: 0.35rem 0.7rem; font-size: 0.8rem;"
+                        title="Limpiar todos los filtros">✕ Limpiar</button>
+            }
+        </div>
+    }
     <div class="card-body" style="padding: 0;">
         @if (loading)
         {
@@ -100,7 +162,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var v in ventas)
+                        @foreach (var v in VentasFiltradas)
                         {
                             var anulada = v.Estado == "anulado";
                             var sel = selectedIds.Contains(v.Id);
@@ -1345,6 +1407,51 @@
 
 @code {
     private List<CafeVentaDto>? ventas;
+
+    // ===== Filtros del listado =====
+    private DateTime? filtroFechaDesde;
+    private DateTime? filtroFechaHasta;
+    private string filtroCliente = "";
+    private string filtroTipo = "TODOS";       // TODOS | X | PRO | FA | FB | FC
+    private string filtroEstado = "TODOS";     // TODOS | emitido | anulado
+    private string filtroCae = "TODOS";        // TODOS | CON_CAE | SIN_CAE | PENDIENTE
+
+    /// <summary>Ventas pasadas por los filtros del listado. Si todos los filtros están vacíos/TODOS,
+    /// devuelve la lista completa. Aplica AND entre filtros activos.</summary>
+    private List<CafeVentaDto> VentasFiltradas
+    {
+        get
+        {
+            if (ventas is null) return new();
+            IEnumerable<CafeVentaDto> q = ventas;
+            if (filtroFechaDesde.HasValue) q = q.Where(v => v.Fecha.Date >= filtroFechaDesde.Value.Date);
+            if (filtroFechaHasta.HasValue) q = q.Where(v => v.Fecha.Date <= filtroFechaHasta.Value.Date);
+            if (!string.IsNullOrWhiteSpace(filtroCliente))
+            {
+                var t = filtroCliente.Trim();
+                bool h(string? s) => !string.IsNullOrEmpty(s) && s.Contains(t, StringComparison.OrdinalIgnoreCase);
+                q = q.Where(v => h(v.Numero) || h(v.ClienteNombre) || h(v.ClienteRazonSocial)
+                    || h(v.ClienteCuit) || h(v.ClienteDireccion) || h(v.ClienteLocalidad));
+            }
+            if (filtroTipo != "TODOS") q = q.Where(v => v.TipoComprobante == filtroTipo);
+            if (filtroEstado != "TODOS") q = q.Where(v => v.Estado == filtroEstado);
+            if (filtroCae == "CON_CAE") q = q.Where(v => v.ArcaEstado == "autorizado");
+            else if (filtroCae == "SIN_CAE") q = q.Where(v => v.ArcaEstado == "no_aplica");
+            else if (filtroCae == "PENDIENTE") q = q.Where(v => v.ArcaEstado == "pendiente");
+            return q.ToList();
+        }
+    }
+
+    private bool HayFiltrosActivos =>
+        filtroFechaDesde.HasValue || filtroFechaHasta.HasValue
+        || !string.IsNullOrWhiteSpace(filtroCliente)
+        || filtroTipo != "TODOS" || filtroEstado != "TODOS" || filtroCae != "TODOS";
+
+    private void LimpiarFiltros()
+    {
+        filtroFechaDesde = null; filtroFechaHasta = null;
+        filtroCliente = ""; filtroTipo = "TODOS"; filtroEstado = "TODOS"; filtroCae = "TODOS";
+    }
     private List<CafeClienteDto>? clientes;
     private List<CafeProductoDto>? productos;
     private CafeSettingDto? settings;
