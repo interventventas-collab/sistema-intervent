@@ -72,9 +72,16 @@ public class CafeClientesController : ControllerBase
             DomicilioEntrega = Norm(req.DomicilioEntrega),
             Notas = Norm(req.Notas),
             ComentariosComprobante = Norm(req.ComentariosComprobante),
+            MapeoLink = Norm(req.MapeoLink),
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
+        // Si vino MapeoLink, intentamos resolverlo y guardar las coords automáticamente.
+        if (!string.IsNullOrEmpty(c.MapeoLink))
+        {
+            var coords = await _mapsResolver.TryResolverCoordenadasAsync(c.MapeoLink);
+            if (coords.HasValue) { c.MapeoLat = coords.Value.lat; c.MapeoLng = coords.Value.lng; }
+        }
         _db.CafeClientes.Add(c);
         await _db.SaveChangesAsync();
         return Ok(Map(c));

@@ -28,6 +28,9 @@ public class CreateCafeClienteRequest
     public string? DomicilioEntrega { get; set; }
     public string? Notas { get; set; }
     public string? ComentariosComprobante { get; set; }
+    /// <summary>Enlace de Google Maps cargado al crear el cliente. Si viene, intentamos
+    /// extraer las coordenadas automáticamente en el backend.</summary>
+    public string? MapeoLink { get; set; }
 }
 
 public class UpdateCafeClienteRequest

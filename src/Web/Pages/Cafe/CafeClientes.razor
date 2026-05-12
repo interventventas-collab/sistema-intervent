@@ -209,10 +209,10 @@
                         Estos comentarios <strong>aparecen en TODOS los comprobantes</strong> de este cliente.
                     </p>
                 </div>
-                @* ─── Código interno + vinculación a Mapeo (solo al editar, requiere cliente guardado) ─── *@
-                @if (isEditing && editingId.HasValue)
-                {
-                    <div style="background: #eff6ff; border: 1px solid #3b82f6; border-radius: 6px; padding: 0.6rem 0.8rem; margin-top: 0.5rem;">
+                @* ─── Vinculación a Mapeo (campo enlace siempre disponible; código interno solo al editar) ─── *@
+                <div style="background: #eff6ff; border: 1px solid #3b82f6; border-radius: 6px; padding: 0.6rem 0.8rem; margin-top: 0.5rem;">
+                    @if (isEditing && editingId.HasValue)
+                    {
                         <div class="form-group" style="margin-bottom: 0.5rem;">
                             <label class="form-label" style="font-size: 0.78rem; color: #1e40af;">🆔 Código interno (uso interno)</label>
                             @if (formCodigoInterno.HasValue)
@@ -235,34 +235,43 @@
                                 </div>
                             }
                         </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label class="form-label" style="font-size: 0.78rem; color: #1e40af;">🗺 Enlace Google Maps (corto)</label>
-                            <input class="form-input" @bind="formMapeoLink"
-                                   placeholder="https://maps.app.goo.gl/..." />
-                            @if (formMapeoLat.HasValue && formMapeoLng.HasValue)
-                            {
-                                <p style="font-size: 0.7rem; color: #15803d; margin: 0.2rem 0 0;">
-                                    ✓ Coordenadas extraídas: <strong>@formMapeoLat?.ToString("0.######"), @formMapeoLng?.ToString("0.######")</strong>
-                                </p>
-                            }
-                            else if (!string.IsNullOrEmpty(formMapeoLink))
-                            {
-                                <p style="font-size: 0.7rem; color: #d97706; margin: 0.2rem 0 0; display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
-                                    ⚠ No se pudieron extraer coordenadas todavía.
-                                    <button type="button" class="btn btn-secondary"
-                                            @onclick="ReExtraerCoords" disabled="@reExtrayendo"
-                                            style="font-size: 0.7rem; padding: 0.2rem 0.4rem;">
-                                        @(reExtrayendo ? "⏳..." : "🔄 Re-extraer")
-                                    </button>
-                                </p>
-                            }
-                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
-                                Pegá el enlace corto que sale al compartir la ubicación desde Google Maps en el celular.
-                                Al guardar, el sistema extrae automáticamente las coordenadas para usarlas en el mapa.
+                    }
+                    else
+                    {
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0 0 0.5rem;">
+                            💡 El <strong>código interno</strong> se asigna después de guardar el cliente (con un botón en la edición).
+                        </p>
+                    }
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label" style="font-size: 0.78rem; color: #1e40af;">🗺 Enlace Google Maps (corto)</label>
+                        <input class="form-input" @bind="formMapeoLink"
+                               placeholder="https://maps.app.goo.gl/..." />
+                        @if (formMapeoLat.HasValue && formMapeoLng.HasValue)
+                        {
+                            <p style="font-size: 0.7rem; color: #15803d; margin: 0.2rem 0 0;">
+                                ✓ Coordenadas extraídas: <strong>@formMapeoLat?.ToString("0.######"), @formMapeoLng?.ToString("0.######")</strong>
                             </p>
-                        </div>
+                        }
+                        else if (!string.IsNullOrEmpty(formMapeoLink) && isEditing)
+                        {
+                            <p style="font-size: 0.7rem; color: #d97706; margin: 0.2rem 0 0; display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
+                                ⚠ No se pudieron extraer coordenadas todavía.
+                                <button type="button" class="btn btn-secondary"
+                                        @onclick="ReExtraerCoords" disabled="@reExtrayendo"
+                                        style="font-size: 0.7rem; padding: 0.2rem 0.4rem;">
+                                    @(reExtrayendo ? "⏳..." : "🔄 Re-extraer")
+                                </button>
+                            </p>
+                        }
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
+                            Pegá el enlace corto que sale al compartir la ubicación desde Google Maps en el celular.
+                            Al guardar, el sistema extrae automáticamente las coordenadas para usarlas en el mapa.
+                        </p>
                     </div>
+                </div>
 
+                @if (isEditing)
+                {
                     <div class="form-group">
                         <label class="form-label">Estado</label>
                         <select class="form-input" @bind="formIsActive">
@@ -577,6 +586,7 @@
             }
             else
             {
+                var mapeoLinkClean = (formMapeoLink ?? "").Trim();
                 var c = await Api.CreateCafeClienteAsync(new CreateCafeClienteRequest
                 {
                     Nombre = formNombre, RazonSocial = formRazonSocial, Tipo = formTipo,
@@ -584,7 +594,8 @@
                     Direccion = formDireccion, DomicilioEntrega = formDomicilioEntrega,
                     Localidad = formLocalidad, Ciudad = formCiudad, Cp = formCp,
                     CondicionIvaDefault = formCondicionIvaDefault,
-                    Notas = formNotas, ComentariosComprobante = formComentariosComprobante
+                    Notas = formNotas, ComentariosComprobante = formComentariosComprobante,
+                    MapeoLink = string.IsNullOrEmpty(mapeoLinkClean) ? null : mapeoLinkClean
                 });
                 if (c is null) { formError = "No se pudo crear"; return; }
                 ToastService.Success("Cliente creado");
