@@ -213,12 +213,13 @@ public class UpdateCafeSettingRequest
 
 // ===== Ventas =====
 public record CafeVentaItemDto(
-    int Id, int ProductoId, string ProductoNombre, string Categoria,
+    int Id, int? ProductoId, string ProductoNombre, string Categoria,
     string Formato, int Cantidad,
     decimal PrecioUnitario, decimal CostoUnitario, decimal Subtotal,
     decimal GramosDescontados,
     string? Molienda, bool EsDoyPack,
-    decimal DescuentoPct);
+    decimal DescuentoPct,
+    bool EsConceptoLibre = false);
 
 public record CafeVentaDto(
     int Id, string Numero, DateTime Fecha,
@@ -258,6 +259,13 @@ public class CafeCotizarItemRequest
     /// se calcula automáticamente con producto + matriz de precios. Si es &gt;= 0, ese
     /// valor reemplaza al calculado (después se le aplica el descuento de la línea).</summary>
     public decimal? PrecioUnitarioOverride { get; set; }
+
+    // ---- Concepto libre ----
+    /// <summary>Si es true, el item es un "concepto libre" (sin producto del catálogo).
+    /// En ese caso ProductoId se ignora y se usan DescripcionLibre + PrecioUnitarioOverride.</summary>
+    public bool EsConceptoLibre { get; set; }
+    /// <summary>Texto que va en la descripción del item (solo si EsConceptoLibre=true).</summary>
+    public string? DescripcionLibre { get; set; }
 }
 
 public class CafeCotizarRequest

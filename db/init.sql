@@ -1988,7 +1988,8 @@ BEGIN
     CREATE TABLE Cafe_VentaItems (
         Id INT IDENTITY(1,1) PRIMARY KEY,
         VentaId INT NOT NULL,
-        ProductoId INT NOT NULL,
+        ProductoId INT NULL,   -- nullable para soportar items de "concepto libre" sin producto del catalogo
+        EsConceptoLibre BIT NOT NULL DEFAULT 0,
         ProductoNombreSnapshot NVARCHAR(200) NOT NULL,
         Categoria NVARCHAR(20) NOT NULL,
         Formato NVARCHAR(20) NOT NULL,
@@ -2024,6 +2025,30 @@ GO
 -- Cafe_VentaItems: descuento porcentual por linea
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'DescuentoPct' AND Object_ID = Object_ID('Cafe_VentaItems'))
     ALTER TABLE Cafe_VentaItems ADD DescuentoPct DECIMAL(5,2) NOT NULL CONSTRAINT DF_CafeVentaItems_DescuentoPct DEFAULT 0;
+GO
+
+-- Cafe_VentaItems: soporte de "concepto libre" (items que no corresponden a un producto
+-- del catalogo — servicios, otros conceptos manuales). Hacemos ProductoId nullable y
+-- agregamos un flag EsConceptoLibre. Los items existentes quedan intactos (ProductoId no null).
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'EsConceptoLibre' AND Object_ID = Object_ID('Cafe_VentaItems'))
+    ALTER TABLE Cafe_VentaItems ADD EsConceptoLibre BIT NOT NULL CONSTRAINT DF_CafeVentaItems_EsConceptoLibre DEFAULT 0;
+GO
+-- Hacer ProductoId nullable. Primero hay que dropear el FK y el index, modificar, recrear.
+IF COL_LENGTH('Cafe_VentaItems', 'ProductoId') IS NOT NULL
+    AND COLUMNPROPERTY(OBJECT_ID('Cafe_VentaItems'), 'ProductoId', 'AllowsNull') = 0
+BEGIN
+    -- Dropear FK + index para poder modificar la columna
+    IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_CafeVentaItems_Producto')
+        ALTER TABLE Cafe_VentaItems DROP CONSTRAINT FK_CafeVentaItems_Producto;
+    IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_CafeVentaItems_Producto' AND object_id = OBJECT_ID('Cafe_VentaItems'))
+        DROP INDEX IX_CafeVentaItems_Producto ON Cafe_VentaItems;
+    -- Modificar a nullable
+    ALTER TABLE Cafe_VentaItems ALTER COLUMN ProductoId INT NULL;
+    -- Recrear FK + index (con OnDelete = NoAction para no cascadear borrados raros)
+    ALTER TABLE Cafe_VentaItems ADD CONSTRAINT FK_CafeVentaItems_Producto
+        FOREIGN KEY (ProductoId) REFERENCES Cafe_Productos(Id);
+    CREATE INDEX IX_CafeVentaItems_Producto ON Cafe_VentaItems (ProductoId);
+END
 GO
 
 -- Cafe_Settings: agregar template del mensaje de WhatsApp

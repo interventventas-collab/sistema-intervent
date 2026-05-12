@@ -396,7 +396,7 @@
                         </div>
                     }
 
-                    @* Selector Producto / Combo *@
+                    @* Selector Producto / Combo / Concepto libre *@
                     <div style="display: inline-flex; gap: 0; margin-bottom: 0.5rem; border: 1px solid #d1d5db; border-radius: 6px; overflow: hidden;">
                         <button type="button"
                                 class="btn"
@@ -410,7 +410,42 @@
                                 @onclick="@(() => addMode = "COMBO")">
                             🎁 Combo
                         </button>
+                        <button type="button"
+                                class="btn"
+                                style="border: none; border-radius: 0; padding: 0.35rem 0.8rem; font-size: 0.82rem; @(addMode == "LIBRE" ? "background:#1d4ed8;color:white;" : "background:white;color:#374151;")"
+                                @onclick="@(() => addMode = "LIBRE")"
+                                title="Item con descripción y precio cargados a mano, sin producto del catálogo (servicios, otros conceptos)">
+                            ✏️ Concepto libre
+                        </button>
                     </div>
+
+                    @if (addMode == "LIBRE")
+                    {
+                        <div class="form-row" style="align-items: end;">
+                            <div class="form-group" style="flex: 3;">
+                                <label class="form-label" style="font-size: 0.75rem;">Descripción *</label>
+                                <input class="form-input" @bind="addLibreDescripcion"
+                                       placeholder="Ej: Servicio de delivery / Capacitación / Honorarios..." />
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label" style="font-size: 0.75rem;">Precio U. sin IVA *</label>
+                                <input class="form-input" type="number" step="0.01" min="0" @bind="addLibrePrecio" placeholder="0,00" />
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label" style="font-size: 0.75rem;">Cant.</label>
+                                <input class="form-input" type="number" min="1" @bind="addLibreCantidad" placeholder="1" />
+                            </div>
+                            <div class="form-group" style="flex: 0 0 auto;">
+                                <button type="button" class="btn btn-primary" @onclick="AddItemLibre"
+                                        disabled="@(string.IsNullOrWhiteSpace(addLibreDescripcion) || addLibrePrecio <= 0 || addLibreCantidad < 1)">
+                                    + Agregar
+                                </button>
+                            </div>
+                        </div>
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.25rem 0 0;">
+                            💡 No descuenta stock, no consulta el catálogo. Pensado para servicios o conceptos manuales que querés facturar.
+                        </p>
+                    }
 
                     @if (addMode == "COMBO")
                     {
@@ -1284,7 +1319,39 @@
     private bool productoSearchOpen;
 
     // Combo picker
-    private string addMode = "PRODUCTO";  // "PRODUCTO" | "COMBO"
+    private string addMode = "PRODUCTO";  // "PRODUCTO" | "COMBO" | "LIBRE"
+    // Inputs del tab "Concepto libre"
+    private string addLibreDescripcion = "";
+    private decimal addLibrePrecio = 0m;
+    private int addLibreCantidad = 1;
+
+    /// <summary>Agrega un item "concepto libre" (sin producto del catálogo) a formItems
+    /// con la descripción + precio + cantidad cargados a mano. No descuenta stock.</summary>
+    private async Task AddItemLibre()
+    {
+        var desc = (addLibreDescripcion ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(desc)) { ToastService.Error("Cargá una descripción"); return; }
+        if (addLibrePrecio <= 0m) { ToastService.Error("El precio debe ser mayor a 0"); return; }
+        if (addLibreCantidad < 1) { ToastService.Error("La cantidad debe ser >= 1"); return; }
+
+        formItems.Add(new CafeCotizarItemRequest
+        {
+            ProductoId = 0,
+            EsConceptoLibre = true,
+            DescripcionLibre = desc,
+            Formato = "UNIT",
+            Cantidad = addLibreCantidad,
+            PrecioUnitarioOverride = addLibrePrecio,
+            DescuentoPct = 0m,
+            EsDoyPack = false,
+            Molienda = null
+        });
+        // Reset inputs para el siguiente
+        addLibreDescripcion = "";
+        addLibrePrecio = 0m;
+        addLibreCantidad = 1;
+        await Cotizar();
+    }
     private List<CafeComboDto>? combos;
     private int addComboId;
     private int addComboCantidad = 1;
@@ -2144,7 +2211,9 @@
         // Items: convertir a CafeCotizarItemRequest para que el form los muestre y los pueda editar.
         formItems = v.Items.Select(i => new CafeCotizarItemRequest
         {
-            ProductoId = i.ProductoId,
+            ProductoId = i.ProductoId ?? 0,
+            EsConceptoLibre = i.EsConceptoLibre,
+            DescripcionLibre = i.EsConceptoLibre ? i.ProductoNombre : null,
             Formato = i.Formato,
             Cantidad = i.Cantidad,
             Molienda = i.Molienda,

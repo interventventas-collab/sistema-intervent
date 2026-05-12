@@ -200,7 +200,8 @@ public class UpdateCafeSettingRequest
 public class CafeVentaItemDto
 {
     public int Id { get; set; }
-    public int ProductoId { get; set; }
+    /// <summary>Nullable: para items "concepto libre" no hay producto del catálogo.</summary>
+    public int? ProductoId { get; set; }
     public string ProductoNombre { get; set; } = "";
     public string Categoria { get; set; } = "CAFE";
     public string Formato { get; set; } = "1KG";
@@ -212,6 +213,8 @@ public class CafeVentaItemDto
     public string? Molienda { get; set; }
     public bool EsDoyPack { get; set; }
     public decimal DescuentoPct { get; set; }
+    /// <summary>True si es un item "concepto libre" (descripción + precio cargados a mano).</summary>
+    public bool EsConceptoLibre { get; set; }
 }
 
 public class CafeVentaDto
@@ -265,6 +268,10 @@ public class CafeCotizarItemRequest
     public decimal DescuentoPct { get; set; }
     /// <summary>Si el operador pisa el precio unitario a mano, viene cargado acá. Null = usar precio del catálogo.</summary>
     public decimal? PrecioUnitarioOverride { get; set; }
+    /// <summary>Si es true, el item es "concepto libre" — usa DescripcionLibre + PrecioUnitarioOverride, no toca catálogo ni stock.</summary>
+    public bool EsConceptoLibre { get; set; }
+    /// <summary>Descripción libre que el operador escribió (solo si EsConceptoLibre).</summary>
+    public string? DescripcionLibre { get; set; }
 }
 
 public class CafeCotizarRequest

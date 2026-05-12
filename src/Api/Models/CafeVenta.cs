@@ -126,16 +126,23 @@ public class CafeVentaItem
     [ForeignKey(nameof(VentaId))]
     public CafeVenta? VentaNav { get; set; }
 
-    public int ProductoId { get; set; }
+    /// <summary>FK a Cafe_Productos. Nullable porque los items de "concepto libre"
+    /// (servicios, otros conceptos manuales que no están en el catálogo) no apuntan
+    /// a un producto del inventario.</summary>
+    public int? ProductoId { get; set; }
 
     [ForeignKey(nameof(ProductoId))]
     public CafeProducto? ProductoNav { get; set; }
+
+    /// <summary>Si es true, este item es un "concepto libre" (descripción + precio cargado
+    /// a mano, sin producto del catálogo). En ese caso ProductoId es null y no descuenta stock.</summary>
+    public bool EsConceptoLibre { get; set; }
 
     [Required, MaxLength(200)]
     public string ProductoNombreSnapshot { get; set; } = string.Empty;
 
     [Required, MaxLength(20)]
-    public string Categoria { get; set; } = "CAFE"; // CAFE | OTROS
+    public string Categoria { get; set; } = "CAFE"; // CAFE | OTROS | LIBRE
 
     [Required, MaxLength(20)]
     public string Formato { get; set; } = "1KG"; // 1KG | MEDIO | CUARTO | UNIT

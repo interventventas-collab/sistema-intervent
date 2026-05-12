@@ -48,7 +48,8 @@ public class CafeVentasController : ControllerBase
             i.PrecioUnitario, i.CostoUnitario, i.Subtotal,
             i.GramosDescontados,
             i.Molienda, i.EsDoyPack,
-            i.DescuentoPct)).ToList(),
+            i.DescuentoPct,
+            i.EsConceptoLibre)).ToList(),
         v.ClienteRazonSocialSnapshot,
         v.ClienteDomicilioEntregaSnapshot,
         v.ClienteComentariosComprobante,
@@ -169,7 +170,7 @@ public class CafeVentasController : ControllerBase
             var desc = it.ProductoNombreSnapshot;
             if (!string.IsNullOrEmpty(it.Molienda)) desc += $" — {it.Molienda}";
             if (it.EsDoyPack) desc += " (d.p.)";
-            desc += $" · {it.Formato}";
+            if (!it.EsConceptoLibre) desc += $" · {it.Formato}";
 
             comp.Items.Add(new PdfItem
             {
@@ -442,12 +443,35 @@ public class CafeVentasController : ControllerBase
         // Mapear items + descontar stock fisico
         foreach (var it in cot.Items)
         {
+            // Concepto libre: item sin producto del catálogo (no descuenta stock).
+            if (it.Categoria == "LIBRE")
+            {
+                venta.Items.Add(new CafeVentaItem
+                {
+                    ProductoId = null,
+                    EsConceptoLibre = true,
+                    ProductoNombreSnapshot = it.ProductoNombre,
+                    Categoria = "LIBRE",
+                    Formato = "UNIT",
+                    Cantidad = it.Cantidad,
+                    PrecioUnitario = it.PrecioUnitario,
+                    CostoUnitario = 0m,
+                    Subtotal = it.Subtotal,
+                    GramosDescontados = 0m,
+                    Molienda = null,
+                    EsDoyPack = false,
+                    DescuentoPct = it.DescuentoPct
+                });
+                continue;
+            }
+
             var prod = await _db.CafeProductos.FindAsync(it.ProductoId);
             if (prod is null) return BadRequest(new { error = $"Producto {it.ProductoId} no encontrado" });
 
             venta.Items.Add(new CafeVentaItem
             {
                 ProductoId = prod.Id,
+                EsConceptoLibre = false,
                 ProductoNombreSnapshot = prod.Nombre,
                 Categoria = prod.Categoria,
                 Formato = it.Formato,
@@ -589,7 +613,9 @@ public class CafeVentasController : ControllerBase
                 var desc = it.ProductoNombreSnapshot;
                 if (!string.IsNullOrEmpty(it.Molienda)) desc += $" — {it.Molienda}";
                 if (it.EsDoyPack) desc += " (d.p.)";
-                desc += $" · {it.Formato}";
+                // Para items con producto del catálogo agregamos el formato (1kg / medio / cuarto / unit).
+                // Para "concepto libre" la descripción ya viene completa, no le sumamos formato.
+                if (!it.EsConceptoLibre) desc += $" · {it.Formato}";
 
                 items.Add(new EmitirComprobanteItemDto
                 {
@@ -678,12 +704,14 @@ public class CafeVentasController : ControllerBase
 
         var items = v.Items.Select(i => new CafeCotizarItemRequest
         {
-            ProductoId = i.ProductoId,
+            ProductoId = i.ProductoId ?? 0,
             Formato = i.Formato,
             Cantidad = i.Cantidad,
             Molienda = i.Molienda,
             EsDoyPack = i.EsDoyPack,
-            DescuentoPct = i.DescuentoPct
+            DescuentoPct = i.DescuentoPct,
+            EsConceptoLibre = i.EsConceptoLibre,
+            DescripcionLibre = i.EsConceptoLibre ? i.ProductoNombreSnapshot : null
         }).ToList();
 
         var payload = new DuplicarVentaPayloadDto(
@@ -726,10 +754,11 @@ public class CafeVentasController : ControllerBase
         if (v.ArcaEstado == "autorizado")
             return BadRequest(new { error = $"El comprobante tiene CAE de ARCA ({v.ArcaCae}). Para revertirlo hay que emitir una Nota de Crédito." });
 
-        // Restaurar stock
+        // Restaurar stock (concepto libre se saltea, no descontó stock)
         foreach (var it in v.Items)
         {
-            var prod = await _db.CafeProductos.FindAsync(it.ProductoId);
+            if (it.EsConceptoLibre || it.ProductoId is null) continue;
+            var prod = await _db.CafeProductos.FindAsync(it.ProductoId.Value);
             if (prod is null) continue;
             if (prod.Categoria == "CAFE")
                 prod.StockGramos += it.GramosDescontados;
@@ -889,10 +918,11 @@ public class CafeVentasController : ControllerBase
             using var tx = await _db.Database.BeginTransactionAsync();
             try
             {
-                // 1. Devolver stock de los items actuales.
+                // 1. Devolver stock de los items actuales. Concepto libre se saltea (no descontó).
                 foreach (var item in v.Items)
                 {
-                    var prod = await _db.CafeProductos.FindAsync(item.ProductoId);
+                    if (item.EsConceptoLibre || item.ProductoId is null) continue;
+                    var prod = await _db.CafeProductos.FindAsync(item.ProductoId.Value);
                     if (prod is null) continue;
                     if (prod.Categoria == "CAFE") prod.StockGramos += item.GramosDescontados;
                     else prod.StockUnidades += item.Cantidad;
@@ -987,12 +1017,13 @@ public class CafeVentasController : ControllerBase
 
     private async Task DeleteVentaInternalAsync(CafeVenta v)
     {
-        // Si estaba emitida, restaurar stock antes de borrar.
+        // Si estaba emitida, restaurar stock antes de borrar. Concepto libre se saltea.
         if (v.Estado == "emitido")
         {
             foreach (var it in v.Items)
             {
-                var prod = await _db.CafeProductos.FindAsync(it.ProductoId);
+                if (it.EsConceptoLibre || it.ProductoId is null) continue;
+                var prod = await _db.CafeProductos.FindAsync(it.ProductoId.Value);
                 if (prod is null) continue;
                 if (prod.Categoria == "CAFE") prod.StockGramos += it.GramosDescontados;
                 else prod.StockUnidades += it.Cantidad;
@@ -1044,6 +1075,38 @@ public class CafeVentasController : ControllerBase
             // Descuento manual override. Si viene 0 desde el request, se calcula automaticamente
             // de la matriz por tipo cliente x marca del producto.
             var descPctManual = Math.Clamp(it.DescuentoPct, 0m, 100m);
+
+            // ---- Concepto libre: item manual sin producto del catálogo ----
+            // Usa DescripcionLibre + PrecioUnitarioOverride. No toca stock ni reglas.
+            if (it.EsConceptoLibre)
+            {
+                var descLibre = string.IsNullOrWhiteSpace(it.DescripcionLibre) ? "Concepto libre" : it.DescripcionLibre!.Trim();
+                var pcuLibre = it.PrecioUnitarioOverride.HasValue && it.PrecioUnitarioOverride.Value >= 0m
+                    ? Math.Round(it.PrecioUnitarioOverride.Value, 2, MidpointRounding.AwayFromZero)
+                    : 0m;
+                var finalLibre = Math.Round(pcuLibre * (1m - descPctManual / 100m), 2, MidpointRounding.AwayFromZero);
+                var subLibre = Math.Round(finalLibre * it.Cantidad, 2, MidpointRounding.AwayFromZero);
+                cotizadoItems.Add(new CafeCotizadoItemDto(
+                    ProductoId: 0,
+                    ProductoNombre: descLibre,
+                    Categoria: "LIBRE",
+                    Formato: "UNIT",
+                    Cantidad: it.Cantidad,
+                    PrecioUnitario: pcuLibre,
+                    CostoUnitario: 0m,
+                    Subtotal: subLibre,
+                    GramosNecesarios: 0m,
+                    StockGramosDisponible: 0m,
+                    StockUnidadesDisponible: 0,
+                    StockOk: true,
+                    Aviso: null,
+                    Molienda: null,
+                    EsDoyPack: false,
+                    DescuentoPct: descPctManual));
+                subtotal += subLibre;
+                continue;
+            }
+
             if (!FormatosValidos.Contains(it.Formato))
             {
                 cotizadoItems.Add(new CafeCotizadoItemDto(
