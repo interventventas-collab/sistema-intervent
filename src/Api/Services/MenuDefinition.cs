@@ -12,7 +12,8 @@ public static class MenuDefinition
         {
             new MenuItem("publicaciones", "Publicaciones", "/publicaciones"),
             new MenuItem("ordenes", "Ordenes", "/ordenes"),
-            new MenuItem("mapeo", "Mapeo", "/mapeo")
+            new MenuItem("mapeo", "Mapeo", "/mapeo"),
+            new MenuItem("me1", "me1 / Entregas", "/meli/me1/entregas")
         }),
         new MenuGroup("inventario", "Productos y Servicios", new[]
         {
