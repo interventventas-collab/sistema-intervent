@@ -263,6 +263,8 @@ public class CafeCotizarItemRequest
     public string? Molienda { get; set; }
     public bool EsDoyPack { get; set; }
     public decimal DescuentoPct { get; set; }
+    /// <summary>Si el operador pisa el precio unitario a mano, viene cargado acá. Null = usar precio del catálogo.</summary>
+    public decimal? PrecioUnitarioOverride { get; set; }
 }
 
 public class CafeCotizarRequest

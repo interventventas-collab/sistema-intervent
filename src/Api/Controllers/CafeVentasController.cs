@@ -1002,8 +1002,16 @@ public class CafeVentasController : ControllerBase
 
             var breakdown = CafePricingService.CalcularPrecioBreakdown(prod, it.Formato, tipo, settings, descPct);
             var precioUnit = breakdown.PrecioLista;     // lista (sin descuento) — lo que se ve en P. Unitario
+            var precioFinal = breakdown.PrecioFinal;
+            // Override manual: si el operador pisó el precio a mano, ese valor pasa a ser la "lista"
+            // (lo que muestra arriba) y se le aplica el descuento de la línea como siempre.
+            if (it.PrecioUnitarioOverride is decimal override_ && override_ >= 0m)
+            {
+                precioUnit = Math.Round(override_, 2, MidpointRounding.AwayFromZero);
+                precioFinal = Math.Round(precioUnit * (1m - descPct / 100m), 2, MidpointRounding.AwayFromZero);
+            }
             var costoUnit = CafePricingService.CalcularCostoUnitario(prod, it.Formato);
-            var subtotalLinea = Math.Round(breakdown.PrecioFinal * it.Cantidad, 2, MidpointRounding.AwayFromZero);
+            var subtotalLinea = Math.Round(precioFinal * it.Cantidad, 2, MidpointRounding.AwayFromZero);
             var gramosNecesarios = esCafe ? CafePricingService.GramosPorUnidad(it.Formato) * it.Cantidad : 0m;
             var stockOk = esCafe ? gramosNecesarios <= prod.StockGramos + 0.001m : it.Cantidad <= prod.StockUnidades;
             string? aviso = null;

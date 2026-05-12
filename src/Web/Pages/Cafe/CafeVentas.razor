@@ -634,14 +634,26 @@
                                             </td>
                                             <td>@FormatoLabel(ci.Formato)</td>
                                             <td style="text-align: right;">
+                                                @* Precio unitario editable: input + indicador si está overridado *@
+                                                <input class="form-input" type="number" step="0.01" min="0"
+                                                       style="width: 110px; text-align: right; padding: 0.25rem 0.4rem; font-size: 0.85rem; font-weight: 700; @(formItem.PrecioUnitarioOverride.HasValue ? "background:#fef3c7; border-color:#d97706;" : "")"
+                                                       value="@ci.PrecioUnitario"
+                                                       @onchange="@(e => OnItemPrecioOverrideChanged(i, e.Value?.ToString()))"
+                                                       title="@(formItem.PrecioUnitarioOverride.HasValue ? "Precio modificado manualmente — click derecho o ✕ para volver al precio del catálogo" : "Precio del catálogo. Editá el valor para pisarlo manualmente.")" />
+                                                @if (formItem.PrecioUnitarioOverride.HasValue)
+                                                {
+                                                    <div style="display:flex; gap:0.2rem; justify-content:flex-end; align-items:center; margin-top:0.15rem;">
+                                                        <span style="font-size:0.65rem; color:#d97706; font-weight:600;" title="Precio modificado">✏️ manual</span>
+                                                        <button type="button" class="btn-icon" style="color:#6b7280; font-size:0.7rem; padding:0 0.2rem;"
+                                                                @onclick="() => ClearItemPrecioOverride(i)"
+                                                                title="Volver al precio del catálogo">✕</button>
+                                                    </div>
+                                                }
                                                 @if (ci.DescuentoPct > 0)
                                                 {
-                                                    <span style="color: #6b7280; text-decoration: line-through; font-size: 0.78rem;">$@FormatMoney(ci.PrecioUnitario)</span>
-                                                    <div style="font-weight: 700;">$@FormatMoney(Math.Round(ci.PrecioUnitario * (1m - ci.DescuentoPct / 100m), 2, MidpointRounding.AwayFromZero))</div>
-                                                }
-                                                else
-                                                {
-                                                    <span>$@FormatMoney(ci.PrecioUnitario)</span>
+                                                    <div style="font-size:0.7rem; color:#6b7280; margin-top:0.15rem;">
+                                                        c/desc -@ci.DescuentoPct%: <strong style="color:#16a34a;">$@FormatMoney(Math.Round(ci.PrecioUnitario * (1m - ci.DescuentoPct / 100m), 2, MidpointRounding.AwayFromZero))</strong>
+                                                    </div>
                                                 }
                                             </td>
                                             <td style="text-align: right;">
@@ -1720,6 +1732,38 @@
         int q = 1;
         if (!string.IsNullOrWhiteSpace(value)) int.TryParse(value, out q);
         formItems[idx].Cantidad = Math.Max(1, q);
+        await Cotizar();
+    }
+
+    /// <summary>El operador edita el "P. Unit." a mano. Si el valor difiere del precio del
+    /// catálogo, se setea como override. Si vuelve al precio del catálogo, se limpia el override.</summary>
+    private async Task OnItemPrecioOverrideChanged(int idx, string? value)
+    {
+        if (idx < 0 || idx >= formItems.Count || cotizacion is null || idx >= cotizacion.Items.Count) return;
+        if (!string.IsNullOrWhiteSpace(value)
+            && decimal.TryParse(value.Replace(",", "."), System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out var v) && v >= 0m)
+        {
+            // Si el valor que tipeó coincide con el del catálogo, NO lo marcamos como override
+            // (no hay nada que pisar). Si difiere, sí.
+            var precioCatalogo = cotizacion.Items[idx].PrecioUnitario;
+            if (Math.Abs(v - precioCatalogo) < 0.005m)
+                formItems[idx].PrecioUnitarioOverride = null;
+            else
+                formItems[idx].PrecioUnitarioOverride = Math.Round(v, 2, MidpointRounding.AwayFromZero);
+        }
+        else
+        {
+            formItems[idx].PrecioUnitarioOverride = null;
+        }
+        await Cotizar();
+    }
+
+    /// <summary>Vuelve al precio del catálogo (sin override).</summary>
+    private async Task ClearItemPrecioOverride(int idx)
+    {
+        if (idx < 0 || idx >= formItems.Count) return;
+        formItems[idx].PrecioUnitarioOverride = null;
         await Cotizar();
     }
 

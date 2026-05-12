@@ -254,6 +254,10 @@ public class CafeCotizarItemRequest
     public string? Molienda { get; set; }   // EN GRANOS | MOLIDO FILTRO | MOLIDO ESPRESS | null
     public bool EsDoyPack { get; set; }
     public decimal DescuentoPct { get; set; }   // 0-100, descuento porcentual de la linea
+    /// <summary>Si el operador pisa el precio unitario a mano, viene cargado acá. Si es null,
+    /// se calcula automáticamente con producto + matriz de precios. Si es &gt;= 0, ese
+    /// valor reemplaza al calculado (después se le aplica el descuento de la línea).</summary>
+    public decimal? PrecioUnitarioOverride { get; set; }
 }
 
 public class CafeCotizarRequest
