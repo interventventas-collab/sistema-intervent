@@ -24,7 +24,8 @@ public class CafeClientesController : ControllerBase
         c.CondicionIvaDefault,
         c.DomicilioEntrega,
         c.Notas, c.ComentariosComprobante,
-        c.IsActive, c.CreatedAt, c.UpdatedAt);
+        c.IsActive, c.CreatedAt, c.UpdatedAt,
+        c.CodigoInterno, c.MapeoLink);
 
     [HttpGet]
     public async Task<IActionResult> GetAll()
@@ -115,6 +116,39 @@ public class CafeClientesController : ControllerBase
         if (req.Notas is not null) c.Notas = Norm(req.Notas);
         if (req.ComentariosComprobante is not null) c.ComentariosComprobante = Norm(req.ComentariosComprobante);
         if (req.IsActive.HasValue) c.IsActive = req.IsActive.Value;
+        // MapeoLink: si vino, actualizo. Si vino ClearMapeoLink, lo vacío.
+        if (req.MapeoLink is not null) c.MapeoLink = Norm(req.MapeoLink);
+        else if (req.ClearMapeoLink) c.MapeoLink = null;
+        c.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(Map(c));
+    }
+
+    /// <summary>Asigna un código interno correlativo al cliente. Si ya tiene uno, lo respeta.
+    /// El correlativo se calcula como MAX(CodigoInterno actual) + 1.</summary>
+    [HttpPost("{id:int}/asignar-codigo-interno")]
+    public async Task<IActionResult> AsignarCodigoInterno(int id)
+    {
+        var c = await _db.CafeClientes.FindAsync(id);
+        if (c is null) return NotFound(new { error = "Cliente no encontrado" });
+        if (c.CodigoInterno.HasValue)
+            return Ok(Map(c));   // ya tenía uno, lo respetamos
+        var maxActual = await _db.CafeClientes
+            .Where(x => x.CodigoInterno != null)
+            .MaxAsync(x => (int?)x.CodigoInterno) ?? 0;
+        c.CodigoInterno = maxActual + 1;
+        c.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(Map(c));
+    }
+
+    /// <summary>Saca el código interno (vuelve a null). Útil si el operador lo asignó por error.</summary>
+    [HttpDelete("{id:int}/codigo-interno")]
+    public async Task<IActionResult> QuitarCodigoInterno(int id)
+    {
+        var c = await _db.CafeClientes.FindAsync(id);
+        if (c is null) return NotFound(new { error = "Cliente no encontrado" });
+        c.CodigoInterno = null;
         c.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return Ok(Map(c));

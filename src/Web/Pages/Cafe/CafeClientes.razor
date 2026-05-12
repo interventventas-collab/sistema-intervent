@@ -209,8 +209,43 @@
                         Estos comentarios <strong>aparecen en TODOS los comprobantes</strong> de este cliente.
                     </p>
                 </div>
-                @if (isEditing)
+                @* ─── Código interno + vinculación a Mapeo (solo al editar, requiere cliente guardado) ─── *@
+                @if (isEditing && editingId.HasValue)
                 {
+                    <div style="background: #eff6ff; border: 1px solid #3b82f6; border-radius: 6px; padding: 0.6rem 0.8rem; margin-top: 0.5rem;">
+                        <div class="form-group" style="margin-bottom: 0.5rem;">
+                            <label class="form-label" style="font-size: 0.78rem; color: #1e40af;">🆔 Código interno (uso interno)</label>
+                            @if (formCodigoInterno.HasValue)
+                            {
+                                <div style="display: flex; gap: 0.4rem; align-items: center;">
+                                    <span style="font-family: monospace; font-weight: 700; font-size: 1.1rem; color: #1e40af;">@formCodigoInterno</span>
+                                    <button type="button" class="btn btn-secondary" @onclick="QuitarCodigoInterno"
+                                            style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">🗑 Quitar</button>
+                                </div>
+                            }
+                            else
+                            {
+                                <div style="display: flex; gap: 0.4rem; align-items: center;">
+                                    <span style="font-size: 0.85rem; color: #6b7280;">— sin asignar —</span>
+                                    <button type="button" class="btn btn-secondary" @onclick="AsignarCodigoInterno"
+                                            disabled="@asignandoCodigo"
+                                            style="font-size: 0.78rem; padding: 0.3rem 0.6rem;">
+                                        @(asignandoCodigo ? "⏳..." : "🎯 Asignar código")
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label class="form-label" style="font-size: 0.78rem; color: #1e40af;">🗺 Enlace Google Maps (corto)</label>
+                            <input class="form-input" @bind="formMapeoLink"
+                                   placeholder="https://maps.app.goo.gl/..." />
+                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
+                                Pegá el enlace corto que sale al compartir la ubicación desde Google Maps en el celular.
+                                Si cargás algo acá, el cliente aparece en la página <strong>"Clientes Mapeados"</strong>.
+                            </p>
+                        </div>
+                    </div>
+
                     <div class="form-group">
                         <label class="form-label">Estado</label>
                         <select class="form-input" @bind="formIsActive">
@@ -276,6 +311,9 @@
     private int? editingId;
     private string formNombre = "", formTipo = "OTRO", formCuit = "", formTelefono = "", formEmail = "", formDireccion = "", formNotas = "";
     private string formRazonSocial = "", formDomicilioEntrega = "", formComentariosComprobante = "";
+    private int? formCodigoInterno;
+    private string formMapeoLink = "";
+    private bool asignandoCodigo;
     private string formLocalidad = "", formCiudad = "", formCp = "", formCondicionIvaDefault = "";
 
     private async Task OnFormCpInput(string? value)
@@ -404,6 +442,7 @@
         formNombre = ""; formTipo = "OTRO"; formCuit = ""; formTelefono = ""; formEmail = ""; formDireccion = ""; formNotas = "";
         formRazonSocial = ""; formDomicilioEntrega = ""; formComentariosComprobante = "";
         formLocalidad = ""; formCiudad = ""; formCp = ""; formCondicionIvaDefault = "";
+        formCodigoInterno = null; formMapeoLink = "";
         formIsActive = true; formError = null; showForm = true;
     }
 
@@ -418,7 +457,44 @@
         formComentariosComprobante = c.ComentariosComprobante ?? "";
         formLocalidad = c.Localidad ?? ""; formCiudad = c.Ciudad ?? "";
         formCp = c.Cp ?? ""; formCondicionIvaDefault = c.CondicionIvaDefault ?? "";
+        formCodigoInterno = c.CodigoInterno;
+        formMapeoLink = c.MapeoLink ?? "";
         formIsActive = c.IsActive; formError = null; showForm = true;
+    }
+
+    private async Task AsignarCodigoInterno()
+    {
+        if (!editingId.HasValue) return;
+        asignandoCodigo = true;
+        try
+        {
+            var updated = await Api.AsignarCodigoInternoAsync(editingId.Value);
+            if (updated is not null)
+            {
+                formCodigoInterno = updated.CodigoInterno;
+                ToastService.Success($"Código interno asignado: {updated.CodigoInterno}");
+                await Load();   // refresca el listado
+            }
+            else { ToastService.Error("No se pudo asignar el código"); }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { asignandoCodigo = false; }
+    }
+
+    private async Task QuitarCodigoInterno()
+    {
+        if (!editingId.HasValue) return;
+        try
+        {
+            var updated = await Api.QuitarCodigoInternoAsync(editingId.Value);
+            if (updated is not null)
+            {
+                formCodigoInterno = null;
+                ToastService.Success("Código interno quitado");
+                await Load();
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
     }
 
     private void CloseForm() { showForm = false; formError = null; }
@@ -432,6 +508,7 @@
         {
             if (isEditing && editingId.HasValue)
             {
+                var mapeoLinkClean = (formMapeoLink ?? "").Trim();
                 var u = await Api.UpdateCafeClienteAsync(editingId.Value, new UpdateCafeClienteRequest
                 {
                     Nombre = formNombre, RazonSocial = formRazonSocial, Tipo = formTipo,
@@ -440,7 +517,9 @@
                     Localidad = formLocalidad, Ciudad = formCiudad, Cp = formCp,
                     CondicionIvaDefault = formCondicionIvaDefault,
                     Notas = formNotas, ComentariosComprobante = formComentariosComprobante,
-                    IsActive = formIsActive
+                    IsActive = formIsActive,
+                    MapeoLink = string.IsNullOrEmpty(mapeoLinkClean) ? null : mapeoLinkClean,
+                    ClearMapeoLink = string.IsNullOrEmpty(mapeoLinkClean)
                 });
                 if (u is null) { formError = "No se pudo actualizar"; return; }
                 ToastService.Success("Cliente actualizado");

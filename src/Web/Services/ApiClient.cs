@@ -421,6 +421,21 @@ public class ApiClient
     public async Task<bool> DeleteCafeClienteAsync(int id)
         => await DeleteAsync($"/api/cafe/clientes/{id}");
 
+    /// <summary>Asigna un código interno correlativo al cliente (max + 1).</summary>
+    public async Task<CafeClienteDto?> AsignarCodigoInternoAsync(int id)
+        => await PostAsync<CafeClienteDto>($"/api/cafe/clientes/{id}/asignar-codigo-interno", new { });
+
+    /// <summary>Saca el código interno (vuelve a null).</summary>
+    public async Task<CafeClienteDto?> QuitarCodigoInternoAsync(int id)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.DeleteAsync($"/api/cafe/clientes/{id}/codigo-interno");
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return null; }
+        if (!resp.IsSuccessStatusCode) return null;
+        var body = await resp.Content.ReadAsStringAsync();
+        return System.Text.Json.JsonSerializer.Deserialize<CafeClienteDto>(body, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+    }
+
     // --- Cafe: Productos ---
     public async Task<List<CafeProductoDto>?> GetCafeProductosAsync(string? categoria = null)
     {

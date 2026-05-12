@@ -1894,6 +1894,19 @@ BEGIN
 END
 GO
 
+-- Migración: código interno correlativo + enlace de Google Maps
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='CodigoInterno' AND Object_ID=OBJECT_ID('Cafe_Clientes'))
+    ALTER TABLE Cafe_Clientes ADD CodigoInterno INT NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='MapeoLink' AND Object_ID=OBJECT_ID('Cafe_Clientes'))
+    ALTER TABLE Cafe_Clientes ADD MapeoLink NVARCHAR(500) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='IX_CafeClientes_CodigoInterno' AND object_id=OBJECT_ID('Cafe_Clientes'))
+BEGIN
+    CREATE INDEX IX_CafeClientes_CodigoInterno ON Cafe_Clientes (CodigoInterno) WHERE CodigoInterno IS NOT NULL;
+END
+GO
+
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_Productos' AND xtype='U')
 BEGIN
     CREATE TABLE Cafe_Productos (

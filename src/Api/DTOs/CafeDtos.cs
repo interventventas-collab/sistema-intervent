@@ -8,7 +8,8 @@ public record CafeClienteDto(
     string? CondicionIvaDefault,
     string? DomicilioEntrega,
     string? Notas, string? ComentariosComprobante,
-    bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt);
+    bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt,
+    int? CodigoInterno = null, string? MapeoLink = null);
 
 public class CreateCafeClienteRequest
 {
@@ -45,6 +46,8 @@ public class UpdateCafeClienteRequest
     public string? Notas { get; set; }
     public string? ComentariosComprobante { get; set; }
     public bool? IsActive { get; set; }
+    public string? MapeoLink { get; set; }
+    public bool ClearMapeoLink { get; set; }
 }
 
 // ===== Productos =====

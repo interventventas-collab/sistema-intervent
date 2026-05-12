@@ -63,6 +63,16 @@ public class CafeCliente
 
     public bool IsActive { get; set; } = true;
 
+    /// <summary>Código interno correlativo asignado por el operador (botón en la ficha).
+    /// NO confundir con `Codigo` (que es texto libre). Este es un número único para uso interno
+    /// del operador: identificar clientes en mapeo, reportes, integraciones externas, etc.</summary>
+    public int? CodigoInterno { get; set; }
+
+    /// <summary>Enlace corto de Google Maps a la ubicación del cliente (formato https://maps.app.goo.gl/...).
+    /// Si está cargado, el cliente aparece en la página "Clientes Mapeados".</summary>
+    [MaxLength(500)]
+    public string? MapeoLink { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

@@ -19,6 +19,10 @@ public class CafeClienteDto
     public string? Notas { get; set; }
     public string? ComentariosComprobante { get; set; }
     public bool IsActive { get; set; }
+    /// <summary>Código interno correlativo (numérico) asignado por el operador con el botón.</summary>
+    public int? CodigoInterno { get; set; }
+    /// <summary>Enlace corto de Google Maps a la ubicación del cliente.</summary>
+    public string? MapeoLink { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 }
@@ -58,6 +62,8 @@ public class UpdateCafeClienteRequest
     public string? Notas { get; set; }
     public string? ComentariosComprobante { get; set; }
     public bool? IsActive { get; set; }
+    public string? MapeoLink { get; set; }
+    public bool ClearMapeoLink { get; set; }
 }
 
 public class CafeProductoDto
