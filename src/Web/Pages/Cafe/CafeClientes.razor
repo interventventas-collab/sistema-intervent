@@ -131,16 +131,17 @@
                 <div class="form-row">
                     <div class="form-group" style="flex: 1;">
                         <label class="form-label">CUIT / DNI</label>
-                        <div style="display: flex; gap: 0.4rem;">
-                            <input class="form-input" @bind="formCuit" placeholder="Ej: 30123456789" style="flex: 1;" />
+                        <div style="display: flex; gap: 0.4rem; align-items: stretch;">
+                            <input class="form-input" @bind="formCuit" placeholder="Ej: 30123456789"
+                                   style="flex: 1 1 auto; min-width: 0;" />
                             <button type="button" class="btn btn-secondary" @onclick="BuscarPorCuit" disabled="@buscandoCuit"
                                     title="Trae automáticamente Razón Social, Dirección y Condición IVA"
-                                    style="white-space: nowrap; font-size: 0.85rem;">
-                                @if (buscandoCuit) { <span>⏳ Buscando...</span> } else { <span>🔍 Buscar en ARCA</span> }
+                                    style="flex: 0 0 auto; white-space: nowrap; font-size: 0.8rem; padding: 0.4rem 0.7rem;">
+                                @if (buscandoCuit) { <span>⏳</span> } else { <span>🔍 ARCA</span> }
                             </button>
                         </div>
                         <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
-                            Cargá el CUIT (11 dígitos) y apretá el botón — se completan Razón Social, Dirección y Condición IVA.
+                            Cargá el CUIT (11 dígitos) y apretá <strong>🔍 ARCA</strong> — completa Razón Social, Dirección y Condición IVA.
                         </p>
                     </div>
                     <div class="form-group" style="flex: 1;">
