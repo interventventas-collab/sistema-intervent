@@ -468,7 +468,17 @@
                     </div>
                     @* ════════════ Modelo NUEVO: 2 precios directos por producto ════════════ *@
                     <div style="background: #f0fdf4; border: 1px solid #16a34a; border-radius: 6px; padding: 0.6rem 0.8rem; margin-top: 0.5rem;">
-                        <h4 style="margin: 0 0 0.5rem; font-size: 0.85rem; color: #166534;">💰 Precios de venta (sin IVA)</h4>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin: 0 0 0.5rem;">
+                            <h4 style="margin: 0; font-size: 0.85rem; color: #166534;">💰 Precios de venta (sin IVA)</h4>
+                            @if (formCosto > 0 && (formMargenBar.HasValue || formMargenOtro.HasValue))
+                            {
+                                <button type="button" class="btn btn-secondary" @onclick="RefrescarPreciosAlCostoActual"
+                                        style="font-size: 0.7rem; padding: 0.25rem 0.5rem;"
+                                        title="Recalcula los precios manteniendo los márgenes actuales contra el costo. Útil cuando subió el costo y querés mantener el margen.">
+                                    🔄 Refrescar al costo
+                                </button>
+                            }
+                        </div>
                         <div class="form-row" style="margin-bottom: 0.3rem;">
                             <div class="form-group" style="flex: 1;">
                                 <label class="form-label" style="font-size: 0.75rem;">Precio BAR (mayorista)</label>
@@ -932,13 +942,31 @@
 
     private void RecalcularMargenesDesdeCosto()
     {
-        // Cambió el costo. Los precios quedan iguales, los márgenes se ajustan al nuevo costo.
+        // Cambió el costo. Los precios YA cargados quedan iguales (no se pisan automáticamente —
+        // para eso está el botón "🔄 Refrescar precios"). Los márgenes se recalculan contra el costo nuevo.
+        // EXCEPCIÓN: si un precio está vacío y la categoría es OTROS, lo autocompletamos con costo×2.
+        if (formCategoria == "OTROS" && formCosto > 0)
+        {
+            if (!formPrecioBar.HasValue) formPrecioBar = Math.Round(formCosto * 2m, 2);
+            if (!formPrecioOtro.HasValue) formPrecioOtro = Math.Round(formCosto * 2m, 2);
+        }
         formMargenBar = (formPrecioBar.HasValue && formCosto > 0)
             ? Math.Round((formPrecioBar.Value / formCosto - 1m) * 100m, 2, MidpointRounding.AwayFromZero)
             : (decimal?)null;
         formMargenOtro = (formPrecioOtro.HasValue && formCosto > 0)
             ? Math.Round((formPrecioOtro.Value / formCosto - 1m) * 100m, 2, MidpointRounding.AwayFromZero)
             : (decimal?)null;
+    }
+
+    /// <summary>Refresca AMBOS precios manteniendo los márgenes actuales contra el costo actual.
+    /// Útil cuando subió el costo y querés que los precios se ajusten para no perder margen.</summary>
+    private void RefrescarPreciosAlCostoActual()
+    {
+        if (formCosto <= 0) return;
+        if (formMargenBar.HasValue)
+            formPrecioBar = Math.Round(formCosto * (1m + formMargenBar.Value / 100m), 2, MidpointRounding.AwayFromZero);
+        if (formMargenOtro.HasValue)
+            formPrecioOtro = Math.Round(formCosto * (1m + formMargenOtro.Value / 100m), 2, MidpointRounding.AwayFromZero);
     }
     private void RecalcMargenBarDesdePrecio()
     {
@@ -1326,6 +1354,13 @@
             ?? (p.BarPctSobreCosto.HasValue && p.Costo > 0
                 ? Math.Round(p.Costo * (1m + p.BarPctSobreCosto.Value / 100m), 2)
                 : (decimal?)null);
+        // Default razonable si los precios quedan en null y hay costo: usar costo × 2 (margen 100%).
+        // Solo aplica a productos OTROS — para CAFE estos campos no se usan.
+        if (p.Categoria == "OTROS" && p.Costo > 0)
+        {
+            if (!formPrecioBar.HasValue) formPrecioBar = Math.Round(p.Costo * 2m, 2);
+            if (!formPrecioOtro.HasValue) formPrecioOtro = Math.Round(p.Costo * 2m, 2);
+        }
         // Calculamos los márgenes iniciales (sincronizado con los precios pre-cargados)
         formMargenBar = formPrecioBar.HasValue && p.Costo > 0
             ? Math.Round((formPrecioBar.Value / p.Costo - 1m) * 100m, 2, MidpointRounding.AwayFromZero)
