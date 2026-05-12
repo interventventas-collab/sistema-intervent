@@ -131,7 +131,17 @@
                 <div class="form-row">
                     <div class="form-group" style="flex: 1;">
                         <label class="form-label">CUIT / DNI</label>
-                        <input class="form-input" @bind="formCuit" placeholder="Ej: 30123456789" />
+                        <div style="display: flex; gap: 0.4rem;">
+                            <input class="form-input" @bind="formCuit" placeholder="Ej: 30123456789" style="flex: 1;" />
+                            <button type="button" class="btn btn-secondary" @onclick="BuscarPorCuit" disabled="@buscandoCuit"
+                                    title="Trae automáticamente Razón Social, Dirección y Condición IVA"
+                                    style="white-space: nowrap; font-size: 0.85rem;">
+                                @if (buscandoCuit) { <span>⏳ Buscando...</span> } else { <span>🔍 Buscar en ARCA</span> }
+                            </button>
+                        </div>
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
+                            Cargá el CUIT (11 dígitos) y apretá el botón — se completan Razón Social, Dirección y Condición IVA.
+                        </p>
                     </div>
                     <div class="form-group" style="flex: 1;">
                         <label class="form-label">Email</label>
@@ -279,6 +289,68 @@
             }
         }
     }
+
+    private bool buscandoCuit;
+
+    /// <summary>Busca los datos fiscales del CUIT en cuitonline.com y autocompleta
+    /// los campos de razón social, dirección y condición IVA. Sobre-escribe sin preguntar
+    /// los valores actuales si encuentra datos nuevos.</summary>
+    private async Task BuscarPorCuit()
+    {
+        var clean = new string((formCuit ?? "").Where(char.IsDigit).ToArray());
+        if (clean.Length != 11)
+        {
+            ToastService.Error("El CUIT debe tener 11 dígitos.");
+            return;
+        }
+        buscandoCuit = true;
+        StateHasChanged();
+        try
+        {
+            var result = await Api.LookupCuitAsync(clean);
+            if (result is null || !result.Found)
+            {
+                ToastService.Error(result?.Error ?? "No se encontraron datos para ese CUIT.");
+                return;
+            }
+            // Razón social: siempre se sobre-escribe si encontramos algo
+            if (!string.IsNullOrWhiteSpace(result.Name))
+            {
+                formRazonSocial = result.Name!.Trim();
+                // Si el nombre fantasía estaba vacío, usamos también la razón social
+                if (string.IsNullOrWhiteSpace(formNombre))
+                    formNombre = result.Name!.Trim();
+            }
+            // Dirección fiscal
+            if (!string.IsNullOrWhiteSpace(result.Address))
+                formDireccion = result.Address!.Trim();
+            // Condición IVA — mapeamos el texto que devuelve cuitonline a los códigos internos
+            if (!string.IsNullOrWhiteSpace(result.IvaCondition))
+            {
+                var t = result.IvaCondition!.Trim().ToUpperInvariant();
+                if (t.Contains("RESPONSABLE INSCRIPTO") || t == "RI")
+                    formCondicionIvaDefault = "RI";
+                else if (t.Contains("MONOTRIBUT"))
+                    formCondicionIvaDefault = "MO";
+                else if (t.Contains("EXENTO"))
+                    formCondicionIvaDefault = "EX";
+                else if (t.Contains("CONSUMIDOR FINAL") || t == "CF")
+                    formCondicionIvaDefault = "CF";
+                // Si no matcheamos, lo dejamos como estaba
+            }
+            ToastService.Success($"Datos cargados: {result.Name}");
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error consultando el CUIT: " + ex.Message);
+        }
+        finally
+        {
+            buscandoCuit = false;
+            StateHasChanged();
+        }
+    }
+
     private bool formIsActive = true;
     private bool showDeleteConfirm;
     private CafeClienteDto? toDelete;
