@@ -2227,6 +2227,21 @@ public class ApiClient
         catch (Exception ex) { return (false, ex.Message); }
     }
 
+    /// <summary>
+    /// Cambia el estado de un envio ME1 usando el MeliShipmentId (long). Si no esta en la base local,
+    /// el backend lo sincroniza desde MeLi antes de cambiar el estado.
+    /// </summary>
+    public async Task<(bool ok, string? error)> SetMeliMe1ShipmentStatusByMeliIdAsync(long meliShipmentId, string status, string? substatus, string? trackingNumber = null, string? trackingUrl = null, string? comment = null)
+    {
+        try
+        {
+            var r = await PostAsync<object>($"/api/meli/me1/by-meli-id/{meliShipmentId}/status", new { status, substatus, trackingNumber, trackingUrl, comment });
+            return (r is not null, null);
+        }
+        catch (HttpRequestException ex) { return (false, ex.Message); }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
     public async Task<bool> UpdateMeliShipmentInternalStatusAsync(int id, string internalStatus, string? notes = null)
     {
         var r = await PutAsync<object>($"/api/meli/shipments/{id}/internal-status", new { internalStatus, notes });

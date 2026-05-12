@@ -267,14 +267,15 @@
                             @if (group.IsPack)
                             {
                                 var packIsMe1 = group.Orders.Any(o => o.ShippingMode == "me1");
+                                var packMe1Order = group.Orders.FirstOrDefault(o => o.ShippingMode == "me1");
                                 <tr class="pack-header-row clickable-row @(packIsMe1 ? "row-me1" : "")" @onclick="() => ShowPackDetail(group.PackId!.Value)">
                                     <td>
                                         <strong>Pack @group.PackId</strong>
-                                        @if (packIsMe1)
+                                        @if (packIsMe1 && packMe1Order is not null)
                                         {
-                                            <span class="badge-me1" title="Envio ME1 - click para gestionar entrega"
+                                            <span class="badge-me1" title="Envio ME1 - click para marcar estado de entrega"
                                                   @onclick:stopPropagation="true"
-                                                  @onclick="@(() => Nav.NavigateTo("/meli/me1/entregas"))">🏎 ME1</span>
+                                                  @onclick="@(() => OpenMe1Modal(packMe1Order))">🏎 ME1</span>
                                         }
                                     </td>
                                     <td>@group.Orders.First().DateCreated.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
@@ -337,9 +338,9 @@
                                         <strong>@order.MeliOrderId</strong>
                                         @if (isMe1)
                                         {
-                                            <span class="badge-me1" title="Envio ME1 - click para gestionar entrega"
+                                            <span class="badge-me1" title="Envio ME1 - click para marcar estado de entrega"
                                                   @onclick:stopPropagation="true"
-                                                  @onclick="@(() => Nav.NavigateTo("/meli/me1/entregas"))">🏎 ME1</span>
+                                                  @onclick="@(() => OpenMe1Modal(order))">🏎 ME1</span>
                                         }
                                     </td>
                                     <td>@order.DateCreated.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
@@ -387,6 +388,64 @@
 @if (activeFilterColumn is not null || showDateFilter)
 {
     <div class="filter-overlay" @onclick="CloseAllDropdowns"></div>
+}
+
+@* Modal de cambio de estado ME1: se abre con click en el badge 🏎 ME1. Reusa el flujo de me1/Entregas. *@
+@if (me1ModalOrder is not null)
+{
+    var isIrreversible = me1NewStatus == "delivered" || me1NewStatus == "not_delivered";
+    <div class="modal-overlay" @onclick="CloseMe1Modal">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true" style="max-width: 480px;">
+            <div class="modal-header" style="background: @(isIrreversible ? "#fef2f2" : "#fff7ed");">
+                <h4 style="margin: 0;">🏎 ME1 · Estado de entrega</h4>
+                <button class="btn-close" @onclick="CloseMe1Modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="margin: 0 0 0.4rem; font-size: 0.82rem; color: #6b7280;">
+                    Orden <b>@me1ModalOrder.MeliOrderId</b> · @me1ModalOrder.BuyerNickname
+                </p>
+                <p style="font-size: 0.9rem; margin: 0 0 0.8rem;">
+                    <b>@me1ModalOrder.ItemTitle</b>
+                    <br/>Total: <b>@me1ModalOrder.CurrencyId @me1ModalOrder.TotalAmount.ToString("N2")</b>
+                </p>
+                <div class="form-group" style="margin-bottom: 0.6rem;">
+                    <label class="form-label">Nuevo estado en MeLi</label>
+                    <select class="form-input" @bind="me1SelectedKey">
+                        <option value="">— Elegi un estado —</option>
+                        <option value="shipped|null">📦 Marcar Despachado</option>
+                        <option value="shipped|out_for_delivery">🚚 Salio a entregar</option>
+                        <option value="delivered|null">✅ Marcar Entregado (final)</option>
+                        <option value="not_delivered|returning_to_sender">❌ No entregado (final)</option>
+                    </select>
+                </div>
+                @if (isIrreversible)
+                {
+                    <p style="color: #b91c1c; font-size: 0.82rem; margin: 0 0 0.6rem; font-weight: 600;">
+                        ⚠ Este cambio NO se puede deshacer. MeLi lo va a tomar como definitivo.
+                    </p>
+                }
+                <div class="form-group" style="margin-bottom: 0.4rem;">
+                    <label class="form-label">Comentario (opcional)</label>
+                    <input class="form-input" @bind="me1CommentInput" placeholder="ej: entregado en mano a Juan" />
+                </div>
+                @if (me1NewStatus == "shipped")
+                {
+                    <div class="form-group">
+                        <label class="form-label">Numero de tracking / remito (opcional)</label>
+                        <input class="form-input" @bind="me1TrackingInput" placeholder="OP123..." />
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseMe1Modal" disabled="@isSubmittingMe1">Cancelar</button>
+                <button class="btn @(isIrreversible ? "btn-danger" : "btn-primary")"
+                        @onclick="ConfirmMe1Status"
+                        disabled="@(isSubmittingMe1 || string.IsNullOrEmpty(me1SelectedKey))">
+                    @(isSubmittingMe1 ? "Procesando..." : "Confirmar")
+                </button>
+            </div>
+        </div>
+    </div>
 }
 
 @if (showDetailModal && orderDetail is not null)
@@ -1592,6 +1651,66 @@
     {
         showDetailModal = false;
         orderDetail = null;
+    }
+
+    // ===== Modal de cambio de estado ME1 (se abre con click en el badge 🏎 ME1) =====
+    private MeliOrderDto? me1ModalOrder;
+    private string me1SelectedKey = "";
+    private string me1CommentInput = "";
+    private string me1TrackingInput = "";
+    private bool isSubmittingMe1;
+
+    /// <summary>Status sin el separador. Para mostrar el aviso de irreversibilidad en el modal.</summary>
+    private string me1NewStatus =>
+        string.IsNullOrEmpty(me1SelectedKey) ? "" : me1SelectedKey.Split('|')[0];
+
+    private void OpenMe1Modal(MeliOrderDto order)
+    {
+        me1ModalOrder = order;
+        me1SelectedKey = "";
+        me1CommentInput = "";
+        me1TrackingInput = "";
+    }
+
+    private void CloseMe1Modal()
+    {
+        if (isSubmittingMe1) return;
+        me1ModalOrder = null;
+        me1SelectedKey = "";
+        me1CommentInput = "";
+        me1TrackingInput = "";
+    }
+
+    private async Task ConfirmMe1Status()
+    {
+        if (me1ModalOrder is null || string.IsNullOrEmpty(me1SelectedKey)) return;
+        if (!me1ModalOrder.ShippingId.HasValue)
+        {
+            ToastService.Error("La orden no tiene shipping_id, no se puede operar");
+            return;
+        }
+        var parts = me1SelectedKey.Split('|');
+        if (parts.Length != 2) return;
+        var status = parts[0];
+        var substatus = parts[1] == "null" ? null : parts[1];
+
+        isSubmittingMe1 = true;
+        try
+        {
+            var (ok, error) = await Api.SetMeliMe1ShipmentStatusByMeliIdAsync(
+                me1ModalOrder.ShippingId.Value,
+                status,
+                substatus,
+                trackingNumber: string.IsNullOrWhiteSpace(me1TrackingInput) ? null : me1TrackingInput,
+                trackingUrl: null,
+                comment: string.IsNullOrWhiteSpace(me1CommentInput) ? null : me1CommentInput);
+            if (!ok) { ToastService.Error(error ?? "MeLi rechazo el cambio"); return; }
+            ToastService.Success("Estado actualizado en MeLi");
+            CloseMe1Modal();
+            await LoadOrders(); // refrescar grilla
+        }
+        catch (Exception ex) { ToastService.Error($"Error: {ex.Message}"); }
+        finally { isSubmittingMe1 = false; }
     }
 
     private string GetPaymentMethodLabel(string? method) => method?.ToLower() switch

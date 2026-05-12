@@ -100,6 +100,26 @@ public class MeliMe1Controller : ControllerBase
     public record SetStatusRequest(string Status, string? Substatus, string? TrackingNumber, string? TrackingUrl, string? Comment);
 
     /// <summary>
+    /// Variante de SetStatus que recibe el MeliShipmentId (numero largo que devuelve MeLi) en vez del Id interno.
+    /// Si el envio no esta en la base local, lo sincroniza desde MeLi primero. Util cuando el usuario quiere
+    /// marcar como entregado un envio desde la pantalla de Ordenes (que no necesariamente esta en MeliShipments).
+    /// </summary>
+    [HttpPost("by-meli-id/{meliShipmentId:long}/status")]
+    public async Task<IActionResult> SetStatusByMeliId(long meliShipmentId, [FromBody] SetStatusRequest req)
+    {
+        var ship = await _db.MeliShipments.FirstOrDefaultAsync(s => s.MeliShipmentId == meliShipmentId);
+        if (ship is null)
+        {
+            // No esta local — sincronizar desde MeLi
+            var synced = await _service.SyncSingleShipmentAsync(meliShipmentId);
+            if (!synced) return BadRequest(new { error = "No se pudo sincronizar el envio desde MeLi" });
+            ship = await _db.MeliShipments.FirstOrDefaultAsync(s => s.MeliShipmentId == meliShipmentId);
+            if (ship is null) return BadRequest(new { error = "Envio no encontrado tras sincronizar" });
+        }
+        return await SetStatus(ship.Id, req);
+    }
+
+    /// <summary>
     /// Cambia el estado del envio ME1 en MeLi.
     /// Status validos:
     ///   - shipped + substatus=null            → Despachado (reversible)

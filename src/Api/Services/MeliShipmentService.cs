@@ -281,6 +281,71 @@ public class MeliShipmentService
     }
 
     /// <summary>
+    /// Sincroniza UN solo envio desde MeLi por su MeliShipmentId. Util cuando el usuario quiere operar sobre
+    /// un envio que todavia no esta en la base local (ej: marcar entregado desde la pantalla de Ordenes
+    /// sobre un envio que la sync masiva no alcanzo a traer).
+    /// </summary>
+    public async Task<bool> SyncSingleShipmentAsync(long meliShipmentId)
+    {
+        // Necesito la cuenta MeLi para autenticarme. Si el envio ya existe local, uso esa cuenta;
+        // si no, busco si la orden esta en MeliOrders para inferir la cuenta. Si tampoco, uso la primera cuenta.
+        MeliAccount? account = null;
+        var existing = await _db.MeliShipments.FirstOrDefaultAsync(s => s.MeliShipmentId == meliShipmentId);
+        if (existing is not null)
+            account = await _db.MeliAccounts.FirstOrDefaultAsync(a => a.Id == existing.MeliAccountId);
+
+        if (account is null)
+        {
+            // Buscar por orden
+            var ord = await _db.MeliOrders.FirstOrDefaultAsync(o => o.ShippingId == meliShipmentId);
+            if (ord is not null)
+                account = await _db.MeliAccounts.FirstOrDefaultAsync(a => a.Id == ord.MeliAccountId);
+        }
+        if (account is null)
+            account = (await _accountService.GetAllAccountEntitiesAsync()).FirstOrDefault();
+        if (account is null) return false;
+
+        var token = await _accountService.GetValidTokenAsync(account);
+        if (token is null) return false;
+
+        var http = _httpFactory.CreateClient();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var resp = await http.GetAsync($"https://api.mercadolibre.com/shipments/{meliShipmentId}");
+        if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized || resp.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        {
+            var newTok = await _accountService.GetValidTokenAsync(account, forceRefresh: true);
+            if (newTok is null) return false;
+            http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", newTok);
+            resp = await http.GetAsync($"https://api.mercadolibre.com/shipments/{meliShipmentId}");
+        }
+        if (!resp.IsSuccessStatusCode) return false;
+
+        var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync()).RootElement;
+
+        // Buscar info de la orden asociada (para items summary, total, buyer)
+        long? orderId = existing?.MeliOrderId;
+        decimal? orderTotal = existing?.OrderTotal;
+        string? itemsSummary = existing?.ItemsSummary;
+        string? buyerNickname = existing?.BuyerNickname;
+        if (orderId is null)
+        {
+            var ord2 = await _db.MeliOrders.FirstOrDefaultAsync(o => o.ShippingId == meliShipmentId);
+            if (ord2 is not null)
+            {
+                orderId = ord2.MeliOrderId;
+                orderTotal = ord2.TotalAmount;
+                itemsSummary = $"{ord2.Quantity}x {ord2.ItemTitle}";
+                buyerNickname = ord2.BuyerNickname;
+            }
+        }
+
+        await UpsertShipmentAsync(account.Id, orderId ?? 0, orderTotal, itemsSummary, buyerNickname, doc);
+        await _db.SaveChangesAsync();
+        return true;
+    }
+
+    /// <summary>
     /// Service IDs por sitio para identificar el envio ME1 en MeLi al marcar el tracking.
     /// Tabla copiada de la doc oficial de developers.mercadolibre.com.ar.
     /// </summary>
