@@ -327,10 +327,19 @@ else
                         </div>
                         @foreach (var st in grupo)
                         {
-                            <div class="mapeo-card" style="border-left:3px solid #d97706;">
+                            // Color de borde + tinte según asignación. Si tiene vehículo asignado, usa color del vehículo.
+                            // Si tiene driver pero sin vehículo, usa color del driver. Sino naranja default.
+                            var stopColor = st.AssignedVehicleSlot.HasValue ? VehicleColor(st.AssignedVehicleSlot.Value)
+                                          : (string.IsNullOrEmpty(st.AssignedDriverColor) ? "#d97706" : st.AssignedDriverColor!);
+                            var asignado = st.AssignedVehicleSlot.HasValue || st.AssignedDriverId.HasValue;
+                            var isActive = activeStopId == st.Id;
+                            <div class="mapeo-card @(isActive ? "activa" : "")"
+                                 style="cursor:pointer; border-left:4px solid @stopColor; @(asignado ? $"background: linear-gradient(90deg, {stopColor}15 0%, white 60%);" : "") @(isActive ? "box-shadow: 0 0 0 2px " + stopColor + ";" : "")"
+                                 @onclick="() => FocusStop(st)"
+                                 title="Click para resaltar en el mapa">
                                 <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.4rem;">
                                     <strong>@(st.Alias ?? st.ContactName ?? "Parada")</strong>
-                                    <button class="btn-icon btn-delete" style="font-size:0.7rem;" @onclick="() => DeleteStop(st)" title="Quitar">×</button>
+                                    <button class="btn-icon btn-delete" style="font-size:0.7rem;" @onclick="() => DeleteStop(st)" @onclick:stopPropagation="true" title="Quitar">×</button>
                                 </div>
                                 <div style="color:#4b5563; margin-top:0.15rem;">@st.Direccion</div>
                                 @if (!string.IsNullOrEmpty(st.Localidad))
@@ -339,6 +348,30 @@ else
                                 { <div style="font-size:0.72rem; color:#6b7280;">📞 @st.Telefono</div> }
                                 @if (!string.IsNullOrEmpty(st.Notas))
                                 { <div style="font-size:0.7rem; color:#9ca3af;">📝 @st.Notas</div> }
+                                @* ─── Badges de asignación (vehículo + chofer + orden) ─── *@
+                                @if (asignado)
+                                {
+                                    <div style="display:flex; gap:0.3rem; margin-top:0.3rem; flex-wrap:wrap;">
+                                        @if (st.AssignedVehicleSlot.HasValue)
+                                        {
+                                            <span style="display:inline-block; padding:0.1rem 0.4rem; background:@stopColor; color:white; border-radius:4px; font-size:0.68rem; font-weight:700;">
+                                                🚚 V@(st.AssignedVehicleSlot)
+                                            </span>
+                                        }
+                                        @if (!string.IsNullOrEmpty(st.AssignedDriverName))
+                                        {
+                                            <span style="display:inline-block; padding:0.1rem 0.4rem; background:white; border:1px solid @stopColor; color:@stopColor; border-radius:4px; font-size:0.68rem; font-weight:700;">
+                                                👤 @st.AssignedDriverName
+                                            </span>
+                                        }
+                                        @if (st.OrderInRoute.HasValue)
+                                        {
+                                            <span style="display:inline-block; padding:0.1rem 0.4rem; background:#1f2937; color:white; border-radius:4px; font-size:0.68rem; font-weight:700;">
+                                                #@st.OrderInRoute
+                                            </span>
+                                        }
+                                    </div>
+                                }
                             </div>
                         }
                     }
@@ -1203,6 +1236,18 @@ else
     private MeliShipmentDto? selected;
     private bool showDetail;
     private int? activeShipmentId;
+    private int? activeStopId;
+
+    /// <summary>Click en una celda de la lista lateral: hace zoom al marker en el mapa
+    /// y resalta visualmente la celda con borde más grueso.</summary>
+    private async Task FocusStop(MapeoStopDto st)
+    {
+        activeStopId = st.Id;
+        if (st.Latitude != 0 || st.Longitude != 0)
+        {
+            await JS.InvokeVoidAsync("mapeoFlex.focusOn", (double)st.Latitude, (double)st.Longitude, 17);
+        }
+    }
 
     // Punto de partida
     private StartPointDto? startPoint;
