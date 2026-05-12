@@ -1505,9 +1505,23 @@ else
         try
         {
             var alias = cli.CodigoInterno.HasValue ? $"#{cli.CodigoInterno} · {cli.Nombre}" : cli.Nombre;
-            var direccion = string.IsNullOrEmpty(cli.Direccion)
-                ? (cli.Localidad ?? "—")
-                : (string.IsNullOrEmpty(cli.Localidad) ? cli.Direccion : $"{cli.Direccion}, {cli.Localidad}");
+            // Prioridad para la dirección que va al mapeo:
+            //   1) DomicilioEntrega (el operador lo carga cuando difiere del fiscal — caso típico)
+            //   2) Direccion fiscal + Localidad
+            //   3) Coords como string si no hay nada
+            string direccion;
+            if (!string.IsNullOrWhiteSpace(cli.DomicilioEntrega))
+            {
+                direccion = cli.DomicilioEntrega!.Trim();
+            }
+            else if (!string.IsNullOrEmpty(cli.Direccion))
+            {
+                direccion = string.IsNullOrEmpty(cli.Localidad) ? cli.Direccion : $"{cli.Direccion}, {cli.Localidad}";
+            }
+            else
+            {
+                direccion = $"({cli.MapeoLat?.ToString("0.####")}, {cli.MapeoLng?.ToString("0.####")})";
+            }
             var s = await Api.CreateMapeoStopAsync(
                 "cliente-cafe",
                 cli.Id.ToString(),
