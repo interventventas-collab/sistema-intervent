@@ -779,7 +779,8 @@
                                                         : 0m;
                                                     var colorMargen = margenPctLinea >= 50m ? "#16a34a" : (margenPctLinea >= 20m ? "#d97706" : "#dc2626");
                                                 }
-                                                @if (costoLinea > 0)
+                                                @* Solo mostrar margen cuando hay costo razonable. Items sin costo (concepto libre, saldos) no muestran margen. *@
+                                                @if (costoLinea > 0 && ci.CostoUnitario > 0)
                                                 {
                                                     <div style="font-size: 0.7rem; font-weight: 500; color: @colorMargen; margin-top: 0.15rem;"
                                                          title="Margen sobre costo: ganancia $@FormatMoney(margenLinea)">
