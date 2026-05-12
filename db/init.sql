@@ -1983,6 +1983,14 @@ BEGIN
 END
 GO
 
+-- Migracion: trazabilidad Proforma → Factura (vinculos entre ventas)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='OrigenVentaId' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD OrigenVentaId INT NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='FacturadaComoVentaId' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD FacturadaComoVentaId INT NULL;
+GO
+
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_VentaItems' AND xtype='U')
 BEGIN
     CREATE TABLE Cafe_VentaItems (

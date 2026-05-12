@@ -108,6 +108,17 @@ public class CafeVenta
     [MaxLength(1000)]
     public string? ArcaError { get; set; }
 
+    // ============================================================
+    // Trazabilidad Proforma → Factura
+    // ============================================================
+    /// <summary>Si esta venta fue creada a partir de otra (típicamente una proforma convertida a
+    /// factura), guardamos el Id de la venta origen para mantener el vínculo. Null = es una venta
+    /// creada desde cero.</summary>
+    public int? OrigenVentaId { get; set; }
+    /// <summary>Si esta venta fue convertida a factura (PRO o X que se transformó en FA/FB/FC),
+    /// guardamos el Id de la factura resultante. Null = no se convirtió todavía.</summary>
+    public int? FacturadaComoVentaId { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 

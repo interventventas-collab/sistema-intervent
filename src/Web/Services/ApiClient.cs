@@ -501,6 +501,11 @@ public class ApiClient
     public async Task<DuplicarVentaPayloadDto?> DuplicarCafeVentaAsync(int id)
         => await PostAsync<DuplicarVentaPayloadDto>($"/api/cafe/ventas/{id}/duplicar", new { });
 
+    /// <summary>Convierte una proforma (X o PRO) en factura real (FA/FB/FC) con CAE de ARCA.
+    /// Crea una venta NUEVA, vincula a la original. Devuelve la nueva venta con su CAE.</summary>
+    public async Task<CafeVentaDto?> ConvertirCafeVentaAFacturaAsync(int id, ConvertirAFacturaRequest req)
+        => await PostAsync<CafeVentaDto>($"/api/cafe/ventas/{id}/convertir-a-factura", req);
+
     /// <summary>Genera un PDF de PREVIEW del comprobante con los datos del modal sin guardar
     /// nada en la base. Devuelve los bytes para abrir en una pestaña nueva.</summary>
     public async Task<(byte[]? bytes, string? error)> PreviewCafeVentaPdfAsync(CreateCafeVentaRequest request)

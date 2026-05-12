@@ -245,7 +245,9 @@ public record CafeVentaDto(
     int? ArcaPtoVta,
     int? ArcaCbteNro,
     int? ArcaCbteTipoNum,
-    string? ArcaError);
+    string? ArcaError,
+    int? OrigenVentaId = null,
+    int? FacturadaComoVentaId = null);
 
 public class CafeCotizarItemRequest
 {
@@ -674,3 +676,12 @@ public record DuplicarVentaPayloadDto(
     string? Observaciones,
     List<CafeCotizarItemRequest> Items,
     string? OrigenNumero);   // ej "CAFE-2026-0001" — solo para mostrar en el modal "Duplicado de X"
+
+// ===== Convertir Proforma → Factura =====
+public class ConvertirAFacturaRequest
+{
+    /// <summary>"FA" | "FB" | "FC" — el tipo de factura a emitir</summary>
+    public string TipoFactura { get; set; } = "FB";
+    /// <summary>Condición IVA del receptor. Si null, se hereda de la proforma.</summary>
+    public string? CondicionIva { get; set; }
+}

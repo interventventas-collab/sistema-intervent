@@ -153,6 +153,16 @@
                                     <button class="btn-icon btn-edit" @onclick="() => OpenEditModal(v)" title="Editar comprobante">✎</button>
                                     <button class="btn-icon" style="color: #16a34a;" @onclick="() => DuplicarComprobante(v)"
                                             title="Duplicar este comprobante en una venta nueva editable">📋</button>
+                                    @if ((v.TipoComprobante == "PRO" || v.TipoComprobante == "X") && !v.FacturadaComoVentaId.HasValue && v.Estado != "anulado")
+                                    {
+                                        <button class="btn-icon" style="color: #7c3aed;" @onclick="() => OpenConvertirAFacturaModal(v)"
+                                                title="Convertir esta @(v.TipoComprobante == "PRO" ? "proforma" : "cotización") en una factura real con CAE de ARCA">📈</button>
+                                    }
+                                    else if (v.FacturadaComoVentaId.HasValue)
+                                    {
+                                        <span class="btn-icon" style="color: #16a34a; cursor: default;"
+                                              title="Ya convertida a factura #@v.FacturadaComoVentaId">✓</span>
+                                    }
                                     @if (!anulada && !tieneCae)
                                     {
                                         <button class="btn-icon" style="color: #b45309;" @onclick="() => ConfirmAnular(v)" title="Anular venta">⊘</button>
@@ -1172,6 +1182,54 @@
     </div>
 }
 
+@if (convirtiendo is not null)
+{
+    <div class="modal-overlay" @onclick="CloseConvertirAFacturaModal">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 520px;">
+            <div class="modal-header" style="background: #7c3aed; color: white;">
+                <h4 style="margin: 0;">📈 Convertir a factura con CAE</h4>
+                <button class="btn-close" @onclick="CloseConvertirAFacturaModal" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Vas a convertir <strong>@convirtiendo.Numero</strong> (@(convirtiendo.TipoComprobante == "PRO" ? "Proforma" : "Cotización")) en una factura real emitida por ARCA con CAE.</p>
+                <p style="font-size: 0.85rem; color: #6b7280;">
+                    Se crea una <strong>venta nueva</strong> (con número nuevo) que se vincula a esta proforma como origen.
+                    Los items y montos se copian exactamente. La proforma queda marcada como "facturada".
+                </p>
+                <div class="form-row" style="margin-top: 0.8rem;">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Tipo de factura</label>
+                        <select class="form-input" @bind="convertirTipoFactura">
+                            <option value="FB">Factura B (para CF / Monotributo)</option>
+                            <option value="FA">Factura A (para Responsable Inscripto)</option>
+                            <option value="FC">Factura C (si el emisor es Monotributo)</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Cond. IVA del receptor</label>
+                        <select class="form-input" @bind="convertirCondIva">
+                            <option value="RI">Responsable Inscripto</option>
+                            <option value="MO">Monotributo</option>
+                            <option value="EX">Exento</option>
+                            <option value="CF">Consumidor final</option>
+                        </select>
+                    </div>
+                </div>
+                @if (!string.IsNullOrEmpty(convertirError))
+                {
+                    <div class="form-error" style="margin-top: 0.6rem;">@convertirError</div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseConvertirAFacturaModal" disabled="@convirtiendoLoading">Cancelar</button>
+                <button class="btn" style="background: #7c3aed; color: white;" @onclick="DoConvertirAFactura" disabled="@convirtiendoLoading">
+                    @(convirtiendoLoading ? "Emitiendo..." : "📈 Emitir factura con CAE")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @if (showAnularConfirm && toAnular is not null)
 {
     <div class="modal-overlay" @onclick="() => showAnularConfirm = false">
@@ -1506,6 +1564,55 @@
 
     /// <summary>Numero del comprobante origen cuando se está duplicando (para mostrar "Duplicado de X" en el modal).</summary>
     private string? duplicadoDeNumero;
+
+    // ===== Modal Convertir Proforma → Factura =====
+    private CafeVentaDto? convirtiendo;
+    private string convertirTipoFactura = "FB";
+    private string convertirCondIva = "RI";
+    private bool convirtiendoLoading;
+    private string? convertirError;
+
+    private void OpenConvertirAFacturaModal(CafeVentaDto v)
+    {
+        convirtiendo = v;
+        // Sugerimos FB por default (lo más común). El usuario puede elegir FA si el receptor es RI.
+        convertirTipoFactura = "FB";
+        // La condición IVA del receptor: si la venta original tiene una válida la usamos, sino RI default
+        convertirCondIva = !string.IsNullOrWhiteSpace(v.CondicionIva) && v.CondicionIva != "CF" ? v.CondicionIva : "RI";
+        convertirError = null;
+    }
+
+    private void CloseConvertirAFacturaModal() { convirtiendo = null; convertirError = null; }
+
+    private async Task DoConvertirAFactura()
+    {
+        if (convirtiendo is null) return;
+        convirtiendoLoading = true; convertirError = null;
+        try
+        {
+            var nuevaVenta = await Api.ConvertirCafeVentaAFacturaAsync(convirtiendo.Id, new ConvertirAFacturaRequest
+            {
+                TipoFactura = convertirTipoFactura,
+                CondicionIva = convertirCondIva
+            });
+            if (nuevaVenta is null) { convertirError = "No se pudo convertir."; return; }
+
+            if (nuevaVenta.ArcaEstado == "autorizado")
+                ToastService.Success($"✓ Factura {nuevaVenta.Numero} emitida — CAE {nuevaVenta.ArcaCae}");
+            else if (nuevaVenta.ArcaEstado == "pendiente")
+                ToastService.Error($"Factura {nuevaVenta.Numero} creada pero ARCA rechazó: {nuevaVenta.ArcaError}");
+            else
+                ToastService.Success($"Venta {nuevaVenta.Numero} creada");
+
+            convirtiendo = null;
+            await Load();
+        }
+        catch (Exception ex)
+        {
+            convertirError = "Error: " + ex.Message;
+        }
+        finally { convirtiendoLoading = false; }
+    }
 
     /// <summary>Pide al backend un payload con los datos del comprobante a duplicar y abre
     /// el modal de Nueva Venta pre-cargado con esos datos. La venta NUEVA se crea recién

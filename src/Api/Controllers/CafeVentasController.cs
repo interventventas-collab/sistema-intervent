@@ -64,7 +64,9 @@ public class CafeVentasController : ControllerBase
         v.ArcaPtoVta,
         v.ArcaCbteNro,
         v.ArcaCbteTipoNum,
-        v.ArcaError);
+        v.ArcaError,
+        v.OrigenVentaId,
+        v.FacturadaComoVentaId);
 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null)
@@ -673,6 +675,74 @@ public class CafeVentasController : ControllerBase
             venta.UpdatedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync();
         }
+    }
+
+    /// <summary>
+    /// Convierte una venta tipo X / PRO en una factura real (FA/FB/FC) emitida contra ARCA.
+    /// Crea una NUEVA venta (con número nuevo), copia los items, descuenta stock,
+    /// emite contra ARCA. La venta original (proforma) queda vinculada via FacturadaComoVentaId.
+    /// </summary>
+    [HttpPost("{id:int}/convertir-a-factura")]
+    public async Task<IActionResult> ConvertirAFactura(int id, [FromBody] ConvertirAFacturaRequest req)
+    {
+        var original = await _db.CafeVentas.Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == id);
+        if (original is null) return NotFound(new { error = "Venta no encontrada" });
+        if (original.TipoComprobante is not ("X" or "PRO"))
+            return BadRequest(new { error = "Solo se pueden convertir cotizaciones (X) y proformas (PRO)." });
+        if (original.FacturadaComoVentaId.HasValue)
+            return BadRequest(new { error = "Esta proforma ya fue convertida a la factura #" + original.FacturadaComoVentaId });
+        if (original.Estado == "anulado")
+            return BadRequest(new { error = "No se puede facturar una venta anulada." });
+
+        var tipoNuevo = (req.TipoFactura ?? "").Trim().ToUpperInvariant();
+        if (tipoNuevo is not ("FA" or "FB" or "FC"))
+            return BadRequest(new { error = "TipoFactura debe ser FA, FB o FC." });
+
+        // Construir CreateCafeVentaRequest con los datos del original.
+        var createReq = new CreateCafeVentaRequest
+        {
+            Fecha = DateTime.Today,
+            ClienteId = original.ClienteId,
+            ClienteNombreOverride = original.ClienteNombreSnapshot,
+            ClienteTipoOverride = original.ClienteTipoSnapshot ?? "OTRO",
+            Items = original.Items.Select(i => new CafeCotizarItemRequest
+            {
+                ProductoId = i.ProductoId ?? 0,
+                EsConceptoLibre = i.EsConceptoLibre,
+                DescripcionLibre = i.EsConceptoLibre ? i.ProductoNombreSnapshot : null,
+                Formato = i.Formato,
+                Cantidad = i.Cantidad,
+                Molienda = i.Molienda,
+                EsDoyPack = i.EsDoyPack,
+                DescuentoPct = i.DescuentoPct,
+                PrecioUnitarioOverride = i.PrecioUnitario  // mantiene el precio exacto del original
+            }).ToList(),
+            Descuento = original.Descuento,
+            Observaciones = original.Observaciones,
+            WeekDays = original.WeekDays,
+            IsPaid = false,  // empieza impaga, el cobro de la nueva es independiente
+            TipoComprobante = tipoNuevo,
+            CondicionIva = req.CondicionIva ?? original.CondicionIva,
+            CondicionPago = original.CondicionPago,
+        };
+
+        // Reusamos la lógica de Create (más simple que duplicar el código)
+        var createResult = await Create(createReq);
+        if (createResult is not OkObjectResult ok || ok.Value is not CafeVentaDto creada)
+            return createResult;
+
+        // Vincular: marcar la proforma como facturada y la nueva como origen=proforma
+        original.FacturadaComoVentaId = creada.Id;
+        original.UpdatedAt = DateTime.UtcNow;
+        var creadaEntity = await _db.CafeVentas.FindAsync(creada.Id);
+        if (creadaEntity is not null)
+        {
+            creadaEntity.OrigenVentaId = original.Id;
+            creadaEntity.UpdatedAt = DateTime.UtcNow;
+        }
+        await _db.SaveChangesAsync();
+
+        return Ok(creada);
     }
 
     /// <summary>Reintentar emisión ARCA para una venta que quedó pendiente.</summary>

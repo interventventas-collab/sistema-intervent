@@ -256,6 +256,16 @@ public class CafeVentaDto
     public int? ArcaCbteNro { get; set; }
     public int? ArcaCbteTipoNum { get; set; }
     public string? ArcaError { get; set; }
+    /// <summary>Si esta venta nació de otra (típicamente una proforma convertida a factura), Id origen.</summary>
+    public int? OrigenVentaId { get; set; }
+    /// <summary>Si esta proforma fue convertida a factura, Id de la factura resultante.</summary>
+    public int? FacturadaComoVentaId { get; set; }
+}
+
+public class ConvertirAFacturaRequest
+{
+    public string TipoFactura { get; set; } = "FB";
+    public string? CondicionIva { get; set; }
 }
 
 public class CafeCotizarItemRequest
