@@ -162,6 +162,12 @@ public class CafeVentasController : ControllerBase
             ImpTotal = totalConIva,
             Cae = v.ArcaCae,
             CaeVto = v.ArcaCaeVto?.ToString("yyyyMMdd") ?? "",
+            // Extras UX (con prolijidad fiscal — no son obligatorios pero ayudan al lector):
+            IsPaid = v.IsPaid,
+            TipoClienteTag = v.ClienteTipoSnapshot,
+            DiasVisita = v.WeekDays,
+            ComentariosCliente = v.ClienteComentariosComprobante,
+            Observaciones = v.Observaciones,
         };
 
         foreach (var it in v.Items)

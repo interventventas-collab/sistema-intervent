@@ -75,12 +75,20 @@ public class ArcaInvoicePdfService
                             c.Item().AlignCenter().Text($"COD. {comp.CbteTipoNro:00}").FontSize(8);
                         });
 
-                        // Derecha — tipo + numeración + fecha
+                        // Derecha — tipo + numeración + fecha + sello PAGADO si corresponde
                         row.RelativeItem().Column(c =>
                         {
                             c.Item().AlignRight().Text(nombreTipo).FontSize(13).Bold();
                             c.Item().AlignRight().Text($"Punto de Venta: {comp.PtoVta:00000}   Comp. Nro: {comp.CbteNro:00000000}").FontSize(9);
                             c.Item().AlignRight().Text($"Fecha de Emisión: {FormatFecha(comp.Fecha)}").FontSize(9);
+                            if (comp.IsPaid)
+                            {
+                                c.Item().PaddingTop(4).AlignRight().Row(r =>
+                                {
+                                    r.AutoItem().Background(Colors.Green.Lighten4).Border(1).BorderColor(Colors.Green.Darken1)
+                                        .Padding(3).Text("✓ PAGADO").FontSize(9).Bold().FontColor(Colors.Green.Darken3);
+                                });
+                            }
                         });
                     });
 
@@ -99,6 +107,13 @@ public class ArcaInvoicePdfService
                             {
                                 t.Span("Receptor: ").SemiBold();
                                 t.Span(receptor.Nombre ?? "—");
+                                if (!string.IsNullOrWhiteSpace(comp.TipoClienteTag))
+                                {
+                                    var tag = comp.TipoClienteTag!.Trim().ToUpperInvariant();
+                                    var tagLabel = tag == "BAR" ? " · BAR" : (tag == "OTRO" ? "" : $" · {tag}");
+                                    if (!string.IsNullOrEmpty(tagLabel))
+                                        t.Span(tagLabel).FontSize(8).FontColor(Colors.Grey.Darken1);
+                                }
                             });
                             r.RelativeItem().AlignRight().Text(t =>
                             {
@@ -120,6 +135,30 @@ public class ArcaInvoicePdfService
                             {
                                 t.Span("Condición de venta: ").SemiBold();
                                 t.Span(receptor.CondicionVenta!);
+                            });
+                        }
+                        if (!string.IsNullOrWhiteSpace(comp.DiasVisita))
+                        {
+                            c.Item().Text(t =>
+                            {
+                                t.Span("Días de visita: ").SemiBold();
+                                t.Span(comp.DiasVisita!).FontSize(8);
+                            });
+                        }
+                        // Comentarios del cliente para el comprobante (notas del cliente que aparecen en TODOS sus comprobantes)
+                        if (!string.IsNullOrWhiteSpace(comp.ComentariosCliente))
+                        {
+                            c.Item().PaddingTop(3).BorderLeft(2).BorderColor(Colors.Orange.Darken1)
+                                .Background(Colors.Orange.Lighten5).Padding(3)
+                                .Text(comp.ComentariosCliente!).FontSize(8).Italic().FontColor(Colors.Grey.Darken2);
+                        }
+                        // Observaciones de esta venta (notas internas que el operador puso en la venta)
+                        if (!string.IsNullOrWhiteSpace(comp.Observaciones))
+                        {
+                            c.Item().PaddingTop(2).Text(t =>
+                            {
+                                t.Span("Observaciones: ").SemiBold().FontSize(8);
+                                t.Span(comp.Observaciones!).FontSize(8);
                             });
                         }
                     });
@@ -399,6 +438,17 @@ public class PdfComprobante
     public decimal ImpTotal { get; set; }
     public string? Cae { get; set; }
     public string? CaeVto { get; set; } // yyyymmdd
+    // ---- Extras de UX (de la cotización portados al ARCA, manteniendo prolijidad fiscal) ----
+    /// <summary>Si la venta está marcada como pagada, se muestra un sello "PAGADO" discreto.</summary>
+    public bool IsPaid { get; set; }
+    /// <summary>Etiqueta del tipo de cliente (BAR / OTRO). Si null no se muestra.</summary>
+    public string? TipoClienteTag { get; set; }
+    /// <summary>Días de visita/reparto (LUN/MAR/...) como CSV. Si null no se muestra.</summary>
+    public string? DiasVisita { get; set; }
+    /// <summary>Comentarios para el comprobante cargados en la ficha del cliente.</summary>
+    public string? ComentariosCliente { get; set; }
+    /// <summary>Observaciones internas de la venta. Si null no se muestra.</summary>
+    public string? Observaciones { get; set; }
 }
 
 public class PdfItem
