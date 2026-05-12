@@ -107,6 +107,7 @@ builder.Services.AddScoped<ArcaWebserviceAccountService>();
 builder.Services.AddSingleton<ArcaWsTokenCache>();
 builder.Services.AddScoped<ArcaWsService>();
 builder.Services.AddScoped<ArcaInvoiceService>();
+builder.Services.AddScoped<ArcaPadronService>();
 builder.Services.AddSingleton<ArcaInvoicePdfService>();
 builder.Services.AddScoped<ArcaEmisorService>();
 builder.Services.AddScoped<CafeCotizacionPdfService>();

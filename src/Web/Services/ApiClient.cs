@@ -919,6 +919,16 @@ public class ApiClient
     public async Task<FiscalLookupDto?> LookupCuitAsync(string cuit)
         => await GetAsync<FiscalLookupDto>($"/api/fiscal/lookup?cuit={Uri.EscapeDataString(cuit)}");
 
+    /// <summary>Consulta el padrón oficial ARCA (datos fiscales completos: razón social,
+    /// domicilio, CP, localidad, provincia, condición IVA). Requiere cert ARCA autorizado.</summary>
+    public async Task<ArcaPadronDto?> ConsultarPadronArcaAsync(string cuit, string? cuitEmisor = null)
+    {
+        var url = $"/api/fiscal/padron?cuit={Uri.EscapeDataString(cuit)}";
+        if (!string.IsNullOrEmpty(cuitEmisor))
+            url += $"&cuitEmisor={Uri.EscapeDataString(cuitEmisor)}";
+        return await GetAsync<ArcaPadronDto>(url);
+    }
+
     // --- Cotizaciones ---
     public async Task<DolarBnaDto?> GetDolarBnaAsync()
         => await GetAsync<DolarBnaDto>("/api/quotes/dolar-bna");

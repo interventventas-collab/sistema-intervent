@@ -293,9 +293,15 @@
 
     private bool buscandoCuit;
 
-    /// <summary>Busca los datos fiscales del CUIT en cuitonline.com y autocompleta
-    /// los campos de razón social, dirección y condición IVA. Sobre-escribe sin preguntar
-    /// los valores actuales si encuentra datos nuevos.</summary>
+    /// <summary>
+    /// Busca los datos fiscales del CUIT y autocompleta el formulario.
+    /// Estrategia:
+    ///   1. Consulta el padrón oficial ARCA (ws_sr_padron_a13) — trae datos completos
+    ///      (razón social, domicilio fiscal, CP, localidad, provincia, condición IVA).
+    ///   2. Si el padrón falla (cert ARCA no cargado o servicio sin autorizar), cae al
+    ///      scraping de cuitonline.com como fallback.
+    /// Sobre-escribe sin preguntar los valores actuales del formulario.
+    /// </summary>
     private async Task BuscarPorCuit()
     {
         var clean = new string((formCuit ?? "").Where(char.IsDigit).ToArray());
@@ -308,27 +314,51 @@
         StateHasChanged();
         try
         {
-            var result = await Api.LookupCuitAsync(clean);
-            if (result is null || !result.Found)
+            // 1) Padrón oficial ARCA
+            var padron = await Api.ConsultarPadronArcaAsync(clean);
+            if (padron is not null && padron.Found)
             {
-                ToastService.Error(result?.Error ?? "No se encontraron datos para ese CUIT.");
+                if (!string.IsNullOrWhiteSpace(padron.RazonSocial))
+                {
+                    formRazonSocial = padron.RazonSocial!.Trim();
+                    if (string.IsNullOrWhiteSpace(formNombre))
+                        formNombre = padron.RazonSocial!.Trim();
+                }
+                if (!string.IsNullOrWhiteSpace(padron.Direccion))
+                    formDireccion = padron.Direccion!.Trim();
+                if (!string.IsNullOrWhiteSpace(padron.CodPostal))
+                {
+                    formCp = padron.CodPostal!.Trim();
+                }
+                if (!string.IsNullOrWhiteSpace(padron.Localidad))
+                    formLocalidad = padron.Localidad!.Trim();
+                if (!string.IsNullOrWhiteSpace(padron.Provincia))
+                    formCiudad = padron.Provincia!.Trim();
+                if (!string.IsNullOrWhiteSpace(padron.CondicionIva))
+                    formCondicionIvaDefault = padron.CondicionIva!;
+                ToastService.Success($"Padrón ARCA: {padron.RazonSocial}");
                 return;
             }
-            // Razón social: siempre se sobre-escribe si encontramos algo
-            if (!string.IsNullOrWhiteSpace(result.Name))
+
+            // 2) Fallback a cuitonline.com (gratis, datos parciales)
+            var fallback = await Api.LookupCuitAsync(clean);
+            if (fallback is null || !fallback.Found)
             {
-                formRazonSocial = result.Name!.Trim();
-                // Si el nombre fantasía estaba vacío, usamos también la razón social
-                if (string.IsNullOrWhiteSpace(formNombre))
-                    formNombre = result.Name!.Trim();
+                var detalle = padron?.Error ?? fallback?.Error ?? "No se encontraron datos para ese CUIT.";
+                ToastService.Error(detalle);
+                return;
             }
-            // Dirección fiscal
-            if (!string.IsNullOrWhiteSpace(result.Address))
-                formDireccion = result.Address!.Trim();
-            // Condición IVA — mapeamos el texto que devuelve cuitonline a los códigos internos
-            if (!string.IsNullOrWhiteSpace(result.IvaCondition))
+            if (!string.IsNullOrWhiteSpace(fallback.Name))
             {
-                var t = result.IvaCondition!.Trim().ToUpperInvariant();
+                formRazonSocial = fallback.Name!.Trim();
+                if (string.IsNullOrWhiteSpace(formNombre))
+                    formNombre = fallback.Name!.Trim();
+            }
+            if (!string.IsNullOrWhiteSpace(fallback.Address))
+                formDireccion = fallback.Address!.Trim();
+            if (!string.IsNullOrWhiteSpace(fallback.IvaCondition))
+            {
+                var t = fallback.IvaCondition!.Trim().ToUpperInvariant();
                 if (t.Contains("RESPONSABLE INSCRIPTO") || t == "RI")
                     formCondicionIvaDefault = "RI";
                 else if (t.Contains("MONOTRIBUT"))
@@ -337,9 +367,8 @@
                     formCondicionIvaDefault = "EX";
                 else if (t.Contains("CONSUMIDOR FINAL") || t == "CF")
                     formCondicionIvaDefault = "CF";
-                // Si no matcheamos, lo dejamos como estaba
             }
-            ToastService.Success($"Datos cargados: {result.Name}");
+            ToastService.Success($"Datos parciales (cuitonline): {fallback.Name}");
         }
         catch (Exception ex)
         {
