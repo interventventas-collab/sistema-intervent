@@ -150,13 +150,14 @@ public class ArcaInvoicePdfService
                     }
                     else
                     {
-                        // B / C — sin discriminar IVA. El "Precio U." mostrado lleva IVA incluido.
+                        // B / C — el "Precio U." se muestra SIN IVA (como se carga en el sistema).
+                        // El IVA aparece desglosado en el footer junto con el Importe Total.
                         table.ColumnsDefinition(cols =>
                         {
                             cols.RelativeColumn(6);   // Descripción
                             cols.ConstantColumn(55);  // Cantidad
-                            cols.ConstantColumn(85);  // Precio U. (con IVA)
-                            cols.ConstantColumn(90);  // Subtotal (con IVA)
+                            cols.ConstantColumn(85);  // Precio U. (sin IVA)
+                            cols.ConstantColumn(90);  // Subtotal (sin IVA)
                         });
                         table.Header(h =>
                         {
@@ -167,14 +168,12 @@ public class ArcaInvoicePdfService
                         });
                         foreach (var it in comp.Items)
                         {
-                            // En C la alicuota se trata como 0; en B aplicamos la alicuota para "precio con IVA"
-                            var pct = esTipoC ? 0m : it.AlicPct;
-                            var pcuConIva = Math.Round(it.PrecioUnitario * (1 + pct / 100m), 2, MidpointRounding.AwayFromZero);
-                            var subConIva = Math.Round(it.Cantidad * pcuConIva, 2, MidpointRounding.AwayFromZero);
+                            var pcu = it.PrecioUnitario;
+                            var sub = Math.Round(it.Cantidad * pcu, 2, MidpointRounding.AwayFromZero);
                             table.Cell().BorderBottom(0.3f).Padding(2).Text(it.Descripcion);
                             table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text(it.Cantidad.ToString("N2", new CultureInfo("es-AR")));
-                            table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text("$ " + pcuConIva.ToString("N2", new CultureInfo("es-AR")));
-                            table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text("$ " + subConIva.ToString("N2", new CultureInfo("es-AR")));
+                            table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text("$ " + pcu.ToString("N2", new CultureInfo("es-AR")));
+                            table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text("$ " + sub.ToString("N2", new CultureInfo("es-AR")));
                         }
                     }
                 });
