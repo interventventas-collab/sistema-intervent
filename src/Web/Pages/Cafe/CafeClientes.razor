@@ -10,7 +10,7 @@
         <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
             <input class="form-input" style="min-width: 280px; font-size: 0.9rem;"
                    @bind="filtro" @bind:event="oninput"
-                   placeholder="🔍 Buscar por código, nombre, CUIT, teléfono, email..." />
+                   placeholder="🔍 Buscar por código, nombre, CUIT, tel, email, dirección, localidad, CP..." />
             <button class="btn btn-primary" @onclick="ShowCreate">+ Nuevo Cliente</button>
         </div>
     </div>
@@ -264,7 +264,10 @@
             bool match(CafeClienteDto c, string q)
             {
                 bool h(string? s) => !string.IsNullOrEmpty(s) && s.Contains(q, StringComparison.OrdinalIgnoreCase);
-                return h(c.Codigo) || h(c.Nombre) || h(c.Cuit) || h(c.Telefono) || h(c.Email) || h(c.Direccion);
+                return h(c.Codigo) || h(c.Nombre) || h(c.RazonSocial) || h(c.Cuit)
+                    || h(c.Telefono) || h(c.Email)
+                    || h(c.Direccion) || h(c.Localidad) || h(c.Ciudad) || h(c.Cp)
+                    || h(c.DomicilioEntrega);
             }
             return clientes.Where(c => match(c, f)).ToList();
         }

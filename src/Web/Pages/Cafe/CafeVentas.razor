@@ -292,7 +292,7 @@
                             {
                                 <input class="form-input" @bind="clienteSearch" @bind:event="oninput"
                                        @onfocus="() => clienteSearchOpen = true"
-                                       placeholder="🔍 Buscar por código, nombre, CUIT, tel, email — o dejar vacío para consumidor final" />
+                                       placeholder="🔍 Buscar por código, nombre, CUIT, tel, email, dirección, localidad, CP… o vacío = consumidor final" />
                                 @if (clienteSearchOpen && !string.IsNullOrWhiteSpace(clienteSearch))
                                 {
                                     var matches = ClientesMatching(clienteSearch).Take(20).ToList();
@@ -1758,7 +1758,11 @@
         var t = q.Trim();
         if (string.IsNullOrEmpty(t)) return clientes;
         bool h(string? s) => !string.IsNullOrEmpty(s) && s.Contains(t, StringComparison.OrdinalIgnoreCase);
-        return clientes.Where(c => c.IsActive && (h(c.Codigo) || h(c.Nombre) || h(c.Cuit) || h(c.Telefono) || h(c.Email)));
+        return clientes.Where(c => c.IsActive
+            && (h(c.Codigo) || h(c.Nombre) || h(c.RazonSocial) || h(c.Cuit)
+                || h(c.Telefono) || h(c.Email)
+                || h(c.Direccion) || h(c.Localidad) || h(c.Ciudad) || h(c.Cp)
+                || h(c.DomicilioEntrega)));
     }
 
     private void OnAddProductoChanged()
