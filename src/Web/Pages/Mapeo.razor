@@ -314,13 +314,11 @@ else
                     <div style="padding:0.4rem 0.6rem; background:#fef3c7; border-bottom:1px solid #fde68a; font-size:0.72rem; font-weight:700; color:#92400e; text-transform:uppercase;">
                         ⭐ Paradas adicionales (@stops.Count)
                     </div>
-                    @{
-                        // Agrupar por localidad (las que no tienen localidad van al final como "(sin localidad)")
-                        var stopsAgrupados = stops
-                            .GroupBy(s => string.IsNullOrWhiteSpace(s.Localidad) ? "(sin localidad)" : s.Localidad!.Trim())
-                            .OrderBy(g => g.Key == "(sin localidad)" ? "ZZZ" : g.Key)
-                            .ToList();
-                    }
+                    // Agrupar por localidad (las que no tienen localidad van al final como "(sin localidad)")
+                    var stopsAgrupados = stops
+                        .GroupBy(s => string.IsNullOrWhiteSpace(s.Localidad) ? "(sin localidad)" : s.Localidad!.Trim())
+                        .OrderBy(g => g.Key == "(sin localidad)" ? "ZZZ" : g.Key)
+                        .ToList();
                     @foreach (var grupo in stopsAgrupados)
                     {
                         <div style="padding:0.25rem 0.6rem; background:#fef3c7; border-bottom:1px solid #fde68a; font-size:0.7rem; font-weight:700; color:#78350f; display:flex; justify-content:space-between; align-items:center;">
