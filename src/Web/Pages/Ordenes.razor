@@ -5,11 +5,19 @@
 @inject NavigationManager Nav
 
 <div class="card">
-    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-        <h3>Ordenes de MercadoLibre (@totalOrders)</h3>
-        <button class="btn btn-primary" @onclick="SyncOrders" disabled="@isSyncing">
-            @(isSyncing ? "Sincronizando..." : "Sincronizar")
-        </button>
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <h3 style="margin: 0;">Ordenes de MercadoLibre (@totalOrders)</h3>
+        <div style="display: flex; gap: 0.4rem; align-items: center;">
+            @{ var me1Count = orders?.Count(o => o.ShippingMode == "me1") ?? 0; }
+            <button class="btn @(onlyMe1 ? "btn-warning" : "btn-secondary")"
+                    @onclick="() => { onlyMe1 = !onlyMe1; }"
+                    title="Mostrar solo envios ME1 (manuales del vendedor)">
+                🏎 @(onlyMe1 ? "Mostrando solo ME1" : $"Solo ME1 ({me1Count})")
+            </button>
+            <button class="btn btn-primary" @onclick="SyncOrders" disabled="@isSyncing">
+                @(isSyncing ? "Sincronizando..." : "Sincronizar")
+            </button>
+        </div>
     </div>
     <div class="card-body" style="padding: 0;">
         @if (isLoading)
@@ -1231,6 +1239,8 @@
     private List<MeliAccountDto>? accounts;
     private bool isLoading = true;
     private bool isSyncing;
+    /// <summary>Toggle del boton "Solo ME1": cuando esta activo, la grilla muestra solo ordenes con ShippingMode=me1.</summary>
+    private bool onlyMe1 = false;
     private int totalOrders;
     private DateTime dateFrom = DateTime.Today.AddDays(-30);
     private DateTime dateTo = DateTime.Today;
@@ -1516,6 +1526,11 @@
         if (orders is null) return new();
 
         var filtered = orders.AsEnumerable();
+
+        // Filtro toggle "Solo ME1" (boton al lado de Sincronizar). Aplica antes que los demas filtros
+        // para que el conteo de envios/estados visible sea solo el subset ME1.
+        if (onlyMe1)
+            filtered = filtered.Where(o => o.ShippingMode == "me1");
 
         // Apply text filters
         foreach (var kv in textFilters.Where(f => !string.IsNullOrEmpty(f.Value)))
