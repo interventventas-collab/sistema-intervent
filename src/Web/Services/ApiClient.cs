@@ -425,6 +425,10 @@ public class ApiClient
     public async Task<CafeClienteDto?> AsignarCodigoInternoAsync(int id)
         => await PostAsync<CafeClienteDto>($"/api/cafe/clientes/{id}/asignar-codigo-interno", new { });
 
+    /// <summary>Re-extrae las coordenadas a partir del MapeoLink (si falló la primera vez).</summary>
+    public async Task<CafeClienteDto?> ReExtraerCoordsAsync(int id)
+        => await PostAsync<CafeClienteDto>($"/api/cafe/clientes/{id}/reextraer-coords", new { });
+
     /// <summary>Saca el código interno (vuelve a null).</summary>
     public async Task<CafeClienteDto?> QuitarCodigoInternoAsync(int id)
     {

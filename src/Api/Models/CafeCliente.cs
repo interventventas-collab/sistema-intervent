@@ -73,6 +73,16 @@ public class CafeCliente
     [MaxLength(500)]
     public string? MapeoLink { get; set; }
 
+    /// <summary>Latitud extraída del MapeoLink (cuando se resuelve el redirect de Google Maps).
+    /// Si está cargada, el cliente puede aparecer como pin en el mapa Leaflet del Mapeo —
+    /// independiente de si Google cambia el formato del link en el futuro.</summary>
+    [Column(TypeName = "decimal(10,7)")]
+    public decimal? MapeoLat { get; set; }
+
+    /// <summary>Longitud extraída del MapeoLink.</summary>
+    [Column(TypeName = "decimal(10,7)")]
+    public decimal? MapeoLng { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

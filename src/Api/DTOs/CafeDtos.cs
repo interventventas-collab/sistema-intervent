@@ -9,7 +9,8 @@ public record CafeClienteDto(
     string? DomicilioEntrega,
     string? Notas, string? ComentariosComprobante,
     bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt,
-    int? CodigoInterno = null, string? MapeoLink = null);
+    int? CodigoInterno = null, string? MapeoLink = null,
+    decimal? MapeoLat = null, decimal? MapeoLng = null);
 
 public class CreateCafeClienteRequest
 {

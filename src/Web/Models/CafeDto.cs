@@ -23,6 +23,10 @@ public class CafeClienteDto
     public int? CodigoInterno { get; set; }
     /// <summary>Enlace corto de Google Maps a la ubicación del cliente.</summary>
     public string? MapeoLink { get; set; }
+    /// <summary>Latitud extraída del MapeoLink (cuando se resuelve el redirect de Google Maps).</summary>
+    public decimal? MapeoLat { get; set; }
+    /// <summary>Longitud extraída del MapeoLink.</summary>
+    public decimal? MapeoLng { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 }

@@ -1,6 +1,7 @@
 using Api.Data;
 using Api.DTOs;
 using Api.Models;
+using Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -13,9 +14,14 @@ namespace Api.Controllers;
 public class CafeClientesController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly GoogleMapsLinkResolverService _mapsResolver;
     private static readonly string[] TiposValidos = { "BAR", "OTRO" };
 
-    public CafeClientesController(AppDbContext db) { _db = db; }
+    public CafeClientesController(AppDbContext db, GoogleMapsLinkResolverService mapsResolver)
+    {
+        _db = db;
+        _mapsResolver = mapsResolver;
+    }
 
     private static CafeClienteDto Map(CafeCliente c) => new(
         c.Id, c.Codigo, c.Nombre, c.RazonSocial, c.Tipo,
@@ -25,7 +31,8 @@ public class CafeClientesController : ControllerBase
         c.DomicilioEntrega,
         c.Notas, c.ComentariosComprobante,
         c.IsActive, c.CreatedAt, c.UpdatedAt,
-        c.CodigoInterno, c.MapeoLink);
+        c.CodigoInterno, c.MapeoLink,
+        c.MapeoLat, c.MapeoLng);
 
     [HttpGet]
     public async Task<IActionResult> GetAll()
@@ -117,8 +124,40 @@ public class CafeClientesController : ControllerBase
         if (req.ComentariosComprobante is not null) c.ComentariosComprobante = Norm(req.ComentariosComprobante);
         if (req.IsActive.HasValue) c.IsActive = req.IsActive.Value;
         // MapeoLink: si vino, actualizo. Si vino ClearMapeoLink, lo vacío.
+        // Si el link cambió (o se agregó por primera vez), intentamos extraer coords del link de Google Maps.
+        var linkPrevio = c.MapeoLink;
         if (req.MapeoLink is not null) c.MapeoLink = Norm(req.MapeoLink);
-        else if (req.ClearMapeoLink) c.MapeoLink = null;
+        else if (req.ClearMapeoLink) { c.MapeoLink = null; c.MapeoLat = null; c.MapeoLng = null; }
+        if (!string.IsNullOrEmpty(c.MapeoLink) && c.MapeoLink != linkPrevio)
+        {
+            var coords = await _mapsResolver.TryResolverCoordenadasAsync(c.MapeoLink);
+            if (coords.HasValue)
+            {
+                c.MapeoLat = coords.Value.lat;
+                c.MapeoLng = coords.Value.lng;
+            }
+            // Si no se pudo resolver, mantenemos las coords previas (o null si nunca tuvo).
+            // El usuario puede usar el botón "Re-extraer coords" después.
+        }
+        c.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(Map(c));
+    }
+
+    /// <summary>Vuelve a resolver el MapeoLink del cliente y actualiza MapeoLat/Lng.
+    /// Útil si la extracción inicial falló (Google rate-limit, formato extraño, etc.).</summary>
+    [HttpPost("{id:int}/reextraer-coords")]
+    public async Task<IActionResult> ReExtraerCoords(int id)
+    {
+        var c = await _db.CafeClientes.FindAsync(id);
+        if (c is null) return NotFound(new { error = "Cliente no encontrado" });
+        if (string.IsNullOrEmpty(c.MapeoLink))
+            return BadRequest(new { error = "El cliente no tiene MapeoLink cargado." });
+        var coords = await _mapsResolver.TryResolverCoordenadasAsync(c.MapeoLink);
+        if (!coords.HasValue)
+            return BadRequest(new { error = "No se pudieron extraer coordenadas del link. Probá con otro link o ingresá las coordenadas manualmente." });
+        c.MapeoLat = coords.Value.lat;
+        c.MapeoLng = coords.Value.lng;
         c.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return Ok(Map(c));

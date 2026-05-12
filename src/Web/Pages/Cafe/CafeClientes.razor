@@ -239,9 +239,26 @@
                             <label class="form-label" style="font-size: 0.78rem; color: #1e40af;">🗺 Enlace Google Maps (corto)</label>
                             <input class="form-input" @bind="formMapeoLink"
                                    placeholder="https://maps.app.goo.gl/..." />
+                            @if (formMapeoLat.HasValue && formMapeoLng.HasValue)
+                            {
+                                <p style="font-size: 0.7rem; color: #15803d; margin: 0.2rem 0 0;">
+                                    ✓ Coordenadas extraídas: <strong>@formMapeoLat?.ToString("0.######"), @formMapeoLng?.ToString("0.######")</strong>
+                                </p>
+                            }
+                            else if (!string.IsNullOrEmpty(formMapeoLink))
+                            {
+                                <p style="font-size: 0.7rem; color: #d97706; margin: 0.2rem 0 0; display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
+                                    ⚠ No se pudieron extraer coordenadas todavía.
+                                    <button type="button" class="btn btn-secondary"
+                                            @onclick="ReExtraerCoords" disabled="@reExtrayendo"
+                                            style="font-size: 0.7rem; padding: 0.2rem 0.4rem;">
+                                        @(reExtrayendo ? "⏳..." : "🔄 Re-extraer")
+                                    </button>
+                                </p>
+                            }
                             <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
                                 Pegá el enlace corto que sale al compartir la ubicación desde Google Maps en el celular.
-                                Si cargás algo acá, el cliente aparece en la página <strong>"Clientes Mapeados"</strong>.
+                                Al guardar, el sistema extrae automáticamente las coordenadas para usarlas en el mapa.
                             </p>
                         </div>
                     </div>
@@ -313,7 +330,10 @@
     private string formRazonSocial = "", formDomicilioEntrega = "", formComentariosComprobante = "";
     private int? formCodigoInterno;
     private string formMapeoLink = "";
+    private decimal? formMapeoLat;
+    private decimal? formMapeoLng;
     private bool asignandoCodigo;
+    private bool reExtrayendo;
     private string formLocalidad = "", formCiudad = "", formCp = "", formCondicionIvaDefault = "";
 
     private async Task OnFormCpInput(string? value)
@@ -443,6 +463,7 @@
         formRazonSocial = ""; formDomicilioEntrega = ""; formComentariosComprobante = "";
         formLocalidad = ""; formCiudad = ""; formCp = ""; formCondicionIvaDefault = "";
         formCodigoInterno = null; formMapeoLink = "";
+        formMapeoLat = null; formMapeoLng = null;
         formIsActive = true; formError = null; showForm = true;
     }
 
@@ -459,7 +480,37 @@
         formCp = c.Cp ?? ""; formCondicionIvaDefault = c.CondicionIvaDefault ?? "";
         formCodigoInterno = c.CodigoInterno;
         formMapeoLink = c.MapeoLink ?? "";
+        formMapeoLat = c.MapeoLat;
+        formMapeoLng = c.MapeoLng;
         formIsActive = c.IsActive; formError = null; showForm = true;
+    }
+
+    private async Task ReExtraerCoords()
+    {
+        if (!editingId.HasValue) return;
+        // Guardamos primero por si el usuario cambió el link y no apretó guardar todavía
+        // (sino el backend resuelve el link viejo). Reuso el handler de guardar después.
+        reExtrayendo = true;
+        try
+        {
+            var updated = await Api.ReExtraerCoordsAsync(editingId.Value);
+            if (updated is not null)
+            {
+                formMapeoLat = updated.MapeoLat;
+                formMapeoLng = updated.MapeoLng;
+                if (formMapeoLat.HasValue) ToastService.Success($"Coordenadas extraídas: {formMapeoLat?.ToString("0.####")}, {formMapeoLng?.ToString("0.####")}");
+                await Load();
+            }
+            else
+            {
+                ToastService.Error("No se pudo extraer las coordenadas. Probá con otro link.");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error: " + ex.Message);
+        }
+        finally { reExtrayendo = false; }
     }
 
     private async Task AsignarCodigoInterno()

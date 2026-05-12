@@ -1901,6 +1901,15 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='MapeoLink' AND Object_ID=OBJECT_ID('Cafe_Clientes'))
     ALTER TABLE Cafe_Clientes ADD MapeoLink NVARCHAR(500) NULL;
 GO
+-- Coordenadas extraídas del link de Google Maps (resuelve el redirect del link corto y
+-- saca lat/lng). Se guardan para usar en el mapa Leaflet del Mapeo y para no depender
+-- del link en el futuro (si Google cambia formato, ya tenemos las coords).
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='MapeoLat' AND Object_ID=OBJECT_ID('Cafe_Clientes'))
+    ALTER TABLE Cafe_Clientes ADD MapeoLat DECIMAL(10,7) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='MapeoLng' AND Object_ID=OBJECT_ID('Cafe_Clientes'))
+    ALTER TABLE Cafe_Clientes ADD MapeoLng DECIMAL(10,7) NULL;
+GO
 IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='IX_CafeClientes_CodigoInterno' AND object_id=OBJECT_ID('Cafe_Clientes'))
 BEGIN
     CREATE INDEX IX_CafeClientes_CodigoInterno ON Cafe_Clientes (CodigoInterno) WHERE CodigoInterno IS NOT NULL;

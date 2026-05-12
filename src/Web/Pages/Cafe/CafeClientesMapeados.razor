@@ -41,6 +41,7 @@
                             <th>Tipo</th>
                             <th>Dirección</th>
                             <th>Localidad</th>
+                            <th style="width: 130px;">Coordenadas</th>
                             <th style="width: 160px;">Google Maps</th>
                         </tr>
                     </thead>
@@ -70,6 +71,18 @@
                                 </td>
                                 <td style="font-size: 0.85rem;">@(c.Direccion ?? "—")</td>
                                 <td style="font-size: 0.85rem;">@(c.Localidad ?? "—")</td>
+                                <td style="font-size: 0.72rem; font-family: monospace;">
+                                    @if (c.MapeoLat.HasValue && c.MapeoLng.HasValue)
+                                    {
+                                        <span style="color: #15803d;" title="Coordenadas guardadas, lo puede usar el mapa Leaflet">
+                                            ✓ @c.MapeoLat?.ToString("0.####")<br/>@c.MapeoLng?.ToString("0.####")
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span style="color: #d97706;" title="No se pudieron extraer del link">⚠ sin coords</span>
+                                    }
+                                </td>
                                 <td>
                                     <a href="@c.MapeoLink" target="_blank" rel="noopener"
                                        class="btn btn-secondary"
