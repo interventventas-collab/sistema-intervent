@@ -461,11 +461,29 @@
                         </div>
                         <div class="form-group" style="flex: 2;">
                             <label class="form-label">PVP SUGERIDO POR PROVEEDOR (sin IVA, $) *</label>
-                            <input class="form-input" type="number" step="0.01" min="0" @bind="formPvp2" />
+                            <div style="display: flex; gap: 0.3rem; align-items: stretch;">
+                                <input class="form-input" type="number" step="0.01" min="0" @bind="formPvp2" style="flex: 1 1 auto; min-width: 0;" />
+                                @{
+                                    var pvpSug = GetPvp2Sugerido();
+                                    var pvpDiff = pvpSug.HasValue && formPvp2.HasValue && Math.Abs(pvpSug.Value - formPvp2.Value) >= 0.01m;
+                                }
+                                @if (pvpSug.HasValue)
+                                {
+                                    <button type="button" class="btn btn-secondary" @onclick="AplicarPvp2Sugerido"
+                                            style="white-space: nowrap; font-size: 0.78rem; padding: 0.3rem 0.6rem;"
+                                            title="Auto-calcular el PVP para que el precio cobrado al BAR ($@FormatMoney(formCosto * (1m + (formBarPct ?? 0) / 100m))) coincida con el del catálogo (aplicando el descuento BAR @GetBarDescuentoPct()%)">
+                                        🎯 $@FormatMoney(pvpSug.Value)
+                                    </button>
+                                }
+                            </div>
                             <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
                                 @if (formPvp2.HasValue)
                                 {
                                     <span>Con IVA: <b>$@FormatMoney(Math.Round(formPvp2.Value * (1 + formIvaPct / 100m), 2))</b></span>
+                                    @if (pvpDiff && pvpSug.HasValue)
+                                    {
+                                        <span style="color: #d97706; margin-left: 0.5rem;">⚠ PVP no coincide con BAR. Sugerido: <strong>$@FormatMoney(pvpSug.Value)</strong></span>
+                                    }
                                 }
                                 else { <span>Precio de lista sin IVA. Obligatorio. Lo paga el cliente OTRO.</span> }
                             </p>
@@ -1080,18 +1098,60 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // Cargo OEMs y catalogo de marcas en paralelo a productos
+        // Cargo OEMs, marcas y reglas de precios en paralelo a productos
         var loadOems = LoadOems();
         var loadMarcas = LoadMarcasCatalog();
+        var loadReglas = LoadReglasPrecios();
         await Load();
         await loadOems;
         await loadMarcas;
+        await loadReglas;
     }
 
     private async Task LoadMarcasCatalog()
     {
         try { marcasCatalog = await Api.GetCafeMarcasAsync() ?? new(); }
         catch { marcasCatalog = new(); }
+    }
+
+    /// <summary>Descuentos por (tipo cliente, categoría) — usados para sugerir Pvp2 auto.</summary>
+    private List<CafeReglaPrecioDto> reglasPrecios = new();
+
+    private async Task LoadReglasPrecios()
+    {
+        try { reglasPrecios = (await Api.GetReglasPreciosAsync())?.Reglas ?? new(); }
+        catch { reglasPrecios = new(); }
+    }
+
+    /// <summary>Devuelve el % de descuento que aplica la matriz para (BAR, categoría del form).
+    /// Si no hay regla, asume 0%. La regla general es la que tiene MarcaId = null.</summary>
+    private decimal GetBarDescuentoPct()
+    {
+        var regla = reglasPrecios.FirstOrDefault(r =>
+            r.TipoCliente == "BAR" && r.Categoria == formCategoria && r.MarcaId == null);
+        return regla?.DescuentoPct ?? 0m;
+    }
+
+    /// <summary>PVP sugerido auto-calculado para que el "PVP BARES" del catálogo coincida con
+    /// el precio que termina cobrando la venta a un cliente BAR. Fórmula:
+    ///     Pvp2 = costo × (1 + BarPct%) / (1 − descuentoMatriz_BAR/100)
+    /// Solo aplica si hay costo > 0 y BarPct cargado. Si no hay descuento en la matriz, devuelve
+    /// costo × (1 + BarPct%) (no hay nada que compensar).</summary>
+    private decimal? GetPvp2Sugerido()
+    {
+        if (formCosto <= 0 || !formBarPct.HasValue) return null;
+        var bar = formBarPct.Value;
+        var desc = GetBarDescuentoPct();
+        var basePrecio = formCosto * (1m + bar / 100m);
+        if (desc >= 100m) return null; // no se puede dividir por 0
+        var pvp = basePrecio / (1m - desc / 100m);
+        return Math.Round(pvp, 2, MidpointRounding.AwayFromZero);
+    }
+
+    private async Task AplicarPvp2Sugerido()
+    {
+        var sug = GetPvp2Sugerido();
+        if (sug.HasValue) { formPvp2 = sug.Value; await Task.Yield(); }
     }
 
     private async Task Load()
