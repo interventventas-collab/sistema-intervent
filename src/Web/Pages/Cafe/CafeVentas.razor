@@ -5,6 +5,7 @@
 @inject ToastService ToastService
 @inject IJSRuntime JS
 @inject OperatorService Operator
+@inject NavigationManager Navigation
 
 <style>
     /* Pildoritas de días — siempre disponibles (form de carga + viewer) */
@@ -1507,15 +1508,51 @@
     {
         await Operator.LoadAsync();
         Operator.OnChange += OnOperatorChange;
+        Navigation.LocationChanged += OnLocationChanged;
         try { deleteSettings = await Api.GetCafeDeleteSettingsAsync(); }
         catch { deleteSettings = new DeleteCafeVentaSettingsDto(); }
         await LoadCatalogos();
         await Load();
+        // Si veníamos del FAB con ?nueva=..., abrir el modal automáticamente
+        TryHandleNuevaVentaShortcut();
     }
 
     private void OnOperatorChange() => InvokeAsync(StateHasChanged);
 
-    public void Dispose() { Operator.OnChange -= OnOperatorChange; }
+    /// <summary>Cuando el FAB navega con un nuevo timestamp en ?nueva=...,
+    /// estando ya en /cafe/ventas, Blazor NO re-ejecuta OnInitializedAsync.
+    /// Por eso suscribimos LocationChanged para detectar el cambio y abrir el modal.</summary>
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        InvokeAsync(() =>
+        {
+            TryHandleNuevaVentaShortcut();
+            return Task.CompletedTask;
+        });
+    }
+
+    /// <summary>Si la URL actual tiene ?nueva=<algo>, abre el modal de Nueva Venta.
+    /// Se usa para el FAB del MainLayout — un click en cualquier pantalla navega acá con
+    /// el query y se dispara el modal sin pasos extra.</summary>
+    private string? lastNuevaQuery;
+    private void TryHandleNuevaVentaShortcut()
+    {
+        var uri = new Uri(Navigation.Uri);
+        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        var nueva = query["nueva"];
+        if (string.IsNullOrEmpty(nueva)) return;
+        if (nueva == lastNuevaQuery) return; // ya lo procesamos
+        lastNuevaQuery = nueva;
+        // No abrir si ya hay un modal abierto (evitar pisar trabajo en curso)
+        if (showForm) return;
+        ShowCreate();
+    }
+
+    public void Dispose()
+    {
+        Operator.OnChange -= OnOperatorChange;
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
 
     private async Task LoadCatalogos()
     {
