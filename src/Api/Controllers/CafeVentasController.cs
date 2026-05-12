@@ -203,6 +203,17 @@ public class CafeVentasController : ControllerBase
                 : (v.ClienteNombreSnapshot ?? "Consumidor Final"),
             Domicilio = v.ClienteDireccionSnapshot,
             CondicionIvaId = v.CondicionIva switch { "RI" => 1, "EX" => 4, "MO" => 6, "CF" => 5, _ => 5 },
+            CondicionVenta = v.CondicionPago switch
+            {
+                "EFECTIVO" => "Efectivo",
+                "TRANSFERENCIA" => "Transferencia",
+                "DEBITO" => "Débito",
+                "CREDITO" => "Crédito",
+                "CTA_CORRIENTE" => "Cuenta corriente",
+                "CHEQUE" => "Cheque",
+                "V_PRIVADO" => "Venta privada",
+                _ => null
+            },
         };
 
         return _arcaPdfService.GenerarPdfBytes(emisor, comp, receptor, false);

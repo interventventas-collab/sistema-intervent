@@ -114,6 +114,14 @@ public class ArcaInvoicePdfService
                             t.Span("Condición IVA: ").SemiBold();
                             t.Span(NombreCondicionIva(receptor.CondicionIvaId));
                         });
+                        if (!string.IsNullOrWhiteSpace(receptor.CondicionVenta))
+                        {
+                            c.Item().Text(t =>
+                            {
+                                t.Span("Condición de venta: ").SemiBold();
+                                t.Span(receptor.CondicionVenta!);
+                            });
+                        }
                     });
                 });
 
@@ -372,6 +380,9 @@ public class PdfReceptor
     public string? Nombre { get; set; }
     public string? Domicilio { get; set; }
     public int CondicionIvaId { get; set; } = 5;
+    /// <summary>Texto legible para la forma/condición de pago (ej. "Efectivo", "Transferencia").
+    /// Si está vacío, no se muestra en el PDF.</summary>
+    public string? CondicionVenta { get; set; }
 }
 
 public class PdfComprobante
