@@ -470,28 +470,6 @@
                         <h4 style="margin: 0 0 0.5rem; font-size: 0.85rem; color: #166534;">💰 Precios de venta (sin IVA)</h4>
                         <div class="form-row" style="margin-bottom: 0.3rem;">
                             <div class="form-group" style="flex: 1;">
-                                <label class="form-label" style="font-size: 0.75rem;">Precio OTRO (consumidor final / venta x fuera)</label>
-                                <div style="display: flex; gap: 0.3rem; align-items: stretch;">
-                                    <input class="form-input" type="number" step="0.01" min="0" @bind="formPrecioOtro"
-                                           placeholder="0,00" style="flex: 1 1 auto; min-width: 0;" />
-                                    @if (formCosto > 0)
-                                    {
-                                        <button type="button" class="btn btn-secondary" @onclick="@(() => formPrecioOtro = Math.Round(formCosto * 2m, 2))"
-                                                style="white-space: nowrap; font-size: 0.75rem; padding: 0.3rem 0.5rem;"
-                                                title="Sugerir: costo × 2 (margen 100%)">🎯 ×2</button>
-                                    }
-                                </div>
-                                <p style="font-size: 0.7rem; color: #166534; margin: 0.2rem 0 0;">
-                                    @if (formPrecioOtro.HasValue && formPrecioOtro.Value > 0)
-                                    {
-                                        var ivaOtro = Math.Round(formPrecioOtro.Value * (1 + formIvaPct / 100m), 2);
-                                        var margenOtro = formCosto > 0 ? Math.Round((formPrecioOtro.Value / formCosto - 1m) * 100m, 1) : 0m;
-                                        <span>Con IVA: <b>$@FormatMoney(ivaOtro)</b> · Margen: <b>@margenOtro%</b></span>
-                                    }
-                                    else { <span>Lo que paga el consumidor final / venta por fuera.</span> }
-                                </p>
-                            </div>
-                            <div class="form-group" style="flex: 1;">
                                 <label class="form-label" style="font-size: 0.75rem;">Precio BAR (mayorista)</label>
                                 <div style="display: flex; gap: 0.3rem; align-items: stretch;">
                                     <input class="form-input" type="number" step="0.01" min="0" @bind="formPrecioBar"
@@ -511,6 +489,28 @@
                                         <span>Con IVA: <b>$@FormatMoney(ivaBar)</b> · Margen: <b>@margenBar%</b></span>
                                     }
                                     else { <span>Lo que cobrás al bar / mayorista.</span> }
+                                </p>
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label" style="font-size: 0.75rem;">Precio OTRO (consumidor final / venta x fuera)</label>
+                                <div style="display: flex; gap: 0.3rem; align-items: stretch;">
+                                    <input class="form-input" type="number" step="0.01" min="0" @bind="formPrecioOtro"
+                                           placeholder="0,00" style="flex: 1 1 auto; min-width: 0;" />
+                                    @if (formCosto > 0)
+                                    {
+                                        <button type="button" class="btn btn-secondary" @onclick="@(() => formPrecioOtro = Math.Round(formCosto * 2m, 2))"
+                                                style="white-space: nowrap; font-size: 0.75rem; padding: 0.3rem 0.5rem;"
+                                                title="Sugerir: costo × 2 (margen 100%)">🎯 ×2</button>
+                                    }
+                                </div>
+                                <p style="font-size: 0.7rem; color: #166534; margin: 0.2rem 0 0;">
+                                    @if (formPrecioOtro.HasValue && formPrecioOtro.Value > 0)
+                                    {
+                                        var ivaOtro = Math.Round(formPrecioOtro.Value * (1 + formIvaPct / 100m), 2);
+                                        var margenOtro = formCosto > 0 ? Math.Round((formPrecioOtro.Value / formCosto - 1m) * 100m, 1) : 0m;
+                                        <span>Con IVA: <b>$@FormatMoney(ivaOtro)</b> · Margen: <b>@margenOtro%</b></span>
+                                    }
+                                    else { <span>Lo que paga el consumidor final / venta por fuera.</span> }
                                 </p>
                             </div>
                         </div>
