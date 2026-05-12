@@ -501,6 +501,25 @@ public class ApiClient
     public async Task<DuplicarVentaPayloadDto?> DuplicarCafeVentaAsync(int id)
         => await PostAsync<DuplicarVentaPayloadDto>($"/api/cafe/ventas/{id}/duplicar", new { });
 
+    /// <summary>Genera un PDF de PREVIEW del comprobante con los datos del modal sin guardar
+    /// nada en la base. Devuelve los bytes para abrir en una pestaña nueva.</summary>
+    public async Task<(byte[]? bytes, string? error)> PreviewCafeVentaPdfAsync(CreateCafeVentaRequest request)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync("/api/cafe/ventas/preview-pdf", request);
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return (null, "Sesión expirada"); }
+        if (resp.IsSuccessStatusCode) return (await resp.Content.ReadAsByteArrayAsync(), null);
+        var body = await resp.Content.ReadAsStringAsync();
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("error", out var err))
+                return (null, err.GetString());
+        }
+        catch { }
+        return (null, body);
+    }
+
     public async Task<CafeVentaDto?> UpdateCafeVentaFlagsAsync(int id, UpdateCafeVentaFlagsRequest req)
         => await PutAsync<CafeVentaDto>($"/api/cafe/ventas/{id}/flags", req);
 

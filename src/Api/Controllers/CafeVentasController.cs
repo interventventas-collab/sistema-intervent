@@ -281,6 +281,87 @@ public class CafeVentasController : ControllerBase
         return Ok(await CotizarInternoAsync(req.Items, tipo, req.Descuento, settings));
     }
 
+    /// <summary>
+    /// Genera un PDF de PREVIEW del comprobante sin persistir nada en la base de datos.
+    /// Toma los datos del modal en vuelo (cliente, items, tipo, etc.), arma un CafeVenta en
+    /// memoria y le pasa el cotizacion al PDFService de cotizaciones. Útil para que el
+    /// operador vea exactamente cómo va a quedar antes de emitir.
+    /// </summary>
+    [HttpPost("preview-pdf")]
+    public async Task<IActionResult> PreviewPdf([FromBody] CreateCafeVentaRequest req)
+    {
+        if (req.Items is null || req.Items.Count == 0)
+            return BadRequest(new { error = "Cargá al menos un item para previsualizar." });
+
+        var settings = await _db.CafeSettings.FindAsync(1) ?? new CafeSetting { Id = 1 };
+        var tipo = await ResolverTipoAsync(req.ClienteId, req.ClienteTipoOverride);
+
+        // Cotizamos para conseguir los items con precios calculados.
+        var cot = await CotizarInternoAsync(req.Items, tipo, req.Descuento, settings);
+
+        // Resolver datos del cliente (para los snapshots).
+        CafeCliente? cli = null;
+        if (req.ClienteId.HasValue && req.ClienteId.Value > 0)
+            cli = await _db.CafeClientes.FindAsync(req.ClienteId.Value);
+
+        // Armamos un CafeVenta en memoria — NO se persiste.
+        var ventaPreview = new CafeVenta
+        {
+            Id = 0,
+            Numero = "PREVIEW",
+            Fecha = (req.Fecha ?? DateTime.Today).Date,
+            ClienteId = cli?.Id,
+            ClienteNombreSnapshot = cli?.Nombre ?? req.ClienteNombreOverride ?? "Consumidor final",
+            ClienteTipoSnapshot = tipo,
+            ClienteTelefonoSnapshot = cli?.Telefono,
+            ClienteRazonSocialSnapshot = cli?.RazonSocial,
+            ClienteDomicilioEntregaSnapshot = cli?.DomicilioEntrega,
+            ClienteComentariosComprobante = cli?.ComentariosComprobante,
+            ClienteCuitSnapshot = cli?.Cuit,
+            ClienteDireccionSnapshot = cli?.Direccion,
+            ClienteLocalidadSnapshot = cli?.Localidad,
+            ClienteCiudadSnapshot = cli?.Ciudad,
+            ClienteCpSnapshot = cli?.Cp,
+            Subtotal = cot.Subtotal,
+            Descuento = cot.Descuento,
+            Total = cot.Total,
+            CostoTotal = cot.CostoTotal,
+            Margen = cot.Margen,
+            Observaciones = req.Observaciones,
+            Estado = "emitido",
+            WeekDays = NormWeekDays(req.WeekDays),
+            IsPaid = req.IsPaid,
+            TipoComprobante = NormTipoComprobante(req.TipoComprobante),
+            CondicionIva = NormCondicionIva(req.CondicionIva),
+            CondicionPago = NormCondicionPago(req.CondicionPago),
+            CreatedAt = DateTime.UtcNow,
+        };
+        foreach (var ci in cot.Items)
+        {
+            ventaPreview.Items.Add(new CafeVentaItem
+            {
+                ProductoId = ci.ProductoId,
+                ProductoNombreSnapshot = ci.ProductoNombre,
+                Categoria = ci.Categoria,
+                Formato = ci.Formato,
+                Cantidad = ci.Cantidad,
+                PrecioUnitario = ci.PrecioUnitario,
+                CostoUnitario = ci.CostoUnitario,
+                Subtotal = ci.Subtotal,
+                GramosDescontados = ci.GramosNecesarios,
+                Molienda = NormMolienda(ci.Molienda),
+                EsDoyPack = ci.EsDoyPack && ci.Categoria == "CAFE",
+                DescuentoPct = ci.DescuentoPct
+            });
+        }
+
+        var cfg = await _db.CafeSettings.FindAsync(1);
+        // Solo usamos el PDF de cotización (incluso si el tipo es FA/FB/FC) — es un PREVIEW,
+        // no tiene CAE ni QR todavía. Si querés emitir real, usás el botón Emitir.
+        var bytes = _pdfService.GenerarPdfBytes(ventaPreview, cfg);
+        return File(bytes, "application/pdf", "preview.pdf");
+    }
+
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateCafeVentaRequest req)
     {

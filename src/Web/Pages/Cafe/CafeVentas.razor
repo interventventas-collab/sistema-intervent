@@ -744,6 +744,10 @@
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" @onclick="CloseForm" disabled="@saving">Cancelar</button>
+                <button class="btn btn-secondary" @onclick="PreviewPdf" disabled="@(saving || previewLoading || formItems.Count == 0 || cotizacion?.TodoOk != true)"
+                        title="Ver cómo quedaría el PDF sin guardar la venta">
+                    @(previewLoading ? "⏳ Generando..." : "👁 Previsualizar PDF")
+                </button>
                 <button class="btn btn-primary" @onclick="Save" disabled="@(saving || formItems.Count == 0 || cotizacion?.TodoOk != true)">
                     @(saving
                         ? (editingVentaId.HasValue ? "Guardando..." : "Emitiendo...")
@@ -1253,7 +1257,7 @@
     private bool loading = true;
 
     // Form state
-    private bool showForm, saving;
+    private bool showForm, saving, previewLoading;
     private string? formError;
     private int formClienteId;
     private string clienteSearch = "";
@@ -1788,6 +1792,45 @@
             });
         }
         catch (Exception ex) { ToastService.Error("Error al cotizar: " + ex.Message); }
+    }
+
+    /// <summary>Genera un PDF de PREVIEW con los datos del modal sin guardar la venta.
+    /// Lo abre en una pestaña nueva para que el operador vea cómo va a quedar.</summary>
+    private async Task PreviewPdf()
+    {
+        if (formItems.Count == 0) { ToastService.Error("Agregá al menos un producto antes de previsualizar"); return; }
+        if (cotizacion?.TodoOk != true) { ToastService.Error("Resolvé los items con stock insuficiente o inválidos primero"); return; }
+        previewLoading = true;
+        try
+        {
+            var weekCsv = formWeekDays.Count == 0 ? null : string.Join(",", formWeekDays);
+            var (bytes, error) = await Api.PreviewCafeVentaPdfAsync(new CreateCafeVentaRequest
+            {
+                Fecha = formFecha,
+                ClienteId = formClienteId > 0 ? formClienteId : null,
+                ClienteTipoOverride = formClienteTipo,
+                Items = formItems,
+                Descuento = formDescuento,
+                Observaciones = formObservaciones,
+                WeekDays = weekCsv,
+                IsPaid = formIsPaid,
+                TipoComprobante = formTipoComprobante,
+                CondicionIva = formCondicionIva,
+                CondicionPago = formCondicionPago
+            });
+            if (bytes is null)
+            {
+                ToastService.Error("No se pudo generar el preview: " + (error ?? "error desconocido"));
+                return;
+            }
+            var b64 = Convert.ToBase64String(bytes);
+            await JS.InvokeVoidAsync("openPdfInNewTab", b64);
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error generando preview: " + ex.Message);
+        }
+        finally { previewLoading = false; }
     }
 
     private async Task Save()
