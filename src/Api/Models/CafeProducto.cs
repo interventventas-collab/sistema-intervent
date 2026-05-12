@@ -49,9 +49,24 @@ public class CafeProducto
     [Column(TypeName = "decimal(5,2)")]
     public decimal IvaPct { get; set; } = 21m;
 
-    /// <summary>Solo OTROS: % sobre costo para clientes BAR. NULL = BAR paga PVP (Pvp2).</summary>
+    /// <summary>Solo OTROS: % sobre costo para clientes BAR. NULL = BAR paga PVP (Pvp2).
+    /// LEGACY: queda por compatibilidad con productos viejos, pero el modelo nuevo (PrecioBar/PrecioOtro)
+    /// es el que se usa cuando están cargados.</summary>
     [Column(TypeName = "decimal(7,2)")]
     public decimal? BarPctSobreCosto { get; set; }
+
+    /// <summary>SOLO productos categoría OTROS — modelo nuevo de precios directos.
+    /// Precio sin IVA que paga un cliente tipo OTRO (consumidor final / venta por fuera).
+    /// Si está cargado (no null), el motor de precios lo usa directo, ignorando la matriz
+    /// Cafe_ReglasPrecios y la lógica de Pvp2. Si es null, cae al modelo legacy.</summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? PrecioOtro { get; set; }
+
+    /// <summary>SOLO productos categoría OTROS — modelo nuevo de precios directos.
+    /// Precio sin IVA que paga un cliente tipo BAR. Si está cargado, se usa directo.
+    /// Si es null, cae al modelo legacy (PVP2 con matriz BAR -50% o costo×BarPct).</summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? PrecioBar { get; set; }
 
     /// <summary>Unidades por bulto (informativo, solo OTROS).</summary>
     public int? UxB { get; set; }

@@ -1216,8 +1216,12 @@ public class CafeVentasController : ControllerBase
             }
 
             // Descuento: manual del request si lo hay > 0; si no, el de la matriz reglas (cliente x categoria x marca).
+            // EXCEPCIÓN: si el producto es OTROS y tiene PrecioOtro/PrecioBar cargados (modelo nuevo),
+            // NO aplicamos la matriz — esos precios son directos. Solo respetamos el descuento manual.
             var descPct = descPctManual;
-            if (descPct == 0)
+            bool usaModeloNuevoPrecios = prod.Categoria != "CAFE"
+                && (prod.PrecioBar.HasValue || prod.PrecioOtro.HasValue);
+            if (descPct == 0 && !usaModeloNuevoPrecios)
                 descPct = ResolverDescuento(prod.Categoria, prod.MarcaId);
 
             var breakdown = CafePricingService.CalcularPrecioBreakdown(prod, it.Formato, tipo, settings, descPct);

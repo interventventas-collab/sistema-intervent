@@ -61,7 +61,9 @@ public record CafeProductoDto(
     string? Notas, bool IsActive,
     decimal IvaPct,
     DateTime CreatedAt, DateTime? UpdatedAt,
-    decimal? OemPvpConIva = null, decimal? OemIvaPct = null);
+    decimal? OemPvpConIva = null, decimal? OemIvaPct = null,
+    // Modelo nuevo de precios para OTROS (null = no aplica / cae al modelo legacy):
+    decimal? PrecioOtro = null, decimal? PrecioBar = null);
 
 public class CreateCafeProductoRequest
 {
@@ -82,6 +84,9 @@ public class CreateCafeProductoRequest
     public int? StockUnidades { get; set; }
     public string? Notas { get; set; }
     public decimal? IvaPct { get; set; }
+    // Modelo nuevo de precios para OTROS:
+    public decimal? PrecioOtro { get; set; }
+    public decimal? PrecioBar { get; set; }
 }
 
 // ===== Kits (productos compuestos / BOM) =====
@@ -172,6 +177,11 @@ public class UpdateCafeProductoRequest
     public string? Notas { get; set; }
     public bool? IsActive { get; set; }
     public decimal? IvaPct { get; set; }
+    // Modelo nuevo de precios para OTROS:
+    public decimal? PrecioOtro { get; set; }
+    public decimal? PrecioBar { get; set; }
+    public bool ClearPrecioOtro { get; set; }
+    public bool ClearPrecioBar { get; set; }
 }
 
 // ===== Settings =====

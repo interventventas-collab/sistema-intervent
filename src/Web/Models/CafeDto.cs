@@ -83,6 +83,9 @@ public class CafeProductoDto
     public string? Notas { get; set; }
     public bool IsActive { get; set; }
     public decimal IvaPct { get; set; } = 21m;
+    /// <summary>Modelo NUEVO de precios (solo OTROS). null = usa modelo legacy.</summary>
+    public decimal? PrecioOtro { get; set; }
+    public decimal? PrecioBar { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 
@@ -119,6 +122,9 @@ public class CreateCafeProductoRequest
     public int? StockUnidades { get; set; }
     public string? Notas { get; set; }
     public decimal? IvaPct { get; set; }
+    // Modelo NUEVO de precios (solo OTROS):
+    public decimal? PrecioOtro { get; set; }
+    public decimal? PrecioBar { get; set; }
 }
 
 public class UpdateCafeProductoRequest
@@ -145,6 +151,11 @@ public class UpdateCafeProductoRequest
     public string? Notas { get; set; }
     public bool? IsActive { get; set; }
     public decimal? IvaPct { get; set; }
+    // Modelo NUEVO de precios (solo OTROS):
+    public decimal? PrecioOtro { get; set; }
+    public decimal? PrecioBar { get; set; }
+    public bool ClearPrecioOtro { get; set; }
+    public bool ClearPrecioBar { get; set; }
 }
 
 public class CafeSettingDto

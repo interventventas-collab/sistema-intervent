@@ -459,59 +459,64 @@
                                 <option value="10.5">10.5%</option>
                             </select>
                         </div>
-                        <div class="form-group" style="flex: 2;">
-                            <label class="form-label">PVP SUGERIDO POR PROVEEDOR (sin IVA, $) *</label>
-                            <div style="display: flex; gap: 0.3rem; align-items: stretch;">
-                                <input class="form-input" type="number" step="0.01" min="0" @bind="formPvp2" style="flex: 1 1 auto; min-width: 0;" />
-                                @{
-                                    var pvpSug = GetPvp2Sugerido();
-                                    var pvpDiff = pvpSug.HasValue && formPvp2.HasValue && Math.Abs(pvpSug.Value - formPvp2.Value) >= 0.01m;
-                                }
-                                @if (pvpSug.HasValue)
-                                {
-                                    <button type="button" class="btn btn-secondary" @onclick="AplicarPvp2Sugerido"
-                                            style="white-space: nowrap; font-size: 0.78rem; padding: 0.3rem 0.6rem;"
-                                            title="Auto-calcular el PVP para que el precio cobrado al BAR ($@FormatMoney(formCosto * (1m + (formBarPct ?? 0) / 100m))) coincida con el del catálogo (aplicando el descuento BAR @GetBarDescuentoPct()%)">
-                                        🎯 $@FormatMoney(pvpSug.Value)
-                                    </button>
-                                }
-                            </div>
-                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
-                                @if (formPvp2.HasValue)
-                                {
-                                    <span>Con IVA: <b>$@FormatMoney(Math.Round(formPvp2.Value * (1 + formIvaPct / 100m), 2))</b></span>
-                                    @if (pvpDiff && pvpSug.HasValue)
-                                    {
-                                        <span style="color: #d97706; margin-left: 0.5rem;">⚠ PVP no coincide con BAR. Sugerido: <strong>$@FormatMoney(pvpSug.Value)</strong></span>
-                                    }
-                                }
-                                else { <span>Precio de lista sin IVA. Obligatorio. Lo paga el cliente OTRO.</span> }
-                            </p>
-                        </div>
                         <div class="form-group" style="flex: 1;">
                             <label class="form-label">UxB</label>
                             <input class="form-input" type="number" step="1" min="0" @bind="formUxB" />
                             <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Unidades por bulto (informativo)</p>
                         </div>
                     </div>
-                    <div class="form-row">
-                        <div class="form-group" style="flex: 1;">
-                            <label class="form-label">PVP % SOBRE EL COSTO (BAR / mayorista)</label>
-                            <input class="form-input" type="number" step="0.01" @bind="formBarPct" placeholder="100" />
-                            @if (formCosto > 0 && formBarPct.HasValue)
-                            {
-                                var precioBar = formCosto * (1m + formBarPct.Value / 100m);
-                                <p style="font-size: 0.72rem; color: #1d4ed8; margin: 0.2rem 0 0; font-weight: 600;">
-                                    → BAR paga $@FormatMoney(precioBar)
+                    @* ════════════ Modelo NUEVO: 2 precios directos por producto ════════════ *@
+                    <div style="background: #f0fdf4; border: 1px solid #16a34a; border-radius: 6px; padding: 0.6rem 0.8rem; margin-top: 0.5rem;">
+                        <h4 style="margin: 0 0 0.5rem; font-size: 0.85rem; color: #166534;">💰 Precios de venta (sin IVA)</h4>
+                        <div class="form-row" style="margin-bottom: 0.3rem;">
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label" style="font-size: 0.75rem;">Precio OTRO (consumidor final / venta x fuera)</label>
+                                <div style="display: flex; gap: 0.3rem; align-items: stretch;">
+                                    <input class="form-input" type="number" step="0.01" min="0" @bind="formPrecioOtro"
+                                           placeholder="0,00" style="flex: 1 1 auto; min-width: 0;" />
+                                    @if (formCosto > 0)
+                                    {
+                                        <button type="button" class="btn btn-secondary" @onclick="@(() => formPrecioOtro = Math.Round(formCosto * 2m, 2))"
+                                                style="white-space: nowrap; font-size: 0.75rem; padding: 0.3rem 0.5rem;"
+                                                title="Sugerir: costo × 2 (margen 100%)">🎯 ×2</button>
+                                    }
+                                </div>
+                                <p style="font-size: 0.7rem; color: #166534; margin: 0.2rem 0 0;">
+                                    @if (formPrecioOtro.HasValue && formPrecioOtro.Value > 0)
+                                    {
+                                        var ivaOtro = Math.Round(formPrecioOtro.Value * (1 + formIvaPct / 100m), 2);
+                                        var margenOtro = formCosto > 0 ? Math.Round((formPrecioOtro.Value / formCosto - 1m) * 100m, 1) : 0m;
+                                        <span>Con IVA: <b>$@FormatMoney(ivaOtro)</b> · Margen: <b>@margenOtro%</b></span>
+                                    }
+                                    else { <span>Lo que paga el consumidor final / venta por fuera.</span> }
                                 </p>
-                            }
-                            else if (formCosto > 0)
-                            {
-                                <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
-                                    Vacío = BAR paga lo mismo que OTRO ($@FormatMoney(formPvp2 ?? 0)).
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label" style="font-size: 0.75rem;">Precio BAR (mayorista)</label>
+                                <div style="display: flex; gap: 0.3rem; align-items: stretch;">
+                                    <input class="form-input" type="number" step="0.01" min="0" @bind="formPrecioBar"
+                                           placeholder="0,00" style="flex: 1 1 auto; min-width: 0;" />
+                                    @if (formCosto > 0)
+                                    {
+                                        <button type="button" class="btn btn-secondary" @onclick="@(() => formPrecioBar = Math.Round(formCosto * 2m, 2))"
+                                                style="white-space: nowrap; font-size: 0.75rem; padding: 0.3rem 0.5rem;"
+                                                title="Sugerir: costo × 2 (margen 100%)">🎯 ×2</button>
+                                    }
+                                </div>
+                                <p style="font-size: 0.7rem; color: #166534; margin: 0.2rem 0 0;">
+                                    @if (formPrecioBar.HasValue && formPrecioBar.Value > 0)
+                                    {
+                                        var ivaBar = Math.Round(formPrecioBar.Value * (1 + formIvaPct / 100m), 2);
+                                        var margenBar = formCosto > 0 ? Math.Round((formPrecioBar.Value / formCosto - 1m) * 100m, 1) : 0m;
+                                        <span>Con IVA: <b>$@FormatMoney(ivaBar)</b> · Margen: <b>@margenBar%</b></span>
+                                    }
+                                    else { <span>Lo que cobrás al bar / mayorista.</span> }
                                 </p>
-                            }
+                            </div>
                         </div>
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.3rem 0 0;">
+                            💡 Estos precios son directos: el sistema usa el que corresponde según el tipo de cliente (BAR u OTRO), sin matriz de descuentos.
+                        </p>
                     </div>
                     <div class="form-group">
                         <label class="form-label">Stock (unidades)</label>
@@ -893,6 +898,9 @@
     private string formIvaPctStr = "21";
     private decimal formIvaPct => decimal.Parse(formIvaPctStr, System.Globalization.CultureInfo.InvariantCulture);
     private decimal? formBarPct;     // % sobre costo (solo OTROS); null = BAR paga PVP
+    // Modelo NUEVO de precios (solo OTROS) — 2 precios directos:
+    private decimal? formPrecioOtro;
+    private decimal? formPrecioBar;
     private int? formUxB;             // unidades por bulto (solo OTROS)
     /// <summary>UX: el usuario SIEMPRE carga stock de cafe en kg. Internamente guardamos gramos.</summary>
     private decimal formStockKg;
@@ -1221,6 +1229,7 @@
         formCosto = 0; formPvp1 = null; formPvp2 = null;
         formIvaPctStr = "21";
         formBarPct = 100m; formUxB = null;
+        formPrecioOtro = null; formPrecioBar = null;
         formOemId = 0; oemSearch = ""; oemSearchOpen = false;
         formStockGramos = 0; formStockUnidades = 0;
         formStockKg = 0;
@@ -1236,6 +1245,13 @@
         formCosto = p.Costo; formPvp1 = p.Pvp1; formPvp2 = p.Pvp2;
         formIvaPctStr = p.IvaPct == 10.5m ? "10.5" : "21";
         formBarPct = p.BarPctSobreCosto;
+        // Modelo NUEVO de precios. Si NO están cargados (producto migrado del modelo viejo),
+        // sugerimos valores iniciales calculados desde los datos legacy.
+        formPrecioOtro = p.PrecioOtro ?? p.Pvp2 ?? p.Pvp1;
+        formPrecioBar = p.PrecioBar
+            ?? (p.BarPctSobreCosto.HasValue && p.Costo > 0
+                ? Math.Round(p.Costo * (1m + p.BarPctSobreCosto.Value / 100m), 2)
+                : (decimal?)null);
         formUxB = p.UxB;
         formOemId = p.OemId ?? 0; oemSearch = ""; oemSearchOpen = false;
         formStockGramos = p.StockGramos; formStockUnidades = p.StockUnidades;
@@ -1299,7 +1315,12 @@
                     StockGramos = stockGramosFinal,
                     StockUnidades = formCategoria == "OTROS" ? formStockUnidades : 0,
                     Notas = formNotas, IsActive = formIsActive,
-                    IvaPct = formIvaPct
+                    IvaPct = formIvaPct,
+                    // Modelo NUEVO de precios (solo OTROS):
+                    PrecioOtro = formCategoria == "OTROS" ? formPrecioOtro : null,
+                    PrecioBar = formCategoria == "OTROS" ? formPrecioBar : null,
+                    ClearPrecioOtro = formCategoria == "OTROS" && !formPrecioOtro.HasValue,
+                    ClearPrecioBar = formCategoria == "OTROS" && !formPrecioBar.HasValue,
                 });
                 if (u is null) { formError = "No se pudo actualizar"; return; }
                 ToastService.Success("Producto actualizado");
@@ -1320,7 +1341,10 @@
                     StockGramos = stockGramosFinal,
                     StockUnidades = formCategoria == "OTROS" ? formStockUnidades : 0,
                     Notas = formNotas,
-                    IvaPct = formIvaPct
+                    IvaPct = formIvaPct,
+                    // Modelo NUEVO de precios (solo OTROS):
+                    PrecioOtro = formCategoria == "OTROS" ? formPrecioOtro : null,
+                    PrecioBar = formCategoria == "OTROS" ? formPrecioBar : null,
                 });
                 if (c is null) { formError = "No se pudo crear"; return; }
                 ToastService.Success("Producto creado");

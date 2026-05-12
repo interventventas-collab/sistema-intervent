@@ -2194,6 +2194,16 @@ IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'UxB' AND Object_ID = Obje
     ALTER TABLE Cafe_Productos ADD UxB INT NULL;
 GO
 
+-- Modelo NUEVO de precios para productos OTROS (2 precios directos, sin matriz).
+-- Reemplaza la lógica de Pvp2 + matriz Cafe_ReglasPrecios para productos categoría OTROS.
+-- Si están NULL, se cae al modelo legacy (compatibilidad hacia atrás).
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'PrecioOtro' AND Object_ID = Object_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD PrecioOtro DECIMAL(18,2) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'PrecioBar' AND Object_ID = Object_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD PrecioBar DECIMAL(18,2) NULL;
+GO
+
 -- Migracion one-shot para OTROS:
 --  - Si Pvp2 (OTRO) viene NULL, lo seteo en costo*(1+MargenOtrosNoBarPct/100) para preservar el precio que el motor venia calculando.
 --  - BarPctSobreCosto lo seteo en MargenOtrosBarPct para preservar el precio BAR.

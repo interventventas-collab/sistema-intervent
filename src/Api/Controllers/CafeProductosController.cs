@@ -27,7 +27,8 @@ public class CafeProductosController : ControllerBase
         p.OemId, p.OemNav?.Codigo,
         p.StockGramos, p.StockUnidades,
         p.Notas, p.IsActive, p.IvaPct, p.CreatedAt, p.UpdatedAt,
-        p.OemNav?.PvpConIva, p.OemNav?.IvaPct);
+        p.OemNav?.PvpConIva, p.OemNav?.IvaPct,
+        p.PrecioOtro, p.PrecioBar);
 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] string? categoria = null)
@@ -364,6 +365,9 @@ public class CafeProductosController : ControllerBase
             Pvp1 = req.Pvp1,
             Pvp2 = req.Pvp2,
             BarPctSobreCosto = cat == "OTROS" ? req.BarPctSobreCosto : null,
+            // Modelo NUEVO de precios (solo OTROS, en CAFE quedan null):
+            PrecioOtro = cat == "OTROS" ? req.PrecioOtro : null,
+            PrecioBar = cat == "OTROS" ? req.PrecioBar : null,
             UxB = cat == "OTROS" ? req.UxB : null,
             OemId = cat == "OTROS" ? req.OemId : null,
             StockGramos = Math.Max(0m, req.StockGramos ?? 0m),
@@ -425,6 +429,11 @@ public class CafeProductosController : ControllerBase
         if (req.Pvp2.HasValue) p.Pvp2 = req.Pvp2.Value;
         if (req.BarPctSobreCosto.HasValue) p.BarPctSobreCosto = req.BarPctSobreCosto.Value;
         else if (req.ClearBarPctSobreCosto) p.BarPctSobreCosto = null;
+        // Modelo NUEVO de precios (solo OTROS):
+        if (req.PrecioOtro.HasValue) p.PrecioOtro = req.PrecioOtro.Value;
+        else if (req.ClearPrecioOtro) p.PrecioOtro = null;
+        if (req.PrecioBar.HasValue) p.PrecioBar = req.PrecioBar.Value;
+        else if (req.ClearPrecioBar) p.PrecioBar = null;
         if (req.UxB.HasValue) p.UxB = req.UxB.Value;
         else if (req.ClearUxB) p.UxB = null;
         if (req.OemId.HasValue) p.OemId = req.OemId.Value;

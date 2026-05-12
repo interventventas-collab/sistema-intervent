@@ -93,9 +93,27 @@ public static class CafePricingService
         }
         else
         {
-            // OTROS: lista = Pvp1 (fallback Pvp2). Sin fraccionamiento.
-            lista = producto.Pvp1 ?? producto.Pvp2 ?? 0m;
-            final = Math.Round(lista * (1m - desc / 100m), 2, MidpointRounding.AwayFromZero);
+            // OTROS — modelo NUEVO (2 precios directos según tipo cliente).
+            // Si PrecioBar/PrecioOtro están cargados, los uso directo (sin matriz).
+            // Si están NULL caigo al modelo LEGACY (Pvp1/Pvp2 + matriz).
+            decimal? precioDirecto = tipoCliente == TIPO_BAR
+                ? producto.PrecioBar
+                : producto.PrecioOtro;
+
+            if (precioDirecto.HasValue)
+            {
+                // Modelo nuevo: el precio cargado es la "lista" directa para ese tipo de cliente.
+                // El descuento de línea se aplica por encima si hay.
+                lista = precioDirecto.Value;
+                final = Math.Round(lista * (1m - desc / 100m), 2, MidpointRounding.AwayFromZero);
+            }
+            else
+            {
+                // Modelo legacy: Pvp1 (fallback Pvp2) + descuento de línea (la matriz se
+                // aplica afuera, en CafeVentasController). Sin fraccionamiento.
+                lista = producto.Pvp1 ?? producto.Pvp2 ?? 0m;
+                final = Math.Round(lista * (1m - desc / 100m), 2, MidpointRounding.AwayFromZero);
+            }
         }
 
         return new PrecioBreakdown(lista, desc, final);
