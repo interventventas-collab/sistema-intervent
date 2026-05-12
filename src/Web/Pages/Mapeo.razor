@@ -800,10 +800,54 @@ else
                 <button class="btn-close" @onclick="() => showAddStopModal = false">&times;</button>
             </div>
             <div class="modal-body">
-                <div style="display:flex; gap:0.4rem; margin-bottom:0.7rem;">
-                    <button class="btn @(addStopTab == "favorito" ? "btn-primary" : "btn-secondary")" style="flex:1;" @onclick="@(() => addStopTab = "favorito")">⭐ Desde favoritos</button>
-                    <button class="btn @(addStopTab == "manual" ? "btn-primary" : "btn-secondary")" style="flex:1;" @onclick="@(() => addStopTab = "manual")">✏️ Tipear nueva</button>
+                <div style="display:flex; gap:0.4rem; margin-bottom:0.7rem; flex-wrap: wrap;">
+                    <button class="btn @(addStopTab == "favorito" ? "btn-primary" : "btn-secondary")" style="flex:1; min-width:0;" @onclick="@(() => addStopTab = "favorito")">⭐ Favoritos</button>
+                    <button class="btn @(addStopTab == "cliente" ? "btn-primary" : "btn-secondary")" style="flex:1; min-width:0;" @onclick="@(() => addStopTab = "cliente")">🍵 Clientes mapeados</button>
+                    <button class="btn @(addStopTab == "manual" ? "btn-primary" : "btn-secondary")" style="flex:1; min-width:0;" @onclick="@(() => addStopTab = "manual")">✏️ Tipear nueva</button>
                 </div>
+                @if (addStopTab == "cliente")
+                {
+                    @if (clientesMapeados is null || clientesMapeados.Count == 0)
+                    {
+                        <p style="text-align:center; color:#6b7280; padding:1rem;">
+                            No hay clientes mapeados. Andá a <strong>Café → Clientes</strong>, editá uno y cargale el enlace de Google Maps.
+                        </p>
+                    }
+                    else
+                    {
+                        <input class="form-input" @bind="addStopClienteSearch" @bind:event="oninput" placeholder="Buscar por código, nombre, dirección..." style="margin-bottom:0.5rem;" />
+                        <div style="max-height:340px; overflow-y:auto;">
+                            @{
+                                var t = addStopClienteSearch?.Trim() ?? "";
+                                bool hasMatch(string? s) => !string.IsNullOrEmpty(s) && s.Contains(t, StringComparison.OrdinalIgnoreCase);
+                            }
+                            @foreach (var cli in clientesMapeados.Where(c => string.IsNullOrEmpty(t)
+                                || hasMatch(c.Nombre) || hasMatch(c.RazonSocial) || hasMatch(c.Direccion)
+                                || hasMatch(c.Localidad) || hasMatch(c.Cuit)
+                                || (c.CodigoInterno.HasValue && c.CodigoInterno.Value.ToString().Contains(t))))
+                            {
+                                <div style="border:1px solid #e5e7eb; padding:0.5rem 0.7rem; border-radius:6px; margin-bottom:0.3rem; cursor:pointer; display:flex; gap:0.5rem; align-items:center;"
+                                     @onclick="() => AddStopFromCliente(cli)"
+                                     title="Click para agregar al mapa">
+                                    @if (cli.CodigoInterno.HasValue)
+                                    {
+                                        <span style="display:inline-block; background:#1e40af; color:white; font-family:monospace; font-weight:700; padding:0.15rem 0.5rem; border-radius:4px; font-size:0.78rem;">@cli.CodigoInterno</span>
+                                    }
+                                    <div style="flex:1;">
+                                        <strong>@cli.Nombre</strong>
+                                        @if (cli.Tipo == "BAR")
+                                        { <span style="display:inline-block; padding:0.05rem 0.35rem; background:#dbeafe; color:#1e40af; border-radius:999px; font-size:0.65rem; font-weight:700; margin-left:0.3rem;">🍺 BAR</span> }
+                                        <div style="font-size:0.78rem; color:#4b5563;">@(cli.Direccion ?? "—")@(string.IsNullOrEmpty(cli.Localidad) ? "" : ", " + cli.Localidad)</div>
+                                        @if (!cli.MapeoLat.HasValue)
+                                        {
+                                            <div style="font-size:0.7rem; color:#d97706;">⚠ Sin coordenadas extraídas — no se puede agregar al mapa</div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
                 @if (addStopTab == "favorito")
                 {
                     @if (favoritos is null || favoritos.Count == 0)
@@ -829,7 +873,7 @@ else
                         </div>
                     }
                 }
-                else
+                @if (addStopTab == "manual")
                 {
                     <div class="form-group">
                         <label class="form-label">Buscar dirección</label>
@@ -1167,6 +1211,10 @@ else
     private bool showAddStopModal;
     private string addStopTab = "favorito";
     private string addStopFavSearch = "";
+    private string addStopClienteSearch = "";
+
+    // Clientes Café con MapeoLink cargado — se traen al inicio y aparecen en el tab "Clientes mapeados".
+    private List<CafeClienteDto>? clientesMapeados;
     private string addStopQuery = "", addStopDireccion = "", addStopAlias = "", addStopContact = "", addStopPhone = "", addStopNotas = "";
     private decimal addStopLat = 0, addStopLng = 0;
     private bool addStopGeocoding, addStopAlsoSaveFav;
@@ -1275,6 +1323,7 @@ else
             try { var pu = await Api.GetMapeoPublicBaseUrlAsync(); publicBaseUrl = string.IsNullOrWhiteSpace(pu?.Url) ? null : pu.Url; } catch { }
             await LoadDrivers();
             await LoadFavoritos();
+            await LoadClientesMapeados();
             await LoadStops();
             await LoadAndRender();
         }
@@ -1429,6 +1478,48 @@ else
 
     private async Task LoadDrivers() { try { drivers = await Api.GetMapeoDriversAsync() ?? new(); } catch { drivers = new(); } }
     private async Task LoadFavoritos() { try { favoritos = await Api.GetMapeoFavoritosAsync() ?? new(); } catch { favoritos = new(); } }
+
+    /// <summary>Carga los clientes del módulo Café que tienen MapeoLink + MapeoLat/MapeoLng cargados.
+    /// Solo esos pueden agregarse como parada del Mapeo (necesitan coords reales).</summary>
+    private async Task LoadClientesMapeados()
+    {
+        try
+        {
+            var todos = await Api.GetCafeClientesAsync() ?? new();
+            clientesMapeados = todos
+                .Where(c => c.IsActive && !string.IsNullOrWhiteSpace(c.MapeoLink))
+                .OrderBy(c => c.CodigoInterno ?? int.MaxValue)
+                .ThenBy(c => c.Nombre)
+                .ToList();
+        }
+        catch { clientesMapeados = new(); }
+    }
+
+    private async Task AddStopFromCliente(CafeClienteDto cli)
+    {
+        if (!cli.MapeoLat.HasValue || !cli.MapeoLng.HasValue)
+        {
+            ToastService.Error("Este cliente no tiene coordenadas extraídas todavía. Editalo en Café → Clientes y apretá '🔄 Re-extraer'.");
+            return;
+        }
+        try
+        {
+            var alias = cli.CodigoInterno.HasValue ? $"#{cli.CodigoInterno} · {cli.Nombre}" : cli.Nombre;
+            var direccion = string.IsNullOrEmpty(cli.Direccion)
+                ? (cli.Localidad ?? "—")
+                : (string.IsNullOrEmpty(cli.Localidad) ? cli.Direccion : $"{cli.Direccion}, {cli.Localidad}");
+            var s = await Api.CreateMapeoStopAsync(
+                "cliente-cafe",
+                cli.Id.ToString(),
+                alias,
+                direccion,
+                cli.MapeoLat.Value,
+                cli.MapeoLng.Value,
+                null, cli.Telefono, null);
+            if (s is not null) { stops!.Insert(0, s); ToastService.Success($"'{alias}' agregado al mapa"); await RenderMap(); }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
     private async Task LoadStops() { try { stops = await Api.GetMapeoStopsAsync() ?? new(); } catch { stops = new(); } }
 
     // ===== Agregar parada (manual o desde favorito) =====
