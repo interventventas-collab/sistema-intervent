@@ -32,7 +32,7 @@ public class MeliShipmentService
             {
                 var token = await _accountService.GetValidTokenAsync(account);
                 if (token is null) { errors.Add($"Token expirado: {account.Nickname}"); totalErrors++; continue; }
-                var (s, f) = await SyncForAccountAsync(account, token, daysBack, maxOrdersPerAccount);
+                var (s, f) = await SyncForAccountAsync(account, token, daysBack, maxOrdersPerAccount, modeFilter: "flex");
                 totalSynced += s; totalFlex += f;
 
                 // ======= REFRESH de pendientes =======
@@ -53,18 +53,52 @@ public class MeliShipmentService
     }
 
     /// <summary>
+    /// Sincroniza envios ME1 (mode='me1') de las ultimas N dias. Igual flujo que SyncFlexAsync pero filtrando por mode en vez de logistic_type.
+    /// </summary>
+    public async Task<MeliShipmentSyncResult> SyncMe1Async(int daysBack = 30, int maxOrdersPerAccount = 300)
+    {
+        var accounts = await _accountService.GetAllAccountEntitiesAsync();
+        int totalSynced = 0, totalMe1 = 0, totalErrors = 0;
+        var errors = new List<string>();
+        foreach (var account in accounts)
+        {
+            try
+            {
+                var token = await _accountService.GetValidTokenAsync(account);
+                if (token is null) { errors.Add($"Token expirado: {account.Nickname}"); totalErrors++; continue; }
+                var (s, f) = await SyncForAccountAsync(account, token, daysBack, maxOrdersPerAccount, modeFilter: "me1");
+                totalSynced += s; totalMe1 += f;
+
+                // Refresh estados de ME1 no-finales
+                try
+                {
+                    var refreshed = await RefreshPendingForAccountAsync(account, token, me1Only: true);
+                    totalSynced += refreshed;
+                }
+                catch (Exception exR) { errors.Add($"{account.Nickname} (refresh ME1): {exR.Message}"); }
+            }
+            catch (Exception ex) { errors.Add($"{account.Nickname}: {ex.Message}"); totalErrors++; }
+        }
+        return new MeliShipmentSyncResult(totalSynced, totalMe1, totalErrors, errors);
+    }
+
+    /// <summary>
     /// Recorre los shipments locales con estado no terminal y los re-consulta uno por uno a MeLi.
     /// Sirve para captar transiciones tipo "shipped → delivered" que pasaron en MeLi después del último sync.
     /// </summary>
-    private async Task<int> RefreshPendingForAccountAsync(MeliAccount account, string token)
+    private async Task<int> RefreshPendingForAccountAsync(MeliAccount account, string token, bool me1Only = false)
     {
         var http = _httpFactory.CreateClient();
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-        var pending = await _db.MeliShipments
+        var pendingQ = _db.MeliShipments
             .Where(s => s.MeliAccountId == account.Id
-                     && s.LogisticType == "self_service"
-                     && s.Status != "delivered" && s.Status != "cancelled" && s.Status != null)
+                     && s.Status != "delivered" && s.Status != "not_delivered"
+                     && s.Status != "cancelled" && s.Status != null);
+        if (me1Only) pendingQ = pendingQ.Where(s => s.Mode == "me1");
+        else pendingQ = pendingQ.Where(s => s.LogisticType == "self_service");
+
+        var pending = await pendingQ
             .Select(s => new { s.Id, s.MeliShipmentId, s.MeliOrderId, s.OrderTotal, s.ItemsSummary, s.BuyerNickname })
             .ToListAsync();
 
@@ -94,8 +128,11 @@ public class MeliShipmentService
         return updated;
     }
 
-    private async Task<(int synced, int flex)> SyncForAccountAsync(MeliAccount account, string token, int daysBack, int maxOrders)
+    private async Task<(int synced, int flex)> SyncForAccountAsync(MeliAccount account, string token, int daysBack, int maxOrders, string modeFilter = "flex")
     {
+        // modeFilter:
+        //   "flex" → solo guarda logistic_type=self_service (envios Flex, el flujo original)
+        //   "me1"  → solo guarda mode=me1 (envios manuales del vendedor)
         var http = _httpFactory.CreateClient();
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
@@ -173,7 +210,9 @@ public class MeliShipmentService
                 catch { continue; }
 
                 bool isFlex = shipDoc.TryGetProperty("logistic_type", out var lt) && lt.ValueKind == JsonValueKind.String && lt.GetString() == "self_service";
-                if (!isFlex) continue;
+                bool isMe1 = shipDoc.TryGetProperty("mode", out var mdEl) && mdEl.ValueKind == JsonValueKind.String && mdEl.GetString() == "me1";
+                bool match = modeFilter == "me1" ? isMe1 : isFlex;
+                if (!match) continue;
 
                 await UpsertShipmentAsync(account.Id, orderId, orderTotal, itemsSummary, buyerNickname, shipDoc);
                 synced++; flex++;
@@ -199,6 +238,7 @@ public class MeliShipmentService
         existing.Status = sh.TryGetProperty("status", out var st) ? st.GetString() : null;
         existing.Substatus = sh.TryGetProperty("substatus", out var sst) ? sst.GetString() : null;
         existing.LogisticType = sh.TryGetProperty("logistic_type", out var lt) ? lt.GetString() : null;
+        existing.Mode = sh.TryGetProperty("mode", out var md) ? md.GetString() : null;
         existing.TrackingNumber = sh.TryGetProperty("tracking_number", out var tn) ? tn.GetString() : null;
 
         if (sh.TryGetProperty("receiver_address", out var ra) && ra.ValueKind == JsonValueKind.Object)
@@ -238,6 +278,105 @@ public class MeliShipmentService
 
         existing.LastSyncedAt = DateTime.UtcNow;
         if (isNew) _db.MeliShipments.Add(existing);
+    }
+
+    /// <summary>
+    /// Service IDs por sitio para identificar el envio ME1 en MeLi al marcar el tracking.
+    /// Tabla copiada de la doc oficial de developers.mercadolibre.com.ar.
+    /// </summary>
+    private static int? ServiceIdForSite(string? siteId) => siteId?.ToUpperInvariant() switch
+    {
+        "MLA" => 154,
+        "MLB" => 11,
+        "MLM" => 231876,
+        "MLC" => 282578,
+        "MCO" => 282579,
+        "MLU" => 282604,
+        "MPE" => 361180,
+        _ => null
+    };
+
+    /// <summary>
+    /// Marca un envio ME1 con el estado pedido por el vendedor.
+    /// Endpoint MeLi: POST /shipments/{id}/seller_notifications
+    /// Combinaciones validas (status, substatus):
+    ///   shipped/null         → Despachado
+    ///   shipped/out_for_delivery → Salio a entregar
+    ///   delivered/null       → Entregado al comprador (FINAL, no reversible)
+    ///   not_delivered/returning_to_sender → No entregado (FINAL, no reversible)
+    /// Retorna (ok, errorMessage). En caso de exito, refresca el shipment local.
+    /// </summary>
+    public async Task<(bool ok, string? error)> SetMe1StatusAsync(int shipmentId, string status, string? substatus, string? trackingNumber, string? trackingUrl, string? comment)
+    {
+        var ship = await _db.MeliShipments.FirstOrDefaultAsync(s => s.Id == shipmentId);
+        if (ship is null) return (false, "Envio no encontrado");
+        if (ship.Mode != "me1") return (false, "Este envio no es ME1, no se puede operar desde aca");
+
+        var account = await _db.MeliAccounts.FirstOrDefaultAsync(a => a.Id == ship.MeliAccountId);
+        if (account is null) return (false, "Cuenta MeLi del envio no encontrada");
+        var token = await _accountService.GetValidTokenAsync(account);
+        if (token is null) return (false, "No se pudo obtener token de MeLi");
+
+        // Site ID: lo derivamos del MeliUserId via cuenta. Por simplicidad, usamos MLA (Argentina) por default;
+        // si la app maneja multipais, leerlo de account.SiteId u otro campo.
+        var siteId = "MLA";
+        var serviceId = ServiceIdForSite(siteId);
+
+        // Construir payload
+        var payload = new Dictionary<string, object?>
+        {
+            ["payload"] = new Dictionary<string, object?>
+            {
+                ["service_id"] = serviceId,
+                ["comment"] = string.IsNullOrWhiteSpace(comment) ? status : comment,
+                ["date"] = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffzzz")
+            },
+            ["status"] = status,
+            ["substatus"] = string.IsNullOrEmpty(substatus) ? "null" : substatus
+        };
+        if (!string.IsNullOrWhiteSpace(trackingNumber)) payload["tracking_number"] = trackingNumber;
+        if (!string.IsNullOrWhiteSpace(trackingUrl)) payload["tracking_url"] = trackingUrl;
+
+        var http = _httpFactory.CreateClient();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var url = $"https://api.mercadolibre.com/shipments/{ship.MeliShipmentId}/seller_notifications";
+        var json = JsonSerializer.Serialize(payload);
+        using var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+        var resp = await http.PostAsync(url, content);
+
+        if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized || resp.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        {
+            var newTok = await _accountService.GetValidTokenAsync(account, forceRefresh: true);
+            if (newTok is not null)
+            {
+                http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", newTok);
+                using var content2 = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+                resp = await http.PostAsync(url, content2);
+            }
+        }
+
+        var body = await resp.Content.ReadAsStringAsync();
+        if (!resp.IsSuccessStatusCode)
+        {
+            return (false, $"MeLi rechazo el cambio ({(int)resp.StatusCode}): {body[..Math.Min(body.Length, 400)]}");
+        }
+
+        // Refrescar el shipment local consultando MeLi otra vez (para reflejar el nuevo status/substatus/fechas)
+        try
+        {
+            var sUrl = $"https://api.mercadolibre.com/shipments/{ship.MeliShipmentId}";
+            var sResp = await http.GetAsync(sUrl);
+            if (sResp.IsSuccessStatusCode)
+            {
+                var doc = JsonDocument.Parse(await sResp.Content.ReadAsStringAsync()).RootElement;
+                await UpsertShipmentAsync(account.Id, ship.MeliOrderId ?? 0, ship.OrderTotal, ship.ItemsSummary, ship.BuyerNickname, doc);
+                await _db.SaveChangesAsync();
+            }
+        }
+        catch { /* el cambio en MeLi ya quedo, no fallar por error de refresh */ }
+
+        return (true, null);
     }
 
     private static string? StrProp(JsonElement el, string name, int maxLen)

@@ -21,6 +21,8 @@ public class MeliShipment
     [MaxLength(40)] public string? Status { get; set; }
     [MaxLength(40)] public string? Substatus { get; set; }
     [MaxLength(30)] public string? LogisticType { get; set; }
+    /// <summary>Modo de envio segun MeLi: me1 (manda el vendedor), me2, custom, not_specified.</summary>
+    [MaxLength(30)] public string? Mode { get; set; }
     [MaxLength(60)] public string? TrackingNumber { get; set; }
 
     [MaxLength(200)] public string? ReceiverName { get; set; }

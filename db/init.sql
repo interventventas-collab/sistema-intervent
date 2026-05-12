@@ -2918,6 +2918,19 @@ IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='BuyerNickname' AND Object_I
     ALTER TABLE MeliShipments ADD BuyerNickname NVARCHAR(100) NULL;
 GO
 
+-- MeliShipments: modo del envio (me1, me2, custom). Necesario para filtrar la pantalla me1/Entregas.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='Mode' AND Object_ID=Object_ID('MeliShipments'))
+    ALTER TABLE MeliShipments ADD Mode NVARCHAR(30) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='IX_MeliShipments_Mode')
+    CREATE INDEX IX_MeliShipments_Mode ON MeliShipments(Mode);
+GO
+
+-- Permiso de menu para el modulo me1 (envios manuales tipo ME1)
+IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId=1 AND MenuKey='me1')
+    INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'me1');
+GO
+
 -- ===== Mapeo: Repartidores y libreta de direcciones favoritas =====
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='MapeoDrivers')
 BEGIN

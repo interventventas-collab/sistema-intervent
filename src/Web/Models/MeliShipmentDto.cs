@@ -60,3 +60,40 @@ public class GeocodeResultDto
     public decimal Lat { get; set; }
     public decimal Lng { get; set; }
 }
+
+public class MeliMe1ShipmentDto
+{
+    public int Id { get; set; }
+    public long MeliShipmentId { get; set; }
+    public long? MeliOrderId { get; set; }
+    public string? Cuenta { get; set; }
+    public string? Status { get; set; }
+    public string? Substatus { get; set; }
+    public string? Mode { get; set; }
+    public string? TrackingNumber { get; set; }
+    public string? ReceiverName { get; set; }
+    public string? ReceiverPhone { get; set; }
+    public string? BuyerNickname { get; set; }
+    public string? AddressLine { get; set; }
+    public string? Neighborhood { get; set; }
+    public string? City { get; set; }
+    public string? State { get; set; }
+    public string? ZipCode { get; set; }
+    public string? Comment { get; set; }
+    public string? ItemsSummary { get; set; }
+    public decimal? OrderTotal { get; set; }
+    public DateTime? DateCreated { get; set; }
+    public DateTime? DateShipped { get; set; }
+    public DateTime? DateDelivered { get; set; }
+    public DateTime? EstimatedDeliveryFinal { get; set; }
+    public DateTime? EstimatedDeliveryLimit { get; set; }
+    public DateTime? LastSyncedAt { get; set; }
+}
+
+public class MeliMe1SyncResultDto
+{
+    public int TotalSynced { get; set; }
+    public int TotalMe1 { get; set; }
+    public int TotalErrors { get; set; }
+    public List<string> Errores { get; set; } = new();
+}

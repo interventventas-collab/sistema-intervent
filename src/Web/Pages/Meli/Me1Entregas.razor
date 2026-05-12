@@ -1,0 +1,283 @@
+@page "/meli/me1/entregas"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.6rem;">
+        <h3 style="margin: 0;">🏎 me1 · Entregas (@shipments.Count)</h3>
+        <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
+            <button class="btn @(filter == "todos" ? "btn-primary" : "btn-secondary")" @onclick='() => SetFilter("todos")'>Todos</button>
+            <button class="btn @(filter == "pendientes" ? "btn-primary" : "btn-secondary")" @onclick='() => SetFilter("pendientes")'>Pendientes</button>
+            <button class="btn @(filter == "entregados" ? "btn-primary" : "btn-secondary")" @onclick='() => SetFilter("entregados")'>Entregados</button>
+            <button class="btn @(filter == "no_entregados" ? "btn-primary" : "btn-secondary")" @onclick='() => SetFilter("no_entregados")'>No entregados</button>
+            <button class="btn btn-secondary" @onclick="SyncFromMeli" disabled="@isSyncing" title="Trae envios ME1 nuevos desde MercadoLibre">
+                @(isSyncing ? "Sincronizando..." : "🔄 Sincronizar con MeLi")
+            </button>
+        </div>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        @if (isLoading)
+        {
+            <p class="text-muted" style="padding: 1.5rem;">Cargando envios ME1...</p>
+        }
+        else if (shipments.Count == 0)
+        {
+            <div style="padding: 1.5rem; text-align: center; color: #6b7280;">
+                <p style="margin: 0 0 0.6rem;">No hay envios ME1 cargados con este filtro.</p>
+                <p style="font-size: 0.85rem; margin: 0;">Hace clic en <b>"Sincronizar con MeLi"</b> arriba a la derecha para traer los envios manuales de los ultimos 30 dias.</p>
+            </div>
+        }
+        else
+        {
+            <div style="overflow-x: auto;">
+                <table class="table table-compact">
+                    <thead>
+                        <tr>
+                            <th>Comprador</th>
+                            <th>Producto</th>
+                            <th style="text-align: right;">Total</th>
+                            <th>Despachado</th>
+                            <th>Tracking</th>
+                            <th style="min-width: 230px;">Estado en MeLi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var s in shipments)
+                        {
+                            var key = s.Id;
+                            var rowStyle = s.Status switch
+                            {
+                                "delivered" => "background: #f0fdf4;",
+                                "not_delivered" => "background: #fef2f2;",
+                                _ => ""
+                            };
+                            <tr style="@rowStyle">
+                                <td>
+                                    <div style="font-weight: 600;">@(s.ReceiverName ?? s.BuyerNickname ?? "—")</div>
+                                    @if (!string.IsNullOrWhiteSpace(s.AddressLine))
+                                    {
+                                        <div style="font-size: 0.78rem; color: #6b7280;">@s.AddressLine, @s.City</div>
+                                    }
+                                </td>
+                                <td>
+                                    <div style="font-size: 0.85rem;">@(s.ItemsSummary ?? "—")</div>
+                                    <div style="font-size: 0.75rem; color: #9ca3af;">Envio #@s.MeliShipmentId</div>
+                                </td>
+                                <td style="text-align: right; font-weight: 600;">
+                                    @(s.OrderTotal.HasValue ? $"${s.OrderTotal.Value:N0}" : "—")
+                                </td>
+                                <td style="font-size: 0.82rem;">
+                                    @(s.DateShipped.HasValue ? s.DateShipped.Value.ToLocalTime().ToString("dd/MM HH:mm") : "—")
+                                </td>
+                                <td style="font-size: 0.82rem;">@(s.TrackingNumber ?? "—")</td>
+                                <td>
+                                    @{
+                                        var isFinal = s.Status == "delivered" || s.Status == "not_delivered" || s.Status == "cancelled";
+                                    }
+                                    @if (isFinal)
+                                    {
+                                        <span class="badge @(s.Status == "delivered" ? "badge-success" : "badge-danger")">
+                                            @StatusLabel(s.Status, s.Substatus) · final
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <div style="display: flex; flex-direction: column; gap: 0.2rem;">
+                                            <div style="font-size: 0.75rem; color: #6b7280;">Actual: <b>@StatusLabel(s.Status, s.Substatus)</b></div>
+                                            <select class="form-input" style="padding: 0.3rem 0.4rem; font-size: 0.85rem;"
+                                                    value=""
+                                                    @onchange="@(e => OnStateChange(s, e.Value?.ToString()))"
+                                                    disabled="@(busyRow == key)">
+                                                <option value="">— Cambiar a... —</option>
+                                                @if (CurrentKey(s) != "shipped|null")
+                                                {
+                                                    <option value="shipped|null">📦 Marcar Despachado</option>
+                                                }
+                                                @if (CurrentKey(s) != "shipped|out_for_delivery")
+                                                {
+                                                    <option value="shipped|out_for_delivery">🚚 Salio a entregar</option>
+                                                }
+                                                <option value="delivered|null">✅ Marcar Entregado (final)</option>
+                                                <option value="not_delivered|returning_to_sender">❌ No entregado (final)</option>
+                                            </select>
+                                        </div>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@* Modal de confirmacion antes de mandar el cambio a MeLi *@
+@if (pendingChange is not null)
+{
+    var p = pendingChange;
+    var isIrreversible = p.NewStatus == "delivered" || p.NewStatus == "not_delivered";
+    <div class="modal-overlay" @onclick="CancelChange">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: @(isIrreversible ? "#fef2f2" : "whitesmoke");">
+                <h4 style="margin: 0;">@(isIrreversible ? "⚠ Cambio irreversible" : "Confirmar cambio")</h4>
+                <button class="btn-close" @onclick="CancelChange">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="margin: 0 0 0.6rem; font-size: 0.9rem;">
+                    Vas a marcar el envio en MeLi como:
+                </p>
+                <p style="font-size: 1.05rem; font-weight: 700; padding: 0.6rem; background: #f3f4f6; border-radius: 6px; text-align: center; margin: 0 0 0.8rem;">
+                    @StatusLabel(p.NewStatus, p.NewSubstatus)
+                </p>
+                @if (isIrreversible)
+                {
+                    <p style="color: #b91c1c; font-size: 0.85rem; margin: 0 0 0.6rem; font-weight: 600;">
+                        ⚠ Este cambio NO se puede deshacer. MeLi lo va a tomar como definitivo.
+                    </p>
+                }
+                <div class="form-group" style="margin-bottom: 0.6rem;">
+                    <label class="form-label">Comentario (opcional)</label>
+                    <input class="form-input" @bind="commentInput" placeholder="ej: entregado a Juan en mano" />
+                </div>
+                @if (p.NewStatus == "shipped")
+                {
+                    <div class="form-group">
+                        <label class="form-label">Numero de tracking / remito (opcional)</label>
+                        <input class="form-input" @bind="trackingInput" placeholder="@(p.Ship.TrackingNumber ?? "OP123...")" />
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CancelChange" disabled="@isSubmitting">Cancelar</button>
+                <button class="btn @(isIrreversible ? "btn-danger" : "btn-primary")" @onclick="ConfirmChange" disabled="@isSubmitting">
+                    @(isSubmitting ? "Procesando..." : isIrreversible ? "Si, marcar igual" : "Confirmar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<MeliMe1ShipmentDto> shipments = new();
+    private bool isLoading = true;
+    private bool isSyncing = false;
+    private string filter = "pendientes";
+    private int? busyRow;
+
+    private class PendingChange
+    {
+        public MeliMe1ShipmentDto Ship { get; set; } = default!;
+        public string NewStatus { get; set; } = "";
+        public string? NewSubstatus { get; set; }
+    }
+    private PendingChange? pendingChange;
+    private bool isSubmitting;
+    private string commentInput = "";
+    private string trackingInput = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        try
+        {
+            var list = await Api.GetMeliMe1ShipmentsAsync(filter);
+            shipments = list ?? new();
+        }
+        catch (Exception ex) { ToastService.Error($"Error cargando envios: {ex.Message}"); }
+        finally { isLoading = false; }
+    }
+
+    private async Task SetFilter(string f)
+    {
+        if (filter == f) return;
+        filter = f;
+        await LoadAsync();
+    }
+
+    private async Task SyncFromMeli()
+    {
+        isSyncing = true;
+        try
+        {
+            var r = await Api.SyncMeliMe1ShipmentsAsync(30, 300);
+            if (r is null) { ToastService.Error("No se pudo sincronizar con MeLi"); return; }
+            ToastService.Success($"Sincronizacion lista: {r.TotalMe1} envios ME1 traidos");
+            await LoadAsync();
+        }
+        catch (Exception ex) { ToastService.Error($"Error sincronizando: {ex.Message}"); }
+        finally { isSyncing = false; }
+    }
+
+    private static string CurrentKey(MeliMe1ShipmentDto s)
+        => $"{s.Status ?? ""}|{s.Substatus ?? "null"}";
+
+    private static string StatusLabel(string? status, string? substatus) => (status, substatus) switch
+    {
+        ("shipped", null) or ("shipped", "null") => "📦 Despachado",
+        ("shipped", "out_for_delivery") => "🚚 Salio a entregar",
+        ("delivered", _) => "✅ Entregado",
+        ("not_delivered", _) => "❌ No entregado",
+        ("cancelled", _) => "🚫 Cancelado",
+        ("pending", _) => "⏳ Pendiente",
+        ("ready_to_ship", _) => "📋 Listo p/ despachar",
+        (null, _) => "—",
+        _ => $"{status}/{substatus}"
+    };
+
+    private void OnStateChange(MeliMe1ShipmentDto s, string? selectedKey)
+    {
+        if (string.IsNullOrEmpty(selectedKey)) return;
+        var parts = selectedKey.Split('|');
+        if (parts.Length != 2) return;
+        var newStatus = parts[0];
+        var newSubstatus = parts[1] == "null" ? null : parts[1];
+
+        // Si elige el estado actual, no hacer nada
+        if (newStatus == s.Status && (newSubstatus ?? "null") == (s.Substatus ?? "null")) return;
+
+        pendingChange = new PendingChange { Ship = s, NewStatus = newStatus, NewSubstatus = newSubstatus };
+        commentInput = "";
+        trackingInput = s.TrackingNumber ?? "";
+    }
+
+    private void CancelChange()
+    {
+        if (isSubmitting) return;
+        pendingChange = null;
+        commentInput = "";
+        trackingInput = "";
+    }
+
+    private async Task ConfirmChange()
+    {
+        if (pendingChange is null) return;
+        isSubmitting = true;
+        busyRow = pendingChange.Ship.Id;
+        try
+        {
+            var (ok, error) = await Api.SetMeliMe1ShipmentStatusAsync(
+                pendingChange.Ship.Id,
+                pendingChange.NewStatus,
+                pendingChange.NewSubstatus,
+                trackingNumber: string.IsNullOrWhiteSpace(trackingInput) ? null : trackingInput,
+                trackingUrl: null,
+                comment: string.IsNullOrWhiteSpace(commentInput) ? null : commentInput);
+
+            if (!ok) { ToastService.Error(error ?? "MeLi rechazo el cambio"); return; }
+            ToastService.Success($"Estado actualizado en MeLi: {StatusLabel(pendingChange.NewStatus, pendingChange.NewSubstatus)}");
+            pendingChange = null;
+            commentInput = "";
+            trackingInput = "";
+            await LoadAsync();
+        }
+        catch (Exception ex) { ToastService.Error($"Error: {ex.Message}"); }
+        finally { isSubmitting = false; busyRow = null; }
+    }
+}

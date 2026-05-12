@@ -2209,6 +2209,24 @@ public class ApiClient
     public async Task<MeliShipmentSyncResultDto?> SyncMeliFlexShipmentsAsync(int days = 7, int maxOrders = 200)
         => await PostAsync<MeliShipmentSyncResultDto>("/api/meli/shipments/sync-flex", new { days, maxOrders });
 
+    // ===== MeLi ME1 (envios manuales del vendedor) =====
+    public async Task<List<MeliMe1ShipmentDto>?> GetMeliMe1ShipmentsAsync(string filter = "todos", int take = 500)
+        => await GetAsync<List<MeliMe1ShipmentDto>>($"/api/meli/me1/shipments?filter={Uri.EscapeDataString(filter)}&take={take}");
+
+    public async Task<MeliMe1SyncResultDto?> SyncMeliMe1ShipmentsAsync(int days = 30, int maxOrders = 300)
+        => await PostAsync<MeliMe1SyncResultDto>("/api/meli/me1/sync", new { days, maxOrders });
+
+    public async Task<(bool ok, string? error)> SetMeliMe1ShipmentStatusAsync(int id, string status, string? substatus, string? trackingNumber = null, string? trackingUrl = null, string? comment = null)
+    {
+        try
+        {
+            var r = await PostAsync<object>($"/api/meli/me1/shipments/{id}/status", new { status, substatus, trackingNumber, trackingUrl, comment });
+            return (r is not null, null);
+        }
+        catch (HttpRequestException ex) { return (false, ex.Message); }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
     public async Task<bool> UpdateMeliShipmentInternalStatusAsync(int id, string internalStatus, string? notes = null)
     {
         var r = await PutAsync<object>($"/api/meli/shipments/{id}/internal-status", new { internalStatus, notes });

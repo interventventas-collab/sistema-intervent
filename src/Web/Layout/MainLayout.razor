@@ -116,10 +116,10 @@
            Solo visible para INTERVENT (es la unica empresa que vende por ML).
            Si no hay empresa elegida, se sigue mostrando para no esconderlo a usuarios viejos.
            Re-vincular publicaciones vive aca (es una accion de ML, no de inventario). *@
-        @if ((HasPerm("publicaciones") || HasPerm("ordenes") || HasPerm("import-productos") || HasPerm("mapeo")) && (!Company.HasCompany || string.Equals(Company.Current, "INTERVENT", StringComparison.OrdinalIgnoreCase)))
+        @if ((HasPerm("publicaciones") || HasPerm("ordenes") || HasPerm("import-productos") || HasPerm("mapeo") || HasPerm("me1")) && (!Company.HasCompany || string.Equals(Company.Current, "INTERVENT", StringComparison.OrdinalIgnoreCase)))
         {
             <NavGroup Label="MercadoLibre" Icon="@SvgIcons.Store"
-                      HasActiveChild="@(IsActive("/publicaciones") || IsActive("/ordenes") || IsActive("/relink-meli-orphans") || IsActive("/mapeo"))">
+                      HasActiveChild="@(IsActive("/publicaciones") || IsActive("/ordenes") || IsActive("/relink-meli-orphans") || IsActive("/mapeo") || IsActive("/meli/me1/entregas"))">
                 @if (HasPerm("publicaciones"))
                 {
                     <NavItem Href="/publicaciones" Label="Publicaciones" Icon="@SvgIcons.Tag"
@@ -134,6 +134,15 @@
                 {
                     <NavItem Href="/mapeo" Label="Mapeo" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/mapeo")" OnClick="@(() => NavigateTo("/mapeo"))" />
+                }
+                @* Grupo me1: por ahora solo tiene 'Entregas'. Pensado para colgarle mas pantallas adelante. *@
+                @if (HasPerm("me1"))
+                {
+                    <NavGroup Label="me1" Icon="@SvgIcons.Torino"
+                              HasActiveChild="@IsActive("/meli/me1/entregas")">
+                        <NavItem Href="/meli/me1/entregas" Label="Entregas" Icon="@SvgIcons.Check"
+                                 IsActive="@IsActive("/meli/me1/entregas")" OnClick="@(() => NavigateTo("/meli/me1/entregas"))" />
+                    </NavGroup>
                 }
                 @if (HasPerm("import-productos"))
                 {
@@ -587,6 +596,7 @@
         { "publicaciones", "publicaciones" },
         { "ordenes", "ordenes" },
         { "mapeo", "mapeo" },
+        { "meli/me1/entregas", "me1" },
         { "tesoreria", "tesoreria" },
         { "empleados", "empleados" },
         { "sueldos", "sueldos" },
