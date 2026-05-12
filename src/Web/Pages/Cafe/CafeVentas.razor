@@ -1411,7 +1411,14 @@
         if (formClienteId > 0)
         {
             var c = clientes?.FirstOrDefault(x => x.Id == formClienteId);
-            if (c is not null) formClienteTipo = c.Tipo;
+            if (c is not null)
+            {
+                formClienteTipo = c.Tipo;
+                // Si el cliente tiene cargada su Condición IVA Default en la ficha, la usamos
+                // como sugerencia en este comprobante. El usuario siempre puede cambiarla a mano.
+                if (!string.IsNullOrWhiteSpace(c.CondicionIvaDefault))
+                    formCondicionIva = c.CondicionIvaDefault!;
+            }
         }
         RecomputeUnpaidPrevSales();
         await LoadTopProductsForClient();
