@@ -338,8 +338,7 @@
                     <div class="form-group" style="flex: 1;">
                         <label class="form-label">Costo (sin IVA) ($)</label>
                         <input class="form-input" type="number" step="0.01" min="0"
-                               value="@formCosto"
-                               @oninput="@(e => OnCostoChanged(e.Value?.ToString()))" />
+                               @bind="formCosto" @bind:event="oninput" @bind:after="RecalcularMargenesDesdeCosto" />
                         <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Costo interno del producto, sin IVA.</p>
                     </div>
                 </div>
@@ -475,8 +474,7 @@
                                 <label class="form-label" style="font-size: 0.75rem;">Precio BAR (mayorista)</label>
                                 <div style="display: flex; gap: 0.3rem; align-items: stretch;">
                                     <input class="form-input" type="number" step="0.01" min="0"
-                                           value="@formPrecioBar"
-                                           @oninput="@(e => OnPrecioBarChanged(e.Value?.ToString()))"
+                                           @bind="formPrecioBar" @bind:event="oninput" @bind:after="RecalcMargenBarDesdePrecio"
                                            placeholder="0,00" style="flex: 1 1 auto; min-width: 0;" />
                                     @if (formCosto > 0)
                                     {
@@ -491,8 +489,7 @@
                                     <div style="display: flex; gap: 0.3rem; align-items: center; margin-top: 0.25rem;">
                                         <label style="font-size: 0.7rem; color: #166534; font-weight: 600; white-space: nowrap;">Margen %:</label>
                                         <input class="form-input" type="number" step="0.1" min="0"
-                                               value="@(formMargenBar?.ToString("0.##"))"
-                                               @oninput="@(e => OnMargenBarChanged(e.Value?.ToString()))"
+                                               @bind="formMargenBar" @bind:event="oninput" @bind:after="RecalcPrecioBarDesdeMargen"
                                                placeholder="100"
                                                style="flex: 1 1 auto; min-width: 0; padding: 0.2rem 0.4rem; font-size: 0.8rem;" />
                                     </div>
@@ -510,8 +507,7 @@
                                 <label class="form-label" style="font-size: 0.75rem;">Precio OTRO (consumidor final / venta x fuera)</label>
                                 <div style="display: flex; gap: 0.3rem; align-items: stretch;">
                                     <input class="form-input" type="number" step="0.01" min="0"
-                                           value="@formPrecioOtro"
-                                           @oninput="@(e => OnPrecioOtroChanged(e.Value?.ToString()))"
+                                           @bind="formPrecioOtro" @bind:event="oninput" @bind:after="RecalcMargenOtroDesdePrecio"
                                            placeholder="0,00" style="flex: 1 1 auto; min-width: 0;" />
                                     @if (formCosto > 0)
                                     {
@@ -525,8 +521,7 @@
                                     <div style="display: flex; gap: 0.3rem; align-items: center; margin-top: 0.25rem;">
                                         <label style="font-size: 0.7rem; color: #166534; font-weight: 600; white-space: nowrap;">Margen %:</label>
                                         <input class="form-input" type="number" step="0.1" min="0"
-                                               value="@(formMargenOtro?.ToString("0.##"))"
-                                               @oninput="@(e => OnMargenOtroChanged(e.Value?.ToString()))"
+                                               @bind="formMargenOtro" @bind:event="oninput" @bind:after="RecalcPrecioOtroDesdeMargen"
                                                placeholder="100"
                                                style="flex: 1 1 auto; min-width: 0; padding: 0.2rem 0.4rem; font-size: 0.8rem;" />
                                     </div>
@@ -932,15 +927,12 @@
     private decimal? formMargenBar;
     private decimal? formMargenOtro;
 
-    /// <summary>El usuario cambió el costo. Recalculamos los márgenes (los precios quedan
-    /// fijos — el costo nuevo es la referencia para el % de margen contra los precios actuales).</summary>
-    private void OnCostoChanged(string? value)
+    // Sincronización bidireccional entre Precio y Margen. Cada método se llama via @bind:after
+    // del input correspondiente, así Blazor ya hizo el bind y solo recalculamos el "espejo".
+
+    private void RecalcularMargenesDesdeCosto()
     {
-        if (string.IsNullOrWhiteSpace(value)) { formCosto = 0m; return; }
-        if (!decimal.TryParse(value.Replace(",", "."), System.Globalization.NumberStyles.Any,
-            System.Globalization.CultureInfo.InvariantCulture, out var c) || c < 0m) return;
-        formCosto = c;
-        // Recalcular márgenes contra los precios existentes
+        // Cambió el costo. Los precios quedan iguales, los márgenes se ajustan al nuevo costo.
         formMargenBar = (formPrecioBar.HasValue && formCosto > 0)
             ? Math.Round((formPrecioBar.Value / formCosto - 1m) * 100m, 2, MidpointRounding.AwayFromZero)
             : (decimal?)null;
@@ -948,55 +940,39 @@
             ? Math.Round((formPrecioOtro.Value / formCosto - 1m) * 100m, 2, MidpointRounding.AwayFromZero)
             : (decimal?)null;
     }
+    private void RecalcMargenBarDesdePrecio()
+    {
+        formMargenBar = (formPrecioBar.HasValue && formCosto > 0)
+            ? Math.Round((formPrecioBar.Value / formCosto - 1m) * 100m, 2, MidpointRounding.AwayFromZero)
+            : (decimal?)null;
+    }
+    private void RecalcMargenOtroDesdePrecio()
+    {
+        formMargenOtro = (formPrecioOtro.HasValue && formCosto > 0)
+            ? Math.Round((formPrecioOtro.Value / formCosto - 1m) * 100m, 2, MidpointRounding.AwayFromZero)
+            : (decimal?)null;
+    }
+    private void RecalcPrecioBarDesdeMargen()
+    {
+        if (formCosto > 0 && formMargenBar.HasValue)
+            formPrecioBar = Math.Round(formCosto * (1m + formMargenBar.Value / 100m), 2, MidpointRounding.AwayFromZero);
+    }
+    private void RecalcPrecioOtroDesdeMargen()
+    {
+        if (formCosto > 0 && formMargenOtro.HasValue)
+            formPrecioOtro = Math.Round(formCosto * (1m + formMargenOtro.Value / 100m), 2, MidpointRounding.AwayFromZero);
+    }
 
+    // Helpers para los botones "🎯 ×2"
     private void SetPrecioBar(decimal precio)
     {
         formPrecioBar = Math.Round(precio, 2, MidpointRounding.AwayFromZero);
-        formMargenBar = formCosto > 0
-            ? Math.Round((formPrecioBar.Value / formCosto - 1m) * 100m, 2, MidpointRounding.AwayFromZero)
-            : (decimal?)null;
+        RecalcMargenBarDesdePrecio();
     }
     private void SetPrecioOtro(decimal precio)
     {
         formPrecioOtro = Math.Round(precio, 2, MidpointRounding.AwayFromZero);
-        formMargenOtro = formCosto > 0
-            ? Math.Round((formPrecioOtro.Value / formCosto - 1m) * 100m, 2, MidpointRounding.AwayFromZero)
-            : (decimal?)null;
-    }
-
-    private void OnPrecioBarChanged(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) { formPrecioBar = null; formMargenBar = null; return; }
-        if (decimal.TryParse(value.Replace(",", "."), System.Globalization.NumberStyles.Any,
-            System.Globalization.CultureInfo.InvariantCulture, out var p) && p >= 0m) SetPrecioBar(p);
-    }
-    private void OnPrecioOtroChanged(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) { formPrecioOtro = null; formMargenOtro = null; return; }
-        if (decimal.TryParse(value.Replace(",", "."), System.Globalization.NumberStyles.Any,
-            System.Globalization.CultureInfo.InvariantCulture, out var p) && p >= 0m) SetPrecioOtro(p);
-    }
-    private void OnMargenBarChanged(string? value)
-    {
-        if (formCosto <= 0) return;
-        if (string.IsNullOrWhiteSpace(value)) { formMargenBar = null; return; }
-        if (decimal.TryParse(value.Replace(",", "."), System.Globalization.NumberStyles.Any,
-            System.Globalization.CultureInfo.InvariantCulture, out var m) && m >= 0m)
-        {
-            formMargenBar = Math.Round(m, 2);
-            formPrecioBar = Math.Round(formCosto * (1m + m / 100m), 2, MidpointRounding.AwayFromZero);
-        }
-    }
-    private void OnMargenOtroChanged(string? value)
-    {
-        if (formCosto <= 0) return;
-        if (string.IsNullOrWhiteSpace(value)) { formMargenOtro = null; return; }
-        if (decimal.TryParse(value.Replace(",", "."), System.Globalization.NumberStyles.Any,
-            System.Globalization.CultureInfo.InvariantCulture, out var m) && m >= 0m)
-        {
-            formMargenOtro = Math.Round(m, 2);
-            formPrecioOtro = Math.Round(formCosto * (1m + m / 100m), 2, MidpointRounding.AwayFromZero);
-        }
+        RecalcMargenOtroDesdePrecio();
     }
     private int? formUxB;             // unidades por bulto (solo OTROS)
     /// <summary>UX: el usuario SIEMPRE carga stock de cafe en kg. Internamente guardamos gramos.</summary>
