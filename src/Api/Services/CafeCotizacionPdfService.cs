@@ -216,10 +216,9 @@ public class CafeCotizacionPdfService
                             c.ConstantColumn(45);
                             c.RelativeColumn(5);
                             c.ConstantColumn(60);
-                            c.ConstantColumn(70);
-                            c.ConstantColumn(50);
                             c.ConstantColumn(80);
-                            c.ConstantColumn(85);
+                            c.ConstantColumn(50);
+                            c.ConstantColumn(95);
                         });
                         table.Header(h =>
                         {
@@ -228,7 +227,6 @@ public class CafeCotizacionPdfService
                             h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignCenter().Text("Formato").SemiBold().FontSize(8);
                             h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text("P. Unitario").SemiBold().FontSize(8);
                             h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text("Desc.").SemiBold().FontSize(8);
-                            h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text("P. Unit final").SemiBold().FontSize(8);
                             h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text("Subtotal").SemiBold().FontSize(8);
                         });
                         foreach (var i in v.Items)
@@ -260,16 +258,6 @@ public class CafeCotizacionPdfService
                                     t.Span($"-{i.DescuentoPct.ToString("0.##", Es)}%").FontColor(Colors.Red.Darken1).Bold();
                                 else
                                     t.Span("—").FontColor(Colors.Grey.Medium);
-                            });
-                            // P. Unit c/desc
-                            var puConDesc = i.DescuentoPct > 0 && i.Cantidad > 0
-                                ? Math.Round(i.Subtotal / i.Cantidad, 2)
-                                : i.PrecioUnitario;
-                            table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text(t =>
-                            {
-                                var s = "$ " + puConDesc.ToString("N2", Es);
-                                if (i.DescuentoPct > 0) t.Span(s).Bold().FontColor(Colors.Green.Darken1);
-                                else t.Span(s).FontColor(Colors.Grey.Medium);
                             });
                             // Subtotal
                             table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight()
