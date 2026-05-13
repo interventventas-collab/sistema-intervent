@@ -266,13 +266,43 @@ public class CafeCobranzasController : ControllerBase
         await _audit.LogAsync("CafeCobranza", cobranza.Id.ToString(), "CREATE",
             $"Cobranza {numero} para cliente {cliente.Nombre}, total ${sumMedios:N2}");
 
+        // Sincronizar flag IsPaid de las ventas imputadas (TRUE si saldo <= 0)
+        await SincronizarIsPaidAsync(req.Comprobantes.Where(c => c.VentaId.HasValue).Select(c => c.VentaId!.Value).ToList());
+
         return Ok(new { id = cobranza.Id, numero });
+    }
+
+    /// <summary>
+    /// Recalcula el flag IsPaid de cada venta tras un cambio de cobranza.
+    /// Una venta esta pagada si la suma de cobranzas aplicadas a ella (de cobranzas VIGENTES) >= Total.
+    /// </summary>
+    private async Task SincronizarIsPaidAsync(List<int> ventaIds)
+    {
+        if (ventaIds == null || ventaIds.Count == 0) return;
+        var ventas = await _db.CafeVentas.Where(v => ventaIds.Contains(v.Id)).ToListAsync();
+        if (ventas.Count == 0) return;
+        var pagadoPorVenta = await _db.CafeCobranzasComprobantes
+            .Where(c => c.VentaId != null && ventaIds.Contains(c.VentaId!.Value)
+                && c.Cobranza!.Estado == "VIGENTE")
+            .GroupBy(c => c.VentaId!.Value)
+            .Select(g => new { VentaId = g.Key, Total = g.Sum(x => x.Importe) })
+            .ToListAsync();
+        var dict = pagadoPorVenta.ToDictionary(p => p.VentaId, p => p.Total);
+        foreach (var v in ventas)
+        {
+            var pagado = dict.TryGetValue(v.Id, out var p) ? p : 0m;
+            v.IsPaid = pagado >= v.Total - 0.01m;
+        }
+        await _db.SaveChangesAsync();
     }
 
     [HttpPost("{id:int}/anular")]
     public async Task<IActionResult> Anular(int id)
     {
-        var c = await _db.CafeCobranzas.Include(x => x.Medios).FirstOrDefaultAsync(x => x.Id == id);
+        var c = await _db.CafeCobranzas
+            .Include(x => x.Medios)
+            .Include(x => x.Comprobantes)
+            .FirstOrDefaultAsync(x => x.Id == id);
         if (c is null) return NotFound();
         if (c.Estado == "ANULADA") return BadRequest(new { error = "Ya esta anulada" });
         c.Estado = "ANULADA";
@@ -289,6 +319,8 @@ public class CafeCobranzasController : ControllerBase
             }
         }
         await _db.SaveChangesAsync();
+        // Re-sincronizar IsPaid de las ventas afectadas (que ahora vuelven a "no pagadas")
+        await SincronizarIsPaidAsync(c.Comprobantes.Where(cc => cc.VentaId.HasValue).Select(cc => cc.VentaId!.Value).ToList());
         await _audit.LogAsync("CafeCobranza", id.ToString(), "ANULAR", $"Cobranza {c.Numero} anulada");
         return Ok(new { ok = true });
     }

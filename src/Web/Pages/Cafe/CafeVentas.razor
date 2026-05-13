@@ -437,9 +437,12 @@
                             <div style="font-size: 0.78rem; margin-top: 0.4rem;">
                                 @foreach (var s in unpaidPrevSales)
                                 {
+                                    var sld = saldosPorVenta.TryGetValue(s.Id, out var sl) ? sl : s.Total;
+                                    var pag = s.Total - sld;
+                                    var tooltipText = s.Fecha.ToString("dd/MM/yyyy") + " · Total $" + FormatMoney(s.Total) + (pag > 0.01m ? " · Pagado $" + FormatMoney(pag) : "");
                                     <span style="display: inline-block; margin-right: 0.45rem; margin-bottom: 0.25rem; padding: 0.1rem 0.4rem; background: white; border: 1px solid #d97706; border-radius: 4px; font-family: monospace;"
-                                          title="@s.Fecha.ToString("dd/MM/yyyy") · $@FormatMoney(s.Total)">
-                                        @s.Numero ($@FormatMoney(s.Total))
+                                          title="@tooltipText">
+                                        @s.Numero (debe $@FormatMoney(sld))
                                     </span>
                                 }
                             </div>
@@ -849,12 +852,38 @@
                                 </div>
                             </div>
 
-                            @* Marcar como pagado *@
-                            <label style="display: flex; align-items: center; gap: 0.4rem; margin-top: 0.6rem; cursor: pointer; font-size: 0.85rem;">
-                                <input type="checkbox" @bind="formIsPaid" />
-                                <strong>Marcar como PAGADO</strong>
-                                <span style="font-size: 0.72rem; color: #6b7280;">(estampa el sello en el comprobante)</span>
-                            </label>
+                            @* Estado de pago: si la venta editada ya tiene cobranzas aplicadas, mostrar el saldo real
+                               (calculado) en vez del checkbox manual. El checkbox manual queda solo para ventas
+                               nuevas (cuando se crea pagada al toque, ej. ventas al contado sin pasar por cobranza). *@
+                            @if (editingVentaId.HasValue && saldosPorVenta.TryGetValue(editingVentaId.Value, out var saldoEdit))
+                            {
+                                var totalEdit = ventas?.FirstOrDefault(v => v.Id == editingVentaId.Value)?.Total ?? 0m;
+                                var pagadoEdit = totalEdit - saldoEdit;
+                                <div style="margin-top: 0.6rem; padding: 0.5rem 0.75rem; border-radius:6px; background: @(saldoEdit <= 0.01m ? "#dcfce7" : pagadoEdit > 0.01m ? "#fef3c7" : "#fee2e2");">
+                                    @if (saldoEdit <= 0.01m)
+                                    {
+                                        <strong style="color:#166534; font-size:0.85rem;">✅ PAGADA (cobranzas cubren el total)</strong>
+                                    }
+                                    else if (pagadoEdit > 0.01m)
+                                    {
+                                        <strong style="color:#92400e; font-size:0.85rem;">⚠ Parcial: pagó $@FormatMoney(pagadoEdit), debe $@FormatMoney(saldoEdit)</strong>
+                                    }
+                                    else
+                                    {
+                                        <strong style="color:#991b1b; font-size:0.85rem;">⏳ Sin cobranzas aplicadas — saldo $@FormatMoney(saldoEdit)</strong>
+                                    }
+                                    <div style="font-size:0.7rem; color:#6b7280; margin-top:0.2rem;">Estado calculado desde Tesorería → Cobranzas. Para cobrar, usa el botón 💰.</div>
+                                </div>
+                            }
+                            else
+                            {
+                                @* Solo para ventas nuevas o sin saldo aún calculado: checkbox manual *@
+                                <label style="display: flex; align-items: center; gap: 0.4rem; margin-top: 0.6rem; cursor: pointer; font-size: 0.85rem;">
+                                    <input type="checkbox" @bind="formIsPaid" />
+                                    <strong>Marcar como PAGADO al guardar</strong>
+                                    <span style="font-size: 0.72rem; color: #6b7280;">(útil para ventas al contado sin pasar por Cobranzas)</span>
+                                </label>
+                            }
                         </div>
                     </div>
                     <div style="flex: 1;">
@@ -1652,9 +1681,10 @@
     private int? editingVentaId;
     private string editingVentaNumero = "";
 
-    // Saldo anterior (comprobantes impagos del cliente actual del form)
+    // Saldo anterior (comprobantes con saldo pendiente del cliente actual del form)
     private List<CafeVentaDto> unpaidPrevSales = new();
-    private decimal UnpaidPrevTotal => unpaidPrevSales.Sum(s => s.Total);
+    // Total adeudado = suma de SALDOS pendientes (no totales completos) usando saldosPorVenta
+    private decimal UnpaidPrevTotal => unpaidPrevSales.Sum(s => saldosPorVenta.TryGetValue(s.Id, out var sld) ? sld : s.Total);
     private bool includePrevBalanceInNotes = true;
 
     // Top productos comprados por el cliente actual del form
@@ -1883,8 +1913,9 @@
         await Cotizar();
     }
 
-    /// <summary>Recalcula los comprobantes impagos del cliente actual (excluye anulados, pagados,
-    /// y la propia venta cuando se esta editando).</summary>
+    /// <summary>Recalcula los comprobantes con saldo pendiente del cliente actual.
+    /// Usa el dictionary `saldosPorVenta` (calculado desde cobranzas reales) en vez del flag legacy IsPaid.
+    /// Excluye anulados, totalmente pagados y la venta que se esta editando.</summary>
     private void RecomputeUnpaidPrevSales()
     {
         if (ventas is null || formClienteId <= 0)
@@ -1895,7 +1926,7 @@
         unpaidPrevSales = ventas
             .Where(v => v.ClienteId == formClienteId
                         && v.Estado == "emitido"
-                        && !v.IsPaid
+                        && (saldosPorVenta.TryGetValue(v.Id, out var sld) ? sld > 0.01m : !v.IsPaid)
                         && (editingVentaId == null || v.Id != editingVentaId))
             .OrderBy(v => v.Fecha)
             .ThenBy(v => v.Id)
