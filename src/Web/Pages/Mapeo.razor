@@ -341,7 +341,20 @@ else
                                     <strong>@(st.Alias ?? st.ContactName ?? "Parada")</strong>
                                     <button class="btn-icon btn-delete" style="font-size:0.7rem;" @onclick="() => DeleteStop(st)" @onclick:stopPropagation="true" title="Quitar">×</button>
                                 </div>
-                                <div style="color:#4b5563; margin-top:0.15rem;">@st.Direccion</div>
+                                <div style="color:#4b5563; margin-top:0.15rem; display:flex; align-items:center; gap:0.3rem; flex-wrap:wrap;">
+                                    <span>@st.Direccion</span>
+                                    @if (!string.IsNullOrWhiteSpace(st.Direccion) || (st.Latitude != 0 && st.Longitude != 0))
+                                    {
+                                        var stGmaps = (st.Latitude != 0 && st.Longitude != 0)
+                                            ? $"https://www.google.com/maps/search/?api=1&query={st.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture)},{st.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
+                                            : $"https://www.google.com/maps/search/?api=1&query={Uri.EscapeDataString((st.Direccion ?? "") + " " + (st.Localidad ?? ""))}";
+                                        <a href="@stGmaps" target="_blank" rel="noopener" @onclick:stopPropagation="true"
+                                           title="Abrir en Google Maps"
+                                           style="display:inline-flex; align-items:center; padding:0.05rem 0.35rem; background:#dbeafe; color:#1e40af; border-radius:4px; font-size:0.65rem; font-weight:700; text-decoration:none;">
+                                            🗺
+                                        </a>
+                                    }
+                                </div>
                                 @if (!string.IsNullOrEmpty(st.Localidad))
                                 { <div style="font-size:0.7rem; color:#9ca3af;">📍 @st.Localidad</div> }
                                 @if (!string.IsNullOrEmpty(st.Telefono))
