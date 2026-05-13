@@ -290,9 +290,11 @@ else
     <div class="mapeo-side">
         <div class="mapeo-side-header" style="display:flex; justify-content:space-between; align-items:center;">
             <div>
-                <strong>@(shipments?.Count ?? 0) Flex</strong>
-                <span style="color:#9ca3af;">·</span>
-                <strong>@(stops?.Count ?? 0) paradas</strong>
+                <strong>@(shipments?.Count ?? 0)</strong> Flex
+                <span style="color:#9ca3af;">+</span>
+                <strong>@(stops?.Count ?? 0)</strong> manuales
+                <span style="color:#9ca3af;">=</span>
+                <strong>@((shipments?.Count ?? 0) + (stops?.Count ?? 0))</strong> envíos
             </div>
             <span style="font-size:0.72rem; color:#6b7280;">
                 @(shipments?.Count(s => s.Latitude.HasValue && s.Longitude.HasValue) ?? 0) + @(stops?.Count ?? 0) en mapa
@@ -309,43 +311,136 @@ else
             }
             else
             {
-                @if (stops is not null && stops.Count > 0)
-                {
-                    <div style="padding:0.4rem 0.6rem; background:#fef3c7; border-bottom:1px solid #fde68a; font-size:0.72rem; font-weight:700; color:#92400e; text-transform:uppercase;">
-                        ⭐ Paradas adicionales (@stops.Count)
-                    </div>
-                    // Agrupar por localidad (las que no tienen localidad van al final como "(sin localidad)")
-                    var stopsAgrupados = stops
-                        .GroupBy(s => string.IsNullOrWhiteSpace(s.Localidad) ? "(sin localidad)" : s.Localidad!.Trim())
-                        .OrderBy(g => g.Key == "(sin localidad)" ? "ZZZ" : g.Key)
-                        .ToList();
-                    @foreach (var grupo in stopsAgrupados)
+                var listaUnificada = BuildListaUnificada();
+                var zonasUnificadas = listaUnificada
+                    .GroupBy(u => u.Zona)
+                    .OrderBy(g => g.Key == "(sin localidad)" ? "ZZZ" : g.Key)
+                    .ToList();
+                <div style="padding:0.4rem 0.6rem; background:#dbeafe; border-bottom:1px solid #93c5fd; font-size:0.72rem; font-weight:700; color:#1e40af; display:flex; justify-content:space-between; align-items:center; gap:0.4rem; flex-wrap:wrap; position:sticky; top:0; z-index:2;">
+                    <span style="display:flex; align-items:center; gap:0.4rem;">
+                        <span style="text-transform:uppercase;">📋 @listaUnificada.Count destinos</span>
+                        <button @onclick="SyncFromMeli" disabled="@isSyncing"
+                                title="Traer ahora las novedades desde MercadoLibre"
+                                style="background:@(isSyncing ? "#9ca3af" : "#2563eb"); color:white; border:none; padding:0.15rem 0.5rem; border-radius:4px; font-size:0.7rem; cursor:@(isSyncing ? "wait" : "pointer"); font-weight:600;">
+                            @(isSyncing ? "⏳ Sincronizando..." : "🔄 Sincronizar ahora")
+                        </button>
+                    </span>
+                    @if (rutaSeleccion.Count > 0)
                     {
-                        <div style="padding:0.25rem 0.6rem; background:#fef3c7; border-bottom:1px solid #fde68a; font-size:0.7rem; font-weight:700; color:#78350f; display:flex; justify-content:space-between; align-items:center;">
-                            <span>📍 @grupo.Key</span>
-                            <span style="font-weight:500; opacity:0.7;">@grupo.Count() parada@(grupo.Count() == 1 ? "" : "s")</span>
-                        </div>
-                        @foreach (var st in grupo)
+                        var rutaUrl = BuildGmapsRouteUrl();
+                        <span style="display:flex; gap:0.3rem; align-items:center;">
+                            <span style="background:white; padding:0.1rem 0.4rem; border-radius:4px;">@rutaSeleccion.Count / 10 seleccionados</span>
+                            <a href="@rutaUrl" target="_blank" rel="noopener" style="background:#16a34a; color:white; padding:0.15rem 0.5rem; border-radius:4px; font-size:0.7rem; text-decoration:none;">🗺 Abrir ruta</a>
+                            <button @onclick="LimpiarSeleccionRuta" style="background:#dc2626; color:white; border:none; padding:0.15rem 0.45rem; border-radius:4px; font-size:0.7rem; cursor:pointer;">×</button>
+                        </span>
+                    }
+                    else
+                    {
+                        <span style="font-size:0.65rem; color:#6b7280; font-weight:400;">Tildá envíos para armar ruta en Maps</span>
+                    }
+                </div>
+                @foreach (var zona in zonasUnificadas)
+                {
+                    <div style="padding:0.25rem 0.6rem; background:#f3f4f6; border-bottom:1px solid #e5e7eb; font-size:0.7rem; font-weight:700; color:#374151; display:flex; justify-content:space-between; align-items:center;">
+                        <span>📍 @zona.Key</span>
+                        <span style="font-weight:500; opacity:0.7;">@zona.Sum(g => g.Count) envío@(zona.Sum(g => g.Count) == 1 ? "" : "s")</span>
+                    </div>
+                    @foreach (var g in zona)
+                    {
+                        var esFlex = g.TieneFlex;
+                        if (esFlex)
                         {
-                            // Color de borde + tinte según asignación. Si tiene vehículo asignado, usa color del vehículo.
-                            // Si tiene driver pero sin vehículo, usa color del driver. Sino naranja default.
+                            // ─── Card estilo Flex (tiene al menos 1 envío de MeLi) ───
+                            var s = g.Flex.First();
+                            var act = activeShipmentId == s.Id;
+                            var enRuta = rutaSeleccion.Contains(s.Id);
+                            <div class="mapeo-card @(act ? "activa" : "")" style="@(enRuta ? "outline:2px solid #16a34a; background:#f0fdf4;" : "")" @onclick="() => OnSelectFromList(s)">
+                                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.4rem;">
+                                    <label style="display:flex; align-items:center; gap:0.35rem; cursor:pointer; flex:1;" @onclick:stopPropagation="true">
+                                        <input type="checkbox" checked="@enRuta"
+                                               disabled="@(!enRuta && rutaSeleccion.Count >= 10)"
+                                               @onchange="@(e => ToggleRutaSeleccion(s.Id))"
+                                               title="Incluir en la ruta de Google Maps" />
+                                        <strong>@(s.ReceiverName ?? "—")</strong>
+                                        @if (g.Count > 1)
+                                        {
+                                            <span title="Hay @g.Count envíos a este mismo destino" style="background:#dc2626; color:white; padding:0.05rem 0.35rem; border-radius:8px; font-size:0.65rem; font-weight:700;">× @g.Count</span>
+                                        }
+                                    </label>
+                                    <span class="mapeo-status-pill" style="@EffectiveStatusStyle(s)">@EffectiveStatusLabel(s)</span>
+                                </div>
+                                <div style="font-size:0.7rem; color:#6b7280; margin-top:0.1rem; display:flex; gap:0.4rem; flex-wrap:wrap;">
+                                    @if (!string.IsNullOrEmpty(s.BuyerNickname))
+                                    {
+                                        <span class="copy-chip" title="Click: copiar nickname"
+                                              @onclick="@(e => CopyValue(s.BuyerNickname!, "Comprador"))" @onclick:stopPropagation="true">
+                                            👤 <strong>@s.BuyerNickname</strong> 📋
+                                        </span>
+                                    }
+                                    @if (s.MeliOrderId.HasValue)
+                                    {
+                                        <span class="copy-chip" title="Click: copiar N° de venta" style="font-family:monospace;"
+                                              @onclick="@(e => CopyValue(s.MeliOrderId.Value.ToString(), "N° venta"))" @onclick:stopPropagation="true">
+                                            🧾 @s.MeliOrderId.Value 📋
+                                        </span>
+                                    }
+                                </div>
+                                <div style="color:#4b5563; margin-top:0.15rem; display:flex; align-items:center; gap:0.3rem; flex-wrap:wrap;">
+                                    <span>@(s.AddressLine ?? "—")</span>
+                                    @if (!string.IsNullOrWhiteSpace(s.AddressLine) || (s.Latitude.HasValue && s.Longitude.HasValue))
+                                    {
+                                        var gmapsUrl = !string.IsNullOrWhiteSpace(s.AddressLine)
+                                            ? $"https://www.google.com/maps/search/?api=1&query={Uri.EscapeDataString((s.AddressLine ?? "") + " " + (s.City ?? ""))}"
+                                            : $"https://www.google.com/maps/search/?api=1&query={s.Latitude!.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)},{s.Longitude!.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+                                        <a href="@gmapsUrl" target="_blank" rel="noopener" @onclick:stopPropagation="true"
+                                           title="Abrir en Google Maps"
+                                           style="display:inline-flex; align-items:center; padding:0.05rem 0.35rem; background:#dbeafe; color:#1e40af; border-radius:4px; font-size:0.7rem; font-weight:700; text-decoration:none;">
+                                            🗺 Maps
+                                        </a>
+                                    }
+                                </div>
+                                <div style="color:#6b7280; font-size:0.72rem; margin-top:0.1rem;">
+                                    @(s.City ?? "—") · CP @(s.ZipCode ?? "—")
+                                    @if (!string.IsNullOrEmpty(s.GeolocationType) && s.GeolocationType != "ROOFTOP")
+                                    { <span style="color:#d97706;"> · ⚠ geo @s.GeolocationType.ToLower()</span> }
+                                </div>
+                                @if (s.EstimatedDeliveryLimit.HasValue)
+                                {
+                                    var slaLocal = s.EstimatedDeliveryLimit.Value.ToLocalTime();
+                                    var (slaBg, slaColor, slaLabel) = SlaStyle(slaLocal);
+                                    <div style="display:inline-block; margin-top:0.2rem; padding:0.1rem 0.4rem; background:@slaBg; color:@slaColor; border-radius:4px; font-size:0.7rem; font-weight:700;">
+                                        @slaLabel @slaLocal.ToString("dd/MM HH:mm")
+                                    </div>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            // ─── Card estilo parada manual ───
+                            var st = g.Manual.First();
                             var stopColor = st.AssignedVehicleSlot.HasValue ? VehicleColor(st.AssignedVehicleSlot.Value)
                                           : (string.IsNullOrEmpty(st.AssignedDriverColor) ? "#d97706" : st.AssignedDriverColor!);
                             var asignado = st.AssignedVehicleSlot.HasValue || st.AssignedDriverId.HasValue;
                             var isActive = activeStopId == st.Id;
+                            var grupoLocal = g;
                             <div class="mapeo-card @(isActive ? "activa" : "")"
                                  style="cursor:pointer; border-left:4px solid @stopColor; @(asignado ? $"background: linear-gradient(90deg, {stopColor}15 0%, white 60%);" : "") @(isActive ? "box-shadow: 0 0 0 2px " + stopColor + ";" : "")"
                                  @onclick="() => FocusStop(st)"
                                  title="Click para resaltar en el mapa">
                                 <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.4rem;">
-                                    <strong>@(st.Alias ?? st.ContactName ?? "Parada")</strong>
-                                    <button class="btn-icon btn-delete" style="font-size:0.7rem;" @onclick="() => DeleteStop(st)" @onclick:stopPropagation="true" title="Quitar">×</button>
+                                    <span style="display:flex; align-items:center; gap:0.35rem;">
+                                        <strong>@(st.Alias ?? st.ContactName ?? "Parada")</strong>
+                                        @if (g.Count > 1)
+                                        {
+                                            <span title="Esta parada se repite @g.Count veces" style="background:#dc2626; color:white; padding:0.05rem 0.35rem; border-radius:8px; font-size:0.65rem; font-weight:700;">× @g.Count</span>
+                                        }
+                                    </span>
+                                    <button class="btn-icon btn-delete" style="font-size:0.7rem;" @onclick="() => DeleteGrupoManual(grupoLocal)" @onclick:stopPropagation="true" title="Quitar">×</button>
                                 </div>
                                 <div style="color:#4b5563; margin-top:0.15rem; display:flex; align-items:center; gap:0.3rem; flex-wrap:wrap;">
                                     <span>@st.Direccion</span>
                                     @if (!string.IsNullOrWhiteSpace(st.Direccion) || (st.Latitude != 0 && st.Longitude != 0))
                                     {
-                                        // Preferimos la direccion en texto. Si no, caemos a coordenadas.
                                         var stGmaps = !string.IsNullOrWhiteSpace(st.Direccion)
                                             ? $"https://www.google.com/maps/search/?api=1&query={Uri.EscapeDataString((st.Direccion ?? "") + " " + (st.Localidad ?? ""))}"
                                             : $"https://www.google.com/maps/search/?api=1&query={st.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture)},{st.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
@@ -356,13 +451,10 @@ else
                                         </a>
                                     }
                                 </div>
-                                @if (!string.IsNullOrEmpty(st.Localidad))
-                                { <div style="font-size:0.7rem; color:#9ca3af;">📍 @st.Localidad</div> }
                                 @if (!string.IsNullOrEmpty(st.Telefono))
                                 { <div style="font-size:0.72rem; color:#6b7280;">📞 @st.Telefono</div> }
                                 @if (!string.IsNullOrEmpty(st.Notas))
                                 { <div style="font-size:0.7rem; color:#9ca3af;">📝 @st.Notas</div> }
-                                @* ─── Badges de asignación (vehículo + chofer + orden) ─── *@
                                 @if (asignado)
                                 {
                                     <div style="display:flex; gap:0.3rem; margin-top:0.3rem; flex-wrap:wrap;">
@@ -389,91 +481,6 @@ else
                             </div>
                         }
                     }
-                    <div style="padding:0.4rem 0.6rem; background:#dbeafe; border-bottom:1px solid #93c5fd; font-size:0.72rem; font-weight:700; color:#1e40af; text-transform:uppercase; margin-top:0.3rem; display:flex; justify-content:space-between; align-items:center; gap:0.4rem; flex-wrap:wrap;">
-                        <span style="display:flex; align-items:center; gap:0.4rem;">
-                            <span>📦 Envíos Flex (@shipments.Count)</span>
-                            <button @onclick="SyncFromMeli" disabled="@isSyncing"
-                                    title="Traer ahora las novedades desde MercadoLibre"
-                                    style="background:@(isSyncing ? "#9ca3af" : "#2563eb"); color:white; border:none; padding:0.15rem 0.5rem; border-radius:4px; font-size:0.7rem; cursor:@(isSyncing ? "wait" : "pointer"); font-weight:600;">
-                                @(isSyncing ? "⏳ Sincronizando..." : "🔄 Sincronizar ahora")
-                            </button>
-                        </span>
-                        @if (rutaSeleccion.Count > 0)
-                        {
-                            var rutaUrl = BuildGmapsRouteUrl();
-                            <span style="display:flex; gap:0.3rem; align-items:center;">
-                                <span style="background:white; padding:0.1rem 0.4rem; border-radius:4px;">@rutaSeleccion.Count / 10 seleccionados</span>
-                                <a href="@rutaUrl" target="_blank" rel="noopener" style="background:#16a34a; color:white; padding:0.15rem 0.5rem; border-radius:4px; font-size:0.7rem; text-decoration:none;">🗺 Abrir ruta</a>
-                                <button @onclick="LimpiarSeleccionRuta" style="background:#dc2626; color:white; border:none; padding:0.15rem 0.45rem; border-radius:4px; font-size:0.7rem; cursor:pointer;">×</button>
-                            </span>
-                        }
-                        else
-                        {
-                            <span style="font-size:0.65rem; color:#6b7280; font-weight:400;">Tildá envíos para armar ruta en Maps</span>
-                        }
-                    </div>
-                }
-                @foreach (var s in shipments)
-                {
-                    var act = activeShipmentId == s.Id;
-                    var enRuta = rutaSeleccion.Contains(s.Id);
-                    <div class="mapeo-card @(act ? "activa" : "")" style="@(enRuta ? "outline:2px solid #16a34a; background:#f0fdf4;" : "")" @onclick="() => OnSelectFromList(s)">
-                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.4rem;">
-                            <label style="display:flex; align-items:center; gap:0.35rem; cursor:pointer; flex:1;" @onclick:stopPropagation="true">
-                                <input type="checkbox" checked="@enRuta"
-                                       disabled="@(!enRuta && rutaSeleccion.Count >= 10)"
-                                       @onchange="@(e => ToggleRutaSeleccion(s.Id))"
-                                       title="Incluir en la ruta de Google Maps" />
-                                <strong>@(s.ReceiverName ?? "—")</strong>
-                            </label>
-                            <span class="mapeo-status-pill" style="@EffectiveStatusStyle(s)">@EffectiveStatusLabel(s)</span>
-                        </div>
-                        <div style="font-size:0.7rem; color:#6b7280; margin-top:0.1rem; display:flex; gap:0.4rem; flex-wrap:wrap;">
-                            @if (!string.IsNullOrEmpty(s.BuyerNickname))
-                            {
-                                <span class="copy-chip" title="Click: copiar nickname"
-                                      @onclick="@(e => CopyValue(s.BuyerNickname!, "Comprador"))" @onclick:stopPropagation="true">
-                                    👤 <strong>@s.BuyerNickname</strong> 📋
-                                </span>
-                            }
-                            @if (s.MeliOrderId.HasValue)
-                            {
-                                <span class="copy-chip" title="Click: copiar N° de venta" style="font-family:monospace;"
-                                      @onclick="@(e => CopyValue(s.MeliOrderId.Value.ToString(), "N° venta"))" @onclick:stopPropagation="true">
-                                    🧾 @s.MeliOrderId.Value 📋
-                                </span>
-                            }
-                        </div>
-                        <div style="color:#4b5563; margin-top:0.15rem; display:flex; align-items:center; gap:0.3rem; flex-wrap:wrap;">
-                            <span>@(s.AddressLine ?? "—")</span>
-                            @if (!string.IsNullOrWhiteSpace(s.AddressLine) || (s.Latitude.HasValue && s.Longitude.HasValue))
-                            {
-                                // Preferimos la direccion en texto para que Google la muestre legible en la barra.
-                                // Si no hay direccion, caemos a coordenadas.
-                                var gmapsUrl = !string.IsNullOrWhiteSpace(s.AddressLine)
-                                    ? $"https://www.google.com/maps/search/?api=1&query={Uri.EscapeDataString((s.AddressLine ?? "") + " " + (s.City ?? ""))}"
-                                    : $"https://www.google.com/maps/search/?api=1&query={s.Latitude!.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)},{s.Longitude!.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
-                                <a href="@gmapsUrl" target="_blank" rel="noopener" @onclick:stopPropagation="true"
-                                   title="Abrir en Google Maps"
-                                   style="display:inline-flex; align-items:center; padding:0.05rem 0.35rem; background:#dbeafe; color:#1e40af; border-radius:4px; font-size:0.7rem; font-weight:700; text-decoration:none;">
-                                    🗺 Maps
-                                </a>
-                            }
-                        </div>
-                        <div style="color:#6b7280; font-size:0.72rem; margin-top:0.1rem;">
-                            @(s.City ?? "—") · CP @(s.ZipCode ?? "—")
-                            @if (!string.IsNullOrEmpty(s.GeolocationType) && s.GeolocationType != "ROOFTOP")
-                            { <span style="color:#d97706;"> · ⚠ geo @s.GeolocationType.ToLower()</span> }
-                        </div>
-                        @if (s.EstimatedDeliveryLimit.HasValue)
-                        {
-                            var slaLocal = s.EstimatedDeliveryLimit.Value.ToLocalTime();
-                            var (slaBg, slaColor, slaLabel) = SlaStyle(slaLocal);
-                            <div style="display:inline-block; margin-top:0.2rem; padding:0.1rem 0.4rem; background:@slaBg; color:@slaColor; border-radius:4px; font-size:0.7rem; font-weight:700;">
-                                @slaLabel @slaLocal.ToString("dd/MM HH:mm")
-                            </div>
-                        }
-                    </div>
                 }
             }
         </div>
@@ -1296,6 +1303,90 @@ else
 
     // Multi-stop: selección de hasta 10 envíos Flex para armar ruta en Google Maps
     private HashSet<int> rutaSeleccion = new();
+
+    // ─── Lista unificada con dedup ───
+    // Agrupa paradas adicionales + envíos Flex que apuntan al mismo destino
+    // (mismo nombre + misma dirección, normalizado) en una sola tarjeta con "× N".
+    private sealed class GrupoUnificado
+    {
+        public string Key { get; set; } = "";
+        public string Zona { get; set; } = "";
+        public List<MeliShipmentDto> Flex { get; set; } = new();
+        public List<MapeoStopDto> Manual { get; set; } = new();
+        public int Count => Flex.Count + Manual.Count;
+        public bool TieneFlex => Flex.Count > 0;
+        public bool TieneManual => Manual.Count > 0;
+    }
+
+    private static string NormTxt(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "";
+        var lower = s.Trim().ToLowerInvariant();
+        var sb = new System.Text.StringBuilder(lower.Length);
+        char prev = '\0';
+        foreach (var c in lower)
+        {
+            if (char.IsLetterOrDigit(c) || c == ' ') { sb.Append(c); prev = c; }
+            else if (prev != ' ') { sb.Append(' '); prev = ' '; }
+        }
+        return sb.ToString().Trim();
+    }
+
+    private List<GrupoUnificado> BuildListaUnificada()
+    {
+        var dict = new Dictionary<string, GrupoUnificado>(StringComparer.Ordinal);
+        if (stops is not null)
+        {
+            foreach (var st in stops)
+            {
+                var nombre = NormTxt(st.Alias ?? st.ContactName ?? "");
+                var direc = NormTxt(st.Direccion);
+                var key = "M|" + nombre + "|" + direc;
+                if (!dict.TryGetValue(key, out var g))
+                {
+                    g = new GrupoUnificado { Key = key, Zona = string.IsNullOrWhiteSpace(st.Localidad) ? "(sin localidad)" : st.Localidad!.Trim() };
+                    dict[key] = g;
+                }
+                g.Manual.Add(st);
+            }
+        }
+        if (shipments is not null)
+        {
+            foreach (var s in shipments)
+            {
+                var nombre = NormTxt(s.ReceiverName ?? "");
+                var direc = NormTxt(s.AddressLine ?? "");
+                // Mismo nombre + dirección con paradas manuales → mismo grupo (cross-source dedup)
+                var keyManual = "M|" + nombre + "|" + direc;
+                var keyFlex = "F|" + nombre + "|" + direc;
+                var key = dict.ContainsKey(keyManual) ? keyManual : keyFlex;
+                if (!dict.TryGetValue(key, out var g))
+                {
+                    g = new GrupoUnificado { Key = key, Zona = string.IsNullOrWhiteSpace(s.City) ? "(sin localidad)" : s.City!.Trim() };
+                    dict[key] = g;
+                }
+                g.Flex.Add(s);
+            }
+        }
+        return dict.Values
+            .OrderBy(g => g.Zona == "(sin localidad)" ? "ZZZ" : g.Zona)
+            .ThenByDescending(g => g.TieneFlex)
+            .ToList();
+    }
+
+    private async Task DeleteGrupoManual(GrupoUnificado g)
+    {
+        if (g.Manual.Count == 0) return;
+        if (g.Manual.Count > 1)
+        {
+            var ok = await JS.InvokeAsync<bool>("confirm", $"Esta parada se repite {g.Manual.Count} veces. ¿Quitar TODAS?");
+            if (!ok) return;
+        }
+        foreach (var st in g.Manual.ToList())
+        {
+            await DeleteStop(st);
+        }
+    }
 
     private void ToggleRutaSeleccion(int shipmentId)
     {
