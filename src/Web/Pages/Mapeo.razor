@@ -345,9 +345,10 @@ else
                                     <span>@st.Direccion</span>
                                     @if (!string.IsNullOrWhiteSpace(st.Direccion) || (st.Latitude != 0 && st.Longitude != 0))
                                     {
-                                        var stGmaps = (st.Latitude != 0 && st.Longitude != 0)
-                                            ? $"https://www.google.com/maps/search/?api=1&query={st.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture)},{st.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
-                                            : $"https://www.google.com/maps/search/?api=1&query={Uri.EscapeDataString((st.Direccion ?? "") + " " + (st.Localidad ?? ""))}";
+                                        // Preferimos la direccion en texto. Si no, caemos a coordenadas.
+                                        var stGmaps = !string.IsNullOrWhiteSpace(st.Direccion)
+                                            ? $"https://www.google.com/maps/search/?api=1&query={Uri.EscapeDataString((st.Direccion ?? "") + " " + (st.Localidad ?? ""))}"
+                                            : $"https://www.google.com/maps/search/?api=1&query={st.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture)},{st.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
                                         <a href="@stGmaps" target="_blank" rel="noopener" @onclick:stopPropagation="true"
                                            title="Abrir en Google Maps"
                                            style="display:inline-flex; align-items:center; padding:0.05rem 0.35rem; background:#dbeafe; color:#1e40af; border-radius:4px; font-size:0.65rem; font-weight:700; text-decoration:none;">
@@ -420,9 +421,11 @@ else
                             <span>@(s.AddressLine ?? "—")</span>
                             @if (!string.IsNullOrWhiteSpace(s.AddressLine) || (s.Latitude.HasValue && s.Longitude.HasValue))
                             {
-                                var gmapsUrl = s.Latitude.HasValue && s.Longitude.HasValue
-                                    ? $"https://www.google.com/maps/search/?api=1&query={s.Latitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)},{s.Longitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
-                                    : $"https://www.google.com/maps/search/?api=1&query={Uri.EscapeDataString((s.AddressLine ?? "") + " " + (s.City ?? ""))}";
+                                // Preferimos la direccion en texto para que Google la muestre legible en la barra.
+                                // Si no hay direccion, caemos a coordenadas.
+                                var gmapsUrl = !string.IsNullOrWhiteSpace(s.AddressLine)
+                                    ? $"https://www.google.com/maps/search/?api=1&query={Uri.EscapeDataString((s.AddressLine ?? "") + " " + (s.City ?? ""))}"
+                                    : $"https://www.google.com/maps/search/?api=1&query={s.Latitude!.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)},{s.Longitude!.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
                                 <a href="@gmapsUrl" target="_blank" rel="noopener" @onclick:stopPropagation="true"
                                    title="Abrir en Google Maps"
                                    style="display:inline-flex; align-items:center; padding:0.05rem 0.35rem; background:#dbeafe; color:#1e40af; border-radius:4px; font-size:0.7rem; font-weight:700; text-decoration:none;">
