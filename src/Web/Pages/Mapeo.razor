@@ -346,9 +346,20 @@ else
                         Traé los envíos de MercadoLibre o sumá paradas a mano.
                     </div>
                     <div style="display:flex; flex-direction:column; gap:0.5rem;">
+                        @{
+                            // El texto del botón cambia según el filtro de fecha que tenga arriba el usuario,
+                            // así sabe exactamente qué día va a traer sin tener que adivinar.
+                            var labelTraer = diasFiltro switch
+                            {
+                                "today" => "📦 Traer mis Flex de hoy",
+                                "tomorrow" => "📦 Traer mis Flex de mañana",
+                                "overdue" => "📦 Traer Flex atrasados",
+                                _ => "📦 Traer mis Flex"
+                            };
+                        }
                         <button class="btn btn-primary" style="width:100%; padding:0.7rem; font-size:0.9rem; font-weight:700;"
                                 @onclick="SyncFromMeli" disabled="@isSyncing">
-                            @(isSyncing ? "⏳ Sincronizando..." : "📦 Traer mis Flex de hoy")
+                            @(isSyncing ? "⏳ Sincronizando..." : labelTraer)
                         </button>
                         <button class="btn" style="width:100%; padding:0.7rem; font-size:0.9rem; font-weight:700; background:#fef3c7; border:1px solid #fcd34d; color:#92400e;"
                                 @onclick="OpenAddStopModal">
