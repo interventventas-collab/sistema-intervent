@@ -389,16 +389,36 @@ else
                             </div>
                         }
                     }
-                    <div style="padding:0.4rem 0.6rem; background:#dbeafe; border-bottom:1px solid #93c5fd; font-size:0.72rem; font-weight:700; color:#1e40af; text-transform:uppercase; margin-top:0.3rem;">
-                        📦 Envíos Flex (@shipments.Count)
+                    <div style="padding:0.4rem 0.6rem; background:#dbeafe; border-bottom:1px solid #93c5fd; font-size:0.72rem; font-weight:700; color:#1e40af; text-transform:uppercase; margin-top:0.3rem; display:flex; justify-content:space-between; align-items:center; gap:0.4rem; flex-wrap:wrap;">
+                        <span>📦 Envíos Flex (@shipments.Count)</span>
+                        @if (rutaSeleccion.Count > 0)
+                        {
+                            var rutaUrl = BuildGmapsRouteUrl();
+                            <span style="display:flex; gap:0.3rem; align-items:center;">
+                                <span style="background:white; padding:0.1rem 0.4rem; border-radius:4px;">@rutaSeleccion.Count / 10 seleccionados</span>
+                                <a href="@rutaUrl" target="_blank" rel="noopener" style="background:#16a34a; color:white; padding:0.15rem 0.5rem; border-radius:4px; font-size:0.7rem; text-decoration:none;">🗺 Abrir ruta</a>
+                                <button @onclick="LimpiarSeleccionRuta" style="background:#dc2626; color:white; border:none; padding:0.15rem 0.45rem; border-radius:4px; font-size:0.7rem; cursor:pointer;">×</button>
+                            </span>
+                        }
+                        else
+                        {
+                            <span style="font-size:0.65rem; color:#6b7280; font-weight:400;">Tildá envíos para armar ruta en Maps</span>
+                        }
                     </div>
                 }
                 @foreach (var s in shipments)
                 {
                     var act = activeShipmentId == s.Id;
-                    <div class="mapeo-card @(act ? "activa" : "")" @onclick="() => OnSelectFromList(s)">
+                    var enRuta = rutaSeleccion.Contains(s.Id);
+                    <div class="mapeo-card @(act ? "activa" : "")" style="@(enRuta ? "outline:2px solid #16a34a; background:#f0fdf4;" : "")" @onclick="() => OnSelectFromList(s)">
                         <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.4rem;">
-                            <strong>@(s.ReceiverName ?? "—")</strong>
+                            <label style="display:flex; align-items:center; gap:0.35rem; cursor:pointer; flex:1;" @onclick:stopPropagation="true">
+                                <input type="checkbox" checked="@enRuta"
+                                       disabled="@(!enRuta && rutaSeleccion.Count >= 10)"
+                                       @onchange="@(e => ToggleRutaSeleccion(s.Id))"
+                                       title="Incluir en la ruta de Google Maps" />
+                                <strong>@(s.ReceiverName ?? "—")</strong>
+                            </label>
                             <span class="mapeo-status-pill" style="@EffectiveStatusStyle(s)">@EffectiveStatusLabel(s)</span>
                         </div>
                         <div style="font-size:0.7rem; color:#6b7280; margin-top:0.1rem; display:flex; gap:0.4rem; flex-wrap:wrap;">
@@ -1266,6 +1286,47 @@ else
     private bool showDetail;
     private int? activeShipmentId;
     private int? activeStopId;
+
+    // Multi-stop: selección de hasta 10 envíos Flex para armar ruta en Google Maps
+    private HashSet<int> rutaSeleccion = new();
+
+    private void ToggleRutaSeleccion(int shipmentId)
+    {
+        if (rutaSeleccion.Contains(shipmentId))
+            rutaSeleccion.Remove(shipmentId);
+        else if (rutaSeleccion.Count < 10)
+            rutaSeleccion.Add(shipmentId);
+    }
+
+    private void LimpiarSeleccionRuta() => rutaSeleccion.Clear();
+
+    private string BuildGmapsRouteUrl()
+    {
+        if (shipments is null || rutaSeleccion.Count == 0) return "#";
+        var seleccionados = shipments.Where(s => rutaSeleccion.Contains(s.Id)).ToList();
+        if (seleccionados.Count == 0) return "#";
+
+        static string Addr(MeliShipmentDto s)
+        {
+            var dir = !string.IsNullOrWhiteSpace(s.AddressLine)
+                ? (s.AddressLine + " " + (s.City ?? "")).Trim()
+                : (s.Latitude.HasValue && s.Longitude.HasValue
+                    ? $"{s.Latitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)},{s.Longitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
+                    : (s.City ?? ""));
+            return Uri.EscapeDataString(dir);
+        }
+
+        var origin = Addr(seleccionados.First());
+        var destination = Addr(seleccionados.Last());
+        var url = $"https://www.google.com/maps/dir/?api=1&origin={origin}&destination={destination}";
+        if (seleccionados.Count > 2)
+        {
+            var waypoints = string.Join("|", seleccionados.Skip(1).Take(seleccionados.Count - 2).Select(Addr));
+            url += $"&waypoints={waypoints}";
+        }
+        url += "&travelmode=driving";
+        return url;
+    }
 
     /// <summary>Click en una celda de la lista lateral: hace zoom al marker en el mapa
     /// y resalta visualmente la celda con borde más grueso.</summary>
