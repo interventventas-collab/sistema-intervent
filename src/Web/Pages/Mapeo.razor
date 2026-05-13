@@ -73,21 +73,56 @@
     </button>
 </div>
 
-@if (allDone && !stepperExpanded)
+@if (HayParadasViejas)
 {
-    <div class="stepper stepper-collapsed">
-        <div>
-            ✅ <strong>Ruta lista</strong>
-            · @chofers chofer(es)
-            · @paradasAsignadas parada(s) asignada(s)
-            · Links generados
+    <div style="background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; padding:0.6rem 0.8rem; margin-bottom:0.5rem; display:flex; justify-content:space-between; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+        <div style="color:#9a3412; font-size:0.85rem;">
+            📅 Tenés <strong>@(stops?.Count ?? 0) parada@(stops?.Count == 1 ? "" : "s") del día anterior</strong>.
+            ¿Querés archivar y arrancar el día limpio?
         </div>
-        <button class="btn" style="font-size:0.78rem; background:transparent; border:1px solid #047857; color:#047857;" @onclick="() => stepperExpanded = true">Ver pasos</button>
+        <button class="btn btn-primary" style="font-size:0.78rem;" @onclick="ArchivarDiaAnterior" disabled="@reseteandoTodo">
+            @(reseteandoTodo ? "Archivando..." : "🆕 Archivar y arrancar limpio")
+        </button>
+    </div>
+}
+
+@if (!stepperExpanded)
+{
+    var totalDestinos = (shipments?.Count ?? 0) + (stops?.Count ?? 0);
+    <div class="stepper @(allDone ? "stepper-collapsed" : "")" style="@(allDone ? "" : "background:#f9fafb; border:1px solid #e5e7eb; padding:0.5rem 0.8rem;") display:flex; justify-content:space-between; align-items:center; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.5rem; border-radius:8px;">
+        <div style="display:flex; gap:0.7rem; align-items:center; flex-wrap:wrap; font-size:0.85rem; color:#374151;">
+            @if (allDone)
+            {
+                <span style="color:#065f46;">✅ <strong>Ruta lista</strong></span>
+                <span>·</span><span>@chofers chofer@(chofers == 1 ? "" : "es")</span>
+                <span>·</span><span>@paradasAsignadas parada@(paradasAsignadas == 1 ? "" : "s") asignada@(paradasAsignadas == 1 ? "" : "s")</span>
+                <span>·</span><span>Links generados</span>
+            }
+            else
+            {
+                <span><strong>Hoy:</strong> @totalDestinos destino@(totalDestinos == 1 ? "" : "s")</span>
+                @if (totalDestinos > 0)
+                {
+                    <span>·</span><span>@paradasAsignadas asignada@(paradasAsignadas == 1 ? "" : "s") a @chofers chofer@(chofers == 1 ? "" : "es")</span>
+                }
+                @if (currentStep > 0)
+                {
+                    <span style="color:#1d4ed8;">· Próximo paso: <strong>@(currentStep switch { 1 => "Traer Flex", 2 => "Sumar paradas", 3 => "Asignar vehículos", 4 => "Asignar choferes", 5 => "Mandar links", _ => "" })</strong></span>
+                }
+            }
+        </div>
+        <button class="btn" style="font-size:0.78rem; background:transparent; border:1px solid #6b7280; color:#374151;" @onclick="() => stepperExpanded = true">Ver pasos →</button>
     </div>
 }
 else
 {
     @* ═════════ Stepper grande — ES la toolbar de acciones del día ═════════ *@
+    <div style="display:flex; justify-content:flex-end; margin-bottom:0.25rem;">
+        <button class="btn" style="font-size:0.72rem; background:transparent; border:none; color:#6b7280; padding:0.1rem 0.3rem; cursor:pointer; text-decoration:underline;"
+                @onclick="() => stepperExpanded = false" title="Esconder los pasos">
+            ▲ Esconder pasos
+        </button>
+    </div>
     <div class="stepper" style="padding:0.7rem;">
         <div class="stepper-chip-big @(step1Done ? "completado" : (currentStep == 1 ? "actual" : ""))"
              title="Traer envíos Flex desde MercadoLibre" @onclick="SyncFromMeli">
@@ -302,11 +337,27 @@ else
         </div>
         <div class="mapeo-side-list">
             @if (isLoading) { <p class="text-muted" style="padding:0.7rem;">Cargando...</p> }
-            else if (shipments is null || shipments.Count == 0)
+            else if ((shipments is null || shipments.Count == 0) && (stops is null || stops.Count == 0))
             {
-                <div style="padding:1rem; text-align:center; color:#6b7280;">
-                    <div style="font-size:2rem;">📭</div>
-                    Todavía no hay envíos cargados. Tocá <strong>"Traer envíos de MeLi"</strong>.
+                <div style="padding:1.5rem 1rem; text-align:center; color:#374151;">
+                    <div style="font-size:2.5rem; margin-bottom:0.5rem;">🗺️</div>
+                    <div style="font-size:0.95rem; font-weight:600; margin-bottom:0.3rem;">Empezá el día</div>
+                    <div style="font-size:0.8rem; color:#6b7280; margin-bottom:1rem;">
+                        Traé los envíos de MercadoLibre o sumá paradas a mano.
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:0.5rem;">
+                        <button class="btn btn-primary" style="width:100%; padding:0.7rem; font-size:0.9rem; font-weight:700;"
+                                @onclick="SyncFromMeli" disabled="@isSyncing">
+                            @(isSyncing ? "⏳ Sincronizando..." : "📦 Traer mis Flex de hoy")
+                        </button>
+                        <button class="btn" style="width:100%; padding:0.7rem; font-size:0.9rem; font-weight:700; background:#fef3c7; border:1px solid #fcd34d; color:#92400e;"
+                                @onclick="OpenAddStopModal">
+                            ✏ Agregar parada manual
+                        </button>
+                    </div>
+                    <div style="margin-top:1rem; font-size:0.72rem; color:#9ca3af;">
+                        Tip: las paradas que agregues hoy se pueden archivar después con un click.
+                    </div>
                 </div>
             }
             else
@@ -316,6 +367,15 @@ else
                     .GroupBy(u => u.Zona)
                     .OrderBy(g => g.Key == "(sin localidad)" ? "ZZZ" : g.Key)
                     .ToList();
+                // Para los chips de filtro: lista de zonas únicas con su contador (sin filtrar todavía)
+                var zonasParaChips = zonasUnificadas
+                    .Select(g => (Zona: g.Key, Count: g.Sum(x => x.Count)))
+                    .ToList();
+                // Aplicamos el filtro de zonas ocultas para la lista que se renderiza
+                if (zonasOcultas.Count > 0)
+                {
+                    zonasUnificadas = zonasUnificadas.Where(g => !zonasOcultas.Contains(g.Key)).ToList();
+                }
                 <div style="padding:0.4rem 0.6rem; background:#dbeafe; border-bottom:1px solid #93c5fd; font-size:0.72rem; font-weight:700; color:#1e40af; display:flex; justify-content:space-between; align-items:center; gap:0.4rem; flex-wrap:wrap; position:sticky; top:0; z-index:2;">
                     <span style="display:flex; align-items:center; gap:0.4rem;">
                         <span style="text-transform:uppercase;">📋 @listaUnificada.Count destinos</span>
@@ -339,6 +399,27 @@ else
                         <span style="font-size:0.65rem; color:#6b7280; font-weight:400;">Tildá envíos para armar ruta en Maps</span>
                     }
                 </div>
+                @if (zonasParaChips.Count > 1)
+                {
+                    <div style="padding:0.4rem 0.6rem; background:white; border-bottom:1px solid #e5e7eb; display:flex; gap:0.3rem; flex-wrap:wrap; align-items:center;">
+                        <span style="font-size:0.68rem; color:#6b7280; font-weight:600; margin-right:0.2rem;">Zonas:</span>
+                        @foreach (var (zona, count) in zonasParaChips)
+                        {
+                            var oculta = zonasOcultas.Contains(zona);
+                            <button @onclick="() => ToggleZonaOculta(zona)"
+                                    title="@(oculta ? "Mostrar" : "Ocultar") esta zona"
+                                    style="background:@(oculta ? "#f3f4f6" : "#dbeafe"); color:@(oculta ? "#9ca3af" : "#1e40af"); border:1px solid @(oculta ? "#e5e7eb" : "#93c5fd"); padding:0.15rem 0.5rem; border-radius:999px; font-size:0.7rem; font-weight:600; cursor:pointer; @(oculta ? "text-decoration:line-through;" : "")">
+                                📍 @zona <span style="opacity:0.7;">(@count)</span>
+                            </button>
+                        }
+                        @if (zonasOcultas.Count > 0)
+                        {
+                            <button @onclick="() => zonasOcultas.Clear()" style="background:transparent; border:none; color:#dc2626; font-size:0.7rem; cursor:pointer; padding:0.15rem 0.3rem; text-decoration:underline;" title="Mostrar todas las zonas">
+                                Ver todas
+                            </button>
+                        }
+                    </div>
+                }
                 @foreach (var zona in zonasUnificadas)
                 {
                     <div style="padding:0.25rem 0.6rem; background:#f3f4f6; border-bottom:1px solid #e5e7eb; font-size:0.7rem; font-weight:700; color:#374151; display:flex; justify-content:space-between; align-items:center;">
@@ -1304,6 +1385,27 @@ else
     // Multi-stop: selección de hasta 10 envíos Flex para armar ruta en Google Maps
     private HashSet<int> rutaSeleccion = new();
 
+    // Filtro de zonas (chips): conjunto de zonas que el usuario ocultó. Vacío = todas visibles.
+    private HashSet<string> zonasOcultas = new(StringComparer.Ordinal);
+
+    private void ToggleZonaOculta(string zona)
+    {
+        if (zonasOcultas.Contains(zona)) zonasOcultas.Remove(zona);
+        else zonasOcultas.Add(zona);
+    }
+
+    // ¿Todas las paradas son del día anterior (creadas antes de hoy 00:00 ART)?
+    // Sirve para mostrar el banner "tenés paradas del día anterior".
+    private bool HayParadasViejas
+    {
+        get
+        {
+            if (stops is null || stops.Count == 0) return false;
+            var hoyArtUtc = DateTime.UtcNow.AddHours(-3).Date.AddHours(3); // 00:00 ART en UTC
+            return stops.All(s => s.CreatedAt < hoyArtUtc);
+        }
+    }
+
     // ─── Lista unificada con dedup ───
     // Agrupa paradas adicionales + envíos Flex que apuntan al mismo destino
     // (mismo nombre + misma dirección, normalizado) en una sola tarjeta con "× N".
@@ -2035,6 +2137,25 @@ else
             modoAsignacion = false;
             await RenderMap();
             ToastService.Success("Mapeo reseteado. Arrancá de nuevo.");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { reseteandoTodo = false; }
+    }
+
+    // "Archivar día anterior": guarda un snapshot con las paradas del día anterior y limpia.
+    // Se invoca desde el banner que aparece cuando todas las paradas son viejas.
+    private async Task ArchivarDiaAnterior()
+    {
+        reseteandoTodo = true;
+        try
+        {
+            var titulo = $"Día {DateTime.UtcNow.AddHours(-3).AddDays(-1):dd/MM/yyyy}";
+            try { await Api.CreateMapeoSnapshotAsync(titulo); } catch { /* si falla el snapshot igual seguimos */ }
+            await Api.ClearMapeoStopsAsync();
+            stops = new();
+            modoAsignacion = false;
+            await RenderMap();
+            ToastService.Success("Día anterior archivado. Arrancá fresh.");
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { reseteandoTodo = false; }
