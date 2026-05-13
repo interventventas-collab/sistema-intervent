@@ -65,9 +65,19 @@
                     dotNetRef = dotnetHelper;
                     if (map) { map.remove(); map = null; zonesLayer = null; }
                     map = L.map(elementId).setView([-34.6037, -58.3816], 11); // CABA por default
-                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    // Mapa monocromo (gris claro) para que no compita con los marcadores
+                    // de paradas / zonas / rutas. Carto Light Voyager es prácticamente
+                    // blanco/gris suave, los marcadores resaltan al toque.
+                    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
                         maxZoom: 19,
-                        attribution: '© OpenStreetMap'
+                        subdomains: 'abcd',
+                        attribution: '© OpenStreetMap, © CARTO'
+                    }).addTo(map);
+                    // Labels en una capa separada arriba (calles + barrios legibles)
+                    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', {
+                        maxZoom: 19,
+                        subdomains: 'abcd',
+                        attribution: ''
                     }).addTo(map);
                     loadZones();
                     layer = L.layerGroup().addTo(map);
