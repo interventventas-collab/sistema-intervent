@@ -310,6 +310,9 @@ else
                 <span style="font-size:0.85rem; padding:0.2rem 0.5rem; background:white; border:1.5px solid @vColor; border-radius:6px; color:@vColor; font-weight:700;">
                     Próximo: #@proximoOrden
                 </span>
+                <button class="btn" style="font-size:0.78rem; background:#fef3c7; border:1px solid #fcd34d; color:#92400e;" @onclick="AutoOrdenarV" disabled="@assigningSlot" title="Numera automáticamente por cercanía al punto de partida (después podés editar tocando los puntos)">
+                    🤖 Auto-ordenar
+                </button>
                 <button class="btn btn-secondary" style="font-size:0.78rem;" @onclick="ResetOrdenDelVehiculo" disabled="@assigningSlot">🔄 Reiniciar orden</button>
             </div>
             <button class="btn btn-secondary" style="font-size:0.78rem;" @onclick="ToggleModoOrden">✓ Salir del modo orden</button>
@@ -1929,16 +1932,35 @@ else
     [JSInvokable]
     public async Task OnMarkerClicked(int id)
     {
-        // Markers de stops adicionales tienen id negativo (-1000 - st.Id)
-        if (id <= -1000)
+        // En modo orden o modo asignación, los clicks NO deben abrir la ventana de detalle,
+        // sino ejecutar la acción del modo (numerar / asignar). Bloqueamos el comportamiento
+        // de "abrir popup" para que el usuario pueda trabajar sin que se interponga el panel.
+        if (modoOrden)
         {
-            var stopId = -1000 - id;
-            var st = stops?.FirstOrDefault(x => x.Id == stopId);
-            if (st is null) return;
-            if (modoOrden) { await OnMarkerOrden(st); return; }
-            if (modoAsignacion) { await OnMarkerAssign(st); return; }
+            if (id <= -1000)
+            {
+                var stopId = -1000 - id;
+                var st = stops?.FirstOrDefault(x => x.Id == stopId);
+                if (st is not null) await OnMarkerOrden(st);
+            }
+            else
+            {
+                ToastService.Info("Este envío no es una parada todavía. Importalo desde el paso 'Sumar Flex' para poder ordenarlo.");
+            }
             return;
         }
+        if (modoAsignacion)
+        {
+            if (id <= -1000)
+            {
+                var stopId = -1000 - id;
+                var st = stops?.FirstOrDefault(x => x.Id == stopId);
+                if (st is not null) await OnMarkerAssign(st);
+            }
+            return;
+        }
+        // Modo normal: click abre el panel de detalle del envío
+        if (id <= -1000) return;
         var s = shipments?.FirstOrDefault(x => x.Id == id);
         if (s is not null) { activeShipmentId = id; selected = s; showDetail = true; StateHasChanged(); }
     }
@@ -2300,7 +2322,9 @@ else
                 .Select(s => s.AssignedVehicleSlot!.Value).OrderBy(x => x).FirstOrDefault();
             if (firstSlot.HasValue && firstSlot.Value > 0) ordenVehiculoSeleccionado = firstSlot.Value;
             vehiculoFiltro = ordenVehiculoSeleccionado;
-            await AutoOptimizarSiHaceFalta(ordenVehiculoSeleccionado);
+            // NO auto-numeramos al entrar: el usuario reportó que tener todo pre-numerado le obliga
+            // a destildar uno por uno para rehacer la ruta. Ahora se entra "en blanco" y existe
+            // un botón "🤖 Auto-ordenar" opcional en la barra para quien lo quiera.
         }
         else
         {
@@ -2312,8 +2336,25 @@ else
     private async Task OnVehiculoOrdenChanged()
     {
         vehiculoFiltro = ordenVehiculoSeleccionado;
-        await AutoOptimizarSiHaceFalta(ordenVehiculoSeleccionado);
+        // Tampoco auto-optimizamos al cambiar de vehículo. Cada vehículo arranca limpio.
         await RenderMap();
+    }
+
+    /// <summary>Botón opcional dentro del modo orden: numera todas las paradas del V actual
+    /// por cercanía al punto de partida. Usar cuando querés un orden inicial razonable.</summary>
+    private async Task AutoOrdenarV()
+    {
+        if (stops is null || ordenVehiculoSeleccionado <= 0) return;
+        assigningSlot = true;
+        try
+        {
+            await Api.OptimizeStopsOrderAsync(null, ordenVehiculoSeleccionado);
+            await LoadStops();
+            await RenderMap();
+            ToastService.Success($"V{ordenVehiculoSeleccionado}: numerado por cercanía. Editá tocando los puntos.");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { assigningSlot = false; }
     }
 
     /// <summary>
