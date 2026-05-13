@@ -906,11 +906,39 @@
                                     <input class="form-input" type="number" step="0.01" @bind="formDescuento" @bind:after="Cotizar"
                                            style="text-align: right; max-width: 130px; font-weight: 700;" />
                                 </div>
-                                <hr style="margin: 0.5rem 0; border: none; border-top: 2px solid #1f2937;" />
-                                <div class="venta-totals-row" style="font-size: 1.2rem; font-weight: 800; color: #059669;">
-                                    <span>TOTAL:</span>
-                                    <strong>$@FormatMoney(cotizacion.Total)</strong>
-                                </div>
+                                @* Desglose de IVA en el form solo para FA / FB / Proforma. En X (cotizacion) y FC (monotributo) no aparece. *@
+                                @{
+                                    bool formMostrarIva = formTipoComprobante is "FA" or "FB" or "PRO";
+                                    decimal formIva = formMostrarIva
+                                        ? Math.Round(cotizacion.Total * 0.21m, 2, MidpointRounding.AwayFromZero)
+                                        : 0m;
+                                    decimal formTotalConIva = cotizacion.Total + formIva;
+                                }
+                                @if (formMostrarIva)
+                                {
+                                    <hr style="margin: 0.5rem 0; border: none; border-top: 1px dashed #d1d5db;" />
+                                    <div class="venta-totals-row" style="font-size: 0.85rem;">
+                                        <span>Neto sin IVA:</span>
+                                        <strong>$@FormatMoney(cotizacion.Total)</strong>
+                                    </div>
+                                    <div class="venta-totals-row" style="font-size: 0.85rem; color: #1d4ed8;">
+                                        <span>IVA 21%:</span>
+                                        <strong>$@FormatMoney(formIva)</strong>
+                                    </div>
+                                    <hr style="margin: 0.5rem 0; border: none; border-top: 2px solid #1f2937;" />
+                                    <div class="venta-totals-row" style="font-size: 1.2rem; font-weight: 800; color: #059669;">
+                                        <span>TOTAL c/IVA:</span>
+                                        <strong>$@FormatMoney(formTotalConIva)</strong>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <hr style="margin: 0.5rem 0; border: none; border-top: 2px solid #1f2937;" />
+                                    <div class="venta-totals-row" style="font-size: 1.2rem; font-weight: 800; color: #059669;">
+                                        <span>TOTAL:</span>
+                                        <strong>$@FormatMoney(cotizacion.Total)</strong>
+                                    </div>
+                                }
                                 <hr style="margin: 0.5rem 0; border: none; border-top: 1px dashed #d1d5db;" />
                                 <div class="venta-totals-row" style="font-size: 0.8rem; color: #6b7280;">
                                     <span>Costo total:</span>
