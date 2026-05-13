@@ -2261,6 +2261,19 @@ public class ApiClient
     public async Task<EstadoCuentaDto?> GetEstadoCuentaClienteAsync(int clienteId)
         => await GetAsync<EstadoCuentaDto>($"/api/cafe/clientes/{clienteId}/estado-cuenta");
 
+    /// <summary>URL para descargar el PDF del recibo de una cobranza.</summary>
+    public string GetCobranzaPdfUrl(int cobranzaId) => $"/api/cafe/cobranzas/{cobranzaId}/pdf";
+
+    /// <summary>Saldos pendientes de cobro por cada venta (para mostrar en el listado de ventas).</summary>
+    public async Task<List<VentaSaldoDto>?> GetVentasSaldosAsync(DateTime? from = null, DateTime? to = null)
+    {
+        var qs = new List<string>();
+        if (from.HasValue) qs.Add($"from={from.Value:o}");
+        if (to.HasValue) qs.Add($"to={to.Value:o}");
+        var url = "/api/cafe/ventas/saldos" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+        return await GetAsync<List<VentaSaldoDto>>(url);
+    }
+
     // ===== MeLi Shipments (Mapeo Flex) =====
     public async Task<List<MeliShipmentDto>?> GetMeliFlexShipmentsAsync(string mode = "today", string? internalStatus = null, bool excludeDelivered = false)
     {

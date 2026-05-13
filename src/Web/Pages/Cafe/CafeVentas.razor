@@ -191,7 +191,25 @@
                                         <span style="display:inline-block; padding:0.1rem 0.45rem; background:#dcfce7; color:#166534; border-radius:999px; font-size:0.7rem; font-weight:700;">🏢 Comercial</span>
                                     }
                                 </td>
-                                <td style="text-align: right; font-weight: 800;">$@FormatMoney(v.Total)</td>
+                                <td style="text-align: right; font-weight: 800;">
+                                    $@FormatMoney(v.Total)
+                                    @{ var saldo = saldosPorVenta.TryGetValue(v.Id, out var s) ? s : v.Total; var pagado = v.Total - saldo; }
+                                    @if (!anulada)
+                                    {
+                                        @if (saldo <= 0.01m)
+                                        {
+                                            <div style="font-size:0.7rem; color:#16a34a; font-weight:700; margin-top:0.15rem;">✅ Pagada</div>
+                                        }
+                                        else if (pagado > 0.01m)
+                                        {
+                                            <div style="font-size:0.7rem; color:#b45309; font-weight:700; margin-top:0.15rem;" title="Pagó $@FormatMoney(pagado) hasta ahora">⚠ Debe $@FormatMoney(saldo)</div>
+                                        }
+                                        else
+                                        {
+                                            <div style="font-size:0.7rem; color:#dc2626; font-weight:700; margin-top:0.15rem;">⏳ Pendiente</div>
+                                        }
+                                    }
+                                </td>
                                 <td style="text-align: right; color: @(v.Margen >= 0 ? "#15803d" : "#b91c1c");">$@FormatMoney(v.Margen)</td>
                                 <td>
                                     @if (anulada)
@@ -213,6 +231,11 @@
                                 </td>
                                 <td class="actions-cell">
                                     <button class="btn-icon" style="color: #1d4ed8;" @onclick="() => ShowPrint(v)" title="Ver / imprimir / PDF">🖨</button>
+                                    @{ var saldoVenta = saldosPorVenta.TryGetValue(v.Id, out var sV) ? sV : v.Total; }
+                                    @if (!anulada && saldoVenta > 0.01m && v.ClienteId.HasValue)
+                                    {
+                                        <button class="btn-icon" style="color: #059669;" @onclick='() => Navigation.NavigateTo($"/cafe/tesoreria/cobranzas?cliente={v.ClienteId.Value}&venta={v.Id}")' title="Cobrar esta venta">💰</button>
+                                    }
                                     <button class="btn-icon btn-edit" @onclick="() => OpenEditModal(v)" title="Editar comprobante">✎</button>
                                     <button class="btn-icon" style="color: #16a34a;" @onclick="() => DuplicarComprobante(v)"
                                             title="Duplicar este comprobante en una venta nueva editable">📋</button>
@@ -1432,6 +1455,7 @@
 
 @code {
     private List<CafeVentaDto>? ventas;
+    private Dictionary<int, decimal> saldosPorVenta = new();
 
     // ===== Filtros del listado =====
     private DateTime? filtroFechaDesde;
@@ -1701,7 +1725,17 @@
     private async Task Load()
     {
         loading = true;
-        try { ventas = await Api.GetCafeVentasAsync() ?? new(); }
+        try
+        {
+            ventas = await Api.GetCafeVentasAsync() ?? new();
+            // Cargar saldos pendientes por cada venta (Total - Cobranzas aplicadas)
+            try
+            {
+                var saldos = await Api.GetVentasSaldosAsync();
+                saldosPorVenta = (saldos ?? new()).ToDictionary(s => s.VentaId, s => s.Saldo);
+            }
+            catch { saldosPorVenta = new(); }
+        }
         catch { ToastService.Error("Error al cargar ventas"); ventas = new(); }
         loading = false;
     }

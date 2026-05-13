@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @inject ApiClient Api
 @inject ToastService ToastService
+@inject IJSRuntime JS
 
 <div class="card">
     <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
@@ -28,6 +29,7 @@
                         <th style="text-align:right;">Retenciones</th>
                         <th style="text-align:right;">Total</th>
                         <th>Estado</th>
+                        <th>Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -40,6 +42,13 @@
                             <td style="text-align:right;">@(c.Retenciones > 0 ? $"${c.Retenciones:N2}" : "—")</td>
                             <td style="text-align:right; font-weight:600;">$@c.Total.ToString("N2")</td>
                             <td><span class="badge @(c.Estado == "VIGENTE" ? "badge-success" : "badge-danger")">@c.Estado</span></td>
+                            <td>
+                                <a class="btn-icon" href="@Api.GetCobranzaPdfUrl(c.Id)" target="_blank" title="Imprimir recibo PDF">📄</a>
+                                @if (c.Estado == "VIGENTE")
+                                {
+                                    <button class="btn-icon" @onclick="() => AnularCobranza(c)" title="Anular cobranza">❌</button>
+                                }
+                            </td>
                         </tr>
                     }
                 </tbody>
@@ -118,7 +127,21 @@
                 {
                     @* --- Comprobantes a cobrar --- *@
                     <div style="margin: 1rem 0; padding: 0.8rem; background: #f9fafb; border-radius: 8px;">
-                        <h5 style="margin:0 0 0.5rem;">Comprobantes a cobrar</h5>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+                            <h5 style="margin:0;">Comprobantes a cobrar</h5>
+                            @if (pendientes is not null && pendientes.Count > 0)
+                            {
+                                <div style="display:flex; gap:0.4rem;">
+                                    <button class="btn btn-secondary" style="font-size:0.78rem;" @onclick="ImputarTodo">⚡ Cobrar todo lo pendiente</button>
+                                </div>
+                            }
+                        </div>
+                        @if (saldoCliente.HasValue && saldoCliente.Value > 0)
+                        {
+                            <div style="background:#fef3c7; padding:0.4rem 0.6rem; border-radius:6px; font-size:0.82rem; margin-bottom:0.5rem;">
+                                💰 Saldo actual del cliente: <b>$@saldoCliente.Value.ToString("N2")</b> (te debe)
+                            </div>
+                        }
                         @if (pendientes is null)
                         {
                             <p class="text-muted">Cargando...</p>
@@ -249,6 +272,9 @@
     private string clienteSearch = "";
     private bool clienteSearchOpen;
     private List<ComprobantePendienteDto>? pendientes;
+    private decimal? saldoCliente;
+    [Parameter, SupplyParameterFromQuery(Name = "cliente")] public int? PreClienteId { get; set; }
+    [Parameter, SupplyParameterFromQuery(Name = "venta")] public int? PreVentaId { get; set; }
     private Dictionary<int, ImputData> imputaciones = new();
     private bool aCuentaActivo;
     private decimal aCuentaImporte;
@@ -279,6 +305,14 @@
         clientes = await Api.GetCafeClientesAsync() ?? new();
         cajas = await Api.GetCafeCajasAsync() ?? new();
         await Load();
+        // Atajo desde otra pantalla: si vino con ?cliente=X o ?cliente=X&venta=Y, abre el modal precargado
+        if (PreClienteId.HasValue && PreClienteId.Value > 0)
+        {
+            ShowNueva();
+            await SelectCliente(PreClienteId.Value);
+            if (PreVentaId.HasValue && PreVentaId.Value > 0 && imputaciones.TryGetValue(PreVentaId.Value, out var imp))
+                imp.Seleccionado = true;
+        }
     }
 
     private async Task Load()
@@ -340,14 +374,49 @@
     private async Task OnClienteChange()
     {
         imputaciones = new();
+        saldoCliente = null;
         if (selClienteId <= 0) { pendientes = new(); return; }
         try
         {
             pendientes = await Api.GetComprobantesPendientesAsync(selClienteId) ?? new();
             foreach (var p in pendientes)
                 imputaciones[p.VentaId] = new ImputData { Seleccionado = false, Importe = p.Saldo };
+            // Traer saldo total del cliente
+            try
+            {
+                var ec = await Api.GetEstadoCuentaClienteAsync(selClienteId);
+                if (ec is not null) saldoCliente = ec.Saldo;
+            }
+            catch { }
         }
         catch { ToastService.Error("Error al traer pendientes"); pendientes = new(); }
+    }
+
+    /// <summary>Tildá todos los comprobantes pendientes y poneles el saldo completo (1 click).</summary>
+    private void ImputarTodo()
+    {
+        if (pendientes is null) return;
+        foreach (var p in pendientes)
+        {
+            if (imputaciones.TryGetValue(p.VentaId, out var imp))
+            {
+                imp.Seleccionado = true;
+                imp.Importe = p.Saldo;
+            }
+        }
+        RecalcularTotal();
+    }
+
+    private async Task AnularCobranza(CobranzaListDto c)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Anular la cobranza {c.Numero}? Esta acción no se puede revertir.")) return;
+        try
+        {
+            await Api.AnularCafeCobranzaAsync(c.Id);
+            ToastService.Success("Cobranza anulada");
+            await Load();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
     }
 
     private void OnImputeChange(int ventaId, string? value)

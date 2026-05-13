@@ -19,10 +19,41 @@ public class CafeCobranzasController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly AuditLogService _audit;
+    private readonly CafeReciboCobranzaPdfService _pdfService;
 
-    public CafeCobranzasController(AppDbContext db, AuditLogService audit)
+    public CafeCobranzasController(AppDbContext db, AuditLogService audit, CafeReciboCobranzaPdfService pdfService)
     {
-        _db = db; _audit = audit;
+        _db = db; _audit = audit; _pdfService = pdfService;
+    }
+
+    /// <summary>Genera el PDF del recibo de cobranza.</summary>
+    [HttpGet("{id:int}/pdf")]
+    public async Task<IActionResult> DescargarPdf(int id)
+    {
+        var c = await _db.CafeCobranzas
+            .Include(x => x.Cliente)
+            .Include(x => x.Comprobantes).ThenInclude(cc => cc.Venta)
+            .Include(x => x.Medios).ThenInclude(m => m.Caja)
+            .Include(x => x.Medios).ThenInclude(m => m.Cheque)
+            .FirstOrDefaultAsync(x => x.Id == id);
+        if (c is null) return NotFound();
+        if (c.Cliente is null) return BadRequest(new { error = "Cliente no encontrado" });
+
+        var settings = await _db.CafeSettings.FindAsync(1);
+        var comps = c.Comprobantes.Select(x => (
+            numero: x.Venta?.Numero ?? "",
+            importe: x.Importe,
+            aCuenta: x.VentaId is null
+        )).ToList();
+        var medios = c.Medios.Select(m => (
+            cajaNombre: m.Caja?.Nombre ?? "—",
+            importe: m.Importe,
+            referencia: m.Referencia,
+            chequeInfo: m.Cheque is null ? null : $"Cheque {m.Cheque.Banco} N° {m.Cheque.Numero}"
+        )).ToList();
+
+        var bytes = _pdfService.GenerarPdfBytes(c, c.Cliente, comps, medios, settings);
+        return File(bytes, "application/pdf", $"Recibo-{c.Numero}.pdf");
     }
 
     public record ComprobantePendienteDto(

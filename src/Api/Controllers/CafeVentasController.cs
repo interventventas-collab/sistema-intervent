@@ -78,6 +78,36 @@ public class CafeVentasController : ControllerBase
         return Ok(list.Select(Map).ToList());
     }
 
+    public record VentaSaldoDto(int VentaId, decimal Total, decimal Pagado, decimal Saldo);
+
+    /// <summary>
+    /// Devuelve el saldo (Total - Pagado) por cada venta visible en el listado.
+    /// Pagado = suma de Importes de Cafe_CobranzasComprobantes (cobranzas VIGENTES) que apuntan a esa venta.
+    /// Util para mostrar "Pagada" / "Debe $X" en la lista de ventas sin recalcular en cada fila.
+    /// </summary>
+    [HttpGet("saldos")]
+    public async Task<IActionResult> GetSaldos([FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null)
+    {
+        var q = _db.CafeVentas.AsQueryable();
+        if (from.HasValue) q = q.Where(v => v.Fecha >= from.Value.Date);
+        if (to.HasValue) q = q.Where(v => v.Fecha <= to.Value.Date);
+        var ventas = await q.Where(v => v.Estado != "anulado").Select(v => new { v.Id, v.Total }).ToListAsync();
+        var ventaIds = ventas.Select(v => v.Id).ToList();
+        var pagados = await _db.CafeCobranzasComprobantes
+            .Where(c => c.VentaId != null && ventaIds.Contains(c.VentaId!.Value)
+                && c.Cobranza!.Estado == "VIGENTE")
+            .GroupBy(c => c.VentaId!.Value)
+            .Select(g => new { VentaId = g.Key, Pagado = g.Sum(x => x.Importe) })
+            .ToListAsync();
+        var dict = pagados.ToDictionary(p => p.VentaId, p => p.Pagado);
+        var result = ventas.Select(v => new VentaSaldoDto(
+            v.Id, v.Total,
+            dict.TryGetValue(v.Id, out var p) ? p : 0m,
+            v.Total - (dict.TryGetValue(v.Id, out var p2) ? p2 : 0m)
+        )).ToList();
+        return Ok(result);
+    }
+
     [HttpGet("{id:int}")]
     public async Task<IActionResult> GetById(int id)
     {

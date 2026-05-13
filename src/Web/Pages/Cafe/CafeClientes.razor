@@ -73,6 +73,7 @@
                                 <td class="actions-cell">
                                     <button class="btn-icon btn-edit" @onclick="() => ShowEdit(c)" title="Editar">@SvgIcons.Edit</button>
                                     <button class="btn-icon" @onclick='() => Nav.NavigateTo($"/cafe/clientes/{c.Id}/estado-cuenta")' title="Estado de cuenta">📒</button>
+                                    <button class="btn-icon" style="color:#059669;" @onclick='() => Nav.NavigateTo($"/cafe/tesoreria/cobranzas?cliente={c.Id}")' title="Cobrar a este cliente">💰</button>
                                     <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(c)" title="Eliminar">@SvgIcons.AlertCircle</button>
                                 </td>
                             </tr>

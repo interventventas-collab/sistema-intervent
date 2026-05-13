@@ -89,6 +89,15 @@ public class CobranzaMedioDto
     public int? ChequeId { get; set; }
 }
 
+// ========== Saldos por venta ==========
+public class VentaSaldoDto
+{
+    public int VentaId { get; set; }
+    public decimal Total { get; set; }
+    public decimal Pagado { get; set; }
+    public decimal Saldo { get; set; }
+}
+
 // ========== Estado de cuenta ==========
 public class MovimientoCuentaDto
 {
