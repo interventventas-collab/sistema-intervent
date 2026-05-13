@@ -390,7 +390,14 @@ else
                         }
                     }
                     <div style="padding:0.4rem 0.6rem; background:#dbeafe; border-bottom:1px solid #93c5fd; font-size:0.72rem; font-weight:700; color:#1e40af; text-transform:uppercase; margin-top:0.3rem; display:flex; justify-content:space-between; align-items:center; gap:0.4rem; flex-wrap:wrap;">
-                        <span>📦 Envíos Flex (@shipments.Count)</span>
+                        <span style="display:flex; align-items:center; gap:0.4rem;">
+                            <span>📦 Envíos Flex (@shipments.Count)</span>
+                            <button @onclick="SyncFromMeli" disabled="@isSyncing"
+                                    title="Traer ahora las novedades desde MercadoLibre"
+                                    style="background:@(isSyncing ? "#9ca3af" : "#2563eb"); color:white; border:none; padding:0.15rem 0.5rem; border-radius:4px; font-size:0.7rem; cursor:@(isSyncing ? "wait" : "pointer"); font-weight:600;">
+                                @(isSyncing ? "⏳ Sincronizando..." : "🔄 Sincronizar ahora")
+                            </button>
+                        </span>
                         @if (rutaSeleccion.Count > 0)
                         {
                             var rutaUrl = BuildGmapsRouteUrl();
