@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @inject ApiClient Api
 @inject ToastService ToastService
+@inject CpService CpService
 
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
@@ -168,12 +169,24 @@
                     </div>
                     <div class="form-row">
                         <div class="form-group" style="flex: 1;">
-                            <label class="form-label">Ciudad</label>
-                            <input class="form-input" @bind="formCiudad" />
+                            <label class="form-label">Ciudad / Localidad</label>
+                            <input class="form-input" list="datalist-prov-localidades" @bind="formCiudad" @bind:event="oninput" />
+                            <datalist id="datalist-prov-localidades">
+                                @foreach (var loc in localidadesSugeridas)
+                                {
+                                    <option value="@loc"></option>
+                                }
+                            </datalist>
                         </div>
                         <div class="form-group" style="flex: 1;">
                             <label class="form-label">Provincia</label>
-                            <input class="form-input" @bind="formProvincia" />
+                            <input class="form-input" list="datalist-prov-provincias" value="@formProvincia" @oninput="@(e => OnProvinciaInput(e.Value?.ToString()))" />
+                            <datalist id="datalist-prov-provincias">
+                                @foreach (var p in provincias)
+                                {
+                                    <option value="@p"></option>
+                                }
+                            </datalist>
                         </div>
                         <div class="form-group" style="flex: 0 0 100px;">
                             <label class="form-label">CP</label>
@@ -252,6 +265,17 @@
     private string formWeb = "";
     private bool formIsActive = true;
 
+    // Datalists para provincia/localidad (cargados desde CpService)
+    private List<string> provincias = new();
+    private List<string> localidadesSugeridas = new();
+
+    /// <summary>Cuando el usuario tipea/elige una provincia, refresca la lista de localidades sugeridas.</summary>
+    private async Task OnProvinciaInput(string? value)
+    {
+        formProvincia = (value ?? "").Trim();
+        localidadesSugeridas = await CpService.GetLocalidadesAsync(formProvincia);
+    }
+
     private CafeProveedorDto? toDelete;
 
     private List<CafeProveedorDto> Visibles
@@ -267,7 +291,11 @@
         }
     }
 
-    protected override async Task OnInitializedAsync() => await Load();
+    protected override async Task OnInitializedAsync()
+    {
+        provincias = await CpService.GetProvinciasAsync();
+        await Load();
+    }
 
     private async Task Load()
     {
@@ -283,10 +311,11 @@
         formNombre = ""; formContacto = ""; formTelefono = ""; formEmail = ""; formNotas = "";
         formCuit = ""; formCategoriaImpositiva = ""; formDireccion = "";
         formCodigoPostal = ""; formProvincia = ""; formCiudad = ""; formWeb = "";
+        localidadesSugeridas = new();
         formIsActive = true; formError = null; showForm = true;
     }
 
-    private void ShowEdit(CafeProveedorDto p)
+    private async Task ShowEdit(CafeProveedorDto p)
     {
         editing = p;
         formNombre = p.Nombre; formContacto = p.Contacto ?? ""; formTelefono = p.Telefono ?? "";
@@ -294,6 +323,7 @@
         formCuit = p.Cuit ?? ""; formCategoriaImpositiva = p.CategoriaImpositiva ?? "";
         formDireccion = p.Direccion ?? ""; formCodigoPostal = p.CodigoPostal ?? "";
         formProvincia = p.Provincia ?? ""; formCiudad = p.Ciudad ?? ""; formWeb = p.Web ?? "";
+        localidadesSugeridas = await CpService.GetLocalidadesAsync(formProvincia);
         formIsActive = p.IsActive;
         formError = null; showForm = true;
     }

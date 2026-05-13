@@ -101,7 +101,14 @@
                 </div>
                 <div class="form-group" style="flex: 2;">
                     <label class="form-label">Localidad</label>
-                    <input class="form-input" @bind="negocioLocalidad" placeholder="Ej: La Plata" />
+                    <input class="form-input" list="datalist-config-localidades" @bind="negocioLocalidad" @bind:event="oninput" placeholder="Ej: La Plata, Buenos Aires" />
+                    <datalist id="datalist-config-localidades">
+                        @foreach (var loc in localidadesYProvincias)
+                        {
+                            <option value="@loc"></option>
+                        }
+                    </datalist>
+                    <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Elegi de la lista o tipea libre.</p>
                 </div>
             </div>
             <div class="form-row">
@@ -207,6 +214,9 @@
     private DateTime? negocioInicioActividad;
     private string negocioLocalidad = "", negocioCp = "";
 
+    // Lista combinada "Localidad, Provincia" para el datalist del campo Localidad
+    private List<string> localidadesYProvincias = new();
+
     private async Task OnNegocioCpInput(string? value)
     {
         var v = (value ?? "").Trim();
@@ -236,6 +246,8 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Cargar lista combinada "Localidad, Provincia" para el datalist (cacheado en CpService)
+        localidadesYProvincias = await CpService.GetLocalidadConProvinciaAsync();
         try
         {
             var s = await Api.GetCafeSettingsAsync();

@@ -63,6 +63,18 @@ public class CpService
         return _provinciasCache;
     }
 
+    /// <summary>Devuelve todas las combinaciones "Localidad, Provincia" del dataset, ordenadas.
+    /// Util para campos sueltos que mezclan ambos (ej: "Direccion fiscal del negocio").</summary>
+    public async Task<List<string>> GetLocalidadConProvinciaAsync()
+    {
+        var d = await LoadAsync();
+        return d.Values
+            .Select(v => string.IsNullOrEmpty(v.p) ? v.l : $"{v.l}, {v.p}")
+            .Distinct()
+            .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     /// <summary>Devuelve las localidades unicas de una provincia, ordenadas alfabeticamente.
     /// Si la provincia no matchea con ninguna conocida, devuelve lista vacia.</summary>
     public async Task<List<string>> GetLocalidadesAsync(string? provincia)
