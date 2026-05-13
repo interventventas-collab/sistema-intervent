@@ -80,6 +80,17 @@
                          IsActive="@IsActive("/cafe/clientes-mapeados")" OnClick="@(() => NavigateTo("/cafe/clientes-mapeados"))" />
                 <NavItem Href="/cafe/configuracion" Label="Configuración" Icon="@SvgIcons.Settings"
                          IsActive="@IsActive("/cafe/configuracion")" OnClick="@(() => NavigateTo("/cafe/configuracion"))" />
+
+                @* Subgrupo Tesoreria — agregado 2026-05-12 (Fase 1) *@
+                @if (HasPerm("cafe-tesoreria"))
+                {
+                    <NavItem Href="/cafe/tesoreria/cajas" Label="💰 Cajas" Icon="@SvgIcons.Database"
+                             IsActive="@IsActive("/cafe/tesoreria/cajas")" OnClick="@(() => NavigateTo("/cafe/tesoreria/cajas"))" />
+                    <NavItem Href="/cafe/tesoreria/cobranzas" Label="📥 Cobranzas" Icon="@SvgIcons.ShoppingBag"
+                             IsActive="@IsActive("/cafe/tesoreria/cobranzas")" OnClick="@(() => NavigateTo("/cafe/tesoreria/cobranzas"))" />
+                    <NavItem Href="/cafe/tesoreria/cheques" Label="📄 Cheques" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive("/cafe/tesoreria/cheques")" OnClick="@(() => NavigateTo("/cafe/tesoreria/cheques"))" />
+                }
             </NavGroup>
         }
 
@@ -632,6 +643,9 @@
         { "cafe/clientes", "cafe" },
         { "cafe/clientes-mapeados", "cafe" },
         { "cafe/configuracion", "cafe" },
+        { "cafe/tesoreria/cajas", "cafe-tesoreria" },
+        { "cafe/tesoreria/cobranzas", "cafe-tesoreria" },
+        { "cafe/tesoreria/cheques", "cafe-tesoreria" },
         { "perfil", "" } // perfil always allowed
     };
 

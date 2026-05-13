@@ -1,0 +1,79 @@
+@page "/cafe/clientes/{ClienteId:int}/estado-cuenta"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject NavigationManager Nav
+
+<div class="card">
+    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+        <div>
+            <button class="btn btn-secondary" style="font-size:0.8rem;" @onclick='() => Nav.NavigateTo("/cafe/clientes")'>← Volver a Clientes</button>
+        </div>
+        @if (estado is not null)
+        {
+            <h3 style="margin:0;">📒 Estado de cuenta · @estado.ClienteNombre</h3>
+            <div style="font-weight:700; font-size:1.2rem; color:@(estado.Saldo > 0.01m ? "#dc2626" : "#059669");">
+                Saldo: $@estado.Saldo.ToString("N2")
+                <span style="font-size:0.75rem; font-weight:400; color:#6b7280; display:block;">
+                    @(estado.Saldo > 0.01m ? "(te debe)" : estado.Saldo < -0.01m ? "(a favor del cliente)" : "(al día)")
+                </span>
+            </div>
+        }
+    </div>
+    <div class="card-body" style="padding:0;">
+        @if (loading)
+        {
+            <p class="text-muted" style="padding:1rem;">Cargando...</p>
+        }
+        else if (estado is null || estado.Movimientos.Count == 0)
+        {
+            <p class="text-muted" style="padding:1rem;">Este cliente todavía no tiene movimientos.</p>
+        }
+        else
+        {
+            <table class="table table-compact">
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Tipo</th>
+                        <th>Número</th>
+                        <th style="text-align:right;">Debe</th>
+                        <th style="text-align:right;">Haber</th>
+                        <th style="text-align:right;">Saldo</th>
+                        <th>Detalle</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var m in estado.Movimientos)
+                    {
+                        <tr>
+                            <td>@m.Fecha.ToLocalTime().ToString("dd/MM/yyyy")</td>
+                            <td><span class="badge @(m.Tipo == "Venta" ? "badge-danger" : "badge-success")">@m.Tipo</span></td>
+                            <td><b>@m.Numero</b></td>
+                            <td style="text-align:right; color:#dc2626;">@(m.Debe > 0 ? $"${m.Debe:N2}" : "")</td>
+                            <td style="text-align:right; color:#059669;">@(m.Haber > 0 ? $"${m.Haber:N2}" : "")</td>
+                            <td style="text-align:right; font-weight:600; color:@(m.SaldoAcumulado > 0.01m ? "#dc2626" : "#059669");">$@m.SaldoAcumulado.ToString("N2")</td>
+                            <td style="font-size:0.78rem; color:#6b7280;">@(m.Detalle ?? "")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public int ClienteId { get; set; }
+    private EstadoCuentaDto? estado;
+    private bool loading = true;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        loading = true;
+        try { estado = await Api.GetEstadoCuentaClienteAsync(ClienteId); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        loading = false;
+    }
+}

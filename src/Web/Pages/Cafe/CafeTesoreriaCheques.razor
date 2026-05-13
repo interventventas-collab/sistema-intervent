@@ -1,0 +1,137 @@
+@page "/cafe/tesoreria/cheques"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div class="card">
+    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+        <h3 style="margin:0;">📄 Cheques en cartera (@(cheques?.Count(c => c.Estado == "EN_CARTERA") ?? 0))</h3>
+        <div style="display:flex; gap:0.4rem;">
+            @foreach (var e in estados)
+            {
+                <button class="btn @(estadoFiltro == e.key ? "btn-primary" : "btn-secondary")" style="font-size:0.8rem;" @onclick="() => SetFiltro(e.key)">@e.label</button>
+            }
+        </div>
+    </div>
+    <div class="card-body" style="padding:0;">
+        @if (loading)
+        {
+            <p class="text-muted" style="padding:1rem;">Cargando...</p>
+        }
+        else if (cheques is null || !ChequesFiltrados.Any())
+        {
+            <p class="text-muted" style="padding:1rem;">Sin cheques con este filtro.</p>
+        }
+        else
+        {
+            <div style="overflow-x:auto;">
+                <table class="table table-compact">
+                    <thead>
+                        <tr>
+                            <th>Banco</th>
+                            <th>Número</th>
+                            <th>Emisor</th>
+                            <th>Cliente origen</th>
+                            <th style="text-align:right;">Importe</th>
+                            <th>Vence</th>
+                            <th>Estado</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var c in ChequesFiltrados)
+                        {
+                            <tr>
+                                <td>@c.Banco</td>
+                                <td><b>@c.Numero</b></td>
+                                <td>@(c.Emisor ?? "—")</td>
+                                <td>@(c.ClienteOrigenNombre ?? "—")</td>
+                                <td style="text-align:right; font-weight:600;">$@c.Importe.ToString("N2")</td>
+                                <td>@(c.FechaVencimiento?.ToString("dd/MM/yyyy") ?? "—")</td>
+                                <td><span class="badge @EstadoClass(c.Estado)">@EstadoLabel(c.Estado)</span></td>
+                                <td>
+                                    @if (c.Estado == "EN_CARTERA")
+                                    {
+                                        <button class="btn-icon" title="Depositar al banco" @onclick="() => Depositar(c)">🏦</button>
+                                        <button class="btn-icon" title="Cobrar por ventanilla" @onclick="() => CobrarVent(c)">💵</button>
+                                        <button class="btn-icon" title="Rechazar (rebotó)" @onclick="() => Rechazar(c)">❌</button>
+                                    }
+                                    else
+                                    {
+                                        <span style="color:#6b7280; font-size:0.78rem;">(sin acciones)</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private List<CafeChequeDto>? cheques;
+    private bool loading = true;
+    private string estadoFiltro = "EN_CARTERA";
+
+    private readonly (string key, string label)[] estados = new[]
+    {
+        ("EN_CARTERA", "En cartera"),
+        ("ACREDITADO", "Acreditados"),
+        ("COBRADO_VENTANILLA", "Cobrados ventanilla"),
+        ("ENDOSADO", "Endosados"),
+        ("RECHAZADO", "Rechazados"),
+        ("", "Todos")
+    };
+
+    private IEnumerable<CafeChequeDto> ChequesFiltrados =>
+        cheques?.Where(c => string.IsNullOrEmpty(estadoFiltro) || c.Estado == estadoFiltro) ?? Enumerable.Empty<CafeChequeDto>();
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        loading = true;
+        try { cheques = await Api.GetCafeChequesAsync() ?? new(); }
+        catch { ToastService.Error("Error al cargar"); cheques = new(); }
+        loading = false;
+    }
+
+    private async Task SetFiltro(string k) { estadoFiltro = k; await Task.CompletedTask; }
+
+    private async Task Depositar(CafeChequeDto c)
+    {
+        try { await Api.DepositarChequeAsync(c.Id); ToastService.Success("Depositado / Acreditado"); await Load(); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+    private async Task CobrarVent(CafeChequeDto c)
+    {
+        try { await Api.CobrarChequeVentanillaAsync(c.Id); ToastService.Success("Cobrado por ventanilla"); await Load(); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+    private async Task Rechazar(CafeChequeDto c)
+    {
+        try { await Api.RechazarChequeAsync(c.Id); ToastService.Success("Rechazado (rebotó)"); await Load(); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private static string EstadoLabel(string e) => e switch
+    {
+        "EN_CARTERA" => "📥 En cartera",
+        "DEPOSITADO" => "🏦 Depositado",
+        "ACREDITADO" => "✅ Acreditado",
+        "COBRADO_VENTANILLA" => "💵 Cobrado ventanilla",
+        "ENDOSADO" => "➡ Endosado",
+        "RECHAZADO" => "❌ Rechazado",
+        _ => e
+    };
+    private static string EstadoClass(string e) => e switch
+    {
+        "EN_CARTERA" => "badge-warning",
+        "ACREDITADO" or "COBRADO_VENTANILLA" => "badge-success",
+        "ENDOSADO" => "badge-secondary",
+        "RECHAZADO" => "badge-danger",
+        _ => "badge-secondary"
+    };
+}

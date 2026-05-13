@@ -1,0 +1,110 @@
+namespace Web.Models;
+
+// ========== Cajas ==========
+public class CafeCajaDto
+{
+    public int Id { get; set; }
+    public string Nombre { get; set; } = "";
+    public string Tipo { get; set; } = "EFECTIVO";
+    public decimal SaldoInicial { get; set; }
+    public int Orden { get; set; }
+    public bool IsActive { get; set; } = true;
+    public string? Notas { get; set; }
+    public decimal SaldoActual { get; set; }
+}
+
+// ========== Cheques ==========
+public class CafeChequeDto
+{
+    public int Id { get; set; }
+    public string Numero { get; set; } = "";
+    public string Banco { get; set; } = "";
+    public string? Emisor { get; set; }
+    public int? ClienteOrigenId { get; set; }
+    public string? ClienteOrigenNombre { get; set; }
+    public decimal Importe { get; set; }
+    public DateTime? FechaCobro { get; set; }
+    public DateTime? FechaVencimiento { get; set; }
+    public string Estado { get; set; } = "EN_CARTERA";
+    public DateTime? FechaCambioEstado { get; set; }
+    public string? Observaciones { get; set; }
+    public int? CobranzaOrigenId { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+// ========== Cobranzas ==========
+public class ComprobantePendienteDto
+{
+    public int VentaId { get; set; }
+    public string Numero { get; set; } = "";
+    public DateTime Fecha { get; set; }
+    public decimal Total { get; set; }
+    public decimal Pagado { get; set; }
+    public decimal Saldo { get; set; }
+}
+
+public class CobranzaListDto
+{
+    public int Id { get; set; }
+    public string Numero { get; set; } = "";
+    public DateTime Fecha { get; set; }
+    public int ClienteId { get; set; }
+    public string ClienteNombre { get; set; } = "";
+    public decimal Total { get; set; }
+    public decimal Retenciones { get; set; }
+    public string Estado { get; set; } = "";
+}
+
+public class CobranzaDetalleDto
+{
+    public int Id { get; set; }
+    public string Numero { get; set; } = "";
+    public DateTime Fecha { get; set; }
+    public int ClienteId { get; set; }
+    public string ClienteNombre { get; set; } = "";
+    public decimal Total { get; set; }
+    public decimal Retenciones { get; set; }
+    public string Estado { get; set; } = "";
+    public string? Operador { get; set; }
+    public string? Observaciones { get; set; }
+    public List<CobranzaComprobanteDto> Comprobantes { get; set; } = new();
+    public List<CobranzaMedioDto> Medios { get; set; } = new();
+}
+
+public class CobranzaComprobanteDto
+{
+    public int Id { get; set; }
+    public int? VentaId { get; set; }
+    public string? VentaNumero { get; set; }
+    public decimal Importe { get; set; }
+}
+
+public class CobranzaMedioDto
+{
+    public int Id { get; set; }
+    public int CajaId { get; set; }
+    public string CajaNombre { get; set; } = "";
+    public decimal Importe { get; set; }
+    public string? Referencia { get; set; }
+    public int? ChequeId { get; set; }
+}
+
+// ========== Estado de cuenta ==========
+public class MovimientoCuentaDto
+{
+    public DateTime Fecha { get; set; }
+    public string Tipo { get; set; } = "";
+    public string Numero { get; set; } = "";
+    public decimal Debe { get; set; }
+    public decimal Haber { get; set; }
+    public decimal SaldoAcumulado { get; set; }
+    public string? Detalle { get; set; }
+}
+
+public class EstadoCuentaDto
+{
+    public int ClienteId { get; set; }
+    public string ClienteNombre { get; set; } = "";
+    public decimal Saldo { get; set; }
+    public List<MovimientoCuentaDto> Movimientos { get; set; } = new();
+}

@@ -2197,6 +2197,70 @@ public class ApiClient
         => await PostAsync<RenameMeliSkuResultDto>($"/api/cafe/productos/{cafeProductoId}/rename-meli-sku",
             new { meliItemIds });
 
+    // ===== Tesoreria Cafe: Cajas =====
+    public async Task<List<CafeCajaDto>?> GetCafeCajasAsync(bool incluirInactivas = false)
+        => await GetAsync<List<CafeCajaDto>>($"/api/cafe/cajas?incluirInactivas={(incluirInactivas ? "true" : "false")}");
+    public async Task<CafeCajaDto?> CrearCafeCajaAsync(string nombre, string tipo, decimal saldoInicial, int? orden = null, string? notas = null)
+        => await PostAsync<CafeCajaDto>("/api/cafe/cajas", new { nombre, tipo, saldoInicial, orden, notas });
+    public async Task<CafeCajaDto?> EditarCafeCajaAsync(int id, string nombre, string tipo, decimal saldoInicial, int? orden, bool isActive, string? notas)
+        => await PutAsync<CafeCajaDto>($"/api/cafe/cajas/{id}", new { nombre, tipo, saldoInicial, orden, isActive, notas });
+    public async Task<bool> EliminarCafeCajaAsync(int id)
+        => await DeleteAsync($"/api/cafe/cajas/{id}");
+
+    // ===== Tesoreria Cafe: Cobranzas =====
+    public async Task<List<ComprobantePendienteDto>?> GetComprobantesPendientesAsync(int clienteId)
+        => await GetAsync<List<ComprobantePendienteDto>>($"/api/cafe/cobranzas/comprobantes-pendientes/{clienteId}");
+    public async Task<List<CobranzaListDto>?> GetCafeCobranzasAsync(int? clienteId = null, DateTime? desde = null, DateTime? hasta = null)
+    {
+        var qs = new List<string>();
+        if (clienteId.HasValue) qs.Add($"clienteId={clienteId.Value}");
+        if (desde.HasValue) qs.Add($"desde={desde.Value:o}");
+        if (hasta.HasValue) qs.Add($"hasta={hasta.Value:o}");
+        var url = "/api/cafe/cobranzas" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+        return await GetAsync<List<CobranzaListDto>>(url);
+    }
+    public async Task<CobranzaDetalleDto?> GetCafeCobranzaAsync(int id)
+        => await GetAsync<CobranzaDetalleDto>($"/api/cafe/cobranzas/{id}");
+
+    public record CrearComprobanteItemRequest(int? VentaId, decimal Importe);
+    public record CrearChequeItemRequest(string Numero, string Banco, string? Emisor, decimal Importe, DateTime? FechaCobro, DateTime? FechaVencimiento, string? Observaciones);
+    public record CrearMedioItemRequest(int CajaId, decimal Importe, string? Referencia, CrearChequeItemRequest? Cheque);
+    public record CrearCobranzaResultDto(int Id, string Numero);
+
+    public async Task<CrearCobranzaResultDto?> CrearCafeCobranzaAsync(
+        int clienteId, decimal retenciones, string? operador, string? observaciones,
+        List<CrearComprobanteItemRequest> comprobantes, List<CrearMedioItemRequest> medios)
+        => await PostAsync<CrearCobranzaResultDto>("/api/cafe/cobranzas",
+            new { clienteId, retenciones, operador, observaciones, comprobantes, medios });
+    public async Task<bool> AnularCafeCobranzaAsync(int id)
+    {
+        var r = await PostAsync<object>($"/api/cafe/cobranzas/{id}/anular", new { });
+        return r is not null;
+    }
+
+    // ===== Tesoreria Cafe: Cheques =====
+    public async Task<List<CafeChequeDto>?> GetCafeChequesAsync(string? estado = null)
+        => await GetAsync<List<CafeChequeDto>>("/api/cafe/cheques" + (string.IsNullOrWhiteSpace(estado) ? "" : $"?estado={Uri.EscapeDataString(estado)}"));
+    public async Task<bool> DepositarChequeAsync(int id, string? observaciones = null, int? cajaDestinoId = null)
+    {
+        var r = await PostAsync<object>($"/api/cafe/cheques/{id}/depositar", new { observaciones, cajaDestinoId });
+        return r is not null;
+    }
+    public async Task<bool> CobrarChequeVentanillaAsync(int id, string? observaciones = null)
+    {
+        var r = await PostAsync<object>($"/api/cafe/cheques/{id}/cobrar-ventanilla", new { observaciones });
+        return r is not null;
+    }
+    public async Task<bool> RechazarChequeAsync(int id, string? observaciones = null)
+    {
+        var r = await PostAsync<object>($"/api/cafe/cheques/{id}/rechazar", new { observaciones });
+        return r is not null;
+    }
+
+    // ===== Estado de cuenta del cliente =====
+    public async Task<EstadoCuentaDto?> GetEstadoCuentaClienteAsync(int clienteId)
+        => await GetAsync<EstadoCuentaDto>($"/api/cafe/clientes/{clienteId}/estado-cuenta");
+
     // ===== MeLi Shipments (Mapeo Flex) =====
     public async Task<List<MeliShipmentDto>?> GetMeliFlexShipmentsAsync(string mode = "today", string? internalStatus = null, bool excludeDelivered = false)
     {

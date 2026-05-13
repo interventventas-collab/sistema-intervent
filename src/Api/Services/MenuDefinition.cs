@@ -44,7 +44,8 @@ public static class MenuDefinition
         }),
         new MenuGroup("cafe", "Café (independiente)", new[]
         {
-            new MenuItem("cafe", "Café", "/cafe")
+            new MenuItem("cafe", "Café", "/cafe"),
+            new MenuItem("cafe-tesoreria", "Café · Tesorería", "/cafe/tesoreria/cajas")
         }),
         new MenuGroup("alquileres", "Alquileres (independiente)", new[]
         {
