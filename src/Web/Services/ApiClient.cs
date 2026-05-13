@@ -2303,6 +2303,25 @@ public class ApiClient
     public async Task<EstadoCuentaProvDto?> GetEstadoCuentaProveedorAsync(int id)
         => await GetAsync<EstadoCuentaProvDto>($"/api/cafe/proveedores/{id}/estado-cuenta");
 
+    // ===== Cafe: Depositos =====
+    public async Task<List<CafeDepositoDto>?> GetCafeDepositosAsync(bool incluirInactivos = false)
+        => await GetAsync<List<CafeDepositoDto>>($"/api/cafe/depositos?incluirInactivos={(incluirInactivos ? "true" : "false")}");
+    public async Task<CafeDepositoDto?> CrearCafeDepositoAsync(string nombre, string? direccion, string? notas, int? orden)
+        => await PostAsync<CafeDepositoDto>("/api/cafe/depositos", new { nombre, direccion, notas, orden });
+    public async Task<CafeDepositoDto?> EditarCafeDepositoAsync(int id, string nombre, string? direccion, string? notas, int? orden, bool isActive)
+        => await PutAsync<CafeDepositoDto>($"/api/cafe/depositos/{id}", new { nombre, direccion, notas, orden, isActive });
+    public async Task<bool> EliminarCafeDepositoAsync(int id) => await DeleteAsync($"/api/cafe/depositos/{id}");
+
+    // ===== Cafe: Stock masivo =====
+    public async Task<List<StockProductoDto>?> GetStockEnDepositoAsync(int depositoId)
+        => await GetAsync<List<StockProductoDto>>($"/api/cafe/stock-masivo/{depositoId}");
+    public record StockMasivoItemReq(int ProductoId, decimal StockGramos, int StockUnidades);
+    public async Task<bool> ActualizarStockMasivoAsync(int depositoId, List<StockMasivoItemReq> items)
+    {
+        var r = await PostAsync<object>("/api/cafe/stock-masivo", new { depositoId, items });
+        return r is not null;
+    }
+
     // ===== MeLi Shipments (Mapeo Flex) =====
     public async Task<List<MeliShipmentDto>?> GetMeliFlexShipmentsAsync(string mode = "today", string? internalStatus = null, bool excludeDelivered = false)
     {

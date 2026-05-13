@@ -3244,3 +3244,69 @@ IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='PagoOrigenId' AND Object_ID
     ALTER TABLE Cafe_Cheques ADD PagoOrigenId INT NULL;
 GO
 
+-- ============================================================================
+-- CAFE Depositos + Stock por deposito (Fase 1 multi-deposito, 2026-05-13)
+-- Permite que cada producto tenga stock distribuido en varios depositos.
+-- Por defecto se crea "Depósito Principal" y se migra todo el stock actual ahi.
+-- Cafe_Productos.StockGramos/StockUnidades sigue siendo el TOTAL (suma de todos los depositos),
+-- para no romper ventas/compras que ya consultan ese campo.
+-- ============================================================================
+
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_Depositos')
+BEGIN
+    CREATE TABLE Cafe_Depositos (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Nombre NVARCHAR(100) NOT NULL,
+        Direccion NVARCHAR(300) NULL,
+        Notas NVARCHAR(500) NULL,
+        IsDefault BIT NOT NULL CONSTRAINT DF_CafeDepositos_IsDefault DEFAULT 0,
+        IsActive BIT NOT NULL CONSTRAINT DF_CafeDepositos_IsActive DEFAULT 1,
+        Orden INT NOT NULL CONSTRAINT DF_CafeDepositos_Orden DEFAULT 0,
+        CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_CafeDepositos_Created DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT UQ_CafeDepositos_Nombre UNIQUE (Nombre)
+    );
+END
+GO
+-- Seed: deposito principal (idempotente)
+IF NOT EXISTS (SELECT 1 FROM Cafe_Depositos WHERE Nombre='Depósito Principal')
+    INSERT INTO Cafe_Depositos (Nombre, IsDefault, Orden, Notas) VALUES ('Depósito Principal', 1, 1, 'Depósito por defecto. Todo el stock se carga aquí salvo que se elija otro.');
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_StockPorDeposito')
+BEGIN
+    CREATE TABLE Cafe_StockPorDeposito (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        ProductoId INT NOT NULL,
+        DepositoId INT NOT NULL,
+        StockGramos DECIMAL(18,3) NOT NULL CONSTRAINT DF_CafeStockDep_Gramos DEFAULT 0,
+        StockUnidades INT NOT NULL CONSTRAINT DF_CafeStockDep_Unidades DEFAULT 0,
+        UpdatedAt DATETIME2 NOT NULL CONSTRAINT DF_CafeStockDep_Updated DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT FK_CafeStockDep_Producto FOREIGN KEY (ProductoId) REFERENCES Cafe_Productos(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_CafeStockDep_Deposito FOREIGN KEY (DepositoId) REFERENCES Cafe_Depositos(Id),
+        CONSTRAINT UQ_CafeStockDep_ProdDep UNIQUE (ProductoId, DepositoId)
+    );
+    CREATE INDEX IX_CafeStockDep_Producto ON Cafe_StockPorDeposito(ProductoId);
+    CREATE INDEX IX_CafeStockDep_Deposito ON Cafe_StockPorDeposito(DepositoId);
+END
+GO
+
+-- Migracion idempotente: traer el stock actual de cada producto al deposito principal,
+-- solo si todavia no esta cargado. Se ejecuta una sola vez en la practica.
+DECLARE @DepositoDefault INT = (SELECT TOP 1 Id FROM Cafe_Depositos WHERE IsDefault=1 ORDER BY Id);
+IF @DepositoDefault IS NOT NULL
+BEGIN
+    INSERT INTO Cafe_StockPorDeposito (ProductoId, DepositoId, StockGramos, StockUnidades)
+    SELECT p.Id, @DepositoDefault, p.StockGramos, p.StockUnidades
+    FROM Cafe_Productos p
+    WHERE NOT EXISTS (
+        SELECT 1 FROM Cafe_StockPorDeposito s WHERE s.ProductoId = p.Id AND s.DepositoId = @DepositoDefault
+    );
+END
+GO
+
+-- Permiso menu
+IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId=1 AND MenuKey='cafe-depositos')
+    INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'cafe-depositos');
+GO
+

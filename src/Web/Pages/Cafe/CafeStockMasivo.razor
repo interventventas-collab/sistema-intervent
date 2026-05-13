@@ -1,0 +1,204 @@
+@page "/cafe/stock-masivo"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div class="card">
+    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+        <h3 style="margin:0;">📊 Stock masivo</h3>
+        <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+            <label style="font-size:0.85rem;">Depósito:</label>
+            <select class="form-input" style="width:auto;" @bind="depositoIdSeleccionado" @bind:after="CambiarDeposito">
+                @if (depositos is not null)
+                {
+                    @foreach (var d in depositos.Where(x => x.IsActive).OrderBy(x => x.Orden))
+                    {
+                        <option value="@d.Id">@d.Nombre</option>
+                    }
+                }
+            </select>
+            <input class="form-input" style="width:240px;" placeholder="🔍 Buscar producto..."
+                   @bind="filtroTexto" @bind:event="oninput" />
+            <select class="form-input" style="width:auto;" @bind="filtroCategoria">
+                <option value="">Todas</option>
+                <option value="CAFE">CAFE</option>
+                <option value="OTROS">OTROS</option>
+            </select>
+            <button class="btn btn-primary" @onclick="Guardar" disabled="@(!HayCambios || guardando)">
+                @(guardando ? "..." : $"💾 Guardar {CountCambios} cambios")
+            </button>
+        </div>
+    </div>
+    <div class="card-body" style="padding:0;">
+        @if (loading) { <p class="text-muted" style="padding:1rem;">Cargando...</p> }
+        else if (rows is null || rows.Count == 0)
+        {
+            <p class="text-muted" style="padding:1rem;">Sin productos.</p>
+        }
+        else
+        {
+            <div style="max-height: 70vh; overflow-y:auto;">
+                <table class="table table-compact">
+                    <thead style="position:sticky; top:0; background:#f3f4f6; z-index:1;">
+                        <tr>
+                            <th style="width:90px;">Código</th>
+                            <th>Producto</th>
+                            <th style="width:80px;">Cat.</th>
+                            <th style="text-align:right; width:130px;">Stock actual</th>
+                            <th style="text-align:right; width:160px;">Stock nuevo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in Filtrados())
+                        {
+                            var modificado = HaModificado(r);
+                            <tr style="@(modificado ? "background:#fef3c7;" : "")">
+                                <td style="font-family:monospace; font-size:0.78rem;">@r.Codigo</td>
+                                <td><b>@r.Nombre</b></td>
+                                <td><span class="badge badge-secondary" style="font-size:0.7rem;">@r.Categoria</span></td>
+                                <td style="text-align:right;">
+                                    @if (r.Categoria == "CAFE")
+                                    {
+                                        <span>@((r.StockGramos/1000m).ToString("N2")) kg</span>
+                                    }
+                                    else
+                                    {
+                                        <span>@r.StockUnidades u.</span>
+                                    }
+                                </td>
+                                <td style="text-align:right;">
+                                    @if (r.Categoria == "CAFE")
+                                    {
+                                        var kgNuevo = nuevoStockKg.TryGetValue(r.ProductoId, out var kg) ? kg : Math.Round(r.StockGramos / 1000m, 3);
+                                        <input class="form-input" type="number" step="0.001" style="width:120px; text-align:right; display:inline-block;"
+                                               value="@kgNuevo"
+                                               @onchange="@(e => OnStockKgChange(r.ProductoId, e.Value?.ToString()))" /> <span style="font-size:0.78rem;">kg</span>
+                                    }
+                                    else
+                                    {
+                                        var uNuevo = nuevoStockUnidades.TryGetValue(r.ProductoId, out var u) ? u : r.StockUnidades;
+                                        <input class="form-input" type="number" step="1" style="width:120px; text-align:right; display:inline-block;"
+                                               value="@uNuevo"
+                                               @onchange="@(e => OnStockUnidadesChange(r.ProductoId, e.Value?.ToString()))" /> <span style="font-size:0.78rem;">u.</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private List<CafeDepositoDto>? depositos;
+    private List<StockProductoDto>? rows;
+    private bool loading = true;
+    private bool guardando;
+    private int depositoIdSeleccionado;
+    private string filtroTexto = "";
+    private string filtroCategoria = "";
+    // Cambios pendientes: solo se guardan en estos diccionarios hasta que toques "Guardar"
+    private Dictionary<int, decimal> nuevoStockKg = new();
+    private Dictionary<int, int> nuevoStockUnidades = new();
+
+    [Parameter, SupplyParameterFromQuery(Name = "dep")] public int? PreDepositoId { get; set; }
+
+    private int CountCambios =>
+        rows is null ? 0 :
+        rows.Count(r => HaModificado(r));
+
+    private bool HayCambios => CountCambios > 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        depositos = await Api.GetCafeDepositosAsync() ?? new();
+        depositoIdSeleccionado = PreDepositoId
+            ?? depositos.FirstOrDefault(d => d.IsDefault)?.Id
+            ?? depositos.FirstOrDefault()?.Id ?? 0;
+        await CargarStock();
+    }
+
+    private async Task CambiarDeposito()
+    {
+        nuevoStockKg = new(); nuevoStockUnidades = new();
+        await CargarStock();
+    }
+
+    private async Task CargarStock()
+    {
+        if (depositoIdSeleccionado <= 0) { rows = new(); loading = false; return; }
+        loading = true;
+        try { rows = await Api.GetStockEnDepositoAsync(depositoIdSeleccionado) ?? new(); }
+        catch { ToastService.Error("Error al cargar"); rows = new(); }
+        loading = false;
+    }
+
+    private IEnumerable<StockProductoDto> Filtrados()
+    {
+        if (rows is null) return Enumerable.Empty<StockProductoDto>();
+        var t = filtroTexto?.Trim() ?? "";
+        return rows.Where(r =>
+            (string.IsNullOrEmpty(filtroCategoria) || r.Categoria == filtroCategoria) &&
+            (string.IsNullOrEmpty(t)
+                || (r.Codigo?.Contains(t, StringComparison.OrdinalIgnoreCase) ?? false)
+                || r.Nombre.Contains(t, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private bool HaModificado(StockProductoDto r)
+    {
+        if (r.Categoria == "CAFE")
+        {
+            if (!nuevoStockKg.TryGetValue(r.ProductoId, out var kg)) return false;
+            return Math.Abs(kg * 1000m - r.StockGramos) > 0.001m;
+        }
+        else
+        {
+            if (!nuevoStockUnidades.TryGetValue(r.ProductoId, out var u)) return false;
+            return u != r.StockUnidades;
+        }
+    }
+
+    private void OnStockKgChange(int productoId, string? value)
+    {
+        if (!decimal.TryParse(value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var kg))
+            decimal.TryParse(value, out kg);
+        nuevoStockKg[productoId] = kg;
+    }
+
+    private void OnStockUnidadesChange(int productoId, string? value)
+    {
+        int.TryParse(value, out var u);
+        nuevoStockUnidades[productoId] = u;
+    }
+
+    private async Task Guardar()
+    {
+        if (rows is null) return;
+        var items = new List<ApiClient.StockMasivoItemReq>();
+        foreach (var r in rows)
+        {
+            if (!HaModificado(r)) continue;
+            decimal stockG = r.Categoria == "CAFE"
+                ? (nuevoStockKg.TryGetValue(r.ProductoId, out var kg) ? kg * 1000m : r.StockGramos)
+                : r.StockGramos;
+            int stockU = r.Categoria == "CAFE"
+                ? r.StockUnidades
+                : (nuevoStockUnidades.TryGetValue(r.ProductoId, out var u) ? u : r.StockUnidades);
+            items.Add(new ApiClient.StockMasivoItemReq(r.ProductoId, stockG, stockU));
+        }
+        if (items.Count == 0) { ToastService.Info("Sin cambios"); return; }
+
+        guardando = true;
+        try
+        {
+            await Api.ActualizarStockMasivoAsync(depositoIdSeleccionado, items);
+            ToastService.Success($"Stock actualizado en {items.Count} productos");
+            nuevoStockKg = new(); nuevoStockUnidades = new();
+            await CargarStock();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { guardando = false; }
+    }
+}

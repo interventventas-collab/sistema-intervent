@@ -94,6 +94,8 @@ public class AppDbContext : DbContext
     public DbSet<CafePagoProveedor> CafePagosProveedor => Set<CafePagoProveedor>();
     public DbSet<CafePagoProveedorComprobante> CafePagosProveedorComprobantes => Set<CafePagoProveedorComprobante>();
     public DbSet<CafePagoProveedorMedio> CafePagosProveedorMedios => Set<CafePagoProveedorMedio>();
+    public DbSet<CafeDeposito> CafeDepositos => Set<CafeDeposito>();
+    public DbSet<CafeStockPorDeposito> CafeStockPorDeposito => Set<CafeStockPorDeposito>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

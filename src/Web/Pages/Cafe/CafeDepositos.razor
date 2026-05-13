@@ -1,0 +1,175 @@
+@page "/cafe/depositos"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+<div class="card">
+    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+        <h3 style="margin:0;">📦 Depósitos (@(depositos?.Count ?? 0))</h3>
+        <button class="btn btn-primary" @onclick="ShowCreate">+ Nuevo depósito</button>
+    </div>
+    <div class="card-body" style="padding:0;">
+        @if (loading) { <p class="text-muted" style="padding:1rem;">Cargando...</p> }
+        else if (depositos is null || depositos.Count == 0)
+        {
+            <p class="text-muted" style="padding:1rem;">Sin depósitos.</p>
+        }
+        else
+        {
+            <table class="table table-compact">
+                <thead>
+                    <tr>
+                        <th>Nombre</th>
+                        <th>Dirección</th>
+                        <th>Notas</th>
+                        <th style="text-align:right;">Productos</th>
+                        <th style="text-align:right;">Stock total</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var d in depositos.OrderBy(x => x.Orden).ThenBy(x => x.Nombre))
+                    {
+                        <tr style="@(d.IsActive ? "" : "opacity:0.5;")">
+                            <td>
+                                <b>@d.Nombre</b>
+                                @if (d.IsDefault) { <span class="badge badge-success" style="margin-left:0.4rem; font-size:0.7rem;">★ por defecto</span> }
+                            </td>
+                            <td style="font-size:0.85rem;">@(d.Direccion ?? "—")</td>
+                            <td style="font-size:0.78rem; color:#6b7280;">@(d.Notas ?? "—")</td>
+                            <td style="text-align:right;">@d.CantidadProductos</td>
+                            <td style="text-align:right; font-size:0.85rem;">
+                                @if (d.StockGramosTotal > 0)
+                                {
+                                    <span>@((d.StockGramosTotal/1000m).ToString("N1")) kg</span>
+                                }
+                                @if (d.StockUnidadesTotal > 0)
+                                {
+                                    <span> · @d.StockUnidadesTotal u.</span>
+                                }
+                                @if (d.StockGramosTotal == 0 && d.StockUnidadesTotal == 0)
+                                {
+                                    <span style="color:#9ca3af;">—</span>
+                                }
+                            </td>
+                            <td>@(d.IsActive ? "Activo" : "Inactivo")</td>
+                            <td>
+                                <button class="btn-icon" @onclick='() => Nav.NavigateTo($"/cafe/stock-masivo?dep={d.Id}")' title="Ver / editar stock">📊</button>
+                                <button class="btn-icon" @onclick="() => ShowEdit(d)" title="Editar">✎</button>
+                                @if (!d.IsDefault)
+                                {
+                                    <button class="btn-icon" @onclick="() => Eliminar(d)" title="Eliminar (solo si está vacío)">🗑</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@if (showForm)
+{
+    <div class="modal-overlay" @onclick="CloseForm">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h4 style="margin:0;">@(editing is null ? "Nuevo depósito" : $"Editar: {editing.Nombre}")</h4>
+                <button class="btn-close" @onclick="CloseForm">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Nombre</label>
+                    <input class="form-input" @bind="formNombre" placeholder="ej: Depósito Av. Belgrano" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Dirección</label>
+                    <input class="form-input" @bind="formDireccion" placeholder="Opcional" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Orden</label>
+                    <input class="form-input" type="number" @bind="formOrden" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Notas</label>
+                    <input class="form-input" @bind="formNotas" />
+                </div>
+                @if (editing is not null)
+                {
+                    <label class="form-check"><input type="checkbox" @bind="formIsActive" /> Activo</label>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseForm">Cancelar</button>
+                <button class="btn btn-primary" @onclick="Guardar" disabled="@saving">@(saving ? "..." : "Guardar")</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<CafeDepositoDto>? depositos;
+    private bool loading = true;
+    private bool showForm, saving;
+    private CafeDepositoDto? editing;
+    private string formNombre = "", formDireccion = "", formNotas = "";
+    private int formOrden = 0;
+    private bool formIsActive = true;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        loading = true;
+        try { depositos = await Api.GetCafeDepositosAsync(incluirInactivos: true) ?? new(); }
+        catch { ToastService.Error("Error al cargar"); depositos = new(); }
+        loading = false;
+    }
+
+    private void ShowCreate()
+    {
+        editing = null;
+        formNombre = ""; formDireccion = ""; formNotas = "";
+        formOrden = (depositos?.Max(d => (int?)d.Orden) ?? 0) + 1;
+        formIsActive = true;
+        showForm = true;
+    }
+
+    private void ShowEdit(CafeDepositoDto d)
+    {
+        editing = d;
+        formNombre = d.Nombre; formDireccion = d.Direccion ?? ""; formNotas = d.Notas ?? "";
+        formOrden = d.Orden; formIsActive = d.IsActive;
+        showForm = true;
+    }
+
+    private void CloseForm() { if (saving) return; showForm = false; }
+
+    private async Task Guardar()
+    {
+        if (string.IsNullOrWhiteSpace(formNombre)) { ToastService.Error("Nombre vacío"); return; }
+        saving = true;
+        try
+        {
+            if (editing is null)
+                await Api.CrearCafeDepositoAsync(formNombre, formDireccion, formNotas, formOrden);
+            else
+                await Api.EditarCafeDepositoAsync(editing.Id, formNombre, formDireccion, formNotas, formOrden, formIsActive);
+            ToastService.Success("Guardado");
+            showForm = false;
+            await Load();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private async Task Eliminar(CafeDepositoDto d)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Eliminar el depósito \"{d.Nombre}\"? Solo si está vacío.")) return;
+        try { await Api.EliminarCafeDepositoAsync(d.Id); ToastService.Success("Eliminado"); await Load(); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+}

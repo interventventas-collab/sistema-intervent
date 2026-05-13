@@ -89,6 +89,31 @@ public class CobranzaMedioDto
     public int? ChequeId { get; set; }
 }
 
+// ========== Depositos + Stock por deposito ==========
+public class CafeDepositoDto
+{
+    public int Id { get; set; }
+    public string Nombre { get; set; } = "";
+    public string? Direccion { get; set; }
+    public string? Notas { get; set; }
+    public bool IsDefault { get; set; }
+    public bool IsActive { get; set; } = true;
+    public int Orden { get; set; }
+    public int CantidadProductos { get; set; }
+    public decimal StockGramosTotal { get; set; }
+    public int StockUnidadesTotal { get; set; }
+}
+
+public class StockProductoDto
+{
+    public int ProductoId { get; set; }
+    public string Codigo { get; set; } = "";
+    public string Nombre { get; set; } = "";
+    public string Categoria { get; set; } = "";
+    public decimal StockGramos { get; set; }
+    public int StockUnidades { get; set; }
+}
+
 // ========== Saldos por venta ==========
 public class VentaSaldoDto
 {

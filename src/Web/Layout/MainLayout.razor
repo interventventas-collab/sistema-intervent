@@ -101,12 +101,25 @@
                     <NavItem Href="/cafe/tesoreria/cheques" Label="📄 Cheques" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/cafe/tesoreria/cheques")" OnClick="@(() => NavigateTo("/cafe/tesoreria/cheques"))" />
                 }
+
+                @* Subgrupo Depositos / Stock — agregado 2026-05-13 (Fase 1 multi-deposito) *@
+                @if (HasPerm("cafe-depositos"))
+                {
+                    <NavItem Href="/cafe/depositos" Label="📦 Depósitos" Icon="@SvgIcons.Store"
+                             IsActive="@IsActive("/cafe/depositos")" OnClick="@(() => NavigateTo("/cafe/depositos"))" />
+                    <NavItem Href="/cafe/stock-masivo" Label="📊 Stock masivo" Icon="@SvgIcons.Edit"
+                             IsActive="@IsActive("/cafe/stock-masivo")" OnClick="@(() => NavigateTo("/cafe/stock-masivo"))" />
+                }
             </NavGroup>
         }
 
-        @* ═════════════ 2. INVENTARIOS ═════════════
-           Solo stock fisico real: depositos, movimientos, ajustes. *@
-        @if (HasPerm("depositos") || HasPerm("modificacion-stock") || HasPerm("movimientos-depositos") || HasPerm("actualizacion-stock"))
+        @* ═════════════ 2. INVENTARIOS (LEGACY — DESACTIVADO 2026-05-13) ═════════════
+           Modulo inventario viejo basado en tablas vacias (Products, Depositos). Se reemplazo por:
+           - Cafe → Depositos (multi-deposito sobre Cafe_Productos)
+           - Cafe → Stock masivo (edicion bulk de stock por deposito)
+           Para reactivar, cambiar ENABLE_INVENTARIOS_LEGACY a true. *@
+        @{ const bool ENABLE_INVENTARIOS_LEGACY = false; }
+        @if (ENABLE_INVENTARIOS_LEGACY && (HasPerm("depositos") || HasPerm("modificacion-stock") || HasPerm("movimientos-depositos") || HasPerm("actualizacion-stock")))
         {
             <NavGroup Label="Inventarios" Icon="@SvgIcons.Store"
                       HasActiveChild="@(IsActive("/depositos") || IsActive("/modificacion-stock") || IsActive("/movimientos-depositos") || IsActive("/actualizacion-stock"))">
@@ -658,6 +671,8 @@
         { "cafe/tesoreria/pagos", "cafe-tesoreria" },
         { "cafe/tesoreria/cheques", "cafe-tesoreria" },
         { "cafe/tesoreria/resumen", "cafe-tesoreria" },
+        { "cafe/depositos", "cafe-depositos" },
+        { "cafe/stock-masivo", "cafe-depositos" },
         { "perfil", "" } // perfil always allowed
     };
 
