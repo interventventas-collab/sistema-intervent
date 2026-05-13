@@ -445,13 +445,14 @@ else
                             // ─── Card estilo Flex (tiene al menos 1 envío de MeLi) ───
                             var s = g.Flex.First();
                             var act = activeShipmentId == s.Id;
-                            var enRuta = rutaSeleccion.Contains(s.Id);
+                            var grupoKey = g.Key;
+                            var enRuta = rutaSeleccion.Contains(grupoKey);
                             <div class="mapeo-card @(act ? "activa" : "")" style="@(enRuta ? "outline:2px solid #16a34a; background:#f0fdf4;" : "")" @onclick="() => OnSelectFromList(s)">
                                 <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.4rem;">
                                     <label style="display:flex; align-items:center; gap:0.35rem; cursor:pointer; flex:1;" @onclick:stopPropagation="true">
                                         <input type="checkbox" checked="@enRuta"
                                                disabled="@(!enRuta && rutaSeleccion.Count >= 10)"
-                                               @onchange="@(e => ToggleRutaSeleccion(s.Id))"
+                                               @onchange="@(e => ToggleRutaSeleccion(grupoKey))"
                                                title="Incluir en la ruta de Google Maps" />
                                         <strong>@(s.ReceiverName ?? "—")</strong>
                                         @if (g.Count > 1)
@@ -515,18 +516,24 @@ else
                             var asignado = st.AssignedVehicleSlot.HasValue || st.AssignedDriverId.HasValue;
                             var isActive = activeStopId == st.Id;
                             var grupoLocal = g;
+                            var grupoKey = g.Key;
+                            var enRuta = rutaSeleccion.Contains(grupoKey);
                             <div class="mapeo-card @(isActive ? "activa" : "")"
-                                 style="cursor:pointer; border-left:4px solid @stopColor; @(asignado ? $"background: linear-gradient(90deg, {stopColor}15 0%, white 60%);" : "") @(isActive ? "box-shadow: 0 0 0 2px " + stopColor + ";" : "")"
+                                 style="cursor:pointer; border-left:4px solid @stopColor; @(asignado ? $"background: linear-gradient(90deg, {stopColor}15 0%, white 60%);" : "") @(enRuta ? "outline:2px solid #16a34a; background:#f0fdf4;" : "") @(isActive ? "box-shadow: 0 0 0 2px " + stopColor + ";" : "")"
                                  @onclick="() => FocusStop(st)"
                                  title="Click para resaltar en el mapa">
                                 <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.4rem;">
-                                    <span style="display:flex; align-items:center; gap:0.35rem;">
+                                    <label style="display:flex; align-items:center; gap:0.35rem; cursor:pointer; flex:1;" @onclick:stopPropagation="true">
+                                        <input type="checkbox" checked="@enRuta"
+                                               disabled="@(!enRuta && rutaSeleccion.Count >= 10)"
+                                               @onchange="@(e => ToggleRutaSeleccion(grupoKey))"
+                                               title="Incluir en la ruta de Google Maps" />
                                         <strong>@(st.Alias ?? st.ContactName ?? "Parada")</strong>
                                         @if (g.Count > 1)
                                         {
                                             <span title="Esta parada se repite @g.Count veces" style="background:#dc2626; color:white; padding:0.05rem 0.35rem; border-radius:8px; font-size:0.65rem; font-weight:700;">× @g.Count</span>
                                         }
-                                    </span>
+                                    </label>
                                     <button class="btn-icon btn-delete" style="font-size:0.7rem;" @onclick="() => DeleteGrupoManual(grupoLocal)" @onclick:stopPropagation="true" title="Quitar">×</button>
                                 </div>
                                 <div style="color:#4b5563; margin-top:0.15rem; display:flex; align-items:center; gap:0.3rem; flex-wrap:wrap;">
@@ -1393,8 +1400,10 @@ else
     private int? activeShipmentId;
     private int? activeStopId;
 
-    // Multi-stop: selección de hasta 10 envíos Flex para armar ruta en Google Maps
-    private HashSet<int> rutaSeleccion = new();
+    // Multi-stop: selección de hasta 10 destinos para armar ruta en Google Maps.
+    // Guardamos la "Key" del grupo unificado (cubre Flex y paradas manuales),
+    // así una sola tarjeta = un solo waypoint sin importar de qué tipo sea.
+    private HashSet<string> rutaSeleccion = new(StringComparer.Ordinal);
 
     // Filtro de zonas (chips): conjunto de zonas que el usuario ocultó. Vacío = todas visibles.
     private HashSet<string> zonasOcultas = new(StringComparer.Ordinal);
@@ -1501,38 +1510,54 @@ else
         }
     }
 
-    private void ToggleRutaSeleccion(int shipmentId)
+    private void ToggleRutaSeleccion(string groupKey)
     {
-        if (rutaSeleccion.Contains(shipmentId))
-            rutaSeleccion.Remove(shipmentId);
+        if (rutaSeleccion.Contains(groupKey))
+            rutaSeleccion.Remove(groupKey);
         else if (rutaSeleccion.Count < 10)
-            rutaSeleccion.Add(shipmentId);
+            rutaSeleccion.Add(groupKey);
     }
 
     private void LimpiarSeleccionRuta() => rutaSeleccion.Clear();
 
     private string BuildGmapsRouteUrl()
     {
-        if (shipments is null || rutaSeleccion.Count == 0) return "#";
-        var seleccionados = shipments.Where(s => rutaSeleccion.Contains(s.Id)).ToList();
+        if (rutaSeleccion.Count == 0) return "#";
+        var lista = BuildListaUnificada();
+        var seleccionados = lista.Where(g => rutaSeleccion.Contains(g.Key)).ToList();
         if (seleccionados.Count == 0) return "#";
 
-        static string Addr(MeliShipmentDto s)
+        static string AddrFromGroup(GrupoUnificado g)
         {
-            var dir = !string.IsNullOrWhiteSpace(s.AddressLine)
-                ? (s.AddressLine + " " + (s.City ?? "")).Trim()
-                : (s.Latitude.HasValue && s.Longitude.HasValue
-                    ? $"{s.Latitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)},{s.Longitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
-                    : (s.City ?? ""));
-            return Uri.EscapeDataString(dir);
+            // Si el grupo tiene Flex preferimos esa dirección (suele estar más limpia).
+            if (g.Flex.Count > 0)
+            {
+                var s = g.Flex.First();
+                var dir = !string.IsNullOrWhiteSpace(s.AddressLine)
+                    ? (s.AddressLine + " " + (s.City ?? "")).Trim()
+                    : (s.Latitude.HasValue && s.Longitude.HasValue
+                        ? $"{s.Latitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)},{s.Longitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
+                        : (s.City ?? ""));
+                return Uri.EscapeDataString(dir);
+            }
+            else
+            {
+                var st = g.Manual.First();
+                var dir = !string.IsNullOrWhiteSpace(st.Direccion)
+                    ? (st.Direccion + " " + (st.Localidad ?? "")).Trim()
+                    : (st.Latitude != 0 && st.Longitude != 0
+                        ? $"{st.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture)},{st.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
+                        : (st.Localidad ?? ""));
+                return Uri.EscapeDataString(dir);
+            }
         }
 
-        var origin = Addr(seleccionados.First());
-        var destination = Addr(seleccionados.Last());
+        var origin = AddrFromGroup(seleccionados.First());
+        var destination = AddrFromGroup(seleccionados.Last());
         var url = $"https://www.google.com/maps/dir/?api=1&origin={origin}&destination={destination}";
         if (seleccionados.Count > 2)
         {
-            var waypoints = string.Join("|", seleccionados.Skip(1).Take(seleccionados.Count - 2).Select(Addr));
+            var waypoints = string.Join("|", seleccionados.Skip(1).Take(seleccionados.Count - 2).Select(AddrFromGroup));
             url += $"&waypoints={waypoints}";
         }
         url += "&travelmode=driving";
