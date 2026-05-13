@@ -1218,17 +1218,24 @@
                     </tbody>
                 </table>
 
-                @* Totales *@
+                @* Totales — discriminacion de IVA segun el tipo de comprobante *@
                 @{
                     bool esProforma = printVenta.TipoComprobante == "PRO";
+                    bool esFA = printVenta.TipoComprobante == "FA";
+                    bool esFB = printVenta.TipoComprobante == "FB";
+                    bool esFC = printVenta.TipoComprobante == "FC";
+                    // Precios cargados son NETO (sin IVA). Para FA/FB se suma 21%. Para FC y X/PRO no se suma (informativo).
+                    bool sumarIvaArriba = esFA || esFB;
                     decimal netoSinIva = printVenta.Total;
-                    decimal iva21 = Math.Round(netoSinIva * 0.21m, 2, MidpointRounding.AwayFromZero);
+                    decimal iva21 = sumarIvaArriba || esProforma
+                        ? Math.Round(netoSinIva * 0.21m, 2, MidpointRounding.AwayFromZero)
+                        : 0m;
                     decimal totalConIva = netoSinIva + iva21;
                 }
                 <div style="display: flex; justify-content: flex-end; margin-top: 0.5rem;">
                     <div style="min-width: 340px; border: 1px solid #d1d5db; padding: 0.6rem 0.8rem;">
                         <div style="display: flex; justify-content: space-between; font-size: 0.9rem; padding: 0.15rem 0;">
-                            <span>Subtotal @(esProforma ? "(neto sin IVA)" : ""):</span>
+                            <span>Subtotal @(esProforma || esFA || esFB ? "(neto sin IVA)" : ""):</span>
                             <strong>$@FormatMoney(printVenta.Subtotal)</strong>
                         </div>
                         @if (printVenta.Descuento > 0)
@@ -1237,13 +1244,13 @@
                                 <span>Descuento:</span><span>− $@FormatMoney(printVenta.Descuento)</span>
                             </div>
                         }
-                        @if (esProforma)
+                        @if (esFA || esFB || esProforma)
                         {
                             <div style="display: flex; justify-content: space-between; font-size: 0.9rem; padding: 0.15rem 0;">
-                                <span>Neto gravado (sin IVA):</span><strong>$@FormatMoney(netoSinIva)</strong>
+                                <span>Neto gravado:</span><strong>$@FormatMoney(netoSinIva)</strong>
                             </div>
                             <div style="display: flex; justify-content: space-between; font-size: 0.9rem; padding: 0.15rem 0; color: #1d4ed8;">
-                                <span>IVA 21% (estimado):</span><span>$@FormatMoney(iva21)</span>
+                                <span>IVA 21%@(esProforma ? " (estimado)" : ""):</span><span>$@FormatMoney(iva21)</span>
                             </div>
                             <hr style="margin: 0.4rem 0; border: none; border-top: 2px solid #1f2937;" />
                             <div style="display: flex; justify-content: space-between; font-size: 1.15rem; font-weight: 800; color: #059669;">
