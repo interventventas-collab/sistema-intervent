@@ -403,7 +403,20 @@ else
                                 </span>
                             }
                         </div>
-                        <div style="color:#4b5563; margin-top:0.15rem;">@(s.AddressLine ?? "—")</div>
+                        <div style="color:#4b5563; margin-top:0.15rem; display:flex; align-items:center; gap:0.3rem; flex-wrap:wrap;">
+                            <span>@(s.AddressLine ?? "—")</span>
+                            @if (!string.IsNullOrWhiteSpace(s.AddressLine) || (s.Latitude.HasValue && s.Longitude.HasValue))
+                            {
+                                var gmapsUrl = s.Latitude.HasValue && s.Longitude.HasValue
+                                    ? $"https://www.google.com/maps/search/?api=1&query={s.Latitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)},{s.Longitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
+                                    : $"https://www.google.com/maps/search/?api=1&query={Uri.EscapeDataString((s.AddressLine ?? "") + " " + (s.City ?? ""))}";
+                                <a href="@gmapsUrl" target="_blank" rel="noopener" @onclick:stopPropagation="true"
+                                   title="Abrir en Google Maps"
+                                   style="display:inline-flex; align-items:center; padding:0.05rem 0.35rem; background:#dbeafe; color:#1e40af; border-radius:4px; font-size:0.7rem; font-weight:700; text-decoration:none;">
+                                    🗺 Maps
+                                </a>
+                            }
+                        </div>
                         <div style="color:#6b7280; font-size:0.72rem; margin-top:0.1rem;">
                             @(s.City ?? "—") · CP @(s.ZipCode ?? "—")
                             @if (!string.IsNullOrEmpty(s.GeolocationType) && s.GeolocationType != "ROOFTOP")
