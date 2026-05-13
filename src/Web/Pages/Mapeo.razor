@@ -540,7 +540,8 @@ else
                                     <span>@st.Direccion</span>
                                     @if (!string.IsNullOrWhiteSpace(st.Direccion) || (st.Latitude != 0 && st.Longitude != 0))
                                     {
-                                        var stGmaps = !string.IsNullOrWhiteSpace(st.Direccion)
+                                        var stDirUsable = !string.IsNullOrWhiteSpace(st.Direccion) && !ParecenCoordenadas(st.Direccion);
+                                        var stGmaps = stDirUsable
                                             ? $"https://www.google.com/maps/search/?api=1&query={Uri.EscapeDataString((st.Direccion ?? "") + " " + (st.Localidad ?? ""))}"
                                             : $"https://www.google.com/maps/search/?api=1&query={st.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture)},{st.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
                                         <a href="@stGmaps" target="_blank" rel="noopener" @onclick:stopPropagation="true"
@@ -1440,6 +1441,21 @@ else
         public bool TieneManual => Manual.Count > 0;
     }
 
+    // Detecta cuando un texto de "dirección" es en realidad un par de coordenadas
+    // escrito en formato local (ej. "(-34,7721, -58,423)" o "-34.7721,-58.423").
+    // Google Maps no entiende coordenadas con coma decimal o entre paréntesis,
+    // así que cuando esto pasa preferimos usar los campos Latitude/Longitude.
+    private static bool ParecenCoordenadas(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return false;
+        var t = s.Trim();
+        if (t.StartsWith("(") && t.EndsWith(")")) return true;
+        // Si la mayoría de los chars son dígitos / signos / separadores → es número, no calle
+        int letras = t.Count(char.IsLetter);
+        int digitos = t.Count(char.IsDigit);
+        return letras == 0 && digitos >= 4;
+    }
+
     private static string NormTxt(string? s)
     {
         if (string.IsNullOrWhiteSpace(s)) return "";
@@ -1533,7 +1549,7 @@ else
             if (g.Flex.Count > 0)
             {
                 var s = g.Flex.First();
-                var dir = !string.IsNullOrWhiteSpace(s.AddressLine)
+                var dir = !string.IsNullOrWhiteSpace(s.AddressLine) && !ParecenCoordenadas(s.AddressLine)
                     ? (s.AddressLine + " " + (s.City ?? "")).Trim()
                     : (s.Latitude.HasValue && s.Longitude.HasValue
                         ? $"{s.Latitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)},{s.Longitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
@@ -1543,7 +1559,8 @@ else
             else
             {
                 var st = g.Manual.First();
-                var dir = !string.IsNullOrWhiteSpace(st.Direccion)
+                var direccionUsable = !string.IsNullOrWhiteSpace(st.Direccion) && !ParecenCoordenadas(st.Direccion);
+                var dir = direccionUsable
                     ? (st.Direccion + " " + (st.Localidad ?? "")).Trim()
                     : (st.Latitude != 0 && st.Longitude != 0
                         ? $"{st.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture)},{st.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
