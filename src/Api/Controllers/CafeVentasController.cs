@@ -1128,22 +1128,10 @@ public class CafeVentasController : ControllerBase
         decimal subtotal = 0m, costoTotal = 0m;
         bool todoOk = true;
 
-        // Pre-cargar marcas (para bloqueo de descuento) y reglas de precios.
-        var marcas = await _db.CafeMarcas.ToDictionaryAsync(m => m.Id);
-        var reglas = await _db.CafeReglasPrecios.ToListAsync();
-
-        decimal ResolverDescuento(string categoria, int? marcaId)
-        {
-            // Override por marca + categoria.
-            if (marcaId.HasValue)
-            {
-                var override_ = reglas.FirstOrDefault(r => r.TipoCliente == tipo && r.Categoria == categoria && r.MarcaId == marcaId);
-                if (override_ is not null) return override_.DescuentoPct;
-            }
-            // Regla general (sin marca).
-            var general = reglas.FirstOrDefault(r => r.TipoCliente == tipo && r.Categoria == categoria && r.MarcaId == null);
-            return general?.DescuentoPct ?? 0m;
-        }
+        // NOTA: la matriz Cafe_ReglasPrecios fue deprecada el 2026-05-12.
+        // Los descuentos automaticos se eliminaron — ahora cada producto tiene PrecioBar/PrecioOtro directos.
+        // Si llega un descuento manual desde la UI (it.DescuentoPct), se aplica como descuento de linea
+        // y nada mas. Sin lookup de matriz.
 
         foreach (var it in items)
         {
@@ -1215,18 +1203,8 @@ public class CafeVentasController : ControllerBase
                 continue;
             }
 
-            // Descuento: manual del request si lo hay > 0; si no, el de la matriz reglas (cliente x categoria x marca).
-            // EXCEPCIONES (no aplicar matriz):
-            //   1. Producto OTROS con PrecioOtro/PrecioBar cargados (modelo nuevo — precios directos)
-            //   2. Operador puso precio manual (PrecioUnitarioOverride) — ese precio ES el final
-            //      que vos querés cobrar, la matriz NO se aplica encima.
+            // Descuento de linea: solo el manual del request. Sin matriz automatica.
             var descPct = descPctManual;
-            bool usaModeloNuevoPrecios = prod.Categoria != "CAFE"
-                && (prod.PrecioBar.HasValue || prod.PrecioOtro.HasValue);
-            bool tieneOverrideManual = it.PrecioUnitarioOverride.HasValue
-                && it.PrecioUnitarioOverride.Value >= 0m;
-            if (descPct == 0 && !usaModeloNuevoPrecios && !tieneOverrideManual)
-                descPct = ResolverDescuento(prod.Categoria, prod.MarcaId);
 
             var breakdown = CafePricingService.CalcularPrecioBreakdown(prod, it.Formato, tipo, settings, descPct);
             var precioUnit = breakdown.PrecioLista;     // lista (sin descuento) — lo que se ve en P. Unitario

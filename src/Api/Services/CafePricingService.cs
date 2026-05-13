@@ -69,57 +69,44 @@ public static class CafePricingService
         CafeProducto producto, string formato, string tipoCliente, CafeSetting settings,
         decimal descuentoPct = 0m)
     {
+        // Modelo UNIFICADO (post 2026-05-12): se eliminaron los descuentos automaticos por matriz.
+        // Tanto CAFE como OTROS usan PrecioBar / PrecioOtro como precios directos:
+        //   - Cliente BAR:  PrecioBar  (fallback PrecioOtro si BAR esta vacio)
+        //   - Cliente OTRO: PrecioOtro (fallback PrecioBar si OTRO esta vacio)
+        //   - Si ninguno esta cargado: cae a Pvp1 / Pvp2 / PrecioPorKg (legacy, sin descuento).
+        // El parametro descuentoPct ahora solo refleja el descuento MANUAL de linea (no la matriz).
         var desc = Math.Max(0m, Math.Min(100m, descuentoPct));
         decimal lista, final;
 
+        // Elegir el precio directo segun el tipo de cliente
+        decimal? precioDirecto;
+        if (tipoCliente == TIPO_BAR)
+            precioDirecto = producto.PrecioBar ?? producto.PrecioOtro;
+        else
+            precioDirecto = producto.PrecioOtro ?? producto.PrecioBar;
+
+        // Fallback legacy si no hay precios directos (productos que nunca se configuraron)
+        var listaBase = precioDirecto ?? producto.Pvp1 ?? producto.Pvp2 ?? producto.PrecioPorKg ?? 0m;
+
         if (producto.Categoria == "CAFE")
         {
-            // CAFE:
-            //   - lista_kg = Pvp1 (= "lista 100%")
-            //   - lista_formato = lista_kg/N + costoFracc
-            //   - final = lista_formato × (1 − desc/100)  (math limpia: el descuento aplica al total del formato)
-            //   - SIN redondeo arriba — para que la matematica del comprobante cuadre exacto.
-            var listaKg = producto.Pvp1 ?? producto.Pvp2 ?? producto.PrecioPorKg ?? 0m;
-
+            // CAFE: el precio cargado es POR KG. Fracciones se calculan + costo fraccionamiento.
             lista = formato switch
             {
-                FORMATO_1KG => listaKg,
-                FORMATO_MEDIO => (listaKg / 2m) + settings.CostoFraccionamiento,
-                FORMATO_CUARTO => (listaKg / 4m) + settings.CostoFraccionamiento,
+                FORMATO_1KG => listaBase,
+                FORMATO_MEDIO => (listaBase / 2m) + settings.CostoFraccionamiento,
+                FORMATO_CUARTO => (listaBase / 4m) + settings.CostoFraccionamiento,
                 _ => 0m
             };
-            lista = Math.Round(lista, 2, MidpointRounding.AwayFromZero);
-            final = Math.Round(lista * (1m - desc / 100m), 2, MidpointRounding.AwayFromZero);
         }
         else
         {
-            // OTROS — modelo NUEVO (2 precios directos según tipo cliente).
-            //   - Cliente BAR: usa PrecioBar si está cargado; sino, FALLBACK a PrecioOtro
-            //     (porque "el sugerido es el que cobramos a cualquier cliente por defecto").
-            //   - Cliente OTRO: usa siempre PrecioOtro.
-            // Si NI siquiera PrecioOtro está cargado, caemos al modelo LEGACY (Pvp1/Pvp2 + matriz).
-            decimal? precioDirecto;
-            if (tipoCliente == TIPO_BAR)
-                precioDirecto = producto.PrecioBar ?? producto.PrecioOtro;
-            else
-                precioDirecto = producto.PrecioOtro;
-
-            if (precioDirecto.HasValue)
-            {
-                // Modelo nuevo: el precio cargado es la "lista" directa para ese tipo de cliente.
-                // El descuento de línea se aplica por encima si hay.
-                lista = precioDirecto.Value;
-                final = Math.Round(lista * (1m - desc / 100m), 2, MidpointRounding.AwayFromZero);
-            }
-            else
-            {
-                // Modelo legacy: Pvp1 (fallback Pvp2) + descuento de línea (la matriz se
-                // aplica afuera, en CafeVentasController). Sin fraccionamiento.
-                lista = producto.Pvp1 ?? producto.Pvp2 ?? 0m;
-                final = Math.Round(lista * (1m - desc / 100m), 2, MidpointRounding.AwayFromZero);
-            }
+            // OTROS: el precio cargado es directo (sin fraccionamiento).
+            lista = listaBase;
         }
 
+        lista = Math.Round(lista, 2, MidpointRounding.AwayFromZero);
+        final = Math.Round(lista * (1m - desc / 100m), 2, MidpointRounding.AwayFromZero);
         return new PrecioBreakdown(lista, desc, final);
     }
 

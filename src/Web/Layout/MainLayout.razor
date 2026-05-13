@@ -52,10 +52,10 @@
                          IsActive="@IsActive("/cafe/consultas")" OnClick="@(() => NavigateTo("/cafe/consultas"))" />
                 <NavItem Href="/cafe/cotejo" Label="Cotejo MeLi" Icon="@SvgIcons.Tag"
                          IsActive="@IsActive("/cafe/cotejo")" OnClick="@(() => NavigateTo("/cafe/cotejo"))" />
-                <NavItem Href="/cafe/descuentos" Label="Descuentos" Icon="@SvgIcons.Tag"
-                         IsActive="@IsActive("/cafe/descuentos")" OnClick="@(() => NavigateTo("/cafe/descuentos"))" />
-                <NavItem Href="/cafe/reglas-precios" Label="Reglas de precios" Icon="@SvgIcons.Tag"
-                         IsActive="@IsActive("/cafe/reglas-precios")" OnClick="@(() => NavigateTo("/cafe/reglas-precios"))" />
+                @* Pantallas "Descuentos" y "Reglas de precios" ocultas — la matriz fue deprecada el
+                   2026-05-12 a favor de precios directos PrecioBar/PrecioOtro por producto. Las paginas
+                   y tablas siguen existiendo (para no perder datos historicos), pero ya no se accede
+                   desde el sidebar ni se usan en el motor de precios. *@
                 <NavItem Href="/cafe/ventas" Label="Ventas" Icon="@SvgIcons.ShoppingBag"
                          IsActive="@IsActive("/cafe/ventas")" OnClick="@(() => NavigateTo("/cafe/ventas"))" />
                 <NavItem Href="/cafe/listas-precios" Label="Listas de precios" Icon="@SvgIcons.Tag"
