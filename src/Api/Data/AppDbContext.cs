@@ -91,6 +91,9 @@ public class AppDbContext : DbContext
     public DbSet<CafeCobranza> CafeCobranzas => Set<CafeCobranza>();
     public DbSet<CafeCobranzaComprobante> CafeCobranzasComprobantes => Set<CafeCobranzaComprobante>();
     public DbSet<CafeCobranzaMedio> CafeCobranzasMedios => Set<CafeCobranzaMedio>();
+    public DbSet<CafePagoProveedor> CafePagosProveedor => Set<CafePagoProveedor>();
+    public DbSet<CafePagoProveedorComprobante> CafePagosProveedorComprobantes => Set<CafePagoProveedorComprobante>();
+    public DbSet<CafePagoProveedorMedio> CafePagosProveedorMedios => Set<CafePagoProveedorMedio>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -400,6 +403,42 @@ public class AppDbContext : DbContext
             entity.HasOne(c => c.Cobranza)
                   .WithMany(p => p.Medios)
                   .HasForeignKey(c => c.CobranzaId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(c => c.Caja)
+                  .WithMany()
+                  .HasForeignKey(c => c.CajaId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(c => c.Cheque)
+                  .WithMany()
+                  .HasForeignKey(c => c.ChequeId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<CafePagoProveedor>(entity =>
+        {
+            entity.HasIndex(p => p.Numero).IsUnique();
+            entity.HasIndex(p => p.ProveedorId);
+            entity.HasOne(p => p.Proveedor)
+                  .WithMany()
+                  .HasForeignKey(p => p.ProveedorId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<CafePagoProveedorComprobante>(entity =>
+        {
+            entity.HasOne(c => c.Pago)
+                  .WithMany(p => p.Comprobantes)
+                  .HasForeignKey(c => c.PagoId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(c => c.Compra)
+                  .WithMany()
+                  .HasForeignKey(c => c.CompraId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<CafePagoProveedorMedio>(entity =>
+        {
+            entity.HasOne(c => c.Pago)
+                  .WithMany(p => p.Medios)
+                  .HasForeignKey(c => c.PagoId)
                   .OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(c => c.Caja)
                   .WithMany()

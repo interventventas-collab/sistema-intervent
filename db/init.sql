@@ -3175,3 +3175,72 @@ GO
 IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId=1 AND MenuKey='cafe-tesoreria')
     INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'cafe-tesoreria');
 GO
+
+-- ============================================================================
+-- TESORERIA CAFE — Fase 2 (Pagos a proveedores)
+-- ============================================================================
+
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_PagosProveedor')
+BEGIN
+    CREATE TABLE Cafe_PagosProveedor (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Numero NVARCHAR(20) NOT NULL,
+        Fecha DATETIME2 NOT NULL CONSTRAINT DF_CafePagosProv_Fecha DEFAULT SYSUTCDATETIME(),
+        ProveedorId INT NOT NULL,
+        Total DECIMAL(18,2) NOT NULL,
+        Retenciones DECIMAL(18,2) NOT NULL CONSTRAINT DF_CafePagosProv_Reten DEFAULT 0,
+        Operador NVARCHAR(100) NULL,
+        Observaciones NVARCHAR(500) NULL,
+        Estado NVARCHAR(20) NOT NULL CONSTRAINT DF_CafePagosProv_Estado DEFAULT 'VIGENTE',
+        CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_CafePagosProv_Created DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT FK_CafePagosProv_Proveedor FOREIGN KEY (ProveedorId) REFERENCES Cafe_Proveedores(Id),
+        CONSTRAINT UQ_CafePagosProv_Numero UNIQUE (Numero)
+    );
+    CREATE INDEX IX_CafePagosProv_Prov ON Cafe_PagosProveedor(ProveedorId);
+    CREATE INDEX IX_CafePagosProv_Fecha ON Cafe_PagosProveedor(Fecha DESC);
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_PagosProveedorComprobantes')
+BEGIN
+    CREATE TABLE Cafe_PagosProveedorComprobantes (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        PagoId INT NOT NULL,
+        CompraId INT NULL,   -- NULL = pago a cuenta
+        Importe DECIMAL(18,2) NOT NULL,
+        CONSTRAINT FK_CafePagosProvComps_Pago FOREIGN KEY (PagoId) REFERENCES Cafe_PagosProveedor(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_CafePagosProvComps_Compra FOREIGN KEY (CompraId) REFERENCES Cafe_Compras(Id)
+    );
+    CREATE INDEX IX_CafePagosProvComps_Pago ON Cafe_PagosProveedorComprobantes(PagoId);
+    CREATE INDEX IX_CafePagosProvComps_Compra ON Cafe_PagosProveedorComprobantes(CompraId);
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_PagosProveedorMedios')
+BEGIN
+    CREATE TABLE Cafe_PagosProveedorMedios (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        PagoId INT NOT NULL,
+        CajaId INT NOT NULL,
+        Importe DECIMAL(18,2) NOT NULL,
+        Referencia NVARCHAR(200) NULL,
+        -- Si el medio fue un cheque endosado, apunta al registro en Cafe_Cheques (que cambia a ENDOSADO)
+        ChequeId INT NULL,
+        CONSTRAINT FK_CafePagosProvMedios_Pago FOREIGN KEY (PagoId) REFERENCES Cafe_PagosProveedor(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_CafePagosProvMedios_Caja FOREIGN KEY (CajaId) REFERENCES Cafe_Cajas(Id),
+        CONSTRAINT FK_CafePagosProvMedios_Cheque FOREIGN KEY (ChequeId) REFERENCES Cafe_Cheques(Id)
+    );
+    CREATE INDEX IX_CafePagosProvMedios_Pago ON Cafe_PagosProveedorMedios(PagoId);
+    CREATE INDEX IX_CafePagosProvMedios_Caja ON Cafe_PagosProveedorMedios(CajaId);
+END
+GO
+
+-- Flag en Cafe_Cheques: si fue endosado, hacia que proveedor
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ProveedorEndosoId' AND Object_ID=Object_ID('Cafe_Cheques'))
+    ALTER TABLE Cafe_Cheques ADD ProveedorEndosoId INT NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='PagoOrigenId' AND Object_ID=Object_ID('Cafe_Cheques'))
+    ALTER TABLE Cafe_Cheques ADD PagoOrigenId INT NULL;
+GO
+

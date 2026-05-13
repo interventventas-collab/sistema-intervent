@@ -1,0 +1,429 @@
+@page "/cafe/tesoreria/pagos"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+
+<div class="card">
+    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+        <h3 style="margin:0;">📤 Pagos a proveedores (@(pagos?.Count ?? 0))</h3>
+        <button class="btn btn-primary" @onclick="ShowNuevo">+ Nuevo pago</button>
+    </div>
+    <div class="card-body" style="padding:0;">
+        @if (loading)
+        {
+            <p class="text-muted" style="padding:1rem;">Cargando...</p>
+        }
+        else if (pagos is null || pagos.Count == 0)
+        {
+            <p class="text-muted" style="padding:1rem;">Sin pagos cargados.</p>
+        }
+        else
+        {
+            <table class="table table-compact">
+                <thead>
+                    <tr>
+                        <th>Número</th><th>Fecha</th><th>Proveedor</th>
+                        <th style="text-align:right;">Retenciones</th><th style="text-align:right;">Total</th>
+                        <th>Estado</th><th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in pagos)
+                    {
+                        <tr style="@(p.Estado == "ANULADA" ? "opacity:0.5; text-decoration:line-through;" : "")">
+                            <td><b>@p.Numero</b></td>
+                            <td>@p.Fecha.ToLocalTime().ToString("dd/MM/yyyy")</td>
+                            <td>@p.ProveedorNombre</td>
+                            <td style="text-align:right;">@(p.Retenciones > 0 ? $"${p.Retenciones:N2}" : "—")</td>
+                            <td style="text-align:right; font-weight:600;">$@p.Total.ToString("N2")</td>
+                            <td><span class="badge @(p.Estado == "VIGENTE" ? "badge-success" : "badge-danger")">@p.Estado</span></td>
+                            <td>
+                                @if (p.Estado == "VIGENTE")
+                                {
+                                    <button class="btn-icon" @onclick="() => AnularPago(p)" title="Anular pago">❌</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@if (showNuevo)
+{
+    <div class="modal-overlay" @onclick="CloseNuevo">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 900px; width:90vw; max-height: 90vh; overflow-y:auto;">
+            <div class="modal-header">
+                <h4 style="margin:0;">📤 Nuevo pago a proveedor</h4>
+                <button class="btn-close" @onclick="CloseNuevo">&times;</button>
+            </div>
+            <div class="modal-body">
+                @* --- Proveedor --- *@
+                <div class="form-group" style="position:relative;">
+                    <label class="form-label">Proveedor</label>
+                    @if (selProveedorId > 0)
+                    {
+                        var pSel = proveedores?.FirstOrDefault(x => x.Id == selProveedorId);
+                        <div style="display:flex; gap:0.3rem; align-items:center;">
+                            <div class="form-input" style="flex:1; background:#ecfdf5; border-color:#10b981;">
+                                <strong>@(pSel?.Nombre ?? "?")</strong>
+                                @if (pSel is not null && !string.IsNullOrEmpty(pSel.Cuit)) { <span style="font-size:0.72rem; color:#6b7280;"> · @pSel.Cuit</span> }
+                            </div>
+                            <button class="btn btn-secondary" type="button" @onclick="ClearProveedor">×</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <input class="form-input" @bind="provSearch" @bind:event="oninput" @onfocus="() => provSearchOpen = true"
+                               placeholder="🔍 Buscar proveedor por nombre o CUIT..." />
+                        @if (provSearchOpen && !string.IsNullOrWhiteSpace(provSearch))
+                        {
+                            var matches = ProveedoresMatching(provSearch).Take(20).ToList();
+                            <div style="position:absolute; top:100%; left:0; right:0; background:white; border:1px solid #d1d5db; border-radius:6px; max-height:280px; overflow-y:auto; z-index:100; box-shadow:0 4px 14px rgba(0,0,0,0.12); margin-top:0.2rem;">
+                                @if (matches.Count == 0)
+                                {
+                                    <div style="padding:0.6rem; color:#6b7280; font-size:0.85rem;">Sin resultados.</div>
+                                }
+                                else
+                                {
+                                    @foreach (var p in matches)
+                                    {
+                                        var pId = p.Id;
+                                        <div @onclick="() => SelectProveedor(pId)" style="padding:0.4rem 0.6rem; cursor:pointer; border-bottom:1px solid #f3f4f6; font-size:0.85rem;">
+                                            <strong>@p.Nombre</strong>
+                                            @if (!string.IsNullOrEmpty(p.Cuit)) { <span style="color:#6b7280; font-size:0.78rem;"> · @p.Cuit</span> }
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        }
+                    }
+                </div>
+
+                @if (selProveedorId > 0)
+                {
+                    @* --- Comprobantes a pagar --- *@
+                    <div style="margin: 1rem 0; padding: 0.8rem; background: #f9fafb; border-radius: 8px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+                            <h5 style="margin:0;">Compras a pagar</h5>
+                            @if (pendientes is not null && pendientes.Count > 0)
+                            {
+                                <button class="btn btn-secondary" style="font-size:0.78rem;" @onclick="PagarTodo">⚡ Pagar todo lo pendiente</button>
+                            }
+                        </div>
+                        @if (saldoProveedor.HasValue && saldoProveedor.Value > 0)
+                        {
+                            <div style="background:#fef3c7; padding:0.4rem 0.6rem; border-radius:6px; font-size:0.82rem; margin-bottom:0.5rem;">
+                                💰 Le debes al proveedor: <b>$@saldoProveedor.Value.ToString("N2")</b>
+                            </div>
+                        }
+                        @if (pendientes is null)
+                        {
+                            <p class="text-muted">Cargando...</p>
+                        }
+                        else if (pendientes.Count == 0)
+                        {
+                            <p class="text-muted" style="margin:0;">Sin compras pendientes. Podés cargar como "A cuenta".</p>
+                        }
+                        else
+                        {
+                            <table class="table table-compact" style="margin-bottom:0.5rem;">
+                                <thead><tr><th></th><th>Número</th><th>Fact prov</th><th>Fecha</th><th style="text-align:right;">Saldo</th><th style="text-align:right;">A pagar</th></tr></thead>
+                                <tbody>
+                                    @foreach (var p in pendientes)
+                                    {
+                                        <tr>
+                                            <td><input type="checkbox" @bind="imputaciones[p.CompraId].Seleccionado" @bind:after="RecalcularTotal" /></td>
+                                            <td><b>@p.Numero</b></td>
+                                            <td style="font-size:0.78rem; color:#6b7280;">@(p.NumeroComprobanteProveedor ?? "—")</td>
+                                            <td>@p.Fecha.ToLocalTime().ToString("dd/MM/yyyy")</td>
+                                            <td style="text-align:right;">$@p.Saldo.ToString("N2")</td>
+                                            <td style="text-align:right;">
+                                                <input class="form-input" type="number" step="0.01" style="text-align:right; width:120px; display:inline-block;"
+                                                       value="@imputaciones[p.CompraId].Importe"
+                                                       @onchange="@(e => OnImputeChange(p.CompraId, e.Value?.ToString()))" />
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                        <div style="display:flex; align-items:center; gap:0.5rem;">
+                            <label class="form-check"><input type="checkbox" @bind="aCuentaActivo" @bind:after="RecalcularTotal" /> A cuenta:</label>
+                            <input class="form-input" type="number" step="0.01" style="width:140px;"
+                                   @bind="aCuentaImporte" @bind:after="RecalcularTotal" disabled="@(!aCuentaActivo)" />
+                        </div>
+                        <div style="margin-top:0.5rem; text-align:right; font-weight:700;">
+                            Total imputado: $@TotalImputado.ToString("N2")
+                        </div>
+                    </div>
+
+                    @* --- Formas de pago --- *@
+                    <div style="margin: 1rem 0; padding: 0.8rem; background: #fef3c7; border-radius: 8px;">
+                        <h5 style="margin:0 0 0.5rem;">Forma de pago</h5>
+                        @for (int i = 0; i < formMedios.Count; i++)
+                        {
+                            var idx = i; var m = formMedios[idx];
+                            <div style="display:grid; grid-template-columns: 2fr 1fr 2fr 30px; gap:0.4rem; margin-bottom:0.4rem; align-items:start;">
+                                <select class="form-input" value="@m.CajaId" @onchange="@(e => OnCajaChange(idx, e.Value?.ToString()))">
+                                    <option value="0">— Caja —</option>
+                                    @if (cajas is not null)
+                                    {
+                                        @foreach (var c in cajas.Where(x => x.IsActive))
+                                        {
+                                            <option value="@c.Id">@c.Nombre</option>
+                                        }
+                                    }
+                                </select>
+                                <input class="form-input" type="number" step="0.01" placeholder="Importe"
+                                       @bind="m.Importe" @bind:after="RecalcularTotal" disabled="@(m.ChequeExistenteId.HasValue)" />
+                                <input class="form-input" placeholder="Referencia" @bind="m.Referencia" />
+                                <button class="btn-icon" @onclick="() => formMedios.RemoveAt(idx)">🗑</button>
+                            </div>
+                            @if (m.TipoCaja == "CHEQUES_CARTERA")
+                            {
+                                <div style="margin-left:1rem; padding:0.6rem; background:white; border-radius:6px; margin-bottom:0.5rem;">
+                                    <div style="font-size:0.78rem; color:#6b7280; margin-bottom:0.3rem;">Elegí un cheque de cartera para endosar:</div>
+                                    <select class="form-input" value="@m.ChequeExistenteId" @onchange="@(e => OnChequeEndosoChange(idx, e.Value?.ToString()))">
+                                        <option value="">— Elegir cheque para endosar —</option>
+                                        @if (chequesEnCartera is not null)
+                                        {
+                                            @foreach (var ch in chequesEnCartera)
+                                            {
+                                                <option value="@ch.Id">@ch.Banco · N° @ch.Numero · $@ch.Importe.ToString("N2") @(ch.FechaVencimiento.HasValue ? $"· Vto {ch.FechaVencimiento.Value:dd/MM}" : "")</option>
+                                            }
+                                        }
+                                    </select>
+                                </div>
+                            }
+                        }
+                        <button class="btn btn-secondary" style="font-size:0.8rem;" @onclick="AgregarMedio">+ Agregar forma de pago</button>
+                    </div>
+
+                    @* --- Retenciones --- *@
+                    <div class="form-group">
+                        <label class="form-label">Retenciones (si te aplicaron alguna)</label>
+                        <input class="form-input" type="number" step="0.01" @bind="formRetenciones" @bind:after="RecalcularTotal" />
+                    </div>
+
+                    @* --- Observaciones --- *@
+                    <div class="form-group">
+                        <label class="form-label">Observaciones</label>
+                        <input class="form-input" @bind="formObservaciones" />
+                    </div>
+
+                    @* --- Resumen --- *@
+                    <div style="padding:0.6rem; background:#dbeafe; border-radius:6px;">
+                        <div style="display:flex; justify-content:space-between;"><span>Total medios de pago:</span><b>$@TotalMedios.ToString("N2")</b></div>
+                        <div style="display:flex; justify-content:space-between;"><span>+ Retenciones:</span><b>$@formRetenciones.ToString("N2")</b></div>
+                        <div style="display:flex; justify-content:space-between;"><span>= Debe igualar el imputado:</span><b style="color:@(CuadraTotal ? "#059669" : "#dc2626");">$@TotalImputado.ToString("N2")</b></div>
+                        @if (!CuadraTotal)
+                        {
+                            <div style="color:#dc2626; font-size:0.78rem; margin-top:0.3rem;">⚠ Medios + retenciones tienen que sumar exactamente lo imputado.</div>
+                        }
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseNuevo" disabled="@guardando">Cancelar</button>
+                <button class="btn btn-primary" @onclick="GuardarPago" disabled="@(!CuadraTotal || TotalImputado <= 0 || guardando)">
+                    @(guardando ? "..." : "Guardar pago")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<PagoListDto>? pagos;
+    private bool loading = true;
+    private List<CafeProveedorDto>? proveedores;
+    private List<CafeCajaDto>? cajas;
+    private List<CafeChequeDto>? chequesEnCartera;
+
+    private bool showNuevo, guardando;
+    private int selProveedorId;
+    private string provSearch = ""; private bool provSearchOpen;
+    private List<CompraPendienteDto>? pendientes;
+    private decimal? saldoProveedor;
+    private Dictionary<int, ImputData> imputaciones = new();
+    private bool aCuentaActivo; private decimal aCuentaImporte;
+    private decimal formRetenciones;
+    private string? formObservaciones;
+    private List<MedioForm> formMedios = new();
+
+    [Parameter, SupplyParameterFromQuery(Name = "proveedor")] public int? PreProveedorId { get; set; }
+
+    private class ImputData { public bool Seleccionado { get; set; } public decimal Importe { get; set; } }
+    private class MedioForm
+    {
+        public int CajaId { get; set; }
+        public string TipoCaja { get; set; } = "";
+        public decimal Importe { get; set; }
+        public string? Referencia { get; set; }
+        public int? ChequeExistenteId { get; set; }
+    }
+
+    private decimal TotalImputado => imputaciones.Where(kv => kv.Value.Seleccionado).Sum(kv => kv.Value.Importe) + (aCuentaActivo ? aCuentaImporte : 0);
+    private decimal TotalMedios => formMedios.Sum(m => m.Importe);
+    private bool CuadraTotal => Math.Abs(TotalImputado - (TotalMedios + formRetenciones)) < 0.01m;
+
+    protected override async Task OnInitializedAsync()
+    {
+        proveedores = await Api.GetCafeProveedoresAsync() ?? new();
+        cajas = await Api.GetCafeCajasAsync() ?? new();
+        chequesEnCartera = (await Api.GetCafeChequesAsync("EN_CARTERA")) ?? new();
+        await Load();
+        if (PreProveedorId.HasValue && PreProveedorId.Value > 0)
+        {
+            ShowNuevo();
+            await SelectProveedor(PreProveedorId.Value);
+        }
+    }
+
+    private async Task Load()
+    {
+        loading = true;
+        try { pagos = await Api.GetCafePagosProveedorAsync() ?? new(); }
+        catch { ToastService.Error("Error al cargar"); pagos = new(); }
+        loading = false;
+    }
+
+    private void ShowNuevo()
+    {
+        selProveedorId = 0; provSearch = ""; provSearchOpen = false;
+        pendientes = null; imputaciones = new();
+        aCuentaActivo = false; aCuentaImporte = 0;
+        formMedios = new(); formRetenciones = 0; formObservaciones = null;
+        showNuevo = true;
+    }
+
+    private void CloseNuevo() { if (guardando) return; showNuevo = false; }
+
+    private IEnumerable<CafeProveedorDto> ProveedoresMatching(string q)
+    {
+        if (proveedores is null) return Enumerable.Empty<CafeProveedorDto>();
+        var t = q.Trim();
+        if (string.IsNullOrEmpty(t)) return proveedores;
+        bool h(string? s) => !string.IsNullOrEmpty(s) && s.Contains(t, StringComparison.OrdinalIgnoreCase);
+        return proveedores.Where(p => p.IsActive && (h(p.Nombre) || h(p.Cuit) || h(p.Contacto) || h(p.Telefono) || h(p.Email)));
+    }
+
+    private async Task SelectProveedor(int id)
+    {
+        selProveedorId = id;
+        provSearch = ""; provSearchOpen = false;
+        imputaciones = new(); saldoProveedor = null;
+        try
+        {
+            pendientes = await Api.GetComprasPendientesAsync(id) ?? new();
+            foreach (var p in pendientes)
+                imputaciones[p.CompraId] = new ImputData { Seleccionado = false, Importe = p.Saldo };
+            var ec = await Api.GetEstadoCuentaProveedorAsync(id);
+            if (ec is not null) saldoProveedor = ec.Saldo;
+        }
+        catch { ToastService.Error("Error al traer pendientes"); pendientes = new(); }
+    }
+
+    private void ClearProveedor()
+    {
+        selProveedorId = 0; provSearch = ""; provSearchOpen = false;
+        pendientes = null; imputaciones = new();
+    }
+
+    private void OnImputeChange(int compraId, string? value)
+    {
+        if (imputaciones.TryGetValue(compraId, out var imp))
+        {
+            decimal.TryParse(value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v);
+            imp.Importe = v;
+            if (v > 0) imp.Seleccionado = true;
+            RecalcularTotal();
+        }
+    }
+
+    private void OnCajaChange(int idx, string? value)
+    {
+        if (int.TryParse(value, out var cajaId))
+        {
+            formMedios[idx].CajaId = cajaId;
+            formMedios[idx].TipoCaja = cajas?.FirstOrDefault(c => c.Id == cajaId)?.Tipo ?? "";
+            if (formMedios[idx].TipoCaja != "CHEQUES_CARTERA")
+                formMedios[idx].ChequeExistenteId = null;
+        }
+    }
+
+    private void OnChequeEndosoChange(int idx, string? value)
+    {
+        if (int.TryParse(value, out var chId))
+        {
+            formMedios[idx].ChequeExistenteId = chId;
+            // Auto-completar importe con el del cheque
+            var ch = chequesEnCartera?.FirstOrDefault(x => x.Id == chId);
+            if (ch is not null) formMedios[idx].Importe = ch.Importe;
+            RecalcularTotal();
+        }
+        else
+        {
+            formMedios[idx].ChequeExistenteId = null;
+        }
+    }
+
+    private void AgregarMedio() => formMedios.Add(new MedioForm());
+
+    private void PagarTodo()
+    {
+        if (pendientes is null) return;
+        foreach (var p in pendientes)
+        {
+            if (imputaciones.TryGetValue(p.CompraId, out var imp))
+            {
+                imp.Seleccionado = true;
+                imp.Importe = p.Saldo;
+            }
+        }
+        RecalcularTotal();
+    }
+
+    private void RecalcularTotal() => StateHasChanged();
+
+    private async Task GuardarPago()
+    {
+        if (selProveedorId <= 0) { ToastService.Error("Elegí un proveedor"); return; }
+        if (!CuadraTotal) { ToastService.Error("No cuadra"); return; }
+
+        var comps = new List<ApiClient.CrearCompraItemRequest>();
+        foreach (var kv in imputaciones)
+            if (kv.Value.Seleccionado && kv.Value.Importe > 0)
+                comps.Add(new ApiClient.CrearCompraItemRequest(kv.Key, kv.Value.Importe));
+        if (aCuentaActivo && aCuentaImporte > 0)
+            comps.Add(new ApiClient.CrearCompraItemRequest(null, aCuentaImporte));
+
+        var medios = formMedios.Select(m => new ApiClient.CrearMedioPagoRequest(
+            m.CajaId, m.Importe, m.Referencia, m.ChequeExistenteId)).ToList();
+
+        guardando = true;
+        try
+        {
+            var r = await Api.CrearCafePagoProveedorAsync(selProveedorId, formRetenciones, null, formObservaciones, comps, medios);
+            if (r is null) { ToastService.Error("No se pudo guardar"); return; }
+            ToastService.Success($"Pago {r.Numero} creado");
+            showNuevo = false;
+            chequesEnCartera = (await Api.GetCafeChequesAsync("EN_CARTERA")) ?? new(); // refrescar (cheques endosados ya no aparecen)
+            await Load();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { guardando = false; }
+    }
+
+    private async Task AnularPago(PagoListDto p)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Anular el pago {p.Numero}? Si endoso un cheque, vuelve a cartera."))
+            return;
+        try { await Api.AnularCafePagoProveedorAsync(p.Id); ToastService.Success("Pago anulado"); await Load(); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+}

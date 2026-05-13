@@ -2274,6 +2274,35 @@ public class ApiClient
         return await GetAsync<List<VentaSaldoDto>>(url);
     }
 
+    // ===== Tesoreria Cafe: Pagos a proveedores =====
+    public async Task<List<CompraPendienteDto>?> GetComprasPendientesAsync(int proveedorId)
+        => await GetAsync<List<CompraPendienteDto>>($"/api/cafe/pagos-proveedor/comprobantes-pendientes/{proveedorId}");
+    public async Task<List<PagoListDto>?> GetCafePagosProveedorAsync(int? proveedorId = null, DateTime? desde = null, DateTime? hasta = null)
+    {
+        var qs = new List<string>();
+        if (proveedorId.HasValue) qs.Add($"proveedorId={proveedorId.Value}");
+        if (desde.HasValue) qs.Add($"desde={desde.Value:o}");
+        if (hasta.HasValue) qs.Add($"hasta={hasta.Value:o}");
+        var url = "/api/cafe/pagos-proveedor" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+        return await GetAsync<List<PagoListDto>>(url);
+    }
+    public record CrearMedioPagoRequest(int CajaId, decimal Importe, string? Referencia, int? ChequeExistenteId);
+    public record CrearCompraItemRequest(int? CompraId, decimal Importe);
+    public record CrearPagoResultDto(int Id, string Numero);
+    public async Task<CrearPagoResultDto?> CrearCafePagoProveedorAsync(
+        int proveedorId, decimal retenciones, string? operador, string? observaciones,
+        List<CrearCompraItemRequest> comprobantes, List<CrearMedioPagoRequest> medios)
+        => await PostAsync<CrearPagoResultDto>("/api/cafe/pagos-proveedor",
+            new { proveedorId, retenciones, operador, observaciones, comprobantes, medios });
+    public async Task<bool> AnularCafePagoProveedorAsync(int id)
+    {
+        var r = await PostAsync<object>($"/api/cafe/pagos-proveedor/{id}/anular", new { });
+        return r is not null;
+    }
+
+    public async Task<EstadoCuentaProvDto?> GetEstadoCuentaProveedorAsync(int id)
+        => await GetAsync<EstadoCuentaProvDto>($"/api/cafe/proveedores/{id}/estado-cuenta");
+
     // ===== MeLi Shipments (Mapeo Flex) =====
     public async Task<List<MeliShipmentDto>?> GetMeliFlexShipmentsAsync(string mode = "today", string? internalStatus = null, bool excludeDelivered = false)
     {

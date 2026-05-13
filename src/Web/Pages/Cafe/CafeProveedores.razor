@@ -3,6 +3,7 @@
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject CpService CpService
+@inject NavigationManager Nav
 
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
@@ -87,6 +88,8 @@
                                 <td><span class="status-badge @(p.IsActive ? "status-active" : "status-inactive")">@(p.IsActive ? "Activo" : "Inactivo")</span></td>
                                 <td class="actions-cell">
                                     <button class="btn-icon btn-edit" @onclick="() => ShowEdit(p)" title="Editar">✎</button>
+                                    <button class="btn-icon" @onclick='() => Nav.NavigateTo($"/cafe/proveedores/{p.Id}/estado-cuenta")' title="Estado de cuenta">📒</button>
+                                    <button class="btn-icon" style="color:#059669;" @onclick='() => Nav.NavigateTo($"/cafe/tesoreria/pagos?proveedor={p.Id}")' title="Pagar a este proveedor">💰</button>
                                     <button class="btn-icon btn-delete" @onclick="() => ConfirmDelete(p)" title="Eliminar / desactivar">🗑</button>
                                 </td>
                             </tr>

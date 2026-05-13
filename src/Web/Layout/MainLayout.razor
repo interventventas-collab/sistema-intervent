@@ -86,8 +86,12 @@
                 {
                     <NavItem Href="/cafe/tesoreria/cajas" Label="💰 Cajas" Icon="@SvgIcons.Database"
                              IsActive="@IsActive("/cafe/tesoreria/cajas")" OnClick="@(() => NavigateTo("/cafe/tesoreria/cajas"))" />
+                    <NavItem Href="/cafe/tesoreria/resumen" Label="📊 Resumen Tesorería" Icon="@SvgIcons.Dashboard"
+                             IsActive="@IsActive("/cafe/tesoreria/resumen")" OnClick="@(() => NavigateTo("/cafe/tesoreria/resumen"))" />
                     <NavItem Href="/cafe/tesoreria/cobranzas" Label="📥 Cobranzas" Icon="@SvgIcons.ShoppingBag"
                              IsActive="@IsActive("/cafe/tesoreria/cobranzas")" OnClick="@(() => NavigateTo("/cafe/tesoreria/cobranzas"))" />
+                    <NavItem Href="/cafe/tesoreria/pagos" Label="📤 Pagos" Icon="@SvgIcons.ShoppingBag"
+                             IsActive="@IsActive("/cafe/tesoreria/pagos")" OnClick="@(() => NavigateTo("/cafe/tesoreria/pagos"))" />
                     <NavItem Href="/cafe/tesoreria/cheques" Label="📄 Cheques" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/cafe/tesoreria/cheques")" OnClick="@(() => NavigateTo("/cafe/tesoreria/cheques"))" />
                 }
@@ -645,7 +649,9 @@
         { "cafe/configuracion", "cafe" },
         { "cafe/tesoreria/cajas", "cafe-tesoreria" },
         { "cafe/tesoreria/cobranzas", "cafe-tesoreria" },
+        { "cafe/tesoreria/pagos", "cafe-tesoreria" },
         { "cafe/tesoreria/cheques", "cafe-tesoreria" },
+        { "cafe/tesoreria/resumen", "cafe-tesoreria" },
         { "perfil", "" } // perfil always allowed
     };
 

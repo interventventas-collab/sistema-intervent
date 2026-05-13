@@ -44,6 +44,41 @@ public class CafeProveedoresController : ControllerBase
         return Ok(Map(p, n, total));
     }
 
+    public record MovimientoProvDto(DateTime Fecha, string Tipo, string Numero, decimal Debe, decimal Haber, decimal Saldo, string? Detalle);
+    public record EstadoCuentaProvDto(int ProveedorId, string Nombre, decimal Saldo, List<MovimientoProvDto> Movimientos);
+
+    /// <summary>Estado de cuenta del proveedor: compras (haber, lo que le debes) y pagos (debe, lo que ya pagaste).</summary>
+    [HttpGet("{id:int}/estado-cuenta")]
+    public async Task<IActionResult> EstadoCuenta(int id)
+    {
+        var prov = await _db.CafeProveedores.FindAsync(id);
+        if (prov is null) return NotFound();
+
+        var compras = await _db.CafeCompras.Where(c => c.ProveedorId == id && c.Estado != "ANULADA")
+            .Select(c => new { c.Id, c.Fecha, c.Numero, c.Total }).ToListAsync();
+        var pagos = await _db.CafePagosProveedor.Where(p => p.ProveedorId == id && p.Estado == "VIGENTE")
+            .Select(p => new { p.Id, p.Fecha, p.Numero, p.Total, p.Retenciones }).ToListAsync();
+
+        // Para el proveedor: Compra = HABER (te debe que pagar), Pago = DEBE (pagaste)
+        var movs = new List<(DateTime fecha, string tipo, string num, decimal debe, decimal haber, string? det)>();
+        foreach (var c in compras)
+            movs.Add((c.Fecha, "Compra", c.Numero, 0m, c.Total, null));
+        foreach (var p in pagos)
+            movs.Add((p.Fecha, "Pago", p.Numero, p.Total + p.Retenciones, 0m,
+                p.Retenciones > 0 ? $"(incluye ${p.Retenciones:N2} retenciones)" : null));
+
+        movs = movs.OrderBy(x => x.fecha).ToList();
+        decimal acum = 0m;
+        var result = new List<MovimientoProvDto>(movs.Count);
+        foreach (var m in movs)
+        {
+            // Saldo positivo = le debes al proveedor; negativo = a tu favor
+            acum += m.haber - m.debe;
+            result.Add(new MovimientoProvDto(m.fecha, m.tipo, m.num, m.debe, m.haber, acum, m.det));
+        }
+        return Ok(new EstadoCuentaProvDto(id, prov.Nombre, acum, result));
+    }
+
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateCafeProveedorRequest req)
     {

@@ -1,0 +1,115 @@
+@page "/cafe/tesoreria/resumen"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div class="card">
+    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+        <h3 style="margin:0;">📊 Resumen de Tesorería</h3>
+        <button class="btn btn-secondary" @onclick="Recargar">🔄 Recargar</button>
+    </div>
+    <div class="card-body">
+        @if (loading) { <p class="text-muted">Cargando...</p> }
+        else
+        {
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:1rem; margin-bottom: 1.5rem;">
+                @if (cajas is not null)
+                {
+                    @foreach (var c in cajas.OrderBy(x => x.Orden))
+                    {
+                        var color = c.SaldoActual >= 0 ? "#059669" : "#dc2626";
+                        <div style="padding:1rem; background:#f9fafb; border-left:4px solid @color; border-radius:8px;">
+                            <div style="font-size:0.78rem; color:#6b7280; text-transform:uppercase;">@FormatTipo(c.Tipo)</div>
+                            <div style="font-weight:700; font-size:1rem; margin:0.2rem 0;">@c.Nombre</div>
+                            <div style="font-size:1.4rem; font-weight:800; color:@color;">$@c.SaldoActual.ToString("N2")</div>
+                            <div style="font-size:0.75rem; color:#6b7280; margin-top:0.3rem;">Saldo inicial: $@c.SaldoInicial.ToString("N2")</div>
+                        </div>
+                    }
+                }
+            </div>
+
+            <div style="padding:1rem; background:#dbeafe; border-radius:8px; text-align:center;">
+                <div style="font-size:0.85rem; color:#1e40af;">TOTAL EN CAJAS (suma de todas)</div>
+                <div style="font-size:2rem; font-weight:800; color:#1e40af;">$@TotalGlobal.ToString("N2")</div>
+            </div>
+
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem; margin-top:1.5rem;">
+                <div style="padding:1rem; background:#fef3c7; border-radius:8px;">
+                    <div style="font-size:0.85rem; color:#92400e; font-weight:700;">📥 Cobranzas (últimos 30 días)</div>
+                    <div style="font-size:1.4rem; font-weight:700; color:#92400e; margin-top:0.3rem;">
+                        $@TotalCobrado.ToString("N2")
+                    </div>
+                    <div style="font-size:0.78rem; color:#6b7280;">@(cobranzasUlt30?.Count ?? 0) operaciones</div>
+                </div>
+                <div style="padding:1rem; background:#fee2e2; border-radius:8px;">
+                    <div style="font-size:0.85rem; color:#991b1b; font-weight:700;">📤 Pagos (últimos 30 días)</div>
+                    <div style="font-size:1.4rem; font-weight:700; color:#991b1b; margin-top:0.3rem;">
+                        $@TotalPagado.ToString("N2")
+                    </div>
+                    <div style="font-size:0.78rem; color:#6b7280;">@(pagosUlt30?.Count ?? 0) operaciones</div>
+                </div>
+            </div>
+
+            <div style="margin-top:1.5rem; padding:1rem; background:#f3f4f6; border-radius:8px;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <div style="font-size:0.85rem; color:#6b7280; font-weight:700;">📄 Cheques en cartera</div>
+                        <div style="font-size:1.4rem; font-weight:700; margin-top:0.3rem;">@(chequesCartera?.Count ?? 0)</div>
+                        <div style="font-size:0.78rem; color:#6b7280;">Total: $@TotalChequesCartera.ToString("N2")</div>
+                    </div>
+                    @if (chequesCartera is not null && chequesCartera.Count > 0)
+                    {
+                        var proxVence = chequesCartera.Where(c => c.FechaVencimiento.HasValue).OrderBy(c => c.FechaVencimiento).FirstOrDefault();
+                        @if (proxVence is not null)
+                        {
+                            <div style="font-size:0.85rem;">
+                                Próximo vto: <b>@proxVence.FechaVencimiento!.Value.ToString("dd/MM/yyyy")</b><br />
+                                <span style="font-size:0.75rem; color:#6b7280;">@proxVence.Banco · $@proxVence.Importe.ToString("N2")</span>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private List<CafeCajaDto>? cajas;
+    private List<CobranzaListDto>? cobranzasUlt30;
+    private List<PagoListDto>? pagosUlt30;
+    private List<CafeChequeDto>? chequesCartera;
+    private bool loading = true;
+
+    private decimal TotalGlobal => cajas?.Sum(c => c.SaldoActual) ?? 0m;
+    private decimal TotalCobrado => cobranzasUlt30?.Where(c => c.Estado == "VIGENTE").Sum(c => c.Total) ?? 0m;
+    private decimal TotalPagado => pagosUlt30?.Where(p => p.Estado == "VIGENTE").Sum(p => p.Total) ?? 0m;
+    private decimal TotalChequesCartera => chequesCartera?.Sum(c => c.Importe) ?? 0m;
+
+    protected override async Task OnInitializedAsync() => await Recargar();
+
+    private async Task Recargar()
+    {
+        loading = true;
+        try
+        {
+            var desde30 = DateTime.UtcNow.AddDays(-30);
+            cajas = await Api.GetCafeCajasAsync() ?? new();
+            cobranzasUlt30 = await Api.GetCafeCobranzasAsync(desde: desde30) ?? new();
+            pagosUlt30 = await Api.GetCafePagosProveedorAsync(desde: desde30) ?? new();
+            chequesCartera = await Api.GetCafeChequesAsync("EN_CARTERA") ?? new();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        loading = false;
+    }
+
+    private static string FormatTipo(string t) => t switch
+    {
+        "EFECTIVO" => "💵 Efectivo",
+        "BANCO" => "🏦 Banco",
+        "BILLETERA_VIRTUAL" => "📱 Billetera",
+        "CHEQUES_CARTERA" => "📄 Cheques",
+        "V_PRIVADO" => "🔀 V",
+        _ => t
+    };
+}

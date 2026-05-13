@@ -1,0 +1,68 @@
+@page "/cafe/tesoreria/import"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div class="card">
+    <div class="card-header">
+        <h3 style="margin:0;">📋 Importación de saldos iniciales</h3>
+    </div>
+    <div class="card-body">
+        <div style="padding:1rem; background:#fef3c7; border-radius:6px; margin-bottom:1rem;">
+            <b>⚠ Pantalla preliminar — pendiente implementación final.</b>
+            <p style="margin:0.4rem 0 0; font-size:0.85rem;">
+                Esta pantalla queda armada como esqueleto para cargar los <b>$35 millones de saldos pendientes</b>
+                del sistema viejo (Contabilium) — los 80 clientes que vos pasaste el 12/05.
+            </p>
+        </div>
+
+        <h4>Pasos previstos</h4>
+        <ol>
+            <li><b>Saldo inicial de cajas</b>: editás cada caja con su saldo de hoy desde Café → Tesorería → Cajas.</li>
+            <li><b>Saldos pendientes de clientes</b>: pegás el CSV con CUIT + Saldo y se generan ventas tipo "X · Saldo anterior" con CondicionPago=CTA_CORRIENTE para cada uno.</li>
+            <li><b>Saldos pendientes de proveedores</b>: idem para compras pendientes.</li>
+        </ol>
+
+        <p style="font-size:0.85rem; color:#6b7280;">
+            La implementación de los pasos 2 y 3 se hace cuando confirmes que querés avanzar.
+            La memoria del plan está guardada (project_cafe_saldos_anteriores.md y project_cafe_migracion_clientes.md).
+            <br /><br />
+            <b>No corre nada automáticamente</b> desde acá — cada operación requiere tu OK explícito.
+        </p>
+
+        <div style="margin-top:1.5rem;">
+            <h4>Saldo inicial — cajas</h4>
+            @if (cajas is null) { <p>Cargando...</p> }
+            else
+            {
+                <table class="table table-compact">
+                    <thead><tr><th>Caja</th><th>Tipo</th><th style="text-align:right;">Saldo inicial</th><th style="text-align:right;">Saldo actual</th></tr></thead>
+                    <tbody>
+                        @foreach (var c in cajas.OrderBy(x => x.Orden))
+                        {
+                            <tr>
+                                <td><b>@c.Nombre</b></td>
+                                <td>@c.Tipo</td>
+                                <td style="text-align:right;">$@c.SaldoInicial.ToString("N2")</td>
+                                <td style="text-align:right; font-weight:600;">$@c.SaldoActual.ToString("N2")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                <p style="font-size:0.78rem; color:#6b7280; margin-top:0.4rem;">
+                    Para editar saldos iniciales, andá a Café → Tesorería → Cajas y entrá a cada una.
+                </p>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<CafeCajaDto>? cajas;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { cajas = await Api.GetCafeCajasAsync(); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+}

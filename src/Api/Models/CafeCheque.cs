@@ -43,6 +43,12 @@ public class CafeCheque
     /// <summary>Cobranza que origino este cheque (cuando se cobro a un cliente).</summary>
     public int? CobranzaOrigenId { get; set; }
 
+    /// <summary>Si el cheque fue endosado a un proveedor (estado ENDOSADO).</summary>
+    public int? ProveedorEndosoId { get; set; }
+
+    /// <summary>Pago a proveedor que origino el endoso (si aplica).</summary>
+    public int? PagoOrigenId { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }
