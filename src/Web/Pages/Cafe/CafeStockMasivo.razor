@@ -45,7 +45,16 @@
                             <th>Producto</th>
                             <th style="width:80px;">Cat.</th>
                             <th style="text-align:right; width:130px;">Stock actual</th>
-                            <th style="text-align:right; width:160px;">Stock nuevo</th>
+                            <th style="text-align:right; width:200px;">
+                                <span style="display:inline-flex; align-items:center; gap:0.3rem; justify-content:flex-end;">
+                                    Stock nuevo
+                                    <button @onclick="() => edicionHabilitada = !edicionHabilitada"
+                                            title="@(edicionHabilitada ? "Bloquear edición" : "Desbloquear para editar")"
+                                            style="background:@(edicionHabilitada ? "#fef3c7" : "#f3f4f6"); border:1px solid #d1d5db; border-radius:4px; padding:0.1rem 0.4rem; cursor:pointer; font-size:0.85rem;">
+                                        @(edicionHabilitada ? "🔓" : "🔒")
+                                    </button>
+                                </span>
+                            </th>
                         </tr>
                     </thead>
                     <tbody>
@@ -70,15 +79,17 @@
                                     @if (r.Categoria == "CAFE")
                                     {
                                         var kgNuevo = nuevoStockKg.TryGetValue(r.ProductoId, out var kg) ? kg : Math.Round(r.StockGramos / 1000m, 3);
-                                        <input class="form-input" type="number" step="0.001" style="width:120px; text-align:right; display:inline-block;"
+                                        <input class="form-input" type="number" step="0.001" style="width:120px; text-align:right; display:inline-block; @(edicionHabilitada ? "" : "background:#f9fafb; color:#9ca3af;")"
                                                value="@kgNuevo"
+                                               disabled="@(!edicionHabilitada)"
                                                @onchange="@(e => OnStockKgChange(r.ProductoId, e.Value?.ToString()))" /> <span style="font-size:0.78rem;">kg</span>
                                     }
                                     else
                                     {
                                         var uNuevo = nuevoStockUnidades.TryGetValue(r.ProductoId, out var u) ? u : r.StockUnidades;
-                                        <input class="form-input" type="number" step="1" style="width:120px; text-align:right; display:inline-block;"
+                                        <input class="form-input" type="number" step="1" style="width:120px; text-align:right; display:inline-block; @(edicionHabilitada ? "" : "background:#f9fafb; color:#9ca3af;")"
                                                value="@uNuevo"
+                                               disabled="@(!edicionHabilitada)"
                                                @onchange="@(e => OnStockUnidadesChange(r.ProductoId, e.Value?.ToString()))" /> <span style="font-size:0.78rem;">u.</span>
                                     }
                                 </td>
@@ -96,6 +107,7 @@
     private List<StockProductoDto>? rows;
     private bool loading = true;
     private bool guardando;
+    private bool edicionHabilitada = false;
     private int depositoIdSeleccionado;
     private string filtroTexto = "";
     private string filtroCategoria = "";
