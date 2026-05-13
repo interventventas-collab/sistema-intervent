@@ -11,11 +11,17 @@
 @inject CurrentCompanyService Company
 @implements IDisposable
 
-<aside class="sidebar @(sidebarOpen ? "open" : "") @(sidebarCollapsed ? "collapsed" : "") @(IsDevEnvironment ? "sidebar-dev" : "")" id="sidebar">
+<aside class="sidebar @(sidebarOpen ? "open" : "") @(sidebarCollapsed ? "collapsed" : "") @(IsDevEnvironment ? "sidebar-dev" : "sidebar-prod")" id="sidebar">
     @if (IsDevEnvironment)
     {
         <div class="dev-environment-banner" title="Estás en el entorno de DESARROLLO. Los datos NO son los de producción.">
             🛠 DESARROLLO
+        </div>
+    }
+    else
+    {
+        <div class="prod-environment-banner" title="Estás en el entorno de PRODUCCIÓN. Todo lo que hagas afecta los datos reales del negocio.">
+            🔒 PRODUCCIÓN
         </div>
     }
     <div class="sidebar-brand">

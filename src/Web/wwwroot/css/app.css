@@ -321,6 +321,26 @@ button {
   padding: 0.3rem 0.2rem;
 }
 
+/* ═════════════ PROD: indicador visible de entorno producción ═════════════ */
+/* Banner verde discreto que recuerda al usuario que está en el entorno real
+   y todo lo que cargue afecta los datos del negocio. */
+.prod-environment-banner {
+  background: #065f46;
+  color: #d1fae5;
+  font-weight: 800;
+  font-size: 0.78rem;
+  letter-spacing: 0.1em;
+  padding: 0.4rem 0.6rem;
+  text-align: center;
+  border-bottom: 2px solid #047857;
+  text-shadow: 0 1px 0 rgba(0,0,0,0.3);
+}
+.sidebar.sidebar-prod.collapsed .prod-environment-banner {
+  font-size: 0.55rem;
+  letter-spacing: 0.02em;
+  padding: 0.3rem 0.2rem;
+}
+
 .sidebar-brand {
   display: flex;
   align-items: center;
