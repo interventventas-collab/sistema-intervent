@@ -505,6 +505,26 @@ else
                                         @slaLabel @slaLocal.ToString("dd/MM HH:mm")
                                     </div>
                                 }
+                                @{ var pf = g.GetParadaFlex(s.MeliShipmentId); }
+                                @if (pf is not null && (pf.AssignedVehicleSlot.HasValue || pf.AssignedDriverId.HasValue))
+                                {
+                                    var pfColor = pf.AssignedVehicleSlot.HasValue ? VehicleColor(pf.AssignedVehicleSlot.Value)
+                                                  : (string.IsNullOrEmpty(pf.AssignedDriverColor) ? "#d97706" : pf.AssignedDriverColor!);
+                                    <div style="display:flex; gap:0.3rem; margin-top:0.3rem; flex-wrap:wrap;">
+                                        @if (pf.AssignedVehicleSlot.HasValue)
+                                        {
+                                            <span style="display:inline-block; padding:0.1rem 0.4rem; background:@pfColor; color:white; border-radius:4px; font-size:0.68rem; font-weight:700;">🚚 V@(pf.AssignedVehicleSlot)</span>
+                                        }
+                                        @if (!string.IsNullOrEmpty(pf.AssignedDriverName))
+                                        {
+                                            <span style="display:inline-block; padding:0.1rem 0.4rem; background:white; border:1px solid @pfColor; color:@pfColor; border-radius:4px; font-size:0.68rem; font-weight:700;">👤 @pf.AssignedDriverName</span>
+                                        }
+                                        @if (pf.OrderInRoute.HasValue)
+                                        {
+                                            <span style="display:inline-block; padding:0.1rem 0.4rem; background:#1f2937; color:white; border-radius:4px; font-size:0.68rem; font-weight:700;">#@pf.OrderInRoute</span>
+                                        }
+                                    </div>
+                                }
                             </div>
                         }
                         else
@@ -1436,9 +1456,22 @@ else
         public string Zona { get; set; } = "";
         public List<MeliShipmentDto> Flex { get; set; } = new();
         public List<MapeoStopDto> Manual { get; set; } = new();
-        public int Count => Flex.Count + Manual.Count;
+        // Cuenta los destinos únicos: las paradas con Origin="flex" representan al mismo
+        // envío que ya está en Flex, así que NO las contamos dos veces.
+        public int Count
+        {
+            get
+            {
+                var paradasFlex = Manual.Count(m => m.Origin == "flex");
+                var paradasManuales = Manual.Count - paradasFlex;
+                return Flex.Count + paradasManuales;
+            }
+        }
         public bool TieneFlex => Flex.Count > 0;
         public bool TieneManual => Manual.Count > 0;
+        // Devuelve la parada (Origin=flex) que linkea con un Flex puntual, si existe.
+        public MapeoStopDto? GetParadaFlex(long meliShipmentId) =>
+            Manual.FirstOrDefault(m => m.Origin == "flex" && m.OriginRefId == meliShipmentId.ToString());
     }
 
     // Detecta cuando un texto de "dirección" es en realidad un par de coordenadas
@@ -1473,6 +1506,12 @@ else
     private List<GrupoUnificado> BuildListaUnificada()
     {
         var dict = new Dictionary<string, GrupoUnificado>(StringComparer.Ordinal);
+
+        // Mapa: MeliShipmentId → key del grupo donde quedó la parada-flex.
+        // Permite que el Flex original caiga en el MISMO grupo cuando ya fue importado,
+        // así no aparece duplicado y conserva su info de Estado/SLA junto con la asignación.
+        var paradaFlexGroupKey = new Dictionary<long, string>();
+
         if (stops is not null)
         {
             foreach (var st in stops)
@@ -1486,12 +1525,26 @@ else
                     dict[key] = g;
                 }
                 g.Manual.Add(st);
+
+                if (st.Origin == "flex" && !string.IsNullOrEmpty(st.OriginRefId)
+                    && long.TryParse(st.OriginRefId, out var sid))
+                {
+                    paradaFlexGroupKey[sid] = key;
+                }
             }
         }
         if (shipments is not null)
         {
             foreach (var s in shipments)
             {
+                // Si este Flex ya fue importado como parada, lo agregamos al MISMO grupo
+                // (no como duplicado): el grupo termina teniendo Flex + Manual con datos linkeados.
+                if (paradaFlexGroupKey.TryGetValue(s.MeliShipmentId, out var existingKey))
+                {
+                    dict[existingKey].Flex.Add(s);
+                    continue;
+                }
+
                 var nombre = NormTxt(s.ReceiverName ?? "");
                 var direc = NormTxt(s.AddressLine ?? "");
                 // Mismo nombre + dirección con paradas manuales → mismo grupo (cross-source dedup)
