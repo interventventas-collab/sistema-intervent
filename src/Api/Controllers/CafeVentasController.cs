@@ -1135,6 +1135,13 @@ public class CafeVentasController : ControllerBase
                 else prod.StockUnidades += it.Cantidad;
             }
         }
+        // Desvincular las cobranzas que referenciaban esta venta (les ponemos VentaId=null = quedan
+        // como "a cuenta"). NO borramos las cobranzas porque ya entraron plata real a una caja.
+        var cobranzasItems = await _db.CafeCobranzasComprobantes
+            .Where(c => c.VentaId == v.Id)
+            .ToListAsync();
+        foreach (var cc in cobranzasItems)
+            cc.VentaId = null;
         _db.CafeVentas.Remove(v);
     }
 

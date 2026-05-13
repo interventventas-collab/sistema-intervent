@@ -877,12 +877,16 @@
                             }
                             else
                             {
-                                @* Solo para ventas nuevas o sin saldo aún calculado: checkbox manual *@
-                                <label style="display: flex; align-items: center; gap: 0.4rem; margin-top: 0.6rem; cursor: pointer; font-size: 0.85rem;">
-                                    <input type="checkbox" @bind="formIsPaid" />
-                                    <strong>Marcar como PAGADO al guardar</strong>
-                                    <span style="font-size: 0.72rem; color: #6b7280;">(útil para ventas al contado sin pasar por Cobranzas)</span>
-                                </label>
+                                @* Solo para ventas nuevas: tildar = al guardar te lleva al modal de Cobranzas
+                                   para registrar el cobro real (en vez de marcar un flag manual). *@
+                                @if (!editingVentaId.HasValue)
+                                {
+                                    <label style="display: flex; align-items: center; gap: 0.4rem; margin-top: 0.6rem; cursor: pointer; font-size: 0.85rem;">
+                                        <input type="checkbox" @bind="formIsPaid" />
+                                        <strong>💰 Cobrar al guardar</strong>
+                                        <span style="font-size: 0.72rem; color: #6b7280;">(al emitir te abre la pantalla de Cobranzas con esta venta precargada)</span>
+                                    </label>
+                                }
                             }
                         </div>
                     </div>
@@ -2301,7 +2305,7 @@
                     Descuento = formDescuento,
                     Observaciones = notesToSave,
                     WeekDays = weekCsv,
-                    IsPaid = formIsPaid,
+                    IsPaid = false,  // NUNCA marcar pagado al crear — el flag se sincroniza por la cobranza
                     TipoComprobante = formTipoComprobante,
                     CondicionIva = formCondicionIva,
                     CondicionPago = formCondicionPago
@@ -2311,11 +2315,20 @@
             }
 
             var wasEditing = editingVentaId.HasValue;
+            // Si en una venta NUEVA el operador tildo "Marcar como PAGADO al guardar",
+            // redirigimos al modal de Cobranzas precargado para que registre la cobranza real.
+            var redirigirACobranza = !wasEditing && formIsPaid && v.ClienteId.HasValue;
             showForm = false;
             editingVentaId = null;
             editingVentaNumero = "";
             await LoadCatalogos();
             await Load();
+            if (redirigirACobranza)
+            {
+                ToastService.Success("Cargá ahora la cobranza para registrar el pago");
+                Navigation.NavigateTo($"/cafe/tesoreria/cobranzas?cliente={v.ClienteId!.Value}&venta={v.Id}");
+                return;
+            }
             // Si se editó, no abrir el viewer automáticamente; si era nueva venta, sí.
             if (!wasEditing) printVenta = v;
         }
