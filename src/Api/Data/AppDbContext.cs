@@ -85,6 +85,12 @@ public class AppDbContext : DbContext
     public DbSet<CafeProveedor> CafeProveedores => Set<CafeProveedor>();
     public DbSet<CafeCompra> CafeCompras => Set<CafeCompra>();
     public DbSet<CafeCompraItem> CafeCompraItems => Set<CafeCompraItem>();
+    // Tesoreria (Fase 1, 2026-05-12)
+    public DbSet<CafeCaja> CafeCajas => Set<CafeCaja>();
+    public DbSet<CafeCheque> CafeCheques => Set<CafeCheque>();
+    public DbSet<CafeCobranza> CafeCobranzas => Set<CafeCobranza>();
+    public DbSet<CafeCobranzaComprobante> CafeCobranzasComprobantes => Set<CafeCobranzaComprobante>();
+    public DbSet<CafeCobranzaMedio> CafeCobranzasMedios => Set<CafeCobranzaMedio>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -348,6 +354,61 @@ public class AppDbContext : DbContext
                   .HasForeignKey(l => l.ProcessCode)
                   .HasPrincipalKey(p => p.Code)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ===== Tesoreria Cafe (Fase 1, 2026-05-12) =====
+        modelBuilder.Entity<CafeCaja>(entity =>
+        {
+            entity.HasIndex(c => c.Nombre).IsUnique();
+        });
+
+        modelBuilder.Entity<CafeCheque>(entity =>
+        {
+            entity.HasIndex(c => c.Estado);
+            entity.HasIndex(c => c.FechaVencimiento);
+            entity.HasOne(c => c.ClienteOrigen)
+                  .WithMany()
+                  .HasForeignKey(c => c.ClienteOrigenId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<CafeCobranza>(entity =>
+        {
+            entity.HasIndex(c => c.Numero).IsUnique();
+            entity.HasIndex(c => c.ClienteId);
+            entity.HasIndex(c => c.Fecha);
+            entity.HasOne(c => c.Cliente)
+                  .WithMany()
+                  .HasForeignKey(c => c.ClienteId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<CafeCobranzaComprobante>(entity =>
+        {
+            entity.HasOne(c => c.Cobranza)
+                  .WithMany(p => p.Comprobantes)
+                  .HasForeignKey(c => c.CobranzaId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(c => c.Venta)
+                  .WithMany()
+                  .HasForeignKey(c => c.VentaId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<CafeCobranzaMedio>(entity =>
+        {
+            entity.HasOne(c => c.Cobranza)
+                  .WithMany(p => p.Medios)
+                  .HasForeignKey(c => c.CobranzaId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(c => c.Caja)
+                  .WithMany()
+                  .HasForeignKey(c => c.CajaId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(c => c.Cheque)
+                  .WithMany()
+                  .HasForeignKey(c => c.ChequeId)
+                  .OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

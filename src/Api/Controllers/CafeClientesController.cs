@@ -49,6 +49,51 @@ public class CafeClientesController : ControllerBase
         return Ok(Map(c));
     }
 
+    public record MovimientoCuentaDto(
+        DateTime Fecha, string Tipo, string Numero, decimal Debe, decimal Haber, decimal SaldoAcumulado, string? Detalle);
+    public record EstadoCuentaDto(int ClienteId, string ClienteNombre, decimal Saldo, List<MovimientoCuentaDto> Movimientos);
+
+    /// <summary>
+    /// Estado de cuenta del cliente: lista cronologica de ventas (debe) y cobranzas (haber)
+    /// + saldo final. Para la ficha de cliente "Tab Cuenta corriente".
+    /// </summary>
+    [HttpGet("{id:int}/estado-cuenta")]
+    public async Task<IActionResult> EstadoCuenta(int id)
+    {
+        var cliente = await _db.CafeClientes.FindAsync(id);
+        if (cliente is null) return NotFound();
+
+        // Ventas vigentes del cliente
+        var ventas = await _db.CafeVentas
+            .Where(v => v.ClienteId == id && v.Estado != "anulado")
+            .Select(v => new { v.Id, v.Fecha, v.Numero, v.Total })
+            .ToListAsync();
+        // Cobranzas vigentes y sus retenciones
+        var cobranzas = await _db.CafeCobranzas
+            .Where(c => c.ClienteId == id && c.Estado == "VIGENTE")
+            .Select(c => new { c.Id, c.Fecha, c.Numero, c.Total, c.Retenciones })
+            .ToListAsync();
+        // Comprobantes de cobranzas (para saber a que venta se aplicaron, opcional para detalle)
+        // Por simplicidad la cobranza la mostramos como un haber total (Total + Retenciones).
+
+        var movs = new List<(DateTime fecha, string tipo, string num, decimal debe, decimal haber, string? det)>();
+        foreach (var v in ventas)
+            movs.Add((v.Fecha, "Venta", v.Numero ?? $"#{v.Id}", v.Total, 0m, null));
+        foreach (var c in cobranzas)
+            movs.Add((c.Fecha, "Cobranza", c.Numero, 0m, c.Total + c.Retenciones,
+                c.Retenciones > 0 ? $"(incluye ${c.Retenciones:N2} retenciones)" : null));
+
+        movs = movs.OrderBy(x => x.fecha).ToList();
+        decimal acum = 0m;
+        var result = new List<MovimientoCuentaDto>(movs.Count);
+        foreach (var m in movs)
+        {
+            acum += m.debe - m.haber;
+            result.Add(new MovimientoCuentaDto(m.fecha, m.tipo, m.num, m.debe, m.haber, acum, m.det));
+        }
+        return Ok(new EstadoCuentaDto(id, cliente.Nombre, acum, result));
+    }
+
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateCafeClienteRequest req)
     {

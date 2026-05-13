@@ -3044,3 +3044,134 @@ BEGIN
     CREATE INDEX IX_MapeoSnap_Created ON MapeoRouteSnapshots(CreatedAt DESC);
 END
 GO
+
+-- ============================================================================
+-- TESORERIA CAFE (Fase 1, 2026-05-12) — cajas, cobranzas, cheques
+-- ============================================================================
+
+-- Cafe_Cajas: lugares donde vive la plata real (efectivo, banco, MP, cheques, V)
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_Cajas')
+BEGIN
+    CREATE TABLE Cafe_Cajas (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Nombre NVARCHAR(100) NOT NULL,
+        -- EFECTIVO | BANCO | BILLETERA_VIRTUAL | CHEQUES_CARTERA | V_PRIVADO
+        Tipo NVARCHAR(30) NOT NULL,
+        SaldoInicial DECIMAL(18,2) NOT NULL CONSTRAINT DF_CafeCajas_SaldoInicial DEFAULT 0,
+        Orden INT NOT NULL CONSTRAINT DF_CafeCajas_Orden DEFAULT 0,
+        IsActive BIT NOT NULL CONSTRAINT DF_CafeCajas_IsActive DEFAULT 1,
+        Notas NVARCHAR(500) NULL,
+        CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_CafeCajas_Created DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT UQ_CafeCajas_Nombre UNIQUE (Nombre)
+    );
+END
+GO
+-- Seed inicial: las 5 cajas acordadas con el usuario (idempotente)
+IF NOT EXISTS (SELECT 1 FROM Cafe_Cajas WHERE Nombre='Efectivo')
+    INSERT INTO Cafe_Cajas (Nombre, Tipo, Orden) VALUES ('Efectivo', 'EFECTIVO', 1);
+IF NOT EXISTS (SELECT 1 FROM Cafe_Cajas WHERE Nombre='Mercado Pago')
+    INSERT INTO Cafe_Cajas (Nombre, Tipo, Orden) VALUES ('Mercado Pago', 'BILLETERA_VIRTUAL', 2);
+IF NOT EXISTS (SELECT 1 FROM Cafe_Cajas WHERE Nombre='Galicia Empresas')
+    INSERT INTO Cafe_Cajas (Nombre, Tipo, Orden) VALUES ('Galicia Empresas', 'BANCO', 3);
+IF NOT EXISTS (SELECT 1 FROM Cafe_Cajas WHERE Nombre='Cheques en cartera')
+    INSERT INTO Cafe_Cajas (Nombre, Tipo, Orden) VALUES ('Cheques en cartera', 'CHEQUES_CARTERA', 4);
+IF NOT EXISTS (SELECT 1 FROM Cafe_Cajas WHERE Nombre='V (Billetera Virtual)')
+    INSERT INTO Cafe_Cajas (Nombre, Tipo, Orden) VALUES ('V (Billetera Virtual)', 'V_PRIVADO', 5);
+GO
+
+-- Cafe_Cheques: trackeo individual de cada cheque de terceros recibido
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_Cheques')
+BEGIN
+    CREATE TABLE Cafe_Cheques (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Numero NVARCHAR(50) NOT NULL,
+        Banco NVARCHAR(150) NOT NULL,
+        Emisor NVARCHAR(200) NULL,
+        ClienteOrigenId INT NULL,
+        Importe DECIMAL(18,2) NOT NULL,
+        FechaCobro DATE NULL,
+        FechaVencimiento DATE NULL,
+        -- EN_CARTERA | DEPOSITADO | ACREDITADO | COBRADO_VENTANILLA | ENDOSADO | RECHAZADO
+        Estado NVARCHAR(30) NOT NULL CONSTRAINT DF_CafeCheques_Estado DEFAULT 'EN_CARTERA',
+        FechaCambioEstado DATETIME2 NULL,
+        Observaciones NVARCHAR(500) NULL,
+        CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_CafeCheques_Created DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT FK_CafeCheques_Cliente FOREIGN KEY (ClienteOrigenId) REFERENCES Cafe_Clientes(Id)
+    );
+    CREATE INDEX IX_CafeCheques_Estado ON Cafe_Cheques(Estado);
+    CREATE INDEX IX_CafeCheques_FechaVto ON Cafe_Cheques(FechaVencimiento);
+    CREATE INDEX IX_CafeCheques_Cliente ON Cafe_Cheques(ClienteOrigenId);
+END
+GO
+
+-- Cafe_Cobranzas: cabecera del recibo de cobro
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_Cobranzas')
+BEGIN
+    CREATE TABLE Cafe_Cobranzas (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Numero NVARCHAR(20) NOT NULL,
+        Fecha DATETIME2 NOT NULL CONSTRAINT DF_CafeCobranzas_Fecha DEFAULT SYSUTCDATETIME(),
+        ClienteId INT NOT NULL,
+        Total DECIMAL(18,2) NOT NULL,
+        Retenciones DECIMAL(18,2) NOT NULL CONSTRAINT DF_CafeCobranzas_Retenciones DEFAULT 0,
+        Operador NVARCHAR(100) NULL,
+        Observaciones NVARCHAR(500) NULL,
+        -- VIGENTE | ANULADA
+        Estado NVARCHAR(20) NOT NULL CONSTRAINT DF_CafeCobranzas_Estado DEFAULT 'VIGENTE',
+        CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_CafeCobranzas_Created DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT FK_CafeCobranzas_Cliente FOREIGN KEY (ClienteId) REFERENCES Cafe_Clientes(Id),
+        CONSTRAINT UQ_CafeCobranzas_Numero UNIQUE (Numero)
+    );
+    CREATE INDEX IX_CafeCobranzas_Cliente ON Cafe_Cobranzas(ClienteId);
+    CREATE INDEX IX_CafeCobranzas_Fecha ON Cafe_Cobranzas(Fecha DESC);
+END
+GO
+
+-- Cafe_CobranzasComprobantes: detalle de a qué ventas se aplica la cobranza
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_CobranzasComprobantes')
+BEGIN
+    CREATE TABLE Cafe_CobranzasComprobantes (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        CobranzaId INT NOT NULL,
+        VentaId INT NULL,     -- NULL = "a cuenta" (no asignado a una venta puntual)
+        Importe DECIMAL(18,2) NOT NULL,
+        CONSTRAINT FK_CafeCobComps_Cobranza FOREIGN KEY (CobranzaId) REFERENCES Cafe_Cobranzas(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_CafeCobComps_Venta FOREIGN KEY (VentaId) REFERENCES Cafe_Ventas(Id)
+    );
+    CREATE INDEX IX_CafeCobComps_Cobranza ON Cafe_CobranzasComprobantes(CobranzaId);
+    CREATE INDEX IX_CafeCobComps_Venta ON Cafe_CobranzasComprobantes(VentaId);
+END
+GO
+
+-- Cafe_CobranzasMedios: cómo se cobró (mix de medios — efectivo + transfer + cheque)
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_CobranzasMedios')
+BEGIN
+    CREATE TABLE Cafe_CobranzasMedios (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        CobranzaId INT NOT NULL,
+        CajaId INT NOT NULL,
+        Importe DECIMAL(18,2) NOT NULL,
+        Referencia NVARCHAR(200) NULL,   -- nro de transferencia, nro de operacion MP, destinatario V, etc.
+        ChequeId INT NULL,                -- si el medio fue un cheque, apunta al registro en Cafe_Cheques
+        CONSTRAINT FK_CafeCobMedios_Cobranza FOREIGN KEY (CobranzaId) REFERENCES Cafe_Cobranzas(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_CafeCobMedios_Caja FOREIGN KEY (CajaId) REFERENCES Cafe_Cajas(Id),
+        CONSTRAINT FK_CafeCobMedios_Cheque FOREIGN KEY (ChequeId) REFERENCES Cafe_Cheques(Id)
+    );
+    CREATE INDEX IX_CafeCobMedios_Cobranza ON Cafe_CobranzasMedios(CobranzaId);
+    CREATE INDEX IX_CafeCobMedios_Caja ON Cafe_CobranzasMedios(CajaId);
+END
+GO
+
+-- FK reverso: Cheque referencia a su cobranza origen (para trazabilidad)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='CobranzaOrigenId' AND Object_ID=Object_ID('Cafe_Cheques'))
+    ALTER TABLE Cafe_Cheques ADD CobranzaOrigenId INT NULL;
+GO
+-- Nota: no agrego FK explicita para evitar ciclos en cascada con CobranzasMedios.ChequeId
+
+-- Permisos sidebar para el grupo Tesoreria
+IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId=1 AND MenuKey='cafe-tesoreria')
+    INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'cafe-tesoreria');
+GO
