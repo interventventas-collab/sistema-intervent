@@ -87,10 +87,26 @@ public class MeliShipmentsController : ControllerBase
         if (!string.IsNullOrWhiteSpace(internalStatus)) q = q.Where(s => s.InternalStatus == internalStatus);
         if (excludeDelivered) q = q.Where(s => s.Status != "delivered" && s.Status != "cancelled");
 
-        var list = await q
+        var listFlex = await q
             .OrderBy(s => s.EstimatedDeliveryLimit ?? s.DateCreated)
             .Take(500).ToListAsync();
-        return Ok(list.Select(s => new
+
+        // Sumamos los envios ME1 (mode='me1') que esten pendientes o en camino — sin filtrar por SLA,
+        // porque ME1 normalmente no tiene EstimatedDeliveryLimit y son envios que el usuario entrega
+        // personalmente cuando puede. Aparecen siempre en el mapa con badge "ME1" para diferenciarlos.
+        var listMe1 = await _db.MeliShipments
+            .Include(s => s.MeliAccount)
+            .Where(s => s.Mode == "me1"
+                     && s.Status != "delivered"
+                     && s.Status != "not_delivered"
+                     && s.Status != "cancelled")
+            .OrderBy(s => s.DateCreated)
+            .Take(200)
+            .ToListAsync();
+
+        var combined = listFlex.Concat(listMe1).ToList();
+
+        return Ok(combined.Select(s => new
         {
             id = s.Id,
             meliShipmentId = s.MeliShipmentId,
@@ -99,6 +115,8 @@ public class MeliShipmentsController : ControllerBase
             status = s.Status,
             substatus = s.Substatus,
             internalStatus = s.InternalStatus,
+            mode = s.Mode,
+            logisticType = s.LogisticType,
             trackingNumber = s.TrackingNumber,
             receiverName = s.ReceiverName,
             receiverPhone = s.ReceiverPhone,

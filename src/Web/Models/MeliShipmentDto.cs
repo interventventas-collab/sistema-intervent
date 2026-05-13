@@ -9,6 +9,10 @@ public class MeliShipmentDto
     public string? Status { get; set; }
     public string? Substatus { get; set; }
     public string InternalStatus { get; set; } = "pending";
+    // "me1" para envios manuales del vendedor (entrega propia), distinto a Flex.
+    // Permite mostrar un badge "ME1" vs "FLEX" en la lista de Mapeo.
+    public string? Mode { get; set; }
+    public string? LogisticType { get; set; }
     public string? TrackingNumber { get; set; }
     public string? ReceiverName { get; set; }
     public string? ReceiverPhone { get; set; }

@@ -454,6 +454,14 @@ else
                                                disabled="@(!enRuta && rutaSeleccion.Count >= 10)"
                                                @onchange="@(e => ToggleRutaSeleccion(grupoKey))"
                                                title="Incluir en la ruta de Google Maps" />
+                                        @if (s.Mode == "me1")
+                                        {
+                                            <span title="Envío ME1 (entrega propia)" style="background:#fce7f3; color:#9d174d; padding:0.05rem 0.35rem; border-radius:4px; font-size:0.6rem; font-weight:800; letter-spacing:0.5px;">🏎 ME1</span>
+                                        }
+                                        else
+                                        {
+                                            <span title="Envío Flex de MercadoLibre" style="background:#dbeafe; color:#1e40af; padding:0.05rem 0.35rem; border-radius:4px; font-size:0.6rem; font-weight:800; letter-spacing:0.5px;">📦 FLEX</span>
+                                        }
                                         <strong>@(s.ReceiverName ?? "—")</strong>
                                         @if (g.Count > 1)
                                         {
@@ -2793,12 +2801,17 @@ else
         try
         {
             int days = int.TryParse(diasFiltro, out var d) ? d : 7;
-            var r = await Api.SyncMeliFlexShipmentsAsync(days, 200);
-            if (r is not null)
-            {
-                ToastService.Success($"Sincronizados {r.TotalFlex} Flex (de {r.TotalSynced} envíos)");
-                await LoadAndRender();
-            }
+            // Sincronizamos Flex y ME1 EN PARALELO contra MeLi. Asi en un solo click el usuario
+            // se asegura de tener al dia todos los envios que va a tener que entregar.
+            var taskFlex = Api.SyncMeliFlexShipmentsAsync(days, 200);
+            var taskMe1 = Api.SyncMeliMe1ShipmentsAsync(30, 300);
+            await Task.WhenAll(taskFlex, taskMe1);
+            var rFlex = taskFlex.Result;
+            var rMe1 = taskMe1.Result;
+            int flex = rFlex?.TotalFlex ?? 0;
+            int me1 = rMe1?.TotalMe1 ?? 0;
+            ToastService.Success($"Sincronizados: {flex} Flex · {me1} ME1");
+            await LoadAndRender();
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { isSyncing = false; }
