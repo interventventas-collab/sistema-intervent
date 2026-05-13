@@ -45,6 +45,47 @@ public class CpService
         var d = await LoadAsync();
         return d.TryGetValue(key, out var e) ? e : null;
     }
+
+    private List<string>? _provinciasCache;
+    private Dictionary<string, List<string>>? _localidadesCache;
+
+    /// <summary>Devuelve las 24 jurisdicciones argentinas (provincias + CABA), ordenadas alfabeticamente.</summary>
+    public async Task<List<string>> GetProvinciasAsync()
+    {
+        if (_provinciasCache is not null) return _provinciasCache;
+        var d = await LoadAsync();
+        _provinciasCache = d.Values
+            .Select(v => v.p)
+            .Where(p => !string.IsNullOrEmpty(p))
+            .Distinct()
+            .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        return _provinciasCache;
+    }
+
+    /// <summary>Devuelve las localidades unicas de una provincia, ordenadas alfabeticamente.
+    /// Si la provincia no matchea con ninguna conocida, devuelve lista vacia.</summary>
+    public async Task<List<string>> GetLocalidadesAsync(string? provincia)
+    {
+        if (string.IsNullOrWhiteSpace(provincia)) return new List<string>();
+        if (_localidadesCache is null)
+        {
+            var d = await LoadAsync();
+            _localidadesCache = d.Values
+                .GroupBy(v => v.p)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.Select(x => x.l)
+                          .Where(l => !string.IsNullOrEmpty(l))
+                          .Distinct()
+                          .OrderBy(l => l, StringComparer.OrdinalIgnoreCase)
+                          .ToList(),
+                    StringComparer.OrdinalIgnoreCase);
+        }
+        return _localidadesCache.TryGetValue(provincia.Trim(), out var list)
+            ? list
+            : new List<string>();
+    }
 }
 
 public class CpEntry

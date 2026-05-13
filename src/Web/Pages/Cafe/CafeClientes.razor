@@ -174,11 +174,25 @@
                     </div>
                     <div class="form-group" style="flex: 2;">
                         <label class="form-label">Localidad</label>
-                        <input class="form-input" @bind="formLocalidad" placeholder="Ej: La Plata" />
+                        <input class="form-input" list="datalist-localidades" @bind="formLocalidad" @bind:event="oninput" placeholder="Ej: La Plata" />
+                        <datalist id="datalist-localidades">
+                            @foreach (var loc in localidadesSugeridas)
+                            {
+                                <option value="@loc"></option>
+                            }
+                        </datalist>
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Sugerencias segun la provincia. Podes tipear libre si no esta.</p>
                     </div>
                     <div class="form-group" style="flex: 2;">
                         <label class="form-label">Provincia</label>
-                        <input class="form-input" @bind="formCiudad" placeholder="Ej: Buenos Aires" />
+                        <input class="form-input" list="datalist-provincias" value="@formCiudad" @oninput="@(e => OnProvinciaInput(e.Value?.ToString()))" placeholder="Ej: Buenos Aires" />
+                        <datalist id="datalist-provincias">
+                            @foreach (var p in provincias)
+                            {
+                                <option value="@p"></option>
+                            }
+                        </datalist>
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Elegi de la lista para unificar nombres.</p>
                     </div>
                 </div>
                 <div class="form-group">
@@ -345,6 +359,10 @@
     private bool reExtrayendo;
     private string formLocalidad = "", formCiudad = "", formCp = "", formCondicionIvaDefault = "";
 
+    // Listas para los datalists (provincia/localidad). Se cargan en OnInitialized.
+    private List<string> provincias = new();
+    private List<string> localidadesSugeridas = new();
+
     private async Task OnFormCpInput(string? value)
     {
         var v = (value ?? "").Trim();
@@ -357,8 +375,17 @@
             {
                 formLocalidad = hit.l;
                 formCiudad = hit.p;
+                // Refrescar localidades sugeridas a la provincia recien seteada
+                localidadesSugeridas = await CpService.GetLocalidadesAsync(hit.p);
             }
         }
+    }
+
+    /// <summary>Cuando el usuario tipea/elige una provincia, refresca la lista de localidades sugeridas.</summary>
+    private async Task OnProvinciaInput(string? value)
+    {
+        formCiudad = (value ?? "").Trim();
+        localidadesSugeridas = await CpService.GetLocalidadesAsync(formCiudad);
     }
 
     private bool buscandoCuit;
@@ -455,7 +482,12 @@
     private bool showDeleteConfirm;
     private CafeClienteDto? toDelete;
 
-    protected override async Task OnInitializedAsync() => await Load();
+    protected override async Task OnInitializedAsync()
+    {
+        // Cargar provincias para el datalist (una sola vez por sesion, esta cacheado en CpService)
+        provincias = await CpService.GetProvinciasAsync();
+        await Load();
+    }
 
     private async Task Load()
     {
@@ -465,7 +497,7 @@
         loading = false;
     }
 
-    private void ShowCreate()
+    private async Task ShowCreate()
     {
         isEditing = false; editingId = null;
         formNombre = ""; formTipo = "OTRO"; formCuit = ""; formTelefono = ""; formEmail = ""; formDireccion = ""; formNotas = "";
@@ -473,10 +505,12 @@
         formLocalidad = ""; formCiudad = ""; formCp = ""; formCondicionIvaDefault = "";
         formCodigoInterno = null; formMapeoLink = "";
         formMapeoLat = null; formMapeoLng = null;
+        localidadesSugeridas = new();
         formIsActive = true; formError = null; showForm = true;
+        await Task.CompletedTask;
     }
 
-    private void ShowEdit(CafeClienteDto c)
+    private async Task ShowEdit(CafeClienteDto c)
     {
         isEditing = true; editingId = c.Id;
         formNombre = c.Nombre; formTipo = c.Tipo;
@@ -491,6 +525,8 @@
         formMapeoLink = c.MapeoLink ?? "";
         formMapeoLat = c.MapeoLat;
         formMapeoLng = c.MapeoLng;
+        // Pre-cargar localidades sugeridas segun la provincia del cliente
+        localidadesSugeridas = await CpService.GetLocalidadesAsync(formCiudad);
         formIsActive = c.IsActive; formError = null; showForm = true;
     }
 
