@@ -15,7 +15,7 @@ public class CafeCombosController : ControllerBase
 {
     private readonly AppDbContext _db;
     private static readonly string[] FormatosValidos = { "1KG", "MEDIO", "CUARTO", "UNIT" };
-    private static readonly string[] MoliendasValidas = { "EN GRANOS", "MOLIDO FILTRO", "MOLIDO ESPRESS" };
+    private static readonly string[] MoliendasValidas = { "EN GRANOS", "MOLIDO FILTRO", "MOLIDO ESPRESS", "MINI EXPRESS" };
 
     public CafeCombosController(AppDbContext db) { _db = db; }
 
