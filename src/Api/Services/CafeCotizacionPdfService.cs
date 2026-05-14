@@ -236,6 +236,8 @@ public class CafeCotizacionPdfService
                             // Producto
                             table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).Text(t =>
                             {
+                                if (!string.IsNullOrEmpty(i.ProductoNav?.Sku))
+                                    t.Span($"{i.ProductoNav.Sku}  ").Bold().FontColor(Colors.Blue.Darken3).FontSize(8);
                                 t.Span(i.ProductoNombreSnapshot).SemiBold();
                                 if (i.EsDoyPack) t.Span("  d.p.").Bold().FontColor(Colors.Blue.Darken3);
                                 else if (i.EsEnvasePlateado) t.Span("  env. plat.").Bold().FontColor(Colors.Grey.Darken2);

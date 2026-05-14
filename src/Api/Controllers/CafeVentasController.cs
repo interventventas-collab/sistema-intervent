@@ -153,7 +153,8 @@ public class CafeVentasController : ControllerBase
     [HttpGet("{id:int}/pdf")]
     public async Task<IActionResult> GetPdf(int id)
     {
-        var v = await _db.CafeVentas.Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == id);
+        // Include ProductoNav para que el PDF pueda mostrar el SKU del producto al lado del nombre
+        var v = await _db.CafeVentas.Include(x => x.Items).ThenInclude(i => i.ProductoNav).FirstOrDefaultAsync(x => x.Id == id);
         if (v is null) return NotFound(new { error = "Venta no encontrada" });
         var cfg = await _db.CafeSettings.FindAsync(1);
 

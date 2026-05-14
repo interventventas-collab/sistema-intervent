@@ -754,6 +754,13 @@
                                                        value="@formItem.Cantidad" @onchange="@(e => OnItemCantidadChanged(i, e.Value?.ToString()))" />
                                             </td>
                                             <td>
+                                                @{
+                                                    var skuItem = productos?.FirstOrDefault(p => p.Id == ci.ProductoId)?.Sku;
+                                                }
+                                                @if (!string.IsNullOrEmpty(skuItem))
+                                                {
+                                                    <span style="font-family:monospace; font-size:0.7rem; color:#1d4ed8; font-weight:700; margin-right:0.3rem;">@skuItem</span>
+                                                }
                                                 <strong>@ci.ProductoNombre</strong>
                                                 @if (esCafe)
                                                 {
@@ -1246,6 +1253,13 @@
                             <tr>
                                 <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: center; font-weight: 700;">@i.Cantidad</td>
                                 <td style="border: 1px solid #d1d5db; padding: 4px 8px;">
+                                    @{
+                                        var skuPrint = productos?.FirstOrDefault(p => p.Id == i.ProductoId)?.Sku;
+                                    }
+                                    @if (!string.IsNullOrEmpty(skuPrint))
+                                    {
+                                        <span style="font-family:monospace; font-size:0.78rem; color:#1d4ed8; font-weight:700; margin-right:0.4rem;">@skuPrint</span>
+                                    }
                                     <strong>@i.ProductoNombre</strong>
                                     @if (i.EsDoyPack)
                                     {
