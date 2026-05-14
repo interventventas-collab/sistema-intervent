@@ -34,7 +34,7 @@ public class CafeVentasController : ControllerBase
         _emisorService = emisorService;
     }
 
-    private static CafeVentaDto Map(CafeVenta v) => new(
+    private static CafeVentaDto Map(CafeVenta v, bool esSaldoMigracion = false) => new(
         v.Id, v.Numero, v.Fecha,
         v.ClienteId, v.ClienteNombreSnapshot, v.ClienteTipoSnapshot, v.ClienteTelefonoSnapshot,
         v.Subtotal, v.Descuento, v.Total, v.CostoTotal, v.Margen,
@@ -66,7 +66,8 @@ public class CafeVentasController : ControllerBase
         v.ArcaCbteTipoNum,
         v.ArcaError,
         v.OrigenVentaId,
-        v.FacturadaComoVentaId);
+        v.FacturadaComoVentaId,
+        esSaldoMigracion);
 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null)
@@ -75,7 +76,14 @@ public class CafeVentasController : ControllerBase
         if (from.HasValue) q = q.Where(v => v.Fecha >= from.Value.Date);
         if (to.HasValue) q = q.Where(v => v.Fecha <= to.Value.Date);
         var list = await q.OrderByDescending(v => v.Fecha).ThenByDescending(v => v.Id).Take(200).ToListAsync();
-        return Ok(list.Select(Map).ToList());
+        // Set de VentaIds asociados a saldos de migracion — para marcar visualmente esas ventas
+        // como "🔄 Migración" en el listado del frontend.
+        var migrIds = await _db.CafeSaldosMigracion
+            .Where(s => s.VentaId != null && s.Estado == "asociado")
+            .Select(s => s.VentaId!.Value)
+            .ToListAsync();
+        var migrSet = new HashSet<int>(migrIds);
+        return Ok(list.Select(v => Map(v, migrSet.Contains(v.Id))).ToList());
     }
 
     public record VentaSaldoDto(int VentaId, decimal Total, decimal Pagado, decimal Saldo);

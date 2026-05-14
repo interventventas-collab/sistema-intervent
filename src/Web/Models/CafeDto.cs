@@ -282,6 +282,9 @@ public class CafeVentaDto
     public int? OrigenVentaId { get; set; }
     /// <summary>Si esta proforma fue convertida a factura, Id de la factura resultante.</summary>
     public int? FacturadaComoVentaId { get; set; }
+    /// <summary>True si esta venta fue creada como saldo de migración del sistema viejo
+    /// (hay un Cafe_SaldosMigracion.VentaId apuntando a ella). Para mostrar badge visual.</summary>
+    public bool EsSaldoMigracion { get; set; }
 }
 
 public class ConvertirAFacturaRequest

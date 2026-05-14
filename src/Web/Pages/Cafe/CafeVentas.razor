@@ -178,7 +178,13 @@
                                            title="@(tieneCae ? "Comprobante con CAE de ARCA — no se puede eliminar. Generá una Nota de Crédito." : "")"
                                            @onchange="@(e => ToggleSelect(v.Id, (bool)(e.Value ?? false)))" />
                                 </td>
-                                <td style="font-family: monospace; font-weight: 700;">@v.Numero</td>
+                                <td style="font-family: monospace; font-weight: 700;">
+                                    @v.Numero
+                                    @if (v.EsSaldoMigracion)
+                                    {
+                                        <div style="margin-top:0.15rem;"><span title="Esta venta fue creada como saldo de migración del sistema anterior" style="display:inline-block; padding:0.05rem 0.35rem; background:#fef3c7; color:#92400e; border-radius:4px; font-size:0.62rem; font-weight:800; letter-spacing:0.5px; font-family:inherit;">🔄 MIGRACIÓN</span></div>
+                                    }
+                                </td>
                                 <td>@v.Fecha.ToString("dd/MM/yyyy")</td>
                                 <td><strong>@(v.ClienteNombre ?? "—")</strong></td>
                                 <td>

@@ -264,7 +264,8 @@ public record CafeVentaDto(
     int? ArcaCbteTipoNum,
     string? ArcaError,
     int? OrigenVentaId = null,
-    int? FacturadaComoVentaId = null);
+    int? FacturadaComoVentaId = null,
+    bool EsSaldoMigracion = false);
 
 public class CafeCotizarItemRequest
 {
