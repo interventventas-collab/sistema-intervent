@@ -57,10 +57,10 @@
                        @onchange="@(e => filtroFechaHasta = string.IsNullOrEmpty(e.Value?.ToString()) ? null : DateTime.Parse(e.Value.ToString()!))" />
             </div>
             <div style="display: flex; flex-direction: column; gap: 0.15rem; flex: 1; min-width: 200px;">
-                <label style="font-size: 0.7rem; color: #6b7280; font-weight: 600;">Cliente / Nº / CUIT / dirección</label>
+                <label style="font-size: 0.7rem; color: #6b7280; font-weight: 600;">Buscar venta</label>
                 <input class="form-input" style="padding: 0.3rem 0.5rem; font-size: 0.85rem;"
                        @bind="filtroCliente" @bind:event="oninput"
-                       placeholder="Buscar..." />
+                       placeholder="🔍 Nº venta, código, nombre, CUIT, tel, email, dirección, localidad, CP..." />
             </div>
             <div style="display: flex; flex-direction: column; gap: 0.15rem; min-width: 120px;">
                 <label style="font-size: 0.7rem; color: #6b7280; font-weight: 600;">Tipo</label>
@@ -1541,8 +1541,25 @@
             {
                 var t = filtroCliente.Trim();
                 bool h(string? s) => !string.IsNullOrEmpty(s) && s.Contains(t, StringComparison.OrdinalIgnoreCase);
-                q = q.Where(v => h(v.Numero) || h(v.ClienteNombre) || h(v.ClienteRazonSocial)
-                    || h(v.ClienteCuit) || h(v.ClienteDireccion) || h(v.ClienteLocalidad));
+                // Construyo un dict por ClienteId para enriquecer la busqueda con campos que NO
+                // están en el snapshot de la venta (email, código, código interno).
+                var clientesById = clientes?.ToDictionary(c => c.Id, c => c);
+                q = q.Where(v =>
+                {
+                    // Match contra los campos snapshot de la venta (rápido, sin lookup)
+                    if (h(v.Numero) || h(v.ClienteNombre) || h(v.ClienteRazonSocial)
+                        || h(v.ClienteCuit) || h(v.ClienteDireccion) || h(v.ClienteLocalidad)
+                        || h(v.ClienteTelefono) || h(v.ClienteCiudad) || h(v.ClienteCp)
+                        || h(v.ClienteDomicilioEntrega)) return true;
+                    // Match contra campos del cliente vivo que no están en el snapshot
+                    if (v.ClienteId.HasValue && clientesById is not null
+                        && clientesById.TryGetValue(v.ClienteId.Value, out var c))
+                    {
+                        if (h(c.Email) || h(c.Codigo)) return true;
+                        if (c.CodigoInterno.HasValue && c.CodigoInterno.Value.ToString().Contains(t)) return true;
+                    }
+                    return false;
+                });
             }
             if (filtroTipo != "TODOS") q = q.Where(v => v.TipoComprobante == filtroTipo);
             if (filtroEstado != "TODOS") q = q.Where(v => v.Estado == filtroEstado);
