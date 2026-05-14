@@ -39,6 +39,33 @@
             </div>
         }
 
+        @* Asociaciones recientes de la sesion — un mini-historial visible mientras trabajas *@
+        @if (asociacionesRecientes.Count > 0)
+        {
+            <div style="background:#f0fdf4; border:1px solid #86efac; border-radius:6px; padding:0.4rem 0.6rem; margin-bottom:0.5rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.3rem;">
+                    <span style="font-size:0.72rem; color:#15803d; font-weight:700;">✅ ASOCIADOS EN ESTA SESIÓN (@asociacionesRecientes.Count)</span>
+                    <button class="btn" style="font-size:0.7rem; background:transparent; border:none; color:#15803d; cursor:pointer;" @onclick="() => asociacionesRecientes.Clear()" title="Limpiar la lista visual (no deshace los asociados)">× ocultar</button>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:0.2rem; max-height:140px; overflow-y:auto;">
+                    @foreach (var r in asociacionesRecientes.AsEnumerable().Reverse().Take(10))
+                    {
+                        <div style="display:flex; justify-content:space-between; align-items:center; padding:0.2rem 0.4rem; background:white; border-radius:4px; font-size:0.78rem;">
+                            <span style="color:#374151; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                                <span style="color:#9ca3af; font-size:0.7rem;">@r.Hora.ToString("HH:mm")</span>
+                                · <strong>@r.NombreOriginal</strong>
+                                → <span style="color:#15803d;">@r.ClienteNombre</span>
+                            </span>
+                            <span style="display:flex; gap:0.5rem; align-items:center; flex-shrink:0;">
+                                <span style="font-family:monospace; color:#1d4ed8; font-size:0.72rem;">@r.VentaNumero</span>
+                                <span style="font-weight:700; color:#065f46;">$@r.Monto.ToString("N0")</span>
+                            </span>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
         @* Tabs *@
         <div style="display:flex; gap:0.3rem; border-bottom:1px solid #e5e7eb; margin-bottom:0.5rem;">
             @foreach (var t in new[] { ("pendiente", "🟡 Pendientes"), ("asociado", "✅ Asociados"), ("ignorado", "🗑 Ignorados") })
@@ -316,6 +343,11 @@
     private string asociarNotas = "";
     private bool asociando;
 
+    // Historial visual de las asociaciones hechas en esta sesion del browser.
+    // Se muestra arriba de la tabla mientras vas trabajando — no persiste al recargar.
+    private record AsociacionReciente(string NombreOriginal, string ClienteNombre, string VentaNumero, decimal Monto, DateTime Hora);
+    private List<AsociacionReciente> asociacionesRecientes = new();
+
     // Debounce búsqueda
     private System.Threading.CancellationTokenSource? _debounceCts;
 
@@ -535,6 +567,13 @@
             if (r is not null)
             {
                 ToastService.Success($"Asociado. Venta {r.VentaNumero} creada por ${asociandoSaldo.Saldo:N2}");
+                // Sumamos al historial visual de la sesion
+                asociacionesRecientes.Add(new AsociacionReciente(
+                    asociandoSaldo.RazonSocialOriginal,
+                    clienteNombreElegido ?? "(sin nombre)",
+                    r.VentaNumero,
+                    asociandoSaldo.Saldo,
+                    DateTime.Now));
                 CerrarAsociar();
                 await CargarTodo();
             }
