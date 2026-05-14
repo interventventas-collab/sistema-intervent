@@ -1965,7 +1965,9 @@ else
                 lng = s.Longitude,
                 label = (i + 1).ToString(),
                 color = ColorFor(EffectiveKey(s)),
-                popupHtml = $"<div style='font-size:0.8rem;'><strong>{System.Net.WebUtility.HtmlEncode(s.ReceiverName ?? "—")}</strong><br/>{System.Net.WebUtility.HtmlEncode(s.AddressLine ?? "")}<br/><em>{System.Net.WebUtility.HtmlEncode(s.City ?? "")}</em></div>"
+                // ME1 = cuadrado, Flex = círculo. Las paradas manuales/favoritos = triángulo (más abajo).
+                shape = s.Mode == "me1" ? "square" : "circle",
+                popupHtml = $"<div style='font-size:0.8rem;'><strong>{System.Net.WebUtility.HtmlEncode(s.ReceiverName ?? "—")}</strong>{(s.Mode == "me1" ? " <span style='background:#fce7f3;color:#9d174d;padding:0 0.3rem;border-radius:3px;font-size:0.65rem;font-weight:800;'>ME1</span>" : "")}<br/>{System.Net.WebUtility.HtmlEncode(s.AddressLine ?? "")}<br/><em>{System.Net.WebUtility.HtmlEncode(s.City ?? "")}</em></div>"
             }));
         }
         // Stops (incluye los Flex importados + favoritos + manuales)
