@@ -1,0 +1,578 @@
+@page "/cafe/saldos"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+
+<div class="card">
+    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+        <h3 style="margin:0;">💰 Saldos migración (sistema anterior)</h3>
+        <div style="display:flex; gap:0.4rem;">
+            <button class="btn btn-secondary" style="font-size:0.85rem;" @onclick="() => showImportModal = true">
+                📥 Importar Excel
+            </button>
+        </div>
+    </div>
+    <div class="card-body" style="padding:0.5rem;">
+        @if (stats is not null)
+        {
+            <div style="display:flex; gap:0.5rem; margin-bottom:0.5rem; flex-wrap:wrap;">
+                <div style="flex:1; min-width:140px; padding:0.5rem 0.8rem; background:#fef3c7; border:1px solid #fcd34d; border-radius:6px;">
+                    <div style="font-size:0.72rem; color:#92400e; font-weight:700;">PENDIENTES</div>
+                    <div style="font-size:1.1rem; font-weight:700; color:#451a03;">@stats.Pendientes</div>
+                    <div style="font-size:0.75rem; color:#92400e;">$@stats.SaldoPendiente.ToString("N0")</div>
+                </div>
+                <div style="flex:1; min-width:140px; padding:0.5rem 0.8rem; background:#dcfce7; border:1px solid #86efac; border-radius:6px;">
+                    <div style="font-size:0.72rem; color:#166534; font-weight:700;">ASOCIADOS</div>
+                    <div style="font-size:1.1rem; font-weight:700; color:#14532d;">@stats.Asociados</div>
+                    <div style="font-size:0.75rem; color:#166534;">$@stats.SaldoAsociado.ToString("N0")</div>
+                </div>
+                <div style="flex:1; min-width:140px; padding:0.5rem 0.8rem; background:#f3f4f6; border:1px solid #d1d5db; border-radius:6px;">
+                    <div style="font-size:0.72rem; color:#4b5563; font-weight:700;">IGNORADOS</div>
+                    <div style="font-size:1.1rem; font-weight:700; color:#1f2937;">@stats.Ignorados</div>
+                </div>
+                <div style="flex:1; min-width:140px; padding:0.5rem 0.8rem; background:#dbeafe; border:1px solid #93c5fd; border-radius:6px;">
+                    <div style="font-size:0.72rem; color:#1e40af; font-weight:700;">TOTAL</div>
+                    <div style="font-size:1.1rem; font-weight:700; color:#172554;">@stats.Total</div>
+                    <div style="font-size:0.75rem; color:#1e40af;">$@stats.SaldoTotal.ToString("N0")</div>
+                </div>
+            </div>
+        }
+
+        @* Tabs *@
+        <div style="display:flex; gap:0.3rem; border-bottom:1px solid #e5e7eb; margin-bottom:0.5rem;">
+            @foreach (var t in new[] { ("pendiente", "🟡 Pendientes"), ("asociado", "✅ Asociados"), ("ignorado", "🗑 Ignorados") })
+            {
+                var key = t.Item1; var label = t.Item2;
+                <button class="btn" style="background:@(tabActivo == key ? "white" : "transparent"); border:1px solid @(tabActivo == key ? "#d1d5db" : "transparent"); border-bottom:none; border-radius:6px 6px 0 0; color:#374151; font-weight:@(tabActivo == key ? "700" : "500"); padding:0.35rem 0.7rem; font-size:0.85rem;"
+                        @onclick="() => CambiarTab(key)">
+                    @label
+                </button>
+            }
+            <div style="flex:1; display:flex; justify-content:flex-end; align-items:center;">
+                <input class="form-input" placeholder="🔍 Buscar por razón social, CUIT, tag..." style="width:300px; font-size:0.85rem; padding:0.3rem 0.5rem;"
+                       @bind="filtroQ" @bind:event="oninput" @bind:after="DebounceCargar" />
+            </div>
+        </div>
+
+        @if (loading)
+        {
+            <p class="text-muted" style="padding:1rem;">Cargando...</p>
+        }
+        else if (saldos is null || saldos.Count == 0)
+        {
+            <div style="padding:2rem; text-align:center; color:#6b7280;">
+                <div style="font-size:2rem;">📭</div>
+                @if (tabActivo == "pendiente")
+                {
+                    <div style="margin-top:0.5rem;">No hay saldos pendientes. Importá un Excel arriba para arrancar.</div>
+                }
+                else
+                {
+                    <div style="margin-top:0.5rem;">Sin saldos @tabActivo.</div>
+                }
+            </div>
+        }
+        else
+        {
+            <div style="overflow-x:auto;">
+                <table class="table table-compact" style="font-size:0.85rem;">
+                    <thead>
+                        <tr>
+                            <th>Razón social original</th>
+                            <th style="text-align:center;">Doc</th>
+                            <th style="text-align:center;">IVA</th>
+                            <th style="text-align:right;">Saldo</th>
+                            @if (tabActivo == "asociado")
+                            {
+                                <th>Cliente asociado</th>
+                                <th>Venta</th>
+                            }
+                            <th style="text-align:right; width:280px;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var s in saldos)
+                        {
+                            <tr>
+                                <td>
+                                    <div style="font-weight:600;">@s.RazonSocialOriginal</div>
+                                    @if (!string.IsNullOrEmpty(s.Notas))
+                                    { <div style="font-size:0.7rem; color:#9ca3af;">📝 @s.Notas</div> }
+                                </td>
+                                <td style="text-align:center; font-size:0.78rem; font-family:monospace;">
+                                    @if (!string.IsNullOrEmpty(s.NroDocumento))
+                                    {
+                                        <div>@s.TipoDocumento</div>
+                                        <div style="color:#6b7280;">@s.NroDocumento</div>
+                                    }
+                                    else
+                                    {
+                                        <span style="color:#9ca3af;">—</span>
+                                    }
+                                </td>
+                                <td style="text-align:center;"><span class="badge badge-secondary" style="font-size:0.7rem;">@(s.CondicionIva ?? "—")</span></td>
+                                <td style="text-align:right; font-weight:700;">@s.Moneda @s.Saldo.ToString("N2")</td>
+                                @if (tabActivo == "asociado")
+                                {
+                                    <td>
+                                        <div style="font-weight:600;">@s.ClienteNombre</div>
+                                    </td>
+                                    <td>
+                                        <span style="font-family:monospace; font-size:0.78rem; color:#1d4ed8;">@s.VentaNumero</span>
+                                    </td>
+                                }
+                                <td style="text-align:right;">
+                                    @if (s.Estado == "pendiente")
+                                    {
+                                        <button class="btn btn-primary" style="font-size:0.75rem; margin-right:0.2rem;" @onclick="() => AbrirAsociar(s)">🔗 Asociar a cliente</button>
+                                        <button class="btn btn-secondary" style="font-size:0.75rem;" @onclick="() => Ignorar(s.Id)" title="Marcar como ignorado">🗑</button>
+                                    }
+                                    else if (s.Estado == "asociado")
+                                    {
+                                        <button class="btn btn-secondary" style="font-size:0.75rem;" @onclick="() => Reactivar(s.Id)" title="Volver a pendiente (la venta creada queda, hay que borrarla a mano si querés)">↩ Reactivar</button>
+                                    }
+                                    else if (s.Estado == "ignorado")
+                                    {
+                                        <button class="btn btn-secondary" style="font-size:0.75rem;" @onclick="() => Reactivar(s.Id)">↩ Reactivar</button>
+                                        <button class="btn btn-danger" style="font-size:0.75rem;" @onclick="() => EliminarDef(s.Id)" title="Eliminar definitivamente">×</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@* ===== Modal: Importar Excel ===== *@
+@if (showImportModal)
+{
+    <div class="modal-overlay" @onclick="() => showImportModal = false">
+        <div class="modal-card modal-medium" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3 style="margin:0;">📥 Importar saldos desde Excel</h3>
+                <button class="btn-close" @onclick="() => showImportModal = false">&times;</button>
+            </div>
+            <div class="modal-body" style="font-size:0.9rem;">
+                <p>Subí el Excel exportado de Contabilium con la hoja <strong>SaldosClientes</strong> y columnas:</p>
+                <code style="font-size:0.78rem; color:#374151; display:block; padding:0.3rem 0.5rem; background:#f3f4f6; border-radius:4px; margin-bottom:0.5rem;">Razon Social · Tags · Tipo Documento · Nro Documento · Condicion IVA · Saldo · Moneda</code>
+                <InputFile OnChange="HandleFileSelected" accept=".xlsx" class="form-input" style="font-size:0.85rem;" />
+                @if (parsedItems is not null)
+                {
+                    <div style="margin-top:0.8rem; padding:0.5rem; background:#ecfdf5; border:1px solid #6ee7b7; border-radius:6px;">
+                        <strong>Detectados @parsedItems.Count saldos, total $@parsedItems.Sum(i => i.Saldo).ToString("N0")</strong>
+                        <div style="margin-top:0.4rem; max-height:160px; overflow-y:auto; font-size:0.78rem; color:#065f46;">
+                            @foreach (var it in parsedItems.Take(8))
+                            {
+                                <div>· @it.RazonSocialOriginal — $@it.Saldo.ToString("N0")</div>
+                            }
+                            @if (parsedItems.Count > 8)
+                            {
+                                <div style="color:#9ca3af;">... y @(parsedItems.Count - 8) más</div>
+                            }
+                        </div>
+                        <label style="display:flex; align-items:center; gap:0.3rem; margin-top:0.6rem; font-size:0.82rem;">
+                            <input type="checkbox" @bind="reemplazarPendientes" />
+                            Reemplazar los pendientes existentes (borra los que estén en estado "pendiente" antes de cargar)
+                        </label>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showImportModal = false">Cancelar</button>
+                <button class="btn btn-primary" disabled="@(parsedItems is null || parsedItems.Count == 0 || importing)" @onclick="EjecutarImport">
+                    @(importing ? "Importando..." : $"Importar {(parsedItems?.Count ?? 0)} saldos")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ===== Modal: Asociar a cliente ===== *@
+@if (asociandoSaldo is not null)
+{
+    var s = asociandoSaldo;
+    <div class="modal-overlay" @onclick="CerrarAsociar">
+        <div class="modal-card modal-large" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background:#dbeafe;">
+                <h3 style="margin:0;">🔗 Asociar saldo a cliente</h3>
+                <button class="btn-close" @onclick="CerrarAsociar">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="background:#fff7ed; border:1px solid #fed7aa; border-radius:6px; padding:0.5rem 0.8rem; margin-bottom:0.7rem;">
+                    <div style="font-size:0.72rem; color:#9a3412; text-transform:uppercase; font-weight:700;">Saldo del sistema anterior</div>
+                    <div style="font-weight:700;">@s.RazonSocialOriginal</div>
+                    <div style="font-size:0.85rem; color:#7c2d12;">
+                        @if (!string.IsNullOrEmpty(s.NroDocumento)) { <span>@s.TipoDocumento @s.NroDocumento · </span> }
+                        @s.CondicionIva · <strong>@s.Moneda @s.Saldo.ToString("N2")</strong>
+                    </div>
+                </div>
+
+                @if (sugerencias is not null && sugerencias.Count > 0)
+                {
+                    <div style="margin-bottom:0.7rem;">
+                        <div style="font-size:0.78rem; font-weight:700; color:#15803d; margin-bottom:0.3rem;">✨ Sugerencias del sistema:</div>
+                        @foreach (var sug in sugerencias)
+                        {
+                            <div style="display:flex; gap:0.4rem; padding:0.35rem 0.5rem; border:1px solid #86efac; background:#f0fdf4; border-radius:4px; margin-bottom:0.25rem; align-items:center; cursor:pointer;"
+                                 @onclick="() => SeleccionarCliente(sug.Id, sug.Nombre)"
+                                 style:cursor="pointer">
+                                <span style="font-weight:600; flex:1;">@sug.Nombre</span>
+                                @if (!string.IsNullOrEmpty(sug.Cuit)) { <span style="font-family:monospace; font-size:0.78rem; color:#6b7280;">@sug.Cuit</span> }
+                                <span style="font-size:0.7rem; padding:0.1rem 0.35rem; background:#dcfce7; color:#15803d; border-radius:999px;">@sug.Motivo</span>
+                                <button class="btn btn-primary" style="font-size:0.72rem;" @onclick:stopPropagation="true" @onclick="() => SeleccionarCliente(sug.Id, sug.Nombre)">Elegir</button>
+                            </div>
+                        }
+                    </div>
+                }
+
+                <div style="margin-bottom:0.5rem;">
+                    <label class="form-label">Buscar cliente</label>
+                    <input class="form-input" placeholder="🔍 Nombre, CUIT, código, teléfono..." style="font-size:0.85rem;"
+                           @bind="clienteSearch" @bind:event="oninput" />
+                </div>
+                <div style="max-height:300px; overflow-y:auto; border:1px solid #e5e7eb; border-radius:6px;">
+                    @if (clientes is null)
+                    {
+                        <p class="text-muted" style="padding:0.5rem;">Cargando clientes...</p>
+                    }
+                    else
+                    {
+                        @foreach (var c in FiltrarClientes().Take(40))
+                        {
+                            var sel = clienteIdElegido == c.Id;
+                            <div style="display:flex; gap:0.5rem; padding:0.35rem 0.5rem; border-bottom:1px solid #f3f4f6; align-items:center; cursor:pointer; background:@(sel ? "#dbeafe" : "white");"
+                                 @onclick="() => SeleccionarCliente(c.Id, c.Nombre)">
+                                <span style="flex:1;">
+                                    @if (c.CodigoInterno.HasValue) { <span style="font-size:0.7rem; padding:0 0.3rem; background:#e0e7ff; color:#1e40af; border-radius:3px; margin-right:0.3rem;">#@c.CodigoInterno</span> }
+                                    <strong>@c.Nombre</strong>
+                                    @if (!string.IsNullOrEmpty(c.RazonSocial)) { <span style="color:#6b7280;"> / @c.RazonSocial</span> }
+                                </span>
+                                @if (!string.IsNullOrEmpty(c.Cuit)) { <span style="font-family:monospace; font-size:0.75rem; color:#6b7280;">@c.Cuit</span> }
+                                @if (sel) { <span style="color:#15803d; font-weight:700;">✓</span> }
+                            </div>
+                        }
+                        @if (!FiltrarClientes().Any())
+                        {
+                            <p class="text-muted" style="padding:0.5rem;">No hay clientes que matcheen.</p>
+                        }
+                    }
+                </div>
+
+                @if (clienteIdElegido.HasValue)
+                {
+                    <div style="margin-top:0.7rem; padding:0.5rem; background:#dcfce7; border:1px solid #86efac; border-radius:6px;">
+                        <div style="font-size:0.78rem; font-weight:700; color:#15803d;">Cliente elegido: <strong>@clienteNombreElegido</strong></div>
+                        <div style="margin-top:0.4rem; display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
+                            <label style="font-size:0.78rem;">Fecha de la venta:</label>
+                            <input type="date" class="form-input" style="font-size:0.85rem; padding:0.2rem 0.4rem;"
+                                   value="@asociarFecha.ToString("yyyy-MM-dd")"
+                                   @onchange="@(e => asociarFecha = DateTime.Parse(e.Value!.ToString()!))" />
+                            <label style="font-size:0.78rem;">Notas:</label>
+                            <input class="form-input" style="flex:1; min-width:200px; font-size:0.85rem; padding:0.2rem 0.4rem;"
+                                   placeholder="Opcional"
+                                   @bind="asociarNotas" />
+                        </div>
+                        <div style="font-size:0.72rem; color:#6b7280; margin-top:0.3rem;">
+                            Se va a crear una venta tipo <strong>X (comprobante interno)</strong> con monto <strong>$@s.Saldo.ToString("N2")</strong>, no pagada, condición de pago "Cta. Corriente".
+                        </div>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CerrarAsociar">Cancelar</button>
+                <button class="btn btn-primary" disabled="@(!clienteIdElegido.HasValue || asociando)" @onclick="EjecutarAsociar">
+                    @(asociando ? "Asociando..." : "✓ Asociar y crear venta X")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string tabActivo = "pendiente";
+    private string filtroQ = "";
+    private List<CafeSaldoMigracionDto>? saldos;
+    private CafeSaldosMigracionStatsDto? stats;
+    private bool loading = true;
+
+    // Import
+    private bool showImportModal;
+    private bool importing;
+    private bool reemplazarPendientes = false;
+    private List<CafeSaldoMigracionImportItem>? parsedItems;
+
+    // Asociar
+    private CafeSaldoMigracionDto? asociandoSaldo;
+    private List<CafeSaldoMigracionSugerenciaDto>? sugerencias;
+    private List<CafeClienteDto>? clientes;
+    private string clienteSearch = "";
+    private int? clienteIdElegido;
+    private string? clienteNombreElegido;
+    private DateTime asociarFecha = DateTime.Today;
+    private string asociarNotas = "";
+    private bool asociando;
+
+    // Debounce búsqueda
+    private System.Threading.CancellationTokenSource? _debounceCts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarTodo();
+    }
+
+    private async Task CargarTodo()
+    {
+        loading = true;
+        try
+        {
+            saldos = await Api.GetCafeSaldosMigracionAsync(tabActivo, string.IsNullOrWhiteSpace(filtroQ) ? null : filtroQ) ?? new();
+            stats = await Api.GetCafeSaldosMigracionStatsAsync();
+        }
+        catch { saldos = new(); }
+        finally { loading = false; }
+    }
+
+    private async Task CambiarTab(string tab)
+    {
+        tabActivo = tab;
+        await CargarTodo();
+    }
+
+    private async Task DebounceCargar()
+    {
+        _debounceCts?.Cancel();
+        _debounceCts = new();
+        var tok = _debounceCts.Token;
+        try
+        {
+            await Task.Delay(300, tok);
+            if (!tok.IsCancellationRequested) await CargarTodo();
+        }
+        catch (TaskCanceledException) { }
+    }
+
+    private async Task HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            var file = e.File;
+            using var ms = new MemoryStream();
+            await file.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024).CopyToAsync(ms);
+            ms.Position = 0;
+            parsedItems = ParseExcel(ms);
+            if (parsedItems is null || parsedItems.Count == 0)
+                ToastService.Error("No se encontraron filas en el Excel (¿tiene la hoja SaldosClientes?)");
+        }
+        catch (Exception ex) { ToastService.Error("Error leyendo el Excel: " + ex.Message); }
+    }
+
+    /// <summary>Lee un xlsx en memoria y arma la lista de items. Lee la primera hoja
+    /// y mapea por cabecera: 'Razon Social', 'Tags', 'Tipo Documento', 'Nro Documento',
+    /// 'Condicion IVA', 'Saldo', 'Moneda'. Tolera columnas extra y orden diferente.</summary>
+    private List<CafeSaldoMigracionImportItem>? ParseExcel(Stream stream)
+    {
+        try
+        {
+            // Parser super-simple usando ClosedXML si está, sino DocumentFormat.OpenXml
+            // Pero al estar en Blazor WASM no tenemos esas libs por default — uso
+            // System.IO.Compression para abrir el zip y leer el XML de shared strings + worksheet.
+            // Para simplificar, este parser maneja solo el formato típico de Contabilium.
+            var items = new List<CafeSaldoMigracionImportItem>();
+            using var zip = new System.IO.Compression.ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Read);
+            // 1) Leer sharedStrings.xml
+            var sharedStrings = new List<string>();
+            var ssEntry = zip.GetEntry("xl/sharedStrings.xml");
+            if (ssEntry is not null)
+            {
+                using var ssStream = ssEntry.Open();
+                var xss = System.Xml.Linq.XDocument.Load(ssStream);
+                var ns = xss.Root!.GetDefaultNamespace();
+                foreach (var si in xss.Root!.Elements(ns + "si"))
+                {
+                    var sb = new System.Text.StringBuilder();
+                    foreach (var t in si.Descendants(ns + "t")) sb.Append(t.Value);
+                    sharedStrings.Add(sb.ToString());
+                }
+            }
+            // 2) Leer la primera worksheet (sheet1.xml)
+            var sheetEntry = zip.Entries.FirstOrDefault(e => e.FullName.StartsWith("xl/worksheets/sheet") && e.FullName.EndsWith(".xml"));
+            if (sheetEntry is null) return items;
+            using var sheetStream = sheetEntry.Open();
+            var sx = System.Xml.Linq.XDocument.Load(sheetStream);
+            var ns2 = sx.Root!.GetDefaultNamespace();
+            var rows = sx.Root!.Element(ns2 + "sheetData")!.Elements(ns2 + "row").ToList();
+            if (rows.Count == 0) return items;
+
+            string? Val(System.Xml.Linq.XElement cell)
+            {
+                var t = cell.Attribute("t")?.Value;
+                var vEl = cell.Element(ns2 + "v");
+                if (vEl is null)
+                {
+                    // Inline string
+                    var isEl = cell.Element(ns2 + "is");
+                    if (isEl is not null)
+                    {
+                        var sb = new System.Text.StringBuilder();
+                        foreach (var ti in isEl.Descendants(ns2 + "t")) sb.Append(ti.Value);
+                        return sb.ToString();
+                    }
+                    return null;
+                }
+                var v = vEl.Value;
+                if (t == "s" && int.TryParse(v, out var sidx) && sidx >= 0 && sidx < sharedStrings.Count)
+                    return sharedStrings[sidx];
+                return v;
+            }
+
+            // Header
+            var headerCells = rows[0].Elements(ns2 + "c").Select(c => Val(c) ?? "").ToList();
+            int idxRS = headerCells.FindIndex(h => h.Contains("Razon", StringComparison.OrdinalIgnoreCase));
+            int idxTag = headerCells.FindIndex(h => h.Contains("Tag", StringComparison.OrdinalIgnoreCase));
+            int idxTD = headerCells.FindIndex(h => h.Contains("Tipo", StringComparison.OrdinalIgnoreCase) && h.Contains("Doc", StringComparison.OrdinalIgnoreCase));
+            int idxND = headerCells.FindIndex(h => h.Contains("Nro", StringComparison.OrdinalIgnoreCase));
+            int idxIva = headerCells.FindIndex(h => h.Contains("IVA", StringComparison.OrdinalIgnoreCase));
+            int idxSaldo = headerCells.FindIndex(h => h.Contains("Saldo", StringComparison.OrdinalIgnoreCase));
+            int idxMon = headerCells.FindIndex(h => h.Contains("Moneda", StringComparison.OrdinalIgnoreCase));
+            if (idxRS < 0 || idxSaldo < 0) return items;
+
+            // Data rows
+            foreach (var row in rows.Skip(1))
+            {
+                var cells = row.Elements(ns2 + "c").Select(c => Val(c) ?? "").ToList();
+                string Get(int i) => (i >= 0 && i < cells.Count) ? cells[i] : "";
+                var rs = Get(idxRS).Trim();
+                if (string.IsNullOrEmpty(rs)) continue;
+                if (!decimal.TryParse(Get(idxSaldo), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var saldo))
+                    decimal.TryParse(Get(idxSaldo), out saldo);
+                if (saldo == 0) continue;
+                items.Add(new CafeSaldoMigracionImportItem
+                {
+                    RazonSocialOriginal = rs,
+                    Tags = string.IsNullOrWhiteSpace(Get(idxTag)) ? null : Get(idxTag).Trim(),
+                    TipoDocumento = string.IsNullOrWhiteSpace(Get(idxTD)) ? null : Get(idxTD).Trim(),
+                    NroDocumento = string.IsNullOrWhiteSpace(Get(idxND)) ? null : Get(idxND).Trim(),
+                    CondicionIva = string.IsNullOrWhiteSpace(Get(idxIva)) ? null : Get(idxIva).Trim(),
+                    Saldo = saldo,
+                    Moneda = string.IsNullOrWhiteSpace(Get(idxMon)) ? "$" : Get(idxMon).Trim()
+                });
+            }
+            return items;
+        }
+        catch { return null; }
+    }
+
+    private async Task EjecutarImport()
+    {
+        if (parsedItems is null || parsedItems.Count == 0) return;
+        importing = true;
+        try
+        {
+            var r = await Api.ImportarSaldosMigracionAsync(parsedItems, reemplazarPendientes);
+            if (r is not null)
+            {
+                ToastService.Success($"{parsedItems.Count} saldos importados");
+                showImportModal = false;
+                parsedItems = null;
+                await CargarTodo();
+            }
+            else ToastService.Error("Error en la importación");
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { importing = false; }
+    }
+
+    private async Task AbrirAsociar(CafeSaldoMigracionDto s)
+    {
+        asociandoSaldo = s;
+        clienteIdElegido = null;
+        clienteNombreElegido = null;
+        clienteSearch = "";
+        asociarFecha = DateTime.Today;
+        asociarNotas = "";
+        // Cargar sugerencias y clientes
+        try { sugerencias = await Api.GetSaldoMigracionSugerenciasAsync(s.Id) ?? new(); } catch { sugerencias = new(); }
+        if (clientes is null)
+        {
+            try { clientes = (await Api.GetCafeClientesAsync())?.Where(c => c.IsActive).ToList() ?? new(); }
+            catch { clientes = new(); }
+        }
+    }
+
+    private void CerrarAsociar() { asociandoSaldo = null; sugerencias = null; }
+
+    private void SeleccionarCliente(int id, string nombre)
+    {
+        clienteIdElegido = id;
+        clienteNombreElegido = nombre;
+    }
+
+    private IEnumerable<CafeClienteDto> FiltrarClientes()
+    {
+        if (clientes is null) return Enumerable.Empty<CafeClienteDto>();
+        if (string.IsNullOrWhiteSpace(clienteSearch)) return clientes.OrderBy(c => c.CodigoInterno ?? int.MaxValue).ThenBy(c => c.Nombre);
+        var t = clienteSearch.Trim();
+        bool h(string? s) => !string.IsNullOrEmpty(s) && s.Contains(t, StringComparison.OrdinalIgnoreCase);
+        return clientes.Where(c =>
+            h(c.Nombre) || h(c.RazonSocial) || h(c.Cuit) || h(c.Telefono) || h(c.Email)
+            || h(c.Direccion) || h(c.Localidad) || h(c.Codigo)
+            || (c.CodigoInterno.HasValue && c.CodigoInterno.Value.ToString().Contains(t))
+        ).OrderBy(c => c.CodigoInterno ?? int.MaxValue).ThenBy(c => c.Nombre);
+    }
+
+    private async Task EjecutarAsociar()
+    {
+        if (asociandoSaldo is null || !clienteIdElegido.HasValue) return;
+        asociando = true;
+        try
+        {
+            var r = await Api.AsociarSaldoMigracionAsync(asociandoSaldo.Id, clienteIdElegido.Value,
+                asociarFecha, string.IsNullOrWhiteSpace(asociarNotas) ? null : asociarNotas);
+            if (r is not null)
+            {
+                ToastService.Success($"Asociado. Venta {r.VentaNumero} creada por ${asociandoSaldo.Saldo:N2}");
+                CerrarAsociar();
+                await CargarTodo();
+            }
+            else ToastService.Error("Error asociando");
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { asociando = false; }
+    }
+
+    private async Task Ignorar(int id)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "¿Marcar este saldo como ignorado?")) return;
+        try
+        {
+            await Api.IgnorarSaldoMigracionAsync(id, null);
+            await CargarTodo();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private async Task Reactivar(int id)
+    {
+        try
+        {
+            await Api.ReactivarSaldoMigracionAsync(id);
+            await CargarTodo();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private async Task EliminarDef(int id)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "¿Eliminar definitivamente este saldo de la lista? No se puede deshacer.")) return;
+        try
+        {
+            await Api.DeleteSaldoMigracionAsync(id);
+            await CargarTodo();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+}

@@ -73,6 +73,7 @@ public class AppDbContext : DbContext
     public DbSet<CafeSetting> CafeSettings => Set<CafeSetting>();
     public DbSet<CafeVenta> CafeVentas => Set<CafeVenta>();
     public DbSet<CafeVentaItem> CafeVentaItems => Set<CafeVentaItem>();
+    public DbSet<CafeSaldoMigracion> CafeSaldosMigracion => Set<CafeSaldoMigracion>();
     public DbSet<CafeCombo> CafeCombos => Set<CafeCombo>();
     public DbSet<CafeComboItem> CafeComboItems => Set<CafeComboItem>();
     public DbSet<CafeOem> CafeOems => Set<CafeOem>();

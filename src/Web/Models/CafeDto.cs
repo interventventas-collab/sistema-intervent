@@ -922,3 +922,63 @@ public class UpsertReglaPrecioRequest
     public int? MarcaId { get; set; }
     public decimal DescuentoPct { get; set; }
 }
+
+// --- Saldos migracion (saldos del sistema viejo a matchear con clientes) ---
+public class CafeSaldoMigracionDto
+{
+    public int Id { get; set; }
+    public string RazonSocialOriginal { get; set; } = "";
+    public string? Tags { get; set; }
+    public string? TipoDocumento { get; set; }
+    public string? NroDocumento { get; set; }
+    public string? CondicionIva { get; set; }
+    public decimal Saldo { get; set; }
+    public string Moneda { get; set; } = "$";
+    public string Estado { get; set; } = "pendiente";
+    public int? ClienteId { get; set; }
+    public string? ClienteNombre { get; set; }
+    public int? VentaId { get; set; }
+    public string? VentaNumero { get; set; }
+    public string? Notas { get; set; }
+    public DateTime FechaImport { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+public class CafeSaldosMigracionStatsDto
+{
+    public int Total { get; set; }
+    public int Pendientes { get; set; }
+    public int Asociados { get; set; }
+    public int Ignorados { get; set; }
+    public decimal SaldoPendiente { get; set; }
+    public decimal SaldoAsociado { get; set; }
+    public decimal SaldoTotal { get; set; }
+}
+
+public class CafeSaldoMigracionImportItem
+{
+    public string RazonSocialOriginal { get; set; } = "";
+    public string? Tags { get; set; }
+    public string? TipoDocumento { get; set; }
+    public string? NroDocumento { get; set; }
+    public string? CondicionIva { get; set; }
+    public decimal Saldo { get; set; }
+    public string? Moneda { get; set; }
+}
+
+public class CafeSaldoMigracionAsociarResultDto
+{
+    public int VentaId { get; set; }
+    public string VentaNumero { get; set; } = "";
+    public int ClienteId { get; set; }
+}
+
+public class CafeSaldoMigracionSugerenciaDto
+{
+    public int Id { get; set; }
+    public string Nombre { get; set; } = "";
+    public string? RazonSocial { get; set; }
+    public string? Cuit { get; set; }
+    public int? CodigoInterno { get; set; }
+    public string Motivo { get; set; } = "";
+}

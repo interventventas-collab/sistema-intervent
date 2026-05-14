@@ -408,6 +408,30 @@ public class ApiClient
     public async Task<AssistantChatResponse?> AssistantChatAsync(List<AssistantChatMessage> messages)
         => await PostAsync<AssistantChatResponse>("/api/assistant/chat", new AssistantChatRequest { Messages = messages });
 
+    // --- Cafe: Saldos migracion (saldos del sistema viejo a matchear con clientes) ---
+    public async Task<List<CafeSaldoMigracionDto>?> GetCafeSaldosMigracionAsync(string? estado = null, string? q = null)
+    {
+        var qs = new List<string>();
+        if (!string.IsNullOrEmpty(estado)) qs.Add($"estado={Uri.EscapeDataString(estado)}");
+        if (!string.IsNullOrEmpty(q)) qs.Add($"q={Uri.EscapeDataString(q)}");
+        var url = "/api/cafe/saldos-migracion" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+        return await GetAsync<List<CafeSaldoMigracionDto>>(url);
+    }
+    public async Task<CafeSaldosMigracionStatsDto?> GetCafeSaldosMigracionStatsAsync()
+        => await GetAsync<CafeSaldosMigracionStatsDto>("/api/cafe/saldos-migracion/stats");
+    public async Task<object?> ImportarSaldosMigracionAsync(List<CafeSaldoMigracionImportItem> items, bool reemplazarPendientes)
+        => await PostAsync<object>("/api/cafe/saldos-migracion/import", new { items, reemplazarPendientes });
+    public async Task<CafeSaldoMigracionAsociarResultDto?> AsociarSaldoMigracionAsync(int id, int clienteId, DateTime? fechaVenta, string? notas)
+        => await PostAsync<CafeSaldoMigracionAsociarResultDto>($"/api/cafe/saldos-migracion/{id}/asociar", new { clienteId, fechaVenta, notasInternas = notas });
+    public async Task<bool> IgnorarSaldoMigracionAsync(int id, string? notas)
+        => await PostAsync<object>($"/api/cafe/saldos-migracion/{id}/ignorar", new { notas }) is not null;
+    public async Task<bool> ReactivarSaldoMigracionAsync(int id)
+        => await PostAsync<object>($"/api/cafe/saldos-migracion/{id}/reactivar", new { }) is not null;
+    public async Task<List<CafeSaldoMigracionSugerenciaDto>?> GetSaldoMigracionSugerenciasAsync(int id)
+        => await GetAsync<List<CafeSaldoMigracionSugerenciaDto>>($"/api/cafe/saldos-migracion/{id}/sugerencias");
+    public async Task<bool> DeleteSaldoMigracionAsync(int id)
+        => await DeleteAsync($"/api/cafe/saldos-migracion/{id}");
+
     // --- Cafe: Clientes ---
     public async Task<List<CafeClienteDto>?> GetCafeClientesAsync()
         => await GetAsync<List<CafeClienteDto>>("/api/cafe/clientes");

@@ -3310,3 +3310,41 @@ IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId=1 AND MenuKey='cafe-de
     INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'cafe-depositos');
 GO
 
+
+-- ============================================================
+-- Cafe_SaldosMigracion: tabla para importar y administrar los
+-- saldos pendientes que vienen del sistema viejo (Contabilium).
+-- Cada fila empieza como "pendiente" y el usuario la asocia
+-- manualmente con un cliente de la base. Al asociar, se crea
+-- una venta tipo "X" con el monto como saldo de migracion.
+-- ============================================================
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_SaldosMigracion')
+BEGIN
+    CREATE TABLE Cafe_SaldosMigracion (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        RazonSocialOriginal NVARCHAR(500) NOT NULL,
+        Tags NVARCHAR(200) NULL,
+        TipoDocumento NVARCHAR(20) NULL,
+        NroDocumento NVARCHAR(20) NULL,
+        CondicionIva NVARCHAR(10) NULL,
+        Saldo DECIMAL(18,2) NOT NULL,
+        Moneda NVARCHAR(5) NOT NULL CONSTRAINT DF_CafeSaldosMig_Moneda DEFAULT '$',
+        Estado NVARCHAR(20) NOT NULL CONSTRAINT DF_CafeSaldosMig_Estado DEFAULT 'pendiente',
+        ClienteId INT NULL,
+        VentaId INT NULL,
+        Notas NVARCHAR(500) NULL,
+        FechaImport DATE NOT NULL CONSTRAINT DF_CafeSaldosMig_FechaImport DEFAULT CAST(GETDATE() AS DATE),
+        CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_CafeSaldosMig_Created DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT FK_CafeSaldosMig_Cliente FOREIGN KEY (ClienteId) REFERENCES Cafe_Clientes(Id),
+        CONSTRAINT FK_CafeSaldosMig_Venta FOREIGN KEY (VentaId) REFERENCES Cafe_Ventas(Id)
+    );
+    CREATE INDEX IX_CafeSaldosMig_Estado ON Cafe_SaldosMigracion(Estado);
+    CREATE INDEX IX_CafeSaldosMig_Cliente ON Cafe_SaldosMigracion(ClienteId);
+END
+GO
+
+-- Permiso menu
+IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId=1 AND MenuKey='cafe-saldos')
+    INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'cafe-saldos');
+GO
