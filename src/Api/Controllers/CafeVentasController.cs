@@ -1343,7 +1343,7 @@ public class CafeVentasController : ControllerBase
         return CondicionesPagoValidas.Contains(v) ? v : "EFECTIVO";
     }
 
-    private static readonly string[] MoliendasValidas = { "EN GRANOS", "MOLIDO FILTRO", "MOLIDO ESPRESS", "MINI EXPRESS" };
+    private static readonly string[] MoliendasValidas = { "EN GRANOS", "MOLIDO FILTRO", "MOLIDO ESPRESS", "MOLIDO MOKA", "MINI EXPRESS" };
     private static string? NormMolienda(string? m)
     {
         if (string.IsNullOrWhiteSpace(m)) return null;
