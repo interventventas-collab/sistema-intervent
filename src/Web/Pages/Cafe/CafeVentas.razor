@@ -90,6 +90,14 @@
                     <option value="PENDIENTE">⚠ ARCA pendiente</option>
                 </select>
             </div>
+            <div style="display: flex; flex-direction: column; gap: 0.15rem; min-width: 150px;">
+                <label style="font-size: 0.7rem; color: #6b7280; font-weight: 600;">Saldo</label>
+                <select class="form-input" style="padding: 0.3rem 0.5rem; font-size: 0.85rem;" @bind="filtroSaldo">
+                    <option value="TODOS">Todas</option>
+                    <option value="CON_SALDO">⏳ Con saldo pendiente</option>
+                    <option value="SIN_SALDO">✅ Sin saldo (pagadas)</option>
+                </select>
+            </div>
             @if (HayFiltrosActivos)
             {
                 <button class="btn btn-secondary" @onclick="LimpiarFiltros"
@@ -1532,6 +1540,7 @@
     private string filtroTipo = "TODOS";       // TODOS | X | PRO | FA | FB | FC
     private string filtroEstado = "TODOS";     // TODOS | emitido | anulado
     private string filtroCae = "TODOS";        // TODOS | CON_CAE | SIN_CAE | PENDIENTE
+    private string filtroSaldo = "TODOS";      // TODOS | CON_SALDO | SIN_SALDO
 
     /// <summary>Ventas pasadas por los filtros del listado. Si todos los filtros están vacíos/TODOS,
     /// devuelve la lista completa. Aplica AND entre filtros activos.</summary>
@@ -1572,6 +1581,17 @@
             if (filtroCae == "CON_CAE") q = q.Where(v => v.ArcaEstado == "autorizado");
             else if (filtroCae == "SIN_CAE") q = q.Where(v => v.ArcaEstado == "no_aplica");
             else if (filtroCae == "PENDIENTE") q = q.Where(v => v.ArcaEstado == "pendiente");
+            if (filtroSaldo != "TODOS")
+            {
+                // Si no tenemos el saldo cargado para una venta, asumimos que NO está pagada
+                // (saldo = Total). El usuario puede pisar manualmente con IsPaid pero ese caso
+                // queda fuera del filtro por simplicidad — el filtro mira el saldo real.
+                q = q.Where(v =>
+                {
+                    var s = saldosPorVenta.TryGetValue(v.Id, out var x) ? x : v.Total;
+                    return filtroSaldo == "CON_SALDO" ? s > 0.01m : s <= 0.01m;
+                });
+            }
             return q.ToList();
         }
     }
@@ -1579,12 +1599,14 @@
     private bool HayFiltrosActivos =>
         filtroFechaDesde.HasValue || filtroFechaHasta.HasValue
         || !string.IsNullOrWhiteSpace(filtroCliente)
-        || filtroTipo != "TODOS" || filtroEstado != "TODOS" || filtroCae != "TODOS";
+        || filtroTipo != "TODOS" || filtroEstado != "TODOS" || filtroCae != "TODOS"
+        || filtroSaldo != "TODOS";
 
     private void LimpiarFiltros()
     {
         filtroFechaDesde = null; filtroFechaHasta = null;
         filtroCliente = ""; filtroTipo = "TODOS"; filtroEstado = "TODOS"; filtroCae = "TODOS";
+        filtroSaldo = "TODOS";
     }
     private List<CafeClienteDto>? clientes;
     private List<CafeProductoDto>? productos;
