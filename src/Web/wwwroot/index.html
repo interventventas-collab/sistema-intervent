@@ -129,7 +129,15 @@
                         const badgeHtml = extras > 0
                             ? `<div style="position:absolute;top:-6px;right:-8px;background:#dc2626;color:white;border:2px solid white;border-radius:999px;min-width:18px;height:18px;padding:0 4px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.62rem;box-shadow:0 1px 3px rgba(0,0,0,0.35);">+${extras}</div>`
                             : '';
-                        const wrapHtml = `<div style="position:relative;width:30px;height:30px;">${mainHtml}${badgeHtml}</div>`;
+                        // Si CUALQUIER item del cluster está sumado a la ruta de Google Maps,
+                        // envolvemos el marker con un aro verde para que se vea de un vistazo
+                        // cuáles ya tildaste. Match con el outline verde de la tarjeta lateral.
+                        const isInRoute = group.some(g => g.inRoute === true);
+                        const wrapShadow = isInRoute
+                            ? 'box-shadow: 0 0 0 2px white, 0 0 0 5px #16a34a;'
+                            : '';
+                        const wrapRadius = isTriangle ? '0' : (isSquare ? '4px' : '50%');
+                        const wrapHtml = `<div style="position:relative;width:30px;height:30px;${wrapShadow}border-radius:${wrapRadius};">${mainHtml}${badgeHtml}</div>`;
                         const icon = L.divIcon({
                             className: 'mapeo-marker',
                             html: wrapHtml,
