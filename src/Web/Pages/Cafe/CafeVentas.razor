@@ -770,21 +770,20 @@
                                                             <option value="MOLIDO MOKA">☕ MOLIDO MOKA</option>
                                                             <option value="MINI EXPRESS">🔸 MINI EXPRESS</option>
                                                         </select>
-                                                        @* Envase: 3 botones mutuamente excluyentes. Default = NEGRO si no se elige nada. *@
+                                                        @* Envase: dropdown con 3 opciones mutuamente excluyentes. Default = NEGRO. *@
                                                         @{
-                                                            string EnvBtn(bool sel, string colorOn) =>
-                                                                $"display:inline-flex; align-items:center; gap:0.2rem; padding:0.15rem 0.4rem; background:{(sel ? colorOn : "white")}; border:1px solid {(sel ? colorOn : "#d1d5db")}; color:{(sel ? "white" : "#6b7280")}; border-radius:4px; cursor:pointer; font-size:0.72rem; font-weight:700;";
-                                                            var esNegro = !formItem.EsDoyPack && !formItem.EsEnvasePlateado;
+                                                            var envaseSel = formItem.EsDoyPack ? "DOY_PACK"
+                                                                          : (formItem.EsEnvasePlateado ? "PLATEADO" : "NEGRO");
                                                         }
-                                                        <button type="button" style="@EnvBtn(esNegro, "#1f2937")"
-                                                                title="Envase negro (default)"
-                                                                @onclick="() => SetItemEnvase(i, false, false)">⚫ Negro</button>
-                                                        <button type="button" style="@EnvBtn(formItem.EsEnvasePlateado, "#71717a")"
-                                                                title="Envase plateado"
-                                                                @onclick="() => SetItemEnvase(i, false, true)">⚪ Plateado</button>
-                                                        <button type="button" style="@EnvBtn(formItem.EsDoyPack, "#1e40af")"
-                                                                title="Doy pack (pouch). Aparece como 'd.p.' en el comprobante."
-                                                                @onclick="() => SetItemEnvase(i, true, false)">📦 Doy pack</button>
+                                                        <select class="form-input"
+                                                                style="font-size:0.72rem; padding:0.15rem 0.3rem; background:#f3f4f6; border-color:#9ca3af; font-weight:600; max-width:175px;"
+                                                                value="@envaseSel"
+                                                                @onchange="@(e => SetItemEnvaseFromString(i, e.Value?.ToString() ?? "NEGRO"))"
+                                                                title="Tipo de envase. Se refleja en el comprobante.">
+                                                            <option value="NEGRO">⚫ Envase negro</option>
+                                                            <option value="PLATEADO">⚪ Envase plateado</option>
+                                                            <option value="DOY_PACK">📦 Doy pack</option>
+                                                        </select>
                                                     </div>
                                                 }
                                                 @if (rojo && !string.IsNullOrEmpty(ci.Aviso))
@@ -2301,6 +2300,22 @@
         if (idx < 0 || idx >= formItems.Count) return;
         formItems[idx].EsDoyPack = doyPack;
         formItems[idx].EsEnvasePlateado = plateado;
+        await Cotizar();
+    }
+
+    /// <summary>Variante del setter que recibe el value del dropdown ("NEGRO" | "PLATEADO" | "DOY_PACK").</summary>
+    private async Task SetItemEnvaseFromString(int idx, string val)
+    {
+        if (idx < 0 || idx >= formItems.Count) return;
+        switch (val)
+        {
+            case "DOY_PACK":
+                formItems[idx].EsDoyPack = true; formItems[idx].EsEnvasePlateado = false; break;
+            case "PLATEADO":
+                formItems[idx].EsDoyPack = false; formItems[idx].EsEnvasePlateado = true; break;
+            default: // NEGRO
+                formItems[idx].EsDoyPack = false; formItems[idx].EsEnvasePlateado = false; break;
+        }
         await Cotizar();
     }
 
