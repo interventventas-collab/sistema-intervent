@@ -96,23 +96,28 @@
                                 </td>
                                 @if (tabActivo == "financiadas")
                                 {
-                                    <td style="text-align:right; font-weight:600;">$@(c.PrecioVenta?.ToString("N0") ?? "—")</td>
-                                    <td style="text-align:right; color:#16a34a;">$@c.PagosAcumulados.ToString("N0")</td>
+                                    <td style="text-align:right; font-weight:600;">@Sym(c.Moneda) @(c.PrecioVenta?.ToString("N0") ?? "—")</td>
+                                    <td style="text-align:right; color:#16a34a;">@Sym(c.Moneda) @c.PagosAcumulados.ToString("N0")</td>
                                     <td style="text-align:right; font-weight:700; color:@(c.SaldoFinanciamiento <= 0 ? "#16a34a" : "#b45309");">
-                                        $@(c.SaldoFinanciamiento?.ToString("N0") ?? "0")
+                                        @Sym(c.Moneda) @(c.SaldoFinanciamiento?.ToString("N0") ?? "0")
                                     </td>
                                     <td style="text-align:center; font-size:0.78rem;">
-                                        @if (c.CuotasTotales.HasValue && c.ValorCuota.HasValue && c.ValorCuota > 0)
+                                        @if (c.PrecioVenta.HasValue && c.PrecioVenta > 0)
                                         {
-                                            var cuotasPagadas = (int)Math.Floor(c.PagosAcumulados / c.ValorCuota.Value);
-                                            <span>@cuotasPagadas / @c.CuotasTotales</span>
+                                            var pct = (int)Math.Round((c.PagosAcumulados / c.PrecioVenta.Value) * 100m);
+                                            <div style="font-weight:700;">@pct% saldado</div>
+                                            @if (c.CuotasTotales.HasValue && c.ValorCuota.HasValue && c.ValorCuota > 0 && c.SaldoFinanciamiento > 0)
+                                            {
+                                                var mesesAprox = (int)Math.Ceiling((c.SaldoFinanciamiento ?? 0m) / c.ValorCuota.Value);
+                                                <div style="font-size:0.7rem; color:#9ca3af;">plan: @c.CuotasTotales x @Sym(c.Moneda) @c.ValorCuota?.ToString("N0") · ~@mesesAprox meses</div>
+                                            }
                                         }
                                         else { <span>—</span> }
                                     </td>
                                 }
                                 else
                                 {
-                                    <td style="text-align:right;">@(c.ValorEstimado.HasValue ? $"${c.ValorEstimado.Value:N0}" : "—")</td>
+                                    <td style="text-align:right;">@(c.ValorEstimado.HasValue ? $"{Sym(c.Moneda)} {c.ValorEstimado.Value:N0}" : "—")</td>
                                 }
                                 <td>
                                     <button class="btn btn-secondary" style="font-size:0.75rem;" @onclick="() => AbrirDetalle(c)">📂 Detalle</button>
@@ -153,6 +158,15 @@
                             <div style="font-weight:700;">💰 Financiada</div>
                             <div style="font-size:0.72rem; color:#6b7280;">Cliente la compra en cuotas</div>
                         </button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Moneda</label>
+                    <div style="display:flex; gap:0.5rem;">
+                        <button class="btn" style="flex:1; background:@(formMoneda == "ARS" ? "#dbeafe" : "white"); border:1px solid @(formMoneda == "ARS" ? "#3b82f6" : "#d1d5db"); padding:0.4rem; font-weight:700; color:#374151;"
+                                @onclick='() => formMoneda = "ARS"'>$ Pesos (ARS)</button>
+                        <button class="btn" style="flex:1; background:@(formMoneda == "USD" ? "#dcfce7" : "white"); border:1px solid @(formMoneda == "USD" ? "#16a34a" : "#d1d5db"); padding:0.4rem; font-weight:700; color:#374151;"
+                                @onclick='() => formMoneda = "USD"'>U$D Dólares (USD)</button>
                     </div>
                 </div>
                 <div class="form-group">
@@ -206,7 +220,7 @@
                 else
                 {
                     <div style="background:#fef3c7; border:1px solid #fcd34d; border-radius:6px; padding:0.5rem; margin-bottom:0.5rem;">
-                        <div style="font-weight:700; color:#92400e; margin-bottom:0.3rem;">💰 Plan de financiamiento</div>
+                        <div style="font-weight:700; color:#92400e; margin-bottom:0.3rem;">💰 Plan de financiamiento (todos los montos en @(formMoneda == "USD" ? "U$D" : "$"))</div>
                         <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
                             <div class="form-group" style="flex:1; min-width:140px;">
                                 <label class="form-label">Precio total</label>
@@ -289,26 +303,23 @@
                         <div style="display:flex; gap:0.5rem; flex-wrap:wrap; font-size:0.82rem;">
                             <div style="flex:1; min-width:120px;">
                                 <div style="color:#92400e;">Precio</div>
-                                <div style="font-weight:700;">$@(c.PrecioVenta?.ToString("N0") ?? "0")</div>
+                                <div style="font-weight:700;">@Sym(c.Moneda) @(c.PrecioVenta?.ToString("N0") ?? "0")</div>
                             </div>
                             <div style="flex:1; min-width:120px;">
                                 <div style="color:#16a34a;">Pagado</div>
-                                <div style="font-weight:700;">$@c.PagosAcumulados.ToString("N0")</div>
+                                <div style="font-weight:700;">@Sym(c.Moneda) @c.PagosAcumulados.ToString("N0")</div>
                             </div>
                             <div style="flex:1; min-width:120px;">
                                 <div style="color:#b45309;">Saldo</div>
-                                <div style="font-weight:700;">$@(c.SaldoFinanciamiento?.ToString("N0") ?? "0")</div>
+                                <div style="font-weight:700;">@Sym(c.Moneda) @(c.SaldoFinanciamiento?.ToString("N0") ?? "0")</div>
                             </div>
-                            <div style="flex:1; min-width:120px;">
-                                <div style="color:#7c2d12;">Cuotas</div>
-                                <div style="font-weight:700;">
-                                    @if (c.CuotasTotales.HasValue && c.ValorCuota.HasValue && c.ValorCuota > 0)
-                                    {
-                                        var cuotasPagadas = (int)Math.Floor(c.PagosAcumulados / c.ValorCuota.Value);
-                                        <span>@cuotasPagadas / @c.CuotasTotales · $@c.ValorCuota?.ToString("N0") c/u</span>
-                                    }
-                                    else { <span>—</span> }
-                                </div>
+                            <div style="flex:1; min-width:160px;">
+                                <div style="color:#7c2d12;">Progreso</div>
+                                <div style="font-weight:700;">@ProgresoTxt(c)</div>
+                                @if (c.CuotasTotales.HasValue && c.ValorCuota.HasValue && c.ValorCuota > 0)
+                                {
+                                    <div style="font-size:0.72rem; color:#7c2d12;">plan: @c.CuotasTotales x @Sym(c.Moneda) @c.ValorCuota?.ToString("N0")</div>
+                                }
                             </div>
                         </div>
                     </div>
@@ -327,7 +338,7 @@
                                 {
                                     <tr>
                                         <td>@p.Fecha.ToString("dd/MM/yyyy")</td>
-                                        <td style="font-weight:700; color:#16a34a;">$@p.Importe.ToString("N0")</td>
+                                        <td style="font-weight:700; color:#16a34a;">@Sym(c.Moneda) @p.Importe.ToString("N0")</td>
                                         <td>@(p.MedioPago ?? "—")</td>
                                         <td style="font-size:0.78rem; color:#6b7280;">@(p.Notas ?? "")</td>
                                         <td><button class="btn-icon" @onclick="() => AnularPago(p.Id)" title="Eliminar pago" style="color:#b91c1c;">🗑</button></td>
@@ -370,7 +381,7 @@
             <div class="modal-body">
                 <div style="padding:0.4rem 0.6rem; background:#f9fafb; border-radius:4px; margin-bottom:0.5rem; font-size:0.85rem;">
                     <strong>@c.Marca @c.Modelo</strong> · @c.ClienteNombre<br/>
-                    Saldo actual: <strong>$@(c.SaldoFinanciamiento?.ToString("N0") ?? "0")</strong>
+                    Saldo actual: <strong>@Sym(c.Moneda) @(c.SaldoFinanciamiento?.ToString("N0") ?? "0")</strong>
                 </div>
                 <div style="display:flex; gap:0.5rem;">
                     <div class="form-group" style="flex:1;">
@@ -399,7 +410,7 @@
                 </div>
                 @if (c.ValorCuota.HasValue && c.ValorCuota > 0)
                 {
-                    <button class="btn btn-secondary" style="font-size:0.78rem;" @onclick="() => pagoImporte = c.ValorCuota.Value">Usar valor cuota ($@c.ValorCuota?.ToString("N0"))</button>
+                    <button class="btn btn-secondary" style="font-size:0.78rem;" @onclick="() => pagoImporte = c.ValorCuota.Value">Usar valor cuota (@Sym(c.Moneda) @c.ValorCuota?.ToString("N0"))</button>
                 }
             </div>
             <div class="modal-footer">
@@ -424,6 +435,7 @@
     private bool showNueva;
     private bool guardando;
     private string formModalidad = "COMODATO";
+    private string formMoneda = "ARS";
     private int formClienteId;
     private string clienteSearch = "";
     private string formMarca = "";
@@ -509,6 +521,7 @@
     private void AbrirNueva()
     {
         formModalidad = "COMODATO";
+        formMoneda = "ARS";
         formClienteId = 0; clienteSearch = "";
         formMarca = ""; formModelo = ""; formNumeroSerie = "";
         formFechaEntrega = DateTime.Today;
@@ -527,6 +540,7 @@
             {
                 ClienteId = formClienteId,
                 Modalidad = formModalidad,
+                Moneda = formMoneda,
                 Marca = formMarca,
                 Modelo = formModelo,
                 NumeroSerie = formNumeroSerie,
@@ -565,6 +579,7 @@
         {
             var r = await Api.UpdateCafeComodatoAsync(detalleAbierto.Id, new CafeComodatoUpdateRequest
             {
+                Moneda = detalleAbierto.Moneda,
                 Marca = detalleAbierto.Marca, Modelo = detalleAbierto.Modelo, NumeroSerie = detalleAbierto.NumeroSerie,
                 FechaEntrega = detalleAbierto.FechaEntrega, Estado = detalleEstado,
                 FechaDevolucion = (detalleEstado == "DEVUELTA" || detalleEstado == "BAJA") ? DateTime.Today : null,
@@ -618,7 +633,7 @@
                 MedioPago = pagoMedio,
                 Notas = string.IsNullOrWhiteSpace(pagoNotas) ? null : pagoNotas
             });
-            ToastService.Success($"Pago de ${pagoImporte:N0} registrado");
+            ToastService.Success($"Pago de {Sym(pagoAbierto.Moneda)} {pagoImporte:N0} registrado");
             pagoAbierto = null;
             // Si el detalle está abierto, recargarlo
             if (detalleAbierto is not null)
@@ -668,4 +683,24 @@
         "PAGADA" => "💎 Pagada",
         _ => e
     };
+
+    /// <summary>Símbolo de la moneda para mostrar antes del importe. ARS=$, USD=U$D.</summary>
+    private static string Sym(string moneda) => moneda == "USD" ? "U$D" : "$";
+
+    /// <summary>Texto de progreso de pago para una financiada — muestra % saldado y, si tiene
+    /// plan original, la cantidad de cuotas equivalentes pagadas + estimación de meses al ritmo actual.
+    /// Más realista que "3 / 12 cuotas" cuando el cliente paga distinto al plan.</summary>
+    private string ProgresoTxt(CafeComodatoDto c)
+    {
+        if (!c.PrecioVenta.HasValue || c.PrecioVenta <= 0) return "—";
+        var pct = Math.Round((c.PagosAcumulados / c.PrecioVenta.Value) * 100m, 1);
+        var faltante = (c.SaldoFinanciamiento ?? 0m);
+        string txt = $"{pct}% saldado";
+        if (c.ValorCuota.HasValue && c.ValorCuota > 0 && faltante > 0)
+        {
+            var mesesAprox = Math.Ceiling(faltante / c.ValorCuota.Value);
+            txt += $" · ~{mesesAprox} meses al ritmo del plan";
+        }
+        return txt;
+    }
 }

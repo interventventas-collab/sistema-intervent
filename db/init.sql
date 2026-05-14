@@ -3410,3 +3410,10 @@ GO
 IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId=1 AND MenuKey='cafe-maquinas')
     INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'cafe-maquinas');
 GO
+
+-- Cafe_Comodatos: agregar columna Moneda (ARS|USD) — idempotente
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='Moneda' AND Object_ID=OBJECT_ID('Cafe_Comodatos'))
+BEGIN
+    ALTER TABLE Cafe_Comodatos ADD Moneda NVARCHAR(5) NOT NULL CONSTRAINT DF_CafeComodatos_Moneda DEFAULT 'ARS';
+END
+GO

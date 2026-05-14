@@ -22,7 +22,7 @@ public class CafeComodatosController : ControllerBase
     private readonly AuditLogService _audit;
     public CafeComodatosController(AppDbContext db, AuditLogService audit) { _db = db; _audit = audit; }
 
-    public record ComodatoDto(int Id, int ClienteId, string? ClienteNombre, string Modalidad,
+    public record ComodatoDto(int Id, int ClienteId, string? ClienteNombre, string Modalidad, string Moneda,
         string? Marca, string? Modelo, string? NumeroSerie, DateTime? FechaEntrega,
         string Estado, DateTime? FechaDevolucion, string? Notas, decimal? ValorEstimado,
         decimal? PrecioVenta, int? CuotasTotales, decimal? ValorCuota, int? DiaPagoMensual,
@@ -30,7 +30,7 @@ public class CafeComodatosController : ControllerBase
         DateTime CreatedAt);
 
     private static ComodatoDto Map(CafeComodato c) => new(
-        c.Id, c.ClienteId, c.Cliente?.Nombre, c.Modalidad,
+        c.Id, c.ClienteId, c.Cliente?.Nombre, c.Modalidad, c.Moneda,
         c.Marca, c.Modelo, c.NumeroSerie, c.FechaEntrega,
         c.Estado, c.FechaDevolucion, c.Notas, c.ValorEstimado,
         c.PrecioVenta, c.CuotasTotales, c.ValorCuota, c.DiaPagoMensual,
@@ -93,7 +93,7 @@ public class CafeComodatosController : ControllerBase
         });
     }
 
-    public record CreateRequest(int ClienteId, string Modalidad, string? Marca, string? Modelo, string? NumeroSerie,
+    public record CreateRequest(int ClienteId, string Modalidad, string? Moneda, string? Marca, string? Modelo, string? NumeroSerie,
         DateTime? FechaEntrega, string? Notas, decimal? ValorEstimado,
         decimal? PrecioVenta, int? CuotasTotales, decimal? ValorCuota, int? DiaPagoMensual);
 
@@ -107,10 +107,13 @@ public class CafeComodatosController : ControllerBase
         var cli = await _db.CafeClientes.FindAsync(req.ClienteId);
         if (cli is null) return BadRequest(new { error = "Cliente no encontrado" });
 
+        var moneda = (req.Moneda ?? "ARS").ToUpperInvariant();
+        if (moneda != "ARS" && moneda != "USD") moneda = "ARS";
         var c = new CafeComodato
         {
             ClienteId = req.ClienteId,
             Modalidad = modalidad,
+            Moneda = moneda,
             Marca = req.Marca?.Trim(),
             Modelo = req.Modelo?.Trim(),
             NumeroSerie = req.NumeroSerie?.Trim(),
@@ -135,7 +138,7 @@ public class CafeComodatosController : ControllerBase
         return Ok(Map(c));
     }
 
-    public record UpdateRequest(string? Marca, string? Modelo, string? NumeroSerie, DateTime? FechaEntrega,
+    public record UpdateRequest(string? Moneda, string? Marca, string? Modelo, string? NumeroSerie, DateTime? FechaEntrega,
         string? Estado, DateTime? FechaDevolucion, string? Notas, decimal? ValorEstimado,
         decimal? PrecioVenta, int? CuotasTotales, decimal? ValorCuota, int? DiaPagoMensual);
 
@@ -144,6 +147,11 @@ public class CafeComodatosController : ControllerBase
     {
         var c = await _db.CafeComodatos.Include(x => x.Pagos).FirstOrDefaultAsync(x => x.Id == id);
         if (c is null) return NotFound();
+        if (!string.IsNullOrWhiteSpace(req.Moneda))
+        {
+            var mon = req.Moneda.Trim().ToUpperInvariant();
+            if (mon == "ARS" || mon == "USD") c.Moneda = mon;
+        }
         c.Marca = req.Marca?.Trim();
         c.Modelo = req.Modelo?.Trim();
         c.NumeroSerie = req.NumeroSerie?.Trim();

@@ -993,6 +993,7 @@ public class CafeComodatoDto
     public int ClienteId { get; set; }
     public string? ClienteNombre { get; set; }
     public string Modalidad { get; set; } = "COMODATO";   // COMODATO | FINANCIADA
+    public string Moneda { get; set; } = "ARS";           // ARS | USD
     public string? Marca { get; set; }
     public string? Modelo { get; set; }
     public string? NumeroSerie { get; set; }
@@ -1044,6 +1045,7 @@ public class CafeComodatoCreateRequest
 {
     public int ClienteId { get; set; }
     public string Modalidad { get; set; } = "COMODATO";
+    public string? Moneda { get; set; } = "ARS";
     public string? Marca { get; set; }
     public string? Modelo { get; set; }
     public string? NumeroSerie { get; set; }
@@ -1058,6 +1060,7 @@ public class CafeComodatoCreateRequest
 
 public class CafeComodatoUpdateRequest
 {
+    public string? Moneda { get; set; }
     public string? Marca { get; set; }
     public string? Modelo { get; set; }
     public string? NumeroSerie { get; set; }

@@ -14,6 +14,7 @@ public class CafeComodato
     [Key] public int Id { get; set; }
     public int ClienteId { get; set; }
     [Required, MaxLength(20)] public string Modalidad { get; set; } = "COMODATO";
+    [Required, MaxLength(5)] public string Moneda { get; set; } = "ARS";    // ARS | USD
     [MaxLength(100)] public string? Marca { get; set; }
     [MaxLength(100)] public string? Modelo { get; set; }
     [MaxLength(100)] public string? NumeroSerie { get; set; }
