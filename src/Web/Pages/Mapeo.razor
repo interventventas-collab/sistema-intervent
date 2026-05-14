@@ -314,14 +314,24 @@ else
                 </div>
             </div>
             <div style="display:flex; gap:0.4rem;">
+                @{
+                    var sinAsignarCount = stops?.Count(s => !s.AssignedVehicleSlot.HasValue) ?? 0;
+                }
+                @if (sinAsignarCount > 0)
+                {
+                    <button class="btn" style="font-size:0.78rem; background:@(VehicleColor(vehiculoSeleccionado)); color:white; border:none;" @onclick="AsignarTodosRestantesAlVActivo" disabled="@assigningSlot"
+                            title="Asigna las @sinAsignarCount paradas sin asignar al V@vehiculoSeleccionado de un solo click">
+                        ⚡ Asignar @sinAsignarCount restantes a V@vehiculoSeleccionado
+                    </button>
+                }
                 <button class="btn btn-secondary" style="font-size:0.78rem;" @onclick="ClearVehicleAssignments" disabled="@assigningSlot">🗑 Limpiar asignación</button>
                 <button class="btn btn-primary" style="font-size:0.78rem;" @onclick="OpenAssignDriversModal">👤 Asignar choferes →</button>
             </div>
         </div>
         <div style="padding:0.4rem 0.7rem; font-size:0.78rem; color:#92400e;">
             Tocá un globito en el mapa para asignarlo a <strong>V@vehiculoSeleccionado</strong>. Click de nuevo para desasignar.
-            @if ((stops?.Count(s => s.AssignedVehicleSlot == null) ?? 0) > 0)
-            { <span style="color:#6b7280;"> · @stops!.Count(s => s.AssignedVehicleSlot == null) sin asignar</span> }
+            @if (sinAsignarCount > 0)
+            { <span style="color:#6b7280;"> · @sinAsignarCount sin asignar</span> }
         </div>
     </div>
 }
@@ -2814,6 +2824,31 @@ else
             // Forzamos refresh inmediato del UI para que los chips "V1 (X)" arriba del mapa
             // y los counters del stepper actualicen sin esperar a otro evento.
             StateHasChanged();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { assigningSlot = false; }
+    }
+
+    /// <summary>Asigna TODAS las paradas sin vehículo al V activo de un solo click.
+    /// Útil cuando queda un grupo grande en un solo vehículo o cuando ya empezaste a asignar
+    /// y querés barrer el resto.</summary>
+    private async Task AsignarTodosRestantesAlVActivo()
+    {
+        if (stops is null) return;
+        var sinAsignar = stops.Where(s => !s.AssignedVehicleSlot.HasValue).ToList();
+        if (sinAsignar.Count == 0) return;
+        if (!await ConfirmAsync($"Vas a asignar {sinAsignar.Count} parada(s) al V{vehiculoSeleccionado}. ¿Confirmar?")) return;
+        assigningSlot = true;
+        try
+        {
+            foreach (var st in sinAsignar)
+            {
+                await Api.AssignVehicleSlotAsync(st.Id, vehiculoSeleccionado);
+                st.AssignedVehicleSlot = vehiculoSeleccionado;
+            }
+            await RenderMap();
+            StateHasChanged();
+            ToastService.Success($"{sinAsignar.Count} paradas asignadas al V{vehiculoSeleccionado}");
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { assigningSlot = false; }
