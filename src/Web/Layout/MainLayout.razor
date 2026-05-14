@@ -51,7 +51,7 @@
         @if (HasPerm("cafe"))
         {
             <NavGroup Label="Ventas por fuera" Icon="@SvgIcons.Brand"
-                      HasActiveChild="@(IsActive("/cafe") || IsActive("/cafe/ventas") || IsActive("/cafe/productos") || IsActive("/cafe/combos") || IsActive("/cafe/oems") || IsActive("/cafe/clientes") || IsActive("/cafe/clientes-mapeados") || IsActive("/cafe/configuracion") || IsActive("/cafe/compras") || IsActive("/cafe/proveedores") || IsActive("/cafe/marcas") || IsActive("/cafe/listas-precios") || IsActive("/cafe/consultas") || IsActive("/cafe/cotejo") || IsActive("/cafe/descuentos") || IsActive("/cafe/kits") || IsActive("/cafe/reglas-precios"))">
+                      HasActiveChild="@(IsActive("/cafe") || IsActive("/cafe/ventas") || IsActive("/cafe/productos") || IsActive("/cafe/combos") || IsActive("/cafe/oems") || IsActive("/cafe/clientes") || IsActive("/cafe/clientes-mapeados") || IsActive("/cafe/configuracion") || IsActive("/cafe/compras") || IsActive("/cafe/proveedores") || IsActive("/cafe/marcas") || IsActive("/cafe/listas-precios") || IsActive("/cafe/consultas") || IsActive("/cafe/cotejo") || IsActive("/cafe/descuentos") || IsActive("/cafe/kits") || IsActive("/cafe/reglas-precios") || IsActive("/cafe/saldos"))">
                 <NavItem Href="/cafe" Label="Inicio" Icon="@SvgIcons.Dashboard"
                          IsActive="@IsActive("/cafe")" OnClick="@(() => NavigateTo("/cafe"))" />
                 <NavItem Href="/cafe/consultas" Label="Consultas" Icon="@SvgIcons.Tag"
@@ -86,6 +86,9 @@
                          IsActive="@IsActive("/cafe/clientes-mapeados")" OnClick="@(() => NavigateTo("/cafe/clientes-mapeados"))" />
                 <NavItem Href="/cafe/configuracion" Label="Configuración" Icon="@SvgIcons.Settings"
                          IsActive="@IsActive("/cafe/configuracion")" OnClick="@(() => NavigateTo("/cafe/configuracion"))" />
+                @* Migracion temporal: saldos del sistema viejo a matchear con clientes *@
+                <NavItem Href="/cafe/saldos" Label="💰 Saldos migración" Icon="@SvgIcons.Database"
+                         IsActive="@IsActive("/cafe/saldos")" OnClick="@(() => NavigateTo("/cafe/saldos"))" />
 
                 @* Subgrupo Tesoreria — agregado 2026-05-12 (Fase 1) *@
                 @if (HasPerm("cafe-tesoreria"))
@@ -666,6 +669,7 @@
         { "cafe/clientes", "cafe" },
         { "cafe/clientes-mapeados", "cafe" },
         { "cafe/configuracion", "cafe" },
+        { "cafe/saldos", "cafe" },
         { "cafe/tesoreria/cajas", "cafe-tesoreria" },
         { "cafe/tesoreria/cobranzas", "cafe-tesoreria" },
         { "cafe/tesoreria/pagos", "cafe-tesoreria" },
