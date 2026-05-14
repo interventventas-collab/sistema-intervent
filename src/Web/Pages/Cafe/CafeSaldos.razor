@@ -339,7 +339,10 @@
     private string clienteSearch = "";
     private int? clienteIdElegido;
     private string? clienteNombreElegido;
-    private DateTime asociarFecha = DateTime.Today;
+    // Fecha por default: 1ro de enero del año en curso. Asi las ventas de migracion
+    // quedan al fondo del listado de Ventas (ordenado por fecha DESC) y no se mezclan
+    // con las operaciones reales del dia a dia.
+    private DateTime asociarFecha = new DateTime(DateTime.Today.Year, 1, 1);
     private string asociarNotas = "";
     private bool asociando;
 
@@ -524,7 +527,7 @@
         clienteIdElegido = null;
         clienteNombreElegido = null;
         clienteSearch = "";
-        asociarFecha = DateTime.Today;
+        asociarFecha = new DateTime(DateTime.Today.Year, 1, 1);
         asociarNotas = "";
         // Cargar sugerencias y clientes
         try { sugerencias = await Api.GetSaldoMigracionSugerenciasAsync(s.Id) ?? new(); } catch { sugerencias = new(); }
