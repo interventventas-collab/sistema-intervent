@@ -932,7 +932,11 @@ else
                                             var msgParts = new List<string> { $"Hola {driverObj.Nombre}! Tu ruta de hoy ({count} paradas):", "", $"📋 Detalle: {link}" };
                                             if (gmapsLinkChofer != "#") { msgParts.Add(""); msgParts.Add($"🗺 Navegar: {gmapsLinkChofer}"); }
                                             var waMsg = Uri.EscapeDataString(string.Join("\n", msgParts));
-                                            <a class="btn" style="font-size:0.78rem; background:#25D366; color:white; border:none; align-self:flex-start;" target="_blank" href="@($"https://wa.me/{digits}?text={waMsg}")">💬 Mandar ambos por WhatsApp</a>
+                                            var waDetMsg = Uri.EscapeDataString(BuildWhatsAppDetallado(driverObj.Id, driverObj.Nombre ?? "Chofer"));
+                                            <div style="display:flex; gap:0.3rem; flex-wrap:wrap;">
+                                                <a class="btn" style="font-size:0.78rem; background:#25D366; color:white; border:none;" target="_blank" href="@($"https://wa.me/{digits}?text={waMsg}")" title="Mensaje corto con los 2 enlaces (Detalle + Maps general)">💬 Enviar 2 links</a>
+                                                <a class="btn" style="font-size:0.78rem; background:#128C7E; color:white; border:none;" target="_blank" href="@($"https://wa.me/{digits}?text={waDetMsg}")" title="Mensaje largo con cada parada en orden + link de Maps individual">📋 Enviar detallado</a>
+                                            </div>
                                         }
                                     }
                                 </div>
@@ -1772,6 +1776,63 @@ else
     /// (OrderInRoute ascendente, luego Id). Usa el formato path-based para no tener tope de 10.
     /// Si la URL queda muy larga (browser limit), la trunca a las primeras paradas que entren.
     /// </summary>
+    /// <summary>
+    /// Arma un mensaje de WhatsApp largo con cada parada del chofer en orden + link
+    /// individual de Google Maps por parada. Ideal para que el chofer abra el mapa
+    /// de a una sin perderse en una ruta enorme.
+    /// </summary>
+    private string BuildWhatsAppDetallado(int driverId, string driverNombre)
+    {
+        if (stops is null) return "";
+        var driverStops = stops
+            .Where(s => s.AssignedDriverId == driverId)
+            .OrderBy(s => s.OrderInRoute ?? int.MaxValue)
+            .ThenBy(s => s.Id)
+            .ToList();
+        if (driverStops.Count == 0) return "";
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"Hola {driverNombre}! Tu ruta de hoy ({driverStops.Count} paradas):");
+        sb.AppendLine();
+        int idx = 1;
+        foreach (var st in driverStops)
+        {
+            var nombre = !string.IsNullOrWhiteSpace(st.Alias) ? st.Alias
+                       : (!string.IsNullOrWhiteSpace(st.ContactName) ? st.ContactName : "Parada");
+            // Link individual de Maps: preferimos coords si las tiene (siempre funcionan),
+            // sino direccion + localidad como query.
+            string mapsUrl;
+            if (st.Latitude != 0 && st.Longitude != 0)
+            {
+                var lat = st.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                var lng = st.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                mapsUrl = $"https://www.google.com/maps/search/?api=1&query={lat},{lng}";
+            }
+            else if (!string.IsNullOrWhiteSpace(st.Direccion))
+            {
+                var q = Uri.EscapeDataString((st.Direccion + " " + (st.Localidad ?? "")).Trim());
+                mapsUrl = $"https://www.google.com/maps/search/?api=1&query={q}";
+            }
+            else
+            {
+                mapsUrl = "";
+            }
+
+            sb.AppendLine($"{idx}. 📍 {nombre}");
+            if (!string.IsNullOrWhiteSpace(st.Direccion))
+                sb.AppendLine($"   {st.Direccion}{(string.IsNullOrEmpty(st.Localidad) ? "" : ", " + st.Localidad)}");
+            if (!string.IsNullOrWhiteSpace(st.Telefono))
+                sb.AppendLine($"   📞 {st.Telefono}");
+            if (!string.IsNullOrWhiteSpace(st.Notas))
+                sb.AppendLine($"   📝 {st.Notas}");
+            if (!string.IsNullOrEmpty(mapsUrl))
+                sb.AppendLine($"   🗺 {mapsUrl}");
+            sb.AppendLine();
+            idx++;
+        }
+        return sb.ToString().TrimEnd();
+    }
+
     private string BuildGmapsRouteUrlForDriver(int driverId)
     {
         if (stops is null) return "#";
