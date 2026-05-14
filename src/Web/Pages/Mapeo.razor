@@ -846,24 +846,42 @@ else
                             {
                                 var baseForLink = !string.IsNullOrWhiteSpace(publicBaseUrl) ? publicBaseUrl + "/" : Navigation.BaseUri;
                                 var link = string.IsNullOrEmpty(driverObj.ShareToken) ? null : $"{baseForLink}r/{driverObj.ShareToken}";
-                                <div style="margin-top:0.4rem; display:flex; gap:0.3rem; flex-wrap:wrap; align-items:center;">
+                                var gmapsLinkChofer = BuildGmapsRouteUrlForDriver(driverObj.Id);
+                                <div style="margin-top:0.4rem; display:flex; flex-direction:column; gap:0.3rem;">
                                     @if (link is null)
                                     {
-                                        <button class="btn btn-secondary" style="font-size:0.78rem;" @onclick="() => GenerateLink(driverObj)">🔗 Generar link</button>
+                                        <button class="btn btn-secondary" style="font-size:0.78rem; align-self:flex-start;" @onclick="() => GenerateLink(driverObj)">🔗 Generar link</button>
                                     }
                                     else
                                     {
-                                        <a href="@link" target="_blank" rel="noopener noreferrer"
-                                           style="flex:1; font-size:0.72rem; padding:0.3rem 0.5rem; background:#f0f9ff; border:1px solid #93c5fd; border-radius:4px; color:#1d4ed8; text-decoration:none; font-family:monospace; word-break:break-all;"
-                                           title="Tocá para abrir la ruta en otra pestaña">
-                                            🔗 @link
-                                        </a>
-                                        <button class="btn btn-secondary" style="font-size:0.78rem;" @onclick="() => CopyLink(link)">📋 Copiar</button>
+                                        <div style="display:flex; gap:0.3rem; flex-wrap:wrap; align-items:center;">
+                                            <span style="font-size:0.7rem; font-weight:700; color:#1e40af; min-width:65px;">📋 Detalle:</span>
+                                            <a href="@link" target="_blank" rel="noopener noreferrer"
+                                               style="flex:1; font-size:0.72rem; padding:0.3rem 0.5rem; background:#f0f9ff; border:1px solid #93c5fd; border-radius:4px; color:#1d4ed8; text-decoration:none; font-family:monospace; word-break:break-all;"
+                                               title="Pantalla nuestra con detalle de paradas, teléfonos, notas, etc.">
+                                                🔗 @link
+                                            </a>
+                                            <button class="btn btn-secondary" style="font-size:0.78rem;" @onclick="() => CopyLink(link)">📋 Copiar</button>
+                                        </div>
+                                        @if (gmapsLinkChofer != "#")
+                                        {
+                                            <div style="display:flex; gap:0.3rem; flex-wrap:wrap; align-items:center;">
+                                                <span style="font-size:0.7rem; font-weight:700; color:#9a3412; min-width:65px;">🗺 Maps:</span>
+                                                <a href="@gmapsLinkChofer" target="_blank" rel="noopener noreferrer"
+                                                   style="flex:1; font-size:0.72rem; padding:0.3rem 0.5rem; background:#fff7ed; border:1px solid #fed7aa; border-radius:4px; color:#9a3412; text-decoration:none; font-family:monospace; word-break:break-all;"
+                                                   title="Google Maps con las paradas del chofer en orden. Para navegar manejando.">
+                                                    🗺 Google Maps (@count paradas)
+                                                </a>
+                                                <button class="btn btn-secondary" style="font-size:0.78rem;" @onclick="() => CopyLink(gmapsLinkChofer)">📋 Copiar</button>
+                                            </div>
+                                        }
                                         @if (!string.IsNullOrEmpty(driverObj.Telefono))
                                         {
                                             var digits = new string(driverObj.Telefono.Where(char.IsDigit).ToArray());
-                                            var waMsg = Uri.EscapeDataString($"Hola {driverObj.Nombre}! Esta es tu ruta de hoy ({count} paradas): {link}");
-                                            <a class="btn btn-secondary" style="font-size:0.78rem; background:#25D366; color:white; border:none;" target="_blank" href="@($"https://wa.me/{digits}?text={waMsg}")">💬 WhatsApp</a>
+                                            var msgParts = new List<string> { $"Hola {driverObj.Nombre}! Tu ruta de hoy ({count} paradas):", "", $"📋 Detalle: {link}" };
+                                            if (gmapsLinkChofer != "#") { msgParts.Add(""); msgParts.Add($"🗺 Navegar: {gmapsLinkChofer}"); }
+                                            var waMsg = Uri.EscapeDataString(string.Join("\n", msgParts));
+                                            <a class="btn" style="font-size:0.78rem; background:#25D366; color:white; border:none; align-self:flex-start;" target="_blank" href="@($"https://wa.me/{digits}?text={waMsg}")">💬 Mandar ambos por WhatsApp</a>
                                         }
                                     }
                                 </div>
@@ -1649,6 +1667,57 @@ else
             }
             return Uri.EscapeDataString(st.Localidad ?? CONTEXTO_DEFAULT);
         }
+    }
+
+    /// <summary>
+    /// Construye una "address string" lista para Google Maps a partir de una parada del Mapeo
+    /// (no de un envío Flex). Usa coordenadas si las tiene; sino dirección + localidad; sino
+    /// localidad sola o el contexto "Buenos Aires, Argentina" como fallback.
+    /// </summary>
+    private static string AddrFromStop(MapeoStopDto st)
+    {
+        const string CONTEXTO_DEFAULT = "Buenos Aires, Argentina";
+        if (st.Latitude != 0 && st.Longitude != 0)
+        {
+            var coord = $"{st.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture)},{st.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+            return Uri.EscapeDataString(coord);
+        }
+        if (!string.IsNullOrWhiteSpace(st.Direccion) && !ParecenCoordenadas(st.Direccion))
+        {
+            var loc = !string.IsNullOrWhiteSpace(st.Localidad) ? st.Localidad : CONTEXTO_DEFAULT;
+            return Uri.EscapeDataString((st.Direccion + ", " + loc).Trim());
+        }
+        return Uri.EscapeDataString(st.Localidad ?? CONTEXTO_DEFAULT);
+    }
+
+    /// <summary>
+    /// Devuelve la URL de Google Maps con LAS paradas de un chofer puntual, en el orden ya cargado
+    /// (OrderInRoute ascendente, luego Id). Usa el formato path-based para no tener tope de 10.
+    /// Si la URL queda muy larga (browser limit), la trunca a las primeras paradas que entren.
+    /// </summary>
+    private string BuildGmapsRouteUrlForDriver(int driverId)
+    {
+        if (stops is null) return "#";
+        var driverStops = stops
+            .Where(s => s.AssignedDriverId == driverId)
+            .OrderBy(s => s.OrderInRoute ?? int.MaxValue)
+            .ThenBy(s => s.Id)
+            .ToList();
+        if (driverStops.Count == 0) return "#";
+
+        const int MAX_URL_LEN = 1800;
+        const string BASE = "https://www.google.com/maps/dir/";
+        var direcciones = driverStops.Select(AddrFromStop).ToList();
+        var chunk = new List<string>();
+        int len = BASE.Length;
+        foreach (var d in direcciones)
+        {
+            int addLen = d.Length + 1;
+            if (chunk.Count >= 2 && len + addLen > MAX_URL_LEN) break;
+            chunk.Add(d);
+            len += addLen;
+        }
+        return BASE + string.Join("/", chunk) + "/";
     }
 
     /// <summary>
