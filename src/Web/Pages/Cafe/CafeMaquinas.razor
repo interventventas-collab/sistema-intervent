@@ -1,0 +1,671 @@
+@page "/cafe/maquinas"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+
+<div class="card">
+    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+        <h3 style="margin:0;">☕ Máquinas (comodato + financiadas)</h3>
+        <button class="btn btn-primary" @onclick="AbrirNueva">+ Nueva máquina</button>
+    </div>
+    <div class="card-body" style="padding:0.5rem;">
+        @if (stats is not null)
+        {
+            <div style="display:flex; gap:0.5rem; margin-bottom:0.5rem; flex-wrap:wrap;">
+                <div style="flex:1; min-width:160px; padding:0.5rem 0.8rem; background:#dbeafe; border:1px solid #93c5fd; border-radius:6px;">
+                    <div style="font-size:0.72rem; color:#1e40af; font-weight:700;">COMODATOS ACTIVOS</div>
+                    <div style="font-size:1.1rem; font-weight:700; color:#172554;">@stats.ComodatosActivos / @stats.ComodatosTotales</div>
+                    <div style="font-size:0.75rem; color:#1e40af;">Valor estim: $@stats.ValorEstimadoComodatos.ToString("N0")</div>
+                </div>
+                <div style="flex:1; min-width:160px; padding:0.5rem 0.8rem; background:#fef3c7; border:1px solid #fcd34d; border-radius:6px;">
+                    <div style="font-size:0.72rem; color:#92400e; font-weight:700;">FINANCIADAS ACTIVAS</div>
+                    <div style="font-size:1.1rem; font-weight:700; color:#451a03;">@stats.FinanciadasActivas / @stats.FinanciadasTotales</div>
+                    <div style="font-size:0.75rem; color:#92400e;">Saldo: $@stats.SaldoFinanciamientoTotal.ToString("N0")</div>
+                </div>
+                <div style="flex:1; min-width:160px; padding:0.5rem 0.8rem; background:#dcfce7; border:1px solid #86efac; border-radius:6px;">
+                    <div style="font-size:0.72rem; color:#166534; font-weight:700;">PAGADAS</div>
+                    <div style="font-size:1.1rem; font-weight:700; color:#14532d;">@stats.FinanciadasPagadas</div>
+                </div>
+            </div>
+        }
+
+        @* Tabs *@
+        <div style="display:flex; gap:0.3rem; border-bottom:1px solid #e5e7eb; margin-bottom:0.5rem;">
+            @foreach (var t in new[] { ("comodatos", "🤝 Comodatos"), ("financiadas", "💰 Financiadas"), ("historico", "📚 Histórico") })
+            {
+                var key = t.Item1; var label = t.Item2;
+                <button class="btn" style="background:@(tabActivo == key ? "white" : "transparent"); border:1px solid @(tabActivo == key ? "#d1d5db" : "transparent"); border-bottom:none; border-radius:6px 6px 0 0; color:#374151; font-weight:@(tabActivo == key ? "700" : "500"); padding:0.35rem 0.7rem; font-size:0.85rem;"
+                        @onclick="() => CambiarTab(key)">
+                    @label
+                </button>
+            }
+            <div style="flex:1; display:flex; justify-content:flex-end;">
+                <input class="form-input" placeholder="🔍 Marca / modelo / serie / cliente..." style="width:300px; font-size:0.85rem; padding:0.3rem 0.5rem;"
+                       @bind="filtroQ" @bind:event="oninput" @bind:after="Cargar" />
+            </div>
+        </div>
+
+        @if (loading) { <p class="text-muted" style="padding:1rem;">Cargando...</p> }
+        else if (lista is null || lista.Count == 0)
+        {
+            <div style="padding:2rem; text-align:center; color:#6b7280;">
+                <div style="font-size:2rem;">☕</div>
+                <div style="margin-top:0.5rem;">Sin máquinas @TabLabel() todavía.</div>
+            </div>
+        }
+        else
+        {
+            <div style="overflow-x:auto;">
+                <table class="table table-compact" style="font-size:0.85rem;">
+                    <thead>
+                        <tr>
+                            <th>Cliente</th>
+                            <th>Marca / Modelo</th>
+                            <th>N° Serie</th>
+                            <th>Entrega</th>
+                            <th>Estado</th>
+                            @if (tabActivo == "financiadas")
+                            {
+                                <th style="text-align:right;">Precio</th>
+                                <th style="text-align:right;">Pagado</th>
+                                <th style="text-align:right;">Saldo</th>
+                                <th style="text-align:center;">Cuotas</th>
+                            }
+                            else
+                            {
+                                <th style="text-align:right;">Valor estim.</th>
+                            }
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var c in lista)
+                        {
+                            <tr>
+                                <td><strong>@c.ClienteNombre</strong></td>
+                                <td>
+                                    <div style="font-weight:600;">@(string.IsNullOrEmpty(c.Marca) ? "—" : c.Marca)</div>
+                                    @if (!string.IsNullOrEmpty(c.Modelo))
+                                    { <div style="font-size:0.75rem; color:#6b7280;">@c.Modelo</div> }
+                                </td>
+                                <td style="font-family:monospace; font-size:0.78rem;">@(c.NumeroSerie ?? "—")</td>
+                                <td style="font-size:0.78rem;">@(c.FechaEntrega?.ToString("dd/MM/yyyy") ?? "—")</td>
+                                <td>
+                                    <span class="badge @(EstadoBadgeClass(c.Estado))" style="font-size:0.7rem;">@EstadoLabel(c.Estado)</span>
+                                </td>
+                                @if (tabActivo == "financiadas")
+                                {
+                                    <td style="text-align:right; font-weight:600;">$@(c.PrecioVenta?.ToString("N0") ?? "—")</td>
+                                    <td style="text-align:right; color:#16a34a;">$@c.PagosAcumulados.ToString("N0")</td>
+                                    <td style="text-align:right; font-weight:700; color:@(c.SaldoFinanciamiento <= 0 ? "#16a34a" : "#b45309");">
+                                        $@(c.SaldoFinanciamiento?.ToString("N0") ?? "0")
+                                    </td>
+                                    <td style="text-align:center; font-size:0.78rem;">
+                                        @if (c.CuotasTotales.HasValue && c.ValorCuota.HasValue && c.ValorCuota > 0)
+                                        {
+                                            var cuotasPagadas = (int)Math.Floor(c.PagosAcumulados / c.ValorCuota.Value);
+                                            <span>@cuotasPagadas / @c.CuotasTotales</span>
+                                        }
+                                        else { <span>—</span> }
+                                    </td>
+                                }
+                                else
+                                {
+                                    <td style="text-align:right;">@(c.ValorEstimado.HasValue ? $"${c.ValorEstimado.Value:N0}" : "—")</td>
+                                }
+                                <td>
+                                    <button class="btn btn-secondary" style="font-size:0.75rem;" @onclick="() => AbrirDetalle(c)">📂 Detalle</button>
+                                    @if (c.Modalidad == "FINANCIADA" && c.Estado == "EN_CLIENTE")
+                                    {
+                                        <button class="btn btn-primary" style="font-size:0.75rem;" @onclick="() => AbrirPago(c)">💰 Registrar pago</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@* ===== Modal: Nueva máquina ===== *@
+@if (showNueva)
+{
+    <div class="modal-overlay" @onclick="() => showNueva = false">
+        <div class="modal-card modal-medium" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3 style="margin:0;">+ Nueva máquina</h3>
+                <button class="btn-close" @onclick="() => showNueva = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Modalidad</label>
+                    <div style="display:flex; gap:0.5rem;">
+                        <button class="btn" style="flex:1; background:@(formModalidad == "COMODATO" ? "#dbeafe" : "white"); border:1px solid @(formModalidad == "COMODATO" ? "#3b82f6" : "#d1d5db"); color:#374151; padding:0.5rem;"
+                                @onclick='() => formModalidad = "COMODATO"'>
+                            <div style="font-weight:700;">🤝 Comodato</div>
+                            <div style="font-size:0.72rem; color:#6b7280;">Es tuya, cliente la usa, no te paga</div>
+                        </button>
+                        <button class="btn" style="flex:1; background:@(formModalidad == "FINANCIADA" ? "#fef3c7" : "white"); border:1px solid @(formModalidad == "FINANCIADA" ? "#f59e0b" : "#d1d5db"); color:#374151; padding:0.5rem;"
+                                @onclick='() => formModalidad = "FINANCIADA"'>
+                            <div style="font-weight:700;">💰 Financiada</div>
+                            <div style="font-size:0.72rem; color:#6b7280;">Cliente la compra en cuotas</div>
+                        </button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Cliente</label>
+                    <input class="form-input" placeholder="🔍 Buscar cliente..." @bind="clienteSearch" @bind:event="oninput" />
+                    <div style="max-height:180px; overflow-y:auto; border:1px solid #e5e7eb; border-radius:4px; margin-top:0.3rem;">
+                        @if (clientes is null) { <p class="text-muted" style="padding:0.4rem;">Cargando...</p> }
+                        else
+                        {
+                            @foreach (var c in FiltrarClientes().Take(30))
+                            {
+                                var sel = formClienteId == c.Id;
+                                <div style="padding:0.3rem 0.5rem; border-bottom:1px solid #f3f4f6; cursor:pointer; background:@(sel ? "#dbeafe" : "white");"
+                                     @onclick="() => formClienteId = c.Id">
+                                    @if (c.CodigoInterno.HasValue) { <span style="font-size:0.7rem; padding:0 0.3rem; background:#e0e7ff; color:#1e40af; border-radius:3px; margin-right:0.3rem;">#@c.CodigoInterno</span> }
+                                    <strong>@c.Nombre</strong>
+                                    @if (!string.IsNullOrEmpty(c.Cuit)) { <span style="font-family:monospace; font-size:0.72rem; color:#6b7280; margin-left:0.4rem;">@c.Cuit</span> }
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
+                <div style="display:flex; gap:0.5rem;">
+                    <div class="form-group" style="flex:1;">
+                        <label class="form-label">Marca</label>
+                        <input class="form-input" @bind="formMarca" placeholder="ej: La Marzocco, Saeco..." />
+                    </div>
+                    <div class="form-group" style="flex:1;">
+                        <label class="form-label">Modelo</label>
+                        <input class="form-input" @bind="formModelo" placeholder="ej: Linea Mini" />
+                    </div>
+                </div>
+                <div style="display:flex; gap:0.5rem;">
+                    <div class="form-group" style="flex:1;">
+                        <label class="form-label">N° Serie</label>
+                        <input class="form-input" @bind="formNumeroSerie" placeholder="opcional" />
+                    </div>
+                    <div class="form-group" style="flex:1;">
+                        <label class="form-label">Fecha de entrega</label>
+                        <input type="date" class="form-input" value="@(formFechaEntrega?.ToString("yyyy-MM-dd"))"
+                               @onchange="@(e => formFechaEntrega = string.IsNullOrEmpty(e.Value?.ToString()) ? null : DateTime.Parse(e.Value.ToString()!))" />
+                    </div>
+                </div>
+                @if (formModalidad == "COMODATO")
+                {
+                    <div class="form-group">
+                        <label class="form-label">Valor estimado de la máquina (opcional)</label>
+                        <input type="number" step="1" class="form-input" @bind="formValorEstimado" placeholder="Para tener un track del valor de tu parque" />
+                    </div>
+                }
+                else
+                {
+                    <div style="background:#fef3c7; border:1px solid #fcd34d; border-radius:6px; padding:0.5rem; margin-bottom:0.5rem;">
+                        <div style="font-weight:700; color:#92400e; margin-bottom:0.3rem;">💰 Plan de financiamiento</div>
+                        <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+                            <div class="form-group" style="flex:1; min-width:140px;">
+                                <label class="form-label">Precio total</label>
+                                <input type="number" step="1" class="form-input" @bind="formPrecioVenta" @bind:after="CalcularValorCuota" />
+                            </div>
+                            <div class="form-group" style="flex:1; min-width:100px;">
+                                <label class="form-label">Cuotas</label>
+                                <input type="number" step="1" class="form-input" @bind="formCuotasTotales" @bind:after="CalcularValorCuota" />
+                            </div>
+                            <div class="form-group" style="flex:1; min-width:140px;">
+                                <label class="form-label">Valor por cuota</label>
+                                <input type="number" step="0.01" class="form-input" @bind="formValorCuota" />
+                            </div>
+                            <div class="form-group" style="flex:0 0 110px;">
+                                <label class="form-label">Día de pago</label>
+                                <input type="number" min="1" max="31" class="form-input" @bind="formDiaPago" placeholder="1-31" />
+                            </div>
+                        </div>
+                    </div>
+                }
+                <div class="form-group">
+                    <label class="form-label">Notas</label>
+                    <textarea class="form-input" @bind="formNotas" rows="2" placeholder="Observaciones, ubicación, accesorios incluidos..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showNueva = false">Cancelar</button>
+                <button class="btn btn-primary" disabled="@(formClienteId == 0 || guardando)" @onclick="GuardarNueva">
+                    @(guardando ? "Guardando..." : "✓ Guardar máquina")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ===== Modal: Detalle / edit ===== *@
+@if (detalleAbierto is not null)
+{
+    var c = detalleAbierto;
+    <div class="modal-overlay" @onclick="() => detalleAbierto = null">
+        <div class="modal-card modal-large" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background:@(c.Modalidad == "FINANCIADA" ? "#fef3c7" : "#dbeafe");">
+                <h3 style="margin:0;">
+                    @(c.Modalidad == "FINANCIADA" ? "💰" : "🤝") @c.Marca @c.Modelo
+                    <span style="font-size:0.78rem; color:#6b7280; font-weight:400;">· @c.ClienteNombre</span>
+                </h3>
+                <button class="btn-close" @onclick="() => detalleAbierto = null">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+                    <div style="flex:1; min-width:180px;">
+                        <div style="font-size:0.72rem; color:#6b7280;">N° Serie</div>
+                        <div style="font-family:monospace;">@(c.NumeroSerie ?? "—")</div>
+                    </div>
+                    <div style="flex:1; min-width:120px;">
+                        <div style="font-size:0.72rem; color:#6b7280;">Entrega</div>
+                        <div>@(c.FechaEntrega?.ToString("dd/MM/yyyy") ?? "—")</div>
+                    </div>
+                    <div style="flex:1; min-width:120px;">
+                        <div style="font-size:0.72rem; color:#6b7280;">Estado</div>
+                        <div>
+                            <select class="form-input" style="padding:0.2rem 0.4rem; font-size:0.82rem;" @bind="detalleEstado">
+                                <option value="EN_CLIENTE">En cliente</option>
+                                <option value="EN_TALLER">En taller</option>
+                                <option value="DEVUELTA">Devuelta</option>
+                                <option value="BAJA">Dada de baja</option>
+                                @if (c.Modalidad == "FINANCIADA")
+                                {
+                                    <option value="PAGADA">Pagada</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" style="font-size:0.78rem; align-self:end;" @onclick="GuardarEstado">Guardar</button>
+                </div>
+
+                @if (c.Modalidad == "FINANCIADA")
+                {
+                    <div style="margin-top:0.7rem; padding:0.5rem; background:#fef3c7; border-radius:6px;">
+                        <div style="display:flex; gap:0.5rem; flex-wrap:wrap; font-size:0.82rem;">
+                            <div style="flex:1; min-width:120px;">
+                                <div style="color:#92400e;">Precio</div>
+                                <div style="font-weight:700;">$@(c.PrecioVenta?.ToString("N0") ?? "0")</div>
+                            </div>
+                            <div style="flex:1; min-width:120px;">
+                                <div style="color:#16a34a;">Pagado</div>
+                                <div style="font-weight:700;">$@c.PagosAcumulados.ToString("N0")</div>
+                            </div>
+                            <div style="flex:1; min-width:120px;">
+                                <div style="color:#b45309;">Saldo</div>
+                                <div style="font-weight:700;">$@(c.SaldoFinanciamiento?.ToString("N0") ?? "0")</div>
+                            </div>
+                            <div style="flex:1; min-width:120px;">
+                                <div style="color:#7c2d12;">Cuotas</div>
+                                <div style="font-weight:700;">
+                                    @if (c.CuotasTotales.HasValue && c.ValorCuota.HasValue && c.ValorCuota > 0)
+                                    {
+                                        var cuotasPagadas = (int)Math.Floor(c.PagosAcumulados / c.ValorCuota.Value);
+                                        <span>@cuotasPagadas / @c.CuotasTotales · $@c.ValorCuota?.ToString("N0") c/u</span>
+                                    }
+                                    else { <span>—</span> }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <h4 style="margin-top:0.8rem; margin-bottom:0.4rem;">📥 Pagos registrados (@(detallePagos?.Count ?? 0))</h4>
+                    @if (detallePagos is null || detallePagos.Count == 0)
+                    {
+                        <p class="text-muted">Sin pagos aún.</p>
+                    }
+                    else
+                    {
+                        <table class="table table-compact" style="font-size:0.82rem;">
+                            <thead><tr><th>Fecha</th><th>Importe</th><th>Medio</th><th>Notas</th><th></th></tr></thead>
+                            <tbody>
+                                @foreach (var p in detallePagos)
+                                {
+                                    <tr>
+                                        <td>@p.Fecha.ToString("dd/MM/yyyy")</td>
+                                        <td style="font-weight:700; color:#16a34a;">$@p.Importe.ToString("N0")</td>
+                                        <td>@(p.MedioPago ?? "—")</td>
+                                        <td style="font-size:0.78rem; color:#6b7280;">@(p.Notas ?? "")</td>
+                                        <td><button class="btn-icon" @onclick="() => AnularPago(p.Id)" title="Eliminar pago" style="color:#b91c1c;">🗑</button></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                }
+
+                @if (!string.IsNullOrEmpty(c.Notas))
+                {
+                    <div style="margin-top:0.7rem; padding:0.4rem 0.6rem; background:#f9fafb; border-left:3px solid #d1d5db; font-size:0.85rem;">
+                        <strong>Notas:</strong> @c.Notas
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-danger" @onclick="EliminarMaquina" style="margin-right:auto;">🗑 Eliminar máquina</button>
+                <button class="btn btn-secondary" @onclick="() => detalleAbierto = null">Cerrar</button>
+                @if (c.Modalidad == "FINANCIADA" && c.Estado == "EN_CLIENTE")
+                {
+                    <button class="btn btn-primary" @onclick="() => AbrirPago(c)">💰 Registrar pago</button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@* ===== Modal: Registrar pago ===== *@
+@if (pagoAbierto is not null)
+{
+    var c = pagoAbierto;
+    <div class="modal-overlay" @onclick="() => pagoAbierto = null">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background:#dcfce7;">
+                <h3 style="margin:0;">💰 Registrar pago</h3>
+                <button class="btn-close" @onclick="() => pagoAbierto = null">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="padding:0.4rem 0.6rem; background:#f9fafb; border-radius:4px; margin-bottom:0.5rem; font-size:0.85rem;">
+                    <strong>@c.Marca @c.Modelo</strong> · @c.ClienteNombre<br/>
+                    Saldo actual: <strong>$@(c.SaldoFinanciamiento?.ToString("N0") ?? "0")</strong>
+                </div>
+                <div style="display:flex; gap:0.5rem;">
+                    <div class="form-group" style="flex:1;">
+                        <label class="form-label">Fecha</label>
+                        <input type="date" class="form-input" value="@(pagoFecha.ToString("yyyy-MM-dd"))"
+                               @onchange="@(e => pagoFecha = DateTime.Parse(e.Value!.ToString()!))" />
+                    </div>
+                    <div class="form-group" style="flex:1;">
+                        <label class="form-label">Importe</label>
+                        <input type="number" step="0.01" class="form-input" @bind="pagoImporte" />
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Medio de pago</label>
+                    <select class="form-input" @bind="pagoMedio">
+                        <option value="EFECTIVO">Efectivo</option>
+                        <option value="TRANSFERENCIA">Transferencia</option>
+                        <option value="MERCADOPAGO">Mercado Pago</option>
+                        <option value="CHEQUE">Cheque</option>
+                        <option value="OTRO">Otro</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Notas</label>
+                    <input class="form-input" @bind="pagoNotas" placeholder="opcional" />
+                </div>
+                @if (c.ValorCuota.HasValue && c.ValorCuota > 0)
+                {
+                    <button class="btn btn-secondary" style="font-size:0.78rem;" @onclick="() => pagoImporte = c.ValorCuota.Value">Usar valor cuota ($@c.ValorCuota?.ToString("N0"))</button>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => pagoAbierto = null">Cancelar</button>
+                <button class="btn btn-primary" disabled="@(pagoImporte <= 0 || guardandoPago)" @onclick="GuardarPago">
+                    @(guardandoPago ? "Guardando..." : "✓ Registrar pago")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string tabActivo = "comodatos";
+    private string filtroQ = "";
+    private bool loading = true;
+    private List<CafeComodatoDto>? lista;
+    private CafeComodatosStatsDto? stats;
+    private List<CafeClienteDto>? clientes;
+
+    // Nueva
+    private bool showNueva;
+    private bool guardando;
+    private string formModalidad = "COMODATO";
+    private int formClienteId;
+    private string clienteSearch = "";
+    private string formMarca = "";
+    private string formModelo = "";
+    private string formNumeroSerie = "";
+    private DateTime? formFechaEntrega = DateTime.Today;
+    private string formNotas = "";
+    private decimal? formValorEstimado;
+    private decimal? formPrecioVenta;
+    private int? formCuotasTotales;
+    private decimal? formValorCuota;
+    private int? formDiaPago;
+
+    // Detalle
+    private CafeComodatoDto? detalleAbierto;
+    private List<CafeComodatoPagoDto>? detallePagos;
+    private string detalleEstado = "EN_CLIENTE";
+
+    // Pago
+    private CafeComodatoDto? pagoAbierto;
+    private DateTime pagoFecha = DateTime.Today;
+    private decimal pagoImporte;
+    private string pagoMedio = "EFECTIVO";
+    private string pagoNotas = "";
+    private bool guardandoPago;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Cargar();
+        if (clientes is null)
+        {
+            try { clientes = (await Api.GetCafeClientesAsync())?.Where(c => c.IsActive).ToList() ?? new(); }
+            catch { clientes = new(); }
+        }
+    }
+
+    private string TabLabel() => tabActivo switch
+    {
+        "comodatos" => "en comodato",
+        "financiadas" => "financiadas",
+        "historico" => "en histórico",
+        _ => ""
+    };
+
+    private async Task CambiarTab(string t) { tabActivo = t; await Cargar(); }
+
+    private async Task Cargar()
+    {
+        loading = true;
+        try
+        {
+            string? mod = tabActivo == "comodatos" ? "COMODATO" : (tabActivo == "financiadas" ? "FINANCIADA" : null);
+            string? est = tabActivo == "historico" ? null : "EN_CLIENTE";
+            // historico = TODO menos EN_CLIENTE
+            lista = await Api.GetCafeComodatosAsync(modalidad: mod, estado: est, q: string.IsNullOrWhiteSpace(filtroQ) ? null : filtroQ) ?? new();
+            if (tabActivo == "historico")
+            {
+                lista = lista.Where(c => c.Estado != "EN_CLIENTE").ToList();
+            }
+            stats = await Api.GetCafeComodatosStatsAsync();
+        }
+        catch { lista = new(); }
+        finally { loading = false; }
+    }
+
+    private IEnumerable<CafeClienteDto> FiltrarClientes()
+    {
+        if (clientes is null) return Enumerable.Empty<CafeClienteDto>();
+        if (string.IsNullOrWhiteSpace(clienteSearch)) return clientes.OrderBy(c => c.CodigoInterno ?? int.MaxValue).ThenBy(c => c.Nombre);
+        var t = clienteSearch.Trim();
+        bool h(string? s) => !string.IsNullOrEmpty(s) && s.Contains(t, StringComparison.OrdinalIgnoreCase);
+        return clientes.Where(c => h(c.Nombre) || h(c.RazonSocial) || h(c.Cuit) || h(c.Telefono) || h(c.Email)
+            || (c.CodigoInterno.HasValue && c.CodigoInterno.Value.ToString().Contains(t)))
+            .OrderBy(c => c.CodigoInterno ?? int.MaxValue).ThenBy(c => c.Nombre);
+    }
+
+    private void CalcularValorCuota()
+    {
+        if (formPrecioVenta.HasValue && formCuotasTotales.HasValue && formCuotasTotales.Value > 0)
+            formValorCuota = Math.Round(formPrecioVenta.Value / formCuotasTotales.Value, 2);
+    }
+
+    private void AbrirNueva()
+    {
+        formModalidad = "COMODATO";
+        formClienteId = 0; clienteSearch = "";
+        formMarca = ""; formModelo = ""; formNumeroSerie = "";
+        formFechaEntrega = DateTime.Today;
+        formNotas = ""; formValorEstimado = null;
+        formPrecioVenta = null; formCuotasTotales = null; formValorCuota = null; formDiaPago = null;
+        showNueva = true;
+    }
+
+    private async Task GuardarNueva()
+    {
+        if (formClienteId == 0) { ToastService.Error("Elegí un cliente"); return; }
+        guardando = true;
+        try
+        {
+            var r = await Api.CreateCafeComodatoAsync(new CafeComodatoCreateRequest
+            {
+                ClienteId = formClienteId,
+                Modalidad = formModalidad,
+                Marca = formMarca,
+                Modelo = formModelo,
+                NumeroSerie = formNumeroSerie,
+                FechaEntrega = formFechaEntrega,
+                Notas = formNotas,
+                ValorEstimado = formValorEstimado,
+                PrecioVenta = formPrecioVenta,
+                CuotasTotales = formCuotasTotales,
+                ValorCuota = formValorCuota,
+                DiaPagoMensual = formDiaPago
+            });
+            if (r is not null)
+            {
+                ToastService.Success("Máquina cargada");
+                showNueva = false;
+                await Cargar();
+            }
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { guardando = false; }
+    }
+
+    private async Task AbrirDetalle(CafeComodatoDto c)
+    {
+        var d = await Api.GetCafeComodatoDetalleAsync(c.Id);
+        if (d?.Comodato is null) return;
+        detalleAbierto = d.Comodato;
+        detallePagos = d.Pagos;
+        detalleEstado = d.Comodato.Estado;
+    }
+
+    private async Task GuardarEstado()
+    {
+        if (detalleAbierto is null) return;
+        try
+        {
+            var r = await Api.UpdateCafeComodatoAsync(detalleAbierto.Id, new CafeComodatoUpdateRequest
+            {
+                Marca = detalleAbierto.Marca, Modelo = detalleAbierto.Modelo, NumeroSerie = detalleAbierto.NumeroSerie,
+                FechaEntrega = detalleAbierto.FechaEntrega, Estado = detalleEstado,
+                FechaDevolucion = (detalleEstado == "DEVUELTA" || detalleEstado == "BAJA") ? DateTime.Today : null,
+                Notas = detalleAbierto.Notas, ValorEstimado = detalleAbierto.ValorEstimado,
+                PrecioVenta = detalleAbierto.PrecioVenta, CuotasTotales = detalleAbierto.CuotasTotales,
+                ValorCuota = detalleAbierto.ValorCuota, DiaPagoMensual = detalleAbierto.DiaPagoMensual
+            });
+            if (r is not null)
+            {
+                ToastService.Success("Estado actualizado");
+                detalleAbierto = null;
+                await Cargar();
+            }
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private async Task EliminarMaquina()
+    {
+        if (detalleAbierto is null) return;
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Eliminar la máquina {detalleAbierto.Marca} {detalleAbierto.Modelo} y todos sus pagos? No se puede deshacer.")) return;
+        try
+        {
+            await Api.DeleteCafeComodatoAsync(detalleAbierto.Id);
+            ToastService.Success("Máquina eliminada");
+            detalleAbierto = null;
+            await Cargar();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private void AbrirPago(CafeComodatoDto c)
+    {
+        pagoAbierto = c;
+        pagoFecha = DateTime.Today;
+        pagoImporte = c.ValorCuota ?? 0;
+        pagoMedio = "EFECTIVO";
+        pagoNotas = "";
+    }
+
+    private async Task GuardarPago()
+    {
+        if (pagoAbierto is null || pagoImporte <= 0) return;
+        guardandoPago = true;
+        try
+        {
+            await Api.RegistrarPagoComodatoAsync(pagoAbierto.Id, new CafeComodatoPagoRequest
+            {
+                Fecha = pagoFecha,
+                Importe = pagoImporte,
+                MedioPago = pagoMedio,
+                Notas = string.IsNullOrWhiteSpace(pagoNotas) ? null : pagoNotas
+            });
+            ToastService.Success($"Pago de ${pagoImporte:N0} registrado");
+            pagoAbierto = null;
+            // Si el detalle está abierto, recargarlo
+            if (detalleAbierto is not null)
+            {
+                var d = await Api.GetCafeComodatoDetalleAsync(detalleAbierto.Id);
+                detalleAbierto = d?.Comodato;
+                detallePagos = d?.Pagos;
+            }
+            await Cargar();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { guardandoPago = false; }
+    }
+
+    private async Task AnularPago(int pagoId)
+    {
+        if (detalleAbierto is null) return;
+        if (!await JS.InvokeAsync<bool>("confirm", "¿Eliminar este pago? El saldo se va a recalcular.")) return;
+        try
+        {
+            await Api.AnularPagoComodatoAsync(detalleAbierto.Id, pagoId);
+            var d = await Api.GetCafeComodatoDetalleAsync(detalleAbierto.Id);
+            detalleAbierto = d?.Comodato;
+            detallePagos = d?.Pagos;
+            await Cargar();
+            ToastService.Success("Pago eliminado");
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private string EstadoBadgeClass(string e) => e switch
+    {
+        "EN_CLIENTE" => "badge-success",
+        "EN_TALLER" => "badge-warning",
+        "DEVUELTA" => "badge-secondary",
+        "BAJA" => "badge-danger",
+        "PAGADA" => "badge-success",
+        _ => "badge-secondary"
+    };
+
+    private string EstadoLabel(string e) => e switch
+    {
+        "EN_CLIENTE" => "✅ En cliente",
+        "EN_TALLER" => "🔧 En taller",
+        "DEVUELTA" => "↩ Devuelta",
+        "BAJA" => "❌ Baja",
+        "PAGADA" => "💎 Pagada",
+        _ => e
+    };
+}

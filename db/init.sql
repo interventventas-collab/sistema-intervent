@@ -3348,3 +3348,65 @@ GO
 IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId=1 AND MenuKey='cafe-saldos')
     INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'cafe-saldos');
 GO
+
+-- ============================================================
+-- Cafe_Comodatos: maquinas de cafe que tenemos colocadas en clientes.
+-- Dos modalidades:
+--   COMODATO  → maquina nuestra, cliente la usa, no nos paga por ella.
+--   FINANCIADA → cliente la compro, paga en cuotas. Al terminar, es suya.
+-- ============================================================
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_Comodatos')
+BEGIN
+    CREATE TABLE Cafe_Comodatos (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        ClienteId INT NOT NULL,
+        Modalidad NVARCHAR(20) NOT NULL CONSTRAINT DF_CafeComodatos_Modalidad DEFAULT 'COMODATO',
+            -- COMODATO | FINANCIADA
+        Marca NVARCHAR(100) NULL,
+        Modelo NVARCHAR(100) NULL,
+        NumeroSerie NVARCHAR(100) NULL,
+        FechaEntrega DATE NULL,
+        Estado NVARCHAR(20) NOT NULL CONSTRAINT DF_CafeComodatos_Estado DEFAULT 'EN_CLIENTE',
+            -- EN_CLIENTE | EN_TALLER | DEVUELTA | BAJA | PAGADA
+        FechaDevolucion DATE NULL,
+        Notas NVARCHAR(500) NULL,
+        ValorEstimado DECIMAL(18,2) NULL,
+        -- Campos solo aplican para FINANCIADA:
+        PrecioVenta DECIMAL(18,2) NULL,
+        CuotasTotales INT NULL,
+        ValorCuota DECIMAL(18,2) NULL,
+        DiaPagoMensual INT NULL,
+        SaldoFinanciamiento DECIMAL(18,2) NULL,
+        CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_CafeComodatos_Created DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT FK_CafeComodatos_Cliente FOREIGN KEY (ClienteId) REFERENCES Cafe_Clientes(Id)
+    );
+    CREATE INDEX IX_CafeComodatos_Cliente ON Cafe_Comodatos(ClienteId);
+    CREATE INDEX IX_CafeComodatos_Estado ON Cafe_Comodatos(Estado);
+    CREATE INDEX IX_CafeComodatos_Modalidad ON Cafe_Comodatos(Modalidad);
+END
+GO
+
+-- Pagos de cuotas para las maquinas FINANCIADAS.
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_ComodatoPagos')
+BEGIN
+    CREATE TABLE Cafe_ComodatoPagos (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        ComodatoId INT NOT NULL,
+        Fecha DATE NOT NULL,
+        Importe DECIMAL(18,2) NOT NULL,
+        MedioPago NVARCHAR(30) NULL,
+            -- EFECTIVO | TRANSFERENCIA | MERCADOPAGO | CHEQUE | OTRO
+        Notas NVARCHAR(300) NULL,
+        CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_CafeComodatoPagos_Created DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT FK_CafeComodatoPagos_Comodato FOREIGN KEY (ComodatoId) REFERENCES Cafe_Comodatos(Id) ON DELETE CASCADE
+    );
+    CREATE INDEX IX_CafeComodatoPagos_Comodato ON Cafe_ComodatoPagos(ComodatoId);
+    CREATE INDEX IX_CafeComodatoPagos_Fecha ON Cafe_ComodatoPagos(Fecha);
+END
+GO
+
+-- Permiso menu
+IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId=1 AND MenuKey='cafe-maquinas')
+    INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'cafe-maquinas');
+GO

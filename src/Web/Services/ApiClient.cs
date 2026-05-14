@@ -432,6 +432,32 @@ public class ApiClient
     public async Task<bool> DeleteSaldoMigracionAsync(int id)
         => await DeleteAsync($"/api/cafe/saldos-migracion/{id}");
 
+    // --- Cafe: Comodatos / Máquinas (comodato + financiada) ---
+    public async Task<List<CafeComodatoDto>?> GetCafeComodatosAsync(string? modalidad = null, string? estado = null, int? clienteId = null, string? q = null)
+    {
+        var qs = new List<string>();
+        if (!string.IsNullOrEmpty(modalidad)) qs.Add($"modalidad={Uri.EscapeDataString(modalidad)}");
+        if (!string.IsNullOrEmpty(estado)) qs.Add($"estado={Uri.EscapeDataString(estado)}");
+        if (clienteId.HasValue) qs.Add($"clienteId={clienteId}");
+        if (!string.IsNullOrEmpty(q)) qs.Add($"q={Uri.EscapeDataString(q)}");
+        var url = "/api/cafe/comodatos" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+        return await GetAsync<List<CafeComodatoDto>>(url);
+    }
+    public async Task<CafeComodatoDetalleDto?> GetCafeComodatoDetalleAsync(int id)
+        => await GetAsync<CafeComodatoDetalleDto>($"/api/cafe/comodatos/{id}");
+    public async Task<CafeComodatosStatsDto?> GetCafeComodatosStatsAsync()
+        => await GetAsync<CafeComodatosStatsDto>("/api/cafe/comodatos/stats");
+    public async Task<CafeComodatoDto?> CreateCafeComodatoAsync(CafeComodatoCreateRequest req)
+        => await PostAsync<CafeComodatoDto>("/api/cafe/comodatos", req);
+    public async Task<CafeComodatoDto?> UpdateCafeComodatoAsync(int id, CafeComodatoUpdateRequest req)
+        => await PutAsync<CafeComodatoDto>($"/api/cafe/comodatos/{id}", req);
+    public async Task<bool> DeleteCafeComodatoAsync(int id)
+        => await DeleteAsync($"/api/cafe/comodatos/{id}");
+    public async Task<object?> RegistrarPagoComodatoAsync(int id, CafeComodatoPagoRequest req)
+        => await PostAsync<object>($"/api/cafe/comodatos/{id}/pagos", req);
+    public async Task<bool> AnularPagoComodatoAsync(int id, int pagoId)
+        => await DeleteAsync($"/api/cafe/comodatos/{id}/pagos/{pagoId}");
+
     // --- Cafe: Clientes ---
     public async Task<List<CafeClienteDto>?> GetCafeClientesAsync()
         => await GetAsync<List<CafeClienteDto>>("/api/cafe/clientes");

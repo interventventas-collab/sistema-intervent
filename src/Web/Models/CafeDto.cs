@@ -985,3 +985,97 @@ public class CafeSaldoMigracionSugerenciaDto
     public int? CodigoInterno { get; set; }
     public string Motivo { get; set; } = "";
 }
+
+// --- Comodatos / Máquinas financiadas ---
+public class CafeComodatoDto
+{
+    public int Id { get; set; }
+    public int ClienteId { get; set; }
+    public string? ClienteNombre { get; set; }
+    public string Modalidad { get; set; } = "COMODATO";   // COMODATO | FINANCIADA
+    public string? Marca { get; set; }
+    public string? Modelo { get; set; }
+    public string? NumeroSerie { get; set; }
+    public DateTime? FechaEntrega { get; set; }
+    public string Estado { get; set; } = "EN_CLIENTE";    // EN_CLIENTE | EN_TALLER | DEVUELTA | BAJA | PAGADA
+    public DateTime? FechaDevolucion { get; set; }
+    public string? Notas { get; set; }
+    public decimal? ValorEstimado { get; set; }
+    // FINANCIADA:
+    public decimal? PrecioVenta { get; set; }
+    public int? CuotasTotales { get; set; }
+    public decimal? ValorCuota { get; set; }
+    public int? DiaPagoMensual { get; set; }
+    public decimal? SaldoFinanciamiento { get; set; }
+    public decimal PagosAcumulados { get; set; }
+    public int PagosCount { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+public class CafeComodatoPagoDto
+{
+    public int Id { get; set; }
+    public int ComodatoId { get; set; }
+    public DateTime Fecha { get; set; }
+    public decimal Importe { get; set; }
+    public string? MedioPago { get; set; }
+    public string? Notas { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+public class CafeComodatoDetalleDto
+{
+    public CafeComodatoDto? Comodato { get; set; }
+    public List<CafeComodatoPagoDto> Pagos { get; set; } = new();
+}
+
+public class CafeComodatosStatsDto
+{
+    public int ComodatosTotales { get; set; }
+    public int ComodatosActivos { get; set; }
+    public int FinanciadasTotales { get; set; }
+    public int FinanciadasActivas { get; set; }
+    public int FinanciadasPagadas { get; set; }
+    public decimal SaldoFinanciamientoTotal { get; set; }
+    public decimal ValorEstimadoComodatos { get; set; }
+}
+
+public class CafeComodatoCreateRequest
+{
+    public int ClienteId { get; set; }
+    public string Modalidad { get; set; } = "COMODATO";
+    public string? Marca { get; set; }
+    public string? Modelo { get; set; }
+    public string? NumeroSerie { get; set; }
+    public DateTime? FechaEntrega { get; set; }
+    public string? Notas { get; set; }
+    public decimal? ValorEstimado { get; set; }
+    public decimal? PrecioVenta { get; set; }
+    public int? CuotasTotales { get; set; }
+    public decimal? ValorCuota { get; set; }
+    public int? DiaPagoMensual { get; set; }
+}
+
+public class CafeComodatoUpdateRequest
+{
+    public string? Marca { get; set; }
+    public string? Modelo { get; set; }
+    public string? NumeroSerie { get; set; }
+    public DateTime? FechaEntrega { get; set; }
+    public string? Estado { get; set; }
+    public DateTime? FechaDevolucion { get; set; }
+    public string? Notas { get; set; }
+    public decimal? ValorEstimado { get; set; }
+    public decimal? PrecioVenta { get; set; }
+    public int? CuotasTotales { get; set; }
+    public decimal? ValorCuota { get; set; }
+    public int? DiaPagoMensual { get; set; }
+}
+
+public class CafeComodatoPagoRequest
+{
+    public DateTime Fecha { get; set; }
+    public decimal Importe { get; set; }
+    public string? MedioPago { get; set; }
+    public string? Notas { get; set; }
+}
