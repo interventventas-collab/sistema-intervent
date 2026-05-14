@@ -243,8 +243,9 @@ public class CafeCotizacionPdfService
                                 else if (i.EsEnvasePlateado) t.Span("  env. plat.").Bold().FontColor(Colors.Grey.Darken2);
                                 if (!string.IsNullOrEmpty(i.Molienda)) t.Span($"  — {i.Molienda}").FontColor(Colors.Grey.Darken1).FontSize(8);
                             });
-                            // Formato
-                            table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignCenter().Text(FormatoLabel(i.Formato));
+                            // Formato — italic gris para que NO se confunda con la cantidad
+                            table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignCenter()
+                                .Text(FormatoLabel(i.Formato)).Italic().FontColor(Colors.Grey.Darken1).FontFamily("Times New Roman");
                             // P. Unitario
                             table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text(t =>
                             {
