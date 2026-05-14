@@ -73,6 +73,40 @@
     </button>
 </div>
 
+@* ═════════ Post-it + Leyenda de simbolos ═════════ *@
+<div style="display:flex; gap:0.5rem; margin-bottom:0.5rem; align-items:stretch; flex-wrap:wrap;">
+    @* Post-it: notas del día (persisten en localStorage del browser) *@
+    <div style="flex:1 1 320px; min-width:280px; background:#fef9c3; border:1px solid #facc15; border-radius:6px; padding:0.4rem 0.5rem; box-shadow:0 1px 2px rgba(0,0,0,0.08);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.2rem;">
+            <span style="font-size:0.72rem; font-weight:700; color:#854d0e;">📝 Notas del día</span>
+            @if (!string.IsNullOrEmpty(notasMapeo))
+            {
+                <button class="btn" style="font-size:0.65rem; padding:0 0.3rem; background:transparent; border:none; color:#a16207; cursor:pointer;"
+                        @onclick="LimpiarNotas" title="Vaciar la nota">× borrar</button>
+            }
+        </div>
+        <textarea @bind="notasMapeo" @bind:event="oninput" @onblur="GuardarNotas"
+                  placeholder="Anotá cosas que te quieras acordar (proveedor que llamar, parada especial, etc)..."
+                  style="width:100%; min-height:48px; resize:vertical; border:none; background:transparent; font-size:0.82rem; color:#422006; font-family:inherit; outline:none;"></textarea>
+    </div>
+    @* Leyenda de simbolos del mapa *@
+    <div style="flex:0 1 auto; background:white; border:1px solid #e5e7eb; border-radius:6px; padding:0.4rem 0.6rem; display:flex; gap:0.7rem; align-items:center; flex-wrap:wrap;">
+        <span style="font-size:0.72rem; font-weight:700; color:#6b7280;">Referencias:</span>
+        <span style="display:flex; align-items:center; gap:0.3rem; font-size:0.78rem; color:#374151;">
+            <span style="display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; background:#eab308; color:white; border:1.5px solid white; border-radius:50%; font-size:0.75rem; font-weight:700; box-shadow:0 1px 2px rgba(0,0,0,0.3);">★</span>
+            Flex
+        </span>
+        <span style="display:flex; align-items:center; gap:0.3rem; font-size:0.78rem; color:#374151;">
+            <span style="display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; background:#eab308; color:white; font-size:0.65rem; font-weight:700; clip-path:polygon(50% 5%, 5% 95%, 95% 95%); filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4));"><span style="padding-top:6px;">★</span></span>
+            Venta por fuera
+        </span>
+        <span style="display:flex; align-items:center; gap:0.3rem; font-size:0.78rem; color:#374151;">
+            <span style="display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; background:#eab308; color:white; border:1.5px solid white; border-radius:3px; font-size:0.75rem; font-weight:700; box-shadow:0 1px 2px rgba(0,0,0,0.3);">★</span>
+            ME1
+        </span>
+    </div>
+</div>
+
 @if (HayParadasViejas)
 {
     <div style="background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; padding:0.6rem 0.8rem; margin-bottom:0.5rem; display:flex; justify-content:space-between; align-items:center; gap:0.5rem; flex-wrap:wrap;">
@@ -1472,6 +1506,32 @@ else
     // Filtro de zonas (chips): conjunto de zonas que el usuario ocultó. Vacío = todas visibles.
     private HashSet<string> zonasOcultas = new(StringComparer.Ordinal);
 
+    // Notas tipo post-it que persisten en localStorage del browser. Se carga al iniciar
+    // y se guarda en cada onblur del textarea para no spammear writes.
+    private string notasMapeo = "";
+
+    private async Task GuardarNotas()
+    {
+        try { await JS.InvokeVoidAsync("localStorage.setItem", "mapeo.notas", notasMapeo ?? ""); }
+        catch { /* tolerar — no es critico */ }
+    }
+
+    private async Task LimpiarNotas()
+    {
+        notasMapeo = "";
+        await GuardarNotas();
+    }
+
+    private async Task CargarNotas()
+    {
+        try
+        {
+            var v = await JS.InvokeAsync<string>("localStorage.getItem", "mapeo.notas");
+            notasMapeo = v ?? "";
+        }
+        catch { notasMapeo = ""; }
+    }
+
     private void ToggleZonaOculta(string zona)
     {
         if (zonasOcultas.Contains(zona)) zonasOcultas.Remove(zona);
@@ -1923,7 +1983,9 @@ else
             await LoadFavoritos();
             await LoadClientesMapeados();
             await LoadStops();
+            await CargarNotas();
             await LoadAndRender();
+            StateHasChanged();
         }
     }
 
