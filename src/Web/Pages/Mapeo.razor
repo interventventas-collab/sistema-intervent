@@ -1984,16 +1984,13 @@ else
                     id = s.Id,
                     lat = s.Latitude,
                     lng = s.Longitude,
-                    // ME1: mismo estilo visual que las paradas pendientes (naranja con estrella).
-                    // Flex: numerito secuencial (1, 2, 3...) y color según estado.
-                    label = esMe1 ? "★" : (i + 1).ToString(),
-                    color = esMe1 ? "#d97706" : ColorFor(EffectiveKey(s)),
-                    // ME1 = cuadrado, Flex = círculo. Las paradas manuales/favoritos = triángulo (más abajo).
+                    // Mismo estilo "dimmed" para Flex y ME1: blanco con número secuencial.
+                    // La diferencia visual es SOLO la forma: círculo (Flex) vs cuadrado (ME1).
+                    // Cuando se importan como paradas se prenden con color sólido + estrella.
+                    label = (i + 1).ToString(),
+                    color = ColorFor(EffectiveKey(s)),
                     shape = esMe1 ? "square" : "circle",
-                    // Flex: dimmed=true (blanco + borde negro). ME1: dimmed=false (naranja sólido con
-                    // estrella) — el usuario quiere que se vea igual que las paradas pendientes,
-                    // diferenciado SOLO por la forma cuadrada.
-                    dimmed = !esMe1,
+                    dimmed = true,
                     popupHtml = $"<div style='font-size:0.8rem; line-height:1.4;'><strong>{System.Net.WebUtility.HtmlEncode(s.ReceiverName ?? "—")}</strong>{(esMe1 ? " <span style='background:#fce7f3;color:#9d174d;padding:0 0.3rem;border-radius:3px;font-size:0.65rem;font-weight:800;'>ME1</span>" : "")}<br/>{System.Net.WebUtility.HtmlEncode(s.AddressLine ?? "")}<br/><em>{System.Net.WebUtility.HtmlEncode(s.City ?? "")}</em><br/><button onclick=\"window.mapeoActions.toggleRoute({s.Id}); event.stopPropagation();\" style='margin-top:0.3rem; padding:0.2rem 0.5rem; background:{btnBg}; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>{btnTxt}</button></div>"
                 };
             }));
