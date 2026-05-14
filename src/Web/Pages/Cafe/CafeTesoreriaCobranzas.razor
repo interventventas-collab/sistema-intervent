@@ -6,17 +6,33 @@
 
 <div class="card">
     <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
-        <h3 style="margin:0;">📥 Cobranzas (@(cobranzas?.Count ?? 0))</h3>
-        <button class="btn btn-primary" @onclick="ShowNueva">+ Nueva cobranza</button>
+        @{
+            var vigentes = cobranzas?.Count(c => c.Estado != "ANULADA") ?? 0;
+            var anuladas = cobranzas?.Count(c => c.Estado == "ANULADA") ?? 0;
+        }
+        <h3 style="margin:0;">📥 Cobranzas (@vigentes@(anuladas > 0 ? $" + {anuladas} anuladas" : ""))</h3>
+        <div style="display:flex; gap:0.5rem; align-items:center;">
+            @if (anuladas > 0)
+            {
+                <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.8rem; color:#6b7280;">
+                    <input type="checkbox" @bind="mostrarAnuladas" />
+                    Mostrar anuladas
+                </label>
+            }
+            <button class="btn btn-primary" @onclick="ShowNueva">+ Nueva cobranza</button>
+        </div>
     </div>
     <div class="card-body" style="padding:0;">
+        @{
+            var cobranzasFiltradas = cobranzas?.Where(c => mostrarAnuladas || c.Estado != "ANULADA").ToList() ?? new();
+        }
         @if (loading)
         {
             <p class="text-muted" style="padding:1rem;">Cargando...</p>
         }
-        else if (cobranzas is null || cobranzas.Count == 0)
+        else if (cobranzasFiltradas.Count == 0)
         {
-            <p class="text-muted" style="padding:1rem;">Sin cobranzas aún. Hace clic en "+ Nueva cobranza" para empezar.</p>
+            <p class="text-muted" style="padding:1rem;">@(cobranzas?.Count > 0 ? "No hay cobranzas vigentes. Tildá 'Mostrar anuladas' para ver el historial." : "Sin cobranzas aún. Hace clic en \"+ Nueva cobranza\" para empezar.")</p>
         }
         else
         {
@@ -33,7 +49,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var c in cobranzas)
+                    @foreach (var c in cobranzasFiltradas)
                     {
                         <tr style="@(c.Estado == "ANULADA" ? "opacity:0.5; text-decoration:line-through;" : "")">
                             <td><b>@c.Numero</b></td>
@@ -264,6 +280,9 @@
 @code {
     private List<CobranzaListDto>? cobranzas;
     private bool loading = true;
+    // Por default ocultamos las cobranzas anuladas para que el listado quede limpio.
+    // El usuario puede tildar el checkbox del header si quiere ver el historial.
+    private bool mostrarAnuladas = false;
     private List<CafeClienteDto>? clientes;
     private List<CafeCajaDto>? cajas;
 
