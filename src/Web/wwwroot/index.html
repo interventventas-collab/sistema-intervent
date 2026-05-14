@@ -63,6 +63,14 @@
             return {
                 init(elementId, dotnetHelper) {
                     dotNetRef = dotnetHelper;
+                    // Expone window.mapeoActions: lo usan los botones dentro del popup HTML
+                    // del cluster para invocar acciones específicas sobre cada parada
+                    // (toggle en ruta, asignar a V, etc) sin tener que ir al panel lateral.
+                    window.mapeoActions = {
+                        toggleRoute: function(markerId) {
+                            if (dotNetRef) dotNetRef.invokeMethodAsync('ToggleMarkerInRoute', markerId);
+                        }
+                    };
                     if (map) { map.remove(); map = null; zonesLayer = null; }
                     map = L.map(elementId).setView([-34.6037, -58.3816], 11); // CABA por default
                     // Mapa monocromo (gris claro) para que no compita con los marcadores

@@ -1962,26 +1962,37 @@ else
             (stops ?? new()).Where(s => s.Origin == "flex" && s.OriginRefId != null && long.TryParse(s.OriginRefId, out _))
                             .Select(s => long.Parse(s.OriginRefId!))
         );
+        // Lista unificada cacheada para el render: se usa para saber si cada marker
+        // está en la selección de ruta (rutaSeleccion) y mostrar el botón apropiado
+        // en el popup (Sumar / Quitar).
+        var listaUnificadaCacheada = BuildListaUnificada();
         // Si hay un filtro de vehículo activo (no es "Todos"), también ocultamos los shipments
         // (porque solo queremos ver los stops asignados a ese vehículo).
         var verShipments = vehiculoFiltro == null;
         if (verShipments)
         {
             list.AddRange(shipments.Where(s => s.Latitude.HasValue && s.Longitude.HasValue
-                                            && !shipmentsImportados.Contains(s.MeliShipmentId)).Select((s, i) => (object)new
+                                            && !shipmentsImportados.Contains(s.MeliShipmentId)).Select((s, i) =>
             {
-                id = s.Id,
-                lat = s.Latitude,
-                lng = s.Longitude,
-                label = (i + 1).ToString(),
-                color = ColorFor(EffectiveKey(s)),
-                // ME1 = cuadrado, Flex = círculo. Las paradas manuales/favoritos = triángulo (más abajo).
-                shape = s.Mode == "me1" ? "square" : "circle",
-                // Flex/ME1 todavía no asignados a un V se muestran "apagados" (fondo blanco,
-                // número negro, borde de color). Cuando el usuario los importa como parada y los
-                // asigna a un vehículo, se renderizan como parada-flex con el color sólido del V.
-                dimmed = true,
-                popupHtml = $"<div style='font-size:0.8rem;'><strong>{System.Net.WebUtility.HtmlEncode(s.ReceiverName ?? "—")}</strong>{(s.Mode == "me1" ? " <span style='background:#fce7f3;color:#9d174d;padding:0 0.3rem;border-radius:3px;font-size:0.65rem;font-weight:800;'>ME1</span>" : "")}<br/>{System.Net.WebUtility.HtmlEncode(s.AddressLine ?? "")}<br/><em>{System.Net.WebUtility.HtmlEncode(s.City ?? "")}</em></div>"
+                var grupo = listaUnificadaCacheada?.FirstOrDefault(g => g.Flex.Any(f => f.Id == s.Id));
+                var enRuta = grupo is not null && rutaSeleccion.Contains(grupo.Key);
+                var btnBg = enRuta ? "#dc2626" : "#16a34a";
+                var btnTxt = enRuta ? "✗ Quitar de ruta" : "✓ Sumar a ruta";
+                return (object)new
+                {
+                    id = s.Id,
+                    lat = s.Latitude,
+                    lng = s.Longitude,
+                    label = (i + 1).ToString(),
+                    color = ColorFor(EffectiveKey(s)),
+                    // ME1 = cuadrado, Flex = círculo. Las paradas manuales/favoritos = triángulo (más abajo).
+                    shape = s.Mode == "me1" ? "square" : "circle",
+                    // Flex/ME1 todavía no asignados a un V se muestran "apagados" (fondo blanco,
+                    // número negro, borde de color). Cuando el usuario los importa como parada y los
+                    // asigna a un vehículo, se renderizan como parada-flex con el color sólido del V.
+                    dimmed = true,
+                    popupHtml = $"<div style='font-size:0.8rem; line-height:1.4;'><strong>{System.Net.WebUtility.HtmlEncode(s.ReceiverName ?? "—")}</strong>{(s.Mode == "me1" ? " <span style='background:#fce7f3;color:#9d174d;padding:0 0.3rem;border-radius:3px;font-size:0.65rem;font-weight:800;'>ME1</span>" : "")}<br/>{System.Net.WebUtility.HtmlEncode(s.AddressLine ?? "")}<br/><em>{System.Net.WebUtility.HtmlEncode(s.City ?? "")}</em><br/><button onclick=\"window.mapeoActions.toggleRoute({s.Id}); event.stopPropagation();\" style='margin-top:0.3rem; padding:0.2rem 0.5rem; background:{btnBg}; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>{btnTxt}</button></div>"
+                };
             }));
         }
         // Stops (incluye los Flex importados + favoritos + manuales)
@@ -2003,15 +2014,20 @@ else
                 // Forma del marker: TRIÁNGULO si NO viene de Flex (favorito/manual/cliente-cafe/etc),
                 // CÍRCULO si es un envío Flex importado. Así el operador distingue visualmente.
                 string shape = st.Origin == "flex" ? "circle" : "triangle";
+                var markerId = -1000 - st.Id;
+                var grupoSt = listaUnificadaCacheada.FirstOrDefault(g => g.Manual.Any(m => m.Id == st.Id));
+                var enRutaSt = grupoSt is not null && rutaSeleccion.Contains(grupoSt.Key);
+                var btnBgSt = enRutaSt ? "#dc2626" : "#16a34a";
+                var btnTxtSt = enRutaSt ? "✗ Quitar de ruta" : "✓ Sumar a ruta";
                 return (object)new
                 {
-                    id = -1000 - st.Id,
+                    id = markerId,
                     lat = st.Latitude,
                     lng = st.Longitude,
                     label,
                     color,
                     shape,
-                    popupHtml = $"<div style='font-size:0.8rem;'><strong>{System.Net.WebUtility.HtmlEncode(st.Alias ?? st.ContactName ?? "Parada")}</strong>{(st.AssignedVehicleSlot.HasValue ? $" <span style='color:{color}'>· V{st.AssignedVehicleSlot}</span>" : "")}{(st.AssignedDriverName is null ? "" : $" · {System.Net.WebUtility.HtmlEncode(st.AssignedDriverName)}")}<br/>{System.Net.WebUtility.HtmlEncode(st.Direccion)}{(string.IsNullOrEmpty(st.Telefono) ? "" : $"<br/>📞 {System.Net.WebUtility.HtmlEncode(st.Telefono)}")}</div>"
+                    popupHtml = $"<div style='font-size:0.8rem; line-height:1.4;'><strong>{System.Net.WebUtility.HtmlEncode(st.Alias ?? st.ContactName ?? "Parada")}</strong>{(st.AssignedVehicleSlot.HasValue ? $" <span style='color:{color}'>· V{st.AssignedVehicleSlot}</span>" : "")}{(st.AssignedDriverName is null ? "" : $" · {System.Net.WebUtility.HtmlEncode(st.AssignedDriverName)}")}<br/>{System.Net.WebUtility.HtmlEncode(st.Direccion)}{(string.IsNullOrEmpty(st.Telefono) ? "" : $"<br/>📞 {System.Net.WebUtility.HtmlEncode(st.Telefono)}")}<br/><button onclick=\"window.mapeoActions.toggleRoute({markerId}); event.stopPropagation();\" style='margin-top:0.3rem; padding:0.2rem 0.5rem; background:{btnBgSt}; color:white; border:none; border-radius:4px; font-size:0.72rem; font-weight:600; cursor:pointer;'>{btnTxtSt}</button></div>"
                 };
             }));
         }
@@ -2067,6 +2083,38 @@ else
         showDetail = true;
         if (s.Latitude.HasValue && s.Longitude.HasValue)
             await JS.InvokeVoidAsync("mapeoFlex.focusOn", (double)s.Latitude.Value, (double)s.Longitude.Value, 16);
+    }
+
+    /// <summary>
+    /// Invocado desde el botón "✓ Sumar a ruta" dentro del popup del marker del mapa.
+    /// Encuentra el grupo unificado al que pertenece el marker (sea Flex o parada) y
+    /// togglea su selección en la ruta de Google Maps. Después fuerza un re-render
+    /// para que se vea el outline verde en la tarjeta correspondiente del panel lateral.
+    /// </summary>
+    [JSInvokable]
+    public async Task ToggleMarkerInRoute(int markerId)
+    {
+        var lista = BuildListaUnificada();
+        string? groupKey = null;
+        if (markerId > -1000)
+        {
+            var s = shipments?.FirstOrDefault(x => x.Id == markerId);
+            if (s is null) return;
+            var grupo = lista.FirstOrDefault(g => g.Flex.Any(f => f.Id == s.Id));
+            groupKey = grupo?.Key;
+        }
+        else
+        {
+            var stopId = -1000 - markerId;
+            var st = stops?.FirstOrDefault(x => x.Id == stopId);
+            if (st is null) return;
+            var grupo = lista.FirstOrDefault(g => g.Manual.Any(m => m.Id == st.Id));
+            groupKey = grupo?.Key;
+        }
+        if (groupKey is null) return;
+        ToggleRutaSeleccion(groupKey);
+        StateHasChanged();
+        await Task.CompletedTask;
     }
 
     /// <summary>
