@@ -2134,14 +2134,21 @@ else
             {
                 foreach (var id in ids)
                 {
-                    if (id > -1000) continue; // solo paradas (id negativo), no Flex puro
-                    var stopId = -1000 - id;
-                    var st = stops?.FirstOrDefault(x => x.Id == stopId);
-                    if (st is null) continue;
-                    // Asignación masiva: NO togglea, siempre asigna al V activo.
-                    // Si la parada ya estaba en otro V, la mueve a este.
-                    await Api.AssignVehicleSlotAsync(st.Id, vehiculoSeleccionado);
-                    st.AssignedVehicleSlot = vehiculoSeleccionado;
+                    if (id <= -1000)
+                    {
+                        var stopId = -1000 - id;
+                        var st = stops?.FirstOrDefault(x => x.Id == stopId);
+                        if (st is null) continue;
+                        await Api.AssignVehicleSlotAsync(st.Id, vehiculoSeleccionado);
+                        st.AssignedVehicleSlot = vehiculoSeleccionado;
+                    }
+                    else
+                    {
+                        // Flex / ME1 del cluster: importar como parada + asignar V
+                        var ship = shipments?.FirstOrDefault(x => x.Id == id);
+                        if (ship is null) continue;
+                        await ImportarShipmentYAsignarV(ship);
+                    }
                 }
                 await RenderMap();
                 ToastService.Success($"{ids.Length} paradas asignadas al V{vehiculoSeleccionado}");
@@ -2206,6 +2213,15 @@ else
                 var stopId = -1000 - id;
                 var st = stops?.FirstOrDefault(x => x.Id == stopId);
                 if (st is not null) await OnMarkerAssign(st);
+            }
+            else
+            {
+                // Flex / ME1 click en modo asignación: lo importamos como parada Y le asignamos
+                // el V activo en una sola operación. Asi el usuario ve el marker pintarse del
+                // color del V sin tener que ir antes al modal "Sumar Flex a paradas".
+                var ship = shipments?.FirstOrDefault(x => x.Id == id);
+                if (ship is null) return;
+                await ImportarShipmentYAsignarV(ship);
             }
             return;
         }
@@ -2670,6 +2686,47 @@ else
             }
             await RenderMap();
             ToastService.Success("Orden reiniciado");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { assigningSlot = false; }
+    }
+
+    /// <summary>
+    /// Cuando el usuario clickea en modo asignación visual sobre un marker de Flex / ME1
+    /// (que todavía no es parada), creamos la parada al toque con Origin="flex" + OriginRefId
+    /// = MeliShipmentId y le asignamos el V activo. Asi el usuario no tiene que pasar antes
+    /// por el modal "Sumar Flex a paradas" — un solo click hace todo.
+    /// </summary>
+    private async Task ImportarShipmentYAsignarV(MeliShipmentDto s)
+    {
+        if (!s.Latitude.HasValue || !s.Longitude.HasValue)
+        {
+            ToastService.Error("Este envío no tiene coordenadas, no se puede asignar.");
+            return;
+        }
+        assigningSlot = true;
+        try
+        {
+            // Construimos la dirección completa "calle, localidad" si tenemos ambos campos.
+            var dir = !string.IsNullOrWhiteSpace(s.AddressLine)
+                ? (string.IsNullOrWhiteSpace(s.City) ? s.AddressLine! : $"{s.AddressLine}, {s.City}")
+                : (s.City ?? "(sin dirección)");
+            var nuevo = await Api.CreateMapeoStopAsync(
+                origin: "flex",
+                originRefId: s.MeliShipmentId.ToString(),
+                alias: s.ReceiverName,
+                direccion: dir,
+                lat: s.Latitude.Value,
+                lng: s.Longitude.Value,
+                contact: s.ReceiverName,
+                tel: s.ReceiverPhone,
+                notas: s.ItemsSummary);
+            if (nuevo is null) { ToastService.Error("No se pudo crear la parada"); return; }
+            // Le asignamos el V activo
+            await Api.AssignVehicleSlotAsync(nuevo.Id, vehiculoSeleccionado);
+            nuevo.AssignedVehicleSlot = vehiculoSeleccionado;
+            stops!.Add(nuevo);
+            await RenderMap();
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { assigningSlot = false; }
