@@ -327,15 +327,25 @@ else
 <div class="mapeo-layout">
     <div class="mapeo-side">
         <div class="mapeo-side-header" style="display:flex; justify-content:space-between; align-items:center;">
+            @{
+                // Conteo real (deduplicado): los Flex que ya fueron importados como parada
+                // NO se cuentan dos veces. Los Flex visibles = shipments que NO tienen una
+                // parada-flex asociada. Total destinos = Flex visibles + paradas (que incluyen
+                // las paradas-flex y las manuales — cada una es un destino único).
+                var paradaFlexIds = new HashSet<long>(
+                    (stops ?? new()).Where(s => s.Origin == "flex" && s.OriginRefId != null && long.TryParse(s.OriginRefId, out _))
+                                    .Select(s => long.Parse(s.OriginRefId!))
+                );
+                var flexVisibles = shipments?.Count(s => !paradaFlexIds.Contains(s.MeliShipmentId)) ?? 0;
+                var paradasTotal = stops?.Count ?? 0;
+                var totalDest = flexVisibles + paradasTotal;
+            }
             <div>
-                <strong>@(shipments?.Count ?? 0)</strong> Flex
-                <span style="color:#9ca3af;">+</span>
-                <strong>@(stops?.Count ?? 0)</strong> manuales
-                <span style="color:#9ca3af;">=</span>
-                <strong>@((shipments?.Count ?? 0) + (stops?.Count ?? 0))</strong> envíos
+                <strong>@totalDest</strong> destino@(totalDest == 1 ? "" : "s")
+                <span style="font-size:0.72rem; color:#6b7280;"> · @flexVisibles Flex + @paradasTotal parada@(paradasTotal == 1 ? "" : "s")</span>
             </div>
             <span style="font-size:0.72rem; color:#6b7280;">
-                @(shipments?.Count(s => s.Latitude.HasValue && s.Longitude.HasValue) ?? 0) + @(stops?.Count ?? 0) en mapa
+                @(shipments?.Count(s => s.Latitude.HasValue && s.Longitude.HasValue && !paradaFlexIds.Contains(s.MeliShipmentId)) ?? 0) + @paradasTotal en mapa
             </span>
         </div>
         <div class="mapeo-side-list">

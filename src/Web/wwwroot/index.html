@@ -107,12 +107,12 @@
                         //   - triangle → paradas NO Flex (favoritos / clientes café / tipeadas a mano).
                         //   - square   → envíos ME1 (manuales del vendedor en MeLi).
                         //   - circle   → envíos Flex de MercadoLibre (default).
-                        // Estilo "dimmed": fondo BLANCO, texto negro y borde del color sólido.
+                        // Estilo "dimmed": fondo BLANCO, texto negro y borde NEGRO.
                         // Indica que ese envío todavía no fue asignado a un vehículo. Cuando se asigna,
                         // pasa a fondo color sólido / texto blanco — visualmente "se prende".
                         const bgColor = isDimmed ? 'white' : color;
-                        const textColor = isDimmed ? '#1f2937' : 'white';
-                        const borderColor = isDimmed ? color : 'white';
+                        const textColor = isDimmed ? '#111827' : 'white';
+                        const borderColor = isDimmed ? '#111827' : 'white';
                         const mainHtml = isTriangle
                             ? `<div style="background:${color};color:white;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.7rem;clip-path:polygon(50% 5%, 5% 95%, 95% 95%);filter:drop-shadow(0 1px 2px rgba(0,0,0,0.5));"><span style="padding-top:8px;">${first.label || ''}</span></div>`
                             : (isSquare
