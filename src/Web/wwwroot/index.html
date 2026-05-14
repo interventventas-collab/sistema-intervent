@@ -30,6 +30,9 @@
             let layer = null;
             let zonesLayer = null;
             let dotNetRef = null;
+            // Si ya hicimos auto-fit del mapa una vez, no se reajusta automáticamente
+            // en cada render — respetamos el zoom/centro que vaya eligiendo el usuario.
+            let hasAutoFitted = false;
             // Paleta categorica que se cicla por feature (orden alfabetico),
             // asi vecinos en el mapa quedan con colores distintos.
             const ZONE_COLORS = [
@@ -173,7 +176,13 @@
                         }
                         bounds.push([first.lat, first.lng]);
                     }
-                    if (bounds.length > 0) map.fitBounds(bounds, { padding: [40, 40] });
+                    // Solo hacemos fitBounds en el PRIMER render. Después respetamos lo que
+                    // el usuario haya hecho zoom/pan — si no, cada vez que asigna un marker
+                    // a un V el mapa se aleja y pierde el zoom donde estaba trabajando.
+                    if (bounds.length > 0 && !hasAutoFitted) {
+                        map.fitBounds(bounds, { padding: [40, 40] });
+                        hasAutoFitted = true;
+                    }
                 },
                 focusOn(lat, lng, zoom) {
                     if (!map) return;
@@ -182,7 +191,11 @@
                 destroy() {
                     if (map) { map.remove(); map = null; layer = null; zonesLayer = null; }
                     dotNetRef = null;
-                }
+                    hasAutoFitted = false; // próximo init vuelve a hacer auto-fit
+                },
+                // Permite forzar el re-encuadre desde Blazor (ej: cuando cambias el filtro
+                // de vehículo arriba del mapa) sin tener que reiniciar el mapa entero.
+                refit() { hasAutoFitted = false; }
             };
         })();
     </script>
