@@ -330,7 +330,7 @@ else
                 // parada-flex asociada. Total destinos = Flex visibles + paradas (que incluyen
                 // las paradas-flex y las manuales — cada una es un destino único).
                 var paradaFlexIds = new HashSet<long>(
-                    (stops ?? new()).Where(s => s.Origin == "flex" && s.OriginRefId != null && long.TryParse(s.OriginRefId, out _))
+                    (stops ?? new()).Where(s => (s.Origin == "flex" || s.Origin == "me1") && s.OriginRefId != null && long.TryParse(s.OriginRefId, out _))
                                     .Select(s => long.Parse(s.OriginRefId!))
                 );
                 var flexVisibles = shipments?.Count(s => !paradaFlexIds.Contains(s.MeliShipmentId)) ?? 0;
@@ -1505,7 +1505,7 @@ else
         {
             get
             {
-                var paradasFlex = Manual.Count(m => m.Origin == "flex");
+                var paradasFlex = Manual.Count(m => m.Origin == "flex" || m.Origin == "me1");
                 var paradasManuales = Manual.Count - paradasFlex;
                 return Flex.Count + paradasManuales;
             }
@@ -1514,7 +1514,7 @@ else
         public bool TieneManual => Manual.Count > 0;
         // Devuelve la parada (Origin=flex) que linkea con un Flex puntual, si existe.
         public MapeoStopDto? GetParadaFlex(long meliShipmentId) =>
-            Manual.FirstOrDefault(m => m.Origin == "flex" && m.OriginRefId == meliShipmentId.ToString());
+            Manual.FirstOrDefault(m => (m.Origin == "flex" || m.Origin == "me1") && m.OriginRefId == meliShipmentId.ToString());
     }
 
     // Detecta cuando un texto de "dirección" es en realidad un par de coordenadas
@@ -1569,7 +1569,7 @@ else
                 }
                 g.Manual.Add(st);
 
-                if (st.Origin == "flex" && !string.IsNullOrEmpty(st.OriginRefId)
+                if ((st.Origin == "flex" || st.Origin == "me1") && !string.IsNullOrEmpty(st.OriginRefId)
                     && long.TryParse(st.OriginRefId, out var sid))
                 {
                     paradaFlexGroupKey[sid] = key;
@@ -1956,7 +1956,7 @@ else
         }
         // Set de shipment IDs que ya fueron importados como stops (origin=flex) — para no duplicar marcadores
         var shipmentsImportados = new HashSet<long>(
-            (stops ?? new()).Where(s => s.Origin == "flex" && s.OriginRefId != null && long.TryParse(s.OriginRefId, out _))
+            (stops ?? new()).Where(s => (s.Origin == "flex" || s.Origin == "me1") && s.OriginRefId != null && long.TryParse(s.OriginRefId, out _))
                             .Select(s => long.Parse(s.OriginRefId!))
         );
         // Lista unificada cacheada para el render: se usa para saber si cada marker
@@ -2009,9 +2009,11 @@ else
                               : (string.IsNullOrEmpty(st.AssignedDriverColor) ? "#eab308" : st.AssignedDriverColor!);
                 string label = st.OrderInRoute.HasValue ? st.OrderInRoute.Value.ToString()
                               : (st.AssignedVehicleSlot.HasValue ? "V" + st.AssignedVehicleSlot : "★");
-                // Forma del marker: TRIÁNGULO si NO viene de Flex (favorito/manual/cliente-cafe/etc),
-                // CÍRCULO si es un envío Flex importado. Así el operador distingue visualmente.
-                string shape = st.Origin == "flex" ? "circle" : "triangle";
+                // Forma del marker según el origen: CÍRCULO=Flex importado, CUADRADO=ME1 importado,
+                // TRIÁNGULO=manual / favorito / cliente-cafe / etc. Así se conserva la pista visual
+                // del tipo de envío incluso después de importarlo como parada.
+                string shape = st.Origin == "flex" ? "circle"
+                              : (st.Origin == "me1" ? "square" : "triangle");
                 var markerId = -1000 - st.Id;
                 var grupoSt = listaUnificadaCacheada.FirstOrDefault(g => g.Manual.Any(m => m.Id == st.Id));
                 var enRutaSt = grupoSt is not null && rutaSeleccion.Contains(grupoSt.Key);
@@ -2711,8 +2713,11 @@ else
             var dir = !string.IsNullOrWhiteSpace(s.AddressLine)
                 ? (string.IsNullOrWhiteSpace(s.City) ? s.AddressLine! : $"{s.AddressLine}, {s.City}")
                 : (s.City ?? "(sin dirección)");
+            // Origin "me1" si es envío manual del vendedor, "flex" si es Flex de MeLi.
+            // El render del marker mapea ese Origin a la forma del globito (cuadrado vs círculo).
+            var origenStop = s.Mode == "me1" ? "me1" : "flex";
             var nuevo = await Api.CreateMapeoStopAsync(
-                origin: "flex",
+                origin: origenStop,
                 originRefId: s.MeliShipmentId.ToString(),
                 alias: s.ReceiverName,
                 direccion: dir,
