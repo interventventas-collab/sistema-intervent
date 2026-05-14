@@ -2153,6 +2153,7 @@ else
                     }
                 }
                 await RenderMap();
+                StateHasChanged();
                 ToastService.Success($"{ids.Length} paradas asignadas al V{vehiculoSeleccionado}");
             }
             catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
@@ -2732,6 +2733,7 @@ else
             nuevo.AssignedVehicleSlot = vehiculoSeleccionado;
             stops!.Add(nuevo);
             await RenderMap();
+            StateHasChanged();
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { assigningSlot = false; }
@@ -2746,6 +2748,9 @@ else
             await Api.AssignVehicleSlotAsync(s.Id, newSlot);
             s.AssignedVehicleSlot = newSlot;
             await RenderMap();
+            // Forzamos refresh inmediato del UI para que los chips "V1 (X)" arriba del mapa
+            // y los counters del stepper actualicen sin esperar a otro evento.
+            StateHasChanged();
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { assigningSlot = false; }
