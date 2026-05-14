@@ -98,6 +98,14 @@ public static class CafePricingService
                 FORMATO_CUARTO => (listaBase / 4m) + settings.CostoFraccionamiento,
                 _ => 0m
             };
+            // AJUSTE TEMPORAL (pedido del usuario el 14/05/2026): el 1/2 KG para clientes OTRO
+            // se redondea HACIA ARRIBA al múltiplo de RedondeoMultiplo (default $1000) para que
+            // coincida exacto con la lista de precios FV (sugerida) que tienen impresa los clientes.
+            // El mes que viene se recalculan los costos correctos y se quita este redondeo.
+            if (formato == FORMATO_MEDIO && tipoCliente?.ToUpperInvariant() == "OTRO" && settings.RedondeoMultiplo > 0)
+            {
+                lista = Math.Ceiling(lista / settings.RedondeoMultiplo) * settings.RedondeoMultiplo;
+            }
         }
         else
         {
