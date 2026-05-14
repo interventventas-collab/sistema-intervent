@@ -2053,6 +2053,69 @@ else
             await JS.InvokeVoidAsync("mapeoFlex.focusOn", (double)s.Latitude.Value, (double)s.Longitude.Value, 16);
     }
 
+    /// <summary>
+    /// Click sobre un cluster (varias paradas apiladas en la misma coordenada).
+    /// En modo asignación: asigna TODAS al V activo de un solo click.
+    /// En modo orden: numera TODAS en secuencia (la primera con el próximo número, etc.).
+    /// En modo normal: abre el detalle del primer Flex del grupo si lo hay.
+    /// </summary>
+    [JSInvokable]
+    public async Task OnClusterClicked(int[] ids)
+    {
+        if (ids is null || ids.Length == 0) return;
+
+        if (modoAsignacion)
+        {
+            assigningSlot = true;
+            try
+            {
+                foreach (var id in ids)
+                {
+                    if (id > -1000) continue; // solo paradas (id negativo), no Flex puro
+                    var stopId = -1000 - id;
+                    var st = stops?.FirstOrDefault(x => x.Id == stopId);
+                    if (st is null) continue;
+                    // Asignación masiva: NO togglea, siempre asigna al V activo.
+                    // Si la parada ya estaba en otro V, la mueve a este.
+                    await Api.AssignVehicleSlotAsync(st.Id, vehiculoSeleccionado);
+                    st.AssignedVehicleSlot = vehiculoSeleccionado;
+                }
+                await RenderMap();
+                ToastService.Success($"{ids.Length} paradas asignadas al V{vehiculoSeleccionado}");
+            }
+            catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+            finally { assigningSlot = false; }
+            return;
+        }
+
+        if (modoOrden)
+        {
+            // Numerar todas las paradas del V activo en secuencia. Las que no son del V activo
+            // se saltan con un toast informativo.
+            int salteadas = 0;
+            foreach (var id in ids)
+            {
+                if (id > -1000) continue;
+                var stopId = -1000 - id;
+                var st = stops?.FirstOrDefault(x => x.Id == stopId);
+                if (st is null) continue;
+                if (st.AssignedVehicleSlot != ordenVehiculoSeleccionado) { salteadas++; continue; }
+                if (st.OrderInRoute.HasValue) continue; // ya numerada, dejamos como está
+                await OnMarkerOrden(st);
+            }
+            if (salteadas > 0) ToastService.Info($"{salteadas} paradas del cluster no son del V{ordenVehiculoSeleccionado} y se saltaron");
+            return;
+        }
+
+        // Modo normal: si hay un Flex en el grupo, abrir su detalle
+        var firstFlexId = ids.FirstOrDefault(id => id > -1000);
+        if (firstFlexId > 0)
+        {
+            var s = shipments?.FirstOrDefault(x => x.Id == firstFlexId);
+            if (s is not null) { activeShipmentId = firstFlexId; selected = s; showDetail = true; StateHasChanged(); }
+        }
+    }
+
     [JSInvokable]
     public async Task OnMarkerClicked(int id)
     {

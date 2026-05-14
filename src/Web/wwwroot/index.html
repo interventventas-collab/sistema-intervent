@@ -135,11 +135,16 @@
                         const m = L.marker([first.lat, first.lng], { icon })
                             .addTo(layer)
                             .bindPopup(popupHtml);
-                        // Click: dispara el handler del primero del grupo. Si hay agrupados
-                        // y la accion es "modo orden" o "modo asignacion", el usuario tendra
-                        // que actuar uno por uno desde el panel lateral o repetir el click
-                        // (Leaflet abre el popup primero, luego el click navega).
-                        m.on('click', () => { if (dotNetRef) dotNetRef.invokeMethodAsync('OnMarkerClicked', first.id); });
+                        // Click: si el cluster tiene 1 solo, dispara el handler de SIEMPRE
+                        // (OnMarkerClicked con el id). Si tiene varios, dispara OnClusterClicked
+                        // con TODOS los ids del cluster, así Blazor puede actuar masivamente
+                        // (asignar las N paradas al mismo V de un click, p.ej.).
+                        if (group.length > 1) {
+                            const ids = group.map(g => g.id);
+                            m.on('click', () => { if (dotNetRef) dotNetRef.invokeMethodAsync('OnClusterClicked', ids); });
+                        } else {
+                            m.on('click', () => { if (dotNetRef) dotNetRef.invokeMethodAsync('OnMarkerClicked', first.id); });
+                        }
                         bounds.push([first.lat, first.lng]);
                     }
                     if (bounds.length > 0) map.fitBounds(bounds, { padding: [40, 40] });
