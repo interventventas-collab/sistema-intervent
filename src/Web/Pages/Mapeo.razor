@@ -1613,27 +1613,41 @@ else
 
     private static string AddrFromGroup(GrupoUnificado g)
     {
-        // Si el grupo tiene Flex preferimos esa dirección (suele estar más limpia).
+        // Estrategia: si tenemos coordenadas válidas, las preferimos — Google Maps NUNCA falla con
+        // un par "lat,lng" y el formato path-based las acepta perfecto. Si no hay coords, usamos
+        // la dirección de texto + localidad; si la localidad falta, sumamos "Buenos Aires, Argentina"
+        // como contexto para que Google no devuelva resultados de otro país.
+        const string CONTEXTO_DEFAULT = "Buenos Aires, Argentina";
+
         if (g.Flex.Count > 0)
         {
             var s = g.Flex.First();
-            var dir = !string.IsNullOrWhiteSpace(s.AddressLine) && !ParecenCoordenadas(s.AddressLine)
-                ? (s.AddressLine + " " + (s.City ?? "")).Trim()
-                : (s.Latitude.HasValue && s.Longitude.HasValue
-                    ? $"{s.Latitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)},{s.Longitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
-                    : (s.City ?? ""));
-            return Uri.EscapeDataString(dir);
+            if (s.Latitude.HasValue && s.Longitude.HasValue && (s.Latitude.Value != 0 || s.Longitude.Value != 0))
+            {
+                var coord = $"{s.Latitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)},{s.Longitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+                return Uri.EscapeDataString(coord);
+            }
+            if (!string.IsNullOrWhiteSpace(s.AddressLine) && !ParecenCoordenadas(s.AddressLine))
+            {
+                var city = !string.IsNullOrWhiteSpace(s.City) ? s.City : CONTEXTO_DEFAULT;
+                return Uri.EscapeDataString((s.AddressLine + ", " + city).Trim());
+            }
+            return Uri.EscapeDataString(s.City ?? CONTEXTO_DEFAULT);
         }
         else
         {
             var st = g.Manual.First();
-            var direccionUsable = !string.IsNullOrWhiteSpace(st.Direccion) && !ParecenCoordenadas(st.Direccion);
-            var dir = direccionUsable
-                ? (st.Direccion + " " + (st.Localidad ?? "")).Trim()
-                : (st.Latitude != 0 && st.Longitude != 0
-                    ? $"{st.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture)},{st.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
-                    : (st.Localidad ?? ""));
-            return Uri.EscapeDataString(dir);
+            if (st.Latitude != 0 && st.Longitude != 0)
+            {
+                var coord = $"{st.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture)},{st.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+                return Uri.EscapeDataString(coord);
+            }
+            if (!string.IsNullOrWhiteSpace(st.Direccion) && !ParecenCoordenadas(st.Direccion))
+            {
+                var loc = !string.IsNullOrWhiteSpace(st.Localidad) ? st.Localidad : CONTEXTO_DEFAULT;
+                return Uri.EscapeDataString((st.Direccion + ", " + loc).Trim());
+            }
+            return Uri.EscapeDataString(st.Localidad ?? CONTEXTO_DEFAULT);
         }
     }
 
