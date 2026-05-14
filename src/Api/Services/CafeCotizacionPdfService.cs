@@ -313,10 +313,25 @@ public class CafeCotizacionPdfService
                                 });
                             }
                             c.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(Colors.Grey.Lighten1);
-                            c.Item().Row(r =>
+                            // Forma de pago destacada: cuadro gris claro con título arriba + estado a la derecha
+                            c.Item().PaddingTop(3).Background(Colors.Grey.Lighten4).Border(0.5f).BorderColor(Colors.Grey.Lighten1)
+                                .Padding(6).Row(r =>
                             {
-                                r.RelativeItem().Text("Condición de pago:").FontSize(8).FontColor(Colors.Grey.Darken1);
-                                r.AutoItem().Text(CondicionPagoLabel(v.CondicionPago)).SemiBold().FontSize(8);
+                                r.RelativeItem().Column(cc =>
+                                {
+                                    cc.Item().Text("FORMA DE PAGO").FontSize(7).Bold().FontColor(Colors.Grey.Darken2).LetterSpacing(0.05f);
+                                    cc.Item().Text(CondicionPagoLabel(v.CondicionPago)).FontSize(11).Bold().FontColor(Colors.Black);
+                                });
+                                if (v.IsPaid)
+                                {
+                                    r.AutoItem().AlignMiddle().Background(Colors.Green.Lighten4).Border(0.5f).BorderColor(Colors.Green.Lighten1)
+                                        .Padding(4).Text("✓ PAGADA").Bold().FontSize(9).FontColor(Colors.Green.Darken3);
+                                }
+                                else
+                                {
+                                    r.AutoItem().AlignMiddle().Background(Colors.Yellow.Lighten4).Border(0.5f).BorderColor(Colors.Yellow.Darken1)
+                                        .Padding(4).Text("⧗ PENDIENTE").Bold().FontSize(9).FontColor(Colors.Orange.Darken3);
+                                }
                             });
                         });
                     });

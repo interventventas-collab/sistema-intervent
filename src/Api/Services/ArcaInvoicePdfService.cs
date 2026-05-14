@@ -258,6 +258,30 @@ public class ArcaInvoicePdfService
                         c.Item().PaddingTop(2).Text($"Importe Total: $ {comp.ImpTotal.ToString("N2", new CultureInfo("es-AR"))}").FontSize(11).Bold();
                     });
 
+                    // Forma de pago — destacada para que se vea al toque en la factura
+                    if (!string.IsNullOrWhiteSpace(comp.CondicionPago))
+                    {
+                        col.Item().PaddingTop(4).Background(Colors.Grey.Lighten4).Border(0.5f).BorderColor(Colors.Grey.Lighten1)
+                            .Padding(5).Row(r =>
+                        {
+                            r.RelativeItem().Column(cc =>
+                            {
+                                cc.Item().Text("FORMA DE PAGO").FontSize(7).Bold().FontColor(Colors.Grey.Darken2).LetterSpacing(0.05f);
+                                cc.Item().Text(LabelCondicionPago(comp.CondicionPago!)).FontSize(10).Bold();
+                            });
+                            if (comp.IsPaid)
+                            {
+                                r.AutoItem().AlignMiddle().Background(Colors.Green.Lighten4).Border(0.5f).BorderColor(Colors.Green.Lighten1)
+                                    .Padding(4).Text("✓ PAGADA").Bold().FontSize(8).FontColor(Colors.Green.Darken3);
+                            }
+                            else
+                            {
+                                r.AutoItem().AlignMiddle().Background(Colors.Yellow.Lighten4).Border(0.5f).BorderColor(Colors.Yellow.Darken1)
+                                    .Padding(4).Text("⧗ PENDIENTE").Bold().FontSize(8).FontColor(Colors.Orange.Darken3);
+                            }
+                        });
+                    }
+
                     col.Item().PaddingTop(4).Text($"Concepto: {NombreConcepto(comp.Concepto)}").FontSize(8);
 
                     col.Item().PaddingTop(4).LineHorizontal(0.5f);
@@ -392,6 +416,18 @@ public class ArcaInvoicePdfService
         3 => "Productos y Servicios",
         _ => $"Concepto {c}",
     };
+
+    private static string LabelCondicionPago(string c) => c.ToUpperInvariant() switch
+    {
+        "EFECTIVO" => "Efectivo",
+        "TRANSFERENCIA" => "Transferencia bancaria",
+        "MERCADOPAGO" => "Mercado Pago",
+        "CHEQUE" => "Cheque",
+        "CTA_CORRIENTE" => "Cuenta corriente",
+        "V1" => "Pago V1",
+        "V2" => "Pago V2",
+        _ => c,
+    };
 }
 
 // ============================================================
@@ -449,6 +485,9 @@ public class PdfComprobante
     public string? ComentariosCliente { get; set; }
     /// <summary>Observaciones internas de la venta. Si null no se muestra.</summary>
     public string? Observaciones { get; set; }
+    /// <summary>Condición de pago: EFECTIVO / TRANSFERENCIA / MERCADOPAGO / CHEQUE / CTA_CORRIENTE / V*.
+    /// Se imprime con un label legible bajo el total.</summary>
+    public string? CondicionPago { get; set; }
 }
 
 public class PdfItem

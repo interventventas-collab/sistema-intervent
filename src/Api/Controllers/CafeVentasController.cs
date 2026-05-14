@@ -34,6 +34,25 @@ public class CafeVentasController : ControllerBase
         _emisorService = emisorService;
     }
 
+    /// <summary>
+    /// Devuelve la fecha CALENDARIO que el usuario quiso poner, sin importar la TZ del cliente.
+    /// El bug: cuando el browser ART manda "2026-05-14T00:00:00-03:00", System.Text.Json
+    /// lo convierte a UTC = 2026-05-13 21:00 y al hacer .Date salia 13/05 en vez de 14/05.
+    /// Fix: si el DateTime viene con TZ (Utc o Local), lo paso a hora ART antes de tomar la fecha.
+    /// Si viene Unspecified (sin TZ) lo respeto literal — son los componentes que tipeo el usuario.
+    /// Si no viene nada, default = hoy en ART.
+    /// </summary>
+    private static DateTime FechaArgentina(DateTime? input)
+    {
+        if (!input.HasValue) return DateTime.UtcNow.AddHours(-3).Date;
+        var dt = input.Value;
+        if (dt.Kind == DateTimeKind.Unspecified)
+            return new DateTime(dt.Year, dt.Month, dt.Day, 0, 0, 0, DateTimeKind.Unspecified);
+        // Utc o Local: convertir a hora ART y tomar la fecha
+        var utc = dt.Kind == DateTimeKind.Utc ? dt : dt.ToUniversalTime();
+        return utc.AddHours(-3).Date;
+    }
+
     private static CafeVentaDto Map(CafeVenta v, bool esSaldoMigracion = false) => new(
         v.Id, v.Numero, v.Fecha,
         v.ClienteId, v.ClienteNombreSnapshot, v.ClienteTipoSnapshot, v.ClienteTelefonoSnapshot,
@@ -206,6 +225,7 @@ public class CafeVentasController : ControllerBase
             DiasVisita = v.WeekDays,
             ComentariosCliente = v.ClienteComentariosComprobante,
             Observaciones = v.Observaciones,
+            CondicionPago = v.CondicionPago,
         };
 
         foreach (var it in v.Items)
@@ -356,7 +376,7 @@ public class CafeVentasController : ControllerBase
         {
             Id = 0,
             Numero = "PREVIEW",
-            Fecha = (req.Fecha ?? DateTime.Today).Date,
+            Fecha = FechaArgentina(req.Fecha),
             ClienteId = cli?.Id,
             ClienteNombreSnapshot = cli?.Nombre ?? req.ClienteNombreOverride ?? "Consumidor final",
             ClienteTipoSnapshot = tipo,
@@ -458,7 +478,7 @@ public class CafeVentasController : ControllerBase
         var venta = new CafeVenta
         {
             Numero = await GenerarNumeroAsync(),
-            Fecha = (req.Fecha ?? DateTime.Today).Date,
+            Fecha = FechaArgentina(req.Fecha),
             ClienteId = req.ClienteId.HasValue && req.ClienteId.Value > 0 ? req.ClienteId.Value : null,
             ClienteNombreSnapshot = clienteNombre,
             ClienteTipoSnapshot = tipo,
@@ -966,7 +986,7 @@ public class CafeVentasController : ControllerBase
         var v = await _db.CafeVentas.Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == id);
         if (v is null) return NotFound(new { error = "Venta no encontrada" });
 
-        if (req.Fecha.HasValue) v.Fecha = req.Fecha.Value.Date;
+        if (req.Fecha.HasValue) v.Fecha = FechaArgentina(req.Fecha);
         if (req.Observaciones is not null)
             v.Observaciones = string.IsNullOrWhiteSpace(req.Observaciones) ? null : req.Observaciones.Trim();
         if (req.TipoComprobante is not null) v.TipoComprobante = NormTipoComprobante(req.TipoComprobante);
