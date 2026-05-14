@@ -1967,6 +1967,10 @@ else
                 color = ColorFor(EffectiveKey(s)),
                 // ME1 = cuadrado, Flex = círculo. Las paradas manuales/favoritos = triángulo (más abajo).
                 shape = s.Mode == "me1" ? "square" : "circle",
+                // Flex/ME1 todavía no asignados a un V se muestran "apagados" (fondo blanco,
+                // número negro, borde de color). Cuando el usuario los importa como parada y los
+                // asigna a un vehículo, se renderizan como parada-flex con el color sólido del V.
+                dimmed = true,
                 popupHtml = $"<div style='font-size:0.8rem;'><strong>{System.Net.WebUtility.HtmlEncode(s.ReceiverName ?? "—")}</strong>{(s.Mode == "me1" ? " <span style='background:#fce7f3;color:#9d174d;padding:0 0.3rem;border-radius:3px;font-size:0.65rem;font-weight:800;'>ME1</span>" : "")}<br/>{System.Net.WebUtility.HtmlEncode(s.AddressLine ?? "")}<br/><em>{System.Net.WebUtility.HtmlEncode(s.City ?? "")}</em></div>"
             }));
         }
