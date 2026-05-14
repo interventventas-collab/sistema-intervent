@@ -238,6 +238,7 @@ public class CafeCotizacionPdfService
                             {
                                 t.Span(i.ProductoNombreSnapshot).SemiBold();
                                 if (i.EsDoyPack) t.Span("  d.p.").Bold().FontColor(Colors.Blue.Darken3);
+                                else if (i.EsEnvasePlateado) t.Span("  env. plat.").Bold().FontColor(Colors.Grey.Darken2);
                                 if (!string.IsNullOrEmpty(i.Molienda)) t.Span($"  — {i.Molienda}").FontColor(Colors.Grey.Darken1).FontSize(8);
                             });
                             // Formato

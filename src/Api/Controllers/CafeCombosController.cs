@@ -156,6 +156,7 @@ public class CafeCombosController : ControllerBase
                 Cantidad = it.Cantidad,
                 Molienda = molienda,
                 EsDoyPack = it.EsDoyPack && esCafe,
+                EsEnvasePlateado = it.EsEnvasePlateado && esCafe && !it.EsDoyPack,
                 SortOrder = it.SortOrder == 0 ? i : it.SortOrder
             });
         }
@@ -188,7 +189,8 @@ public class CafeCombosController : ControllerBase
                 x.ProductoNav?.Pvp2,
                 x.Formato, x.Cantidad,
                 x.Molienda, x.EsDoyPack,
-                x.SortOrder)).ToList()
+                x.SortOrder,
+                x.EsEnvasePlateado)).ToList()
         );
     }
 }

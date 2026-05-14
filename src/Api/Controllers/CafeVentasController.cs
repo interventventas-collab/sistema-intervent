@@ -68,7 +68,8 @@ public class CafeVentasController : ControllerBase
             i.GramosDescontados,
             i.Molienda, i.EsDoyPack,
             i.DescuentoPct,
-            i.EsConceptoLibre)).ToList(),
+            i.EsConceptoLibre,
+            i.EsEnvasePlateado)).ToList(),
         v.ClienteRazonSocialSnapshot,
         v.ClienteDomicilioEntregaSnapshot,
         v.ClienteComentariosComprobante,
@@ -235,7 +236,7 @@ public class CafeVentasController : ControllerBase
                 : it.PrecioUnitario;
             var desc = it.ProductoNombreSnapshot;
             if (!string.IsNullOrEmpty(it.Molienda)) desc += $" — {it.Molienda}";
-            if (it.EsDoyPack) desc += " (d.p.)";
+            if (it.EsDoyPack) desc += " (d.p.)"; else if (it.EsEnvasePlateado) desc += " (env. plat.)";
             if (!it.EsConceptoLibre) desc += $" · {it.Formato}";
 
             comp.Items.Add(new PdfItem
@@ -418,6 +419,7 @@ public class CafeVentasController : ControllerBase
                 GramosDescontados = ci.GramosNecesarios,
                 Molienda = NormMolienda(ci.Molienda),
                 EsDoyPack = ci.EsDoyPack && ci.Categoria == "CAFE",
+                EsEnvasePlateado = ci.EsEnvasePlateado && ci.Categoria == "CAFE" && !ci.EsDoyPack,
                 DescuentoPct = ci.DescuentoPct
             });
         }
@@ -548,6 +550,7 @@ public class CafeVentasController : ControllerBase
                 GramosDescontados = it.GramosNecesarios,
                 Molienda = NormMolienda(it.Molienda),
                 EsDoyPack = it.EsDoyPack && prod.Categoria == "CAFE",  // doy pack solo aplica a cafe
+                EsEnvasePlateado = it.EsEnvasePlateado && prod.Categoria == "CAFE" && !it.EsDoyPack,
                 DescuentoPct = it.DescuentoPct
             });
 
@@ -678,7 +681,7 @@ public class CafeVentasController : ControllerBase
 
                 var desc = it.ProductoNombreSnapshot;
                 if (!string.IsNullOrEmpty(it.Molienda)) desc += $" — {it.Molienda}";
-                if (it.EsDoyPack) desc += " (d.p.)";
+                if (it.EsDoyPack) desc += " (d.p.)"; else if (it.EsEnvasePlateado) desc += " (env. plat.)";
                 // Para items con producto del catálogo agregamos el formato (1kg / medio / cuarto / unit).
                 // Para "concepto libre" la descripción ya viene completa, no le sumamos formato.
                 if (!it.EsConceptoLibre) desc += $" · {it.Formato}";
@@ -778,6 +781,7 @@ public class CafeVentasController : ControllerBase
                 Cantidad = i.Cantidad,
                 Molienda = i.Molienda,
                 EsDoyPack = i.EsDoyPack,
+                EsEnvasePlateado = i.EsEnvasePlateado,
                 DescuentoPct = i.DescuentoPct,
                 PrecioUnitarioOverride = i.PrecioUnitario  // mantiene el precio exacto del original
             }).ToList(),
@@ -843,6 +847,7 @@ public class CafeVentasController : ControllerBase
             Cantidad = i.Cantidad,
             Molienda = i.Molienda,
             EsDoyPack = i.EsDoyPack,
+            EsEnvasePlateado = i.EsEnvasePlateado,
             DescuentoPct = i.DescuentoPct,
             EsConceptoLibre = i.EsConceptoLibre,
             DescripcionLibre = i.EsConceptoLibre ? i.ProductoNombreSnapshot : null
@@ -1095,6 +1100,7 @@ public class CafeVentasController : ControllerBase
                         GramosDescontados = ci.GramosNecesarios,
                         Molienda = NormMolienda(ci.Molienda),
                         EsDoyPack = ci.EsDoyPack && prod.Categoria == "CAFE",
+                        EsEnvasePlateado = ci.EsEnvasePlateado && prod.Categoria == "CAFE" && !ci.EsDoyPack,
                         DescuentoPct = ci.DescuentoPct
                     });
                     if (prod.Categoria == "CAFE")
@@ -1300,7 +1306,8 @@ public class CafeVentasController : ControllerBase
                 gramosNecesarios, prod.StockGramos, prod.StockUnidades,
                 stockOk, aviso,
                 NormMolienda(it.Molienda), it.EsDoyPack && esCafe,
-                descPct));
+                descPct,
+                it.EsEnvasePlateado && esCafe && !it.EsDoyPack));
 
             subtotal += subtotalLinea;
             costoTotal += costoUnit * it.Cantidad;

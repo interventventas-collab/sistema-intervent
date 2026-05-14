@@ -172,6 +172,10 @@ public class CafeVentaItem
     /// <summary>Si el producto va en envase doy pack. Aparece como 'd.p.' al lado del nombre en el comprobante.</summary>
     public bool EsDoyPack { get; set; }
 
+    /// <summary>Si el producto va en envase plateado. Default: false = envase negro.
+    /// Solo aplica si NO está marcado EsDoyPack (son mutuamente excluyentes en la UI).</summary>
+    public bool EsEnvasePlateado { get; set; }
+
     /// <summary>Descuento porcentual aplicado a esta linea (0-100). 0 = sin descuento.</summary>
     [Column(TypeName = "decimal(5,2)")]
     public decimal DescuentoPct { get; set; }

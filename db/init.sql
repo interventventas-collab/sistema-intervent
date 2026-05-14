@@ -3417,3 +3417,16 @@ BEGIN
     ALTER TABLE Cafe_Comodatos ADD Moneda NVARCHAR(5) NOT NULL CONSTRAINT DF_CafeComodatos_Moneda DEFAULT 'ARS';
 END
 GO
+
+-- Cafe_VentaItems / Cafe_ComboItems: agregar EsEnvasePlateado (default 0 = envase negro).
+-- 3 opciones mutuamente excluyentes: envase negro (default), envase plateado, doy pack.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='EsEnvasePlateado' AND Object_ID=OBJECT_ID('Cafe_VentaItems'))
+BEGIN
+    ALTER TABLE Cafe_VentaItems ADD EsEnvasePlateado BIT NOT NULL CONSTRAINT DF_CafeVentaItems_EnvPlat DEFAULT 0;
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='EsEnvasePlateado' AND Object_ID=OBJECT_ID('Cafe_ComboItems'))
+BEGIN
+    ALTER TABLE Cafe_ComboItems ADD EsEnvasePlateado BIT NOT NULL CONSTRAINT DF_CafeComboItems_EnvPlat DEFAULT 0;
+END
+GO

@@ -237,6 +237,8 @@ public class CafeVentaItemDto
     public decimal DescuentoPct { get; set; }
     /// <summary>True si es un item "concepto libre" (descripción + precio cargados a mano).</summary>
     public bool EsConceptoLibre { get; set; }
+    /// <summary>Si va en envase plateado. Si EsDoyPack=false y EsEnvasePlateado=false → envase NEGRO (default).</summary>
+    public bool EsEnvasePlateado { get; set; }
 }
 
 public class CafeVentaDto
@@ -300,6 +302,7 @@ public class CafeCotizarItemRequest
     public int Cantidad { get; set; } = 1;
     public string? Molienda { get; set; }
     public bool EsDoyPack { get; set; }
+    public bool EsEnvasePlateado { get; set; }
     public decimal DescuentoPct { get; set; }
     /// <summary>Si el operador pisa el precio unitario a mano, viene cargado acá. Null = usar precio del catálogo.</summary>
     public decimal? PrecioUnitarioOverride { get; set; }
@@ -335,6 +338,7 @@ public class CafeCotizadoItemDto
     public string? Molienda { get; set; }
     public bool EsDoyPack { get; set; }
     public decimal DescuentoPct { get; set; }
+    public bool EsEnvasePlateado { get; set; }
 }
 
 public class CafeCotizadoDto

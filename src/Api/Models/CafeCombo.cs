@@ -51,5 +51,8 @@ public class CafeComboItem
 
     public bool EsDoyPack { get; set; }
 
+    /// <summary>Si el producto del combo va en envase plateado. Default false = envase negro.</summary>
+    public bool EsEnvasePlateado { get; set; }
+
     public int SortOrder { get; set; }
 }

@@ -236,7 +236,8 @@ public record CafeVentaItemDto(
     decimal GramosDescontados,
     string? Molienda, bool EsDoyPack,
     decimal DescuentoPct,
-    bool EsConceptoLibre = false);
+    bool EsConceptoLibre = false,
+    bool EsEnvasePlateado = false);
 
 public record CafeVentaDto(
     int Id, string Numero, DateTime Fecha,
@@ -274,6 +275,7 @@ public class CafeCotizarItemRequest
     public int Cantidad { get; set; } = 1;
     public string? Molienda { get; set; }   // EN GRANOS | MOLIDO FILTRO | MOLIDO ESPRESS | null
     public bool EsDoyPack { get; set; }
+    public bool EsEnvasePlateado { get; set; }
     public decimal DescuentoPct { get; set; }   // 0-100, descuento porcentual de la linea
     /// <summary>Si el operador pisa el precio unitario a mano, viene cargado acá. Si es null,
     /// se calcula automáticamente con producto + matriz de precios. Si es &gt;= 0, ese
@@ -303,7 +305,8 @@ public record CafeCotizadoItemDto(
     decimal GramosNecesarios, decimal StockGramosDisponible, int StockUnidadesDisponible,
     bool StockOk, string? Aviso,
     string? Molienda, bool EsDoyPack,
-    decimal DescuentoPct);
+    decimal DescuentoPct,
+    bool EsEnvasePlateado = false);
 
 public record CafeCotizadoDto(
     string ClienteTipoUsado,  // BAR | OTRO
@@ -464,7 +467,8 @@ public record CafeComboItemDto(
     string? ProductoSku, decimal? ProductoPvp1, decimal? ProductoPvp2,
     string Formato, int Cantidad,
     string? Molienda, bool EsDoyPack,
-    int SortOrder);
+    int SortOrder,
+    bool EsEnvasePlateado = false);
 
 public record CafeComboDto(
     int Id, string Nombre, string? Descripcion,
@@ -481,6 +485,7 @@ public class CafeComboItemRequest
     public int Cantidad { get; set; } = 1;
     public string? Molienda { get; set; }
     public bool EsDoyPack { get; set; }
+    public bool EsEnvasePlateado { get; set; }
     public int SortOrder { get; set; }
 }
 
