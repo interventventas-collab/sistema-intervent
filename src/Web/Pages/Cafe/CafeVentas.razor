@@ -799,7 +799,7 @@
                                                     <div style="color: #b91c1c; font-size: 0.72rem; font-weight: 600; margin-top: 0.2rem;">⚠ @ci.Aviso</div>
                                                 }
                                             </td>
-                                            <td>@FormatoLabel(ci.Formato)</td>
+                                            <td><span style="display:inline-block; padding:0.15rem 0.5rem; background:#f3f4f6; border:1px dashed #9ca3af; border-radius:12px; font-family:Georgia,serif; font-style:italic; font-size:0.85rem; color:#4b5563;">@FormatoLabel(ci.Formato)</span></td>
                                             <td style="text-align: right;">
                                                 @* Precio unitario editable: input + indicador si está overridado.
                                                    IMPORTANTE: formatear con InvariantCulture (punto decimal) — los <input type="number">
@@ -1274,7 +1274,7 @@
                                         <span style="color: #6b7280; font-size: 0.82rem;"> — @i.Molienda</span>
                                     }
                                 </td>
-                                <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: center;">@FormatoLabel(i.Formato)</td>
+                                <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: center;"><span style="display:inline-block; padding:0.1rem 0.5rem; background:#f3f4f6; border:1px dashed #9ca3af; border-radius:12px; font-family:Georgia,serif; font-style:italic; color:#4b5563;">@FormatoLabel(i.Formato)</span></td>
                                 <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: right;">$@FormatMoney(i.PrecioUnitario)</td>
                                 <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: right; color: @(i.DescuentoPct > 0 ? "#b91c1c" : "#9ca3af");">
                                     @(i.DescuentoPct > 0 ? "-" + i.DescuentoPct.ToString("0.##") + "%" : "—")
