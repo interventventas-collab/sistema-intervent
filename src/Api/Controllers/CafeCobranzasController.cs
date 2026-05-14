@@ -106,8 +106,12 @@ public class CafeCobranzasController : ControllerBase
         if (ventas.Count == 0) return Ok(new List<ComprobantePendienteDto>());
 
         var ventaIds = ventas.Select(v => v.Id).ToList();
+        // IMPORTANTE: solo contamos comprobantes de cobranzas VIGENTES. Si la cobranza
+        // fue ANULADA, sus imputaciones NO deben sumar como pago — por eso el venta
+        // tiene que volver a aparecer como pendiente.
         var pagadoPorVenta = await _db.CafeCobranzasComprobantes
-            .Where(c => c.VentaId != null && ventaIds.Contains(c.VentaId!.Value))
+            .Where(c => c.VentaId != null && ventaIds.Contains(c.VentaId!.Value)
+                && c.Cobranza!.Estado == "VIGENTE")
             .GroupBy(c => c.VentaId!.Value)
             .Select(g => new { VentaId = g.Key, Total = g.Sum(x => x.Importe) })
             .ToListAsync();
