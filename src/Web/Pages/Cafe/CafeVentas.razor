@@ -2331,7 +2331,7 @@
             var weekCsv = formWeekDays.Count == 0 ? null : string.Join(",", formWeekDays);
             var (bytes, error) = await Api.PreviewCafeVentaPdfAsync(new CreateCafeVentaRequest
             {
-                Fecha = formFecha,
+                Fecha = DateTime.SpecifyKind(formFecha, DateTimeKind.Unspecified), // Kind=Unspecified asi System.Text.Json no agrega TZ — el server toma Y/M/D tal cual.
                 ClienteId = formClienteId > 0 ? formClienteId : null,
                 ClienteTipoOverride = formClienteTipo,
                 Items = formItems,
@@ -2388,7 +2388,7 @@
             {
                 v = await Api.UpdateCafeVentaAsync(editingVentaId.Value, new UpdateCafeVentaRequest
                 {
-                    Fecha = formFecha,
+                    Fecha = DateTime.SpecifyKind(formFecha, DateTimeKind.Unspecified), // Kind=Unspecified asi System.Text.Json no agrega TZ — el server toma Y/M/D tal cual.
                     ClienteId = formClienteId > 0 ? formClienteId : 0,
                     ClienteTipoOverride = formClienteId > 0 ? null : formClienteTipo,
                     Items = formItems,
@@ -2407,7 +2407,7 @@
             {
                 v = await Api.CreateCafeVentaAsync(new CreateCafeVentaRequest
                 {
-                    Fecha = formFecha,
+                    Fecha = DateTime.SpecifyKind(formFecha, DateTimeKind.Unspecified), // Kind=Unspecified asi System.Text.Json no agrega TZ — el server toma Y/M/D tal cual.
                     ClienteId = formClienteId > 0 ? formClienteId : null,
                     ClienteTipoOverride = formClienteTipo,
                     Items = formItems,
