@@ -2261,6 +2261,29 @@ public class ApiClient
         var r = await PostAsync<object>($"/api/cafe/cobranzas/{id}/anular", new { });
         return r is not null;
     }
+    /// <summary>Eliminacion fisica de una cobranza ANULADA. Requiere la clave del usuario.
+    /// Devuelve null en caso de error (clave incorrecta o cobranza no anulada).</summary>
+    public async Task<(bool ok, string? error)> EliminarCafeCobranzaAsync(int id, string password)
+    {
+        try
+        {
+            using var msg = new HttpRequestMessage(HttpMethod.Delete, $"/api/cafe/cobranzas/{id}")
+            {
+                Content = new StringContent(System.Text.Json.JsonSerializer.Serialize(new { password }), System.Text.Encoding.UTF8, "application/json")
+            };
+            var resp = await _http.SendAsync(msg);
+            if (resp.IsSuccessStatusCode) return (true, null);
+            var body = await resp.Content.ReadAsStringAsync();
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(body);
+                if (doc.RootElement.TryGetProperty("error", out var e)) return (false, e.GetString());
+            }
+            catch { }
+            return (false, "Error al eliminar");
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
 
     // ===== Tesoreria Cafe: Cheques =====
     public async Task<List<CafeChequeDto>?> GetCafeChequesAsync(string? estado = null)

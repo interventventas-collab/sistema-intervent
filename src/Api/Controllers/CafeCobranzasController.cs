@@ -300,6 +300,46 @@ public class CafeCobranzasController : ControllerBase
         await _db.SaveChangesAsync();
     }
 
+    public record EliminarCobranzaRequest(string Password);
+
+    /// <summary>
+    /// Elimina FISICAMENTE una cobranza ANULADA. Requiere la clave del usuario actual
+    /// como confirmacion porque borra registros historicos. Solo aplica a cobranzas
+    /// que ya estan en estado ANULADA — las VIGENTES hay que anularlas primero.
+    /// Borra los comprobantes/medios linkeados (FK cascade), no toca los cheques ya
+    /// rechazados (esos quedan en la chequera como historial).
+    /// </summary>
+    [HttpDelete("{id:int}")]
+    public async Task<IActionResult> Eliminar(int id, [FromBody] EliminarCobranzaRequest req)
+    {
+        // 1) Verificar clave del usuario actual
+        var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                       ?? User.FindFirst("sub")?.Value;
+        if (!int.TryParse(userIdClaim, out var userId))
+            return Unauthorized(new { error = "Sesion invalida" });
+        var user = await _db.Users.FindAsync(userId);
+        if (user is null) return Unauthorized(new { error = "Usuario no encontrado" });
+        if (string.IsNullOrEmpty(req?.Password) || !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
+            return BadRequest(new { error = "Clave incorrecta" });
+
+        // 2) La cobranza debe existir y estar ANULADA
+        var c = await _db.CafeCobranzas
+            .Include(x => x.Medios)
+            .Include(x => x.Comprobantes)
+            .FirstOrDefaultAsync(x => x.Id == id);
+        if (c is null) return NotFound();
+        if (c.Estado != "ANULADA")
+            return BadRequest(new { error = "Solo se pueden eliminar cobranzas ANULADAS. Anula la cobranza primero." });
+
+        // 3) Borrar comprobantes y medios linkeados, despues la cobranza
+        if (c.Comprobantes.Count > 0) _db.CafeCobranzasComprobantes.RemoveRange(c.Comprobantes);
+        if (c.Medios.Count > 0) _db.CafeCobranzasMedios.RemoveRange(c.Medios);
+        _db.CafeCobranzas.Remove(c);
+        await _db.SaveChangesAsync();
+        await _audit.LogAsync("CafeCobranza", id.ToString(), "ELIMINAR", $"Cobranza {c.Numero} eliminada fisicamente (clave OK)", user.Email);
+        return Ok(new { ok = true });
+    }
+
     [HttpPost("{id:int}/anular")]
     public async Task<IActionResult> Anular(int id)
     {

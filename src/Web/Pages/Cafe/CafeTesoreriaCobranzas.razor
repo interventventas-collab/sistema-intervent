@@ -64,6 +64,10 @@
                                 {
                                     <button class="btn-icon" @onclick="() => AnularCobranza(c)" title="Anular cobranza">❌</button>
                                 }
+                                else if (c.Estado == "ANULADA")
+                                {
+                                    <button class="btn-icon" @onclick="() => AbrirEliminar(c)" title="Eliminar definitivamente (requiere clave)" style="color:#b91c1c;">🗑</button>
+                                }
                             </td>
                         </tr>
                     }
@@ -277,12 +281,80 @@
     </div>
 }
 
+@* ===== Modal: confirmar eliminacion definitiva con clave ===== *@
+@if (eliminandoCobranza is not null)
+{
+    var c = eliminandoCobranza;
+    <div class="modal-overlay" @onclick="() => eliminandoCobranza = null">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background:#fee2e2;">
+                <h3 style="margin:0; color:#7f1d1d;">🗑 Eliminar definitivamente</h3>
+                <button class="btn-close" @onclick="() => eliminandoCobranza = null">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="padding:0.5rem 0.8rem; background:#fef2f2; border-left:3px solid #b91c1c; font-size:0.85rem; margin-bottom:0.6rem;">
+                    Vas a borrar para SIEMPRE la cobranza <strong>@c.Numero</strong> de <strong>@c.ClienteNombre</strong> por <strong>$@c.Total.ToString("N2")</strong>. Esta acción no se puede deshacer.
+                </div>
+                <label class="form-label">Confirmá con tu clave:</label>
+                <input type="password" class="form-input" @bind="eliminarPassword" @bind:event="oninput"
+                       placeholder="Tu clave actual" @onkeydown="OnEliminarKeydown" />
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => eliminandoCobranza = null">Cancelar</button>
+                <button class="btn btn-danger" disabled="@(string.IsNullOrEmpty(eliminarPassword) || eliminando)" @onclick="EjecutarEliminar">
+                    @(eliminando ? "Eliminando..." : "🗑 Eliminar definitivamente")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private List<CobranzaListDto>? cobranzas;
     private bool loading = true;
     // Por default ocultamos las cobranzas anuladas para que el listado quede limpio.
     // El usuario puede tildar el checkbox del header si quiere ver el historial.
     private bool mostrarAnuladas = false;
+
+    // Eliminacion definitiva de cobranzas anuladas — requiere clave del usuario
+    private CobranzaListDto? eliminandoCobranza;
+    private string eliminarPassword = "";
+    private bool eliminando;
+
+    private void AbrirEliminar(CobranzaListDto c)
+    {
+        eliminandoCobranza = c;
+        eliminarPassword = "";
+    }
+
+    private async Task OnEliminarKeydown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrEmpty(eliminarPassword) && !eliminando)
+            await EjecutarEliminar();
+    }
+
+    private async Task EjecutarEliminar()
+    {
+        if (eliminandoCobranza is null || string.IsNullOrEmpty(eliminarPassword)) return;
+        eliminando = true;
+        try
+        {
+            var (ok, error) = await Api.EliminarCafeCobranzaAsync(eliminandoCobranza.Id, eliminarPassword);
+            if (ok)
+            {
+                ToastService.Success("Cobranza eliminada definitivamente");
+                eliminandoCobranza = null;
+                eliminarPassword = "";
+                await Load();
+            }
+            else
+            {
+                ToastService.Error(error ?? "No se pudo eliminar");
+            }
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { eliminando = false; }
+    }
     private List<CafeClienteDto>? clientes;
     private List<CafeCajaDto>? cajas;
 
