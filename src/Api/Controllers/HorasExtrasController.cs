@@ -26,36 +26,48 @@ public class HorasExtrasController : ControllerBase
     // ============================================================
 
     public record PublicRegistroDto(int Id, DateTime Fecha, decimal Cantidad, string? Observaciones);
-    public record PublicEmpleadoDto(string Nombre, DateTime HoyFecha, decimal? HorasHoy, string? ObservacionesHoy,
+    public record PublicEmpleadoDto(string Nombre, DateTime HoyFecha, DateTime FechaSeleccionada,
+        decimal? HorasSeleccionada, string? ObservacionesSeleccionada,
         List<PublicRegistroDto> Ultimos7Dias, decimal TotalSemana, decimal TotalMes);
 
-    /// <summary>El empleado abre el link con su token y obtiene su nombre + carga del dia + historial.</summary>
+    /// <summary>El empleado abre el link con su token y obtiene su nombre + carga del dia + historial.
+    /// Opcional: ?fecha=YYYY-MM-DD para precargar los datos de una fecha pasada (carga atrasada).</summary>
     [HttpGet("publica/{token}")]
     [AllowAnonymous]
-    public async Task<IActionResult> GetPublica(string token)
+    public async Task<IActionResult> GetPublica(string token, [FromQuery] string? fecha = null)
     {
         if (string.IsNullOrWhiteSpace(token)) return NotFound();
         var emp = await _db.HorasExtrasEmpleados.FirstOrDefaultAsync(e => e.Token == token && e.IsActive);
         if (emp is null) return NotFound(new { error = "Token inválido o empleado inactivo" });
 
         var hoy = FechaArgentinaHoy();
+        // Si vino fecha, la parseamos; si no, hoy. Cap a hoy (no permitir futuro).
+        var fechaSel = hoy;
+        if (!string.IsNullOrWhiteSpace(fecha) && DateTime.TryParse(fecha, out var f))
+        {
+            fechaSel = f.Date;
+            if (fechaSel > hoy) fechaSel = hoy;
+        }
         var hace7 = hoy.AddDays(-6);
         var inicioMes = new DateTime(hoy.Year, hoy.Month, 1);
 
+        // Traemos los registros del empleado desde el inicio del mes o desde hace 7 días
+        // o desde la fecha seleccionada — lo que sea más viejo.
+        var desde = new[] { inicioMes, hace7, fechaSel }.Min();
         var registros = await _db.HorasExtrasRegistros
-            .Where(r => r.EmpleadoId == emp.Id && r.Fecha >= inicioMes)
+            .Where(r => r.EmpleadoId == emp.Id && r.Fecha >= desde)
             .OrderByDescending(r => r.Fecha)
             .ToListAsync();
 
-        var registroHoy = registros.FirstOrDefault(r => r.Fecha == hoy);
-        var ultimos7 = registros.Where(r => r.Fecha >= hace7).OrderByDescending(r => r.Fecha)
+        var registroSel = registros.FirstOrDefault(r => r.Fecha == fechaSel);
+        var ultimos7 = registros.Where(r => r.Fecha >= hace7 && r.Fecha <= hoy).OrderByDescending(r => r.Fecha)
             .Select(r => new PublicRegistroDto(r.Id, r.Fecha, r.Cantidad, r.Observaciones))
             .ToList();
         var totalSemana = ultimos7.Sum(r => r.Cantidad);
-        var totalMes = registros.Sum(r => r.Cantidad);
+        var totalMes = registros.Where(r => r.Fecha >= inicioMes).Sum(r => r.Cantidad);
 
-        return Ok(new PublicEmpleadoDto(emp.Nombre, hoy,
-            registroHoy?.Cantidad, registroHoy?.Observaciones,
+        return Ok(new PublicEmpleadoDto(emp.Nombre, hoy, fechaSel,
+            registroSel?.Cantidad, registroSel?.Observaciones,
             ultimos7, totalSemana, totalMes));
     }
 
@@ -80,11 +92,13 @@ public class HorasExtrasController : ControllerBase
         if (req.Cantidad < 0 || req.Cantidad > 24)
             return BadRequest(new { error = "Cantidad inválida (0–24)" });
 
-        // Default = hoy. Si vino fecha, validamos que sea hoy o ayer (para evitar cargas viejas falsas).
+        // Default = hoy. Si vino fecha, validamos que NO sea futura. El empleado puede
+        // cargar cualquier fecha pasada (modo "carga atrasada"); si se equivoca, el admin
+        // lo corrige desde el panel.
         var hoy = FechaArgentinaHoy();
         var fechaCarga = req.Fecha?.Date ?? hoy;
-        if (fechaCarga > hoy || fechaCarga < hoy.AddDays(-1))
-            return BadRequest(new { error = "Solo podés cargar horas de hoy o ayer" });
+        if (fechaCarga > hoy)
+            return BadRequest(new { error = "No podés cargar fechas futuras" });
 
         var existente = await _db.HorasExtrasRegistros.FirstOrDefaultAsync(r => r.EmpleadoId == emp.Id && r.Fecha == fechaCarga);
         if (existente is null)
