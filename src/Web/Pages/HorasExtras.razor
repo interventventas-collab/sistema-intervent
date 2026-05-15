@@ -264,12 +264,13 @@
         }
     }
 
-    /// <summary>Genera el URL público del empleado. Si no tiene DNI cargado, devuelve null
-    /// para que el admin lo configure primero.</summary>
+    /// <summary>Genera el URL público del empleado. La clave NO va en el URL — se la pide
+    /// al empleado en una pantalla aparte al entrar. Igual chequeamos que esté cargada antes
+    /// de generar el link, sino el empleado no tiene cómo entrar.</summary>
     private string? BuildLinkPublico(AdminEmpleadoDto e, string origin)
     {
         if (string.IsNullOrEmpty(e.DniUltimos3)) return null;
-        return $"{origin}/he/{e.Slug}/horario/{e.DniUltimos3}";
+        return $"{origin}/he/{e.Slug}/horario";
     }
 
     private async Task CopiarLink(AdminEmpleadoDto e)
@@ -294,7 +295,7 @@
             ToastService.Error($"Falta cargar los últimos 3 del DNI de {e.Nombre}. Editalo primero.");
             return;
         }
-        var texto = Uri.EscapeDataString($"Hola {e.Nombre}! Te paso el link para cargar tus horas extras cada día:\n\n{url}\n\nGuardalo y entrá todos los días. Gracias!");
+        var texto = Uri.EscapeDataString($"Hola {e.Nombre}! Te paso el link para cargar tus horas extras cada día:\n\n{url}\n\nCuando entres te va a pedir una clave de 3 dígitos: son los últimos 3 de tu DNI.\n\nGuardalo y entrá todos los días. Gracias!");
         await JS.InvokeVoidAsync("open", $"https://wa.me/?text={texto}", "_blank");
     }
 
