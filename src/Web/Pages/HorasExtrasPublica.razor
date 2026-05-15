@@ -84,7 +84,13 @@
             </div>
 
             <label class="he-label" style="margin-top:0.7rem;">¿Cuántas horas extra hiciste @(datos.FechaSeleccionada.Date == datos.HoyFecha.Date ? "hoy" : "ese día")?</label>
-            <input type="number" step="0.5" min="0" max="24" class="he-input" @bind="formCantidad" @bind:event="oninput" placeholder="0" />
+            <input type="number" step="0.5" min="0" max="999" class="he-input" @bind="formCantidad" @bind:event="oninput" placeholder="0" />
+            @if (formCantidad > 24)
+            {
+                <p style="font-size:0.75rem; color:#92400e; margin:0.3rem 0 0; padding:0.3rem 0.5rem; background:#fef3c7; border-radius:6px;">
+                    💡 Cargando acumulado de @formCantidad.ToString("0.#") hs (más de 1 día). Verificá que está bien.
+                </p>
+            }
             <div class="he-quick">
                 @foreach (var q in new[] { 0.5m, 1m, 1.5m, 2m, 2.5m, 3m, 4m, 5m })
                 {

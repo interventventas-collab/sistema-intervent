@@ -101,8 +101,10 @@ public class HorasExtrasController : ControllerBase
         var emp = await _db.HorasExtrasEmpleados.FirstOrDefaultAsync(e => e.Token == token && e.IsActive);
         if (emp is null) return NotFound(new { error = "Token inválido o empleado inactivo" });
 
-        if (req.Cantidad < 0 || req.Cantidad > 24)
-            return BadRequest(new { error = "Cantidad inválida (0–24)" });
+        // El campo en DB es decimal(5,2) → hasta 999.99. Antes limitabamos a 24 pensando en
+        // 1 dia, pero el usuario carga acumulados (ej. 90hs para cerrar periodo) → permitido.
+        if (req.Cantidad < 0 || req.Cantidad > 999)
+            return BadRequest(new { error = "Cantidad inválida (0–999)" });
 
         // Default = hoy. Si vino fecha, validamos que NO sea futura. El empleado puede
         // cargar cualquier fecha pasada (modo "carga atrasada"); si se equivoca, el admin
