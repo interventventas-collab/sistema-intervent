@@ -766,6 +766,11 @@
                                                 <input class="form-input" type="number" step="1" min="1"
                                                        style="width: 70px; text-align: right; padding: 0.25rem 0.4rem; font-size: 0.9rem; font-weight: 700;"
                                                        value="@formItem.Cantidad" @onchange="@(e => OnItemCantidadChanged(i, e.Value?.ToString()))" />
+                                                @if (ci.Formato == "BULTO")
+                                                {
+                                                    var unidadesReales = CantidadParaMostrar(ci.ProductoId, ci.Formato, ci.Cantidad);
+                                                    <div style="font-size: 0.7rem; color: #92400e; font-weight: 600; margin-top: 0.15rem; white-space: nowrap;">= @unidadesReales u.</div>
+                                                }
                                             </td>
                                             <td>
                                                 @{
@@ -813,7 +818,7 @@
                                                     <div style="color: #b91c1c; font-size: 0.72rem; font-weight: 600; margin-top: 0.2rem;">⚠ @ci.Aviso</div>
                                                 }
                                             </td>
-                                            <td><span style="display:inline-block; padding:0.15rem 0.5rem; background:#f3f4f6; border:1px dashed #9ca3af; border-radius:12px; font-family:Georgia,serif; font-style:italic; font-size:0.85rem; color:#4b5563;">@FormatoLabel(ci.Formato)</span></td>
+                                            <td><span style="display:inline-block; padding:0.15rem 0.5rem; background:#f3f4f6; border:1px dashed #9ca3af; border-radius:12px; font-family:Georgia,serif; font-style:italic; font-size:0.85rem; color:#4b5563;">@FormatoParaMostrar(ci.ProductoId, ci.Formato)</span></td>
                                             <td style="text-align: right;">
                                                 @* Precio unitario editable: input + indicador si está overridado.
                                                    IMPORTANTE: formatear con InvariantCulture (punto decimal) — los <input type="number">
@@ -1265,7 +1270,13 @@
                         @foreach (var i in printVenta.Items)
                         {
                             <tr>
-                                <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: center; font-weight: 700;">@i.Cantidad</td>
+                                @{
+                                    // Si es BULTO, expandimos cant × UxB para que el deposito vea el TOTAL real de unidades.
+                                    var cantPrintReal = CantidadParaMostrar(i.ProductoId ?? 0, i.Formato, i.Cantidad);
+                                    var fmtPrintReal = FormatoParaMostrar(i.ProductoId ?? 0, i.Formato);
+                                    var precioPrintReal = PrecioUnitarioParaMostrar(i.ProductoId ?? 0, i.Formato, i.PrecioUnitario);
+                                }
+                                <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: center; font-weight: 700;">@cantPrintReal</td>
                                 <td style="border: 1px solid #d1d5db; padding: 4px 8px;">
                                     @{
                                         var skuPrint = productos?.FirstOrDefault(p => p.Id == i.ProductoId)?.Sku;
@@ -1288,8 +1299,8 @@
                                         <span style="color: #6b7280; font-size: 0.82rem;"> — @i.Molienda</span>
                                     }
                                 </td>
-                                <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: center;"><span style="display:inline-block; padding:0.1rem 0.5rem; background:#f3f4f6; border:1px dashed #9ca3af; border-radius:12px; font-family:Georgia,serif; font-style:italic; color:#4b5563;">@FormatoLabel(i.Formato)</span></td>
-                                <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: right;">$@FormatMoney(i.PrecioUnitario)</td>
+                                <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: center;"><span style="display:inline-block; padding:0.1rem 0.5rem; background:#f3f4f6; border:1px dashed #9ca3af; border-radius:12px; font-family:Georgia,serif; font-style:italic; color:#4b5563;">@fmtPrintReal</span></td>
+                                <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: right;">$@FormatMoney(precioPrintReal)</td>
                                 <td style="border: 1px solid #d1d5db; padding: 4px 8px; text-align: right; color: @(i.DescuentoPct > 0 ? "#b91c1c" : "#9ca3af");">
                                     @(i.DescuentoPct > 0 ? "-" + i.DescuentoPct.ToString("0.##") + "%" : "—")
                                 </td>
@@ -2849,6 +2860,38 @@
         "BULTO" => "Bulto",
         _ => formato
     };
+
+    /// <summary>Cantidad a mostrar en el ticket: si el item es BULTO, expande cantidad × UxB
+    /// (asi el empleado de deposito ve el TOTAL de unidades a armar). Sino, devuelve la cantidad
+    /// tal cual. Pedido del usuario el 15/05/2026: "el que arma el paquete no entiende que
+    /// 1 bulto = 1000 unidades".</summary>
+    private int CantidadParaMostrar(int productoId, string formato, int cantidad)
+    {
+        if (formato != "BULTO") return cantidad;
+        var uxb = productos?.FirstOrDefault(p => p.Id == productoId)?.UxB ?? 0;
+        if (uxb <= 1) return cantidad;
+        return cantidad * uxb;
+    }
+
+    /// <summary>Etiqueta de formato para mostrar en el ticket. Si es BULTO, agrega el "× UxB"
+    /// para que quede claro cuantas unidades trae el bulto.</summary>
+    private string FormatoParaMostrar(int productoId, string formato)
+    {
+        if (formato != "BULTO") return FormatoLabel(formato);
+        var uxb = productos?.FirstOrDefault(p => p.Id == productoId)?.UxB ?? 0;
+        return uxb > 1 ? $"Bulto × {uxb}" : "Bulto";
+    }
+
+    /// <summary>Precio unitario EFECTIVO para mostrar (subtotal / unidades_reales). Si el item es
+    /// BULTO, el precio almacenado es por bulto entero; dividimos por UxB para que la matematica
+    /// del ticket cierre a ojo (real_cant × precio_efectivo = subtotal).</summary>
+    private decimal PrecioUnitarioParaMostrar(int productoId, string formato, decimal precioUnitario)
+    {
+        if (formato != "BULTO") return precioUnitario;
+        var uxb = productos?.FirstOrDefault(p => p.Id == productoId)?.UxB ?? 0;
+        if (uxb <= 1) return precioUnitario;
+        return Math.Round(precioUnitario / uxb, 2, MidpointRounding.AwayFromZero);
+    }
 
     private static string TipoComprobanteCorto(string t) => t switch
     {

@@ -231,8 +231,16 @@ public class CafeCotizacionPdfService
                         });
                         foreach (var i in v.Items)
                         {
+                            // Si es BULTO, mostramos cantidad real (cant×UxB), formato "Bulto × N",
+                            // y precio efectivo (precio/UxB). Asi el deposito ve unidades totales.
+                            int uxbItem = (i.Formato == "BULTO" && i.ProductoNav?.UxB is int u && u > 1) ? u : 1;
+                            int cantPrint = i.Cantidad * uxbItem;
+                            string fmtPrint = uxbItem > 1 ? $"Bulto × {uxbItem}" : FormatoLabel(i.Formato);
+                            decimal precioPrint = uxbItem > 1
+                                ? Math.Round(i.PrecioUnitario / uxbItem, 2, MidpointRounding.AwayFromZero)
+                                : i.PrecioUnitario;
                             // Cant
-                            table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignCenter().Text(i.Cantidad.ToString()).SemiBold();
+                            table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignCenter().Text(cantPrint.ToString()).SemiBold();
                             // Producto
                             table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).Text(t =>
                             {
@@ -245,11 +253,11 @@ public class CafeCotizacionPdfService
                             });
                             // Formato — italic gris para que NO se confunda con la cantidad
                             table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignCenter()
-                                .Text(FormatoLabel(i.Formato)).Italic().FontColor(Colors.Grey.Darken1).FontFamily("Times New Roman");
-                            // P. Unitario
+                                .Text(fmtPrint).Italic().FontColor(Colors.Grey.Darken1).FontFamily("Times New Roman");
+                            // P. Unitario (efectivo si es bulto)
                             table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text(t =>
                             {
-                                var pu = "$ " + i.PrecioUnitario.ToString("N2", Es);
+                                var pu = "$ " + precioPrint.ToString("N2", Es);
                                 if (i.DescuentoPct > 0)
                                     t.Span(pu).Strikethrough().FontColor(Colors.Grey.Medium);
                                 else
