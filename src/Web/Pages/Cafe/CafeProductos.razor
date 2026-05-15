@@ -1428,7 +1428,15 @@
         if (formCosto < 0) { formError = "El costo no puede ser negativo"; return; }
         if (formCategoria == "OTROS")
         {
-            if (!formPvp2.HasValue || formPvp2.Value < 0) { formError = "Para OTROS el PVP es obligatorio"; return; }
+            // Acepta modelo NUEVO (PrecioBar/PrecioOtro) o modelo legacy (Pvp2).
+            var tieneModeloNuevo = (formPrecioBar.HasValue && formPrecioBar.Value > 0)
+                                || (formPrecioOtro.HasValue && formPrecioOtro.Value > 0);
+            var tienePvpLegacy = formPvp2.HasValue && formPvp2.Value > 0;
+            if (!tieneModeloNuevo && !tienePvpLegacy)
+            {
+                formError = "Para OTROS hay que cargar al menos un precio: BAR u OTRO";
+                return;
+            }
         }
         saving = true;
         try
