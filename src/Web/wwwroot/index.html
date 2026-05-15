@@ -477,6 +477,61 @@
                 setTimeout(function () { ctx.close(); }, 800);
             } catch (e) { /* noop */ }
         };
+
+        // Hace que un modal sea arrastrable por su header. Se llama desde Blazor pasando el
+        // selector del modal-card. Idempotente: si ya esta enganchado, no engancha de nuevo.
+        // Pensado para modales secundarios que tapan algo de la pantalla — el usuario lo agarra
+        // del header y lo mueve a un costado para ver lo de atras.
+        window.enableModalDrag = function(modalSelector) {
+            var modal = document.querySelector(modalSelector);
+            if (!modal || modal.dataset.draggableInit === '1') return;
+            modal.dataset.draggableInit = '1';
+            var header = modal.querySelector('.modal-header');
+            if (!header) return;
+            header.style.cursor = 'move';
+            header.style.userSelect = 'none';
+            // Que el modal NO este centrado por CSS — para poder moverlo libremente.
+            var startX = 0, startY = 0, offsetX = 0, offsetY = 0, dragging = false;
+
+            function onDown(ev) {
+                // Permitir clicks normales sobre el boton de cerrar.
+                if (ev.target.closest('.btn-close')) return;
+                dragging = true;
+                var touch = ev.touches ? ev.touches[0] : ev;
+                var rect = modal.getBoundingClientRect();
+                offsetX = touch.clientX - rect.left;
+                offsetY = touch.clientY - rect.top;
+                modal.style.position = 'fixed';
+                modal.style.margin = '0';
+                modal.style.left = rect.left + 'px';
+                modal.style.top = rect.top + 'px';
+                modal.style.transform = 'none';
+                ev.preventDefault();
+            }
+            function onMove(ev) {
+                if (!dragging) return;
+                var touch = ev.touches ? ev.touches[0] : ev;
+                var x = touch.clientX - offsetX;
+                var y = touch.clientY - offsetY;
+                // Clamp a la viewport (que no se vaya 100% afuera).
+                var maxX = window.innerWidth - 40;
+                var maxY = window.innerHeight - 40;
+                if (x < -modal.offsetWidth + 40) x = -modal.offsetWidth + 40;
+                if (y < 0) y = 0;
+                if (x > maxX) x = maxX;
+                if (y > maxY) y = maxY;
+                modal.style.left = x + 'px';
+                modal.style.top = y + 'px';
+            }
+            function onUp() { dragging = false; }
+
+            header.addEventListener('mousedown', onDown);
+            header.addEventListener('touchstart', onDown, { passive: false });
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('touchmove', onMove, { passive: false });
+            document.addEventListener('mouseup', onUp);
+            document.addEventListener('touchend', onUp);
+        };
     </script>
 </body>
 </html>

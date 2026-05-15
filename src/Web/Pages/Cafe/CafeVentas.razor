@@ -1049,10 +1049,10 @@
 @* ════════ Modal de confirmacion de emision (doble-check para FA/FB/FC) ════════ *@
 @if (showConfirmEmision && cotizacion is not null)
 {
-    <div class="modal-overlay" style="z-index: 1050;" @onclick="@(() => showConfirmEmision = false)">
-        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 480px;">
-            <div class="modal-header" style="background: #fef3c7;">
-                <h3 style="margin: 0; color: #92400e;">⚠ Confirmar emisión</h3>
+    <div class="modal-overlay" style="z-index: 9100;" @onclick="@(() => showConfirmEmision = false)">
+        <div id="confirm-emision-modal" class="modal-card" @onclick:stopPropagation="true" style="max-width: 480px;">
+            <div class="modal-header" style="background: #fef3c7;" title="Arrastrá para mover">
+                <h3 style="margin: 0; color: #92400e;">⚠ Confirmar emisión <span style="font-size:0.7rem; color:#92400e; opacity:0.6; font-weight:normal; margin-left:0.4rem;">(arrastrame)</span></h3>
                 <button class="btn-close" @onclick="@(() => showConfirmEmision = false)">&times;</button>
             </div>
             <div class="modal-body" style="padding: 1.2rem;">
@@ -2032,6 +2032,18 @@
 
     // Top productos comprados por el cliente actual del form
     private List<CafeTopProductoClienteDto> topProductsForClient = new();
+
+    /// <summary>Se ejecuta cada vez que Blazor termina de renderizar. Lo usamos para enganchar
+    /// el drag-and-drop al modal de Confirmar Emisión recién aparecido. El helper JS es idempotente
+    /// (si ya está enganchado, no engancha de nuevo).</summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (showConfirmEmision)
+        {
+            try { await JS.InvokeVoidAsync("enableModalDrag", "#confirm-emision-modal"); }
+            catch { /* si el helper no está cargado aún, lo intentamos el próximo render */ }
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
