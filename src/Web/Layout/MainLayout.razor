@@ -115,6 +115,10 @@
                     <NavItem Href="/cafe/stock-masivo" Label="📊 Stock masivo" Icon="@SvgIcons.Edit"
                              IsActive="@IsActive("/cafe/stock-masivo")" OnClick="@(() => NavigateTo("/cafe/stock-masivo"))" />
                 }
+
+                @* Horas Extras de empleados — agregado 2026-05-15 *@
+                <NavItem Href="/horas-extras" Label="🕐 Horas Extras" Icon="@SvgIcons.Tag"
+                         IsActive="@IsActive("/horas-extras")" OnClick="@(() => NavigateTo("/horas-extras"))" />
             </NavGroup>
         }
 

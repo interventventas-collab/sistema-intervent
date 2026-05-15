@@ -82,6 +82,10 @@ public class AppDbContext : DbContext
     public DbSet<CafeMarca> CafeMarcas => Set<CafeMarca>();
     public DbSet<CafeDescuentoCliente> CafeDescuentosCliente => Set<CafeDescuentoCliente>();
     public DbSet<CafeReglaPrecio> CafeReglasPrecios => Set<CafeReglaPrecio>();
+
+    // Horas Extras de empleados (link publico tipo mapeo)
+    public DbSet<HorasExtrasEmpleado> HorasExtrasEmpleados => Set<HorasExtrasEmpleado>();
+    public DbSet<HorasExtrasRegistro> HorasExtrasRegistros => Set<HorasExtrasRegistro>();
     public DbSet<CafeHistorialPrecio> CafeHistorialPrecios => Set<CafeHistorialPrecio>();
     public DbSet<CafeKit> CafeKits => Set<CafeKit>();
     public DbSet<CafeKitItem> CafeKitItems => Set<CafeKitItem>();

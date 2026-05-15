@@ -1,0 +1,250 @@
+@page "/horas-extras"
+@attribute [Authorize]
+@inject HttpClient Http
+@inject IJSRuntime JS
+@inject ToastService ToastService
+
+<PageTitle>Horas Extras</PageTitle>
+
+<style>
+    .he-admin-wrap { padding: 1rem; }
+    .he-card { background: white; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 1rem; margin-bottom: 1rem; }
+    .he-emp-row { display: flex; gap: 0.6rem; align-items: center; padding: 0.6rem; border-bottom: 1px solid #f3f4f6; }
+    .he-emp-nombre { font-weight: 700; min-width: 140px; }
+    .he-emp-totals { display: flex; gap: 0.6rem; }
+    .he-emp-box { background: #f9fafb; padding: 0.3rem 0.6rem; border-radius: 6px; font-size: 0.78rem; min-width: 60px; text-align: center; }
+    .he-emp-box-num { font-size: 1rem; font-weight: 700; color: #1d4ed8; }
+    .he-link-btn { padding: 0.3rem 0.6rem; font-size: 0.78rem; background: #e0e7ff; color: #1e40af; border: 1px solid #818cf8; border-radius: 6px; cursor: pointer; }
+    .he-link-btn:hover { background: #c7d2fe; }
+    .he-link-btn.wa { background: #dcfce7; color: #166534; border-color: #16a34a; }
+    .he-link-btn.wa:hover { background: #bbf7d0; }
+    .he-inactive { opacity: 0.5; }
+    .he-tabla-regs { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    .he-tabla-regs th { background: #f3f4f6; padding: 0.5rem; text-align: left; font-size: 0.78rem; }
+    .he-tabla-regs td { padding: 0.5rem; border-bottom: 1px solid #f3f4f6; }
+</style>
+
+<div class="he-admin-wrap">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem;">
+        <h2 style="margin:0;">🕐 Horas Extras</h2>
+        <button class="btn btn-primary" @onclick="ShowCreateEmpleado">+ Nuevo empleado</button>
+    </div>
+
+    @if (showFormEmp)
+    {
+        <div class="he-card" style="border: 2px solid #1d4ed8;">
+            <h3 style="margin: 0 0 0.5rem;">@((editingId.HasValue ? "Editar" : "Nuevo") + " empleado")</h3>
+            <div style="display:flex; gap:0.5rem; align-items:end;">
+                <div style="flex:1;">
+                    <label class="form-label">Nombre</label>
+                    <input class="form-input" @bind="formNombre" placeholder="Ej: Maxi, Osmar..." />
+                </div>
+                @if (editingId.HasValue)
+                {
+                    <div>
+                        <label class="form-label" style="font-size:0.8rem;">
+                            <input type="checkbox" @bind="formActive" /> Activo
+                        </label>
+                    </div>
+                    <div>
+                        <label class="form-label" style="font-size:0.8rem;">
+                            <input type="checkbox" @bind="formRegenToken" /> Regenerar link
+                        </label>
+                    </div>
+                }
+                <button class="btn btn-primary" @onclick="GuardarEmpleado" disabled="@savingEmp">@(savingEmp ? "..." : "Guardar")</button>
+                <button class="btn btn-secondary" @onclick="@(() => showFormEmp = false)">Cancelar</button>
+            </div>
+        </div>
+    }
+
+    @* Empleados *@
+    <div class="he-card">
+        <h3 style="margin: 0 0 0.5rem;">Empleados</h3>
+        @if (empleados is null)
+        {
+            <p style="color:#6b7280;">Cargando...</p>
+        }
+        else if (empleados.Count == 0)
+        {
+            <p style="color:#6b7280;">Sin empleados todavía. Agregá el primero con el botón de arriba.</p>
+        }
+        else
+        {
+            @foreach (var e in empleados)
+            {
+                <div class="he-emp-row @(e.IsActive ? "" : "he-inactive")">
+                    <div class="he-emp-nombre">@e.Nombre @(e.IsActive ? "" : " (inactivo)")</div>
+                    <div class="he-emp-totals">
+                        <div class="he-emp-box">
+                            <div>Hoy</div>
+                            <div class="he-emp-box-num">@e.TotalHoy.ToString("0.#")h</div>
+                        </div>
+                        <div class="he-emp-box">
+                            <div>Semana</div>
+                            <div class="he-emp-box-num">@e.TotalSemana.ToString("0.#")h</div>
+                        </div>
+                        <div class="he-emp-box">
+                            <div>Mes</div>
+                            <div class="he-emp-box-num">@e.TotalMes.ToString("0.#")h</div>
+                        </div>
+                    </div>
+                    <div style="flex:1; font-size:0.78rem; color:#6b7280;">
+                        @if (e.UltimaCargaAt.HasValue)
+                        {
+                            <span>Última carga: @e.UltimaCargaAt.Value.ToLocalTime().ToString("dd/MM HH:mm")</span>
+                        }
+                        else { <span>Nunca cargó</span> }
+                    </div>
+                    <button class="he-link-btn" @onclick="@(() => CopiarLink(e))">📋 Copiar link</button>
+                    <button class="he-link-btn wa" @onclick="@(() => MandarWhatsapp(e))">📱 WhatsApp</button>
+                    <button class="he-link-btn" @onclick="@(() => ShowEditEmpleado(e))">✏</button>
+                </div>
+            }
+        }
+    </div>
+
+    @* Registros recientes *@
+    <div class="he-card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+            <h3 style="margin: 0;">Registros recientes (últimos 30 días)</h3>
+            <button class="btn btn-secondary" @onclick="RecargarTodo">🔄 Refrescar</button>
+        </div>
+        @if (registros is null)
+        {
+            <p style="color:#6b7280;">Cargando...</p>
+        }
+        else if (registros.Count == 0)
+        {
+            <p style="color:#6b7280;">Sin registros todavía. Mandales el link a los empleados y van a empezar a cargar.</p>
+        }
+        else
+        {
+            <table class="he-tabla-regs">
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Empleado</th>
+                        <th style="text-align:right;">Horas</th>
+                        <th>Observación</th>
+                        <th>Cargado</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in registros)
+                    {
+                        <tr>
+                            <td>@r.Fecha.ToString("ddd dd/MM", new System.Globalization.CultureInfo("es-AR"))</td>
+                            <td><strong>@r.EmpleadoNombre</strong></td>
+                            <td style="text-align:right; font-weight:700; color:#1d4ed8;">@r.Cantidad.ToString("0.#") h</td>
+                            <td style="color:#4b5563; font-size:0.82rem;">@(r.Observaciones ?? "")</td>
+                            <td style="color:#6b7280; font-size:0.78rem;">@((r.UpdatedAt ?? r.CreatedAt).ToLocalTime().ToString("dd/MM HH:mm"))</td>
+                            <td><button class="he-link-btn" style="background:#fee2e2; color:#b91c1c; border-color:#fca5a5;" @onclick="@(() => BorrarRegistro(r.Id))">🗑</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@code {
+    public record AdminEmpleadoDto(int Id, string Nombre, string Token, bool IsActive,
+        decimal TotalHoy, decimal TotalSemana, decimal TotalMes, DateTime? UltimaCargaAt, DateTime CreatedAt);
+    public record AdminRegistroDto(int Id, int EmpleadoId, string EmpleadoNombre, DateTime Fecha,
+        decimal Cantidad, string? Observaciones, DateTime CreatedAt, DateTime? UpdatedAt);
+
+    private List<AdminEmpleadoDto>? empleados;
+    private List<AdminRegistroDto>? registros;
+
+    private bool showFormEmp, savingEmp;
+    private int? editingId;
+    private string formNombre = "";
+    private bool formActive = true, formRegenToken;
+
+    private System.Threading.Timer? autoRefreshTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RecargarTodo();
+        // Auto-refresh cada 30s para que el admin vea la carga del empleado en tiempo real.
+        autoRefreshTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await RecargarTodo();
+                StateHasChanged();
+            });
+        }, null, 30000, 30000);
+    }
+
+    public void Dispose() => autoRefreshTimer?.Dispose();
+
+    private async Task RecargarTodo()
+    {
+        empleados = await Http.GetFromJsonAsync<List<AdminEmpleadoDto>>("api/horas-extras/admin/empleados");
+        registros = await Http.GetFromJsonAsync<List<AdminRegistroDto>>("api/horas-extras/admin/registros");
+    }
+
+    private void ShowCreateEmpleado()
+    {
+        editingId = null; formNombre = ""; formActive = true; formRegenToken = false; showFormEmp = true;
+    }
+
+    private void ShowEditEmpleado(AdminEmpleadoDto e)
+    {
+        editingId = e.Id; formNombre = e.Nombre; formActive = e.IsActive; formRegenToken = false; showFormEmp = true;
+    }
+
+    private async Task GuardarEmpleado()
+    {
+        if (string.IsNullOrWhiteSpace(formNombre)) { ToastService.Error("Nombre obligatorio"); return; }
+        savingEmp = true;
+        try
+        {
+            if (editingId.HasValue)
+            {
+                var resp = await Http.PutAsJsonAsync($"api/horas-extras/admin/empleados/{editingId.Value}",
+                    new { Nombre = formNombre, IsActive = formActive, RegenerarToken = formRegenToken });
+                if (resp.IsSuccessStatusCode) ToastService.Success("Empleado actualizado");
+                else { ToastService.Error("Error actualizando"); return; }
+            }
+            else
+            {
+                var resp = await Http.PostAsJsonAsync("api/horas-extras/admin/empleados", new { Nombre = formNombre });
+                if (resp.IsSuccessStatusCode) ToastService.Success("Empleado creado");
+                else { ToastService.Error("Error creando"); return; }
+            }
+            showFormEmp = false;
+            await RecargarTodo();
+        }
+        finally { savingEmp = false; }
+    }
+
+    private async Task BorrarRegistro(int id)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "¿Borrar este registro?")) return;
+        var resp = await Http.DeleteAsync($"api/horas-extras/admin/registros/{id}");
+        if (resp.IsSuccessStatusCode)
+        {
+            ToastService.Success("Borrado");
+            await RecargarTodo();
+        }
+    }
+
+    private async Task CopiarLink(AdminEmpleadoDto e)
+    {
+        var url = $"{await JS.InvokeAsync<string>("eval", "window.location.origin")}/he/{e.Token}";
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", url);
+        ToastService.Success($"Link de {e.Nombre} copiado");
+    }
+
+    private async Task MandarWhatsapp(AdminEmpleadoDto e)
+    {
+        var origin = await JS.InvokeAsync<string>("eval", "window.location.origin");
+        var url = $"{origin}/he/{e.Token}";
+        var texto = Uri.EscapeDataString($"Hola {e.Nombre}! Te paso el link para cargar tus horas extras cada día:\n\n{url}\n\nGuárdalo y entrá todos los días. Gracias!");
+        await JS.InvokeVoidAsync("open", $"https://wa.me/?text={texto}", "_blank");
+    }
+}

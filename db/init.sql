@@ -3444,3 +3444,34 @@ BEGIN
     ALTER TABLE Cafe_Productos ADD PrecioBultoOtro DECIMAL(18,2) NULL;
 END
 GO
+
+-- ===== Horas Extras de empleados (link publico tipo mapeo) =====
+-- Cada empleado tiene un token unico que entra en el URL. Carga sus horas extras del dia.
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='HorasExtras_Empleados')
+BEGIN
+    CREATE TABLE HorasExtras_Empleados (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Nombre NVARCHAR(120) NOT NULL,
+        Token NVARCHAR(64) NOT NULL,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NULL
+    );
+    CREATE UNIQUE INDEX UX_HorasExtrasEmpleados_Token ON HorasExtras_Empleados(Token);
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='HorasExtras_Registros')
+BEGIN
+    CREATE TABLE HorasExtras_Registros (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        EmpleadoId INT NOT NULL,
+        Fecha DATE NOT NULL,
+        Cantidad DECIMAL(5,2) NOT NULL DEFAULT 0,
+        Observaciones NVARCHAR(500) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT FK_HorasExtrasRegistros_Empleado FOREIGN KEY (EmpleadoId) REFERENCES HorasExtras_Empleados(Id) ON DELETE CASCADE,
+        CONSTRAINT UX_HorasExtrasRegistros_EmpFecha UNIQUE (EmpleadoId, Fecha)
+    );
+END
+GO

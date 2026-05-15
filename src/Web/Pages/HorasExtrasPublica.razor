@@ -1,0 +1,187 @@
+@page "/he/{token}"
+@attribute [AllowAnonymous]
+@layout Web.Layout.LoginLayout
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+@* Pagina publica para que el empleado cargue sus horas extras del dia.
+   No requiere autenticacion — el token del link hace de credencial.
+   Diseño: simple, mobile-first, un solo input + boton. *@
+
+<style>
+    body { background: linear-gradient(135deg, #f8fafc, #e5e7eb); min-height: 100vh; }
+    .he-wrap { max-width: 480px; margin: 0 auto; padding: 1rem; }
+    .he-card { background: white; border-radius: 14px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); margin-bottom: 0.8rem; padding: 1.2rem; }
+    .he-hello { font-size: 1.4rem; font-weight: 700; margin: 0 0 0.2rem; color: #1f2937; }
+    .he-fecha { font-size: 0.92rem; color: #6b7280; margin: 0 0 0.8rem; text-transform: capitalize; }
+    .he-input { width: 100%; padding: 1rem; font-size: 1.8rem; text-align: center; border: 2px solid #d1d5db; border-radius: 10px; font-weight: 700; color: #1d4ed8; }
+    .he-input:focus { outline: none; border-color: #1d4ed8; box-shadow: 0 0 0 3px rgba(29,78,216,0.15); }
+    .he-label { font-size: 0.9rem; color: #4b5563; font-weight: 600; margin: 0.3rem 0 0.4rem; display: block; }
+    .he-textarea { width: 100%; padding: 0.6rem; font-size: 0.92rem; border: 1px solid #d1d5db; border-radius: 8px; resize: vertical; min-height: 60px; box-sizing: border-box; }
+    .he-btn { width: 100%; padding: 0.9rem; font-size: 1.05rem; font-weight: 700; border: none; border-radius: 10px; cursor: pointer; margin-top: 0.7rem; }
+    .he-btn-primary { background: #1d4ed8; color: white; }
+    .he-btn-primary:hover { background: #1e40af; }
+    .he-btn-primary:disabled { background: #9ca3af; cursor: not-allowed; }
+    .he-quick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.4rem; margin: 0.5rem 0 0.2rem; }
+    .he-quick button { padding: 0.5rem; font-size: 0.92rem; font-weight: 700; border: 2px solid #e5e7eb; border-radius: 8px; background: white; cursor: pointer; }
+    .he-quick button.active { border-color: #1d4ed8; background: #dbeafe; color: #1d4ed8; }
+    .he-resumen { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+    .he-resumen-box { background: #f9fafb; padding: 0.7rem; border-radius: 8px; text-align: center; }
+    .he-resumen-label { font-size: 0.7rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; }
+    .he-resumen-value { font-size: 1.5rem; font-weight: 700; color: #1d4ed8; margin-top: 0.15rem; }
+    .he-history { margin-top: 0.6rem; }
+    .he-row { display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid #f3f4f6; font-size: 0.9rem; }
+    .he-row-fecha { color: #4b5563; text-transform: capitalize; }
+    .he-row-hs { font-weight: 700; color: #1d4ed8; }
+    .he-row.hoy { background: #fef3c7; padding: 0.5rem 0.6rem; border-radius: 6px; border: none; }
+    .he-toast { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); background: #16a34a; color: white; padding: 0.7rem 1.4rem; border-radius: 999px; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.2); z-index: 9999; }
+</style>
+
+<div class="he-wrap">
+    @if (loading)
+    {
+        <p style="text-align:center; padding:2rem; color:#6b7280;">Cargando...</p>
+    }
+    else if (datos is null)
+    {
+        <div class="he-card" style="text-align:center;">
+            <h2 style="margin:0 0 0.5rem; color:#b91c1c;">🚫 Link inválido</h2>
+            <p style="margin:0; color:#4b5563;">El link puede haber expirado o no ser válido. Pedile uno nuevo a tu encargado.</p>
+        </div>
+    }
+    else
+    {
+        <div class="he-card">
+            <h1 class="he-hello">Hola @datos.Nombre 👋</h1>
+            <p class="he-fecha">@FechaLabel(datos.HoyFecha)</p>
+
+            <label class="he-label">¿Cuántas horas extra hiciste hoy?</label>
+            <input type="number" step="0.5" min="0" max="24" class="he-input" @bind="formCantidad" @bind:event="oninput" placeholder="0" />
+            <div class="he-quick">
+                @foreach (var q in new[] { 0.5m, 1m, 1.5m, 2m, 2.5m, 3m, 4m, 5m })
+                {
+                    var activo = formCantidad == q;
+                    <button class="@(activo ? "active" : "")" @onclick="@(() => formCantidad = q)">@q.ToString("0.#") h</button>
+                }
+            </div>
+
+            <label class="he-label">Observación (opcional)</label>
+            <textarea class="he-textarea" @bind="formObservaciones" placeholder="Ej: Quedé hasta las 22 esperando al técnico"></textarea>
+
+            <button class="he-btn he-btn-primary" @onclick="GuardarAsync" disabled="@guardando">
+                @(guardando ? "Guardando..." : "💾 Guardar")
+            </button>
+            @if (!string.IsNullOrEmpty(errorMsg))
+            {
+                <p style="color:#b91c1c; font-size:0.85rem; margin-top:0.5rem; text-align:center;">⚠ @errorMsg</p>
+            }
+        </div>
+
+        <div class="he-card">
+            <div class="he-resumen">
+                <div class="he-resumen-box">
+                    <div class="he-resumen-label">Esta semana</div>
+                    <div class="he-resumen-value">@datos.TotalSemana.ToString("0.#") h</div>
+                </div>
+                <div class="he-resumen-box">
+                    <div class="he-resumen-label">Este mes</div>
+                    <div class="he-resumen-value">@datos.TotalMes.ToString("0.#") h</div>
+                </div>
+            </div>
+            <div class="he-history">
+                <div style="font-weight:700; color:#1f2937; margin: 0.5rem 0 0.3rem;">Últimos 7 días</div>
+                @if (datos.Ultimos7Dias.Count == 0)
+                {
+                    <p style="color:#6b7280; font-size:0.85rem; margin:0;">Sin cargas todavía esta semana.</p>
+                }
+                else
+                {
+                    @foreach (var r in datos.Ultimos7Dias)
+                    {
+                        var esHoy = r.Fecha.Date == datos.HoyFecha.Date;
+                        <div class="he-row @(esHoy ? "hoy" : "")">
+                            <span class="he-row-fecha">@FechaLabel(r.Fecha) @(esHoy ? "(hoy)" : "")</span>
+                            <span class="he-row-hs">@r.Cantidad.ToString("0.#") h</span>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    }
+
+    @if (toastVisible)
+    {
+        <div class="he-toast">✓ Guardado</div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Token { get; set; } = "";
+    private bool loading = true, guardando, toastVisible;
+    private string? errorMsg;
+    private PublicEmpleadoDto? datos;
+    private decimal formCantidad;
+    private string formObservaciones = "";
+
+    public record PublicRegistroDto(int Id, DateTime Fecha, decimal Cantidad, string? Observaciones);
+    public record PublicEmpleadoDto(string Nombre, DateTime HoyFecha, decimal? HorasHoy, string? ObservacionesHoy,
+        List<PublicRegistroDto> Ultimos7Dias, decimal TotalSemana, decimal TotalMes);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        loading = true;
+        try
+        {
+            var resp = await Http.GetAsync($"api/horas-extras/publica/{Uri.EscapeDataString(Token)}");
+            if (resp.IsSuccessStatusCode)
+            {
+                datos = await resp.Content.ReadFromJsonAsync<PublicEmpleadoDto>();
+                if (datos is not null)
+                {
+                    formCantidad = datos.HorasHoy ?? 0m;
+                    formObservaciones = datos.ObservacionesHoy ?? "";
+                }
+            }
+        }
+        catch { datos = null; }
+        finally { loading = false; }
+    }
+
+    private async Task GuardarAsync()
+    {
+        if (datos is null) return;
+        errorMsg = null;
+        guardando = true;
+        try
+        {
+            var body = new { Cantidad = formCantidad, Observaciones = formObservaciones };
+            var resp = await Http.PostAsJsonAsync($"api/horas-extras/publica/{Uri.EscapeDataString(Token)}", body);
+            if (!resp.IsSuccessStatusCode)
+            {
+                errorMsg = "No se pudo guardar. Intentá de nuevo.";
+                return;
+            }
+            await CargarAsync();
+            toastVisible = true;
+            StateHasChanged();
+            await Task.Delay(1800);
+            toastVisible = false;
+        }
+        catch (Exception ex)
+        {
+            errorMsg = "Error: " + ex.Message;
+        }
+        finally { guardando = false; }
+    }
+
+    private static string FechaLabel(DateTime d)
+    {
+        var es = new System.Globalization.CultureInfo("es-AR");
+        return d.ToString("dddd dd/MM", es);
+    }
+}
