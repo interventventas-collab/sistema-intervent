@@ -1019,10 +1019,52 @@
                         title="Ver cómo quedaría el PDF sin guardar la venta">
                     @(previewLoading ? "⏳ Generando..." : "👁 Previsualizar PDF")
                 </button>
-                <button class="btn btn-primary" @onclick="Save" disabled="@(saving || formItems.Count == 0 || cotizacion?.TodoOk != true)">
+                <button class="btn btn-primary" @onclick="ConfirmarEmision" disabled="@(saving || formItems.Count == 0 || cotizacion?.TodoOk != true)">
                     @(saving
                         ? (editingVentaId.HasValue ? "Guardando..." : "Emitiendo...")
                         : (editingVentaId.HasValue ? "💾 Guardar cambios" : "Emitir comprobante"))
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ════════ Modal de confirmacion de emision (doble-check para FA/FB/FC) ════════ *@
+@if (showConfirmEmision && cotizacion is not null)
+{
+    <div class="modal-overlay" style="z-index: 1050;">
+        <div class="modal" style="max-width: 480px;">
+            <div class="modal-header" style="background: #fef3c7; border-bottom: 2px solid #d97706;">
+                <h3 style="margin: 0; color: #92400e;">⚠ Confirmar emisión</h3>
+            </div>
+            <div class="modal-body" style="padding: 1.2rem;">
+                <p style="margin: 0 0 1rem; color: #4b5563;">Estás por <strong>emitir un comprobante con CAE</strong>. Una vez emitido <strong>no se puede deshacer</strong>: solo se puede revertir con Nota de Crédito.</p>
+
+                <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.8rem; margin-bottom: 1rem;">
+                    <div style="display: flex; justify-content: space-between; padding: 0.2rem 0; font-size: 0.88rem;">
+                        <span style="color: #6b7280;">Tipo:</span>
+                        <strong>@TipoComprobanteLargo(formTipoComprobante)</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; padding: 0.2rem 0; font-size: 0.88rem;">
+                        <span style="color: #6b7280;">Cliente:</span>
+                        <strong>@(NombreClienteConfirmacion())</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; padding: 0.2rem 0; font-size: 0.88rem;">
+                        <span style="color: #6b7280;">Items:</span>
+                        <strong>@formItems.Count</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; padding: 0.4rem 0 0; border-top: 1px solid #e5e7eb; margin-top: 0.4rem; font-size: 1.05rem;">
+                        <span style="color: #6b7280;">TOTAL:</span>
+                        <strong style="color: #1d4ed8;">$@FormatMoney(cotizacion.Total)</strong>
+                    </div>
+                </div>
+
+                <p style="font-size: 0.78rem; color: #6b7280; margin: 0;">💡 Tip: si querés ver el PDF antes de confirmar, tocá <em>Cancelar</em> y después <em>Previsualizar PDF</em>.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="@(() => showConfirmEmision = false)" disabled="@saving">Cancelar</button>
+                <button class="btn btn-primary" style="background: #16a34a; border-color: #15803d;" @onclick="ConfirmarYEmitir" disabled="@saving">
+                    @(saving ? "Emitiendo..." : "✓ Sí, emitir")
                 </button>
             </div>
         </div>
@@ -1681,6 +1723,7 @@
 
     // Form state
     private bool showForm, saving, previewLoading;
+    private bool showConfirmEmision; // doble-check antes de emitir contra ARCA
     private string? formError;
     private int formClienteId;
     private string clienteSearch = "";
@@ -2492,6 +2535,41 @@
             ToastService.Error("Error generando preview: " + ex.Message);
         }
         finally { previewLoading = false; }
+    }
+
+    /// <summary>Doble-check antes de emitir: si es FA/FB/FC (genera CAE irreversible) muestra
+    /// un modal de confirmación con resumen. Si es X o PRO (interno, sin ARCA) o si está editando
+    /// una venta existente, salta el modal y guarda directo.</summary>
+    private void ConfirmarEmision()
+    {
+        if (formItems.Count == 0) { formError = "Agregá al menos un producto"; return; }
+        if (cotizacion?.TodoOk != true) { formError = "Hay items con stock insuficiente o inválidos"; return; }
+        // Editando una venta existente o tipo interno (X / PRO) → no requiere doble-check.
+        var esArcaReal = formTipoComprobante is "FA" or "FB" or "FC";
+        if (editingVentaId.HasValue || !esArcaReal)
+        {
+            _ = Save();
+            return;
+        }
+        showConfirmEmision = true;
+    }
+
+    /// <summary>Confirma la emisión desde el modal de doble-check y dispara la emisión real.</summary>
+    private async Task ConfirmarYEmitir()
+    {
+        showConfirmEmision = false;
+        await Save();
+    }
+
+    /// <summary>Nombre legible del cliente para mostrar en el modal de confirmación.</summary>
+    private string NombreClienteConfirmacion()
+    {
+        if (formClienteId > 0)
+        {
+            var c = clientes?.FirstOrDefault(x => x.Id == formClienteId);
+            if (c is not null) return c.Nombre ?? c.RazonSocial ?? "(sin nombre)";
+        }
+        return "Consumidor final";
     }
 
     private async Task Save()
