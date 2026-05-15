@@ -8,8 +8,13 @@
                 // Rutas publicas (no requieren login). Se renderizan con RouteView directo
                 // para esquivar el AuthorizeRouteView, que por default exige auth para TODAS
                 // las paginas y dispara <NotAuthorized> antes de leer [AllowAnonymous].
+                // Incluye: /r/ (mapeo chofer), /he/ (horas extras empleados), /v/ (viajes),
+                // /stock/ (carga stock deposito), /login.
                 var relPath = Navigation.ToBaseRelativePath(Navigation.Uri);
                 var isPublic = relPath.StartsWith("r/", StringComparison.OrdinalIgnoreCase)
+                            || relPath.StartsWith("he/", StringComparison.OrdinalIgnoreCase)
+                            || relPath.StartsWith("v/", StringComparison.OrdinalIgnoreCase)
+                            || relPath.StartsWith("stock/", StringComparison.OrdinalIgnoreCase)
                             || relPath.StartsWith("login", StringComparison.OrdinalIgnoreCase);
             }
             @if (isPublic)
