@@ -25,9 +25,11 @@ public class HorasExtrasController : ControllerBase
     // ENDPOINTS PUBLICOS (sin auth, por token)
     // ============================================================
 
-    public record PublicRegistroDto(int Id, DateTime Fecha, decimal Cantidad, string? Observaciones);
+    public record PublicRegistroDto(int Id, DateTime Fecha, decimal Cantidad, string? Observaciones,
+        string? HoraEntrada, string? HoraSalida);
     public record PublicEmpleadoDto(string Nombre, DateTime HoyFecha, DateTime FechaSeleccionada,
         decimal? HorasSeleccionada, string? ObservacionesSeleccionada,
+        string? HoraEntradaSeleccionada, string? HoraSalidaSeleccionada,
         List<PublicRegistroDto> Ultimos7Dias, decimal TotalSemana, decimal TotalMes);
 
     /// <summary>El empleado abre el link con su token y obtiene su nombre + carga del dia + historial.
@@ -61,15 +63,22 @@ public class HorasExtrasController : ControllerBase
 
         var registroSel = registros.FirstOrDefault(r => r.Fecha == fechaSel);
         var ultimos7 = registros.Where(r => r.Fecha >= hace7 && r.Fecha <= hoy).OrderByDescending(r => r.Fecha)
-            .Select(r => new PublicRegistroDto(r.Id, r.Fecha, r.Cantidad, r.Observaciones))
+            .Select(r => new PublicRegistroDto(r.Id, r.Fecha, r.Cantidad, r.Observaciones,
+                FormatHora(r.HoraEntrada), FormatHora(r.HoraSalida)))
             .ToList();
         var totalSemana = ultimos7.Sum(r => r.Cantidad);
         var totalMes = registros.Where(r => r.Fecha >= inicioMes).Sum(r => r.Cantidad);
 
         return Ok(new PublicEmpleadoDto(emp.Nombre, hoy, fechaSel,
             registroSel?.Cantidad, registroSel?.Observaciones,
+            FormatHora(registroSel?.HoraEntrada), FormatHora(registroSel?.HoraSalida),
             ultimos7, totalSemana, totalMes));
     }
+
+    /// <summary>Devuelve "HH:mm" o null. Lo usamos en el JSON para que el input type=time del browser
+    /// lo entienda sin conversion extra.</summary>
+    private static string? FormatHora(TimeSpan? t) =>
+        t.HasValue ? $"{t.Value.Hours:D2}:{t.Value.Minutes:D2}" : null;
 
     public class CargarHorasRequest
     {
@@ -77,6 +86,9 @@ public class HorasExtrasController : ControllerBase
         public string? Observaciones { get; set; }
         /// <summary>Opcional. Si null, se usa la fecha de hoy (Argentina). Si viene, debe ser hoy o ayer.</summary>
         public DateTime? Fecha { get; set; }
+        /// <summary>Opcionales. Formato "HH:mm" (lo que manda el input type=time). Null = no se carga.</summary>
+        public string? HoraEntrada { get; set; }
+        public string? HoraSalida { get; set; }
     }
 
     /// <summary>El empleado carga (o actualiza) sus horas extras del día. Si ya existe un registro
@@ -100,6 +112,10 @@ public class HorasExtrasController : ControllerBase
         if (fechaCarga > hoy)
             return BadRequest(new { error = "No podés cargar fechas futuras" });
 
+        // Parsea "HH:mm" → TimeSpan?. Strings vacios o invalidos → null (campo opcional).
+        var horaEnt = ParseHora(req.HoraEntrada);
+        var horaSal = ParseHora(req.HoraSalida);
+
         var existente = await _db.HorasExtrasRegistros.FirstOrDefaultAsync(r => r.EmpleadoId == emp.Id && r.Fecha == fechaCarga);
         if (existente is null)
         {
@@ -109,6 +125,8 @@ public class HorasExtrasController : ControllerBase
                 Fecha = fechaCarga,
                 Cantidad = req.Cantidad,
                 Observaciones = string.IsNullOrWhiteSpace(req.Observaciones) ? null : req.Observaciones.Trim(),
+                HoraEntrada = horaEnt,
+                HoraSalida = horaSal,
                 CreatedAt = DateTime.UtcNow
             };
             _db.HorasExtrasRegistros.Add(existente);
@@ -117,10 +135,19 @@ public class HorasExtrasController : ControllerBase
         {
             existente.Cantidad = req.Cantidad;
             existente.Observaciones = string.IsNullOrWhiteSpace(req.Observaciones) ? null : req.Observaciones.Trim();
+            existente.HoraEntrada = horaEnt;
+            existente.HoraSalida = horaSal;
             existente.UpdatedAt = DateTime.UtcNow;
         }
         await _db.SaveChangesAsync();
         return Ok(new { ok = true, fecha = fechaCarga, cantidad = req.Cantidad });
+    }
+
+    /// <summary>Parsea "HH:mm" o "HH:mm:ss" a TimeSpan. Strings vacios/invalidos → null.</summary>
+    private static TimeSpan? ParseHora(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        return TimeSpan.TryParse(s.Trim(), out var t) ? t : null;
     }
 
     // ============================================================
@@ -221,7 +248,8 @@ public class HorasExtrasController : ControllerBase
     }
 
     public record AdminRegistroDto(int Id, int EmpleadoId, string EmpleadoNombre, DateTime Fecha,
-        decimal Cantidad, string? Observaciones, DateTime CreatedAt, DateTime? UpdatedAt);
+        decimal Cantidad, string? Observaciones, string? HoraEntrada, string? HoraSalida,
+        DateTime CreatedAt, DateTime? UpdatedAt);
 
     /// <summary>Lista todos los registros, opcionalmente filtrando por rango y/o empleado.
     /// Por default devuelve los últimos 30 días.</summary>
@@ -239,7 +267,8 @@ public class HorasExtrasController : ControllerBase
         if (empleadoId.HasValue) q = q.Where(r => r.EmpleadoId == empleadoId.Value);
         var regs = await q.OrderByDescending(r => r.Fecha).ThenBy(r => r.Empleado!.Nombre).ToListAsync();
         var result = regs.Select(r => new AdminRegistroDto(r.Id, r.EmpleadoId, r.Empleado?.Nombre ?? "?",
-            r.Fecha, r.Cantidad, r.Observaciones, r.CreatedAt, r.UpdatedAt)).ToList();
+            r.Fecha, r.Cantidad, r.Observaciones, FormatHora(r.HoraEntrada), FormatHora(r.HoraSalida),
+            r.CreatedAt, r.UpdatedAt)).ToList();
         return Ok(result);
     }
 

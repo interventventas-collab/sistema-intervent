@@ -125,6 +125,7 @@
                     <tr>
                         <th>Fecha</th>
                         <th>Empleado</th>
+                        <th>Horario</th>
                         <th style="text-align:right;">Horas</th>
                         <th>Observación</th>
                         <th>Cargado</th>
@@ -137,6 +138,13 @@
                         <tr>
                             <td>@r.Fecha.ToString("ddd dd/MM", new System.Globalization.CultureInfo("es-AR"))</td>
                             <td><strong>@r.EmpleadoNombre</strong></td>
+                            <td style="color:#4b5563; font-size:0.82rem; font-family:monospace;">
+                                @if (!string.IsNullOrEmpty(r.HoraEntrada) || !string.IsNullOrEmpty(r.HoraSalida))
+                                {
+                                    <span>@(r.HoraEntrada ?? "—") → @(r.HoraSalida ?? "—")</span>
+                                }
+                                else { <span style="color:#9ca3af;">—</span> }
+                            </td>
                             <td style="text-align:right; font-weight:700; color:#1d4ed8;">@r.Cantidad.ToString("0.#") h</td>
                             <td style="color:#4b5563; font-size:0.82rem;">@(r.Observaciones ?? "")</td>
                             <td style="color:#6b7280; font-size:0.78rem;">@((r.UpdatedAt ?? r.CreatedAt).ToLocalTime().ToString("dd/MM HH:mm"))</td>
@@ -153,7 +161,8 @@
     public record AdminEmpleadoDto(int Id, string Nombre, string Token, bool IsActive,
         decimal TotalHoy, decimal TotalSemana, decimal TotalMes, DateTime? UltimaCargaAt, DateTime CreatedAt);
     public record AdminRegistroDto(int Id, int EmpleadoId, string EmpleadoNombre, DateTime Fecha,
-        decimal Cantidad, string? Observaciones, DateTime CreatedAt, DateTime? UpdatedAt);
+        decimal Cantidad, string? Observaciones, string? HoraEntrada, string? HoraSalida,
+        DateTime CreatedAt, DateTime? UpdatedAt);
 
     private List<AdminEmpleadoDto>? empleados;
     private List<AdminRegistroDto>? registros;

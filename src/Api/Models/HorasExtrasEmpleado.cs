@@ -48,6 +48,14 @@ public class HorasExtrasRegistro
     [MaxLength(500)]
     public string? Observaciones { get; set; }
 
+    /// <summary>Hora de entrada (opcional). Si la cargó el empleado, queda registrada.</summary>
+    [Column(TypeName = "time")]
+    public TimeSpan? HoraEntrada { get; set; }
+
+    /// <summary>Hora de salida (opcional). Si la cargó el empleado, queda registrada.</summary>
+    [Column(TypeName = "time")]
+    public TimeSpan? HoraSalida { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

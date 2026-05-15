@@ -3582,3 +3582,15 @@ BEGIN
     INSERT INTO AppSettings ([Key], [Value]) VALUES ('stock.public_token', LOWER(REPLACE(NEWID(), '-', '')));
 END
 GO
+
+-- HorasExtras_Registros: horario de entrada/salida opcional (pedido del usuario 2026-05-15).
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='HoraEntrada' AND Object_ID=OBJECT_ID('HorasExtras_Registros'))
+BEGIN
+    ALTER TABLE HorasExtras_Registros ADD HoraEntrada TIME NULL;
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='HoraSalida' AND Object_ID=OBJECT_ID('HorasExtras_Registros'))
+BEGIN
+    ALTER TABLE HorasExtras_Registros ADD HoraSalida TIME NULL;
+END
+GO
