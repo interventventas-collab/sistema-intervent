@@ -202,9 +202,15 @@ public class CafeVentasController : ControllerBase
         // neto/IVA/total acá igual que lo hizo ArcaInvoiceService al emitir
         // contra ARCA, para que el PDF muestre los montos coherentes con el CAE
         // (y el QR del comprobante lleve el mismo Importe Total que tiene ARCA).
+        //
+        // IMPORTANTE (fix 2026-05-15): usamos v.Subtotal (NO v.Total) porque eso es lo que
+        // efectivamente recibió ARCA al emitir. El descuento GLOBAL (v.Descuento) no se le
+        // informaba a ARCA — quedaba como diferencia entre lo cobrado y lo declarado. El PDF
+        // debe ser fiel al comprobante real, sino el cliente no puede conciliar IVA con su CUIT.
+        // El descuento global cobrado en menos se compensa con Nota de Crédito.
         //   - Letra A / B: total = neto + 21%
         //   - Letra C:     total = neto (sin IVA)
-        decimal neto = v.Total;
+        decimal neto = v.Subtotal;
         decimal ivaPct = letra == "C" ? 0m : 21m;
         decimal ivaImporte = Math.Round(neto * ivaPct / 100m, 2, MidpointRounding.AwayFromZero);
         decimal totalConIva = neto + ivaImporte;
@@ -683,26 +689,37 @@ public class CafeVentasController : ControllerBase
             };
 
             // 5. Mapear items. Precios del Café se asumen SIN IVA. Alícuota = 21% por default.
-            //    El descuento por item se aplica al precio unitario antes de pasarlo a ARCA.
+            //    El descuento por item ya está en it.Subtotal (it.Subtotal/it.Cantidad = precio con desc línea).
+            //    PARA EL DESCUENTO GLOBAL DE LA VENTA (venta.Descuento), prorrateamos entre todos los items
+            //    así ARCA recibe el importe efectivamente cobrado al cliente (no el subtotal sin descuento).
+            //    Fix 2026-05-15: antes no se aplicaba el desc global → ARCA quedaba con un total mayor al
+            //    del PDF/cobrado, generando descuadre fiscal en el CUIT del cliente.
+            decimal sumaItems = venta.Items.Sum(i => i.Subtotal);
+            decimal factorDescGlobal = (venta.Descuento > 0m && sumaItems > 0m)
+                ? Math.Max(0m, 1m - (venta.Descuento / sumaItems))
+                : 1m;
+
             var items = new List<EmitirComprobanteItemDto>();
             foreach (var it in venta.Items)
             {
-                var puConDesc = it.DescuentoPct > 0 && it.Cantidad > 0
+                var puConDescLinea = it.DescuentoPct > 0 && it.Cantidad > 0
                     ? Math.Round(it.Subtotal / it.Cantidad, 2, MidpointRounding.AwayFromZero)
                     : it.PrecioUnitario;
+                // Aplicar descuento global prorrateado (si lo hubo) sobre el precio unitario:
+                var puFinal = factorDescGlobal < 1m
+                    ? Math.Round(puConDescLinea * factorDescGlobal, 2, MidpointRounding.AwayFromZero)
+                    : puConDescLinea;
 
                 var desc = it.ProductoNombreSnapshot;
                 if (!string.IsNullOrEmpty(it.Molienda)) desc += $" — {it.Molienda}";
                 if (it.EsDoyPack) desc += " (d.p.)"; else if (it.EsEnvasePlateado) desc += " (env. plat.)";
-                // Para items con producto del catálogo agregamos el formato (1kg / medio / cuarto / unit).
-                // Para "concepto libre" la descripción ya viene completa, no le sumamos formato.
                 if (!it.EsConceptoLibre) desc += $" · {it.Formato}";
 
                 items.Add(new EmitirComprobanteItemDto
                 {
                     Descripcion = desc,
                     Cantidad = it.Cantidad,
-                    PrecioUnitario = puConDesc,
+                    PrecioUnitario = puFinal,
                     AlicIvaId = 5, // 21% — hardcoded por ahora, se mejora con campo AlicIvaPct por producto después
                 });
             }
