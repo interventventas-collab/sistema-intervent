@@ -249,7 +249,7 @@
 
     private async Task CopiarLink(AdminEmpleadoDto e)
     {
-        var url = $"{await JS.InvokeAsync<string>("eval", "window.location.origin")}/he/{e.Token}";
+        var url = $"{await JS.InvokeAsync<string>("eval", "window.location.origin")}/he/{Slugify(e.Nombre)}/{e.Token}";
         await JS.InvokeVoidAsync("navigator.clipboard.writeText", url);
         ToastService.Success($"Link de {e.Nombre} copiado");
     }
@@ -257,8 +257,28 @@
     private async Task MandarWhatsapp(AdminEmpleadoDto e)
     {
         var origin = await JS.InvokeAsync<string>("eval", "window.location.origin");
-        var url = $"{origin}/he/{e.Token}";
+        var url = $"{origin}/he/{Slugify(e.Nombre)}/{e.Token}";
         var texto = Uri.EscapeDataString($"Hola {e.Nombre}! Te paso el link para cargar tus horas extras cada día:\n\n{url}\n\nGuárdalo y entrá todos los días. Gracias!");
         await JS.InvokeVoidAsync("open", $"https://wa.me/?text={texto}", "_blank");
+    }
+
+    /// <summary>Convierte un nombre a un slug seguro para URL: minúsculas, sin acentos,
+    /// espacios y caracteres raros → guion. Ej: "Pablo López" → "pablo-lopez".</summary>
+    private static string Slugify(string s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "empleado";
+        // Normalize quita acentos: "á" → "a"
+        var normalized = s.Normalize(System.Text.NormalizationForm.FormD);
+        var sb = new System.Text.StringBuilder();
+        foreach (var c in normalized)
+        {
+            var uc = System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c);
+            if (uc == System.Globalization.UnicodeCategory.NonSpacingMark) continue;
+            if (char.IsLetterOrDigit(c)) sb.Append(char.ToLowerInvariant(c));
+            else if (c == ' ' || c == '-' || c == '_') sb.Append('-');
+        }
+        // Compactar guiones repetidos y trimear
+        var slug = System.Text.RegularExpressions.Regex.Replace(sb.ToString(), "-{2,}", "-").Trim('-');
+        return string.IsNullOrEmpty(slug) ? "empleado" : slug;
     }
 }

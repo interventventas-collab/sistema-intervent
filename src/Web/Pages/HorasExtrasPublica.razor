@@ -1,4 +1,5 @@
 @page "/he/{token}"
+@page "/he/{slug}/{token}"
 @attribute [AllowAnonymous]
 @layout Web.Layout.LoginLayout
 @inject HttpClient Http
@@ -158,6 +159,9 @@
 
 @code {
     [Parameter] public string Token { get; set; } = "";
+    /// <summary>Solo cosmético — slug del nombre del empleado para que el URL se vea legible
+    /// cuando le llega por WhatsApp (ej. /he/alexis/abc123). No se valida ni se usa internamente.</summary>
+    [Parameter] public string? Slug { get; set; }
     private bool loading = true, guardando, toastVisible;
     private string? errorMsg;
     private PublicEmpleadoDto? datos;
