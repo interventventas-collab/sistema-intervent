@@ -405,11 +405,19 @@ public class CafeVentasController : ControllerBase
             CondicionPago = NormCondicionPago(req.CondicionPago),
             CreatedAt = DateTime.UtcNow,
         };
+        // Pre-cargo los productos referenciados (con su UxB) para que el PDF tenga el ProductoNav.
+        // Sin esto, los items BULTO en el preview pierden la informacion del UxB y no muestran
+        // las unidades reales en la columna Cant.
+        var prodIds = cot.Items.Select(x => x.ProductoId).Where(id => id > 0).Distinct().ToList();
+        var prodsCache = await _db.CafeProductos.Where(p => prodIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
+
         foreach (var ci in cot.Items)
         {
+            prodsCache.TryGetValue(ci.ProductoId, out var prodNav);
             ventaPreview.Items.Add(new CafeVentaItem
             {
                 ProductoId = ci.ProductoId,
+                ProductoNav = prodNav,            // necesario para que el PDF tenga el UxB cuando es BULTO
                 ProductoNombreSnapshot = ci.ProductoNombre,
                 Categoria = ci.Categoria,
                 Formato = ci.Formato,
