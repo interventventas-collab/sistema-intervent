@@ -1,0 +1,307 @@
+@page "/v/{token}"
+@attribute [AllowAnonymous]
+@layout Web.Layout.LoginLayout
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+@* Pagina publica para que el empleado de viajes cargue sus viajes del dia.
+   Sin login — el token del link es la credencial. Mobile-first. *@
+
+<style>
+    body { background: linear-gradient(135deg, #f8fafc, #e5e7eb); min-height: 100vh; }
+    .vp-wrap { max-width: 520px; margin: 0 auto; padding: 1rem; }
+    .vp-card { background: white; border-radius: 14px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); margin-bottom: 0.8rem; padding: 1.2rem; }
+    .vp-hello { font-size: 1.4rem; font-weight: 700; margin: 0 0 0.2rem; color: #1f2937; }
+    .vp-fecha { font-size: 0.92rem; color: #6b7280; margin: 0 0 0.8rem; text-transform: capitalize; }
+    .vp-input { width: 100%; padding: 0.9rem; font-size: 1.6rem; text-align: center; border: 2px solid #d1d5db; border-radius: 10px; font-weight: 700; box-sizing: border-box; }
+    .vp-input:focus { outline: none; border-color: #1d4ed8; box-shadow: 0 0 0 3px rgba(29,78,216,0.15); }
+    .vp-input.caba { color: #1d4ed8; }
+    .vp-input.pcia { color: #166534; }
+    .vp-label { font-size: 0.9rem; color: #4b5563; font-weight: 600; margin: 0.3rem 0 0.4rem; display: block; }
+    .vp-textarea { width: 100%; padding: 0.6rem; font-size: 0.92rem; border: 1px solid #d1d5db; border-radius: 8px; resize: vertical; min-height: 50px; box-sizing: border-box; }
+    .vp-btn { width: 100%; padding: 0.9rem; font-size: 1.05rem; font-weight: 700; border: none; border-radius: 10px; cursor: pointer; margin-top: 0.7rem; }
+    .vp-btn-primary { background: #1d4ed8; color: white; }
+    .vp-btn-primary:hover { background: #1e40af; }
+    .vp-btn-primary:disabled { background: #9ca3af; cursor: not-allowed; }
+    .vp-quick { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.3rem; margin: 0.4rem 0 0.5rem; }
+    .vp-quick button { padding: 0.35rem; font-size: 0.85rem; font-weight: 700; border: 2px solid #e5e7eb; border-radius: 6px; background: white; cursor: pointer; }
+    .vp-quick button.caba.active { border-color: #1d4ed8; background: #dbeafe; color: #1d4ed8; }
+    .vp-quick button.pcia.active { border-color: #166534; background: #dcfce7; color: #166534; }
+    .vp-zona { display: flex; gap: 0.5rem; align-items: center; margin: 0.6rem 0 0.2rem; }
+    .vp-zona-tag { padding: 0.2rem 0.5rem; border-radius: 6px; font-size: 0.78rem; font-weight: 700; }
+    .vp-zona-tag.caba { background: #dbeafe; color: #1e40af; }
+    .vp-zona-tag.pcia { background: #dcfce7; color: #166534; }
+    .vp-resumen { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.5rem; }
+    .vp-resumen-box { background: #f9fafb; padding: 0.7rem; border-radius: 8px; text-align: center; }
+    .vp-resumen-label { font-size: 0.7rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; }
+    .vp-resumen-value { font-size: 1.3rem; font-weight: 700; color: #1d4ed8; margin-top: 0.15rem; }
+    .vp-saldo-box { padding: 1rem; border-radius: 10px; text-align: center; margin-top: 0.6rem; }
+    .vp-saldo-box.aFavor { background: linear-gradient(135deg, #15803d, #16a34a); color: white; }
+    .vp-saldo-box.enContra { background: linear-gradient(135deg, #b91c1c, #dc2626); color: white; }
+    .vp-saldo-box.cero { background: linear-gradient(135deg, #4b5563, #6b7280); color: white; }
+    .vp-saldo-label { font-size: 0.78rem; letter-spacing: 0.05em; text-transform: uppercase; opacity: 0.85; }
+    .vp-saldo-value { font-size: 1.7rem; font-weight: 700; margin-top: 0.3rem; }
+    .vp-history { margin-top: 0.5rem; }
+    .vp-row { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr; gap: 0.3rem; padding: 0.5rem 0; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem; align-items: center; }
+    .vp-row.header { font-weight: 700; color: #4b5563; font-size: 0.72rem; text-transform: uppercase; }
+    .vp-row.hoy { background: #fef3c7; padding: 0.5rem 0.4rem; border-radius: 6px; border: none; }
+    .vp-row-fecha { color: #4b5563; text-transform: capitalize; }
+    .vp-pago-row { display: flex; justify-content: space-between; padding: 0.4rem 0; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem; }
+    .vp-pago-desc { color: #4b5563; flex: 1; }
+    .vp-pago-imp { color: #16a34a; font-weight: 700; white-space: nowrap; }
+    .vp-toast { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); background: #16a34a; color: white; padding: 0.7rem 1.4rem; border-radius: 999px; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.2); z-index: 9999; }
+</style>
+
+<div class="vp-wrap">
+    @if (loading)
+    {
+        <p style="text-align:center; padding:2rem; color:#6b7280;">Cargando...</p>
+    }
+    else if (datos is null)
+    {
+        <div class="vp-card" style="text-align:center;">
+            <h2 style="margin:0 0 0.5rem; color:#b91c1c;">🚫 Link inválido</h2>
+            <p style="margin:0; color:#4b5563;">El link puede haber expirado. Pedile uno nuevo a tu encargado.</p>
+        </div>
+    }
+    else
+    {
+        @* === SALDO ARRIBA — lo primero que ve el empleado === *@
+        <div class="vp-card" style="padding: 0.6rem;">
+            <div class="vp-saldo-box @(datos.SaldoAcumulado > 0 ? "aFavor" : (datos.SaldoAcumulado < 0 ? "enContra" : "cero"))">
+                <div class="vp-saldo-label">@(datos.SaldoAcumulado > 0 ? "💰 La empresa te debe" : (datos.SaldoAcumulado < 0 ? "⚠ Le debés a la empresa" : "Saldo"))</div>
+                <div class="vp-saldo-value">$@Math.Abs(datos.SaldoAcumulado).ToString("N0", new System.Globalization.CultureInfo("es-AR"))</div>
+            </div>
+        </div>
+
+        @* === CARGAR VIAJES === *@
+        <div class="vp-card">
+            <h1 class="vp-hello">Hola @datos.Nombre 👋</h1>
+            <p class="vp-fecha">Hoy es @FechaLabel(datos.HoyFecha)</p>
+
+            <label class="vp-label">📅 Día que querés cargar</label>
+            <input type="date" class="vp-input" style="font-size: 1.1rem; padding: 0.6rem;"
+                   value="@datos.FechaSeleccionada.ToString("yyyy-MM-dd")"
+                   max="@datos.HoyFecha.ToString("yyyy-MM-dd")"
+                   @onchange="OnFechaChanged" />
+            @if (datos.FechaSeleccionada.Date != datos.HoyFecha.Date)
+            {
+                <p style="font-size:0.78rem; color:#92400e; margin: 0.3rem 0 0; padding:0.3rem 0.5rem; background:#fef3c7; border-radius:6px;">
+                    ✏ Cargando <strong>@FechaLabel(datos.FechaSeleccionada)</strong> (carga atrasada)
+                </p>
+            }
+
+            <div class="vp-zona">
+                <span class="vp-zona-tag caba">CABA</span>
+                <span style="font-size:0.78rem; color:#6b7280;">$@datos.TarifaCABA.ToString("N0", new System.Globalization.CultureInfo("es-AR")) c/u</span>
+            </div>
+            <input type="number" min="0" max="200" class="vp-input caba" @bind="formCABA" @bind:event="oninput" placeholder="0" />
+            <div class="vp-quick">
+                @foreach (var q in new[] { 0, 5, 10, 12, 15, 18 })
+                {
+                    var activo = formCABA == q;
+                    <button class="caba @(activo ? "active" : "")" @onclick="@(() => formCABA = q)">@q</button>
+                }
+            </div>
+
+            <div class="vp-zona">
+                <span class="vp-zona-tag pcia">PROVINCIA</span>
+                <span style="font-size:0.78rem; color:#6b7280;">$@datos.TarifaPCIA.ToString("N0", new System.Globalization.CultureInfo("es-AR")) c/u</span>
+            </div>
+            <input type="number" min="0" max="200" class="vp-input pcia" @bind="formPCIA" @bind:event="oninput" placeholder="0" />
+            <div class="vp-quick">
+                @foreach (var q in new[] { 0, 5, 10, 12, 15, 18 })
+                {
+                    var activo = formPCIA == q;
+                    <button class="pcia @(activo ? "active" : "")" @onclick="@(() => formPCIA = q)">@q</button>
+                }
+            </div>
+
+            @if (formCABA + formPCIA > 0)
+            {
+                var totalDia = formCABA * datos.TarifaCABA + formPCIA * datos.TarifaPCIA;
+                <div style="background:#dbeafe; border-radius:8px; padding:0.6rem; margin-top:0.4rem; text-align:center;">
+                    <span style="font-size:0.8rem; color:#1e40af;">Total del día:</span>
+                    <strong style="font-size:1.2rem; color:#1e40af; margin-left:0.3rem;">$@totalDia.ToString("N0", new System.Globalization.CultureInfo("es-AR"))</strong>
+                </div>
+            }
+
+            <label class="vp-label" style="margin-top:0.6rem;">Anotaciones (opcional)</label>
+            <textarea class="vp-textarea" @bind="formAnotaciones" placeholder="Ej: 2 viajes con espera larga"></textarea>
+
+            <button class="vp-btn vp-btn-primary" @onclick="GuardarAsync" disabled="@guardando">
+                @(guardando ? "Guardando..." : "💾 Guardar")
+            </button>
+            @if (!string.IsNullOrEmpty(errorMsg))
+            {
+                <p style="color:#b91c1c; font-size:0.85rem; margin-top:0.5rem; text-align:center;">⚠ @errorMsg</p>
+            }
+        </div>
+
+        @* === RESUMEN MES === *@
+        <div class="vp-card">
+            <h3 style="margin: 0 0 0.5rem; font-size: 1rem; color: #1f2937;">📊 Este mes</h3>
+            <div class="vp-resumen">
+                <div class="vp-resumen-box">
+                    <div class="vp-resumen-label">Viajes</div>
+                    <div class="vp-resumen-value">@datos.TotalViajesMes</div>
+                </div>
+                <div class="vp-resumen-box">
+                    <div class="vp-resumen-label">A cobrar</div>
+                    <div class="vp-resumen-value">$@datos.TotalACobrarMes.ToString("N0", new System.Globalization.CultureInfo("es-AR"))</div>
+                </div>
+                <div class="vp-resumen-box">
+                    <div class="vp-resumen-label">Pagado</div>
+                    <div class="vp-resumen-value" style="color: #16a34a;">$@datos.TotalPagadoMes.ToString("N0", new System.Globalization.CultureInfo("es-AR"))</div>
+                </div>
+                <div class="vp-resumen-box">
+                    <div class="vp-resumen-label">Saldo mes</div>
+                    <div class="vp-resumen-value" style="color: @(datos.SaldoMes >= 0 ? "#16a34a" : "#b91c1c");">$@datos.SaldoMes.ToString("N0", new System.Globalization.CultureInfo("es-AR"))</div>
+                </div>
+            </div>
+        </div>
+
+        @* === ÚLTIMOS 7 DÍAS === *@
+        <div class="vp-card">
+            <h3 style="margin: 0 0 0.5rem; font-size: 1rem; color: #1f2937;">📅 Últimos 7 días</h3>
+            @if (datos.Ultimos7Dias.Count == 0)
+            {
+                <p style="color:#6b7280; font-size:0.85rem; margin:0;">Sin cargas todavía esta semana.</p>
+            }
+            else
+            {
+                <div class="vp-row header">
+                    <span>Día</span>
+                    <span style="text-align:center;">CABA</span>
+                    <span style="text-align:center;">PCIA</span>
+                    <span style="text-align:right;">Total</span>
+                </div>
+                @foreach (var r in datos.Ultimos7Dias)
+                {
+                    var subCABA = r.CantidadCABA * datos.TarifaCABA;
+                    var subPCIA = r.CantidadPCIA * datos.TarifaPCIA;
+                    var total = subCABA + subPCIA;
+                    var esHoy = r.Fecha.Date == datos.HoyFecha.Date;
+                    <div class="vp-row @(esHoy ? "hoy" : "")">
+                        <span class="vp-row-fecha">@FechaLabelCorto(r.Fecha) @(esHoy ? "(hoy)" : "")</span>
+                        <span style="text-align:center;">@r.CantidadCABA</span>
+                        <span style="text-align:center;">@r.CantidadPCIA</span>
+                        <span style="text-align:right; font-weight:700;">$@total.ToString("N0", new System.Globalization.CultureInfo("es-AR"))</span>
+                    </div>
+                }
+            }
+        </div>
+
+        @* === ÚLTIMOS PAGOS === *@
+        @if (datos.UltimosPagos.Count > 0)
+        {
+            <div class="vp-card">
+                <h3 style="margin: 0 0 0.5rem; font-size: 1rem; color: #1f2937;">💵 Últimos pagos</h3>
+                @foreach (var p in datos.UltimosPagos)
+                {
+                    <div class="vp-pago-row">
+                        <div>
+                            <div class="vp-pago-desc">@p.Descripcion</div>
+                            <div style="font-size: 0.72rem; color: #9ca3af;">@FechaLabelCorto(p.Fecha)</div>
+                        </div>
+                        <span class="vp-pago-imp">$@p.Importe.ToString("N0", new System.Globalization.CultureInfo("es-AR"))</span>
+                    </div>
+                }
+            </div>
+        }
+    }
+
+    @if (toastVisible)
+    {
+        <div class="vp-toast">✓ Guardado</div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Token { get; set; } = "";
+    private bool loading = true, guardando, toastVisible;
+    private string? errorMsg;
+    private PublicViajesDto? datos;
+    private int formCABA, formPCIA;
+    private string formAnotaciones = "";
+    private string fechaSeleccionadaIso = "";
+
+    public record PublicRegistroDto(int Id, DateTime Fecha, int CantidadCABA, int CantidadPCIA, string? Anotaciones);
+    public record PublicPagoDto(int Id, DateTime Fecha, string Descripcion, decimal Importe);
+    public record PublicViajesDto(string Nombre, decimal TarifaCABA, decimal TarifaPCIA,
+        DateTime HoyFecha, DateTime FechaSeleccionada,
+        int CantidadCABASeleccionada, int CantidadPCIASeleccionada, string? AnotacionesSeleccionada,
+        List<PublicRegistroDto> Ultimos7Dias,
+        int TotalViajesMes, decimal TotalACobrarMes, decimal TotalPagadoMes,
+        decimal SaldoMes, decimal SaldoAcumulado,
+        List<PublicPagoDto> UltimosPagos);
+
+    protected override async Task OnInitializedAsync() => await CargarAsync();
+
+    private async Task CargarAsync()
+    {
+        loading = true;
+        try
+        {
+            var url = $"api/viajes/publica/{Uri.EscapeDataString(Token)}";
+            if (!string.IsNullOrEmpty(fechaSeleccionadaIso)) url += $"?fecha={fechaSeleccionadaIso}";
+            var resp = await Http.GetAsync(url);
+            if (resp.IsSuccessStatusCode)
+            {
+                datos = await resp.Content.ReadFromJsonAsync<PublicViajesDto>();
+                if (datos is not null)
+                {
+                    formCABA = datos.CantidadCABASeleccionada;
+                    formPCIA = datos.CantidadPCIASeleccionada;
+                    formAnotaciones = datos.AnotacionesSeleccionada ?? "";
+                    fechaSeleccionadaIso = datos.FechaSeleccionada.ToString("yyyy-MM-dd");
+                }
+            }
+        }
+        catch { datos = null; }
+        finally { loading = false; }
+    }
+
+    private async Task OnFechaChanged(ChangeEventArgs e)
+    {
+        var nueva = e.Value?.ToString() ?? "";
+        if (string.IsNullOrWhiteSpace(nueva)) return;
+        fechaSeleccionadaIso = nueva;
+        await CargarAsync();
+    }
+
+    private async Task GuardarAsync()
+    {
+        if (datos is null) return;
+        errorMsg = null;
+        guardando = true;
+        try
+        {
+            var body = new
+            {
+                CantidadCABA = formCABA, CantidadPCIA = formPCIA,
+                Anotaciones = formAnotaciones, Fecha = datos.FechaSeleccionada
+            };
+            var resp = await Http.PostAsJsonAsync($"api/viajes/publica/{Uri.EscapeDataString(Token)}", body);
+            if (!resp.IsSuccessStatusCode) { errorMsg = "No se pudo guardar."; return; }
+            await CargarAsync();
+            toastVisible = true; StateHasChanged();
+            await Task.Delay(1800);
+            toastVisible = false;
+        }
+        catch (Exception ex) { errorMsg = "Error: " + ex.Message; }
+        finally { guardando = false; }
+    }
+
+    private static string FechaLabel(DateTime d)
+    {
+        var es = new System.Globalization.CultureInfo("es-AR");
+        return d.ToString("dddd dd/MM", es);
+    }
+
+    private static string FechaLabelCorto(DateTime d)
+    {
+        var es = new System.Globalization.CultureInfo("es-AR");
+        return d.ToString("ddd dd/MM", es);
+    }
+}

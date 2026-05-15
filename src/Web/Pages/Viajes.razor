@@ -1,0 +1,370 @@
+@page "/viajes"
+@attribute [Authorize]
+@inject HttpClient Http
+@inject IJSRuntime JS
+@inject ToastService ToastService
+
+<PageTitle>Viajes</PageTitle>
+
+<style>
+    .vj-wrap { padding: 1rem; }
+    .vj-card { background: white; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 1rem; margin-bottom: 1rem; }
+    .vj-emp-card { border-left: 4px solid #1d4ed8; padding: 0.8rem; margin-bottom: 0.6rem; background: #f9fafb; border-radius: 8px; }
+    .vj-emp-card.inactive { opacity: 0.5; }
+    .vj-emp-header { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
+    .vj-emp-nombre { font-weight: 700; font-size: 1.05rem; flex: 1; min-width: 130px; }
+    .vj-emp-tarifas { font-size: 0.78rem; color: #6b7280; }
+    .vj-saldo-pill { padding: 0.3rem 0.7rem; border-radius: 999px; font-weight: 700; font-size: 0.85rem; }
+    .vj-saldo-pill.aFavor { background: #dcfce7; color: #166534; }
+    .vj-saldo-pill.enContra { background: #fee2e2; color: #b91c1c; }
+    .vj-saldo-pill.cero { background: #f3f4f6; color: #4b5563; }
+    .vj-totals { display: flex; gap: 0.5rem; margin-top: 0.4rem; flex-wrap: wrap; }
+    .vj-totals-box { background: white; padding: 0.3rem 0.6rem; border-radius: 6px; font-size: 0.78rem; border: 1px solid #e5e7eb; }
+    .vj-totals-num { font-weight: 700; color: #1d4ed8; }
+    .vj-btn-row { display: flex; gap: 0.3rem; margin-top: 0.5rem; flex-wrap: wrap; }
+    .vj-btn-mini { padding: 0.25rem 0.55rem; font-size: 0.78rem; border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer; background: white; }
+    .vj-btn-mini.wa { background: #dcfce7; color: #166534; border-color: #16a34a; }
+    .vj-btn-mini.link { background: #e0e7ff; color: #1e40af; border-color: #818cf8; }
+    .vj-btn-mini.pago { background: #fef3c7; color: #92400e; border-color: #d97706; font-weight: 700; }
+    .vj-tab-regs { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    .vj-tab-regs th { background: #f3f4f6; padding: 0.4rem; text-align: left; font-size: 0.75rem; }
+    .vj-tab-regs td { padding: 0.4rem; border-bottom: 1px solid #f3f4f6; }
+</style>
+
+<div class="vj-wrap">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem;">
+        <h2 style="margin:0;">🚚 Viajes</h2>
+        <button class="btn btn-primary" @onclick="ShowCreateEmpleado">+ Nuevo empleado</button>
+    </div>
+
+    @if (showFormEmp)
+    {
+        <div class="vj-card" style="border: 2px solid #1d4ed8;">
+            <h3 style="margin: 0 0 0.5rem;">@((editingId.HasValue ? "Editar" : "Nuevo") + " empleado")</h3>
+            <div style="display:grid; grid-template-columns: 2fr 1fr 1fr; gap:0.5rem; align-items:end;">
+                <div>
+                    <label class="form-label">Nombre</label>
+                    <input class="form-input" @bind="formNombre" placeholder="Ej: Lucio, Nicolás..." />
+                </div>
+                <div>
+                    <label class="form-label">Tarifa CABA</label>
+                    <input class="form-input" type="number" min="0" step="500" @bind="formTarifaCABA" />
+                </div>
+                <div>
+                    <label class="form-label">Tarifa PCIA</label>
+                    <input class="form-input" type="number" min="0" step="500" @bind="formTarifaPCIA" />
+                </div>
+            </div>
+            @if (editingId.HasValue)
+            {
+                <div style="display:flex; gap:1rem; margin-top:0.5rem;">
+                    <label style="font-size:0.85rem;"><input type="checkbox" @bind="formActive" /> Activo</label>
+                    <label style="font-size:0.85rem;"><input type="checkbox" @bind="formRegenToken" /> Regenerar link (invalida el anterior)</label>
+                </div>
+            }
+            <div style="display:flex; gap:0.5rem; margin-top:0.6rem;">
+                <button class="btn btn-primary" @onclick="GuardarEmpleado" disabled="@savingEmp">@(savingEmp ? "..." : "Guardar")</button>
+                <button class="btn btn-secondary" @onclick="@(() => showFormEmp = false)">Cancelar</button>
+            </div>
+        </div>
+    }
+
+    @if (showFormPago)
+    {
+        <div class="vj-card" style="border: 2px solid #d97706; background: #fffbeb;">
+            <h3 style="margin: 0 0 0.5rem;">💵 Registrar pago a @(empleadoSelPago?.Nombre ?? "?")</h3>
+            <div style="display:grid; grid-template-columns: 1fr 2fr 1fr; gap:0.5rem; align-items:end;">
+                <div>
+                    <label class="form-label">Fecha</label>
+                    <input class="form-input" type="date" @bind="pagoFecha" />
+                </div>
+                <div>
+                    <label class="form-label">Descripción</label>
+                    <input class="form-input" @bind="pagoDescripcion" placeholder="Ej: TR LEGAL SRL, ef san andres, mp..." />
+                </div>
+                <div>
+                    <label class="form-label">Importe</label>
+                    <input class="form-input" type="number" min="0" step="100" @bind="pagoImporte" />
+                </div>
+            </div>
+            <div style="display:flex; gap:0.5rem; margin-top:0.6rem;">
+                <button class="btn btn-primary" @onclick="GuardarPago" disabled="@savingPago">@(savingPago ? "..." : "Registrar pago")</button>
+                <button class="btn btn-secondary" @onclick="@(() => showFormPago = false)">Cancelar</button>
+            </div>
+        </div>
+    }
+
+    @* Empleados *@
+    <div class="vj-card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.6rem;">
+            <h3 style="margin: 0;">Empleados</h3>
+            <button class="vj-btn-mini" @onclick="RecargarTodo">🔄 Refrescar</button>
+        </div>
+        @if (empleados is null)
+        {
+            <p style="color:#6b7280;">Cargando...</p>
+        }
+        else if (empleados.Count == 0)
+        {
+            <p style="color:#6b7280;">Sin empleados todavía. Agregá el primero con el botón de arriba.</p>
+        }
+        else
+        {
+            @foreach (var e in empleados)
+            {
+                var saldo = e.SaldoAcumulado;
+                var saldoClass = saldo > 0 ? "aFavor" : (saldo < 0 ? "enContra" : "cero");
+                var saldoLabel = saldo > 0 ? $"Le debemos ${saldo.ToString("N0", new System.Globalization.CultureInfo("es-AR"))}"
+                                : saldo < 0 ? $"Nos debe ${Math.Abs(saldo).ToString("N0", new System.Globalization.CultureInfo("es-AR"))}"
+                                : "Sin saldo";
+                <div class="vj-emp-card @(e.IsActive ? "" : "inactive")">
+                    <div class="vj-emp-header">
+                        <span class="vj-emp-nombre">@e.Nombre @(e.IsActive ? "" : " (inactivo)")</span>
+                        <span class="vj-emp-tarifas">CABA $@e.TarifaCABA.ToString("N0", new System.Globalization.CultureInfo("es-AR")) · PCIA $@e.TarifaPCIA.ToString("N0", new System.Globalization.CultureInfo("es-AR"))</span>
+                        <span class="vj-saldo-pill @saldoClass">@saldoLabel</span>
+                    </div>
+                    <div class="vj-totals">
+                        <div class="vj-totals-box">Mes: <span class="vj-totals-num">@e.TotalViajesMes viajes</span></div>
+                        <div class="vj-totals-box">A cobrar: <span class="vj-totals-num">$@e.TotalACobrarMes.ToString("N0", new System.Globalization.CultureInfo("es-AR"))</span></div>
+                        <div class="vj-totals-box">Pagado: <span class="vj-totals-num" style="color:#16a34a;">$@e.TotalPagadoMes.ToString("N0", new System.Globalization.CultureInfo("es-AR"))</span></div>
+                        <div class="vj-totals-box">Saldo mes: <span class="vj-totals-num" style="color: @(e.SaldoMes >= 0 ? "#16a34a" : "#b91c1c");">$@e.SaldoMes.ToString("N0", new System.Globalization.CultureInfo("es-AR"))</span></div>
+                        @if (e.UltimaCargaAt.HasValue)
+                        {
+                            <div class="vj-totals-box" style="color:#9ca3af;">Última carga: @e.UltimaCargaAt.Value.ToLocalTime().ToString("dd/MM HH:mm")</div>
+                        }
+                    </div>
+                    <div class="vj-btn-row">
+                        <button class="vj-btn-mini pago" @onclick="@(() => ShowCreatePago(e))">💵 Registrar pago</button>
+                        <button class="vj-btn-mini link" @onclick="@(() => CopiarLink(e))">📋 Copiar link</button>
+                        <button class="vj-btn-mini wa" @onclick="@(() => MandarWhatsapp(e))">📱 WhatsApp</button>
+                        <button class="vj-btn-mini" @onclick="@(() => ShowEditEmpleado(e))">✏ Editar</button>
+                    </div>
+                </div>
+            }
+        }
+    </div>
+
+    @* Tab selector: Viajes o Pagos *@
+    <div class="vj-card">
+        <div style="display:flex; gap:0.3rem; margin-bottom:0.5rem;">
+            <button class="vj-btn-mini @(tabActiva == "regs" ? "link" : "")" @onclick="@(() => tabActiva = "regs")">📋 Viajes diarios</button>
+            <button class="vj-btn-mini @(tabActiva == "pagos" ? "link" : "")" @onclick="@(() => tabActiva = "pagos")">💵 Pagos registrados</button>
+        </div>
+
+        @if (tabActiva == "regs")
+        {
+            <h3 style="margin: 0 0 0.5rem;">Viajes diarios (últimos 60 días)</h3>
+            @if (registros is null) { <p style="color:#6b7280;">Cargando...</p> }
+            else if (registros.Count == 0) { <p style="color:#6b7280;">Sin viajes cargados todavía.</p> }
+            else
+            {
+                <table class="vj-tab-regs">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Empleado</th>
+                            <th style="text-align:center;">CABA</th>
+                            <th style="text-align:center;">PCIA</th>
+                            <th style="text-align:right;">Total</th>
+                            <th>Anotaciones</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in registros)
+                        {
+                            <tr>
+                                <td>@r.Fecha.ToString("ddd dd/MM", new System.Globalization.CultureInfo("es-AR"))</td>
+                                <td><strong>@r.EmpleadoNombre</strong></td>
+                                <td style="text-align:center; color:#1d4ed8; font-weight:700;">@r.CantidadCABA</td>
+                                <td style="text-align:center; color:#166534; font-weight:700;">@r.CantidadPCIA</td>
+                                <td style="text-align:right; font-weight:700;">$@r.Total.ToString("N0", new System.Globalization.CultureInfo("es-AR"))</td>
+                                <td style="color:#6b7280; font-size:0.82rem;">@(r.Anotaciones ?? "")</td>
+                                <td><button class="vj-btn-mini" style="background:#fee2e2; color:#b91c1c; border-color:#fca5a5;" @onclick="@(() => BorrarRegistro(r.Id))">🗑</button></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        }
+        else
+        {
+            <h3 style="margin: 0 0 0.5rem;">Pagos registrados</h3>
+            @if (pagos is null) { <p style="color:#6b7280;">Cargando...</p> }
+            else if (pagos.Count == 0) { <p style="color:#6b7280;">Sin pagos registrados todavía.</p> }
+            else
+            {
+                <table class="vj-tab-regs">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Empleado</th>
+                            <th>Descripción</th>
+                            <th style="text-align:right;">Importe</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in pagos)
+                        {
+                            <tr>
+                                <td>@p.Fecha.ToString("ddd dd/MM", new System.Globalization.CultureInfo("es-AR"))</td>
+                                <td><strong>@p.EmpleadoNombre</strong></td>
+                                <td>@p.Descripcion</td>
+                                <td style="text-align:right; font-weight:700; color:#16a34a;">$@p.Importe.ToString("N0", new System.Globalization.CultureInfo("es-AR"))</td>
+                                <td><button class="vj-btn-mini" style="background:#fee2e2; color:#b91c1c; border-color:#fca5a5;" @onclick="@(() => BorrarPago(p.Id))">🗑</button></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    public record AdminEmpleadoDto(int Id, string Nombre, string Token, bool IsActive,
+        decimal TarifaCABA, decimal TarifaPCIA,
+        int TotalViajesMes, decimal TotalACobrarMes, decimal TotalPagadoMes,
+        decimal SaldoMes, decimal SaldoAcumulado,
+        DateTime? UltimaCargaAt, DateTime CreatedAt);
+    public record AdminRegistroDto(int Id, int EmpleadoId, string EmpleadoNombre, DateTime Fecha,
+        int CantidadCABA, int CantidadPCIA, decimal SubtotalCABA, decimal SubtotalPCIA, decimal Total,
+        string? Anotaciones, DateTime CreatedAt, DateTime? UpdatedAt);
+    public record AdminPagoDto(int Id, int EmpleadoId, string EmpleadoNombre, DateTime Fecha,
+        string Descripcion, decimal Importe, DateTime CreatedAt);
+
+    private List<AdminEmpleadoDto>? empleados;
+    private List<AdminRegistroDto>? registros;
+    private List<AdminPagoDto>? pagos;
+    private string tabActiva = "regs";
+
+    private bool showFormEmp, savingEmp, showFormPago, savingPago;
+    private int? editingId;
+    private string formNombre = "";
+    private decimal formTarifaCABA = 6000m, formTarifaPCIA = 8000m;
+    private bool formActive = true, formRegenToken;
+
+    private AdminEmpleadoDto? empleadoSelPago;
+    private DateTime pagoFecha = DateTime.Today;
+    private string pagoDescripcion = "";
+    private decimal pagoImporte;
+
+    private System.Threading.Timer? autoRefreshTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RecargarTodo();
+        autoRefreshTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () => { await RecargarTodo(); StateHasChanged(); });
+        }, null, 30000, 30000);
+    }
+
+    public void Dispose() => autoRefreshTimer?.Dispose();
+
+    private async Task RecargarTodo()
+    {
+        empleados = await Http.GetFromJsonAsync<List<AdminEmpleadoDto>>("api/viajes/admin/empleados");
+        registros = await Http.GetFromJsonAsync<List<AdminRegistroDto>>("api/viajes/admin/registros");
+        pagos = await Http.GetFromJsonAsync<List<AdminPagoDto>>("api/viajes/admin/pagos");
+    }
+
+    private void ShowCreateEmpleado()
+    {
+        editingId = null; formNombre = ""; formTarifaCABA = 6000m; formTarifaPCIA = 8000m;
+        formActive = true; formRegenToken = false; showFormEmp = true;
+    }
+
+    private void ShowEditEmpleado(AdminEmpleadoDto e)
+    {
+        editingId = e.Id; formNombre = e.Nombre;
+        formTarifaCABA = e.TarifaCABA; formTarifaPCIA = e.TarifaPCIA;
+        formActive = e.IsActive; formRegenToken = false; showFormEmp = true;
+    }
+
+    private async Task GuardarEmpleado()
+    {
+        if (string.IsNullOrWhiteSpace(formNombre)) { ToastService.Error("Nombre obligatorio"); return; }
+        savingEmp = true;
+        try
+        {
+            if (editingId.HasValue)
+            {
+                var resp = await Http.PutAsJsonAsync($"api/viajes/admin/empleados/{editingId.Value}",
+                    new { Nombre = formNombre, IsActive = formActive, TarifaCABA = formTarifaCABA, TarifaPCIA = formTarifaPCIA, RegenerarToken = formRegenToken });
+                if (resp.IsSuccessStatusCode) ToastService.Success("Empleado actualizado");
+                else { ToastService.Error("Error actualizando"); return; }
+            }
+            else
+            {
+                var resp = await Http.PostAsJsonAsync("api/viajes/admin/empleados",
+                    new { Nombre = formNombre, TarifaCABA = formTarifaCABA, TarifaPCIA = formTarifaPCIA });
+                if (resp.IsSuccessStatusCode) ToastService.Success("Empleado creado");
+                else { ToastService.Error("Error creando"); return; }
+            }
+            showFormEmp = false;
+            await RecargarTodo();
+        }
+        finally { savingEmp = false; }
+    }
+
+    private void ShowCreatePago(AdminEmpleadoDto e)
+    {
+        empleadoSelPago = e;
+        pagoFecha = DateTime.Today;
+        pagoDescripcion = "";
+        pagoImporte = 0;
+        showFormPago = true;
+    }
+
+    private async Task GuardarPago()
+    {
+        if (empleadoSelPago is null) return;
+        if (string.IsNullOrWhiteSpace(pagoDescripcion)) { ToastService.Error("Descripción obligatoria"); return; }
+        if (pagoImporte == 0) { ToastService.Error("Importe no puede ser 0"); return; }
+        savingPago = true;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync("api/viajes/admin/pagos",
+                new { EmpleadoId = empleadoSelPago.Id, Fecha = pagoFecha, Descripcion = pagoDescripcion, Importe = pagoImporte });
+            if (resp.IsSuccessStatusCode)
+            {
+                ToastService.Success($"Pago de ${pagoImporte:N0} registrado a {empleadoSelPago.Nombre}");
+                showFormPago = false;
+                await RecargarTodo();
+            }
+            else { ToastService.Error("Error registrando pago"); }
+        }
+        finally { savingPago = false; }
+    }
+
+    private async Task BorrarRegistro(int id)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "¿Borrar este registro de viajes?")) return;
+        var resp = await Http.DeleteAsync($"api/viajes/admin/registros/{id}");
+        if (resp.IsSuccessStatusCode) { ToastService.Success("Borrado"); await RecargarTodo(); }
+    }
+
+    private async Task BorrarPago(int id)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "¿Borrar este pago?")) return;
+        var resp = await Http.DeleteAsync($"api/viajes/admin/pagos/{id}");
+        if (resp.IsSuccessStatusCode) { ToastService.Success("Borrado"); await RecargarTodo(); }
+    }
+
+    private async Task CopiarLink(AdminEmpleadoDto e)
+    {
+        var url = $"{await JS.InvokeAsync<string>("eval", "window.location.origin")}/v/{e.Token}";
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", url);
+        ToastService.Success($"Link de {e.Nombre} copiado");
+    }
+
+    private async Task MandarWhatsapp(AdminEmpleadoDto e)
+    {
+        var origin = await JS.InvokeAsync<string>("eval", "window.location.origin");
+        var url = $"{origin}/v/{e.Token}";
+        var texto = Uri.EscapeDataString($"Hola {e.Nombre}! Te paso el link para cargar tus viajes cada día:\n\n{url}\n\nEntrá todos los días, cargá CABA y Provincia, y vas a ver tu saldo en tiempo real. Gracias!");
+        await JS.InvokeVoidAsync("open", $"https://wa.me/?text={texto}", "_blank");
+    }
+}

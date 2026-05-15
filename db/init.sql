@@ -3475,3 +3475,50 @@ BEGIN
     );
 END
 GO
+
+-- ===== Viajes de empleados (carga diaria + pagos + saldo) =====
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Viajes_Empleados')
+BEGIN
+    CREATE TABLE Viajes_Empleados (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Nombre NVARCHAR(120) NOT NULL,
+        Token NVARCHAR(64) NOT NULL,
+        TarifaCABA DECIMAL(18,2) NOT NULL DEFAULT 6000,
+        TarifaPCIA DECIMAL(18,2) NOT NULL DEFAULT 8000,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NULL
+    );
+    CREATE UNIQUE INDEX UX_ViajesEmpleados_Token ON Viajes_Empleados(Token);
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Viajes_Registros')
+BEGIN
+    CREATE TABLE Viajes_Registros (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        EmpleadoId INT NOT NULL,
+        Fecha DATE NOT NULL,
+        CantidadCABA INT NOT NULL DEFAULT 0,
+        CantidadPCIA INT NOT NULL DEFAULT 0,
+        Anotaciones NVARCHAR(500) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT FK_ViajesRegistros_Empleado FOREIGN KEY (EmpleadoId) REFERENCES Viajes_Empleados(Id) ON DELETE CASCADE,
+        CONSTRAINT UX_ViajesRegistros_EmpFecha UNIQUE (EmpleadoId, Fecha)
+    );
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Viajes_Pagos')
+BEGIN
+    CREATE TABLE Viajes_Pagos (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        EmpleadoId INT NOT NULL,
+        Fecha DATE NOT NULL,
+        Descripcion NVARCHAR(300) NOT NULL,
+        Importe DECIMAL(18,2) NOT NULL DEFAULT 0,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT FK_ViajesPagos_Empleado FOREIGN KEY (EmpleadoId) REFERENCES Viajes_Empleados(Id) ON DELETE CASCADE
+    );
+END
+GO

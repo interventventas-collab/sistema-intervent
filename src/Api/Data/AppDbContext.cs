@@ -86,6 +86,11 @@ public class AppDbContext : DbContext
     // Horas Extras de empleados (link publico tipo mapeo)
     public DbSet<HorasExtrasEmpleado> HorasExtrasEmpleados => Set<HorasExtrasEmpleado>();
     public DbSet<HorasExtrasRegistro> HorasExtrasRegistros => Set<HorasExtrasRegistro>();
+
+    // Viajes de empleados (carga diaria + pagos + saldo, similar a horas extras)
+    public DbSet<ViajesEmpleado> ViajesEmpleados => Set<ViajesEmpleado>();
+    public DbSet<ViajesRegistro> ViajesRegistros => Set<ViajesRegistro>();
+    public DbSet<ViajesPago> ViajesPagos => Set<ViajesPago>();
     public DbSet<CafeHistorialPrecio> CafeHistorialPrecios => Set<CafeHistorialPrecio>();
     public DbSet<CafeKit> CafeKits => Set<CafeKit>();
     public DbSet<CafeKitItem> CafeKitItems => Set<CafeKitItem>();
