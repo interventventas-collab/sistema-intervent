@@ -34,10 +34,14 @@
     {
         <div class="he-card" style="border: 2px solid #1d4ed8;">
             <h3 style="margin: 0 0 0.5rem;">@((editingId.HasValue ? "Editar" : "Nuevo") + " empleado")</h3>
-            <div style="display:flex; gap:0.5rem; align-items:end;">
-                <div style="flex:1;">
+            <div style="display:flex; gap:0.5rem; align-items:end; flex-wrap:wrap;">
+                <div style="flex:1; min-width:180px;">
                     <label class="form-label">Nombre</label>
                     <input class="form-input" @bind="formNombre" placeholder="Ej: Maxi, Osmar..." />
+                </div>
+                <div style="width:160px;">
+                    <label class="form-label">Últimos 3 del DNI</label>
+                    <input class="form-input" @bind="formDniUltimos3" maxlength="3" placeholder="427" inputmode="numeric" />
                 </div>
                 @if (editingId.HasValue)
                 {
@@ -46,15 +50,11 @@
                             <input type="checkbox" @bind="formActive" /> Activo
                         </label>
                     </div>
-                    <div>
-                        <label class="form-label" style="font-size:0.8rem;">
-                            <input type="checkbox" @bind="formRegenToken" /> Regenerar link
-                        </label>
-                    </div>
                 }
                 <button class="btn btn-primary" @onclick="GuardarEmpleado" disabled="@savingEmp">@(savingEmp ? "..." : "Guardar")</button>
                 <button class="btn btn-secondary" @onclick="@(() => showFormEmp = false)">Cancelar</button>
             </div>
+            <p style="font-size:0.78rem; color:#6b7280; margin: 0.5rem 0 0;">💡 El URL queda <code>tu-dominio/he/<strong>nombre</strong>/horario/<strong>DNI</strong></code>. Sin DNI, el link no funciona.</p>
         </div>
     }
 
@@ -164,7 +164,8 @@
 @code {
     public record AdminEmpleadoDto(int Id, string Nombre, string Token, bool IsActive,
         decimal TotalHoy, decimal TotalSemana, decimal TotalMes, DateTime? UltimaCargaAt, DateTime CreatedAt,
-        string? UltimaHoraEntrada = null, string? UltimaHoraSalida = null);
+        string? UltimaHoraEntrada = null, string? UltimaHoraSalida = null,
+        string? DniUltimos3 = null, string Slug = "");
     public record AdminRegistroDto(int Id, int EmpleadoId, string EmpleadoNombre, DateTime Fecha,
         decimal Cantidad, string? Observaciones, string? HoraEntrada, string? HoraSalida,
         DateTime CreatedAt, DateTime? UpdatedAt);
@@ -175,6 +176,7 @@
     private bool showFormEmp, savingEmp;
     private int? editingId;
     private string formNombre = "";
+    private string formDniUltimos3 = "";
     private bool formActive = true, formRegenToken;
 
     private System.Threading.Timer? autoRefreshTimer;
@@ -203,32 +205,47 @@
 
     private void ShowCreateEmpleado()
     {
-        editingId = null; formNombre = ""; formActive = true; formRegenToken = false; showFormEmp = true;
+        editingId = null; formNombre = ""; formDniUltimos3 = ""; formActive = true; formRegenToken = false; showFormEmp = true;
     }
 
     private void ShowEditEmpleado(AdminEmpleadoDto e)
     {
-        editingId = e.Id; formNombre = e.Nombre; formActive = e.IsActive; formRegenToken = false; showFormEmp = true;
+        editingId = e.Id; formNombre = e.Nombre; formDniUltimos3 = e.DniUltimos3 ?? "";
+        formActive = e.IsActive; formRegenToken = false; showFormEmp = true;
     }
 
     private async Task GuardarEmpleado()
     {
         if (string.IsNullOrWhiteSpace(formNombre)) { ToastService.Error("Nombre obligatorio"); return; }
+        // Si vino DNI, validar 3 dígitos.
+        var dni3 = string.IsNullOrWhiteSpace(formDniUltimos3) ? null : formDniUltimos3.Trim();
+        if (!string.IsNullOrEmpty(dni3) && (dni3.Length != 3 || !dni3.All(char.IsDigit)))
+        {
+            ToastService.Error("DNI debe ser 3 dígitos");
+            return;
+        }
         savingEmp = true;
         try
         {
             if (editingId.HasValue)
             {
                 var resp = await Http.PutAsJsonAsync($"api/horas-extras/admin/empleados/{editingId.Value}",
-                    new { Nombre = formNombre, IsActive = formActive, RegenerarToken = formRegenToken });
+                    new { Nombre = formNombre, IsActive = formActive, DniUltimos3 = dni3,
+                          ClearDniUltimos3 = string.IsNullOrEmpty(dni3), RegenerarToken = formRegenToken });
                 if (resp.IsSuccessStatusCode) ToastService.Success("Empleado actualizado");
                 else { ToastService.Error("Error actualizando"); return; }
             }
             else
             {
-                var resp = await Http.PostAsJsonAsync("api/horas-extras/admin/empleados", new { Nombre = formNombre });
+                var resp = await Http.PostAsJsonAsync("api/horas-extras/admin/empleados",
+                    new { Nombre = formNombre, DniUltimos3 = dni3 });
                 if (resp.IsSuccessStatusCode) ToastService.Success("Empleado creado");
-                else { ToastService.Error("Error creando"); return; }
+                else
+                {
+                    var err = await resp.Content.ReadAsStringAsync();
+                    ToastService.Error(err.Contains("Ya existe") ? "Ya existe un empleado con ese nombre + DNI" : "Error creando");
+                    return;
+                }
             }
             showFormEmp = false;
             await RecargarTodo();
@@ -247,9 +264,23 @@
         }
     }
 
+    /// <summary>Genera el URL público del empleado. Si no tiene DNI cargado, devuelve null
+    /// para que el admin lo configure primero.</summary>
+    private string? BuildLinkPublico(AdminEmpleadoDto e, string origin)
+    {
+        if (string.IsNullOrEmpty(e.DniUltimos3)) return null;
+        return $"{origin}/he/{e.Slug}/horario/{e.DniUltimos3}";
+    }
+
     private async Task CopiarLink(AdminEmpleadoDto e)
     {
-        var url = $"{await JS.InvokeAsync<string>("eval", "window.location.origin")}/he/{Slugify(e.Nombre)}/{e.Token}";
+        var origin = await JS.InvokeAsync<string>("eval", "window.location.origin");
+        var url = BuildLinkPublico(e, origin);
+        if (url is null)
+        {
+            ToastService.Error($"Falta cargar los últimos 3 del DNI de {e.Nombre}. Editalo primero.");
+            return;
+        }
         await JS.InvokeVoidAsync("navigator.clipboard.writeText", url);
         ToastService.Success($"Link de {e.Nombre} copiado");
     }
@@ -257,28 +288,14 @@
     private async Task MandarWhatsapp(AdminEmpleadoDto e)
     {
         var origin = await JS.InvokeAsync<string>("eval", "window.location.origin");
-        var url = $"{origin}/he/{Slugify(e.Nombre)}/{e.Token}";
-        var texto = Uri.EscapeDataString($"Hola {e.Nombre}! Te paso el link para cargar tus horas extras cada día:\n\n{url}\n\nGuárdalo y entrá todos los días. Gracias!");
+        var url = BuildLinkPublico(e, origin);
+        if (url is null)
+        {
+            ToastService.Error($"Falta cargar los últimos 3 del DNI de {e.Nombre}. Editalo primero.");
+            return;
+        }
+        var texto = Uri.EscapeDataString($"Hola {e.Nombre}! Te paso el link para cargar tus horas extras cada día:\n\n{url}\n\nGuardalo y entrá todos los días. Gracias!");
         await JS.InvokeVoidAsync("open", $"https://wa.me/?text={texto}", "_blank");
     }
 
-    /// <summary>Convierte un nombre a un slug seguro para URL: minúsculas, sin acentos,
-    /// espacios y caracteres raros → guion. Ej: "Pablo López" → "pablo-lopez".</summary>
-    private static string Slugify(string s)
-    {
-        if (string.IsNullOrWhiteSpace(s)) return "empleado";
-        // Normalize quita acentos: "á" → "a"
-        var normalized = s.Normalize(System.Text.NormalizationForm.FormD);
-        var sb = new System.Text.StringBuilder();
-        foreach (var c in normalized)
-        {
-            var uc = System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c);
-            if (uc == System.Globalization.UnicodeCategory.NonSpacingMark) continue;
-            if (char.IsLetterOrDigit(c)) sb.Append(char.ToLowerInvariant(c));
-            else if (c == ' ' || c == '-' || c == '_') sb.Append('-');
-        }
-        // Compactar guiones repetidos y trimear
-        var slug = System.Text.RegularExpressions.Regex.Replace(sb.ToString(), "-{2,}", "-").Trim('-');
-        return string.IsNullOrEmpty(slug) ? "empleado" : slug;
-    }
 }

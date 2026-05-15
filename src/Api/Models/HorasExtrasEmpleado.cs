@@ -13,9 +13,16 @@ public class HorasExtrasEmpleado
     [Required, MaxLength(120)]
     public string Nombre { get; set; } = string.Empty;
 
-    /// <summary>Token publico (GUID) que va en el URL del empleado. Permite acceso sin login.</summary>
+    /// <summary>Token publico (GUID) — legacy. Antes era la credencial del URL.
+    /// Ahora el URL usa {slug-del-nombre}/horario/{ultimos3DniDelEmpleado}.
+    /// Lo dejamos en la tabla para no perder histórico, pero ya no es funcional.</summary>
     [Required, MaxLength(64)]
     public string Token { get; set; } = string.Empty;
+
+    /// <summary>Últimos 3 dígitos del DNI del empleado — clave corta para el link público.
+    /// Si está vacío, el link no funciona (el admin debe cargarlo).</summary>
+    [MaxLength(3)]
+    public string? DniUltimos3 { get; set; }
 
     public bool IsActive { get; set; } = true;
 

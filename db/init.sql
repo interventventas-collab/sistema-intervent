@@ -3594,3 +3594,10 @@ BEGIN
     ALTER TABLE HorasExtras_Registros ADD HoraSalida TIME NULL;
 END
 GO
+
+-- HorasExtras_Empleados: ultimos 3 del DNI (clave corta para link publico).
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='DniUltimos3' AND Object_ID=OBJECT_ID('HorasExtras_Empleados'))
+BEGIN
+    ALTER TABLE HorasExtras_Empleados ADD DniUltimos3 NVARCHAR(3) NULL;
+END
+GO

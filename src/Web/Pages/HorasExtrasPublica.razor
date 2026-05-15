@@ -1,4 +1,4 @@
-@page "/he/{slug}/{token}"
+@page "/he/{slug}/horario/{clave}"
 @attribute [AllowAnonymous]
 @layout Web.Layout.LoginLayout
 @inject HttpClient Http
@@ -157,10 +157,9 @@
 </div>
 
 @code {
-    [Parameter] public string Token { get; set; } = "";
-    /// <summary>Solo cosmético — slug del nombre del empleado para que el URL se vea legible
-    /// cuando le llega por WhatsApp (ej. /he/alexis/abc123). No se valida ni se usa internamente.</summary>
-    [Parameter] public string? Slug { get; set; }
+    [Parameter] public string Slug { get; set; } = "";
+    /// <summary>Últimos 3 dígitos del DNI — credencial corta. El backend valida slug+clave.</summary>
+    [Parameter] public string Clave { get; set; } = "";
     private bool loading = true, guardando, toastVisible;
     private string? errorMsg;
     private PublicEmpleadoDto? datos;
@@ -187,7 +186,7 @@
         loading = true;
         try
         {
-            var url = $"api/horas-extras/publica/{Uri.EscapeDataString(Token)}";
+            var url = $"api/horas-extras/publica/{Uri.EscapeDataString(Slug)}/{Uri.EscapeDataString(Clave)}";
             if (!string.IsNullOrEmpty(fechaSeleccionadaIso))
                 url += $"?fecha={fechaSeleccionadaIso}";
             var resp = await Http.GetAsync(url);
@@ -231,7 +230,7 @@
                 HoraEntrada = formHoraEntrada,
                 HoraSalida = formHoraSalida
             };
-            var resp = await Http.PostAsJsonAsync($"api/horas-extras/publica/{Uri.EscapeDataString(Token)}", body);
+            var resp = await Http.PostAsJsonAsync($"api/horas-extras/publica/{Uri.EscapeDataString(Slug)}/{Uri.EscapeDataString(Clave)}", body);
             if (!resp.IsSuccessStatusCode)
             {
                 errorMsg = "No se pudo guardar. Intentá de nuevo.";

@@ -32,15 +32,44 @@ public class HorasExtrasController : ControllerBase
         string? HoraEntradaSeleccionada, string? HoraSalidaSeleccionada,
         List<PublicRegistroDto> Ultimos7Dias, decimal TotalSemana, decimal TotalMes);
 
-    /// <summary>El empleado abre el link con su token y obtiene su nombre + carga del dia + historial.
-    /// Opcional: ?fecha=YYYY-MM-DD para precargar los datos de una fecha pasada (carga atrasada).</summary>
-    [HttpGet("publica/{token}")]
-    [AllowAnonymous]
-    public async Task<IActionResult> GetPublica(string token, [FromQuery] string? fecha = null)
+    /// <summary>Busca un empleado por slug del nombre + clave (últimos 3 del DNI). Helper
+    /// usado por todos los endpoints públicos. Devuelve null si no coincide nada activo.</summary>
+    private async Task<HorasExtrasEmpleado?> FindEmpleadoAsync(string slug, string clave)
     {
-        if (string.IsNullOrWhiteSpace(token)) return NotFound();
-        var emp = await _db.HorasExtrasEmpleados.FirstOrDefaultAsync(e => e.Token == token && e.IsActive);
-        if (emp is null) return NotFound(new { error = "Token inválido o empleado inactivo" });
+        if (string.IsNullOrWhiteSpace(slug) || string.IsNullOrWhiteSpace(clave)) return null;
+        clave = clave.Trim();
+        if (clave.Length != 3 || !clave.All(char.IsDigit)) return null;
+        var slugNorm = Slugify(slug);
+        // Comparamos en memoria — son pocos empleados, no vale la pena indexar el slug.
+        var todos = await _db.HorasExtrasEmpleados.Where(e => e.IsActive && e.DniUltimos3 == clave).ToListAsync();
+        return todos.FirstOrDefault(e => Slugify(e.Nombre) == slugNorm);
+    }
+
+    /// <summary>Convierte un nombre a slug seguro (lowercase, sin acentos, espacios → guion).
+    /// Ej: "Pablo López" → "pablo-lopez".</summary>
+    private static string Slugify(string s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "";
+        var n = s.Normalize(System.Text.NormalizationForm.FormD);
+        var sb = new System.Text.StringBuilder();
+        foreach (var c in n)
+        {
+            var uc = System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c);
+            if (uc == System.Globalization.UnicodeCategory.NonSpacingMark) continue;
+            if (char.IsLetterOrDigit(c)) sb.Append(char.ToLowerInvariant(c));
+            else if (c == ' ' || c == '-' || c == '_') sb.Append('-');
+        }
+        return System.Text.RegularExpressions.Regex.Replace(sb.ToString(), "-{2,}", "-").Trim('-');
+    }
+
+    /// <summary>El empleado abre el link con su slug + clave y obtiene su nombre + carga del dia + historial.
+    /// Opcional: ?fecha=YYYY-MM-DD para precargar los datos de una fecha pasada (carga atrasada).</summary>
+    [HttpGet("publica/{slug}/{clave}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetPublica(string slug, string clave, [FromQuery] string? fecha = null)
+    {
+        var emp = await FindEmpleadoAsync(slug, clave);
+        if (emp is null) return NotFound(new { error = "Link inválido o empleado inactivo" });
 
         var hoy = FechaArgentinaHoy();
         // Si vino fecha, la parseamos; si no, hoy. Cap a hoy (no permitir futuro).
@@ -93,13 +122,12 @@ public class HorasExtrasController : ControllerBase
 
     /// <summary>El empleado carga (o actualiza) sus horas extras del día. Si ya existe un registro
     /// para ese día, se actualiza. Si no, se crea. UPSERT.</summary>
-    [HttpPost("publica/{token}")]
+    [HttpPost("publica/{slug}/{clave}")]
     [AllowAnonymous]
-    public async Task<IActionResult> CargarPublica(string token, [FromBody] CargarHorasRequest req)
+    public async Task<IActionResult> CargarPublica(string slug, string clave, [FromBody] CargarHorasRequest req)
     {
-        if (string.IsNullOrWhiteSpace(token)) return NotFound();
-        var emp = await _db.HorasExtrasEmpleados.FirstOrDefaultAsync(e => e.Token == token && e.IsActive);
-        if (emp is null) return NotFound(new { error = "Token inválido o empleado inactivo" });
+        var emp = await FindEmpleadoAsync(slug, clave);
+        if (emp is null) return NotFound(new { error = "Link inválido o empleado inactivo" });
 
         // El campo en DB es decimal(5,2) → hasta 999.99. Antes limitabamos a 24 pensando en
         // 1 dia, pero el usuario carga acumulados (ej. 90hs para cerrar periodo) → permitido.
@@ -158,7 +186,8 @@ public class HorasExtrasController : ControllerBase
 
     public record AdminEmpleadoDto(int Id, string Nombre, string Token, bool IsActive,
         decimal TotalHoy, decimal TotalSemana, decimal TotalMes, DateTime? UltimaCargaAt, DateTime CreatedAt,
-        string? UltimaHoraEntrada, string? UltimaHoraSalida);
+        string? UltimaHoraEntrada, string? UltimaHoraSalida,
+        string? DniUltimos3, string Slug);
 
     /// <summary>Lista de empleados con totales (hoy / semana / mes) y la última vez que cargaron.</summary>
     [HttpGet("admin/empleados")]
@@ -198,7 +227,9 @@ public class HorasExtrasController : ControllerBase
                 ultDic.TryGetValue(e.Id, out var u) ? u : null,
                 e.CreatedAt,
                 FormatHora(ultReg?.HoraEntrada),
-                FormatHora(ultReg?.HoraSalida)
+                FormatHora(ultReg?.HoraSalida),
+                e.DniUltimos3,
+                Slugify(e.Nombre)
             );
         }).ToList();
         return Ok(result);
@@ -207,6 +238,8 @@ public class HorasExtrasController : ControllerBase
     public class CreateEmpleadoRequest
     {
         public string Nombre { get; set; } = "";
+        /// <summary>Últimos 3 dígitos del DNI — clave corta para el URL público.</summary>
+        public string? DniUltimos3 { get; set; }
     }
 
     [HttpPost("admin/empleados")]
@@ -214,10 +247,22 @@ public class HorasExtrasController : ControllerBase
     public async Task<IActionResult> CreateEmpleado([FromBody] CreateEmpleadoRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.Nombre)) return BadRequest(new { error = "Nombre obligatorio" });
+        var dni3 = NormDni3(req.DniUltimos3);
+        // Validar que el slug + clave no esté ya tomado por otro empleado activo.
+        if (dni3 is not null)
+        {
+            var slugNuevo = Slugify(req.Nombre);
+            var colision = await _db.HorasExtrasEmpleados
+                .Where(e => e.IsActive && e.DniUltimos3 == dni3)
+                .ToListAsync();
+            if (colision.Any(e => Slugify(e.Nombre) == slugNuevo))
+                return BadRequest(new { error = "Ya existe un empleado activo con ese nombre + DNI" });
+        }
         var emp = new HorasExtrasEmpleado
         {
             Nombre = req.Nombre.Trim(),
             Token = Guid.NewGuid().ToString("N"),
+            DniUltimos3 = dni3,
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
@@ -226,11 +271,22 @@ public class HorasExtrasController : ControllerBase
         return Ok(emp);
     }
 
+    /// <summary>Normaliza los últimos 3 del DNI: trim, valida que sean 3 dígitos. Null o invalido → null.</summary>
+    private static string? NormDni3(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        s = s.Trim();
+        if (s.Length != 3 || !s.All(char.IsDigit)) return null;
+        return s;
+    }
+
     public class UpdateEmpleadoRequest
     {
         public string? Nombre { get; set; }
         public bool? IsActive { get; set; }
-        /// <summary>Si true, regenera el token (invalida el link anterior).</summary>
+        public string? DniUltimos3 { get; set; }
+        public bool ClearDniUltimos3 { get; set; }
+        /// <summary>Si true, regenera el token (legacy — ya no se usa en el URL).</summary>
         public bool RegenerarToken { get; set; }
     }
 
@@ -246,6 +302,8 @@ public class HorasExtrasController : ControllerBase
             emp.Nombre = req.Nombre.Trim();
         }
         if (req.IsActive.HasValue) emp.IsActive = req.IsActive.Value;
+        if (req.DniUltimos3 is not null) emp.DniUltimos3 = NormDni3(req.DniUltimos3);
+        else if (req.ClearDniUltimos3) emp.DniUltimos3 = null;
         if (req.RegenerarToken) emp.Token = Guid.NewGuid().ToString("N");
         emp.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
