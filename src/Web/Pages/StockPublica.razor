@@ -1,0 +1,358 @@
+@page "/stock/{token}"
+@attribute [AllowAnonymous]
+@layout Web.Layout.LoginLayout
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+@* Carga de stock mobile-first. El operador entra, elige su nombre, busca productos por SKU o
+   código de barras (con scanner bluetooth o tipeando), toca un producto, elige Sumar/Restar/Setear,
+   carga cantidad + comentario opcional, confirma. *@
+
+<style>
+    body { background: linear-gradient(135deg, #f1f5f9, #e2e8f0); min-height: 100vh; }
+    .sp-wrap { max-width: 540px; margin: 0 auto; padding: 0.8rem; }
+    .sp-card { background: white; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); padding: 1rem; margin-bottom: 0.7rem; }
+    .sp-h1 { font-size: 1.3rem; font-weight: 700; margin: 0 0 0.2rem; color: #1f2937; }
+    .sp-sub { font-size: 0.85rem; color: #6b7280; margin: 0; }
+
+    .sp-op-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; margin-top: 0.7rem; }
+    .sp-op-btn { padding: 1rem; font-size: 1.1rem; font-weight: 700; background: white; border: 2px solid #d1d5db; border-radius: 10px; cursor: pointer; color: #1f2937; }
+    .sp-op-btn:hover, .sp-op-btn.active { border-color: #1d4ed8; background: #dbeafe; color: #1e40af; }
+
+    .sp-header-active { background: #1d4ed8; color: white; border-radius: 10px; padding: 0.6rem 0.9rem; display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.7rem; }
+    .sp-header-active strong { font-size: 1.05rem; }
+    .sp-header-cambiar { background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.4); padding: 0.3rem 0.55rem; border-radius: 6px; font-size: 0.78rem; cursor: pointer; }
+
+    .sp-search { width: 100%; padding: 0.9rem; font-size: 1.05rem; border: 2px solid #d1d5db; border-radius: 10px; box-sizing: border-box; }
+    .sp-search:focus { outline: none; border-color: #1d4ed8; box-shadow: 0 0 0 3px rgba(29,78,216,0.15); }
+
+    .sp-prod { background: white; border: 1px solid #e5e7eb; border-radius: 10px; padding: 0.7rem; margin-bottom: 0.4rem; cursor: pointer; transition: 0.15s; }
+    .sp-prod:hover { border-color: #1d4ed8; background: #f0f9ff; }
+    .sp-prod-sku { display: inline-block; padding: 0.15rem 0.45rem; background: #1d4ed8; color: white; border-radius: 4px; font-family: monospace; font-size: 0.78rem; font-weight: 700; margin-right: 0.4rem; }
+    .sp-prod-nombre { font-weight: 600; color: #1f2937; }
+    .sp-prod-stock { float: right; font-weight: 700; font-size: 1.1rem; color: #1d4ed8; }
+    .sp-prod-stock.cero { color: #b91c1c; }
+
+    .sp-action-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.3rem; margin-bottom: 0.7rem; }
+    .sp-action-tabs button { padding: 0.6rem; font-size: 0.9rem; font-weight: 700; border: 2px solid #e5e7eb; border-radius: 8px; background: white; cursor: pointer; color: #4b5563; }
+    .sp-action-tabs button.active.suma { background: #16a34a; border-color: #15803d; color: white; }
+    .sp-action-tabs button.active.resta { background: #b91c1c; border-color: #991b1b; color: white; }
+    .sp-action-tabs button.active.set { background: #d97706; border-color: #b45309; color: white; }
+
+    .sp-cant-input { width: 100%; padding: 0.9rem; font-size: 1.8rem; text-align: center; border: 2px solid #d1d5db; border-radius: 10px; font-weight: 700; color: #1d4ed8; box-sizing: border-box; }
+    .sp-cant-quick { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.3rem; margin: 0.4rem 0; }
+    .sp-cant-quick button { padding: 0.5rem; font-size: 0.9rem; font-weight: 700; border: 2px solid #e5e7eb; border-radius: 6px; background: white; cursor: pointer; }
+    .sp-cant-quick button.active { border-color: #1d4ed8; background: #dbeafe; color: #1d4ed8; }
+
+    .sp-btn { width: 100%; padding: 0.9rem; font-size: 1.05rem; font-weight: 700; border: none; border-radius: 10px; cursor: pointer; }
+    .sp-btn-confirm { background: #1d4ed8; color: white; }
+    .sp-btn-confirm:disabled { background: #9ca3af; cursor: not-allowed; }
+    .sp-btn-cancel { background: white; color: #4b5563; border: 1px solid #d1d5db; margin-top: 0.4rem; }
+
+    .sp-textarea { width: 100%; padding: 0.55rem; font-size: 0.9rem; border: 1px solid #d1d5db; border-radius: 8px; resize: vertical; min-height: 50px; box-sizing: border-box; }
+
+    .sp-feed-item { display: flex; gap: 0.5rem; padding: 0.5rem 0; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem; align-items: center; }
+    .sp-feed-tag { padding: 0.15rem 0.4rem; border-radius: 4px; font-weight: 700; font-size: 0.7rem; min-width: 36px; text-align: center; }
+    .sp-feed-tag.SUMA { background: #dcfce7; color: #166534; }
+    .sp-feed-tag.RESTA { background: #fee2e2; color: #b91c1c; }
+    .sp-feed-tag.SET { background: #fef3c7; color: #92400e; }
+    .sp-feed-prod { flex: 1; min-width: 0; overflow: hidden; }
+    .sp-feed-prod strong { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.88rem; }
+    .sp-feed-cant { font-weight: 700; font-size: 1.05rem; color: #1d4ed8; }
+
+    .sp-toast { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); background: #16a34a; color: white; padding: 0.7rem 1.4rem; border-radius: 999px; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.2); z-index: 9999; }
+</style>
+
+<div class="sp-wrap">
+    @if (loading)
+    {
+        <p style="text-align:center; padding:2rem; color:#6b7280;">Cargando...</p>
+    }
+    else if (init is null)
+    {
+        <div class="sp-card" style="text-align:center;">
+            <h2 style="margin:0 0 0.5rem; color:#b91c1c;">🚫 Link inválido</h2>
+            <p style="margin:0; color:#4b5563;">El link puede haber expirado. Pedile uno nuevo a tu encargado.</p>
+        </div>
+    }
+    else if (operadorActivo is null)
+    {
+        @* === PASO 1: elegir operador === *@
+        <div class="sp-card">
+            <h1 class="sp-h1">📦 Carga de stock</h1>
+            <p class="sp-sub">Depósito: <strong>@init.DepositoActual</strong></p>
+            <p class="sp-sub" style="margin-top:0.7rem;"><strong>¿Quién está cargando?</strong></p>
+            <div class="sp-op-list">
+                @foreach (var op in init.Operadores)
+                {
+                    <button class="sp-op-btn" @onclick="() => SeleccionarOperador(op)">@op.Nombre</button>
+                }
+            </div>
+        </div>
+    }
+    else
+    {
+        @* === PASO 2: operador activo, buscar producto === *@
+        <div class="sp-header-active">
+            <div>
+                👤 <strong>@operadorActivo.Nombre</strong>
+                <span style="font-size:0.78rem; opacity:0.85; margin-left:0.4rem;">· @init.DepositoActual</span>
+            </div>
+            <button class="sp-header-cambiar" @onclick="() => { operadorActivo = null; productosBuscados = null; queryBusqueda = string.Empty; }">Cambiar</button>
+        </div>
+
+        @if (productoSeleccionado is null)
+        {
+            <div class="sp-card">
+                <input class="sp-search" type="text" autocomplete="off"
+                       placeholder="🔍 Buscá por código (ej: C8733)"
+                       value="@queryBusqueda"
+                       @oninput="OnSearchInput"
+                       @onkeydown="OnSearchKeyDown" />
+                <p style="font-size:0.72rem; color:#6b7280; margin: 0.3rem 0 0;">Tip: usá un escáner bluetooth o tipeá el SKU. Mín. 1 carácter.</p>
+            </div>
+
+            @if (buscando)
+            {
+                <p style="text-align:center; color:#6b7280;">Buscando...</p>
+            }
+            else if (productosBuscados is not null && productosBuscados.Count == 0)
+            {
+                <div class="sp-card" style="text-align:center; color:#6b7280;">
+                    Sin resultados para "@queryBusqueda"
+                </div>
+            }
+            else if (productosBuscados is not null && productosBuscados.Count > 0)
+            {
+                <div class="sp-card">
+                    <p style="font-size:0.78rem; color:#6b7280; margin: 0 0 0.5rem;">@productosBuscados.Count resultado(s)</p>
+                    @foreach (var p in productosBuscados)
+                    {
+                        <div class="sp-prod" @onclick="() => SeleccionarProducto(p)">
+                            <span class="sp-prod-stock @(p.StockActual <= 0 ? "cero" : "")">@p.StockActual</span>
+                            @if (!string.IsNullOrEmpty(p.Sku)) { <span class="sp-prod-sku">@p.Sku</span> }
+                            <span class="sp-prod-nombre">@p.Nombre</span>
+                            <div style="font-size:0.72rem; color:#9ca3af; margin-top:0.2rem;">
+                                @p.Categoria @(string.IsNullOrEmpty(p.Marca) ? "" : "· " + p.Marca)
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (ultimosMovs is not null && ultimosMovs.Count > 0)
+            {
+                <div class="sp-card">
+                    <p style="font-size:0.78rem; color:#6b7280; margin: 0 0 0.3rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em;">Tus últimas cargas</p>
+                    @foreach (var m in ultimosMovs.Take(8))
+                    {
+                        <div class="sp-feed-item">
+                            <span class="sp-feed-tag @m.TipoMov">@(m.TipoMov == "SUMA" ? "+" : m.TipoMov == "RESTA" ? "−" : "=")</span>
+                            <div class="sp-feed-prod">
+                                <strong>@(m.Sku ?? "") @m.ProductoNombre</strong>
+                                <span style="color:#9ca3af; font-size:0.72rem;">@m.Fecha.ToLocalTime().ToString("HH:mm") · stock @m.StockAntes → @m.StockDespues</span>
+                            </div>
+                            <span class="sp-feed-cant">@m.Cantidad</span>
+                        </div>
+                    }
+                </div>
+            }
+        }
+        else
+        {
+            @* === PASO 3: producto seleccionado, elegir acción === *@
+            <div class="sp-card">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:0.5rem;">
+                    <div style="flex:1; min-width:0;">
+                        @if (!string.IsNullOrEmpty(productoSeleccionado.Sku))
+                        { <span class="sp-prod-sku">@productoSeleccionado.Sku</span> }
+                        <strong style="font-size:0.95rem;">@productoSeleccionado.Nombre</strong>
+                    </div>
+                </div>
+                <div style="background:#f3f4f6; border-radius:8px; padding:0.6rem; margin-bottom:0.7rem; text-align:center;">
+                    <div style="font-size:0.72rem; color:#6b7280; text-transform:uppercase; letter-spacing:0.05em;">Stock actual</div>
+                    <div style="font-size:1.8rem; font-weight:700; color:#1d4ed8;">@productoSeleccionado.StockActual</div>
+                </div>
+
+                <div class="sp-action-tabs">
+                    <button class="suma @(tipoMov == "SUMA" ? "active" : "")" @onclick="@(() => tipoMov = "SUMA")">➕ Sumar</button>
+                    <button class="resta @(tipoMov == "RESTA" ? "active" : "")" @onclick="@(() => tipoMov = "RESTA")">➖ Restar</button>
+                    <button class="set @(tipoMov == "SET" ? "active" : "")" @onclick="@(() => tipoMov = "SET")">= Setear</button>
+                </div>
+
+                <label style="font-size:0.78rem; color:#4b5563; font-weight:600;">Cantidad</label>
+                <input class="sp-cant-input" type="number" min="1" @bind="cantidad" @bind:event="oninput" />
+                <div class="sp-cant-quick">
+                    @foreach (var q in new[] { 1, 5, 10, 25, 50, 100 })
+                    {
+                        var activo = cantidad == q;
+                        <button class="@(activo ? "active" : "")" @onclick="() => cantidad = q">@q</button>
+                    }
+                </div>
+
+                @if (tipoMov == "SUMA" || tipoMov == "RESTA" || tipoMov == "SET")
+                {
+                    var preview = tipoMov == "SUMA" ? productoSeleccionado.StockActual + cantidad
+                                : tipoMov == "RESTA" ? Math.Max(0, productoSeleccionado.StockActual - cantidad)
+                                : cantidad;
+                    <div style="background:#f0fdf4; border:1px solid #16a34a; border-radius:8px; padding:0.5rem; margin-bottom:0.5rem; text-align:center; font-size:0.85rem;">
+                        Stock va a quedar en: <strong style="font-size:1.1rem; color:#16a34a;">@preview</strong>
+                    </div>
+                }
+
+                <label style="font-size:0.78rem; color:#4b5563; font-weight:600;">Comentario (opcional)</label>
+                <textarea class="sp-textarea" @bind="comentario" placeholder="Ej: rotura, vencidos, recibido del proveedor X"></textarea>
+
+                <button class="sp-btn sp-btn-confirm" style="margin-top:0.5rem;" @onclick="ConfirmarMovimientoAsync" disabled="@guardando">
+                    @(guardando ? "Guardando..." : "✓ Confirmar")
+                </button>
+                <button class="sp-btn sp-btn-cancel" @onclick="CancelarSeleccion">Cancelar</button>
+
+                @if (!string.IsNullOrEmpty(errorMsg))
+                {
+                    <p style="color:#b91c1c; font-size:0.85rem; margin-top:0.5rem; text-align:center;">⚠ @errorMsg</p>
+                }
+            </div>
+        }
+    }
+
+    @if (toastVisible)
+    {
+        <div class="sp-toast">@toastMensaje</div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Token { get; set; } = "";
+    private bool loading = true, buscando, guardando, toastVisible;
+    private string? errorMsg, toastMensaje;
+    private StockInitPubDto? init;
+    private StockOperadorPubDto? operadorActivo;
+    private string queryBusqueda = "";
+    private List<StockProductoPubDto>? productosBuscados;
+    private List<StockMovimientoPubDto>? ultimosMovs;
+    private StockProductoPubDto? productoSeleccionado;
+    private string tipoMov = "SUMA";
+    private int cantidad = 1;
+    private string comentario = "";
+    private System.Threading.Timer? debounceTimer;
+
+    public record StockOperadorPubDto(int Id, string Nombre);
+    public record StockProductoPubDto(int Id, string? Sku, string? Barcode, string Nombre,
+        string Categoria, string? Marca, int StockActual);
+    public record StockInitPubDto(string Token, List<StockOperadorPubDto> Operadores, string DepositoActual);
+    public record StockMovimientoPubDto(int Id, DateTime Fecha, string ProductoNombre, string? Sku,
+        string Operador, string TipoMov, int Cantidad, int StockAntes, int StockDespues, string? Comentario);
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var resp = await Http.GetAsync($"api/stock/publica/{Uri.EscapeDataString(Token)}/init");
+            if (resp.IsSuccessStatusCode) init = await resp.Content.ReadFromJsonAsync<StockInitPubDto>();
+        }
+        catch { init = null; }
+        finally { loading = false; }
+    }
+
+    private async Task SeleccionarOperador(StockOperadorPubDto op)
+    {
+        operadorActivo = op;
+        await CargarUltimosMovs();
+    }
+
+    private async Task CargarUltimosMovs()
+    {
+        if (operadorActivo is null) return;
+        try
+        {
+            var r = await Http.GetAsync($"api/stock/publica/{Uri.EscapeDataString(Token)}/ultimos?operadorId={operadorActivo.Id}&limit=10");
+            if (r.IsSuccessStatusCode) ultimosMovs = await r.Content.ReadFromJsonAsync<List<StockMovimientoPubDto>>();
+        }
+        catch { ultimosMovs = null; }
+    }
+
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        queryBusqueda = e.Value?.ToString() ?? "";
+        debounceTimer?.Dispose();
+        debounceTimer = new System.Threading.Timer(async _ => await InvokeAsync(BuscarAsync), null, 250, System.Threading.Timeout.Infinite);
+    }
+
+    private async Task OnSearchKeyDown(KeyboardEventArgs e)
+    {
+        // Si el operador usa un scanner bluetooth, suele mandar Enter al final del código.
+        if (e.Key == "Enter") await BuscarAsync();
+    }
+
+    private async Task BuscarAsync()
+    {
+        if (string.IsNullOrWhiteSpace(queryBusqueda)) { productosBuscados = null; StateHasChanged(); return; }
+        buscando = true; StateHasChanged();
+        try
+        {
+            var r = await Http.GetAsync($"api/stock/publica/{Uri.EscapeDataString(Token)}/search?q={Uri.EscapeDataString(queryBusqueda)}");
+            if (r.IsSuccessStatusCode) productosBuscados = await r.Content.ReadFromJsonAsync<List<StockProductoPubDto>>();
+        }
+        catch { productosBuscados = null; }
+        finally { buscando = false; StateHasChanged(); }
+    }
+
+    private void SeleccionarProducto(StockProductoPubDto p)
+    {
+        productoSeleccionado = p;
+        tipoMov = "SUMA";
+        cantidad = 1;
+        comentario = "";
+        errorMsg = null;
+    }
+
+    private void CancelarSeleccion()
+    {
+        productoSeleccionado = null;
+        errorMsg = null;
+    }
+
+    private async Task ConfirmarMovimientoAsync()
+    {
+        if (productoSeleccionado is null || operadorActivo is null) return;
+        if (cantidad <= 0) { errorMsg = "Cantidad tiene que ser mayor a 0"; return; }
+        errorMsg = null;
+        guardando = true;
+        try
+        {
+            var body = new
+            {
+                OperadorId = operadorActivo.Id,
+                ProductoId = productoSeleccionado.Id,
+                TipoMov = tipoMov,
+                Cantidad = cantidad,
+                Comentario = comentario
+            };
+            var resp = await Http.PostAsJsonAsync($"api/stock/publica/{Uri.EscapeDataString(Token)}/movimiento", body);
+            if (!resp.IsSuccessStatusCode)
+            {
+                errorMsg = "No se pudo guardar. Intentá de nuevo.";
+                return;
+            }
+            var saved = await resp.Content.ReadFromJsonAsync<MovimientoResp>();
+            toastMensaje = $"✓ Stock {productoSeleccionado.Sku ?? ""}: {saved?.stockAntes} → {saved?.stockDespues}";
+            toastVisible = true;
+            // Reset volver a la búsqueda
+            productoSeleccionado = null;
+            queryBusqueda = "";
+            productosBuscados = null;
+            await CargarUltimosMovs();
+            StateHasChanged();
+            await Task.Delay(2500);
+            toastVisible = false;
+        }
+        catch (Exception ex)
+        {
+            errorMsg = "Error: " + ex.Message;
+        }
+        finally { guardando = false; }
+    }
+
+    private record MovimientoResp(bool ok, int stockAntes, int stockDespues, int movId);
+}

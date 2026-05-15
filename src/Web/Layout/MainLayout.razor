@@ -123,6 +123,10 @@
                 @* Viajes de empleados — agregado 2026-05-15 (segundo modulo del dia) *@
                 <NavItem Href="/viajes" Label="🚚 Viajes" Icon="@SvgIcons.Tag"
                          IsActive="@IsActive("/viajes")" OnClick="@(() => NavigateTo("/viajes"))" />
+
+                @* Stock — carga rapida via link publico, agregado 2026-05-15 *@
+                <NavItem Href="/stock" Label="📦 Stock (link móvil)" Icon="@SvgIcons.Package"
+                         IsActive="@IsActive("/stock")" OnClick="@(() => NavigateTo("/stock"))" />
             </NavGroup>
         }
 

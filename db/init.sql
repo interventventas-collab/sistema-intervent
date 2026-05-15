@@ -3542,3 +3542,43 @@ BEGIN
     ALTER TABLE Cafe_Ventas ADD ArcaImpTotal DECIMAL(18,2) NULL;
 END
 GO
+
+-- ===== Stock — carga rapida via link publico (mobile-first) =====
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Stock_Operadores')
+BEGIN
+    CREATE TABLE Stock_Operadores (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Nombre NVARCHAR(120) NOT NULL,
+        IsActive BIT NOT NULL DEFAULT 1,
+        Orden INT NOT NULL DEFAULT 0,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+    );
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Stock_Movimientos')
+BEGIN
+    CREATE TABLE Stock_Movimientos (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        ProductoId INT NOT NULL,
+        OperadorId INT NULL,
+        OperadorNombreSnap NVARCHAR(120) NULL,
+        DepositoId INT NULL,
+        DepositoNombreSnap NVARCHAR(120) NULL,
+        TipoMov NVARCHAR(10) NOT NULL,
+        Cantidad INT NOT NULL,
+        StockAntes INT NOT NULL,
+        StockDespues INT NOT NULL,
+        Comentario NVARCHAR(500) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT FK_StockMov_Producto FOREIGN KEY (ProductoId) REFERENCES Cafe_Productos(Id),
+        CONSTRAINT FK_StockMov_Operador FOREIGN KEY (OperadorId) REFERENCES Stock_Operadores(Id)
+    );
+    CREATE INDEX IX_StockMov_Created ON Stock_Movimientos(CreatedAt DESC);
+    CREATE INDEX IX_StockMov_Operador ON Stock_Movimientos(OperadorId, CreatedAt DESC);
+END
+GO
+IF NOT EXISTS (SELECT * FROM AppSettings WHERE [Key]='stock.public_token')
+BEGIN
+    INSERT INTO AppSettings ([Key], [Value]) VALUES ('stock.public_token', LOWER(REPLACE(NEWID(), '-', '')));
+END
+GO

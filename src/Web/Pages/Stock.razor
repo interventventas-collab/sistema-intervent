@@ -1,0 +1,229 @@
+@page "/stock"
+@attribute [Authorize]
+@inject HttpClient Http
+@inject IJSRuntime JS
+@inject ToastService ToastService
+
+<PageTitle>Stock — Carga</PageTitle>
+
+<style>
+    .sa-wrap { padding: 1rem; }
+    .sa-card { background: white; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 1rem; margin-bottom: 1rem; }
+    .sa-link-box { background: #fef3c7; border: 1px solid #d97706; border-radius: 8px; padding: 0.7rem; display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
+    .sa-link { background: white; padding: 0.4rem 0.6rem; border-radius: 6px; border: 1px solid #d1d5db; font-family: monospace; font-size: 0.85rem; flex: 1; min-width: 200px; word-break: break-all; }
+    .sa-btn-mini { padding: 0.3rem 0.6rem; font-size: 0.78rem; border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer; background: white; }
+    .sa-btn-mini.link { background: #e0e7ff; color: #1e40af; border-color: #818cf8; }
+    .sa-btn-mini.wa { background: #dcfce7; color: #166534; border-color: #16a34a; }
+    .sa-btn-mini.danger { background: #fee2e2; color: #b91c1c; border-color: #fca5a5; }
+    .sa-op-row { display: flex; gap: 0.5rem; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid #f3f4f6; }
+    .sa-op-nombre { font-weight: 700; min-width: 110px; }
+    .sa-op-meta { color: #6b7280; font-size: 0.82rem; }
+    .sa-tab { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    .sa-tab th { background: #f3f4f6; padding: 0.4rem; text-align: left; font-size: 0.75rem; }
+    .sa-tab td { padding: 0.4rem; border-bottom: 1px solid #f3f4f6; }
+    .sa-tag { padding: 0.15rem 0.45rem; border-radius: 4px; font-weight: 700; font-size: 0.7rem; }
+    .sa-tag.SUMA { background: #dcfce7; color: #166534; }
+    .sa-tag.RESTA { background: #fee2e2; color: #b91c1c; }
+    .sa-tag.SET { background: #fef3c7; color: #92400e; }
+</style>
+
+<div class="sa-wrap">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem;">
+        <h2 style="margin:0;">📦 Stock — Carga rápida</h2>
+        <button class="btn btn-primary" @onclick="ShowCreateOp">+ Nuevo operador</button>
+    </div>
+
+    @* Link público *@
+    <div class="sa-card">
+        <h3 style="margin: 0 0 0.5rem;">🔗 Link público para celulares</h3>
+        <p style="font-size:0.82rem; color:#6b7280; margin: 0 0 0.5rem;">Compartilo con el depósito por WhatsApp. Lo abren desde el celular y cargan stock.</p>
+        <div class="sa-link-box">
+            <div class="sa-link">@LinkPublico</div>
+            <button class="sa-btn-mini link" @onclick="CopiarLink">📋 Copiar</button>
+            <button class="sa-btn-mini wa" @onclick="MandarWhatsapp">📱 WhatsApp</button>
+            <button class="sa-btn-mini danger" @onclick="RegenerarToken" title="Genera un link nuevo (el anterior deja de funcionar)">🔄 Regenerar</button>
+        </div>
+    </div>
+
+    @* Operadores *@
+    <div class="sa-card">
+        <h3 style="margin: 0 0 0.5rem;">Operadores</h3>
+        @if (operadores is null) { <p style="color:#6b7280;">Cargando...</p> }
+        else if (operadores.Count == 0) { <p style="color:#6b7280;">Sin operadores todavía.</p> }
+        else
+        {
+            @if (showFormOp)
+            {
+                <div style="background:#dbeafe; border:1px solid #1d4ed8; border-radius:8px; padding:0.7rem; margin-bottom:0.5rem; display:flex; gap:0.5rem; align-items:end;">
+                    <div style="flex:1;">
+                        <label class="form-label">Nombre</label>
+                        <input class="form-input" @bind="formNombre" placeholder="Ej: Lucas, Pepe..." />
+                    </div>
+                    <div style="width:80px;">
+                        <label class="form-label">Orden</label>
+                        <input class="form-input" type="number" @bind="formOrden" />
+                    </div>
+                    <button class="btn btn-primary" @onclick="GuardarOpAsync" disabled="@savingOp">@(savingOp ? "..." : "Guardar")</button>
+                    <button class="btn btn-secondary" @onclick="() => showFormOp = false">Cancelar</button>
+                </div>
+            }
+            @foreach (var op in operadores)
+            {
+                <div class="sa-op-row" style="@(op.IsActive ? "" : "opacity:0.5;")">
+                    <div class="sa-op-nombre">@op.Nombre @(op.IsActive ? "" : " (inactivo)")</div>
+                    <div class="sa-op-meta">Orden: @op.Orden · Movimientos: <strong>@op.TotalMovimientos</strong></div>
+                    <div style="margin-left:auto; display:flex; gap:0.3rem;">
+                        <button class="sa-btn-mini" @onclick="() => ToggleOpAsync(op)">@(op.IsActive ? "🔇 Desactivar" : "🔊 Activar")</button>
+                        <button class="sa-btn-mini danger" @onclick="() => BorrarOpAsync(op)">🗑</button>
+                    </div>
+                </div>
+            }
+        }
+    </div>
+
+    @* Log de movimientos *@
+    <div class="sa-card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+            <h3 style="margin:0;">Movimientos recientes</h3>
+            <button class="sa-btn-mini" @onclick="RecargarTodo">🔄 Refrescar</button>
+        </div>
+        @if (movs is null) { <p style="color:#6b7280;">Cargando...</p> }
+        else if (movs.Count == 0) { <p style="color:#6b7280;">Sin movimientos todavía. Mandá el link al depósito y vamos viendo.</p> }
+        else
+        {
+            <table class="sa-tab">
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Operador</th>
+                        <th>Producto</th>
+                        <th>Tipo</th>
+                        <th style="text-align:right;">Cant.</th>
+                        <th style="text-align:right;">Stock</th>
+                        <th>Coment.</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var m in movs)
+                    {
+                        <tr>
+                            <td>@m.Fecha.ToLocalTime().ToString("dd/MM HH:mm")</td>
+                            <td><strong>@m.Operador</strong></td>
+                            <td>
+                                @if (!string.IsNullOrEmpty(m.Sku))
+                                { <span style="font-family:monospace; color:#1d4ed8; font-weight:700;">@m.Sku</span> <span>·</span> }
+                                @m.ProductoNombre
+                            </td>
+                            <td><span class="sa-tag @m.TipoMov">@m.TipoMov</span></td>
+                            <td style="text-align:right; font-weight:700;">@m.Cantidad</td>
+                            <td style="text-align:right; font-size:0.78rem; color:#6b7280;">@m.StockAntes → <strong style="color:#1d4ed8;">@m.StockDespues</strong></td>
+                            <td style="font-size:0.78rem; color:#4b5563;">@(m.Comentario ?? "")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@code {
+    public record AdminOperadorDto(int Id, string Nombre, bool IsActive, int Orden, int TotalMovimientos);
+    public record AdminMovDto(int Id, DateTime Fecha, int ProductoId, string? Sku, string ProductoNombre,
+        string Operador, string TipoMov, int Cantidad, int StockAntes, int StockDespues, string? Comentario);
+
+    private string token = "";
+    private List<AdminOperadorDto>? operadores;
+    private List<AdminMovDto>? movs;
+    private bool showFormOp, savingOp;
+    private string formNombre = "";
+    private int formOrden = 99;
+    private System.Threading.Timer? autoRefreshTimer;
+
+    private string LinkPublico => string.IsNullOrEmpty(token) ? "(cargando...)" : $"{origin}/stock/{token}";
+    private string origin = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        origin = await JS.InvokeAsync<string>("eval", "window.location.origin");
+        await RecargarTodo();
+        autoRefreshTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () => { await RecargarTodo(); StateHasChanged(); });
+        }, null, 30000, 30000);
+    }
+
+    public void Dispose() => autoRefreshTimer?.Dispose();
+
+    private async Task RecargarTodo()
+    {
+        try
+        {
+            var tokResp = await Http.GetFromJsonAsync<TokenDto>("api/stock/admin/token");
+            token = tokResp?.token ?? "";
+            operadores = await Http.GetFromJsonAsync<List<AdminOperadorDto>>("api/stock/admin/operadores");
+            movs = await Http.GetFromJsonAsync<List<AdminMovDto>>("api/stock/admin/movimientos?limit=100");
+        }
+        catch { }
+    }
+
+    private record TokenDto(string token);
+
+    private void ShowCreateOp()
+    {
+        formNombre = ""; formOrden = (operadores?.Count ?? 0) + 1; showFormOp = true;
+    }
+
+    private async Task GuardarOpAsync()
+    {
+        if (string.IsNullOrWhiteSpace(formNombre)) { ToastService.Error("Nombre obligatorio"); return; }
+        savingOp = true;
+        try
+        {
+            var r = await Http.PostAsJsonAsync("api/stock/admin/operadores", new { Nombre = formNombre, Orden = formOrden });
+            if (r.IsSuccessStatusCode)
+            {
+                ToastService.Success("Operador creado");
+                showFormOp = false;
+                await RecargarTodo();
+            }
+            else ToastService.Error("Error creando");
+        }
+        finally { savingOp = false; }
+    }
+
+    private async Task ToggleOpAsync(AdminOperadorDto op)
+    {
+        var r = await Http.PutAsJsonAsync($"api/stock/admin/operadores/{op.Id}", new { IsActive = !op.IsActive });
+        if (r.IsSuccessStatusCode) await RecargarTodo();
+    }
+
+    private async Task BorrarOpAsync(AdminOperadorDto op)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Borrar a {op.Nombre}?")) return;
+        var r = await Http.DeleteAsync($"api/stock/admin/operadores/{op.Id}");
+        if (r.IsSuccessStatusCode) { ToastService.Success("Borrado"); await RecargarTodo(); }
+    }
+
+    private async Task CopiarLink()
+    {
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", LinkPublico);
+        ToastService.Success("Link copiado");
+    }
+
+    private async Task MandarWhatsapp()
+    {
+        var texto = Uri.EscapeDataString($"📦 Carga de stock del depósito:\n\n{LinkPublico}\n\nEntrá desde el celular, elegí tu nombre y cargá lo que recibís o ajustás.");
+        await JS.InvokeVoidAsync("open", $"https://wa.me/?text={texto}", "_blank");
+    }
+
+    private async Task RegenerarToken()
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "Esto invalida el link viejo. ¿Seguís?")) return;
+        var r = await Http.PostAsync("api/stock/admin/token/regenerar", null);
+        if (r.IsSuccessStatusCode)
+        {
+            ToastService.Success("Token regenerado");
+            await RecargarTodo();
+        }
+    }
+}

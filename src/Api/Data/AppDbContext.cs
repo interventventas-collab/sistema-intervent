@@ -91,6 +91,10 @@ public class AppDbContext : DbContext
     public DbSet<ViajesEmpleado> ViajesEmpleados => Set<ViajesEmpleado>();
     public DbSet<ViajesRegistro> ViajesRegistros => Set<ViajesRegistro>();
     public DbSet<ViajesPago> ViajesPagos => Set<ViajesPago>();
+
+    // Stock — carga rapida via link publico (mobile-first, escaneo de codigos)
+    public DbSet<StockOperador> StockOperadores => Set<StockOperador>();
+    public DbSet<StockMovimiento> StockMovimientos => Set<StockMovimiento>();
     public DbSet<CafeHistorialPrecio> CafeHistorialPrecios => Set<CafeHistorialPrecio>();
     public DbSet<CafeKit> CafeKits => Set<CafeKit>();
     public DbSet<CafeKitItem> CafeKitItems => Set<CafeKitItem>();
