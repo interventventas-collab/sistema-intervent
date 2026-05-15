@@ -28,7 +28,8 @@ public class CafeProductosController : ControllerBase
         p.StockGramos, p.StockUnidades,
         p.Notas, p.IsActive, p.IvaPct, p.CreatedAt, p.UpdatedAt,
         p.OemNav?.PvpConIva, p.OemNav?.IvaPct,
-        p.PrecioOtro, p.PrecioBar);
+        p.PrecioOtro, p.PrecioBar,
+        p.PrecioBulto, p.PrecioBultoOtro);
 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] string? categoria = null)
@@ -368,6 +369,8 @@ public class CafeProductosController : ControllerBase
             // Modelo NUEVO de precios (solo OTROS, en CAFE quedan null):
             PrecioOtro = cat == "OTROS" ? req.PrecioOtro : null,
             PrecioBar = cat == "OTROS" ? req.PrecioBar : null,
+            PrecioBulto = cat == "OTROS" ? req.PrecioBulto : null,
+            PrecioBultoOtro = cat == "OTROS" ? req.PrecioBultoOtro : null,
             UxB = cat == "OTROS" ? req.UxB : null,
             OemId = cat == "OTROS" ? req.OemId : null,
             StockGramos = Math.Max(0m, req.StockGramos ?? 0m),
@@ -434,6 +437,10 @@ public class CafeProductosController : ControllerBase
         else if (req.ClearPrecioOtro) p.PrecioOtro = null;
         if (req.PrecioBar.HasValue) p.PrecioBar = req.PrecioBar.Value;
         else if (req.ClearPrecioBar) p.PrecioBar = null;
+        if (req.PrecioBulto.HasValue) p.PrecioBulto = req.PrecioBulto.Value;
+        else if (req.ClearPrecioBulto) p.PrecioBulto = null;
+        if (req.PrecioBultoOtro.HasValue) p.PrecioBultoOtro = req.PrecioBultoOtro.Value;
+        else if (req.ClearPrecioBultoOtro) p.PrecioBultoOtro = null;
         if (req.UxB.HasValue) p.UxB = req.UxB.Value;
         else if (req.ClearUxB) p.UxB = null;
         if (req.OemId.HasValue) p.OemId = req.OemId.Value;

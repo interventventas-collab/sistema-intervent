@@ -550,6 +550,43 @@
                             💡 Estos precios son directos: el sistema usa el que corresponde según el tipo de cliente (BAR u OTRO), sin matriz de descuentos.
                         </p>
                     </div>
+                    @* ════════════ Precio del bulto (descuento por volumen) ════════════ *@
+                    <div style="background: #fef3c7; border: 1px solid #d97706; border-radius: 6px; padding: 0.6rem 0.8rem; margin-top: 0.5rem;">
+                        <h4 style="margin: 0 0 0.5rem; font-size: 0.85rem; color: #92400e;">📦 Precio del bulto (descuento por volumen) — opcional</h4>
+                        <p style="font-size: 0.7rem; color: #92400e; margin: 0 0 0.5rem;">
+                            Si el cliente lleva @(formUxB.HasValue && formUxB.Value > 0 ? formUxB.Value.ToString() : "UxB") o más, se le cobra el precio del bulto en vez del unitario. Sin bulto cargado: siempre cantidad × precio unitario.
+                        </p>
+                        <div class="form-row" style="margin: 0;">
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label" style="font-size: 0.75rem;">Precio bulto BAR</label>
+                                <input class="form-input" type="number" step="0.01" min="0"
+                                       @bind="formPrecioBulto"
+                                       placeholder="@(formPrecioBar.HasValue && formUxB.HasValue ? (formPrecioBar.Value * formUxB.Value).ToString("0.##") : "0,00")" />
+                                <p style="font-size: 0.7rem; color: #92400e; margin: 0.2rem 0 0;">
+                                    @if (formPrecioBulto.HasValue && formPrecioBulto.Value > 0 && formUxB.HasValue && formUxB.Value > 0)
+                                    {
+                                        var unit = Math.Round(formPrecioBulto.Value / formUxB.Value, 2);
+                                        <span>= $@FormatMoney(unit) c/u</span>
+                                    }
+                                    else { <span>Vacío = no aplica descuento por bulto.</span> }
+                                </p>
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label" style="font-size: 0.75rem;">Precio bulto OTRO</label>
+                                <input class="form-input" type="number" step="0.01" min="0"
+                                       @bind="formPrecioBultoOtro"
+                                       placeholder="@(formPrecioBulto.HasValue ? (formPrecioBulto.Value * 1.2m).ToString("0.##") : "0,00")" />
+                                <p style="font-size: 0.7rem; color: #92400e; margin: 0.2rem 0 0;">
+                                    @if (formPrecioBultoOtro.HasValue && formPrecioBultoOtro.Value > 0 && formUxB.HasValue && formUxB.Value > 0)
+                                    {
+                                        var unit = Math.Round(formPrecioBultoOtro.Value / formUxB.Value, 2);
+                                        <span>= $@FormatMoney(unit) c/u</span>
+                                    }
+                                    else { <span>Sugerido: bulto BAR × 1,2.</span> }
+                                </p>
+                            </div>
+                        </div>
+                    </div>
                     <div class="form-group">
                         <label class="form-label">Stock (unidades)</label>
                         <input class="form-input" type="number" step="1" min="0" @bind="formStockUnidades" />
@@ -933,6 +970,9 @@
     // Modelo NUEVO de precios (solo OTROS) — 2 precios directos:
     private decimal? formPrecioOtro;
     private decimal? formPrecioBar;
+    // Precio del bulto completo (descuento por volumen, SOLO OTROS):
+    private decimal? formPrecioBulto;
+    private decimal? formPrecioBultoOtro;
     // Márgenes editables: derivados del precio + costo. Sincronizados bidireccionalmente.
     private decimal? formMargenBar;
     private decimal? formMargenOtro;
@@ -1331,6 +1371,7 @@
         formIvaPctStr = "21";
         formBarPct = 100m; formUxB = null;
         formPrecioOtro = null; formPrecioBar = null;
+        formPrecioBulto = null; formPrecioBultoOtro = null;
         formMargenOtro = null; formMargenBar = null;
         formOemId = 0; oemSearch = ""; oemSearchOpen = false;
         formStockGramos = 0; formStockUnidades = 0;
@@ -1369,6 +1410,8 @@
             ? Math.Round((formPrecioOtro.Value / p.Costo - 1m) * 100m, 2, MidpointRounding.AwayFromZero)
             : (decimal?)null;
         formUxB = p.UxB;
+        formPrecioBulto = p.PrecioBulto;
+        formPrecioBultoOtro = p.PrecioBultoOtro;
         formOemId = p.OemId ?? 0; oemSearch = ""; oemSearchOpen = false;
         formStockGramos = p.StockGramos; formStockUnidades = p.StockUnidades;
         formStockKg = Math.Round(p.StockGramos / 1000m, 3, MidpointRounding.AwayFromZero);
@@ -1437,6 +1480,11 @@
                     PrecioBar = formCategoria == "OTROS" ? formPrecioBar : null,
                     ClearPrecioOtro = formCategoria == "OTROS" && !formPrecioOtro.HasValue,
                     ClearPrecioBar = formCategoria == "OTROS" && !formPrecioBar.HasValue,
+                    // Precio del bulto (descuento por volumen, SOLO OTROS):
+                    PrecioBulto = formCategoria == "OTROS" ? formPrecioBulto : null,
+                    PrecioBultoOtro = formCategoria == "OTROS" ? formPrecioBultoOtro : null,
+                    ClearPrecioBulto = formCategoria == "OTROS" && !formPrecioBulto.HasValue,
+                    ClearPrecioBultoOtro = formCategoria == "OTROS" && !formPrecioBultoOtro.HasValue,
                 });
                 if (u is null) { formError = "No se pudo actualizar"; return; }
                 ToastService.Success("Producto actualizado");
@@ -1461,6 +1509,9 @@
                     // Modelo NUEVO de precios (solo OTROS):
                     PrecioOtro = formCategoria == "OTROS" ? formPrecioOtro : null,
                     PrecioBar = formCategoria == "OTROS" ? formPrecioBar : null,
+                    // Precio del bulto (descuento por volumen, SOLO OTROS):
+                    PrecioBulto = formCategoria == "OTROS" ? formPrecioBulto : null,
+                    PrecioBultoOtro = formCategoria == "OTROS" ? formPrecioBultoOtro : null,
                 });
                 if (c is null) { formError = "No se pudo crear"; return; }
                 ToastService.Success("Producto creado");

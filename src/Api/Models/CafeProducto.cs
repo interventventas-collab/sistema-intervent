@@ -71,6 +71,17 @@ public class CafeProducto
     /// <summary>Unidades por bulto (informativo, solo OTROS).</summary>
     public int? UxB { get; set; }
 
+    /// <summary>Precio del bulto completo para clientes BAR. Si el cliente lleva >= UxB,
+    /// el sistema le cobra (bultosCompletos × PrecioBulto + sueltas × PrecioBar) en vez de
+    /// cantidad × PrecioBar. Permite descuento por volumen sin duplicar SKUs. Solo OTROS.</summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? PrecioBulto { get; set; }
+
+    /// <summary>Precio del bulto completo para clientes OTRO. Misma lógica que PrecioBulto pero
+    /// para tipoCliente != BAR.</summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? PrecioBultoOtro { get; set; }
+
     /// <summary>FK opcional al OEM origen del proveedor. 1 OEM puede alimentar a N variantes.</summary>
     public int? OemId { get; set; }
 

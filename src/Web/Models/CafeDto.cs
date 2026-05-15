@@ -97,6 +97,9 @@ public class CafeProductoDto
     /// <summary>Modelo NUEVO de precios (solo OTROS). null = usa modelo legacy.</summary>
     public decimal? PrecioOtro { get; set; }
     public decimal? PrecioBar { get; set; }
+    /// <summary>Precio del bulto completo (descuento por volumen, SOLO OTROS).</summary>
+    public decimal? PrecioBulto { get; set; }
+    public decimal? PrecioBultoOtro { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 
@@ -136,6 +139,9 @@ public class CreateCafeProductoRequest
     // Modelo NUEVO de precios (solo OTROS):
     public decimal? PrecioOtro { get; set; }
     public decimal? PrecioBar { get; set; }
+    // Precio del bulto completo (descuento por volumen, SOLO OTROS):
+    public decimal? PrecioBulto { get; set; }
+    public decimal? PrecioBultoOtro { get; set; }
 }
 
 public class UpdateCafeProductoRequest
@@ -167,6 +173,11 @@ public class UpdateCafeProductoRequest
     public decimal? PrecioBar { get; set; }
     public bool ClearPrecioOtro { get; set; }
     public bool ClearPrecioBar { get; set; }
+    // Precio del bulto completo (descuento por volumen, SOLO OTROS):
+    public decimal? PrecioBulto { get; set; }
+    public decimal? PrecioBultoOtro { get; set; }
+    public bool ClearPrecioBulto { get; set; }
+    public bool ClearPrecioBultoOtro { get; set; }
 }
 
 public class CafeSettingDto

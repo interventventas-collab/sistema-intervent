@@ -70,7 +70,10 @@ public record CafeProductoDto(
     DateTime CreatedAt, DateTime? UpdatedAt,
     decimal? OemPvpConIva = null, decimal? OemIvaPct = null,
     // Modelo nuevo de precios para OTROS (null = no aplica / cae al modelo legacy):
-    decimal? PrecioOtro = null, decimal? PrecioBar = null);
+    decimal? PrecioOtro = null, decimal? PrecioBar = null,
+    // Precio del bulto completo (descuento por volumen, SOLO OTROS). Si cantidad >= UxB,
+    // el sistema cobra (bultosCompletos × PrecioBulto + sueltas × PrecioBar/Otro).
+    decimal? PrecioBulto = null, decimal? PrecioBultoOtro = null);
 
 public class CreateCafeProductoRequest
 {
@@ -94,6 +97,9 @@ public class CreateCafeProductoRequest
     // Modelo nuevo de precios para OTROS:
     public decimal? PrecioOtro { get; set; }
     public decimal? PrecioBar { get; set; }
+    // Precio del bulto completo (descuento por volumen, SOLO OTROS).
+    public decimal? PrecioBulto { get; set; }
+    public decimal? PrecioBultoOtro { get; set; }
 }
 
 // ===== Kits (productos compuestos / BOM) =====
@@ -189,6 +195,11 @@ public class UpdateCafeProductoRequest
     public decimal? PrecioBar { get; set; }
     public bool ClearPrecioOtro { get; set; }
     public bool ClearPrecioBar { get; set; }
+    // Precio del bulto completo (descuento por volumen, SOLO OTROS).
+    public decimal? PrecioBulto { get; set; }
+    public decimal? PrecioBultoOtro { get; set; }
+    public bool ClearPrecioBulto { get; set; }
+    public bool ClearPrecioBultoOtro { get; set; }
 }
 
 // ===== Settings =====

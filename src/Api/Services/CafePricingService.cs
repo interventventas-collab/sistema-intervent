@@ -122,6 +122,35 @@ public static class CafePricingService
     public static decimal CalcularPrecioUnitario(CafeProducto producto, string formato, string tipoCliente, CafeSetting settings)
         => CalcularPrecioBreakdown(producto, formato, tipoCliente, settings).PrecioFinal;
 
+    /// <summary>Subtotal de linea aplicando descuento por bulto (volumen) si corresponde.
+    ///
+    /// Logica: si el producto es OTROS y tiene UxB + PrecioBulto cargados, y el cliente
+    /// compra >= UxB unidades, el sistema cobra (bultosCompletos × PrecioBulto + sueltas × precioUnitFinal).
+    /// Sino, subtotal normal = cantidad × precioUnitFinal.
+    ///
+    /// Esto permite tener UN solo SKU con descuento por volumen, en vez de duplicar el producto
+    /// con un codigo distinto para "bulto".
+    ///
+    /// Para CAFE no aplica (no hay bultos).
+    /// </summary>
+    public static decimal CalcularSubtotalConBulto(CafeProducto prod, string tipoCliente, decimal precioUnitFinal, decimal cantidad)
+    {
+        var fallback = Math.Round(precioUnitFinal * cantidad, 2, MidpointRounding.AwayFromZero);
+        if (prod.Categoria != "OTROS") return fallback;
+        if (!prod.UxB.HasValue || prod.UxB.Value <= 0) return fallback;
+        var precioBulto = tipoCliente == TIPO_BAR
+            ? (prod.PrecioBulto ?? prod.PrecioBultoOtro)
+            : (prod.PrecioBultoOtro ?? prod.PrecioBulto);
+        if (!precioBulto.HasValue || precioBulto.Value <= 0) return fallback;
+        var uxb = (decimal)prod.UxB.Value;
+        // Solo aplica si la cantidad alcanza al menos un bulto completo
+        if (cantidad < uxb) return fallback;
+        var bultosCompletos = Math.Floor(cantidad / uxb);
+        var sueltas = cantidad - bultosCompletos * uxb;
+        var subtotal = bultosCompletos * precioBulto.Value + sueltas * precioUnitFinal;
+        return Math.Round(subtotal, 2, MidpointRounding.AwayFromZero);
+    }
+
     /// <summary>Costo unitario que va al item (para calcular margen).</summary>
     public static decimal CalcularCostoUnitario(CafeProducto producto, string formato)
     {

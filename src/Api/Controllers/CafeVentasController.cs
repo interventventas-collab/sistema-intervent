@@ -1289,7 +1289,9 @@ public class CafeVentasController : ControllerBase
                 precioFinal = Math.Round(precioUnit * (1m - descPct / 100m), 2, MidpointRounding.AwayFromZero);
             }
             var costoUnit = CafePricingService.CalcularCostoUnitario(prod, it.Formato);
-            var subtotalLinea = Math.Round(precioFinal * it.Cantidad, 2, MidpointRounding.AwayFromZero);
+            // Aplica descuento por bulto si corresponde (producto OTROS con UxB + PrecioBulto cargados
+            // y cantidad >= UxB). Si no aplica, subtotal = cantidad × precioFinal.
+            var subtotalLinea = CafePricingService.CalcularSubtotalConBulto(prod, tipo, precioFinal, it.Cantidad);
             var gramosNecesarios = esCafe ? CafePricingService.GramosPorUnidad(it.Formato) * it.Cantidad : 0m;
             var stockOk = esCafe ? gramosNecesarios <= prod.StockGramos + 0.001m : it.Cantidad <= prod.StockUnidades;
             string? aviso = null;

@@ -3430,3 +3430,17 @@ BEGIN
     ALTER TABLE Cafe_ComboItems ADD EsEnvasePlateado BIT NOT NULL CONSTRAINT DF_CafeComboItems_EnvPlat DEFAULT 0;
 END
 GO
+
+-- Cafe_Productos: precio de bulto completo (descuento por volumen). Solo OTROS (no aplica a CAFE).
+-- Si el cliente compra >= UxB unidades, el sistema aplica este precio en lugar del PrecioBar/PrecioOtro * cantidad.
+-- Ejemplo P001 Collarin: UxB=1000, PrecioBar=40, PrecioBulto=35000. Si lleva 1000 sueltas pagaria $40k, pero el bulto sale $35k.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='PrecioBulto' AND Object_ID=OBJECT_ID('Cafe_Productos'))
+BEGIN
+    ALTER TABLE Cafe_Productos ADD PrecioBulto DECIMAL(18,2) NULL;
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='PrecioBultoOtro' AND Object_ID=OBJECT_ID('Cafe_Productos'))
+BEGIN
+    ALTER TABLE Cafe_Productos ADD PrecioBultoOtro DECIMAL(18,2) NULL;
+END
+GO
