@@ -108,6 +108,22 @@ public class CafeVenta
     [MaxLength(1000)]
     public string? ArcaError { get; set; }
 
+    /// <summary>Importe Neto (sin IVA) que ARCA registró efectivamente. Guardamos lo que devuelve
+    /// el FECAESolicitar para que el PDF reconstruya los totales sin lugar a interpretación.
+    /// NULL en facturas viejas (pre-2026-05-15) que no guardaban esto — para esas se calcula
+    /// fallback desde Subtotal/Total.</summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? ArcaImpNeto { get; set; }
+
+    /// <summary>Importe IVA que ARCA registró (=0 para Factura C).</summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? ArcaImpIVA { get; set; }
+
+    /// <summary>Importe Total (con IVA) que ARCA registró. Lo que el cliente declara en su CUIT.
+    /// Es el valor que se imprime grande en el PDF del comprobante.</summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? ArcaImpTotal { get; set; }
+
     // ============================================================
     // Trazabilidad Proforma → Factura
     // ============================================================

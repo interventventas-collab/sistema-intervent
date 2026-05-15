@@ -3522,3 +3522,23 @@ BEGIN
     );
 END
 GO
+
+-- Cafe_Ventas: importes que ARCA registró efectivamente al emitir.
+-- Antes los reconstruíamos en el PDF a partir de Subtotal/Total, lo cual era frágil cuando
+-- había descuento global (ARCA y PDF podían terminar desfasados). Ahora guardamos lo que
+-- ARCA devuelve en FECAESolicitar (ImpNeto, ImpIVA, ImpTotal) y el PDF lo lee textual.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ArcaImpNeto' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+BEGIN
+    ALTER TABLE Cafe_Ventas ADD ArcaImpNeto DECIMAL(18,2) NULL;
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ArcaImpIVA' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+BEGIN
+    ALTER TABLE Cafe_Ventas ADD ArcaImpIVA DECIMAL(18,2) NULL;
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ArcaImpTotal' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+BEGIN
+    ALTER TABLE Cafe_Ventas ADD ArcaImpTotal DECIMAL(18,2) NULL;
+END
+GO

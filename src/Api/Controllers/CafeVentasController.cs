@@ -198,22 +198,32 @@ public class CafeVentasController : ControllerBase
 
         var letra = ArcaInvoicePdfService.LetraDelTipo(v.ArcaCbteTipoNum ?? 0);
 
-        // Los precios del Café se cargan SIN IVA, por convención. Recalculamos
-        // neto/IVA/total acá igual que lo hizo ArcaInvoiceService al emitir
-        // contra ARCA, para que el PDF muestre los montos coherentes con el CAE
-        // (y el QR del comprobante lleve el mismo Importe Total que tiene ARCA).
+        // Importes para el PDF — fuente de verdad: lo que ARCA registró efectivamente.
         //
-        // IMPORTANTE (fix 2026-05-15): usamos v.Subtotal (NO v.Total) porque eso es lo que
-        // efectivamente recibió ARCA al emitir. El descuento GLOBAL (v.Descuento) no se le
-        // informaba a ARCA — quedaba como diferencia entre lo cobrado y lo declarado. El PDF
-        // debe ser fiel al comprobante real, sino el cliente no puede conciliar IVA con su CUIT.
-        // El descuento global cobrado en menos se compensa con Nota de Crédito.
-        //   - Letra A / B: total = neto + 21%
-        //   - Letra C:     total = neto (sin IVA)
-        decimal neto = v.Subtotal;
+        // ESTRATEGIA (post 2026-05-15):
+        //   - Si v.ArcaImpTotal está cargado → es la fuente de verdad: lo que ARCA tiene.
+        //     Usamos esos campos textuales. Garantiza que PDF == lo declarado en ARCA == lo que
+        //     el cliente ve en su CUIT. Imposible que difieran.
+        //   - Si está NULL → factura vieja pre-fix. Hacemos fallback al cálculo histórico
+        //     desde v.Subtotal (porque en ese momento ARCA recibía sumaItems sin restar descuento
+        //     global, y para que el PDF cuadre con ARCA usamos Subtotal).
+        decimal neto, ivaImporte, totalConIva;
+        if (v.ArcaImpTotal.HasValue)
+        {
+            neto = v.ArcaImpNeto ?? v.Subtotal;
+            ivaImporte = v.ArcaImpIVA ?? 0m;
+            totalConIva = v.ArcaImpTotal.Value;
+        }
+        else
+        {
+            // Fallback para facturas viejas que no guardaban ArcaImp*. Se usa Subtotal
+            // (no Total) porque en ese momento ARCA recibía el subtotal sin descuento global.
+            neto = v.Subtotal;
+            var ivaPctFallback = letra == "C" ? 0m : 21m;
+            ivaImporte = Math.Round(neto * ivaPctFallback / 100m, 2, MidpointRounding.AwayFromZero);
+            totalConIva = neto + ivaImporte;
+        }
         decimal ivaPct = letra == "C" ? 0m : 21m;
-        decimal ivaImporte = Math.Round(neto * ivaPct / 100m, 2, MidpointRounding.AwayFromZero);
-        decimal totalConIva = neto + ivaImporte;
 
         var comp = new PdfComprobante
         {
@@ -755,6 +765,11 @@ public class CafeVentasController : ControllerBase
                 venta.ArcaCbteNro = resultado.CbteNro;
                 venta.ArcaCbteTipoNum = resultado.CbteTipo;
                 venta.ArcaError = string.IsNullOrEmpty(resultado.Observaciones) ? null : resultado.Observaciones;
+                // Guardar los importes que ARCA registró efectivamente. El PDF los va a usar
+                // textualmente para que sea imposible que difieran entre PDF y CUIT del cliente.
+                venta.ArcaImpNeto = resultado.ImpNeto;
+                venta.ArcaImpIVA = resultado.ImpIVA;
+                venta.ArcaImpTotal = resultado.ImpTotal;
             }
             else
             {
