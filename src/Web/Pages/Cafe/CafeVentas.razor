@@ -720,6 +720,16 @@
                             <button class="btn btn-primary" type="button" @onclick="AddItem" style="width: 100%;">+ Agregar</button>
                         </div>
                     </div>
+                    @if (AvisoBultoConviene is not null)
+                    {
+                        <div style="margin: 0.4rem 0 0; padding: 0.5rem 0.7rem; background: #fef3c7; border: 1px solid #d97706; border-radius: 6px; display: flex; gap: 0.5rem; align-items: center; font-size: 0.85rem; color: #92400e;">
+                            <span>💡</span>
+                            <span style="flex: 1;">@AvisoBultoConviene</span>
+                            <button type="button" class="btn btn-secondary" @onclick="CambiarABulto" style="font-size: 0.75rem; padding: 0.25rem 0.6rem; white-space: nowrap;">
+                                Cambiar a Bulto
+                            </button>
+                        </div>
+                    }
                     }
 
                     @if (formItems.Count == 0)
@@ -1749,6 +1759,62 @@
             var uxb = p?.UxB ?? 0;
             return $"Bulto x {uxb}";
         }
+    }
+
+    /// <summary>Aviso suave para el operador: si carga Suelto con cantidad >= UxB y el producto
+    /// tiene precio de bulto, le sugiere cambiar a Bulto y le muestra cuánto le ahorraría al cliente.
+    /// null = no mostrar aviso.</summary>
+    private string? AvisoBultoConviene
+    {
+        get
+        {
+            if (!AddProductoTieneBulto) return null;
+            if (addFormato != "UNIT") return null;
+            var p = productos?.FirstOrDefault(x => x.Id == addProductoId);
+            if (p is null) return null;
+            var uxb = p.UxB ?? 0;
+            if (uxb <= 0 || addCantidad < uxb) return null;
+
+            // Calculo precio suelto vs precio bulto segun tipo de cliente actual.
+            var tipo = ClienteTipoActual();
+            var precioUnit = tipo == "BAR"
+                ? (p.PrecioBar ?? p.PrecioOtro ?? p.Pvp1 ?? 0m)
+                : (p.PrecioOtro ?? p.PrecioBar ?? p.Pvp2 ?? 0m);
+            var precioBulto = tipo == "BAR"
+                ? (p.PrecioBulto ?? p.PrecioBultoOtro)
+                : (p.PrecioBultoOtro ?? p.PrecioBulto);
+            if (!precioBulto.HasValue || precioBulto.Value <= 0 || precioUnit <= 0) return null;
+
+            var bultosCompletos = addCantidad / uxb;        // div entera
+            var sueltas = addCantidad - (bultosCompletos * uxb);
+            var costoComoSuelto = precioUnit * addCantidad;
+            var costoComoBulto = (bultosCompletos * precioBulto.Value) + (sueltas * precioUnit);
+            var ahorro = costoComoSuelto - costoComoBulto;
+            if (ahorro <= 0) return null;
+
+            return $"Conviene venderlo como Bulto: cobrás ${costoComoBulto:N0} en vez de ${costoComoSuelto:N0} (ahorra ${ahorro:N0} al cliente).";
+        }
+    }
+
+    /// <summary>Determina el tipo de cliente actual de la venta en curso (BAR / OTRO).</summary>
+    private string ClienteTipoActual()
+    {
+        if (!string.IsNullOrWhiteSpace(formClienteTipo))
+            return formClienteTipo.ToUpperInvariant() == "BAR" ? "BAR" : "OTRO";
+        return "OTRO";
+    }
+
+    /// <summary>Cambia el formato del item en carga a BULTO y ajusta la cantidad a "1 bulto"
+    /// (cantidad ÷ UxB redondeado hacia abajo). Click handler del botón "Cambiar a Bulto".</summary>
+    private void CambiarABulto()
+    {
+        var p = productos?.FirstOrDefault(x => x.Id == addProductoId);
+        var uxb = p?.UxB ?? 0;
+        if (uxb <= 0) return;
+        var nuevosBultos = addCantidad / uxb;       // div entera = bultos completos
+        if (nuevosBultos < 1) return;
+        addFormato = "BULTO";
+        addCantidad = nuevosBultos;
     }
 
     // Print
