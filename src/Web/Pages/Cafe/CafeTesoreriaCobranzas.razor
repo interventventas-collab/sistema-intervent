@@ -12,19 +12,68 @@
         }
         <h3 style="margin:0;">📥 Cobranzas (@vigentes@(anuladas > 0 ? $" + {anuladas} anuladas" : ""))</h3>
         <div style="display:flex; gap:0.5rem; align-items:center;">
-            @if (anuladas > 0)
-            {
-                <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.8rem; color:#6b7280;">
-                    <input type="checkbox" @bind="mostrarAnuladas" />
-                    Mostrar anuladas
-                </label>
-            }
             <button class="btn btn-primary" @onclick="ShowNueva">+ Nueva cobranza</button>
         </div>
     </div>
+    @* ─── Barra de filtros ─── *@
+    @if (cobranzas is not null && cobranzas.Count > 0)
+    {
+        <div style="background: #f9fafb; border-bottom: 1px solid #e5e7eb; padding: 0.6rem 1rem; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: end;">
+            <div style="display: flex; flex-direction: column; gap: 0.15rem; min-width: 130px;">
+                <label style="font-size: 0.7rem; color: #6b7280; font-weight: 600;">Desde</label>
+                <input type="date" class="form-input" style="padding: 0.3rem 0.5rem; font-size: 0.85rem;"
+                       value="@(filtroFechaDesde?.ToString("yyyy-MM-dd"))"
+                       @onchange="@(e => filtroFechaDesde = string.IsNullOrEmpty(e.Value?.ToString()) ? null : DateTime.Parse(e.Value.ToString()!))" />
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 0.15rem; min-width: 130px;">
+                <label style="font-size: 0.7rem; color: #6b7280; font-weight: 600;">Hasta</label>
+                <input type="date" class="form-input" style="padding: 0.3rem 0.5rem; font-size: 0.85rem;"
+                       value="@(filtroFechaHasta?.ToString("yyyy-MM-dd"))"
+                       @onchange="@(e => filtroFechaHasta = string.IsNullOrEmpty(e.Value?.ToString()) ? null : DateTime.Parse(e.Value.ToString()!))" />
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 0.15rem; flex: 1; min-width: 200px;">
+                <label style="font-size: 0.7rem; color: #6b7280; font-weight: 600;">Buscar</label>
+                <input class="form-input" style="padding: 0.3rem 0.5rem; font-size: 0.85rem;"
+                       @bind="filtroBuscar" @bind:event="oninput"
+                       placeholder="🔍 N° de recibo, cliente..." />
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 0.15rem; min-width: 130px;">
+                <label style="font-size: 0.7rem; color: #6b7280; font-weight: 600;">Estado</label>
+                <select class="form-input" style="padding: 0.3rem 0.5rem; font-size: 0.85rem;" @bind="filtroEstado">
+                    <option value="VIGENTE">Vigentes</option>
+                    <option value="ANULADA">Anuladas</option>
+                    <option value="TODOS">Todas</option>
+                </select>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 0.15rem; min-width: 150px;">
+                <label style="font-size: 0.7rem; color: #6b7280; font-weight: 600;">Retenciones</label>
+                <select class="form-input" style="padding: 0.3rem 0.5rem; font-size: 0.85rem;" @bind="filtroRetenciones">
+                    <option value="TODOS">Todas</option>
+                    <option value="CON">Con retenciones</option>
+                    <option value="SIN">Sin retenciones</option>
+                </select>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 0.15rem; min-width: 110px;">
+                <label style="font-size: 0.7rem; color: #6b7280; font-weight: 600;">Monto mín.</label>
+                <input class="form-input" style="padding: 0.3rem 0.5rem; font-size: 0.85rem;" type="number" min="0" step="1000"
+                       @bind="filtroMontoMin" @bind:event="oninput" placeholder="$0" />
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 0.15rem; min-width: 110px;">
+                <label style="font-size: 0.7rem; color: #6b7280; font-weight: 600;">Monto máx.</label>
+                <input class="form-input" style="padding: 0.3rem 0.5rem; font-size: 0.85rem;" type="number" min="0" step="1000"
+                       @bind="filtroMontoMax" @bind:event="oninput" placeholder="∞" />
+            </div>
+            @if (HayFiltrosActivos)
+            {
+                <button class="btn btn-secondary" @onclick="LimpiarFiltros"
+                        style="padding: 0.35rem 0.7rem; font-size: 0.8rem;"
+                        title="Limpiar todos los filtros">✕ Limpiar</button>
+            }
+        </div>
+    }
     <div class="card-body" style="padding:0;">
         @{
-            var cobranzasFiltradas = cobranzas?.Where(c => mostrarAnuladas || c.Estado != "ANULADA").ToList() ?? new();
+            var cobranzasFiltradas = AplicarFiltros();
         }
         @if (loading)
         {
@@ -32,7 +81,7 @@
         }
         else if (cobranzasFiltradas.Count == 0)
         {
-            <p class="text-muted" style="padding:1rem;">@(cobranzas?.Count > 0 ? "No hay cobranzas vigentes. Tildá 'Mostrar anuladas' para ver el historial." : "Sin cobranzas aún. Hace clic en \"+ Nueva cobranza\" para empezar.")</p>
+            <p class="text-muted" style="padding:1rem;">@(cobranzas?.Count > 0 ? "No hay cobranzas que coincidan con los filtros. Tocá ✕ Limpiar para verlas todas." : "Sin cobranzas aún. Hace clic en \"+ Nueva cobranza\" para empezar.")</p>
         }
         else
         {
@@ -73,6 +122,15 @@
                     }
                 </tbody>
             </table>
+            @* Totales del filtro actual *@
+            <div style="background:#f9fafb; border-top:1px solid #e5e7eb; padding:0.6rem 1rem; display:flex; gap:1rem; flex-wrap:wrap; font-size:0.85rem; color:#4b5563;">
+                <div>📊 <strong>@cobranzasFiltradas.Count</strong> cobranza(s)</div>
+                <div>💰 Total: <strong style="color:#16a34a;">$@cobranzasFiltradas.Where(c => c.Estado != "ANULADA").Sum(c => c.Total).ToString("N2")</strong></div>
+                @if (cobranzasFiltradas.Any(c => c.Retenciones > 0))
+                {
+                    <div>📋 Retenciones: <strong>$@cobranzasFiltradas.Where(c => c.Estado != "ANULADA").Sum(c => c.Retenciones).ToString("N2")</strong></div>
+                }
+            </div>
         }
     </div>
 </div>
@@ -315,6 +373,68 @@
     // Por default ocultamos las cobranzas anuladas para que el listado quede limpio.
     // El usuario puede tildar el checkbox del header si quiere ver el historial.
     private bool mostrarAnuladas = false;
+
+    // ─── Filtros ───
+    private DateTime? filtroFechaDesde;
+    private DateTime? filtroFechaHasta;
+    private string filtroBuscar = "";
+    private string filtroEstado = "VIGENTE";     // VIGENTE | ANULADA | TODOS
+    private string filtroRetenciones = "TODOS";  // TODOS | CON | SIN
+    private decimal? filtroMontoMin;
+    private decimal? filtroMontoMax;
+
+    private bool HayFiltrosActivos =>
+        filtroFechaDesde.HasValue || filtroFechaHasta.HasValue
+        || !string.IsNullOrWhiteSpace(filtroBuscar)
+        || filtroEstado != "VIGENTE"
+        || filtroRetenciones != "TODOS"
+        || filtroMontoMin.HasValue || filtroMontoMax.HasValue;
+
+    private void LimpiarFiltros()
+    {
+        filtroFechaDesde = null;
+        filtroFechaHasta = null;
+        filtroBuscar = "";
+        filtroEstado = "VIGENTE";
+        filtroRetenciones = "TODOS";
+        filtroMontoMin = null;
+        filtroMontoMax = null;
+    }
+
+    /// <summary>Aplica los filtros activos a la lista de cobranzas. Se llama desde el render.</summary>
+    private List<CobranzaListDto> AplicarFiltros()
+    {
+        if (cobranzas is null) return new();
+        IEnumerable<CobranzaListDto> q = cobranzas;
+
+        // Estado
+        if (filtroEstado == "VIGENTE") q = q.Where(c => c.Estado != "ANULADA");
+        else if (filtroEstado == "ANULADA") q = q.Where(c => c.Estado == "ANULADA");
+        // si TODOS no filtra
+
+        // Rango de fechas
+        if (filtroFechaDesde.HasValue) q = q.Where(c => c.Fecha.Date >= filtroFechaDesde.Value.Date);
+        if (filtroFechaHasta.HasValue) q = q.Where(c => c.Fecha.Date <= filtroFechaHasta.Value.Date);
+
+        // Buscar texto (número o cliente)
+        if (!string.IsNullOrWhiteSpace(filtroBuscar))
+        {
+            var t = filtroBuscar.Trim().ToUpperInvariant();
+            q = q.Where(c =>
+                (c.Numero ?? "").ToUpperInvariant().Contains(t)
+                || (c.ClienteNombre ?? "").ToUpperInvariant().Contains(t));
+        }
+
+        // Retenciones
+        if (filtroRetenciones == "CON") q = q.Where(c => c.Retenciones > 0);
+        else if (filtroRetenciones == "SIN") q = q.Where(c => c.Retenciones == 0);
+
+        // Monto
+        if (filtroMontoMin.HasValue) q = q.Where(c => c.Total >= filtroMontoMin.Value);
+        if (filtroMontoMax.HasValue) q = q.Where(c => c.Total <= filtroMontoMax.Value);
+
+        return q.ToList();
+    }
 
     // Eliminacion definitiva de cobranzas anuladas — requiere clave del usuario
     private CobranzaListDto? eliminandoCobranza;
