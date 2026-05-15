@@ -734,6 +734,17 @@ public class ApiClient
         return null;
     }
 
+    /// <summary>Excel con los productos vendidos en el rango de fechas, agrupados + hoja con detalle.</summary>
+    public async Task<byte[]?> ExportCafeProductosVendidosAsync(DateTime desde, DateTime hasta)
+    {
+        await SetAuthHeaderAsync();
+        var url = $"/api/cafe/ventas/export/productos-vendidos?desde={desde:yyyy-MM-dd}&hasta={hasta:yyyy-MM-dd}";
+        var response = await _http.GetAsync(url);
+        if (response.IsSuccessStatusCode) return await response.Content.ReadAsByteArrayAsync();
+        await ThrowIfErrorAsync(response);
+        return null;
+    }
+
     // --- Cafe: Compras ---
     public async Task<List<CafeCompraDto>?> GetCafeComprasAsync(DateTime? from = null, DateTime? to = null, string? estado = null, int? proveedorId = null)
     {

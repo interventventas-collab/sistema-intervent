@@ -104,6 +104,23 @@
                         style="padding: 0.35rem 0.7rem; font-size: 0.8rem;"
                         title="Limpiar todos los filtros">✕ Limpiar</button>
             }
+            <div style="margin-left: auto; display: flex; gap: 0.3rem; align-items: center;">
+                <select class="form-input" style="padding: 0.3rem 0.5rem; font-size: 0.8rem;" @bind="rangoExportPreset" @bind:after="AplicarPresetExport"
+                        title="Atajos rápidos de fecha para exportar">
+                    <option value="">📅 Rango exportar...</option>
+                    <option value="HOY">Hoy</option>
+                    <option value="AYER">Ayer</option>
+                    <option value="SEMANA">Esta semana</option>
+                    <option value="MES">Este mes</option>
+                    <option value="MES_PASADO">Mes pasado</option>
+                </select>
+                <button class="btn btn-primary" style="padding: 0.35rem 0.7rem; font-size: 0.8rem; background: #16a34a; border-color: #15803d;"
+                        @onclick="ExportarProductosVendidos"
+                        disabled="@exportando"
+                        title="Descarga un Excel con todos los productos vendidos en el rango Desde/Hasta">
+                    @(exportando ? "Generando..." : "📊 Excel productos")
+                </button>
+            </div>
         </div>
     }
     <div class="card-body" style="padding: 0;">
@@ -1644,6 +1661,64 @@
     // ===== Filtros del listado =====
     private DateTime? filtroFechaDesde;
     private DateTime? filtroFechaHasta;
+    private string rangoExportPreset = "";
+    private bool exportando;
+
+    /// <summary>Aplica un preset rápido de fechas al filtro Desde/Hasta cuando el usuario lo elige
+    /// del dropdown junto al botón de exportar.</summary>
+    private void AplicarPresetExport()
+    {
+        var hoy = DateTime.Today;
+        switch (rangoExportPreset)
+        {
+            case "HOY":
+                filtroFechaDesde = hoy; filtroFechaHasta = hoy; break;
+            case "AYER":
+                filtroFechaDesde = hoy.AddDays(-1); filtroFechaHasta = hoy.AddDays(-1); break;
+            case "SEMANA":
+                // Semana actual: lunes a domingo
+                var diff = ((int)hoy.DayOfWeek + 6) % 7;
+                filtroFechaDesde = hoy.AddDays(-diff);
+                filtroFechaHasta = filtroFechaDesde.Value.AddDays(6);
+                break;
+            case "MES":
+                filtroFechaDesde = new DateTime(hoy.Year, hoy.Month, 1);
+                filtroFechaHasta = filtroFechaDesde.Value.AddMonths(1).AddDays(-1);
+                break;
+            case "MES_PASADO":
+                var primDiaEsteMes = new DateTime(hoy.Year, hoy.Month, 1);
+                filtroFechaHasta = primDiaEsteMes.AddDays(-1);
+                filtroFechaDesde = new DateTime(filtroFechaHasta.Value.Year, filtroFechaHasta.Value.Month, 1);
+                break;
+        }
+        rangoExportPreset = "";  // reset el dropdown
+    }
+
+    /// <summary>Descarga un Excel con los productos vendidos en el rango Desde/Hasta del filtro.
+    /// Si los filtros están vacíos, exporta TODO el mes actual.</summary>
+    private async Task ExportarProductosVendidos()
+    {
+        exportando = true;
+        try
+        {
+            var hoy = DateTime.Today;
+            var d = filtroFechaDesde ?? new DateTime(hoy.Year, hoy.Month, 1);
+            var h = filtroFechaHasta ?? hoy;
+            var bytes = await Api.ExportCafeProductosVendidosAsync(d, h);
+            if (bytes is null || bytes.Length == 0)
+            {
+                ToastService.Error("No se pudo generar el Excel");
+                return;
+            }
+            var filename = $"productos-vendidos_{d:yyyyMMdd}_{h:yyyyMMdd}.xlsx";
+            var b64 = Convert.ToBase64String(bytes);
+            await JS.InvokeVoidAsync("downloadBytesAsFile", filename, b64,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            ToastService.Success($"Excel descargado ({d:dd/MM} a {h:dd/MM})");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { exportando = false; }
+    }
     private string filtroCliente = "";
     private string filtroTipo = "TODOS";       // TODOS | X | PRO | FA | FB | FC
     private string filtroEstado = "TODOS";     // TODOS | emitido | anulado

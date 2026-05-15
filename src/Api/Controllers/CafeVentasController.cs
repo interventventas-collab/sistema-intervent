@@ -2,6 +2,7 @@ using Api.Data;
 using Api.DTOs;
 using Api.Models;
 using Api.Services;
+using ClosedXML.Excel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -1454,4 +1455,151 @@ public class CafeVentasController : ControllerBase
         }
         return $"{prefix}{(max + 1):D4}";
     }
+
+    // ============================================================
+    // EXPORT — productos vendidos agrupados, descargable en Excel
+    // ============================================================
+
+    /// <summary>Devuelve un Excel con TODOS los productos vendidos en el rango indicado, agrupados
+    /// por (SKU, Producto, Formato) y sumando cantidades y montos. Si el usuario quiere el detalle
+    /// venta-por-venta usa includeDetalle=true (segunda hoja). Pensado para que el dueño baje los
+    /// articulos vendidos y los importe en otro sistema (Contabilium / contadora). Solo cuenta
+    /// ventas EMITIDAS (no anuladas).</summary>
+    [HttpGet("export/productos-vendidos")]
+    public async Task<IActionResult> ExportProductosVendidos(
+        [FromQuery] DateTime? desde = null,
+        [FromQuery] DateTime? hasta = null,
+        [FromQuery] bool includeDetalle = true)
+    {
+        // Default: este mes
+        var hoy = DateTime.UtcNow.AddHours(-3).Date;
+        var d = (desde ?? new DateTime(hoy.Year, hoy.Month, 1)).Date;
+        var h = (hasta ?? hoy).Date;
+        if (h < d) (d, h) = (h, d); // swap si vino al revés
+
+        // Traer items de ventas EMITIDAS en el rango
+        var items = await _db.CafeVentaItems
+            .Include(i => i.VentaNav)
+            .Include(i => i.ProductoNav)
+            .Where(i => i.VentaNav != null && i.VentaNav.Estado == "emitido"
+                     && i.VentaNav.Fecha >= d && i.VentaNav.Fecha <= h)
+            .ToListAsync();
+
+        using var wb = new XLWorkbook();
+
+        // ===== Hoja 1: AGRUPADO por producto =====
+        var ws = wb.Worksheets.Add("Productos vendidos");
+        ws.Cell(1, 1).Value = "Productos vendidos";
+        ws.Range(1, 1, 1, 8).Merge().Style.Font.SetBold(true).Font.SetFontSize(14);
+        ws.Cell(2, 1).Value = $"Período: {d:dd/MM/yyyy} a {h:dd/MM/yyyy}";
+        ws.Range(2, 1, 2, 8).Merge().Style.Font.SetItalic(true).Font.SetFontColor(XLColor.DarkGray);
+
+        var headerRow = 4;
+        var headers = new[] { "SKU", "Producto", "Categoría", "Formato", "Cant. total", "Subtotal", "Costo", "Margen" };
+        for (int i = 0; i < headers.Length; i++)
+        {
+            var c = ws.Cell(headerRow, i + 1);
+            c.Value = headers[i];
+            c.Style.Font.SetBold(true);
+            c.Style.Fill.SetBackgroundColor(XLColor.LightGray);
+            c.Style.Border.SetBottomBorder(XLBorderStyleValues.Thin);
+        }
+
+        var agrupado = items
+            .Where(i => !i.EsConceptoLibre)
+            .GroupBy(i => new {
+                Sku = i.ProductoNav?.Sku ?? "(sin sku)",
+                Nombre = i.ProductoNombreSnapshot,
+                Categoria = i.Categoria,
+                Formato = i.Formato })
+            .Select(g => new
+            {
+                g.Key.Sku, g.Key.Nombre, g.Key.Categoria, g.Key.Formato,
+                CantTotal = g.Sum(x => x.Cantidad),
+                Subtotal = g.Sum(x => x.Subtotal),
+                Costo = g.Sum(x => x.CostoUnitario * x.Cantidad),
+                Margen = g.Sum(x => x.Subtotal - x.CostoUnitario * x.Cantidad)
+            })
+            .OrderBy(x => x.Sku).ThenBy(x => x.Nombre)
+            .ToList();
+
+        int row = headerRow + 1;
+        foreach (var a in agrupado)
+        {
+            ws.Cell(row, 1).Value = a.Sku;
+            ws.Cell(row, 2).Value = a.Nombre;
+            ws.Cell(row, 3).Value = a.Categoria;
+            ws.Cell(row, 4).Value = FormatoNombre(a.Formato);
+            ws.Cell(row, 5).Value = a.CantTotal;
+            ws.Cell(row, 6).Value = a.Subtotal; ws.Cell(row, 6).Style.NumberFormat.Format = "#,##0.00";
+            ws.Cell(row, 7).Value = a.Costo;    ws.Cell(row, 7).Style.NumberFormat.Format = "#,##0.00";
+            ws.Cell(row, 8).Value = a.Margen;   ws.Cell(row, 8).Style.NumberFormat.Format = "#,##0.00";
+            row++;
+        }
+
+        // Fila TOTAL
+        if (agrupado.Any())
+        {
+            ws.Cell(row, 1).Value = "TOTAL";
+            ws.Cell(row, 1).Style.Font.SetBold(true);
+            ws.Range(row, 1, row, 4).Merge().Style.Font.SetBold(true);
+            ws.Cell(row, 5).Value = agrupado.Sum(a => a.CantTotal); ws.Cell(row, 5).Style.Font.SetBold(true);
+            ws.Cell(row, 6).Value = agrupado.Sum(a => a.Subtotal); ws.Cell(row, 6).Style.NumberFormat.Format = "#,##0.00"; ws.Cell(row, 6).Style.Font.SetBold(true);
+            ws.Cell(row, 7).Value = agrupado.Sum(a => a.Costo);    ws.Cell(row, 7).Style.NumberFormat.Format = "#,##0.00"; ws.Cell(row, 7).Style.Font.SetBold(true);
+            ws.Cell(row, 8).Value = agrupado.Sum(a => a.Margen);   ws.Cell(row, 8).Style.NumberFormat.Format = "#,##0.00"; ws.Cell(row, 8).Style.Font.SetBold(true);
+            ws.Range(row, 1, row, 8).Style.Fill.SetBackgroundColor(XLColor.LightYellow);
+        }
+
+        ws.Columns().AdjustToContents();
+        ws.SheetView.FreezeRows(headerRow);
+
+        // ===== Hoja 2: DETALLE línea por línea =====
+        if (includeDetalle && items.Any())
+        {
+            var ws2 = wb.Worksheets.Add("Detalle por venta");
+            var det = new[] { "Fecha", "N° Venta", "Cliente", "SKU", "Producto", "Categoría", "Formato", "Cant.", "P. Unit.", "Desc %", "Subtotal", "Tipo" };
+            for (int i = 0; i < det.Length; i++)
+            {
+                var c = ws2.Cell(1, i + 1);
+                c.Value = det[i];
+                c.Style.Font.SetBold(true);
+                c.Style.Fill.SetBackgroundColor(XLColor.LightGray);
+            }
+            int r2 = 2;
+            foreach (var it in items.OrderBy(x => x.VentaNav!.Fecha).ThenBy(x => x.VentaNav!.Numero))
+            {
+                ws2.Cell(r2, 1).Value = it.VentaNav!.Fecha; ws2.Cell(r2, 1).Style.DateFormat.Format = "dd/MM/yyyy";
+                ws2.Cell(r2, 2).Value = it.VentaNav!.Numero;
+                ws2.Cell(r2, 3).Value = it.VentaNav!.ClienteNombreSnapshot ?? "—";
+                ws2.Cell(r2, 4).Value = it.ProductoNav?.Sku ?? "";
+                ws2.Cell(r2, 5).Value = it.ProductoNombreSnapshot;
+                ws2.Cell(r2, 6).Value = it.Categoria;
+                ws2.Cell(r2, 7).Value = FormatoNombre(it.Formato);
+                ws2.Cell(r2, 8).Value = it.Cantidad;
+                ws2.Cell(r2, 9).Value = it.PrecioUnitario; ws2.Cell(r2, 9).Style.NumberFormat.Format = "#,##0.00";
+                ws2.Cell(r2, 10).Value = it.DescuentoPct;
+                ws2.Cell(r2, 11).Value = it.Subtotal; ws2.Cell(r2, 11).Style.NumberFormat.Format = "#,##0.00";
+                ws2.Cell(r2, 12).Value = it.VentaNav!.TipoComprobante;
+                r2++;
+            }
+            ws2.Columns().AdjustToContents();
+            ws2.SheetView.FreezeRows(1);
+        }
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        var bytes = ms.ToArray();
+        var filename = $"productos-vendidos_{d:yyyyMMdd}_{h:yyyyMMdd}.xlsx";
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename);
+    }
+
+    private static string FormatoNombre(string f) => f switch
+    {
+        "1KG" => "1 kg",
+        "MEDIO" => "1/2 kg",
+        "CUARTO" => "1/4 kg",
+        "UNIT" => "Unidad",
+        "BULTO" => "Bulto",
+        _ => f
+    };
 }
