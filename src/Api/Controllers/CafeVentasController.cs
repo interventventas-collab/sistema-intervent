@@ -18,7 +18,7 @@ public class CafeVentasController : ControllerBase
     private readonly ArcaInvoiceService _arcaInvoiceService;
     private readonly ArcaInvoicePdfService _arcaPdfService;
     private readonly ArcaEmisorService _emisorService;
-    private static readonly string[] FormatosValidos = { "1KG", "MEDIO", "CUARTO", "UNIT" };
+    private static readonly string[] FormatosValidos = { "1KG", "MEDIO", "CUARTO", "UNIT", "BULTO" };
 
     public CafeVentasController(
         AppDbContext db,
@@ -555,11 +555,14 @@ public class CafeVentasController : ControllerBase
                 DescuentoPct = it.DescuentoPct
             });
 
-            // Descontar stock
+            // Descontar stock. Si el formato es BULTO, 1 unidad cargada = UxB unidades reales.
             if (prod.Categoria == "CAFE")
                 prod.StockGramos = Math.Max(0m, prod.StockGramos - it.GramosNecesarios);
             else
-                prod.StockUnidades = Math.Max(0, prod.StockUnidades - it.Cantidad);
+            {
+                var unidadesADescontar = it.Formato == "BULTO" ? it.Cantidad * (prod.UxB ?? 1) : it.Cantidad;
+                prod.StockUnidades = Math.Max(0, prod.StockUnidades - unidadesADescontar);
+            }
             prod.UpdatedAt = DateTime.UtcNow;
         }
 
@@ -903,7 +906,11 @@ public class CafeVentasController : ControllerBase
             if (prod.Categoria == "CAFE")
                 prod.StockGramos += it.GramosDescontados;
             else
-                prod.StockUnidades += it.Cantidad;
+            {
+                // Si el formato fue BULTO, devolver cantidad × UxB unidades.
+                var unidadesADevolver = it.Formato == "BULTO" ? it.Cantidad * (prod.UxB ?? 1) : it.Cantidad;
+                prod.StockUnidades += unidadesADevolver;
+            }
             prod.UpdatedAt = DateTime.UtcNow;
         }
         v.Estado = "anulado";
@@ -1065,7 +1072,11 @@ public class CafeVentasController : ControllerBase
                     var prod = await _db.CafeProductos.FindAsync(item.ProductoId.Value);
                     if (prod is null) continue;
                     if (prod.Categoria == "CAFE") prod.StockGramos += item.GramosDescontados;
-                    else prod.StockUnidades += item.Cantidad;
+                    else
+                    {
+                        var unidadesADevolver = item.Formato == "BULTO" ? item.Cantidad * (prod.UxB ?? 1) : item.Cantidad;
+                        prod.StockUnidades += unidadesADevolver;
+                    }
                     prod.UpdatedAt = DateTime.UtcNow;
                 }
                 _db.CafeVentaItems.RemoveRange(v.Items);
@@ -1107,7 +1118,10 @@ public class CafeVentasController : ControllerBase
                     if (prod.Categoria == "CAFE")
                         prod.StockGramos = Math.Max(0m, prod.StockGramos - ci.GramosNecesarios);
                     else
-                        prod.StockUnidades = Math.Max(0, prod.StockUnidades - ci.Cantidad);
+                    {
+                        var unidadesADescontar = ci.Formato == "BULTO" ? ci.Cantidad * (prod.UxB ?? 1) : ci.Cantidad;
+                        prod.StockUnidades = Math.Max(0, prod.StockUnidades - unidadesADescontar);
+                    }
                     prod.UpdatedAt = DateTime.UtcNow;
                 }
 
@@ -1167,7 +1181,11 @@ public class CafeVentasController : ControllerBase
                 var prod = await _db.CafeProductos.FindAsync(it.ProductoId.Value);
                 if (prod is null) continue;
                 if (prod.Categoria == "CAFE") prod.StockGramos += it.GramosDescontados;
-                else prod.StockUnidades += it.Cantidad;
+                else
+                {
+                    var unidadesADevolver = it.Formato == "BULTO" ? it.Cantidad * (prod.UxB ?? 1) : it.Cantidad;
+                    prod.StockUnidades += unidadesADevolver;
+                }
             }
         }
         // Desvincular las cobranzas que referenciaban esta venta (les ponemos VentaId=null = quedan
@@ -1262,14 +1280,25 @@ public class CafeVentasController : ControllerBase
                 continue;
             }
 
-            // Validar combinación: formato unitario solo para OTROS, formatos kg solo para CAFE.
+            // Validar combinación: formato unitario / bulto solo para OTROS, formatos kg solo para CAFE.
             var esCafe = prod.Categoria == "CAFE";
             var esFormatoCafe = it.Formato is "1KG" or "MEDIO" or "CUARTO";
+            var esFormatoBulto = it.Formato == "BULTO";
             if (esCafe != esFormatoCafe)
             {
                 cotizadoItems.Add(new CafeCotizadoItemDto(
                     prod.Id, prod.Nombre, prod.Categoria, it.Formato, it.Cantidad, 0m, 0m, 0m, 0m, prod.StockGramos, prod.StockUnidades,
-                    false, esCafe ? "Para café usá 1 kg / 1/2 kg / 1/4 kg" : "Para otros productos usá 'unidad'",
+                    false, esCafe ? "Para café usá 1 kg / 1/2 kg / 1/4 kg" : "Para otros productos usá 'unidad' o 'bulto'",
+                    NormMolienda(it.Molienda), it.EsDoyPack, descPctManual));
+                todoOk = false;
+                continue;
+            }
+            // BULTO requiere producto OTROS con UxB cargado y al menos un precio de bulto cargado.
+            if (esFormatoBulto && (!prod.UxB.HasValue || prod.UxB.Value <= 0 || (!prod.PrecioBulto.HasValue && !prod.PrecioBultoOtro.HasValue)))
+            {
+                cotizadoItems.Add(new CafeCotizadoItemDto(
+                    prod.Id, prod.Nombre, prod.Categoria, it.Formato, it.Cantidad, 0m, 0m, 0m, 0m, prod.StockGramos, prod.StockUnidades,
+                    false, "Este producto no tiene precio de bulto cargado",
                     NormMolienda(it.Molienda), it.EsDoyPack, descPctManual));
                 todoOk = false;
                 continue;
@@ -1293,13 +1322,15 @@ public class CafeVentasController : ControllerBase
             // y cantidad >= UxB). Si no aplica, subtotal = cantidad × precioFinal.
             var subtotalLinea = CafePricingService.CalcularSubtotalConBulto(prod, tipo, precioFinal, it.Cantidad);
             var gramosNecesarios = esCafe ? CafePricingService.GramosPorUnidad(it.Formato) * it.Cantidad : 0m;
-            var stockOk = esCafe ? gramosNecesarios <= prod.StockGramos + 0.001m : it.Cantidad <= prod.StockUnidades;
+            // Si es BULTO, una "unidad" cargada = UxB unidades reales de stock. Sino, 1 a 1.
+            var unidadesNecesarias = esFormatoBulto ? it.Cantidad * (prod.UxB ?? 0) : it.Cantidad;
+            var stockOk = esCafe ? gramosNecesarios <= prod.StockGramos + 0.001m : unidadesNecesarias <= prod.StockUnidades;
             string? aviso = null;
             if (!stockOk)
             {
                 aviso = esCafe
                     ? $"Stock insuficiente. Disponible: {prod.StockGramos:0} g, necesitás {gramosNecesarios:0} g."
-                    : $"Stock insuficiente. Disponible: {prod.StockUnidades} u, necesitás {it.Cantidad}.";
+                    : $"Stock insuficiente. Disponible: {prod.StockUnidades} u, necesitás {unidadesNecesarias} u ({(esFormatoBulto ? $"{it.Cantidad} bulto×{prod.UxB}" : $"{it.Cantidad}")}).";
                 todoOk = false;
             }
 

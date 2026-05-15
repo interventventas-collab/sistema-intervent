@@ -704,7 +704,11 @@
                                 }
                                 else
                                 {
-                                    <option value="UNIT">unidad</option>
+                                    <option value="UNIT">Suelto</option>
+                                    @if (AddProductoTieneBulto)
+                                    {
+                                        <option value="BULTO">@AddProductoBultoLabel</option>
+                                    }
                                 }
                             </select>
                         </div>
@@ -1722,6 +1726,30 @@
     private bool comboSearchOpen;
 
     private string AddProductoCategoria => productos?.FirstOrDefault(x => x.Id == addProductoId)?.Categoria ?? "CAFE";
+
+    /// <summary>True si el producto seleccionado es OTROS con UxB + algun PrecioBulto cargado.
+    /// Habilita la opcion "Bulto" en el dropdown de formato.</summary>
+    private bool AddProductoTieneBulto
+    {
+        get
+        {
+            var p = productos?.FirstOrDefault(x => x.Id == addProductoId);
+            if (p is null || p.Categoria != "OTROS") return false;
+            if (!p.UxB.HasValue || p.UxB.Value <= 0) return false;
+            return p.PrecioBulto.HasValue || p.PrecioBultoOtro.HasValue;
+        }
+    }
+
+    /// <summary>Etiqueta para la opcion BULTO en el dropdown: "Bulto x 1000".</summary>
+    private string AddProductoBultoLabel
+    {
+        get
+        {
+            var p = productos?.FirstOrDefault(x => x.Id == addProductoId);
+            var uxb = p?.UxB ?? 0;
+            return $"Bulto x {uxb}";
+        }
+    }
 
     // Print
     private CafeVentaDto? printVenta;
@@ -2751,7 +2779,8 @@
         "1KG" => "1 kg",
         "MEDIO" => "1/2 kg",
         "CUARTO" => "1/4 kg",
-        "UNIT" => "u.",
+        "UNIT" => "Unidad",
+        "BULTO" => "Bulto",
         _ => formato
     };
 

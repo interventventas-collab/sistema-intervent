@@ -506,6 +506,7 @@ public class CafeCotizacionPdfService
         "MEDIO" => "1/2 kg",
         "CUARTO" => "1/4 kg",
         "UNIT" => "Unidad",
+        "BULTO" => "Bulto",
         _ => f
     };
 }

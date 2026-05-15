@@ -26,6 +26,7 @@ public static class CafePricingService
     public const string FORMATO_MEDIO = "MEDIO";
     public const string FORMATO_CUARTO = "CUARTO";
     public const string FORMATO_UNIT = "UNIT";
+    public const string FORMATO_BULTO = "BULTO";  // SOLO OTROS: vende 1 bulto = UxB unidades, precio = PrecioBulto/Otro
 
     public const string TIPO_BAR = "BAR";
     public const string TIPO_OTRO = "OTRO";
@@ -46,6 +47,7 @@ public static class CafePricingService
         FORMATO_MEDIO => "1/2 kg",
         FORMATO_CUARTO => "1/4 kg",
         FORMATO_UNIT => "u.",
+        FORMATO_BULTO => "bulto",
         _ => formato
     };
 
@@ -78,12 +80,23 @@ public static class CafePricingService
         var desc = Math.Max(0m, Math.Min(100m, descuentoPct));
         decimal lista, final;
 
-        // Elegir el precio directo segun el tipo de cliente
+        // Elegir el precio directo segun el tipo de cliente. Si el formato es BULTO
+        // (solo OTROS), usamos PrecioBulto/PrecioBultoOtro como precio unitario "del bulto".
         decimal? precioDirecto;
-        if (tipoCliente == TIPO_BAR)
-            precioDirecto = producto.PrecioBar ?? producto.PrecioOtro;
+        if (formato == FORMATO_BULTO)
+        {
+            if (tipoCliente == TIPO_BAR)
+                precioDirecto = producto.PrecioBulto ?? producto.PrecioBultoOtro;
+            else
+                precioDirecto = producto.PrecioBultoOtro ?? producto.PrecioBulto;
+        }
         else
-            precioDirecto = producto.PrecioOtro ?? producto.PrecioBar;
+        {
+            if (tipoCliente == TIPO_BAR)
+                precioDirecto = producto.PrecioBar ?? producto.PrecioOtro;
+            else
+                precioDirecto = producto.PrecioOtro ?? producto.PrecioBar;
+        }
 
         // Fallback legacy si no hay precios directos (productos que nunca se configuraron)
         var listaBase = precioDirecto ?? producto.Pvp1 ?? producto.Pvp2 ?? producto.PrecioPorKg ?? 0m;
@@ -122,33 +135,18 @@ public static class CafePricingService
     public static decimal CalcularPrecioUnitario(CafeProducto producto, string formato, string tipoCliente, CafeSetting settings)
         => CalcularPrecioBreakdown(producto, formato, tipoCliente, settings).PrecioFinal;
 
-    /// <summary>Subtotal de linea aplicando descuento por bulto (volumen) si corresponde.
+    /// <summary>Subtotal de linea: cantidad × precioUnitFinal, redondeado.
     ///
-    /// Logica: si el producto es OTROS y tiene UxB + PrecioBulto cargados, y el cliente
-    /// compra >= UxB unidades, el sistema cobra (bultosCompletos × PrecioBulto + sueltas × precioUnitFinal).
-    /// Sino, subtotal normal = cantidad × precioUnitFinal.
-    ///
-    /// Esto permite tener UN solo SKU con descuento por volumen, en vez de duplicar el producto
-    /// con un codigo distinto para "bulto".
-    ///
-    /// Para CAFE no aplica (no hay bultos).
+    /// Antes (descartado el 2026-05-14): este metodo aplicaba un descuento automatico por bulto
+    /// cuando cantidad >= UxB. El usuario lo vio en un ticket impreso ("1000 × $40 = $35.000") y dijo
+    /// "queda sin lógica" — no entendia por que la math no cerraba. Decision: pasar al modelo
+    /// "Unidad de Medida" estandar de mayoristas: el operador elige explicitamente Suelto vs Bulto
+    /// desde el dropdown de formato en la venta. CalcularPrecioBreakdown se encarga de usar el
+    /// PrecioBulto cuando formato=BULTO. Asi 1 linea = 1 formato, sin magia oculta.
     /// </summary>
     public static decimal CalcularSubtotalConBulto(CafeProducto prod, string tipoCliente, decimal precioUnitFinal, decimal cantidad)
     {
-        var fallback = Math.Round(precioUnitFinal * cantidad, 2, MidpointRounding.AwayFromZero);
-        if (prod.Categoria != "OTROS") return fallback;
-        if (!prod.UxB.HasValue || prod.UxB.Value <= 0) return fallback;
-        var precioBulto = tipoCliente == TIPO_BAR
-            ? (prod.PrecioBulto ?? prod.PrecioBultoOtro)
-            : (prod.PrecioBultoOtro ?? prod.PrecioBulto);
-        if (!precioBulto.HasValue || precioBulto.Value <= 0) return fallback;
-        var uxb = (decimal)prod.UxB.Value;
-        // Solo aplica si la cantidad alcanza al menos un bulto completo
-        if (cantidad < uxb) return fallback;
-        var bultosCompletos = Math.Floor(cantidad / uxb);
-        var sueltas = cantidad - bultosCompletos * uxb;
-        var subtotal = bultosCompletos * precioBulto.Value + sueltas * precioUnitFinal;
-        return Math.Round(subtotal, 2, MidpointRounding.AwayFromZero);
+        return Math.Round(precioUnitFinal * cantidad, 2, MidpointRounding.AwayFromZero);
     }
 
     /// <summary>Costo unitario que va al item (para calcular margen).</summary>
@@ -160,6 +158,12 @@ public static class CafePricingService
             // Asumimos: producto.Costo es el costo POR KG del cafe.
             var gramos = GramosPorUnidad(formato);
             return Math.Round(producto.Costo * (gramos / 1000m), 2, MidpointRounding.AwayFromZero);
+        }
+        // OTROS: si es BULTO, 1 "unidad cargada" = UxB unidades reales, asi que el costo unitario
+        // de la linea es costo_unitario × UxB. Sino, costo unitario tal cual.
+        if (formato == FORMATO_BULTO && producto.UxB.HasValue && producto.UxB.Value > 0)
+        {
+            return Math.Round(producto.Costo * producto.UxB.Value, 2, MidpointRounding.AwayFromZero);
         }
         return producto.Costo;
     }
