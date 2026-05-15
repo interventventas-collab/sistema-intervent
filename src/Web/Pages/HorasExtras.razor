@@ -92,7 +92,11 @@
                     <div style="flex:1; font-size:0.78rem; color:#6b7280;">
                         @if (e.UltimaCargaAt.HasValue)
                         {
-                            <span>Última carga: @e.UltimaCargaAt.Value.ToLocalTime().ToString("dd/MM HH:mm")</span>
+                            <div>Última carga: @e.UltimaCargaAt.Value.ToLocalTime().ToString("dd/MM HH:mm")</div>
+                            @if (!string.IsNullOrEmpty(e.UltimaHoraEntrada) || !string.IsNullOrEmpty(e.UltimaHoraSalida))
+                            {
+                                <div style="color:#1d4ed8; font-family:monospace; font-weight:700;">🕒 @(e.UltimaHoraEntrada ?? "—") → @(e.UltimaHoraSalida ?? "—")</div>
+                            }
                         }
                         else { <span>Nunca cargó</span> }
                     </div>
@@ -159,7 +163,8 @@
 
 @code {
     public record AdminEmpleadoDto(int Id, string Nombre, string Token, bool IsActive,
-        decimal TotalHoy, decimal TotalSemana, decimal TotalMes, DateTime? UltimaCargaAt, DateTime CreatedAt);
+        decimal TotalHoy, decimal TotalSemana, decimal TotalMes, DateTime? UltimaCargaAt, DateTime CreatedAt,
+        string? UltimaHoraEntrada = null, string? UltimaHoraSalida = null);
     public record AdminRegistroDto(int Id, int EmpleadoId, string EmpleadoNombre, DateTime Fecha,
         decimal Cantidad, string? Observaciones, string? HoraEntrada, string? HoraSalida,
         DateTime CreatedAt, DateTime? UpdatedAt);

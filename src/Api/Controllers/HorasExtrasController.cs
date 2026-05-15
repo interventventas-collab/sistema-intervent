@@ -157,7 +157,8 @@ public class HorasExtrasController : ControllerBase
     // ============================================================
 
     public record AdminEmpleadoDto(int Id, string Nombre, string Token, bool IsActive,
-        decimal TotalHoy, decimal TotalSemana, decimal TotalMes, DateTime? UltimaCargaAt, DateTime CreatedAt);
+        decimal TotalHoy, decimal TotalSemana, decimal TotalMes, DateTime? UltimaCargaAt, DateTime CreatedAt,
+        string? UltimaHoraEntrada, string? UltimaHoraSalida);
 
     /// <summary>Lista de empleados con totales (hoy / semana / mes) y la última vez que cargaron.</summary>
     [HttpGet("admin/empleados")]
@@ -179,14 +180,27 @@ public class HorasExtrasController : ControllerBase
             .ToListAsync();
         var ultDic = ultimasCargas.ToDictionary(x => x.EmpId, x => x.Ult);
 
-        var result = emps.Select(e => new AdminEmpleadoDto(
-            e.Id, e.Nombre, e.Token, e.IsActive,
-            regs.Where(r => r.EmpleadoId == e.Id && r.Fecha == hoy).Sum(r => r.Cantidad),
-            regs.Where(r => r.EmpleadoId == e.Id && r.Fecha >= inicioSemana).Sum(r => r.Cantidad),
-            regs.Where(r => r.EmpleadoId == e.Id).Sum(r => r.Cantidad),
-            ultDic.TryGetValue(e.Id, out var u) ? u : null,
-            e.CreatedAt
-        )).ToList();
+        // Para mostrar el horario en la card del empleado: traemos el registro MÁS RECIENTE
+        // de cada empleado y guardamos sus HoraEntrada/HoraSalida.
+        var ultRegPorEmp = await _db.HorasExtrasRegistros
+            .GroupBy(r => r.EmpleadoId)
+            .Select(g => g.OrderByDescending(r => r.UpdatedAt ?? r.CreatedAt).First())
+            .ToListAsync();
+        var ultRegDic = ultRegPorEmp.ToDictionary(r => r.EmpleadoId, r => r);
+
+        var result = emps.Select(e => {
+            ultRegDic.TryGetValue(e.Id, out var ultReg);
+            return new AdminEmpleadoDto(
+                e.Id, e.Nombre, e.Token, e.IsActive,
+                regs.Where(r => r.EmpleadoId == e.Id && r.Fecha == hoy).Sum(r => r.Cantidad),
+                regs.Where(r => r.EmpleadoId == e.Id && r.Fecha >= inicioSemana).Sum(r => r.Cantidad),
+                regs.Where(r => r.EmpleadoId == e.Id).Sum(r => r.Cantidad),
+                ultDic.TryGetValue(e.Id, out var u) ? u : null,
+                e.CreatedAt,
+                FormatHora(ultReg?.HoraEntrada),
+                FormatHora(ultReg?.HoraSalida)
+            );
+        }).ToList();
         return Ok(result);
     }
 
