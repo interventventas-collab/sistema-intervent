@@ -1049,10 +1049,11 @@
 @* ════════ Modal de confirmacion de emision (doble-check para FA/FB/FC) ════════ *@
 @if (showConfirmEmision && cotizacion is not null)
 {
-    <div class="modal-overlay" style="z-index: 1050;">
-        <div class="modal" style="max-width: 480px;">
-            <div class="modal-header" style="background: #fef3c7; border-bottom: 2px solid #d97706;">
+    <div class="modal-overlay" style="z-index: 1050;" @onclick="@(() => showConfirmEmision = false)">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 480px;">
+            <div class="modal-header" style="background: #fef3c7;">
                 <h3 style="margin: 0; color: #92400e;">⚠ Confirmar emisión</h3>
+                <button class="btn-close" @onclick="@(() => showConfirmEmision = false)">&times;</button>
             </div>
             <div class="modal-body" style="padding: 1.2rem;">
                 <p style="margin: 0 0 1rem; color: #4b5563;">Estás por <strong>emitir un comprobante con CAE</strong>. Una vez emitido <strong>no se puede deshacer</strong>: solo se puede revertir con Nota de Crédito.</p>
