@@ -102,6 +102,7 @@
                     </div>
                     <button class="he-link-btn" @onclick="@(() => CopiarLink(e))">📋 Copiar link</button>
                     <button class="he-link-btn wa" @onclick="@(() => MandarWhatsapp(e))">📱 WhatsApp</button>
+                    <button class="he-link-btn" style="background:#fef3c7; color:#92400e; border-color:#d97706;" @onclick="@(() => ShowCargarManual(e))">➕ Cargar manual</button>
                     <button class="he-link-btn" @onclick="@(() => ShowEditEmpleado(e))">✏</button>
                 </div>
             }
@@ -161,6 +162,38 @@
     </div>
 </div>
 
+@* === Modal: cargar registro manual (admin) === *@
+@if (showCargarManual && cargandoManualPara is not null)
+{
+    <div class="modal-overlay" @onclick="@(() => showCargarManual = false)">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width:420px;">
+            <div class="modal-header" style="background:#fef3c7;">
+                <h3 style="margin:0; color:#92400e;">➕ Carga manual — @cargandoManualPara.Nombre</h3>
+                <button class="btn-close" @onclick="@(() => showCargarManual = false)">&times;</button>
+            </div>
+            <div class="modal-body" style="padding:1rem;">
+                <p style="font-size:0.85rem; color:#6b7280; margin:0 0 0.8rem;">Cargá horas extras manualmente (sin horario). Útil para acumulados o ajustes.</p>
+                <div class="form-group">
+                    <label class="form-label">Fecha</label>
+                    <input type="date" class="form-input" @bind="manualFecha" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Cantidad de horas</label>
+                    <input type="number" step="0.5" min="0" max="999" class="form-input" @bind="manualCantidad" placeholder="Ej: 90" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Observación</label>
+                    <input class="form-input" @bind="manualObservacion" placeholder="Ej: cierre de período" />
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="@(() => showCargarManual = false)" disabled="@savingManual">Cancelar</button>
+                <button class="btn btn-primary" @onclick="GuardarManualAsync" disabled="@savingManual">@(savingManual ? "Guardando..." : "Guardar")</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     public record AdminEmpleadoDto(int Id, string Nombre, string Token, bool IsActive,
         decimal TotalHoy, decimal TotalSemana, decimal TotalMes, DateTime? UltimaCargaAt, DateTime CreatedAt,
@@ -178,6 +211,42 @@
     private string formNombre = "";
     private string formDniUltimos3 = "";
     private bool formActive = true, formRegenToken;
+
+    // Carga manual (para acumulados)
+    private bool showCargarManual, savingManual;
+    private AdminEmpleadoDto? cargandoManualPara;
+    private DateTime manualFecha = DateTime.Today;
+    private decimal manualCantidad;
+    private string manualObservacion = "";
+
+    private void ShowCargarManual(AdminEmpleadoDto e)
+    {
+        cargandoManualPara = e;
+        manualFecha = DateTime.Today;
+        manualCantidad = 0;
+        manualObservacion = "Carga manual";
+        showCargarManual = true;
+    }
+
+    private async Task GuardarManualAsync()
+    {
+        if (cargandoManualPara is null) return;
+        if (manualCantidad <= 0) { ToastService.Error("La cantidad tiene que ser mayor a 0"); return; }
+        savingManual = true;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync("api/horas-extras/admin/registros/manual",
+                new { EmpleadoId = cargandoManualPara.Id, Fecha = manualFecha, Cantidad = manualCantidad, Observaciones = manualObservacion });
+            if (resp.IsSuccessStatusCode)
+            {
+                ToastService.Success($"Cargadas {manualCantidad:0.#}h para {cargandoManualPara.Nombre}");
+                showCargarManual = false;
+                await RecargarTodo();
+            }
+            else { ToastService.Error("Error al guardar"); }
+        }
+        finally { savingManual = false; }
+    }
 
     private System.Threading.Timer? autoRefreshTimer;
 

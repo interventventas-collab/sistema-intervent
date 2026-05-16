@@ -36,50 +36,7 @@
     .he-row.hoy { background: #fef3c7; padding: 0.5rem 0.6rem; border-radius: 6px; border: none; }
     .he-toast { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); background: #16a34a; color: white; padding: 0.7rem 1.4rem; border-radius: 999px; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.2); z-index: 9999; }
 
-    /* === Wheel picker scrolleable (estilo alarma de Android) === */
-    .tp-wrap { display: flex; flex-direction: column; align-items: center; padding: 0.4rem; border: 1px solid #d1d5db; border-radius: 8px; background: white; flex: 1; position: relative; }
-    .tp-titulo { font-size: 0.72rem; color: #6b7280; margin-bottom: 0.3rem; }
-    .tp-row { display: flex; align-items: center; gap: 0.3rem; position: relative; }
-    .tp-sep { font-size: 1.7rem; font-weight: 700; color: #4b5563; line-height: 1; }
-    /* La rueda */
-    .tp-wheel {
-        width: 56px;
-        height: 132px;          /* 3 items × 44px */
-        overflow-y: scroll;
-        scroll-snap-type: y mandatory;
-        -webkit-overflow-scrolling: touch;
-        scrollbar-width: none;
-        -ms-overflow-style: none;
-        position: relative;
-        scroll-behavior: smooth;
-    }
-    .tp-wheel::-webkit-scrollbar { display: none; }
-    .tp-wheel-item {
-        height: 44px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        scroll-snap-align: center;
-        font-size: 1.05rem;
-        color: #9ca3af;
-        font-variant-numeric: tabular-nums;
-        line-height: 1;
-    }
-    .tp-wheel-item.selected {
-        font-size: 1.65rem;
-        font-weight: 800;
-        color: #1d4ed8;
-    }
-    /* Líneas que marcan el item central */
-    .tp-wheel-marker {
-        position: absolute;
-        left: 0; right: 0;
-        top: 44px;
-        height: 44px;
-        pointer-events: none;
-        border-top: 1px solid #d1d5db;
-        border-bottom: 1px solid #d1d5db;
-    }
+    /* Wheel CSS sacado — ahora usamos selects nativos por confiabilidad. */
 </style>
 
 <div class="he-wrap">
@@ -144,27 +101,22 @@
             @* ENTRADA *@
             @if (modoEdicion == "entrada")
             {
-                <div class="tp-wrap" style="margin-bottom:0.5rem;">
-                    <div class="tp-titulo">🌅 Entrada — deslizá para ajustar</div>
-                    <div class="tp-row">
-                        <div class="tp-wheel-marker"></div>
-                        <div class="tp-wheel" id="wheel-entH" @onscroll="@(e => OnWheelScrolled("entH"))">
-                            @for (int h = 0; h < 24; h++)
-                            {
-                                <div class="tp-wheel-item @(h == eH ? "selected" : "")">@h.ToString("00")</div>
-                            }
-                        </div>
-                        <span class="tp-sep">:</span>
-                        <div class="tp-wheel" id="wheel-entM" @onscroll="@(e => OnWheelScrolled("entM"))">
-                            @for (int m = 0; m < 60; m += 5)
-                            {
-                                <div class="tp-wheel-item @(m == eM ? "selected" : "")">@m.ToString("00")</div>
-                            }
-                        </div>
+                <div style="padding:0.6rem; border:2px solid #16a34a; border-radius:8px; background:#f0fdf4; margin-bottom:0.5rem;">
+                    <div style="font-size:0.8rem; font-weight:700; color:#166534; margin-bottom:0.5rem;">🌅 Ajustá tu hora de ENTRADA</div>
+                    <div style="display:flex; gap:0.4rem; align-items:center;">
+                        <select class="he-input" style="flex:1; font-size:1.3rem; padding:0.55rem; text-align:center;"
+                                value="@eH"
+                                @onchange="@(e => OnHoraSelectChanged("entH", e.Value?.ToString()))">
+                            @for (int h = 0; h < 24; h++) { <option value="@h">@h.ToString("00")</option> }
+                        </select>
+                        <span style="font-size:1.5rem; font-weight:700;">:</span>
+                        <select class="he-input" style="flex:1; font-size:1.3rem; padding:0.55rem; text-align:center;"
+                                value="@eM"
+                                @onchange="@(e => OnHoraSelectChanged("entM", e.Value?.ToString()))">
+                            @for (int m = 0; m < 60; m += 5) { <option value="@m">@m.ToString("00")</option> }
+                        </select>
                     </div>
-                    <div style="display:flex; gap:0.4rem; margin-top:0.5rem;">
-                        <button class="he-btn" style="flex:1; background:#16a34a; color:white; padding:0.5rem;" @onclick="@(() => { modoEdicion = ""; })">✓ Listo</button>
-                    </div>
+                    <button class="he-btn he-btn-primary" style="width:100%; margin-top:0.5rem; background:#16a34a;" @onclick="@(() => { modoEdicion = ""; })">✓ Listo</button>
                 </div>
             }
             else if (tieneEntrada)
@@ -186,27 +138,22 @@
             @* SALIDA *@
             @if (modoEdicion == "salida")
             {
-                <div class="tp-wrap" style="margin-bottom:0.5rem;">
-                    <div class="tp-titulo">🌆 Salida — deslizá para ajustar</div>
-                    <div class="tp-row">
-                        <div class="tp-wheel-marker"></div>
-                        <div class="tp-wheel" id="wheel-salH" @onscroll="@(e => OnWheelScrolled("salH"))">
-                            @for (int h = 0; h < 24; h++)
-                            {
-                                <div class="tp-wheel-item @(h == sH ? "selected" : "")">@h.ToString("00")</div>
-                            }
-                        </div>
-                        <span class="tp-sep">:</span>
-                        <div class="tp-wheel" id="wheel-salM" @onscroll="@(e => OnWheelScrolled("salM"))">
-                            @for (int m = 0; m < 60; m += 5)
-                            {
-                                <div class="tp-wheel-item @(m == sM ? "selected" : "")">@m.ToString("00")</div>
-                            }
-                        </div>
+                <div style="padding:0.6rem; border:2px solid #1d4ed8; border-radius:8px; background:#eff6ff; margin-bottom:0.5rem;">
+                    <div style="font-size:0.8rem; font-weight:700; color:#1e40af; margin-bottom:0.5rem;">🌆 Ajustá tu hora de SALIDA</div>
+                    <div style="display:flex; gap:0.4rem; align-items:center;">
+                        <select class="he-input" style="flex:1; font-size:1.3rem; padding:0.55rem; text-align:center;"
+                                value="@sH"
+                                @onchange="@(e => OnHoraSelectChanged("salH", e.Value?.ToString()))">
+                            @for (int h = 0; h < 24; h++) { <option value="@h">@h.ToString("00")</option> }
+                        </select>
+                        <span style="font-size:1.5rem; font-weight:700;">:</span>
+                        <select class="he-input" style="flex:1; font-size:1.3rem; padding:0.55rem; text-align:center;"
+                                value="@sM"
+                                @onchange="@(e => OnHoraSelectChanged("salM", e.Value?.ToString()))">
+                            @for (int m = 0; m < 60; m += 5) { <option value="@m">@m.ToString("00")</option> }
+                        </select>
                     </div>
-                    <div style="display:flex; gap:0.4rem; margin-top:0.5rem;">
-                        <button class="he-btn" style="flex:1; background:#1d4ed8; color:white; padding:0.5rem;" @onclick="@(() => { modoEdicion = ""; })">✓ Listo</button>
-                    </div>
+                    <button class="he-btn he-btn-primary" style="width:100%; margin-top:0.5rem;" @onclick="@(() => { modoEdicion = ""; })">✓ Listo</button>
                 </div>
             }
             else if (tieneSalida)
@@ -223,14 +170,6 @@
             {
                 <button class="he-btn" style="width:100%; background:#1d4ed8; color:white; padding:0.9rem; font-size:1rem; font-weight:700; border:none; border-radius:8px; margin-bottom:0.4rem;"
                         @onclick="MarcarSalidaAhora">🌆 Marcar salida ahora</button>
-            }
-
-            @if (tieneEntrada || tieneSalida)
-            {
-                <div style="text-align:center; margin-top:0.3rem;">
-                    <button class="he-link-btn" type="button" style="font-size:0.78rem; padding:0.25rem 0.6rem; background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5; border-radius:6px; cursor:pointer;"
-                            @onclick="LimpiarHorario">✕ Limpiar horario</button>
-                </div>
             }
 
             @* === Desglose de cálculo automático === *@
@@ -263,38 +202,13 @@
                 </div>
             }
 
-            @{
-                var horarioCompleto = !string.IsNullOrEmpty(formHoraEntrada) && !string.IsNullOrEmpty(formHoraSalida);
-            }
             <label class="he-label" style="margin-top:0.7rem;">Horas extras a cargar</label>
-            <input type="number" step="0.5" min="0" max="999" class="he-input"
-                   @bind="formCantidad" @bind:event="oninput"
-                   readonly="@horarioCompleto"
-                   style="@(horarioCompleto ? "background:#f3f4f6; cursor:not-allowed;" : "")"
-                   placeholder="0" />
-            @if (horarioCompleto)
-            {
-                <p style="font-size:0.72rem; color:#6b7280; margin:0.2rem 0 0;">🔒 Se calcula automático desde el horario. Si querés cargarlo a mano, borrá el horario primero.</p>
-            }
-            else
-            {
-                <p style="font-size:0.72rem; color:#6b7280; margin:0.2rem 0 0;">💡 Cargá entrada y salida arriba para cálculo automático. O metelo a mano (para acumulados).</p>
-            }
-            @if (formCantidad > 24)
-            {
-                <p style="font-size:0.75rem; color:#92400e; margin:0.3rem 0 0; padding:0.3rem 0.5rem; background:#fef3c7; border-radius:6px;">
-                    💡 Cargando acumulado de @formCantidad.ToString("0.#") hs (más de 1 día). Verificá que está bien.
-                </p>
-            }
-            <div class="he-quick">
-                @foreach (var q in new[] { 0.5m, 1m, 1.5m, 2m, 2.5m, 3m, 4m, 5m })
-                {
-                    var activo = formCantidad == q;
-                    <button class="@(activo ? "active" : "")" @onclick="@(() => formCantidad = q)">@q.ToString("0.#") h</button>
-                }
-            </div>
+            <input type="text" readonly class="he-input"
+                   value="@formCantidad.ToString("0.##") h"
+                   style="background:#f3f4f6; cursor:not-allowed; text-align:center; font-weight:700;" />
+            <p style="font-size:0.72rem; color:#6b7280; margin:0.2rem 0 0;">🔒 Se calcula automático desde tu horario.</p>
 
-            <label class="he-label">Observación (opcional)</label>
+            <label class="he-label" style="margin-top:0.7rem;">Observación (opcional)</label>
             <textarea class="he-textarea" @bind="formObservaciones" placeholder="Ej: Quedé hasta las 22 esperando al técnico"></textarea>
 
             <button class="he-btn he-btn-primary" @onclick="GuardarAsync" disabled="@guardando">
@@ -569,43 +483,7 @@
         return (now.Hour, (now.Minute / 5) * 5);  // redondea a múltiplo de 5
     }
 
-    /// <summary>Borra el horario cargado (vuelve a "sin horario").</summary>
-    private void LimpiarHorario()
-    {
-        formHoraEntrada = "";
-        formHoraSalida = "";
-        formCantidad = 0m;
-    }
-
-    // ─── Wheel picker logic ───
     private string modoEdicion = ""; // "" | "entrada" | "salida"
-    private System.Threading.CancellationTokenSource? debounceCts;
-
-    /// <summary>Se ejecuta cada vez que se renderiza. Cuando el empleado entra a modo edición,
-    /// posicionamos los wheels en el valor actual antes de que pueda scrollear.</summary>
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (modoEdicion == "entrada")
-        {
-            var (h, m) = ParseHora(formHoraEntrada);
-            try
-            {
-                await JS.InvokeVoidAsync("tpScrollTo", "wheel-entH", h, 1);
-                await JS.InvokeVoidAsync("tpScrollTo", "wheel-entM", m, 5);
-            }
-            catch { }
-        }
-        else if (modoEdicion == "salida")
-        {
-            var (h, m) = ParseHora(formHoraSalida);
-            try
-            {
-                await JS.InvokeVoidAsync("tpScrollTo", "wheel-salH", h, 1);
-                await JS.InvokeVoidAsync("tpScrollTo", "wheel-salM", m, 5);
-            }
-            catch { }
-        }
-    }
 
     /// <summary>Setea la hora de entrada con la hora actual del celular, redondeada al 5 minuto.</summary>
     private void MarcarEntradaAhora()
@@ -623,7 +501,7 @@
         RecalcularHorasExtras();
     }
 
-    /// <summary>Abre el modo edición para ajustar una hora con el wheel scrolleable.
+    /// <summary>Abre el modo edición para ajustar una hora con los selects.
     /// Si todavía no había valor, lo inicializa con la hora actual.</summary>
     private void AbrirEdicion(string tipo)
     {
@@ -632,35 +510,21 @@
         modoEdicion = tipo;
     }
 
-    /// <summary>Cada vez que el usuario scrollea un wheel, leemos qué item quedó centrado
-    /// y actualizamos la variable correspondiente. Usamos debounce de 150ms para no
-    /// llamar a JS 60 veces por segundo durante el scroll.</summary>
-    private async Task OnWheelScrolled(string wheelId)
+    /// <summary>Cuando el empleado cambia un select (hora o minuto), actualiza el form.</summary>
+    private void OnHoraSelectChanged(string id, string? valor)
     {
-        // Cancelar debounce anterior si hay
-        debounceCts?.Cancel();
-        debounceCts = new System.Threading.CancellationTokenSource();
-        var token = debounceCts.Token;
-        try
+        if (string.IsNullOrEmpty(valor) || !int.TryParse(valor, out var v)) return;
+        var (eh, em) = ParseHora(formHoraEntrada);
+        var (sh, sm) = ParseHora(formHoraSalida);
+        switch (id)
         {
-            await Task.Delay(150, token);
-            int step = wheelId.EndsWith("M") ? 5 : 1;
-            int v = await JS.InvokeAsync<int>("tpReadCenter", $"wheel-{wheelId}", step);
-            // Re-sync con el form
-            var (eh, em) = ParseHora(formHoraEntrada);
-            var (sh, sm) = ParseHora(formHoraSalida);
-            switch (wheelId)
-            {
-                case "entH": eh = v; break;
-                case "entM": em = v; break;
-                case "salH": sh = v; break;
-                case "salM": sm = v; break;
-            }
-            formHoraEntrada = $"{eh:D2}:{em:D2}";
-            formHoraSalida = $"{sh:D2}:{sm:D2}";
-            RecalcularHorasExtras();
-            StateHasChanged();
+            case "entH": eh = v; break;
+            case "entM": em = v; break;
+            case "salH": sh = v; break;
+            case "salM": sm = v; break;
         }
-        catch (TaskCanceledException) { /* otro scroll lo cancelo */ }
+        if (id.StartsWith("ent")) formHoraEntrada = $"{eh:D2}:{em:D2}";
+        else formHoraSalida = $"{sh:D2}:{sm:D2}";
+        RecalcularHorasExtras();
     }
 }

@@ -357,6 +357,50 @@ public class HorasExtrasController : ControllerBase
         return Ok(new { ok = true });
     }
 
+    public class CargarManualRequest
+    {
+        public int EmpleadoId { get; set; }
+        public DateTime Fecha { get; set; }
+        public decimal Cantidad { get; set; }
+        public string? Observaciones { get; set; }
+    }
+
+    /// <summary>Endpoint admin para cargar un registro manualmente (sin pasar por horario).
+    /// Pensado para acumulados o correcciones. UPSERT por (EmpleadoId, Fecha).</summary>
+    [HttpPost("admin/registros/manual")]
+    [Authorize]
+    public async Task<IActionResult> CargarManual([FromBody] CargarManualRequest req)
+    {
+        if (req.EmpleadoId <= 0) return BadRequest(new { error = "Empleado obligatorio" });
+        if (req.Cantidad < 0 || req.Cantidad > 999) return BadRequest(new { error = "Cantidad inválida (0–999)" });
+
+        var emp = await _db.HorasExtrasEmpleados.FindAsync(req.EmpleadoId);
+        if (emp is null) return NotFound(new { error = "Empleado no existe" });
+
+        var fecha = req.Fecha.Date;
+        var existente = await _db.HorasExtrasRegistros.FirstOrDefaultAsync(r => r.EmpleadoId == emp.Id && r.Fecha == fecha);
+        if (existente is null)
+        {
+            existente = new HorasExtrasRegistro
+            {
+                EmpleadoId = emp.Id,
+                Fecha = fecha,
+                Cantidad = req.Cantidad,
+                Observaciones = string.IsNullOrWhiteSpace(req.Observaciones) ? "Carga manual (admin)" : req.Observaciones.Trim(),
+                CreatedAt = DateTime.UtcNow
+            };
+            _db.HorasExtrasRegistros.Add(existente);
+        }
+        else
+        {
+            existente.Cantidad = req.Cantidad;
+            if (!string.IsNullOrWhiteSpace(req.Observaciones)) existente.Observaciones = req.Observaciones.Trim();
+            existente.UpdatedAt = DateTime.UtcNow;
+        }
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
     // ============================================================
     // Helpers
     // ============================================================
