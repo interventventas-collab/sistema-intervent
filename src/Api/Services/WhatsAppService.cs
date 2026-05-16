@@ -145,6 +145,58 @@ public class WhatsAppService
         return await SendBulkAsync(recipients, "");
     }
 
+    /// <summary>
+    /// Manda UN mensaje a UN destinatario con un PDF adjunto + caption opcional.
+    /// Lo hace via el contenedor Playwright (endpoint /whatsapp/send-with-pdf).
+    /// </summary>
+    public async Task<WhatsAppSendResult> SendMessageWithPdfAsync(
+        string phone, string? caption, byte[] pdfBytes, string filename)
+    {
+        var normalized = NormalizePhone(phone);
+        if (normalized.Length < 8)
+            return new WhatsAppSendResult { Phone = phone, Success = false, Message = "Numero invalido" };
+
+        var body = new
+        {
+            phone = normalized,
+            caption = caption ?? "",
+            pdfBase64 = Convert.ToBase64String(pdfBytes),
+            pdfFilename = filename ?? "comprobante.pdf"
+        };
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/whatsapp/send-with-pdf", body);
+            var content = await resp.Content.ReadAsStringAsync();
+            if (!resp.IsSuccessStatusCode)
+            {
+                string errMsg = content;
+                try
+                {
+                    var doc = JsonDocument.Parse(content);
+                    if (doc.RootElement.TryGetProperty("error", out var e)) errMsg = e.GetString() ?? content;
+                }
+                catch { }
+                return new WhatsAppSendResult { Phone = phone, Success = false, Message = errMsg };
+            }
+            try
+            {
+                var doc = JsonDocument.Parse(content);
+                var success = doc.RootElement.TryGetProperty("success", out var s) && s.GetBoolean();
+                var msg = doc.RootElement.TryGetProperty("message", out var m) ? m.GetString() : "";
+                return new WhatsAppSendResult { Phone = phone, Success = success, Message = msg ?? "" };
+            }
+            catch
+            {
+                return new WhatsAppSendResult { Phone = phone, Success = true, Message = "Enviado" };
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error enviando WhatsApp con PDF");
+            return new WhatsAppSendResult { Phone = phone, Success = false, Message = ex.Message };
+        }
+    }
+
     // --- HTML -> WhatsApp ---
     public static string BuildWhatsAppMessage(string htmlTemplate, Dictionary<string, string>? vars = null)
     {

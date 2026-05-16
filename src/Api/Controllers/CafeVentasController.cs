@@ -19,6 +19,8 @@ public class CafeVentasController : ControllerBase
     private readonly ArcaInvoiceService _arcaInvoiceService;
     private readonly ArcaInvoicePdfService _arcaPdfService;
     private readonly ArcaEmisorService _emisorService;
+    private readonly IntegrationService _integrationService;
+    private readonly WhatsAppService _whatsAppService;
     private static readonly string[] FormatosValidos = { "1KG", "MEDIO", "CUARTO", "UNIT", "BULTO" };
 
     public CafeVentasController(
@@ -26,13 +28,17 @@ public class CafeVentasController : ControllerBase
         CafeCotizacionPdfService pdfService,
         ArcaInvoiceService arcaInvoiceService,
         ArcaInvoicePdfService arcaPdfService,
-        ArcaEmisorService emisorService)
+        ArcaEmisorService emisorService,
+        IntegrationService integrationService,
+        WhatsAppService whatsAppService)
     {
         _db = db;
         _pdfService = pdfService;
         _arcaInvoiceService = arcaInvoiceService;
         _arcaPdfService = arcaPdfService;
         _emisorService = emisorService;
+        _integrationService = integrationService;
+        _whatsAppService = whatsAppService;
     }
 
     /// <summary>
@@ -177,6 +183,141 @@ public class CafeVentasController : ControllerBase
 
         var bytes = _pdfService.GenerarPdfBytes(v, cfg);
         return File(bytes, "application/pdf", $"{v.Numero}.pdf");
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  ENVIO DE COMPROBANTE: Email + WhatsApp Interno (con PDF adjunto)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    public record SendEmailRequest(string To, string? Subject, string? Body);
+    public record SendWhatsappInternoRequest(string Phone, string? Caption);
+
+    /// <summary>Genera el PDF del comprobante y lo manda por email al destinatario indicado.
+    /// Usa la configuracion SMTP guardada en Integrations (provider: "email-smtp").</summary>
+    [HttpPost("{id:int}/send-email")]
+    public async Task<IActionResult> SendEmail(int id, [FromBody] SendEmailRequest req)
+    {
+        if (req is null || string.IsNullOrWhiteSpace(req.To))
+            return BadRequest(new { error = "Destinatario vacio" });
+
+        var v = await _db.CafeVentas.Include(x => x.Items).ThenInclude(i => i.ProductoNav).FirstOrDefaultAsync(x => x.Id == id);
+        if (v is null) return NotFound(new { error = "Venta no encontrada" });
+
+        // 1) Leer configuracion SMTP
+        var integration = await _integrationService.GetByProviderAsync("email-smtp");
+        if (integration is null)
+            return BadRequest(new { error = "No hay configuracion de email. Configurala en Integraciones." });
+        var secret = await _integrationService.GetSecretAsync("email-smtp");
+        if (string.IsNullOrEmpty(secret))
+            return BadRequest(new { error = "No hay contraseña SMTP configurada" });
+
+        string smtpHost = "smtp.gmail.com";
+        int smtpPort = 587;
+        bool smtpTls = true;
+        string fromAddress = "";
+        string fromName = "";
+        string username = "";
+
+        if (!string.IsNullOrEmpty(integration.Settings))
+        {
+            try
+            {
+                var doc = System.Text.Json.JsonDocument.Parse(integration.Settings);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("smtpHost", out var h)) smtpHost = h.GetString() ?? smtpHost;
+                if (root.TryGetProperty("smtpPort", out var p)) smtpPort = p.GetInt32();
+                if (root.TryGetProperty("smtpTls", out var t)) smtpTls = t.GetBoolean();
+                if (root.TryGetProperty("fromAddress", out var f)) fromAddress = f.GetString() ?? "";
+                if (root.TryGetProperty("fromName", out var n)) fromName = n.GetString() ?? "";
+                if (root.TryGetProperty("username", out var u)) username = u.GetString() ?? "";
+            }
+            catch { }
+        }
+        if (string.IsNullOrEmpty(fromAddress))
+            return BadRequest(new { error = "No hay email de remitente configurado en Integraciones" });
+
+        // 2) Generar el PDF
+        var cfg = await _db.CafeSettings.FindAsync(1);
+        byte[] pdfBytes;
+        var esFacturaArca = v.TipoComprobante is "FA" or "FB" or "FC";
+        var autorizada = v.ArcaEstado == "autorizado" && !string.IsNullOrEmpty(v.ArcaCae)
+                         && v.ArcaCbteNro.HasValue && v.ArcaPtoVta.HasValue && v.ArcaCbteTipoNum.HasValue;
+        if (esFacturaArca && autorizada)
+            pdfBytes = BuildArcaPdf(v, cfg!);
+        else
+            pdfBytes = _pdfService.GenerarPdfBytes(v, cfg);
+
+        // 3) Armar y enviar el email
+        var subject = string.IsNullOrWhiteSpace(req.Subject)
+            ? $"Comprobante {v.Numero} - {cfg?.NegocioNombre ?? "Frikaf"}"
+            : req.Subject!;
+        var body = string.IsNullOrWhiteSpace(req.Body)
+            ? $"Hola{(string.IsNullOrWhiteSpace(v.ClienteNombreSnapshot) ? "" : " " + v.ClienteNombreSnapshot)},\n\n" +
+              $"Te adjuntamos el comprobante {v.Numero} por ${v.Total:N2}.\n\n" +
+              $"Cualquier consulta, escribinos.\n\n" +
+              $"Saludos,\n{cfg?.NegocioNombre ?? "Frikaf"}"
+            : req.Body!;
+
+        try
+        {
+            using var client = new System.Net.Mail.SmtpClient(smtpHost, smtpPort)
+            {
+                Credentials = new System.Net.NetworkCredential(
+                    string.IsNullOrEmpty(username) ? fromAddress : username, secret),
+                EnableSsl = smtpTls,
+                Timeout = 30000
+            };
+            using var message = new System.Net.Mail.MailMessage
+            {
+                From = new System.Net.Mail.MailAddress(fromAddress, string.IsNullOrEmpty(fromName) ? fromAddress : fromName),
+                Subject = subject,
+                Body = body,
+                IsBodyHtml = false
+            };
+            message.To.Add(req.To);
+            using var ms = new MemoryStream(pdfBytes);
+            var attachment = new System.Net.Mail.Attachment(ms, $"{v.Numero}.pdf", "application/pdf");
+            message.Attachments.Add(attachment);
+            await client.SendMailAsync(message);
+            return Ok(new { sent = true, message = "Email enviado a " + req.To });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { sent = false, error = "Error enviando email: " + ex.Message });
+        }
+    }
+
+    /// <summary>Genera el PDF del comprobante y lo manda por WhatsApp via el container
+    /// (Playwright /whatsapp/send-with-pdf). El contenedor debe estar vinculado.</summary>
+    [HttpPost("{id:int}/send-whatsapp-interno")]
+    public async Task<IActionResult> SendWhatsappInterno(int id, [FromBody] SendWhatsappInternoRequest req)
+    {
+        if (req is null || string.IsNullOrWhiteSpace(req.Phone))
+            return BadRequest(new { error = "Telefono vacio" });
+
+        var v = await _db.CafeVentas.Include(x => x.Items).ThenInclude(i => i.ProductoNav).FirstOrDefaultAsync(x => x.Id == id);
+        if (v is null) return NotFound(new { error = "Venta no encontrada" });
+
+        // Generar el PDF (mismo criterio que en GetPdf)
+        var cfg = await _db.CafeSettings.FindAsync(1);
+        byte[] pdfBytes;
+        var esFacturaArca = v.TipoComprobante is "FA" or "FB" or "FC";
+        var autorizada = v.ArcaEstado == "autorizado" && !string.IsNullOrEmpty(v.ArcaCae)
+                         && v.ArcaCbteNro.HasValue && v.ArcaPtoVta.HasValue && v.ArcaCbteTipoNum.HasValue;
+        if (esFacturaArca && autorizada)
+            pdfBytes = BuildArcaPdf(v, cfg!);
+        else
+            pdfBytes = _pdfService.GenerarPdfBytes(v, cfg);
+
+        // Caption por default si no viene
+        var caption = string.IsNullOrWhiteSpace(req.Caption)
+            ? $"Hola{(string.IsNullOrWhiteSpace(v.ClienteNombreSnapshot) ? "" : " " + v.ClienteNombreSnapshot)}, te paso el comprobante {v.Numero} por ${v.Total:N2}. Saludos!"
+            : req.Caption!;
+
+        var result = await _whatsAppService.SendMessageWithPdfAsync(req.Phone, caption, pdfBytes, $"{v.Numero}.pdf");
+        if (result.Success)
+            return Ok(new { sent = true, message = result.Message });
+        return BadRequest(new { sent = false, error = result.Message });
     }
 
     /// <summary>

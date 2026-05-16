@@ -351,6 +351,11 @@
             setTimeout(function() { URL.revokeObjectURL(href); }, 1000);
         };
 
+        // Abre una URL externa en una pestaña nueva. Útil para mandar links wa.me, etc.
+        window.openInNewTab = function(url) {
+            try { window.open(url, '_blank'); } catch (e) { console.error('openInNewTab error', e); }
+        };
+
         // Recibe bytes en base64 y abre el PDF en una pestaña nueva del browser.
         // Útil para "previsualizar" PDFs sin forzar la descarga.
         window.openPdfInNewTab = function(base64) {

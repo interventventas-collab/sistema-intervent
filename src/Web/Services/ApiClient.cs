@@ -627,6 +627,48 @@ public class ApiClient
     public async Task<CafeVentaDto?> CreateCafeVentaAsync(CreateCafeVentaRequest request)
         => await PostAsync<CafeVentaDto>("/api/cafe/ventas", request);
 
+    /// <summary>Manda el comprobante por email al destinatario indicado (con PDF adjunto).</summary>
+    public async Task<(bool sent, string? error)> SendCafeVentaEmailAsync(int id, string to, string? subject = null, string? body = null)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/cafe/ventas/{id}/send-email", new { To = to, Subject = subject, Body = body });
+        if (resp.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            await HandleUnauthorizedAsync();
+            return (false, "Sesión expirada");
+        }
+        var content = await resp.Content.ReadAsStringAsync();
+        if (resp.IsSuccessStatusCode) return (true, null);
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(content);
+            if (doc.RootElement.TryGetProperty("error", out var err)) return (false, err.GetString());
+        }
+        catch { }
+        return (false, content);
+    }
+
+    /// <summary>Manda el comprobante por WhatsApp via el container vinculado (con PDF adjunto).</summary>
+    public async Task<(bool sent, string? error)> SendCafeVentaWhatsappInternoAsync(int id, string phone, string? caption = null)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/cafe/ventas/{id}/send-whatsapp-interno", new { Phone = phone, Caption = caption });
+        if (resp.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            await HandleUnauthorizedAsync();
+            return (false, "Sesión expirada");
+        }
+        var content = await resp.Content.ReadAsStringAsync();
+        if (resp.IsSuccessStatusCode) return (true, null);
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(content);
+            if (doc.RootElement.TryGetProperty("error", out var err)) return (false, err.GetString());
+        }
+        catch { }
+        return (false, content);
+    }
+
     public async Task<CafeVentaDto?> AnularCafeVentaAsync(int id)
         => await PostAsync<CafeVentaDto>($"/api/cafe/ventas/{id}/anular", new { });
 

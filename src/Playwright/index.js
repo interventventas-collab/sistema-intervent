@@ -17,7 +17,9 @@ if (!fs.existsSync(DATA_DIR)) {
 }
 
 const app = express();
-app.use(express.json({ limit: '5mb' }));
+// Aumentamos el limite a 15 MB para que entren PDFs en base64 (comprobantes con QR + logos).
+// 15 MB en JSON ≈ 11 MB en bytes reales (base64 = 4/3 del binario).
+app.use(express.json({ limit: '15mb' }));
 
 // --- Estado en memoria (single-session) ---
 const state = {
@@ -348,6 +350,201 @@ app.post('/whatsapp/send-bulk', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// POST /whatsapp/send-with-pdf - Body: { phone, caption, pdfBase64, pdfFilename }
+// Manda UN mensaje a UN destinatario con un PDF adjunto + caption opcional.
+// Distinto de /send-bulk: este es uno solo (para envio sincrono desde la API),
+// y soporta archivo adjunto. Las selecciones de WhatsApp Web son fragiles —
+// si la UI de WhatsApp cambia y dejan de andar, ajustar los selectores aca.
+app.post('/whatsapp/send-with-pdf', async (req, res) => {
+  try {
+    const { phone, caption, pdfBase64, pdfFilename } = req.body || {};
+    const normalized = normalizePhone(phone);
+    if (!normalized || normalized.length < 8) {
+      return res.status(400).json({ error: 'Numero invalido' });
+    }
+    if (!pdfBase64) {
+      return res.status(400).json({ error: 'pdfBase64 vacio' });
+    }
+
+    // Restaurar sesion si el browser no esta abierto.
+    if (!state.page || state.page.isClosed()) {
+      if (!fs.existsSync(STORAGE_STATE_PATH)) {
+        return res.status(400).json({ error: 'WhatsApp no esta vinculado' });
+      }
+      await startSession({ useStorageState: true });
+      await sleep(5000);
+      const linked = await isLinkedOnPage(state.page);
+      if (!linked) {
+        return res.status(400).json({ error: 'WhatsApp no esta vinculado' });
+      }
+      state.linked = true;
+    }
+
+    const buffer = Buffer.from(pdfBase64, 'base64');
+    const fname = pdfFilename || 'comprobante.pdf';
+    const cap = (caption || '').toString();
+
+    const result = await sendWhatsAppMessageWithFile(normalized, cap, buffer, fname);
+    if (result.success) {
+      return res.json({ success: true, message: result.message });
+    } else {
+      return res.status(500).json({ success: false, error: result.message });
+    }
+  } catch (err) {
+    console.error('[wa] error en /send-with-pdf:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Logica de envio con archivo adjunto (PDF) ---
+// Flujo: abre el chat, clickea el clip (Adjuntar), busca el input[type=file] que acepta
+// documentos, hace setInputFiles, espera el preview, escribe la caption en el caption-box
+// y manda. Selectores defensivos con multiples fallbacks porque WhatsApp Web cambia seguido.
+async function sendWhatsAppMessageWithFile(phone, caption, fileBuffer, fileName) {
+  const MAX_RETRIES = 2;
+  const BACKOFFS = [3000, 8000];
+  let lastError = 'Error desconocido';
+
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      if (attempt > 0) await sleep(BACKOFFS[attempt - 1]);
+
+      // 1) Abrir chat (sin texto en URL, lo metemos como caption del adjunto despues)
+      const url = `https://web.whatsapp.com/send?phone=${encodeURIComponent(phone)}`;
+      await state.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
+
+      // 2) Esperar a que aparezca el compose box (o popup de numero invalido)
+      const deadline = Date.now() + 25000;
+      let composeBox = null;
+      let invalidPopup = false;
+      while (Date.now() < deadline) {
+        const popup = await state.page.$('div[data-testid="popup-contents"], div[role="dialog"]');
+        if (popup) {
+          const txt = (await popup.innerText().catch(() => '')).toLowerCase();
+          if (txt.includes('invalid') || txt.includes('inválido') || txt.includes('invalido') ||
+              txt.includes('no válido') || txt.includes('phone number')) {
+            invalidPopup = true;
+            break;
+          }
+        }
+        composeBox = await state.page.$('div[contenteditable="true"][data-tab="10"], footer div[contenteditable="true"]');
+        if (composeBox) break;
+        await sleep(500);
+      }
+      if (invalidPopup) return { success: false, message: 'Numero invalido o no tiene WhatsApp' };
+      if (!composeBox) { lastError = 'Timeout abriendo chat'; continue; }
+
+      // 3) Click en el clip (Adjuntar). WhatsApp tiene varias variantes del selector.
+      const clipSelectors = [
+        'div[title="Attach"]',
+        'div[title="Adjuntar"]',
+        'div[title="Anexar"]',
+        'span[data-icon="clip"]',
+        'span[data-icon="plus"]',
+        'button[aria-label="Attach"]',
+        'button[aria-label="Adjuntar"]',
+      ];
+      let clipClicked = false;
+      for (const sel of clipSelectors) {
+        const el = await state.page.$(sel);
+        if (el) {
+          await el.click().catch(() => {});
+          clipClicked = true;
+          break;
+        }
+      }
+      if (!clipClicked) { lastError = 'No se encontro el boton Adjuntar'; continue; }
+      await sleep(800); // que se desplieguen las opciones
+
+      // 4) Encontrar el input[type=file] de documentos y subir el archivo.
+      // WhatsApp expone varios inputs (imagenes, video, documento, camara). Buscamos el de documento.
+      const fileInputs = await state.page.$$('input[type="file"]');
+      let docInput = null;
+      // Heuristica: el input de documentos suele aceptar "*" o cualquier tipo / no incluir solo "image/*"
+      for (const inp of fileInputs) {
+        const accept = (await inp.getAttribute('accept')) || '';
+        if (!accept.includes('image') || accept === '*' || accept === '*/*' || accept.includes('pdf') || accept.includes('application')) {
+          docInput = inp;
+          if (accept.includes('pdf') || accept.includes('application')) break; // mejor match
+        }
+      }
+      // Fallback: el ultimo input que no sea imagen-only
+      if (!docInput && fileInputs.length > 0) docInput = fileInputs[fileInputs.length - 1];
+      if (!docInput) { lastError = 'No se encontro el input de archivos'; continue; }
+
+      await docInput.setInputFiles({
+        name: fileName,
+        mimeType: 'application/pdf',
+        buffer: fileBuffer,
+      });
+
+      // 5) Esperar el preview del archivo + el caption box (hasta 20s)
+      const previewDeadline = Date.now() + 20000;
+      let captionBox = null;
+      while (Date.now() < previewDeadline) {
+        // El caption box es el contenteditable que aparece DEBAJO del preview
+        captionBox = await state.page.$('div[role="textbox"][contenteditable="true"], div[contenteditable="true"][data-tab="undefined"]');
+        if (captionBox) break;
+        await sleep(500);
+      }
+
+      // 6) Si hay caption, escribirla
+      if (caption) {
+        if (captionBox) {
+          await captionBox.click();
+          await state.page.keyboard.type(caption, { delay: 10 });
+          await sleep(300);
+        }
+      }
+
+      // 7) Click en el boton de enviar (avion de papel)
+      const sendSelectors = [
+        'span[data-icon="send"]',
+        'span[data-testid="send"]',
+        'button[aria-label="Send"]',
+        'button[aria-label="Enviar"]',
+        'div[role="button"][aria-label="Send"]',
+        'div[role="button"][aria-label="Enviar"]',
+      ];
+      let sendClicked = false;
+      for (const sel of sendSelectors) {
+        const el = await state.page.$(sel);
+        if (el) {
+          await el.click().catch(() => {});
+          sendClicked = true;
+          break;
+        }
+      }
+      if (!sendClicked) {
+        // Fallback: tocar Enter (a veces WhatsApp acepta Enter para enviar el archivo)
+        await state.page.keyboard.press('Enter');
+      }
+
+      // 8) Verificar envio (los dobles checks aparecen cuando se entrega)
+      const verifyDeadline = Date.now() + 25000;
+      let sent = false;
+      let delivered = false;
+      while (Date.now() < verifyDeadline) {
+        const dbl = await state.page.$('span[data-icon="msg-dblcheck"], span[data-testid="msg-dblcheck"]');
+        if (dbl) { delivered = true; sent = true; break; }
+        const chk = await state.page.$('span[data-icon="msg-check"], span[data-testid="msg-check"]');
+        if (chk) { sent = true; break; }
+        await sleep(700);
+      }
+      // Aceptacion conservadora: si no falla con popup, asumimos enviado tras 25s
+      if (!sent) {
+        await sleep(1500);
+        sent = true;
+      }
+      return { success: true, message: delivered ? 'Enviado (delivered)' : 'Enviado (sent)' };
+    } catch (err) {
+      lastError = err.message || 'Error';
+      console.error(`[wa] send-with-pdf intento ${attempt + 1} fallo:`, lastError);
+    }
+  }
+  return { success: false, message: lastError };
+}
 
 // --- Lógica de envío ---
 async function sendWhatsAppMessage(phone, text) {
