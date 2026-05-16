@@ -35,6 +35,16 @@
     .he-row-hs { font-weight: 700; color: #1d4ed8; }
     .he-row.hoy { background: #fef3c7; padding: 0.5rem 0.6rem; border-radius: 6px; border: none; }
     .he-toast { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); background: #16a34a; color: white; padding: 0.7rem 1.4rem; border-radius: 999px; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.2); z-index: 9999; }
+
+    /* === Time picker custom (botones grandes arriba/abajo) === */
+    .tp-wrap { display: flex; flex-direction: column; align-items: center; padding: 0.4rem; border: 1px solid #d1d5db; border-radius: 8px; background: white; flex: 1; }
+    .tp-titulo { font-size: 0.72rem; color: #6b7280; margin-bottom: 0.2rem; }
+    .tp-row { display: flex; align-items: center; gap: 0.2rem; }
+    .tp-col { display: flex; flex-direction: column; align-items: center; }
+    .tp-btn { width: 38px; height: 32px; border: 1px solid #c7d2fe; background: #eef2ff; color: #3730a3; border-radius: 6px; font-size: 1.1rem; font-weight: 700; cursor: pointer; user-select: none; touch-action: manipulation; }
+    .tp-btn:active { background: #c7d2fe; }
+    .tp-num { font-size: 1.6rem; font-weight: 700; color: #1d4ed8; min-width: 38px; text-align: center; line-height: 1; padding: 0.2rem 0; font-variant-numeric: tabular-nums; }
+    .tp-sep { font-size: 1.6rem; font-weight: 700; color: #6b7280; }
 </style>
 
 <div class="he-wrap">
@@ -90,18 +100,46 @@
 
             <label class="he-label" style="margin-top:0.7rem;">🕒 Horario (entrada y salida)</label>
             <div style="display:flex; gap:0.5rem;">
-                <div style="flex:1;">
-                    <div style="font-size:0.72rem; color:#6b7280; margin-bottom:0.15rem;">Entrada</div>
-                    <input type="time" class="he-input" style="font-size:1.1rem; padding:0.55rem;"
-                           value="@formHoraEntrada"
-                           @onchange="@(e => { formHoraEntrada = e.Value?.ToString() ?? ""; RecalcularHorasExtras(); })" />
+                @{
+                    var (entH, entM) = ParseHora(formHoraEntrada);
+                    var (salH, salM) = ParseHora(formHoraSalida);
+                }
+                <div class="tp-wrap">
+                    <div class="tp-titulo">Entrada</div>
+                    <div class="tp-row">
+                        <div class="tp-col">
+                            <button class="tp-btn" type="button" @onclick="@(() => CambiarHora(true, true, +1))">▲</button>
+                            <div class="tp-num">@entH.ToString("00")</div>
+                            <button class="tp-btn" type="button" @onclick="@(() => CambiarHora(true, true, -1))">▼</button>
+                        </div>
+                        <span class="tp-sep">:</span>
+                        <div class="tp-col">
+                            <button class="tp-btn" type="button" @onclick="@(() => CambiarHora(true, false, +5))">▲</button>
+                            <div class="tp-num">@entM.ToString("00")</div>
+                            <button class="tp-btn" type="button" @onclick="@(() => CambiarHora(true, false, -5))">▼</button>
+                        </div>
+                    </div>
                 </div>
-                <div style="flex:1;">
-                    <div style="font-size:0.72rem; color:#6b7280; margin-bottom:0.15rem;">Salida</div>
-                    <input type="time" class="he-input" style="font-size:1.1rem; padding:0.55rem;"
-                           value="@formHoraSalida"
-                           @onchange="@(e => { formHoraSalida = e.Value?.ToString() ?? ""; RecalcularHorasExtras(); })" />
+                <div class="tp-wrap">
+                    <div class="tp-titulo">Salida</div>
+                    <div class="tp-row">
+                        <div class="tp-col">
+                            <button class="tp-btn" type="button" @onclick="@(() => CambiarHora(false, true, +1))">▲</button>
+                            <div class="tp-num">@salH.ToString("00")</div>
+                            <button class="tp-btn" type="button" @onclick="@(() => CambiarHora(false, true, -1))">▼</button>
+                        </div>
+                        <span class="tp-sep">:</span>
+                        <div class="tp-col">
+                            <button class="tp-btn" type="button" @onclick="@(() => CambiarHora(false, false, +5))">▲</button>
+                            <div class="tp-num">@salM.ToString("00")</div>
+                            <button class="tp-btn" type="button" @onclick="@(() => CambiarHora(false, false, -5))">▼</button>
+                        </div>
+                    </div>
                 </div>
+            </div>
+            <div style="text-align:center; margin-top:0.3rem;">
+                <button class="he-link-btn" type="button" style="font-size:0.78rem; padding:0.25rem 0.6rem; background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5; border-radius:6px; cursor:pointer;"
+                        @onclick="LimpiarHorario">✕ Limpiar horario</button>
             </div>
 
             @* === Desglose de cálculo automático === *@
@@ -324,6 +362,16 @@
                     formHoraEntrada = datos.HoraEntradaSeleccionada ?? "";
                     formHoraSalida = datos.HoraSalidaSeleccionada ?? "";
                     fechaSeleccionadaIso = datos.FechaSeleccionada.ToString("yyyy-MM-dd");
+                    // Si no hay horario cargado todavia, sugerimos la hora actual como default
+                    // (entrada = hora actual, salida = hora actual). El empleado ajusta con
+                    // los botones ▲▼ y el sistema recalcula automatico.
+                    if (string.IsNullOrEmpty(formHoraEntrada) && string.IsNullOrEmpty(formHoraSalida))
+                    {
+                        var ahora = DateTime.UtcNow.AddHours(-3);
+                        var hm = $"{ahora.Hour:D2}:{(ahora.Minute / 5) * 5:D2}";
+                        formHoraEntrada = hm;
+                        formHoraSalida = hm;
+                    }
                 }
             }
         }
@@ -425,5 +473,50 @@
         var d = DesgloseCalculoHorasExtras();
         if (d is null || d.EsDomingo) return;
         formCantidad = d.Extras;
+    }
+
+    /// <summary>Parsea "HH:mm" a (hora, minuto). Si el string es vacío o inválido, devuelve la
+    /// hora actual del celular como default.</summary>
+    private (int hora, int minuto) ParseHora(string s)
+    {
+        if (!string.IsNullOrEmpty(s) && TimeSpan.TryParse(s, out var t))
+            return (t.Hours, t.Minutes);
+        // Default = hora actual (Argentina)
+        var now = DateTime.UtcNow.AddHours(-3);
+        return (now.Hour, (now.Minute / 5) * 5);  // redondea a múltiplo de 5
+    }
+
+    /// <summary>Suma/resta un delta a la hora o minuto del horario seleccionado.</summary>
+    /// <param name="esEntrada">true = formHoraEntrada, false = formHoraSalida</param>
+    /// <param name="esHora">true = afecta la hora, false = afecta el minuto</param>
+    /// <param name="delta">cuánto sumar/restar (puede ser negativo)</param>
+    private void CambiarHora(bool esEntrada, bool esHora, int delta)
+    {
+        var actual = esEntrada ? formHoraEntrada : formHoraSalida;
+        var (h, m) = ParseHora(actual);
+        if (esHora)
+        {
+            h = (h + delta + 24) % 24;
+        }
+        else
+        {
+            // Para minutos: si baja a -5 → pasa al 55. Si sube a 60 → vuelve a 0.
+            var totalMin = h * 60 + m + delta;
+            totalMin = ((totalMin % (24 * 60)) + 24 * 60) % (24 * 60);
+            h = totalMin / 60;
+            m = totalMin % 60;
+        }
+        var nuevo = $"{h:D2}:{m:D2}";
+        if (esEntrada) formHoraEntrada = nuevo;
+        else formHoraSalida = nuevo;
+        RecalcularHorasExtras();
+    }
+
+    /// <summary>Borra el horario cargado (vuelve a "sin horario").</summary>
+    private void LimpiarHorario()
+    {
+        formHoraEntrada = "";
+        formHoraSalida = "";
+        formCantidad = 0m;
     }
 }
