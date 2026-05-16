@@ -5,6 +5,13 @@
 @inject CpService CpService
 @inject NavigationManager Nav
 
+<style>
+    /* Icono ✏ de edición inline (tel/email) — translúcido por defecto, opaco al hover de la fila */
+    .edit-inline { background: none; border: none; cursor: pointer; transition: opacity 0.15s; }
+    tr:hover .edit-inline { opacity: 0.9 !important; }
+    .edit-inline:hover { opacity: 1 !important; color: #1d4ed8; }
+</style>
+
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
         <h3>👥 Clientes <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;">(@(visibles.Count) de @(clientes?.Count ?? 0))</span></h3>
@@ -72,8 +79,46 @@
                                     }
                                 </td>
                                 <td style="font-family: monospace; font-size: 0.85rem;">@(c.Cuit ?? "—")</td>
-                                <td>@(c.Telefono ?? "—")</td>
-                                <td style="font-size: 0.85rem;">@(c.Email ?? "—")</td>
+                                <td>
+                                    @if (editandoCampo == $"{c.Id}-tel")
+                                    {
+                                        <div style="display:flex; gap:0.2rem; align-items:center;">
+                                            <input class="form-input" style="padding:0.2rem 0.4rem; font-size:0.85rem; min-width:120px;"
+                                                   @bind="editInput" @bind:event="oninput" autofocus
+                                                   @onkeydown="@(async e => { if (e.Key == "Enter") await GuardarInlineAsync(c, "tel"); if (e.Key == "Escape") editandoCampo = ""; })" />
+                                            <button class="btn-icon" style="color:#16a34a; padding:0.2rem;" @onclick="@(() => GuardarInlineAsync(c, "tel"))" title="Guardar">✓</button>
+                                            <button class="btn-icon" style="color:#b91c1c; padding:0.2rem;" @onclick="@(() => editandoCampo = "")" title="Cancelar">✕</button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <span style="display:inline-flex; align-items:center; gap:0.3rem;">
+                                            <span>@(c.Telefono ?? "—")</span>
+                                            <button class="btn-icon edit-inline" style="opacity:0.3; padding:0.1rem 0.3rem; font-size:0.85rem;"
+                                                    @onclick="@(() => AbrirEdicionInline(c, "tel"))" title="Editar teléfono">✏</button>
+                                        </span>
+                                    }
+                                </td>
+                                <td style="font-size: 0.85rem;">
+                                    @if (editandoCampo == $"{c.Id}-mail")
+                                    {
+                                        <div style="display:flex; gap:0.2rem; align-items:center;">
+                                            <input class="form-input" style="padding:0.2rem 0.4rem; font-size:0.85rem; min-width:160px;"
+                                                   @bind="editInput" @bind:event="oninput" autofocus
+                                                   @onkeydown="@(async e => { if (e.Key == "Enter") await GuardarInlineAsync(c, "mail"); if (e.Key == "Escape") editandoCampo = ""; })" />
+                                            <button class="btn-icon" style="color:#16a34a; padding:0.2rem;" @onclick="@(() => GuardarInlineAsync(c, "mail"))" title="Guardar">✓</button>
+                                            <button class="btn-icon" style="color:#b91c1c; padding:0.2rem;" @onclick="@(() => editandoCampo = "")" title="Cancelar">✕</button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <span style="display:inline-flex; align-items:center; gap:0.3rem;">
+                                            <span>@(c.Email ?? "—")</span>
+                                            <button class="btn-icon edit-inline" style="opacity:0.3; padding:0.1rem 0.3rem; font-size:0.85rem;"
+                                                    @onclick="@(() => AbrirEdicionInline(c, "mail"))" title="Editar email">✏</button>
+                                        </span>
+                                    }
+                                </td>
                                 <td style="font-size: 0.85rem; color: #6b7280;">@(c.Direccion ?? "—")</td>
                                 <td>
                                     <span class="status-badge @(c.IsActive ? "status-active" : "status-inactive")">@(c.IsActive ? "Activo" : "Inactivo")</span>
@@ -337,6 +382,32 @@
     private string filtro = "";
     private int maxVisibles = 100;
     private bool showForm, isEditing, saving;
+
+    // Edición inline rápida de teléfono / email (sin abrir el modal completo)
+    private string editandoCampo = "";  // formato "{clienteId}-tel" o "{clienteId}-mail"
+    private string editInput = "";
+
+    private void AbrirEdicionInline(CafeClienteDto c, string campo)
+    {
+        editandoCampo = $"{c.Id}-{campo}";
+        editInput = (campo == "tel" ? c.Telefono : c.Email) ?? "";
+    }
+
+    private async Task GuardarInlineAsync(CafeClienteDto c, string campo)
+    {
+        var req = new UpdateCafeClienteRequest();
+        if (campo == "tel") req.Telefono = editInput.Trim();
+        else if (campo == "mail") req.Email = editInput.Trim();
+        var updated = await Api.UpdateCafeClienteAsync(c.Id, req);
+        if (updated is not null)
+        {
+            if (campo == "tel") c.Telefono = updated.Telefono;
+            else c.Email = updated.Email;
+            ToastService.Success($"{(campo == "tel" ? "Teléfono" : "Email")} actualizado");
+        }
+        else { ToastService.Error("Error al guardar"); }
+        editandoCampo = "";
+    }
 
     /// <summary>Lista filtrada por el buscador (codigo / nombre / cuit / telefono / email).
     /// ORDEN: primero los clientes con CodigoInterno cargado (los que el usuario marcó como
