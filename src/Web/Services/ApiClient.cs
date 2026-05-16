@@ -588,6 +588,16 @@ public class ApiClient
     public async Task<List<ClienteSaldoPendienteDto>?> GetCafeClientesSaldosPendientesAsync()
         => await GetAsync<List<ClienteSaldoPendienteDto>>("/api/cafe/clientes/saldos-pendientes");
 
+    /// <summary>Descarga Excel de cuentas corrientes de los clientes seleccionados (o todos los deudores si la lista está vacía).</summary>
+    public async Task<byte[]?> ExportSaldosPendientesExcelAsync(List<int>? clienteIds)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync("/api/cafe/clientes/saldos-pendientes/excel",
+            new { ClienteIds = clienteIds });
+        if (resp.IsSuccessStatusCode) return await resp.Content.ReadAsByteArrayAsync();
+        return null;
+    }
+
     /// <summary>Devuelve los bytes del PDF de una venta Café (cotización/proforma) o null si fallo.</summary>
     public async Task<(byte[]? bytes, string? error)> GetCafeVentaPdfAsync(int id)
     {

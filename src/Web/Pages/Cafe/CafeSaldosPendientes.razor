@@ -35,7 +35,14 @@
 <div class="sp-wrap">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:wrap; gap:0.5rem;">
         <h2 style="margin:0;">💰 Saldos pendientes de clientes</h2>
-        <button class="btn btn-secondary" @onclick="RecargarAsync">🔄 Refrescar</button>
+        <div style="display:flex; gap:0.4rem; align-items:center;">
+            <button class="btn btn-primary" style="background:#16a34a; border-color:#15803d;"
+                    @onclick="ExportarExcel" disabled="@exportando"
+                    title="Descarga Excel con las cuentas seleccionadas (o todas si no hay selección)">
+                @(exportando ? "Generando..." : (seleccionados.Count > 0 ? $"📊 Excel ({seleccionados.Count} seleccionado{(seleccionados.Count == 1 ? "" : "s")})" : "📊 Excel (todos)"))
+            </button>
+            <button class="btn btn-secondary" @onclick="RecargarAsync">🔄 Refrescar</button>
+        </div>
     </div>
 
     @if (loading)
@@ -80,6 +87,11 @@
             <table class="sp-tab">
                 <thead>
                     <tr>
+                        <th style="width:40px; text-align:center;">
+                            <input type="checkbox" title="Seleccionar todos"
+                                   checked="@TodosSeleccionados"
+                                   @onchange="@(e => ToggleTodos((bool)(e.Value ?? false)))" />
+                        </th>
                         <th>Cliente</th>
                         <th style="text-align:center;">Tipo</th>
                         <th style="text-align:right;">N° pendientes</th>
@@ -95,6 +107,11 @@
                                     : s.DiasMasAntigua >= 30 ? "sp-dias-naranja"
                                     : "sp-dias-verde";
                         <tr>
+                            <td style="text-align:center;">
+                                <input type="checkbox"
+                                       checked="@seleccionados.Contains(s.ClienteId)"
+                                       @onchange="@(e => ToggleSeleccion(s.ClienteId, (bool)(e.Value ?? false)))" />
+                            </td>
                             <td>
                                 <strong>@s.Nombre</strong>
                                 @if (s.CodigoInterno.HasValue)
@@ -150,6 +167,53 @@
     private bool loading = true;
     private string filtroBusqueda = "";
     private string orden = "dias"; // "dias" | "saldo" | "nombre"
+    private HashSet<int> seleccionados = new();
+    private bool exportando;
+
+    private bool TodosSeleccionados => saldos is not null && Filtrados().Any()
+        && Filtrados().All(s => seleccionados.Contains(s.ClienteId));
+
+    private void ToggleSeleccion(int clienteId, bool check)
+    {
+        if (check) seleccionados.Add(clienteId);
+        else seleccionados.Remove(clienteId);
+    }
+
+    private void ToggleTodos(bool check)
+    {
+        if (check)
+        {
+            foreach (var s in Filtrados()) seleccionados.Add(s.ClienteId);
+        }
+        else
+        {
+            foreach (var s in Filtrados().ToList()) seleccionados.Remove(s.ClienteId);
+        }
+    }
+
+    private async Task ExportarExcel()
+    {
+        exportando = true;
+        try
+        {
+            // Si hay selección, mando esos ids. Si no, mando null = exportar todos.
+            var ids = seleccionados.Count > 0 ? seleccionados.ToList() : null;
+            var bytes = await Api.ExportSaldosPendientesExcelAsync(ids);
+            if (bytes is null || bytes.Length == 0)
+            {
+                ToastService.Error("No se pudo generar el Excel");
+                return;
+            }
+            var hoy = DateTime.Today;
+            var filename = $"saldos-pendientes_{hoy:yyyyMMdd}.xlsx";
+            var b64 = Convert.ToBase64String(bytes);
+            await JS.InvokeVoidAsync("downloadBytesAsFile", filename, b64,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            ToastService.Success($"Excel descargado ({(ids is null ? saldos!.Count : ids.Count)} cliente(s))");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { exportando = false; }
+    }
 
     private int FiltradosCount => Filtrados().Count();
 

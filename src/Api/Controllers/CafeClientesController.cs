@@ -2,6 +2,7 @@ using Api.Data;
 using Api.DTOs;
 using Api.Models;
 using Api.Services;
+using ClosedXML.Excel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -343,5 +344,198 @@ public class CafeClientesController : ControllerBase
             .OrderBy(c => c.FechaMasAntigua) // más antigua primero (mayor urgencia)
             .ToList();
         return Ok(result);
+    }
+
+    public class ExportSaldosRequest
+    {
+        /// <summary>Si está vacío, exporta TODOS los clientes con saldo. Si vienen ids, exporta solo esos.</summary>
+        public List<int>? ClienteIds { get; set; }
+    }
+
+    /// <summary>Exporta las cuentas corrientes de los clientes seleccionados (o todos los deudores)
+    /// a un Excel. Hoja 1 con el resumen + 1 hoja por cada cliente con sus comprobantes pendientes.</summary>
+    [HttpPost("saldos-pendientes/excel")]
+    public async Task<IActionResult> ExportSaldosExcel([FromBody] ExportSaldosRequest req)
+    {
+        // Traer ventas con sus saldos
+        var ventas = await _db.CafeVentas
+            .Where(v => v.Estado != "anulado" && v.ClienteId != null && v.Total > 0)
+            .ToListAsync();
+        if (ventas.Count == 0)
+            return BadRequest(new { error = "No hay ventas pendientes para exportar" });
+
+        var ventaIds = ventas.Select(v => v.Id).ToList();
+        var pagados = await _db.CafeCobranzasComprobantes
+            .Where(c => c.VentaId != null && ventaIds.Contains(c.VentaId!.Value)
+                     && c.Cobranza!.Estado == "VIGENTE")
+            .GroupBy(c => c.VentaId!.Value)
+            .Select(g => new { VentaId = g.Key, Pagado = g.Sum(x => x.Importe) })
+            .ToListAsync();
+        var pagadosDict = pagados.ToDictionary(p => p.VentaId, p => p.Pagado);
+
+        // Filtrar ventas con saldo > 0
+        var ventasConSaldo = ventas
+            .Select(v => new {
+                v.Id, v.Numero, ClienteId = v.ClienteId!.Value, v.Total, v.Fecha,
+                v.TipoComprobante,
+                Pagado = pagadosDict.TryGetValue(v.Id, out var p) ? p : 0m,
+                Saldo = v.Total - (pagadosDict.TryGetValue(v.Id, out var p2) ? p2 : 0m)
+            })
+            .Where(v => v.Saldo > 0)
+            .ToList();
+
+        // Filtrar por clienteIds si vinieron
+        if (req.ClienteIds is not null && req.ClienteIds.Count > 0)
+            ventasConSaldo = ventasConSaldo.Where(v => req.ClienteIds.Contains(v.ClienteId)).ToList();
+
+        if (ventasConSaldo.Count == 0)
+            return BadRequest(new { error = "No hay clientes con saldo pendiente que coincidan" });
+
+        // Traer clientes
+        var clienteIds = ventasConSaldo.Select(v => v.ClienteId).Distinct().ToList();
+        var clientes = await _db.CafeClientes.Where(c => clienteIds.Contains(c.Id)).ToListAsync();
+        var clientesDict = clientes.ToDictionary(c => c.Id);
+
+        var hoy = DateTime.UtcNow.AddHours(-3).Date;
+        var esCulture = new System.Globalization.CultureInfo("es-AR");
+
+        using var wb = new XLWorkbook();
+
+        // ===== HOJA 1: RESUMEN =====
+        var ws = wb.Worksheets.Add("Resumen");
+        ws.Cell(1, 1).Value = "Saldos pendientes de clientes";
+        ws.Range(1, 1, 1, 7).Merge().Style.Font.SetBold(true).Font.SetFontSize(14);
+        ws.Cell(2, 1).Value = $"Generado: {hoy:dd/MM/yyyy}";
+        ws.Range(2, 1, 2, 7).Merge().Style.Font.SetItalic(true).Font.SetFontColor(XLColor.DarkGray);
+
+        var headers = new[] { "Cliente", "Tipo", "Teléfono", "N° pendientes", "Días vencido", "Más antigua", "Saldo total" };
+        for (int i = 0; i < headers.Length; i++)
+        {
+            var c = ws.Cell(4, i + 1);
+            c.Value = headers[i];
+            c.Style.Font.SetBold(true);
+            c.Style.Fill.SetBackgroundColor(XLColor.LightGray);
+            c.Style.Border.SetBottomBorder(XLBorderStyleValues.Thin);
+        }
+
+        var resumen = ventasConSaldo
+            .GroupBy(v => v.ClienteId)
+            .Select(g => new {
+                ClienteId = g.Key,
+                Cliente = clientesDict.TryGetValue(g.Key, out var c) ? c : null,
+                Cantidad = g.Count(),
+                Saldo = g.Sum(x => x.Saldo),
+                FechaMasAntigua = g.Min(x => x.Fecha)
+            })
+            .OrderBy(x => x.FechaMasAntigua)
+            .ToList();
+
+        int row = 5;
+        foreach (var r in resumen)
+        {
+            ws.Cell(row, 1).Value = r.Cliente?.Nombre ?? "(sin nombre)";
+            ws.Cell(row, 2).Value = r.Cliente?.Tipo ?? "OTRO";
+            ws.Cell(row, 3).Value = r.Cliente?.Telefono ?? "";
+            ws.Cell(row, 4).Value = r.Cantidad;
+            ws.Cell(row, 5).Value = (int)(hoy - r.FechaMasAntigua.Date).TotalDays;
+            ws.Cell(row, 6).Value = r.FechaMasAntigua; ws.Cell(row, 6).Style.DateFormat.Format = "dd/MM/yyyy";
+            ws.Cell(row, 7).Value = r.Saldo; ws.Cell(row, 7).Style.NumberFormat.Format = "#,##0.00";
+            row++;
+        }
+        // Fila TOTAL
+        ws.Cell(row, 1).Value = "TOTAL";
+        ws.Cell(row, 1).Style.Font.SetBold(true);
+        ws.Range(row, 1, row, 6).Merge().Style.Font.SetBold(true);
+        ws.Cell(row, 7).Value = resumen.Sum(r => r.Saldo);
+        ws.Cell(row, 7).Style.NumberFormat.Format = "#,##0.00";
+        ws.Cell(row, 7).Style.Font.SetBold(true);
+        ws.Range(row, 1, row, 7).Style.Fill.SetBackgroundColor(XLColor.LightYellow);
+
+        ws.Columns().AdjustToContents();
+        ws.SheetView.FreezeRows(4);
+
+        // ===== UNA HOJA POR CADA CLIENTE =====
+        foreach (var r in resumen)
+        {
+            // Sanitizar nombre de la hoja (Excel no permite ciertos chars, max 31 chars)
+            var sheetName = SanitizeSheetName(r.Cliente?.Nombre ?? $"Cliente {r.ClienteId}");
+            // Evitar duplicados (puede haber 2 clientes con mismo nombre truncado)
+            var sName = sheetName;
+            int n = 2;
+            while (wb.Worksheets.Any(x => x.Name == sName)) { sName = sheetName.Substring(0, Math.Min(sheetName.Length, 28)) + $"({n++})"; }
+            var ws2 = wb.Worksheets.Add(sName);
+
+            ws2.Cell(1, 1).Value = r.Cliente?.Nombre ?? "?";
+            ws2.Range(1, 1, 1, 6).Merge().Style.Font.SetBold(true).Font.SetFontSize(13);
+            if (r.Cliente is not null)
+            {
+                int infoRow = 2;
+                if (!string.IsNullOrEmpty(r.Cliente.Cuit))
+                {
+                    ws2.Cell(infoRow, 1).Value = $"CUIT/DNI: {r.Cliente.Cuit}";
+                    ws2.Range(infoRow, 1, infoRow, 6).Merge();
+                    infoRow++;
+                }
+                if (!string.IsNullOrEmpty(r.Cliente.Telefono))
+                {
+                    ws2.Cell(infoRow, 1).Value = $"Teléfono: {r.Cliente.Telefono}";
+                    ws2.Range(infoRow, 1, infoRow, 6).Merge();
+                    infoRow++;
+                }
+                if (!string.IsNullOrEmpty(r.Cliente.DomicilioEntrega ?? r.Cliente.Direccion))
+                {
+                    ws2.Cell(infoRow, 1).Value = $"Dirección: {r.Cliente.DomicilioEntrega ?? r.Cliente.Direccion}";
+                    ws2.Range(infoRow, 1, infoRow, 6).Merge();
+                }
+            }
+
+            var detHeaders = new[] { "N° comprobante", "Fecha", "Tipo", "Total", "Cobrado", "Saldo" };
+            int hRow = 6;
+            for (int i = 0; i < detHeaders.Length; i++)
+            {
+                var c = ws2.Cell(hRow, i + 1);
+                c.Value = detHeaders[i];
+                c.Style.Font.SetBold(true);
+                c.Style.Fill.SetBackgroundColor(XLColor.LightGray);
+            }
+            int dRow = hRow + 1;
+            var itemsCliente = ventasConSaldo.Where(v => v.ClienteId == r.ClienteId).OrderBy(v => v.Fecha).ToList();
+            foreach (var v in itemsCliente)
+            {
+                ws2.Cell(dRow, 1).Value = v.Numero;
+                ws2.Cell(dRow, 2).Value = v.Fecha; ws2.Cell(dRow, 2).Style.DateFormat.Format = "dd/MM/yyyy";
+                ws2.Cell(dRow, 3).Value = v.TipoComprobante;
+                ws2.Cell(dRow, 4).Value = v.Total; ws2.Cell(dRow, 4).Style.NumberFormat.Format = "#,##0.00";
+                ws2.Cell(dRow, 5).Value = v.Pagado; ws2.Cell(dRow, 5).Style.NumberFormat.Format = "#,##0.00";
+                ws2.Cell(dRow, 6).Value = v.Saldo; ws2.Cell(dRow, 6).Style.NumberFormat.Format = "#,##0.00";
+                dRow++;
+            }
+            // Fila TOTAL
+            ws2.Cell(dRow, 1).Value = "TOTAL ADEUDADO";
+            ws2.Range(dRow, 1, dRow, 5).Merge().Style.Font.SetBold(true);
+            ws2.Cell(dRow, 6).Value = r.Saldo;
+            ws2.Cell(dRow, 6).Style.NumberFormat.Format = "#,##0.00";
+            ws2.Cell(dRow, 6).Style.Font.SetBold(true);
+            ws2.Range(dRow, 1, dRow, 6).Style.Fill.SetBackgroundColor(XLColor.LightYellow);
+
+            ws2.Columns().AdjustToContents();
+        }
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        var bytes = ms.ToArray();
+        var filename = $"saldos-pendientes_{hoy:yyyyMMdd}.xlsx";
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename);
+    }
+
+    /// <summary>Sanitiza un nombre de cliente para usarlo como nombre de hoja Excel:
+    /// max 31 chars, sin / \ ? * [ ].</summary>
+    private static string SanitizeSheetName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "Cliente";
+        foreach (var bad in new[] { '/', '\\', '?', '*', '[', ']', ':' })
+            name = name.Replace(bad, '-');
+        if (name.Length > 31) name = name.Substring(0, 31);
+        return name.Trim();
     }
 }
