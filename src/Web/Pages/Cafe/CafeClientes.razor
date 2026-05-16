@@ -62,7 +62,7 @@
                                     </button>
                                 </span>
                             </th>
-                            <th>Dirección</th>
+                            <th title="Domicilio de entrega del cliente (no el domicilio fiscal)">Dirección entrega</th>
                             <th style="width:130px;">
                                 <span style="display:inline-flex; align-items:center; gap:0.3rem;">
                                     Maps
@@ -126,7 +126,7 @@
                                         @(c.Email ?? "—")
                                     }
                                 </td>
-                                <td style="font-size: 0.85rem; color: #6b7280;">@(c.Direccion ?? "—")</td>
+                                <td style="font-size: 0.85rem; color: #6b7280;" title="Domicilio de entrega (no el fiscal)">@(c.DomicilioEntrega ?? "—")</td>
                                 <td style="text-align:center;">
                                     @if (editMapsHabilitado)
                                     {
