@@ -2167,6 +2167,8 @@
         await Load();
         // Si veníamos del FAB con ?nueva=..., abrir el modal automáticamente
         TryHandleNuevaVentaShortcut();
+        // Si veníamos de "Convertir preventa" con ?preventa=ID, cargar la preventa pre-poblada
+        await TryHandleConvertirPreventaAsync();
     }
 
     private void OnOperatorChange() => InvokeAsync(StateHasChanged);
@@ -2176,11 +2178,93 @@
     /// Por eso suscribimos LocationChanged para detectar el cambio y abrir el modal.</summary>
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
     {
-        InvokeAsync(() =>
+        InvokeAsync(async () =>
         {
             TryHandleNuevaVentaShortcut();
-            return Task.CompletedTask;
+            await TryHandleConvertirPreventaAsync();
         });
+    }
+
+    /// <summary>Si la URL trae ?preventa=ID, abre el modal de Nueva Venta con los items pre-cargados
+    /// desde la preventa (cliente, items del catálogo o concepto libre, notas).</summary>
+    private int? convirtiendoPreventaId;
+    private int? lastPreventaQuery;
+    private async Task TryHandleConvertirPreventaAsync()
+    {
+        var uri = new Uri(Navigation.Uri);
+        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        var preventaStr = query["preventa"];
+        if (string.IsNullOrEmpty(preventaStr)) return;
+        if (!int.TryParse(preventaStr, out var preventaId)) return;
+        if (lastPreventaQuery == preventaId) return; // ya lo procesamos
+        lastPreventaQuery = preventaId;
+        if (showForm) return; // ya hay un modal abierto, no pisar
+
+        // Traer detalle de la preventa
+        var pv = await Api.GetCafePreventaDetalleAsync(preventaId);
+        if (pv is null)
+        {
+            ToastService.Error("No se encontró la preventa");
+            return;
+        }
+
+        // Abrir modal de Nueva Venta y resetear todo
+        ShowCreate();
+        convirtiendoPreventaId = preventaId;
+
+        // Pre-cargar cliente del catálogo si lo había
+        if (pv.ClienteId.HasValue) formClienteId = pv.ClienteId.Value;
+
+        // Pre-cargar observaciones (incluir nombre del cliente libre si no era del catálogo + notas)
+        var obsParts = new List<string>();
+        if (!pv.ClienteId.HasValue && !string.IsNullOrWhiteSpace(pv.ClienteNombreLibre))
+            obsParts.Add($"Cliente (preventa): {pv.ClienteNombreLibre}");
+        if (!string.IsNullOrWhiteSpace(pv.ClienteTelefono))
+            obsParts.Add($"Tel: {pv.ClienteTelefono}");
+        if (!string.IsNullOrWhiteSpace(pv.Notas))
+            obsParts.Add(pv.Notas);
+        obsParts.Add($"(convertido desde preventa {pv.Numero})");
+        formObservaciones = string.Join(" · ", obsParts);
+
+        // Pre-cargar items
+        foreach (var it in pv.Items)
+        {
+            if (it.ProductoId.HasValue && it.ProductoId.Value > 0)
+            {
+                // Item del catálogo — determinar formato según categoría
+                var prod = productos?.FirstOrDefault(p => p.Id == it.ProductoId.Value);
+                var formato = prod?.Categoria == "CAFE" ? "1KG" : "UNIT";
+                formItems.Add(new CafeCotizarItemRequest
+                {
+                    ProductoId = it.ProductoId.Value,
+                    Formato = formato,
+                    Cantidad = (int)Math.Max(1, Math.Round(it.Cantidad)),
+                    PrecioUnitarioOverride = it.PrecioSugerido,
+                    DescuentoPct = 0m,
+                    EsConceptoLibre = false
+                });
+            }
+            else
+            {
+                // Texto libre — agregar como concepto libre con precio 0 para que Osmar lo edite
+                formItems.Add(new CafeCotizarItemRequest
+                {
+                    ProductoId = 0,
+                    EsConceptoLibre = true,
+                    DescripcionLibre = it.DescripcionLibre ?? "(sin descripción)",
+                    Formato = "UNIT",
+                    Cantidad = (int)Math.Max(1, Math.Round(it.Cantidad)),
+                    PrecioUnitarioOverride = it.PrecioSugerido ?? 0m,
+                    DescuentoPct = 0m,
+                    EsDoyPack = false,
+                    EsEnvasePlateado = false
+                });
+            }
+        }
+
+        // Recalcular cotización ahora que tenemos items
+        await Cotizar();
+        ToastService.Success($"Preventa {pv.Numero} cargada. Ajustá precios y emití la venta.");
     }
 
     /// <summary>Si la URL actual tiene ?nueva=<algo>, abre el modal de Nueva Venta.
@@ -2239,6 +2323,7 @@
     private void ShowCreate()
     {
         editingVentaId = null; editingVentaNumero = ""; duplicadoDeNumero = null;
+        convirtiendoPreventaId = null;  // reset si veníamos de una conversión cancelada
         unpaidPrevSales = new(); topProductsForClient = new(); includePrevBalanceInNotes = true;
         formClienteId = 0; formClienteTipo = "OTRO";
         clienteSearch = ""; clienteSearchOpen = false;
@@ -2834,6 +2919,19 @@
                 });
                 if (v is null) { formError = "No se pudo crear"; return; }
                 ToastService.Success($"Venta {v.Numero} emitida — Total ${v.Total:N2}");
+
+                // Si veníamos de convertir una preventa, vincularla a la venta nueva
+                if (convirtiendoPreventaId.HasValue)
+                {
+                    try
+                    {
+                        await Api.VincularPreventaVentaAsync(convirtiendoPreventaId.Value, v.Id);
+                        ToastService.Success($"✓ Preventa marcada como procesada");
+                    }
+                    catch { /* la venta ya se creó, no romper si falla el vincular */ }
+                    convirtiendoPreventaId = null;
+                    lastPreventaQuery = null;
+                }
             }
 
             var wasEditing = editingVentaId.HasValue;
