@@ -263,4 +263,85 @@ public class CafeClientesController : ControllerBase
     }
 
     private static string? Norm(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+    // ============================================================
+    // Saldos pendientes — vista consolidada por cliente
+    // ============================================================
+
+    public record ClienteSaldoPendienteDto(
+        int ClienteId, string Nombre, string? Tipo, string? Telefono, string? MapeoLink,
+        int? CodigoInterno,
+        int CantidadVentasPendientes,
+        decimal SaldoPendiente,
+        DateTime FechaMasAntigua, int DiasMasAntigua,
+        bool TieneSaldoMigracion);
+
+    /// <summary>Lista TODOS los clientes con saldo pendiente (deudores), agrupados.
+    /// Saldo pendiente = SUM(ventas emitidas).Total - SUM(cobranzas vigentes asignadas a esas ventas).
+    /// Las ventas creadas como "saldo de migración" del sistema viejo se incluyen igual (son ventas tipo X).
+    /// Solo devuelve clientes con saldo > 0.</summary>
+    [HttpGet("saldos-pendientes")]
+    public async Task<IActionResult> GetSaldosPendientes()
+    {
+        // Traer todas las ventas emitidas (no anuladas) con cliente y total > 0
+        var ventas = await _db.CafeVentas
+            .Where(v => v.Estado != "anulado"
+                     && v.ClienteId != null
+                     && v.Total > 0)
+            .Select(v => new {
+                v.Id, ClienteId = v.ClienteId!.Value, v.Total, v.Fecha,
+                EsSaldoMigracion = _db.CafeSaldosMigracion.Any(s => s.VentaId == v.Id)
+            })
+            .ToListAsync();
+        if (ventas.Count == 0) return Ok(new List<ClienteSaldoPendienteDto>());
+
+        // Calcular pagos por venta (cobranzas vigentes)
+        var ventaIds = ventas.Select(v => v.Id).ToList();
+        var pagados = await _db.CafeCobranzasComprobantes
+            .Where(c => c.VentaId != null && ventaIds.Contains(c.VentaId!.Value)
+                     && c.Cobranza!.Estado == "VIGENTE")
+            .GroupBy(c => c.VentaId!.Value)
+            .Select(g => new { VentaId = g.Key, Pagado = g.Sum(x => x.Importe) })
+            .ToListAsync();
+        var pagadosDict = pagados.ToDictionary(p => p.VentaId, p => p.Pagado);
+
+        // Calcular saldo de cada venta
+        var ventasConSaldo = ventas.Select(v => new {
+            v.Id, v.ClienteId, v.Total, v.Fecha, v.EsSaldoMigracion,
+            Saldo = v.Total - (pagadosDict.TryGetValue(v.Id, out var p) ? p : 0m)
+        }).Where(v => v.Saldo > 0).ToList();
+        if (ventasConSaldo.Count == 0) return Ok(new List<ClienteSaldoPendienteDto>());
+
+        // Agrupar por cliente
+        var clienteIds = ventasConSaldo.Select(v => v.ClienteId).Distinct().ToList();
+        var clientes = await _db.CafeClientes
+            .Where(c => clienteIds.Contains(c.Id))
+            .ToListAsync();
+        var clientesDict = clientes.ToDictionary(c => c.Id);
+
+        var hoy = DateTime.UtcNow.AddHours(-3).Date;
+        var result = ventasConSaldo
+            .GroupBy(v => v.ClienteId)
+            .Select(g =>
+            {
+                clientesDict.TryGetValue(g.Key, out var cli);
+                var fechaMasAntigua = g.Min(x => x.Fecha);
+                return new ClienteSaldoPendienteDto(
+                    g.Key,
+                    cli?.Nombre ?? "(sin nombre)",
+                    cli?.Tipo,
+                    cli?.Telefono,
+                    cli?.MapeoLink,
+                    cli?.CodigoInterno,
+                    g.Count(),
+                    g.Sum(x => x.Saldo),
+                    fechaMasAntigua,
+                    (int)(hoy - fechaMasAntigua.Date).TotalDays,
+                    g.Any(x => x.EsSaldoMigracion)
+                );
+            })
+            .OrderBy(c => c.FechaMasAntigua) // más antigua primero (mayor urgencia)
+            .ToList();
+        return Ok(result);
+    }
 }

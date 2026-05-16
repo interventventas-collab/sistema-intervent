@@ -1,0 +1,196 @@
+@page "/cafe/saldos-pendientes"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+<PageTitle>Saldos pendientes</PageTitle>
+
+<style>
+    .sp-wrap { padding: 1rem; }
+    .sp-card { background: white; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 1rem; margin-bottom: 1rem; }
+    .sp-total { background: linear-gradient(135deg, #1d4ed8, #1e40af); color: white; border-radius: 12px; padding: 1.4rem; text-align: center; }
+    .sp-total-label { font-size: 0.8rem; opacity: 0.85; letter-spacing: 0.05em; }
+    .sp-total-num { font-size: 2.6rem; font-weight: 800; margin-top: 0.3rem; }
+    .sp-total-sub { font-size: 0.85rem; opacity: 0.85; margin-top: 0.2rem; }
+    .sp-tab { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    .sp-tab th { background: #f3f4f6; padding: 0.5rem; text-align: left; font-size: 0.78rem; cursor: pointer; user-select: none; }
+    .sp-tab th:hover { background: #e5e7eb; }
+    .sp-tab td { padding: 0.6rem 0.5rem; border-bottom: 1px solid #f3f4f6; }
+    .sp-tab tr:hover { background: #f0f9ff; }
+    .sp-tipo-bar { display:inline-block; padding:0.1rem 0.4rem; background:#dbeafe; color:#1e40af; border-radius:999px; font-size:0.68rem; font-weight:700; }
+    .sp-tipo-otro { display:inline-block; padding:0.1rem 0.4rem; background:#dcfce7; color:#166534; border-radius:999px; font-size:0.68rem; font-weight:700; }
+    .sp-dias-rojo { color:#b91c1c; font-weight:700; }
+    .sp-dias-naranja { color:#d97706; font-weight:700; }
+    .sp-dias-verde { color:#16a34a; font-weight:700; }
+    .sp-saldo { font-weight: 800; color: #1d4ed8; font-size: 1rem; }
+    .sp-action-btn { padding: 0.3rem 0.6rem; font-size: 0.75rem; border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer; background: white; text-decoration: none; color: #1f2937; display: inline-block; margin-right: 0.2rem; }
+    .sp-action-btn.wa { background:#dcfce7; color:#166534; border-color:#16a34a; }
+    .sp-action-btn.cobranza { background:#dbeafe; color:#1e40af; border-color:#1d4ed8; }
+    .sp-action-btn.detalle { background:#f3f4f6; color:#4b5563; }
+    .sp-search { padding: 0.5rem 0.8rem; font-size: 0.9rem; border: 1px solid #d1d5db; border-radius: 8px; min-width: 280px; }
+</style>
+
+<div class="sp-wrap">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:wrap; gap:0.5rem;">
+        <h2 style="margin:0;">💰 Saldos pendientes de clientes</h2>
+        <button class="btn btn-secondary" @onclick="RecargarAsync">🔄 Refrescar</button>
+    </div>
+
+    @if (loading)
+    {
+        <p style="color:#6b7280;">Cargando saldos...</p>
+    }
+    else if (saldos is null || saldos.Count == 0)
+    {
+        <div class="sp-card" style="text-align:center; color:#16a34a;">
+            <div style="font-size:3rem;">🎉</div>
+            <h3 style="margin:0.5rem 0; color:#16a34a;">¡Sin deudas pendientes!</h3>
+            <p style="margin:0; color:#6b7280;">Ningún cliente tiene saldo a cobrar en este momento.</p>
+        </div>
+    }
+    else
+    {
+        @* === Total general === *@
+        <div class="sp-total">
+            <div class="sp-total-label">💰 TOTAL POR COBRAR</div>
+            <div class="sp-total-num">$@saldos.Sum(s => s.SaldoPendiente).ToString("N0", new System.Globalization.CultureInfo("es-AR"))</div>
+            <div class="sp-total-sub">@saldos.Count cliente(s) con saldo pendiente</div>
+        </div>
+
+        @* === Buscador === *@
+        <div class="sp-card" style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+            <input class="sp-search" placeholder="🔍 Buscar cliente por nombre, teléfono..."
+                   @bind="filtroBusqueda" @bind:event="oninput" />
+            <span style="font-size:0.85rem; color:#6b7280;">Orden:</span>
+            <select class="sp-search" style="min-width:180px;" @bind="orden">
+                <option value="dias">Más antigua primero</option>
+                <option value="saldo">Mayor saldo primero</option>
+                <option value="nombre">Por nombre (A-Z)</option>
+            </select>
+            @if (!string.IsNullOrEmpty(filtroBusqueda))
+            {
+                <button class="btn btn-secondary" style="padding:0.35rem 0.7rem; font-size:0.8rem;" @onclick="@(() => filtroBusqueda = "")">✕ Limpiar</button>
+            }
+        </div>
+
+        @* === Tabla === *@
+        <div class="sp-card" style="padding:0;">
+            <table class="sp-tab">
+                <thead>
+                    <tr>
+                        <th>Cliente</th>
+                        <th style="text-align:center;">Tipo</th>
+                        <th style="text-align:right;">N° pendientes</th>
+                        <th style="text-align:right;">Días vencido</th>
+                        <th style="text-align:right;">Saldo</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var s in Filtrados())
+                    {
+                        var diasCls = s.DiasMasAntigua >= 60 ? "sp-dias-rojo"
+                                    : s.DiasMasAntigua >= 30 ? "sp-dias-naranja"
+                                    : "sp-dias-verde";
+                        <tr>
+                            <td>
+                                <strong>@s.Nombre</strong>
+                                @if (s.CodigoInterno.HasValue)
+                                {
+                                    <span style="font-size:0.7rem; padding:0.05rem 0.3rem; background:#fef3c7; color:#92400e; border-radius:4px; margin-left:0.3rem; font-weight:700;">#@s.CodigoInterno</span>
+                                }
+                                @if (s.TieneSaldoMigracion)
+                                {
+                                    <span title="Incluye saldo de migración del sistema viejo" style="font-size:0.65rem; padding:0.05rem 0.3rem; background:#fef3c7; color:#92400e; border-radius:4px; margin-left:0.3rem;">🔄 MIGRACIÓN</span>
+                                }
+                                @if (!string.IsNullOrEmpty(s.Telefono))
+                                {
+                                    <div style="font-size:0.75rem; color:#6b7280;">📞 @s.Telefono</div>
+                                }
+                            </td>
+                            <td style="text-align:center;">
+                                @if (s.Tipo == "BAR")
+                                { <span class="sp-tipo-bar">🍺 BAR</span> }
+                                else
+                                { <span class="sp-tipo-otro">🏢 OTRO</span> }
+                            </td>
+                            <td style="text-align:right;">@s.CantidadVentasPendientes</td>
+                            <td style="text-align:right;">
+                                <span class="@diasCls">@s.DiasMasAntigua días</span>
+                                <div style="font-size:0.7rem; color:#6b7280;">desde @s.FechaMasAntigua.ToString("dd/MM/yyyy")</div>
+                            </td>
+                            <td style="text-align:right;">
+                                <span class="sp-saldo">$@s.SaldoPendiente.ToString("N2", new System.Globalization.CultureInfo("es-AR"))</span>
+                            </td>
+                            <td>
+                                <a class="sp-action-btn detalle" href="/cafe/clientes/@s.ClienteId/estado-cuenta" title="Ver estado de cuenta">📒</a>
+                                <a class="sp-action-btn cobranza" href="/cafe/tesoreria/cobranzas?cliente=@s.ClienteId" title="Registrar cobranza">📥</a>
+                                @if (!string.IsNullOrEmpty(s.Telefono))
+                                {
+                                    <button class="sp-action-btn wa" @onclick="@(() => MandarWhatsapp(s))" title="WhatsApp con mensaje pre-armado">📱</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @if (FiltradosCount == 0 && !string.IsNullOrEmpty(filtroBusqueda))
+        {
+            <p style="color:#6b7280; text-align:center; padding:1rem;">No hay resultados con "@filtroBusqueda".</p>
+        }
+    }
+</div>
+
+@code {
+    private List<ClienteSaldoPendienteDto>? saldos;
+    private bool loading = true;
+    private string filtroBusqueda = "";
+    private string orden = "dias"; // "dias" | "saldo" | "nombre"
+
+    private int FiltradosCount => Filtrados().Count();
+
+    private IEnumerable<ClienteSaldoPendienteDto> Filtrados()
+    {
+        if (saldos is null) return Enumerable.Empty<ClienteSaldoPendienteDto>();
+        IEnumerable<ClienteSaldoPendienteDto> q = saldos;
+        if (!string.IsNullOrWhiteSpace(filtroBusqueda))
+        {
+            var t = filtroBusqueda.Trim().ToUpperInvariant();
+            q = q.Where(s =>
+                (s.Nombre ?? "").ToUpperInvariant().Contains(t)
+                || (s.Telefono ?? "").Contains(t));
+        }
+        return orden switch
+        {
+            "saldo" => q.OrderByDescending(s => s.SaldoPendiente),
+            "nombre" => q.OrderBy(s => s.Nombre),
+            _ => q.OrderBy(s => s.FechaMasAntigua)
+        };
+    }
+
+    protected override async Task OnInitializedAsync() => await RecargarAsync();
+
+    private async Task RecargarAsync()
+    {
+        loading = true;
+        try { saldos = await Api.GetCafeClientesSaldosPendientesAsync(); }
+        catch { ToastService.Error("Error al cargar saldos"); }
+        finally { loading = false; }
+    }
+
+    private async Task MandarWhatsapp(ClienteSaldoPendienteDto s)
+    {
+        var telLimpio = new string((s.Telefono ?? "").Where(char.IsDigit).ToArray());
+        if (string.IsNullOrEmpty(telLimpio)) { ToastService.Error("Cliente sin teléfono cargado"); return; }
+        // Agregar prefijo 549 si no lo tiene (Argentina celular)
+        if (!telLimpio.StartsWith("54")) telLimpio = "549" + telLimpio.TrimStart('0');
+        var saldo = s.SaldoPendiente.ToString("N0", new System.Globalization.CultureInfo("es-AR"));
+        var msg = $"Hola {s.Nombre}! Te paso un aviso de que tenés un saldo pendiente de $ {saldo} ({s.CantidadVentasPendientes} comprobante(s), el más viejo de hace {s.DiasMasAntigua} días). Cualquier consulta avisame. Gracias!";
+        var url = $"https://wa.me/{telLimpio}?text={Uri.EscapeDataString(msg)}";
+        await JS.InvokeVoidAsync("open", url, "_blank");
+    }
+}

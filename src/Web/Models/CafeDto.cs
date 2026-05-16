@@ -1155,3 +1155,18 @@ public class CafePreventaVendedorDto
     public DateTime CreatedAt { get; set; }
 }
 
+
+public class ClienteSaldoPendienteDto
+{
+    public int ClienteId { get; set; }
+    public string Nombre { get; set; } = "";
+    public string? Tipo { get; set; }
+    public string? Telefono { get; set; }
+    public string? MapeoLink { get; set; }
+    public int? CodigoInterno { get; set; }
+    public int CantidadVentasPendientes { get; set; }
+    public decimal SaldoPendiente { get; set; }
+    public DateTime FechaMasAntigua { get; set; }
+    public int DiasMasAntigua { get; set; }
+    public bool TieneSaldoMigracion { get; set; }
+}

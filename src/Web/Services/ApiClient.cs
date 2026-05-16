@@ -584,6 +584,10 @@ public class ApiClient
 
     private record PendientesCountDto(int count);
 
+    /// <summary>Lista de clientes con saldo pendiente (deudores), ordenada por venta más antigua primero.</summary>
+    public async Task<List<ClienteSaldoPendienteDto>?> GetCafeClientesSaldosPendientesAsync()
+        => await GetAsync<List<ClienteSaldoPendienteDto>>("/api/cafe/clientes/saldos-pendientes");
+
     /// <summary>Devuelve los bytes del PDF de una venta Café (cotización/proforma) o null si fallo.</summary>
     public async Task<(byte[]? bytes, string? error)> GetCafeVentaPdfAsync(int id)
     {
