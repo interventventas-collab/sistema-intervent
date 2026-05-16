@@ -330,24 +330,36 @@
     private int maxVisibles = 100;
     private bool showForm, isEditing, saving;
 
-    /// <summary>Lista filtrada por el buscador (codigo / nombre / cuit / telefono / email).</summary>
+    /// <summary>Lista filtrada por el buscador (codigo / nombre / cuit / telefono / email).
+    /// ORDEN: primero los clientes con CodigoInterno cargado (los que el usuario marcó como
+    /// "suyos") ordenados por el código, después el resto por nombre.</summary>
     private List<CafeClienteDto> visibles
     {
         get
         {
             if (clientes is null) return new();
-            if (string.IsNullOrWhiteSpace(filtro)) return clientes;
-            var f = filtro.Trim();
-            // Comparacion case-insensitive sin acentos sería mas fuerte; arrancamos con Contains simple.
-            bool match(CafeClienteDto c, string q)
+            IEnumerable<CafeClienteDto> baseList = clientes;
+            if (!string.IsNullOrWhiteSpace(filtro))
             {
-                bool h(string? s) => !string.IsNullOrEmpty(s) && s.Contains(q, StringComparison.OrdinalIgnoreCase);
-                return h(c.Codigo) || h(c.Nombre) || h(c.RazonSocial) || h(c.Cuit)
-                    || h(c.Telefono) || h(c.Email)
-                    || h(c.Direccion) || h(c.Localidad) || h(c.Ciudad) || h(c.Cp)
-                    || h(c.DomicilioEntrega);
+                var f = filtro.Trim();
+                bool match(CafeClienteDto c, string q)
+                {
+                    bool h(string? s) => !string.IsNullOrEmpty(s) && s.Contains(q, StringComparison.OrdinalIgnoreCase);
+                    return h(c.Codigo) || h(c.Nombre) || h(c.RazonSocial) || h(c.Cuit)
+                        || h(c.Telefono) || h(c.Email)
+                        || h(c.Direccion) || h(c.Localidad) || h(c.Ciudad) || h(c.Cp)
+                        || h(c.DomicilioEntrega);
+                }
+                baseList = clientes.Where(c => match(c, f));
             }
-            return clientes.Where(c => match(c, f)).ToList();
+            // Prioridad de orden:
+            //   1) Con CodigoInterno asignado → primero, ordenados por el código (1, 2, 3, ...)
+            //   2) Sin CodigoInterno → después, ordenados por nombre
+            return baseList
+                .OrderBy(c => c.CodigoInterno.HasValue ? 0 : 1)
+                .ThenBy(c => c.CodigoInterno ?? int.MaxValue)
+                .ThenBy(c => c.Nombre ?? "")
+                .ToList();
         }
     }
     private string? formError;
