@@ -29,6 +29,43 @@
         -webkit-print-color-adjust: exact; print-color-adjust: exact;
     }
     .cli-pick-row:hover { background: #f0f9ff; }
+
+    /* Pin / post-it para anotar ventas */
+    .pin-icon {
+        display: inline-block;
+        cursor: pointer;
+        opacity: 0.25;
+        font-size: 0.85rem;
+        margin-right: 0.2rem;
+        user-select: none;
+        transition: opacity 0.1s, transform 0.1s;
+    }
+    .pin-icon:hover { opacity: 1; transform: scale(1.2); }
+    .pin-icon.active { opacity: 1; filter: drop-shadow(0 0 1px #d97706); }
+    /* Post-it amarillo que aparece al hover de la fila o del pin */
+    .pin-postit {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        z-index: 50;
+        background: #fef3c7;
+        border: 1px solid #d97706;
+        border-radius: 6px;
+        padding: 0.4rem 0.6rem;
+        font-family: inherit;
+        font-size: 0.78rem;
+        font-weight: 500;
+        color: #78350f;
+        max-width: 260px;
+        min-width: 140px;
+        box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+        white-space: pre-wrap;
+        word-break: break-word;
+        display: none;
+        pointer-events: none;
+    }
+    /* Mostrar el post-it al hacer hover sobre la celda (el TD contenedor) */
+    td:hover > .pin-postit { display: block; }
 </style>
 
 <div class="card">
@@ -203,8 +240,19 @@
                                            title="@(tieneCae ? "Comprobante con CAE de ARCA — no se puede eliminar. Generá una Nota de Crédito." : "")"
                                            @onchange="@(e => ToggleSelect(v.Id, (bool)(e.Value ?? false)))" />
                                 </td>
-                                <td style="font-family: monospace; font-weight: 700;">
+                                <td style="font-family: monospace; font-weight: 700; position:relative;">
+                                    @{
+                                        var tienePin = !string.IsNullOrEmpty(v.PinNota);
+                                    }
+                                    <span class="pin-icon @(tienePin ? "active" : "")" @onclick="@(() => AbrirPin(v))"
+                                          title="@(tienePin ? v.PinNota : "Agregar nota a esta venta")">
+                                        📌
+                                    </span>
                                     @v.Numero
+                                    @if (tienePin)
+                                    {
+                                        <div class="pin-postit">@v.PinNota</div>
+                                    }
                                     @if (v.EsSaldoMigracion)
                                     {
                                         <div style="margin-top:0.15rem;"><span title="Esta venta fue creada como saldo de migración del sistema anterior" style="display:inline-block; padding:0.05rem 0.35rem; background:#fef3c7; color:#92400e; border-radius:4px; font-size:0.62rem; font-weight:800; letter-spacing:0.5px; font-family:inherit;">🔄 MIGRACIÓN</span></div>
@@ -1655,9 +1703,72 @@
 
 @* (El modal de edición vive ahora dentro del modal Nueva Venta — mismo form, branchea por editingVentaId) *@
 
+@* === Modal: Pin / nota tipo post-it === *@
+@if (pinningVenta is not null)
+{
+    <div class="modal-overlay" style="z-index:9100;" @onclick="@(() => pinningVenta = null)">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width:380px;">
+            <div class="modal-header" style="background:#fef3c7;">
+                <h3 style="margin:0; color:#92400e;">📌 Nota para @pinningVenta.Numero</h3>
+                <button class="btn-close" @onclick="@(() => pinningVenta = null)">&times;</button>
+            </div>
+            <div class="modal-body" style="padding:1rem;">
+                <p style="font-size:0.8rem; color:#6b7280; margin:0 0 0.5rem;">Solo vos lo ves. No se imprime ni se manda al cliente.</p>
+                <textarea class="form-input" rows="4" @bind="pinNotaInput"
+                          placeholder="Ej: cliente pasa a pagar el viernes, llamar antes de despachar, etc."
+                          style="resize:vertical; min-height:80px;"></textarea>
+            </div>
+            <div class="modal-footer" style="gap:0.4rem;">
+                @if (!string.IsNullOrEmpty(pinningVenta.PinNota))
+                {
+                    <button class="btn btn-secondary" style="background:#fee2e2; color:#b91c1c; border-color:#fca5a5;"
+                            @onclick="BorrarPinAsync" disabled="@savingPin">🗑 Borrar</button>
+                }
+                <button class="btn btn-secondary" @onclick="@(() => pinningVenta = null)" disabled="@savingPin">Cancelar</button>
+                <button class="btn btn-primary" @onclick="GuardarPinAsync" disabled="@savingPin">@(savingPin ? "Guardando..." : "Guardar")</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private List<CafeVentaDto>? ventas;
     private Dictionary<int, decimal> saldosPorVenta = new();
+
+    // Pin / nota tipo post-it
+    private CafeVentaDto? pinningVenta;
+    private string pinNotaInput = "";
+    private bool savingPin;
+
+    private void AbrirPin(CafeVentaDto v)
+    {
+        pinningVenta = v;
+        pinNotaInput = v.PinNota ?? "";
+    }
+
+    private async Task GuardarPinAsync()
+    {
+        if (pinningVenta is null) return;
+        savingPin = true;
+        try
+        {
+            var ok = await Api.UpdateCafeVentaPinNotaAsync(pinningVenta.Id, pinNotaInput);
+            if (ok)
+            {
+                pinningVenta.PinNota = string.IsNullOrWhiteSpace(pinNotaInput) ? null : pinNotaInput.Trim();
+                ToastService.Success(string.IsNullOrWhiteSpace(pinNotaInput) ? "Nota borrada" : "Nota guardada");
+                pinningVenta = null;
+            }
+            else { ToastService.Error("No se pudo guardar"); }
+        }
+        finally { savingPin = false; }
+    }
+
+    private async Task BorrarPinAsync()
+    {
+        pinNotaInput = "";
+        await GuardarPinAsync();
+    }
 
     // ===== Filtros del listado =====
     private DateTime? filtroFechaDesde;

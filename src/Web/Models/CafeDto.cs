@@ -298,6 +298,8 @@ public class CafeVentaDto
     /// <summary>True si esta venta fue creada como saldo de migración del sistema viejo
     /// (hay un Cafe_SaldosMigracion.VentaId apuntando a ella). Para mostrar badge visual.</summary>
     public bool EsSaldoMigracion { get; set; }
+    /// <summary>Nota tipo post-it pegada por el admin a esta venta. Null = sin nota.</summary>
+    public string? PinNota { get; set; }
 }
 
 public class ConvertirAFacturaRequest

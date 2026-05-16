@@ -108,6 +108,11 @@ public class CafeVenta
     [MaxLength(1000)]
     public string? ArcaError { get; set; }
 
+    /// <summary>Nota tipo "post-it" del admin pegada a esta venta (interna, no se imprime).
+    /// Útil para marcar ventas que requieren atención, dejarse recordatorios, etc.</summary>
+    [MaxLength(1000)]
+    public string? PinNota { get; set; }
+
     /// <summary>Importe Neto (sin IVA) que ARCA registró efectivamente. Guardamos lo que devuelve
     /// el FECAESolicitar para que el PDF reconstruya los totales sin lugar a interpretación.
     /// NULL en facturas viejas (pre-2026-05-15) que no guardaban esto — para esas se calcula

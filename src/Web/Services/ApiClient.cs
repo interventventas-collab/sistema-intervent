@@ -530,6 +530,14 @@ public class ApiClient
     public async Task<CafeVentaDto?> GetCafeVentaAsync(int id)
         => await GetAsync<CafeVentaDto>($"/api/cafe/ventas/{id}");
 
+    /// <summary>Setea / borra la nota pin de una venta. Pasar null o vacío para borrar.</summary>
+    public async Task<bool> UpdateCafeVentaPinNotaAsync(int id, string? nota)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PutAsJsonAsync($"/api/cafe/ventas/{id}/pin", new { Nota = nota });
+        return resp.IsSuccessStatusCode;
+    }
+
     /// <summary>Devuelve los bytes del PDF de una venta Café (cotización/proforma) o null si fallo.</summary>
     public async Task<(byte[]? bytes, string? error)> GetCafeVentaPdfAsync(int id)
     {

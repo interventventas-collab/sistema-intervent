@@ -277,7 +277,8 @@ public record CafeVentaDto(
     string? ArcaError,
     int? OrigenVentaId = null,
     int? FacturadaComoVentaId = null,
-    bool EsSaldoMigracion = false);
+    bool EsSaldoMigracion = false,
+    string? PinNota = null);
 
 public class CafeCotizarItemRequest
 {

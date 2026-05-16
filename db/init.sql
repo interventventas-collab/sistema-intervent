@@ -3601,3 +3601,10 @@ BEGIN
     ALTER TABLE HorasExtras_Empleados ADD DniUltimos3 NVARCHAR(3) NULL;
 END
 GO
+
+-- Cafe_Ventas: nota tipo post-it pegada por el admin a cada venta (interna).
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='PinNota' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+BEGIN
+    ALTER TABLE Cafe_Ventas ADD PinNota NVARCHAR(1000) NULL;
+END
+GO

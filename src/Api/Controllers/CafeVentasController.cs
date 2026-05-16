@@ -88,7 +88,8 @@ public class CafeVentasController : ControllerBase
         v.ArcaError,
         v.OrigenVentaId,
         v.FacturadaComoVentaId,
-        esSaldoMigracion);
+        esSaldoMigracion,
+        v.PinNota);
 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null)
@@ -1454,6 +1455,21 @@ public class CafeVentasController : ControllerBase
             if (int.TryParse(s.Substring(prefix.Length), out var n) && n > max) max = n;
         }
         return $"{prefix}{(max + 1):D4}";
+    }
+
+    public class UpdatePinNotaRequest { public string? Nota { get; set; } }
+
+    /// <summary>Guarda / actualiza / borra la nota tipo post-it pegada a una venta. Si Nota es null
+    /// o vacía, borra la nota (despinea).</summary>
+    [HttpPut("{id:int}/pin")]
+    public async Task<IActionResult> UpdatePinNota(int id, [FromBody] UpdatePinNotaRequest req)
+    {
+        var v = await _db.CafeVentas.FindAsync(id);
+        if (v is null) return NotFound();
+        v.PinNota = string.IsNullOrWhiteSpace(req.Nota) ? null : req.Nota.Trim();
+        v.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, pinNota = v.PinNota });
     }
 
     // ============================================================
