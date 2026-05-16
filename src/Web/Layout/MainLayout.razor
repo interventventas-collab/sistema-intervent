@@ -383,19 +383,8 @@
     </div>
 </aside>
 
-@* ═════════════ FAB: Botón flotante "Nueva Venta" siempre visible ═════════════
-   Atajo rápido para abrir el modal de Nueva Venta del módulo Café desde cualquier
-   pantalla. Click navega a /cafe/ventas?nueva=<timestamp> — la página de ventas
-   detecta el query y dispara ShowCreate() automáticamente. *@
-@if (HasPerm("cafe"))
-{
-    <button class="fab-nueva-venta" @onclick="OpenNuevaVentaShortcut"
-            title="Cargar una venta nueva (atajo)"
-            aria-label="Nueva venta">
-        <span class="fab-nueva-venta-plus">+</span>
-        <span class="fab-nueva-venta-label">Nueva Venta</span>
-    </button>
-}
+@* Botón "Nueva Venta" - vive dentro del topbar (ver más abajo) para quedar
+   siempre visible arriba a la derecha sin tapar otros íconos. *@
 
 <main class="main-wrapper @(sidebarCollapsed ? "main-collapsed" : "")">
     <header class="topbar">
@@ -426,6 +415,16 @@
             }
         </div>
         <div class="topbar-actions">
+            @* Atajo "Nueva Venta" - siempre visible en topbar para el modulo Cafe *@
+            @if (HasPerm("cafe"))
+            {
+                <button class="fab-nueva-venta" @onclick="OpenNuevaVentaShortcut"
+                        title="Cargar una venta nueva (atajo)"
+                        aria-label="Nueva venta">
+                    <span class="fab-nueva-venta-plus">+</span>
+                    <span class="fab-nueva-venta-label">Nueva Venta</span>
+                </button>
+            }
             <MeliQuestionsBell />
             @if (UploadProgress.IsUploading)
             {

@@ -247,49 +247,44 @@ button {
   overflow: hidden;
 }
 
-/* ═════════════ FAB: Botón flotante "Nueva Venta" ═════════════ */
-/* Atajo siempre visible en la esquina inferior derecha para cargar venta rápida. */
+/* ═════════════ Atajo "Nueva Venta" en topbar ═════════════ */
+/* Boton siempre visible arriba a la derecha (dentro del topbar sticky). */
 .fab-nueva-venta {
-  position: fixed;
-  bottom: 1.5rem;
-  right: 1.5rem;
-  z-index: 90;
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.85rem 1.4rem;
+  gap: 0.4rem;
+  padding: 0.45rem 1rem;
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   color: white;
   border: none;
   border-radius: 999px;
   font-weight: 700;
-  font-size: 0.95rem;
-  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.45), 0 2px 6px rgba(0,0,0,0.12);
+  font-size: 0.88rem;
+  box-shadow: 0 3px 10px rgba(16, 185, 129, 0.35), 0 1px 3px rgba(0,0,0,0.08);
   cursor: pointer;
   transition: transform 0.15s, box-shadow 0.15s;
+  white-space: nowrap;
 }
 .fab-nueva-venta:hover {
-  transform: translateY(-2px) scale(1.03);
-  box-shadow: 0 10px 28px rgba(16, 185, 129, 0.55), 0 3px 8px rgba(0,0,0,0.15);
+  transform: translateY(-1px) scale(1.03);
+  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.5), 0 2px 5px rgba(0,0,0,0.1);
 }
 .fab-nueva-venta:active { transform: translateY(0) scale(0.98); }
 .fab-nueva-venta-plus {
-  font-size: 1.4rem;
+  font-size: 1.15rem;
   font-weight: 300;
   line-height: 1;
 }
 .fab-nueva-venta-label {
   letter-spacing: 0.02em;
 }
-/* En pantallas chicas: solo el "+" para no tapar contenido */
+/* En pantallas chicas: solo el "+" para ahorrar lugar en la topbar */
 @media (max-width: 640px) {
   .fab-nueva-venta {
-    padding: 0.9rem;
-    bottom: 1rem;
-    right: 1rem;
+    padding: 0.5rem 0.7rem;
   }
   .fab-nueva-venta-label { display: none; }
-  .fab-nueva-venta-plus { font-size: 1.8rem; }
+  .fab-nueva-venta-plus { font-size: 1.3rem; }
 }
 
 /* ═════════════ DEV: indicador visible de entorno desarrollo ═════════════ */
