@@ -4,6 +4,7 @@
 @inject ToastService ToastService
 @inject CpService CpService
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 
 <div class="card">
@@ -62,6 +63,16 @@
                                 </span>
                             </th>
                             <th>Dirección</th>
+                            <th style="width:130px;">
+                                <span style="display:inline-flex; align-items:center; gap:0.3rem;">
+                                    Maps
+                                    <button @onclick="() => editMapsHabilitado = !editMapsHabilitado"
+                                            title="@(editMapsHabilitado ? "Bloquear edición de Maps" : "Desbloquear para editar Maps")"
+                                            style="background:@(editMapsHabilitado ? "#fef3c7" : "#f3f4f6"); border:1px solid #d1d5db; border-radius:4px; padding:0.1rem 0.4rem; cursor:pointer; font-size:0.85rem;">
+                                        @(editMapsHabilitado ? "🔓" : "🔒")
+                                    </button>
+                                </span>
+                            </th>
                             <th>Estado</th>
                             <th style="width: 130px;">Acciones</th>
                         </tr>
@@ -116,6 +127,28 @@
                                     }
                                 </td>
                                 <td style="font-size: 0.85rem; color: #6b7280;">@(c.Direccion ?? "—")</td>
+                                <td style="text-align:center;">
+                                    @if (editMapsHabilitado)
+                                    {
+                                        <input class="form-input" style="padding:0.2rem 0.4rem; font-size:0.78rem; width:150px; background:#fef3c7;"
+                                               value="@(c.MapeoLink ?? "")"
+                                               placeholder="maps.app.goo.gl/..."
+                                               @onchange="@(async e => await GuardarInlineAsync(c, "maps", e.Value?.ToString()))" />
+                                    }
+                                    else if (!string.IsNullOrEmpty(c.MapeoLink))
+                                    {
+                                        <span style="display:inline-flex; gap:0.2rem; align-items:center;">
+                                            <a href="@c.MapeoLink" target="_blank" title="Abrir en Google Maps"
+                                               style="padding:0.2rem 0.4rem; background:#dbeafe; color:#1e40af; border:1px solid #1d4ed8; border-radius:4px; font-size:0.78rem; font-weight:700; text-decoration:none;">📍 Abrir</a>
+                                            <button class="btn-icon" style="padding:0.2rem 0.4rem; background:#f3f4f6; color:#4b5563; border:1px solid #d1d5db; border-radius:4px; font-size:0.78rem; font-weight:700;"
+                                                    @onclick="@(() => CopiarMaps(c.MapeoLink!))" title="Copiar link">📋</button>
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span style="color:#9ca3af;">—</span>
+                                    }
+                                </td>
                                 <td>
                                     <span class="status-badge @(c.IsActive ? "status-active" : "status-inactive")">@(c.IsActive ? "Activo" : "Inactivo")</span>
                                 </td>
@@ -379,9 +412,16 @@
     private int maxVisibles = 100;
     private bool showForm, isEditing, saving;
 
-    // Candados de edición rápida en lista (tel / email). Por default bloqueados.
+    // Candados de edición rápida en lista (tel / email / maps). Por default bloqueados.
     private bool editTelHabilitado;
     private bool editMailHabilitado;
+    private bool editMapsHabilitado;
+
+    private async Task CopiarMaps(string link)
+    {
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", link);
+        ToastService.Success("Link de Maps copiado");
+    }
 
     private async Task GuardarInlineAsync(CafeClienteDto c, string campo, string? valor)
     {
@@ -389,16 +429,24 @@
         // Si no cambió, no llamar al backend
         if (campo == "tel" && (c.Telefono ?? "") == nuevo) return;
         if (campo == "mail" && (c.Email ?? "") == nuevo) return;
+        if (campo == "maps" && (c.MapeoLink ?? "") == nuevo) return;
 
         var req = new UpdateCafeClienteRequest();
         if (campo == "tel") req.Telefono = nuevo;
         else if (campo == "mail") req.Email = nuevo;
+        else if (campo == "maps")
+        {
+            req.MapeoLink = string.IsNullOrEmpty(nuevo) ? null : nuevo;
+            req.ClearMapeoLink = string.IsNullOrEmpty(nuevo);
+        }
         var updated = await Api.UpdateCafeClienteAsync(c.Id, req);
         if (updated is not null)
         {
             if (campo == "tel") c.Telefono = updated.Telefono;
-            else c.Email = updated.Email;
-            ToastService.Success($"{c.Nombre} · {(campo == "tel" ? "teléfono" : "email")} actualizado");
+            else if (campo == "mail") c.Email = updated.Email;
+            else if (campo == "maps") c.MapeoLink = updated.MapeoLink;
+            var label = campo switch { "tel" => "teléfono", "mail" => "email", "maps" => "Maps", _ => campo };
+            ToastService.Success($"{c.Nombre} · {label} actualizado");
         }
         else { ToastService.Error("Error al guardar"); }
     }
