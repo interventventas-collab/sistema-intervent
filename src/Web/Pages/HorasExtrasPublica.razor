@@ -88,24 +88,55 @@
                 </p>
             }
 
-            <label class="he-label" style="margin-top:0.7rem;">🕒 Horario (opcional)</label>
+            <label class="he-label" style="margin-top:0.7rem;">🕒 Horario (entrada y salida)</label>
             <div style="display:flex; gap:0.5rem;">
                 <div style="flex:1;">
                     <div style="font-size:0.72rem; color:#6b7280; margin-bottom:0.15rem;">Entrada</div>
                     <input type="time" class="he-input" style="font-size:1.1rem; padding:0.55rem;"
                            value="@formHoraEntrada"
-                           @onchange="@(e => formHoraEntrada = e.Value?.ToString() ?? "")" />
+                           @onchange="@(e => { formHoraEntrada = e.Value?.ToString() ?? ""; RecalcularHorasExtras(); })" />
                 </div>
                 <div style="flex:1;">
                     <div style="font-size:0.72rem; color:#6b7280; margin-bottom:0.15rem;">Salida</div>
                     <input type="time" class="he-input" style="font-size:1.1rem; padding:0.55rem;"
                            value="@formHoraSalida"
-                           @onchange="@(e => formHoraSalida = e.Value?.ToString() ?? "")" />
+                           @onchange="@(e => { formHoraSalida = e.Value?.ToString() ?? ""; RecalcularHorasExtras(); })" />
                 </div>
             </div>
 
-            <label class="he-label" style="margin-top:0.7rem;">¿Cuántas horas extra hiciste @(datos.FechaSeleccionada.Date == datos.HoyFecha.Date ? "hoy" : "ese día")?</label>
+            @* === Desglose de cálculo automático === *@
+            @{
+                var infoCalc = DesgloseCalculoHorasExtras();
+            }
+            @if (infoCalc is not null)
+            {
+                <div style="margin-top:0.5rem; padding:0.6rem 0.7rem; background:@(infoCalc.EsDomingo ? "#fee2e2" : infoCalc.Extras > 0 ? "#dcfce7" : "#f3f4f6"); border-radius:8px; font-size:0.85rem;">
+                    @if (infoCalc.EsDomingo)
+                    {
+                        <strong style="color:#b91c1c;">⚠ Domingo no laborable.</strong>
+                        <span style="display:block; color:#7f1d1d; font-size:0.78rem; margin-top:0.2rem;">Si trabajaste, hablalo con tu encargado.</span>
+                    }
+                    else
+                    {
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <span style="color:#4b5563;">Trabajaste:</span>
+                            <strong>@infoCalc.Trabajadas.ToString("0.##") h</strong>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <span style="color:#4b5563;">Jornada @infoCalc.DiaNombre:</span>
+                            <strong>@infoCalc.Jornada h</strong>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid #d1d5db; margin-top:0.3rem; padding-top:0.3rem;">
+                            <span style="color:#1f2937; font-weight:700;">Horas extras:</span>
+                            <strong style="font-size:1.05rem; color:@(infoCalc.Extras > 0 ? "#16a34a" : "#6b7280");">@infoCalc.Extras.ToString("0.##") h</strong>
+                        </div>
+                    }
+                </div>
+            }
+
+            <label class="he-label" style="margin-top:0.7rem;">Horas extras a cargar</label>
             <input type="number" step="0.5" min="0" max="999" class="he-input" @bind="formCantidad" @bind:event="oninput" placeholder="0" />
+            <p style="font-size:0.72rem; color:#6b7280; margin:0.2rem 0 0;">💡 Se calcula solo desde el horario. Podés editarlo a mano si querés.</p>
             @if (formCantidad > 24)
             {
                 <p style="font-size:0.75rem; color:#92400e; margin:0.3rem 0 0; padding:0.3rem 0.5rem; background:#fef3c7; border-radius:6px;">
@@ -332,5 +363,53 @@
     {
         var es = new System.Globalization.CultureInfo("es-AR");
         return d.ToString("dddd dd/MM", es);
+    }
+
+    /// <summary>Resultado del cálculo automático de horas extras para mostrar en pantalla.</summary>
+    public record DesgloseDto(decimal Trabajadas, int Jornada, decimal Extras, string DiaNombre, bool EsDomingo);
+
+    /// <summary>Calcula las horas extras según el día y el horario ingresado.
+    /// Reglas: L-V jornada 9h, Sáb 5h, Domingo no laborable.
+    /// Devuelve null si no hay horario completo cargado.</summary>
+    private DesgloseDto? DesgloseCalculoHorasExtras()
+    {
+        if (datos is null) return null;
+        if (string.IsNullOrEmpty(formHoraEntrada) || string.IsNullOrEmpty(formHoraSalida)) return null;
+        if (!TimeSpan.TryParse(formHoraEntrada, out var entrada)) return null;
+        if (!TimeSpan.TryParse(formHoraSalida, out var salida)) return null;
+
+        // Si la salida es menor que la entrada, asumimos que cruzó medianoche (ej. 22 → 06).
+        var dur = salida - entrada;
+        if (dur.TotalMinutes <= 0) dur = dur.Add(TimeSpan.FromDays(1));
+        var trabajadas = (decimal)dur.TotalHours;
+        // Redondeo a 2 decimales (8.5h, 9.25h, etc.)
+        trabajadas = Math.Round(trabajadas, 2, MidpointRounding.AwayFromZero);
+
+        var dia = datos.FechaSeleccionada.DayOfWeek;
+        if (dia == DayOfWeek.Sunday)
+            return new DesgloseDto(trabajadas, 0, 0m, "domingo", true);
+
+        int jornada = dia == DayOfWeek.Saturday ? 5 : 9;
+        var nombre = dia switch
+        {
+            DayOfWeek.Monday => "lunes",
+            DayOfWeek.Tuesday => "martes",
+            DayOfWeek.Wednesday => "miércoles",
+            DayOfWeek.Thursday => "jueves",
+            DayOfWeek.Friday => "viernes",
+            DayOfWeek.Saturday => "sábado",
+            _ => ""
+        };
+        var extras = Math.Max(0m, trabajadas - jornada);
+        return new DesgloseDto(trabajadas, jornada, extras, nombre, false);
+    }
+
+    /// <summary>Vuelve a calcular las horas extras cuando cambia el horario. Pisa formCantidad
+    /// con el resultado, pero el empleado puede editarlo a mano después si quiere.</summary>
+    private void RecalcularHorasExtras()
+    {
+        var d = DesgloseCalculoHorasExtras();
+        if (d is null || d.EsDomingo) return;
+        formCantidad = d.Extras;
     }
 }
