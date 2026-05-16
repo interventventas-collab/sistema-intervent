@@ -134,9 +134,23 @@
                 </div>
             }
 
+            @{
+                var horarioCompleto = !string.IsNullOrEmpty(formHoraEntrada) && !string.IsNullOrEmpty(formHoraSalida);
+            }
             <label class="he-label" style="margin-top:0.7rem;">Horas extras a cargar</label>
-            <input type="number" step="0.5" min="0" max="999" class="he-input" @bind="formCantidad" @bind:event="oninput" placeholder="0" />
-            <p style="font-size:0.72rem; color:#6b7280; margin:0.2rem 0 0;">💡 Se calcula solo desde el horario. Podés editarlo a mano si querés.</p>
+            <input type="number" step="0.5" min="0" max="999" class="he-input"
+                   @bind="formCantidad" @bind:event="oninput"
+                   readonly="@horarioCompleto"
+                   style="@(horarioCompleto ? "background:#f3f4f6; cursor:not-allowed;" : "")"
+                   placeholder="0" />
+            @if (horarioCompleto)
+            {
+                <p style="font-size:0.72rem; color:#6b7280; margin:0.2rem 0 0;">🔒 Se calcula automático desde el horario. Si querés cargarlo a mano, borrá el horario primero.</p>
+            }
+            else
+            {
+                <p style="font-size:0.72rem; color:#6b7280; margin:0.2rem 0 0;">💡 Cargá entrada y salida arriba para cálculo automático. O metelo a mano (para acumulados).</p>
+            }
             @if (formCantidad > 24)
             {
                 <p style="font-size:0.75rem; color:#92400e; margin:0.3rem 0 0; padding:0.3rem 0.5rem; background:#fef3c7; border-radius:6px;">
