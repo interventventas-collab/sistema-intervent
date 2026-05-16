@@ -51,88 +51,111 @@
         @if (HasPerm("cafe"))
         {
             <NavGroup Label="Ventas por fuera" Icon="@SvgIcons.Brand"
-                      HasActiveChild="@(IsActive("/cafe") || IsActive("/cafe/ventas") || IsActive("/cafe/productos") || IsActive("/cafe/combos") || IsActive("/cafe/oems") || IsActive("/cafe/clientes") || IsActive("/cafe/clientes-mapeados") || IsActive("/cafe/configuracion") || IsActive("/cafe/compras") || IsActive("/cafe/proveedores") || IsActive("/cafe/marcas") || IsActive("/cafe/listas-precios") || IsActive("/cafe/consultas") || IsActive("/cafe/cotejo") || IsActive("/cafe/descuentos") || IsActive("/cafe/kits") || IsActive("/cafe/reglas-precios") || IsActive("/cafe/saldos") || IsActive("/cafe/maquinas"))">
-                <NavItem Href="/cafe" Label="Inicio" Icon="@SvgIcons.Dashboard"
-                         IsActive="@IsActive("/cafe")" OnClick="@(() => NavigateTo("/cafe"))" />
-                <NavItem Href="/cafe/consultas" Label="Consultas" Icon="@SvgIcons.Tag"
-                         IsActive="@IsActive("/cafe/consultas")" OnClick="@(() => NavigateTo("/cafe/consultas"))" />
-                <NavItem Href="/cafe/cotejo" Label="Cotejo MeLi" Icon="@SvgIcons.Tag"
-                         IsActive="@IsActive("/cafe/cotejo")" OnClick="@(() => NavigateTo("/cafe/cotejo"))" />
-                @* Pantallas "Descuentos" y "Reglas de precios" ocultas — la matriz fue deprecada el
-                   2026-05-12 a favor de precios directos PrecioBar/PrecioOtro por producto. Las paginas
-                   y tablas siguen existiendo (para no perder datos historicos), pero ya no se accede
-                   desde el sidebar ni se usan en el motor de precios. *@
-                <NavItem Href="/cafe/ventas" Label="Ventas" Icon="@SvgIcons.ShoppingBag"
-                         IsActive="@IsActive("/cafe/ventas")" OnClick="@(() => NavigateTo("/cafe/ventas"))" />
-                <NavItem Href="/cafe/listas-precios" Label="Listas de precios" Icon="@SvgIcons.Tag"
-                         IsActive="@IsActive("/cafe/listas-precios")" OnClick="@(() => NavigateTo("/cafe/listas-precios"))" />
-                <NavItem Href="/cafe/compras" Label="Compras" Icon="@SvgIcons.Folder"
-                         IsActive="@IsActive("/cafe/compras")" OnClick="@(() => NavigateTo("/cafe/compras"))" />
-                <NavItem Href="/cafe/productos" Label="Productos" Icon="@SvgIcons.Package"
-                         IsActive="@IsActive("/cafe/productos")" OnClick="@(() => NavigateTo("/cafe/productos"))" />
-                <NavItem Href="/cafe/combos" Label="Combos" Icon="@SvgIcons.Package"
-                         IsActive="@IsActive("/cafe/combos")" OnClick="@(() => NavigateTo("/cafe/combos"))" />
-                <NavItem Href="/cafe/kits" Label="Kits" Icon="@SvgIcons.Package"
-                         IsActive="@IsActive("/cafe/kits")" OnClick="@(() => NavigateTo("/cafe/kits"))" />
-                <NavItem Href="/cafe/oems" Label="OEMs" Icon="@SvgIcons.Tag"
-                         IsActive="@IsActive("/cafe/oems")" OnClick="@(() => NavigateTo("/cafe/oems"))" />
-                <NavItem Href="/cafe/marcas" Label="Marcas" Icon="@SvgIcons.Tag"
-                         IsActive="@IsActive("/cafe/marcas")" OnClick="@(() => NavigateTo("/cafe/marcas"))" />
-                <NavItem Href="/cafe/proveedores" Label="Proveedores" Icon="@SvgIcons.Users"
-                         IsActive="@IsActive("/cafe/proveedores")" OnClick="@(() => NavigateTo("/cafe/proveedores"))" />
-                <NavItem Href="/cafe/clientes" Label="Clientes" Icon="@SvgIcons.Users"
-                         IsActive="@IsActive("/cafe/clientes")" OnClick="@(() => NavigateTo("/cafe/clientes"))" />
-                <NavItem Href="/cafe/clientes-mapeados" Label="Clientes Mapeados" Icon="@SvgIcons.Tag"
-                         IsActive="@IsActive("/cafe/clientes-mapeados")" OnClick="@(() => NavigateTo("/cafe/clientes-mapeados"))" />
-                <NavItem Href="/cafe/configuracion" Label="Configuración" Icon="@SvgIcons.Settings"
-                         IsActive="@IsActive("/cafe/configuracion")" OnClick="@(() => NavigateTo("/cafe/configuracion"))" />
-                @* Migracion temporal: saldos del sistema viejo a matchear con clientes *@
-                <NavItem Href="/cafe/saldos" Label="💰 Saldos migración" Icon="@SvgIcons.Database"
-                         IsActive="@IsActive("/cafe/saldos")" OnClick="@(() => NavigateTo("/cafe/saldos"))" />
-                <NavItem Href="/cafe/maquinas" Label="☕ Máquinas (comodato/financ.)" Icon="@SvgIcons.Tag"
-                         IsActive="@IsActive("/cafe/maquinas")" OnClick="@(() => NavigateTo("/cafe/maquinas"))" />
+                      HasActiveChild="@(IsActive("/cafe") || IsActive("/cafe/ventas") || IsActive("/cafe/productos") || IsActive("/cafe/combos") || IsActive("/cafe/oems") || IsActive("/cafe/clientes") || IsActive("/cafe/clientes-mapeados") || IsActive("/cafe/configuracion") || IsActive("/cafe/compras") || IsActive("/cafe/proveedores") || IsActive("/cafe/marcas") || IsActive("/cafe/listas-precios") || IsActive("/cafe/consultas") || IsActive("/cafe/cotejo") || IsActive("/cafe/descuentos") || IsActive("/cafe/kits") || IsActive("/cafe/reglas-precios") || IsActive("/cafe/saldos") || IsActive("/cafe/saldos-pendientes") || IsActive("/cafe/maquinas") || IsActive("/cafe/tesoreria/cajas") || IsActive("/cafe/tesoreria/resumen") || IsActive("/cafe/tesoreria/cobranzas") || IsActive("/cafe/tesoreria/pagos") || IsActive("/cafe/tesoreria/cheques") || IsActive("/cafe/depositos") || IsActive("/cafe/stock-masivo") || IsActive("/cafe/preventas") || IsActive("/horas-extras") || IsActive("/viajes") || IsActive("/stock"))">
 
-                @* Subgrupo Tesoreria — agregado 2026-05-12 (Fase 1) *@
+                @* ───────── 1. OPERACIÓN DIARIA (destacado verde, expandido por default) ───────── *@
+                <NavGroup Label="🟢 Operación diaria" Icon="@SvgIcons.Dashboard"
+                          Highlight="true" DefaultExpanded="true"
+                          HasActiveChild="@(IsActive("/cafe") || IsActive("/cafe/ventas") || IsActive("/cafe/tesoreria/cobranzas") || IsActive("/cafe/saldos-pendientes") || IsActive("/cafe/tesoreria/resumen") || IsActive("/cafe/preventas") || IsActive("/cafe/consultas"))">
+                    <NavItem Href="/cafe" Label="Inicio" Icon="@SvgIcons.Dashboard"
+                             IsActive="@IsActive("/cafe")" OnClick="@(() => NavigateTo("/cafe"))" />
+                    <NavItem Href="/cafe/ventas" Label="🛒 Ventas" Icon="@SvgIcons.ShoppingBag"
+                             IsActive="@IsActive("/cafe/ventas")" OnClick="@(() => NavigateTo("/cafe/ventas"))" />
+                    @if (HasPerm("cafe-tesoreria"))
+                    {
+                        <NavItem Href="/cafe/tesoreria/cobranzas" Label="📥 Cobranzas" Icon="@SvgIcons.ShoppingBag"
+                                 IsActive="@IsActive("/cafe/tesoreria/cobranzas")" OnClick="@(() => NavigateTo("/cafe/tesoreria/cobranzas"))" />
+                        <NavItem Href="/cafe/saldos-pendientes" Label="💰 Saldos pendientes" Icon="@SvgIcons.Database"
+                                 IsActive="@IsActive("/cafe/saldos-pendientes")" OnClick="@(() => NavigateTo("/cafe/saldos-pendientes"))" />
+                        <NavItem Href="/cafe/tesoreria/resumen" Label="📊 Resumen Tesorería" Icon="@SvgIcons.Dashboard"
+                                 IsActive="@IsActive("/cafe/tesoreria/resumen")" OnClick="@(() => NavigateTo("/cafe/tesoreria/resumen"))" />
+                    }
+                    <NavItem Href="/cafe/preventas" Label="🛒 Pedidos de Gaby" Icon="@SvgIcons.ShoppingBag"
+                             IsActive="@IsActive("/cafe/preventas")" OnClick="@(() => NavigateTo("/cafe/preventas"))" />
+                    <NavItem Href="/cafe/consultas" Label="🔍 Consultas" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive("/cafe/consultas")" OnClick="@(() => NavigateTo("/cafe/consultas"))" />
+                </NavGroup>
+
+                @* ───────── 2. CATÁLOGO ───────── *@
+                <NavGroup Label="🏬 Catálogo" Icon="@SvgIcons.Package"
+                          HasActiveChild="@(IsActive("/cafe/productos") || IsActive("/cafe/combos") || IsActive("/cafe/kits") || IsActive("/cafe/oems") || IsActive("/cafe/marcas") || IsActive("/cafe/listas-precios"))">
+                    <NavItem Href="/cafe/productos" Label="Productos" Icon="@SvgIcons.Package"
+                             IsActive="@IsActive("/cafe/productos")" OnClick="@(() => NavigateTo("/cafe/productos"))" />
+                    <NavItem Href="/cafe/combos" Label="Combos" Icon="@SvgIcons.Package"
+                             IsActive="@IsActive("/cafe/combos")" OnClick="@(() => NavigateTo("/cafe/combos"))" />
+                    <NavItem Href="/cafe/kits" Label="Kits" Icon="@SvgIcons.Package"
+                             IsActive="@IsActive("/cafe/kits")" OnClick="@(() => NavigateTo("/cafe/kits"))" />
+                    <NavItem Href="/cafe/oems" Label="OEMs" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive("/cafe/oems")" OnClick="@(() => NavigateTo("/cafe/oems"))" />
+                    <NavItem Href="/cafe/marcas" Label="Marcas" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive("/cafe/marcas")" OnClick="@(() => NavigateTo("/cafe/marcas"))" />
+                    <NavItem Href="/cafe/listas-precios" Label="Listas de precios" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive("/cafe/listas-precios")" OnClick="@(() => NavigateTo("/cafe/listas-precios"))" />
+                </NavGroup>
+
+                @* ───────── 3. CLIENTES Y PROVEEDORES ───────── *@
+                <NavGroup Label="👥 Clientes y proveedores" Icon="@SvgIcons.Users"
+                          HasActiveChild="@(IsActive("/cafe/clientes") || IsActive("/cafe/clientes-mapeados") || IsActive("/cafe/proveedores"))">
+                    <NavItem Href="/cafe/clientes" Label="Clientes" Icon="@SvgIcons.Users"
+                             IsActive="@IsActive("/cafe/clientes")" OnClick="@(() => NavigateTo("/cafe/clientes"))" />
+                    <NavItem Href="/cafe/clientes-mapeados" Label="Clientes Mapeados" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive("/cafe/clientes-mapeados")" OnClick="@(() => NavigateTo("/cafe/clientes-mapeados"))" />
+                    <NavItem Href="/cafe/proveedores" Label="Proveedores" Icon="@SvgIcons.Users"
+                             IsActive="@IsActive("/cafe/proveedores")" OnClick="@(() => NavigateTo("/cafe/proveedores"))" />
+                </NavGroup>
+
+                @* ───────── 4. TESORERÍA (Cajas / Pagos / Cheques) ───────── *@
                 @if (HasPerm("cafe-tesoreria"))
                 {
-                    <NavItem Href="/cafe/tesoreria/cajas" Label="💰 Cajas" Icon="@SvgIcons.Database"
-                             IsActive="@IsActive("/cafe/tesoreria/cajas")" OnClick="@(() => NavigateTo("/cafe/tesoreria/cajas"))" />
-                    <NavItem Href="/cafe/tesoreria/resumen" Label="📊 Resumen Tesorería" Icon="@SvgIcons.Dashboard"
-                             IsActive="@IsActive("/cafe/tesoreria/resumen")" OnClick="@(() => NavigateTo("/cafe/tesoreria/resumen"))" />
-                    <NavItem Href="/cafe/tesoreria/cobranzas" Label="📥 Cobranzas" Icon="@SvgIcons.ShoppingBag"
-                             IsActive="@IsActive("/cafe/tesoreria/cobranzas")" OnClick="@(() => NavigateTo("/cafe/tesoreria/cobranzas"))" />
-                    <NavItem Href="/cafe/saldos-pendientes" Label="💰 Saldos pendientes" Icon="@SvgIcons.Database"
-                             IsActive="@IsActive("/cafe/saldos-pendientes")" OnClick="@(() => NavigateTo("/cafe/saldos-pendientes"))" />
-                    <NavItem Href="/cafe/tesoreria/pagos" Label="📤 Pagos" Icon="@SvgIcons.ShoppingBag"
-                             IsActive="@IsActive("/cafe/tesoreria/pagos")" OnClick="@(() => NavigateTo("/cafe/tesoreria/pagos"))" />
-                    <NavItem Href="/cafe/tesoreria/cheques" Label="📄 Cheques" Icon="@SvgIcons.Tag"
-                             IsActive="@IsActive("/cafe/tesoreria/cheques")" OnClick="@(() => NavigateTo("/cafe/tesoreria/cheques"))" />
+                    <NavGroup Label="💵 Tesorería" Icon="@SvgIcons.Database"
+                              HasActiveChild="@(IsActive("/cafe/tesoreria/cajas") || IsActive("/cafe/tesoreria/pagos") || IsActive("/cafe/tesoreria/cheques"))">
+                        <NavItem Href="/cafe/tesoreria/cajas" Label="💰 Cajas" Icon="@SvgIcons.Database"
+                                 IsActive="@IsActive("/cafe/tesoreria/cajas")" OnClick="@(() => NavigateTo("/cafe/tesoreria/cajas"))" />
+                        <NavItem Href="/cafe/tesoreria/pagos" Label="📤 Pagos" Icon="@SvgIcons.ShoppingBag"
+                                 IsActive="@IsActive("/cafe/tesoreria/pagos")" OnClick="@(() => NavigateTo("/cafe/tesoreria/pagos"))" />
+                        <NavItem Href="/cafe/tesoreria/cheques" Label="📄 Cheques" Icon="@SvgIcons.Tag"
+                                 IsActive="@IsActive("/cafe/tesoreria/cheques")" OnClick="@(() => NavigateTo("/cafe/tesoreria/cheques"))" />
+                    </NavGroup>
                 }
 
-                @* Subgrupo Depositos / Stock — agregado 2026-05-13 (Fase 1 multi-deposito) *@
-                @if (HasPerm("cafe-depositos"))
-                {
-                    <NavItem Href="/cafe/depositos" Label="📦 Depósitos" Icon="@SvgIcons.Store"
-                             IsActive="@IsActive("/cafe/depositos")" OnClick="@(() => NavigateTo("/cafe/depositos"))" />
-                    <NavItem Href="/cafe/stock-masivo" Label="📊 Stock masivo" Icon="@SvgIcons.Edit"
-                             IsActive="@IsActive("/cafe/stock-masivo")" OnClick="@(() => NavigateTo("/cafe/stock-masivo"))" />
-                }
+                @* ───────── 5. STOCK Y COMPRAS ───────── *@
+                <NavGroup Label="📦 Stock y compras" Icon="@SvgIcons.Store"
+                          HasActiveChild="@(IsActive("/cafe/compras") || IsActive("/cafe/depositos") || IsActive("/cafe/stock-masivo") || IsActive("/stock"))">
+                    <NavItem Href="/cafe/compras" Label="Compras" Icon="@SvgIcons.Folder"
+                             IsActive="@IsActive("/cafe/compras")" OnClick="@(() => NavigateTo("/cafe/compras"))" />
+                    @if (HasPerm("cafe-depositos"))
+                    {
+                        <NavItem Href="/cafe/depositos" Label="📦 Depósitos" Icon="@SvgIcons.Store"
+                                 IsActive="@IsActive("/cafe/depositos")" OnClick="@(() => NavigateTo("/cafe/depositos"))" />
+                        <NavItem Href="/cafe/stock-masivo" Label="📊 Stock masivo" Icon="@SvgIcons.Edit"
+                                 IsActive="@IsActive("/cafe/stock-masivo")" OnClick="@(() => NavigateTo("/cafe/stock-masivo"))" />
+                    }
+                    <NavItem Href="/stock" Label="📦 Stock (link móvil)" Icon="@SvgIcons.Package"
+                             IsActive="@IsActive("/stock")" OnClick="@(() => NavigateTo("/stock"))" />
+                </NavGroup>
 
-                @* Horas Extras de empleados — agregado 2026-05-15 *@
-                <NavItem Href="/horas-extras" Label="🕐 Horas Extras" Icon="@SvgIcons.Tag"
-                         IsActive="@IsActive("/horas-extras")" OnClick="@(() => NavigateTo("/horas-extras"))" />
+                @* ───────── 6. PERSONAL ───────── *@
+                <NavGroup Label="👷 Personal" Icon="@SvgIcons.Users"
+                          HasActiveChild="@(IsActive("/horas-extras") || IsActive("/viajes"))">
+                    <NavItem Href="/horas-extras" Label="🕐 Horas Extras" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive("/horas-extras")" OnClick="@(() => NavigateTo("/horas-extras"))" />
+                    <NavItem Href="/viajes" Label="🚚 Viajes" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive("/viajes")" OnClick="@(() => NavigateTo("/viajes"))" />
+                </NavGroup>
 
-                @* Viajes de empleados — agregado 2026-05-15 (segundo modulo del dia) *@
-                <NavItem Href="/viajes" Label="🚚 Viajes" Icon="@SvgIcons.Tag"
-                         IsActive="@IsActive("/viajes")" OnClick="@(() => NavigateTo("/viajes"))" />
-
-                @* Stock — carga rapida via link publico, agregado 2026-05-15 *@
-                <NavItem Href="/stock" Label="📦 Stock (link móvil)" Icon="@SvgIcons.Package"
-                         IsActive="@IsActive("/stock")" OnClick="@(() => NavigateTo("/stock"))" />
-
-                @* Pedidos de vendedor (Gaby) — agregado 2026-05-16 *@
-                <NavItem Href="/cafe/preventas" Label="🛒 Pedidos de Gaby" Icon="@SvgIcons.ShoppingBag"
-                         IsActive="@IsActive("/cafe/preventas")" OnClick="@(() => NavigateTo("/cafe/preventas"))" />
+                @* ───────── 7. CONFIG / TEMPORAL ───────── *@
+                <NavGroup Label="⚙️ Config / Temporal" Icon="@SvgIcons.Settings"
+                          HasActiveChild="@(IsActive("/cafe/configuracion") || IsActive("/cafe/cotejo") || IsActive("/cafe/saldos") || IsActive("/cafe/maquinas"))">
+                    <NavItem Href="/cafe/configuracion" Label="Configuración" Icon="@SvgIcons.Settings"
+                             IsActive="@IsActive("/cafe/configuracion")" OnClick="@(() => NavigateTo("/cafe/configuracion"))" />
+                    <NavItem Href="/cafe/cotejo" Label="Cotejo MeLi" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive("/cafe/cotejo")" OnClick="@(() => NavigateTo("/cafe/cotejo"))" />
+                    @* Migracion temporal: saldos del sistema viejo a matchear con clientes *@
+                    <NavItem Href="/cafe/saldos" Label="💰 Saldos migración" Icon="@SvgIcons.Database"
+                             IsActive="@IsActive("/cafe/saldos")" OnClick="@(() => NavigateTo("/cafe/saldos"))" />
+                    <NavItem Href="/cafe/maquinas" Label="☕ Máquinas (comodato/financ.)" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive("/cafe/maquinas")" OnClick="@(() => NavigateTo("/cafe/maquinas"))" />
+                </NavGroup>
             </NavGroup>
         }
 

@@ -486,6 +486,41 @@ button {
   height: 17px;
 }
 
+/* Nested nav groups (subcarpetas dentro de una carpeta) */
+.nav-group-children .nav-group {
+  margin-bottom: 0;
+}
+.nav-group-children .nav-group-header {
+  padding-left: 1.25rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+.nav-group-children .nav-group-children {
+  padding-left: 0.75rem;
+}
+.nav-group-children .nav-group-children .nav-item {
+  padding-left: 1.75rem;
+}
+
+/* Destacado: carpeta de "Operacion diaria" - mas usada, color verde */
+.nav-group.nav-group-highlight > .nav-group-header {
+  color: var(--primary-light);
+  background: var(--primary-bg);
+  border-left: 3px solid var(--primary);
+  font-weight: 600;
+}
+.nav-group.nav-group-highlight > .nav-group-header:hover {
+  background: rgba(16, 185, 129, 0.18);
+  color: #ffffff;
+}
+.nav-group.nav-group-highlight > .nav-group-header .nav-icon {
+  color: var(--primary-light);
+}
+.nav-group.nav-group-highlight > .nav-group-children {
+  border-left: 2px solid rgba(16, 185, 129, 0.25);
+  margin-left: 0.5rem;
+}
+
 /* Collapsed sidebar: hide group labels and arrows, show only icon */
 .sidebar.collapsed .nav-group-header {
   justify-content: center;

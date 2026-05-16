@@ -1,4 +1,4 @@
-<div class="nav-group @(IsExpanded ? "expanded" : "") @(HasActiveChild ? "has-active" : "")">
+<div class="nav-group @(IsExpanded ? "expanded" : "") @(HasActiveChild ? "has-active" : "") @(Highlight ? "nav-group-highlight" : "")">
     <button class="nav-group-header" @onclick="Toggle">
         <span class="nav-icon">@Icon</span>
         <span class="nav-label">@Label</span>
@@ -15,9 +15,13 @@
     [Parameter] public string Label { get; set; } = "";
     [Parameter] public MarkupString Icon { get; set; }
     [Parameter] public bool HasActiveChild { get; set; }
+    [Parameter] public bool Highlight { get; set; }
+    [Parameter] public bool DefaultExpanded { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
     private bool IsExpanded { get; set; }
+
+    private bool _firstRender = true;
 
     protected override void OnParametersSet()
     {
@@ -26,6 +30,12 @@
         {
             IsExpanded = true;
         }
+        // Auto-expand on first render if DefaultExpanded is set
+        else if (_firstRender && DefaultExpanded)
+        {
+            IsExpanded = true;
+        }
+        _firstRender = false;
     }
 
     private void Toggle()
