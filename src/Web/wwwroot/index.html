@@ -478,6 +478,25 @@
             } catch (e) { /* noop */ }
         };
 
+        // Wheel picker — scrollea el wheel hasta el item con value=value.
+        // Item height fijo en CSS = 44px.
+        window.tpScrollTo = function(elementId, value, step) {
+            var el = document.getElementById(elementId);
+            if (!el) return;
+            step = step || 1;
+            var index = Math.round(value / step);
+            el.scrollTop = index * 44;
+        };
+
+        // Lee el value central del wheel (item snapped).
+        window.tpReadCenter = function(elementId, step) {
+            var el = document.getElementById(elementId);
+            if (!el) return 0;
+            step = step || 1;
+            var index = Math.round(el.scrollTop / 44);
+            return index * step;
+        };
+
         // Helpers de sessionStorage envueltos en try/catch — Blazor a veces se cuelga
         // cuando invoca sessionStorage.setItem/getItem directo via dot notation en browsers
         // viejos / modo incógnito. Estos helpers nunca tiran error.
