@@ -478,6 +478,18 @@
             } catch (e) { /* noop */ }
         };
 
+        // Helpers de sessionStorage envueltos en try/catch — Blazor a veces se cuelga
+        // cuando invoca sessionStorage.setItem/getItem directo via dot notation en browsers
+        // viejos / modo incógnito. Estos helpers nunca tiran error.
+        window.heSessionGet = function(key) {
+            try { return sessionStorage.getItem(key) || ''; }
+            catch (e) { return ''; }
+        };
+        window.heSessionSet = function(key, value) {
+            try { sessionStorage.setItem(key, value); }
+            catch (e) { /* noop */ }
+        };
+
         // Hace que un modal sea arrastrable por su header. Se llama desde Blazor pasando el
         // selector del modal-card. Idempotente: si ya esta enganchado, no engancha de nuevo.
         // Pensado para modales secundarios que tapan algo de la pantalla — el usuario lo agarra

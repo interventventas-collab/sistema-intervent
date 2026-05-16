@@ -51,7 +51,8 @@
             <input type="tel" inputmode="numeric" maxlength="3" pattern="[0-9]{3}"
                    class="he-input" style="font-size:2.5rem; letter-spacing:0.5rem; text-align:center; max-width:200px; margin:0 auto;"
                    value="@claveInput"
-                   @oninput="@(e => { claveInput = e.Value?.ToString() ?? ""; claveError = null; if (claveInput.Length == 3) _ = ValidarClaveAsync(); })"
+                   @oninput="@(e => { claveInput = e.Value?.ToString() ?? ""; claveError = null; })"
+                   @onkeydown="@(async e => { if (e.Key == "Enter" && claveInput.Length == 3) await ValidarClaveAsync(); })"
                    placeholder="•••" autofocus />
             @if (!string.IsNullOrEmpty(claveError))
             {
@@ -205,10 +206,11 @@
     {
         // Si el empleado ya validó la clave en esta sesión del browser (misma pestaña),
         // la recuperamos de sessionStorage y entramos directo.
+        // OJO: envolvemos en try/catch porque algunos browsers (incógnito, viejos) tiran error
+        // al tocar sessionStorage, y el await podria quedar colgado eternamente.
         try
         {
-            var key = $"he-clave-{Slug}";
-            var stored = await JS.InvokeAsync<string>("sessionStorage.getItem", key);
+            var stored = await JS.InvokeAsync<string?>("heSessionGet", $"he-clave-{Slug}");
             if (!string.IsNullOrEmpty(stored) && stored.Length == 3 && stored.All(char.IsDigit))
             {
                 Clave = stored;
@@ -218,7 +220,7 @@
                 return;
             }
         }
-        catch { /* sessionStorage no disponible o algo raro — pide la clave */ }
+        catch { /* sin sessionStorage — pide la clave */ }
         loading = false;
     }
 
@@ -226,6 +228,7 @@
     /// Si OK, guarda en sessionStorage y carga los datos.</summary>
     private async Task ValidarClaveAsync()
     {
+        if (validandoClave) return; // evita doble click / doble dispatch
         if (claveInput.Length != 3 || !claveInput.All(char.IsDigit))
         {
             claveError = "La clave tiene que ser 3 dígitos numéricos";
@@ -236,21 +239,19 @@
         try
         {
             var resp = await Http.GetAsync($"api/horas-extras/publica/{Uri.EscapeDataString(Slug)}/{Uri.EscapeDataString(claveInput)}");
-            if (resp.IsSuccessStatusCode)
+            if (!resp.IsSuccessStatusCode)
             {
-                Clave = claveInput;
-                claveOk = true;
-                try
-                {
-                    await JS.InvokeVoidAsync("sessionStorage.setItem", $"he-clave-{Slug}", Clave);
-                }
-                catch { /* sin sessionStorage — al refrescar va a pedir de nuevo, pero anda */ }
-                await CargarAsync();
+                claveError = "Clave incorrecta. Verificá los últimos 3 dígitos de tu DNI.";
+                validandoClave = false;
+                return;
             }
-            else
-            {
-                claveError = "Clave incorrecta. Pedile a tu encargado que te confirme la clave.";
-            }
+            Clave = claveInput;
+            claveOk = true;
+            // Guardar en sessionStorage SIN AWAIT — si falla o se cuelga, no nos afecta.
+            // Usamos un helper JS propio que envuelve setItem en try/catch (definido en index.html).
+            _ = JS.InvokeVoidAsync("heSessionSet", $"he-clave-{Slug}", Clave).AsTask();
+            // Cargar datos del empleado:
+            await CargarAsync();
         }
         catch (Exception ex)
         {
