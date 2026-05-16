@@ -2938,19 +2938,54 @@
             // Si en una venta NUEVA el operador tildo "Marcar como PAGADO al guardar",
             // redirigimos al modal de Cobranzas precargado para que registre la cobranza real.
             var redirigirACobranza = !wasEditing && formIsPaid && v.ClienteId.HasValue;
+
+            // ════════ CERRAR EL MODAL INMEDIATAMENTE ════════
+            // Apenas el server confirma OK, cerramos el form y liberamos el boton
+            // "Emitiendo...". El Load() de la lista (que puede tardar varios segundos
+            // en produccion) corre despues — el usuario ya tiene el feedback de exito.
             showForm = false;
             editingVentaId = null;
             editingVentaNumero = "";
-            await LoadCatalogos();
-            await Load();
+            saving = false;
+            StateHasChanged();
+
             if (redirigirACobranza)
             {
                 ToastService.Success("Cargá ahora la cobranza para registrar el pago");
                 Navigation.NavigateTo($"/cafe/tesoreria/cobranzas?cliente={v.ClienteId!.Value}&venta={v.Id}");
                 return;
             }
-            // Si se editó, no abrir el viewer automáticamente; si era nueva venta, sí.
-            if (!wasEditing) printVenta = v;
+
+            // ════════ ABRIR EL PDF EN UNA PESTAÑA NUEVA ════════
+            // Si era una venta nueva (no edicion), pedimos el PDF al server y lo
+            // abrimos en otra pestaña — mismo comportamiento que "Previsualizar PDF".
+            // No abrimos el visor en-pagina (printVenta) automaticamente: el usuario
+            // ya tiene la pestaña con el PDF "encima", el visor in-page tapaba.
+            if (!wasEditing)
+            {
+                try
+                {
+                    var (pdfBytes, pdfError) = await Api.GetCafeVentaPdfAsync(v.Id);
+                    if (pdfBytes is not null)
+                    {
+                        var pdfB64 = Convert.ToBase64String(pdfBytes);
+                        await JS.InvokeVoidAsync("openPdfInNewTab", pdfB64);
+                    }
+                    else if (!string.IsNullOrEmpty(pdfError))
+                    {
+                        ToastService.Error("Comprobante emitido pero no se pudo abrir el PDF: " + pdfError);
+                    }
+                }
+                catch (Exception pdfEx)
+                {
+                    // No romper el flujo si el PDF falla — la venta ya esta guardada.
+                    ToastService.Error("Comprobante emitido pero falló al abrir el PDF: " + pdfEx.Message);
+                }
+            }
+
+            // Recargar listado y catalogos en segundo plano (la UI ya cerro el modal).
+            await LoadCatalogos();
+            await Load();
         }
         catch (Exception ex) { formError = ex.Message; }
         finally { saving = false; }
