@@ -1,0 +1,591 @@
+@page "/pedidos/{token}"
+@attribute [AllowAnonymous]
+@layout Web.Layout.LoginLayout
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+@* Link público para que un vendedor (ej. Gaby) cargue notas de pedido (preventas) desde su celular.
+   Sin login, sin clave. El token del URL identifica al vendedor. *@
+
+<style>
+    body { background: linear-gradient(135deg, #f8fafc, #e5e7eb); min-height: 100vh; }
+    .pv-wrap { max-width: 540px; margin: 0 auto; padding: 0.8rem; }
+    .pv-card { background: white; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); padding: 1rem; margin-bottom: 0.7rem; }
+    .pv-h1 { font-size: 1.3rem; font-weight: 700; margin: 0; color: #1f2937; }
+    .pv-sub { font-size: 0.85rem; color: #6b7280; margin: 0.2rem 0 0; }
+
+    .pv-btn { width: 100%; padding: 0.9rem; font-size: 1.05rem; font-weight: 700; border: none; border-radius: 10px; cursor: pointer; }
+    .pv-btn-primary { background: #1d4ed8; color: white; }
+    .pv-btn-primary:hover { background: #1e40af; }
+    .pv-btn-primary:disabled { background: #9ca3af; cursor: not-allowed; }
+    .pv-btn-secondary { background: white; color: #4b5563; border: 1px solid #d1d5db; }
+    .pv-btn-success { background: #16a34a; color: white; }
+    .pv-btn-danger { background: #b91c1c; color: white; }
+
+    .pv-input { width: 100%; padding: 0.7rem; font-size: 1rem; border: 1px solid #d1d5db; border-radius: 8px; box-sizing: border-box; }
+    .pv-input:focus { outline: none; border-color: #1d4ed8; box-shadow: 0 0 0 3px rgba(29,78,216,0.15); }
+
+    .pv-label { font-size: 0.9rem; color: #4b5563; font-weight: 600; margin: 0.6rem 0 0.3rem; display: block; }
+
+    /* Estados */
+    .pv-pendiente { color: #92400e; background: #fef3c7; padding: 0.1rem 0.45rem; border-radius: 999px; font-size: 0.72rem; font-weight: 700; }
+    .pv-procesada { color: #166534; background: #dcfce7; padding: 0.1rem 0.45rem; border-radius: 999px; font-size: 0.72rem; font-weight: 700; }
+    .pv-cancelada { color: #b91c1c; background: #fee2e2; padding: 0.1rem 0.45rem; border-radius: 999px; font-size: 0.72rem; font-weight: 700; }
+
+    /* Items */
+    .pv-item-row { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.6rem 0.7rem; margin-bottom: 0.4rem; display: flex; gap: 0.5rem; align-items: center; }
+    .pv-item-cant { background: #1d4ed8; color: white; font-weight: 700; padding: 0.25rem 0.55rem; border-radius: 6px; min-width: 36px; text-align: center; }
+    .pv-item-text { flex: 1; min-width: 0; }
+    .pv-item-text strong { display: block; font-size: 0.95rem; }
+    .pv-item-text span { font-size: 0.78rem; color: #6b7280; }
+    .pv-item-del { background: none; border: none; color: #b91c1c; font-size: 1.1rem; cursor: pointer; padding: 0.2rem 0.4rem; }
+
+    /* Buscadores con resultados */
+    .pv-search-results { background: white; border: 1px solid #e5e7eb; border-radius: 8px; margin-top: 0.4rem; max-height: 240px; overflow-y: auto; }
+    .pv-search-results .row { padding: 0.5rem 0.7rem; border-bottom: 1px solid #f3f4f6; cursor: pointer; }
+    .pv-search-results .row:hover, .pv-search-results .row:active { background: #dbeafe; }
+    .pv-search-results .row:last-child { border-bottom: none; }
+
+    .pv-toast { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); background: #16a34a; color: white; padding: 0.7rem 1.4rem; border-radius: 999px; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.2); z-index: 9999; }
+
+    .pv-tabs { display: flex; gap: 0.3rem; margin-bottom: 0.5rem; }
+    .pv-tabs button { flex: 1; padding: 0.55rem; font-weight: 700; border: 2px solid #e5e7eb; border-radius: 8px; background: white; cursor: pointer; font-size: 0.9rem; }
+    .pv-tabs button.active { background: #1d4ed8; border-color: #1d4ed8; color: white; }
+</style>
+
+<div class="pv-wrap">
+    @if (loading)
+    {
+        <p style="text-align:center; padding:2rem; color:#6b7280;">Cargando...</p>
+    }
+    else if (init is null)
+    {
+        <div class="pv-card" style="text-align:center;">
+            <h2 style="margin:0 0 0.5rem; color:#b91c1c;">🚫 Link inválido</h2>
+            <p style="margin:0; color:#4b5563;">Pedile a tu encargado que te mande el link correcto.</p>
+        </div>
+    }
+    else if (modo == "lista")
+    {
+        <div class="pv-card">
+            <h1 class="pv-h1">👋 Hola @init.Nombre</h1>
+            <p class="pv-sub">Cargá pedidos rápido y Osmar los procesa.</p>
+            <button class="pv-btn pv-btn-primary" style="margin-top:1rem;" @onclick="@(() => IrA("nuevo"))">+ Nuevo pedido</button>
+        </div>
+
+        <div class="pv-card">
+            <h3 style="margin: 0 0 0.5rem; font-size:1rem;">📋 Tus últimos pedidos</h3>
+            @if (misPedidos is null)
+            {
+                <p style="color:#6b7280;">Cargando...</p>
+            }
+            else if (misPedidos.Count == 0)
+            {
+                <p style="color:#6b7280; font-size:0.85rem;">Todavía no cargaste ningún pedido. Tocá <strong>+ Nuevo pedido</strong> para arrancar.</p>
+            }
+            else
+            {
+                @foreach (var p in misPedidos)
+                {
+                    <div style="border-bottom:1px solid #f3f4f6; padding:0.6rem 0; cursor:pointer;" @onclick="@(() => VerDetalle(p))">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <strong>@(p.ClienteNombreCatalogo ?? p.ClienteNombreLibre ?? "(sin cliente)")</strong>
+                            <span class="pv-@p.Estado">@p.Estado</span>
+                        </div>
+                        <div style="font-size:0.78rem; color:#6b7280; display:flex; gap:0.5rem; align-items:center;">
+                            <span>@p.Numero</span>
+                            <span>·</span>
+                            <span>@p.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm")</span>
+                            <span>·</span>
+                            <span>@p.TotalItems item(s)</span>
+                            @if (!string.IsNullOrEmpty(p.FotoUrl))
+                            {
+                                <span>·</span>
+                                <span>📷</span>
+                            }
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    }
+    else if (modo == "nuevo")
+    {
+        @* === Formulario de nuevo pedido === *@
+        <div class="pv-card">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h1 class="pv-h1">🛒 Nuevo pedido</h1>
+                <button class="pv-btn pv-btn-secondary" style="width:auto; padding:0.4rem 0.7rem; font-size:0.8rem;" @onclick="@(() => CancelarNuevo())">← Volver</button>
+            </div>
+        </div>
+
+        @* CLIENTE *@
+        <div class="pv-card">
+            <label class="pv-label">🧑 Para quién es el pedido</label>
+            @if (clienteSeleccionado is not null)
+            {
+                <div style="background:#dcfce7; border:1px solid #16a34a; padding:0.6rem 0.8rem; border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <strong>@clienteSeleccionado.Nombre</strong>
+                        @if (!string.IsNullOrEmpty(clienteSeleccionado.Direccion))
+                        {
+                            <div style="font-size:0.78rem; color:#166534;">@clienteSeleccionado.Direccion @(clienteSeleccionado.Localidad ?? "")</div>
+                        }
+                    </div>
+                    <button class="pv-item-del" @onclick="QuitarCliente">✕</button>
+                </div>
+            }
+            else
+            {
+                <input class="pv-input" placeholder="Ej: La María del bar de la esquina"
+                       value="@formClienteLibre"
+                       @oninput="@(e => { formClienteLibre = e.Value?.ToString() ?? ""; })" />
+                <p style="font-size:0.72rem; color:#6b7280; margin:0.2rem 0 0.3rem;">O buscalo si ya está en el sistema:</p>
+                <input class="pv-input" style="font-size:0.92rem;" placeholder="🔍 Buscar cliente (mín 2 letras)"
+                       value="@busquedaCliente"
+                       @oninput="@(async e => { busquedaCliente = e.Value?.ToString() ?? ""; await BuscarClientesAsync(); })" />
+                @if (resultadosClientes is not null && resultadosClientes.Count > 0)
+                {
+                    <div class="pv-search-results">
+                        @foreach (var c in resultadosClientes)
+                        {
+                            <div class="row" @onclick="@(() => SeleccionarCliente(c))">
+                                <strong>@c.Nombre</strong>
+                                <div style="font-size:0.75rem; color:#6b7280;">@c.Tipo · @(c.Direccion ?? "—") @(c.Localidad ?? "")</div>
+                            </div>
+                        }
+                    </div>
+                }
+            }
+        </div>
+
+        @* Sugerencias de top productos del cliente *@
+        @if (topProductosCliente is not null && topProductosCliente.Count > 0)
+        {
+            <div class="pv-card" style="background:#fef3c7; border:1px solid #d97706;">
+                <h3 style="margin:0 0 0.3rem; font-size:0.92rem; color:#92400e;">⭐ Lo que más le vendieron a este cliente</h3>
+                <p style="font-size:0.75rem; color:#92400e; margin:0 0 0.5rem;">Tocá para agregarlo:</p>
+                <div style="display:flex; flex-wrap:wrap; gap:0.3rem;">
+                    @foreach (var p in topProductosCliente)
+                    {
+                        <button type="button" style="background:white; border:1px solid #d97706; color:#92400e; padding:0.3rem 0.6rem; border-radius:6px; cursor:pointer; font-size:0.82rem;"
+                                @onclick="@(() => AgregarProductoCatalogo(p, 1))">
+                            + @(p.Sku ?? "") @p.Nombre
+                        </button>
+                    }
+                </div>
+            </div>
+        }
+
+        @* PRODUCTOS *@
+        <div class="pv-card">
+            <label class="pv-label">🛒 Productos</label>
+            @if (formItems.Count > 0)
+            {
+                @foreach (var it in formItems)
+                {
+                    <div class="pv-item-row">
+                        <span class="pv-item-cant">@it.Cantidad</span>
+                        <div class="pv-item-text">
+                            <strong>@(it.ProductoNombre ?? it.DescripcionLibre)</strong>
+                            @if (!string.IsNullOrEmpty(it.Observaciones))
+                            {
+                                <span>@it.Observaciones</span>
+                            }
+                        </div>
+                        <button class="pv-item-del" @onclick="@(() => formItems.Remove(it))">✕</button>
+                    </div>
+                }
+            }
+            else
+            {
+                <p style="color:#9ca3af; font-size:0.85rem; margin: 0 0 0.5rem;">No hay productos cargados todavía.</p>
+            }
+
+            @if (!agregandoProducto)
+            {
+                <button class="pv-btn pv-btn-secondary" style="margin-top:0.4rem;" @onclick="@(() => agregandoProducto = true)">+ Agregar producto</button>
+            }
+            else
+            {
+                <div style="background:#dbeafe; border:1px solid #1d4ed8; padding:0.7rem; border-radius:8px;">
+                    <div style="display:flex; gap:0.4rem; align-items:flex-end; margin-bottom:0.4rem;">
+                        <div style="width:70px;">
+                            <label style="font-size:0.72rem; color:#1e40af; font-weight:600;">Cant.</label>
+                            <input type="number" min="0.1" step="0.5" class="pv-input" style="padding:0.4rem; text-align:center;" @bind="formNuevoCantidad" />
+                        </div>
+                        <div style="flex:1;">
+                            <label style="font-size:0.72rem; color:#1e40af; font-weight:600;">Qué le pidió</label>
+                            <input class="pv-input" style="padding:0.4rem;" placeholder="Café Bracol / azúcar / lo que sea"
+                                   value="@formNuevoDescripcion"
+                                   @oninput="@(e => formNuevoDescripcion = e.Value?.ToString() ?? "")" />
+                        </div>
+                    </div>
+                    <p style="font-size:0.72rem; color:#1e40af; margin:0.3rem 0 0.3rem;">O buscalo en el catálogo:</p>
+                    <input class="pv-input" style="font-size:0.88rem;" placeholder="🔍 Buscar producto (SKU o nombre)"
+                           value="@busquedaProducto"
+                           @oninput="@(async e => { busquedaProducto = e.Value?.ToString() ?? ""; await BuscarProductosAsync(); })" />
+                    @if (resultadosProductos is not null && resultadosProductos.Count > 0)
+                    {
+                        <div class="pv-search-results">
+                            @foreach (var p in resultadosProductos)
+                            {
+                                <div class="row" @onclick="@(() => SeleccionarProductoCatalogo(p))">
+                                    @if (!string.IsNullOrEmpty(p.Sku))
+                                    {
+                                        <span style="font-family:monospace; color:#1d4ed8; font-weight:700;">@p.Sku</span> <span> · </span>
+                                    }
+                                    <strong>@p.Nombre</strong>
+                                    <div style="font-size:0.72rem; color:#6b7280;">@p.Categoria @(p.Marca is null ? "" : "· " + p.Marca)</div>
+                                </div>
+                            }
+                        </div>
+                    }
+                    <div style="display:flex; gap:0.4rem; margin-top:0.5rem;">
+                        <button class="pv-btn pv-btn-success" style="flex:1; padding:0.5rem;" @onclick="AgregarProductoLibre">✓ Agregar</button>
+                        <button class="pv-btn pv-btn-secondary" style="flex:1; padding:0.5rem;" @onclick="CancelarAgregarProducto">Cancelar</button>
+                    </div>
+                </div>
+            }
+        </div>
+
+        @* FOTO + NOTAS *@
+        <div class="pv-card">
+            <label class="pv-label">📷 Foto (opcional)</label>
+            @if (!string.IsNullOrEmpty(fotoPreview))
+            {
+                <img src="@fotoPreview" style="width:100%; max-height:200px; object-fit:cover; border-radius:8px; margin-bottom:0.4rem;" />
+                <button class="pv-btn pv-btn-secondary" @onclick="QuitarFoto" style="padding:0.4rem;">✕ Quitar foto</button>
+            }
+            else
+            {
+                <InputFile OnChange="OnFotoSeleccionada" accept="image/*" capture="environment" class="pv-input" style="padding:0.55rem;" />
+                <p style="font-size:0.72rem; color:#6b7280; margin:0.2rem 0 0;">Tomá foto del lugar, del producto o del papelito si lo anotaste a mano.</p>
+            }
+
+            <label class="pv-label">📝 Notas (opcional)</label>
+            <textarea class="pv-input" rows="2" placeholder="Ej: paga el viernes en efectivo"
+                      style="resize:vertical; min-height:50px;"
+                      @bind="formNotas"></textarea>
+        </div>
+
+        <button class="pv-btn pv-btn-primary" style="font-size:1.1rem; padding:1rem; margin-bottom:1rem;"
+                @onclick="GuardarPedidoAsync"
+                disabled="@(guardando || formItems.Count == 0)">
+            @(guardando ? "Guardando..." : "💾 Guardar pedido")
+        </button>
+        @if (!string.IsNullOrEmpty(errorMsg))
+        {
+            <p style="color:#b91c1c; text-align:center;">⚠ @errorMsg</p>
+        }
+    }
+    else if (modo == "detalle" && pedidoDetalle is not null)
+    {
+        <div class="pv-card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+                <h1 class="pv-h1">@pedidoDetalle.Numero</h1>
+                <button class="pv-btn pv-btn-secondary" style="width:auto; padding:0.4rem 0.7rem; font-size:0.8rem;" @onclick="@(() => IrA("lista"))">← Volver</button>
+            </div>
+            <p class="pv-sub"><span class="pv-@pedidoDetalle.Estado">@pedidoDetalle.Estado</span> · @pedidoDetalle.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</p>
+            <p style="margin: 0.4rem 0;"><strong>Cliente:</strong> @(pedidoDetalle.ClienteNombreCatalogo ?? pedidoDetalle.ClienteNombreLibre)</p>
+            @if (!string.IsNullOrEmpty(pedidoDetalle.Notas))
+            {
+                <p style="margin:0.4rem 0;"><strong>Notas:</strong> @pedidoDetalle.Notas</p>
+            }
+            @if (!string.IsNullOrEmpty(pedidoDetalle.FotoUrl))
+            {
+                <img src="@pedidoDetalle.FotoUrl" style="width:100%; max-height:300px; object-fit:cover; border-radius:8px; margin:0.4rem 0;" />
+            }
+            <h3 style="margin:0.6rem 0 0.3rem; font-size:0.95rem;">Productos:</h3>
+            @foreach (var i in pedidoDetalle.Items)
+            {
+                <div class="pv-item-row">
+                    <span class="pv-item-cant">@i.Cantidad</span>
+                    <div class="pv-item-text">
+                        <strong>@(i.ProductoNombre ?? i.DescripcionLibre)</strong>
+                        @if (!string.IsNullOrEmpty(i.Observaciones))
+                        {
+                            <span>@i.Observaciones</span>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    @if (toastVisible)
+    {
+        <div class="pv-toast">@toastMensaje</div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Token { get; set; } = "";
+
+    private bool loading = true, guardando, toastVisible;
+    private string? errorMsg, toastMensaje;
+    private InitDto? init;
+    private string modo = "lista"; // lista | nuevo | detalle
+
+    // Listado de "mis pedidos"
+    private List<MisPedidosDto>? misPedidos;
+
+    // Detalle individual
+    private MisPedidosDto? pedidoDetalle;
+
+    // Formulario nuevo pedido
+    private string formClienteLibre = "";
+    private ClienteDto? clienteSeleccionado;
+    private string busquedaCliente = "";
+    private List<ClienteDto>? resultadosClientes;
+    private List<ProductoDto>? topProductosCliente;
+    private List<ItemForm> formItems = new();
+    private bool agregandoProducto;
+    private decimal formNuevoCantidad = 1m;
+    private string formNuevoDescripcion = "";
+    private string busquedaProducto = "";
+    private List<ProductoDto>? resultadosProductos;
+    private string formNotas = "";
+    private string? fotoPreview;
+    private byte[]? fotoBytes;
+    private string? fotoMime;
+    private string? fotoNombre;
+
+    public record InitDto(int VendedorId, string Nombre);
+    public record ClienteDto(int Id, string Nombre, string? Tipo, string? Telefono, string? Direccion, string? Localidad);
+    public record ProductoDto(int Id, string? Sku, string Nombre, string Categoria, string? Marca, decimal? PrecioOtro, decimal? PrecioBar);
+    public record MisPedidosDto(int Id, string Numero, DateTime Fecha,
+        int? ClienteId, string? ClienteNombreLibre, string? ClienteNombreCatalogo, string? ClienteTelefono,
+        string? Notas, string? FotoUrl, string Estado, DateTime CreatedAt,
+        List<ItemDto> Items, int TotalItems);
+    public record ItemDto(int Id, int? ProductoId, string? ProductoNombre, string? DescripcionLibre,
+        decimal Cantidad, decimal? PrecioSugerido, string? Observaciones);
+
+    private class ItemForm
+    {
+        public int? ProductoId { get; set; }
+        public string? ProductoNombre { get; set; }
+        public string? DescripcionLibre { get; set; }
+        public decimal Cantidad { get; set; } = 1m;
+        public string? Observaciones { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var resp = await Http.GetAsync($"api/preventas/publica/{Uri.EscapeDataString(Token)}/init");
+            if (resp.IsSuccessStatusCode) init = await resp.Content.ReadFromJsonAsync<InitDto>();
+        }
+        catch { init = null; }
+        loading = false;
+        if (init is not null) await CargarMisPedidosAsync();
+    }
+
+    private async Task CargarMisPedidosAsync()
+    {
+        try
+        {
+            var r = await Http.GetAsync($"api/preventas/publica/{Uri.EscapeDataString(Token)}/mis-pedidos?limit=20");
+            if (r.IsSuccessStatusCode) misPedidos = await r.Content.ReadFromJsonAsync<List<MisPedidosDto>>();
+        }
+        catch { misPedidos = null; }
+    }
+
+    private void IrA(string m)
+    {
+        modo = m;
+        if (m == "nuevo") ResetForm();
+    }
+
+    private void VerDetalle(MisPedidosDto p)
+    {
+        pedidoDetalle = p;
+        modo = "detalle";
+    }
+
+    private void ResetForm()
+    {
+        formClienteLibre = ""; clienteSeleccionado = null; busquedaCliente = ""; resultadosClientes = null;
+        topProductosCliente = null; formItems.Clear(); agregandoProducto = false;
+        formNuevoCantidad = 1m; formNuevoDescripcion = ""; busquedaProducto = ""; resultadosProductos = null;
+        formNotas = ""; fotoPreview = null; fotoBytes = null; fotoMime = null; fotoNombre = null;
+        errorMsg = null;
+    }
+
+    private void CancelarNuevo()
+    {
+        ResetForm();
+        modo = "lista";
+    }
+
+    private async Task BuscarClientesAsync()
+    {
+        if (busquedaCliente.Length < 2) { resultadosClientes = null; return; }
+        try
+        {
+            var r = await Http.GetAsync($"api/preventas/publica/{Uri.EscapeDataString(Token)}/clientes?q={Uri.EscapeDataString(busquedaCliente)}");
+            if (r.IsSuccessStatusCode) resultadosClientes = await r.Content.ReadFromJsonAsync<List<ClienteDto>>();
+        }
+        catch { }
+    }
+
+    private async Task SeleccionarCliente(ClienteDto c)
+    {
+        clienteSeleccionado = c;
+        busquedaCliente = ""; resultadosClientes = null;
+        formClienteLibre = "";
+        // Cargar top productos del cliente
+        try
+        {
+            var r = await Http.GetAsync($"api/preventas/publica/{Uri.EscapeDataString(Token)}/cliente/{c.Id}/top-productos?count=8");
+            if (r.IsSuccessStatusCode) topProductosCliente = await r.Content.ReadFromJsonAsync<List<ProductoDto>>();
+        }
+        catch { topProductosCliente = null; }
+    }
+
+    private void QuitarCliente()
+    {
+        clienteSeleccionado = null;
+        topProductosCliente = null;
+    }
+
+    private async Task BuscarProductosAsync()
+    {
+        if (busquedaProducto.Length < 2) { resultadosProductos = null; return; }
+        try
+        {
+            var r = await Http.GetAsync($"api/preventas/publica/{Uri.EscapeDataString(Token)}/productos?q={Uri.EscapeDataString(busquedaProducto)}");
+            if (r.IsSuccessStatusCode) resultadosProductos = await r.Content.ReadFromJsonAsync<List<ProductoDto>>();
+        }
+        catch { }
+    }
+
+    private void AgregarProductoCatalogo(ProductoDto p, decimal cantidad)
+    {
+        formItems.Add(new ItemForm
+        {
+            ProductoId = p.Id,
+            ProductoNombre = $"{(string.IsNullOrEmpty(p.Sku) ? "" : p.Sku + " · ")}{p.Nombre}",
+            Cantidad = cantidad
+        });
+    }
+
+    private void SeleccionarProductoCatalogo(ProductoDto p)
+    {
+        AgregarProductoCatalogo(p, formNuevoCantidad);
+        agregandoProducto = false;
+        formNuevoCantidad = 1m; formNuevoDescripcion = ""; busquedaProducto = ""; resultadosProductos = null;
+    }
+
+    private void AgregarProductoLibre()
+    {
+        if (string.IsNullOrWhiteSpace(formNuevoDescripcion))
+        {
+            errorMsg = "Escribí qué le pidió o buscalo en el catálogo";
+            return;
+        }
+        formItems.Add(new ItemForm
+        {
+            DescripcionLibre = formNuevoDescripcion.Trim(),
+            Cantidad = formNuevoCantidad > 0 ? formNuevoCantidad : 1m
+        });
+        agregandoProducto = false;
+        formNuevoCantidad = 1m; formNuevoDescripcion = ""; busquedaProducto = ""; resultadosProductos = null;
+        errorMsg = null;
+    }
+
+    private void CancelarAgregarProducto()
+    {
+        agregandoProducto = false;
+        formNuevoCantidad = 1m; formNuevoDescripcion = ""; busquedaProducto = ""; resultadosProductos = null;
+    }
+
+    private async Task OnFotoSeleccionada(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null) return;
+        if (file.Size > 8 * 1024 * 1024)
+        {
+            errorMsg = "La imagen es muy grande (máx 8 MB)";
+            return;
+        }
+        try
+        {
+            using var stream = file.OpenReadStream(maxAllowedSize: 8 * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            fotoBytes = ms.ToArray();
+            fotoMime = file.ContentType;
+            fotoNombre = file.Name;
+            // Preview
+            var b64 = Convert.ToBase64String(fotoBytes);
+            fotoPreview = $"data:{fotoMime};base64,{b64}";
+        }
+        catch (Exception ex) { errorMsg = "Error con la foto: " + ex.Message; }
+    }
+
+    private void QuitarFoto()
+    {
+        fotoPreview = null; fotoBytes = null; fotoMime = null; fotoNombre = null;
+    }
+
+    private async Task GuardarPedidoAsync()
+    {
+        errorMsg = null;
+        if (formItems.Count == 0) { errorMsg = "Agregá al menos 1 producto"; return; }
+        var tieneCliente = clienteSeleccionado is not null || !string.IsNullOrWhiteSpace(formClienteLibre);
+        if (!tieneCliente) { errorMsg = "Cargá quién es el cliente"; return; }
+
+        guardando = true;
+        try
+        {
+            var body = new
+            {
+                ClienteId = clienteSeleccionado?.Id,
+                ClienteNombreLibre = clienteSeleccionado is null ? formClienteLibre.Trim() : null,
+                Notas = string.IsNullOrWhiteSpace(formNotas) ? null : formNotas.Trim(),
+                Items = formItems.Select(i => new
+                {
+                    ProductoId = i.ProductoId,
+                    DescripcionLibre = i.DescripcionLibre,
+                    Cantidad = i.Cantidad,
+                    Observaciones = i.Observaciones
+                }).ToList()
+            };
+            var resp = await Http.PostAsJsonAsync($"api/preventas/publica/{Uri.EscapeDataString(Token)}", body);
+            if (!resp.IsSuccessStatusCode)
+            {
+                errorMsg = "No se pudo guardar. Intentá de nuevo.";
+                return;
+            }
+            var saved = await resp.Content.ReadFromJsonAsync<SavedDto>();
+            if (saved is not null && fotoBytes is not null)
+            {
+                // Subir foto en un segundo request
+                try
+                {
+                    using var content = new MultipartFormDataContent();
+                    var fileContent = new ByteArrayContent(fotoBytes);
+                    fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(fotoMime ?? "image/jpeg");
+                    content.Add(fileContent, "file", fotoNombre ?? "foto.jpg");
+                    await Http.PostAsync($"api/preventas/publica/{Uri.EscapeDataString(Token)}/{saved.id}/foto", content);
+                }
+                catch { /* la foto es opcional, no rompemos el pedido si falla */ }
+            }
+
+            toastMensaje = $"✓ Pedido {saved?.numero} guardado";
+            toastVisible = true;
+            ResetForm();
+            modo = "lista";
+            await CargarMisPedidosAsync();
+            StateHasChanged();
+            await Task.Delay(2500);
+            toastVisible = false;
+        }
+        catch (Exception ex) { errorMsg = "Error: " + ex.Message; }
+        finally { guardando = false; }
+    }
+
+    private record SavedDto(int id, string numero);
+}

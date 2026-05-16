@@ -127,6 +127,10 @@
                 @* Stock — carga rapida via link publico, agregado 2026-05-15 *@
                 <NavItem Href="/stock" Label="📦 Stock (link móvil)" Icon="@SvgIcons.Package"
                          IsActive="@IsActive("/stock")" OnClick="@(() => NavigateTo("/stock"))" />
+
+                @* Pedidos de vendedor (Gaby) — agregado 2026-05-16 *@
+                <NavItem Href="/cafe/preventas" Label="🛒 Pedidos de Gaby" Icon="@SvgIcons.ShoppingBag"
+                         IsActive="@IsActive("/cafe/preventas")" OnClick="@(() => NavigateTo("/cafe/preventas"))" />
             </NavGroup>
         }
 

@@ -538,6 +538,52 @@ public class ApiClient
         return resp.IsSuccessStatusCode;
     }
 
+    // === Preventas (admin) ===
+    public async Task<List<CafePreventaAdminDto>?> GetCafePreventasAdminAsync(string estado = "pendiente")
+        => await GetAsync<List<CafePreventaAdminDto>>($"/api/preventas/admin?estado={Uri.EscapeDataString(estado)}");
+
+    public async Task<CafePreventaDetalleDto?> GetCafePreventaDetalleAsync(int id)
+        => await GetAsync<CafePreventaDetalleDto>($"/api/preventas/admin/{id}");
+
+    public async Task<int> GetCafePreventasPendientesCountAsync()
+    {
+        var r = await GetAsync<PendientesCountDto>("/api/preventas/admin/pendientes-count");
+        return r?.count ?? 0;
+    }
+
+    public async Task<bool> MarcarPreventaProcesadaAsync(int id)
+    {
+        await SetAuthHeaderAsync();
+        var r = await _http.PostAsync($"/api/preventas/admin/{id}/marcar-procesada", null);
+        return r.IsSuccessStatusCode;
+    }
+
+    public async Task<bool> CancelarPreventaAsync(int id)
+    {
+        await SetAuthHeaderAsync();
+        var r = await _http.PostAsync($"/api/preventas/admin/{id}/cancelar", null);
+        return r.IsSuccessStatusCode;
+    }
+
+    public async Task<bool> ReabrirPreventaAsync(int id)
+    {
+        await SetAuthHeaderAsync();
+        var r = await _http.PostAsync($"/api/preventas/admin/{id}/reabrir", null);
+        return r.IsSuccessStatusCode;
+    }
+
+    public async Task<bool> VincularPreventaVentaAsync(int preventaId, int ventaId)
+    {
+        await SetAuthHeaderAsync();
+        var r = await _http.PostAsJsonAsync($"/api/preventas/admin/{preventaId}/vincular-venta", new { VentaId = ventaId });
+        return r.IsSuccessStatusCode;
+    }
+
+    public async Task<List<CafePreventaVendedorDto>?> GetCafePreventaVendedoresAsync()
+        => await GetAsync<List<CafePreventaVendedorDto>>("/api/preventas/admin/vendedores");
+
+    private record PendientesCountDto(int count);
+
     /// <summary>Devuelve los bytes del PDF de una venta Café (cotización/proforma) o null si fallo.</summary>
     public async Task<(byte[]? bytes, string? error)> GetCafeVentaPdfAsync(int id)
     {

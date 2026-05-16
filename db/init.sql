@@ -3608,3 +3608,60 @@ BEGIN
     ALTER TABLE Cafe_Ventas ADD PinNota NVARCHAR(1000) NULL;
 END
 GO
+
+-- ===== Preventas / notas de pedido (vendedor en la calle) =====
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_PreventaVendedores')
+BEGIN
+    CREATE TABLE Cafe_PreventaVendedores (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Nombre NVARCHAR(120) NOT NULL,
+        Token NVARCHAR(64) NOT NULL,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NULL
+    );
+    CREATE UNIQUE INDEX UX_CafePreventaVendedores_Token ON Cafe_PreventaVendedores(Token);
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_Preventas')
+BEGIN
+    CREATE TABLE Cafe_Preventas (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Numero NVARCHAR(30) NOT NULL,
+        Fecha DATE NOT NULL,
+        VendedorId INT NULL,
+        VendedorNombreSnap NVARCHAR(120) NULL,
+        ClienteId INT NULL,
+        ClienteNombreLibre NVARCHAR(200) NULL,
+        ClienteTelefono NVARCHAR(60) NULL,
+        Notas NVARCHAR(1000) NULL,
+        FotoPath NVARCHAR(300) NULL,
+        Estado NVARCHAR(20) NOT NULL DEFAULT 'pendiente',
+        VentaIdFinal INT NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NULL,
+        CONSTRAINT FK_CafePreventas_Vendedor FOREIGN KEY (VendedorId) REFERENCES Cafe_PreventaVendedores(Id),
+        CONSTRAINT FK_CafePreventas_Cliente FOREIGN KEY (ClienteId) REFERENCES Cafe_Clientes(Id),
+        CONSTRAINT FK_CafePreventas_VentaFinal FOREIGN KEY (VentaIdFinal) REFERENCES Cafe_Ventas(Id)
+    );
+    CREATE INDEX IX_CafePreventas_Estado ON Cafe_Preventas(Estado, CreatedAt DESC);
+    CREATE INDEX IX_CafePreventas_Vendedor ON Cafe_Preventas(VendedorId, CreatedAt DESC);
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_PreventaItems')
+BEGIN
+    CREATE TABLE Cafe_PreventaItems (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        PreventaId INT NOT NULL,
+        ProductoId INT NULL,
+        ProductoNombreSnap NVARCHAR(200) NULL,
+        DescripcionLibre NVARCHAR(300) NULL,
+        Cantidad DECIMAL(18,3) NOT NULL DEFAULT 1,
+        PrecioSugerido DECIMAL(18,2) NULL,
+        Observaciones NVARCHAR(300) NULL,
+        Orden INT NOT NULL DEFAULT 0,
+        CONSTRAINT FK_CafePreventaItems_Preventa FOREIGN KEY (PreventaId) REFERENCES Cafe_Preventas(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_CafePreventaItems_Producto FOREIGN KEY (ProductoId) REFERENCES Cafe_Productos(Id)
+    );
+END
+GO

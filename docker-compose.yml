@@ -70,6 +70,7 @@ services:
       - ./.git:/repo/.git:ro
       - files_data:/data/files
       - backups_data:/data/backups
+      - preventas_fotos:/data/preventas-fotos
     networks:
       - aiml-net
     depends_on:
@@ -117,3 +118,4 @@ volumes:
   playwright_data:
   files_data:
   backups_data:
+  preventas_fotos:

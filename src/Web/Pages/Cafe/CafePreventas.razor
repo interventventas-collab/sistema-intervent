@@ -1,0 +1,259 @@
+@page "/cafe/preventas"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+<PageTitle>Pedidos de Gaby</PageTitle>
+
+<style>
+    .pv-admin-wrap { padding: 1rem; }
+    .pv-card { background: white; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 1rem; margin-bottom: 1rem; }
+    .pv-tabs { display: flex; gap: 0.3rem; margin-bottom: 0.7rem; }
+    .pv-tabs button { padding: 0.5rem 0.9rem; font-weight: 700; border: 2px solid #e5e7eb; border-radius: 8px; background: white; cursor: pointer; }
+    .pv-tabs button.active { background: #1d4ed8; border-color: #1d4ed8; color: white; }
+    .pv-row { padding: 0.7rem 0.9rem; border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 0.4rem; cursor: pointer; transition: 0.1s; }
+    .pv-row:hover { background: #f0f9ff; border-color: #1d4ed8; }
+    .pv-row.selected { background: #dbeafe; border-color: #1d4ed8; border-width: 2px; }
+    .estado-pendiente { background:#fef3c7; color:#92400e; padding:0.1rem 0.45rem; border-radius:999px; font-size:0.72rem; font-weight:700; }
+    .estado-procesada { background:#dcfce7; color:#166534; padding:0.1rem 0.45rem; border-radius:999px; font-size:0.72rem; font-weight:700; }
+    .estado-cancelada { background:#fee2e2; color:#b91c1c; padding:0.1rem 0.45rem; border-radius:999px; font-size:0.72rem; font-weight:700; }
+    .pv-grid { display: grid; grid-template-columns: 380px 1fr; gap: 1rem; }
+    @@media (max-width: 900px) { .pv-grid { grid-template-columns: 1fr; } }
+    .pv-detalle-item { background:#f9fafb; padding:0.5rem 0.7rem; border-radius:6px; margin-bottom:0.3rem; display:flex; gap:0.5rem; align-items:center; }
+    .pv-detalle-cant { background:#1d4ed8; color:white; font-weight:700; padding:0.2rem 0.5rem; border-radius:4px; min-width:34px; text-align:center; font-size:0.85rem; }
+</style>
+
+<div class="pv-admin-wrap">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem;">
+        <h2 style="margin:0;">🛒 Pedidos de Gaby</h2>
+        <button class="btn btn-secondary" @onclick="RecargarAsync">🔄 Refrescar</button>
+    </div>
+
+    <div class="pv-tabs">
+        <button class="@(filtroEstado == "pendiente" ? "active" : "")" @onclick="@(() => CambiarFiltro("pendiente"))">⏳ Pendientes</button>
+        <button class="@(filtroEstado == "procesada" ? "active" : "")" @onclick="@(() => CambiarFiltro("procesada"))">✅ Procesadas</button>
+        <button class="@(filtroEstado == "cancelada" ? "active" : "")" @onclick="@(() => CambiarFiltro("cancelada"))">❌ Canceladas</button>
+        <button class="@(filtroEstado == "TODOS" ? "active" : "")" @onclick="@(() => CambiarFiltro("TODOS"))">Todas</button>
+    </div>
+
+    <div class="pv-grid">
+        @* === COLUMNA IZQUIERDA: lista === *@
+        <div>
+            @if (lista is null)
+            {
+                <p style="color:#6b7280;">Cargando...</p>
+            }
+            else if (lista.Count == 0)
+            {
+                <div class="pv-card" style="text-align:center; color:#6b7280;">
+                    <p style="margin:0;">No hay pedidos con este filtro.</p>
+                </div>
+            }
+            else
+            {
+                @foreach (var p in lista)
+                {
+                    <div class="pv-row @(seleccionada?.Id == p.Id ? "selected" : "")" @onclick="@(() => SeleccionarAsync(p))">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <strong>@p.ClienteNombre</strong>
+                            <span class="estado-@p.Estado">@p.Estado</span>
+                        </div>
+                        <div style="font-size:0.78rem; color:#6b7280; margin-top:0.2rem;">
+                            <span style="font-family:monospace;">@p.Numero</span>
+                            ·
+                            <span>@p.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm")</span>
+                            ·
+                            <span>@p.TotalItems item(s)</span>
+                            ·
+                            <span>👤 @p.VendedorNombre</span>
+                            @if (!string.IsNullOrEmpty(p.FotoUrl))
+                            {
+                                <span> · 📷</span>
+                            }
+                            @if (p.VentaIdFinal.HasValue)
+                            {
+                                <span> · 🧾 <a href="/cafe/ventas" @onclick:stopPropagation="true">Venta #@p.VentaIdFinal</a></span>
+                            }
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+
+        @* === COLUMNA DERECHA: detalle === *@
+        <div>
+            @if (seleccionada is null || detalle is null)
+            {
+                <div class="pv-card" style="text-align:center; color:#9ca3af;">
+                    <p style="margin:0;">👈 Tocá un pedido para ver el detalle.</p>
+                </div>
+            }
+            else
+            {
+                <div class="pv-card">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+                        <h3 style="margin:0;">@detalle.Numero <span class="estado-@detalle.Estado" style="margin-left:0.4rem;">@detalle.Estado</span></h3>
+                        <span style="font-size:0.78rem; color:#6b7280;">@detalle.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</span>
+                    </div>
+                    <div style="display:grid; grid-template-columns:auto 1fr; gap:0.3rem 0.7rem; font-size:0.9rem; margin-bottom:0.6rem;">
+                        <strong>Cliente:</strong>
+                        <span>
+                            @(detalle.ClienteNombreCatalogo ?? detalle.ClienteNombreLibre)
+                            @if (detalle.ClienteId.HasValue)
+                            {
+                                <span style="font-size:0.72rem; background:#dcfce7; color:#166534; padding:0.05rem 0.35rem; border-radius:4px; margin-left:0.3rem;">del catálogo</span>
+                            }
+                            else
+                            {
+                                <span style="font-size:0.72rem; background:#fef3c7; color:#92400e; padding:0.05rem 0.35rem; border-radius:4px; margin-left:0.3rem;">cliente nuevo / texto libre</span>
+                            }
+                        </span>
+                        @if (!string.IsNullOrEmpty(detalle.ClienteTelefono))
+                        {
+                            <strong>Tel:</strong> <span>@detalle.ClienteTelefono</span>
+                        }
+                        @if (!string.IsNullOrEmpty(detalle.Notas))
+                        {
+                            <strong>Notas:</strong> <span>@detalle.Notas</span>
+                        }
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(detalle.FotoUrl))
+                    {
+                        <img src="@detalle.FotoUrl" style="width:100%; max-height:280px; object-fit:contain; border-radius:8px; margin-bottom:0.6rem; cursor:zoom-in;"
+                             @onclick="@(async () => await JS.InvokeVoidAsync("open", detalle.FotoUrl, "_blank"))" title="Click para ver en grande" />
+                    }
+
+                    <h4 style="margin:0.5rem 0 0.3rem; font-size:0.95rem;">📦 Productos pedidos:</h4>
+                    @foreach (var i in detalle.Items)
+                    {
+                        <div class="pv-detalle-item">
+                            <span class="pv-detalle-cant">@i.Cantidad</span>
+                            <div style="flex:1;">
+                                <strong>@(i.ProductoNombre ?? i.DescripcionLibre)</strong>
+                                @if (i.ProductoId.HasValue)
+                                {
+                                    <span style="font-size:0.72rem; color:#166534; margin-left:0.3rem;">📦 del catálogo</span>
+                                }
+                                else
+                                {
+                                    <span style="font-size:0.72rem; color:#92400e; margin-left:0.3rem;">✏ texto libre</span>
+                                }
+                                @if (!string.IsNullOrEmpty(i.Observaciones))
+                                {
+                                    <div style="font-size:0.78rem; color:#6b7280;">@i.Observaciones</div>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    @if (detalle.Estado == "pendiente")
+                    {
+                        <div style="display:flex; gap:0.4rem; margin-top:1rem; flex-wrap:wrap;">
+                            <button class="btn btn-primary" @onclick="ConvertirAVenta" disabled="@procesando">🛒 Convertir a venta</button>
+                            <button class="btn btn-secondary" @onclick="MarcarProcesadaAsync" disabled="@procesando">✅ Marcar procesada (sin convertir)</button>
+                            <button class="btn btn-secondary" style="background:#fee2e2; color:#b91c1c; border-color:#fca5a5;" @onclick="CancelarAsync" disabled="@procesando">❌ Cancelar</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="display:flex; gap:0.4rem; margin-top:1rem;">
+                            <button class="btn btn-secondary" @onclick="ReabrirAsync" disabled="@procesando">↩ Volver a pendiente</button>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<CafePreventaAdminDto>? lista;
+    private string filtroEstado = "pendiente";
+    private CafePreventaAdminDto? seleccionada;
+    private CafePreventaDetalleDto? detalle;
+    private bool procesando;
+    private System.Threading.Timer? autoRefreshTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RecargarAsync();
+        // Auto-refresh cada 30s
+        autoRefreshTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () => { await RecargarAsync(); StateHasChanged(); });
+        }, null, 30000, 30000);
+    }
+
+    public void Dispose() => autoRefreshTimer?.Dispose();
+
+    private async Task RecargarAsync()
+    {
+        lista = await Api.GetCafePreventasAdminAsync(filtroEstado);
+        // Si la seleccionada ya no está en la lista, deseleccionar
+        if (seleccionada is not null && lista is not null && !lista.Any(p => p.Id == seleccionada.Id))
+        {
+            seleccionada = null; detalle = null;
+        }
+    }
+
+    private async Task CambiarFiltro(string e)
+    {
+        filtroEstado = e;
+        seleccionada = null; detalle = null;
+        await RecargarAsync();
+    }
+
+    private async Task SeleccionarAsync(CafePreventaAdminDto p)
+    {
+        seleccionada = p;
+        detalle = null;
+        detalle = await Api.GetCafePreventaDetalleAsync(p.Id);
+    }
+
+    private async Task MarcarProcesadaAsync()
+    {
+        if (seleccionada is null) return;
+        procesando = true;
+        try
+        {
+            var ok = await Api.MarcarPreventaProcesadaAsync(seleccionada.Id);
+            if (ok) { ToastService.Success("Marcada procesada"); await RecargarAsync(); detalle = await Api.GetCafePreventaDetalleAsync(seleccionada.Id); }
+        }
+        finally { procesando = false; }
+    }
+
+    private async Task CancelarAsync()
+    {
+        if (seleccionada is null) return;
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Cancelar el pedido {seleccionada.Numero}?")) return;
+        procesando = true;
+        try
+        {
+            var ok = await Api.CancelarPreventaAsync(seleccionada.Id);
+            if (ok) { ToastService.Success("Cancelado"); await RecargarAsync(); detalle = await Api.GetCafePreventaDetalleAsync(seleccionada.Id); }
+        }
+        finally { procesando = false; }
+    }
+
+    private async Task ReabrirAsync()
+    {
+        if (seleccionada is null) return;
+        procesando = true;
+        try
+        {
+            var ok = await Api.ReabrirPreventaAsync(seleccionada.Id);
+            if (ok) { ToastService.Success("Reabierto"); await RecargarAsync(); detalle = await Api.GetCafePreventaDetalleAsync(seleccionada.Id); }
+        }
+        finally { procesando = false; }
+    }
+
+    private void ConvertirAVenta()
+    {
+        if (seleccionada is null) return;
+        // Por ahora navega a Ventas. Mejora futura: pre-cargar los items del preventa en el form de nueva venta.
+        Nav.NavigateTo($"/cafe/ventas?preventa={seleccionada.Id}");
+    }
+}

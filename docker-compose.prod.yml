@@ -71,6 +71,7 @@ services:
     volumes:
       - files_prod_data:/data/files
       - backups_prod_data:/data/backups
+      - preventas_fotos_prod:/data/preventas-fotos
     networks:
       - aiml-prod-net
     depends_on:
@@ -154,5 +155,6 @@ volumes:
   playwright_prod_data:
   files_prod_data:
   backups_prod_data:
+  preventas_fotos_prod:
   caddy_data:
   caddy_config:

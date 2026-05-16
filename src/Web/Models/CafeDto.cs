@@ -1099,3 +1099,59 @@ public class CafeComodatoPagoRequest
     public string? MedioPago { get; set; }
     public string? Notas { get; set; }
 }
+
+// ============================================================
+// Preventas / Pedidos de vendedor
+// ============================================================
+public class CafePreventaAdminDto
+{
+    public int Id { get; set; }
+    public string Numero { get; set; } = "";
+    public DateTime Fecha { get; set; }
+    public string VendedorNombre { get; set; } = "";
+    public string ClienteNombre { get; set; } = "";
+    public int TotalItems { get; set; }
+    public string? Notas { get; set; }
+    public string? FotoUrl { get; set; }
+    public string Estado { get; set; } = "pendiente";
+    public int? VentaIdFinal { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+public class CafePreventaItemDto
+{
+    public int Id { get; set; }
+    public int? ProductoId { get; set; }
+    public string? ProductoNombre { get; set; }
+    public string? DescripcionLibre { get; set; }
+    public decimal Cantidad { get; set; }
+    public decimal? PrecioSugerido { get; set; }
+    public string? Observaciones { get; set; }
+}
+
+public class CafePreventaDetalleDto
+{
+    public int Id { get; set; }
+    public string Numero { get; set; } = "";
+    public DateTime Fecha { get; set; }
+    public int? ClienteId { get; set; }
+    public string? ClienteNombreLibre { get; set; }
+    public string? ClienteNombreCatalogo { get; set; }
+    public string? ClienteTelefono { get; set; }
+    public string? Notas { get; set; }
+    public string? FotoUrl { get; set; }
+    public string Estado { get; set; } = "pendiente";
+    public DateTime CreatedAt { get; set; }
+    public List<CafePreventaItemDto> Items { get; set; } = new();
+    public int TotalItems { get; set; }
+}
+
+public class CafePreventaVendedorDto
+{
+    public int Id { get; set; }
+    public string Nombre { get; set; } = "";
+    public string Token { get; set; } = "";
+    public bool IsActive { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
