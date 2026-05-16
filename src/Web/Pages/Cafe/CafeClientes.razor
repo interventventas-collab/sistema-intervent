@@ -51,7 +51,15 @@
                         @foreach (var c in visibles.Take(maxVisibles))
                         {
                             <tr>
-                                <td style="font-family: monospace; font-weight: 700; color: #1d4ed8;">@(c.Codigo ?? "—")</td>
+                                <td style="font-family: monospace; font-weight: 700; color: #1d4ed8;">
+                                    @(c.Codigo ?? "—")
+                                    @if (c.CodigoInterno.HasValue)
+                                    {
+                                        <div title="Código interno asignado por vos" style="margin-top:0.2rem; display:inline-block; padding:0.1rem 0.4rem; background:#fef3c7; color:#92400e; border:1px solid #d97706; border-radius:4px; font-size:0.72rem; font-weight:800; letter-spacing:0.3px;">
+                                            #@c.CodigoInterno
+                                        </div>
+                                    }
+                                </td>
                                 <td><strong>@c.Nombre</strong></td>
                                 <td>
                                     @if (c.Tipo == "BAR")
