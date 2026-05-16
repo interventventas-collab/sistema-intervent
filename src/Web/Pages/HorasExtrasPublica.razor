@@ -113,7 +113,7 @@
                         <select class="he-input" style="flex:1; font-size:1.3rem; padding:0.55rem; text-align:center;"
                                 value="@eM"
                                 @onchange="@(e => OnHoraSelectChanged("entM", e.Value?.ToString()))">
-                            @for (int m = 0; m < 60; m += 5) { <option value="@m">@m.ToString("00")</option> }
+                            @for (int m = 0; m < 60; m += 30) { <option value="@m">@m.ToString("00")</option> }
                         </select>
                     </div>
                     <button class="he-btn he-btn-primary" style="width:100%; margin-top:0.5rem; background:#16a34a;" @onclick="@(() => { modoEdicion = ""; })">✓ Listo</button>
@@ -150,7 +150,7 @@
                         <select class="he-input" style="flex:1; font-size:1.3rem; padding:0.55rem; text-align:center;"
                                 value="@sM"
                                 @onchange="@(e => OnHoraSelectChanged("salM", e.Value?.ToString()))">
-                            @for (int m = 0; m < 60; m += 5) { <option value="@m">@m.ToString("00")</option> }
+                            @for (int m = 0; m < 60; m += 30) { <option value="@m">@m.ToString("00")</option> }
                         </select>
                     </div>
                     <button class="he-btn he-btn-primary" style="width:100%; margin-top:0.5rem;" @onclick="@(() => { modoEdicion = ""; })">✓ Listo</button>
@@ -480,7 +480,7 @@
             return (t.Hours, t.Minutes);
         // Default = hora actual (Argentina)
         var now = DateTime.UtcNow.AddHours(-3);
-        return (now.Hour, (now.Minute / 5) * 5);  // redondea a múltiplo de 5
+        return (now.Hour, (now.Minute / 30) * 30);  // redondea a múltiplo de 30
     }
 
     private string modoEdicion = ""; // "" | "entrada" | "salida"
@@ -489,7 +489,7 @@
     private void MarcarEntradaAhora()
     {
         var ahora = DateTime.UtcNow.AddHours(-3);
-        formHoraEntrada = $"{ahora.Hour:D2}:{(ahora.Minute / 5) * 5:D2}";
+        formHoraEntrada = $"{ahora.Hour:D2}:{(ahora.Minute / 30) * 30:D2}";
         RecalcularHorasExtras();
     }
 
@@ -497,7 +497,7 @@
     private void MarcarSalidaAhora()
     {
         var ahora = DateTime.UtcNow.AddHours(-3);
-        formHoraSalida = $"{ahora.Hour:D2}:{(ahora.Minute / 5) * 5:D2}";
+        formHoraSalida = $"{ahora.Hour:D2}:{(ahora.Minute / 30) * 30:D2}";
         RecalcularHorasExtras();
     }
 
