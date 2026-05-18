@@ -2519,11 +2519,18 @@
         if (!formWeekDays.Add(d)) formWeekDays.Remove(d);
     }
 
-    /// <summary>Cuando el operador cambia el tipo de comprobante, sugerimos una condicion
-    /// de pago default coherente:
-    ///   - FA / FB / FC (facturas reales con CAE) → TRANSFERENCIA (lo mas comun para B2B)
-    ///   - X / PRO (cotizaciones / remitos internos) → EFECTIVO (operatoria de mostrador)
-    /// El operador siempre puede cambiarlo a mano despues — esto es solo un default util.</summary>
+    /// <summary>Cuando el operador cambia el tipo de comprobante, sugerimos defaults coherentes:
+    ///   - Condicion de pago:
+    ///       FA/FB/FC (facturas con CAE) → TRANSFERENCIA (B2B tipico)
+    ///       X / PRO (interno/preview)   → EFECTIVO (operatoria mostrador)
+    ///   - Condicion IVA del cliente:
+    ///       FA → RI (Responsable Inscripto — solo RI puede recibir FA)
+    ///       FB → CF (Consumidor Final — caso mas comun para FB)
+    ///       FC → MO (Monotributo — si emite C es porque vende a un mono)
+    ///       X / PRO → CF (sin IVA, no importa demasiado)
+    /// El operador siempre puede cambiarlo a mano despues — esto es solo un default util.
+    /// Si el cliente seleccionado ya tiene una CondicionIvaDefault cargada en su ficha,
+    /// esa tiene prioridad (no la pisamos) — fix 2026-05-19 para no romper OnClienteChanged.</summary>
     private void OnTipoComprobanteChanged()
     {
         formCondicionPago = formTipoComprobante switch
@@ -2531,6 +2538,19 @@
             "FA" or "FB" or "FC" => "TRANSFERENCIA",
             "X" or "PRO" => "EFECTIVO",
             _ => formCondicionPago
+        };
+        // Si el cliente seleccionado tiene Cond IVA cargada en su ficha, esa manda
+        // (la setteo OnClienteChanged y no quiero pisarla solo porque cambiaste el tipo).
+        var cli = formClienteId > 0 ? clientes?.FirstOrDefault(c => c.Id == formClienteId) : null;
+        if (cli is not null && !string.IsNullOrWhiteSpace(cli.CondicionIvaDefault))
+            return;
+        formCondicionIva = formTipoComprobante switch
+        {
+            "FA" => "RI",
+            "FB" => "CF",
+            "FC" => "MO",
+            "X" or "PRO" => "CF",
+            _ => formCondicionIva
         };
     }
 
