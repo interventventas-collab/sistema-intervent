@@ -315,6 +315,62 @@ public class ApiClient
     public async Task<DashboardDeudasDto?> GetNomDashboardDeudasAsync()
         => await GetAsync<DashboardDeudasDto>("/api/nominas/dashboard/deudas");
 
+    /// <summary>Devuelve (y crea si no existe) el token publico del panel.</summary>
+    public async Task<string?> GetNomPanelPublicTokenAsync()
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.GetAsync("/api/nominas/dashboard/public-token");
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return null; }
+        if (!resp.IsSuccessStatusCode) return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            if (doc.RootElement.TryGetProperty("token", out var t)) return t.GetString();
+        }
+        catch { }
+        return null;
+    }
+
+    /// <summary>Regenera el token publico del panel (invalida el anterior).</summary>
+    public async Task<string?> RegenerateNomPanelPublicTokenAsync()
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsync("/api/nominas/dashboard/public-token/regenerate", null);
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return null; }
+        if (!resp.IsSuccessStatusCode) return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            if (doc.RootElement.TryGetProperty("token", out var t)) return t.GetString();
+        }
+        catch { }
+        return null;
+    }
+
+    /// <summary>Version PUBLICA (sin login) del dashboard de deudas. Token en la URL.</summary>
+    public async Task<DashboardDeudasDto?> GetNomDashboardDeudasPublicAsync(string token)
+    {
+        var resp = await _http.GetAsync($"/api/nominas/dashboard/publica/{Uri.EscapeDataString(token)}/deudas");
+        if (!resp.IsSuccessStatusCode) return null;
+        try { return await resp.Content.ReadFromJsonAsync<DashboardDeudasDto>(); }
+        catch { return null; }
+    }
+
+    /// <summary>Version PUBLICA (sin login) de pagar — token en URL + clave global en body.</summary>
+    public async Task<(bool ok, string? error)> NomDashboardPagarPublicAsync(string token, DashboardPagarRequest req)
+    {
+        var resp = await _http.PostAsJsonAsync($"/api/nominas/dashboard/publica/{Uri.EscapeDataString(token)}/pagar", req);
+        if (resp.IsSuccessStatusCode) return (true, null);
+        var content = await resp.Content.ReadAsStringAsync();
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(content);
+            if (doc.RootElement.TryGetProperty("error", out var err)) return (false, err.GetString());
+        }
+        catch { }
+        return (false, content);
+    }
+
     /// <summary>Registra un pago desde el panel — siempre requiere operador + clave.</summary>
     public async Task<(bool ok, string? error)> NomDashboardPagarAsync(DashboardPagarRequest req)
     {

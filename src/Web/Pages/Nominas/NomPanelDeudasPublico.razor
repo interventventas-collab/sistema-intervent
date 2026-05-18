@@ -1,19 +1,21 @@
-@page "/nominas/panel"
-@attribute [Authorize]
-@inject ApiClient Api
+@page "/panel-pagos/{Token}"
+@attribute [AllowAnonymous]
+@layout Web.Layout.LoginLayout
+@inject HttpClient Http
 @inject ToastService ToastService
-@inject NavigationManager Navigation
-@inject IJSRuntime JS
+@using System.Net
+@using System.Net.Http.Json
 @using Web.Models
 
 @* ════════════════════════════════════════════════════════════════════════════
-   Panel '¿Cuánto debo pagar?' — vista simplificada de deudas a empleados.
-   Pedido del usuario 2026-05-19: una pantalla bien intuitiva, hasta un niño
-   la puede manejar, donde se vea a quién le debo, por concepto, fechas de
-   vencimiento, y se pueda pagar con clave.
+   Version PUBLICA del panel '¿Cuanto debo pagar?'. Accesible sin login
+   matcheando el token en la URL contra AppSettings 'nominas.panel.public_token'.
+   La VISTA es accesible para cualquiera con el link, pero para PAGAR igual
+   se requiere la clave global (sales.delete_password).
    ════════════════════════════════════════════════════════════════════════════ *@
 
 <style>
+    body { background: linear-gradient(135deg, #f1f5f9, #e2e8f0); min-height: 100vh; }
     .panel-deudas-wrap { max-width: 1100px; margin: 0 auto; padding: 0.5rem; }
     .panel-header { text-align: center; margin-bottom: 1.2rem; }
     .panel-header h1 { font-size: 1.7rem; font-weight: 800; margin: 0 0 0.3rem; color: #1f2937; }
@@ -53,11 +55,8 @@
     .empleado-total .label { font-weight: 700; color: #713f12; font-size: 0.92rem; }
     .empleado-total .monto { font-weight: 800; font-size: 1.3rem; color: #713f12; }
 
-    /* ═══ Mobile (max 768px) ═══
-       En celular: cards a ancho completo, header del empleado apilado
-       (nombre arriba, badge debajo), concepto_row apilado con el botón
-       grande para tocar con el dedo, padding reducido y textos un poco
-       más chicos para que entre más info sin scroll. */
+    .panel-error { background: #fef2f2; border: 1px solid #fca5a5; color: #7f1d1d; padding: 1.2rem; border-radius: 8px; text-align: center; margin-top: 2rem; }
+
     @@media (max-width: 768px) {
         .panel-deudas-wrap { padding: 0.4rem; }
         .panel-header h1 { font-size: 1.4rem; }
@@ -72,8 +71,6 @@
         .empleado-body { padding: 0.6rem 0.9rem 0.8rem; }
         .liq-titulo { flex-direction: column; align-items: flex-start; gap: 0.15rem; font-size: 0.85rem; }
         .liq-vence { font-size: 0.72rem; }
-        /* La fila de concepto: nombre + monto en la primera linea (flex-wrap),
-           boton a ancho completo en la segunda (porque tiene width:100%). */
         .concepto-row { flex-wrap: wrap; padding: 0.55rem 0.65rem; gap: 0.3rem; }
         .concepto-row .concepto-monto { font-size: 1.05rem; margin-right: 0; }
         .btn-pagar-concepto { width: 100%; padding: 0.7rem; font-size: 0.95rem; }
@@ -85,12 +82,19 @@
     <div class="panel-header">
         <h1>💰 ¿Cuánto debo pagar?</h1>
         <p>Mirá de un vistazo a quién le debés y pagale con un click.</p>
-        <button class="btn btn-secondary" style="margin-top: 0.5rem; font-size: 0.85rem;" @onclick="OpenSharedLink">
-            🔗 Compartir link público
-        </button>
     </div>
 
-    @if (data is null)
+    @if (loadError is not null)
+    {
+        <div class="panel-error">
+            <strong>El link no es válido o expiró</strong><br />
+            <span style="font-size: 0.88rem;">@loadError</span><br />
+            <span style="font-size: 0.78rem; color: #991b1b; margin-top: 0.4rem; display: block;">
+                Pedile a quien te lo pasó que te mande el link nuevo.
+            </span>
+        </div>
+    }
+    else if (data is null)
     {
         <p style="text-align: center; padding: 3rem; color: #6b7280;">⏳ Cargando...</p>
     }
@@ -192,48 +196,7 @@
     }
 </div>
 
-@* ════════ Modal compartir link público ════════ *@
-@if (showShareModal)
-{
-    <div class="modal-overlay" style="z-index: 9100;" @onclick="CloseShareModal">
-        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 540px;">
-            <div class="modal-header" style="background: #1d4ed8; color: white;">
-                <h4 style="margin: 0;">🔗 Compartir link público</h4>
-                <button class="btn-close" @onclick="CloseShareModal" style="color: white;">&times;</button>
-            </div>
-            <div class="modal-body" style="padding: 1rem 1.2rem;">
-                <div style="background: #fef3c7; border-left: 3px solid #f59e0b; padding: 0.5rem 0.7rem; border-radius: 4px; margin-bottom: 0.8rem; font-size: 0.82rem; color: #78350f;">
-                    ⚠ <strong>Importante:</strong> cualquiera con este link puede VER las deudas de tus empleados sin loguearse. Para PAGAR igual necesita la clave global.
-                </div>
-                <p style="font-size: 0.85rem; color: #4b5563; margin: 0 0 0.4rem;">
-                    Compartí este link a quien quieras (asistente, familiar, etc) para que pueda ver y pagar desde el celular:
-                </p>
-                <div style="display: flex; gap: 0.4rem; margin-bottom: 0.6rem;">
-                    <input class="form-input" readonly value="@publicUrl" style="flex: 1; font-family: monospace; font-size: 0.82rem;" />
-                    <button class="btn btn-primary" @onclick="CopyToClipboard" style="white-space: nowrap; font-size: 0.85rem;">
-                        @(copiedRecently ? "✓ Copiado" : "📋 Copiar")
-                    </button>
-                </div>
-                <details style="margin-top: 1rem;">
-                    <summary style="cursor: pointer; font-size: 0.82rem; color: #6b7280;">⚙ Opciones avanzadas</summary>
-                    <div style="padding-top: 0.6rem;">
-                        <p style="font-size: 0.78rem; color: #6b7280; margin: 0 0 0.4rem;">
-                            Si sospechás que el link se filtró, generá uno nuevo. El anterior deja de funcionar.
-                        </p>
-                        <button class="btn btn-secondary" @onclick="RegenerateToken" disabled="@regenerating" style="font-size: 0.78rem;">
-                            @(regenerating ? "Generando..." : "🔄 Generar link nuevo")
-                        </button>
-                    </div>
-                </details>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-primary" @onclick="CloseShareModal">Cerrar</button>
-            </div>
-        </div>
-    </div>
-}
-
-@* ════════ Modal pagar ════════ *@
+@* ════════ Modal pagar (igual que en pagina privada pero usa endpoint publico) ════════ *@
 @if (pagarLiq is not null)
 {
     <div class="modal-overlay" style="z-index: 9100;" @onclick="ClosePagar">
@@ -313,13 +276,10 @@
 }
 
 @code {
-    private DashboardDeudasDto? data;
+    [Parameter] public string? Token { get; set; }
 
-    // Modal compartir link
-    private bool showShareModal;
-    private string publicUrl = "";
-    private bool copiedRecently;
-    private bool regenerating;
+    private DashboardDeudasDto? data;
+    private string? loadError;
 
     // Modal pagar
     private DashboardLiquidacionDto? pagarLiq;
@@ -340,56 +300,23 @@
 
     private async Task Cargar()
     {
-        try { data = await Api.GetNomDashboardDeudasAsync(); }
-        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
-    }
-
-    // ── Compartir link publico ──
-    private async Task OpenSharedLink()
-    {
+        if (string.IsNullOrWhiteSpace(Token)) { loadError = "Falta el código del link."; return; }
         try
         {
-            var token = await Api.GetNomPanelPublicTokenAsync();
-            if (string.IsNullOrEmpty(token))
+            var resp = await Http.GetAsync($"api/nominas/dashboard/publica/{Uri.EscapeDataString(Token)}/deudas");
+            if (resp.StatusCode == HttpStatusCode.NotFound)
             {
-                ToastService.Error("No se pudo obtener el link público");
+                loadError = "El link no es válido o el código cambió.";
                 return;
             }
-            publicUrl = $"{Navigation.BaseUri.TrimEnd('/')}/panel-pagos/{token}";
-            copiedRecently = false;
-            showShareModal = true;
-        }
-        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
-    }
-
-    private void CloseShareModal() { showShareModal = false; copiedRecently = false; }
-
-    private async Task CopyToClipboard()
-    {
-        try
-        {
-            await JS.InvokeVoidAsync("navigator.clipboard.writeText", publicUrl);
-            copiedRecently = true;
-            ToastService.Success("Link copiado al portapapeles");
-        }
-        catch (Exception ex) { ToastService.Error("Error copiando: " + ex.Message); }
-    }
-
-    private async Task RegenerateToken()
-    {
-        regenerating = true;
-        try
-        {
-            var nuevo = await Api.RegenerateNomPanelPublicTokenAsync();
-            if (!string.IsNullOrEmpty(nuevo))
+            if (!resp.IsSuccessStatusCode)
             {
-                publicUrl = $"{Navigation.BaseUri.TrimEnd('/')}/panel-pagos/{nuevo}";
-                copiedRecently = false;
-                ToastService.Success("Link nuevo generado. El anterior ya no funciona.");
+                loadError = "Error cargando datos: " + resp.StatusCode;
+                return;
             }
+            data = await resp.Content.ReadFromJsonAsync<DashboardDeudasDto>();
         }
-        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
-        finally { regenerating = false; }
+        catch (Exception ex) { loadError = ex.Message; }
     }
 
     private void OpenPagar(DashboardEmpleadoDto emp, DashboardLiquidacionDto liq, DashboardConceptoDto? c)
@@ -419,14 +346,14 @@
 
     private async Task DoPagar()
     {
-        if (pagarLiq is null) return;
+        if (pagarLiq is null || string.IsNullOrWhiteSpace(Token)) return;
         if (pagarMonto <= 0) { pagarError = "El monto tiene que ser mayor a 0."; return; }
         if (string.IsNullOrWhiteSpace(pagarPassword)) { pagarError = "Ingresá la clave."; return; }
         pagarSaving = true;
         pagarError = null;
         try
         {
-            var (ok, err) = await Api.NomDashboardPagarAsync(new DashboardPagarRequest
+            var body = new DashboardPagarRequest
             {
                 LiquidacionId = pagarLiq.LiquidacionId,
                 Concepto = pagarConcepto,
@@ -436,9 +363,22 @@
                 Notas = string.IsNullOrWhiteSpace(pagarNotas) ? null : pagarNotas,
                 Operator = pagarOperator,
                 Password = pagarPassword
-            });
-            if (!ok) { pagarError = err ?? "No se pudo registrar el pago."; return; }
-            ToastService.Success($"💰 Pago de $@{FormatMoney(pagarMonto)} registrado");
+            };
+            var resp = await Http.PostAsJsonAsync($"api/nominas/dashboard/publica/{Uri.EscapeDataString(Token)}/pagar", body);
+            if (!resp.IsSuccessStatusCode)
+            {
+                var content = await resp.Content.ReadAsStringAsync();
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(content);
+                    if (doc.RootElement.TryGetProperty("error", out var err))
+                    { pagarError = err.GetString(); return; }
+                }
+                catch { }
+                pagarError = content;
+                return;
+            }
+            ToastService.Success($"💰 Pago de ${FormatMoney(pagarMonto)} registrado");
             pagarLiq = null;
             pagarPassword = "";
             await Cargar();

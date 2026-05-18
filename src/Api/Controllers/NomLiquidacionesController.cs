@@ -432,6 +432,83 @@ public class NomLiquidacionesController : ControllerBase
         int CantidadConDeuda, int CantidadVencidos,
         List<DashboardEmpleadoDto> Empleados);
 
+    // ──── Token publico del panel ────
+    // Guardado en AppSettings con key 'nominas.panel.public_token'. Si no existe se genera al
+    // pedirlo. Sirve para que el usuario comparta una URL /panel-pagos/{token} que cualquiera
+    // con el link puede abrir sin loguearse (pero igual necesita la clave global para pagar).
+    private const string PanelTokenSettingKey = "nominas.panel.public_token";
+
+    private async Task<string> GetOrCreatePanelTokenAsync()
+    {
+        var existing = await _db.AppSettings.FindAsync(PanelTokenSettingKey);
+        if (existing is not null && !string.IsNullOrEmpty(existing.Value)) return existing.Value;
+        var token = Convert.ToBase64String(Guid.NewGuid().ToByteArray())
+            .Replace("/", "_").Replace("+", "-").TrimEnd('=');
+        if (existing is null)
+        {
+            _db.AppSettings.Add(new AppSetting { Key = PanelTokenSettingKey, Value = token });
+        }
+        else
+        {
+            existing.Value = token;
+        }
+        await _db.SaveChangesAsync();
+        return token;
+    }
+
+    /// <summary>Devuelve el token publico actual (no genera uno nuevo). El frontend lo usa
+    /// para armar la URL compartible. Si el token no existe, lo crea.</summary>
+    [HttpGet("dashboard/public-token")]
+    public async Task<IActionResult> GetPanelPublicToken()
+    {
+        var token = await GetOrCreatePanelTokenAsync();
+        return Ok(new { token });
+    }
+
+    /// <summary>Regenera el token publico (invalida el anterior). Por si el operador
+    /// sospecha que el link anterior se filtro y quiere generar uno nuevo.</summary>
+    [HttpPost("dashboard/public-token/regenerate")]
+    public async Task<IActionResult> RegeneratePanelPublicToken()
+    {
+        var existing = await _db.AppSettings.FindAsync(PanelTokenSettingKey);
+        var nuevo = Convert.ToBase64String(Guid.NewGuid().ToByteArray())
+            .Replace("/", "_").Replace("+", "-").TrimEnd('=');
+        if (existing is null)
+            _db.AppSettings.Add(new AppSetting { Key = PanelTokenSettingKey, Value = nuevo });
+        else
+            existing.Value = nuevo;
+        await _db.SaveChangesAsync();
+        return Ok(new { token = nuevo });
+    }
+
+    /// <summary>Variante publica de GetDashboardDeudas — accesible sin login pero requiere
+    /// matchear el token en la URL contra el guardado en AppSettings.</summary>
+    [HttpGet("dashboard/publica/{token}/deudas")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetDashboardDeudasPublic(string token)
+    {
+        if (!await ValidatePanelTokenAsync(token)) return NotFound();
+        return await GetDashboardDeudas();
+    }
+
+    /// <summary>Variante publica de DashboardPagar — accesible sin login + token en URL,
+    /// pero igual valida operador + clave en el body (sigue siendo necesaria la clave
+    /// global para pagar — el token solo da acceso a la VISTA).</summary>
+    [HttpPost("dashboard/publica/{token}/pagar")]
+    [AllowAnonymous]
+    public async Task<IActionResult> DashboardPagarPublic(string token, [FromBody] DashboardPagarRequest req)
+    {
+        if (!await ValidatePanelTokenAsync(token)) return NotFound();
+        return await DashboardPagar(req);
+    }
+
+    private async Task<bool> ValidatePanelTokenAsync(string token)
+    {
+        if (string.IsNullOrWhiteSpace(token)) return false;
+        var saved = await _db.AppSettings.FindAsync(PanelTokenSettingKey);
+        return saved is not null && !string.IsNullOrEmpty(saved.Value) && saved.Value == token;
+    }
+
     [HttpGet("dashboard/deudas")]
     public async Task<IActionResult> GetDashboardDeudas()
     {
