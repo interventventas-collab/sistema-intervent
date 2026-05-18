@@ -1302,10 +1302,16 @@
                                 <strong style="color: #9a3412;">⚠ Factura PENDIENTE — no se autorizó en ARCA todavía</strong>
                                 <div style="font-size: 0.8rem; color: #7c2d12; margin-top: 0.2rem; white-space: pre-wrap;">@printVenta.ArcaError</div>
                             </div>
-                            <button class="btn btn-primary" style="font-size: 0.85rem; background: #ea580c; border: none;"
-                                    @onclick="RetryArca" disabled="@arcaRetrying">
-                                @(arcaRetrying ? "Reintentando..." : "🔄 Reintentar emisión")
-                            </button>
+                            <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                                <button class="btn btn-secondary" style="font-size: 0.85rem; background: #ffffff; border: 1px solid #fb923c; color: #9a3412;"
+                                        @onclick="EditarYReintentar" disabled="@arcaRetrying">
+                                    ✎ Editar y reintentar
+                                </button>
+                                <button class="btn btn-primary" style="font-size: 0.85rem; background: #ea580c; border: none;"
+                                        @onclick="RetryArca" disabled="@arcaRetrying">
+                                    @(arcaRetrying ? "Reintentando..." : "🔄 Reintentar emisión")
+                                </button>
+                            </div>
                         </div>
                     }
                 }
@@ -2742,7 +2748,7 @@
         }
     }
 
-    private void CloseForm() { showForm = false; formError = null; editingVentaId = null; editingVentaNumero = ""; duplicadoDeNumero = null; }
+    private void CloseForm() { showForm = false; formError = null; editingVentaId = null; editingVentaNumero = ""; duplicadoDeNumero = null; autoRetryArcaPostEdit = false; }
 
     /// <summary>Numero del comprobante origen cuando se está duplicando (para mostrar "Duplicado de X" en el modal).</summary>
     private string? duplicadoDeNumero;
@@ -3304,6 +3310,27 @@
                 });
                 if (v is null) { formError = "No se pudo actualizar"; return; }
                 ToastService.Success($"Comprobante {v.Numero} actualizado");
+
+                // Auto-reintentar ARCA si la edicion venia del boton "Editar y reintentar"
+                // del cartel naranja de Factura PENDIENTE. Asi en un solo paso el operador
+                // edita los datos que hicieron rebotar la factura + se reintenta solo.
+                if (autoRetryArcaPostEdit && v.TipoComprobante is "FA" or "FB" or "FC")
+                {
+                    autoRetryArcaPostEdit = false;
+                    try
+                    {
+                        var reintentada = await Api.RetryArcaCafeVentaAsync(v.Id);
+                        if (reintentada is not null)
+                        {
+                            v = reintentada;
+                            if (reintentada.ArcaEstado == "autorizado")
+                                ToastService.Success($"✓ Autorizada por ARCA — CAE {reintentada.ArcaCae}");
+                            else
+                                ToastService.Error($"ARCA sigue rechazando: {reintentada.ArcaError}");
+                        }
+                    }
+                    catch (Exception ex) { ToastService.Error("Error reintentando ARCA: " + ex.Message); }
+                }
             }
             else
             {
@@ -3429,6 +3456,24 @@
     }
 
     private bool arcaRetrying;
+    /// <summary>Abre el modal de edición de la venta actual + setea un flag para que,
+    /// cuando el usuario guarde la edición, automaticamente se reintente la emisión
+    /// contra ARCA con los datos nuevos. Asi en un solo paso edita + reintenta.</summary>
+    private async Task EditarYReintentar()
+    {
+        if (printVenta is null) return;
+        var v = printVenta;
+        // Marcar para auto-retry post-save
+        autoRetryArcaPostEdit = true;
+        // Cerrar el viewer y abrir el form de edicion con los datos precargados
+        printVenta = null;
+        await OpenEditModal(v);
+    }
+
+    /// <summary>Si se activo desde EditarYReintentar, despues de guardar la edicion
+    /// disparamos un retry de ARCA automaticamente. Reset despues de usarlo.</summary>
+    private bool autoRetryArcaPostEdit;
+
     private async Task RetryArca()
     {
         if (printVenta is null || arcaRetrying) return;
