@@ -309,11 +309,13 @@
                         <label class="form-label">Forma de pago *</label>
                         <select class="form-input" @bind="newPayMethod">
                             <option value="efectivo">Efectivo</option>
-                            <option value="transferencia">Transferencia</option>
-                            <option value="tarjeta_debito">Tarjeta de debito</option>
-                            <option value="tarjeta_credito">Tarjeta de credito</option>
+                            <option value="transferencia">Transferencia / Banco</option>
+                            <option value="billetera_virtual">📱 Billetera virtual (MP, Modo, etc.)</option>
+                            <option value="tarjeta_debito">Tarjeta de débito</option>
+                            <option value="tarjeta_credito">Tarjeta de crédito</option>
                             <option value="cheque">Cheque</option>
                             <option value="mercadopago">MercadoPago</option>
+                            <option value="v_privado">V Privada (triangulación)</option>
                             <option value="otro">Otro</option>
                         </select>
                     </div>

@@ -392,7 +392,7 @@
                                         <tr>
                                             <td>@p.FechaPago.ToString("dd/MM/yyyy")</td>
                                             <td style="white-space: nowrap;">@ConceptoIcono(p.Concepto) @ConceptoLabel(p.Concepto)</td>
-                                            <td style="text-transform: capitalize;">@p.Metodo</td>
+                                            <td>@MetodoLabel(p.Metodo)</td>
                                             <td style="text-align: right; font-weight: 700;">$@FormatMoney(p.Monto)</td>
                                             <td style="color: #6b7280; font-size: 0.78rem;">
                                                 @if (!string.IsNullOrEmpty(p.Detalle)) { <div>@p.Detalle</div> }
@@ -464,8 +464,10 @@
                                         <label class="form-label" style="font-size: 0.75rem;">Método</label>
                                         <select class="form-input" @bind="pagoMetodo">
                                             <option value="efectivo">Efectivo</option>
-                                            <option value="transferencia">Transferencia</option>
+                                            <option value="transferencia">Transferencia / Banco</option>
+                                            <option value="billetera_virtual">📱 Billetera virtual (MP, Modo, etc.)</option>
                                             <option value="cheque">Cheque</option>
+                                            <option value="v_privado">V Privada (triangulación)</option>
                                             <option value="otro">Otro</option>
                                         </select>
                                     </div>
@@ -553,7 +555,10 @@
                         <label class="form-label">Método</label>
                         <select class="form-input" @bind="editingPagoMetodo">
                             <option value="efectivo">Efectivo</option>
-                            <option value="transferencia">Transferencia</option>
+                            <option value="transferencia">Transferencia / Banco</option>
+                            <option value="billetera_virtual">📱 Billetera virtual (MP, Modo, etc.)</option>
+                            <option value="cheque">Cheque</option>
+                            <option value="v_privado">V Privada (triangulación)</option>
                             <option value="otro">Otro</option>
                         </select>
                     </div>
@@ -679,6 +684,23 @@
         "aguinaldo" => "🎄",
         "otro" => "📝",
         _ => "•"
+    };
+
+    /// <summary>Etiqueta legible para los metodos de pago. Hace match con los values del
+    /// dropdown — si llega algo desconocido, lo capitaliza tal cual para no romper el render.</summary>
+    private static string MetodoLabel(string? m) => (m ?? "").ToLowerInvariant() switch
+    {
+        "efectivo" => "Efectivo",
+        "transferencia" => "Transferencia",
+        "billetera_virtual" => "📱 Billetera virtual",
+        "cheque" => "Cheque",
+        "v_privado" => "V Privada",
+        "tarjeta_debito" => "Tarjeta de débito",
+        "tarjeta_credito" => "Tarjeta de crédito",
+        "mercadopago" => "MercadoPago",
+        "otro" => "Otro",
+        "" => "—",
+        _ => char.ToUpper((m ?? "")[0]) + (m ?? "").Substring(1)
     };
 
     // Delete
