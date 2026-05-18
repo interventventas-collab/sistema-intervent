@@ -1260,6 +1260,10 @@
                         <input type="checkbox" checked="@printVenta.IsPaid" @onchange="TogglePaid" />
                         Pagado
                     </label>
+                    <button class="btn" style="background:#16a34a; color: white; border: none; font-size: 0.85rem;"
+                            @onclick="@(() => OpenReenvio(printVenta))" title="Mandar este comprobante por mail / WhatsApp">
+                        📤 Enviar al cliente
+                    </button>
                     @if (HasWhatsapp)
                     {
                         <a class="btn" style="background:#25D366;color:white;border:none;font-size: 0.85rem; text-decoration: none;"
@@ -1672,6 +1676,63 @@
     </div>
 }
 
+@* ════════ Modal de reenvio de comprobante ya emitido ════════
+   Se abre desde el visor del comprobante (boton "Enviar al cliente"). Muestra
+   los mismos 3 canales del modal de carga (Mail / WhatsApp Web / WhatsApp Interno)
+   pero dispara contra una venta YA emitida. Reusa Api.SendCafeVentaEmailAsync y
+   SendCafeVentaWhatsappInternoAsync. z-index alto para quedar arriba del visor. *@
+@if (reenvioVenta is not null)
+{
+    <div class="modal-overlay" style="z-index: 9200;" @onclick="CloseReenvio">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 540px;">
+            <div class="modal-header" style="background: #ecfdf5;">
+                <h3 style="margin: 0; color: #065f46;">📤 Enviar comprobante @reenvioVenta.Numero</h3>
+                <button class="btn-close" @onclick="CloseReenvio">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 1rem 1.2rem;">
+                <p style="margin: 0 0 0.8rem; color: #4b5563; font-size: 0.88rem;">
+                    Tildá los canales por los que querés mandar el comprobante.
+                    Si los destinatarios están vacíos, completalos a mano.
+                </p>
+                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                    <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.88rem;">
+                        <input type="checkbox" @bind="reenvioEmail" />
+                        <span>📧 <strong>Por Mail</strong></span>
+                        <input type="email" class="form-input" placeholder="email@cliente.com"
+                               style="flex: 1; font-size: 0.82rem; padding: 0.3rem 0.5rem;"
+                               @bind="reenvioEmailTo" disabled="@(!reenvioEmail)" />
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.88rem;">
+                        <input type="checkbox" @bind="reenvioWhatsappWeb" />
+                        <span>📱 <strong>WhatsApp Web</strong> <span style="font-size: 0.72rem; color: #6b7280;">(abre, vos confirmas)</span></span>
+                        <input type="tel" class="form-input" placeholder="541112345678"
+                               style="flex: 1; font-size: 0.82rem; padding: 0.3rem 0.5rem;"
+                               @bind="reenvioWhatsappPhone" disabled="@(!reenvioWhatsappWeb)" />
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.88rem;">
+                        <input type="checkbox" @bind="reenvioWhatsappInterno" />
+                        <span>🚀 <strong>WhatsApp Interno</strong> <span style="font-size: 0.72rem; color: #6b7280;">(auto + PDF)</span></span>
+                        <input type="tel" class="form-input" placeholder="541112345678"
+                               style="flex: 1; font-size: 0.82rem; padding: 0.3rem 0.5rem;"
+                               @bind="reenvioWhatsappPhone" disabled="@(!reenvioWhatsappInterno)" />
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseReenvio" disabled="@reenvioSending">Cancelar</button>
+                <button class="btn btn-secondary" @onclick="MarcarTodosReenvio" disabled="@reenvioSending" style="font-size: 0.78rem;">
+                    @(reenvioEmail && reenvioWhatsappWeb && reenvioWhatsappInterno ? "Desmarcar todos" : "Marcar todos")
+                </button>
+                <button class="btn btn-primary" style="background: #16a34a; border-color: #15803d;"
+                        @onclick="EjecutarReenvio"
+                        disabled="@(reenvioSending || !(reenvioEmail || reenvioWhatsappWeb || reenvioWhatsappInterno))">
+                    @(reenvioSending ? "Enviando..." : "📤 Enviar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @if (showAnularConfirm && toAnular is not null)
 {
     <div class="modal-overlay" @onclick="() => showAnularConfirm = false">
@@ -2018,6 +2079,19 @@
     // Si no tiene, el operador puede tipear el numero/mail a mano.
     private string envioEmailTo = "";
     private string envioWhatsappPhone = "";
+
+    // ── Modal "Reenviar comprobante ya emitido" ──
+    // Cuando el usuario abre el visor de una venta y toca "Enviar al cliente",
+    // abrimos este modal con los mismos 3 checkboxes. Reusa toda la logica de
+    // DispararCanalesDeEnvioAsync, pero contra la venta YA emitida (no la que se
+    // esta cargando).
+    private CafeVentaDto? reenvioVenta;
+    private bool reenvioEmail;
+    private bool reenvioWhatsappWeb;
+    private bool reenvioWhatsappInterno;
+    private string reenvioEmailTo = "";
+    private string reenvioWhatsappPhone = "";
+    private bool reenvioSending;
 
     private static readonly string[] AllWeekDays = { "LUN", "MAR", "MIE", "JUE", "VIE", "SAB", "DOM" };
 
@@ -2448,6 +2522,107 @@
         envioEmail = !todosOn;
         envioWhatsappWeb = !todosOn;
         envioWhatsappInterno = !todosOn;
+    }
+
+    // ════════ Reenvio de comprobante ya emitido ════════
+
+    /// <summary>Abre el modal de reenvio precargando email/telefono desde el cliente
+    /// de la venta. Si la venta no tiene cliente o el cliente no tiene email/telefono,
+    /// los campos quedan vacios para que el operador los complete a mano.</summary>
+    private void OpenReenvio(CafeVentaDto? v)
+    {
+        if (v is null) return;
+        reenvioVenta = v;
+        reenvioEmail = false;
+        reenvioWhatsappWeb = false;
+        reenvioWhatsappInterno = false;
+        reenvioSending = false;
+        // Buscar email del cliente en el dict en memoria; si no esta, queda vacio.
+        var cli = v.ClienteId.HasValue ? clientes?.FirstOrDefault(x => x.Id == v.ClienteId.Value) : null;
+        reenvioEmailTo = cli?.Email ?? "";
+        reenvioWhatsappPhone = !string.IsNullOrWhiteSpace(v.ClienteTelefono)
+            ? v.ClienteTelefono!
+            : (cli?.Telefono ?? "");
+    }
+
+    private void CloseReenvio()
+    {
+        if (reenvioSending) return; // no cerrar mientras esta enviando
+        reenvioVenta = null;
+    }
+
+    private void MarcarTodosReenvio()
+    {
+        var todosOn = reenvioEmail && reenvioWhatsappWeb && reenvioWhatsappInterno;
+        reenvioEmail = !todosOn;
+        reenvioWhatsappWeb = !todosOn;
+        reenvioWhatsappInterno = !todosOn;
+    }
+
+    /// <summary>Ejecuta el reenvio segun los checkboxes tildados, contra la venta YA emitida.
+    /// Email + WhatsApp Interno en paralelo (backend); WhatsApp Web abre wa.me en pestaña nueva.</summary>
+    private async Task EjecutarReenvio()
+    {
+        if (reenvioVenta is null) return;
+        if (!(reenvioEmail || reenvioWhatsappWeb || reenvioWhatsappInterno))
+        {
+            ToastService.Error("Tildá al menos un canal");
+            return;
+        }
+        reenvioSending = true;
+        try
+        {
+            var v = reenvioVenta;
+            // 1) WhatsApp Web: abre wa.me en pestaña nueva
+            if (reenvioWhatsappWeb && !string.IsNullOrWhiteSpace(reenvioWhatsappPhone))
+            {
+                var phone = new string(reenvioWhatsappPhone.Where(char.IsDigit).ToArray());
+                if (phone.Length >= 8)
+                {
+                    var msg = Uri.EscapeDataString($"Hola! Te paso el comprobante {v.Numero}. Cualquier cosa avisame. Gracias!");
+                    try { await JS.InvokeVoidAsync("openInNewTab", $"https://wa.me/{phone}?text={msg}"); }
+                    catch { }
+                }
+            }
+            // 2) Email + WhatsApp Interno en paralelo (backend hace el laburo pesado)
+            var tasks = new List<Task>();
+            if (reenvioEmail && !string.IsNullOrWhiteSpace(reenvioEmailTo))
+            {
+                tasks.Add(Task.Run(async () =>
+                {
+                    try
+                    {
+                        var (sent, err) = await Api.SendCafeVentaEmailAsync(v.Id, reenvioEmailTo);
+                        if (sent) ToastService.Success($"📧 Email enviado a {reenvioEmailTo}");
+                        else ToastService.Error($"📧 Email falló: {err}");
+                    }
+                    catch (Exception ex) { ToastService.Error($"📧 Email error: {ex.Message}"); }
+                }));
+            }
+            if (reenvioWhatsappInterno && !string.IsNullOrWhiteSpace(reenvioWhatsappPhone))
+            {
+                tasks.Add(Task.Run(async () =>
+                {
+                    try
+                    {
+                        var (sent, err) = await Api.SendCafeVentaWhatsappInternoAsync(v.Id, reenvioWhatsappPhone);
+                        if (sent) ToastService.Success($"🚀 WhatsApp enviado a {reenvioWhatsappPhone}");
+                        else ToastService.Error($"🚀 WhatsApp Interno falló: {err}");
+                    }
+                    catch (Exception ex) { ToastService.Error($"🚀 WhatsApp Interno error: {ex.Message}"); }
+                }));
+            }
+            if (tasks.Count > 0)
+            {
+                try { await Task.WhenAll(tasks); } catch { }
+            }
+            // Cerrar el modal al terminar (los toasts ya avisaron de cada canal)
+            reenvioVenta = null;
+        }
+        finally
+        {
+            reenvioSending = false;
+        }
     }
 
     /// <summary>Despues de emitir una venta exitosa, dispara los canales tildados
