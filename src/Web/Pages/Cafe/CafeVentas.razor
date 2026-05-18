@@ -1531,9 +1531,13 @@
                         }
                         @if (esFA || esFB || esProforma)
                         {
-                            <div style="display: flex; justify-content: space-between; font-size: 0.9rem; padding: 0.15rem 0;">
-                                <span>Neto gravado:</span><strong>$@FormatMoney(netoSinIva)</strong>
-                            </div>
+                            @* "Neto gravado" solo si hay descuento — sino es identico al Subtotal de arriba (redundante). *@
+                            @if (printVenta.Descuento > 0)
+                            {
+                                <div style="display: flex; justify-content: space-between; font-size: 0.9rem; padding: 0.15rem 0;">
+                                    <span>Neto gravado:</span><strong>$@FormatMoney(netoSinIva)</strong>
+                                </div>
+                            }
                             <div style="display: flex; justify-content: space-between; font-size: 0.9rem; padding: 0.15rem 0; color: #1d4ed8;">
                                 <span>IVA 21%@(esProforma ? " (estimado)" : ""):</span><span>$@FormatMoney(iva21)</span>
                             </div>
