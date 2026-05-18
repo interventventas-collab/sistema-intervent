@@ -61,11 +61,11 @@ public class CafeVentasController : ControllerBase
     {
         var tipo = v.TipoComprobante switch
         {
-            "FA" => "Factura A",
-            "FB" => "Factura B",
-            "FC" => "Factura C",
-            "X" => "Comprobante X",
-            "PRO" => "Proforma",
+            "FA" => "FA",
+            "FB" => "FB",
+            "FC" => "FC",
+            "X" => "X",
+            "PRO" => "PROF",
             _ => v.TipoComprobante ?? "Comprobante"
         };
         var cliente = !string.IsNullOrWhiteSpace(v.ClienteRazonSocialSnapshot)
