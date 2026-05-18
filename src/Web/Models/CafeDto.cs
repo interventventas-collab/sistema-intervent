@@ -1177,4 +1177,8 @@ public class ClienteSaldoPendienteDto
     public DateTime FechaMasAntigua { get; set; }
     public int DiasMasAntigua { get; set; }
     public bool TieneSaldoMigracion { get; set; }
+    /// <summary>Saldo de comprobantes tipo X y PRO (no fiscales). Default 0.</summary>
+    public decimal SaldoCotizacion { get; set; }
+    /// <summary>Saldo de comprobantes tipo FA, FB, FC (con CAE, fiscales). Default 0.</summary>
+    public decimal SaldoFactura { get; set; }
 }

@@ -59,11 +59,19 @@
     }
     else
     {
-        @* === Total general === *@
+        @* === Total general (con split Cotizacion / Factura) === *@
         <div class="sp-total">
             <div class="sp-total-label">💰 TOTAL POR COBRAR</div>
             <div class="sp-total-num">$@saldos.Sum(s => s.SaldoPendiente).ToString("N0", new System.Globalization.CultureInfo("es-AR"))</div>
             <div class="sp-total-sub">@saldos.Count cliente(s) con saldo pendiente</div>
+            @{
+                var totalCot = saldos.Sum(s => s.SaldoCotizacion);
+                var totalFac = saldos.Sum(s => s.SaldoFactura);
+            }
+            <div style="margin-top: 0.6rem; display: flex; gap: 1.5rem; justify-content: center; font-size: 0.88rem;">
+                <div><span style="color: #6b7280;">📝 Cotización (X):</span> <strong>$@totalCot.ToString("N0", new System.Globalization.CultureInfo("es-AR"))</strong></div>
+                <div><span style="color: #1d4ed8;">📋 Factura (A/B/C):</span> <strong style="color: #1d4ed8;">$@totalFac.ToString("N0", new System.Globalization.CultureInfo("es-AR"))</strong></div>
+            </div>
         </div>
 
         @* === Buscador === *@
@@ -96,7 +104,9 @@
                         <th style="text-align:center;">Tipo</th>
                         <th style="text-align:right;">N° pendientes</th>
                         <th style="text-align:right;">Días vencido</th>
-                        <th style="text-align:right;">Saldo</th>
+                        <th style="text-align:right;" title="Saldo de comprobantes X / PRO (no fiscales)">📝 Cotización</th>
+                        <th style="text-align:right;" title="Saldo de Facturas A / B / C (con CAE de ARCA)">📋 Factura</th>
+                        <th style="text-align:right;">Saldo Total</th>
                         <th>Acciones</th>
                     </tr>
                 </thead>
@@ -137,6 +147,20 @@
                             <td style="text-align:right;">
                                 <span class="@diasCls">@s.DiasMasAntigua días</span>
                                 <div style="font-size:0.7rem; color:#6b7280;">desde @s.FechaMasAntigua.ToString("dd/MM/yyyy")</div>
+                            </td>
+                            <td style="text-align:right; font-size: 0.88rem;">
+                                @if (s.SaldoCotizacion > 0)
+                                {
+                                    <span style="color: #6b7280;">$@s.SaldoCotizacion.ToString("N0", new System.Globalization.CultureInfo("es-AR"))</span>
+                                }
+                                else { <span style="color: #d1d5db;">—</span> }
+                            </td>
+                            <td style="text-align:right; font-size: 0.88rem;">
+                                @if (s.SaldoFactura > 0)
+                                {
+                                    <span style="color: #1d4ed8; font-weight: 600;">$@s.SaldoFactura.ToString("N0", new System.Globalization.CultureInfo("es-AR"))</span>
+                                }
+                                else { <span style="color: #d1d5db;">—</span> }
                             </td>
                             <td style="text-align:right;">
                                 <span class="sp-saldo">$@s.SaldoPendiente.ToString("N2", new System.Globalization.CultureInfo("es-AR"))</span>

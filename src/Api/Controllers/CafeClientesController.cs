@@ -275,7 +275,11 @@ public class CafeClientesController : ControllerBase
         int CantidadVentasPendientes,
         decimal SaldoPendiente,
         DateTime FechaMasAntigua, int DiasMasAntigua,
-        bool TieneSaldoMigracion);
+        bool TieneSaldoMigracion,
+        /// <summary>Saldo de comprobantes tipo X y PRO (no fiscales). Default 0 si no hay.</summary>
+        decimal SaldoCotizacion = 0m,
+        /// <summary>Saldo de comprobantes tipo FA, FB, FC (con CAE de ARCA, fiscales). Default 0 si no hay.</summary>
+        decimal SaldoFactura = 0m);
 
     /// <summary>Lista TODOS los clientes con saldo pendiente (deudores), agrupados.
     /// Saldo pendiente = SUM(ventas emitidas).Total - SUM(cobranzas vigentes asignadas a esas ventas).
@@ -285,12 +289,13 @@ public class CafeClientesController : ControllerBase
     public async Task<IActionResult> GetSaldosPendientes()
     {
         // Traer todas las ventas emitidas (no anuladas) con cliente y total > 0
+        // Incluyo TipoComprobante para separar saldo Cotizacion (X/PRO) vs Factura (FA/FB/FC).
         var ventas = await _db.CafeVentas
             .Where(v => v.Estado != "anulado"
                      && v.ClienteId != null
                      && v.Total > 0)
             .Select(v => new {
-                v.Id, ClienteId = v.ClienteId!.Value, v.Total, v.Fecha,
+                v.Id, ClienteId = v.ClienteId!.Value, v.Total, v.Fecha, v.TipoComprobante,
                 EsSaldoMigracion = _db.CafeSaldosMigracion.Any(s => s.VentaId == v.Id)
             })
             .ToListAsync();
@@ -306,9 +311,9 @@ public class CafeClientesController : ControllerBase
             .ToListAsync();
         var pagadosDict = pagados.ToDictionary(p => p.VentaId, p => p.Pagado);
 
-        // Calcular saldo de cada venta
+        // Calcular saldo de cada venta — incluyo TipoComprobante para poder separar despues.
         var ventasConSaldo = ventas.Select(v => new {
-            v.Id, v.ClienteId, v.Total, v.Fecha, v.EsSaldoMigracion,
+            v.Id, v.ClienteId, v.Total, v.Fecha, v.TipoComprobante, v.EsSaldoMigracion,
             Saldo = v.Total - (pagadosDict.TryGetValue(v.Id, out var p) ? p : 0m)
         }).Where(v => v.Saldo > 0).ToList();
         if (ventasConSaldo.Count == 0) return Ok(new List<ClienteSaldoPendienteDto>());
@@ -327,6 +332,13 @@ public class CafeClientesController : ControllerBase
             {
                 clientesDict.TryGetValue(g.Key, out var cli);
                 var fechaMasAntigua = g.Min(x => x.Fecha);
+                // Separar saldo por tipo de comprobante (pedido del usuario 2026-05-19):
+                //   "Cotizacion" = X + PRO (no fiscal, interno)
+                //   "Factura"    = FA + FB + FC (con CAE de ARCA, fiscal)
+                var saldoCotizacion = g.Where(x => x.TipoComprobante == "X" || x.TipoComprobante == "PRO")
+                    .Sum(x => x.Saldo);
+                var saldoFactura = g.Where(x => x.TipoComprobante == "FA" || x.TipoComprobante == "FB" || x.TipoComprobante == "FC")
+                    .Sum(x => x.Saldo);
                 return new ClienteSaldoPendienteDto(
                     g.Key,
                     cli?.Nombre ?? "(sin nombre)",
@@ -338,7 +350,9 @@ public class CafeClientesController : ControllerBase
                     g.Sum(x => x.Saldo),
                     fechaMasAntigua,
                     (int)(hoy - fechaMasAntigua.Date).TotalDays,
-                    g.Any(x => x.EsSaldoMigracion)
+                    g.Any(x => x.EsSaldoMigracion),
+                    saldoCotizacion,
+                    saldoFactura
                 );
             })
             .OrderBy(c => c.FechaMasAntigua) // más antigua primero (mayor urgencia)
