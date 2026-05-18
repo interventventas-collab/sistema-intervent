@@ -479,6 +479,10 @@ public class CafeVentasController : ControllerBase
                 Cantidad = it.Cantidad,
                 PrecioUnitario = puConDesc,
                 AlicPct = letra == "C" ? 0 : 21m, // Hardcoded 21% — coherente con la emisión
+                // Si hay descuento de linea, guardamos el precio ORIGINAL para que el PDF
+                // pueda mostrarlo tachado + "X% desc." debajo (caso tipico: bonificacion 100%).
+                PrecioOriginal = it.DescuentoPct > 0 ? it.PrecioUnitario : (decimal?)null,
+                DescuentoPct = it.DescuentoPct > 0 ? it.DescuentoPct : (decimal?)null,
             });
         }
         // Desglose IVA en el footer del PDF:

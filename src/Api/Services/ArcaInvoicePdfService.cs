@@ -190,7 +190,23 @@ public class ArcaInvoicePdfService
                             var sub = Math.Round(it.Cantidad * it.PrecioUnitario, 2, MidpointRounding.AwayFromZero);
                             table.Cell().BorderBottom(0.3f).Padding(2).Text(it.Descripcion);
                             table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text(it.Cantidad.ToString("N2", new CultureInfo("es-AR")));
-                            table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text("$ " + it.PrecioUnitario.ToString("N2", new CultureInfo("es-AR")));
+                            // Precio U.: si hubo descuento de linea, mostramos el ORIGINAL tachado
+                            // + el final + "X% desc." debajo. Si no, solo el precio normal.
+                            table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text(t =>
+                            {
+                                if (it.DescuentoPct.HasValue && it.PrecioOriginal.HasValue)
+                                {
+                                    t.Span("$ " + it.PrecioOriginal.Value.ToString("N2", new CultureInfo("es-AR")))
+                                        .Strikethrough().FontColor(Colors.Grey.Medium);
+                                    t.Span("\n");
+                                    t.Span(it.DescuentoPct.Value.ToString("0.##") + "% desc.")
+                                        .FontSize(7).FontColor(Colors.Red.Darken1);
+                                }
+                                else
+                                {
+                                    t.Span("$ " + it.PrecioUnitario.ToString("N2", new CultureInfo("es-AR")));
+                                }
+                            });
                             table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text(it.AlicPct.ToString("0.##") + "%");
                             table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text("$ " + sub.ToString("N2", new CultureInfo("es-AR")));
                         }
@@ -220,9 +236,28 @@ public class ArcaInvoicePdfService
                             var pct = esTipoC ? 0m : it.AlicPct;
                             var pcuConIva = Math.Round(it.PrecioUnitario * (1 + pct / 100m), 2, MidpointRounding.AwayFromZero);
                             var subConIva = Math.Round(it.Cantidad * pcuConIva, 2, MidpointRounding.AwayFromZero);
+                            // Precio original CON IVA (para que la comparacion sea consistente — en letra B
+                            // todos los precios mostrados llevan IVA incluido).
+                            var pcuOrigConIva = it.PrecioOriginal.HasValue
+                                ? Math.Round(it.PrecioOriginal.Value * (1 + pct / 100m), 2, MidpointRounding.AwayFromZero)
+                                : 0m;
                             table.Cell().BorderBottom(0.3f).Padding(2).Text(it.Descripcion);
                             table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text(it.Cantidad.ToString("N2", new CultureInfo("es-AR")));
-                            table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text("$ " + pcuConIva.ToString("N2", new CultureInfo("es-AR")));
+                            table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text(t =>
+                            {
+                                if (it.DescuentoPct.HasValue && it.PrecioOriginal.HasValue)
+                                {
+                                    t.Span("$ " + pcuOrigConIva.ToString("N2", new CultureInfo("es-AR")))
+                                        .Strikethrough().FontColor(Colors.Grey.Medium);
+                                    t.Span("\n");
+                                    t.Span(it.DescuentoPct.Value.ToString("0.##") + "% desc.")
+                                        .FontSize(7).FontColor(Colors.Red.Darken1);
+                                }
+                                else
+                                {
+                                    t.Span("$ " + pcuConIva.ToString("N2", new CultureInfo("es-AR")));
+                                }
+                            });
                             table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text("$ " + subConIva.ToString("N2", new CultureInfo("es-AR")));
                         }
                     }
@@ -506,8 +541,14 @@ public class PdfItem
 {
     public string Descripcion { get; set; } = "";
     public decimal Cantidad { get; set; }
+    /// <summary>Precio unitario FINAL (con descuento ya aplicado si lo hay).</summary>
     public decimal PrecioUnitario { get; set; }
     public decimal AlicPct { get; set; }
+    /// <summary>Si el item tiene descuento de linea, este es el precio ORIGINAL sin descuento.
+    /// Null si no hay descuento. Usado por el PDF para mostrar el precio tachado.</summary>
+    public decimal? PrecioOriginal { get; set; }
+    /// <summary>Porcentaje de descuento aplicado a esta linea (0-100). Null si no hay.</summary>
+    public decimal? DescuentoPct { get; set; }
 }
 
 public class PdfIvaDesglose
