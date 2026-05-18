@@ -2573,7 +2573,8 @@
         try
         {
             var v = reenvioVenta;
-            // 1) WhatsApp Web: abre wa.me en pestaña nueva
+            // 1) WhatsApp Web: abre wa.me en pestaña nueva + descarga el PDF
+            //    para que el usuario lo arrastre al chat (wa.me no soporta adjuntos).
             if (reenvioWhatsappWeb && !string.IsNullOrWhiteSpace(reenvioWhatsappPhone))
             {
                 var phone = new string(reenvioWhatsappPhone.Where(char.IsDigit).ToArray());
@@ -2581,6 +2582,17 @@
                 {
                     var msg = Uri.EscapeDataString($"Hola! Te paso el comprobante {v.Numero}. Cualquier cosa avisame. Gracias!");
                     try { await JS.InvokeVoidAsync("openInNewTab", $"https://wa.me/{phone}?text={msg}"); }
+                    catch { }
+                    try
+                    {
+                        var (pdfBytes, _) = await Api.GetCafeVentaPdfAsync(v.Id);
+                        if (pdfBytes is not null)
+                        {
+                            var b64 = Convert.ToBase64String(pdfBytes);
+                            await JS.InvokeVoidAsync("downloadBytesAsFile", $"{v.Numero}.pdf", b64, "application/pdf");
+                            ToastService.Info("📄 PDF descargado — arrastralo al chat de WhatsApp Web");
+                        }
+                    }
                     catch { }
                 }
             }
@@ -2631,8 +2643,9 @@
     /// falla, los otros igual se intentan.</summary>
     private async Task DispararCanalesDeEnvioAsync(int ventaId, string ventaNumero)
     {
-        // 1) WhatsApp Web: abre wa.me en pestaña nueva con el mensaje precargado.
-        //    Esto NO requiere backend — el usuario aprieta "Enviar" en WhatsApp Web.
+        // 1) WhatsApp Web: abre wa.me en pestaña nueva con el mensaje precargado +
+        //    descarga el PDF a la compu del usuario asi lo puede arrastrar al chat
+        //    (wa.me NO soporta adjuntos por limitacion de WhatsApp).
         if (envioWhatsappWeb && !string.IsNullOrWhiteSpace(envioWhatsappPhone))
         {
             var phone = new string(envioWhatsappPhone.Where(char.IsDigit).ToArray());
@@ -2644,6 +2657,18 @@
                     await JS.InvokeVoidAsync("openInNewTab", $"https://wa.me/{phone}?text={msg}");
                 }
                 catch { /* popup blocker — no rompemos el flujo */ }
+                // Descarga del PDF para que el usuario lo arrastre al chat de WhatsApp.
+                try
+                {
+                    var (pdfBytes, _) = await Api.GetCafeVentaPdfAsync(ventaId);
+                    if (pdfBytes is not null)
+                    {
+                        var b64 = Convert.ToBase64String(pdfBytes);
+                        await JS.InvokeVoidAsync("downloadBytesAsFile", $"{ventaNumero}.pdf", b64, "application/pdf");
+                        ToastService.Info("📄 PDF descargado — arrastralo al chat de WhatsApp Web");
+                    }
+                }
+                catch { /* si falla la descarga, el chat de WA Web igual ya se abrio */ }
             }
         }
 
