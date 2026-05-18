@@ -395,7 +395,7 @@
                     <div class="form-row">
                         <div class="form-group" style="flex: 2;">
                             <label class="form-label">Tipo de comprobante *</label>
-                            <select class="form-input" @bind="formTipoComprobante">
+                            <select class="form-input" @bind="formTipoComprobante" @bind:after="OnTipoComprobanteChanged">
                                 <option value="X">X — Cotización / Remito interno (sin IVA)</option>
                                 <option value="PRO">PRO — Proforma con IVA (preview)</option>
                                 <option value="FA">Factura A — emite por ARCA (con CAE)</option>
@@ -2516,6 +2516,21 @@
     private void ToggleFormDay(string d)
     {
         if (!formWeekDays.Add(d)) formWeekDays.Remove(d);
+    }
+
+    /// <summary>Cuando el operador cambia el tipo de comprobante, sugerimos una condicion
+    /// de pago default coherente:
+    ///   - FA / FB / FC (facturas reales con CAE) → TRANSFERENCIA (lo mas comun para B2B)
+    ///   - X / PRO (cotizaciones / remitos internos) → EFECTIVO (operatoria de mostrador)
+    /// El operador siempre puede cambiarlo a mano despues — esto es solo un default util.</summary>
+    private void OnTipoComprobanteChanged()
+    {
+        formCondicionPago = formTipoComprobante switch
+        {
+            "FA" or "FB" or "FC" => "TRANSFERENCIA",
+            "X" or "PRO" => "EFECTIVO",
+            _ => formCondicionPago
+        };
     }
 
     /// <summary>Marca o desmarca los 3 canales de envio al cliente. Si los 3 ya estan
