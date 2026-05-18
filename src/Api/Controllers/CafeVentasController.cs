@@ -387,6 +387,7 @@ public class CafeVentasController : ControllerBase
             ComentariosCliente = v.ClienteComentariosComprobante,
             Observaciones = v.Observaciones,
             CondicionPago = v.CondicionPago,
+            DomicilioEntrega = v.ClienteDomicilioEntregaSnapshot,
         };
 
         foreach (var it in v.Items)

@@ -133,7 +133,7 @@ public class ArcaInvoicePdfService
                         {
                             c.Item().Text(t =>
                             {
-                                t.Span("Condición de venta: ").SemiBold();
+                                t.Span("Forma de pago: ").SemiBold();
                                 t.Span(receptor.CondicionVenta!);
                             });
                         }
@@ -258,17 +258,26 @@ public class ArcaInvoicePdfService
                         c.Item().PaddingTop(2).Text($"Importe Total: $ {comp.ImpTotal.ToString("N2", new CultureInfo("es-AR"))}").FontSize(11).Bold();
                     });
 
-                    // Forma de pago — destacada para que se vea al toque en la factura
-                    if (!string.IsNullOrWhiteSpace(comp.CondicionPago))
+                    // Pedido del usuario 2026-05-18: la forma de pago ahora aparece ARRIBA (en la
+                    // cabecera del receptor como "Forma de pago: ..."), y abajo destacamos el
+                    // DOMICILIO DE ENTREGA para que el chofer / repartidor lo vea al toque.
+                    // Si la venta no tiene domicilio de entrega cargado, usamos el fiscal como fallback.
+                    var domicilioMostrar = !string.IsNullOrWhiteSpace(comp.DomicilioEntrega)
+                        ? comp.DomicilioEntrega
+                        : receptor.Domicilio;
+                    if (!string.IsNullOrWhiteSpace(domicilioMostrar))
                     {
                         col.Item().PaddingTop(4).Background(Colors.Grey.Lighten4).Border(0.5f).BorderColor(Colors.Grey.Lighten1)
                             .Padding(5).Row(r =>
                         {
                             r.RelativeItem().Column(cc =>
                             {
-                                cc.Item().Text("FORMA DE PAGO").FontSize(7).Bold().FontColor(Colors.Grey.Darken2).LetterSpacing(0.05f);
-                                cc.Item().Text(LabelCondicionPago(comp.CondicionPago!)).FontSize(10).Bold();
+                                cc.Item().Text("DOMICILIO DE ENTREGA").FontSize(7).Bold().FontColor(Colors.Grey.Darken2).LetterSpacing(0.05f);
+                                cc.Item().Text(domicilioMostrar!).FontSize(10).Bold();
                             });
+                            // Mantengo el sello PAGADA / PENDIENTE a la derecha porque informa
+                            // visualmente el estado de cobro del comprobante, complementario al
+                            // domicilio (no conflictivo).
                             if (comp.IsPaid)
                             {
                                 r.AutoItem().AlignMiddle().Background(Colors.Green.Lighten4).Border(0.5f).BorderColor(Colors.Green.Lighten1)
@@ -488,6 +497,9 @@ public class PdfComprobante
     /// <summary>Condición de pago: EFECTIVO / TRANSFERENCIA / MERCADOPAGO / CHEQUE / CTA_CORRIENTE / V*.
     /// Se imprime con un label legible bajo el total.</summary>
     public string? CondicionPago { get; set; }
+    /// <summary>Domicilio de entrega del cliente (distinto al fiscal). Se imprime destacado
+    /// abajo del comprobante para que el chofer/repartidor lo vea facil.</summary>
+    public string? DomicilioEntrega { get; set; }
 }
 
 public class PdfItem
