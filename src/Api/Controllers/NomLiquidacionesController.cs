@@ -1,6 +1,7 @@
 using Api.Data;
 using Api.DTOs;
 using Api.Models;
+using ClosedXML.Excel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -341,5 +342,309 @@ public class NomLiquidacionesController : ControllerBase
                 p.Id, p.LiquidacionId, p.FechaPago, p.Metodo, p.Monto,
                 p.Concepto, p.Detalle,
                 p.Notas, p.CreatedAt)).ToList());
+    }
+
+    // ============================================================
+    //  EXPORT EXCEL — varias hojas (Resumen / Pendientes / Pagos /
+    //  Por empleado / Por mes). Filtros por rango de meses + empleado.
+    // ============================================================
+
+    public class ExportLiquidacionesRequest
+    {
+        /// <summary>Año-Mes inicial inclusive (formato YYYYMM, ej 202604). Null = sin limite inferior.</summary>
+        public int? DesdeYYYYMM { get; set; }
+        /// <summary>Año-Mes final inclusive (formato YYYYMM, ej 202605). Null = sin limite superior.</summary>
+        public int? HastaYYYYMM { get; set; }
+        /// <summary>Lista de ids de empleados. Vacia o null = todos.</summary>
+        public List<int>? EmpleadoIds { get; set; }
+        /// <summary>Si true, solo incluye liquidaciones con saldo pendiente > 0. Anuladas se excluyen siempre.</summary>
+        public bool SoloPendientes { get; set; }
+    }
+
+    [HttpPost("liquidaciones/export")]
+    public async Task<IActionResult> ExportExcel([FromBody] ExportLiquidacionesRequest req)
+    {
+        req ??= new ExportLiquidacionesRequest();
+
+        // 1) Armar query con filtros
+        var q = _db.NomLiquidaciones
+            .Include(l => l.EmpleadoNav)
+            .Include(l => l.Pagos)
+            .Where(l => l.Estado != "anulada")
+            .AsQueryable();
+
+        if (req.DesdeYYYYMM.HasValue)
+        {
+            var d = req.DesdeYYYYMM.Value;
+            int dAnio = d / 100, dMes = d % 100;
+            q = q.Where(l => l.Anio > dAnio || (l.Anio == dAnio && l.Mes >= dMes));
+        }
+        if (req.HastaYYYYMM.HasValue)
+        {
+            var h = req.HastaYYYYMM.Value;
+            int hAnio = h / 100, hMes = h % 100;
+            q = q.Where(l => l.Anio < hAnio || (l.Anio == hAnio && l.Mes <= hMes));
+        }
+        if (req.EmpleadoIds is not null && req.EmpleadoIds.Count > 0)
+            q = q.Where(l => req.EmpleadoIds.Contains(l.EmpleadoId));
+
+        var liqs = await q.OrderBy(l => l.Anio).ThenBy(l => l.Mes)
+            .ThenBy(l => l.EmpleadoNav!.Nombre).ToListAsync();
+
+        if (req.SoloPendientes)
+        {
+            liqs = liqs.Where(l => l.NetoAPagar - l.Pagos.Sum(p => p.Monto) > 0.01m).ToList();
+        }
+
+        // 2) Generar XLSX con 5 hojas
+        using var wb = new XLWorkbook();
+        var culture = new System.Globalization.CultureInfo("es-AR");
+
+        // ── Hoja 1: RESUMEN (1 fila por liquidacion, todos los conceptos) ──
+        var ws1 = wb.Worksheets.Add("Resumen");
+        var headers1 = new[] {
+            "Empleado", "Año", "Mes", "Sueldo Base", "Hs Extra (monto)", "Comisión", "Bonos",
+            "Aguinaldo", "Adelantos", "Desc. Faltas", "Otros Desc.",
+            "Total Ganado", "Total Descuentos", "Neto a Pagar", "Total Pagado", "Saldo", "Estado"
+        };
+        for (int i = 0; i < headers1.Length; i++)
+        {
+            var c = ws1.Cell(1, i + 1);
+            c.Value = headers1[i];
+            c.Style.Font.Bold = true;
+            c.Style.Fill.BackgroundColor = XLColor.LightGray;
+        }
+        int row1 = 2;
+        decimal totGanado = 0, totPagado = 0, totSaldo = 0;
+        foreach (var l in liqs)
+        {
+            var pagado = l.Pagos.Sum(p => p.Monto);
+            var saldo = l.NetoAPagar - pagado;
+            ws1.Cell(row1, 1).Value = l.EmpleadoNav?.Nombre ?? $"Empleado {l.EmpleadoId}";
+            ws1.Cell(row1, 2).Value = l.Anio;
+            ws1.Cell(row1, 3).Value = l.Mes;
+            ws1.Cell(row1, 4).Value = l.SueldoBase;
+            ws1.Cell(row1, 5).Value = l.MontoHsExtra;
+            ws1.Cell(row1, 6).Value = l.Comision;
+            ws1.Cell(row1, 7).Value = l.Bonos;
+            ws1.Cell(row1, 8).Value = l.Aguinaldo;
+            ws1.Cell(row1, 9).Value = l.Adelantos;
+            ws1.Cell(row1, 10).Value = l.DescuentoFaltas;
+            ws1.Cell(row1, 11).Value = l.OtrosDescuentos;
+            ws1.Cell(row1, 12).Value = l.TotalGanado;
+            ws1.Cell(row1, 13).Value = l.TotalDescuentos;
+            ws1.Cell(row1, 14).Value = l.NetoAPagar;
+            ws1.Cell(row1, 15).Value = pagado;
+            ws1.Cell(row1, 16).Value = saldo;
+            ws1.Cell(row1, 17).Value = l.Estado;
+            for (int col = 4; col <= 16; col++)
+                ws1.Cell(row1, col).Style.NumberFormat.Format = "#,##0.00";
+            totGanado += l.TotalGanado;
+            totPagado += pagado;
+            totSaldo += saldo;
+            row1++;
+        }
+        // Fila de totales en amarillo
+        if (liqs.Count > 0)
+        {
+            ws1.Cell(row1, 1).Value = "TOTAL";
+            ws1.Cell(row1, 12).Value = totGanado;
+            ws1.Cell(row1, 14).Value = liqs.Sum(l => l.NetoAPagar);
+            ws1.Cell(row1, 15).Value = totPagado;
+            ws1.Cell(row1, 16).Value = totSaldo;
+            for (int col = 1; col <= 17; col++)
+            {
+                ws1.Cell(row1, col).Style.Font.Bold = true;
+                ws1.Cell(row1, col).Style.Fill.BackgroundColor = XLColor.LightYellow;
+                if (col >= 4 && col <= 16) ws1.Cell(row1, col).Style.NumberFormat.Format = "#,##0.00";
+            }
+        }
+        ws1.Columns().AdjustToContents();
+
+        // ── Hoja 2: PENDIENTES (solo las que tienen saldo) ──
+        var ws2 = wb.Worksheets.Add("Pendientes");
+        var headers2 = new[] { "Empleado", "Año", "Mes", "Neto a Pagar", "Total Pagado", "Saldo Pendiente", "Estado" };
+        for (int i = 0; i < headers2.Length; i++)
+        {
+            var c = ws2.Cell(1, i + 1);
+            c.Value = headers2[i];
+            c.Style.Font.Bold = true;
+            c.Style.Fill.BackgroundColor = XLColor.LightGray;
+        }
+        int row2 = 2;
+        decimal totalSaldoPendiente = 0;
+        foreach (var l in liqs)
+        {
+            var pagado = l.Pagos.Sum(p => p.Monto);
+            var saldo = l.NetoAPagar - pagado;
+            if (saldo <= 0.01m) continue;
+            ws2.Cell(row2, 1).Value = l.EmpleadoNav?.Nombre ?? $"Empleado {l.EmpleadoId}";
+            ws2.Cell(row2, 2).Value = l.Anio;
+            ws2.Cell(row2, 3).Value = l.Mes;
+            ws2.Cell(row2, 4).Value = l.NetoAPagar;
+            ws2.Cell(row2, 5).Value = pagado;
+            ws2.Cell(row2, 6).Value = saldo;
+            ws2.Cell(row2, 7).Value = l.Estado;
+            for (int col = 4; col <= 6; col++) ws2.Cell(row2, col).Style.NumberFormat.Format = "#,##0.00";
+            totalSaldoPendiente += saldo;
+            row2++;
+        }
+        if (row2 > 2)
+        {
+            ws2.Cell(row2, 1).Value = "TOTAL PENDIENTE";
+            ws2.Cell(row2, 6).Value = totalSaldoPendiente;
+            for (int col = 1; col <= 7; col++)
+            {
+                ws2.Cell(row2, col).Style.Font.Bold = true;
+                ws2.Cell(row2, col).Style.Fill.BackgroundColor = XLColor.LightYellow;
+            }
+            ws2.Cell(row2, 6).Style.NumberFormat.Format = "#,##0.00";
+        }
+        ws2.Columns().AdjustToContents();
+
+        // ── Hoja 3: PAGOS detallados (1 fila por pago) ──
+        var ws3 = wb.Worksheets.Add("Pagos detallados");
+        var headers3 = new[] { "Empleado", "Año Liq.", "Mes Liq.", "Fecha pago", "Concepto", "Método", "Monto", "Detalle", "Notas" };
+        for (int i = 0; i < headers3.Length; i++)
+        {
+            var c = ws3.Cell(1, i + 1);
+            c.Value = headers3[i];
+            c.Style.Font.Bold = true;
+            c.Style.Fill.BackgroundColor = XLColor.LightGray;
+        }
+        int row3 = 2;
+        decimal totPagosDetalle = 0;
+        var pagosOrdenados = liqs.SelectMany(l => l.Pagos.Select(p => new { Liq = l, Pago = p }))
+            .OrderBy(x => x.Pago.FechaPago).ThenBy(x => x.Liq.EmpleadoNav?.Nombre);
+        foreach (var x in pagosOrdenados)
+        {
+            ws3.Cell(row3, 1).Value = x.Liq.EmpleadoNav?.Nombre ?? $"Empleado {x.Liq.EmpleadoId}";
+            ws3.Cell(row3, 2).Value = x.Liq.Anio;
+            ws3.Cell(row3, 3).Value = x.Liq.Mes;
+            ws3.Cell(row3, 4).Value = x.Pago.FechaPago.ToString("dd/MM/yyyy");
+            ws3.Cell(row3, 5).Value = x.Pago.Concepto;
+            ws3.Cell(row3, 6).Value = x.Pago.Metodo;
+            ws3.Cell(row3, 7).Value = x.Pago.Monto;
+            ws3.Cell(row3, 7).Style.NumberFormat.Format = "#,##0.00";
+            ws3.Cell(row3, 8).Value = x.Pago.Detalle ?? "";
+            ws3.Cell(row3, 9).Value = x.Pago.Notas ?? "";
+            totPagosDetalle += x.Pago.Monto;
+            row3++;
+        }
+        if (row3 > 2)
+        {
+            ws3.Cell(row3, 1).Value = "TOTAL PAGADO";
+            ws3.Cell(row3, 7).Value = totPagosDetalle;
+            for (int col = 1; col <= 9; col++)
+            {
+                ws3.Cell(row3, col).Style.Font.Bold = true;
+                ws3.Cell(row3, col).Style.Fill.BackgroundColor = XLColor.LightYellow;
+            }
+            ws3.Cell(row3, 7).Style.NumberFormat.Format = "#,##0.00";
+        }
+        ws3.Columns().AdjustToContents();
+
+        // ── Hoja 4: POR EMPLEADO (totalizado a través de los meses filtrados) ──
+        var ws4 = wb.Worksheets.Add("Por empleado");
+        var headers4 = new[] { "Empleado", "Cantidad liq.", "Total Ganado", "Total Pagado", "Saldo Pendiente" };
+        for (int i = 0; i < headers4.Length; i++)
+        {
+            var c = ws4.Cell(1, i + 1);
+            c.Value = headers4[i];
+            c.Style.Font.Bold = true;
+            c.Style.Fill.BackgroundColor = XLColor.LightGray;
+        }
+        int row4 = 2;
+        var porEmpleado = liqs.GroupBy(l => new { l.EmpleadoId, Nombre = l.EmpleadoNav?.Nombre ?? $"Empleado {l.EmpleadoId}" })
+            .Select(g => new
+            {
+                Nombre = g.Key.Nombre,
+                CantLiq = g.Count(),
+                Ganado = g.Sum(l => l.NetoAPagar),
+                Pagado = g.Sum(l => l.Pagos.Sum(p => p.Monto)),
+                Saldo = g.Sum(l => l.NetoAPagar - l.Pagos.Sum(p => p.Monto))
+            })
+            .OrderBy(x => x.Nombre)
+            .ToList();
+        foreach (var pe in porEmpleado)
+        {
+            ws4.Cell(row4, 1).Value = pe.Nombre;
+            ws4.Cell(row4, 2).Value = pe.CantLiq;
+            ws4.Cell(row4, 3).Value = pe.Ganado;
+            ws4.Cell(row4, 4).Value = pe.Pagado;
+            ws4.Cell(row4, 5).Value = pe.Saldo;
+            for (int col = 3; col <= 5; col++) ws4.Cell(row4, col).Style.NumberFormat.Format = "#,##0.00";
+            row4++;
+        }
+        if (porEmpleado.Count > 0)
+        {
+            ws4.Cell(row4, 1).Value = "TOTAL";
+            ws4.Cell(row4, 2).Value = porEmpleado.Sum(x => x.CantLiq);
+            ws4.Cell(row4, 3).Value = porEmpleado.Sum(x => x.Ganado);
+            ws4.Cell(row4, 4).Value = porEmpleado.Sum(x => x.Pagado);
+            ws4.Cell(row4, 5).Value = porEmpleado.Sum(x => x.Saldo);
+            for (int col = 1; col <= 5; col++)
+            {
+                ws4.Cell(row4, col).Style.Font.Bold = true;
+                ws4.Cell(row4, col).Style.Fill.BackgroundColor = XLColor.LightYellow;
+                if (col >= 3 && col <= 5) ws4.Cell(row4, col).Style.NumberFormat.Format = "#,##0.00";
+            }
+        }
+        ws4.Columns().AdjustToContents();
+
+        // ── Hoja 5: POR MES (totalizado por año-mes) ──
+        var ws5 = wb.Worksheets.Add("Por mes");
+        var headers5 = new[] { "Año", "Mes", "Cant. empleados", "Total Ganado", "Total Pagado", "Saldo Pendiente" };
+        for (int i = 0; i < headers5.Length; i++)
+        {
+            var c = ws5.Cell(1, i + 1);
+            c.Value = headers5[i];
+            c.Style.Font.Bold = true;
+            c.Style.Fill.BackgroundColor = XLColor.LightGray;
+        }
+        int row5 = 2;
+        var porMes = liqs.GroupBy(l => new { l.Anio, l.Mes })
+            .Select(g => new
+            {
+                g.Key.Anio,
+                g.Key.Mes,
+                CantEmp = g.Select(l => l.EmpleadoId).Distinct().Count(),
+                Ganado = g.Sum(l => l.NetoAPagar),
+                Pagado = g.Sum(l => l.Pagos.Sum(p => p.Monto)),
+                Saldo = g.Sum(l => l.NetoAPagar - l.Pagos.Sum(p => p.Monto))
+            })
+            .OrderBy(x => x.Anio).ThenBy(x => x.Mes)
+            .ToList();
+        foreach (var pm in porMes)
+        {
+            ws5.Cell(row5, 1).Value = pm.Anio;
+            ws5.Cell(row5, 2).Value = pm.Mes;
+            ws5.Cell(row5, 3).Value = pm.CantEmp;
+            ws5.Cell(row5, 4).Value = pm.Ganado;
+            ws5.Cell(row5, 5).Value = pm.Pagado;
+            ws5.Cell(row5, 6).Value = pm.Saldo;
+            for (int col = 4; col <= 6; col++) ws5.Cell(row5, col).Style.NumberFormat.Format = "#,##0.00";
+            row5++;
+        }
+        if (porMes.Count > 0)
+        {
+            ws5.Cell(row5, 1).Value = "TOTAL";
+            ws5.Cell(row5, 4).Value = porMes.Sum(x => x.Ganado);
+            ws5.Cell(row5, 5).Value = porMes.Sum(x => x.Pagado);
+            ws5.Cell(row5, 6).Value = porMes.Sum(x => x.Saldo);
+            for (int col = 1; col <= 6; col++)
+            {
+                ws5.Cell(row5, col).Style.Font.Bold = true;
+                ws5.Cell(row5, col).Style.Fill.BackgroundColor = XLColor.LightYellow;
+                if (col >= 4 && col <= 6) ws5.Cell(row5, col).Style.NumberFormat.Format = "#,##0.00";
+            }
+        }
+        ws5.Columns().AdjustToContents();
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        var bytes = ms.ToArray();
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            $"liquidaciones-{DateTime.Now:yyyyMMdd-HHmm}.xlsx");
     }
 }

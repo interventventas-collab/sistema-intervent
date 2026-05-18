@@ -310,6 +310,18 @@ public class ApiClient
     public async Task<bool> DeleteNomPagoAsync(int id)
         => await DeleteAsync($"/api/nominas/pagos/{id}");
 
+    /// <summary>Descarga un Excel multi-hoja con resumen, pendientes, pagos detallados, por empleado y por mes.
+    /// Filtros: rango de meses YYYYMM + ids de empleados (vacio = todos) + soloPendientes.</summary>
+    public async Task<byte[]?> ExportNomLiquidacionesExcelAsync(int? desdeYYYYMM, int? hastaYYYYMM, List<int>? empleadoIds, bool soloPendientes)
+    {
+        await SetAuthHeaderAsync();
+        var body = new { DesdeYYYYMM = desdeYYYYMM, HastaYYYYMM = hastaYYYYMM, EmpleadoIds = empleadoIds, SoloPendientes = soloPendientes };
+        var resp = await _http.PostAsJsonAsync("/api/nominas/liquidaciones/export", body);
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return null; }
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadAsByteArrayAsync();
+    }
+
     /// <summary>Edita un pago de liquidacion. Requiere operador + clave (los mismos que
     /// para borrar comprobantes del modulo Cafe).</summary>
     public async Task<(NomLiquidacionDto? liq, string? error)> UpdateNomPagoAsync(int id, UpdateNomPagoRequest req)

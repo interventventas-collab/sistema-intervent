@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @inject ApiClient Api
 @inject ToastService ToastService
+@inject IJSRuntime JS
 
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
@@ -27,6 +28,9 @@
                 <option value="pagado">Pagado</option>
                 <option value="anulada">Anulada</option>
             </select>
+            <button class="btn btn-secondary" style="background: #16a34a; color: white; border: none;" @onclick="OpenExportModal" title="Descargar Excel con resumen de liquidaciones">
+                📊 Excel
+            </button>
             <button class="btn btn-primary" @onclick="ShowCreate">+ Nueva Liquidación</button>
         </div>
     </div>
@@ -532,6 +536,92 @@
     </div>
 }
 
+@* ════════ Modal exportar a Excel ════════
+   Permite filtrar por rango de meses + empleados + 'solo pendientes'.
+   Genera un .xlsx con 5 hojas: Resumen / Pendientes / Pagos detallados /
+   Por empleado / Por mes. *@
+@if (showExport)
+{
+    <div class="modal-overlay" style="z-index: 9000;" @onclick="CloseExport">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 560px;">
+            <div class="modal-header" style="background: #16a34a; color: white;">
+                <h4 style="margin: 0;">📊 Descargar Excel de liquidaciones</h4>
+                <button class="btn-close" @onclick="CloseExport" style="color: white;" disabled="@exportLoading">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 1rem 1.2rem;">
+                <div style="background: #ecfdf5; border-left: 3px solid #16a34a; padding: 0.4rem 0.6rem; border-radius: 4px; margin-bottom: 0.8rem; font-size: 0.82rem; color: #065f46;">
+                    El Excel descargado va a tener <strong>5 hojas</strong>:<br />
+                    • <strong>Resumen</strong> — una fila por liquidación con todos los conceptos<br />
+                    • <strong>Pendientes</strong> — solo las que tienen saldo a pagar<br />
+                    • <strong>Pagos detallados</strong> — uno por uno (fecha, método, monto)<br />
+                    • <strong>Por empleado</strong> — total ganado / pagado / saldo, por persona<br />
+                    • <strong>Por mes</strong> — total ganado / pagado / saldo, por mes
+                </div>
+
+                <strong style="font-size: 0.78rem; text-transform: uppercase; color: #6b7280; letter-spacing: 0.5px;">Rango de meses</strong>
+                <div class="form-row" style="margin-top: 0.3rem;">
+                    <div class="form-group">
+                        <label class="form-label" style="font-size: 0.78rem;">Desde — Año</label>
+                        <select class="form-input" @bind="exportDesdeAnio">
+                            <option value="0">— sin límite</option>
+                            @foreach (var a in Anios) { <option value="@a">@a</option> }
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" style="font-size: 0.78rem;">Desde — Mes</label>
+                        <select class="form-input" @bind="exportDesdeMes" disabled="@(exportDesdeAnio == 0)">
+                            @for (int m = 1; m <= 12; m++) { var mm = m; <option value="@mm">@MesNombre(mm)</option> }
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" style="font-size: 0.78rem;">Hasta — Año</label>
+                        <select class="form-input" @bind="exportHastaAnio">
+                            <option value="0">— sin límite</option>
+                            @foreach (var a in Anios) { <option value="@a">@a</option> }
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" style="font-size: 0.78rem;">Hasta — Mes</label>
+                        <select class="form-input" @bind="exportHastaMes" disabled="@(exportHastaAnio == 0)">
+                            @for (int m = 1; m <= 12; m++) { var mm = m; <option value="@mm">@MesNombre(mm)</option> }
+                        </select>
+                    </div>
+                </div>
+
+                <strong style="font-size: 0.78rem; text-transform: uppercase; color: #6b7280; letter-spacing: 0.5px; display: block; margin-top: 0.5rem;">Empleado</strong>
+                <select class="form-input" style="margin-top: 0.3rem;" @bind="exportEmpleadoId">
+                    <option value="0">Todos los empleados</option>
+                    @if (empleados is not null)
+                    {
+                        @foreach (var e in empleados.OrderBy(x => x.Nombre))
+                        {
+                            <option value="@e.Id">@e.Nombre</option>
+                        }
+                    }
+                </select>
+
+                <label style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.8rem; font-size: 0.88rem;">
+                    <input type="checkbox" @bind="exportSoloPendientes" />
+                    <span>Solo liquidaciones con <strong>saldo pendiente</strong></span>
+                </label>
+
+                @if (!string.IsNullOrEmpty(exportError))
+                {
+                    <div style="color: #b91c1c; background: #fef2f2; padding: 0.4rem 0.6rem; border-radius: 4px; font-size: 0.85rem; margin-top: 0.7rem;">
+                        @exportError
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseExport" disabled="@exportLoading">Cancelar</button>
+                <button class="btn btn-primary" style="background: #16a34a; border-color: #15803d;" @onclick="DoExport" disabled="@exportLoading">
+                    @(exportLoading ? "Generando..." : "📥 Descargar Excel")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @* ════════ Modal editar pago — requiere clave ════════ *@
 @if (editingPago is not null)
 {
@@ -707,6 +797,17 @@
     private bool showDeleteConfirm;
     private NomLiquidacionDto? liqToDelete;
 
+    // Export Excel
+    private bool showExport;
+    private bool exportLoading;
+    private string? exportError;
+    private int exportDesdeAnio;   // 0 = sin limite
+    private int exportDesdeMes = 1;
+    private int exportHastaAnio;   // 0 = sin limite
+    private int exportHastaMes = 12;
+    private int exportEmpleadoId;  // 0 = todos
+    private bool exportSoloPendientes;
+
     // Edit pago (con clave)
     private NomPagoDto? editingPago;
     private DateTime editingPagoFecha = DateTime.Today;
@@ -721,6 +822,65 @@
     private bool editingPagoSaving;
 
     private static int[] Anios => Enumerable.Range(DateTime.Today.Year - 3, 5).ToArray();
+
+    // ── Export Excel ──
+    private void OpenExportModal()
+    {
+        // Default: este año + mes anterior y siguiente (no filtra empleado, sin "solo pendientes")
+        var hoy = DateTime.Today;
+        exportDesdeAnio = 0;
+        exportDesdeMes = 1;
+        exportHastaAnio = 0;
+        exportHastaMes = 12;
+        exportEmpleadoId = 0;
+        exportSoloPendientes = false;
+        exportError = null;
+        showExport = true;
+    }
+
+    private void CloseExport()
+    {
+        if (exportLoading) return;
+        showExport = false;
+        exportError = null;
+    }
+
+    private async Task DoExport()
+    {
+        exportLoading = true;
+        exportError = null;
+        try
+        {
+            int? desde = exportDesdeAnio > 0 ? exportDesdeAnio * 100 + exportDesdeMes : (int?)null;
+            int? hasta = exportHastaAnio > 0 ? exportHastaAnio * 100 + exportHastaMes : (int?)null;
+            if (desde.HasValue && hasta.HasValue && hasta.Value < desde.Value)
+            {
+                exportError = "El rango es inválido: 'Hasta' tiene que ser >= 'Desde'.";
+                return;
+            }
+            var ids = exportEmpleadoId > 0 ? new List<int> { exportEmpleadoId } : null;
+            var bytes = await Api.ExportNomLiquidacionesExcelAsync(desde, hasta, ids, exportSoloPendientes);
+            if (bytes is null || bytes.Length == 0)
+            {
+                exportError = "No se pudo generar el Excel. Probá de nuevo o revisá los filtros.";
+                return;
+            }
+            var b64 = Convert.ToBase64String(bytes);
+            var nombre = $"liquidaciones-{DateTime.Now:yyyyMMdd-HHmm}.xlsx";
+            await JS.InvokeVoidAsync("downloadBytesAsFile", nombre, b64,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            ToastService.Success("Excel descargado");
+            showExport = false;
+        }
+        catch (Exception ex)
+        {
+            exportError = ex.Message;
+        }
+        finally
+        {
+            exportLoading = false;
+        }
+    }
 
     /// <summary>
     /// Cuando el usuario elige un empleado en una liquidacion NUEVA, pre-cargamos
