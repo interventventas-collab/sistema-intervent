@@ -51,7 +51,7 @@
         @if (HasPerm("cafe"))
         {
             <NavGroup Label="Ventas por fuera" Icon="@SvgIcons.Brand"
-                      HasActiveChild="@(IsActive("/cafe") || IsActive("/cafe/ventas") || IsActive("/cafe/productos") || IsActive("/cafe/combos") || IsActive("/cafe/oems") || IsActive("/cafe/clientes") || IsActive("/cafe/clientes-mapeados") || IsActive("/cafe/configuracion") || IsActive("/cafe/compras") || IsActive("/cafe/proveedores") || IsActive("/cafe/marcas") || IsActive("/cafe/listas-precios") || IsActive("/cafe/consultas") || IsActive("/cafe/cotejo") || IsActive("/cafe/descuentos") || IsActive("/cafe/kits") || IsActive("/cafe/reglas-precios") || IsActive("/cafe/saldos") || IsActive("/cafe/saldos-pendientes") || IsActive("/cafe/maquinas") || IsActive("/cafe/tesoreria/cajas") || IsActive("/cafe/tesoreria/resumen") || IsActive("/cafe/tesoreria/cobranzas") || IsActive("/cafe/tesoreria/pagos") || IsActive("/cafe/tesoreria/cheques") || IsActive("/cafe/depositos") || IsActive("/cafe/stock-masivo") || IsActive("/cafe/preventas") || IsActive("/horas-extras") || IsActive("/viajes") || IsActive("/stock"))">
+                      HasActiveChild="@(IsActive("/cafe") || IsActive("/cafe/ventas") || IsActive("/cafe/productos") || IsActive("/cafe/combos") || IsActive("/cafe/oems") || IsActive("/cafe/clientes") || IsActive("/cafe/clientes-mapeados") || IsActive("/cafe/configuracion") || IsActive("/cafe/compras") || IsActive("/cafe/proveedores") || IsActive("/cafe/marcas") || IsActive("/cafe/listas-precios") || IsActive("/cafe/consultas") || IsActive("/cafe/cotejo") || IsActive("/cafe/descuentos") || IsActive("/cafe/kits") || IsActive("/cafe/reglas-precios") || IsActive("/cafe/saldos") || IsActive("/cafe/saldos-pendientes") || IsActive("/cafe/maquinas") || IsActive("/cafe/tesoreria/cajas") || IsActive("/cafe/tesoreria/resumen") || IsActive("/cafe/tesoreria/cobranzas") || IsActive("/cafe/tesoreria/pagos") || IsActive("/cafe/tesoreria/cheques") || IsActive("/cafe/depositos") || IsActive("/cafe/stock-masivo") || IsActive("/cafe/preventas") || IsActive("/cafe/arca/errores") || IsActive("/horas-extras") || IsActive("/viajes") || IsActive("/stock"))">
 
                 @* ───────── 1. OPERACIÓN DIARIA (destacado verde, expandido por default) ───────── *@
                 <NavGroup Label="🟢 Operación diaria" Icon="@SvgIcons.Dashboard"
@@ -145,9 +145,11 @@
 
                 @* ───────── 7. CONFIG / TEMPORAL ───────── *@
                 <NavGroup Label="⚙️ Config / Temporal" Icon="@SvgIcons.Settings"
-                          HasActiveChild="@(IsActive("/cafe/configuracion") || IsActive("/cafe/cotejo") || IsActive("/cafe/saldos") || IsActive("/cafe/maquinas"))">
+                          HasActiveChild="@(IsActive("/cafe/configuracion") || IsActive("/cafe/cotejo") || IsActive("/cafe/saldos") || IsActive("/cafe/maquinas") || IsActive("/cafe/arca/errores"))">
                     <NavItem Href="/cafe/configuracion" Label="Configuración" Icon="@SvgIcons.Settings"
                              IsActive="@IsActive("/cafe/configuracion")" OnClick="@(() => NavigateTo("/cafe/configuracion"))" />
+                    <NavItem Href="/cafe/arca/errores" Label="⚠ Errores ARCA" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive("/cafe/arca/errores")" OnClick="@(() => NavigateTo("/cafe/arca/errores"))" />
                     <NavItem Href="/cafe/cotejo" Label="Cotejo MeLi" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/cafe/cotejo")" OnClick="@(() => NavigateTo("/cafe/cotejo"))" />
                     @* Migracion temporal: saldos del sistema viejo a matchear con clientes *@

@@ -165,6 +165,23 @@ public class CafeVentasController : ControllerBase
         return Ok(list.Select(v => Map(v, migrSet.Contains(v.Id))).ToList());
     }
 
+    /// <summary>Devuelve TODAS las ventas tipo FA/FB/FC que NO estan autorizadas en ARCA
+    /// (estado pendiente, rechazado, o cualquier otro distinto a "autorizado"). Sirve para
+    /// la pantalla 'Errores ARCA' donde el operador puede ver de un vistazo que facturas
+    /// quedaron colgadas y reintentarlas. Devuelve hasta 500 ventas, ordenado por fecha desc.</summary>
+    [HttpGet("arca/errores")]
+    public async Task<IActionResult> GetArcaErrores()
+    {
+        var ventas = await _db.CafeVentas.Include(v => v.Items)
+            .Where(v => (v.TipoComprobante == "FA" || v.TipoComprobante == "FB" || v.TipoComprobante == "FC")
+                && v.ArcaEstado != "autorizado"
+                && v.Estado != "anulado")
+            .OrderByDescending(v => v.Fecha).ThenByDescending(v => v.Id)
+            .Take(500)
+            .ToListAsync();
+        return Ok(ventas.Select(v => Map(v)).ToList());
+    }
+
     public record VentaSaldoDto(int VentaId, decimal Total, decimal Pagado, decimal Saldo);
 
     /// <summary>

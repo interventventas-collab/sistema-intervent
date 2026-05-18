@@ -697,6 +697,11 @@ public class ApiClient
     public async Task<CafeVentaDto?> RetryArcaCafeVentaAsync(int id)
         => await PostAsync<CafeVentaDto>($"/api/cafe/ventas/{id}/retry-arca", new { });
 
+    /// <summary>Devuelve todas las FA/FB/FC que no estan autorizadas en ARCA — pendientes,
+    /// rechazadas, etc — para la pantalla 'Errores ARCA'.</summary>
+    public async Task<List<CafeVentaDto>?> GetCafeArcaErroresAsync()
+        => await GetAsync<List<CafeVentaDto>>("/api/cafe/ventas/arca/errores");
+
     /// <summary>Pide al backend un payload pre-armado para duplicar el comprobante.
     /// NO crea la venta — solo devuelve los datos para llenar el modal de Nueva Venta.</summary>
     public async Task<DuplicarVentaPayloadDto?> DuplicarCafeVentaAsync(int id)

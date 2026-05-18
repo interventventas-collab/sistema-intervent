@@ -1,0 +1,199 @@
+@page "/cafe/arca/errores"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject NavigationManager Navigation
+@inject ToastService ToastService
+@using Web.Models
+
+@* ════════════════════════════════════════════════════════════════════════════
+   Pantalla "Errores ARCA": muestra todas las facturas FA/FB/FC que no fueron
+   autorizadas por ARCA (pendientes / rechazadas). Para cada una, el operador
+   puede ver el error de ARCA y reintentar la emisión sin entrar al visor.
+   ════════════════════════════════════════════════════════════════════════════ *@
+
+<div class="view-header">
+    <h2>⚠ Errores ARCA</h2>
+    <p class="view-subtitle">
+        Facturas FA / FB / FC que no se autorizaron en ARCA (quedaron pendientes o rechazadas).
+        Tocá "Reintentar" para volver a intentar la emisión con los datos actuales.
+    </p>
+</div>
+
+<div style="margin-bottom: 1rem; display: flex; gap: 0.5rem; align-items: center;">
+    <button class="btn btn-secondary" @onclick="Cargar" disabled="@loading">
+        @(loading ? "Cargando..." : "🔄 Recargar")
+    </button>
+    @if (ventas is not null)
+    {
+        <span style="font-size: 0.88rem; color: #6b7280;">
+            @ventas.Count factura@(ventas.Count == 1 ? "" : "s") con problemas
+        </span>
+    }
+</div>
+
+@if (loading && ventas is null)
+{
+    <p>Cargando facturas con problemas...</p>
+}
+else if (ventas is null)
+{
+    <p style="color: #b91c1c;">Error cargando datos.</p>
+}
+else if (ventas.Count == 0)
+{
+    <div style="background: #ecfdf5; border: 1px solid #6ee7b7; padding: 1.5rem; border-radius: 8px; text-align: center;">
+        <div style="font-size: 2.2rem;">✅</div>
+        <strong style="color: #065f46;">Todas las facturas están autorizadas en ARCA</strong>
+        <p style="font-size: 0.85rem; color: #047857; margin: 0.4rem 0 0;">No hay nada que reintentar por ahora.</p>
+    </div>
+}
+else
+{
+    <div class="card">
+        <table class="table" style="width: 100%;">
+            <thead>
+                <tr>
+                    <th>N° Venta</th>
+                    <th>Tipo</th>
+                    <th>Fecha</th>
+                    <th>Cliente</th>
+                    <th style="text-align: right;">Total</th>
+                    <th>Estado ARCA</th>
+                    <th>Error</th>
+                    <th style="text-align: center;">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var v in ventas)
+                {
+                    <tr>
+                        <td>
+                            <strong style="font-family: monospace;">@v.Numero</strong>
+                        </td>
+                        <td>
+                            <span class="badge" style="background: #dbeafe; color: #1e40af; padding: 0.15rem 0.5rem; border-radius: 4px; font-weight: 700;">
+                                @v.TipoComprobante
+                            </span>
+                        </td>
+                        <td style="font-size: 0.88rem;">@v.Fecha.ToString("dd/MM/yyyy")</td>
+                        <td style="font-size: 0.9rem;">
+                            @if (!string.IsNullOrWhiteSpace(v.ClienteRazonSocial))
+                            {
+                                <div style="font-weight: 600;">@v.ClienteRazonSocial</div>
+                                @if (!string.IsNullOrWhiteSpace(v.ClienteCuit))
+                                {
+                                    <div style="font-size: 0.78rem; color: #6b7280;">CUIT: @v.ClienteCuit</div>
+                                }
+                            }
+                            else
+                            {
+                                @(v.ClienteNombre ?? "Consumidor final")
+                            }
+                        </td>
+                        <td style="text-align: right; font-weight: 600;">$ @FormatMoney(v.Total)</td>
+                        <td>
+                            @if (v.ArcaEstado == "pendiente")
+                            {
+                                <span style="background: #fef3c7; color: #92400e; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.78rem; font-weight: 700;">⧗ PENDIENTE</span>
+                            }
+                            else if (v.ArcaEstado == "rechazado")
+                            {
+                                <span style="background: #fee2e2; color: #991b1b; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.78rem; font-weight: 700;">✖ RECHAZADO</span>
+                            }
+                            else
+                            {
+                                <span style="background: #f3f4f6; color: #374151; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.78rem; font-weight: 700;">@v.ArcaEstado.ToUpperInvariant()</span>
+                            }
+                        </td>
+                        <td style="font-size: 0.82rem; color: #7f1d1d; max-width: 360px;">
+                            <div style="white-space: pre-wrap; word-break: break-word;">@(v.ArcaError ?? "—")</div>
+                        </td>
+                        <td style="text-align: center; white-space: nowrap;">
+                            <button class="btn btn-primary"
+                                    style="font-size: 0.78rem; padding: 0.3rem 0.6rem; background: #16a34a; border-color: #15803d; margin-right: 0.3rem;"
+                                    @onclick="() => Reintentar(v)" disabled="@(retryingId == v.Id)">
+                                @(retryingId == v.Id ? "Reintentando..." : "🔄 Reintentar")
+                            </button>
+                            <button class="btn btn-secondary"
+                                    style="font-size: 0.78rem; padding: 0.3rem 0.6rem;"
+                                    @onclick="() => AbrirVenta(v)">
+                                Ver
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private List<CafeVentaDto>? ventas;
+    private bool loading = true;
+    private int? retryingId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Cargar();
+    }
+
+    private async Task Cargar()
+    {
+        loading = true;
+        try
+        {
+            ventas = await Api.GetCafeArcaErroresAsync() ?? new();
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error: " + ex.Message);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task Reintentar(CafeVentaDto v)
+    {
+        if (retryingId.HasValue) return;
+        retryingId = v.Id;
+        try
+        {
+            var actualizada = await Api.RetryArcaCafeVentaAsync(v.Id);
+            if (actualizada is not null)
+            {
+                if (actualizada.ArcaEstado == "autorizado")
+                {
+                    ToastService.Success($"✓ {actualizada.Numero} autorizada — CAE {actualizada.ArcaCae}");
+                    // Sacarla de la lista (ya está autorizada)
+                    ventas?.RemoveAll(x => x.Id == v.Id);
+                }
+                else
+                {
+                    ToastService.Error($"ARCA sigue rechazando: {actualizada.ArcaError}");
+                    // Actualizar la entrada con el nuevo error
+                    var idx = ventas?.FindIndex(x => x.Id == v.Id) ?? -1;
+                    if (idx >= 0 && ventas is not null) ventas[idx] = actualizada;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error reintentando: " + ex.Message);
+        }
+        finally
+        {
+            retryingId = null;
+        }
+    }
+
+    private void AbrirVenta(CafeVentaDto v)
+    {
+        // Llevamos al usuario al listado de ventas con el numero como filtro,
+        // asi puede clickearla y ver el detalle completo.
+        Navigation.NavigateTo($"/cafe/ventas?buscar={Uri.EscapeDataString(v.Numero)}");
+    }
+
+    private static string FormatMoney(decimal v) => v.ToString("N2", new System.Globalization.CultureInfo("es-AR"));
+}
