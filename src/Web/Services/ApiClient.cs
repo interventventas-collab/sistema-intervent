@@ -310,6 +310,28 @@ public class ApiClient
     public async Task<bool> DeleteNomPagoAsync(int id)
         => await DeleteAsync($"/api/nominas/pagos/{id}");
 
+    /// <summary>Trae los datos del panel '¿Cuanto debo pagar?' — empleados con saldo,
+    /// agrupados con sus liquidaciones pendientes y conceptos.</summary>
+    public async Task<DashboardDeudasDto?> GetNomDashboardDeudasAsync()
+        => await GetAsync<DashboardDeudasDto>("/api/nominas/dashboard/deudas");
+
+    /// <summary>Registra un pago desde el panel — siempre requiere operador + clave.</summary>
+    public async Task<(bool ok, string? error)> NomDashboardPagarAsync(DashboardPagarRequest req)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync("/api/nominas/dashboard/pagar", req);
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return (false, "Sesión expirada"); }
+        if (resp.IsSuccessStatusCode) return (true, null);
+        var content = await resp.Content.ReadAsStringAsync();
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(content);
+            if (doc.RootElement.TryGetProperty("error", out var err)) return (false, err.GetString());
+        }
+        catch { }
+        return (false, content);
+    }
+
     /// <summary>Descarga un Excel multi-hoja con resumen, pendientes, pagos detallados, por empleado y por mes.
     /// Filtros: rango de meses YYYYMM + ids de empleados (vacio = todos) + soloPendientes.</summary>
     public async Task<byte[]?> ExportNomLiquidacionesExcelAsync(int? desdeYYYYMM, int? hastaYYYYMM, List<int>? empleadoIds, bool soloPendientes)

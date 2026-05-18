@@ -1,0 +1,354 @@
+@page "/nominas/panel"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@using Web.Models
+
+@* ════════════════════════════════════════════════════════════════════════════
+   Panel '¿Cuánto debo pagar?' — vista simplificada de deudas a empleados.
+   Pedido del usuario 2026-05-19: una pantalla bien intuitiva, hasta un niño
+   la puede manejar, donde se vea a quién le debo, por concepto, fechas de
+   vencimiento, y se pueda pagar con clave.
+   ════════════════════════════════════════════════════════════════════════════ *@
+
+<style>
+    .panel-deudas-wrap { max-width: 1100px; margin: 0 auto; padding: 0.5rem; }
+    .panel-header { text-align: center; margin-bottom: 1.2rem; }
+    .panel-header h1 { font-size: 1.7rem; font-weight: 800; margin: 0 0 0.3rem; color: #1f2937; }
+    .panel-header p { color: #6b7280; margin: 0; font-size: 0.95rem; }
+
+    .panel-resumen { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.8rem; margin-bottom: 1.5rem; }
+    .panel-resumen-card { background: white; border-radius: 12px; padding: 1rem 1.2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.06); border-left: 5px solid #1d4ed8; }
+    .panel-resumen-card.urgente { border-left-color: #b91c1c; }
+    .panel-resumen-card.ok { border-left-color: #16a34a; }
+    .panel-resumen-card .label { font-size: 0.78rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.4px; font-weight: 700; }
+    .panel-resumen-card .valor { font-size: 1.6rem; font-weight: 800; color: #1f2937; margin: 0.2rem 0 0; }
+    .panel-resumen-card .sub { font-size: 0.78rem; color: #9ca3af; margin: 0.15rem 0 0; }
+
+    .empleado-card { background: white; border-radius: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); margin-bottom: 1rem; overflow: hidden; }
+    .empleado-card.vencido { border: 2px solid #fca5a5; }
+    .empleado-card.urgente { border: 2px solid #fcd34d; }
+    .empleado-header { display: flex; justify-content: space-between; align-items: center; padding: 0.9rem 1.2rem; background: #f9fafb; border-bottom: 1px solid #e5e7eb; }
+    .empleado-nombre { font-size: 1.2rem; font-weight: 700; color: #1f2937; margin: 0; }
+    .empleado-badge { display: inline-block; padding: 0.25rem 0.7rem; border-radius: 999px; font-size: 0.82rem; font-weight: 700; }
+    .empleado-badge.vencido { background: #fee2e2; color: #991b1b; }
+    .empleado-badge.urgente { background: #fef3c7; color: #92400e; }
+    .empleado-badge.ok { background: #d1fae5; color: #065f46; }
+
+    .empleado-body { padding: 0.8rem 1.2rem 1rem; }
+    .liq-bloque { padding: 0.6rem 0; border-bottom: 1px dashed #e5e7eb; }
+    .liq-bloque:last-child { border-bottom: none; }
+    .liq-titulo { display: flex; justify-content: space-between; align-items: center; font-size: 0.92rem; font-weight: 700; color: #374151; margin-bottom: 0.4rem; }
+    .liq-vence { font-size: 0.78rem; font-weight: 500; color: #6b7280; }
+
+    .concepto-row { display: flex; justify-content: space-between; align-items: center; padding: 0.4rem 0.7rem; background: #f9fafb; border-radius: 6px; margin-bottom: 0.3rem; font-size: 0.9rem; }
+    .concepto-row .concepto-nombre { flex: 1; color: #1f2937; font-weight: 600; }
+    .concepto-row .concepto-monto { font-weight: 700; font-size: 1rem; color: #b91c1c; margin-right: 0.8rem; }
+    .btn-pagar-concepto { background: #16a34a; color: white; border: none; padding: 0.35rem 0.85rem; border-radius: 6px; font-weight: 700; font-size: 0.85rem; cursor: pointer; }
+    .btn-pagar-concepto:hover { background: #15803d; }
+
+    .empleado-total { display: flex; justify-content: space-between; align-items: center; margin-top: 0.6rem; padding: 0.5rem 0.7rem; background: #fef9c3; border-radius: 6px; }
+    .empleado-total .label { font-weight: 700; color: #713f12; font-size: 0.92rem; }
+    .empleado-total .monto { font-weight: 800; font-size: 1.3rem; color: #713f12; }
+</style>
+
+<div class="panel-deudas-wrap">
+    <div class="panel-header">
+        <h1>💰 ¿Cuánto debo pagar?</h1>
+        <p>Mirá de un vistazo a quién le debés y pagale con un click.</p>
+    </div>
+
+    @if (data is null)
+    {
+        <p style="text-align: center; padding: 3rem; color: #6b7280;">⏳ Cargando...</p>
+    }
+    else if (data.Empleados.Count == 0)
+    {
+        <div style="background: #ecfdf5; border: 2px solid #6ee7b7; padding: 2rem; border-radius: 12px; text-align: center;">
+            <div style="font-size: 3rem;">🎉</div>
+            <strong style="font-size: 1.3rem; color: #065f46;">No le debés nada a nadie</strong>
+            <p style="color: #047857; margin: 0.5rem 0 0;">Todos los empleados están al día.</p>
+        </div>
+    }
+    else
+    {
+        <div class="panel-resumen">
+            <div class="panel-resumen-card @(data.TotalAPagar > 0 ? "" : "ok")">
+                <div class="label">Total a pagar</div>
+                <p class="valor">$@FormatMoney(data.TotalAPagar)</p>
+                <p class="sub">@data.CantidadConDeuda empleado@(data.CantidadConDeuda == 1 ? "" : "s") con saldo</p>
+            </div>
+            @if (data.TotalVencido > 0)
+            {
+                <div class="panel-resumen-card urgente">
+                    <div class="label" style="color: #b91c1c;">🔴 Vencido</div>
+                    <p class="valor" style="color: #b91c1c;">$@FormatMoney(data.TotalVencido)</p>
+                    <p class="sub">@data.CantidadVencidos empleado@(data.CantidadVencidos == 1 ? "" : "s") con deuda vencida</p>
+                </div>
+            }
+        </div>
+
+        @foreach (var emp in data.Empleados)
+        {
+            var cardCls = emp.TieneVencido ? "vencido" : (emp.DiasParaVencerMasUrgente <= 7 ? "urgente" : "");
+            <div class="empleado-card @cardCls">
+                <div class="empleado-header">
+                    <h3 class="empleado-nombre">👤 @emp.Nombre</h3>
+                    @if (emp.TieneVencido)
+                    {
+                        <span class="empleado-badge vencido">🔴 VENCIDO hace @(-emp.DiasParaVencerMasUrgente) día@(-emp.DiasParaVencerMasUrgente == 1 ? "" : "s")</span>
+                    }
+                    else if (emp.DiasParaVencerMasUrgente == 0)
+                    {
+                        <span class="empleado-badge urgente">🟡 Vence HOY</span>
+                    }
+                    else if (emp.DiasParaVencerMasUrgente <= 7)
+                    {
+                        <span class="empleado-badge urgente">🟡 Vence en @emp.DiasParaVencerMasUrgente día@(emp.DiasParaVencerMasUrgente == 1 ? "" : "s")</span>
+                    }
+                    else
+                    {
+                        <span class="empleado-badge ok">🟢 Vence en @emp.DiasParaVencerMasUrgente días</span>
+                    }
+                </div>
+                <div class="empleado-body">
+                    @foreach (var liq in emp.Liquidaciones)
+                    {
+                        <div class="liq-bloque">
+                            <div class="liq-titulo">
+                                <span>📅 @MesNombre(liq.Mes) @liq.Anio</span>
+                                <span class="liq-vence">
+                                    @if (liq.DiasParaVencer < 0)
+                                    {
+                                        <span style="color: #b91c1c; font-weight: 700;">Venció el @liq.FechaVencimiento.ToString("dd/MM/yyyy")</span>
+                                    }
+                                    else
+                                    {
+                                        <span>Vence el @liq.FechaVencimiento.ToString("dd/MM/yyyy")</span>
+                                    }
+                                </span>
+                            </div>
+
+                            @if (liq.Conceptos.Count > 0)
+                            {
+                                @foreach (var c in liq.Conceptos)
+                                {
+                                    <div class="concepto-row">
+                                        <span class="concepto-nombre">@ConceptoIcono(c.Concepto) @ConceptoLabel(c.Concepto)</span>
+                                        <span class="concepto-monto">$@FormatMoney(c.Pendiente)</span>
+                                        <button class="btn-pagar-concepto" @onclick="() => OpenPagar(emp, liq, c)">💰 Pagar</button>
+                                    </div>
+                                }
+                            }
+                            else
+                            {
+                                <div class="concepto-row">
+                                    <span class="concepto-nombre">Saldo pendiente (sin concepto desglosado)</span>
+                                    <span class="concepto-monto">$@FormatMoney(liq.Saldo)</span>
+                                    <button class="btn-pagar-concepto" @onclick="() => OpenPagar(emp, liq, null)">💰 Pagar</button>
+                                </div>
+                            }
+                        </div>
+                    }
+                    <div class="empleado-total">
+                        <span class="label">TOTAL DEBE</span>
+                        <span class="monto">$@FormatMoney(emp.TotalDebe)</span>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@* ════════ Modal pagar ════════ *@
+@if (pagarLiq is not null)
+{
+    <div class="modal-overlay" style="z-index: 9100;" @onclick="ClosePagar">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 480px;">
+            <div class="modal-header" style="background: #16a34a; color: white;">
+                <h4 style="margin: 0;">💰 Registrar pago</h4>
+                <button class="btn-close" @onclick="ClosePagar" style="color: white;" disabled="@pagarSaving">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 1rem 1.2rem;">
+                <div style="background: #f9fafb; padding: 0.6rem 0.8rem; border-radius: 6px; margin-bottom: 0.8rem; font-size: 0.88rem;">
+                    <strong>👤 @pagarEmpleadoNombre</strong><br />
+                    <span style="color: #6b7280;">@MesNombre(pagarLiq.Mes) @pagarLiq.Anio @(pagarConceptoLabel is null ? "" : "· " + pagarConceptoLabel)</span><br />
+                    <span style="color: #6b7280;">Pendiente: <strong style="color: #b91c1c;">$@FormatMoney(pagarPendiente)</strong></span>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Monto a pagar</label>
+                        <input type="number" step="0.01" class="form-input" @bind="pagarMonto" />
+                        <div style="margin-top: 0.3rem;">
+                            <button type="button" class="btn btn-secondary" style="font-size: 0.72rem; padding: 0.2rem 0.5rem;" @onclick="@(() => pagarMonto = pagarPendiente)">
+                                Usar $@FormatMoney(pagarPendiente)
+                            </button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Método</label>
+                        <select class="form-input" @bind="pagarMetodo">
+                            <option value="efectivo">Efectivo</option>
+                            <option value="transferencia">Transferencia / Banco</option>
+                            <option value="billetera_virtual">📱 Billetera virtual</option>
+                            <option value="cheque">Cheque</option>
+                            <option value="v_privado">V Privada (triangulación)</option>
+                            <option value="otro">Otro</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Fecha</label>
+                    <input type="date" class="form-input" @bind="pagarFecha" />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Notas (opcional)</label>
+                    <input type="text" class="form-input" @bind="pagarNotas" placeholder="Ej: pagado en mano" />
+                </div>
+
+                <hr style="margin: 1rem 0; border: none; border-top: 1px dashed #d1d5db;" />
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Operador</label>
+                        <input type="text" class="form-input" @bind="pagarOperator" placeholder="OSMAR" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Clave 🔒</label>
+                        <input type="password" class="form-input" @bind="pagarPassword" placeholder="Clave de seguridad" />
+                    </div>
+                </div>
+
+                @if (!string.IsNullOrEmpty(pagarError))
+                {
+                    <div style="color: #b91c1c; background: #fef2f2; padding: 0.4rem 0.6rem; border-radius: 4px; font-size: 0.85rem; margin-top: 0.5rem;">
+                        @pagarError
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="ClosePagar" disabled="@pagarSaving">Cancelar</button>
+                <button class="btn btn-primary" style="background: #16a34a; border-color: #15803d;" @onclick="DoPagar" disabled="@pagarSaving">
+                    @(pagarSaving ? "Guardando..." : "💰 Confirmar pago")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private DashboardDeudasDto? data;
+
+    // Modal pagar
+    private DashboardLiquidacionDto? pagarLiq;
+    private string? pagarEmpleadoNombre;
+    private string? pagarConceptoLabel;
+    private string pagarConcepto = "sueldo";
+    private decimal pagarPendiente;
+    private decimal pagarMonto;
+    private string pagarMetodo = "efectivo";
+    private DateTime pagarFecha = DateTime.Today;
+    private string pagarNotas = "";
+    private string pagarOperator = "OSMAR";
+    private string pagarPassword = "";
+    private string? pagarError;
+    private bool pagarSaving;
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    private async Task Cargar()
+    {
+        try { data = await Api.GetNomDashboardDeudasAsync(); }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private void OpenPagar(DashboardEmpleadoDto emp, DashboardLiquidacionDto liq, DashboardConceptoDto? c)
+    {
+        pagarLiq = liq;
+        pagarEmpleadoNombre = emp.Nombre;
+        pagarConceptoLabel = c is null ? null : (ConceptoIcono(c.Concepto) + " " + ConceptoLabel(c.Concepto));
+        pagarConcepto = c?.Concepto ?? "sueldo";
+        pagarPendiente = c?.Pendiente ?? liq.Saldo;
+        pagarMonto = pagarPendiente;
+        pagarMetodo = "efectivo";
+        pagarFecha = DateTime.Today;
+        pagarNotas = "";
+        pagarOperator = "OSMAR";
+        pagarPassword = "";
+        pagarError = null;
+        pagarSaving = false;
+    }
+
+    private void ClosePagar()
+    {
+        if (pagarSaving) return;
+        pagarLiq = null;
+        pagarError = null;
+        pagarPassword = "";
+    }
+
+    private async Task DoPagar()
+    {
+        if (pagarLiq is null) return;
+        if (pagarMonto <= 0) { pagarError = "El monto tiene que ser mayor a 0."; return; }
+        if (string.IsNullOrWhiteSpace(pagarPassword)) { pagarError = "Ingresá la clave."; return; }
+        pagarSaving = true;
+        pagarError = null;
+        try
+        {
+            var (ok, err) = await Api.NomDashboardPagarAsync(new DashboardPagarRequest
+            {
+                LiquidacionId = pagarLiq.LiquidacionId,
+                Concepto = pagarConcepto,
+                Monto = pagarMonto,
+                Metodo = pagarMetodo,
+                FechaPago = pagarFecha,
+                Notas = string.IsNullOrWhiteSpace(pagarNotas) ? null : pagarNotas,
+                Operator = pagarOperator,
+                Password = pagarPassword
+            });
+            if (!ok) { pagarError = err ?? "No se pudo registrar el pago."; return; }
+            ToastService.Success($"💰 Pago de $@{FormatMoney(pagarMonto)} registrado");
+            pagarLiq = null;
+            pagarPassword = "";
+            await Cargar();
+        }
+        catch (Exception ex) { pagarError = ex.Message; }
+        finally { pagarSaving = false; }
+    }
+
+    private static string MesNombre(int m) => m switch
+    {
+        1 => "Enero", 2 => "Febrero", 3 => "Marzo", 4 => "Abril",
+        5 => "Mayo", 6 => "Junio", 7 => "Julio", 8 => "Agosto",
+        9 => "Septiembre", 10 => "Octubre", 11 => "Noviembre", 12 => "Diciembre",
+        _ => m.ToString()
+    };
+
+    private static string ConceptoLabel(string c) => c switch
+    {
+        "sueldo" => "Sueldo",
+        "horas_extra" => "Horas extras",
+        "comision_cafe" => "Comisión",
+        "bono" => "Bonos",
+        "aguinaldo" => "Aguinaldo",
+        "adelanto" => "Adelantos",
+        _ => c
+    };
+
+    private static string ConceptoIcono(string c) => c switch
+    {
+        "sueldo" => "💰",
+        "horas_extra" => "⏰",
+        "comision_cafe" => "☕",
+        "bono" => "🎁",
+        "aguinaldo" => "🎄",
+        "adelanto" => "💸",
+        _ => "•"
+    };
+
+    private static string FormatMoney(decimal v) => v.ToString("N2", new System.Globalization.CultureInfo("es-AR"));
+}

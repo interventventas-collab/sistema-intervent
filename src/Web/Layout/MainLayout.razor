@@ -287,9 +287,11 @@
         @if (HasPerm("nominas"))
         {
             <NavGroup Label="Nóminas" Icon="@SvgIcons.Users"
-                      HasActiveChild="@(IsActive("/nominas") || IsActive("/nominas/empleados") || IsActive("/nominas/liquidaciones"))">
+                      HasActiveChild="@(IsActive("/nominas") || IsActive("/nominas/empleados") || IsActive("/nominas/liquidaciones") || IsActive("/nominas/panel"))">
                 <NavItem Href="/nominas" Label="Inicio" Icon="@SvgIcons.Dashboard"
                          IsActive="@IsActive("/nominas")" OnClick="@(() => NavigateTo("/nominas"))" />
+                <NavItem Href="/nominas/panel" Label="💰 ¿Cuánto debo pagar?" Icon="@SvgIcons.Dashboard"
+                         IsActive="@IsActive("/nominas/panel")" OnClick="@(() => NavigateTo("/nominas/panel"))" />
                 <NavItem Href="/nominas/empleados" Label="Empleados" Icon="@SvgIcons.Users"
                          IsActive="@IsActive("/nominas/empleados")" OnClick="@(() => NavigateTo("/nominas/empleados"))" />
                 <NavItem Href="/nominas/liquidaciones" Label="Liquidaciones" Icon="@SvgIcons.Tag"

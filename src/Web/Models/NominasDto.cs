@@ -160,3 +160,58 @@ public class NomResumenMensualDto
     public decimal TotalPagado { get; set; }
     public decimal SaldoPendiente { get; set; }
 }
+
+// ===== Panel "¿Cuánto debo pagar?" =====
+
+public class DashboardConceptoDto
+{
+    public string Concepto { get; set; } = "";
+    public decimal Presupuestado { get; set; }
+    public decimal Pagado { get; set; }
+    public decimal Pendiente { get; set; }
+}
+
+public class DashboardLiquidacionDto
+{
+    public int LiquidacionId { get; set; }
+    public int Anio { get; set; }
+    public int Mes { get; set; }
+    public decimal NetoAPagar { get; set; }
+    public decimal TotalPagado { get; set; }
+    public decimal Saldo { get; set; }
+    public DateTime FechaVencimiento { get; set; }
+    public int DiasParaVencer { get; set; }
+    public List<DashboardConceptoDto> Conceptos { get; set; } = new();
+}
+
+public class DashboardEmpleadoDto
+{
+    public int EmpleadoId { get; set; }
+    public string Nombre { get; set; } = "";
+    public decimal TotalDebe { get; set; }
+    public bool TieneVencido { get; set; }
+    public int DiasParaVencerMasUrgente { get; set; }
+    public List<DashboardLiquidacionDto> Liquidaciones { get; set; } = new();
+}
+
+public class DashboardDeudasDto
+{
+    public decimal TotalAPagar { get; set; }
+    public decimal TotalVencido { get; set; }
+    public int CantidadConDeuda { get; set; }
+    public int CantidadVencidos { get; set; }
+    public List<DashboardEmpleadoDto> Empleados { get; set; } = new();
+}
+
+public class DashboardPagarRequest
+{
+    public int LiquidacionId { get; set; }
+    public string Concepto { get; set; } = "sueldo";
+    public decimal Monto { get; set; }
+    public string Metodo { get; set; } = "efectivo";
+    public DateTime? FechaPago { get; set; }
+    public string? Detalle { get; set; }
+    public string? Notas { get; set; }
+    public string? Operator { get; set; }
+    public string? Password { get; set; }
+}

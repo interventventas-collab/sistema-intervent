@@ -345,6 +345,197 @@ public class NomLiquidacionesController : ControllerBase
     }
 
     // ============================================================
+    //  PANEL DEUDAS — vista simplificada para operador no tecnico
+    //  Muestra empleados con saldo pendiente, agrupado por concepto.
+    //  Pedido del usuario 2026-05-19: 'un enlace bien intuitivo que un
+    //  niño pueda manejar' para ver a quien le debo + pagar con clave.
+    // ============================================================
+
+    public class DashboardPagarRequest
+    {
+        public int LiquidacionId { get; set; }
+        public string Concepto { get; set; } = "sueldo";
+        public decimal Monto { get; set; }
+        public string Metodo { get; set; } = "efectivo";
+        public DateTime? FechaPago { get; set; }
+        public string? Detalle { get; set; }
+        public string? Notas { get; set; }
+        public string? Operator { get; set; }
+        public string? Password { get; set; }
+    }
+
+    /// <summary>Registrar un pago desde el panel de deudas — siempre requiere operador + clave.
+    /// Reusa la misma password global que el resto del sistema (sales.delete_password).</summary>
+    [HttpPost("dashboard/pagar")]
+    public async Task<IActionResult> DashboardPagar([FromBody] DashboardPagarRequest req)
+    {
+        if (req is null) return BadRequest(new { error = "Body vacio" });
+
+        // Validar clave
+        var allowedOp = (await _db.AppSettings.FindAsync("sales.delete_allowed_operator"))?.Value ?? "OSMAR";
+        var expectedPassword = (await _db.AppSettings.FindAsync("sales.delete_password"))?.Value ?? "";
+        if (!string.Equals(req.Operator ?? "", allowedOp, StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { error = $"Solo {allowedOp} puede registrar pagos desde el panel." });
+        if (string.IsNullOrEmpty(expectedPassword) || req.Password != expectedPassword)
+            return BadRequest(new { error = "Clave incorrecta." });
+
+        // Reusa la logica del CreatePago existente
+        var liq = await _db.NomLiquidaciones.Include(l => l.Pagos).FirstOrDefaultAsync(l => l.Id == req.LiquidacionId);
+        if (liq is null) return BadRequest(new { error = "Liquidacion no encontrada" });
+        if (liq.Estado == "anulada") return BadRequest(new { error = "No se puede pagar una liquidacion anulada" });
+        if (req.Monto <= 0) return BadRequest(new { error = "El monto debe ser mayor a 0" });
+        if (string.IsNullOrWhiteSpace(req.Metodo)) return BadRequest(new { error = "Indicá un metodo de pago" });
+
+        var pagado = liq.Pagos.Sum(p => p.Monto);
+        var saldo = liq.NetoAPagar - pagado;
+        if (req.Monto > saldo + 0.01m)
+            return BadRequest(new { error = $"El monto excede el saldo pendiente (${saldo:N2})" });
+
+        var conceptosValidos = new HashSet<string> { "sueldo", "comision_cafe", "horas_extra", "bono", "adelanto", "aguinaldo", "otro" };
+        var concepto = (req.Concepto ?? "sueldo").Trim().ToLowerInvariant();
+        if (!conceptosValidos.Contains(concepto)) concepto = "otro";
+
+        var pago = new NomPago
+        {
+            LiquidacionId = req.LiquidacionId,
+            FechaPago = (req.FechaPago ?? DateTime.UtcNow.AddHours(-3)).Date,
+            Metodo = req.Metodo.Trim().ToLowerInvariant(),
+            Monto = req.Monto,
+            Concepto = concepto,
+            Detalle = string.IsNullOrWhiteSpace(req.Detalle) ? null : req.Detalle.Trim(),
+            Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim(),
+            CreatedAt = DateTime.UtcNow
+        };
+        _db.NomPagos.Add(pago);
+        if (pagado + req.Monto >= liq.NetoAPagar - 0.01m)
+        {
+            liq.Estado = "pagado";
+            liq.UpdatedAt = DateTime.UtcNow;
+        }
+        await _db.SaveChangesAsync();
+
+        return Ok(new { ok = true });
+    }
+
+    public record DashboardConceptoDto(string Concepto, decimal Presupuestado, decimal Pagado, decimal Pendiente);
+    public record DashboardLiquidacionDto(
+        int LiquidacionId, int Anio, int Mes,
+        decimal NetoAPagar, decimal TotalPagado, decimal Saldo,
+        DateTime FechaVencimiento, int DiasParaVencer,
+        List<DashboardConceptoDto> Conceptos);
+    public record DashboardEmpleadoDto(
+        int EmpleadoId, string Nombre,
+        decimal TotalDebe, bool TieneVencido, int DiasParaVencerMasUrgente,
+        List<DashboardLiquidacionDto> Liquidaciones);
+    public record DashboardDeudasDto(
+        decimal TotalAPagar, decimal TotalVencido,
+        int CantidadConDeuda, int CantidadVencidos,
+        List<DashboardEmpleadoDto> Empleados);
+
+    [HttpGet("dashboard/deudas")]
+    public async Task<IActionResult> GetDashboardDeudas()
+    {
+        // Fecha "hoy" en hora Argentina (UTC-3) para calcular vencimientos.
+        var hoyArg = DateTime.UtcNow.AddHours(-3).Date;
+
+        // Solo liquidaciones activas (no anuladas) con saldo > 0
+        var liqs = await _db.NomLiquidaciones
+            .Include(l => l.EmpleadoNav)
+            .Include(l => l.Pagos)
+            .Where(l => l.Estado != "anulada")
+            .ToListAsync();
+
+        // Helper: presupuesto por concepto en la liquidacion (mismo mapping que el frontend).
+        static decimal PresupuestoConcepto(string concepto, NomLiquidacion l) => concepto switch
+        {
+            "sueldo" => l.SueldoBase,
+            "horas_extra" => l.MontoHsExtra,
+            "comision_cafe" => l.Comision,
+            "bono" => l.Bonos,
+            "aguinaldo" => l.Aguinaldo,
+            _ => 0m
+        };
+
+        // Solo los 5 conceptos "positivos" (los que se le pagan al empleado).
+        // Adelantos y OtrosDescuentos no van porque son descuentos (no se le paga eso).
+        var conceptosPositivos = new[] { "sueldo", "horas_extra", "comision_cafe", "bono", "aguinaldo" };
+
+        var empleadosDict = new Dictionary<int, DashboardEmpleadoDto>();
+        var liqsConSaldo = new List<DashboardLiquidacionDto>();
+
+        foreach (var l in liqs)
+        {
+            var pagado = l.Pagos.Sum(p => p.Monto);
+            var saldo = l.NetoAPagar - pagado;
+            if (saldo <= 0.01m) continue;
+
+            // Vencimiento = ultimo dia del mes de la liquidacion
+            var fechaVenc = new DateTime(l.Anio, l.Mes, DateTime.DaysInMonth(l.Anio, l.Mes));
+            var diasParaVencer = (fechaVenc - hoyArg).Days;
+
+            // Conceptos pendientes — solo los que tienen pendiente > 0
+            var conceptos = new List<DashboardConceptoDto>();
+            foreach (var c in conceptosPositivos)
+            {
+                var presup = PresupuestoConcepto(c, l);
+                if (presup <= 0m) continue;
+                var pagadoConcepto = l.Pagos.Where(p => p.Concepto == c).Sum(p => p.Monto);
+                var pendiente = presup - pagadoConcepto;
+                if (pendiente > 0.01m)
+                    conceptos.Add(new DashboardConceptoDto(c, presup, pagadoConcepto, pendiente));
+            }
+
+            var liqDto = new DashboardLiquidacionDto(
+                l.Id, l.Anio, l.Mes,
+                l.NetoAPagar, pagado, saldo,
+                fechaVenc, diasParaVencer,
+                conceptos);
+
+            if (!empleadosDict.TryGetValue(l.EmpleadoId, out var emp))
+            {
+                emp = new DashboardEmpleadoDto(
+                    l.EmpleadoId,
+                    l.EmpleadoNav?.Nombre ?? $"Empleado {l.EmpleadoId}",
+                    0m, false, int.MaxValue,
+                    new List<DashboardLiquidacionDto>());
+                empleadosDict[l.EmpleadoId] = emp;
+            }
+            emp.Liquidaciones.Add(liqDto);
+            // Actualizar agregados — uso un record con propiedades inmutables, asi que lo reconstruyo
+            empleadosDict[l.EmpleadoId] = emp with
+            {
+                TotalDebe = emp.TotalDebe + saldo,
+                TieneVencido = emp.TieneVencido || diasParaVencer < 0,
+                DiasParaVencerMasUrgente = Math.Min(emp.DiasParaVencerMasUrgente, diasParaVencer)
+            };
+            liqsConSaldo.Add(liqDto);
+        }
+
+        // Ordenar liquidaciones de cada empleado por fecha (mas urgentes primero)
+        // y ordenar empleados (vencidos primero, despues por mas urgente)
+        foreach (var key in empleadosDict.Keys.ToList())
+        {
+            var e = empleadosDict[key];
+            var ordenadas = e.Liquidaciones.OrderBy(x => x.DiasParaVencer).ToList();
+            empleadosDict[key] = e with { Liquidaciones = ordenadas };
+        }
+
+        var empleadosOrdenados = empleadosDict.Values
+            .OrderBy(e => e.TieneVencido ? 0 : 1)
+            .ThenBy(e => e.DiasParaVencerMasUrgente)
+            .ThenBy(e => e.Nombre)
+            .ToList();
+
+        var result = new DashboardDeudasDto(
+            TotalAPagar: liqsConSaldo.Sum(l => l.Saldo),
+            TotalVencido: liqsConSaldo.Where(l => l.DiasParaVencer < 0).Sum(l => l.Saldo),
+            CantidadConDeuda: empleadosOrdenados.Count,
+            CantidadVencidos: empleadosOrdenados.Count(e => e.TieneVencido),
+            Empleados: empleadosOrdenados);
+        return Ok(result);
+    }
+
+    // ============================================================
     //  EXPORT EXCEL — varias hojas (Resumen / Pendientes / Pagos /
     //  Por empleado / Por mes). Filtros por rango de meses + empleado.
     // ============================================================
