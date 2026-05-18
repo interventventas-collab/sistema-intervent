@@ -300,6 +300,9 @@ public class CafeVentaDto
     public bool EsSaldoMigracion { get; set; }
     /// <summary>Nota tipo post-it pegada por el admin a esta venta. Null = sin nota.</summary>
     public string? PinNota { get; set; }
+    /// <summary>Token aleatorio para el link publico /comprobante/{token}. Null en ventas
+    /// viejas pre-feature — al primer share el backend lo genera y persiste.</summary>
+    public string? PublicToken { get; set; }
 }
 
 public class ConvertirAFacturaRequest

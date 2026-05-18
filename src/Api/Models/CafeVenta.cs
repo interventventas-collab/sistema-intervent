@@ -113,6 +113,13 @@ public class CafeVenta
     [MaxLength(1000)]
     public string? PinNota { get; set; }
 
+    /// <summary>Token aleatorio (~20 chars) para link publico /comprobante/{token}. Permite
+    /// que el operador comparta el comprobante por WhatsApp/Email sin attachments — el cliente
+    /// abre el link y ve el comprobante online + boton para descargar PDF. Generado al crear
+    /// la venta; en ventas migradas viejas puede ser null hasta el primer share.</summary>
+    [MaxLength(64)]
+    public string? PublicToken { get; set; }
+
     /// <summary>Importe Neto (sin IVA) que ARCA registró efectivamente. Guardamos lo que devuelve
     /// el FECAESolicitar para que el PDF reconstruya los totales sin lugar a interpretación.
     /// NULL en facturas viejas (pre-2026-05-15) que no guardaban esto — para esas se calcula

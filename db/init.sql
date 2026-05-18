@@ -3609,6 +3609,26 @@ BEGIN
 END
 GO
 
+-- Cafe_Ventas: token aleatorio para link publico /comprobante/{token}. Permite que el
+-- operador comparta el comprobante por WhatsApp/Email sin attachments — el cliente
+-- abre el link y ve el comprobante online + boton para descargar PDF.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='PublicToken' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+BEGIN
+    ALTER TABLE Cafe_Ventas ADD PublicToken NVARCHAR(64) NULL;
+END
+GO
+-- SET QUOTED_IDENTIFIER ON es requisito para crear indices FILTRADOS (WHERE...).
+-- Sin esto, SQL Server tira Msg 1934. Idempotente: el SET es solo para esta batch.
+SET QUOTED_IDENTIFIER ON
+GO
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='IX_CafeVentas_PublicToken' AND object_id=OBJECT_ID('Cafe_Ventas'))
+BEGIN
+    CREATE UNIQUE NONCLUSTERED INDEX IX_CafeVentas_PublicToken
+        ON Cafe_Ventas(PublicToken)
+        WHERE PublicToken IS NOT NULL;
+END
+GO
+
 -- ===== Preventas / notas de pedido (vendedor en la calle) =====
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_PreventaVendedores')
 BEGIN

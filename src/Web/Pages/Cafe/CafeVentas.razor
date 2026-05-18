@@ -2573,26 +2573,23 @@
         try
         {
             var v = reenvioVenta;
-            // 1) WhatsApp Web: abre wa.me en pestaña nueva + descarga el PDF
-            //    para que el usuario lo arrastre al chat (wa.me no soporta adjuntos).
+            // Conseguir el token publico (lo genera si la venta es vieja y no tenia).
+            var publicToken = await Api.EnsurePublicTokenAsync(v.Id);
+            var publicUrl = !string.IsNullOrEmpty(publicToken)
+                ? $"{Navigation.BaseUri.TrimEnd('/')}/comprobante/{publicToken}"
+                : null;
+            string MensajeWA() => publicUrl is not null
+                ? $"Hola! Te paso el comprobante {v.Numero}:\n\n{publicUrl}\n\nCualquier cosa avisame. Gracias!"
+                : $"Hola! Te paso el comprobante {v.Numero}. Cualquier cosa avisame. Gracias!";
+
+            // 1) WhatsApp Web: abre wa.me con el mensaje (link incluido — no hace falta adjunto)
             if (reenvioWhatsappWeb && !string.IsNullOrWhiteSpace(reenvioWhatsappPhone))
             {
                 var phone = new string(reenvioWhatsappPhone.Where(char.IsDigit).ToArray());
                 if (phone.Length >= 8)
                 {
-                    var msg = Uri.EscapeDataString($"Hola! Te paso el comprobante {v.Numero}. Cualquier cosa avisame. Gracias!");
+                    var msg = Uri.EscapeDataString(MensajeWA());
                     try { await JS.InvokeVoidAsync("openInNewTab", $"https://wa.me/{phone}?text={msg}"); }
-                    catch { }
-                    try
-                    {
-                        var (pdfBytes, _) = await Api.GetCafeVentaPdfAsync(v.Id);
-                        if (pdfBytes is not null)
-                        {
-                            var b64 = Convert.ToBase64String(pdfBytes);
-                            await JS.InvokeVoidAsync("downloadBytesAsFile", $"{v.Numero}.pdf", b64, "application/pdf");
-                            ToastService.Info("📄 PDF descargado — arrastralo al chat de WhatsApp Web");
-                        }
-                    }
                     catch { }
                 }
             }
@@ -2604,7 +2601,7 @@
                 {
                     try
                     {
-                        var (sent, err) = await Api.SendCafeVentaEmailAsync(v.Id, reenvioEmailTo);
+                        var (sent, err) = await Api.SendCafeVentaEmailAsync(v.Id, reenvioEmailTo, publicUrl: publicUrl);
                         if (sent) ToastService.Success($"📧 Email enviado a {reenvioEmailTo}");
                         else ToastService.Error($"📧 Email falló: {err}");
                     }
@@ -2617,7 +2614,7 @@
                 {
                     try
                     {
-                        var (sent, err) = await Api.SendCafeVentaWhatsappInternoAsync(v.Id, reenvioWhatsappPhone);
+                        var (sent, err) = await Api.SendCafeVentaWhatsappInternoAsync(v.Id, reenvioWhatsappPhone, caption: MensajeWA());
                         if (sent) ToastService.Success($"🚀 WhatsApp enviado a {reenvioWhatsappPhone}");
                         else ToastService.Error($"🚀 WhatsApp Interno falló: {err}");
                     }
@@ -2638,37 +2635,33 @@
     }
 
     /// <summary>Despues de emitir una venta exitosa, dispara los canales tildados
-    /// (Email, WhatsApp Web manual, WhatsApp Interno con PDF). Cada uno corre en
-    /// paralelo y avisa con un toast si funciono o fallo. No bloquea — si uno
-    /// falla, los otros igual se intentan.</summary>
+    /// (Email, WhatsApp Web manual, WhatsApp Interno). Cada uno corre en paralelo y
+    /// avisa con un toast si funciono o fallo. No bloquea — si uno falla, los otros
+    /// igual se intentan. Mensaje incluye link publico /comprobante/{token} asi el
+    /// cliente lo ve online (en vez de pelearse con archivos adjuntos).</summary>
     private async Task DispararCanalesDeEnvioAsync(int ventaId, string ventaNumero)
     {
-        // 1) WhatsApp Web: abre wa.me en pestaña nueva con el mensaje precargado +
-        //    descarga el PDF a la compu del usuario asi lo puede arrastrar al chat
-        //    (wa.me NO soporta adjuntos por limitacion de WhatsApp).
+        // Conseguir el token publico de la venta (lo genera si no tiene).
+        var publicToken = await Api.EnsurePublicTokenAsync(ventaId);
+        var publicUrl = !string.IsNullOrEmpty(publicToken)
+            ? $"{Navigation.BaseUri.TrimEnd('/')}/comprobante/{publicToken}"
+            : null;
+
+        // Mensaje de WhatsApp comun a todos los canales (con o sin link)
+        string MensajeWhatsApp() => publicUrl is not null
+            ? $"Hola! Te paso el comprobante {ventaNumero}:\n\n{publicUrl}\n\nCualquier cosa avisame. Gracias!"
+            : $"Hola! Te paso el comprobante {ventaNumero}. Cualquier cosa avisame. Gracias!";
+
+        // 1) WhatsApp Web: abre wa.me en pestaña nueva con el mensaje precargado.
+        //    Como ahora mandamos LINK (no PDF), no hace falta descargar nada.
         if (envioWhatsappWeb && !string.IsNullOrWhiteSpace(envioWhatsappPhone))
         {
             var phone = new string(envioWhatsappPhone.Where(char.IsDigit).ToArray());
             if (phone.Length >= 8)
             {
-                var msg = Uri.EscapeDataString($"Hola! Te paso el comprobante {ventaNumero}. Cualquier cosa avisame. Gracias!");
-                try
-                {
-                    await JS.InvokeVoidAsync("openInNewTab", $"https://wa.me/{phone}?text={msg}");
-                }
+                var msg = Uri.EscapeDataString(MensajeWhatsApp());
+                try { await JS.InvokeVoidAsync("openInNewTab", $"https://wa.me/{phone}?text={msg}"); }
                 catch { /* popup blocker — no rompemos el flujo */ }
-                // Descarga del PDF para que el usuario lo arrastre al chat de WhatsApp.
-                try
-                {
-                    var (pdfBytes, _) = await Api.GetCafeVentaPdfAsync(ventaId);
-                    if (pdfBytes is not null)
-                    {
-                        var b64 = Convert.ToBase64String(pdfBytes);
-                        await JS.InvokeVoidAsync("downloadBytesAsFile", $"{ventaNumero}.pdf", b64, "application/pdf");
-                        ToastService.Info("📄 PDF descargado — arrastralo al chat de WhatsApp Web");
-                    }
-                }
-                catch { /* si falla la descarga, el chat de WA Web igual ya se abrio */ }
             }
         }
 
@@ -2680,7 +2673,7 @@
             {
                 try
                 {
-                    var (sent, err) = await Api.SendCafeVentaEmailAsync(ventaId, envioEmailTo);
+                    var (sent, err) = await Api.SendCafeVentaEmailAsync(ventaId, envioEmailTo, publicUrl: publicUrl);
                     if (sent) ToastService.Success($"📧 Email enviado a {envioEmailTo}");
                     else ToastService.Error($"📧 Email fallo: {err}");
                 }
@@ -2693,7 +2686,9 @@
             {
                 try
                 {
-                    var (sent, err) = await Api.SendCafeVentaWhatsappInternoAsync(ventaId, envioWhatsappPhone);
+                    // Para WhatsApp Interno mandamos el mismo mensaje con el link como caption
+                    // (sigue adjuntando el PDF por las dudas — si el cliente prefiere bajar archivo).
+                    var (sent, err) = await Api.SendCafeVentaWhatsappInternoAsync(ventaId, envioWhatsappPhone, caption: MensajeWhatsApp());
                     if (sent) ToastService.Success($"🚀 WhatsApp enviado a {envioWhatsappPhone}");
                     else ToastService.Error($"🚀 WhatsApp Interno fallo: {err}");
                 }

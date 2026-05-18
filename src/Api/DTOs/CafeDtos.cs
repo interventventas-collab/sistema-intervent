@@ -278,7 +278,8 @@ public record CafeVentaDto(
     int? OrigenVentaId = null,
     int? FacturadaComoVentaId = null,
     bool EsSaldoMigracion = false,
-    string? PinNota = null);
+    string? PinNota = null,
+    string? PublicToken = null);
 
 public class CafeCotizarItemRequest
 {

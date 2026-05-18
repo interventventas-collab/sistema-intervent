@@ -95,7 +95,8 @@ public class CafeVentasController : ControllerBase
         v.OrigenVentaId,
         v.FacturadaComoVentaId,
         esSaldoMigracion,
-        v.PinNota);
+        v.PinNota,
+        v.PublicToken);
 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null)
@@ -186,10 +187,77 @@ public class CafeVentasController : ControllerBase
     }
 
     // ═══════════════════════════════════════════════════════════════════════
+    //  TOKEN PUBLICO + ENDPOINTS PUBLICOS PARA COMPARTIR EL COMPROBANTE
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// <summary>Genera un token aleatorio ~22 chars base64-url-safe para el link publico.
+    /// Usa Guid.NewGuid() codificado en base64 sin padding ni chars conflictivos en URLs.</summary>
+    private static string GeneratePublicToken()
+    {
+        var g = Guid.NewGuid();
+        var bytes = g.ToByteArray();
+        return Convert.ToBase64String(bytes)
+            .Replace("/", "_").Replace("+", "-").TrimEnd('=');
+    }
+
+    /// <summary>Si la venta no tiene PublicToken (caso de ventas viejas pre-feature),
+    /// genera uno y lo persiste. Devuelve el token actual (nuevo o existente).</summary>
+    private async Task<string> EnsurePublicTokenAsync(CafeVenta v)
+    {
+        if (!string.IsNullOrEmpty(v.PublicToken)) return v.PublicToken;
+        v.PublicToken = GeneratePublicToken();
+        await _db.SaveChangesAsync();
+        return v.PublicToken;
+    }
+
+    /// <summary>Endpoint PUBLICO (sin auth) para que el cliente abra el link compartido
+    /// por WhatsApp/email y vea su comprobante online. Devuelve el mismo CafeVentaDto
+    /// que el endpoint privado por id, pero limitado al token (no enumerable).</summary>
+    [HttpGet("publica/{token}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetByPublicToken(string token)
+    {
+        if (string.IsNullOrWhiteSpace(token)) return NotFound();
+        var v = await _db.CafeVentas.Include(x => x.Items).ThenInclude(i => i.ProductoNav)
+            .FirstOrDefaultAsync(x => x.PublicToken == token);
+        if (v is null) return NotFound(new { error = "Comprobante no encontrado" });
+        return Ok(Map(v));
+    }
+
+    /// <summary>Endpoint PUBLICO (sin auth) para descargar el PDF del comprobante via token.
+    /// Si la venta es Factura A/B/C autorizada → PDF ARCA; si no → PDF de cotizacion interno.</summary>
+    [HttpGet("publica/{token}/pdf")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetPdfByPublicToken(string token)
+    {
+        if (string.IsNullOrWhiteSpace(token)) return NotFound();
+        var v = await _db.CafeVentas.Include(x => x.Items).ThenInclude(i => i.ProductoNav)
+            .FirstOrDefaultAsync(x => x.PublicToken == token);
+        if (v is null) return NotFound(new { error = "Comprobante no encontrado" });
+        var cfg = await _db.CafeSettings.FindAsync(1);
+        var esFacturaArca = v.TipoComprobante is "FA" or "FB" or "FC";
+        var autorizada = v.ArcaEstado == "autorizado" && !string.IsNullOrEmpty(v.ArcaCae)
+                         && v.ArcaCbteNro.HasValue && v.ArcaPtoVta.HasValue && v.ArcaCbteTipoNum.HasValue;
+        byte[] pdfBytes = (esFacturaArca && autorizada) ? BuildArcaPdf(v, cfg!) : _pdfService.GenerarPdfBytes(v, cfg);
+        return File(pdfBytes, "application/pdf", $"{v.Numero}.pdf");
+    }
+
+    /// <summary>Asegura un token publico y devuelve la URL publica + token. Usado por el
+    /// frontend antes de mandar mail/WhatsApp para construir el link a compartir.</summary>
+    [HttpPost("{id:int}/ensure-public-token")]
+    public async Task<IActionResult> EnsurePublicToken(int id)
+    {
+        var v = await _db.CafeVentas.FindAsync(id);
+        if (v is null) return NotFound(new { error = "Venta no encontrada" });
+        var token = await EnsurePublicTokenAsync(v);
+        return Ok(new { token });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
     //  ENVIO DE COMPROBANTE: Email + WhatsApp Interno (con PDF adjunto)
     // ═══════════════════════════════════════════════════════════════════════
 
-    public record SendEmailRequest(string To, string? Subject, string? Body);
+    public record SendEmailRequest(string To, string? Subject, string? Body, string? PublicUrl);
     public record SendWhatsappInternoRequest(string Phone, string? Caption);
 
     /// <summary>Genera el PDF del comprobante y lo manda por email al destinatario indicado.
@@ -251,9 +319,14 @@ public class CafeVentasController : ControllerBase
         var subject = string.IsNullOrWhiteSpace(req.Subject)
             ? $"Comprobante {v.Numero} - {cfg?.NegocioNombre ?? "Frikaf"}"
             : req.Subject!;
+        // Si vino una PublicUrl del frontend, la sumamos al final del body por default
+        // (asi el cliente tambien puede ver el comprobante online si prefiere no abrir el PDF).
+        var linkLine = !string.IsNullOrWhiteSpace(req.PublicUrl)
+            ? $"\n\nTambién lo podés ver online acá: {req.PublicUrl}"
+            : "";
         var body = string.IsNullOrWhiteSpace(req.Body)
             ? $"Hola{(string.IsNullOrWhiteSpace(v.ClienteNombreSnapshot) ? "" : " " + v.ClienteNombreSnapshot)},\n\n" +
-              $"Te adjuntamos el comprobante {v.Numero} por ${v.Total:N2}.\n\n" +
+              $"Te adjuntamos el comprobante {v.Numero} por ${v.Total:N2}." + linkLine + "\n\n" +
               $"Cualquier consulta, escribinos.\n\n" +
               $"Saludos,\n{cfg?.NegocioNombre ?? "Frikaf"}"
             : req.Body!;
@@ -674,7 +747,10 @@ public class CafeVentasController : ControllerBase
             TipoComprobante = NormTipoComprobante(req.TipoComprobante),
             CondicionIva = NormCondicionIva(req.CondicionIva),
             CondicionPago = NormCondicionPago(req.CondicionPago),
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            // Token aleatorio para el link publico /comprobante/{token}. 22 chars
+            // base64-url-safe (~131 bits de entropia) — imposible de adivinar.
+            PublicToken = GeneratePublicToken()
         };
 
         // Mapear items + descontar stock fisico

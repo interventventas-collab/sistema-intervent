@@ -627,11 +627,33 @@ public class ApiClient
     public async Task<CafeVentaDto?> CreateCafeVentaAsync(CreateCafeVentaRequest request)
         => await PostAsync<CafeVentaDto>("/api/cafe/ventas", request);
 
-    /// <summary>Manda el comprobante por email al destinatario indicado (con PDF adjunto).</summary>
-    public async Task<(bool sent, string? error)> SendCafeVentaEmailAsync(int id, string to, string? subject = null, string? body = null)
+    /// <summary>Asegura que la venta tenga un PublicToken (lo genera si no tiene)
+    /// y devuelve el token, asi el frontend puede armar la URL publica.</summary>
+    public async Task<string?> EnsurePublicTokenAsync(int id)
     {
         await SetAuthHeaderAsync();
-        var resp = await _http.PostAsJsonAsync($"/api/cafe/ventas/{id}/send-email", new { To = to, Subject = subject, Body = body });
+        var resp = await _http.PostAsync($"/api/cafe/ventas/{id}/ensure-public-token", null);
+        if (resp.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            await HandleUnauthorizedAsync();
+            return null;
+        }
+        if (!resp.IsSuccessStatusCode) return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            if (doc.RootElement.TryGetProperty("token", out var t)) return t.GetString();
+        }
+        catch { }
+        return null;
+    }
+
+    /// <summary>Manda el comprobante por email al destinatario indicado (con PDF adjunto).
+    /// publicUrl: si esta seteada, se agrega como "Ver online: {url}" al final del body.</summary>
+    public async Task<(bool sent, string? error)> SendCafeVentaEmailAsync(int id, string to, string? subject = null, string? body = null, string? publicUrl = null)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/cafe/ventas/{id}/send-email", new { To = to, Subject = subject, Body = body, PublicUrl = publicUrl });
         if (resp.StatusCode == HttpStatusCode.Unauthorized)
         {
             await HandleUnauthorizedAsync();

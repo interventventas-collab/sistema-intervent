@@ -1,0 +1,246 @@
+@page "/comprobante/{Token}"
+@attribute [AllowAnonymous]
+@layout Web.Layout.LoginLayout
+@inject HttpClient Http
+@inject IJSRuntime JS
+@using System.Net
+@using System.Text.Json
+@using Web.Models
+
+@* ════════════════════════════════════════════════════════════════════════════
+   Pagina PUBLICA (sin login) para que el cliente final vea el comprobante via
+   link compartido. Recibe el token GUID y consulta GET /api/cafe/ventas/publica/{token}.
+   Mobile-first. Si el token es invalido / no existe → mensaje de error claro.
+   ════════════════════════════════════════════════════════════════════════════ *@
+
+<style>
+    body { background: #f1f5f9; min-height: 100vh; }
+    .cp-wrap { max-width: 720px; margin: 0 auto; padding: 0.8rem; }
+    .cp-card { background: white; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); padding: 1.2rem; margin-bottom: 0.8rem; }
+    .cp-h1 { font-size: 1.3rem; font-weight: 700; margin: 0 0 0.3rem; color: #111827; }
+    .cp-sub { font-size: 0.85rem; color: #6b7280; margin: 0; }
+    .cp-row { display: flex; justify-content: space-between; padding: 0.3rem 0; font-size: 0.9rem; border-bottom: 1px dashed #e5e7eb; }
+    .cp-row:last-child { border-bottom: none; }
+    .cp-row strong { color: #374151; }
+    .cp-tabla { width: 100%; border-collapse: collapse; margin-top: 0.4rem; font-size: 0.85rem; }
+    .cp-tabla th { background: #f3f4f6; padding: 0.5rem; text-align: left; font-weight: 700; color: #374151; }
+    .cp-tabla td { padding: 0.5rem; border-bottom: 1px solid #f3f4f6; }
+    .cp-tabla td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .cp-total { font-size: 1.4rem; font-weight: 800; color: #15803d; text-align: right; padding: 0.6rem 0; border-top: 2px solid #15803d; margin-top: 0.5rem; }
+    .cp-totsec { background: #f9fafb; padding: 0.7rem 0.9rem; border-radius: 8px; }
+    .cp-totsec-row { display: flex; justify-content: space-between; padding: 0.2rem 0; font-size: 0.88rem; color: #6b7280; }
+    .cp-btn-pdf { display: block; width: 100%; padding: 0.95rem; background: #1d4ed8; color: white; border: none; border-radius: 10px; font-size: 1rem; font-weight: 700; cursor: pointer; text-decoration: none; text-align: center; }
+    .cp-btn-pdf:hover { background: #1e40af; }
+    .cp-error { background: #fef2f2; border: 1px solid #fca5a5; color: #7f1d1d; padding: 1rem; border-radius: 8px; text-align: center; }
+    .cp-tipo-badge { display: inline-block; background: #1d4ed8; color: white; padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.75rem; font-weight: 700; }
+    .cp-estado-anulado { background: #fee2e2; color: #991b1b; padding: 0.5rem 0.8rem; border-radius: 6px; font-weight: 700; text-align: center; }
+    .cp-pagado-badge { display: inline-block; background: #d1fae5; color: #065f46; padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.75rem; font-weight: 700; margin-left: 0.4rem; }
+    .cp-loading { text-align: center; padding: 3rem 1rem; color: #6b7280; }
+</style>
+
+<div class="cp-wrap">
+    @if (loading)
+    {
+        <div class="cp-card cp-loading">
+            <div style="font-size: 2rem;">⏳</div>
+            <div>Cargando comprobante...</div>
+        </div>
+    }
+    else if (errorMsg is not null)
+    {
+        <div class="cp-card">
+            <div class="cp-error">
+                <strong>No se pudo cargar el comprobante</strong><br />
+                <span style="font-size: 0.88rem;">@errorMsg</span><br />
+                <span style="font-size: 0.78rem; color: #991b1b; margin-top: 0.5rem; display: block;">Si recibiste este link de tu proveedor, pedile que te lo reenvíe — puede estar vencido o ser incorrecto.</span>
+            </div>
+        </div>
+    }
+    else if (venta is not null)
+    {
+        <div class="cp-card">
+            <div style="display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: 0.5rem;">
+                <div>
+                    <p class="cp-h1">Comprobante @venta.Numero</p>
+                    <p class="cp-sub">@(venta.Fecha.ToString("dddd dd/MM/yyyy", new System.Globalization.CultureInfo("es-AR")))</p>
+                </div>
+                <div style="text-align: right;">
+                    <span class="cp-tipo-badge">@TipoLargo(venta.TipoComprobante)</span>
+                    @if (venta.IsPaid)
+                    {
+                        <span class="cp-pagado-badge">✓ PAGADO</span>
+                    }
+                </div>
+            </div>
+            @if (venta.Estado == "anulado")
+            {
+                <div class="cp-estado-anulado" style="margin-top: 0.7rem;">⚠ COMPROBANTE ANULADO</div>
+            }
+        </div>
+
+        <div class="cp-card">
+            <strong style="display: block; margin-bottom: 0.4rem; font-size: 0.78rem; text-transform: uppercase; color: #6b7280;">Cliente</strong>
+            <div style="font-size: 1.05rem; font-weight: 600; color: #111827;">@(venta.ClienteRazonSocial ?? venta.ClienteNombre ?? "Consumidor final")</div>
+            @if (!string.IsNullOrWhiteSpace(venta.ClienteCuit))
+            {
+                <div class="cp-sub">CUIT/DNI: @venta.ClienteCuit</div>
+            }
+            @if (!string.IsNullOrWhiteSpace(venta.ClienteDireccion))
+            {
+                <div class="cp-sub">@venta.ClienteDireccion@(string.IsNullOrWhiteSpace(venta.ClienteLocalidad) ? "" : ", " + venta.ClienteLocalidad)</div>
+            }
+            @if (!string.IsNullOrWhiteSpace(venta.ClienteDomicilioEntrega) && venta.ClienteDomicilioEntrega != venta.ClienteDireccion)
+            {
+                <div class="cp-sub" style="margin-top: 0.3rem; color: #4b5563;"><strong>Entrega:</strong> @venta.ClienteDomicilioEntrega</div>
+            }
+        </div>
+
+        <div class="cp-card">
+            <strong style="display: block; margin-bottom: 0.4rem; font-size: 0.78rem; text-transform: uppercase; color: #6b7280;">Detalle</strong>
+            <table class="cp-tabla">
+                <thead>
+                    <tr>
+                        <th>Producto</th>
+                        <th class="num">Cant.</th>
+                        <th class="num">P. Unit.</th>
+                        <th class="num">Subtotal</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var i in venta.Items)
+                    {
+                        <tr>
+                            <td>
+                                @i.ProductoNombre
+                                @if (!string.IsNullOrEmpty(i.Molienda)) { <text> — @i.Molienda</text> }
+                                @if (!i.EsConceptoLibre) { <text> · @i.Formato</text> }
+                            </td>
+                            <td class="num">@i.Cantidad.ToString("0.##")</td>
+                            <td class="num">$ @i.PrecioUnitario.ToString("N2", new System.Globalization.CultureInfo("es-AR"))</td>
+                            <td class="num">$ @i.Subtotal.ToString("N2", new System.Globalization.CultureInfo("es-AR"))</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="cp-card cp-totsec">
+            <div class="cp-totsec-row">
+                <span>Subtotal:</span>
+                <span>$ @venta.Subtotal.ToString("N2", new System.Globalization.CultureInfo("es-AR"))</span>
+            </div>
+            @if (venta.Descuento > 0)
+            {
+                <div class="cp-totsec-row">
+                    <span>Descuento:</span>
+                    <span>- $ @venta.Descuento.ToString("N2", new System.Globalization.CultureInfo("es-AR"))</span>
+                </div>
+            }
+            @{
+                var esFAB = venta.TipoComprobante is "FA" or "FB";
+                var iva = esFAB ? Math.Round(venta.Total * 0.21m, 2, MidpointRounding.AwayFromZero) : 0m;
+                var totalFinal = venta.Total + iva;
+            }
+            @if (esFAB)
+            {
+                <div class="cp-totsec-row">
+                    <span>Neto sin IVA:</span>
+                    <span>$ @venta.Total.ToString("N2", new System.Globalization.CultureInfo("es-AR"))</span>
+                </div>
+                <div class="cp-totsec-row" style="color: #1d4ed8;">
+                    <span>IVA 21%:</span>
+                    <span>$ @iva.ToString("N2", new System.Globalization.CultureInfo("es-AR"))</span>
+                </div>
+            }
+            <div class="cp-total">$ @totalFinal.ToString("N2", new System.Globalization.CultureInfo("es-AR"))</div>
+            @if (!string.IsNullOrWhiteSpace(venta.CondicionPago))
+            {
+                <div class="cp-totsec-row" style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #e5e7eb;">
+                    <span><strong>Forma de pago:</strong></span>
+                    <span>@FormaPagoLabel(venta.CondicionPago)</span>
+                </div>
+            }
+        </div>
+
+        @if (venta.TipoComprobante is "FA" or "FB" or "FC" && venta.ArcaCae is not null)
+        {
+            <div class="cp-card" style="background: #ecfdf5; border: 1px solid #6ee7b7;">
+                <div style="font-size: 0.82rem; color: #065f46;">
+                    <strong>✓ Comprobante autorizado por ARCA (ex AFIP)</strong><br />
+                    <span style="font-family: monospace; font-size: 0.78rem;">CAE: @venta.ArcaCae · Vto: @(venta.ArcaCaeVto?.ToString("dd/MM/yyyy") ?? "—")</span>
+                </div>
+            </div>
+        }
+
+        <div class="cp-card">
+            <a href="@($"/api/cafe/ventas/publica/{Uri.EscapeDataString(Token!)}/pdf")" target="_blank" class="cp-btn-pdf">
+                📥 Descargar PDF
+            </a>
+        </div>
+
+        <p style="text-align: center; font-size: 0.72rem; color: #9ca3af; margin: 1rem 0;">
+            @(negocioNombre ?? "Frikaf") · Comprobante generado automáticamente
+        </p>
+    }
+</div>
+
+@code {
+    [Parameter] public string? Token { get; set; }
+
+    private bool loading = true;
+    private string? errorMsg;
+    private CafeVentaDto? venta;
+    private string? negocioNombre = "Frikaf";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (string.IsNullOrWhiteSpace(Token))
+        {
+            errorMsg = "Link inválido";
+            loading = false;
+            return;
+        }
+        try
+        {
+            var resp = await Http.GetAsync($"api/cafe/ventas/publica/{Uri.EscapeDataString(Token)}");
+            if (resp.StatusCode == HttpStatusCode.NotFound)
+            {
+                errorMsg = "El comprobante no existe o el link expiró";
+                return;
+            }
+            if (!resp.IsSuccessStatusCode)
+            {
+                errorMsg = "Error cargando comprobante: " + resp.StatusCode;
+                return;
+            }
+            venta = await resp.Content.ReadFromJsonAsync<CafeVentaDto>();
+            if (venta is null) errorMsg = "Comprobante vacío";
+        }
+        catch (Exception ex)
+        {
+            errorMsg = ex.Message;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private static string TipoLargo(string t) => t switch
+    {
+        "FA" => "Factura A", "FB" => "Factura B", "FC" => "Factura C",
+        "X" => "Comprobante X", "PRO" => "Proforma", _ => t
+    };
+
+    private static string FormaPagoLabel(string c) => c.ToUpperInvariant() switch
+    {
+        "EFECTIVO" => "Efectivo",
+        "TRANSFERENCIA" => "Transferencia bancaria",
+        "DEBITO" => "Tarjeta de débito",
+        "CREDITO" => "Tarjeta de crédito",
+        "MERCADOPAGO" => "MercadoPago",
+        "CHEQUE" => "Cheque",
+        "CTA_CORRIENTE" => "Cuenta corriente",
+        _ => c
+    };
+}
