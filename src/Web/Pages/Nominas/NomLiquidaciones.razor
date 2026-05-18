@@ -398,7 +398,8 @@
                                                 @if (!string.IsNullOrEmpty(p.Detalle)) { <div>@p.Detalle</div> }
                                                 @if (!string.IsNullOrEmpty(p.Notas)) { <div style="color: #9ca3af; font-style: italic;">@p.Notas</div> }
                                             </td>
-                                            <td>
+                                            <td style="white-space: nowrap;">
+                                                <button class="btn-icon" style="color: #1d4ed8; margin-right: 0.2rem;" @onclick="() => OpenEditPago(p)" title="Editar pago (requiere clave)">✎</button>
                                                 <button class="btn-icon btn-delete" @onclick="() => DeletePago(p.Id)" title="Borrar pago">×</button>
                                             </td>
                                         </tr>
@@ -529,6 +530,94 @@
     </div>
 }
 
+@* ════════ Modal editar pago — requiere clave ════════ *@
+@if (editingPago is not null)
+{
+    <div class="modal-overlay" style="z-index: 9100;" @onclick="CancelEditPago">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 540px;">
+            <div class="modal-header" style="background: #1d4ed8; color: white;">
+                <h4 style="margin: 0;">✎ Editar pago</h4>
+                <button class="btn-close" @onclick="CancelEditPago" style="color: white;" disabled="@editingPagoSaving">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 1rem 1.2rem;">
+                <div style="background: #eff6ff; border-left: 3px solid #1d4ed8; padding: 0.4rem 0.6rem; border-radius: 4px; margin-bottom: 0.7rem; font-size: 0.82rem; color: #1e40af;">
+                    🔒 Solo el operador autorizado con la clave puede editar pagos. Esto es para evitar cambios accidentales o no auditables.
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Fecha</label>
+                        <input type="date" class="form-input" @bind="editingPagoFecha" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Método</label>
+                        <select class="form-input" @bind="editingPagoMetodo">
+                            <option value="efectivo">Efectivo</option>
+                            <option value="transferencia">Transferencia</option>
+                            <option value="otro">Otro</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Concepto</label>
+                        <select class="form-input" @bind="editingPagoConcepto">
+                            <option value="sueldo">💰 Sueldo</option>
+                            <option value="horas_extra">⏰ Horas extras</option>
+                            <option value="comision_cafe">☕ Comisión</option>
+                            <option value="bono">🎁 Bonos</option>
+                            <option value="adelanto">💸 Adelantos</option>
+                            <option value="aguinaldo">🎄 Aguinaldo</option>
+                            <option value="otro">📝 Otro</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Monto</label>
+                        <input type="number" step="0.01" class="form-input" @bind="editingPagoMonto" />
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Detalle</label>
+                    <input type="text" class="form-input" @bind="editingPagoDetalle" placeholder="Detalle del pago" />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Notas</label>
+                    <textarea class="form-input" rows="2" @bind="editingPagoNotas" placeholder="Notas internas (opcional)"></textarea>
+                </div>
+
+                <hr style="margin: 1rem 0; border: none; border-top: 1px dashed #d1d5db;" />
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Operador</label>
+                        <input type="text" class="form-input" @bind="editingPagoOperator" placeholder="OSMAR" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Clave 🔒</label>
+                        <input type="password" class="form-input" @bind="editingPagoPassword" placeholder="Clave de seguridad" />
+                    </div>
+                </div>
+
+                @if (!string.IsNullOrEmpty(editingPagoError))
+                {
+                    <div style="color: #b91c1c; background: #fef2f2; padding: 0.4rem 0.6rem; border-radius: 4px; font-size: 0.85rem; margin-top: 0.5rem;">
+                        @editingPagoError
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CancelEditPago" disabled="@editingPagoSaving">Cancelar</button>
+                <button class="btn btn-primary" @onclick="SaveEditPago" disabled="@editingPagoSaving">
+                    @(editingPagoSaving ? "Guardando..." : "💾 Guardar cambios")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private List<NomLiquidacionDto>? liqs;
     private List<NomEmpleadoDto>? empleados;
@@ -595,6 +684,19 @@
     // Delete
     private bool showDeleteConfirm;
     private NomLiquidacionDto? liqToDelete;
+
+    // Edit pago (con clave)
+    private NomPagoDto? editingPago;
+    private DateTime editingPagoFecha = DateTime.Today;
+    private string editingPagoMetodo = "efectivo";
+    private string editingPagoConcepto = "sueldo";
+    private decimal editingPagoMonto;
+    private string editingPagoDetalle = "";
+    private string editingPagoNotas = "";
+    private string editingPagoOperator = "OSMAR";
+    private string editingPagoPassword = "";
+    private string? editingPagoError;
+    private bool editingPagoSaving;
 
     private static int[] Anios => Enumerable.Range(DateTime.Today.Year - 3, 5).ToArray();
 
@@ -816,6 +918,74 @@
             }
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    // ── Editar pago (con clave) ──
+    private void OpenEditPago(NomPagoDto p)
+    {
+        editingPago = p;
+        editingPagoFecha = p.FechaPago;
+        editingPagoMetodo = p.Metodo ?? "efectivo";
+        editingPagoConcepto = p.Concepto ?? "sueldo";
+        editingPagoMonto = p.Monto;
+        editingPagoDetalle = p.Detalle ?? "";
+        editingPagoNotas = p.Notas ?? "";
+        editingPagoOperator = "OSMAR";   // default — el usuario puede cambiarlo
+        editingPagoPassword = "";
+        editingPagoError = null;
+        editingPagoSaving = false;
+    }
+
+    private void CancelEditPago()
+    {
+        if (editingPagoSaving) return;
+        editingPago = null;
+        editingPagoError = null;
+        editingPagoPassword = "";
+    }
+
+    private async Task SaveEditPago()
+    {
+        if (editingPago is null) return;
+        if (string.IsNullOrWhiteSpace(editingPagoPassword))
+        {
+            editingPagoError = "Ingresá la clave de seguridad para guardar cambios.";
+            return;
+        }
+        editingPagoSaving = true;
+        editingPagoError = null;
+        try
+        {
+            var (liq, err) = await Api.UpdateNomPagoAsync(editingPago.Id, new UpdateNomPagoRequest
+            {
+                FechaPago = editingPagoFecha,
+                Metodo = editingPagoMetodo,
+                Monto = editingPagoMonto,
+                Concepto = editingPagoConcepto,
+                Detalle = editingPagoDetalle,
+                Notas = editingPagoNotas,
+                Operator = editingPagoOperator,
+                Password = editingPagoPassword
+            });
+            if (err is not null)
+            {
+                editingPagoError = err;
+                return;
+            }
+            if (liq is not null) editingLiq = liq;
+            ToastService.Success("Pago actualizado");
+            editingPago = null;
+            editingPagoPassword = "";
+            await Load();
+        }
+        catch (Exception ex)
+        {
+            editingPagoError = ex.Message;
+        }
+        finally
+        {
+            editingPagoSaving = false;
+        }
     }
 
     private void ConfirmDelete(NomLiquidacionDto l) { liqToDelete = l; showDeleteConfirm = true; }

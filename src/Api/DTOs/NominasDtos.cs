@@ -102,6 +102,22 @@ public class CreateNomPagoRequest
     public string? Notas { get; set; }
 }
 
+/// <summary>Editar un pago existente. Requiere operador + clave (misma password global
+/// que las acciones criticas — sales.delete_password).</summary>
+public class UpdateNomPagoRequest
+{
+    public DateTime? FechaPago { get; set; }
+    public string? Metodo { get; set; }
+    public decimal? Monto { get; set; }
+    public string? Concepto { get; set; }
+    public string? Detalle { get; set; }
+    public string? Notas { get; set; }
+    /// <summary>Nombre del operador autorizado (sales.delete_allowed_operator, default OSMAR).</summary>
+    public string? Operator { get; set; }
+    /// <summary>Clave de seguridad (sales.delete_password). Sin esto no se ejecuta el update.</summary>
+    public string? Password { get; set; }
+}
+
 // ===== Reportes =====
 public record NomResumenMensualDto(
     int Anio, int Mes,

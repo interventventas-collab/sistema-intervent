@@ -136,6 +136,19 @@ public class CreateNomPagoRequest
     public string? Notas { get; set; }
 }
 
+/// <summary>Editar un pago existente. Requiere operador + clave.</summary>
+public class UpdateNomPagoRequest
+{
+    public DateTime? FechaPago { get; set; }
+    public string? Metodo { get; set; }
+    public decimal? Monto { get; set; }
+    public string? Concepto { get; set; }
+    public string? Detalle { get; set; }
+    public string? Notas { get; set; }
+    public string? Operator { get; set; }
+    public string? Password { get; set; }
+}
+
 public class NomResumenMensualDto
 {
     public int Anio { get; set; }

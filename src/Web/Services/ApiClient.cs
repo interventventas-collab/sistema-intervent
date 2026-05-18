@@ -310,6 +310,36 @@ public class ApiClient
     public async Task<bool> DeleteNomPagoAsync(int id)
         => await DeleteAsync($"/api/nominas/pagos/{id}");
 
+    /// <summary>Edita un pago de liquidacion. Requiere operador + clave (los mismos que
+    /// para borrar comprobantes del modulo Cafe).</summary>
+    public async Task<(NomLiquidacionDto? liq, string? error)> UpdateNomPagoAsync(int id, UpdateNomPagoRequest req)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PutAsJsonAsync($"/api/nominas/pagos/{id}", req);
+        if (resp.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            await HandleUnauthorizedAsync();
+            return (null, "Sesión expirada");
+        }
+        var content = await resp.Content.ReadAsStringAsync();
+        if (resp.IsSuccessStatusCode)
+        {
+            try
+            {
+                return (System.Text.Json.JsonSerializer.Deserialize<NomLiquidacionDto>(content,
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }), null);
+            }
+            catch { return (null, "No se pudo leer la respuesta"); }
+        }
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(content);
+            if (doc.RootElement.TryGetProperty("error", out var err)) return (null, err.GetString());
+        }
+        catch { }
+        return (null, content);
+    }
+
     public async Task<NomResumenMensualDto?> GetNomResumenAsync(int anio, int mes)
         => await GetAsync<NomResumenMensualDto>($"/api/nominas/resumen?anio={anio}&mes={mes}");
 

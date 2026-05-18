@@ -188,6 +188,70 @@ public class NomLiquidacionesController : ControllerBase
         return Ok(Map(saved));
     }
 
+    /// <summary>Edita un pago existente. Requiere clave de seguridad (la misma global que
+    /// se usa para borrar comprobantes: sales.delete_password con sales.delete_allowed_operator).
+    /// Si cambia el monto y eso re-completa la liquidacion, el estado se ajusta a 'pagado';
+    /// si la deja con saldo, vuelve a 'pendiente'.</summary>
+    [HttpPut("pagos/{id:int}")]
+    public async Task<IActionResult> UpdatePago(int id, [FromBody] UpdateNomPagoRequest req)
+    {
+        if (req is null) return BadRequest(new { error = "Body vacio" });
+
+        // ── Validar clave (reuso el helper de Cafe Ventas para mantener la misma password global) ──
+        var allowedOp = (await _db.AppSettings.FindAsync("sales.delete_allowed_operator"))?.Value ?? "OSMAR";
+        var expectedPassword = (await _db.AppSettings.FindAsync("sales.delete_password"))?.Value ?? "";
+        if (!string.Equals(req.Operator ?? "", allowedOp, StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { error = $"Solo {allowedOp} puede editar pagos." });
+        if (string.IsNullOrEmpty(expectedPassword) || req.Password != expectedPassword)
+            return BadRequest(new { error = "Clave incorrecta." });
+
+        var pago = await _db.NomPagos.FindAsync(id);
+        if (pago is null) return NotFound(new { error = "Pago no encontrado" });
+        var liq = await _db.NomLiquidaciones.Include(l => l.Pagos).FirstOrDefaultAsync(l => l.Id == pago.LiquidacionId);
+        if (liq is null) return BadRequest(new { error = "Liquidacion del pago no encontrada" });
+        if (liq.Estado == "anulada") return BadRequest(new { error = "No se puede editar un pago de una liquidacion anulada" });
+
+        // ── Aplicar cambios (solo los campos que vienen seteados) ──
+        if (req.FechaPago.HasValue) pago.FechaPago = req.FechaPago.Value.Date;
+        if (!string.IsNullOrWhiteSpace(req.Metodo)) pago.Metodo = req.Metodo.Trim().ToLowerInvariant();
+        if (req.Monto.HasValue)
+        {
+            if (req.Monto.Value <= 0) return BadRequest(new { error = "El monto debe ser mayor a 0" });
+            // Validar que el nuevo monto no exceda el total a pagar. Suma de todos los otros pagos + este nuevo monto.
+            var otrosPagos = liq.Pagos.Where(p => p.Id != pago.Id).Sum(p => p.Monto);
+            if (otrosPagos + req.Monto.Value > liq.NetoAPagar + 0.01m)
+                return BadRequest(new { error = $"El monto excede el total a pagar (${liq.NetoAPagar - otrosPagos:N2} restante)" });
+            pago.Monto = req.Monto.Value;
+        }
+        if (!string.IsNullOrWhiteSpace(req.Concepto))
+        {
+            var conceptosValidos = new HashSet<string> { "sueldo", "comision_cafe", "horas_extra", "bono", "adelanto", "aguinaldo", "otro" };
+            var concepto = req.Concepto.Trim().ToLowerInvariant();
+            pago.Concepto = conceptosValidos.Contains(concepto) ? concepto : "otro";
+        }
+        if (req.Detalle is not null) pago.Detalle = string.IsNullOrWhiteSpace(req.Detalle) ? null : req.Detalle.Trim();
+        if (req.Notas is not null) pago.Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim();
+
+        // ── Recalcular estado de la liquidacion segun el total pagado ──
+        var totalPagado = liq.Pagos.Sum(p => p.Monto);
+        if (totalPagado >= liq.NetoAPagar - 0.01m && liq.Estado != "anulada")
+        {
+            liq.Estado = "pagado";
+        }
+        else if (liq.Estado == "pagado")
+        {
+            liq.Estado = "pendiente";
+        }
+        liq.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        var saved = await _db.NomLiquidaciones
+            .Include(l => l.EmpleadoNav)
+            .Include(l => l.Pagos)
+            .FirstAsync(l => l.Id == liq.Id);
+        return Ok(Map(saved));
+    }
+
     [HttpDelete("pagos/{id:int}")]
     public async Task<IActionResult> DeletePago(int id)
     {
