@@ -217,6 +217,11 @@ public class EmitirComprobanteRequest
     /// <summary>Obligatorio desde RG 5616. Ver tabla en el form del frontend.</summary>
     public int CondicionIVAReceptorId { get; set; } = 5; // 5=Consumidor Final por default
     public List<EmitirComprobanteItemDto> Items { get; set; } = new();
+    /// <summary>Fecha de emision a registrar en ARCA. Si null → se usa "hoy" en hora Argentina.
+    /// Importante: NO usar DateTime.Today del server (corre en UTC), porque entre 21:00 y 23:59
+    /// ART el server UTC ya esta en el dia siguiente — la factura saldria con fecha del manana
+    /// o de ayer segun el caso.</summary>
+    public DateTime? Fecha { get; set; }
 }
 
 public class ComprobantePdfDataDto

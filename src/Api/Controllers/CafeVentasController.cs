@@ -968,6 +968,10 @@ public class CafeVentasController : ControllerBase
                 ReceptorDomicilio = venta.ClienteDireccionSnapshot,
                 CondicionIVAReceptorId = condIvaReceptor,
                 Items = items,
+                // Pasamos la fecha de la venta (ya normalizada a ART por FechaArgentina).
+                // ARCA registra el CAE con esta fecha — fix del bug donde el server UTC
+                // del contenedor estaba un dia atras y la factura salia con fecha de ayer.
+                Fecha = venta.Fecha,
             };
 
             var resultado = await _arcaInvoiceService.EmitirComprobanteAsync(arcaAccount.Id, req);

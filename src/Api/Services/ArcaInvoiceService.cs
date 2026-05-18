@@ -110,7 +110,11 @@ public class ArcaInvoiceService
         }
 
         // ---- Armar SOAP FECAESolicitar ----
-        var fecha = DateTime.Today.ToString("yyyyMMdd");
+        // Si el caller paso una fecha (caso normal — la fecha de la venta), la usamos.
+        // Si no, fallback a hoy en hora Argentina (NO DateTime.Today que corre en UTC en el
+        // contenedor y puede caer un dia atras o adelante segun la hora del dia).
+        var fechaDt = req.Fecha ?? DateTime.UtcNow.AddHours(-3);
+        var fecha = fechaDt.ToString("yyyyMMdd");
         var soap = BuildFecaeSolicitarSoap(account.Cuit, ta, req, siguienteNro, fecha, impNeto, impIVA, impTotal, ivaAgrupado, esTipoC);
 
         XDocument doc;
