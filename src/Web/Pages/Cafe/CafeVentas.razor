@@ -75,7 +75,8 @@
                 (@VentasFiltradas.Count@(HayFiltrosActivos ? $" de {ventas?.Count ?? 0}" : ""))
             </span>
         </h3>
-        <button class="btn btn-primary" @onclick="ShowCreate">+ Nueva Venta</button>
+        @* El boton "+ Nueva Venta" vive en el topbar (siempre visible). El de esta pantalla
+           se saco el 2026-05-19 porque era duplicado y solo funcionaba el del topbar. *@
     </div>
     @* ─── Barra de filtros ─── *@
     @if (ventas is not null && ventas.Count > 0)
