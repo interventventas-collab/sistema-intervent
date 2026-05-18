@@ -49,6 +49,56 @@ public class CafeVentasController : ControllerBase
     /// Si viene Unspecified (sin TZ) lo respeto literal — son los componentes que tipeo el usuario.
     /// Si no viene nada, default = hoy en ART.
     /// </summary>
+    /// <summary>
+    /// Arma el nombre de archivo descriptivo del PDF del comprobante:
+    /// "{Tipo} - {Cliente} - {Direccion} - {Fecha}.pdf"
+    /// Ej: "Factura A - DULCE LUGAR SRL - PERON 1891 - 2026-05-18.pdf"
+    /// Pedido del usuario 2026-05-18: cuando descarga un comprobante, que el nombre
+    /// del archivo le diga de un vistazo qué es y a quién. Antes era solo "CAFE-2026-0131.pdf".
+    /// Sanitiza chars inválidos para filesystem y trunca para no pasarse del límite (~200 chars).
+    /// </summary>
+    private static string BuildPdfFilename(CafeVenta v)
+    {
+        var tipo = v.TipoComprobante switch
+        {
+            "FA" => "Factura A",
+            "FB" => "Factura B",
+            "FC" => "Factura C",
+            "X" => "Comprobante X",
+            "PRO" => "Proforma",
+            _ => v.TipoComprobante ?? "Comprobante"
+        };
+        var cliente = !string.IsNullOrWhiteSpace(v.ClienteRazonSocialSnapshot)
+            ? v.ClienteRazonSocialSnapshot!
+            : (v.ClienteNombreSnapshot ?? "Consumidor Final");
+        var direccion = !string.IsNullOrWhiteSpace(v.ClienteDomicilioEntregaSnapshot)
+            ? v.ClienteDomicilioEntregaSnapshot!
+            : (v.ClienteDireccionSnapshot ?? "");
+        var fecha = v.Fecha.ToString("yyyy-MM-dd");
+
+        // Sanitizar cada parte: chars invalidos en filesystem (/ \ : * ? " < > |) → espacio.
+        // Tambien colapsar espacios multiples y truncar para no romper el limite del FS.
+        static string Sanitize(string s, int maxLen)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return "";
+            var invalid = new HashSet<char>(System.IO.Path.GetInvalidFileNameChars()) { '/', '\\', ':', '*', '?', '"', '<', '>', '|' };
+            var clean = new string(s.Select(c => invalid.Contains(c) ? ' ' : c).ToArray());
+            clean = System.Text.RegularExpressions.Regex.Replace(clean, @"\s+", " ").Trim();
+            return clean.Length > maxLen ? clean.Substring(0, maxLen).Trim() : clean;
+        }
+
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(tipo)) parts.Add(Sanitize(tipo, 30));
+        var clienteSan = Sanitize(cliente, 60);
+        if (!string.IsNullOrWhiteSpace(clienteSan)) parts.Add(clienteSan);
+        var direccionSan = Sanitize(direccion, 60);
+        if (!string.IsNullOrWhiteSpace(direccionSan)) parts.Add(direccionSan);
+        parts.Add(fecha);
+
+        var name = string.Join(" - ", parts);
+        return name + ".pdf";
+    }
+
     private static DateTime FechaArgentina(DateTime? input)
     {
         if (!input.HasValue) return DateTime.UtcNow.AddHours(-3).Date;
@@ -179,11 +229,11 @@ public class CafeVentasController : ControllerBase
         if (esFacturaArca && autorizada)
         {
             var pdfBytes = BuildArcaPdf(v, cfg!);
-            return File(pdfBytes, "application/pdf", $"{v.Numero}.pdf");
+            return File(pdfBytes, "application/pdf", BuildPdfFilename(v));
         }
 
         var bytes = _pdfService.GenerarPdfBytes(v, cfg);
-        return File(bytes, "application/pdf", $"{v.Numero}.pdf");
+        return File(bytes, "application/pdf", BuildPdfFilename(v));
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -239,7 +289,7 @@ public class CafeVentasController : ControllerBase
         var autorizada = v.ArcaEstado == "autorizado" && !string.IsNullOrEmpty(v.ArcaCae)
                          && v.ArcaCbteNro.HasValue && v.ArcaPtoVta.HasValue && v.ArcaCbteTipoNum.HasValue;
         byte[] pdfBytes = (esFacturaArca && autorizada) ? BuildArcaPdf(v, cfg!) : _pdfService.GenerarPdfBytes(v, cfg);
-        return File(pdfBytes, "application/pdf", $"{v.Numero}.pdf");
+        return File(pdfBytes, "application/pdf", BuildPdfFilename(v));
     }
 
     /// <summary>Asegura un token publico y devuelve la URL publica + token. Usado por el
@@ -349,7 +399,7 @@ public class CafeVentasController : ControllerBase
             };
             message.To.Add(req.To);
             using var ms = new MemoryStream(pdfBytes);
-            var attachment = new System.Net.Mail.Attachment(ms, $"{v.Numero}.pdf", "application/pdf");
+            var attachment = new System.Net.Mail.Attachment(ms, BuildPdfFilename(v), "application/pdf");
             message.Attachments.Add(attachment);
             await client.SendMailAsync(message);
             return Ok(new { sent = true, message = "Email enviado a " + req.To });
@@ -387,7 +437,7 @@ public class CafeVentasController : ControllerBase
             ? $"Hola{(string.IsNullOrWhiteSpace(v.ClienteNombreSnapshot) ? "" : " " + v.ClienteNombreSnapshot)}, te paso el comprobante {v.Numero} por ${v.Total:N2}. Saludos!"
             : req.Caption!;
 
-        var result = await _whatsAppService.SendMessageWithPdfAsync(req.Phone, caption, pdfBytes, $"{v.Numero}.pdf");
+        var result = await _whatsAppService.SendMessageWithPdfAsync(req.Phone, caption, pdfBytes, BuildPdfFilename(v));
         if (result.Success)
             return Ok(new { sent = true, message = result.Message });
         return BadRequest(new { sent = false, error = result.Message });
