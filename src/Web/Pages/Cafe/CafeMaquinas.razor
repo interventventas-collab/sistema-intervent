@@ -21,7 +21,11 @@
                 <div style="flex:1; min-width:160px; padding:0.5rem 0.8rem; background:#fef3c7; border:1px solid #fcd34d; border-radius:6px;">
                     <div style="font-size:0.72rem; color:#92400e; font-weight:700;">FINANCIADAS ACTIVAS</div>
                     <div style="font-size:1.1rem; font-weight:700; color:#451a03;">@stats.FinanciadasActivas / @stats.FinanciadasTotales</div>
-                    <div style="font-size:0.75rem; color:#92400e;">Saldo: $@stats.SaldoFinanciamientoTotal.ToString("N0")</div>
+                    <div style="font-size:0.75rem; color:#92400e;">Saldo ARS: $@stats.SaldoFinanciamientoArs.ToString("N0")</div>
+                    @if (stats.SaldoFinanciamientoUsd > 0)
+                    {
+                        <div style="font-size:0.75rem; color:#92400e;">Saldo USD: U$D @stats.SaldoFinanciamientoUsd.ToString("N0")</div>
+                    }
                 </div>
                 <div style="flex:1; min-width:160px; padding:0.5rem 0.8rem; background:#dcfce7; border:1px solid #86efac; border-radius:6px;">
                     <div style="font-size:0.72rem; color:#166534; font-weight:700;">PAGADAS</div>

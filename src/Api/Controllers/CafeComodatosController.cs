@@ -29,15 +29,25 @@ public class CafeComodatosController : ControllerBase
         decimal? SaldoFinanciamiento, decimal PagosAcumulados, int PagosCount,
         DateTime CreatedAt);
 
-    private static ComodatoDto Map(CafeComodato c) => new(
-        c.Id, c.ClienteId, c.Cliente?.Nombre, c.Modalidad, c.Moneda,
-        c.Marca, c.Modelo, c.NumeroSerie, c.FechaEntrega,
-        c.Estado, c.FechaDevolucion, c.Notas, c.ValorEstimado,
-        c.PrecioVenta, c.CuotasTotales, c.ValorCuota, c.DiaPagoMensual,
-        c.SaldoFinanciamiento,
-        c.Pagos?.Sum(p => p.Importe) ?? 0m,
-        c.Pagos?.Count ?? 0,
-        c.CreatedAt);
+    private static ComodatoDto Map(CafeComodato c)
+    {
+        // Calculamos saldo en RUNTIME (Precio - Pagos), no usamos c.SaldoFinanciamiento
+        // guardado en DB porque a veces queda viejo si el precio cambio despues de hacer pagos
+        // o por bugs viejos de migracion. La unica fuente de verdad son Precio + lista de Pagos.
+        var pagosAcumulados = c.Pagos?.Sum(p => p.Importe) ?? 0m;
+        decimal? saldoCalculado = c.Modalidad == "FINANCIADA"
+            ? Math.Max(0m, (c.PrecioVenta ?? 0m) - pagosAcumulados)
+            : null;
+        return new ComodatoDto(
+            c.Id, c.ClienteId, c.Cliente?.Nombre, c.Modalidad, c.Moneda,
+            c.Marca, c.Modelo, c.NumeroSerie, c.FechaEntrega,
+            c.Estado, c.FechaDevolucion, c.Notas, c.ValorEstimado,
+            c.PrecioVenta, c.CuotasTotales, c.ValorCuota, c.DiaPagoMensual,
+            saldoCalculado,
+            pagosAcumulados,
+            c.Pagos?.Count ?? 0,
+            c.CreatedAt);
+    }
 
     public record PagoDto(int Id, int ComodatoId, DateTime Fecha, decimal Importe, string? MedioPago, string? Notas, DateTime CreatedAt);
 
@@ -81,6 +91,11 @@ public class CafeComodatosController : ControllerBase
         var todos = await _db.CafeComodatos.Include(c => c.Pagos).ToListAsync();
         var comodatos = todos.Where(c => c.Modalidad == "COMODATO").ToList();
         var financiadas = todos.Where(c => c.Modalidad == "FINANCIADA").ToList();
+        // Calcular saldo en runtime (Precio - Pagos) por moneda — NO sumamos USD con ARS.
+        decimal SaldoCalculado(CafeComodato c) =>
+            Math.Max(0m, (c.PrecioVenta ?? 0m) - (c.Pagos?.Sum(p => p.Importe) ?? 0m));
+        var activasArs = financiadas.Where(c => c.Estado == "EN_CLIENTE" && c.Moneda == "ARS").ToList();
+        var activasUsd = financiadas.Where(c => c.Estado == "EN_CLIENTE" && c.Moneda == "USD").ToList();
         return Ok(new
         {
             comodatosTotales = comodatos.Count,
@@ -88,7 +103,12 @@ public class CafeComodatosController : ControllerBase
             financiadasTotales = financiadas.Count,
             financiadasActivas = financiadas.Count(c => c.Estado == "EN_CLIENTE"),
             financiadasPagadas = financiadas.Count(c => c.Estado == "PAGADA"),
-            saldoFinanciamientoTotal = financiadas.Where(c => c.Estado == "EN_CLIENTE").Sum(c => c.SaldoFinanciamiento ?? 0),
+            // Total ARS y USD por separado (NO se mezclan)
+            saldoFinanciamientoArs = activasArs.Sum(SaldoCalculado),
+            saldoFinanciamientoUsd = activasUsd.Sum(SaldoCalculado),
+            // Campo legacy — suma SOLO ARS para que el frontend viejo siga funcionando con
+            // el numero correcto (sin contaminar con USD). Cuando el frontend actualice, sacar.
+            saldoFinanciamientoTotal = activasArs.Sum(SaldoCalculado),
             valorEstimadoComodatos = comodatos.Where(c => c.Estado == "EN_CLIENTE").Sum(c => c.ValorEstimado ?? 0)
         });
     }

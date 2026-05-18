@@ -1057,7 +1057,12 @@ public class CafeComodatosStatsDto
     public int FinanciadasTotales { get; set; }
     public int FinanciadasActivas { get; set; }
     public int FinanciadasPagadas { get; set; }
+    /// <summary>Saldo legacy — equivale a SaldoFinanciamientoArs. Mantenido por compatibilidad.</summary>
     public decimal SaldoFinanciamientoTotal { get; set; }
+    /// <summary>Saldo pendiente en ARS de financiadas activas.</summary>
+    public decimal SaldoFinanciamientoArs { get; set; }
+    /// <summary>Saldo pendiente en USD de financiadas activas.</summary>
+    public decimal SaldoFinanciamientoUsd { get; set; }
     public decimal ValorEstimadoComodatos { get; set; }
 }
 
