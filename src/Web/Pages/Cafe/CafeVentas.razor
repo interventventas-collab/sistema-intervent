@@ -2979,14 +2979,11 @@
         if (p is null) return;
 
         var def = DefaultMolienda(addProductoId);
-        // Si ya existe el mismo prod+formato+molienda+doy pack, sumamos cantidades.
-        var existing = formItems.FirstOrDefault(i =>
-            i.ProductoId == addProductoId
-            && i.Formato == addFormato
-            && (i.Molienda ?? "") == (def ?? "")
-            && !i.EsDoyPack);
-        if (existing is not null) existing.Cantidad += addCantidad;
-        else formItems.Add(new CafeCotizarItemRequest
+        // SIEMPRE agrego una linea nueva — pedido del usuario 2026-05-19: poder cargar
+        // el mismo producto mas de una vez en el comprobante (ej: 4 facturados + 2 con
+        // 100% descuento como bonificacion). Si el operador quiere consolidar dos lineas
+        // del mismo producto, edita las cantidades a mano o borra una de las dos.
+        formItems.Add(new CafeCotizarItemRequest
         {
             ProductoId = addProductoId,
             Formato = addFormato,
