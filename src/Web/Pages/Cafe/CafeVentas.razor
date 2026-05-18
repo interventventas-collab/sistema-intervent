@@ -1167,12 +1167,45 @@
                         <span style="color: #6b7280;">Items:</span>
                         <strong>@formItems.Count</strong>
                     </div>
-                    <div style="display: flex; justify-content: space-between; padding: 0.4rem 0 0; border-top: 1px solid #e5e7eb; margin-top: 0.4rem; font-size: 1.05rem;">
-                        <span style="color: #6b7280;">TOTAL:</span>
-                        <strong style="color: #1d4ed8;">$@FormatMoney(cotizacion.Total)</strong>
-                    </div>
+                    @{
+                        // Para FA/FB/FC el cotizacion.Total es NETO. El cliente paga Total + 21% IVA.
+                        // Para FC (Monotributo) NO se suma IVA discriminado al cliente.
+                        var sumaIvaConfirm = formTipoComprobante is "FA" or "FB";
+                        var ivaConfirm = sumaIvaConfirm
+                            ? Math.Round(cotizacion.Total * 0.21m, 2, MidpointRounding.AwayFromZero)
+                            : 0m;
+                        var totalFinalConfirm = cotizacion.Total + ivaConfirm;
+                    }
+                    @if (sumaIvaConfirm)
+                    {
+                        <div style="display: flex; justify-content: space-between; padding: 0.2rem 0; font-size: 0.82rem; color: #6b7280; border-top: 1px solid #e5e7eb; margin-top: 0.4rem; padding-top: 0.4rem;">
+                            <span>Neto sin IVA:</span>
+                            <span>$@FormatMoney(cotizacion.Total)</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; padding: 0.2rem 0; font-size: 0.82rem; color: #1d4ed8;">
+                            <span>IVA 21%:</span>
+                            <span>$@FormatMoney(ivaConfirm)</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; padding: 0.4rem 0 0; border-top: 1px solid #e5e7eb; margin-top: 0.4rem; font-size: 1.1rem;">
+                            <span style="color: #6b7280;">TOTAL c/IVA:</span>
+                            <strong style="color: #15803d;">$@FormatMoney(totalFinalConfirm)</strong>
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="display: flex; justify-content: space-between; padding: 0.4rem 0 0; border-top: 1px solid #e5e7eb; margin-top: 0.4rem; font-size: 1.05rem;">
+                            <span style="color: #6b7280;">TOTAL:</span>
+                            <strong style="color: #1d4ed8;">$@FormatMoney(cotizacion.Total)</strong>
+                        </div>
+                    }
                 </div>
 
+                @if (sumaIvaConfirm)
+                {
+                    <p style="font-size: 0.78rem; color: #1d4ed8; margin: 0 0 0.5rem; background: #eff6ff; padding: 0.4rem 0.6rem; border-radius: 4px; border-left: 3px solid #1d4ed8;">
+                        💵 El cliente paga <strong>$@FormatMoney(totalFinalConfirm)</strong> (incluye 21% IVA).
+                    </p>
+                }
                 <p style="font-size: 0.78rem; color: #6b7280; margin: 0;">💡 Tip: si querés ver el PDF antes de confirmar, tocá <em>Cancelar</em> y después <em>Previsualizar PDF</em>.</p>
             </div>
             <div class="modal-footer">
