@@ -3324,23 +3324,25 @@
             }
 
             // ════════ ABRIR EL PDF EN UNA PESTAÑA NUEVA ════════
-            // Si era una venta nueva (no edicion), pedimos el PDF al server y lo
-            // abrimos en otra pestaña — mismo comportamiento que "Previsualizar PDF".
-            // No abrimos el visor en-pagina (printVenta) automaticamente: el usuario
-            // ya tiene la pestaña con el PDF "encima", el visor in-page tapaba.
+            // Si era una venta nueva (no edicion), abrimos directamente la URL publica
+            // del PDF en otra pestaña. Usamos la URL publica (con token) para que cuando
+            // el usuario haga 'Guardar como' desde el visor del navegador, el filename
+            // sugerido sea el del Content-Disposition del server ('Factura A - Cliente
+            // - Direccion - Fecha.pdf') y no un blob UUID random. La via privada con
+            // cookie funciona tambien, pero la publica es identica y mas portable.
             if (!wasEditing)
             {
                 try
                 {
-                    var (pdfBytes, pdfError) = await Api.GetCafeVentaPdfAsync(v.Id);
-                    if (pdfBytes is not null)
+                    var token = await Api.EnsurePublicTokenAsync(v.Id);
+                    if (!string.IsNullOrEmpty(token))
                     {
-                        var pdfB64 = Convert.ToBase64String(pdfBytes);
-                        await JS.InvokeVoidAsync("openPdfInNewTab", pdfB64);
+                        var url = $"{Navigation.BaseUri.TrimEnd('/')}/api/cafe/ventas/publica/{token}/pdf";
+                        await JS.InvokeVoidAsync("openInNewTab", url);
                     }
-                    else if (!string.IsNullOrEmpty(pdfError))
+                    else
                     {
-                        ToastService.Error("Comprobante emitido pero no se pudo abrir el PDF: " + pdfError);
+                        ToastService.Error("Comprobante emitido pero no se pudo obtener el link al PDF.");
                     }
                 }
                 catch (Exception pdfEx)
@@ -3433,17 +3435,18 @@
         if (printVenta is null) return;
         try
         {
-            // Pide el PDF generado en el servidor (QuestPDF) y lo abre en pestaña nueva.
-            // Las facturas reales ARCA (FA/FB/FC) en el futuro tendrán otro endpoint;
-            // por ahora todos los tipos pasan por el endpoint del módulo Café.
-            var (bytes, error) = await Api.GetCafeVentaPdfAsync(printVenta.Id);
-            if (bytes is null)
+            // Abrimos directamente la URL publica del PDF en pestaña nueva. Ventaja:
+            // cuando el usuario hace 'Guardar como' desde el visor del navegador, el
+            // nombre sugerido es el del Content-Disposition del server ('Factura A -
+            // Cliente - Direccion - Fecha.pdf') en vez de un blob UUID random.
+            var token = await Api.EnsurePublicTokenAsync(printVenta.Id);
+            if (string.IsNullOrEmpty(token))
             {
-                ToastService.Error("No se pudo generar el PDF: " + (error ?? "error desconocido"));
+                ToastService.Error("No se pudo obtener el link al PDF");
                 return;
             }
-            var b64 = Convert.ToBase64String(bytes);
-            await JS.InvokeVoidAsync("openPdfInNewTab", b64);
+            var url = $"{Navigation.BaseUri.TrimEnd('/')}/api/cafe/ventas/publica/{token}/pdf";
+            await JS.InvokeVoidAsync("openInNewTab", url);
         }
         catch (Exception ex)
         {
