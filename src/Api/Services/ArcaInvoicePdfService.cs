@@ -302,6 +302,16 @@ public class ArcaInvoicePdfService
                         : receptor.Domicilio;
                     if (!string.IsNullOrWhiteSpace(domicilioMostrar))
                     {
+                        // Set de dias activos para los pills (mismo formato que la cotizacion).
+                        // Si DiasVisita esta vacio, los 7 pills aparecen sin marcar — pero solo
+                        // dibujamos la fila si hay AL MENOS uno marcado (sino confunde al chofer
+                        // y mete ruido visual).
+                        var diasActivos = (comp.DiasVisita ?? "")
+                            .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                            .Select(s => s.Trim().ToUpperInvariant())
+                            .ToHashSet();
+                        var allDays = new[] { "LUN", "MAR", "MIE", "JUE", "VIE", "SAB", "DOM" };
+
                         col.Item().PaddingTop(4).Background(Colors.Grey.Lighten4).Border(0.5f).BorderColor(Colors.Grey.Lighten1)
                             .Padding(5).Row(r =>
                         {
@@ -309,6 +319,27 @@ public class ArcaInvoicePdfService
                             {
                                 cc.Item().Text("DOMICILIO DE ENTREGA").FontSize(7).Bold().FontColor(Colors.Grey.Darken2).LetterSpacing(0.05f);
                                 cc.Item().Text(domicilioMostrar!).FontSize(10).Bold();
+                                // Pills LUN-DOM con el formato de la cotizacion (dia marcado en
+                                // negro/blanco, dia no marcado en blanco/gris). Solo se dibujan
+                                // si hay al menos un dia configurado en la venta.
+                                if (diasActivos.Count > 0)
+                                {
+                                    cc.Item().PaddingTop(3).Row(daysRow =>
+                                    {
+                                        daysRow.AutoItem().AlignMiddle().PaddingRight(4)
+                                            .Text("Días de entrega:").FontSize(7).FontColor(Colors.Grey.Darken1);
+                                        foreach (var d in allDays)
+                                        {
+                                            var on = diasActivos.Contains(d);
+                                            var bg = on ? Colors.Grey.Darken4 : Colors.White;
+                                            var fg = on ? Colors.White : Colors.Grey.Darken2;
+                                            var bd = on ? Colors.Grey.Darken4 : Colors.Grey.Lighten1;
+                                            daysRow.ConstantItem(28).PaddingHorizontal(1).Border(1).BorderColor(bd)
+                                                .Background(bg).AlignCenter().AlignMiddle().Padding(1)
+                                                .Text(d).Bold().FontSize(7).FontColor(fg);
+                                        }
+                                    });
+                                }
                             });
                             // Mantengo el sello PAGADA / PENDIENTE a la derecha porque informa
                             // visualmente el estado de cobro del comprobante, complementario al
