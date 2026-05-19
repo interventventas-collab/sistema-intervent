@@ -60,6 +60,32 @@
         gap: 0.4rem;
         align-items: center;
     }
+    /* Boton "X" para quitar la venta del tablero — la devuelve a /cafe/ventas como si nunca
+       hubiera entrado al flujo. Posicionado arriba a la derecha del header. */
+    .prep-btn-quitar {
+        position: absolute;
+        top: 4px;
+        right: 6px;
+        width: 22px; height: 22px;
+        border: none;
+        background: rgba(0, 0, 0, 0.08);
+        color: #4b5563;
+        border-radius: 50%;
+        cursor: pointer;
+        font-size: 1.1rem;
+        line-height: 1;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s;
+    }
+    .prep-btn-quitar:hover {
+        background: #dc2626;
+        color: white;
+        transform: scale(1.1);
+    }
+    .prep-card-header { position: relative; padding-right: 30px; }
     .prep-card {
         background: white;
         border: 1px solid #e5e7eb;
@@ -256,7 +282,7 @@
                 <div class="prep-cards">
                     @foreach (var v in ParaArmar)
                     {
-                        <CardPedido Venta="v" OnAvanzar="() => Avanzar(v)" OnRetroceder="() => Retroceder(v)" />
+                        <CardPedido Venta="v" OnAvanzar="() => Avanzar(v)" OnRetroceder="() => Retroceder(v)" OnQuitarDelFlujo="() => QuitarDelFlujo(v)" />
                     }
                 </div>
             }
@@ -280,7 +306,7 @@
                     <div class="prep-cards prep-cards-compact">
                         @foreach (var v in Listos)
                         {
-                            <CardPedido Venta="v" Compact="true" OnAvanzar="() => Avanzar(v)" OnRetroceder="() => Retroceder(v)" />
+                            <CardPedido Venta="v" Compact="true" OnAvanzar="() => Avanzar(v)" OnRetroceder="() => Retroceder(v)" OnQuitarDelFlujo="() => QuitarDelFlujo(v)" />
                         }
                     </div>
                 }
@@ -391,6 +417,29 @@
         else
         {
             ToastService.Error("No se pudo avanzar el estado");
+        }
+    }
+
+    /// <summary>Saca la venta del tablero de preparacion — EstadoPreparacion vuelve a null
+    /// y la venta queda en /cafe/ventas como si nunca hubiera tocado el boton "📦". El log
+    /// igual queda con el evento por si despues hay que reconstruir lo que paso.</summary>
+    private async Task QuitarDelFlujo(CafePreparacionVentaDto v)
+    {
+        var ok = await Api.CambiarEstadoPreparacionAsync(v.Id, new CafeCambiarEstadoPreparacionRequest
+        {
+            EstadoNuevo = "",
+            OperadorNombre = Operator.Current ?? "",
+            Notas = "Quitado del tablero (vuelve a estado original)"
+        });
+        if (ok)
+        {
+            lista?.RemoveAll(x => x.Id == v.Id);
+            ToastService.Info($"{v.Numero} sacado del tablero");
+            StateHasChanged();
+        }
+        else
+        {
+            ToastService.Error("No se pudo quitar del tablero");
         }
     }
 
