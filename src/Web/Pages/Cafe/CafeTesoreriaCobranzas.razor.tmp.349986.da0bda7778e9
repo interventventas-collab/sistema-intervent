@@ -220,23 +220,6 @@
                                 💰 Saldo actual del cliente: <b>$@saldoCliente.Value.ToString("N2")</b> (te debe)
                             </div>
                         }
-                        @* Si el cliente comparte CUIT con otras sucursales, ofrecer agruparlas en la misma cobranza. *@
-                        @if (sucursalesMismoCuit.Count > 0)
-                        {
-                            <div style="background:#dbeafe; padding:0.5rem 0.7rem; border-radius:6px; font-size:0.85rem; margin-bottom:0.5rem; border:1px solid #93c5fd;">
-                                <label style="display:flex; align-items:flex-start; gap:0.5rem; cursor:pointer;">
-                                    <input type="checkbox" checked="@incluirSucursales"
-                                           @onchange="@(async e => await OnToggleIncluirSucursales((bool)e.Value!))"
-                                           style="margin-top:0.2rem;" />
-                                    <div>
-                                        <div><b>🏢 Cobrar también las otras @sucursalesMismoCuit.Count sucursale@(sucursalesMismoCuit.Count == 1 ? "" : "s") con el mismo CUIT</b></div>
-                                        <div style="font-size:0.78rem; color:#1e40af; margin-top:0.2rem;">
-                                            @string.Join(" · ", sucursalesMismoCuit.Select(s => s.Nombre))
-                                        </div>
-                                    </div>
-                                </label>
-                            </div>
-                        }
                         @if (pendientes is null)
                         {
                             <p class="text-muted">Cargando...</p>
@@ -256,13 +239,7 @@
                                     {
                                         <tr>
                                             <td><input type="checkbox" @bind="imputaciones[p.VentaId].Seleccionado" @bind:after="RecalcularTotal" /></td>
-                                            <td>
-                                                <b>@p.Numero</b>
-                                                @if (incluirSucursales && !string.IsNullOrEmpty(p.ClienteNombre))
-                                                {
-                                                    <div style="font-size:0.7rem; color:#6b7280;">@p.ClienteNombre</div>
-                                                }
-                                            </td>
+                                            <td><b>@p.Numero</b></td>
                                             <td>@p.Fecha.ToLocalTime().ToString("dd/MM/yyyy")</td>
                                             <td style="text-align:right;">$@p.Saldo.ToString("N2")</td>
                                             <td style="text-align:right;">
@@ -507,10 +484,6 @@
     private bool clienteSearchOpen;
     private List<ComprobantePendienteDto>? pendientes;
     private decimal? saldoCliente;
-    // Si el cliente tiene CUIT compartido con otras sucursales, las cargamos aca para
-    // mostrar el checkbox "Incluir otras sucursales con mismo CUIT". Vacio = no hay agrupacion posible.
-    private List<SucursalMismoCuitDto> sucursalesMismoCuit = new();
-    private bool incluirSucursales;
     [Parameter, SupplyParameterFromQuery(Name = "cliente")] public int? PreClienteId { get; set; }
     [Parameter, SupplyParameterFromQuery(Name = "venta")] public int? PreVentaId { get; set; }
     private Dictionary<int, ImputData> imputaciones = new();
@@ -613,20 +586,23 @@
     {
         imputaciones = new();
         saldoCliente = null;
-        incluirSucursales = false;
         sucursalesMismoCuit = new();
+        incluirMismoCuit = false;
         if (selClienteId <= 0) { pendientes = new(); return; }
         try
         {
-            // Detectar si hay otras sucursales con el mismo CUIT (caso Dulce Lugar / Premium Bakery).
+            // Detectar si el cliente tiene OTRAS sucursales con el mismo CUIT (casos como Dulce Lugar
+            // o Premium Bakery — 1 dueño con varias sucursales que paga global). Si las hay,
+            // mostramos un checkbox para agruparlas en una sola cobranza.
             try
             {
                 sucursalesMismoCuit = await Api.GetSucursalesMismoCuitAsync(selClienteId) ?? new();
             }
             catch { sucursalesMismoCuit = new(); }
 
-            await RecargarPendientesAsync();
-
+            pendientes = await Api.GetComprobantesPendientesAsync(selClienteId, incluirMismoCuit) ?? new();
+            foreach (var p in pendientes)
+                imputaciones[p.VentaId] = new ImputData { Seleccionado = false, Importe = p.Saldo };
             // Traer saldo total del cliente
             try
             {
@@ -638,20 +614,21 @@
         catch { ToastService.Error("Error al traer pendientes"); pendientes = new(); }
     }
 
-    /// <summary>Recarga los comprobantes pendientes respetando el flag de "incluir sucursales".
-    /// Llamado al cambiar cliente y al tildar/destildar el checkbox.</summary>
-    private async Task RecargarPendientesAsync()
+    /// <summary>El operador tildo/destildo el checkbox "incluir sucursales con mismo CUIT".
+    /// Recargamos los comprobantes pendientes con el nuevo flag.</summary>
+    private async Task OnIncluirMismoCuitChange(ChangeEventArgs e)
     {
-        pendientes = await Api.GetComprobantesPendientesAsync(selClienteId, incluirSucursales) ?? new();
-        imputaciones = new();
-        foreach (var p in pendientes)
-            imputaciones[p.VentaId] = new ImputData { Seleccionado = false, Importe = p.Saldo };
-    }
-
-    private async Task OnToggleIncluirSucursales(bool val)
-    {
-        incluirSucursales = val;
-        await RecargarPendientesAsync();
+        incluirMismoCuit = (e.Value as bool?) ?? false;
+        if (selClienteId <= 0) return;
+        try
+        {
+            pendientes = await Api.GetComprobantesPendientesAsync(selClienteId, incluirMismoCuit) ?? new();
+            imputaciones = new();
+            foreach (var p in pendientes)
+                imputaciones[p.VentaId] = new ImputData { Seleccionado = false, Importe = p.Saldo };
+            StateHasChanged();
+        }
+        catch { ToastService.Error("Error al recargar pendientes"); }
     }
 
     /// <summary>Tildá todos los comprobantes pendientes y poneles el saldo completo (1 click).</summary>

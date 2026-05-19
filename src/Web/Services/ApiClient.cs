@@ -2569,8 +2569,12 @@ public class ApiClient
         => await DeleteAsync($"/api/cafe/cajas/{id}");
 
     // ===== Tesoreria Cafe: Cobranzas =====
-    public async Task<List<ComprobantePendienteDto>?> GetComprobantesPendientesAsync(int clienteId)
-        => await GetAsync<List<ComprobantePendienteDto>>($"/api/cafe/cobranzas/comprobantes-pendientes/{clienteId}");
+    public async Task<List<ComprobantePendienteDto>?> GetComprobantesPendientesAsync(int clienteId, bool incluirMismoCuit = false)
+        => await GetAsync<List<ComprobantePendienteDto>>($"/api/cafe/cobranzas/comprobantes-pendientes/{clienteId}?incluirMismoCuit={incluirMismoCuit.ToString().ToLowerInvariant()}");
+
+    /// <summary>Lista de otras sucursales que comparten el mismo CUIT con el cliente dado.</summary>
+    public async Task<List<SucursalMismoCuitDto>?> GetSucursalesMismoCuitAsync(int clienteId)
+        => await GetAsync<List<SucursalMismoCuitDto>>($"/api/cafe/cobranzas/sucursales-mismo-cuit/{clienteId}");
     public async Task<List<CobranzaListDto>?> GetCafeCobranzasAsync(int? clienteId = null, DateTime? desde = null, DateTime? hasta = null)
     {
         var qs = new List<string>();

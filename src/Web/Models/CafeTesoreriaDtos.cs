@@ -41,6 +41,17 @@ public class ComprobantePendienteDto
     public decimal Total { get; set; }
     public decimal Pagado { get; set; }
     public decimal Saldo { get; set; }
+    /// <summary>Solo se rellena cuando se agruparon varias sucursales por CUIT — sirve
+    /// para mostrar de que sucursal viene cada comprobante.</summary>
+    public int? ClienteId { get; set; }
+    public string? ClienteNombre { get; set; }
+}
+
+public class SucursalMismoCuitDto
+{
+    public int Id { get; set; }
+    public string Nombre { get; set; } = "";
+    public string? Cuit { get; set; }
 }
 
 public class CobranzaListDto

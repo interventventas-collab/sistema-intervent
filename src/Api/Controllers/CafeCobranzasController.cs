@@ -57,7 +57,12 @@ public class CafeCobranzasController : ControllerBase
     }
 
     public record ComprobantePendienteDto(
-        int VentaId, string Numero, DateTime Fecha, decimal Total, decimal Pagado, decimal Saldo);
+        int VentaId, string Numero, DateTime Fecha, decimal Total, decimal Pagado, decimal Saldo,
+        // Cuando se agrupan comprobantes de varias sucursales con mismo CUIT, indicamos
+        // de que cliente proviene cada uno para que el operador no se confunda.
+        int? ClienteId = null, string? ClienteNombre = null);
+
+    public record SucursalMismoCuitDto(int Id, string Nombre, string? Cuit);
 
     public record CobranzaListDto(
         int Id, string Numero, DateTime Fecha, int ClienteId, string ClienteNombre,
@@ -93,16 +98,39 @@ public class CafeCobranzasController : ControllerBase
     /// <summary>
     /// Devuelve los comprobantes (ventas) del cliente con saldo pendiente.
     /// Saldo = Total venta − suma de Importes en CobranzasComprobantes que apunten a esta venta.
+    /// Si incluirMismoCuit=true, ademas trae los comprobantes de OTROS clientes que comparten
+    /// el mismo CUIT (caso tipico: cliente con varias sucursales que paga global).
     /// </summary>
     [HttpGet("comprobantes-pendientes/{clienteId:int}")]
-    public async Task<IActionResult> ComprobantesPendientes(int clienteId)
+    public async Task<IActionResult> ComprobantesPendientes(int clienteId, [FromQuery] bool incluirMismoCuit = false)
     {
-        // Ventas del cliente. Traemos los campos necesarios para calcular MontoCobrable
-        // (Total + ArcaImpTotal): el primero para tipo X / proforma sin IVA discriminado,
-        // el segundo para facturas A/B/C con CAE — ese es el total con IVA real.
+        // Determinar el set de clientes cuyos comprobantes vamos a traer.
+        var clienteIds = new List<int> { clienteId };
+        Dictionary<int, string> clienteNombres = new();
+        if (incluirMismoCuit)
+        {
+            var clienteBase = await _db.CafeClientes
+                .Where(c => c.Id == clienteId)
+                .Select(c => new { c.Id, c.Nombre, c.Cuit })
+                .FirstOrDefaultAsync();
+            if (clienteBase is not null && !string.IsNullOrWhiteSpace(clienteBase.Cuit) && clienteBase.Cuit.Length >= 8)
+            {
+                var otrosIds = await _db.CafeClientes
+                    .Where(c => c.Cuit == clienteBase.Cuit && c.Id != clienteId && c.IsActive)
+                    .Select(c => new { c.Id, c.Nombre })
+                    .ToListAsync();
+                clienteIds.AddRange(otrosIds.Select(o => o.Id));
+                foreach (var o in otrosIds) clienteNombres[o.Id] = o.Nombre;
+            }
+            // Para que aparezca el nombre del cliente base tambien al sortear/filtrar
+            if (clienteBase is not null) clienteNombres[clienteBase.Id] = clienteBase.Nombre;
+        }
+
+        // Ventas del cliente (o los multiples con mismo CUIT). Traemos los campos para calcular
+        // MontoCobrable (Total + ArcaImpTotal).
         var ventas = await _db.CafeVentas
-            .Where(v => v.ClienteId == clienteId && v.Estado != "anulado")
-            .Select(v => new { v.Id, v.Numero, v.Fecha, v.Total, v.ArcaImpTotal })
+            .Where(v => v.ClienteId != null && clienteIds.Contains(v.ClienteId!.Value) && v.Estado != "anulado")
+            .Select(v => new { v.Id, v.Numero, v.Fecha, v.Total, v.ArcaImpTotal, v.ClienteId })
             .ToListAsync();
 
         if (ventas.Count == 0) return Ok(new List<ComprobantePendienteDto>());
@@ -126,14 +154,37 @@ public class CafeCobranzasController : ControllerBase
                 var totalCobrar = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m)
                     ? v.ArcaImpTotal.Value : v.Total;
                 var pagado = dict.TryGetValue(v.Id, out var p) ? p : 0m;
+                // Solo enviamos nombre de cliente cuando se agruparon varios CUIT (sino es ruido).
+                var clienteNom = incluirMismoCuit && v.ClienteId.HasValue && clienteNombres.TryGetValue(v.ClienteId.Value, out var nm) ? nm : null;
                 return new ComprobantePendienteDto(
-                    v.Id, v.Numero ?? $"#{v.Id}", v.Fecha, totalCobrar, pagado, totalCobrar - pagado);
+                    v.Id, v.Numero ?? $"#{v.Id}", v.Fecha, totalCobrar, pagado, totalCobrar - pagado,
+                    v.ClienteId, clienteNom);
             })
             .Where(x => x.Saldo > 0.01m)  // solo pendientes
             .OrderBy(x => x.Fecha)
             .ToList();
 
         return Ok(result);
+    }
+
+    /// <summary>Devuelve las OTRAS sucursales/clientes que comparten el mismo CUIT que el
+    /// cliente dado. Vacio si el cliente no tiene CUIT o si nadie mas comparte ese CUIT.
+    /// Sirve para que el modal de Cobranza muestre el checkbox "Incluir tambien las otras X sucursales".</summary>
+    [HttpGet("sucursales-mismo-cuit/{clienteId:int}")]
+    public async Task<IActionResult> SucursalesMismoCuit(int clienteId)
+    {
+        var cliente = await _db.CafeClientes
+            .Where(c => c.Id == clienteId)
+            .Select(c => new { c.Cuit })
+            .FirstOrDefaultAsync();
+        if (cliente is null || string.IsNullOrWhiteSpace(cliente.Cuit) || cliente.Cuit.Length < 8)
+            return Ok(new List<SucursalMismoCuitDto>());
+        var otras = await _db.CafeClientes
+            .Where(c => c.Cuit == cliente.Cuit && c.Id != clienteId && c.IsActive)
+            .OrderBy(c => c.Nombre)
+            .Select(c => new SucursalMismoCuitDto(c.Id, c.Nombre, c.Cuit))
+            .ToListAsync();
+        return Ok(otras);
     }
 
     /// <summary>Lista cobranzas con filtros opcionales por cliente y rango de fechas.</summary>
