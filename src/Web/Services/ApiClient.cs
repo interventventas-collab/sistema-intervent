@@ -658,6 +658,17 @@ public class ApiClient
         return resp.IsSuccessStatusCode;
     }
 
+    // === Preparacion de Pedidos (2026-05-19) ===
+    public async Task<List<CafePreparacionVentaDto>?> GetCafePreparacionAsync(int dias = 7)
+        => await GetAsync<List<CafePreparacionVentaDto>>($"/api/cafe/ventas/preparacion?dias={dias}");
+
+    public async Task<bool> CambiarEstadoPreparacionAsync(int id, CafeCambiarEstadoPreparacionRequest req)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PatchAsJsonAsync($"/api/cafe/ventas/{id}/estado-preparacion", req);
+        return resp.IsSuccessStatusCode;
+    }
+
     // === Preventas (admin) ===
     public async Task<List<CafePreventaAdminDto>?> GetCafePreventasAdminAsync(string estado = "pendiente")
         => await GetAsync<List<CafePreventaAdminDto>>($"/api/preventas/admin?estado={Uri.EscapeDataString(estado)}");

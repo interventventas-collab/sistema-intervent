@@ -306,6 +306,51 @@ public class CafeVentaDto
     /// <summary>Quien entrega la venta (Gabriel, Nacho, Maxi, Alexis, Miguel, Rodrigo, o
     /// 'Logistica tercerizada'). Opcional. Se muestra en el PDF.</summary>
     public string? EntregaPor { get; set; }
+    /// <summary>Estado en el flujo de Preparacion de Pedidos. null = no entro al flujo.
+    /// Valores: PARA_PREPARAR, EN_PREPARACION, LISTO, EN_CAMINO, ENTREGADO.</summary>
+    public string? EstadoPreparacion { get; set; }
+    public DateTime? PreparacionUpdatedAt { get; set; }
+}
+
+/// <summary>Tarjeta de venta en el tablero /cafe/preparacion. Trae solo lo que el
+/// armador necesita ver (cliente, items, dia, repartidor). No trae montos ni info fiscal.</summary>
+public class CafePreparacionVentaDto
+{
+    public int Id { get; set; }
+    public string Numero { get; set; } = "";
+    public DateTime Fecha { get; set; }
+    public string ClienteNombre { get; set; } = "";
+    public string? ClienteRazon { get; set; }
+    public string? ClienteLocalidad { get; set; }
+    public string? ClienteCiudad { get; set; }
+    public string? ClienteTipo { get; set; }
+    public string? WeekDays { get; set; }
+    public string? EntregaPor { get; set; }
+    public string EstadoPreparacion { get; set; } = "";
+    public DateTime? PreparacionUpdatedAt { get; set; }
+    public decimal Total { get; set; }
+    public List<CafePreparacionItemDto> Items { get; set; } = new();
+}
+
+public class CafePreparacionItemDto
+{
+    public int Id { get; set; }
+    public string ProductoNombre { get; set; } = "";
+    public string Formato { get; set; } = "";
+    public int Cantidad { get; set; }
+    public string? Molienda { get; set; }
+    public bool EsDoyPack { get; set; }
+    public bool EsEnvasePlateado { get; set; }
+    public string? Categoria { get; set; }
+    public bool EsConceptoLibre { get; set; }
+}
+
+public class CafeCambiarEstadoPreparacionRequest
+{
+    /// <summary>Estado nuevo. Vacio o null = sacar la venta del flujo.</summary>
+    public string EstadoNuevo { get; set; } = "";
+    public string? OperadorNombre { get; set; }
+    public string? Notas { get; set; }
 }
 
 public class ConvertirAFacturaRequest

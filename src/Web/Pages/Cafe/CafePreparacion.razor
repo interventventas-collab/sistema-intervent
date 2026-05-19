@@ -1,0 +1,426 @@
+@page "/cafe/preparacion"
+@attribute [Authorize]
+@implements IDisposable
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject OperatorService Operator
+@inject NavigationManager Navigation
+
+<style>
+    /* Tablero de Preparacion: cards GRANDES con cantidades resaltadas. Estilo
+       "ticket de cocina" — los chicos del deposito tienen que poder leerlo de un vistazo. */
+    .prep-section {
+        margin-bottom: 1.2rem;
+    }
+    .prep-section-header {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        padding: 0.6rem 0.8rem;
+        background: #f9fafb;
+        border-left: 4px solid #e5e7eb;
+        font-size: 1.05rem;
+        font-weight: 700;
+        cursor: pointer;
+        user-select: none;
+    }
+    .prep-section-header.armar { border-left-color: #f59e0b; background: #fffbeb; color: #92400e; }
+    .prep-section-header.listos { border-left-color: #3b82f6; background: #eff6ff; color: #1e40af; }
+    .prep-section-header.entregados { border-left-color: #10b981; background: #f0fdf4; color: #166534; }
+    .prep-count-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 28px; height: 28px;
+        padding: 0 0.5rem;
+        background: rgba(0,0,0,0.08);
+        border-radius: 999px;
+        font-size: 0.85rem;
+        font-weight: 800;
+        margin-left: auto;
+    }
+    .prep-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+        gap: 1rem;
+        padding: 0.8rem 0;
+    }
+    .prep-card {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+        overflow: hidden;
+        transition: box-shadow 0.2s;
+    }
+    .prep-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,0.08); }
+    .prep-card-header {
+        padding: 0.7rem 1rem;
+        background: #fef3c7;
+        border-bottom: 1px solid #fcd34d;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        flex-wrap: wrap;
+        font-size: 0.9rem;
+    }
+    .prep-card-header.armar { background: #fef3c7; border-bottom-color: #fcd34d; }
+    .prep-card-header.preparando { background: #fed7aa; border-bottom-color: #fb923c; }
+    .prep-card-header.listo { background: #dbeafe; border-bottom-color: #93c5fd; }
+    .prep-card-header.encamino { background: #e9d5ff; border-bottom-color: #c084fc; }
+    .prep-card-numero { font-family: monospace; font-weight: 800; font-size: 0.85rem; color: #374151; }
+    .prep-card-cliente { font-weight: 700; font-size: 1rem; color: #111827; }
+    .prep-card-meta { font-size: 0.78rem; color: #6b7280; }
+    .prep-card-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.2rem;
+        padding: 0.15rem 0.45rem;
+        border-radius: 999px;
+        background: rgba(0,0,0,0.06);
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: #374151;
+    }
+    .prep-card-body {
+        padding: 0.6rem 0;
+    }
+    .prep-item {
+        display: grid;
+        grid-template-columns: 32px 60px 1fr;
+        gap: 0.6rem;
+        padding: 0.55rem 1rem;
+        align-items: center;
+        border-bottom: 1px dashed #f3f4f6;
+    }
+    .prep-item:last-child { border-bottom: none; }
+    .prep-item.tildado .prep-item-desc,
+    .prep-item.tildado .prep-item-cant { text-decoration: line-through; opacity: 0.5; }
+    .prep-check {
+        width: 28px; height: 28px;
+        cursor: pointer;
+    }
+    .prep-item-cant {
+        font-size: 1.8rem;
+        font-weight: 800;
+        color: #ea580c;
+        text-align: right;
+        line-height: 1;
+    }
+    .prep-item-cant .x { font-size: 1.1rem; color: #9ca3af; font-weight: 600; }
+    .prep-item-desc-prod {
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: #111827;
+        line-height: 1.2;
+    }
+    .prep-item-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.3rem;
+        margin-top: 0.25rem;
+    }
+    .prep-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.15rem;
+        padding: 0.1rem 0.45rem;
+        border-radius: 4px;
+        font-size: 0.72rem;
+        font-weight: 700;
+    }
+    .prep-tag-formato { background: #f3f4f6; color: #374151; }
+    .prep-tag-molienda { background: #fef3c7; color: #92400e; }
+    .prep-tag-envase-negro { background: #1f2937; color: #fff; }
+    .prep-tag-envase-plateado { background: #e5e7eb; color: #374151; border: 1px solid #9ca3af; }
+    .prep-tag-envase-doypack { background: #dcfce7; color: #166534; }
+    .prep-card-footer {
+        padding: 0.55rem 1rem;
+        background: #fafafa;
+        border-top: 1px solid #f3f4f6;
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+    }
+    .prep-btn-avanzar {
+        flex: 1;
+        padding: 0.6rem;
+        border-radius: 6px;
+        border: none;
+        font-weight: 700;
+        font-size: 0.9rem;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .prep-btn-avanzar.armar { background: #f59e0b; color: white; }
+    .prep-btn-avanzar.armar:hover { background: #d97706; }
+    .prep-btn-avanzar.preparando { background: #3b82f6; color: white; }
+    .prep-btn-avanzar.preparando:hover { background: #2563eb; }
+    .prep-btn-avanzar.listo { background: #8b5cf6; color: white; }
+    .prep-btn-avanzar.listo:hover { background: #7c3aed; }
+    .prep-btn-avanzar.encamino { background: #10b981; color: white; }
+    .prep-btn-avanzar.encamino:hover { background: #059669; }
+    .prep-btn-avanzar.todo-tildado { background: #16a34a !important; animation: pulse-listo 1.5s infinite; }
+    @@keyframes pulse-listo { 0%, 100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.5); } 50% { box-shadow: 0 0 0 8px rgba(22, 163, 74, 0); } }
+    .prep-btn-retroceder {
+        padding: 0.6rem 0.7rem;
+        border-radius: 6px;
+        border: 1px solid #d1d5db;
+        background: white;
+        color: #6b7280;
+        cursor: pointer;
+        font-size: 0.85rem;
+    }
+    .prep-btn-retroceder:hover { background: #f3f4f6; }
+    .prep-entregados-lista {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 0.6rem;
+        margin-top: 0.5rem;
+    }
+    .prep-entregado-row {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        padding: 0.4rem 0.5rem;
+        border-bottom: 1px solid #f3f4f6;
+        font-size: 0.85rem;
+    }
+    .prep-entregado-row:last-child { border-bottom: none; }
+    .prep-empty {
+        padding: 1.5rem;
+        text-align: center;
+        color: #9ca3af;
+        font-style: italic;
+    }
+    .prep-header-toolbar {
+        display: flex;
+        gap: 0.7rem;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-bottom: 1rem;
+    }
+    .prep-refresh-indicator {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        font-size: 0.78rem;
+        color: #6b7280;
+        margin-left: auto;
+    }
+</style>
+
+<div class="content-container" style="padding: 0.8rem;">
+    <div class="prep-header-toolbar">
+        <h2 style="margin: 0;">📦 Preparación de pedidos</h2>
+        <button class="btn btn-secondary" @onclick="Cargar" title="Refrescar manualmente">🔄 Refrescar</button>
+        <span class="prep-refresh-indicator">
+            Auto-refresh cada 10 s · última: @ultimaActualizacion.ToString("HH:mm:ss")
+        </span>
+    </div>
+
+    @if (loading && lista is null)
+    {
+        <p>Cargando...</p>
+    }
+    else
+    {
+        @* ── PARA ARMAR ── *@
+        <div class="prep-section">
+            <div class="prep-section-header armar">
+                🔨 Para armar
+                <span class="prep-count-badge">@ParaArmar.Count</span>
+            </div>
+            @if (ParaArmar.Count == 0)
+            {
+                <div class="prep-empty">No hay pedidos para armar. ¡Buen trabajo! 🎉</div>
+            }
+            else
+            {
+                <div class="prep-cards">
+                    @foreach (var v in ParaArmar)
+                    {
+                        <CardPedido Venta="v" OnAvanzar="() => Avanzar(v)" OnRetroceder="() => Retroceder(v)" />
+                    }
+                </div>
+            }
+        </div>
+
+        @* ── LISTOS / EN CAMINO ── *@
+        <div class="prep-section">
+            <div class="prep-section-header listos" @onclick="() => listosExpanded = !listosExpanded">
+                📦 Listos y en camino
+                <span class="prep-count-badge">@Listos.Count</span>
+                <span style="font-size:0.9rem;">@(listosExpanded ? "▼" : "▶")</span>
+            </div>
+            @if (listosExpanded)
+            {
+                @if (Listos.Count == 0)
+                {
+                    <div class="prep-empty">Nada para entregar todavía.</div>
+                }
+                else
+                {
+                    <div class="prep-cards">
+                        @foreach (var v in Listos)
+                        {
+                            <CardPedido Venta="v" OnAvanzar="() => Avanzar(v)" OnRetroceder="() => Retroceder(v)" />
+                        }
+                    </div>
+                }
+            }
+        </div>
+
+        @* ── ENTREGADOS HOY (lista chiquita) ── *@
+        <div class="prep-section">
+            <div class="prep-section-header entregados" @onclick="() => entregadosExpanded = !entregadosExpanded">
+                ✅ Entregados hoy
+                <span class="prep-count-badge">@EntregadosHoy.Count</span>
+                <span style="font-size:0.9rem;">@(entregadosExpanded ? "▼" : "▶")</span>
+            </div>
+            @if (entregadosExpanded)
+            {
+                @if (EntregadosHoy.Count == 0)
+                {
+                    <div class="prep-empty">Aún no se entregó nada hoy.</div>
+                }
+                else
+                {
+                    <div class="prep-entregados-lista">
+                        @foreach (var v in EntregadosHoy)
+                        {
+                            <div class="prep-entregado-row">
+                                <span style="font-family:monospace; color:#6b7280;">@v.Numero</span>
+                                <strong>@v.ClienteNombre</strong>
+                                @if (!string.IsNullOrEmpty(v.EntregaPor))
+                                {
+                                    <span style="color:#6b7280;">· 🚚 @v.EntregaPor</span>
+                                }
+                                <span style="margin-left:auto; color:#9ca3af; font-size:0.75rem;">@HaceCuanto(v.PreparacionUpdatedAt)</span>
+                                <button class="prep-btn-retroceder" @onclick="() => Retroceder(v)" title="Volver a En camino">↩</button>
+                            </div>
+                        }
+                    </div>
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<CafePreparacionVentaDto>? lista;
+    private bool loading = true;
+    private bool listosExpanded = true;
+    private bool entregadosExpanded = true;
+    private DateTime ultimaActualizacion = DateTime.Now;
+    private System.Threading.Timer? refreshTimer;
+
+    private List<CafePreparacionVentaDto> ParaArmar => lista?.Where(v =>
+        v.EstadoPreparacion is "PARA_PREPARAR" or "EN_PREPARACION").ToList() ?? new();
+    private List<CafePreparacionVentaDto> Listos => lista?.Where(v =>
+        v.EstadoPreparacion is "LISTO" or "EN_CAMINO").ToList() ?? new();
+    private List<CafePreparacionVentaDto> EntregadosHoy => lista?.Where(v =>
+        v.EstadoPreparacion == "ENTREGADO" && v.PreparacionUpdatedAt?.Date == DateTime.UtcNow.Date).ToList() ?? new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Operator.LoadAsync();
+        await Cargar();
+        // Auto-refresh cada 10 segundos
+        refreshTimer = new System.Threading.Timer(async _ => await InvokeAsync(Cargar), null, 10000, 10000);
+    }
+
+    private async Task Cargar()
+    {
+        loading = true;
+        try
+        {
+            lista = await Api.GetCafePreparacionAsync(7) ?? new();
+            ultimaActualizacion = DateTime.Now;
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error al cargar: " + ex.Message);
+        }
+        finally
+        {
+            loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task Avanzar(CafePreparacionVentaDto v)
+    {
+        var siguiente = v.EstadoPreparacion switch
+        {
+            "PARA_PREPARAR" => "EN_PREPARACION",
+            "EN_PREPARACION" => "LISTO",
+            "LISTO" => "EN_CAMINO",
+            "EN_CAMINO" => "ENTREGADO",
+            _ => null
+        };
+        if (siguiente is null) return;
+        var ok = await Api.CambiarEstadoPreparacionAsync(v.Id, new CafeCambiarEstadoPreparacionRequest
+        {
+            EstadoNuevo = siguiente,
+            OperadorNombre = Operator.Current ?? ""
+        });
+        if (ok)
+        {
+            v.EstadoPreparacion = siguiente;
+            v.PreparacionUpdatedAt = DateTime.UtcNow;
+            ToastService.Success($"{v.Numero} → {siguiente.Replace("_", " ")}");
+            StateHasChanged();
+        }
+        else
+        {
+            ToastService.Error("No se pudo avanzar el estado");
+        }
+    }
+
+    private async Task Retroceder(CafePreparacionVentaDto v)
+    {
+        var anterior = v.EstadoPreparacion switch
+        {
+            "EN_PREPARACION" => "PARA_PREPARAR",
+            "LISTO" => "EN_PREPARACION",
+            "EN_CAMINO" => "LISTO",
+            "ENTREGADO" => "EN_CAMINO",
+            _ => null
+        };
+        if (anterior is null)
+        {
+            ToastService.Info("No se puede retroceder más");
+            return;
+        }
+        var ok = await Api.CambiarEstadoPreparacionAsync(v.Id, new CafeCambiarEstadoPreparacionRequest
+        {
+            EstadoNuevo = anterior,
+            OperadorNombre = Operator.Current ?? "",
+            Notas = "Retroceso"
+        });
+        if (ok)
+        {
+            v.EstadoPreparacion = anterior;
+            v.PreparacionUpdatedAt = DateTime.UtcNow;
+            ToastService.Info($"{v.Numero} ← {anterior.Replace("_", " ")}");
+            StateHasChanged();
+        }
+    }
+
+    private static string HaceCuanto(DateTime? t)
+    {
+        if (t is null) return "";
+        var diff = DateTime.UtcNow - t.Value;
+        if (diff.TotalMinutes < 1) return "hace segundos";
+        if (diff.TotalMinutes < 60) return $"hace {(int)diff.TotalMinutes} min";
+        if (diff.TotalHours < 24) return $"hace {(int)diff.TotalHours} h";
+        return $"hace {(int)diff.TotalDays} días";
+    }
+
+    public void Dispose()
+    {
+        refreshTimer?.Dispose();
+    }
+}

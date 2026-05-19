@@ -147,7 +147,9 @@ public class CafeVentasController : ControllerBase
         esSaldoMigracion,
         v.PinNota,
         v.PublicToken,
-        v.EntregaPor);
+        v.EntregaPor,
+        v.EstadoPreparacion,
+        v.PreparacionUpdatedAt);
 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null)
@@ -1916,4 +1918,85 @@ public class CafeVentasController : ControllerBase
         "BULTO" => "Bulto",
         _ => f
     };
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PREPARACION DE PEDIDOS (2026-05-19)
+    // Modulo para que los chicos del deposito armen pedidos: cada venta puede entrar
+    // a un flujo de 5 estados (PARA_PREPARAR -> EN_PREPARACION -> LISTO -> EN_CAMINO
+    // -> ENTREGADO). El usuario decide cuando una venta entra al flujo apretando un
+    // boton "A preparacion" en /cafe/ventas. Cada cambio se loguea en la tabla de
+    // auditoria Cafe_VentaPreparacionLog.
+    // ═══════════════════════════════════════════════════════════════════════════
+    private static readonly string[] EstadosPreparacion = { "PARA_PREPARAR", "EN_PREPARACION", "LISTO", "EN_CAMINO", "ENTREGADO" };
+
+    public record CambiarEstadoPreparacionRequest(string EstadoNuevo, string? OperadorNombre, string? Notas);
+
+    [HttpPatch("{id:int}/estado-preparacion")]
+    public async Task<IActionResult> CambiarEstadoPreparacion(int id, [FromBody] CambiarEstadoPreparacionRequest req)
+    {
+        var v = await _db.CafeVentas.FirstOrDefaultAsync(x => x.Id == id);
+        if (v is null) return NotFound();
+        var nuevo = req.EstadoNuevo?.Trim().ToUpperInvariant() ?? "";
+        // null como string vacio = "salir del flujo" (sacar la venta del tablero)
+        var salirDelFlujo = string.IsNullOrEmpty(nuevo);
+        if (!salirDelFlujo && !EstadosPreparacion.Contains(nuevo))
+            return BadRequest(new { error = $"Estado invalido. Valores: {string.Join(", ", EstadosPreparacion)}" });
+
+        var anterior = v.EstadoPreparacion;
+        v.EstadoPreparacion = salirDelFlujo ? null : nuevo;
+        v.PreparacionUpdatedAt = DateTime.UtcNow;
+        _db.CafeVentaPreparacionLogs.Add(new CafeVentaPreparacionLog
+        {
+            VentaId = v.Id,
+            EstadoAnterior = anterior,
+            EstadoNuevo = v.EstadoPreparacion ?? "(SALIO_FLUJO)",
+            OperadorNombre = req.OperadorNombre?.Trim(),
+            Notas = req.Notas?.Trim(),
+            CreatedAt = DateTime.UtcNow
+        });
+        await _db.SaveChangesAsync();
+        return Ok(new { id = v.Id, estado = v.EstadoPreparacion });
+    }
+
+    [HttpGet("preparacion")]
+    public async Task<IActionResult> ListarPreparacion([FromQuery] int dias = 7)
+    {
+        var desde = DateTime.UtcNow.Date.AddDays(-Math.Max(1, dias));
+        // Solo las que entraron al flujo (EstadoPreparacion no es null) en los ultimos N dias.
+        // No incluimos Cliente porque usamos los snapshots de la venta (ClienteNombreSnapshot, etc).
+        var ventas = await _db.CafeVentas
+            .Include(v => v.Items)
+            .Where(v => v.EstadoPreparacion != null && v.CreatedAt >= desde)
+            .OrderBy(v => v.PreparacionUpdatedAt ?? v.CreatedAt)
+            .Select(v => new
+            {
+                id = v.Id,
+                numero = v.Numero,
+                fecha = v.Fecha,
+                clienteNombre = v.ClienteNombreSnapshot ?? "Consumidor final",
+                clienteRazon = v.ClienteRazonSocialSnapshot,
+                clienteLocalidad = v.ClienteLocalidadSnapshot,
+                clienteCiudad = v.ClienteCiudadSnapshot,
+                clienteTipo = v.ClienteTipoSnapshot,
+                weekDays = v.WeekDays,
+                entregaPor = v.EntregaPor,
+                estadoPreparacion = v.EstadoPreparacion,
+                preparacionUpdatedAt = v.PreparacionUpdatedAt,
+                total = v.Total,
+                items = v.Items.Select(i => new
+                {
+                    id = i.Id,
+                    productoNombre = i.ProductoNombreSnapshot,
+                    formato = i.Formato,
+                    cantidad = i.Cantidad,
+                    molienda = i.Molienda,
+                    esDoyPack = i.EsDoyPack,
+                    esEnvasePlateado = i.EsEnvasePlateado,
+                    categoria = i.Categoria,
+                    esConceptoLibre = i.EsConceptoLibre
+                }).ToList()
+            })
+            .ToListAsync();
+        return Ok(ventas);
+    }
 }

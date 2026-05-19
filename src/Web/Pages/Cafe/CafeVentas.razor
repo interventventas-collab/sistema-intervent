@@ -309,9 +309,18 @@
                                     {
                                         <span style="display:inline-block; padding:0.15rem 0.5rem; background:#fed7aa; color:#9a3412; border-radius:999px; font-size:0.7rem; font-weight:700; margin-left:0.2rem;" title="@v.ArcaError">⚠ ARCA pendiente</span>
                                     }
+                                    @if (!string.IsNullOrEmpty(v.EstadoPreparacion))
+                                    {
+                                        var (icon, bg, fg, label) = PreparacionChip(v.EstadoPreparacion);
+                                        <span style="display:inline-block; padding:0.15rem 0.5rem; background:@bg; color:@fg; border-radius:999px; font-size:0.7rem; font-weight:700; margin-left:0.2rem;" title="Estado en el tablero de Preparación">@icon @label</span>
+                                    }
                                 </td>
                                 <td class="actions-cell">
                                     <button class="btn-icon" style="color: #1d4ed8;" @onclick="() => ShowPrint(v)" title="Ver / imprimir / PDF">🖨</button>
+                                    @if (string.IsNullOrEmpty(v.EstadoPreparacion) && !anulada)
+                                    {
+                                        <button class="btn-icon" style="color: #f59e0b;" @onclick="() => EnviarAPreparacion(v)" title="Enviar al tablero de Preparación de pedidos">📦</button>
+                                    }
                                     @{ var saldoVenta = saldosPorVenta.TryGetValue(v.Id, out var sV) ? sV : v.Total; }
                                     @if (!anulada && saldoVenta > 0.01m && v.ClienteId.HasValue)
                                     {
@@ -3946,6 +3955,40 @@
         "EX" => "Exento",
         _ => "Consumidor final"
     };
+    /// <summary>Envia la venta al tablero de Preparacion (estado PARA_PREPARAR).
+    /// Llamado desde el boton "📦" en cada fila del listado de ventas.</summary>
+    private async Task EnviarAPreparacion(CafeVentaDto v)
+    {
+        var ok = await Api.CambiarEstadoPreparacionAsync(v.Id, new CafeCambiarEstadoPreparacionRequest
+        {
+            EstadoNuevo = "PARA_PREPARAR",
+            OperadorNombre = Operator.Current ?? "",
+            Notas = "Enviada desde listado de ventas"
+        });
+        if (ok)
+        {
+            ToastService.Success($"Venta {v.Numero} enviada al tablero de Preparación");
+            v.EstadoPreparacion = "PARA_PREPARAR";
+            StateHasChanged();
+        }
+        else
+        {
+            ToastService.Error("No se pudo enviar a preparación");
+        }
+    }
+
+    /// <summary>Mapea un estado de preparacion a un chip visual (icono, color de fondo,
+    /// color de texto, label corto). Usado tanto en el listado de ventas como en el tablero.</summary>
+    private static (string icon, string bg, string fg, string label) PreparacionChip(string estado) => estado switch
+    {
+        "PARA_PREPARAR" => ("📋", "#fef3c7", "#92400e", "Para armar"),
+        "EN_PREPARACION" => ("🔨", "#fed7aa", "#9a3412", "Armando"),
+        "LISTO" => ("📦", "#dbeafe", "#1e40af", "Listo"),
+        "EN_CAMINO" => ("🚚", "#e9d5ff", "#6b21a8", "En camino"),
+        "ENTREGADO" => ("✅", "#dcfce7", "#166534", "Entregado"),
+        _ => ("·", "#f3f4f6", "#374151", estado)
+    };
+
     private static string CondicionPagoLabel(string c) => c switch
     {
         "TRANSFERENCIA" => "Transferencia",

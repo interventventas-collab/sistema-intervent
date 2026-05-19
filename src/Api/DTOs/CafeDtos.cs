@@ -280,7 +280,9 @@ public record CafeVentaDto(
     bool EsSaldoMigracion = false,
     string? PinNota = null,
     string? PublicToken = null,
-    string? EntregaPor = null);
+    string? EntregaPor = null,
+    string? EstadoPreparacion = null,
+    DateTime? PreparacionUpdatedAt = null);
 
 public class CafeCotizarItemRequest
 {

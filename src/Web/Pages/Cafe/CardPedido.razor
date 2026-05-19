@@ -1,0 +1,132 @@
+@* Tarjeta individual de pedido en el tablero de Preparacion.
+   Diseno "ticket de cocina": cantidades GIGANTES, checklist por item, boton grande
+   "Avanzar →" abajo. Cuando todos los items estan tildados, el boton se vuelve verde
+   y palpita para invitar al armador a marcarlo como armado. El tildado es solo visual
+   (no se persiste en la DB) — al recargar, los items vuelven a estar destildados pero
+   el estado del pedido sigue donde estaba. *@
+
+<div class="prep-card">
+    @{
+        var headerClass = Venta.EstadoPreparacion switch
+        {
+            "PARA_PREPARAR" => "armar",
+            "EN_PREPARACION" => "preparando",
+            "LISTO" => "listo",
+            "EN_CAMINO" => "encamino",
+            _ => "armar"
+        };
+        var btnLabel = Venta.EstadoPreparacion switch
+        {
+            "PARA_PREPARAR" => "🔨 Empezar a armar →",
+            "EN_PREPARACION" => "📦 Marcar como ARMADO →",
+            "LISTO" => "🚚 Salió en camino →",
+            "EN_CAMINO" => "✅ Entregado →",
+            _ => "Avanzar →"
+        };
+        var todoTildado = tildados.Count >= Venta.Items.Count && Venta.Items.Count > 0;
+    }
+    <div class="prep-card-header @headerClass">
+        <span class="prep-card-numero">@Venta.Numero</span>
+        @if (!string.IsNullOrEmpty(Venta.WeekDays))
+        {
+            <span class="prep-card-pill">📅 @DiasPretty(Venta.WeekDays)</span>
+        }
+        @if (!string.IsNullOrEmpty(Venta.EntregaPor))
+        {
+            <span class="prep-card-pill" style="background:#dbeafe; color:#1e40af;">🚚 @Venta.EntregaPor</span>
+        }
+        <div style="width:100%; margin-top:0.3rem;">
+            <div class="prep-card-cliente">👤 @Venta.ClienteNombre</div>
+            @if (!string.IsNullOrEmpty(Venta.ClienteLocalidad) || !string.IsNullOrEmpty(Venta.ClienteCiudad))
+            {
+                <div class="prep-card-meta">📍 @(string.Join(" · ", new[] { Venta.ClienteLocalidad, Venta.ClienteCiudad }.Where(s => !string.IsNullOrEmpty(s))))</div>
+            }
+        </div>
+    </div>
+    <div class="prep-card-body">
+        @if (Venta.Items.Count == 0)
+        {
+            <div class="prep-empty">Sin items.</div>
+        }
+        else
+        {
+            @foreach (var it in Venta.Items)
+            {
+                var tildado = tildados.Contains(it.Id);
+                <div class="prep-item @(tildado ? "tildado" : "")">
+                    <input type="checkbox" class="prep-check" checked="@tildado" @onclick="() => ToggleTildado(it.Id)" />
+                    <div class="prep-item-cant"><span class="x">×</span> @it.Cantidad</div>
+                    <div>
+                        <div class="prep-item-desc-prod prep-item-desc">@it.ProductoNombre</div>
+                        <div class="prep-item-tags">
+                            <span class="prep-tag prep-tag-formato">@FormatoLabel(it.Formato)</span>
+                            @if (!string.IsNullOrEmpty(it.Molienda))
+                            {
+                                <span class="prep-tag prep-tag-molienda">@MoliendaIcon(it.Molienda) @it.Molienda</span>
+                            }
+                            @if (it.EsDoyPack)
+                            {
+                                <span class="prep-tag prep-tag-envase-doypack">📦 Doy pack</span>
+                            }
+                            else if (it.EsEnvasePlateado)
+                            {
+                                <span class="prep-tag prep-tag-envase-plateado">⚪ Envase plateado</span>
+                            }
+                            else if (it.Categoria == "CAFE")
+                            {
+                                <span class="prep-tag prep-tag-envase-negro">⚫ Envase negro</span>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+    </div>
+    <div class="prep-card-footer">
+        <button class="prep-btn-retroceder" @onclick="OnRetroceder" title="Volver al estado anterior">↩</button>
+        <button class="prep-btn-avanzar @headerClass @(todoTildado ? "todo-tildado" : "")" @onclick="OnAvanzar">
+            @btnLabel
+        </button>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public CafePreparacionVentaDto Venta { get; set; } = null!;
+    [Parameter] public EventCallback OnAvanzar { get; set; }
+    [Parameter] public EventCallback OnRetroceder { get; set; }
+
+    // IDs de items tildados (solo visual, no se persiste).
+    private HashSet<int> tildados = new();
+
+    private void ToggleTildado(int itemId)
+    {
+        if (!tildados.Add(itemId)) tildados.Remove(itemId);
+    }
+
+    private static string FormatoLabel(string f) => f switch
+    {
+        "1KG" => "1 kg",
+        "MEDIO" => "1/2 kg",
+        "CUARTO" => "1/4 kg",
+        "UNIT" => "Unidad",
+        "BULTO" => "Bulto",
+        _ => f
+    };
+
+    private static string MoliendaIcon(string m) => m switch
+    {
+        "EN GRANOS" => "🫘",
+        "MOLIDO ESPRESS" => "⚡",
+        _ when m.StartsWith("MOLIDO") => "☕",
+        "MINI EXPRESS" => "🔸",
+        _ => "·"
+    };
+
+    private static string DiasPretty(string weekDays)
+    {
+        var partes = weekDays.Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => s.Trim().ToUpperInvariant())
+            .ToArray();
+        return string.Join(" ", partes);
+    }
+}

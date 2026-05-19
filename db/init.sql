@@ -3693,3 +3693,34 @@ BEGIN
     );
 END
 GO
+
+-- ─── Modulo Preparacion de Pedidos (2026-05-19) ───
+-- Columna EstadoPreparacion en Cafe_Ventas: null = no esta en el flujo de preparacion.
+-- Valores: PARA_PREPARAR, EN_PREPARACION, LISTO, EN_CAMINO, ENTREGADO.
+-- El usuario decide cuando una venta entra al flujo apretando "📦 A preparacion".
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='EstadoPreparacion' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD EstadoPreparacion NVARCHAR(20) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='PreparacionUpdatedAt' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD PreparacionUpdatedAt DATETIME2 NULL;
+GO
+IF NOT EXISTS (SELECT name FROM sys.indexes WHERE name='IX_CafeVentas_EstadoPreparacion' AND object_id=OBJECT_ID('Cafe_Ventas'))
+    CREATE INDEX IX_CafeVentas_EstadoPreparacion ON Cafe_Ventas (EstadoPreparacion) WHERE EstadoPreparacion IS NOT NULL;
+GO
+
+-- Log de auditoria: quien y cuando cambio el estado de preparacion de cada venta.
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_VentaPreparacionLog')
+BEGIN
+    CREATE TABLE Cafe_VentaPreparacionLog (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        VentaId INT NOT NULL,
+        EstadoAnterior NVARCHAR(20) NULL,
+        EstadoNuevo NVARCHAR(20) NOT NULL,
+        OperadorNombre NVARCHAR(120) NULL,
+        Notas NVARCHAR(300) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT FK_CafeVentaPreparacionLog_Venta FOREIGN KEY (VentaId) REFERENCES Cafe_Ventas(Id) ON DELETE CASCADE
+    );
+    CREATE INDEX IX_CafeVentaPreparacionLog_Venta ON Cafe_VentaPreparacionLog(VentaId, CreatedAt DESC);
+END
+GO

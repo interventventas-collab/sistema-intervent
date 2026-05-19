@@ -126,6 +126,17 @@ public class CafeVenta
     [MaxLength(100)]
     public string? EntregaPor { get; set; }
 
+    /// <summary>Estado del flujo de Preparacion de Pedidos. null = la venta NO entro en el
+    /// tablero de preparacion. Valores posibles: PARA_PREPARAR, EN_PREPARACION, LISTO,
+    /// EN_CAMINO, ENTREGADO. El usuario decide cuando una venta entra al flujo apretando
+    /// el boton "📦 A preparacion" en el listado de ventas. Pedido 2026-05-19.</summary>
+    [MaxLength(20)]
+    public string? EstadoPreparacion { get; set; }
+
+    /// <summary>Cuando se cambio por ultima vez el EstadoPreparacion. Sirve para mostrar
+    /// "armado hace X minutos" en el tablero.</summary>
+    public DateTime? PreparacionUpdatedAt { get; set; }
+
     /// <summary>Importe Neto (sin IVA) que ARCA registró efectivamente. Guardamos lo que devuelve
     /// el FECAESolicitar para que el PDF reconstruya los totales sin lugar a interpretación.
     /// NULL en facturas viejas (pre-2026-05-15) que no guardaban esto — para esas se calcula
