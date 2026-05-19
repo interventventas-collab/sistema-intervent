@@ -1,5 +1,6 @@
 using Api.Data;
 using Api.DTOs;
+using Api.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -153,18 +154,20 @@ public class CafeConsultasController : ControllerBase
         if (impagas.Count == 0)
             return Vacio($"✓ {cli.Nombre} no tiene comprobantes impagos.");
 
+        // Monto real cobrable (con IVA si es factura ARCA, sino Total neto).
+        decimal Cobrable(CafeVenta v) => (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
         return new CafeConsultaResultDto
         {
             Tipo = "tabla",
-            Titulo = $"💰 {cli.Nombre} debe {Money(impagas.Sum(v => v.Total))}",
+            Titulo = $"💰 {cli.Nombre} debe {Money(impagas.Sum(Cobrable))}",
             Subtitulo = $"{impagas.Count} comprobante{(impagas.Count == 1 ? "" : "s")} impago{(impagas.Count == 1 ? "" : "s")}",
-            Total = Money(impagas.Sum(v => v.Total)),
+            Total = Money(impagas.Sum(Cobrable)),
             Columnas = new() { "Comprobante", "Fecha", "Total" },
             Filas = impagas.Select(v => new Dictionary<string, string>
             {
                 ["Comprobante"] = v.Numero,
                 ["Fecha"] = v.Fecha.ToString("dd/MM/yyyy"),
-                ["Total"] = Money(v.Total)
+                ["Total"] = Money(Cobrable(v))
             }).ToList()
         };
     }
@@ -395,19 +398,21 @@ public class CafeConsultasController : ControllerBase
 
         if (ventas.Count == 0) return Vacio($"No hay ventas en {label}.");
 
+        // Monto real (con IVA si es factura ARCA, sino Total neto).
+        decimal Cobrable(CafeVenta v) => (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
         return new CafeConsultaResultDto
         {
             Tipo = "tabla",
             Titulo = $"💵 Ventas {label}",
             Subtitulo = $"{ventas.Count} comprobante{(ventas.Count == 1 ? "" : "s")} · {desde:dd/MM/yyyy} a {hasta:dd/MM/yyyy}",
-            Total = Money(ventas.Sum(v => v.Total)),
+            Total = Money(ventas.Sum(Cobrable)),
             Columnas = new() { "Número", "Fecha", "Cliente", "Total", "Pagada" },
             Filas = ventas.Select(v => new Dictionary<string, string>
             {
                 ["Número"] = v.Numero,
                 ["Fecha"] = v.Fecha.ToString("dd/MM/yyyy"),
                 ["Cliente"] = v.ClienteNombreSnapshot ?? v.ClienteNav?.Nombre ?? "Consumidor final",
-                ["Total"] = Money(v.Total),
+                ["Total"] = Money(Cobrable(v)),
                 ["Pagada"] = v.IsPaid ? "✓" : "—"
             }).ToList()
         };

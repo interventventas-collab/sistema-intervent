@@ -97,10 +97,12 @@ public class CafeCobranzasController : ControllerBase
     [HttpGet("comprobantes-pendientes/{clienteId:int}")]
     public async Task<IActionResult> ComprobantesPendientes(int clienteId)
     {
-        // Ventas del cliente
+        // Ventas del cliente. Traemos los campos necesarios para calcular MontoCobrable
+        // (Total + ArcaImpTotal): el primero para tipo X / proforma sin IVA discriminado,
+        // el segundo para facturas A/B/C con CAE — ese es el total con IVA real.
         var ventas = await _db.CafeVentas
             .Where(v => v.ClienteId == clienteId && v.Estado != "anulado")
-            .Select(v => new { v.Id, v.Numero, v.Fecha, v.Total })
+            .Select(v => new { v.Id, v.Numero, v.Fecha, v.Total, v.ArcaImpTotal })
             .ToListAsync();
 
         if (ventas.Count == 0) return Ok(new List<ComprobantePendienteDto>());
@@ -118,10 +120,15 @@ public class CafeCobranzasController : ControllerBase
         var dict = pagadoPorVenta.ToDictionary(p => p.VentaId, p => p.Total);
 
         var result = ventas
-            .Select(v => new ComprobantePendienteDto(
-                v.Id, v.Numero ?? $"#{v.Id}", v.Fecha, v.Total,
-                dict.TryGetValue(v.Id, out var p) ? p : 0m,
-                v.Total - (dict.TryGetValue(v.Id, out var p2) ? p2 : 0m)))
+            .Select(v =>
+            {
+                // Monto real cobrable: ArcaImpTotal si la venta tiene CAE de ARCA, sino Total.
+                var totalCobrar = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m)
+                    ? v.ArcaImpTotal.Value : v.Total;
+                var pagado = dict.TryGetValue(v.Id, out var p) ? p : 0m;
+                return new ComprobantePendienteDto(
+                    v.Id, v.Numero ?? $"#{v.Id}", v.Fecha, totalCobrar, pagado, totalCobrar - pagado);
+            })
             .Where(x => x.Saldo > 0.01m)  // solo pendientes
             .OrderBy(x => x.Fecha)
             .ToList();
@@ -295,7 +302,9 @@ public class CafeCobranzasController : ControllerBase
         foreach (var v in ventas)
         {
             var pagado = dict.TryGetValue(v.Id, out var p) ? p : 0m;
-            v.IsPaid = pagado >= v.Total - 0.01m;
+            // Usamos MontoCobrable (Total con IVA si es factura ARCA) para que IsPaid sea correcto.
+            var totalCobrar = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
+            v.IsPaid = pagado >= totalCobrar - 0.01m;
         }
         await _db.SaveChangesAsync();
     }

@@ -198,7 +198,8 @@ public class CafeVentasController : ControllerBase
         var q = _db.CafeVentas.AsQueryable();
         if (from.HasValue) q = q.Where(v => v.Fecha >= from.Value.Date);
         if (to.HasValue) q = q.Where(v => v.Fecha <= to.Value.Date);
-        var ventas = await q.Where(v => v.Estado != "anulado").Select(v => new { v.Id, v.Total }).ToListAsync();
+        // Necesitamos ArcaImpTotal ademas de Total: en facturas A/B/C con IVA, ese es el monto real cobrable.
+        var ventas = await q.Where(v => v.Estado != "anulado").Select(v => new { v.Id, v.Total, v.ArcaImpTotal }).ToListAsync();
         var ventaIds = ventas.Select(v => v.Id).ToList();
         var pagados = await _db.CafeCobranzasComprobantes
             .Where(c => c.VentaId != null && ventaIds.Contains(c.VentaId!.Value)
@@ -207,11 +208,12 @@ public class CafeVentasController : ControllerBase
             .Select(g => new { VentaId = g.Key, Pagado = g.Sum(x => x.Importe) })
             .ToListAsync();
         var dict = pagados.ToDictionary(p => p.VentaId, p => p.Pagado);
-        var result = ventas.Select(v => new VentaSaldoDto(
-            v.Id, v.Total,
-            dict.TryGetValue(v.Id, out var p) ? p : 0m,
-            v.Total - (dict.TryGetValue(v.Id, out var p2) ? p2 : 0m)
-        )).ToList();
+        var result = ventas.Select(v =>
+        {
+            var totalCobrar = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
+            var pagado = dict.TryGetValue(v.Id, out var p) ? p : 0m;
+            return new VentaSaldoDto(v.Id, totalCobrar, pagado, totalCobrar - pagado);
+        }).ToList();
         return Ok(result);
     }
 
@@ -394,9 +396,11 @@ public class CafeVentasController : ControllerBase
         var linkLine = !string.IsNullOrWhiteSpace(req.PublicUrl)
             ? $"\n\nTambién lo podés ver online acá: {req.PublicUrl}"
             : "";
+        // Monto a mostrar al cliente = total real con IVA si es factura ARCA, sino Total.
+        var montoCliente = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
         var body = string.IsNullOrWhiteSpace(req.Body)
             ? $"Hola{(string.IsNullOrWhiteSpace(v.ClienteNombreSnapshot) ? "" : " " + v.ClienteNombreSnapshot)},\n\n" +
-              $"Te adjuntamos el comprobante {v.Numero} por ${v.Total:N2}." + linkLine + "\n\n" +
+              $"Te adjuntamos el comprobante {v.Numero} por ${montoCliente:N2}." + linkLine + "\n\n" +
               $"Cualquier consulta, escribinos.\n\n" +
               $"Saludos,\n{cfg?.NegocioNombre ?? "Frikaf"}"
             : req.Body!;
@@ -452,9 +456,10 @@ public class CafeVentasController : ControllerBase
         else
             pdfBytes = _pdfService.GenerarPdfBytes(v, cfg);
 
-        // Caption por default si no viene
+        // Caption por default si no viene. Monto = total real con IVA si es factura ARCA.
+        var montoCaption = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
         var caption = string.IsNullOrWhiteSpace(req.Caption)
-            ? $"Hola{(string.IsNullOrWhiteSpace(v.ClienteNombreSnapshot) ? "" : " " + v.ClienteNombreSnapshot)}, te paso el comprobante {v.Numero} por ${v.Total:N2}. Saludos!"
+            ? $"Hola{(string.IsNullOrWhiteSpace(v.ClienteNombreSnapshot) ? "" : " " + v.ClienteNombreSnapshot)}, te paso el comprobante {v.Numero} por ${montoCaption:N2}. Saludos!"
             : req.Caption!;
 
         var result = await _whatsAppService.SendMessageWithPdfAsync(req.Phone, caption, pdfBytes, BuildPdfFilename(v));
@@ -1982,7 +1987,8 @@ public class CafeVentasController : ControllerBase
                 entregaPor = v.EntregaPor,
                 estadoPreparacion = v.EstadoPreparacion,
                 preparacionUpdatedAt = v.PreparacionUpdatedAt,
-                total = v.Total,
+                // Total real cobrable (con IVA si es factura ARCA)
+                total = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total,
                 items = v.Items.Select(i => new
                 {
                     id = i.Id,

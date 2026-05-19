@@ -64,10 +64,11 @@ public class CafeClientesController : ControllerBase
         var cliente = await _db.CafeClientes.FindAsync(id);
         if (cliente is null) return NotFound();
 
-        // Ventas vigentes del cliente
+        // Ventas vigentes del cliente. Para facturas A/B/C con IVA, el debe es el TOTAL CON IVA
+        // (ArcaImpTotal), no el neto (Total) — sino la cuenta corriente queda corta el IVA.
         var ventas = await _db.CafeVentas
             .Where(v => v.ClienteId == id && v.Estado != "anulado")
-            .Select(v => new { v.Id, v.Fecha, v.Numero, v.Total })
+            .Select(v => new { v.Id, v.Fecha, v.Numero, v.Total, v.ArcaImpTotal })
             .ToListAsync();
         // Cobranzas vigentes y sus retenciones
         var cobranzas = await _db.CafeCobranzas
@@ -79,7 +80,10 @@ public class CafeClientesController : ControllerBase
 
         var movs = new List<(DateTime fecha, string tipo, string num, decimal debe, decimal haber, string? det)>();
         foreach (var v in ventas)
-            movs.Add((v.Fecha, "Venta", v.Numero ?? $"#{v.Id}", v.Total, 0m, null));
+        {
+            var debe = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
+            movs.Add((v.Fecha, "Venta", v.Numero ?? $"#{v.Id}", debe, 0m, null));
+        }
         foreach (var c in cobranzas)
             movs.Add((c.Fecha, "Cobranza", c.Numero, 0m, c.Total + c.Retenciones,
                 c.Retenciones > 0 ? $"(incluye ${c.Retenciones:N2} retenciones)" : null));
@@ -338,7 +342,7 @@ public class CafeClientesController : ControllerBase
                      && v.ClienteId != null
                      && v.Total > 0)
             .Select(v => new {
-                v.Id, ClienteId = v.ClienteId!.Value, v.Total, v.Fecha, v.TipoComprobante,
+                v.Id, ClienteId = v.ClienteId!.Value, v.Total, v.ArcaImpTotal, v.Fecha, v.TipoComprobante,
                 EsSaldoMigracion = _db.CafeSaldosMigracion.Any(s => s.VentaId == v.Id)
             })
             .ToListAsync();
@@ -355,9 +359,14 @@ public class CafeClientesController : ControllerBase
         var pagadosDict = pagados.ToDictionary(p => p.VentaId, p => p.Pagado);
 
         // Calcular saldo de cada venta — incluyo TipoComprobante para poder separar despues.
-        var ventasConSaldo = ventas.Select(v => new {
-            v.Id, v.ClienteId, v.Total, v.Fecha, v.TipoComprobante, v.EsSaldoMigracion,
-            Saldo = v.Total - (pagadosDict.TryGetValue(v.Id, out var p) ? p : 0m)
+        // Monto real cobrable: ArcaImpTotal (con IVA) si la venta tiene CAE, sino Total.
+        var ventasConSaldo = ventas.Select(v =>
+        {
+            var totalCobrar = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
+            return new {
+                v.Id, v.ClienteId, Total = totalCobrar, v.Fecha, v.TipoComprobante, v.EsSaldoMigracion,
+                Saldo = totalCobrar - (pagadosDict.TryGetValue(v.Id, out var p) ? p : 0m)
+            };
         }).Where(v => v.Saldo > 0).ToList();
         if (ventasConSaldo.Count == 0) return Ok(new List<ClienteSaldoPendienteDto>());
 
@@ -430,13 +439,18 @@ public class CafeClientesController : ControllerBase
             .ToListAsync();
         var pagadosDict = pagados.ToDictionary(p => p.VentaId, p => p.Pagado);
 
-        // Filtrar ventas con saldo > 0
+        // Filtrar ventas con saldo > 0. Monto cobrable = ArcaImpTotal si es factura ARCA, sino Total.
         var ventasConSaldo = ventas
-            .Select(v => new {
-                v.Id, v.Numero, ClienteId = v.ClienteId!.Value, v.Total, v.Fecha,
-                v.TipoComprobante,
-                Pagado = pagadosDict.TryGetValue(v.Id, out var p) ? p : 0m,
-                Saldo = v.Total - (pagadosDict.TryGetValue(v.Id, out var p2) ? p2 : 0m)
+            .Select(v =>
+            {
+                var totalCobrar = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
+                var pagado = pagadosDict.TryGetValue(v.Id, out var p) ? p : 0m;
+                return new {
+                    v.Id, v.Numero, ClienteId = v.ClienteId!.Value, Total = totalCobrar, v.Fecha,
+                    v.TipoComprobante,
+                    Pagado = pagado,
+                    Saldo = totalCobrar - pagado
+                };
             })
             .Where(v => v.Saldo > 0)
             .ToList();
