@@ -247,24 +247,57 @@ button {
   overflow: hidden;
 }
 
-/* ═════════════ Atajo "Nueva Venta" en topbar ═════════════ */
-/* Boton siempre visible arriba a la derecha (dentro del topbar sticky). */
+/* ═════════════ Atajos del topbar (Cafe) ═════════════ */
+/* Stack vertical para apilar varios botones de atajo en la esquina superior derecha
+   sin agrandar el topbar (que tiene altura fija). Cada boton es chiquito y va prolijo
+   uno arriba del otro. El stack se ancla a la derecha del topbar. */
+.topbar-cafe-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  align-items: stretch;
+}
+.topbar-cafe-stack > button { width: 100%; }
+
+/* Boton primario "Nueva Venta" — destacado en verde con sombra */
 .fab-nueva-venta {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.4rem;
-  padding: 0.45rem 1rem;
+  padding: 0.35rem 0.9rem;
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   color: white;
   border: none;
   border-radius: 999px;
   font-weight: 700;
-  font-size: 0.88rem;
+  font-size: 0.82rem;
   box-shadow: 0 3px 10px rgba(16, 185, 129, 0.35), 0 1px 3px rgba(0,0,0,0.08);
   cursor: pointer;
   transition: transform 0.15s, box-shadow 0.15s;
   white-space: nowrap;
 }
+
+/* Botones secundarios del stack (debajo de Nueva Venta) — fondo blanco con borde,
+   contrastan con el verde de arriba pero comparten la forma de pildora. */
+.fab-cafe-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.85rem;
+  background: white;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.78rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.fab-cafe-link:hover { background: #f3f4f6; color: #111827; }
 .fab-nueva-venta:hover {
   transform: translateY(-1px) scale(1.03);
   box-shadow: 0 6px 16px rgba(16, 185, 129, 0.5), 0 2px 5px rgba(0,0,0,0.1);
@@ -278,13 +311,15 @@ button {
 .fab-nueva-venta-label {
   letter-spacing: 0.02em;
 }
-/* En pantallas chicas: solo el "+" para ahorrar lugar en la topbar */
+/* En pantallas chicas: solo el "+" para Nueva Venta, los demas botones del stack
+   ocultos para que no ocupen lugar (en celu se accede a 'Ventas' desde el sidebar). */
 @media (max-width: 640px) {
   .fab-nueva-venta {
-    padding: 0.5rem 0.7rem;
+    padding: 0.45rem 0.7rem;
   }
   .fab-nueva-venta-label { display: none; }
   .fab-nueva-venta-plus { font-size: 1.3rem; }
+  .topbar-cafe-stack > .fab-cafe-link { display: none; }
 }
 
 /* ═════════════ DEV: indicador visible de entorno desarrollo ═════════════ */
