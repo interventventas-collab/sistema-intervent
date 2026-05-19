@@ -552,7 +552,7 @@
         if (clientes is null) return Enumerable.Empty<CafeClienteDto>();
         var t = q.Trim();
         if (string.IsNullOrEmpty(t)) return clientes;
-        bool h(string? s) => !string.IsNullOrEmpty(s) && s.Contains(t, StringComparison.OrdinalIgnoreCase);
+        bool h(string? s) => s.MatchesSearch(t);
         return clientes.Where(c => c.IsActive
             && (h(c.Codigo) || h(c.Nombre) || h(c.RazonSocial) || h(c.Cuit)
                 || h(c.Telefono) || h(c.Email)

@@ -656,7 +656,7 @@
                                     {
                                         var cmatches = string.IsNullOrWhiteSpace(comboSearch)
                                             ? combos.Where(c => c.IsActive).Take(20).ToList()
-                                            : combos.Where(c => c.IsActive && (c.Nombre.ToLowerInvariant().Contains(comboSearch.Trim().ToLowerInvariant()) || (c.Descripcion?.ToLowerInvariant().Contains(comboSearch.Trim().ToLowerInvariant()) ?? false))).Take(20).ToList();
+                                            : combos.Where(c => c.IsActive && (c.Nombre.MatchesSearch(comboSearch) || c.Descripcion.MatchesSearch(comboSearch))).Take(20).ToList();
                                         <div style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #d1d5db; border-radius: 6px; max-height: 280px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 14px rgba(0,0,0,0.12); margin-top: 0.2rem;">
                                             @if (cmatches.Count == 0)
                                             {
@@ -2003,7 +2003,7 @@
             if (!string.IsNullOrWhiteSpace(filtroCliente))
             {
                 var t = filtroCliente.Trim();
-                bool h(string? s) => !string.IsNullOrEmpty(s) && s.Contains(t, StringComparison.OrdinalIgnoreCase);
+                bool h(string? s) => s.MatchesSearch(t);
                 // Construyo un dict por ClienteId para enriquecer la busqueda con campos que NO
                 // están en el snapshot de la venta (email, código, código interno).
                 var clientesById = clientes?.ToDictionary(c => c.Id, c => c);
@@ -2955,7 +2955,7 @@
         if (clientes is null) return Enumerable.Empty<CafeClienteDto>();
         var t = q.Trim();
         if (string.IsNullOrEmpty(t)) return clientes;
-        bool h(string? s) => !string.IsNullOrEmpty(s) && s.Contains(t, StringComparison.OrdinalIgnoreCase);
+        bool h(string? s) => s.MatchesSearch(t);
         return clientes.Where(c => c.IsActive
             && (h(c.Codigo) || h(c.Nombre) || h(c.RazonSocial) || h(c.Cuit)
                 || h(c.Telefono) || h(c.Email)
@@ -2995,7 +2995,7 @@
         if (productos is null) return Enumerable.Empty<CafeProductoDto>();
         var t = q.Trim();
         if (string.IsNullOrEmpty(t)) return productos.Where(p => p.IsActive);
-        bool h(string? s) => !string.IsNullOrEmpty(s) && s.Contains(t, StringComparison.OrdinalIgnoreCase);
+        bool h(string? s) => s.MatchesSearch(t);
         return productos.Where(p => p.IsActive && (h(p.Sku) || h(p.Barcode) || h(p.Nombre) || h(p.Marca)));
     }
 

@@ -454,8 +454,8 @@
                 q = q.Where(k => string.Equals(k.MarcaNombre, filtroMarca, StringComparison.OrdinalIgnoreCase));
             if (!string.IsNullOrWhiteSpace(filtroTexto))
             {
-                var t = filtroTexto.Trim().ToLower();
-                q = q.Where(k => k.Sku.ToLower().Contains(t) || k.Nombre.ToLower().Contains(t));
+                var t = filtroTexto.Trim();
+                q = q.Where(k => k.Sku.MatchesSearch(t) || k.Nombre.MatchesSearch(t));
             }
             return q.ToList();
         }

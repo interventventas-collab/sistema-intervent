@@ -346,10 +346,10 @@
         {
             if (combos is null) return new();
             if (string.IsNullOrWhiteSpace(filtroTexto)) return combos;
-            var t = filtroTexto.Trim().ToLowerInvariant();
+            var t = filtroTexto.Trim();
             return combos.Where(c =>
-                c.Nombre.ToLowerInvariant().Contains(t) ||
-                (c.Descripcion?.ToLowerInvariant().Contains(t) ?? false)).ToList();
+                c.Nombre.MatchesSearch(t) ||
+                c.Descripcion.MatchesSearch(t)).ToList();
         }
     }
 
@@ -519,12 +519,12 @@
     private IEnumerable<CafeProductoDto> ProductosMatching(string s)
     {
         if (productos is null) return Enumerable.Empty<CafeProductoDto>();
-        var t = s.Trim().ToLowerInvariant();
+        var t = s.Trim();
         return productos.Where(p =>
-            (p.Sku?.ToLowerInvariant().Contains(t) ?? false) ||
-            (p.Barcode?.ToLowerInvariant().Contains(t) ?? false) ||
-            p.Nombre.ToLowerInvariant().Contains(t) ||
-            (p.Marca?.ToLowerInvariant().Contains(t) ?? false));
+            p.Sku.MatchesSearch(t) ||
+            p.Barcode.MatchesSearch(t) ||
+            p.Nombre.MatchesSearch(t) ||
+            p.Marca.MatchesSearch(t));
     }
 
     /// <summary>Calcula precio unitario con la misma lógica del backend (sin acceso al servicio).

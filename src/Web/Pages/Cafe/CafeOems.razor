@@ -335,7 +335,7 @@
             if (!string.IsNullOrWhiteSpace(filtroTexto))
             {
                 var t = filtroTexto.Trim();
-                bool h(string? s) => !string.IsNullOrEmpty(s) && s.Contains(t, StringComparison.OrdinalIgnoreCase);
+                bool h(string? s) => s.MatchesSearch(t);
                 q = q.Where(o => h(o.Codigo) || h(o.Descripcion) || h(o.Marca) || h(o.Barcode));
             }
             return q.Take(500).ToList();

@@ -510,7 +510,7 @@
         if (clientes is null) return Enumerable.Empty<CafeClienteDto>();
         if (string.IsNullOrWhiteSpace(clienteSearch)) return clientes.OrderBy(c => c.CodigoInterno ?? int.MaxValue).ThenBy(c => c.Nombre);
         var t = clienteSearch.Trim();
-        bool h(string? s) => !string.IsNullOrEmpty(s) && s.Contains(t, StringComparison.OrdinalIgnoreCase);
+        bool h(string? s) => s.MatchesSearch(t);
         return clientes.Where(c => h(c.Nombre) || h(c.RazonSocial) || h(c.Cuit) || h(c.Telefono) || h(c.Email)
             || (c.CodigoInterno.HasValue && c.CodigoInterno.Value.ToString().Contains(t)))
             .OrderBy(c => c.CodigoInterno ?? int.MaxValue).ThenBy(c => c.Nombre);

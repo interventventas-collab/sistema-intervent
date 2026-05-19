@@ -1081,7 +1081,7 @@
             if (!string.IsNullOrWhiteSpace(filtroTexto))
             {
                 var t = filtroTexto.Trim();
-                bool h(string? s) => !string.IsNullOrEmpty(s) && s.Contains(t, StringComparison.OrdinalIgnoreCase);
+                bool h(string? s) => s.MatchesSearch(t);
                 q = q.Where(p => h(p.Sku) || h(p.Barcode) || h(p.Nombre) || h(p.Marca));
             }
             return q.ToList();
@@ -1325,7 +1325,7 @@
     {
         if (oems is null) return Enumerable.Empty<CafeOemDto>();
         var t = s.Trim();
-        bool h(string? str) => !string.IsNullOrEmpty(str) && str.Contains(t, StringComparison.OrdinalIgnoreCase);
+        bool h(string? str) => str.MatchesSearch(t);
         return oems.Where(o => h(o.Codigo) || h(o.Descripcion) || h(o.Marca) || h(o.Barcode));
     }
 
