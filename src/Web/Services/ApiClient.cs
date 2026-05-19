@@ -578,6 +578,21 @@ public class ApiClient
     public async Task<bool> AnularPagoComodatoAsync(int id, int pagoId)
         => await DeleteAsync($"/api/cafe/comodatos/{id}/pagos/{pagoId}");
 
+    /// <summary>Descarga el PDF del comprobante de Comodato / Financiación para que firme el cliente.</summary>
+    public async Task<(byte[]? bytes, string? error)> GetCafeComodatoComprobantePdfAsync(int id)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.GetAsync($"/api/cafe/comodatos/{id}/comprobante.pdf");
+        if (resp.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            await HandleUnauthorizedAsync();
+            return (null, "Sesión expirada");
+        }
+        if (resp.IsSuccessStatusCode)
+            return (await resp.Content.ReadAsByteArrayAsync(), null);
+        return (null, $"Error {resp.StatusCode}");
+    }
+
     // --- Cafe: Clientes ---
     public async Task<List<CafeClienteDto>?> GetCafeClientesAsync()
         => await GetAsync<List<CafeClienteDto>>("/api/cafe/clientes");

@@ -20,7 +20,29 @@ public class CafeComodatosController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly AuditLogService _audit;
-    public CafeComodatosController(AppDbContext db, AuditLogService audit) { _db = db; _audit = audit; }
+    private readonly CafeComodatoPdfService _pdfService;
+    public CafeComodatosController(AppDbContext db, AuditLogService audit, CafeComodatoPdfService pdfService)
+    {
+        _db = db;
+        _audit = audit;
+        _pdfService = pdfService;
+    }
+
+    /// <summary>Genera y devuelve el PDF del comprobante (comodato o financiacion) para
+    /// que el cliente lo firme. Numero estable derivado del Id + año de creacion.</summary>
+    [HttpGet("{id:int}/comprobante.pdf")]
+    public async Task<IActionResult> ComprobantePdf(int id)
+    {
+        var c = await _db.CafeComodatos
+            .Include(x => x.Cliente)
+            .Include(x => x.Pagos)
+            .FirstOrDefaultAsync(x => x.Id == id);
+        if (c is null) return NotFound();
+        var settings = await _db.CafeSettings.FirstOrDefaultAsync();
+        var bytes = _pdfService.GenerarPdfBytes(c, c.Cliente, c.Pagos, settings);
+        var fileName = CafeComodatoPdfService.GetNumeroComprobante(c) + ".pdf";
+        return File(bytes, "application/pdf", fileName);
+    }
 
     public record ComodatoDto(int Id, int ClienteId, string? ClienteNombre, string Modalidad, string Moneda,
         string? Marca, string? Modelo, string? NumeroSerie, DateTime? FechaEntrega,
