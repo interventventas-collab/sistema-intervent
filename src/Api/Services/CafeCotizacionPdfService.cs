@@ -111,19 +111,23 @@ public class CafeCotizacionPdfService
                                     var line = cfg.NegocioDireccion + (string.IsNullOrEmpty(locCp) ? "" : " · " + locCp);
                                     c.Item().Text(line).FontSize(8);
                                 }
-                                if (!string.IsNullOrEmpty(cfg.NegocioCuit) || !string.IsNullOrEmpty(cfg.NegocioCondicionIva))
+                                // Datos fiscales del emisor: solo en comprobantes oficiales ARCA (no en cotizaciones tipo "X").
+                                if (v.TipoComprobante != "X")
                                 {
-                                    var parts = new List<string>();
-                                    if (!string.IsNullOrEmpty(cfg.NegocioCuit)) parts.Add($"CUIT: {cfg.NegocioCuit}");
-                                    if (!string.IsNullOrEmpty(cfg.NegocioCondicionIva)) parts.Add($"Cond. IVA: {CondicionIvaLabel(cfg.NegocioCondicionIva!)}");
-                                    c.Item().Text(string.Join(" · ", parts)).FontSize(8);
-                                }
-                                if (!string.IsNullOrEmpty(cfg.NegocioIngresosBrutos) || cfg.NegocioInicioActividad.HasValue)
-                                {
-                                    var parts = new List<string>();
-                                    if (!string.IsNullOrEmpty(cfg.NegocioIngresosBrutos)) parts.Add($"IIBB: {cfg.NegocioIngresosBrutos}");
-                                    if (cfg.NegocioInicioActividad.HasValue) parts.Add($"Inicio actividad: {cfg.NegocioInicioActividad.Value:dd/MM/yyyy}");
-                                    c.Item().Text(string.Join(" · ", parts)).FontSize(8);
+                                    if (!string.IsNullOrEmpty(cfg.NegocioCuit) || !string.IsNullOrEmpty(cfg.NegocioCondicionIva))
+                                    {
+                                        var parts = new List<string>();
+                                        if (!string.IsNullOrEmpty(cfg.NegocioCuit)) parts.Add($"CUIT: {cfg.NegocioCuit}");
+                                        if (!string.IsNullOrEmpty(cfg.NegocioCondicionIva)) parts.Add($"Cond. IVA: {CondicionIvaLabel(cfg.NegocioCondicionIva!)}");
+                                        c.Item().Text(string.Join(" · ", parts)).FontSize(8);
+                                    }
+                                    if (!string.IsNullOrEmpty(cfg.NegocioIngresosBrutos) || cfg.NegocioInicioActividad.HasValue)
+                                    {
+                                        var parts = new List<string>();
+                                        if (!string.IsNullOrEmpty(cfg.NegocioIngresosBrutos)) parts.Add($"IIBB: {cfg.NegocioIngresosBrutos}");
+                                        if (cfg.NegocioInicioActividad.HasValue) parts.Add($"Inicio actividad: {cfg.NegocioInicioActividad.Value:dd/MM/yyyy}");
+                                        c.Item().Text(string.Join(" · ", parts)).FontSize(8);
+                                    }
                                 }
                                 if (!string.IsNullOrEmpty(cfg.NegocioTelefono) || !string.IsNullOrEmpty(cfg.NegocioEmail) || !string.IsNullOrEmpty(cfg.NegocioWeb))
                                 {
@@ -200,8 +204,12 @@ public class CafeCotizacionPdfService
                                 rr.AutoItem().Background(tagBg).Padding(3).Text(tagText)
                                     .FontSize(8).Bold().FontColor(tagFg);
                             });
-                            c.Item().PaddingTop(2).AlignRight()
-                                .Text($"Cond. IVA: {CondicionIvaLabel(v.CondicionIva)}").FontSize(8);
+                            // Cond. IVA del cliente: solo en comprobantes oficiales ARCA (no en cotizaciones tipo "X").
+                            if (v.TipoComprobante != "X")
+                            {
+                                c.Item().PaddingTop(2).AlignRight()
+                                    .Text($"Cond. IVA: {CondicionIvaLabel(v.CondicionIva)}").FontSize(8);
+                            }
                         });
                     });
                 });
