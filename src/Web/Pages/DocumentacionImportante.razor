@@ -1,0 +1,227 @@
+@page "/documentacion"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+@using Web.Models
+
+@* ════════════════════════════════════════════════════════════════════════════
+   Pantalla 'Documentación importante' — pedido del usuario 2026-05-19: una
+   carpeta siempre a mano con documentos que tienen que estar SUPER actualizados
+   (constancia AFIP, etc). Carpeta fija en el storage: 'Documentacion-Importante'.
+   ════════════════════════════════════════════════════════════════════════════ *@
+
+<style>
+    .doc-wrap { max-width: 920px; margin: 0 auto; padding: 0.5rem; }
+    .doc-header { text-align: center; margin-bottom: 1rem; }
+    .doc-header h1 { font-size: 1.6rem; font-weight: 800; margin: 0 0 0.3rem; color: #1f2937; }
+    .doc-header p { color: #6b7280; margin: 0; font-size: 0.92rem; }
+
+    .doc-card { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); padding: 1rem 1.2rem; margin-bottom: 0.8rem; display: flex; align-items: center; gap: 0.8rem; transition: box-shadow 0.15s; }
+    .doc-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,0.10); }
+    .doc-card.viejo { border: 2px solid #fb923c; background: #fff7ed; }
+    .doc-icon { font-size: 2.2rem; line-height: 1; }
+    .doc-info { flex: 1; min-width: 0; }
+    .doc-nombre { font-size: 1rem; font-weight: 700; color: #1f2937; margin: 0 0 0.15rem; word-break: break-word; }
+    .doc-meta { font-size: 0.8rem; color: #6b7280; }
+    .doc-meta .viejo-warn { background: #fed7aa; color: #9a3412; padding: 0.1rem 0.45rem; border-radius: 4px; font-weight: 700; margin-left: 0.4rem; }
+    .doc-actions { display: flex; gap: 0.4rem; flex-shrink: 0; }
+    .doc-actions a, .doc-actions button {
+        padding: 0.45rem 0.8rem; font-size: 0.85rem; font-weight: 600; border-radius: 6px;
+        text-decoration: none; cursor: pointer; border: 1px solid #d1d5db; background: white; color: #374151;
+    }
+    .doc-actions .btn-borrar { color: #b91c1c; border-color: #fca5a5; }
+    .doc-actions .btn-borrar:hover { background: #fee2e2; }
+
+    .upload-zone { background: white; border: 2px dashed #93c5fd; border-radius: 12px; padding: 1.5rem; text-align: center; cursor: pointer; transition: all 0.15s; margin-bottom: 1rem; }
+    .upload-zone:hover { border-color: #1d4ed8; background: #eff6ff; }
+    .upload-zone.uploading { border-color: #16a34a; background: #ecfdf5; }
+    .upload-zone-label { font-size: 1.05rem; font-weight: 700; color: #1e3a8a; }
+    .upload-zone-hint { font-size: 0.8rem; color: #6b7280; margin-top: 0.3rem; }
+
+    .vacio { background: #f9fafb; border: 1px dashed #d1d5db; padding: 2rem 1rem; border-radius: 12px; text-align: center; color: #6b7280; }
+
+    @@media (max-width: 640px) {
+        .doc-card { flex-direction: column; align-items: stretch; }
+        .doc-icon { text-align: center; }
+        .doc-actions { justify-content: center; }
+    }
+</style>
+
+<div class="doc-wrap">
+    <div class="doc-header">
+        <h1>📑 Documentación importante</h1>
+        <p>Documentos que SIEMPRE deben estar actualizados (constancia AFIP, certificados, etc).</p>
+    </div>
+
+    <label class="upload-zone @(uploading ? "uploading" : "")">
+        <InputFile OnChange="OnFilesSelected" multiple style="display: none;" />
+        <div class="upload-zone-label">
+            @(uploading ? "⏳ Subiendo..." : "📤 Subir documento (o varios)")
+        </div>
+        <div class="upload-zone-hint">PDF, imagen, Word, Excel — cualquier archivo importante</div>
+    </label>
+
+    @if (loading)
+    {
+        <p style="text-align: center; padding: 2rem; color: #6b7280;">⏳ Cargando documentos...</p>
+    }
+    else if (archivos.Count == 0)
+    {
+        <div class="vacio">
+            <div style="font-size: 2.5rem;">📂</div>
+            <strong>Todavía no subiste ningún documento</strong>
+            <p style="margin: 0.4rem 0 0; font-size: 0.85rem;">Tocá la zona de arriba para subir tu primer documento.</p>
+        </div>
+    }
+    else
+    {
+        @foreach (var f in archivos.OrderByDescending(x => x.ModifiedAt))
+        {
+            var diasViejo = (int)Math.Floor((DateTime.UtcNow - f.ModifiedAt).TotalDays);
+            var esViejo = diasViejo > 90;  // > 3 meses se considera viejo
+            <div class="doc-card @(esViejo ? "viejo" : "")">
+                <div class="doc-icon">@IconoArchivo(f.Name)</div>
+                <div class="doc-info">
+                    <p class="doc-nombre">@f.Name</p>
+                    <div class="doc-meta">
+                        <span>📅 Subido @f.ModifiedAt.ToString("dd/MM/yyyy")</span>
+                        @if (diasViejo > 0)
+                        {
+                            <span>· hace @diasViejo día@(diasViejo == 1 ? "" : "s")</span>
+                        }
+                        <span>· @FormatSize(f.Size)</span>
+                        @if (esViejo)
+                        {
+                            <span class="viejo-warn">⚠ +3 meses · revisar</span>
+                        }
+                    </div>
+                </div>
+                <div class="doc-actions">
+                    <a href="@DownloadUrl(f.Path)" target="_blank">⬇ Descargar</a>
+                    <button class="btn-borrar" @onclick="@(() => ConfirmarBorrar(f))">🗑 Borrar</button>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@* Modal confirmacion borrar *@
+@if (aBorrar is not null)
+{
+    <div class="modal-overlay" style="z-index: 9100;" @onclick="@(() => aBorrar = null)">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 420px;">
+            <div class="modal-header" style="background: #b91c1c; color: white;">
+                <h4 style="margin: 0;">🗑 Borrar documento</h4>
+                <button class="btn-close" @onclick="@(() => aBorrar = null)" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 1rem 1.2rem;">
+                <p>¿Seguro que querés borrar <strong>@aBorrar.Name</strong>?</p>
+                <p style="font-size: 0.8rem; color: #6b7280;">Esta acción no se puede deshacer.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="@(() => aBorrar = null)">Cancelar</button>
+                <button class="btn btn-danger" @onclick="BorrarConfirmado">Sí, borrar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    // Carpeta fija donde viven los docs importantes.
+    private const string CarpetaFija = "Documentacion-Importante";
+
+    private List<FileEntryDto> archivos = new();
+    private bool loading = true;
+    private bool uploading;
+    private FileEntryDto? aBorrar;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await AsegurarCarpetaAsync();
+        await Cargar();
+    }
+
+    private async Task AsegurarCarpetaAsync()
+    {
+        // Si la carpeta no existe (primer uso), la creamos. Idempotente: si ya existe, no rompe.
+        try { await Api.CreateFolderAsync("", CarpetaFija); } catch { }
+    }
+
+    private async Task Cargar()
+    {
+        loading = true;
+        try
+        {
+            var resp = await Api.ListFilesAsync(CarpetaFija);
+            archivos = resp?.Entries.Where(e => !e.IsFolder).ToList() ?? new();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { loading = false; }
+    }
+
+    private async Task OnFilesSelected(InputFileChangeEventArgs e)
+    {
+        var files = e.GetMultipleFiles(20);
+        if (files.Count == 0) return;
+        uploading = true;
+        try
+        {
+            var items = new List<(string name, Stream stream, long size)>();
+            var streams = new List<Stream>();
+            foreach (var f in files)
+            {
+                var s = f.OpenReadStream(50 * 1024 * 1024); // 50 MB max
+                streams.Add(s);
+                items.Add((f.Name, s, f.Size));
+            }
+            var result = await Api.UploadFilesAsync(CarpetaFija, items);
+            foreach (var s in streams) try { s.Dispose(); } catch { }
+            var ok = result?.Count(r => r.Success) ?? 0;
+            var fail = result?.Count(r => !r.Success) ?? 0;
+            if (ok > 0) ToastService.Success($"📤 {ok} archivo{(ok == 1 ? "" : "s")} subido{(ok == 1 ? "" : "s")}");
+            if (fail > 0) ToastService.Error($"⚠ {fail} archivo{(fail == 1 ? "" : "s")} falló{(fail == 1 ? "" : "ron")}");
+            await Cargar();
+        }
+        catch (Exception ex) { ToastService.Error("Error subiendo: " + ex.Message); }
+        finally { uploading = false; }
+    }
+
+    private void ConfirmarBorrar(FileEntryDto f) => aBorrar = f;
+
+    private async Task BorrarConfirmado()
+    {
+        if (aBorrar is null) return;
+        try
+        {
+            await Api.DeleteFilesAsync(new[] { aBorrar.Path });
+            ToastService.Success("Borrado");
+            aBorrar = null;
+            await Cargar();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private static string DownloadUrl(string path) => $"/api/files/download?path={Uri.EscapeDataString(path)}";
+
+    private static string IconoArchivo(string nombre)
+    {
+        var ext = System.IO.Path.GetExtension(nombre).ToLowerInvariant();
+        return ext switch
+        {
+            ".pdf" => "📕",
+            ".doc" or ".docx" => "📘",
+            ".xls" or ".xlsx" or ".csv" => "📗",
+            ".jpg" or ".jpeg" or ".png" or ".gif" or ".webp" => "🖼",
+            ".zip" or ".rar" or ".7z" => "🗜",
+            _ => "📄"
+        };
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:N1} KB";
+        return $"{bytes / 1024.0 / 1024.0:N1} MB";
+    }
+}

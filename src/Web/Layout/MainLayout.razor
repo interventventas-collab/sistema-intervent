@@ -15,7 +15,7 @@
     @if (IsDevEnvironment)
     {
         <div class="dev-environment-banner" title="Estás en el entorno de DESARROLLO. Los datos NO son los de producción.">
-            🛠 DESARROLLO
+            BANCO DE PRUEBAS
         </div>
     }
     else
@@ -53,21 +53,48 @@
             <NavGroup Label="Ventas por fuera" Icon="@SvgIcons.Brand"
                       HasActiveChild="@(IsActive("/cafe") || IsActive("/cafe/ventas") || IsActive("/cafe/productos") || IsActive("/cafe/combos") || IsActive("/cafe/oems") || IsActive("/cafe/clientes") || IsActive("/cafe/clientes-mapeados") || IsActive("/cafe/configuracion") || IsActive("/cafe/compras") || IsActive("/cafe/proveedores") || IsActive("/cafe/marcas") || IsActive("/cafe/listas-precios") || IsActive("/cafe/consultas") || IsActive("/cafe/cotejo") || IsActive("/cafe/descuentos") || IsActive("/cafe/kits") || IsActive("/cafe/reglas-precios") || IsActive("/cafe/saldos") || IsActive("/cafe/saldos-pendientes") || IsActive("/cafe/maquinas") || IsActive("/cafe/tesoreria/cajas") || IsActive("/cafe/tesoreria/resumen") || IsActive("/cafe/tesoreria/cobranzas") || IsActive("/cafe/tesoreria/pagos") || IsActive("/cafe/tesoreria/cheques") || IsActive("/cafe/depositos") || IsActive("/cafe/stock-masivo") || IsActive("/cafe/preventas") || IsActive("/cafe/arca/errores") || IsActive("/cafe/clientes/panel-deudas") || IsActive("/horas-extras") || IsActive("/viajes") || IsActive("/stock"))">
 
-                @* ───────── 1. OPERACIÓN DIARIA (destacado verde, expandido por default) ───────── *@
-                <NavGroup Label="🟢 Operación diaria" Icon="@SvgIcons.Dashboard"
+                @* ───────── 1. ⭐ FAVORITOS (destacado verde, expandido por default) ─────────
+                   Pedido del usuario 2026-05-19: una carpeta con los accesos mas usados que aparezca
+                   PRIMERO y RESALTADA. Para que empleados (proxima sesion con login propio) tengan
+                   todo a un click sin tener que recorrer el resto del sidebar. *@
+                <NavGroup Label="⭐ Favoritos" Icon="@SvgIcons.Dashboard"
                           Highlight="true" DefaultExpanded="true"
-                          HasActiveChild="@(IsActive("/cafe") || IsActive("/cafe/ventas") || IsActive("/cafe/tesoreria/cobranzas") || IsActive("/cafe/saldos-pendientes") || IsActive("/cafe/clientes/panel-deudas") || IsActive("/cafe/tesoreria/resumen") || IsActive("/cafe/preventas") || IsActive("/cafe/consultas"))">
-                    <NavItem Href="/cafe" Label="Inicio" Icon="@SvgIcons.Dashboard"
-                             IsActive="@IsActive("/cafe")" OnClick="@(() => NavigateTo("/cafe"))" />
+                          HasActiveChild="@(IsActive("/cafe/ventas") || IsActive("/cafe/tesoreria/cobranzas") || IsActive("/cafe/productos") || IsActive("/cafe/listas-precios") || IsActive("/cafe/stock-masivo") || IsActive("/cafe/clientes") || IsActive("/mapeo") || IsActive("/cafe/clientes-mapeados") || IsActive("/documentacion"))">
                     <NavItem Href="/cafe/ventas" Label="🛒 Ventas" Icon="@SvgIcons.ShoppingBag"
                              IsActive="@IsActive("/cafe/ventas")" OnClick="@(() => NavigateTo("/cafe/ventas"))" />
                     @if (HasPerm("cafe-tesoreria"))
                     {
                         <NavItem Href="/cafe/tesoreria/cobranzas" Label="📥 Cobranzas" Icon="@SvgIcons.ShoppingBag"
                                  IsActive="@IsActive("/cafe/tesoreria/cobranzas")" OnClick="@(() => NavigateTo("/cafe/tesoreria/cobranzas"))" />
-                        @* 'Saldos pendientes' (la pantalla tabla vieja) se fusiono con
-                           '¿Quien me debe?' el 2026-05-19. La URL /cafe/saldos-pendientes
-                           sigue funcionando porque la pagina nueva la atiende como @page secundario. *@
+                    }
+                    <NavItem Href="/cafe/productos" Label="🏷 Productos" Icon="@SvgIcons.Package"
+                             IsActive="@IsActive("/cafe/productos")" OnClick="@(() => NavigateTo("/cafe/productos"))" />
+                    <NavItem Href="/cafe/listas-precios" Label="💲 Listas de precios" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive("/cafe/listas-precios")" OnClick="@(() => NavigateTo("/cafe/listas-precios"))" />
+                    @if (HasPerm("cafe-depositos"))
+                    {
+                        @* Stock unificado: entra a Stock masivo, y desde la pantalla hay boton para abrir Stock movil. *@
+                        <NavItem Href="/cafe/stock-masivo" Label="📦 Stock" Icon="@SvgIcons.Package"
+                                 IsActive="@(IsActive("/cafe/stock-masivo") || IsActive("/stock"))" OnClick="@(() => NavigateTo("/cafe/stock-masivo"))" />
+                    }
+                    <NavItem Href="/cafe/clientes" Label="👤 Clientes" Icon="@SvgIcons.Users"
+                             IsActive="@IsActive("/cafe/clientes")" OnClick="@(() => NavigateTo("/cafe/clientes"))" />
+                    <NavItem Href="/mapeo" Label="🗺 Mapa de clientes" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive("/mapeo")" OnClick="@(() => NavigateTo("/mapeo"))" />
+                    <NavItem Href="/cafe/clientes-mapeados" Label="👥 Clientes Mapeados" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive("/cafe/clientes-mapeados")" OnClick="@(() => NavigateTo("/cafe/clientes-mapeados"))" />
+                    <NavItem Href="/documentacion" Label="📑 Documentación" Icon="@SvgIcons.Folder"
+                             IsActive="@IsActive("/documentacion")" OnClick="@(() => NavigateTo("/documentacion"))" />
+                </NavGroup>
+
+                @* ───────── 2. OPERACIÓN DIARIA (ya no destacado — Favoritos lo es) ─────────
+                   Items que quedaron acá despues de mover los mas usados a Favoritos. *@
+                <NavGroup Label="🟢 Operación diaria" Icon="@SvgIcons.Dashboard"
+                          HasActiveChild="@(IsActive("/cafe") || IsActive("/cafe/saldos-pendientes") || IsActive("/cafe/clientes/panel-deudas") || IsActive("/cafe/tesoreria/resumen") || IsActive("/cafe/preventas") || IsActive("/cafe/consultas"))">
+                    <NavItem Href="/cafe" Label="Inicio" Icon="@SvgIcons.Dashboard"
+                             IsActive="@IsActive("/cafe")" OnClick="@(() => NavigateTo("/cafe"))" />
+                    @if (HasPerm("cafe-tesoreria"))
+                    {
                         <NavItem Href="/cafe/clientes/panel-deudas" Label="💰 ¿Quién me debe?" Icon="@SvgIcons.Database"
                                  IsActive="@(IsActive("/cafe/clientes/panel-deudas") || IsActive("/cafe/saldos-pendientes"))" OnClick="@(() => NavigateTo("/cafe/clientes/panel-deudas"))" />
                         <NavItem Href="/cafe/tesoreria/resumen" Label="📊 Resumen Tesorería" Icon="@SvgIcons.Dashboard"
@@ -121,20 +148,18 @@
                     </NavGroup>
                 }
 
-                @* ───────── 5. STOCK Y COMPRAS ───────── *@
+                @* ───────── 5. STOCK Y COMPRAS ─────────
+                   Stock masivo se movio a Favoritos como '📦 Stock'. El link movil ahora
+                   se accede desde adentro de Stock masivo (boton '📱 Stock móvil'). *@
                 <NavGroup Label="📦 Stock y compras" Icon="@SvgIcons.Store"
-                          HasActiveChild="@(IsActive("/cafe/compras") || IsActive("/cafe/depositos") || IsActive("/cafe/stock-masivo") || IsActive("/stock"))">
+                          HasActiveChild="@(IsActive("/cafe/compras") || IsActive("/cafe/depositos"))">
                     <NavItem Href="/cafe/compras" Label="Compras" Icon="@SvgIcons.Folder"
                              IsActive="@IsActive("/cafe/compras")" OnClick="@(() => NavigateTo("/cafe/compras"))" />
                     @if (HasPerm("cafe-depositos"))
                     {
                         <NavItem Href="/cafe/depositos" Label="📦 Depósitos" Icon="@SvgIcons.Store"
                                  IsActive="@IsActive("/cafe/depositos")" OnClick="@(() => NavigateTo("/cafe/depositos"))" />
-                        <NavItem Href="/cafe/stock-masivo" Label="📊 Stock masivo" Icon="@SvgIcons.Edit"
-                                 IsActive="@IsActive("/cafe/stock-masivo")" OnClick="@(() => NavigateTo("/cafe/stock-masivo"))" />
                     }
-                    <NavItem Href="/stock" Label="📦 Stock (link móvil)" Icon="@SvgIcons.Package"
-                             IsActive="@IsActive("/stock")" OnClick="@(() => NavigateTo("/stock"))" />
                 </NavGroup>
 
                 @* ───────── 6. PERSONAL ───────── *@

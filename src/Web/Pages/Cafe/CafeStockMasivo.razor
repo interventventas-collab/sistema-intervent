@@ -27,6 +27,13 @@
             <button class="btn btn-primary" @onclick="Guardar" disabled="@(!HayCambios || guardando)">
                 @(guardando ? "..." : $"💾 Guardar {CountCambios} cambios")
             </button>
+            @* Acceso al Stock movil (link publico de carga rapida para empleados con celular).
+               Lo metimos aca el 2026-05-19 para sacar el item duplicado del sidebar. *@
+            <a href="/stock" target="_blank" class="btn btn-secondary"
+               title="Abrir Stock móvil (carga rápida desde el celular)"
+               style="background:#1f2937; color:white; border:none;">
+                📱 Stock móvil
+            </a>
         </div>
     </div>
     <div class="card-body" style="padding:0;">
