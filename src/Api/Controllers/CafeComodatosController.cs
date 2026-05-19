@@ -158,7 +158,7 @@ public class CafeComodatosController : ControllerBase
         return Ok(Map(c));
     }
 
-    public record UpdateRequest(string? Moneda, string? Marca, string? Modelo, string? NumeroSerie, DateTime? FechaEntrega,
+    public record UpdateRequest(int? ClienteId, string? Moneda, string? Marca, string? Modelo, string? NumeroSerie, DateTime? FechaEntrega,
         string? Estado, DateTime? FechaDevolucion, string? Notas, decimal? ValorEstimado,
         decimal? PrecioVenta, int? CuotasTotales, decimal? ValorCuota, int? DiaPagoMensual);
 
@@ -167,6 +167,12 @@ public class CafeComodatosController : ControllerBase
     {
         var c = await _db.CafeComodatos.Include(x => x.Pagos).FirstOrDefaultAsync(x => x.Id == id);
         if (c is null) return NotFound();
+        if (req.ClienteId.HasValue && req.ClienteId.Value > 0 && req.ClienteId.Value != c.ClienteId)
+        {
+            var existe = await _db.CafeClientes.AnyAsync(x => x.Id == req.ClienteId.Value);
+            if (!existe) return BadRequest(new { error = "El cliente seleccionado no existe." });
+            c.ClienteId = req.ClienteId.Value;
+        }
         if (!string.IsNullOrWhiteSpace(req.Moneda))
         {
             var mon = req.Moneda.Trim().ToUpperInvariant();

@@ -125,6 +125,7 @@
                                 }
                                 <td>
                                     <button class="btn btn-secondary" style="font-size:0.75rem;" @onclick="() => AbrirDetalle(c)">📂 Detalle</button>
+                                    <button class="btn btn-secondary" style="font-size:0.75rem;" @onclick="() => AbrirEditar(c)" title="Modificar datos de esta operación">✏️ Editar</button>
                                     @if (c.Modalidad == "FINANCIADA" && c.Estado == "EN_CLIENTE")
                                     {
                                         <button class="btn btn-primary" style="font-size:0.75rem;" @onclick="() => AbrirPago(c)">💰 Registrar pago</button>
@@ -139,26 +140,29 @@
     </div>
 </div>
 
-@* ===== Modal: Nueva máquina ===== *@
+@* ===== Modal: Nueva máquina / Editar ===== *@
 @if (showNueva)
 {
+    var esEdit = editingId.HasValue;
     <div class="modal-overlay" @onclick="() => showNueva = false">
         <div class="modal-card modal-medium" @onclick:stopPropagation="true">
             <div class="modal-header">
-                <h3 style="margin:0;">+ Nueva máquina</h3>
+                <h3 style="margin:0;">@(esEdit ? "✏️ Editar máquina" : "+ Nueva máquina")</h3>
                 <button class="btn-close" @onclick="() => showNueva = false">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label class="form-label">Modalidad</label>
+                    <label class="form-label">Modalidad@(esEdit ? " (no se puede cambiar después de cargada)" : "")</label>
                     <div style="display:flex; gap:0.5rem;">
-                        <button class="btn" style="flex:1; background:@(formModalidad == "COMODATO" ? "#dbeafe" : "white"); border:1px solid @(formModalidad == "COMODATO" ? "#3b82f6" : "#d1d5db"); color:#374151; padding:0.5rem;"
-                                @onclick='() => formModalidad = "COMODATO"'>
+                        <button class="btn" style="flex:1; background:@(formModalidad == "COMODATO" ? "#dbeafe" : "white"); border:1px solid @(formModalidad == "COMODATO" ? "#3b82f6" : "#d1d5db"); color:#374151; padding:0.5rem; @(esEdit ? "opacity:0.7; cursor:not-allowed;" : "")"
+                                disabled="@esEdit"
+                                @onclick='() => { if (!esEdit) formModalidad = "COMODATO"; }'>
                             <div style="font-weight:700;">🤝 Comodato</div>
                             <div style="font-size:0.72rem; color:#6b7280;">Es tuya, cliente la usa, no te paga</div>
                         </button>
-                        <button class="btn" style="flex:1; background:@(formModalidad == "FINANCIADA" ? "#fef3c7" : "white"); border:1px solid @(formModalidad == "FINANCIADA" ? "#f59e0b" : "#d1d5db"); color:#374151; padding:0.5rem;"
-                                @onclick='() => formModalidad = "FINANCIADA"'>
+                        <button class="btn" style="flex:1; background:@(formModalidad == "FINANCIADA" ? "#fef3c7" : "white"); border:1px solid @(formModalidad == "FINANCIADA" ? "#f59e0b" : "#d1d5db"); color:#374151; padding:0.5rem; @(esEdit ? "opacity:0.7; cursor:not-allowed;" : "")"
+                                disabled="@esEdit"
+                                @onclick='() => { if (!esEdit) formModalidad = "FINANCIADA"; }'>
                             <div style="font-weight:700;">💰 Financiada</div>
                             <div style="font-size:0.72rem; color:#6b7280;">Cliente la compra en cuotas</div>
                         </button>
@@ -252,9 +256,18 @@
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" @onclick="() => showNueva = false">Cancelar</button>
-                <button class="btn btn-primary" disabled="@(formClienteId == 0 || guardando)" @onclick="GuardarNueva">
-                    @(guardando ? "Guardando..." : "✓ Guardar máquina")
-                </button>
+                @if (esEdit)
+                {
+                    <button class="btn btn-primary" disabled="@(formClienteId == 0 || guardando)" @onclick="GuardarEdicion">
+                        @(guardando ? "Guardando..." : "✓ Guardar cambios")
+                    </button>
+                }
+                else
+                {
+                    <button class="btn btn-primary" disabled="@(formClienteId == 0 || guardando)" @onclick="GuardarNueva">
+                        @(guardando ? "Guardando..." : "✓ Guardar máquina")
+                    </button>
+                }
             </div>
         </div>
     </div>
@@ -438,6 +451,9 @@
     // Nueva
     private bool showNueva;
     private bool guardando;
+    // Si != null, el modal de "Nueva" se reutiliza para EDITAR ese comodato/financiada.
+    // Las funciones AbrirEditar/AbrirNueva alternan el modo.
+    private int? editingId;
     private string formModalidad = "COMODATO";
     private string formMoneda = "ARS";
     private int formClienteId;
@@ -524,6 +540,7 @@
 
     private void AbrirNueva()
     {
+        editingId = null;
         formModalidad = "COMODATO";
         formMoneda = "ARS";
         formClienteId = 0; clienteSearch = "";
@@ -531,6 +548,30 @@
         formFechaEntrega = DateTime.Today;
         formNotas = ""; formValorEstimado = null;
         formPrecioVenta = null; formCuotasTotales = null; formValorCuota = null; formDiaPago = null;
+        showNueva = true;
+    }
+
+    /// <summary>Abre el modal en modo EDITAR: pre-carga el form con los datos del
+    /// comodato/financiada existente. La modalidad NO se permite cambiar (cambiar
+    /// "comodato" por "financiada" sin reglas claras puede romper consistencia con
+    /// los pagos ya registrados).</summary>
+    private void AbrirEditar(CafeComodatoDto c)
+    {
+        editingId = c.Id;
+        formModalidad = c.Modalidad;
+        formMoneda = string.IsNullOrEmpty(c.Moneda) ? "ARS" : c.Moneda;
+        formClienteId = c.ClienteId;
+        clienteSearch = c.ClienteNombre ?? "";
+        formMarca = c.Marca ?? "";
+        formModelo = c.Modelo ?? "";
+        formNumeroSerie = c.NumeroSerie ?? "";
+        formFechaEntrega = c.FechaEntrega;
+        formNotas = c.Notas ?? "";
+        formValorEstimado = c.ValorEstimado;
+        formPrecioVenta = c.PrecioVenta;
+        formCuotasTotales = c.CuotasTotales;
+        formValorCuota = c.ValorCuota;
+        formDiaPago = c.DiaPagoMensual;
         showNueva = true;
     }
 
@@ -560,6 +601,43 @@
             {
                 ToastService.Success("Máquina cargada");
                 showNueva = false;
+                await Cargar();
+            }
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { guardando = false; }
+    }
+
+    /// <summary>Guardar cambios en una operacion ya existente. NO toca pagos; solo
+    /// datos base (cliente, maquina, montos del plan). El saldo se recalcula en el
+    /// backend en base al nuevo precio y pagos ya registrados.</summary>
+    private async Task GuardarEdicion()
+    {
+        if (editingId is null) return;
+        if (formClienteId == 0) { ToastService.Error("Elegí un cliente"); return; }
+        guardando = true;
+        try
+        {
+            var r = await Api.UpdateCafeComodatoAsync(editingId.Value, new CafeComodatoUpdateRequest
+            {
+                ClienteId = formClienteId,
+                Moneda = formMoneda,
+                Marca = formMarca,
+                Modelo = formModelo,
+                NumeroSerie = formNumeroSerie,
+                FechaEntrega = formFechaEntrega,
+                Notas = formNotas,
+                ValorEstimado = formValorEstimado,
+                PrecioVenta = formPrecioVenta,
+                CuotasTotales = formCuotasTotales,
+                ValorCuota = formValorCuota,
+                DiaPagoMensual = formDiaPago
+            });
+            if (r is not null)
+            {
+                ToastService.Success("Cambios guardados");
+                showNueva = false;
+                editingId = null;
                 await Cargar();
             }
         }

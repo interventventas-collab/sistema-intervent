@@ -1090,6 +1090,7 @@ public class CafeComodatoCreateRequest
 
 public class CafeComodatoUpdateRequest
 {
+    public int? ClienteId { get; set; }
     public string? Moneda { get; set; }
     public string? Marca { get; set; }
     public string? Modelo { get; set; }
