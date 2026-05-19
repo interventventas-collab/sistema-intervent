@@ -3724,3 +3724,42 @@ BEGIN
     CREATE INDEX IX_CafeVentaPreparacionLog_Venta ON Cafe_VentaPreparacionLog(VentaId, CreatedAt DESC);
 END
 GO
+
+-- ─── Modulo Cheques Banco (2026-05-19) ───
+-- Tabla que guarda los cheques tal cual los devuelve el banco al exportar el Excel.
+-- IdBanco es el ID unico del cheque para el banco — clave para que el import sea
+-- idempotente (sub-im el mismo archivo 10 veces, no duplica).
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_ChequesBanco')
+BEGIN
+    CREATE TABLE Cafe_ChequesBanco (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        IdBanco NVARCHAR(50) NOT NULL,
+        Tipo NVARCHAR(20) NOT NULL,
+        Numero NVARCHAR(50) NOT NULL,
+        Cmc7 NVARCHAR(50) NULL,
+        Clausula NVARCHAR(50) NULL,
+        BancoEmisor NVARCHAR(200) NULL,
+        FechaEmision DATE NULL,
+        FechaPago DATE NULL,
+        Importe DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Estado NVARCHAR(30) NOT NULL,
+        Motivo NVARCHAR(500) NULL,
+        CuentaLibradora NVARCHAR(50) NULL,
+        CbuDeposito NVARCHAR(50) NULL,
+        LibradorNombre NVARCHAR(200) NULL,
+        LibradorCuit NVARCHAR(20) NULL,
+        BeneficiarioActualNombre NVARCHAR(200) NULL,
+        BeneficiarioActualCuit NVARCHAR(20) NULL,
+        ContraparteNombre NVARCHAR(200) NULL,
+        ContraparteCuit NVARCHAR(20) NULL,
+        CantidadEndosos INT NOT NULL DEFAULT 0,
+        CantidadCesiones INT NOT NULL DEFAULT 0,
+        CantidadAvales INT NOT NULL DEFAULT 0,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NULL
+    );
+    CREATE UNIQUE INDEX UX_ChequesBanco_IdBanco ON Cafe_ChequesBanco(IdBanco);
+    CREATE INDEX IX_ChequesBanco_Tipo_Estado ON Cafe_ChequesBanco(Tipo, Estado);
+    CREATE INDEX IX_ChequesBanco_FechaPago ON Cafe_ChequesBanco(FechaPago);
+END
+GO

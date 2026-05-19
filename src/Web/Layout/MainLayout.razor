@@ -141,13 +141,15 @@
                 @if (HasPerm("cafe-tesoreria"))
                 {
                     <NavGroup Label="💵 Tesorería" Icon="@SvgIcons.Database"
-                              HasActiveChild="@(IsActive("/cafe/tesoreria/cajas") || IsActive("/cafe/tesoreria/pagos") || IsActive("/cafe/tesoreria/cheques"))">
+                              HasActiveChild="@(IsActive("/cafe/tesoreria/cajas") || IsActive("/cafe/tesoreria/pagos") || IsActive("/cafe/tesoreria/cheques") || IsActive("/cafe/tesoreria/cheques-banco"))">
                         <NavItem Href="/cafe/tesoreria/cajas" Label="💰 Cajas" Icon="@SvgIcons.Database"
                                  IsActive="@IsActive("/cafe/tesoreria/cajas")" OnClick="@(() => NavigateTo("/cafe/tesoreria/cajas"))" />
                         <NavItem Href="/cafe/tesoreria/pagos" Label="📤 Pagos" Icon="@SvgIcons.ShoppingBag"
                                  IsActive="@IsActive("/cafe/tesoreria/pagos")" OnClick="@(() => NavigateTo("/cafe/tesoreria/pagos"))" />
                         <NavItem Href="/cafe/tesoreria/cheques" Label="📄 Cheques" Icon="@SvgIcons.Tag"
                                  IsActive="@IsActive("/cafe/tesoreria/cheques")" OnClick="@(() => NavigateTo("/cafe/tesoreria/cheques"))" />
+                        <NavItem Href="/cafe/tesoreria/cheques-banco" Label="💳 Cheques (banco)" Icon="@SvgIcons.Database"
+                                 IsActive="@IsActive("/cafe/tesoreria/cheques-banco")" OnClick="@(() => NavigateTo("/cafe/tesoreria/cheques-banco"))" />
                     </NavGroup>
                 }
 

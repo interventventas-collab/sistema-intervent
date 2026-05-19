@@ -1,0 +1,276 @@
+@page "/cafe/tesoreria/cheques-banco"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+@using Web.Models
+
+@* ════════════════════════════════════════════════════════════════════════════
+   Pantalla: Cheques (banco)
+   Vista unificada de los 3 archivos que descarga el banco:
+   - 🟡 Por pagar (emitidos en estado Aceptado) — los que vienen
+   - 🟢 Disponibles (recibidos en cartera) — para usarlos como pago
+   - 📜 Historico (pagados / endosados) — informativo
+   El usuario sube los 3 Excel del banco, el sistema autodetecta tipo y carga.
+   ════════════════════════════════════════════════════════════════════════════ *@
+
+<style>
+    .cheq-wrap { max-width: 1200px; margin: 0 auto; padding: 0.5rem; }
+    .cheq-header { text-align: center; margin-bottom: 1rem; }
+    .cheq-header h1 { font-size: 1.5rem; margin: 0; }
+    .cheq-header p { color: #6b7280; margin: 0.3rem 0 0; font-size: 0.9rem; }
+
+    .cheq-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.8rem; margin-bottom: 1.2rem; }
+    .cheq-card { background: white; border-radius: 10px; padding: 0.9rem 1rem; box-shadow: 0 2px 6px rgba(0,0,0,0.06); border-left: 5px solid #d1d5db; }
+    .cheq-card.por-pagar { border-left-color: #f59e0b; background: #fffbeb; }
+    .cheq-card.disponibles { border-left-color: #16a34a; background: #f0fdf4; }
+    .cheq-card.emitidos-pagados { border-left-color: #6b7280; }
+    .cheq-card.recibidos-usados { border-left-color: #6b7280; }
+    .cheq-card h3 { font-size: 0.78rem; font-weight: 800; color: #6b7280; margin: 0 0 0.4rem; letter-spacing: 0.04em; }
+    .cheq-card .monto { font-size: 1.45rem; font-weight: 800; color: #1f2937; line-height: 1; margin-bottom: 0.2rem; }
+    .cheq-card .meta { font-size: 0.78rem; color: #6b7280; }
+
+    .cheq-toolbar { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; background: white; padding: 0.6rem 0.8rem; border-radius: 8px; margin-bottom: 0.6rem; }
+    .cheq-tabs { display: flex; gap: 0.3rem; }
+    .cheq-tab { padding: 0.45rem 0.9rem; border: 1px solid #d1d5db; background: white; color: #374151; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.88rem; }
+    .cheq-tab.activo { background: #1d4ed8; color: white; border-color: #1d4ed8; }
+    .cheq-search { flex: 1; min-width: 200px; }
+    .btn-import { padding: 0.5rem 1rem; font-weight: 700; border-radius: 6px; border: none; background: #16a34a; color: white; cursor: pointer; }
+    .btn-import:hover { background: #15803d; }
+
+    .cheq-tabla { width: 100%; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .cheq-tabla th { background: #f9fafb; padding: 0.5rem 0.7rem; text-align: left; font-size: 0.78rem; color: #374151; border-bottom: 1px solid #e5e7eb; }
+    .cheq-tabla td { padding: 0.5rem 0.7rem; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem; vertical-align: top; }
+    .cheq-tabla tr:hover td { background: #f9fafb; }
+    .cheq-estado { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.7rem; font-weight: 700; }
+    .est-pagado { background: #dcfce7; color: #166534; }
+    .est-aceptado { background: #fef3c7; color: #92400e; }
+    .est-disponible { background: #dbeafe; color: #1e40af; }
+    .est-endosado { background: #e9d5ff; color: #6b21a8; }
+    .est-rechazado { background: #fee2e2; color: #991b1b; }
+    .est-otro { background: #f3f4f6; color: #374151; }
+
+    .vacio { background: white; padding: 2rem; text-align: center; color: #9ca3af; border-radius: 8px; }
+</style>
+
+<div class="cheq-wrap">
+    <div class="cheq-header">
+        <h1>💳 Cheques (banco)</h1>
+        <p>Listado de cheques importados directamente del Excel del banco.</p>
+    </div>
+
+    @if (stats is not null)
+    {
+        <div class="cheq-cards">
+            <div class="cheq-card por-pagar">
+                <h3>🟡 POR PAGAR (emitidos)</h3>
+                <div class="monto">$@stats.EmitidosPorPagar.Importe.ToString("N2")</div>
+                <div class="meta">@stats.EmitidosPorPagar.Cantidad cheque@(stats.EmitidosPorPagar.Cantidad == 1 ? "" : "s")</div>
+            </div>
+            <div class="cheq-card disponibles">
+                <h3>🟢 DISPONIBLES (recibidos)</h3>
+                <div class="monto">$@stats.RecibidosDisponibles.Importe.ToString("N2")</div>
+                <div class="meta">@stats.RecibidosDisponibles.Cantidad en cartera</div>
+            </div>
+            <div class="cheq-card emitidos-pagados">
+                <h3>✅ EMITIDOS PAGADOS</h3>
+                <div class="monto">$@stats.EmitidosPagados.Importe.ToString("N2")</div>
+                <div class="meta">@stats.EmitidosPagados.Cantidad ya cobrados</div>
+            </div>
+            <div class="cheq-card recibidos-usados">
+                <h3>↪️ RECIBIDOS USADOS</h3>
+                <div class="monto">$@stats.RecibidosUsados.Importe.ToString("N2")</div>
+                <div class="meta">@stats.RecibidosUsados.Cantidad pagados / endosados</div>
+            </div>
+        </div>
+    }
+
+    <div class="cheq-toolbar">
+        <div class="cheq-tabs">
+            <button class="cheq-tab @(tab == "PORPAGAR" ? "activo" : "")" @onclick='() => CambiarTab("PORPAGAR")'>🟡 Por pagar</button>
+            <button class="cheq-tab @(tab == "DISPONIBLES" ? "activo" : "")" @onclick='() => CambiarTab("DISPONIBLES")'>🟢 Disponibles</button>
+            <button class="cheq-tab @(tab == "HISTORICO" ? "activo" : "")" @onclick='() => CambiarTab("HISTORICO")'>📜 Histórico</button>
+        </div>
+        <input type="text" class="form-input cheq-search" placeholder="🔍 Buscar por número, beneficiario, librador..."
+               @bind="busqueda" @bind:event="oninput" @bind:after="AplicarBusqueda" />
+        <label class="btn-import">
+            @if (importing)
+            {
+                <span>⏳ Importando...</span>
+            }
+            else
+            {
+                <span>📤 Subir archivos del banco</span>
+                <InputFile OnChange="OnFilesSelected" multiple style="display: none;" accept=".xlsx,.xls" />
+            }
+        </label>
+    </div>
+
+    @if (loading)
+    {
+        <p style="text-align: center; padding: 2rem;">Cargando...</p>
+    }
+    else if (lista.Count == 0)
+    {
+        <div class="vacio">
+            <div style="font-size: 2.5rem;">📭</div>
+            <strong>No hay cheques para mostrar</strong>
+            <p style="margin: 0.4rem 0 0; font-size: 0.85rem;">Subí los archivos del banco para empezar.</p>
+        </div>
+    }
+    else
+    {
+        <table class="cheq-tabla">
+            <thead>
+                <tr>
+                    <th>N°</th>
+                    <th>Tipo</th>
+                    <th>Fecha pago</th>
+                    <th>Importe</th>
+                    <th>Estado</th>
+                    <th>@(tab == "DISPONIBLES" || (tab == "HISTORICO" && tipoFiltro == "RECIBIDO") ? "Librador" : "Contraparte")</th>
+                    <th>Motivo</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var c in lista)
+                {
+                    <tr>
+                        <td style="font-family: monospace; font-weight: 700;">@c.Numero</td>
+                        <td><span class="cheq-estado est-otro">@c.Tipo</span></td>
+                        <td>@(c.FechaPago?.ToString("dd/MM/yyyy") ?? "—")</td>
+                        <td style="text-align: right; font-weight: 700;">$@c.Importe.ToString("N2")</td>
+                        <td><span class="cheq-estado @ClaseEstado(c.Estado)">@c.Estado</span></td>
+                        <td>
+                            @if (c.Tipo == "RECIBIDO" || c.Tipo == "ENDOSADO")
+                            {
+                                <strong>@(c.LibradorNombre ?? "—")</strong>
+                                @if (!string.IsNullOrEmpty(c.LibradorCuit))
+                                {
+                                    <div style="font-size: 0.72rem; color: #6b7280;">@c.LibradorCuit</div>
+                                }
+                            }
+                            else
+                            {
+                                <strong>@(c.ContraparteNombre ?? "—")</strong>
+                                @if (!string.IsNullOrEmpty(c.ContraparteCuit))
+                                {
+                                    <div style="font-size: 0.72rem; color: #6b7280;">@c.ContraparteCuit</div>
+                                }
+                            }
+                        </td>
+                        <td style="font-size: 0.8rem; color: #4b5563;">@(c.Motivo ?? "—")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private ChequesBancoStatsDto? stats;
+    private List<ChequeBancoDto> lista = new();
+    private string tab = "PORPAGAR";
+    private string? tipoFiltro;
+    private string? estadoFiltro;
+    private string busqueda = "";
+    private bool loading = true;
+    private bool importing;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Recargar();
+    }
+
+    private async Task Recargar()
+    {
+        loading = true;
+        try
+        {
+            stats = await Api.GetChequesBancoStatsAsync();
+            await CargarLista();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { loading = false; }
+    }
+
+    private async Task CambiarTab(string t)
+    {
+        tab = t;
+        await CargarLista();
+    }
+
+    private async Task CargarLista()
+    {
+        // Mapeo de tab a filtros tipo+estado
+        switch (tab)
+        {
+            case "PORPAGAR":
+                tipoFiltro = "EMITIDO";
+                estadoFiltro = "Aceptado";
+                break;
+            case "DISPONIBLES":
+                tipoFiltro = "RECIBIDO";
+                estadoFiltro = "Disponible";
+                break;
+            case "HISTORICO":
+                tipoFiltro = null;
+                estadoFiltro = null;
+                break;
+        }
+        lista = await Api.GetChequesBancoAsync(tipoFiltro, estadoFiltro, string.IsNullOrWhiteSpace(busqueda) ? null : busqueda) ?? new();
+        if (tab == "HISTORICO")
+        {
+            // En historico mostramos solo lo "no activo" (sacamos por pagar + disponibles)
+            lista = lista.Where(c => !(c.Tipo == "EMITIDO" && c.Estado == "Aceptado")
+                                  && !(c.Tipo == "RECIBIDO" && c.Estado == "Disponible")).ToList();
+        }
+    }
+
+    private async Task AplicarBusqueda() => await CargarLista();
+
+    private async Task OnFilesSelected(InputFileChangeEventArgs e)
+    {
+        var files = e.GetMultipleFiles(5);
+        if (files.Count == 0) return;
+        importing = true;
+        try
+        {
+            var streams = new List<Stream>();
+            var items = new List<(string name, Stream stream)>();
+            foreach (var f in files)
+            {
+                var s = f.OpenReadStream(50 * 1024 * 1024);
+                streams.Add(s);
+                items.Add((f.Name, s));
+            }
+            var result = await Api.ImportChequesBancoAsync(items);
+            foreach (var s in streams) try { s.Dispose(); } catch { }
+            if (result is null) { ToastService.Error("No se pudo importar"); return; }
+            foreach (var r in result)
+            {
+                if (r.TipoDetectado == "ERROR")
+                    ToastService.Error($"⚠ {r.Archivo}: {string.Join(" · ", r.Errores)}");
+                else
+                {
+                    var msg = $"✓ {r.Archivo} ({r.TipoDetectado}): {r.Nuevos} nuevos, {r.Actualizados} actualizados, {r.SinCambios} sin cambios";
+                    if (r.Errores.Count > 0) msg += $" ({r.Errores.Count} errores)";
+                    ToastService.Success(msg);
+                }
+            }
+            await Recargar();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { importing = false; }
+    }
+
+    private static string ClaseEstado(string e) => e?.ToLowerInvariant() switch
+    {
+        "pagado" => "est-pagado",
+        "aceptado" => "est-aceptado",
+        "disponible" => "est-disponible",
+        "endosado" => "est-endosado",
+        "rechazado" => "est-rechazado",
+        _ => "est-otro"
+    };
+}

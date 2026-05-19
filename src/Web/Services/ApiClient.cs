@@ -673,6 +673,35 @@ public class ApiClient
         return resp.IsSuccessStatusCode;
     }
 
+    // === Cheques Banco (2026-05-19) ===
+    public async Task<ChequesBancoStatsDto?> GetChequesBancoStatsAsync()
+        => await GetAsync<ChequesBancoStatsDto>("/api/cafe/cheques-banco/stats");
+
+    public async Task<List<ChequeBancoDto>?> GetChequesBancoAsync(string? tipo = null, string? estado = null, string? q = null)
+    {
+        var qs = new List<string>();
+        if (!string.IsNullOrWhiteSpace(tipo)) qs.Add("tipo=" + Uri.EscapeDataString(tipo));
+        if (!string.IsNullOrWhiteSpace(estado)) qs.Add("estado=" + Uri.EscapeDataString(estado));
+        if (!string.IsNullOrWhiteSpace(q)) qs.Add("q=" + Uri.EscapeDataString(q));
+        var url = "/api/cafe/cheques-banco" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+        return await GetAsync<List<ChequeBancoDto>>(url);
+    }
+
+    public async Task<List<ImportChequeBancoResultDto>?> ImportChequesBancoAsync(IEnumerable<(string name, Stream stream)> archivos)
+    {
+        await SetAuthHeaderAsync();
+        using var content = new MultipartFormDataContent();
+        foreach (var f in archivos)
+        {
+            var sc = new StreamContent(f.stream);
+            sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            content.Add(sc, "files", f.name);
+        }
+        var resp = await _http.PostAsync("/api/cafe/cheques-banco/import", content);
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadFromJsonAsync<List<ImportChequeBancoResultDto>>();
+    }
+
     // === Preparacion de Pedidos (2026-05-19) ===
     public async Task<List<CafePreparacionVentaDto>?> GetCafePreparacionAsync(int dias = 7)
         => await GetAsync<List<CafePreparacionVentaDto>>($"/api/cafe/ventas/preparacion?dias={dias}");

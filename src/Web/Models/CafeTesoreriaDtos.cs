@@ -54,6 +54,58 @@ public class SucursalMismoCuitDto
     public string? Cuit { get; set; }
 }
 
+// ========== Cheques Banco (importacion desde Excel del banco) ==========
+public class ChequeBancoDto
+{
+    public int Id { get; set; }
+    public string IdBanco { get; set; } = "";
+    public string Tipo { get; set; } = "";           // RECIBIDO | EMITIDO | ENDOSADO
+    public string Numero { get; set; } = "";
+    public string? Cmc7 { get; set; }
+    public string? Clausula { get; set; }
+    public string? BancoEmisor { get; set; }
+    public DateTime? FechaEmision { get; set; }
+    public DateTime? FechaPago { get; set; }
+    public decimal Importe { get; set; }
+    public string Estado { get; set; } = "";
+    public string? Motivo { get; set; }
+    public string? CuentaLibradora { get; set; }
+    public string? CbuDeposito { get; set; }
+    public string? LibradorNombre { get; set; }
+    public string? LibradorCuit { get; set; }
+    public string? BeneficiarioActualNombre { get; set; }
+    public string? BeneficiarioActualCuit { get; set; }
+    public string? ContraparteNombre { get; set; }
+    public string? ContraparteCuit { get; set; }
+    public int CantidadEndosos { get; set; }
+    public int CantidadCesiones { get; set; }
+    public int CantidadAvales { get; set; }
+}
+
+public class ChequesResumenDto
+{
+    public int Cantidad { get; set; }
+    public decimal Importe { get; set; }
+}
+
+public class ChequesBancoStatsDto
+{
+    public ChequesResumenDto EmitidosPorPagar { get; set; } = new();
+    public ChequesResumenDto RecibidosDisponibles { get; set; } = new();
+    public ChequesResumenDto EmitidosPagados { get; set; } = new();
+    public ChequesResumenDto RecibidosUsados { get; set; } = new();
+}
+
+public class ImportChequeBancoResultDto
+{
+    public string Archivo { get; set; } = "";
+    public string TipoDetectado { get; set; } = "";
+    public int Nuevos { get; set; }
+    public int Actualizados { get; set; }
+    public int SinCambios { get; set; }
+    public List<string> Errores { get; set; } = new();
+}
+
 public class CobranzaListDto
 {
     public int Id { get; set; }
