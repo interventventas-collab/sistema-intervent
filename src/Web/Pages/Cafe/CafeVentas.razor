@@ -458,9 +458,10 @@
                             }
                             else
                             {
-                                <input class="form-input" @bind="clienteSearch" @bind:event="oninput"
+                                <input id="nv-cliente" class="form-input" @bind="clienteSearch" @bind:event="oninput"
                                        @onfocus="() => clienteSearchOpen = true"
-                                       placeholder="🔍 Buscar por código, nombre, CUIT, tel, email, dirección, localidad, CP… o vacío = consumidor final" />
+                                       @onkeydown="OnKeyDownCliente"
+                                       placeholder="🔍 Buscar por código, nombre, CUIT, tel, email, dirección, localidad, CP… (Enter para seguir)" />
                                 @if (clienteSearchOpen && !string.IsNullOrWhiteSpace(clienteSearch))
                                 {
                                     var matches = ClientesMatching(clienteSearch).Take(20).ToList();
@@ -720,9 +721,10 @@
                             }
                             else
                             {
-                                <input class="form-input" @bind="productoSearch" @bind:event="oninput"
+                                <input id="nv-producto" class="form-input" @bind="productoSearch" @bind:event="oninput"
                                        @onfocus="() => productoSearchOpen = true"
-                                       placeholder="🔍 Buscar por SKU, código de barras, nombre, marca..." />
+                                       @onkeydown="OnKeyDownProducto"
+                                       placeholder="🔍 SKU, código de barras, nombre, marca... (Enter para seguir)" />
                                 @if (productoSearchOpen && !string.IsNullOrWhiteSpace(productoSearch))
                                 {
                                     var pmatches = ProductosMatching(productoSearch).Take(20).ToList();
@@ -763,7 +765,7 @@
                         </div>
                         <div class="form-group" style="flex: 1;">
                             <label class="form-label" style="font-size: 0.75rem;">Formato</label>
-                            <select class="form-input" value="@addFormato" @onchange="OnAddFormatoChanged">
+                            <select id="nv-formato" class="form-input" value="@addFormato" @onchange="OnAddFormatoChanged" @onkeydown="OnKeyDownFormato">
                                 @if (AddProductoCategoria == "CAFE")
                                 {
                                     <option value="1KG">1 kg</option>
@@ -782,7 +784,7 @@
                         </div>
                         <div class="form-group" style="flex: 0 0 80px;">
                             <label class="form-label" style="font-size: 0.75rem;">Cant.</label>
-                            <input class="form-input" type="number" min="1" @bind="addCantidad" style="text-align: right;" />
+                            <input id="nv-cantidad" class="form-input" type="number" min="1" @bind="addCantidad" @onkeydown="OnKeyDownCantidad" style="text-align: right;" />
                         </div>
                         <div class="form-group" style="flex: 0 0 110px;">
                             <button class="btn btn-primary" type="button" @onclick="AddItem" style="width: 100%;">+ Agregar</button>
@@ -796,7 +798,7 @@
                         <div class="form-row" style="align-items: end; margin-top: 0.4rem;">
                             <div class="form-group" style="flex: 1;">
                                 <label class="form-label" style="font-size: 0.75rem;">Molienda</label>
-                                <select class="form-input" @bind="addMolienda" style="background:#fef3c7; border-color:#d97706; font-weight:600;">
+                                <select id="nv-molienda" class="form-input" @bind="addMolienda" @onkeydown="OnKeyDownMolienda" style="background:#fef3c7; border-color:#d97706; font-weight:600;">
                                     <option value="EN GRANOS">🫘 EN GRANOS</option>
                                     <option value="MOLIDO FILTRO">☕ MOLIDO FILTRO</option>
                                     <option value="MOLIDO ESPRESS">⚡ MOLIDO ESPRESS</option>
@@ -809,7 +811,7 @@
                             </div>
                             <div class="form-group" style="flex: 1;">
                                 <label class="form-label" style="font-size: 0.75rem;">Envase</label>
-                                <select class="form-input" @bind="addEnvase" style="background:#f3f4f6; border-color:#9ca3af; font-weight:600;">
+                                <select id="nv-envase" class="form-input" @bind="addEnvase" @onkeydown="OnKeyDownEnvase" style="background:#f3f4f6; border-color:#9ca3af; font-weight:600;">
                                     <option value="NEGRO">⚫ Envase negro</option>
                                     <option value="PLATEADO">⚪ Envase plateado</option>
                                     <option value="DOY_PACK">📦 Doy pack</option>
@@ -3029,6 +3031,65 @@
         clienteSearch = "";
         clienteSearchOpen = false;
         await OnClienteChanged();
+    }
+
+    // ─── Navegacion solo-teclado del modal de Nueva Venta (Opcion A — Enter avanza) ───
+    // El usuario apreta Enter en cada campo y salta al siguiente. Al cargar la cantidad,
+    // Enter ejecuta "+ Agregar" y vuelve solo al buscador de producto. El comportamiento
+    // de mouse sigue intacto — esto solo suma atajos, no reemplaza nada.
+    private async Task FocusFieldAsync(string id)
+    {
+        try { await JS.InvokeVoidAsync("focusElementById", id); }
+        catch { /* el elemento puede no estar todavia en el DOM en ese instante */ }
+    }
+
+    private async Task OnKeyDownCliente(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter") return;
+        if (!string.IsNullOrWhiteSpace(clienteSearch))
+        {
+            var first = ClientesMatching(clienteSearch).FirstOrDefault();
+            if (first is not null) await SelectCliente(first.Id);
+        }
+        // Si el buscador esta vacio = consumidor final, saltamos igual.
+        await FocusFieldAsync("nv-producto");
+    }
+
+    private async Task OnKeyDownProducto(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter") return;
+        if (string.IsNullOrWhiteSpace(productoSearch)) return;
+        var first = ProductosMatching(productoSearch).FirstOrDefault();
+        if (first is null) return;
+        SelectProducto(first.Id);
+        await FocusFieldAsync("nv-formato");
+    }
+
+    private async Task OnKeyDownFormato(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter") return;
+        // Si es cafe vamos a molienda; sino salteamos derecho a cantidad.
+        await FocusFieldAsync(AddProductoCategoria == "CAFE" ? "nv-molienda" : "nv-cantidad");
+    }
+
+    private async Task OnKeyDownMolienda(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter") return;
+        await FocusFieldAsync("nv-envase");
+    }
+
+    private async Task OnKeyDownEnvase(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter") return;
+        await FocusFieldAsync("nv-cantidad");
+    }
+
+    private async Task OnKeyDownCantidad(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter") return;
+        await AddItem();
+        // Volvemos al buscador de producto para cargar el siguiente sin tocar el mouse.
+        await FocusFieldAsync("nv-producto");
     }
 
     /// <summary>Vuelve a "consumidor final" (sin cliente).</summary>

@@ -220,6 +220,17 @@
         };
     </script>
     <script>
+        // Focusea un elemento por ID. Usado por la pantalla de Nueva Venta para
+        // saltar entre campos cuando el operador apreta Enter — flujo solo-teclado.
+        window.focusElementById = function(id) {
+            setTimeout(function() {
+                var el = document.getElementById(id);
+                if (el) {
+                    el.focus();
+                    if (el.select) try { el.select(); } catch (e) {}
+                }
+            }, 50);
+        };
         window.copyToClipboard = function(text) {
             if (navigator.clipboard && window.isSecureContext) {
                 return navigator.clipboard.writeText(text);
