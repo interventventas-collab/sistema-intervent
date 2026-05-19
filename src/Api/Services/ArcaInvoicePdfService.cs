@@ -324,7 +324,7 @@ public class ArcaInvoicePdfService
                                 {
                                     cc.Item().PaddingTop(2).Text(t =>
                                     {
-                                        t.Span("🚚 Entrega: ").FontSize(8).FontColor(Colors.Grey.Darken1);
+                                        t.Span("🚚 Repartidor: ").FontSize(8).FontColor(Colors.Grey.Darken1);
                                         t.Span(comp.EntregaPor!).Bold().FontSize(9).FontColor(Colors.Grey.Darken4);
                                     });
                                 }

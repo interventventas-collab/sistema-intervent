@@ -387,7 +387,7 @@ public class CafeCotizacionPdfService
                         fc.Item().PaddingTop(5).Border(1).BorderColor(Colors.Grey.Lighten1)
                             .Background(Colors.Grey.Lighten4).Padding(5).Text(t =>
                             {
-                                t.Span("🚚 Entrega: ").SemiBold();
+                                t.Span("🚚 Repartidor: ").SemiBold();
                                 t.Span(v.EntregaPor!);
                             });
                     }
