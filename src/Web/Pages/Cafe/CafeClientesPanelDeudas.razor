@@ -1,4 +1,5 @@
 @page "/cafe/clientes/panel-deudas"
+@page "/cafe/saldos-pendientes"
 @attribute [Authorize]
 @inject ApiClient Api
 @inject ToastService ToastService
@@ -93,9 +94,15 @@
     <div class="panel-header">
         <h1>💰 ¿Quién me debe?</h1>
         <p>Saldos pendientes por cliente, separados por cotización y factura.</p>
-        <button class="btn btn-secondary" style="margin-top: 0.5rem; font-size: 0.85rem;" @onclick="OpenSharedLink">
-            🔗 Compartir link público
-        </button>
+        <div style="display: flex; gap: 0.4rem; justify-content: center; flex-wrap: wrap; margin-top: 0.5rem;">
+            <button class="btn btn-secondary" style="font-size: 0.85rem;" @onclick="OpenSharedLink">
+                🔗 Compartir link público
+            </button>
+            <button class="btn btn-secondary" style="background: #16a34a; color: white; border: none; font-size: 0.85rem;"
+                    @onclick="DescargarExcel" disabled="@exportando">
+                @(exportando ? "⏳ Generando..." : ExcelButtonLabel())
+            </button>
+        </div>
     </div>
 
     @if (saldos is null)
@@ -144,6 +151,10 @@
         </div>
 
         <div class="filtros">
+            <label style="display: flex; align-items: center; gap: 0.3rem; font-size: 0.85rem; font-weight: 600; color: #374151;">
+                <input type="checkbox" checked="@TodosSeleccionados" @onchange="@(e => ToggleTodos((bool)(e.Value ?? false)))" />
+                <span>Tildar todos</span>
+            </label>
             <input placeholder="🔍 Buscar cliente..." @bind="busqueda" @bind:event="oninput" />
             <select @bind="orden">
                 <option value="dias">Más antiguo primero</option>
@@ -166,11 +177,21 @@
                     : ("amarillo", $"🟡 {s.DiasMasAntigua} días", "amarillo");
             <div class="cliente-card @colorCls">
                 <div class="cliente-header">
-                    <div>
-                        <p class="cliente-nombre">👤 @s.Nombre</p>
-                        <div class="cliente-tipo">
-                            @if (s.Tipo == "BAR") { <span>🍺 BAR</span> } else { <span>🏢 OTRO</span> }
-                            @if (s.CodigoInterno.HasValue) { <span> · #@s.CodigoInterno</span> }
+                    <div style="display: flex; align-items: center; gap: 0.6rem; flex: 1; min-width: 0;">
+                        <input type="checkbox" style="transform: scale(1.2);"
+                               checked="@seleccionados.Contains(s.ClienteId)"
+                               @onchange="@(e => ToggleSeleccion(s.ClienteId, (bool)(e.Value ?? false)))"
+                               title="Tildar para descargar en el Excel" />
+                        <div style="flex: 1; min-width: 0;">
+                            <p class="cliente-nombre">👤 @s.Nombre</p>
+                            <div class="cliente-tipo">
+                                @if (s.Tipo == "BAR") { <span>🍺 BAR</span> } else { <span>🏢 OTRO</span> }
+                                @if (s.CodigoInterno.HasValue) { <span> · #@s.CodigoInterno</span> }
+                                @if (s.TieneSaldoMigracion)
+                                {
+                                    <span title="Incluye saldo migrado del sistema viejo" style="margin-left: 0.4rem; background: #fef3c7; color: #92400e; padding: 0.05rem 0.4rem; border-radius: 4px; font-weight: 700;">🔄 MIGRACIÓN</span>
+                                }
+                            </div>
                         </div>
                     </div>
                     <span class="cliente-badge @badgeCls">@badgeTxt</span>
@@ -272,11 +293,65 @@
     private string orden = "dias";
     private string filtroTipo = "todos";
 
+    // Selección + Excel (heredado de la pantalla vieja Saldos pendientes)
+    private HashSet<int> seleccionados = new();
+    private bool exportando;
+
     // Compartir link
     private bool showShareModal;
     private string publicUrl = "";
     private bool copiedRecently;
     private bool regenerating;
+
+    private bool TodosSeleccionados => saldos is not null && saldos.Count > 0
+        && Filtrados().All(s => seleccionados.Contains(s.ClienteId));
+
+    private void ToggleSeleccion(int clienteId, bool checked_)
+    {
+        if (checked_) seleccionados.Add(clienteId);
+        else seleccionados.Remove(clienteId);
+    }
+
+    private void ToggleTodos(bool checked_)
+    {
+        if (checked_)
+        {
+            foreach (var s in Filtrados()) seleccionados.Add(s.ClienteId);
+        }
+        else
+        {
+            foreach (var s in Filtrados()) seleccionados.Remove(s.ClienteId);
+        }
+    }
+
+    private string ExcelButtonLabel()
+        => seleccionados.Count > 0
+            ? $"📊 Excel ({seleccionados.Count} seleccionado{(seleccionados.Count == 1 ? "" : "s")})"
+            : "📊 Excel (todos)";
+
+    private async Task DescargarExcel()
+    {
+        exportando = true;
+        try
+        {
+            // Si hay clientes tildados, exporta solo esos. Sino, exporta TODOS los deudores.
+            var ids = seleccionados.Count > 0 ? seleccionados.ToList() : null;
+            var bytes = await Api.ExportSaldosPendientesExcelAsync(ids);
+            if (bytes is null || bytes.Length == 0)
+            {
+                ToastService.Error("No se pudo generar el Excel");
+                return;
+            }
+            var b64 = Convert.ToBase64String(bytes);
+            var nombre = $"saldos-pendientes_{DateTime.Now:yyyyMMdd-HHmm}.xlsx";
+            await JS.InvokeVoidAsync("downloadBytesAsFile", nombre, b64,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            var cant = ids?.Count ?? saldos?.Count ?? 0;
+            ToastService.Success($"Excel descargado ({cant} cliente{(cant == 1 ? "" : "s")})");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { exportando = false; }
+    }
 
     protected override async Task OnInitializedAsync() => await Cargar();
 

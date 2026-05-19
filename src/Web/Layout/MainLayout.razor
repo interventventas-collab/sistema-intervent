@@ -65,10 +65,11 @@
                     {
                         <NavItem Href="/cafe/tesoreria/cobranzas" Label="📥 Cobranzas" Icon="@SvgIcons.ShoppingBag"
                                  IsActive="@IsActive("/cafe/tesoreria/cobranzas")" OnClick="@(() => NavigateTo("/cafe/tesoreria/cobranzas"))" />
+                        @* 'Saldos pendientes' (la pantalla tabla vieja) se fusiono con
+                           '¿Quien me debe?' el 2026-05-19. La URL /cafe/saldos-pendientes
+                           sigue funcionando porque la pagina nueva la atiende como @page secundario. *@
                         <NavItem Href="/cafe/clientes/panel-deudas" Label="💰 ¿Quién me debe?" Icon="@SvgIcons.Database"
-                                 IsActive="@IsActive("/cafe/clientes/panel-deudas")" OnClick="@(() => NavigateTo("/cafe/clientes/panel-deudas"))" />
-                        <NavItem Href="/cafe/saldos-pendientes" Label="💰 Saldos pendientes" Icon="@SvgIcons.Database"
-                                 IsActive="@IsActive("/cafe/saldos-pendientes")" OnClick="@(() => NavigateTo("/cafe/saldos-pendientes"))" />
+                                 IsActive="@(IsActive("/cafe/clientes/panel-deudas") || IsActive("/cafe/saldos-pendientes"))" OnClick="@(() => NavigateTo("/cafe/clientes/panel-deudas"))" />
                         <NavItem Href="/cafe/tesoreria/resumen" Label="📊 Resumen Tesorería" Icon="@SvgIcons.Dashboard"
                                  IsActive="@IsActive("/cafe/tesoreria/resumen")" OnClick="@(() => NavigateTo("/cafe/tesoreria/resumen"))" />
                     }
