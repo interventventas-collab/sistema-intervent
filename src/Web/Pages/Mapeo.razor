@@ -1712,61 +1712,96 @@ else
 
     private static string AddrFromGroup(GrupoUnificado g)
     {
-        // Estrategia: si tenemos coordenadas válidas, las preferimos — Google Maps NUNCA falla con
-        // un par "lat,lng" y el formato path-based las acepta perfecto. Si no hay coords, usamos
-        // la dirección de texto + localidad; si la localidad falta, sumamos "Buenos Aires, Argentina"
-        // como contexto para que Google no devuelva resultados de otro país.
+        // Estrategia (cambiada 2026-05-20 por pedido del usuario): PREFERIR siempre el texto
+        // calle + localidad sobre las coordenadas. Las coords son precisas pero Google las
+        // reverse-geocodea y muestra el negocio mas cercano (ej: "Apartamentos Boutique BA"
+        // en lugar de "Costa Rica 1234"). El texto le da a Google un formato que respeta
+        // mas seguido. Solo caemos a coords si NO hay texto.
         const string CONTEXTO_DEFAULT = "Buenos Aires, Argentina";
 
         if (g.Flex.Count > 0)
         {
             var s = g.Flex.First();
+            if (!string.IsNullOrWhiteSpace(s.AddressLine) && !ParecenCoordenadas(s.AddressLine))
+            {
+                var city = !string.IsNullOrWhiteSpace(s.City) ? s.City : CONTEXTO_DEFAULT;
+                return BuildMapsAddress(s.AddressLine, city);
+            }
+            // Fallback a coords solo si NO hay texto
             if (s.Latitude.HasValue && s.Longitude.HasValue && (s.Latitude.Value != 0 || s.Longitude.Value != 0))
             {
                 var coord = $"{s.Latitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)},{s.Longitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
                 return Uri.EscapeDataString(coord);
-            }
-            if (!string.IsNullOrWhiteSpace(s.AddressLine) && !ParecenCoordenadas(s.AddressLine))
-            {
-                var city = !string.IsNullOrWhiteSpace(s.City) ? s.City : CONTEXTO_DEFAULT;
-                return Uri.EscapeDataString((s.AddressLine + ", " + city).Trim());
             }
             return Uri.EscapeDataString(s.City ?? CONTEXTO_DEFAULT);
         }
         else
         {
             var st = g.Manual.First();
+            if (!string.IsNullOrWhiteSpace(st.Direccion) && !ParecenCoordenadas(st.Direccion))
+            {
+                var loc = !string.IsNullOrWhiteSpace(st.Localidad) ? st.Localidad : CONTEXTO_DEFAULT;
+                return BuildMapsAddress(st.Direccion, loc);
+            }
+            // Fallback a coords solo si NO hay texto
             if (st.Latitude != 0 && st.Longitude != 0)
             {
                 var coord = $"{st.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture)},{st.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
                 return Uri.EscapeDataString(coord);
             }
-            if (!string.IsNullOrWhiteSpace(st.Direccion) && !ParecenCoordenadas(st.Direccion))
-            {
-                var loc = !string.IsNullOrWhiteSpace(st.Localidad) ? st.Localidad : CONTEXTO_DEFAULT;
-                return Uri.EscapeDataString((st.Direccion + ", " + loc).Trim());
-            }
             return Uri.EscapeDataString(st.Localidad ?? CONTEXTO_DEFAULT);
         }
     }
 
+    /// <summary>Limpia la direccion + localidad para que Google Maps la respete como TEXTO
+    /// (en vez de reverse-geocodearla al negocio mas cercano). Quita codigos postales
+    /// argentinos (C1234FFF o 1234), agrega "Argentina" como contexto y deja un formato
+    /// estandar: "{calle + numero}, {localidad}, Argentina". Pedido del usuario 2026-05-20.</summary>
+    private static string BuildMapsAddress(string direccion, string localidad)
+    {
+        // 1) Limpiar postal code argentino del final de la direccion. Patrones:
+        //    "Costa Rica 1234, C1234FFF" → "Costa Rica 1234"
+        //    "Calle X 5678, 1234"        → "Calle X 5678"
+        var dir = System.Text.RegularExpressions.Regex.Replace(
+            direccion,
+            @"\s*,?\s*C\d{4}[A-Z]{0,3}\s*$|\s*,?\s*\d{4}(?=\s*$)",
+            "",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase
+        ).Trim().TrimEnd(',').Trim();
+
+        // 2) Localidad — sacar postal code si tambien lo tiene
+        var loc = System.Text.RegularExpressions.Regex.Replace(
+            localidad,
+            @"\s*,?\s*C\d{4}[A-Z]{0,3}\s*$|\s*,?\s*\d{4}(?=\s*$)",
+            "",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase
+        ).Trim().TrimEnd(',').Trim();
+
+        // 3) Asegurar contexto pais para que Google no resuelva a otro pais (ej "Costa Rica")
+        var sufijoArg = ", Argentina";
+        if (loc.IndexOf("argentina", StringComparison.OrdinalIgnoreCase) >= 0) sufijoArg = "";
+
+        var final = $"{dir}, {loc}{sufijoArg}".Trim();
+        return Uri.EscapeDataString(final);
+    }
+
     /// <summary>
     /// Construye una "address string" lista para Google Maps a partir de una parada del Mapeo
-    /// (no de un envío Flex). Usa coordenadas si las tiene; sino dirección + localidad; sino
-    /// localidad sola o el contexto "Buenos Aires, Argentina" como fallback.
+    /// (no de un envío Flex). PREFERIMOS TEXTO sobre coords (mismo motivo que AddrFromGroup).
     /// </summary>
     private static string AddrFromStop(MapeoStopDto st)
     {
         const string CONTEXTO_DEFAULT = "Buenos Aires, Argentina";
+        if (!string.IsNullOrWhiteSpace(st.Direccion) && !ParecenCoordenadas(st.Direccion))
+        {
+            var loc = !string.IsNullOrWhiteSpace(st.Localidad) ? st.Localidad : CONTEXTO_DEFAULT;
+            return BuildMapsAddress(st.Direccion, loc);
+        }
+        // Fallback a coords solo si NO hay texto
         if (st.Latitude != 0 && st.Longitude != 0)
         {
             var coord = $"{st.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture)},{st.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
             return Uri.EscapeDataString(coord);
-        }
-        if (!string.IsNullOrWhiteSpace(st.Direccion) && !ParecenCoordenadas(st.Direccion))
-        {
-            var loc = !string.IsNullOrWhiteSpace(st.Localidad) ? st.Localidad : CONTEXTO_DEFAULT;
-            return Uri.EscapeDataString((st.Direccion + ", " + loc).Trim());
         }
         return Uri.EscapeDataString(st.Localidad ?? CONTEXTO_DEFAULT);
     }
