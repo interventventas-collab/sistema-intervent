@@ -582,6 +582,7 @@ public class CafeVentasController : ControllerBase
             {
                 "EFECTIVO" => "Efectivo",
                 "TRANSFERENCIA" => "Transferencia",
+                "MERCADOPAGO" => "Mercado Pago",
                 "DEBITO" => "Débito",
                 "CREDITO" => "Crédito",
                 "CTA_CORRIENTE" => "Cuenta corriente",

@@ -518,6 +518,7 @@ public class CafeCotizacionPdfService
     {
         "EFECTIVO" => "Efectivo",
         "TRANSFERENCIA" => "Transferencia",
+        "MERCADOPAGO" => "Mercado Pago",
         "DEBITO" => "Débito",
         "CREDITO" => "Crédito",
         "CTA_CORRIENTE" => "Cta. Corriente",
