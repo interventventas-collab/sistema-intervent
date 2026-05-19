@@ -285,6 +285,49 @@ public class CafeClientesController : ControllerBase
     /// Saldo pendiente = SUM(ventas emitidas).Total - SUM(cobranzas vigentes asignadas a esas ventas).
     /// Las ventas creadas como "saldo de migración" del sistema viejo se incluyen igual (son ventas tipo X).
     /// Solo devuelve clientes con saldo > 0.</summary>
+    // ─── Token publico del panel de saldos ─── (mismo patron que nominas/panel)
+    private const string ClientesPanelTokenKey = "clientes.panel.public_token";
+
+    private async Task<string> GetOrCreateClientesPanelTokenAsync()
+    {
+        var existing = await _db.AppSettings.FindAsync(ClientesPanelTokenKey);
+        if (existing is not null && !string.IsNullOrEmpty(existing.Value)) return existing.Value;
+        var token = Convert.ToBase64String(Guid.NewGuid().ToByteArray())
+            .Replace("/", "_").Replace("+", "-").TrimEnd('=');
+        if (existing is null) _db.AppSettings.Add(new AppSetting { Key = ClientesPanelTokenKey, Value = token });
+        else existing.Value = token;
+        await _db.SaveChangesAsync();
+        return token;
+    }
+
+    [HttpGet("saldos-pendientes/public-token")]
+    public async Task<IActionResult> GetClientesPanelPublicToken()
+    {
+        var token = await GetOrCreateClientesPanelTokenAsync();
+        return Ok(new { token });
+    }
+
+    [HttpPost("saldos-pendientes/public-token/regenerate")]
+    public async Task<IActionResult> RegenerateClientesPanelPublicToken()
+    {
+        var existing = await _db.AppSettings.FindAsync(ClientesPanelTokenKey);
+        var nuevo = Convert.ToBase64String(Guid.NewGuid().ToByteArray())
+            .Replace("/", "_").Replace("+", "-").TrimEnd('=');
+        if (existing is null) _db.AppSettings.Add(new AppSetting { Key = ClientesPanelTokenKey, Value = nuevo });
+        else existing.Value = nuevo;
+        await _db.SaveChangesAsync();
+        return Ok(new { token = nuevo });
+    }
+
+    [HttpGet("saldos-pendientes/publica/{token}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetSaldosPendientesPublic(string token)
+    {
+        var saved = await _db.AppSettings.FindAsync(ClientesPanelTokenKey);
+        if (saved is null || string.IsNullOrEmpty(saved.Value) || saved.Value != token) return NotFound();
+        return await GetSaldosPendientes();
+    }
+
     [HttpGet("saldos-pendientes")]
     public async Task<IActionResult> GetSaldosPendientes()
     {
@@ -422,7 +465,11 @@ public class CafeClientesController : ControllerBase
         ws.Cell(2, 1).Value = $"Generado: {hoy:dd/MM/yyyy}";
         ws.Range(2, 1, 2, 7).Merge().Style.Font.SetItalic(true).Font.SetFontColor(XLColor.DarkGray);
 
-        var headers = new[] { "Cliente", "Tipo", "Teléfono", "N° pendientes", "Días vencido", "Más antigua", "Saldo total" };
+        // 9 columnas — pedido del usuario 2026-05-19: separar saldo "Cotizacion" (X/PRO) de
+        // saldo "Factura" (FA/FB/FC), ademas del saldo total. Asi se ve de un vistazo cuanto
+        // debe el cliente "en cotizacion" vs "facturado".
+        var headers = new[] { "Cliente", "Tipo", "Teléfono", "N° pendientes", "Días vencido",
+            "Más antigua", "📝 Saldo Cotización (X)", "📋 Saldo Factura (A/B/C)", "Saldo total" };
         for (int i = 0; i < headers.Length; i++)
         {
             var c = ws.Cell(4, i + 1);
@@ -439,6 +486,9 @@ public class CafeClientesController : ControllerBase
                 Cliente = clientesDict.TryGetValue(g.Key, out var c) ? c : null,
                 Cantidad = g.Count(),
                 Saldo = g.Sum(x => x.Saldo),
+                // Split por tipo de comprobante
+                SaldoCotizacion = g.Where(x => x.TipoComprobante == "X" || x.TipoComprobante == "PRO").Sum(x => x.Saldo),
+                SaldoFactura = g.Where(x => x.TipoComprobante == "FA" || x.TipoComprobante == "FB" || x.TipoComprobante == "FC").Sum(x => x.Saldo),
                 FechaMasAntigua = g.Min(x => x.Fecha)
             })
             .OrderBy(x => x.FechaMasAntigua)
@@ -453,17 +503,25 @@ public class CafeClientesController : ControllerBase
             ws.Cell(row, 4).Value = r.Cantidad;
             ws.Cell(row, 5).Value = (int)(hoy - r.FechaMasAntigua.Date).TotalDays;
             ws.Cell(row, 6).Value = r.FechaMasAntigua; ws.Cell(row, 6).Style.DateFormat.Format = "dd/MM/yyyy";
-            ws.Cell(row, 7).Value = r.Saldo; ws.Cell(row, 7).Style.NumberFormat.Format = "#,##0.00";
+            ws.Cell(row, 7).Value = r.SaldoCotizacion; ws.Cell(row, 7).Style.NumberFormat.Format = "#,##0.00";
+            ws.Cell(row, 8).Value = r.SaldoFactura; ws.Cell(row, 8).Style.NumberFormat.Format = "#,##0.00";
+            ws.Cell(row, 9).Value = r.Saldo; ws.Cell(row, 9).Style.NumberFormat.Format = "#,##0.00";
             row++;
         }
         // Fila TOTAL
         ws.Cell(row, 1).Value = "TOTAL";
         ws.Cell(row, 1).Style.Font.SetBold(true);
         ws.Range(row, 1, row, 6).Merge().Style.Font.SetBold(true);
-        ws.Cell(row, 7).Value = resumen.Sum(r => r.Saldo);
+        ws.Cell(row, 7).Value = resumen.Sum(r => r.SaldoCotizacion);
         ws.Cell(row, 7).Style.NumberFormat.Format = "#,##0.00";
         ws.Cell(row, 7).Style.Font.SetBold(true);
-        ws.Range(row, 1, row, 7).Style.Fill.SetBackgroundColor(XLColor.LightYellow);
+        ws.Cell(row, 8).Value = resumen.Sum(r => r.SaldoFactura);
+        ws.Cell(row, 8).Style.NumberFormat.Format = "#,##0.00";
+        ws.Cell(row, 8).Style.Font.SetBold(true);
+        ws.Cell(row, 9).Value = resumen.Sum(r => r.Saldo);
+        ws.Cell(row, 9).Style.NumberFormat.Format = "#,##0.00";
+        ws.Cell(row, 9).Style.Font.SetBold(true);
+        ws.Range(row, 1, row, 9).Style.Fill.SetBackgroundColor(XLColor.LightYellow);
 
         ws.Columns().AdjustToContents();
         ws.SheetView.FreezeRows(4);

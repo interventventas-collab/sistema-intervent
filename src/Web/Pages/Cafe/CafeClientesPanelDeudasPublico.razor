@@ -1,0 +1,273 @@
+@page "/saldos-clientes/{Token}"
+@attribute [AllowAnonymous]
+@layout Web.Layout.LoginLayout
+@inject HttpClient Http
+@inject IJSRuntime JS
+@using System.Net
+@using System.Net.Http.Json
+@using Web.Models
+
+@* ════════════════════════════════════════════════════════════════════════════
+   Version PUBLICA del panel '¿Quién me debe?'. Accesible sin login via token.
+   Misma data + UI que la version privada, pero sin acciones (cobrar / estado
+   de cuenta) — esas requieren login. WhatsApp si funciona.
+   ════════════════════════════════════════════════════════════════════════════ *@
+
+<style>
+    body { background: linear-gradient(135deg, #f1f5f9, #e2e8f0); min-height: 100vh; }
+    .panel-deudas-wrap { max-width: 1100px; margin: 0 auto; padding: 0.5rem; }
+    .panel-header { text-align: center; margin-bottom: 1.2rem; }
+    .panel-header h1 { font-size: 1.7rem; font-weight: 800; margin: 0 0 0.3rem; color: #1f2937; }
+    .panel-header p { color: #6b7280; margin: 0; font-size: 0.95rem; }
+    .panel-resumen { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.8rem; margin-bottom: 1.5rem; }
+    .panel-resumen-card { background: white; border-radius: 12px; padding: 1rem 1.2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.06); border-left: 5px solid #1d4ed8; }
+    .panel-resumen-card.urgente { border-left-color: #b91c1c; }
+    .panel-resumen-card.cotiz { border-left-color: #6b7280; }
+    .panel-resumen-card.factura { border-left-color: #1d4ed8; }
+    .panel-resumen-card .label { font-size: 0.78rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.4px; font-weight: 700; }
+    .panel-resumen-card .valor { font-size: 1.6rem; font-weight: 800; color: #1f2937; margin: 0.2rem 0 0; }
+    .panel-resumen-card .sub { font-size: 0.78rem; color: #9ca3af; margin: 0.15rem 0 0; }
+
+    .filtros { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; background: white; padding: 0.6rem 0.8rem; border-radius: 8px; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .filtros input, .filtros select { padding: 0.4rem 0.6rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.88rem; }
+    .filtros input { flex: 1; min-width: 180px; }
+
+    .cliente-card { background: white; border-radius: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); margin-bottom: 0.8rem; overflow: hidden; }
+    .cliente-card.rojo { border: 2px solid #fca5a5; }
+    .cliente-card.naranja { border: 2px solid #fdba74; }
+    .cliente-card.amarillo { border: 2px solid #fcd34d; }
+    .cliente-header { display: flex; justify-content: space-between; align-items: center; padding: 0.8rem 1.1rem; background: #f9fafb; border-bottom: 1px solid #e5e7eb; }
+    .cliente-nombre { font-size: 1.1rem; font-weight: 700; color: #1f2937; margin: 0; }
+    .cliente-tipo { font-size: 0.7rem; color: #6b7280; }
+    .cliente-badge { display: inline-block; padding: 0.25rem 0.7rem; border-radius: 999px; font-size: 0.78rem; font-weight: 700; }
+    .cliente-badge.rojo { background: #fee2e2; color: #991b1b; }
+    .cliente-badge.naranja { background: #ffedd5; color: #9a3412; }
+    .cliente-badge.amarillo { background: #fef3c7; color: #92400e; }
+
+    .cliente-body { padding: 0.7rem 1.1rem 0.9rem; }
+    .saldo-tipos { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; }
+    .saldo-tipo-box { flex: 1; padding: 0.5rem 0.7rem; border-radius: 6px; background: #f9fafb; }
+    .saldo-tipo-box.cotiz { background: #f3f4f6; }
+    .saldo-tipo-box.factura { background: #dbeafe; }
+    .saldo-tipo-box .tipo-label { font-size: 0.68rem; color: #6b7280; text-transform: uppercase; font-weight: 700; letter-spacing: 0.3px; }
+    .saldo-tipo-box .tipo-monto { font-size: 1.05rem; font-weight: 800; color: #1f2937; margin-top: 0.1rem; }
+    .saldo-tipo-box.factura .tipo-monto { color: #1d4ed8; }
+    .saldo-tipo-box.cotiz .tipo-monto { color: #4b5563; }
+    .saldo-tipo-box .tipo-monto.cero { color: #d1d5db; font-weight: 500; font-size: 0.9rem; }
+
+    .cliente-total { display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem; padding: 0.45rem 0.7rem; background: #fef9c3; border-radius: 6px; }
+    .cliente-total .label { font-weight: 700; color: #713f12; font-size: 0.88rem; }
+    .cliente-total .monto { font-weight: 800; font-size: 1.2rem; color: #713f12; }
+    .cliente-meta { display: flex; gap: 0.8rem; margin-top: 0.4rem; font-size: 0.78rem; color: #6b7280; flex-wrap: wrap; }
+
+    .cliente-actions { display: flex; gap: 0.4rem; margin-top: 0.7rem; flex-wrap: wrap; }
+    .btn-wa { flex: 1; padding: 0.55rem 0.7rem; font-size: 0.85rem; font-weight: 600; border-radius: 7px; cursor: pointer; background: #25D366; color: white; border: 1px solid #1ea34f; }
+
+    .vacio { background: #ecfdf5; border: 2px solid #6ee7b7; padding: 2rem; border-radius: 12px; text-align: center; }
+    .vacio strong { font-size: 1.3rem; color: #065f46; }
+    .vacio p { color: #047857; margin: 0.5rem 0 0; }
+
+    .panel-error { background: #fef2f2; border: 1px solid #fca5a5; color: #7f1d1d; padding: 1.2rem; border-radius: 8px; text-align: center; margin-top: 2rem; }
+
+    @@media (max-width: 768px) {
+        .panel-deudas-wrap { padding: 0.4rem; }
+        .panel-header h1 { font-size: 1.4rem; }
+        .panel-resumen { grid-template-columns: 1fr; gap: 0.5rem; margin-bottom: 1rem; }
+        .panel-resumen-card .valor { font-size: 1.3rem; }
+        .cliente-header { flex-direction: column; align-items: flex-start; gap: 0.35rem; }
+        .saldo-tipos { flex-direction: column; gap: 0.3rem; }
+    }
+</style>
+
+<div class="panel-deudas-wrap">
+    <div class="panel-header">
+        <h1>💰 ¿Quién me debe?</h1>
+        <p>Saldos pendientes por cliente, separados por cotización y factura.</p>
+    </div>
+
+    @if (loadError is not null)
+    {
+        <div class="panel-error">
+            <strong>El link no es válido o expiró</strong><br />
+            <span style="font-size: 0.88rem;">@loadError</span><br />
+            <span style="font-size: 0.78rem; color: #991b1b; margin-top: 0.4rem; display: block;">Pedile a quien te lo pasó que te mande el link nuevo.</span>
+        </div>
+    }
+    else if (saldos is null)
+    {
+        <p style="text-align: center; padding: 3rem; color: #6b7280;">⏳ Cargando...</p>
+    }
+    else if (saldos.Count == 0)
+    {
+        <div class="vacio">
+            <div style="font-size: 3rem;">🎉</div>
+            <strong>Nadie te debe nada</strong>
+            <p>Todos los clientes están al día.</p>
+        </div>
+    }
+    else
+    {
+        var totalCot = saldos.Sum(s => s.SaldoCotizacion);
+        var totalFac = saldos.Sum(s => s.SaldoFactura);
+        var totalTodo = saldos.Sum(s => s.SaldoPendiente);
+        var vencidos60 = saldos.Where(s => s.DiasMasAntigua >= 60).ToList();
+
+        <div class="panel-resumen">
+            <div class="panel-resumen-card">
+                <div class="label">Total por cobrar</div>
+                <p class="valor">$@FormatMoney(totalTodo)</p>
+                <p class="sub">@saldos.Count cliente@(saldos.Count == 1 ? "" : "s") con saldo</p>
+            </div>
+            <div class="panel-resumen-card cotiz">
+                <div class="label">📝 Cotización (X)</div>
+                <p class="valor" style="color: #4b5563;">$@FormatMoney(totalCot)</p>
+                <p class="sub">No fiscal — comprobantes internos</p>
+            </div>
+            <div class="panel-resumen-card factura">
+                <div class="label">📋 Factura (A/B/C)</div>
+                <p class="valor" style="color: #1d4ed8;">$@FormatMoney(totalFac)</p>
+                <p class="sub">Con CAE de ARCA — fiscal</p>
+            </div>
+            @if (vencidos60.Count > 0)
+            {
+                <div class="panel-resumen-card urgente">
+                    <div class="label" style="color: #b91c1c;">🔴 +60 días</div>
+                    <p class="valor" style="color: #b91c1c;">$@FormatMoney(vencidos60.Sum(s => s.SaldoPendiente))</p>
+                    <p class="sub">@vencidos60.Count cliente@(vencidos60.Count == 1 ? "" : "s") muy atrasado@(vencidos60.Count == 1 ? "" : "s")</p>
+                </div>
+            }
+        </div>
+
+        <div class="filtros">
+            <input placeholder="🔍 Buscar cliente..." @bind="busqueda" @bind:event="oninput" />
+            <select @bind="orden">
+                <option value="dias">Más antiguo primero</option>
+                <option value="saldo">Mayor saldo primero</option>
+                <option value="nombre">Nombre (A-Z)</option>
+            </select>
+            <select @bind="filtroTipo">
+                <option value="todos">Todos los saldos</option>
+                <option value="cotizacion">Solo con cotización</option>
+                <option value="factura">Solo con factura</option>
+            </select>
+        </div>
+
+        @foreach (var s in Filtrados())
+        {
+            var (colorCls, badgeTxt, badgeCls) = s.DiasMasAntigua >= 60
+                ? ("rojo", $"🔴 {s.DiasMasAntigua} días", "rojo")
+                : s.DiasMasAntigua >= 30
+                    ? ("naranja", $"🟠 {s.DiasMasAntigua} días", "naranja")
+                    : ("amarillo", $"🟡 {s.DiasMasAntigua} días", "amarillo");
+            <div class="cliente-card @colorCls">
+                <div class="cliente-header">
+                    <div>
+                        <p class="cliente-nombre">👤 @s.Nombre</p>
+                        <div class="cliente-tipo">
+                            @if (s.Tipo == "BAR") { <span>🍺 BAR</span> } else { <span>🏢 OTRO</span> }
+                            @if (s.CodigoInterno.HasValue) { <span> · #@s.CodigoInterno</span> }
+                        </div>
+                    </div>
+                    <span class="cliente-badge @badgeCls">@badgeTxt</span>
+                </div>
+                <div class="cliente-body">
+                    <div class="saldo-tipos">
+                        <div class="saldo-tipo-box cotiz">
+                            <div class="tipo-label">📝 Cotización</div>
+                            @if (s.SaldoCotizacion > 0) { <div class="tipo-monto">$@FormatMoney(s.SaldoCotizacion)</div> }
+                            else { <div class="tipo-monto cero">—</div> }
+                        </div>
+                        <div class="saldo-tipo-box factura">
+                            <div class="tipo-label">📋 Factura</div>
+                            @if (s.SaldoFactura > 0) { <div class="tipo-monto">$@FormatMoney(s.SaldoFactura)</div> }
+                            else { <div class="tipo-monto cero">—</div> }
+                        </div>
+                    </div>
+                    <div class="cliente-total">
+                        <span class="label">TOTAL DEBE</span>
+                        <span class="monto">$@FormatMoney(s.SaldoPendiente)</span>
+                    </div>
+                    <div class="cliente-meta">
+                        <span>📅 Desde @s.FechaMasAntigua.ToString("dd/MM/yyyy")</span>
+                        <span>· 📄 @s.CantidadVentasPendientes pendiente@(s.CantidadVentasPendientes == 1 ? "" : "s")</span>
+                        @if (!string.IsNullOrEmpty(s.Telefono)) { <span>· 📞 @s.Telefono</span> }
+                    </div>
+                    @if (!string.IsNullOrEmpty(s.Telefono))
+                    {
+                        <div class="cliente-actions">
+                            <button class="btn-wa" @onclick="@(() => MandarWhatsapp(s))">📱 Mandar WhatsApp</button>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public string? Token { get; set; }
+
+    private List<ClienteSaldoPendienteDto>? saldos;
+    private string? loadError;
+    private string busqueda = "";
+    private string orden = "dias";
+    private string filtroTipo = "todos";
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    private async Task Cargar()
+    {
+        if (string.IsNullOrWhiteSpace(Token)) { loadError = "Falta el código del link."; return; }
+        try
+        {
+            var resp = await Http.GetAsync($"api/cafe/clientes/saldos-pendientes/publica/{Uri.EscapeDataString(Token)}");
+            if (resp.StatusCode == HttpStatusCode.NotFound)
+            {
+                loadError = "El link no es válido o el código cambió.";
+                return;
+            }
+            if (!resp.IsSuccessStatusCode)
+            {
+                loadError = "Error cargando datos: " + resp.StatusCode;
+                return;
+            }
+            saldos = await resp.Content.ReadFromJsonAsync<List<ClienteSaldoPendienteDto>>();
+        }
+        catch (Exception ex) { loadError = ex.Message; }
+    }
+
+    private IEnumerable<ClienteSaldoPendienteDto> Filtrados()
+    {
+        if (saldos is null) return Enumerable.Empty<ClienteSaldoPendienteDto>();
+        IEnumerable<ClienteSaldoPendienteDto> q = saldos;
+        if (filtroTipo == "cotizacion") q = q.Where(s => s.SaldoCotizacion > 0);
+        else if (filtroTipo == "factura") q = q.Where(s => s.SaldoFactura > 0);
+        if (!string.IsNullOrWhiteSpace(busqueda))
+        {
+            var t = busqueda.Trim();
+            q = q.Where(s =>
+                s.Nombre.Contains(t, StringComparison.OrdinalIgnoreCase) ||
+                (s.Telefono ?? "").Contains(t) ||
+                (s.CodigoInterno?.ToString() ?? "").Contains(t));
+        }
+        return orden switch
+        {
+            "saldo" => q.OrderByDescending(s => s.SaldoPendiente),
+            "nombre" => q.OrderBy(s => s.Nombre),
+            _ => q.OrderByDescending(s => s.DiasMasAntigua),
+        };
+    }
+
+    private async Task MandarWhatsapp(ClienteSaldoPendienteDto s)
+    {
+        if (string.IsNullOrEmpty(s.Telefono)) return;
+        var phone = new string(s.Telefono.Where(char.IsDigit).ToArray());
+        if (phone.Length < 8) return;
+        var saldoFmt = s.SaldoPendiente.ToString("N0", new System.Globalization.CultureInfo("es-AR"));
+        var msg = Uri.EscapeDataString($"Hola {s.Nombre}, te recuerdo que tenés un saldo pendiente de ${saldoFmt}. Cualquier consulta avisame.");
+        try { await JS.InvokeVoidAsync("openInNewTab", $"https://wa.me/{phone}?text={msg}"); }
+        catch { }
+    }
+
+    private static string FormatMoney(decimal v) => v.ToString("N0", new System.Globalization.CultureInfo("es-AR"));
+}

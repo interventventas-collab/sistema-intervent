@@ -708,6 +708,38 @@ public class ApiClient
     public async Task<List<ClienteSaldoPendienteDto>?> GetCafeClientesSaldosPendientesAsync()
         => await GetAsync<List<ClienteSaldoPendienteDto>>("/api/cafe/clientes/saldos-pendientes");
 
+    /// <summary>Token publico del panel de saldos de clientes — para compartir link sin login.</summary>
+    public async Task<string?> GetCafeClientesPanelPublicTokenAsync()
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.GetAsync("/api/cafe/clientes/saldos-pendientes/public-token");
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return null; }
+        if (!resp.IsSuccessStatusCode) return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            if (doc.RootElement.TryGetProperty("token", out var t)) return t.GetString();
+        }
+        catch { }
+        return null;
+    }
+
+    /// <summary>Regenera el token publico del panel de saldos (invalida el anterior).</summary>
+    public async Task<string?> RegenerateCafeClientesPanelPublicTokenAsync()
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsync("/api/cafe/clientes/saldos-pendientes/public-token/regenerate", null);
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return null; }
+        if (!resp.IsSuccessStatusCode) return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            if (doc.RootElement.TryGetProperty("token", out var t)) return t.GetString();
+        }
+        catch { }
+        return null;
+    }
+
     /// <summary>Descarga Excel de cuentas corrientes de los clientes seleccionados (o todos los deudores si la lista está vacía).</summary>
     public async Task<byte[]?> ExportSaldosPendientesExcelAsync(List<int>? clienteIds)
     {
