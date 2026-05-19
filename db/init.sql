@@ -3629,6 +3629,14 @@ BEGIN
 END
 GO
 
+-- Cafe_Ventas: quien entrega la venta (Gabriel, Nacho, Maxi, Alexis, Miguel, Rodrigo,
+-- o 'Logistica tercerizada'). Opcional — null si no se asigna. Pedido del usuario 2026-05-20.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='EntregaPor' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+BEGIN
+    ALTER TABLE Cafe_Ventas ADD EntregaPor NVARCHAR(100) NULL;
+END
+GO
+
 -- ===== Preventas / notas de pedido (vendedor en la calle) =====
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_PreventaVendedores')
 BEGIN

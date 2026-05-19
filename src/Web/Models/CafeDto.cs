@@ -303,6 +303,9 @@ public class CafeVentaDto
     /// <summary>Token aleatorio para el link publico /comprobante/{token}. Null en ventas
     /// viejas pre-feature — al primer share el backend lo genera y persiste.</summary>
     public string? PublicToken { get; set; }
+    /// <summary>Quien entrega la venta (Gabriel, Nacho, Maxi, Alexis, Miguel, Rodrigo, o
+    /// 'Logistica tercerizada'). Opcional. Se muestra en el PDF.</summary>
+    public string? EntregaPor { get; set; }
 }
 
 public class ConvertirAFacturaRequest
@@ -383,6 +386,7 @@ public class CreateCafeVentaRequest
     public string? TipoComprobante { get; set; }
     public string? CondicionIva { get; set; }
     public string? CondicionPago { get; set; }
+    public string? EntregaPor { get; set; }
 }
 
 public class UpdateCafeVentaFlagsRequest
@@ -405,6 +409,7 @@ public class UpdateCafeVentaRequest
     public bool? IsPaid { get; set; }
     public List<CafeCotizarItemRequest>? Items { get; set; }
     public decimal? Descuento { get; set; }
+    public string? EntregaPor { get; set; }
 }
 
 public class DeleteCafeVentaRequest

@@ -120,6 +120,12 @@ public class CafeVenta
     [MaxLength(64)]
     public string? PublicToken { get; set; }
 
+    /// <summary>Quien entrega la venta (Gabriel, Nacho, Maxi, Alexis, Miguel, Rodrigo, o
+    /// "Logistica tercerizada"). Opcional. Aparece en el PDF para que el cliente/chofer sepa
+    /// quien lleva la mercaderia. Pedido del usuario 2026-05-20.</summary>
+    [MaxLength(100)]
+    public string? EntregaPor { get; set; }
+
     /// <summary>Importe Neto (sin IVA) que ARCA registró efectivamente. Guardamos lo que devuelve
     /// el FECAESolicitar para que el PDF reconstruya los totales sin lugar a interpretación.
     /// NULL en facturas viejas (pre-2026-05-15) que no guardaban esto — para esas se calcula

@@ -279,7 +279,8 @@ public record CafeVentaDto(
     int? FacturadaComoVentaId = null,
     bool EsSaldoMigracion = false,
     string? PinNota = null,
-    string? PublicToken = null);
+    string? PublicToken = null,
+    string? EntregaPor = null);
 
 public class CafeCotizarItemRequest
 {
@@ -342,6 +343,7 @@ public class CreateCafeVentaRequest
     public string? TipoComprobante { get; set; }
     public string? CondicionIva { get; set; }
     public string? CondicionPago { get; set; }
+    public string? EntregaPor { get; set; }
 }
 
 public class UpdateCafeVentaFlagsRequest
@@ -367,6 +369,7 @@ public class UpdateCafeVentaRequest
     public bool? IsPaid { get; set; }
     public List<CafeCotizarItemRequest>? Items { get; set; }
     public decimal? Descuento { get; set; }
+    public string? EntregaPor { get; set; }
 }
 
 public class DeleteCafeVentaRequest

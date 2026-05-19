@@ -974,6 +974,19 @@
                                 </div>
                             </div>
 
+                            @* Entrega: quien lleva la mercaderia. Opcional. Pedido del usuario 2026-05-20. *@
+                            <div style="margin-top: 0.6rem;">
+                                <label style="font-size: 0.72rem; color: #6b7280; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;">Entrega</label>
+                                <select class="form-input" @bind="formEntregaPor" style="margin-top: 0.3rem; font-size: 0.85rem;">
+                                    <option value="">— sin asignar —</option>
+                                    @foreach (var nom in EntregaResponsables)
+                                    {
+                                        <option value="@nom">@nom</option>
+                                    }
+                                    <option value="Logística tercerizada">📦 Logística tercerizada</option>
+                                </select>
+                            </div>
+
                             @* Estado de pago: si la venta editada ya tiene cobranzas aplicadas, mostrar el saldo real
                                (calculado) en vez del checkbox manual. El checkbox manual queda solo para ventas
                                nuevas (cuando se crea pagada al toque, ej. ventas al contado sin pasar por cobranza). *@
@@ -1627,6 +1640,15 @@
                     }
                 </div>
 
+                @* Entrega responsable: solo se muestra si esta cargado. *@
+                @if (!string.IsNullOrWhiteSpace(printVenta.EntregaPor))
+                {
+                    <div style="margin-top: 0.4rem; border: 1px solid #d1d5db; padding: 0.4rem 0.6rem; display: flex; gap: 0.3rem; align-items: center; flex-wrap: wrap; justify-content: center;">
+                        <span style="font-size: 0.7rem; color: #6b7280;">Entrega:</span>
+                        <span style="font-size: 0.85rem; font-weight: 700; color: #1f2937;">🚚 @printVenta.EntregaPor</span>
+                    </div>
+                }
+
                 <div style="margin-top: 0.6rem; text-align: center; font-size: 0.78rem; color: #6b7280; border-top: 1px dashed #d1d5db; padding-top: 0.5rem;">
                     Gracias por tu compra ☕
                     @if (HasWhatsapp)
@@ -2079,6 +2101,13 @@
     private CafeCotizadoDto? cotizacion;
     private HashSet<string> formWeekDays = new();
     private bool formIsPaid;
+    private string formEntregaPor = "";
+
+    /// <summary>Lista de personas que entregan, en el orden pedido por el usuario. La opcion
+    /// 'Logística tercerizada' se agrega aparte en el dropdown como ultima opcion.</summary>
+    private static readonly string[] EntregaResponsables = {
+        "Gabriel", "Nacho", "Maxi", "Alexis", "Miguel", "Rodrigo"
+    };
 
     // ── Panel "Enviar al cliente al emitir" ──
     // 3 canales de envio (paralelos, no mutuamente excluyentes). El operador tilda los
@@ -2512,7 +2541,7 @@
         addMode = "PRODUCTO";
         addComboId = 0; addComboCantidad = 1;
         comboSearch = ""; comboSearchOpen = false;
-        formWeekDays = new(); formIsPaid = false;
+        formWeekDays = new(); formIsPaid = false; formEntregaPor = "";
         // Reset del panel "Enviar al cliente" — todos los checkboxes empiezan apagados
         // para que nunca mandes algo sin querer. El operador tilda lo que necesite por venta.
         envioEmail = false; envioWhatsappWeb = false; envioWhatsappInterno = false;
@@ -3306,7 +3335,8 @@
                     IsPaid = formIsPaid,
                     TipoComprobante = formTipoComprobante,
                     CondicionIva = formCondicionIva,
-                    CondicionPago = formCondicionPago
+                    CondicionPago = formCondicionPago,
+                    EntregaPor = formEntregaPor
                 });
                 if (v is null) { formError = "No se pudo actualizar"; return; }
                 ToastService.Success($"Comprobante {v.Numero} actualizado");
@@ -3346,7 +3376,8 @@
                     IsPaid = false,  // NUNCA marcar pagado al crear — el flag se sincroniza por la cobranza
                     TipoComprobante = formTipoComprobante,
                     CondicionIva = formCondicionIva,
-                    CondicionPago = formCondicionPago
+                    CondicionPago = formCondicionPago,
+                    EntregaPor = formEntregaPor
                 });
                 if (v is null) { formError = "No se pudo crear"; return; }
                 ToastService.Success($"Venta {v.Numero} emitida — Total ${v.Total:N2}");
@@ -3681,6 +3712,7 @@
             ? new HashSet<string>()
             : v.WeekDays.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(s => s.Trim().ToUpperInvariant()).ToHashSet();
         formIsPaid = v.IsPaid;
+        formEntregaPor = v.EntregaPor ?? "";
         // Items: convertir a CafeCotizarItemRequest para que el form los muestre y los pueda editar.
         formItems = v.Items.Select(i => new CafeCotizarItemRequest
         {

@@ -319,6 +319,15 @@ public class ArcaInvoicePdfService
                             {
                                 cc.Item().Text("DOMICILIO DE ENTREGA").FontSize(7).Bold().FontColor(Colors.Grey.Darken2).LetterSpacing(0.05f);
                                 cc.Item().Text(domicilioMostrar!).FontSize(10).Bold();
+                                // Quien entrega — debajo del domicilio, en linea con icono camioncito.
+                                if (!string.IsNullOrWhiteSpace(comp.EntregaPor))
+                                {
+                                    cc.Item().PaddingTop(2).Text(t =>
+                                    {
+                                        t.Span("🚚 Entrega: ").FontSize(8).FontColor(Colors.Grey.Darken1);
+                                        t.Span(comp.EntregaPor!).Bold().FontSize(9).FontColor(Colors.Grey.Darken4);
+                                    });
+                                }
                                 // Pills LUN-DOM con el formato de la cotizacion (dia marcado en
                                 // negro/blanco, dia no marcado en blanco/gris). Solo se dibujan
                                 // si hay al menos un dia configurado en la venta.
@@ -556,6 +565,9 @@ public class PdfComprobante
     public string? TipoClienteTag { get; set; }
     /// <summary>Días de visita/reparto (LUN/MAR/...) como CSV. Si null no se muestra.</summary>
     public string? DiasVisita { get; set; }
+    /// <summary>Quien entrega la venta (Gabriel, Nacho, Maxi, Alexis, Miguel, Rodrigo, o
+    /// 'Logistica tercerizada'). Si esta seteado se muestra en el bloque DOMICILIO DE ENTREGA.</summary>
+    public string? EntregaPor { get; set; }
     /// <summary>Comentarios para el comprobante cargados en la ficha del cliente.</summary>
     public string? ComentariosCliente { get; set; }
     /// <summary>Observaciones internas de la venta. Si null no se muestra.</summary>

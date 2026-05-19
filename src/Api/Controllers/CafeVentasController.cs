@@ -146,7 +146,8 @@ public class CafeVentasController : ControllerBase
         v.FacturadaComoVentaId,
         esSaldoMigracion,
         v.PinNota,
-        v.PublicToken);
+        v.PublicToken,
+        v.EntregaPor);
 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null)
@@ -528,6 +529,7 @@ public class CafeVentasController : ControllerBase
             Observaciones = v.Observaciones,
             CondicionPago = v.CondicionPago,
             DomicilioEntrega = v.ClienteDomicilioEntregaSnapshot,
+            EntregaPor = v.EntregaPor,
         };
 
         foreach (var it in v.Items)
@@ -821,7 +823,8 @@ public class CafeVentasController : ControllerBase
             CreatedAt = DateTime.UtcNow,
             // Token aleatorio para el link publico /comprobante/{token}. 22 chars
             // base64-url-safe (~131 bits de entropia) — imposible de adivinar.
-            PublicToken = GeneratePublicToken()
+            PublicToken = GeneratePublicToken(),
+            EntregaPor = string.IsNullOrWhiteSpace(req.EntregaPor) ? null : req.EntregaPor.Trim()
         };
 
         // Mapear items + descontar stock fisico
@@ -1342,6 +1345,7 @@ public class CafeVentasController : ControllerBase
         if (req.CondicionPago is not null) v.CondicionPago = NormCondicionPago(req.CondicionPago);
         if (req.WeekDays is not null) v.WeekDays = NormWeekDays(req.WeekDays);
         if (req.IsPaid.HasValue) v.IsPaid = req.IsPaid.Value;
+        if (req.EntregaPor is not null) v.EntregaPor = string.IsNullOrWhiteSpace(req.EntregaPor) ? null : req.EntregaPor.Trim();
 
         // Cliente: si mandaron ClienteId valido > 0, vinculo al cliente y refresco snapshot.
         // Si mandaron 0 o null + override, dejo como manual (consumidor final / nombre libre).
