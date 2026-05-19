@@ -762,7 +762,7 @@
                         </div>
                         <div class="form-group" style="flex: 1;">
                             <label class="form-label" style="font-size: 0.75rem;">Formato</label>
-                            <select class="form-input" @bind="addFormato">
+                            <select class="form-input" value="@addFormato" @onchange="OnAddFormatoChanged">
                                 @if (AddProductoCategoria == "CAFE")
                                 {
                                     <option value="1KG">1 kg</option>
@@ -787,6 +787,35 @@
                             <button class="btn btn-primary" type="button" @onclick="AddItem" style="width: 100%;">+ Agregar</button>
                         </div>
                     </div>
+                    @* Segunda fila: Molienda + Envase. Solo cafe. Replica los selectores
+                       que tiene cada item ya cargado — asi el operador puede elegir todo
+                       antes de apretar "+ Agregar" en vez de tener que editar la fila. *@
+                    @if (AddProductoCategoria == "CAFE")
+                    {
+                        <div class="form-row" style="align-items: end; margin-top: 0.4rem;">
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label" style="font-size: 0.75rem;">Molienda</label>
+                                <select class="form-input" @bind="addMolienda" style="background:#fef3c7; border-color:#d97706; font-weight:600;">
+                                    <option value="EN GRANOS">🫘 EN GRANOS</option>
+                                    <option value="MOLIDO FILTRO">☕ MOLIDO FILTRO</option>
+                                    <option value="MOLIDO ESPRESS">⚡ MOLIDO ESPRESS</option>
+                                    <option value="MOLIDO MOKA">☕ MOLIDO MOKA</option>
+                                    <option value="MOLIDO BODUM">☕ MOLIDO BODUM</option>
+                                    <option value="MOLIDO PRENSA FRANCESA">☕ MOLIDO PRENSA FRANCESA</option>
+                                    <option value="MOLIDO A LA TURCA">☕ MOLIDO A LA TURCA</option>
+                                    <option value="MINI EXPRESS">🔸 MINI EXPRESS</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label" style="font-size: 0.75rem;">Envase</label>
+                                <select class="form-input" @bind="addEnvase" style="background:#f3f4f6; border-color:#9ca3af; font-weight:600;">
+                                    <option value="NEGRO">⚫ Envase negro</option>
+                                    <option value="PLATEADO">⚪ Envase plateado</option>
+                                    <option value="DOY_PACK">📦 Doy pack</option>
+                                </select>
+                            </div>
+                        </div>
+                    }
                     @if (AvisoBultoConviene is not null)
                     {
                         <div style="margin: 0.4rem 0 0; padding: 0.5rem 0.7rem; background: #fef3c7; border: 1px solid #d97706; border-radius: 6px; display: flex; gap: 0.5rem; align-items: center; font-size: 0.85rem; color: #92400e;">
@@ -2140,6 +2169,22 @@
     private int addProductoId;
     private string addFormato = "1KG";
     private int addCantidad = 1;
+    // Selectores Molienda + Envase en el form de "agregar" — replican lo que tiene
+    // cada linea ya cargada. Asi el operador elige todo de una y no tiene que
+    // editar cada fila despues. Solo visibles si el producto es CAFE.
+    private string addMolienda = "EN GRANOS";
+    private string addEnvase = "NEGRO";
+
+    /// <summary>Al cambiar el formato en el form de agregar, sugerimos Doy pack
+    /// automaticamente para 1/4 y 1/2 kg (son los formatos que casi siempre van
+    /// envasados asi). El operador puede cambiarlo despues si quiere.</summary>
+    private void OnAddFormatoChanged(ChangeEventArgs e)
+    {
+        addFormato = e.Value?.ToString() ?? "1KG";
+        if (AddProductoCategoria != "CAFE") return;
+        if (addFormato == "MEDIO" || addFormato == "CUARTO") addEnvase = "DOY_PACK";
+        else if (addFormato == "1KG") addEnvase = "NEGRO";
+    }
     private string productoSearch = "";
     private bool productoSearchOpen;
 
@@ -2552,6 +2597,7 @@
         formTipoComprobante = "X"; formCondicionIva = "CF"; formCondicionPago = "EFECTIVO";
         formItems = new(); cotizacion = null;
         addProductoId = 0; addFormato = "1KG"; addCantidad = 1;
+        addMolienda = "EN GRANOS"; addEnvase = "NEGRO";
         productoSearch = ""; productoSearchOpen = false;
         addMode = "PRODUCTO";
         addComboId = 0; addComboCantidad = 1;
@@ -3049,10 +3095,12 @@
         var p = productos?.FirstOrDefault(x => x.Id == addProductoId);
         if (p is null) return;
 
-        var def = DefaultMolienda(addProductoId);
-        // Doy pack preseleccionado en 1/4 y 1/2 kg — pedido del usuario 2026-05-19:
-        // los formatos chicos normalmente se entregan en doy pack, no a granel.
-        var doyPackDefault = addFormato == "MEDIO" || addFormato == "CUARTO";
+        // Molienda + envase los toma de los selectores del form. Si el producto NO es
+        // cafe, usamos los defaults seguros (sin molienda, sin envase especial).
+        var esCafe = p.Categoria == "CAFE";
+        var molienda = esCafe ? (string.IsNullOrEmpty(addMolienda) ? null : addMolienda) : null;
+        var esDoyPack = esCafe && addEnvase == "DOY_PACK";
+        var esPlateado = esCafe && addEnvase == "PLATEADO";
         // SIEMPRE agrego una linea nueva — pedido del usuario 2026-05-19: poder cargar
         // el mismo producto mas de una vez en el comprobante (ej: 4 facturados + 2 con
         // 100% descuento como bonificacion). Si el operador quiere consolidar dos lineas
@@ -3062,11 +3110,13 @@
             ProductoId = addProductoId,
             Formato = addFormato,
             Cantidad = addCantidad,
-            Molienda = def,
-            EsDoyPack = doyPackDefault
+            Molienda = molienda,
+            EsDoyPack = esDoyPack,
+            EsEnvasePlateado = esPlateado
         });
 
         addProductoId = 0; addFormato = "1KG"; addCantidad = 1;
+        addMolienda = "EN GRANOS"; addEnvase = "NEGRO";
         productoSearch = ""; productoSearchOpen = false;
         await Cotizar();
     }
@@ -3751,6 +3801,7 @@
             PrecioUnitarioOverride = i.PrecioUnitario
         }).ToList();
         addProductoId = 0; addFormato = "1KG"; addCantidad = 1;
+        addMolienda = "EN GRANOS"; addEnvase = "NEGRO";
         productoSearch = ""; productoSearchOpen = false;
         addMode = "PRODUCTO";
         addComboId = 0; addComboCantidad = 1;
