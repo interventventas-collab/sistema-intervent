@@ -45,6 +45,21 @@
         gap: 1rem;
         padding: 0.8rem 0;
     }
+    /* Cards compactas para "Listos y en camino" — caben mas por fila, sin detalle de items */
+    .prep-cards-compact {
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        gap: 0.7rem;
+    }
+    .prep-card-compact .prep-card-header { padding: 0.5rem 0.8rem; }
+    .prep-card-compact .prep-card-cliente { font-size: 0.95rem; }
+    .prep-card-compact-footer {
+        padding: 0.4rem 0.7rem;
+        background: #fafafa;
+        border-top: 1px solid #f3f4f6;
+        display: flex;
+        gap: 0.4rem;
+        align-items: center;
+    }
     .prep-card {
         background: white;
         border: 1px solid #e5e7eb;
@@ -262,10 +277,10 @@
                 }
                 else
                 {
-                    <div class="prep-cards">
+                    <div class="prep-cards prep-cards-compact">
                         @foreach (var v in Listos)
                         {
-                            <CardPedido Venta="v" OnAvanzar="() => Avanzar(v)" OnRetroceder="() => Retroceder(v)" />
+                            <CardPedido Venta="v" Compact="true" OnAvanzar="() => Avanzar(v)" OnRetroceder="() => Retroceder(v)" />
                         }
                     </div>
                 }

@@ -5,7 +5,7 @@
    (no se persiste en la DB) — al recargar, los items vuelven a estar destildados pero
    el estado del pedido sigue donde estaba. *@
 
-<div class="prep-card">
+<div class="prep-card @(Compact ? "prep-card-compact" : "")">
     @{
         var headerClass = Venta.EstadoPreparacion switch
         {
@@ -22,6 +22,12 @@
             "LISTO" => "🚚 Salió en camino →",
             "EN_CAMINO" => "✅ Entregado →",
             _ => "Avanzar →"
+        };
+        var btnLabelCompact = Venta.EstadoPreparacion switch
+        {
+            "LISTO" => "🚚 En camino →",
+            "EN_CAMINO" => "✅ Entregar →",
+            _ => "→"
         };
         var todoTildado = tildados.Count >= Venta.Items.Count && Venta.Items.Count > 0;
     }
@@ -43,6 +49,17 @@
             }
         </div>
     </div>
+    @if (Compact)
+    {
+        <div class="prep-card-compact-footer">
+            <button class="prep-btn-retroceder" @onclick="OnRetroceder" title="Volver al estado anterior">↩</button>
+            <button class="prep-btn-avanzar @headerClass" style="padding:0.4rem 0.7rem; font-size:0.82rem;" @onclick="OnAvanzar">
+                @btnLabelCompact
+            </button>
+        </div>
+    }
+    else
+    {
     <div class="prep-card-body">
         @if (Venta.Items.Count == 0)
         {
@@ -88,12 +105,16 @@
             @btnLabel
         </button>
     </div>
+    }
 </div>
 
 @code {
     [Parameter, EditorRequired] public CafePreparacionVentaDto Venta { get; set; } = null!;
     [Parameter] public EventCallback OnAvanzar { get; set; }
     [Parameter] public EventCallback OnRetroceder { get; set; }
+    /// <summary>Modo compacto: solo header + boton chico para avanzar. Sin items.
+    /// Usado para "Listos y en camino" — ya estan armados, no hace falta ver el detalle.</summary>
+    [Parameter] public bool Compact { get; set; } = false;
 
     // IDs de items tildados (solo visual, no se persiste).
     private HashSet<int> tildados = new();
