@@ -200,6 +200,26 @@
         })();
     </script>
     <script>
+        // Hard reload (equivalente a Ctrl+Shift+R): borra cache de la API Cache + desinscribe
+        // service workers, despues recarga. Para usuarios no tecnicos que no recuerdan el atajo.
+        window.hardReload = async function () {
+            try {
+                if ('serviceWorker' in navigator) {
+                    const regs = await navigator.serviceWorker.getRegistrations();
+                    await Promise.all(regs.map(r => r.unregister()));
+                }
+                if ('caches' in window) {
+                    const names = await caches.keys();
+                    await Promise.all(names.map(n => caches.delete(n)));
+                }
+            } catch (e) { console.warn('hardReload cleanup error', e); }
+            // Cache-bust en la URL para forzar al navegador a no usar su cache HTTP
+            const url = new URL(window.location.href);
+            url.searchParams.set('_r', Date.now().toString());
+            window.location.replace(url.toString());
+        };
+    </script>
+    <script>
         window.copyToClipboard = function(text) {
             if (navigator.clipboard && window.isSecureContext) {
                 return navigator.clipboard.writeText(text);
