@@ -5,6 +5,7 @@
 @inject ToastService ToastService
 @inject IJSRuntime JS
 @inject OperatorService Operator
+@inject NuevaVentaSignal NuevaVentaSignal
 @inject NavigationManager Navigation
 
 <style>
@@ -2367,6 +2368,7 @@
         await Operator.LoadAsync();
         Operator.OnChange += OnOperatorChange;
         Navigation.LocationChanged += OnLocationChanged;
+        NuevaVentaSignal.OnRequest += OnNuevaVentaSignal;
         try { deleteSettings = await Api.GetCafeDeleteSettingsAsync(); }
         catch { deleteSettings = new DeleteCafeVentaSettingsDto(); }
         await LoadCatalogos();
@@ -2494,6 +2496,19 @@
     {
         Operator.OnChange -= OnOperatorChange;
         Navigation.LocationChanged -= OnLocationChanged;
+        NuevaVentaSignal.OnRequest -= OnNuevaVentaSignal;
+    }
+
+    /// <summary>Disparado cuando el FAB "Nueva Venta" del topbar emite la señal,
+    /// estando ya montados en esta pagina. Abre el modal si no hay otro abierto.</summary>
+    private void OnNuevaVentaSignal()
+    {
+        InvokeAsync(() =>
+        {
+            if (showForm) return;
+            ShowCreate();
+            StateHasChanged();
+        });
     }
 
     private async Task LoadCatalogos()

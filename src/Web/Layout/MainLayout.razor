@@ -8,6 +8,7 @@
 @inject IJSRuntime JS
 @inject ApiClient Api
 @inject OperatorService Operator
+@inject NuevaVentaSignal NuevaVentaSignal
 @inject CurrentCompanyService Company
 @implements IDisposable
 
@@ -687,12 +688,20 @@
     private bool sidebarOpen;
     private bool sidebarCollapsed;
 
-    /// <summary>Atajo del FAB "Nueva Venta": navega a /cafe/ventas con un timestamp
-    /// que dispara la apertura del modal en CafeVentas.razor. El timestamp asegura que
-    /// si ya estás en esa página, igual se re-detecta y se abre el modal nuevamente.</summary>
+    /// <summary>Atajo del FAB "Nueva Venta": si ya estamos en /cafe/ventas, emitimos
+    /// una señal directa al componente (mas confiable que depender de LocationChanged
+    /// cuando el path es el mismo). Si estamos en otra pagina, navegamos con timestamp.</summary>
     private void OpenNuevaVentaShortcut()
     {
-        Navigation.NavigateTo($"/cafe/ventas?nueva={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}");
+        var uri = Navigation.ToBaseRelativePath(Navigation.Uri);
+        if (uri.StartsWith("cafe/ventas", System.StringComparison.OrdinalIgnoreCase))
+        {
+            NuevaVentaSignal.Request();
+        }
+        else
+        {
+            Navigation.NavigateTo($"/cafe/ventas?nueva={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}");
+        }
     }
     private bool userMenuOpen;
     private bool showOperatorModal;
