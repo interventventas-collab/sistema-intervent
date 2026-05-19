@@ -654,10 +654,9 @@
         {
             var (bytes, error) = await Api.GetCafeComodatoComprobantePdfAsync(c.Id);
             if (bytes is null) { ToastService.Error(error ?? "No se pudo generar el comprobante"); return; }
-            var fileName = (c.Modalidad == "FINANCIADA" ? "FIN" : "COM") + $"-{c.CreatedAt.Year:0000}-{c.Id:0000}.pdf";
+            // Usamos Blob via JS helper. Los data URLs largos rompen en Chrome (abre about:blank).
             var base64 = Convert.ToBase64String(bytes);
-            var dataUrl = $"data:application/pdf;base64,{base64}";
-            await JS.InvokeVoidAsync("window.open", dataUrl, "_blank");
+            await JS.InvokeVoidAsync("openPdfInNewTab", base64);
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
     }
