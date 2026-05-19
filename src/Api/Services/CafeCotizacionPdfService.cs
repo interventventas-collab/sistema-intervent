@@ -382,6 +382,16 @@ public class CafeCotizacionPdfService
                             });
                     }
 
+                    if (!string.IsNullOrWhiteSpace(v.EntregaPor))
+                    {
+                        fc.Item().PaddingTop(5).Border(1).BorderColor(Colors.Grey.Lighten1)
+                            .Background(Colors.Grey.Lighten4).Padding(5).Text(t =>
+                            {
+                                t.Span("🚚 Entrega: ").SemiBold();
+                                t.Span(v.EntregaPor!);
+                            });
+                    }
+
                     if (!string.IsNullOrEmpty(v.ClienteComentariosComprobante))
                     {
                         fc.Item().PaddingTop(5).BorderLeft(3).BorderColor(Colors.Orange.Darken1)
