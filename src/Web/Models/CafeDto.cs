@@ -310,6 +310,10 @@ public class CafeVentaDto
     /// Valores: PARA_PREPARAR, EN_PREPARACION, LISTO, EN_CAMINO, ENTREGADO.</summary>
     public string? EstadoPreparacion { get; set; }
     public DateTime? PreparacionUpdatedAt { get; set; }
+    /// <summary>Importe TOTAL con IVA que ARCA registró (para facturas A/B/C con CAE).
+    /// Null en cotizaciones, proformas y facturas sin autorizar. Usado para mostrar
+    /// el monto cobrable real en el listado de ventas.</summary>
+    public decimal? ArcaImpTotal { get; set; }
 }
 
 /// <summary>Tarjeta de venta en el tablero /cafe/preparacion. Trae solo lo que el

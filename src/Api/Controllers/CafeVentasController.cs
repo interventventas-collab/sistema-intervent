@@ -149,7 +149,8 @@ public class CafeVentasController : ControllerBase
         v.PublicToken,
         v.EntregaPor,
         v.EstadoPreparacion,
-        v.PreparacionUpdatedAt);
+        v.PreparacionUpdatedAt,
+        v.ArcaImpTotal);
 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null)

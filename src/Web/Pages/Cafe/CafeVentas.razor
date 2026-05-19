@@ -273,8 +273,19 @@
                                     }
                                 </td>
                                 <td style="text-align: right; font-weight: 800;">
-                                    $@FormatMoney(v.Total)
-                                    @{ var saldo = saldosPorVenta.TryGetValue(v.Id, out var s) ? s : v.Total; var pagado = v.Total - saldo; }
+                                    @{
+                                        // Total cobrable: si la factura tiene CAE, usamos el total CON IVA (ArcaImpTotal).
+                                        // Sino el Total neto (cotizaciones y proformas sin IVA discriminado).
+                                        var totalCobrable = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
+                                        var hayIva = totalCobrable > v.Total + 0.01m;
+                                        var saldo = saldosPorVenta.TryGetValue(v.Id, out var s) ? s : totalCobrable;
+                                        var pagado = totalCobrable - saldo;
+                                    }
+                                    <div style="font-size:1rem;">$@FormatMoney(totalCobrable)</div>
+                                    @if (hayIva)
+                                    {
+                                        <div style="font-size:0.65rem; color:#6b7280; font-weight:500; margin-top:-0.1rem;" title="Neto sin IVA: $@FormatMoney(v.Total)">neto: $@FormatMoney(v.Total)</div>
+                                    }
                                     @if (!anulada)
                                     {
                                         @if (saldo <= 0.01m)
