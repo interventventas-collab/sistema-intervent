@@ -3035,6 +3035,9 @@
         if (p is null) return;
 
         var def = DefaultMolienda(addProductoId);
+        // Doy pack preseleccionado en 1/4 y 1/2 kg — pedido del usuario 2026-05-19:
+        // los formatos chicos normalmente se entregan en doy pack, no a granel.
+        var doyPackDefault = addFormato == "MEDIO" || addFormato == "CUARTO";
         // SIEMPRE agrego una linea nueva — pedido del usuario 2026-05-19: poder cargar
         // el mismo producto mas de una vez en el comprobante (ej: 4 facturados + 2 con
         // 100% descuento como bonificacion). Si el operador quiere consolidar dos lineas
@@ -3044,7 +3047,8 @@
             ProductoId = addProductoId,
             Formato = addFormato,
             Cantidad = addCantidad,
-            Molienda = def
+            Molienda = def,
+            EsDoyPack = doyPackDefault
         });
 
         addProductoId = 0; addFormato = "1KG"; addCantidad = 1;
