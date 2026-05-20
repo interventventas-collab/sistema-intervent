@@ -282,19 +282,6 @@
                     <input type="text" class="form-input" @bind="pagarNotas" placeholder="Ej: pagado en mano" />
                 </div>
 
-                <hr style="margin: 1rem 0; border: none; border-top: 1px dashed #d1d5db;" />
-
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label">Operador</label>
-                        <input type="text" class="form-input" @bind="pagarOperator" placeholder="OSMAR" />
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Clave 🔒</label>
-                        <input type="password" class="form-input" @bind="pagarPassword" placeholder="Clave de seguridad" />
-                    </div>
-                </div>
-
                 @if (!string.IsNullOrEmpty(pagarError))
                 {
                     <div style="color: #b91c1c; background: #fef2f2; padding: 0.4rem 0.6rem; border-radius: 4px; font-size: 0.85rem; margin-top: 0.5rem;">
@@ -421,7 +408,6 @@
     {
         if (pagarLiq is null) return;
         if (pagarMonto <= 0) { pagarError = "El monto tiene que ser mayor a 0."; return; }
-        if (string.IsNullOrWhiteSpace(pagarPassword)) { pagarError = "Ingresá la clave."; return; }
         pagarSaving = true;
         pagarError = null;
         try
@@ -433,14 +419,11 @@
                 Monto = pagarMonto,
                 Metodo = pagarMetodo,
                 FechaPago = pagarFecha,
-                Notas = string.IsNullOrWhiteSpace(pagarNotas) ? null : pagarNotas,
-                Operator = pagarOperator,
-                Password = pagarPassword
+                Notas = string.IsNullOrWhiteSpace(pagarNotas) ? null : pagarNotas
             });
             if (!ok) { pagarError = err ?? "No se pudo registrar el pago."; return; }
             ToastService.Success($"💰 Pago de $@{FormatMoney(pagarMonto)} registrado");
             pagarLiq = null;
-            pagarPassword = "";
             await Cargar();
         }
         catch (Exception ex) { pagarError = ex.Message; }

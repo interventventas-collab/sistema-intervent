@@ -364,20 +364,14 @@ public class NomLiquidacionesController : ControllerBase
         public string? Password { get; set; }
     }
 
-    /// <summary>Registrar un pago desde el panel de deudas — siempre requiere operador + clave.
-    /// Reusa la misma password global que el resto del sistema (sales.delete_password).</summary>
+    /// <summary>Registrar un pago desde el panel de deudas. Decisión del usuario 2026-05-20:
+    /// NO pide clave ni operador específico — cualquier usuario logueado puede registrar el pago,
+    /// igual que desde /nominas/liquidaciones. Si más adelante hay que volver a poner clave, se
+    /// agrega acá la validación.</summary>
     [HttpPost("dashboard/pagar")]
     public async Task<IActionResult> DashboardPagar([FromBody] DashboardPagarRequest req)
     {
         if (req is null) return BadRequest(new { error = "Body vacio" });
-
-        // Validar clave
-        var allowedOp = (await _db.AppSettings.FindAsync("sales.delete_allowed_operator"))?.Value ?? "OSMAR";
-        var expectedPassword = (await _db.AppSettings.FindAsync("sales.delete_password"))?.Value ?? "";
-        if (!string.Equals(req.Operator ?? "", allowedOp, StringComparison.OrdinalIgnoreCase))
-            return BadRequest(new { error = $"Solo {allowedOp} puede registrar pagos desde el panel." });
-        if (string.IsNullOrEmpty(expectedPassword) || req.Password != expectedPassword)
-            return BadRequest(new { error = "Clave incorrecta." });
 
         // Reusa la logica del CreatePago existente
         var liq = await _db.NomLiquidaciones.Include(l => l.Pagos).FirstOrDefaultAsync(l => l.Id == req.LiquidacionId);
