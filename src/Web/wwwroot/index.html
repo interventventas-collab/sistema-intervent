@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-    <link rel="stylesheet" href="css/app.css?v=20260520a" />
+    <link rel="stylesheet" href="css/app.css?v=20260520b" />
 </head>
 <body>
     <div id="app">
@@ -230,6 +230,27 @@
                     if (el.select) try { el.select(); } catch (e) {}
                 }
             }, 50);
+        };
+        // Posiciona el dropdown del boton "+" de la columna Acciones, anclado debajo
+        // del boton que lo abrio. Usa position:fixed para no quedar recortado por el
+        // overflow:auto del .table-responsive padre.
+        window.positionActionsMenu = function(buttonId, menuId) {
+            var btn = document.getElementById(buttonId);
+            var menu = document.getElementById(menuId);
+            if (!btn || !menu) return;
+            var r = btn.getBoundingClientRect();
+            menu.style.position = 'fixed';
+            // Si no entra abajo del boton, abrir hacia arriba.
+            var menuH = menu.offsetHeight || 280;
+            var bottomSpace = window.innerHeight - r.bottom;
+            if (bottomSpace < menuH + 12 && r.top > menuH + 12) {
+                menu.style.top = (r.top - menuH - 4) + 'px';
+            } else {
+                menu.style.top = (r.bottom + 4) + 'px';
+            }
+            // Alinear el borde derecho del menu con el del boton.
+            menu.style.left = 'auto';
+            menu.style.right = (window.innerWidth - r.right) + 'px';
         };
         window.copyToClipboard = function(text) {
             if (navigator.clipboard && window.isSecureContext) {

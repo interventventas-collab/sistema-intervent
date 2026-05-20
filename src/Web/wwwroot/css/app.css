@@ -2120,9 +2120,68 @@ button {
   display: flex;
   gap: 0.3rem;
   align-items: center;
-  flex-wrap: wrap;
-  width: 210px;
-  max-width: 210px;
+  flex-wrap: nowrap;
+  width: 260px;
+  max-width: 260px;
+}
+
+/* Popup del boton "+" — los demas botones de accion menos usados. Se posiciona
+   via JS (window.positionActionsMenu) con position:fixed para no quedar recortado
+   por el overflow:auto del .table-responsive. */
+.actions-popup-overlay {
+  position: fixed;
+  top: 0; right: 0; bottom: 0; left: 0;
+  background: transparent;
+  z-index: 8998;
+}
+
+.actions-popup {
+  position: fixed;
+  z-index: 8999;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+  padding: 0.35rem;
+  min-width: 230px;
+  max-width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  animation: fadeIn 0.12s ease;
+}
+
+.actions-popup-item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.55rem 0.7rem;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.88rem;
+  color: #374151;
+  text-align: left;
+  width: 100%;
+  font-weight: 500;
+}
+
+.actions-popup-item:hover:not(:disabled) {
+  background: #f3f4f6;
+}
+
+.actions-popup-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.actions-popup-item .ic {
+  font-size: 1.2rem;
+  line-height: 1;
+  width: 1.6rem;
+  text-align: center;
+  flex: 0 0 auto;
 }
 
 .actions-cell .btn-icon {
