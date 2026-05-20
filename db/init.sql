@@ -3822,3 +3822,13 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='CobranzaUsadaId' AND Object_ID=OBJECT_ID('Cafe_ExtractoMovimientos'))
     ALTER TABLE Cafe_ExtractoMovimientos ADD CobranzaUsadaId INT NULL;
 GO
+
+-- ─── Extracto: FK con ON DELETE SET NULL (2026-05-19) ───
+-- Si se borra una venta, el movimiento del extracto queda sin asociacion (no se borra).
+IF EXISTS (SELECT * FROM sys.foreign_keys WHERE name='FK_Cafe_ExtractoMovimientos_Venta' AND delete_referential_action_desc='NO_ACTION')
+BEGIN
+    ALTER TABLE Cafe_ExtractoMovimientos DROP CONSTRAINT FK_Cafe_ExtractoMovimientos_Venta;
+    ALTER TABLE Cafe_ExtractoMovimientos ADD CONSTRAINT FK_Cafe_ExtractoMovimientos_Venta
+        FOREIGN KEY (VentaIdAsociada) REFERENCES Cafe_Ventas(Id) ON DELETE SET NULL;
+END
+GO
