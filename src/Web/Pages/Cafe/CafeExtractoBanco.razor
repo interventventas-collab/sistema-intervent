@@ -196,6 +196,70 @@
                     }
                     <div style="font-size: 1.2rem; font-weight: 800; color: #16a34a; margin-top: 0.3rem;">+ $@movAsociar.Creditos.ToString("N2")</div>
                 </div>
+                @* Buscador de cliente: visible siempre, util si el match automatico no es lo que querias
+                   o si no hubo match. Permite buscar manualmente y traer las ventas de ese cliente. *@
+                <div style="margin-bottom: 0.7rem;">
+                    <label style="font-size: 0.78rem; color: #374151; font-weight: 600;">
+                        @if (clienteElegidoManual is not null)
+                        {
+                            <span>✓ Cliente seleccionado:</span>
+                        }
+                        else if (movAsociar.ClienteSugeridoId.HasValue)
+                        {
+                            <span>🔄 Cambiar cliente (sugerido: <strong>@movAsociar.ClienteSugeridoNombre</strong>)</span>
+                        }
+                        else
+                        {
+                            <span>🔍 Buscar cliente:</span>
+                        }
+                    </label>
+                    @if (clienteElegidoManual is not null)
+                    {
+                        <div style="display: flex; gap: 0.4rem; align-items: center; margin-top: 0.2rem;">
+                            <div class="form-input" style="flex: 1; background: #ecfdf5; border-color: #10b981; display: flex; align-items: center; gap: 0.5rem;">
+                                <strong>@clienteElegidoManual.Nombre</strong>
+                                @if (!string.IsNullOrEmpty(clienteElegidoManual.Cuit))
+                                {
+                                    <span style="font-family: monospace; font-size: 0.75rem; color: #6b7280;">@clienteElegidoManual.Cuit</span>
+                                }
+                            </div>
+                            <button class="btn btn-secondary" type="button" @onclick="ClearClienteManual">×</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <input class="form-input" placeholder="🔍 Nombre, CUIT, teléfono..."
+                               @bind="clienteSearchAsociar" @bind:event="oninput"
+                               @onfocus="() => clienteSearchOpen = true"
+                               style="margin-top: 0.2rem;" />
+                        @if (clienteSearchOpen && !string.IsNullOrWhiteSpace(clienteSearchAsociar))
+                        {
+                            var matches = ClientesMatchingAsociar(clienteSearchAsociar).Take(10).ToList();
+                            <div style="border: 1px solid #d1d5db; border-radius: 6px; max-height: 200px; overflow-y: auto; margin-top: 0.2rem;">
+                                @if (matches.Count == 0)
+                                {
+                                    <div style="padding: 0.5rem; color: #6b7280; font-size: 0.85rem;">Sin resultados.</div>
+                                }
+                                else
+                                {
+                                    @foreach (var c in matches)
+                                    {
+                                        var cId = c.Id;
+                                        <div style="padding: 0.4rem 0.6rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem;"
+                                             @onclick="() => SelectClienteManual(cId)">
+                                            <strong>@c.Nombre</strong>
+                                            @if (!string.IsNullOrEmpty(c.Cuit))
+                                            {
+                                                <span style="font-family: monospace; font-size: 0.72rem; color: #6b7280; margin-left: 0.4rem;">@c.Cuit</span>
+                                            }
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        }
+                    }
+                </div>
+
                 @if (loadingVentasAsociar)
                 {
                     <p style="text-align: center;">Buscando ventas...</p>
@@ -203,19 +267,23 @@
                 else if (ventasAsociar.Count == 0)
                 {
                     <p style="text-align: center; color: #6b7280;">
-                        @if (movAsociar.ClienteSugeridoId.HasValue)
+                        @if (clienteElegidoManual is not null)
+                        {
+                            <span>El cliente <strong>@clienteElegidoManual.Nombre</strong> no tiene ventas con saldo pendiente.</span>
+                        }
+                        else if (movAsociar.ClienteSugeridoId.HasValue)
                         {
                             <span>El cliente <strong>@movAsociar.ClienteSugeridoNombre</strong> no tiene ventas con saldo pendiente.</span>
                         }
                         else
                         {
-                            <span>No se encontró cliente con ese CUIT. <a @onclick='() => Navigation.NavigateTo("/cafe/clientes")' style="cursor: pointer;">Crear cliente nuevo</a></span>
+                            <span>Buscá un cliente arriba para ver sus ventas pendientes.</span>
                         }
                     </p>
                 }
                 else
                 {
-                    <div style="font-size: 0.85rem; font-weight: 700; margin-bottom: 0.4rem;">Ventas pendientes de @movAsociar.ClienteSugeridoNombre:</div>
+                    <div style="font-size: 0.85rem; font-weight: 700; margin-bottom: 0.4rem;">Ventas pendientes de @(clienteElegidoManual?.Nombre ?? movAsociar.ClienteSugeridoNombre):</div>
                     @foreach (var v in ventasAsociar)
                     {
                         var diff = Math.Abs(v.Saldo - movAsociar.Creditos);
@@ -256,6 +324,11 @@
     private ExtractoMovimientoDto? movAsociar;
     private List<ComprobantePendienteDto> ventasAsociar = new();
     private bool loadingVentasAsociar;
+    // Busqueda manual de cliente (cuando el sugerido por CUIT no es el correcto, o no hay match)
+    private List<CafeClienteDto>? clientesCache;
+    private string clienteSearchAsociar = "";
+    private bool clienteSearchOpen;
+    private CafeClienteDto? clienteElegidoManual;
 
     protected override async Task OnInitializedAsync() => await Recargar();
 
@@ -318,6 +391,16 @@
     {
         movAsociar = m;
         ventasAsociar = new();
+        clienteElegidoManual = null;
+        clienteSearchAsociar = "";
+        clienteSearchOpen = false;
+        // Pre-cargar lista de clientes para el buscador manual (solo la primera vez)
+        if (clientesCache is null)
+        {
+            try { clientesCache = await Api.GetCafeClientesAsync() ?? new(); }
+            catch { clientesCache = new(); }
+        }
+        // Si hay sugerencia por CUIT, cargar ventas del sugerido
         if (m.ClienteSugeridoId.HasValue)
         {
             loadingVentasAsociar = true;
@@ -331,6 +414,48 @@
         }
     }
 
+    private IEnumerable<CafeClienteDto> ClientesMatchingAsociar(string q)
+    {
+        if (clientesCache is null) return Enumerable.Empty<CafeClienteDto>();
+        var t = q.Trim();
+        if (string.IsNullOrEmpty(t)) return clientesCache;
+        bool h(string? s) => s.MatchesSearch(t);
+        return clientesCache.Where(c => c.IsActive
+            && (h(c.Codigo) || h(c.Nombre) || h(c.RazonSocial) || h(c.Cuit) || h(c.Telefono)));
+    }
+
+    private async Task SelectClienteManual(int clienteId)
+    {
+        clienteElegidoManual = clientesCache?.FirstOrDefault(c => c.Id == clienteId);
+        clienteSearchAsociar = "";
+        clienteSearchOpen = false;
+        if (clienteElegidoManual is null) return;
+        loadingVentasAsociar = true;
+        try
+        {
+            var pend = await Api.GetComprobantesPendientesAsync(clienteElegidoManual.Id);
+            ventasAsociar = pend ?? new();
+        }
+        catch { ventasAsociar = new(); }
+        finally { loadingVentasAsociar = false; }
+    }
+
+    private void ClearClienteManual()
+    {
+        clienteElegidoManual = null;
+        ventasAsociar = new();
+        // Volver a mostrar las ventas del cliente sugerido si existe
+        if (movAsociar?.ClienteSugeridoId is int cid)
+        {
+            _ = Task.Run(async () =>
+            {
+                var pend = await Api.GetComprobantesPendientesAsync(cid);
+                ventasAsociar = pend ?? new();
+                await InvokeAsync(StateHasChanged);
+            });
+        }
+    }
+
     private async Task ConfirmarAsociar(int ventaId)
     {
         if (movAsociar is null) return;
@@ -340,7 +465,8 @@
             ToastService.Success("✓ Asociado. Te llevo a Cobranzas para cerrar el pago.");
             // Redirigir a Cobranzas con todo precargado: cliente + venta + movimiento.
             // El modal de Nueva cobranza detecta los query params y arma la cobranza solita.
-            var clienteId = movAsociar.ClienteSugeridoId ?? 0;
+            // Cliente: el elegido manualmente tiene prioridad sobre la sugerencia por CUIT
+            var clienteId = clienteElegidoManual?.Id ?? movAsociar.ClienteSugeridoId ?? 0;
             var movId = movAsociar.Id;
             movAsociar = null;
             await CargarMovs();
