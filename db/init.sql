@@ -3832,3 +3832,44 @@ BEGIN
         FOREIGN KEY (VentaIdAsociada) REFERENCES Cafe_Ventas(Id) ON DELETE SET NULL;
 END
 GO
+
+-- ─── Modulo QR Repartidor (2026-05-19) ───
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_Repartidores')
+BEGIN
+    CREATE TABLE Cafe_Repartidores (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Nombre NVARCHAR(120) NOT NULL,
+        DniUltimos3 NVARCHAR(3) NULL,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NULL
+    );
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_CobranzasPendientes')
+BEGIN
+    CREATE TABLE Cafe_CobranzasPendientes (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        VentaId INT NOT NULL,
+        RepartidorId INT NOT NULL,
+        Importe DECIMAL(18,2) NOT NULL DEFAULT 0,
+        MarcadoEntregado BIT NOT NULL DEFAULT 0,
+        Notas NVARCHAR(500) NULL,
+        Estado NVARCHAR(20) NOT NULL DEFAULT 'PENDIENTE',
+        CobranzaCreadaId INT NULL,
+        RechazadaMotivo NVARCHAR(120) NULL,
+        RevisadaPor NVARCHAR(120) NULL,
+        RevisadaAt DATETIME2 NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT FK_CobrPend_Venta FOREIGN KEY (VentaId) REFERENCES Cafe_Ventas(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_CobrPend_Repartidor FOREIGN KEY (RepartidorId) REFERENCES Cafe_Repartidores(Id)
+    );
+    CREATE INDEX IX_CobrPend_Estado ON Cafe_CobranzasPendientes(Estado, CreatedAt DESC);
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='EntregadoPorRepartidorId' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD EntregadoPorRepartidorId INT NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='EntregadoAt' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD EntregadoAt DATETIME2 NULL;
+GO

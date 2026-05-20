@@ -21,6 +21,7 @@ public class CafeVentasController : ControllerBase
     private readonly ArcaEmisorService _emisorService;
     private readonly IntegrationService _integrationService;
     private readonly WhatsAppService _whatsAppService;
+    private readonly QrRepartidorService _qrRepartidorService;
     private static readonly string[] FormatosValidos = { "1KG", "MEDIO", "CUARTO", "UNIT", "BULTO" };
 
     public CafeVentasController(
@@ -30,7 +31,8 @@ public class CafeVentasController : ControllerBase
         ArcaInvoicePdfService arcaPdfService,
         ArcaEmisorService emisorService,
         IntegrationService integrationService,
-        WhatsAppService whatsAppService)
+        WhatsAppService whatsAppService,
+        QrRepartidorService qrRepartidorService)
     {
         _db = db;
         _pdfService = pdfService;
@@ -39,6 +41,7 @@ public class CafeVentasController : ControllerBase
         _emisorService = emisorService;
         _integrationService = integrationService;
         _whatsAppService = whatsAppService;
+        _qrRepartidorService = qrRepartidorService;
     }
 
     /// <summary>
@@ -255,7 +258,8 @@ public class CafeVentasController : ControllerBase
             return File(pdfBytes, "application/pdf", BuildPdfFilename(v));
         }
 
-        var bytes = _pdfService.GenerarPdfBytes(v, cfg);
+        var qr = await _qrRepartidorService.GenerarQrAsync(v.PublicToken);
+        var bytes = _pdfService.GenerarPdfBytes(v, cfg, qr);
         return File(bytes, "application/pdf", BuildPdfFilename(v));
     }
 
@@ -311,7 +315,8 @@ public class CafeVentasController : ControllerBase
         var esFacturaArca = v.TipoComprobante is "FA" or "FB" or "FC";
         var autorizada = v.ArcaEstado == "autorizado" && !string.IsNullOrEmpty(v.ArcaCae)
                          && v.ArcaCbteNro.HasValue && v.ArcaPtoVta.HasValue && v.ArcaCbteTipoNum.HasValue;
-        byte[] pdfBytes = (esFacturaArca && autorizada) ? BuildArcaPdf(v, cfg!) : _pdfService.GenerarPdfBytes(v, cfg);
+        var qr = await _qrRepartidorService.GenerarQrAsync(v.PublicToken);
+        byte[] pdfBytes = (esFacturaArca && autorizada) ? BuildArcaPdf(v, cfg!) : _pdfService.GenerarPdfBytes(v, cfg, qr);
         return File(pdfBytes, "application/pdf", BuildPdfFilename(v));
     }
 
@@ -386,7 +391,10 @@ public class CafeVentasController : ControllerBase
         if (esFacturaArca && autorizada)
             pdfBytes = BuildArcaPdf(v, cfg!);
         else
-            pdfBytes = _pdfService.GenerarPdfBytes(v, cfg);
+        {
+            var qr = await _qrRepartidorService.GenerarQrAsync(v.PublicToken);
+            pdfBytes = _pdfService.GenerarPdfBytes(v, cfg, qr);
+        }
 
         // 3) Armar y enviar el email
         var subject = string.IsNullOrWhiteSpace(req.Subject)
@@ -455,7 +463,10 @@ public class CafeVentasController : ControllerBase
         if (esFacturaArca && autorizada)
             pdfBytes = BuildArcaPdf(v, cfg!);
         else
-            pdfBytes = _pdfService.GenerarPdfBytes(v, cfg);
+        {
+            var qr = await _qrRepartidorService.GenerarQrAsync(v.PublicToken);
+            pdfBytes = _pdfService.GenerarPdfBytes(v, cfg, qr);
+        }
 
         // Caption por default si no viene. Monto = total real con IVA si es factura ARCA.
         var montoCaption = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;

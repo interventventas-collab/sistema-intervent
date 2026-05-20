@@ -28,7 +28,9 @@ public class CafeCotizacionPdfService
         _logger = logger;
     }
 
-    public byte[] GenerarPdfBytes(CafeVenta v, CafeSetting? cfg)
+    public byte[] GenerarPdfBytes(CafeVenta v, CafeSetting? cfg) => GenerarPdfBytes(v, cfg, null);
+
+    public byte[] GenerarPdfBytes(CafeVenta v, CafeSetting? cfg, byte[]? qrRepartidor)
     {
         cfg ??= new CafeSetting();
         var tipoLetra = TipoComprobanteCorto(v.TipoComprobante);
@@ -160,6 +162,15 @@ public class CafeCotizacionPdfService
                                 {
                                     rr.AutoItem().Background(Colors.Red.Lighten4).Border(1).BorderColor(Colors.Red.Medium)
                                         .Padding(3).Text("PAGADO").FontSize(11).Bold().FontColor(Colors.Red.Darken2);
+                                });
+                            }
+                            // QR para que el repartidor escanee y cargue la cobranza desde su celu
+                            if (qrRepartidor != null)
+                            {
+                                c.Item().PaddingTop(4).AlignRight().Column(qc =>
+                                {
+                                    qc.Item().Width(70).Height(70).Image(qrRepartidor).FitArea();
+                                    qc.Item().AlignCenter().Text("📲 repartidor").FontSize(6).FontColor(Colors.Grey.Darken1);
                                 });
                             }
                         });

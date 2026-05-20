@@ -137,6 +137,11 @@ public class CafeVenta
     /// "armado hace X minutos" en el tablero.</summary>
     public DateTime? PreparacionUpdatedAt { get; set; }
 
+    /// <summary>Repartidor que entrego la venta (cuando lo marca desde /repartidor/{token}).
+    /// Distinto de EntregaPor (que es el repartidor "asignado" antes del reparto).</summary>
+    public int? EntregadoPorRepartidorId { get; set; }
+    public DateTime? EntregadoAt { get; set; }
+
     /// <summary>Importe Neto (sin IVA) que ARCA registró efectivamente. Guardamos lo que devuelve
     /// el FECAESolicitar para que el PDF reconstruya los totales sin lugar a interpretación.
     /// NULL en facturas viejas (pre-2026-05-15) que no guardaban esto — para esas se calcula
