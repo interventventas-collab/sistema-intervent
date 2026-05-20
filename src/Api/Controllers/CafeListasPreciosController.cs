@@ -82,18 +82,11 @@ public class CafeListasPreciosController : ControllerBase
         var marcas = await _db.CafeMarcas.Include(m => m.ProveedorNav)
             .Where(m => marcaIds.Contains(m.Id)).ToDictionaryAsync(m => m.Id);
 
-        // Cargar reglas de precios para resolver el descuento por (tipo cliente x categoria x marca).
-        var reglas = await _db.CafeReglasPrecios.ToListAsync();
-        decimal Descuento(string categoria, int? marcaId)
-        {
-            if (marcaId.HasValue)
-            {
-                var ov = reglas.FirstOrDefault(r => r.TipoCliente == tipo && r.Categoria == categoria && r.MarcaId == marcaId);
-                if (ov is not null) return ov.DescuentoPct;
-            }
-            var gen = reglas.FirstOrDefault(r => r.TipoCliente == tipo && r.Categoria == categoria && r.MarcaId == null);
-            return gen?.DescuentoPct ?? 0m;
-        }
+        // Descuentos automaticos por matriz: DESHABILITADO (decision usuario 2026-05-20).
+        // Antes resolvia desc% por (tipo cliente x categoria x marca) desde Cafe_ReglasPrecios y
+        // mostraba el precio "lista" tachado con el final destacado. Ahora la lista entrega un solo
+        // precio = el final que se cobra, sin tachas ni banner verde. Si el usuario en el futuro
+        // quiere descuentos por linea, los aplica manual en la venta.
 
         // Devuelve (lista, final, descPct) para un producto y formato.
         // Si req.FechaVigencia tiene valor, se calcula usando los precios futuros que ya estarian
@@ -101,8 +94,7 @@ public class CafeListasPreciosController : ControllerBase
         var fechaPara = req.FechaVigencia?.Date;
         (decimal lista, decimal final, decimal desc) Breakdown(CafeProducto p, string formato)
         {
-            var d = Descuento(p.Categoria, p.MarcaId);
-            var b = CafePricingService.CalcularPrecioBreakdown(p, formato, tipo, settings, d, fechaPara);
+            var b = CafePricingService.CalcularPrecioBreakdown(p, formato, tipo, settings, 0m, fechaPara);
             return (b.PrecioLista, b.PrecioFinal, b.DescuentoPct);
         }
 
