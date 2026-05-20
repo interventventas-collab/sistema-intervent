@@ -3873,3 +3873,23 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='EntregadoAt' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
     ALTER TABLE Cafe_Ventas ADD EntregadoAt DATETIME2 NULL;
 GO
+
+-- ─── Precios futuros en Cafe_Productos (2026-05-20) ───
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='FechaAplicaPreciosFuturos' AND Object_ID=OBJECT_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD FechaAplicaPreciosFuturos DATE NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='PrecioPorKgFuturo' AND Object_ID=OBJECT_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD PrecioPorKgFuturo DECIMAL(18,2) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='PrecioBarFuturo' AND Object_ID=OBJECT_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD PrecioBarFuturo DECIMAL(18,2) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='PrecioOtroFuturo' AND Object_ID=OBJECT_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD PrecioOtroFuturo DECIMAL(18,2) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='PrecioBultoFuturo' AND Object_ID=OBJECT_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD PrecioBultoFuturo DECIMAL(18,2) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='PrecioBultoOtroFuturo' AND Object_ID=OBJECT_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD PrecioBultoOtroFuturo DECIMAL(18,2) NULL;
+GO

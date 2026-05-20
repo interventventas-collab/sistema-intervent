@@ -82,6 +82,38 @@ public class CafeProducto
     [Column(TypeName = "decimal(18,2)")]
     public decimal? PrecioBultoOtro { get; set; }
 
+    // ─── Precios FUTUROS (cambio programado) — pedido del usuario 2026-05-20 ───
+    // Permiten cargar los nuevos precios HOY pero que el sistema los use recien a partir
+    // de FechaAplicaPreciosFuturos. Util para entregar la lista nueva al cliente con
+    // anticipacion sin afectar las ventas del periodo actual.
+    [Column(TypeName = "date")]
+    public DateTime? FechaAplicaPreciosFuturos { get; set; }
+    [Column(TypeName = "decimal(18,2)")] public decimal? PrecioPorKgFuturo { get; set; }
+    [Column(TypeName = "decimal(18,2)")] public decimal? PrecioBarFuturo { get; set; }
+    [Column(TypeName = "decimal(18,2)")] public decimal? PrecioOtroFuturo { get; set; }
+    [Column(TypeName = "decimal(18,2)")] public decimal? PrecioBultoFuturo { get; set; }
+    [Column(TypeName = "decimal(18,2)")] public decimal? PrecioBultoOtroFuturo { get; set; }
+
+    /// <summary>True cuando hoy ya pasó la FechaAplicaPreciosFuturos y existe al menos un precio
+    /// futuro cargado — el motor de precios usa los futuros en vez de los actuales.</summary>
+    [NotMapped]
+    public bool UsaPreciosFuturos => FechaAplicaPreciosFuturos.HasValue
+        && DateTime.Today >= FechaAplicaPreciosFuturos.Value.Date
+        && (PrecioPorKgFuturo.HasValue || PrecioBarFuturo.HasValue || PrecioOtroFuturo.HasValue
+            || PrecioBultoFuturo.HasValue || PrecioBultoOtroFuturo.HasValue);
+
+    /// <summary>Precio efectivo (futuro si ya aplica, sino el actual). Usado por el motor de precios.</summary>
+    [NotMapped]
+    public decimal? PrecioPorKgEfectivo => UsaPreciosFuturos && PrecioPorKgFuturo.HasValue ? PrecioPorKgFuturo : PrecioPorKg;
+    [NotMapped]
+    public decimal? PrecioBarEfectivo => UsaPreciosFuturos && PrecioBarFuturo.HasValue ? PrecioBarFuturo : PrecioBar;
+    [NotMapped]
+    public decimal? PrecioOtroEfectivo => UsaPreciosFuturos && PrecioOtroFuturo.HasValue ? PrecioOtroFuturo : PrecioOtro;
+    [NotMapped]
+    public decimal? PrecioBultoEfectivo => UsaPreciosFuturos && PrecioBultoFuturo.HasValue ? PrecioBultoFuturo : PrecioBulto;
+    [NotMapped]
+    public decimal? PrecioBultoOtroEfectivo => UsaPreciosFuturos && PrecioBultoOtroFuturo.HasValue ? PrecioBultoOtroFuturo : PrecioBultoOtro;
+
     /// <summary>FK opcional al OEM origen del proveedor. 1 OEM puede alimentar a N variantes.</summary>
     public int? OemId { get; set; }
 

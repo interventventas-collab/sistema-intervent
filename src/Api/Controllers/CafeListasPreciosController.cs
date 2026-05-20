@@ -96,10 +96,13 @@ public class CafeListasPreciosController : ControllerBase
         }
 
         // Devuelve (lista, final, descPct) para un producto y formato.
+        // Si req.FechaVigencia tiene valor, se calcula usando los precios futuros que ya estarian
+        // aplicados a esa fecha (sirve para imprimir la lista nueva antes de que entre en vigencia).
+        var fechaPara = req.FechaVigencia?.Date;
         (decimal lista, decimal final, decimal desc) Breakdown(CafeProducto p, string formato)
         {
             var d = Descuento(p.Categoria, p.MarcaId);
-            var b = CafePricingService.CalcularPrecioBreakdown(p, formato, tipo, settings, d);
+            var b = CafePricingService.CalcularPrecioBreakdown(p, formato, tipo, settings, d, fechaPara);
             return (b.PrecioLista, b.PrecioFinal, b.DescuentoPct);
         }
 
@@ -148,9 +151,13 @@ public class CafeListasPreciosController : ControllerBase
             .ToList();
 
         var hoy = DateTime.UtcNow.Date;
+        // Solo mostramos "Vigente desde" si la fecha pedida es estrictamente posterior a hoy
+        // (no tiene sentido decir "vigente desde hoy" — es la lista actual).
+        DateTime? vigenteDesde = (fechaPara.HasValue && fechaPara.Value > hoy) ? fechaPara : null;
         var preview = new CafeListaPreciosPreviewDto(
             hoy, hoy.AddDays(7), tipo, negocio, clienteDto, grupos,
-            string.IsNullOrWhiteSpace(req.Observaciones) ? null : req.Observaciones.Trim());
+            string.IsNullOrWhiteSpace(req.Observaciones) ? null : req.Observaciones.Trim(),
+            vigenteDesde);
         return (preview, settings);
     }
 
@@ -188,6 +195,16 @@ public class CafeListasPreciosController : ControllerBase
         ws.Cell(row, 1).Style.Font.Bold = true;
         ws.Cell(row, 2).Value = p.Fecha.ToString("dd/MM/yyyy");
         row++;
+
+        if (p.VigenteDesde.HasValue)
+        {
+            ws.Cell(row, 1).Value = $"📅 PRECIOS VIGENTES DESDE EL {p.VigenteDesde.Value:dd/MM/yyyy}";
+            ws.Cell(row, 1).Style.Font.Bold = true;
+            ws.Cell(row, 1).Style.Font.FontColor = XLColor.FromHtml("#92400e");
+            ws.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.FromHtml("#fef3c7");
+            ws.Range(row, 1, row, 5).Merge();
+            row++;
+        }
 
         // Banner de descuentos aplicados (si hay)
         decimal? descCafe = null, descOtros = null;

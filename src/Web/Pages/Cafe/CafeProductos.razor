@@ -593,6 +593,93 @@
                     </div>
                 }
 
+                @* ═══ PRECIOS FUTUROS (cambio programado) ═══ *@
+                <div style="margin: 1rem 0; padding: 0.8rem; border: 2px dashed #f59e0b; border-radius: 8px; background: #fffbeb;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;" @onclick="@(() => mostrarPreciosFuturos = !mostrarPreciosFuturos)">
+                        <div>
+                            <strong style="color: #92400e;">📅 Programar cambio de precios</strong>
+                            <p style="font-size: 0.75rem; color: #92400e; margin: 0.2rem 0 0;">Cargá los precios nuevos hoy. El sistema los empieza a usar automático a partir de la fecha que elijas.</p>
+                        </div>
+                        <span style="font-size: 1.2rem;">@(mostrarPreciosFuturos ? "▼" : "▶")</span>
+                    </div>
+                    @if (mostrarPreciosFuturos)
+                    {
+                        <div style="margin-top: 0.7rem;">
+                            <div class="form-row">
+                                <div class="form-group" style="flex: 1;">
+                                    <label class="form-label" style="font-size: 0.75rem;">Aplicar desde</label>
+                                    <input type="date" class="form-input"
+                                           value="@(formFechaAplicaPreciosFuturos?.ToString("yyyy-MM-dd"))"
+                                           @onchange="@(e => formFechaAplicaPreciosFuturos = string.IsNullOrEmpty(e.Value?.ToString()) ? null : DateTime.Parse(e.Value.ToString()!))" />
+                                    <p style="font-size: 0.7rem; color: #6b7280; margin: 0.15rem 0 0;">Ej: 01/06/2026 → desde ese día el sistema usa los nuevos.</p>
+                                </div>
+                            </div>
+                            @if (formCategoria == "CAFE")
+                            {
+                                @* Para CAFE, los precios por kg se cargan en BAR (mayorista) y OTRO (consumidor final),
+                                   igual que el bloque "Actual" de arriba. PrecioPorKgFuturo queda en el modelo solo como
+                                   fallback legacy y no se expone en la UI. *@
+                                <div class="form-row">
+                                    <div class="form-group" style="flex: 1;">
+                                        <label class="form-label" style="font-size: 0.75rem;">Precio BAR por kg (futuro)</label>
+                                        <input class="form-input" type="number" step="0.01" min="0" @bind="formPrecioBarFuturo"
+                                               placeholder="@(formPrecioBar.HasValue ? formPrecioBar.Value.ToString("0.##") : "0,00")" />
+                                    </div>
+                                    <div class="form-group" style="flex: 1;">
+                                        <label class="form-label" style="font-size: 0.75rem;">Precio OTRO por kg (futuro)</label>
+                                        <input class="form-input" type="number" step="0.01" min="0" @bind="formPrecioOtroFuturo"
+                                               placeholder="@(formPrecioOtro.HasValue ? formPrecioOtro.Value.ToString("0.##") : "0,00")" />
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="form-row">
+                                    <div class="form-group" style="flex: 1;">
+                                        <label class="form-label" style="font-size: 0.75rem;">Precio BAR (futuro)</label>
+                                        <input class="form-input" type="number" step="0.01" min="0" @bind="formPrecioBarFuturo"
+                                               placeholder="@(formPrecioBar.HasValue ? formPrecioBar.Value.ToString("0.##") : "0,00")" />
+                                    </div>
+                                    <div class="form-group" style="flex: 1;">
+                                        <label class="form-label" style="font-size: 0.75rem;">Precio OTRO (futuro)</label>
+                                        <input class="form-input" type="number" step="0.01" min="0" @bind="formPrecioOtroFuturo"
+                                               placeholder="@(formPrecioOtro.HasValue ? formPrecioOtro.Value.ToString("0.##") : "0,00")" />
+                                    </div>
+                                </div>
+                                @if (formUxB.HasValue && formUxB.Value > 0)
+                                {
+                                    <div class="form-row">
+                                        <div class="form-group" style="flex: 1;">
+                                            <label class="form-label" style="font-size: 0.75rem;">Bulto BAR (futuro)</label>
+                                            <input class="form-input" type="number" step="0.01" min="0" @bind="formPrecioBultoFuturo"
+                                                   placeholder="@(formPrecioBulto.HasValue ? formPrecioBulto.Value.ToString("0.##") : "0,00")" />
+                                        </div>
+                                        <div class="form-group" style="flex: 1;">
+                                            <label class="form-label" style="font-size: 0.75rem;">Bulto OTRO (futuro)</label>
+                                            <input class="form-input" type="number" step="0.01" min="0" @bind="formPrecioBultoOtroFuturo"
+                                                   placeholder="@(formPrecioBultoOtro.HasValue ? formPrecioBultoOtro.Value.ToString("0.##") : "0,00")" />
+                                        </div>
+                                    </div>
+                                }
+                            }
+                            @if (formFechaAplicaPreciosFuturos.HasValue && formFechaAplicaPreciosFuturos.Value.Date > DateTime.Today)
+                            {
+                                <div style="background: #dbeafe; padding: 0.5rem 0.7rem; border-radius: 5px; font-size: 0.78rem; color: #1e40af; margin-top: 0.4rem;">
+                                    🕒 Faltan @((formFechaAplicaPreciosFuturos.Value.Date - DateTime.Today).Days) días para que se apliquen estos precios.
+                                </div>
+                            }
+                            else if (formFechaAplicaPreciosFuturos.HasValue && formFechaAplicaPreciosFuturos.Value.Date <= DateTime.Today)
+                            {
+                                <div style="background: #dcfce7; padding: 0.5rem 0.7rem; border-radius: 5px; font-size: 0.78rem; color: #166534; margin-top: 0.4rem;">
+                                    ✅ Estos precios ya están en uso (fecha vigente).
+                                </div>
+                            }
+                            <button type="button" class="btn btn-secondary" style="font-size: 0.75rem; margin-top: 0.5rem;"
+                                    @onclick="LimpiarPreciosFuturos">🗑 Limpiar precios futuros</button>
+                        </div>
+                    }
+                </div>
+
                 <div class="form-group">
                     <label class="form-label">Notas</label>
                     <input class="form-input" @bind="formNotas" placeholder="Notas internas (opcional)" />
@@ -883,6 +970,17 @@
 
     private void LimpiarSeleccion() => selProductos.Clear();
 
+    /// <summary>Limpia todos los campos de precios futuros (fecha + todos los importes).</summary>
+    private void LimpiarPreciosFuturos()
+    {
+        formFechaAplicaPreciosFuturos = null;
+        formPrecioPorKgFuturo = null;
+        formPrecioBarFuturo = null;
+        formPrecioOtroFuturo = null;
+        formPrecioBultoFuturo = null;
+        formPrecioBultoOtroFuturo = null;
+    }
+
     private async Task AplicarMarcaABulk()
     {
         if (selProductos.Count == 0) return;
@@ -970,6 +1068,14 @@
     // Modelo NUEVO de precios (solo OTROS) — 2 precios directos:
     private decimal? formPrecioOtro;
     private decimal? formPrecioBar;
+    // Precios futuros (cambio programado)
+    private bool mostrarPreciosFuturos;
+    private DateTime? formFechaAplicaPreciosFuturos;
+    private decimal? formPrecioPorKgFuturo;
+    private decimal? formPrecioBarFuturo;
+    private decimal? formPrecioOtroFuturo;
+    private decimal? formPrecioBultoFuturo;
+    private decimal? formPrecioBultoOtroFuturo;
     // Precio del bulto completo (descuento por volumen, SOLO OTROS):
     private decimal? formPrecioBulto;
     private decimal? formPrecioBultoOtro;
@@ -1373,6 +1479,14 @@
         formPrecioOtro = null; formPrecioBar = null;
         formPrecioBulto = null; formPrecioBultoOtro = null;
         formMargenOtro = null; formMargenBar = null;
+        // Precios futuros
+        mostrarPreciosFuturos = false;
+        formFechaAplicaPreciosFuturos = null;
+        formPrecioPorKgFuturo = null;
+        formPrecioBarFuturo = null;
+        formPrecioOtroFuturo = null;
+        formPrecioBultoFuturo = null;
+        formPrecioBultoOtroFuturo = null;
         formOemId = 0; oemSearch = ""; oemSearchOpen = false;
         formStockGramos = 0; formStockUnidades = 0;
         formStockKg = 0;
@@ -1409,6 +1523,16 @@
         formMargenOtro = formPrecioOtro.HasValue && p.Costo > 0
             ? Math.Round((formPrecioOtro.Value / p.Costo - 1m) * 100m, 2, MidpointRounding.AwayFromZero)
             : (decimal?)null;
+        // Cargar precios futuros (si los tiene)
+        formFechaAplicaPreciosFuturos = p.FechaAplicaPreciosFuturos;
+        formPrecioPorKgFuturo = p.PrecioPorKgFuturo;
+        formPrecioBarFuturo = p.PrecioBarFuturo;
+        formPrecioOtroFuturo = p.PrecioOtroFuturo;
+        formPrecioBultoFuturo = p.PrecioBultoFuturo;
+        formPrecioBultoOtroFuturo = p.PrecioBultoOtroFuturo;
+        mostrarPreciosFuturos = p.FechaAplicaPreciosFuturos.HasValue
+            || p.PrecioPorKgFuturo.HasValue || p.PrecioBarFuturo.HasValue
+            || p.PrecioOtroFuturo.HasValue || p.PrecioBultoFuturo.HasValue || p.PrecioBultoOtroFuturo.HasValue;
         formUxB = p.UxB;
         formPrecioBulto = p.PrecioBulto;
         formPrecioBultoOtro = p.PrecioBultoOtro;
@@ -1493,6 +1617,19 @@
                     PrecioBultoOtro = formCategoria == "OTROS" ? formPrecioBultoOtro : null,
                     ClearPrecioBulto = formCategoria == "OTROS" && !formPrecioBulto.HasValue,
                     ClearPrecioBultoOtro = formCategoria == "OTROS" && !formPrecioBultoOtro.HasValue,
+                    // Precios futuros (cambio programado)
+                    FechaAplicaPreciosFuturos = formFechaAplicaPreciosFuturos,
+                    ClearFechaAplicaPreciosFuturos = !formFechaAplicaPreciosFuturos.HasValue,
+                    PrecioPorKgFuturo = formPrecioPorKgFuturo,
+                    ClearPrecioPorKgFuturo = !formPrecioPorKgFuturo.HasValue,
+                    PrecioBarFuturo = formPrecioBarFuturo,
+                    ClearPrecioBarFuturo = !formPrecioBarFuturo.HasValue,
+                    PrecioOtroFuturo = formPrecioOtroFuturo,
+                    ClearPrecioOtroFuturo = !formPrecioOtroFuturo.HasValue,
+                    PrecioBultoFuturo = formPrecioBultoFuturo,
+                    ClearPrecioBultoFuturo = !formPrecioBultoFuturo.HasValue,
+                    PrecioBultoOtroFuturo = formPrecioBultoOtroFuturo,
+                    ClearPrecioBultoOtroFuturo = !formPrecioBultoOtroFuturo.HasValue,
                 });
                 if (u is null) { formError = "No se pudo actualizar"; return; }
                 ToastService.Success("Producto actualizado");

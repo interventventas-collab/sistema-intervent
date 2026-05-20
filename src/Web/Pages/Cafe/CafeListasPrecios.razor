@@ -136,6 +136,18 @@
             </div>
 
             <div class="form-group">
+                <label class="form-label">📅 Vigente desde (opcional)</label>
+                <input type="date" class="form-input" @bind="formVigenteDesde" style="max-width: 14rem;" />
+                <p style="font-size: 0.72rem; color: #6b7280; margin: 0.2rem 0 0;">
+                    Si elegís una fecha futura, la lista usa los <strong>precios futuros</strong> de los productos que tengan el cambio programado para esa fecha (o antes). Sirve para entregarle al cliente la lista nueva <em>antes</em> de que arranque.
+                    @if (formVigenteDesde.HasValue && formVigenteDesde.Value.Date > DateTime.Today)
+                    {
+                        <span style="color: #92400e; font-weight: 600;"> · Se imprimirá "Vigente desde @formVigenteDesde.Value.ToString("dd/MM/yyyy")".</span>
+                    }
+                </p>
+            </div>
+
+            <div class="form-group">
                 <label class="form-label">Observaciones / condiciones comerciales (opcional)</label>
                 <textarea class="form-input" rows="3" @bind="formObservaciones"
                           placeholder="Ej: Precios sujetos a disponibilidad. Seña 50% para reservas. Entrega y retiro a coordinar."></textarea>
@@ -204,6 +216,14 @@
                         </div>
                     </div>
                 </div>
+
+                @* BANNER "VIGENTE DESDE" — solo si la lista se generó para una fecha futura *@
+                @if (preview.VigenteDesde.HasValue)
+                {
+                    <div style="margin-top: 0.7rem; padding: 0.7rem 1rem; background: linear-gradient(90deg,#fef3c7,#fde68a); border: 2px solid #f59e0b; border-radius: 6px; color: #78350f; font-size: 0.95rem; text-align: center;">
+                        📅 <strong>PRECIOS VIGENTES DESDE EL @preview.VigenteDesde.Value.ToString("dd/MM/yyyy")</strong>
+                    </div>
+                }
 
                 @* BANNER DE DESCUENTOS aplicados *@
                 @{
@@ -357,6 +377,7 @@
     private string formCategoria = "";
     private HashSet<int> formMarcaIds = new();
     private string formObservaciones = "";
+    private DateTime? formVigenteDesde;
 
     // Preview
     private CafeListaPreciosPreviewDto? preview;
@@ -436,7 +457,8 @@
                 Tipo = formTipo,
                 MarcaIds = formMarcaIds.Count > 0 ? formMarcaIds.ToList() : null,
                 Categoria = string.IsNullOrEmpty(formCategoria) ? null : formCategoria,
-                Observaciones = formObservaciones
+                Observaciones = formObservaciones,
+                FechaVigencia = formVigenteDesde
             };
             preview = await Api.GetCafeListaPreciosPreviewAsync(req);
             if (preview is null) { ToastService.Error("No se pudo generar la previsualización"); return; }
@@ -468,7 +490,8 @@
                 Tipo = formTipo,
                 MarcaIds = formMarcaIds.Count > 0 ? formMarcaIds.ToList() : null,
                 Categoria = string.IsNullOrEmpty(formCategoria) ? null : formCategoria,
-                Observaciones = formObservaciones
+                Observaciones = formObservaciones,
+                FechaVigencia = formVigenteDesde
             };
             var bytes = await Api.ExportCafeListaPreciosExcelAsync(req);
             if (bytes is null || bytes.Length == 0) { ToastService.Error("No se pudo generar el Excel"); return; }

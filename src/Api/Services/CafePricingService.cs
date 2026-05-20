@@ -69,7 +69,7 @@ public static class CafePricingService
 
     public static PrecioBreakdown CalcularPrecioBreakdown(
         CafeProducto producto, string formato, string tipoCliente, CafeSetting settings,
-        decimal descuentoPct = 0m)
+        decimal descuentoPct = 0m, DateTime? fechaPara = null)
     {
         // Modelo UNIFICADO (post 2026-05-12): se eliminaron los descuentos automaticos por matriz.
         // Tanto CAFE como OTROS usan PrecioBar / PrecioOtro como precios directos:
@@ -77,29 +77,52 @@ public static class CafePricingService
         //   - Cliente OTRO: PrecioOtro (fallback PrecioBar si OTRO esta vacio)
         //   - Si ninguno esta cargado: cae a Pvp1 / Pvp2 / PrecioPorKg (legacy, sin descuento).
         // El parametro descuentoPct ahora solo refleja el descuento MANUAL de linea (no la matriz).
+        // fechaPara: si se pasa, decide entre Actual y Futuro evaluando contra esa fecha en vez
+        // de DateTime.Today. Usado para previsualizar la lista de precios "vigentes desde X".
         var desc = Math.Max(0m, Math.Min(100m, descuentoPct));
         decimal lista, final;
 
-        // Elegir el precio directo segun el tipo de cliente. Si el formato es BULTO
-        // (solo OTROS), usamos PrecioBulto/PrecioBultoOtro como precio unitario "del bulto".
+        // Determinar si usamos precios futuros para esta evaluacion.
+        bool usaFuturos;
+        if (fechaPara.HasValue)
+        {
+            usaFuturos = producto.FechaAplicaPreciosFuturos.HasValue
+                && fechaPara.Value.Date >= producto.FechaAplicaPreciosFuturos.Value.Date
+                && (producto.PrecioPorKgFuturo.HasValue || producto.PrecioBarFuturo.HasValue
+                    || producto.PrecioOtroFuturo.HasValue || producto.PrecioBultoFuturo.HasValue
+                    || producto.PrecioBultoOtroFuturo.HasValue);
+        }
+        else
+        {
+            usaFuturos = producto.UsaPreciosFuturos;
+        }
+
+        decimal? precioBarEf = usaFuturos && producto.PrecioBarFuturo.HasValue ? producto.PrecioBarFuturo : producto.PrecioBar;
+        decimal? precioOtroEf = usaFuturos && producto.PrecioOtroFuturo.HasValue ? producto.PrecioOtroFuturo : producto.PrecioOtro;
+        decimal? precioBultoEf = usaFuturos && producto.PrecioBultoFuturo.HasValue ? producto.PrecioBultoFuturo : producto.PrecioBulto;
+        decimal? precioBultoOtroEf = usaFuturos && producto.PrecioBultoOtroFuturo.HasValue ? producto.PrecioBultoOtroFuturo : producto.PrecioBultoOtro;
+        decimal? precioPorKgEf = usaFuturos && producto.PrecioPorKgFuturo.HasValue ? producto.PrecioPorKgFuturo : producto.PrecioPorKg;
+
+        // Elegir el precio directo segun el tipo de cliente.
+        // Si el formato es BULTO (solo OTROS), usamos PrecioBulto* como precio del bulto.
         decimal? precioDirecto;
         if (formato == FORMATO_BULTO)
         {
             if (tipoCliente == TIPO_BAR)
-                precioDirecto = producto.PrecioBulto ?? producto.PrecioBultoOtro;
+                precioDirecto = precioBultoEf ?? precioBultoOtroEf;
             else
-                precioDirecto = producto.PrecioBultoOtro ?? producto.PrecioBulto;
+                precioDirecto = precioBultoOtroEf ?? precioBultoEf;
         }
         else
         {
             if (tipoCliente == TIPO_BAR)
-                precioDirecto = producto.PrecioBar ?? producto.PrecioOtro;
+                precioDirecto = precioBarEf ?? precioOtroEf;
             else
-                precioDirecto = producto.PrecioOtro ?? producto.PrecioBar;
+                precioDirecto = precioOtroEf ?? precioBarEf;
         }
 
-        // Fallback legacy si no hay precios directos (productos que nunca se configuraron)
-        var listaBase = precioDirecto ?? producto.Pvp1 ?? producto.Pvp2 ?? producto.PrecioPorKg ?? 0m;
+        // Fallback legacy si no hay precios directos (productos que nunca se configuraron).
+        var listaBase = precioDirecto ?? producto.Pvp1 ?? producto.Pvp2 ?? precioPorKgEf ?? 0m;
 
         if (producto.Categoria == "CAFE")
         {

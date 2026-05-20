@@ -29,7 +29,11 @@ public class CafeProductosController : ControllerBase
         p.Notas, p.IsActive, p.IvaPct, p.CreatedAt, p.UpdatedAt,
         p.OemNav?.PvpConIva, p.OemNav?.IvaPct,
         p.PrecioOtro, p.PrecioBar,
-        p.PrecioBulto, p.PrecioBultoOtro);
+        p.PrecioBulto, p.PrecioBultoOtro,
+        p.FechaAplicaPreciosFuturos,
+        p.PrecioPorKgFuturo, p.PrecioBarFuturo, p.PrecioOtroFuturo,
+        p.PrecioBultoFuturo, p.PrecioBultoOtroFuturo,
+        p.UsaPreciosFuturos);
 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] string? categoria = null)
@@ -441,6 +445,19 @@ public class CafeProductosController : ControllerBase
         else if (req.ClearPrecioBulto) p.PrecioBulto = null;
         if (req.PrecioBultoOtro.HasValue) p.PrecioBultoOtro = req.PrecioBultoOtro.Value;
         else if (req.ClearPrecioBultoOtro) p.PrecioBultoOtro = null;
+        // Precios FUTUROS (cambio programado)
+        if (req.FechaAplicaPreciosFuturos.HasValue) p.FechaAplicaPreciosFuturos = req.FechaAplicaPreciosFuturos.Value.Date;
+        else if (req.ClearFechaAplicaPreciosFuturos) p.FechaAplicaPreciosFuturos = null;
+        if (req.PrecioPorKgFuturo.HasValue) p.PrecioPorKgFuturo = req.PrecioPorKgFuturo.Value;
+        else if (req.ClearPrecioPorKgFuturo) p.PrecioPorKgFuturo = null;
+        if (req.PrecioBarFuturo.HasValue) p.PrecioBarFuturo = req.PrecioBarFuturo.Value;
+        else if (req.ClearPrecioBarFuturo) p.PrecioBarFuturo = null;
+        if (req.PrecioOtroFuturo.HasValue) p.PrecioOtroFuturo = req.PrecioOtroFuturo.Value;
+        else if (req.ClearPrecioOtroFuturo) p.PrecioOtroFuturo = null;
+        if (req.PrecioBultoFuturo.HasValue) p.PrecioBultoFuturo = req.PrecioBultoFuturo.Value;
+        else if (req.ClearPrecioBultoFuturo) p.PrecioBultoFuturo = null;
+        if (req.PrecioBultoOtroFuturo.HasValue) p.PrecioBultoOtroFuturo = req.PrecioBultoOtroFuturo.Value;
+        else if (req.ClearPrecioBultoOtroFuturo) p.PrecioBultoOtroFuturo = null;
         if (req.UxB.HasValue) p.UxB = req.UxB.Value;
         else if (req.ClearUxB) p.UxB = null;
         if (req.OemId.HasValue) p.OemId = req.OemId.Value;

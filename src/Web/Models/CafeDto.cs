@@ -100,6 +100,14 @@ public class CafeProductoDto
     /// <summary>Precio del bulto completo (descuento por volumen, SOLO OTROS).</summary>
     public decimal? PrecioBulto { get; set; }
     public decimal? PrecioBultoOtro { get; set; }
+    // Precios FUTUROS (cambio programado de precios — pedido 2026-05-20)
+    public DateTime? FechaAplicaPreciosFuturos { get; set; }
+    public decimal? PrecioPorKgFuturo { get; set; }
+    public decimal? PrecioBarFuturo { get; set; }
+    public decimal? PrecioOtroFuturo { get; set; }
+    public decimal? PrecioBultoFuturo { get; set; }
+    public decimal? PrecioBultoOtroFuturo { get; set; }
+    public bool UsaPreciosFuturos { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 
@@ -178,6 +186,20 @@ public class UpdateCafeProductoRequest
     public decimal? PrecioBultoOtro { get; set; }
     public bool ClearPrecioBulto { get; set; }
     public bool ClearPrecioBultoOtro { get; set; }
+
+    // Precios FUTUROS (cambio programado)
+    public DateTime? FechaAplicaPreciosFuturos { get; set; }
+    public bool ClearFechaAplicaPreciosFuturos { get; set; }
+    public decimal? PrecioPorKgFuturo { get; set; }
+    public bool ClearPrecioPorKgFuturo { get; set; }
+    public decimal? PrecioBarFuturo { get; set; }
+    public bool ClearPrecioBarFuturo { get; set; }
+    public decimal? PrecioOtroFuturo { get; set; }
+    public bool ClearPrecioOtroFuturo { get; set; }
+    public decimal? PrecioBultoFuturo { get; set; }
+    public bool ClearPrecioBultoFuturo { get; set; }
+    public decimal? PrecioBultoOtroFuturo { get; set; }
+    public bool ClearPrecioBultoOtroFuturo { get; set; }
 }
 
 public class CafeSettingDto
@@ -751,6 +773,9 @@ public class CafeListaPreciosFiltroRequest
     public List<int>? MarcaIds { get; set; }
     public string? Categoria { get; set; }
     public string? Observaciones { get; set; }
+    /// <summary>Si se pasa, la lista usa los precios "vigentes a esa fecha" — sirve para
+    /// imprimir la lista nueva ANTES de que entre en vigencia.</summary>
+    public DateTime? FechaVigencia { get; set; }
 }
 
 public class CafeListaPreciosNegocioDto
@@ -817,6 +842,7 @@ public class CafeListaPreciosPreviewDto
     public CafeListaPreciosClienteDto? Cliente { get; set; }
     public List<CafeListaPreciosMarcaGroupDto> Grupos { get; set; } = new();
     public string? Observaciones { get; set; }
+    public DateTime? VigenteDesde { get; set; }
 }
 
 // ===== Marcas =====

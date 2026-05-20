@@ -73,7 +73,16 @@ public record CafeProductoDto(
     decimal? PrecioOtro = null, decimal? PrecioBar = null,
     // Precio del bulto completo (descuento por volumen, SOLO OTROS). Si cantidad >= UxB,
     // el sistema cobra (bultosCompletos × PrecioBulto + sueltas × PrecioBar/Otro).
-    decimal? PrecioBulto = null, decimal? PrecioBultoOtro = null);
+    decimal? PrecioBulto = null, decimal? PrecioBultoOtro = null,
+    // Precios FUTUROS (cambio programado de precios). Se cargan ahora pero se aplican recien
+    // a partir de FechaAplicaPreciosFuturos.
+    DateTime? FechaAplicaPreciosFuturos = null,
+    decimal? PrecioPorKgFuturo = null,
+    decimal? PrecioBarFuturo = null,
+    decimal? PrecioOtroFuturo = null,
+    decimal? PrecioBultoFuturo = null,
+    decimal? PrecioBultoOtroFuturo = null,
+    bool UsaPreciosFuturos = false);
 
 public class CreateCafeProductoRequest
 {
@@ -200,6 +209,21 @@ public class UpdateCafeProductoRequest
     public decimal? PrecioBultoOtro { get; set; }
     public bool ClearPrecioBulto { get; set; }
     public bool ClearPrecioBultoOtro { get; set; }
+
+    // Precios FUTUROS (cambio programado). Si vienen cargados, se guardan y se aplican
+    // automaticamente cuando hoy >= FechaAplicaPreciosFuturos.
+    public DateTime? FechaAplicaPreciosFuturos { get; set; }
+    public bool ClearFechaAplicaPreciosFuturos { get; set; }
+    public decimal? PrecioPorKgFuturo { get; set; }
+    public bool ClearPrecioPorKgFuturo { get; set; }
+    public decimal? PrecioBarFuturo { get; set; }
+    public bool ClearPrecioBarFuturo { get; set; }
+    public decimal? PrecioOtroFuturo { get; set; }
+    public bool ClearPrecioOtroFuturo { get; set; }
+    public decimal? PrecioBultoFuturo { get; set; }
+    public bool ClearPrecioBultoFuturo { get; set; }
+    public decimal? PrecioBultoOtroFuturo { get; set; }
+    public bool ClearPrecioBultoOtroFuturo { get; set; }
 }
 
 // ===== Settings =====
@@ -603,6 +627,10 @@ public class CafeListaPreciosFiltroRequest
     public List<int>? MarcaIds { get; set; }   // null o vacio = todas
     public string? Categoria { get; set; }     // CAFE | OTROS | null = ambas
     public string? Observaciones { get; set; } // texto libre que va en el bloque comercial del PDF
+    /// <summary>Si se pasa, se generan los precios "vigentes" a esa fecha — usa el precio Futuro
+    /// si la fecha es >= FechaAplicaPreciosFuturos del producto. Sino usa el precio Actual.
+    /// Sirve para entregar al cliente la lista con los precios nuevos antes de que se apliquen.</summary>
+    public DateTime? FechaVigencia { get; set; }
 }
 
 public record CafeListaPreciosNegocioDto(
@@ -636,7 +664,10 @@ public record CafeListaPreciosPreviewDto(
     CafeListaPreciosNegocioDto Negocio,
     CafeListaPreciosClienteDto? Cliente,
     List<CafeListaPreciosMarcaGroupDto> Grupos,
-    string? Observaciones);
+    string? Observaciones,
+    // Si se calcularon precios para una fecha distinta a hoy (precios "vigentes desde X").
+    // El frontend lo usa para imprimir un banner "Vigente desde dd/MM/yyyy" arriba de la lista.
+    DateTime? VigenteDesde = null);
 
 // ===== Marcas =====
 public record CafeMarcaDto(
