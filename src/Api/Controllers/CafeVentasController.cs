@@ -22,6 +22,7 @@ public class CafeVentasController : ControllerBase
     private readonly IntegrationService _integrationService;
     private readonly WhatsAppService _whatsAppService;
     private readonly QrRepartidorService _qrRepartidorService;
+    private readonly CafeReciboVisitaCobranzaPdfService _reciboVisitaPdfService;
     private static readonly string[] FormatosValidos = { "1KG", "MEDIO", "CUARTO", "UNIT", "BULTO" };
 
     public CafeVentasController(
@@ -32,7 +33,8 @@ public class CafeVentasController : ControllerBase
         ArcaEmisorService emisorService,
         IntegrationService integrationService,
         WhatsAppService whatsAppService,
-        QrRepartidorService qrRepartidorService)
+        QrRepartidorService qrRepartidorService,
+        CafeReciboVisitaCobranzaPdfService reciboVisitaPdfService)
     {
         _db = db;
         _pdfService = pdfService;
@@ -42,6 +44,32 @@ public class CafeVentasController : ControllerBase
         _integrationService = integrationService;
         _whatsAppService = whatsAppService;
         _qrRepartidorService = qrRepartidorService;
+        _reciboVisitaPdfService = reciboVisitaPdfService;
+    }
+
+    /// <summary>Genera el PDF "Recibo de Visita por Cobranza" — para imprimir cuando el
+    /// repartidor va solo a cobrar un comprobante antiguo. Pedido del usuario 2026-05-20.</summary>
+    [HttpGet("{id:int}/recibo-visita.pdf")]
+    public async Task<IActionResult> GetReciboVisitaPdf(int id)
+    {
+        var v = await _db.CafeVentas.FirstOrDefaultAsync(x => x.Id == id);
+        if (v is null) return NotFound();
+        // Asegurar token publico para el QR
+        if (string.IsNullOrEmpty(v.PublicToken))
+        {
+            v.PublicToken = GeneratePublicToken();
+            await _db.SaveChangesAsync();
+        }
+        // Calcular saldo pendiente (cobrable - pagado)
+        var totalCobrable = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
+        var pagado = await _db.CafeCobranzasComprobantes
+            .Where(c => c.VentaId == v.Id && c.Cobranza!.Estado == "VIGENTE")
+            .SumAsync(c => (decimal?)c.Importe) ?? 0m;
+        var saldo = Math.Max(0m, totalCobrable - pagado);
+        var cfg = await _db.CafeSettings.FindAsync(1);
+        var qr = await _qrRepartidorService.GenerarQrAsync(v.PublicToken);
+        var bytes = _reciboVisitaPdfService.GenerarPdf(v, saldo, cfg, qr);
+        return File(bytes, "application/pdf", $"VIS-{DateTime.Now.Year:0000}-{v.Id:0000}.pdf");
     }
 
     /// <summary>

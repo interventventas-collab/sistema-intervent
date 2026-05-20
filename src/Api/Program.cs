@@ -112,6 +112,7 @@ builder.Services.AddSingleton<ArcaInvoicePdfService>();
 builder.Services.AddScoped<ArcaEmisorService>();
 builder.Services.AddScoped<CafeCotizacionPdfService>();
 builder.Services.AddScoped<CafeComodatoPdfService>();
+builder.Services.AddScoped<CafeReciboVisitaCobranzaPdfService>();
 builder.Services.AddScoped<QrRepartidorService>();
 builder.Services.AddScoped<CafeReciboCobranzaPdfService>();
 builder.Services.AddScoped<MeliOrderService>();

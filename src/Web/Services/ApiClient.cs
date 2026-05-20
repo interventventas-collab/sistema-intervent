@@ -931,6 +931,16 @@ public class ApiClient
     }
 
     /// <summary>Devuelve los bytes del PDF de una venta Café (cotización/proforma) o null si fallo.</summary>
+    /// <summary>Descarga el PDF "Recibo de Visita por Cobranza" — para imprimir cuando el
+    /// repartidor va solo a cobrar un comprobante antiguo.</summary>
+    public async Task<(byte[]? bytes, string? error)> GetCafeVentaReciboVisitaPdfAsync(int id)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.GetAsync($"/api/cafe/ventas/{id}/recibo-visita.pdf");
+        if (!resp.IsSuccessStatusCode) return (null, $"HTTP {(int)resp.StatusCode}");
+        return (await resp.Content.ReadAsByteArrayAsync(), null);
+    }
+
     public async Task<(byte[]? bytes, string? error)> GetCafeVentaPdfAsync(int id)
     {
         await SetAuthHeaderAsync();

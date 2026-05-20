@@ -335,6 +335,11 @@
                                 </td>
                                 <td class="actions-cell">
                                     <button class="btn-icon" style="color: #1d4ed8;" @onclick="() => ShowPrint(v)" title="Ver / imprimir / PDF">🖨</button>
+                                    @{ var saldoVentaRV = saldosPorVenta.TryGetValue(v.Id, out var sRV) ? sRV : 0m; }
+                                    @if (!anulada && saldoVentaRV > 0.01m)
+                                    {
+                                        <button class="btn-icon" style="color: #d97706;" @onclick="() => DescargarReciboVisita(v)" title="Imprimir 'Recibo de Visita por Cobranza' para llevar a la visita">🚪</button>
+                                    }
                                     @if (string.IsNullOrEmpty(v.EstadoPreparacion) && !anulada)
                                     {
                                         <button class="btn-icon" style="color: #f59e0b;" @onclick="() => EnviarAPreparacion(v)" title="Enviar al tablero de Preparación de pedidos">📦</button>
@@ -3973,6 +3978,19 @@
         "EX" => "Exento",
         _ => "Consumidor final"
     };
+    /// <summary>Descarga el PDF "Recibo de Visita por Cobranza" y lo abre en pestaña nueva.</summary>
+    private async Task DescargarReciboVisita(CafeVentaDto v)
+    {
+        try
+        {
+            var (bytes, error) = await Api.GetCafeVentaReciboVisitaPdfAsync(v.Id);
+            if (bytes is null) { ToastService.Error(error ?? "No se pudo generar el recibo"); return; }
+            var base64 = Convert.ToBase64String(bytes);
+            await JS.InvokeVoidAsync("openPdfInNewTab", base64);
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
     /// <summary>Envia la venta al tablero de Preparacion (estado PARA_PREPARAR).
     /// Llamado desde el boton "📦" en cada fila del listado de ventas.</summary>
     private async Task EnviarAPreparacion(CafeVentaDto v)
