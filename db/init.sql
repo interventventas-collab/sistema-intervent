@@ -3817,3 +3817,8 @@ BEGIN
     CREATE INDEX IX_ExtractoMovimientos_Cuit ON Cafe_ExtractoMovimientos(LeyendaAdicional2);
 END
 GO
+
+-- ─── Extracto: marca de cobranza consumida (2026-05-19) ───
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='CobranzaUsadaId' AND Object_ID=OBJECT_ID('Cafe_ExtractoMovimientos'))
+    ALTER TABLE Cafe_ExtractoMovimientos ADD CobranzaUsadaId INT NULL;
+GO

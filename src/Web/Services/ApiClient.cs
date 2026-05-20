@@ -720,6 +720,17 @@ public class ApiClient
     public async Task<bool> DesasociarMovimientoExtractoAsync(int id)
         => await DeleteAsync($"/api/cafe/extracto-banco/{id}/asociar");
 
+    public async Task<List<MovimientoDisponibleDto>?> GetMovimientosAsociadosSinCobrarAsync(int clienteId)
+        => await GetAsync<List<MovimientoDisponibleDto>>($"/api/cafe/extracto-banco/asociados-sin-cobrar/{clienteId}");
+
+    public async Task<bool> MarcarMovimientosUsadosAsync(List<int> ids, int cobranzaId)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync("/api/cafe/extracto-banco/marcar-usados",
+            new MarcarMovimientosUsadosRequest { MovimientoIds = ids, CobranzaId = cobranzaId });
+        return resp.IsSuccessStatusCode;
+    }
+
     // === Calendario Notas (2026-05-19) ===
     public async Task<List<CalendarioNotaDto>?> GetCalendarioNotasAsync(DateTime? desde = null, DateTime? hasta = null)
     {

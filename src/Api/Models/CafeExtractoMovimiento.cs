@@ -89,6 +89,10 @@ public class CafeExtractoMovimiento
 
     public DateTime? AsociadoAt { get; set; }
 
+    /// <summary>Id de la cobranza que ya consumio este movimiento. Si != null, el
+    /// movimiento NO se sugiere mas como "disponible" en /cafe/tesoreria/cobranzas.</summary>
+    public int? CobranzaUsadaId { get; set; }
+
     [MaxLength(200)]
     public string? ArchivoOrigen { get; set; }
 

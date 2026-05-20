@@ -285,6 +285,30 @@
                         </div>
                     </div>
 
+                    @* --- Movimientos del banco asociados disponibles (Etapa B) --- *@
+                    @if (movsBancoDisponibles.Count > 0)
+                    {
+                        <div style="margin: 1rem 0; padding: 0.7rem 0.8rem; background: #dbeafe; border: 1px solid #93c5fd; border-radius: 8px;">
+                            <h5 style="margin:0 0 0.5rem; color:#1e40af;">💰 Movimientos del banco asociados a este cliente</h5>
+                            <p style="margin: 0 0 0.5rem; font-size: 0.78rem; color: #1e40af;">Tildá los que querés usar como forma de cobro:</p>
+                            @foreach (var mov in movsBancoDisponibles)
+                            {
+                                var ya = movsBancoUsados.Contains(mov.Id);
+                                <label style="display:flex; gap:0.5rem; align-items:center; padding:0.3rem 0.5rem; background:white; border-radius:5px; margin-bottom:0.3rem; cursor:pointer;">
+                                    <input type="checkbox" checked="@ya" @onchange="@(e => ToggleMovimientoBanco(mov.Id, (bool)e.Value!))" />
+                                    <span style="flex:1;">
+                                        <b>@mov.Fecha.ToString("dd/MM/yyyy")</b> · @(mov.Descripcion ?? "Transferencia")
+                                        @if (!string.IsNullOrEmpty(mov.VentaNumeroAsociada))
+                                        {
+                                            <span style="font-size:0.72rem; color:#16a34a; margin-left:0.3rem;">→ @mov.VentaNumeroAsociada</span>
+                                        }
+                                    </span>
+                                    <span style="font-weight:700; color:#16a34a;">$@mov.Importe.ToString("N2")</span>
+                                </label>
+                            }
+                        </div>
+                    }
+
                     @* --- Formas de cobro --- *@
                     <div style="margin: 1rem 0; padding: 0.8rem; background: #fef3c7; border-radius: 8px;">
                         <h5 style="margin:0 0 0.5rem;">Forma de cobro</h5>
@@ -513,6 +537,13 @@
     private bool incluirSucursales;
     [Parameter, SupplyParameterFromQuery(Name = "cliente")] public int? PreClienteId { get; set; }
     [Parameter, SupplyParameterFromQuery(Name = "venta")] public int? PreVentaId { get; set; }
+    /// <summary>Si vino desde el extracto bancario con ?movimiento=Y, precargamos
+    /// ese movimiento como forma de cobro tipo Transferencia.</summary>
+    [Parameter, SupplyParameterFromQuery(Name = "movimiento")] public int? PreMovimientoId { get; set; }
+    // Movimientos del banco asociados al cliente actual que aun no se usaron en cobranza.
+    private List<MovimientoDisponibleDto> movsBancoDisponibles = new();
+    // Ids de movimientos elegidos para esta cobranza (para marcarlos como usados al guardar)
+    private HashSet<int> movsBancoUsados = new();
     private Dictionary<int, ImputData> imputaciones = new();
     private bool aCuentaActivo;
     private decimal aCuentaImporte;
@@ -550,7 +581,32 @@
             await SelectCliente(PreClienteId.Value);
             if (PreVentaId.HasValue && PreVentaId.Value > 0 && imputaciones.TryGetValue(PreVentaId.Value, out var imp))
                 imp.Seleccionado = true;
+            // Si viene desde el extracto bancario con un movimiento puntual, agregarlo
+            // automaticamente como medio de cobro tipo Transferencia.
+            if (PreMovimientoId.HasValue && PreMovimientoId.Value > 0)
+                AgregarMovimientoBancoComoMedio(PreMovimientoId.Value);
+            RecalcularTotal();
         }
+    }
+
+    /// <summary>Agrega un movimiento del extracto como medio de cobro tipo Transferencia.
+    /// Lo busca en la lista de disponibles y completa caja + importe + referencia.</summary>
+    private void AgregarMovimientoBancoComoMedio(int movimientoId)
+    {
+        var mov = movsBancoDisponibles.FirstOrDefault(m => m.Id == movimientoId);
+        if (mov is null) return;
+        // Buscar una caja tipo BANCO/TRANSFERENCIA (sino la primera "no efectivo")
+        var caja = cajas?.FirstOrDefault(c => c.Tipo == "BANCO" || c.Tipo == "TRANSFERENCIA")
+                ?? cajas?.FirstOrDefault(c => c.Tipo != "EFECTIVO" && c.Tipo != "CHEQUES_CARTERA");
+        if (caja is null) return;
+        formMedios.Add(new MedioForm
+        {
+            CajaId = caja.Id,
+            TipoCaja = caja.Tipo,
+            Importe = mov.Importe,
+            Referencia = $"Transferencia banco {mov.Fecha:dd/MM} — {(mov.Descripcion ?? "")}"
+        });
+        movsBancoUsados.Add(mov.Id);
     }
 
     private async Task Load()
@@ -615,6 +671,8 @@
         saldoCliente = null;
         incluirSucursales = false;
         sucursalesMismoCuit = new();
+        movsBancoDisponibles = new();
+        movsBancoUsados = new();
         if (selClienteId <= 0) { pendientes = new(); return; }
         try
         {
@@ -624,6 +682,10 @@
                 sucursalesMismoCuit = await Api.GetSucursalesMismoCuitAsync(selClienteId) ?? new();
             }
             catch { sucursalesMismoCuit = new(); }
+
+            // Cargar movimientos del extracto bancario asociados a este cliente que aun no se usaron
+            try { movsBancoDisponibles = await Api.GetMovimientosAsociadosSinCobrarAsync(selClienteId) ?? new(); }
+            catch { movsBancoDisponibles = new(); }
 
             await RecargarPendientesAsync();
 
@@ -703,6 +765,32 @@
     }
 
     private void AgregarMedio() => formMedios.Add(new MedioForm());
+
+    /// <summary>Tilda/destilda un movimiento del banco para usarlo como forma de cobro.
+    /// Al tildar: agrega un medio nuevo con datos pre-rellenados. Al destildar: lo saca.</summary>
+    private void ToggleMovimientoBanco(int movId, bool seleccionar)
+    {
+        if (seleccionar)
+        {
+            if (!movsBancoUsados.Contains(movId))
+            {
+                AgregarMovimientoBancoComoMedio(movId);
+                RecalcularTotal();
+            }
+        }
+        else
+        {
+            // Buscamos el medio que vino de este movimiento y lo sacamos
+            var mov = movsBancoDisponibles.FirstOrDefault(m => m.Id == movId);
+            if (mov is not null)
+            {
+                var ix = formMedios.FindIndex(m => m.Referencia != null && m.Referencia.Contains(mov.Fecha.ToString("dd/MM")));
+                if (ix >= 0) formMedios.RemoveAt(ix);
+            }
+            movsBancoUsados.Remove(movId);
+            RecalcularTotal();
+        }
+    }
     private void RecalcularTotal() => StateHasChanged();
 
     private async Task GuardarCobranza()
@@ -731,6 +819,13 @@
         {
             var r = await Api.CrearCafeCobranzaAsync(selClienteId, formRetenciones, null, formObservaciones, comps, medios);
             if (r is null) { ToastService.Error("Error al crear cobranza"); return; }
+            // Si se usaron movimientos del extracto bancario, marcarlos como "usados" para que
+            // no se sugieran de nuevo en futuras cobranzas.
+            if (movsBancoUsados.Count > 0)
+            {
+                try { await Api.MarcarMovimientosUsadosAsync(movsBancoUsados.ToList(), r.Id); }
+                catch { /* no critico — si falla, queda como pendiente */ }
+            }
             ToastService.Success($"Cobranza {r.Numero} creada");
             showNueva = false;
             await Load();

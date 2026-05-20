@@ -174,6 +174,23 @@ public class AsociarMovimientoRequest
     public string? Operador { get; set; }
 }
 
+public class MovimientoDisponibleDto
+{
+    public int Id { get; set; }
+    public DateTime Fecha { get; set; }
+    public string? Descripcion { get; set; }
+    public decimal Importe { get; set; }
+    public string? Concepto { get; set; }
+    public int? VentaIdAsociada { get; set; }
+    public string? VentaNumeroAsociada { get; set; }
+}
+
+public class MarcarMovimientosUsadosRequest
+{
+    public List<int> MovimientoIds { get; set; } = new();
+    public int CobranzaId { get; set; }
+}
+
 public class CobranzaListDto
 {
     public int Id { get; set; }

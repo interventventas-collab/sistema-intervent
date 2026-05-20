@@ -337,9 +337,14 @@
         var ok = await Api.AsociarMovimientoExtractoAsync(movAsociar.Id, ventaId, Operator.Current);
         if (ok)
         {
-            ToastService.Success("✓ Movimiento asociado");
+            ToastService.Success("✓ Asociado. Te llevo a Cobranzas para cerrar el pago.");
+            // Redirigir a Cobranzas con todo precargado: cliente + venta + movimiento.
+            // El modal de Nueva cobranza detecta los query params y arma la cobranza solita.
+            var clienteId = movAsociar.ClienteSugeridoId ?? 0;
+            var movId = movAsociar.Id;
             movAsociar = null;
             await CargarMovs();
+            Navigation.NavigateTo($"/cafe/tesoreria/cobranzas?cliente={clienteId}&venta={ventaId}&movimiento={movId}");
         }
         else ToastService.Error("No se pudo asociar");
     }

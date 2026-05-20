@@ -102,6 +102,63 @@ public class CafeExtractoBancoController : ControllerBase
         return Ok(result);
     }
 
+    public record MovimientoDisponibleDto(int Id, DateTime Fecha, string? Descripcion, decimal Importe,
+        string? Concepto, int? VentaIdAsociada, string? VentaNumeroAsociada);
+
+    /// <summary>Movimientos del extracto que ya estan asociados al cliente pero que NO se usaron
+    /// todavia en una cobranza (CobranzaUsadaId IS NULL). Para sugerirlos como formas de cobro
+    /// en /cafe/tesoreria/cobranzas. Tambien trae los SIN asociar pero que matchean por CUIT del cliente.</summary>
+    [HttpGet("asociados-sin-cobrar/{clienteId:int}")]
+    public async Task<IActionResult> AsociadosSinCobrar(int clienteId)
+    {
+        var cliente = await _db.CafeClientes.FirstOrDefaultAsync(c => c.Id == clienteId);
+        if (cliente is null) return Ok(new List<MovimientoDisponibleDto>());
+
+        var q = _db.CafeExtractoMovimientos
+            .Where(m => m.Creditos > 0 && m.CobranzaUsadaId == null
+                && (m.VentaIdAsociada != null
+                    || (cliente.Cuit != null && m.LeyendaAdicional2 == cliente.Cuit)));
+        // Filtramos por venta asociada al cliente O por CUIT del cliente
+        var movs = await q.OrderByDescending(m => m.Fecha).ToListAsync();
+        var ventaIds = movs.Where(m => m.VentaIdAsociada.HasValue).Select(m => m.VentaIdAsociada!.Value).ToList();
+        var clientesPorVenta = await _db.CafeVentas
+            .Where(v => ventaIds.Contains(v.Id))
+            .Select(v => new { v.Id, v.ClienteId, v.Numero })
+            .ToListAsync();
+        var clientesDict = clientesPorVenta.ToDictionary(v => v.Id);
+
+        // Mantener solo: 1) sin venta pero CUIT matchea, o 2) con venta del cliente actual
+        var filtrados = movs.Where(m =>
+            (!m.VentaIdAsociada.HasValue && cliente.Cuit != null && m.LeyendaAdicional2 == cliente.Cuit)
+            || (m.VentaIdAsociada.HasValue && clientesDict.TryGetValue(m.VentaIdAsociada.Value, out var v) && v.ClienteId == clienteId)
+        ).ToList();
+
+        var result = filtrados.Select(m =>
+        {
+            string? ventaNumero = null;
+            if (m.VentaIdAsociada.HasValue && clientesDict.TryGetValue(m.VentaIdAsociada.Value, out var v))
+                ventaNumero = v.Numero;
+            return new MovimientoDisponibleDto(m.Id, m.Fecha, m.Descripcion, m.Creditos, m.Concepto,
+                m.VentaIdAsociada, ventaNumero);
+        }).ToList();
+        return Ok(result);
+    }
+
+    public record MarcarUsadosRequest(List<int> MovimientoIds, int CobranzaId);
+
+    /// <summary>Marca un set de movimientos del extracto como usados en una cobranza puntual.
+    /// Llamado desde la pantalla de Cobranzas despues de crear/guardar una cobranza que incluyo
+    /// movimientos del extracto como medios de pago. Idempotente.</summary>
+    [HttpPost("marcar-usados")]
+    public async Task<IActionResult> MarcarUsados([FromBody] MarcarUsadosRequest req)
+    {
+        if (req.MovimientoIds is null || req.MovimientoIds.Count == 0) return Ok(new { actualizados = 0 });
+        var movs = await _db.CafeExtractoMovimientos.Where(m => req.MovimientoIds.Contains(m.Id)).ToListAsync();
+        foreach (var m in movs) m.CobranzaUsadaId = req.CobranzaId;
+        await _db.SaveChangesAsync();
+        return Ok(new { actualizados = movs.Count });
+    }
+
     [HttpPost("{id:int}/asociar")]
     public async Task<IActionResult> Asociar(int id, [FromBody] AsociarRequest req)
     {
