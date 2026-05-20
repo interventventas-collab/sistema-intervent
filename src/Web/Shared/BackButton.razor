@@ -1,0 +1,52 @@
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@implements IDisposable
+
+@* ────────────────────────────────────────────────────────────────────────────
+   Boton "← Volver" reusable. Vive en la topbar del MainLayout, visible en
+   todas las pantallas excepto las "raiz" donde no tendria sentido volver
+   (dashboard, login). Usa history.back() del navegador.
+   ──────────────────────────────────────────────────────────────────────────── *@
+
+@if (Visible)
+{
+    <button class="topbar-back-btn" @onclick="VolverAtras" title="Volver a la pantalla anterior">
+        ← Volver
+    </button>
+}
+
+@code {
+    private bool Visible
+    {
+        get
+        {
+            var uri = new Uri(Navigation.Uri);
+            var path = uri.AbsolutePath.TrimEnd('/').ToLowerInvariant();
+            // No mostrar en raiz, dashboard, ni login.
+            if (string.IsNullOrEmpty(path)) return false;
+            if (path == "/dashboard" || path == "/login" || path == "/home") return false;
+            return true;
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        Navigation.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+
+    private async Task VolverAtras()
+    {
+        try { await JS.InvokeVoidAsync("history.back"); }
+        catch { Navigation.NavigateTo("/dashboard"); }
+    }
+}

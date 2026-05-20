@@ -172,10 +172,13 @@
     </div>
 
     <div class="doc-toolbar">
-        <button class="btn-toolbar" @onclick="VolverAtras" title="Volver a la pantalla anterior"
-                style="background: linear-gradient(180deg,#f9fafb,#f3f4f6);">
-            ← Volver
-        </button>
+        @if (!string.Equals(currentPath, CarpetaFija, StringComparison.OrdinalIgnoreCase))
+        {
+            <button class="btn-toolbar" @onclick="VolverAtras" title="Subir un nivel"
+                    style="background: linear-gradient(180deg,#f9fafb,#f3f4f6);">
+                ↑ Subir
+            </button>
+        }
         <div class="doc-breadcrumb">
             <a @onclick="@(() => IrA(CarpetaFija))">📑 Documentación</a>
             @foreach (var seg in SegmentosBreadcrumb())

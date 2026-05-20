@@ -437,6 +437,7 @@
             <button class="topbar-menu-btn" @onclick="ToggleSidebar" aria-label="Abrir menu">
                 @SvgIcons.Menu
             </button>
+            <BackButton />
             @* Selector de empresa desactivado — el sistema funciona sin filtro por empresa.
                Si en algun momento querés volver a habilitarlo, cambiá ENABLE_COMPANY_SELECTOR a true. *@
             @{ const bool ENABLE_COMPANY_SELECTOR = false; }

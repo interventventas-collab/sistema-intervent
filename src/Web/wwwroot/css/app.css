@@ -877,6 +877,33 @@ button {
   color: var(--text-secondary);
 }
 
+/* Boton "← Volver" en la topbar (componente BackButton). Visible en todas las
+   pantallas excepto dashboard y login. */
+.topbar-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.4rem 0.8rem;
+  margin-left: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #374151;
+  background: linear-gradient(180deg, #ffffff 0%, #f3f4f6 100%);
+  border: 1px solid #d1d5db;
+  border-radius: 7px;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  transition: transform 0.1s ease, box-shadow 0.1s ease, border-color 0.1s ease, background 0.1s ease;
+}
+.topbar-back-btn:hover {
+  background: linear-gradient(180deg, #f9fafb 0%, #e5e7eb 100%);
+  border-color: #1d4ed8;
+  color: #1d4ed8;
+  transform: translateX(-2px);
+  box-shadow: 0 3px 8px rgba(0,0,0,0.10);
+}
+.topbar-back-btn:active { transform: translateX(0); }
+
 .topbar-menu-btn svg {
   width: 20px;
   height: 20px;
