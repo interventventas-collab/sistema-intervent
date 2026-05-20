@@ -15,7 +15,12 @@ namespace Api.Controllers;
 public class CafeListasPreciosController : ControllerBase
 {
     private readonly AppDbContext _db;
-    public CafeListasPreciosController(AppDbContext db) { _db = db; }
+    private readonly CafeListaPreciosPdfService _pdfSvc;
+    public CafeListasPreciosController(AppDbContext db, CafeListaPreciosPdfService pdfSvc)
+    {
+        _db = db;
+        _pdfSvc = pdfSvc;
+    }
 
     /// <summary>Genera la previsualizacion de la lista de precios. Usa CafePricingService para
     /// calcular los precios — NO duplica logica de pricing.</summary>
@@ -35,6 +40,20 @@ public class CafeListasPreciosController : ControllerBase
         var clienteSlug = preview.Cliente?.Nombre is string n ? Slug(n) : "general";
         var filename = $"lista-precios-{clienteSlug}-{preview.Fecha:yyyyMMdd}.xlsx";
         return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename);
+    }
+
+    /// <summary>Exporta la lista de precios a PDF (PDF/1.7 estandar generado con QuestPDF).
+    /// Reemplaza el flujo viejo de "imprimir HTML desde el browser" que generaba PDFs no
+    /// estandar que algunos lectores moviles no abrian.</summary>
+    [HttpPost("export-pdf")]
+    public async Task<IActionResult> ExportPdf([FromBody] CafeListaPreciosFiltroRequest req)
+    {
+        var (preview, _) = await BuildPreviewAsync(req);
+        var bytes = _pdfSvc.GenerarPdf(preview);
+        var clienteSlug = preview.Cliente?.Nombre is string n ? Slug(n) : "general";
+        var tipoSlug = preview.TipoCliente.ToLowerInvariant();
+        var filename = $"lista-precios-{tipoSlug}-{clienteSlug}-{preview.Fecha:yyyyMMdd}.pdf";
+        return File(bytes, "application/pdf", filename);
     }
 
     // ============================================================

@@ -1213,6 +1213,15 @@ public class ApiClient
         return null;
     }
 
+    public async Task<byte[]?> ExportCafeListaPreciosPdfAsync(CafeListaPreciosFiltroRequest req)
+    {
+        await SetAuthHeaderAsync();
+        var response = await _http.PostAsJsonAsync("/api/cafe/listas-precios/export-pdf", req);
+        if (response.IsSuccessStatusCode) return await response.Content.ReadAsByteArrayAsync();
+        await ThrowIfErrorAsync(response);
+        return null;
+    }
+
     /// <summary>Excel con los productos vendidos en el rango de fechas, agrupados + hoja con detalle.</summary>
     public async Task<byte[]?> ExportCafeProductosVendidosAsync(DateTime desde, DateTime hasta)
     {

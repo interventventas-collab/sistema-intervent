@@ -470,12 +470,30 @@
 
     private async Task DoPrintPdf()
     {
+        if (preview is null) return;
+        isExporting = true;
         try
         {
-            var titulo = $"Lista de precios {preview?.Cliente?.Nombre ?? "general"} {preview?.Fecha:dd-MM-yyyy}";
-            await JS.InvokeVoidAsync("printElement", "cafe-lp-print", titulo);
+            var req = new CafeListaPreciosFiltroRequest
+            {
+                ClienteId = formClienteId > 0 ? formClienteId : null,
+                Tipo = formTipo,
+                MarcaIds = formMarcaIds.Count > 0 ? formMarcaIds.ToList() : null,
+                Categoria = string.IsNullOrEmpty(formCategoria) ? null : formCategoria,
+                Observaciones = formObservaciones,
+                FechaVigencia = formVigenteDesde
+            };
+            var bytes = await Api.ExportCafeListaPreciosPdfAsync(req);
+            if (bytes is null || bytes.Length == 0) { ToastService.Error("No se pudo generar el PDF"); return; }
+            var clienteSlug = preview.Cliente?.Nombre?.ToLowerInvariant().Replace(' ', '-') ?? "general";
+            var tipoSlug = preview.TipoCliente.ToLowerInvariant();
+            var filename = $"lista-precios-{tipoSlug}-{clienteSlug}-{preview.Fecha:yyyyMMdd}.pdf";
+            var b64 = Convert.ToBase64String(bytes);
+            await JS.InvokeVoidAsync("downloadBytesAsFile", filename, b64, "application/pdf");
+            ToastService.Success("PDF descargado");
         }
-        catch { ToastService.Error("No se pudo abrir la ventana de impresión"); }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { isExporting = false; }
     }
 
     private async Task DoExportExcel()
