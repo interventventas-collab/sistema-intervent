@@ -157,6 +157,7 @@ public class SaldoBancoDto
     public decimal Saldo { get; set; }
     public DateTime UltimaFecha { get; set; }
     public int CantidadMovimientos { get; set; }
+    public DateTime? UltimoImportadoAt { get; set; }
 }
 
 public class ImportExtractoResultDto

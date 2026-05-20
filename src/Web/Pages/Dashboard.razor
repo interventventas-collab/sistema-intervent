@@ -403,6 +403,12 @@
             <div style="font-size: 0.7rem; color: rgba(255,255,255,0.8); margin-top: 0.15rem;">
                 al @saldoBanco.UltimaFecha.ToString("dd/MM/yyyy")
             </div>
+            @if (saldoBanco.UltimoImportadoAt.HasValue)
+            {
+                <div style="font-size: 0.65rem; color: rgba(255,255,255,0.65); margin-top: 0.15rem; font-style: italic;">
+                    🔄 Última actualización: @FormatearUltimaActualizacion(saldoBanco.UltimoImportadoAt.Value)
+                </div>
+            }
         }
     </div>
 </div>
@@ -701,6 +707,18 @@
             sb.Append(intPart[i]);
         }
         return sb + "," + decPart;
+    }
+
+    /// <summary>Formato amigable de fecha+hora: "hoy a las 17:45 hs", "ayer a las 09:30 hs",
+    /// "20/05 a las 17:45 hs". Convierte de UTC a Argentina antes de mostrar.</summary>
+    private static string FormatearUltimaActualizacion(DateTime utcDate)
+    {
+        var dt = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utcDate, DateTimeKind.Utc), ArgentinaTz);
+        var hoy = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, ArgentinaTz).Date;
+        var fechaSolo = dt.Date;
+        if (fechaSolo == hoy) return $"hoy a las {dt:HH:mm} hs";
+        if (fechaSolo == hoy.AddDays(-1)) return $"ayer a las {dt:HH:mm} hs";
+        return $"{dt:dd/MM} a las {dt:HH:mm} hs";
     }
 
     private static TimeZoneInfo SafeTz(string id, int offsetHours)

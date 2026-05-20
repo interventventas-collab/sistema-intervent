@@ -34,7 +34,7 @@ public class CafeExtractoBancoController : ControllerBase
         // Sugerencia de cliente: si el CUIT del extracto coincide con un cliente
         int? ClienteSugeridoId, string? ClienteSugeridoNombre);
 
-    public record SaldoBancoDto(decimal Saldo, DateTime UltimaFecha, int CantidadMovimientos);
+    public record SaldoBancoDto(decimal Saldo, DateTime UltimaFecha, int CantidadMovimientos, DateTime? UltimoImportadoAt);
 
     public record ImportResultDto(string Archivo, int Nuevos, int SinCambios, List<string> Errores);
 
@@ -45,9 +45,10 @@ public class CafeExtractoBancoController : ControllerBase
     {
         var ult = await _db.CafeExtractoMovimientos.OrderByDescending(m => m.Fecha).ThenByDescending(m => m.Id)
             .FirstOrDefaultAsync();
-        if (ult is null) return Ok(new SaldoBancoDto(0m, DateTime.MinValue, 0));
+        if (ult is null) return Ok(new SaldoBancoDto(0m, DateTime.MinValue, 0, null));
         var cant = await _db.CafeExtractoMovimientos.CountAsync();
-        return Ok(new SaldoBancoDto(ult.Saldo, ult.Fecha, cant));
+        var ultImportado = await _db.CafeExtractoMovimientos.MaxAsync(m => (DateTime?)m.ImportadoAt);
+        return Ok(new SaldoBancoDto(ult.Saldo, ult.Fecha, cant, ultImportado));
     }
 
     [HttpGet]
@@ -181,10 +182,17 @@ public class CafeExtractoBancoController : ControllerBase
         if (lineas.Count < 2)
             return new ImportResultDto(file.FileName, 0, 0, new List<string> { "CSV vacio o sin datos" });
 
-        // Parsear primera linea como header
+        // Parsear primera linea como header. NORMALIZAMOS removiendo espacios para que matchee
+        // tanto "Leyendas Adicionales 1" (Excel) como "Leyendas Adicionales1" (CSV).
         var headers = ParseCsvLine(lineas[0], sep);
         var idx = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        for (int i = 0; i < headers.Length; i++) if (!idx.ContainsKey(headers[i])) idx[headers[i]] = i;
+        for (int i = 0; i < headers.Length; i++)
+        {
+            var key = headers[i].Trim();
+            if (!idx.ContainsKey(key)) idx[key] = i;
+            var normalizado = new string(key.Where(c => !char.IsWhiteSpace(c)).ToArray());
+            if (!idx.ContainsKey(normalizado)) idx[normalizado] = i;
+        }
 
         if (!idx.ContainsKey("Fecha") || !idx.ContainsKey("Saldo"))
             return new ImportResultDto(file.FileName, 0, 0, new List<string> { "CSV no parece ser un extracto bancario (faltan columnas Fecha o Saldo). Detecte: " + string.Join(", ", headers.Take(5)) });
@@ -198,7 +206,15 @@ public class CafeExtractoBancoController : ControllerBase
             try
             {
                 var celdas = ParseCsvLine(lineas[li], sep);
-                string GetCol(string n) => idx.TryGetValue(n, out var ix) && ix < celdas.Length ? celdas[ix].Trim() : "";
+                // GetCol busca por nombre exacto y por nombre sin espacios (para que matchee
+                // tanto "Leyendas Adicionales 1" como "Leyendas Adicionales1").
+                string GetCol(string n)
+                {
+                    if (idx.TryGetValue(n, out var ix1) && ix1 < celdas.Length) return celdas[ix1].Trim();
+                    var sinEsp = new string(n.Where(c => !char.IsWhiteSpace(c)).ToArray());
+                    if (idx.TryGetValue(sinEsp, out var ix2) && ix2 < celdas.Length) return celdas[ix2].Trim();
+                    return "";
+                }
                 DateTime? ParseFecha(string s)
                 {
                     if (string.IsNullOrWhiteSpace(s)) return null;
