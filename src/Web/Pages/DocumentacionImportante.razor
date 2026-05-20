@@ -172,6 +172,10 @@
     </div>
 
     <div class="doc-toolbar">
+        <button class="btn-toolbar" @onclick="VolverAtras" title="Volver a la pantalla anterior"
+                style="background: linear-gradient(180deg,#f9fafb,#f3f4f6);">
+            ← Volver
+        </button>
         <div class="doc-breadcrumb">
             <a @onclick="@(() => IrA(CarpetaFija))">📑 Documentación</a>
             @foreach (var seg in SegmentosBreadcrumb())
@@ -543,6 +547,24 @@
     {
         currentPath = path;
         await Cargar();
+    }
+
+    /// <summary>Boton "← Volver". Si estamos en una subcarpeta, sube un nivel; si estamos en la raiz,
+    /// usa history.back() para volver a la pantalla anterior del sitio (o al dashboard como fallback).</summary>
+    private async Task VolverAtras()
+    {
+        if (!string.Equals(currentPath, CarpetaFija, StringComparison.OrdinalIgnoreCase))
+        {
+            // Subir un nivel en la jerarquia de carpetas.
+            var idx = currentPath.LastIndexOf('/');
+            var parent = idx > 0 ? currentPath.Substring(0, idx) : CarpetaFija;
+            await IrA(parent);
+        }
+        else
+        {
+            try { await JS.InvokeVoidAsync("history.back"); }
+            catch { }
+        }
     }
 
     private IEnumerable<(string nombre, string path, bool esActual)> SegmentosBreadcrumb()
