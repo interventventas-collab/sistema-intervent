@@ -3781,3 +3781,39 @@ BEGIN
     CREATE INDEX IX_CafeCalendarioNotas_Fecha ON Cafe_CalendarioNotas(Fecha);
 END
 GO
+
+-- ─── Extracto bancario (2026-05-19) ───
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_ExtractoMovimientos')
+BEGIN
+    CREATE TABLE Cafe_ExtractoMovimientos (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Fecha DATE NOT NULL,
+        Descripcion NVARCHAR(200) NULL,
+        Origen NVARCHAR(50) NULL,
+        Debitos DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Creditos DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Saldo DECIMAL(18,2) NOT NULL DEFAULT 0,
+        GrupoConceptos NVARCHAR(100) NULL,
+        Concepto NVARCHAR(100) NULL,
+        NumeroTerminal NVARCHAR(50) NULL,
+        ObservacionesCliente NVARCHAR(500) NULL,
+        NumeroComprobante NVARCHAR(100) NULL,
+        LeyendaAdicional1 NVARCHAR(200) NULL,
+        LeyendaAdicional2 NVARCHAR(50) NULL,
+        LeyendaAdicional3 NVARCHAR(50) NULL,
+        LeyendaAdicional4 NVARCHAR(200) NULL,
+        TipoMovimiento NVARCHAR(30) NULL,
+        HashUnico NVARCHAR(80) NOT NULL,
+        VentaIdAsociada INT NULL,
+        AsociadoPor NVARCHAR(120) NULL,
+        AsociadoAt DATETIME2 NULL,
+        ArchivoOrigen NVARCHAR(200) NULL,
+        ImportadoAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT FK_Cafe_ExtractoMovimientos_Venta FOREIGN KEY (VentaIdAsociada) REFERENCES Cafe_Ventas(Id)
+    );
+    CREATE UNIQUE INDEX UX_ExtractoMovimientos_Hash ON Cafe_ExtractoMovimientos(HashUnico);
+    CREATE INDEX IX_ExtractoMovimientos_Fecha ON Cafe_ExtractoMovimientos(Fecha DESC);
+    CREATE INDEX IX_ExtractoMovimientos_Cuit ON Cafe_ExtractoMovimientos(LeyendaAdicional2);
+END
+GO

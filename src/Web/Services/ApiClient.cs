@@ -673,6 +673,48 @@ public class ApiClient
         return resp.IsSuccessStatusCode;
     }
 
+    // === Extracto Bancario (2026-05-19) ===
+    public async Task<SaldoBancoDto?> GetSaldoBancoAsync()
+        => await GetAsync<SaldoBancoDto>("/api/cafe/extracto-banco/saldo");
+
+    public async Task<List<ExtractoMovimientoDto>?> GetExtractoMovimientosAsync(
+        DateTime? desde = null, DateTime? hasta = null, string? tipo = null, string? asociado = null)
+    {
+        var qs = new List<string>();
+        if (desde.HasValue) qs.Add($"desde={desde.Value:yyyy-MM-dd}");
+        if (hasta.HasValue) qs.Add($"hasta={hasta.Value:yyyy-MM-dd}");
+        if (!string.IsNullOrEmpty(tipo)) qs.Add("tipo=" + Uri.EscapeDataString(tipo));
+        if (!string.IsNullOrEmpty(asociado)) qs.Add("asociado=" + asociado);
+        var url = "/api/cafe/extracto-banco" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+        return await GetAsync<List<ExtractoMovimientoDto>>(url);
+    }
+
+    public async Task<List<ImportExtractoResultDto>?> ImportExtractoAsync(IEnumerable<(string name, Stream stream)> archivos)
+    {
+        await SetAuthHeaderAsync();
+        using var content = new MultipartFormDataContent();
+        foreach (var f in archivos)
+        {
+            var sc = new StreamContent(f.stream);
+            sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            content.Add(sc, "files", f.name);
+        }
+        var resp = await _http.PostAsync("/api/cafe/extracto-banco/import", content);
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadFromJsonAsync<List<ImportExtractoResultDto>>();
+    }
+
+    public async Task<bool> AsociarMovimientoExtractoAsync(int id, int ventaId, string? operador = null)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/cafe/extracto-banco/{id}/asociar",
+            new AsociarMovimientoRequest { VentaId = ventaId, Operador = operador });
+        return resp.IsSuccessStatusCode;
+    }
+
+    public async Task<bool> DesasociarMovimientoExtractoAsync(int id)
+        => await DeleteAsync($"/api/cafe/extracto-banco/{id}/asociar");
+
     // === Calendario Notas (2026-05-19) ===
     public async Task<List<CalendarioNotaDto>?> GetCalendarioNotasAsync(DateTime? desde = null, DateTime? hasta = null)
     {

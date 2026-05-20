@@ -1,0 +1,356 @@
+@page "/cafe/tesoreria/extracto-banco"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject OperatorService Operator
+@inject NavigationManager Navigation
+@using Web.Models
+
+@* ════════════════════════════════════════════════════════════════════════════
+   Extracto bancario (Galicia CC). El usuario sube el Excel del banco, ve los
+   movimientos y puede asociar cada ingreso con una venta puntual.
+   La asociacion es solo marcado — no crea cobranza automatica (decision del
+   usuario el 2026-05-19, prefiere cargarla aparte).
+   ════════════════════════════════════════════════════════════════════════════ *@
+
+<style>
+    .ex-wrap { max-width: 1300px; margin: 0 auto; padding: 0.5rem; }
+    .ex-header { text-align: center; margin-bottom: 1rem; }
+    .ex-header h1 { font-size: 1.5rem; margin: 0; }
+    .ex-header p { color: #6b7280; margin: 0.3rem 0 0; font-size: 0.9rem; }
+
+    .ex-saldo-card { background: linear-gradient(135deg, #1e40af, #1e3a8a); color: white; border-radius: 12px; padding: 1.2rem 1.4rem; margin-bottom: 1rem; box-shadow: 0 4px 14px rgba(30, 64, 175, 0.3); }
+    .ex-saldo-label { font-size: 0.78rem; opacity: 0.85; text-transform: uppercase; letter-spacing: 0.05em; }
+    .ex-saldo-monto { font-size: 1.9rem; font-weight: 800; margin: 0.2rem 0; }
+    .ex-saldo-meta { font-size: 0.78rem; opacity: 0.8; }
+
+    .ex-toolbar { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; background: white; padding: 0.6rem 0.8rem; border-radius: 8px; margin-bottom: 0.6rem; }
+    .ex-filtros { display: flex; gap: 0.3rem; }
+    .ex-filtro { padding: 0.4rem 0.8rem; border: 1px solid #d1d5db; background: white; color: #374151; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.83rem; }
+    .ex-filtro.activo { background: #1d4ed8; color: white; border-color: #1d4ed8; }
+    .btn-import { padding: 0.5rem 1rem; font-weight: 700; border-radius: 6px; border: none; background: #16a34a; color: white; cursor: pointer; }
+    .btn-import:hover { background: #15803d; }
+
+    .ex-tabla { width: 100%; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border-collapse: collapse; }
+    .ex-tabla th { background: #f9fafb; padding: 0.5rem 0.7rem; text-align: left; font-size: 0.75rem; color: #374151; border-bottom: 1px solid #e5e7eb; }
+    .ex-tabla td { padding: 0.5rem 0.7rem; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem; vertical-align: top; }
+    .ex-tabla tr.ingreso td { background: #f0fdf4; }
+    .ex-tabla tr.ingreso:hover td { background: #dcfce7; }
+    .ex-tabla tr.egreso:hover td { background: #f9fafb; }
+    .ex-mov-mono { font-family: monospace; }
+    .ex-mov-credito { color: #16a34a; font-weight: 700; }
+    .ex-mov-debito { color: #b91c1c; font-weight: 700; }
+    .ex-asociado-badge { display: inline-block; padding: 0.1rem 0.45rem; border-radius: 999px; background: #dcfce7; color: #166534; font-size: 0.7rem; font-weight: 700; }
+    .ex-sugerencia-badge { display: inline-block; padding: 0.1rem 0.45rem; border-radius: 999px; background: #fef3c7; color: #92400e; font-size: 0.7rem; font-weight: 700; }
+    .btn-asociar { padding: 0.25rem 0.55rem; font-size: 0.75rem; background: #fbbf24; color: #78350f; border: 1px solid #f59e0b; border-radius: 4px; cursor: pointer; font-weight: 700; }
+    .btn-asociar:hover { background: #f59e0b; color: white; }
+    .btn-desasociar { padding: 0.25rem 0.5rem; font-size: 0.7rem; background: white; color: #6b7280; border: 1px solid #d1d5db; border-radius: 4px; cursor: pointer; }
+    .btn-desasociar:hover { background: #fee2e2; color: #b91c1c; }
+
+    .vacio { background: white; padding: 2rem; text-align: center; color: #9ca3af; border-radius: 8px; }
+</style>
+
+<div class="ex-wrap">
+    <div class="ex-header">
+        <h1>🏦 Extracto bancario — Galicia CC</h1>
+        <p>Subí el Excel del banco para ver el saldo, movimientos e ingresos para asociar a ventas.</p>
+    </div>
+
+    @if (saldo is not null && saldo.CantidadMovimientos > 0)
+    {
+        <div class="ex-saldo-card">
+            <div class="ex-saldo-label">💰 Saldo actual de la cuenta</div>
+            <div class="ex-saldo-monto">$@saldo.Saldo.ToString("N2")</div>
+            <div class="ex-saldo-meta">Último movimiento: @saldo.UltimaFecha.ToString("dd/MM/yyyy") · @saldo.CantidadMovimientos movimientos totales importados</div>
+        </div>
+    }
+
+    <div class="ex-toolbar">
+        <div class="ex-filtros">
+            <button class="ex-filtro @(filtro == "todos" ? "activo" : "")" @onclick='() => CambiarFiltro("todos")'>Todos</button>
+            <button class="ex-filtro @(filtro == "ingresos" ? "activo" : "")" @onclick='() => CambiarFiltro("ingresos")'>🟢 Ingresos</button>
+            <button class="ex-filtro @(filtro == "egresos" ? "activo" : "")" @onclick='() => CambiarFiltro("egresos")'>🔴 Egresos</button>
+            <button class="ex-filtro @(filtro == "sin-asociar" ? "activo" : "")" @onclick='() => CambiarFiltro("sin-asociar")'>⚠ Sin asociar</button>
+        </div>
+        <label class="btn-import" style="margin-left: auto;">
+            @if (importing)
+            {
+                <span>⏳ Importando...</span>
+            }
+            else
+            {
+                <span>📤 Subir extracto</span>
+                <InputFile OnChange="OnFilesSelected" multiple style="display: none;" accept=".xlsx,.xls" />
+            }
+        </label>
+    </div>
+
+    @if (loading)
+    {
+        <p style="text-align: center; padding: 2rem;">Cargando...</p>
+    }
+    else if (movs.Count == 0)
+    {
+        <div class="vacio">
+            <div style="font-size: 2.5rem;">🏦</div>
+            <strong>No hay movimientos cargados</strong>
+            <p style="margin: 0.4rem 0 0; font-size: 0.85rem;">Tocá "📤 Subir extracto" arriba para empezar.</p>
+        </div>
+    }
+    else
+    {
+        <table class="ex-tabla">
+            <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>Descripción</th>
+                    <th>Origen (Cliente)</th>
+                    <th style="text-align: right;">Débito</th>
+                    <th style="text-align: right;">Crédito</th>
+                    <th style="text-align: right;">Saldo</th>
+                    <th>Asociar con venta</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var m in movs)
+                {
+                    var esIngreso = m.Creditos > 0.01m;
+                    <tr class="@(esIngreso ? "ingreso" : "egreso")">
+                        <td>@m.Fecha.ToString("dd/MM/yyyy")</td>
+                        <td>
+                            <strong>@(m.Descripcion ?? "—")</strong>
+                            @if (!string.IsNullOrEmpty(m.ObservacionesCliente))
+                            {
+                                <div style="font-size: 0.72rem; color: #6b7280;">@m.ObservacionesCliente</div>
+                            }
+                        </td>
+                        <td>
+                            @if (!string.IsNullOrEmpty(m.LeyendaAdicional1))
+                            {
+                                <strong>@m.LeyendaAdicional1</strong>
+                                <div style="font-size: 0.7rem; color: #6b7280; font-family: monospace;">@m.LeyendaAdicional2</div>
+                                @if (m.ClienteSugeridoId.HasValue)
+                                {
+                                    <div style="font-size: 0.7rem; color: #166534; margin-top: 0.15rem;">
+                                        ✓ Cliente: @m.ClienteSugeridoNombre
+                                    </div>
+                                }
+                            }
+                            else
+                            {
+                                <span style="color: #9ca3af;">—</span>
+                            }
+                        </td>
+                        <td style="text-align: right;" class="ex-mov-mono">
+                            @if (m.Debitos > 0.01m) { <span class="ex-mov-debito">$@m.Debitos.ToString("N2")</span> }
+                        </td>
+                        <td style="text-align: right;" class="ex-mov-mono">
+                            @if (m.Creditos > 0.01m) { <span class="ex-mov-credito">$@m.Creditos.ToString("N2")</span> }
+                        </td>
+                        <td style="text-align: right;" class="ex-mov-mono">$@m.Saldo.ToString("N2")</td>
+                        <td>
+                            @if (m.VentaIdAsociada.HasValue)
+                            {
+                                <span class="ex-asociado-badge">✓ @m.VentaNumeroAsociada</span>
+                                <button class="btn-desasociar" @onclick="() => Desasociar(m.Id)" title="Quitar asociación">×</button>
+                            }
+                            else if (esIngreso)
+                            {
+                                @if (m.ClienteSugeridoId.HasValue)
+                                {
+                                    <button class="btn-asociar" @onclick="() => AbrirModalAsociar(m)">🔍 Asociar a venta</button>
+                                }
+                                else
+                                {
+                                    <button class="btn-asociar" @onclick="() => AbrirModalAsociar(m)" style="background: #e5e7eb; color: #6b7280;">🔍 Buscar cliente</button>
+                                }
+                            }
+                            else
+                            {
+                                <span style="color: #9ca3af; font-size: 0.78rem;">—</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@* Modal: asociar movimiento con venta *@
+@if (movAsociar is not null)
+{
+    <div class="modal-overlay" @onclick="@(() => movAsociar = null)" style="z-index: 9000; position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;">
+        <div class="modal-card" @onclick:stopPropagation="true" style="background: white; border-radius: 10px; max-width: 600px; width: 90%; max-height: 85vh; overflow: auto;">
+            <div class="modal-header" style="padding: 0.8rem 1rem; background: #1d4ed8; color: white; display: flex; justify-content: space-between; align-items: center; border-radius: 10px 10px 0 0;">
+                <h3 style="margin: 0; font-size: 1.05rem;">💰 Asociar ingreso con venta</h3>
+                <button class="btn-close" @onclick="@(() => movAsociar = null)" style="background: none; border: none; color: white; font-size: 1.5rem; cursor: pointer;">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 1rem;">
+                <div style="background: #f0fdf4; padding: 0.7rem; border-radius: 6px; margin-bottom: 0.7rem; border-left: 3px solid #16a34a;">
+                    <div style="font-size: 0.78rem; color: #6b7280;">Movimiento del @movAsociar.Fecha.ToString("dd/MM/yyyy")</div>
+                    <div style="font-weight: 700;">@(movAsociar.LeyendaAdicional1 ?? movAsociar.Descripcion)</div>
+                    @if (!string.IsNullOrEmpty(movAsociar.LeyendaAdicional2))
+                    {
+                        <div style="font-family: monospace; font-size: 0.75rem; color: #6b7280;">CUIT: @movAsociar.LeyendaAdicional2</div>
+                    }
+                    <div style="font-size: 1.2rem; font-weight: 800; color: #16a34a; margin-top: 0.3rem;">+ $@movAsociar.Creditos.ToString("N2")</div>
+                </div>
+                @if (loadingVentasAsociar)
+                {
+                    <p style="text-align: center;">Buscando ventas...</p>
+                }
+                else if (ventasAsociar.Count == 0)
+                {
+                    <p style="text-align: center; color: #6b7280;">
+                        @if (movAsociar.ClienteSugeridoId.HasValue)
+                        {
+                            <span>El cliente <strong>@movAsociar.ClienteSugeridoNombre</strong> no tiene ventas con saldo pendiente.</span>
+                        }
+                        else
+                        {
+                            <span>No se encontró cliente con ese CUIT. <a @onclick='() => Navigation.NavigateTo("/cafe/clientes")' style="cursor: pointer;">Crear cliente nuevo</a></span>
+                        }
+                    </p>
+                }
+                else
+                {
+                    <div style="font-size: 0.85rem; font-weight: 700; margin-bottom: 0.4rem;">Ventas pendientes de @movAsociar.ClienteSugeridoNombre:</div>
+                    @foreach (var v in ventasAsociar)
+                    {
+                        var diff = Math.Abs(v.Saldo - movAsociar.Creditos);
+                        var match = diff < 1m;
+                        <div style="padding: 0.6rem 0.8rem; margin-bottom: 0.3rem; border: 1px solid @(match ? "#16a34a" : "#e5e7eb"); border-radius: 6px; cursor: pointer; background: @(match ? "#f0fdf4" : "white"); display: flex; justify-content: space-between; align-items: center;"
+                             @onclick="() => ConfirmarAsociar(v.VentaId)">
+                            <div>
+                                <strong>@v.Numero</strong>
+                                @if (match)
+                                {
+                                    <span style="margin-left: 0.4rem; font-size: 0.7rem; color: #16a34a; font-weight: 700;">💡 MATCH EXACTO</span>
+                                }
+                                <div style="font-size: 0.72rem; color: #6b7280;">@v.Fecha.ToString("dd/MM/yyyy")</div>
+                            </div>
+                            <div style="text-align: right;">
+                                <div style="font-weight: 700;">$@v.Saldo.ToString("N2")</div>
+                                @if (!match)
+                                {
+                                    <div style="font-size: 0.7rem; color: #6b7280;">diff: $@diff.ToString("N2")</div>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private SaldoBancoDto? saldo;
+    private List<ExtractoMovimientoDto> movs = new();
+    private bool loading = true;
+    private bool importing;
+    private string filtro = "todos";
+
+    // Asociacion
+    private ExtractoMovimientoDto? movAsociar;
+    private List<ComprobantePendienteDto> ventasAsociar = new();
+    private bool loadingVentasAsociar;
+
+    protected override async Task OnInitializedAsync() => await Recargar();
+
+    private async Task Recargar()
+    {
+        loading = true;
+        try
+        {
+            saldo = await Api.GetSaldoBancoAsync();
+            await CargarMovs();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { loading = false; }
+    }
+
+    private async Task CambiarFiltro(string f)
+    {
+        filtro = f;
+        await CargarMovs();
+    }
+
+    private async Task CargarMovs()
+    {
+        var tipo = filtro is "ingresos" or "egresos" ? filtro : null;
+        var asoc = filtro == "sin-asociar" ? "no" : null;
+        movs = await Api.GetExtractoMovimientosAsync(tipo: tipo, asociado: asoc) ?? new();
+    }
+
+    private async Task OnFilesSelected(InputFileChangeEventArgs e)
+    {
+        var files = e.GetMultipleFiles(5);
+        if (files.Count == 0) return;
+        importing = true;
+        try
+        {
+            var streams = new List<Stream>();
+            var items = new List<(string name, Stream stream)>();
+            foreach (var f in files)
+            {
+                var s = f.OpenReadStream(50 * 1024 * 1024);
+                streams.Add(s);
+                items.Add((f.Name, s));
+            }
+            var result = await Api.ImportExtractoAsync(items);
+            foreach (var s in streams) try { s.Dispose(); } catch { }
+            if (result is null) { ToastService.Error("No se pudo importar"); return; }
+            foreach (var r in result)
+            {
+                var msg = $"✓ {r.Archivo}: {r.Nuevos} nuevos, {r.SinCambios} sin cambios";
+                if (r.Errores.Count > 0) msg += $" ({r.Errores.Count} errores)";
+                ToastService.Success(msg);
+            }
+            await Recargar();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { importing = false; }
+    }
+
+    private async Task AbrirModalAsociar(ExtractoMovimientoDto m)
+    {
+        movAsociar = m;
+        ventasAsociar = new();
+        if (m.ClienteSugeridoId.HasValue)
+        {
+            loadingVentasAsociar = true;
+            try
+            {
+                var pend = await Api.GetComprobantesPendientesAsync(m.ClienteSugeridoId.Value);
+                ventasAsociar = pend ?? new();
+            }
+            catch { }
+            finally { loadingVentasAsociar = false; }
+        }
+    }
+
+    private async Task ConfirmarAsociar(int ventaId)
+    {
+        if (movAsociar is null) return;
+        var ok = await Api.AsociarMovimientoExtractoAsync(movAsociar.Id, ventaId, Operator.Current);
+        if (ok)
+        {
+            ToastService.Success("✓ Movimiento asociado");
+            movAsociar = null;
+            await CargarMovs();
+        }
+        else ToastService.Error("No se pudo asociar");
+    }
+
+    private async Task Desasociar(int id)
+    {
+        var ok = await Api.DesasociarMovimientoExtractoAsync(id);
+        if (ok)
+        {
+            ToastService.Info("Asociación quitada");
+            await CargarMovs();
+        }
+    }
+}

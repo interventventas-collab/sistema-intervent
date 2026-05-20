@@ -7,6 +7,7 @@
 @inject OperatorService Operator
 @inject ToastService ToastService
 @inject CurrentCompanyService Company
+@inject NavigationManager Navigation
 
 <div class="view-header">
     <h2>Bienvenido, @username</h2>
@@ -379,18 +380,30 @@
         }
     </div>
 
-    @* Cuentas a pagar (en construccion) *@
-    <div class="dashboard-detail-card" style="padding: 0.85rem; background: #f3f4f6; border: 1px dashed #9ca3af; opacity: 0.85;">
+    @* Saldo banco Galicia *@
+    <div class="dashboard-detail-card" style="padding: 0.85rem; background: linear-gradient(135deg, #1e40af, #2563eb); cursor: pointer;" @onclick='() => Navigation.NavigateTo("/cafe/tesoreria/extracto-banco")' title="Ir al extracto bancario">
         <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem;">
-            <span style="font-size: 1.3rem;">🧾</span>
-            <strong style="font-size: 0.85rem; color: #4b5563;">Cuentas a pagar</strong>
+            <span style="font-size: 1.3rem;">🏦</span>
+            <strong style="font-size: 0.85rem; color: white;">Saldo banco Galicia</strong>
         </div>
-        <div style="font-size: 1rem; font-weight: 700; color: #6b7280; line-height: 1.2;">
-            🚧 En construcción
-        </div>
-        <div style="font-size: 0.7rem; color: #6b7280; margin-top: 0.15rem;">
-            Pronto: facturas de proveedores con vencimientos
-        </div>
+        @if (saldoBanco is null || saldoBanco.CantidadMovimientos == 0)
+        {
+            <div style="font-size: 0.95rem; font-weight: 700; color: rgba(255,255,255,0.85); line-height: 1.2;">
+                Subí el extracto →
+            </div>
+            <div style="font-size: 0.7rem; color: rgba(255,255,255,0.7); margin-top: 0.15rem;">
+                Click para importar
+            </div>
+        }
+        else
+        {
+            <div style="font-size: 1.45rem; font-weight: 800; color: white; line-height: 1.2;">
+                $@FormatMoney(saldoBanco.Saldo)
+            </div>
+            <div style="font-size: 0.7rem; color: rgba(255,255,255,0.8); margin-top: 0.15rem;">
+                al @saldoBanco.UltimaFecha.ToString("dd/MM/yyyy")
+            </div>
+        }
     </div>
 </div>
 
@@ -495,6 +508,7 @@
     private CoffeeStockKgDto? coffeeStock;
     private System.Threading.Timer? salesSummaryTimer;
     private SalesSummaryDto? salesSummary;
+    private Web.Models.SaldoBancoDto? saldoBanco;
 
 
     // Cache-buster para la imagen de fondo (cuando se reemplaza, sube este numero
@@ -613,6 +627,11 @@
         {
             // Mantener el valor anterior si falla
         }
+        try
+        {
+            saldoBanco = await Api.GetSaldoBancoAsync();
+        }
+        catch { /* idem, opcional */ }
         StateHasChanged();
     }
 

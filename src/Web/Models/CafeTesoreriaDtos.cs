@@ -129,6 +129,50 @@ public class CrearCalendarioNotaRequest
     public string? CreadoPor { get; set; }
 }
 
+// ========== Extracto Bancario ==========
+public class ExtractoMovimientoDto
+{
+    public int Id { get; set; }
+    public DateTime Fecha { get; set; }
+    public string? Descripcion { get; set; }
+    public decimal Debitos { get; set; }
+    public decimal Creditos { get; set; }
+    public decimal Saldo { get; set; }
+    public string? Concepto { get; set; }
+    public string? ObservacionesCliente { get; set; }
+    public string? LeyendaAdicional1 { get; set; }  // razon social
+    public string? LeyendaAdicional2 { get; set; }  // CUIT
+    public string? TipoMovimiento { get; set; }
+    public int? VentaIdAsociada { get; set; }
+    public string? VentaNumeroAsociada { get; set; }
+    public string? AsociadoPor { get; set; }
+    public DateTime? AsociadoAt { get; set; }
+    // Sugerencia
+    public int? ClienteSugeridoId { get; set; }
+    public string? ClienteSugeridoNombre { get; set; }
+}
+
+public class SaldoBancoDto
+{
+    public decimal Saldo { get; set; }
+    public DateTime UltimaFecha { get; set; }
+    public int CantidadMovimientos { get; set; }
+}
+
+public class ImportExtractoResultDto
+{
+    public string Archivo { get; set; } = "";
+    public int Nuevos { get; set; }
+    public int SinCambios { get; set; }
+    public List<string> Errores { get; set; } = new();
+}
+
+public class AsociarMovimientoRequest
+{
+    public int VentaId { get; set; }
+    public string? Operador { get; set; }
+}
+
 public class CobranzaListDto
 {
     public int Id { get; set; }

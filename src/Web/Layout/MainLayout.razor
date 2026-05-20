@@ -52,7 +52,7 @@
         @if (HasPerm("cafe"))
         {
             <NavGroup Label="Ventas por fuera" Icon="@SvgIcons.Brand"
-                      HasActiveChild="@(IsActive("/cafe") || IsActive("/cafe/ventas") || IsActive("/cafe/productos") || IsActive("/cafe/combos") || IsActive("/cafe/oems") || IsActive("/cafe/clientes") || IsActive("/cafe/clientes-mapeados") || IsActive("/cafe/configuracion") || IsActive("/cafe/compras") || IsActive("/cafe/proveedores") || IsActive("/cafe/marcas") || IsActive("/cafe/listas-precios") || IsActive("/cafe/consultas") || IsActive("/cafe/cotejo") || IsActive("/cafe/descuentos") || IsActive("/cafe/kits") || IsActive("/cafe/reglas-precios") || IsActive("/cafe/saldos") || IsActive("/cafe/saldos-pendientes") || IsActive("/cafe/maquinas") || IsActive("/cafe/tesoreria/cajas") || IsActive("/cafe/tesoreria/resumen") || IsActive("/cafe/tesoreria/cobranzas") || IsActive("/cafe/tesoreria/pagos") || IsActive("/cafe/tesoreria/cheques") || IsActive("/cafe/depositos") || IsActive("/cafe/stock-masivo") || IsActive("/cafe/preventas") || IsActive("/cafe/arca/errores") || IsActive("/cafe/clientes/panel-deudas") || IsActive("/cafe/preparacion") || IsActive("/horas-extras") || IsActive("/viajes") || IsActive("/stock"))">
+                      HasActiveChild="@(IsActive("/cafe") || IsActive("/cafe/ventas") || IsActive("/cafe/productos") || IsActive("/cafe/combos") || IsActive("/cafe/oems") || IsActive("/cafe/clientes") || IsActive("/cafe/clientes-mapeados") || IsActive("/cafe/configuracion") || IsActive("/cafe/compras") || IsActive("/cafe/proveedores") || IsActive("/cafe/marcas") || IsActive("/cafe/listas-precios") || IsActive("/cafe/consultas") || IsActive("/cafe/cotejo") || IsActive("/cafe/descuentos") || IsActive("/cafe/kits") || IsActive("/cafe/reglas-precios") || IsActive("/cafe/saldos") || IsActive("/cafe/saldos-pendientes") || IsActive("/cafe/maquinas") || IsActive("/cafe/tesoreria/cajas") || IsActive("/cafe/tesoreria/resumen") || IsActive("/cafe/tesoreria/cobranzas") || IsActive("/cafe/tesoreria/pagos") || IsActive("/cafe/tesoreria/cheques") || IsActive("/cafe/depositos") || IsActive("/cafe/stock-masivo") || IsActive("/cafe/preventas") || IsActive("/cafe/arca/errores") || IsActive("/cafe/clientes/panel-deudas") || IsActive("/cafe/preparacion") || IsActive("/cafe/tesoreria/cheques-banco") || IsActive("/cafe/tesoreria/extracto-banco") || IsActive("/horas-extras") || IsActive("/viajes") || IsActive("/stock"))">
 
                 @* ───────── 1. ⭐ FAVORITOS (destacado verde, expandido por default) ─────────
                    Pedido del usuario 2026-05-19: una carpeta con los accesos mas usados que aparezca
@@ -150,6 +150,8 @@
                                  IsActive="@IsActive("/cafe/tesoreria/cheques")" OnClick="@(() => NavigateTo("/cafe/tesoreria/cheques"))" />
                         <NavItem Href="/cafe/tesoreria/cheques-banco" Label="💳 Cheques (banco)" Icon="@SvgIcons.Database"
                                  IsActive="@IsActive("/cafe/tesoreria/cheques-banco")" OnClick="@(() => NavigateTo("/cafe/tesoreria/cheques-banco"))" />
+                        <NavItem Href="/cafe/tesoreria/extracto-banco" Label="🏦 Extracto banco" Icon="@SvgIcons.Database"
+                                 IsActive="@IsActive("/cafe/tesoreria/extracto-banco")" OnClick="@(() => NavigateTo("/cafe/tesoreria/extracto-banco"))" />
                     </NavGroup>
                 }
 
