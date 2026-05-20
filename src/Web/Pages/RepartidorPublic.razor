@@ -3,7 +3,9 @@
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 @inject HttpClient Http
+@implements IDisposable
 @using System.Net.Http.Json
+@using Microsoft.JSInterop
 @using Web.Models
 
 @* ════════════════════════════════════════════════════════════════════════════
@@ -178,7 +180,18 @@
                 @if (resultadoMensaje is not null)
                 {
                     <div class="rp-ok">@resultadoMensaje</div>
-                    <button class="rp-btn-secondary" @onclick="ReiniciarFormulario" style="margin-top: 0.7rem;">Cargar otra cosa para esta venta</button>
+                    @if (escaneando)
+                    {
+                        <div style="margin-top: 0.8rem;">
+                            <div id="@qrScannerElementId" style="width: 100%; max-width: 350px; margin: 0 auto;"></div>
+                            <button class="rp-btn-secondary" @onclick="DetenerEscaneo" style="margin-top: 0.5rem;">✕ Cancelar escaneo</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <button class="rp-btn-primary" @onclick="EscanearProximo" style="margin-top: 0.7rem; background: #1d4ed8;">📷 Escanear próximo QR</button>
+                        <button class="rp-btn-secondary" @onclick="ReiniciarFormulario" style="margin-top: 0.5rem;">Cargar otra cosa para esta venta</button>
+                    }
                 }
                 else
                 {
@@ -259,11 +272,30 @@
     private bool enviando;
     private string? resultadoMensaje;
 
-    protected override async Task OnInitializedAsync()
+    // Escaneo de QR para saltar a la próxima venta
+    private bool escaneando;
+    private const string qrScannerElementId = "qr-scanner-region";
+    private DotNetObjectReference<RepartidorPublic>? dotNetRef;
+
+    private string? tokenActual;
+
+    protected override async Task OnParametersSetAsync()
     {
+        // Si cambio el Token (porque el repartidor escaneo otro QR), recargar la venta
+        // pero mantener la sesion del PIN intacta.
+        if (tokenActual == Token) return;
+        tokenActual = Token;
+        ReiniciarFormulario();
+        info = null;
+        errorCarga = null;
         await CargarVenta();
-        await CargarRepartidores();
-        await CargarSesionDeStorage();
+        if (repartidoresList is null) await CargarRepartidores();
+        if (sesionRepartidorId is null) await CargarSesionDeStorage();
+    }
+
+    public void Dispose()
+    {
+        try { dotNetRef?.Dispose(); } catch { }
     }
 
     private async Task CargarVenta()
@@ -372,6 +404,80 @@
         formNotas = null;
         errorEnvio = null;
         resultadoMensaje = null;
+    }
+
+    /// <summary>Abre la cámara del celu y escanea el próximo QR. Cuando detecta un QR
+    /// con una URL /repartidor/{token}, navega a esa ruta (la sesión del PIN persiste).</summary>
+    private async Task EscanearProximo()
+    {
+        escaneando = true;
+        StateHasChanged();
+        // Esperar a que se renderice el div del escáner antes de iniciar
+        await Task.Delay(100);
+        dotNetRef ??= DotNetObjectReference.Create(this);
+        try
+        {
+            await JS.InvokeVoidAsync("startQrScanner", qrScannerElementId, dotNetRef);
+        }
+        catch (Exception ex)
+        {
+            escaneando = false;
+            errorEnvio = "No se pudo abrir la cámara: " + ex.Message;
+            StateHasChanged();
+        }
+    }
+
+    [JSInvokable]
+    public void OnScanned(string decodedText)
+    {
+        // El QR del comprobante apunta a https://app.palanica.com.ar/repartidor/{token}
+        // Extraemos el token de la URL y navegamos.
+        try
+        {
+            string? token = null;
+            if (Uri.TryCreate(decodedText, UriKind.Absolute, out var uri))
+            {
+                // Ejemplo path: /repartidor/abc123
+                var parts = uri.AbsolutePath.Trim('/').Split('/');
+                if (parts.Length >= 2 && string.Equals(parts[0], "repartidor", StringComparison.OrdinalIgnoreCase))
+                    token = parts[1];
+            }
+            else if (decodedText.Contains("/repartidor/"))
+            {
+                var idx = decodedText.IndexOf("/repartidor/", StringComparison.OrdinalIgnoreCase);
+                var rest = decodedText.Substring(idx + "/repartidor/".Length);
+                token = rest.Split('?', '#', '/')[0];
+            }
+            escaneando = false;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                errorEnvio = "El QR escaneado no es válido (no es de una venta).";
+                InvokeAsync(StateHasChanged);
+                return;
+            }
+            // Navegar a la nueva venta. La sesión del PIN persiste en sessionStorage.
+            InvokeAsync(() => Navigation.NavigateTo($"/repartidor/{token}", forceLoad: false));
+        }
+        catch (Exception ex)
+        {
+            escaneando = false;
+            errorEnvio = "Error al procesar el QR: " + ex.Message;
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    [JSInvokable]
+    public void OnScanError(string msg)
+    {
+        escaneando = false;
+        errorEnvio = "Error de cámara: " + msg + ". Revisá que diste permiso de cámara.";
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task DetenerEscaneo()
+    {
+        try { await JS.InvokeVoidAsync("stopQrScanner"); } catch { }
+        escaneando = false;
     }
 
     private async Task Enviar()

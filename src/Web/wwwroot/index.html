@@ -600,5 +600,38 @@
             document.addEventListener('touchend', onUp);
         };
     </script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <script>
+        // Escaner de QR para la pantalla mobile del repartidor.
+        // Usa html5-qrcode (carga la camara del celu). Al detectar un QR con la URL
+        // /repartidor/{token}, navega a esa ruta sin cerrar la sesion del PIN.
+        window.startQrScanner = function(targetElementId, onScanned) {
+            const html5QrCode = new Html5Qrcode(targetElementId);
+            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+            html5QrCode.start(
+                { facingMode: "environment" },
+                config,
+                (decodedText) => {
+                    // Detener el escaner y devolver el resultado
+                    html5QrCode.stop().then(() => {
+                        html5QrCode.clear();
+                        try { onScanned.invokeMethodAsync('OnScanned', decodedText); } catch (e) {}
+                    });
+                },
+                (err) => { /* errores de cada frame son normales, ignorar */ }
+            ).catch(err => {
+                console.error('No se pudo abrir camara:', err);
+                try { onScanned.invokeMethodAsync('OnScanError', err.message || String(err)); } catch (e) {}
+            });
+            // Guardar referencia para poder detenerlo desde el codigo de Blazor
+            window.__qrScannerRef = html5QrCode;
+        };
+        window.stopQrScanner = function() {
+            if (window.__qrScannerRef) {
+                try { window.__qrScannerRef.stop().then(() => window.__qrScannerRef.clear()); } catch (e) {}
+                window.__qrScannerRef = null;
+            }
+        };
+    </script>
 </body>
 </html>
