@@ -20,7 +20,7 @@
         <h3>📋 Listas de precios</h3>
         @if (preview is not null && step == 2)
         {
-            <button class="btn btn-secondary" @onclick="() => step = 1">← Modificar filtros</button>
+            <button class="btn btn-secondary" @onclick="VolverAFiltros">← Modificar filtros</button>
         }
     </div>
     <div class="card-body">
@@ -174,6 +174,7 @@
         @if (step == 2 && preview is not null)
         {
             <div style="display: flex; gap: 0.5rem; margin-bottom: 0.8rem; flex-wrap: wrap;">
+                <button class="btn btn-secondary" @onclick="VolverAFiltros">← Modificar filtros</button>
                 <button class="btn" style="background: #1d4ed8; color: white; border: none;" @onclick="DoPrintPdf">📄 Descargar PDF</button>
                 <button class="btn" style="background: #15803d; color: white; border: none;" @onclick="DoExportExcel" disabled="@isExporting">
                     @(isExporting ? "Exportando..." : "📊 Excel")
@@ -345,6 +346,12 @@
             try { await JS.InvokeVoidAsync("revokeBlobUrl", previewPdfUrl); } catch { }
             previewPdfUrl = null;
         }
+    }
+
+    private async Task VolverAFiltros()
+    {
+        await RevocarPreviewPdfAsync();
+        step = 1;
     }
 
     private async Task DoPrintPdf()
