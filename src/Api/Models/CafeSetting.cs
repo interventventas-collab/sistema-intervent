@@ -15,6 +15,16 @@ public class CafeSetting
     [Column(TypeName = "decimal(18,2)")]
     public decimal RedondeoMultiplo { get; set; } = 1000m;
 
+    // Costo de fraccionamiento "futuro" con fecha de aplicacion. Misma logica que los precios
+    // futuros de cada producto: si hoy >= FechaAplicaFraccionamientoFuturo, el motor usa
+    // CostoFraccionamientoFuturo en vez de CostoFraccionamiento. Sirve para programar un cambio
+    // global del fraccionamiento (ej: subir de $500 a $2000) sin tocar el setting actual.
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? CostoFraccionamientoFuturo { get; set; }
+
+    [Column(TypeName = "date")]
+    public DateTime? FechaAplicaFraccionamientoFuturo { get; set; }
+
     [Column(TypeName = "decimal(8,2)")]
     public decimal MargenOtrosBarPct { get; set; } = 40m;
 

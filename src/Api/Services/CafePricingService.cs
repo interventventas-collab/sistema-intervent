@@ -126,21 +126,40 @@ public static class CafePricingService
 
         if (producto.Categoria == "CAFE")
         {
+            // Costo de fraccionamiento efectivo: si hay un "futuro" cargado en settings y la
+            // fecha de evaluacion ya lo alcanzo, usamos ese; sino el actual.
+            DateTime fechaEvalFracc = fechaPara ?? DateTime.Today;
+            bool usaFraccFuturo = settings.CostoFraccionamientoFuturo.HasValue
+                && settings.FechaAplicaFraccionamientoFuturo.HasValue
+                && fechaEvalFracc.Date >= settings.FechaAplicaFraccionamientoFuturo.Value.Date;
+            decimal costoFracc = usaFraccFuturo
+                ? settings.CostoFraccionamientoFuturo!.Value
+                : settings.CostoFraccionamiento;
+
             // CAFE: el precio cargado es POR KG. Fracciones se calculan + costo fraccionamiento.
             lista = formato switch
             {
                 FORMATO_1KG => listaBase,
-                FORMATO_MEDIO => (listaBase / 2m) + settings.CostoFraccionamiento,
-                FORMATO_CUARTO => (listaBase / 4m) + settings.CostoFraccionamiento,
+                FORMATO_MEDIO => (listaBase / 2m) + costoFracc,
+                FORMATO_CUARTO => (listaBase / 4m) + costoFracc,
                 _ => 0m
             };
-            // AJUSTE TEMPORAL (pedido del usuario el 14/05/2026): el 1/2 KG para clientes OTRO
-            // se redondea HACIA ARRIBA al múltiplo de RedondeoMultiplo (default $1000) para que
-            // coincida exacto con la lista de precios FV (sugerida) que tienen impresa los clientes.
-            // El mes que viene se recalculan los costos correctos y se quita este redondeo.
-            if (formato == FORMATO_MEDIO && tipoCliente?.ToUpperInvariant() == "OTRO" && settings.RedondeoMultiplo > 0)
+            // Redondeo HACIA ARRIBA al multiplo de RedondeoMultiplo (default $1000).
+            // - Si estamos en modo "fraccionamiento futuro": aplica a TODAS las fracciones
+            //   (1/2 y 1/4) y a TODOS los tipos (BAR y OTRO).
+            // - Si estamos en modo actual (legacy): solo 1/2 OTRO, como ajuste temporal del
+            //   14/05/2026 para que coincida con la lista FV impresa.
+            bool esFraccion = formato == FORMATO_MEDIO || formato == FORMATO_CUARTO;
+            if (settings.RedondeoMultiplo > 0 && esFraccion)
             {
-                lista = Math.Ceiling(lista / settings.RedondeoMultiplo) * settings.RedondeoMultiplo;
+                bool aplicarRedondeo;
+                if (usaFraccFuturo)
+                    aplicarRedondeo = true;
+                else
+                    aplicarRedondeo = formato == FORMATO_MEDIO && tipoCliente?.ToUpperInvariant() == "OTRO";
+
+                if (aplicarRedondeo)
+                    lista = Math.Ceiling(lista / settings.RedondeoMultiplo) * settings.RedondeoMultiplo;
             }
         }
         else

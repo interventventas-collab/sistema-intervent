@@ -3893,3 +3893,11 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='PrecioBultoOtroFuturo' AND Object_ID=OBJECT_ID('Cafe_Productos'))
     ALTER TABLE Cafe_Productos ADD PrecioBultoOtroFuturo DECIMAL(18,2) NULL;
 GO
+
+-- 2026-05-20: costo de fraccionamiento futuro con fecha (ej: subir de $500 a $2000 el 01/06)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='CostoFraccionamientoFuturo' AND Object_ID=OBJECT_ID('Cafe_Settings'))
+    ALTER TABLE Cafe_Settings ADD CostoFraccionamientoFuturo DECIMAL(18,2) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='FechaAplicaFraccionamientoFuturo' AND Object_ID=OBJECT_ID('Cafe_Settings'))
+    ALTER TABLE Cafe_Settings ADD FechaAplicaFraccionamientoFuturo DATE NULL;
+GO
