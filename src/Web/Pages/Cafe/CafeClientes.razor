@@ -90,7 +90,17 @@
                                         </div>
                                     }
                                 </td>
-                                <td><strong>@c.Nombre</strong></td>
+                                <td>
+                                    @{
+                                        var nombreMostrar = !string.IsNullOrWhiteSpace(c.Nombre) ? c.Nombre : (c.RazonSocial ?? "—");
+                                        var dirMostrar = !string.IsNullOrWhiteSpace(c.DomicilioEntrega) ? c.DomicilioEntrega : c.Direccion;
+                                    }
+                                    <strong>@nombreMostrar</strong>
+                                    @if (!string.IsNullOrEmpty(dirMostrar))
+                                    {
+                                        <div style="color: #6b7280; font-size: 0.75rem; margin-top: 0.15rem;">📍 @dirMostrar</div>
+                                    }
+                                </td>
                                 <td>
                                     @if (c.Tipo == "BAR")
                                     {

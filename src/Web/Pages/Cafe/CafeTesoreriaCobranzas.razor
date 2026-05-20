@@ -182,10 +182,14 @@
                                     @foreach (var ci in matches)
                                     {
                                         var ciId = ci.Id;
+                                        // Nombre a mostrar: prioriza Nombre (fantasia/comercial); si no, RazonSocial (fiscal).
+                                        var nombreMostrar = !string.IsNullOrWhiteSpace(ci.Nombre) ? ci.Nombre : (ci.RazonSocial ?? "—");
+                                        // Direccion a mostrar: prioriza DomicilioEntrega; si no, Direccion (fiscal).
+                                        var dirMostrar = !string.IsNullOrWhiteSpace(ci.DomicilioEntrega) ? ci.DomicilioEntrega : ci.Direccion;
                                         <div @onclick="() => SelectCliente(ciId)"
                                              style="padding: 0.4rem 0.6rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem;">
                                             <span style="font-family: monospace; color: #1d4ed8; font-weight: 700; margin-right: 0.5rem;">@ci.Codigo</span>
-                                            <strong>@ci.Nombre</strong>
+                                            <strong>@nombreMostrar</strong>
                                             @if (!string.IsNullOrEmpty(ci.Cuit))
                                             {
                                                 <span style="color: #6b7280; font-size: 0.78rem;"> · @ci.Cuit</span>
@@ -193,6 +197,10 @@
                                             @if (!string.IsNullOrEmpty(ci.Telefono))
                                             {
                                                 <span style="color: #6b7280; font-size: 0.78rem;"> · 📞 @ci.Telefono</span>
+                                            }
+                                            @if (!string.IsNullOrEmpty(dirMostrar))
+                                            {
+                                                <div style="color: #6b7280; font-size: 0.75rem; margin-top: 0.15rem;">📍 @dirMostrar</div>
                                             }
                                         </div>
                                     }
