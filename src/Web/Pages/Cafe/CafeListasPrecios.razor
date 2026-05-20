@@ -201,7 +201,9 @@
             else
             {
                 <div style="background: #525659; border-radius: 8px; overflow: hidden; max-width: 100%;">
-                    <embed src="@previewPdfUrl" type="application/pdf" style="width: 100%; height: 75vh; border: none; display: block;" />
+                    @* #navpanes=0 + #pagemode=none esconden el panel lateral de miniaturas del visor PDF *@
+                    <embed src="@(previewPdfUrl + "#toolbar=1&navpanes=0&scrollbar=0&pagemode=none&view=FitH")" type="application/pdf"
+                           style="width: 100%; height: 75vh; border: none; display: block;" />
                 </div>
                 <p style="font-size: 0.75rem; color: #6b7280; text-align: center; margin-top: 0.4rem;">
                     ⚠ Si no ves el PDF arriba, hacé click en "Descargar PDF" para abrirlo aparte.
