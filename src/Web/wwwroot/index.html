@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-    <link rel="stylesheet" href="css/app.css?v=20260520g" />
+    <link rel="stylesheet" href="css/app.css?v=20260520h" />
 </head>
 <body>
     <div id="app">
@@ -252,6 +252,25 @@
             menu.style.left = 'auto';
             menu.style.right = (window.innerWidth - r.right) + 'px';
         };
+        // Crea un blob URL a partir de un base64 + mime type. Usado para embeber PDFs generados
+        // por el backend en un <embed> sin escribir el archivo a disco. Devolver string con la URL.
+        window.createBlobUrl = function(base64, mimeType) {
+            try {
+                var binary = atob(base64);
+                var len = binary.length;
+                var bytes = new Uint8Array(len);
+                for (var i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+                var blob = new Blob([bytes], { type: mimeType || 'application/octet-stream' });
+                return URL.createObjectURL(blob);
+            } catch (e) {
+                console.error('createBlobUrl error', e);
+                return '';
+            }
+        };
+        window.revokeBlobUrl = function(url) {
+            try { if (url) URL.revokeObjectURL(url); } catch (e) {}
+        };
+
         // Helpers para la pantalla /documentacion (Google Drive-like).
         // docDriveInit: engancha drag-and-drop nativo. El usuario puede arrastrar archivos
         // y/o carpetas desde el explorador del SO sobre el drop-zone — recorremos

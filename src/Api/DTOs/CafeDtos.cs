@@ -631,6 +631,9 @@ public class CafeListaPreciosFiltroRequest
     /// si la fecha es >= FechaAplicaPreciosFuturos del producto. Sino usa el precio Actual.
     /// Sirve para entregar al cliente la lista con los precios nuevos antes de que se apliquen.</summary>
     public DateTime? FechaVigencia { get; set; }
+    /// <summary>Numero/etiqueta de la lista (texto libre — ej: "5", "5/2026", "Mayo 2026").
+    /// Si esta cargado, aparece en el header del PDF debajo del titulo "LISTA DE PRECIOS".</summary>
+    public string? NumeroLista { get; set; }
 }
 
 public record CafeListaPreciosNegocioDto(
@@ -667,7 +670,9 @@ public record CafeListaPreciosPreviewDto(
     string? Observaciones,
     // Si se calcularon precios para una fecha distinta a hoy (precios "vigentes desde X").
     // El frontend lo usa para imprimir un banner "Vigente desde dd/MM/yyyy" arriba de la lista.
-    DateTime? VigenteDesde = null);
+    DateTime? VigenteDesde = null,
+    // Numero/etiqueta de la lista (ej: "5/2026") — se imprime debajo de "LISTA DE PRECIOS".
+    string? NumeroLista = null);
 
 // ===== Marcas =====
 public record CafeMarcaDto(

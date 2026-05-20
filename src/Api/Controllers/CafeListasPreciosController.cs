@@ -168,7 +168,8 @@ public class CafeListasPreciosController : ControllerBase
         var preview = new CafeListaPreciosPreviewDto(
             hoy, hoy.AddDays(7), tipo, negocio, clienteDto, grupos,
             string.IsNullOrWhiteSpace(req.Observaciones) ? null : req.Observaciones.Trim(),
-            vigenteDesde);
+            vigenteDesde,
+            string.IsNullOrWhiteSpace(req.NumeroLista) ? null : req.NumeroLista.Trim());
         return (preview, settings);
     }
 

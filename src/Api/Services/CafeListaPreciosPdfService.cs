@@ -36,7 +36,13 @@ public class CafeListaPreciosPdfService
 
     public byte[] GenerarPdf(CafeListaPreciosPreviewDto p)
     {
-        var logoBytes = TryLoadLogoBytes(p.Negocio.LogoUrl);
+        // Cambios pedidos por el usuario 2026-05-20:
+        // - Header: solo el nombre del negocio (sin logo, direccion, tel, mail, web, CUIT).
+        //   El logo no se ve correctamente — pendiente arreglarlo en otro momento.
+        // - Bloque superior derecho: solo "LISTA DE PRECIOS" + N° de lista si esta cargado.
+        //   Sin Cliente/Tipo/Fecha (la fecha queda en el footer).
+        // - Sin franja de marca/proveedor entre productos.
+        // - Sin bloque "Condiciones comerciales" al final.
         var tituloColor = p.TipoCliente == "BAR" ? "#1d4ed8" : "#15803d";
 
         return Document.Create(container =>
@@ -52,47 +58,21 @@ public class CafeListaPreciosPdfService
                 {
                     headerCol.Item().PaddingBottom(8).BorderBottom(2).BorderColor(tituloColor).Row(row =>
                     {
-                        row.RelativeItem(2).Row(r =>
-                        {
-                            if (logoBytes is not null)
-                                r.ConstantItem(110).Height(65).AlignLeft().AlignMiddle().Image(logoBytes).FitArea();
-                            r.RelativeItem().PaddingLeft(logoBytes is null ? 0 : 10).Column(c =>
-                            {
-                                c.Item().Text(p.Negocio.Nombre ?? "Empresa").FontSize(15).Bold();
-                                if (!string.IsNullOrEmpty(p.Negocio.Direccion))
-                                    c.Item().Text("📍 " + p.Negocio.Direccion!).FontSize(8).FontColor(Colors.Grey.Darken1);
-                                var linea = new List<string>();
-                                if (!string.IsNullOrEmpty(p.Negocio.Telefono)) linea.Add("📞 " + p.Negocio.Telefono);
-                                if (!string.IsNullOrEmpty(p.Negocio.WhatsappNumero)) linea.Add("📱 " + p.Negocio.WhatsappNumero);
-                                if (linea.Count > 0)
-                                    c.Item().Text(string.Join("   ", linea)).FontSize(8).FontColor(Colors.Grey.Darken1);
-                                if (!string.IsNullOrEmpty(p.Negocio.Email))
-                                    c.Item().Text("✉ " + p.Negocio.Email!).FontSize(8).FontColor(Colors.Grey.Darken1);
-                                if (!string.IsNullOrEmpty(p.Negocio.Web))
-                                    c.Item().Text("🌐 " + p.Negocio.Web!).FontSize(8).FontColor(Colors.Grey.Darken1);
-                                if (!string.IsNullOrEmpty(p.Negocio.Cuit))
-                                    c.Item().Text("CUIT: " + p.Negocio.Cuit!).FontSize(7).FontColor(Colors.Grey.Darken2);
-                            });
-                        });
+                        row.RelativeItem(2).AlignMiddle()
+                            .Text(p.Negocio.Nombre ?? "Empresa").FontSize(17).Bold();
+
                         row.RelativeItem().AlignRight().Column(c =>
                         {
                             c.Item().AlignRight().Background(tituloColor).Padding(6).Text("LISTA DE PRECIOS")
                                 .FontSize(11).Bold().FontColor(Colors.White);
-                            c.Item().PaddingTop(5).AlignRight().Text(t =>
+                            if (!string.IsNullOrWhiteSpace(p.NumeroLista))
                             {
-                                t.Span("Cliente: ").Bold().FontSize(9);
-                                t.Span(p.Cliente?.Nombre ?? "(General)").FontSize(9);
-                            });
-                            c.Item().AlignRight().Text(t =>
-                            {
-                                t.Span("Tipo: ").Bold().FontSize(9);
-                                t.Span(p.TipoCliente == "BAR" ? "🍺 BAR" : "🏢 Comercial").FontSize(9);
-                            });
-                            c.Item().AlignRight().Text(t =>
-                            {
-                                t.Span("Fecha: ").Bold().FontSize(9);
-                                t.Span(p.Fecha.ToString("dd/MM/yyyy")).FontSize(9);
-                            });
+                                c.Item().PaddingTop(5).AlignRight().Text(t =>
+                                {
+                                    t.Span("Lista N° ").Bold().FontSize(10);
+                                    t.Span(p.NumeroLista!).FontSize(10);
+                                });
+                            }
                         });
                     });
 
@@ -118,17 +98,7 @@ public class CafeListaPreciosPdfService
 
                     foreach (var g in p.Grupos)
                     {
-                        col.Item().PaddingTop(8).Background(Colors.Amber.Lighten4).Padding(6).Row(r =>
-                        {
-                            r.RelativeItem().Text(t =>
-                            {
-                                t.Span(g.MarcaNombre).FontSize(11).Bold().FontColor(Colors.Amber.Darken4);
-                                if (!string.IsNullOrEmpty(g.ProveedorNombre))
-                                    t.Span($"   ·   proveedor: {g.ProveedorNombre}").FontSize(8).Italic().FontColor(Colors.Amber.Darken2);
-                            });
-                            r.ConstantItem(80).AlignRight().Text($"{g.ItemsCafe.Count + g.ItemsOtros.Count} prod.")
-                                .FontSize(8).FontColor(Colors.Amber.Darken2);
-                        });
+                        // Franja de marca/proveedor sacada por pedido del usuario 2026-05-20.
 
                         // Tabla CAFE (Producto · SKU · 1kg · 1/2 · 1/4)
                         if (g.ItemsCafe.Count > 0)
@@ -197,15 +167,7 @@ public class CafeListaPreciosPdfService
                         }
                     }
 
-                    // OBSERVACIONES
-                    if (!string.IsNullOrEmpty(p.Observaciones))
-                    {
-                        col.Item().PaddingTop(10).Border(0.5f).BorderColor(Colors.Grey.Medium).Padding(8).Column(c =>
-                        {
-                            c.Item().Text("Observaciones").FontSize(8).Bold().FontColor(Colors.Grey.Darken2);
-                            c.Item().PaddingTop(2).Text(p.Observaciones!).FontSize(9);
-                        });
-                    }
+                    // Bloque "Observaciones / Condiciones comerciales" sacado por pedido del usuario 2026-05-20.
 
                     // AVISO IVA — fijo, visible siempre
                     col.Item().PaddingTop(8).Background(Colors.Red.Lighten4).Border(1).BorderColor(Colors.Red.Medium)

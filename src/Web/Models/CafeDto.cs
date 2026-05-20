@@ -776,6 +776,7 @@ public class CafeListaPreciosFiltroRequest
     /// <summary>Si se pasa, la lista usa los precios "vigentes a esa fecha" — sirve para
     /// imprimir la lista nueva ANTES de que entre en vigencia.</summary>
     public DateTime? FechaVigencia { get; set; }
+    public string? NumeroLista { get; set; }
 }
 
 public class CafeListaPreciosNegocioDto
@@ -843,6 +844,7 @@ public class CafeListaPreciosPreviewDto
     public List<CafeListaPreciosMarcaGroupDto> Grupos { get; set; } = new();
     public string? Observaciones { get; set; }
     public DateTime? VigenteDesde { get; set; }
+    public string? NumeroLista { get; set; }
 }
 
 // ===== Marcas =====

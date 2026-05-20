@@ -148,6 +148,16 @@
             </div>
 
             <div class="form-group">
+                <label class="form-label">📋 N° de lista (opcional)</label>
+                <input class="form-input" @bind="formNumeroLista" placeholder="Ej: 5, 5/2026, Mayo 2026..." style="max-width: 18rem;" />
+                <p style="font-size: 0.72rem; color: #6b7280; margin: 0.2rem 0 0;">
+                    Si lo cargás, aparece debajo de "LISTA DE PRECIOS" en el PDF. Si lo dejás vacío, no aparece.
+                </p>
+            </div>
+
+            <div class="form-group" style="display: none;">
+                @* Observaciones desactivadas — el bloque 'Condiciones comerciales' del PDF se saco por pedido del usuario 2026-05-20.
+                   Si en algun momento se quiere volver, sacar el display:none y descomentar el bloque en CafeListaPreciosPdfService. *@
                 <label class="form-label">Observaciones / condiciones comerciales (opcional)</label>
                 <textarea class="form-input" rows="3" @bind="formObservaciones"
                           placeholder="Ej: Precios sujetos a disponibilidad. Seña 50% para reservas. Entrega y retiro a coordinar."></textarea>
@@ -178,184 +188,24 @@
                 }
             </div>
 
-            @* PREVIEW + PDF (mismo HTML, IDs distintos) *@
-            <div id="cafe-lp-print" style="background: white; padding: 1.2rem; border: 1px solid #e5e7eb; border-radius: 8px; max-width: 900px; margin: 0 auto;">
-
-                @* HEADER *@
-                @{
-                    var tituloColor = preview.TipoCliente == "BAR" ? "#000" : "#15803d";
-                }
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; padding-bottom: 0.8rem; border-bottom: 2px solid @tituloColor;">
-                    <div style="flex: 1; display: flex; gap: 0.8rem; align-items: flex-start;">
-                        @if (!string.IsNullOrEmpty(preview.Negocio.LogoUrl))
-                        {
-                            <img src="@preview.Negocio.LogoUrl" alt="Logo"
-                                 style="max-height: 80px; max-width: 140px; object-fit: contain; flex: 0 0 auto;"
-                                 onerror="this.style.display='none'" />
-                        }
-                        <div style="flex: 1;">
-                            <div style="font-size: 1.4rem; font-weight: 800; color: #000;">@(preview.Negocio.Nombre ?? "Tu negocio")</div>
-                            <div style="font-size: 0.82rem; color: #4b5563; margin-top: 0.2rem; line-height: 1.6;">
-                                @if (!string.IsNullOrEmpty(preview.Negocio.Direccion)) { <div>📍 @preview.Negocio.Direccion</div> }
-                                <div>
-                                    @if (!string.IsNullOrEmpty(preview.Negocio.Telefono)) { <span>📞 @preview.Negocio.Telefono</span> }
-                                    @if (!string.IsNullOrEmpty(preview.Negocio.WhatsappNumero)) { <span style="margin-left: 0.6rem;">📱 @preview.Negocio.WhatsappNumero</span> }
-                                </div>
-                                @if (!string.IsNullOrEmpty(preview.Negocio.Email)) { <div>✉ @preview.Negocio.Email</div> }
-                                @if (!string.IsNullOrEmpty(preview.Negocio.Web)) { <div>🌐 @preview.Negocio.Web</div> }
-                                @if (!string.IsNullOrEmpty(preview.Negocio.Cuit)) { <div style="font-size: 0.75rem; color: #6b7280;">CUIT: @preview.Negocio.Cuit</div> }
-                            </div>
-                        </div>
-                    </div>
-                    <div style="text-align: right;">
-                        <div style="background: @tituloColor; color: white; padding: 0.4rem 0.9rem; border-radius: 6px; font-weight: 800; font-size: 1.1rem; letter-spacing: 0.5px;">LISTA DE PRECIOS</div>
-                        <div style="font-size: 0.78rem; color: #6b7280; margin-top: 0.4rem; line-height: 1.5;">
-                            <div><strong>Cliente:</strong> @(preview.Cliente?.Nombre ?? "(General)")</div>
-                            <div><strong>Tipo:</strong> @(preview.TipoCliente == "BAR" ? "🍺 BAR" : "🏢 Comercial")</div>
-                            <div><strong>Fecha:</strong> @preview.Fecha.ToString("dd/MM/yyyy")</div>
-                        </div>
-                    </div>
+            @* PREVIEW = PDF embebido (lo que ves = lo que descargas). Decision 2026-05-20:
+               cambio del preview-HTML al preview-PDF-real para que no haya diferencias entre
+               la pantalla y el PDF descargado. *@
+            @if (string.IsNullOrEmpty(previewPdfUrl))
+            {
+                <div style="padding: 3rem; text-align: center; color: #6b7280; background: white; border-radius: 8px; border: 1px dashed #d1d5db;">
+                    ⏳ Generando previsualización...
                 </div>
-
-                @* BANNER "VIGENTE DESDE" — solo si la lista se generó para una fecha futura *@
-                @if (preview.VigenteDesde.HasValue)
-                {
-                    <div style="margin-top: 0.7rem; padding: 0.7rem 1rem; background: linear-gradient(90deg,#fef3c7,#fde68a); border: 2px solid #f59e0b; border-radius: 6px; color: #78350f; font-size: 0.95rem; text-align: center;">
-                        📅 <strong>PRECIOS VIGENTES DESDE EL @preview.VigenteDesde.Value.ToString("dd/MM/yyyy")</strong>
-                    </div>
-                }
-
-                @* BANNER DE DESCUENTOS aplicados *@
-                @{
-                    var descMax = ResumenDescuentos(preview);
-                }
-                @if (!string.IsNullOrEmpty(descMax))
-                {
-                    <div style="margin-top: 0.7rem; padding: 0.6rem 0.9rem; background: linear-gradient(90deg,#dcfce7,#bbf7d0); border: 1px solid #16a34a; border-radius: 6px; color: #14532d; font-size: 0.88rem;">
-                        💰 <strong>Descuentos aplicados</strong> — @descMax
-                    </div>
-                }
-
-                @* CUERPO: agrupado por marca *@
-                <div style="margin-top: 1rem;">
-                    @if (preview.Grupos.Count == 0)
-                    {
-                        <div style="padding: 1.5rem; text-align: center; color: #9ca3af; background: #f9fafb; border-radius: 6px;">
-                            No hay productos para los filtros seleccionados.
-                        </div>
-                    }
-                    else
-                    {
-                        @foreach (var g in preview.Grupos)
-                        {
-                            <div class="lp-marca-card">
-                                <div class="lp-marca-header" style="display: flex; justify-content: space-between; align-items: center;">
-                                    <div>
-                                        <span style="font-weight: 800; color: #78350f; font-size: 0.95rem;">@g.MarcaNombre</span>
-                                        @if (!string.IsNullOrEmpty(g.ProveedorNombre))
-                                        {
-                                            <span style="color: #92400e; font-size: 0.78rem; margin-left: 0.5rem;">· proveedor: <strong>@g.ProveedorNombre</strong></span>
-                                        }
-                                    </div>
-                                    <div style="font-size: 0.72rem; color: #92400e;">@(g.ItemsCafe.Count + g.ItemsOtros.Count) producto@(g.ItemsCafe.Count + g.ItemsOtros.Count == 1 ? "" : "s")</div>
-                                </div>
-                                @if (g.ItemsCafe.Count > 0)
-                                {
-                                    <table class="lp-table">
-                                        <thead>
-                                            <tr>
-                                                <th>☕ Producto</th>
-                                                <th style="width: 100px;">SKU</th>
-                                                <th class="num" style="width: 110px;">1 kg</th>
-                                                <th class="num" style="width: 110px;">1/2 kg</th>
-                                                <th class="num" style="width: 110px;">1/4 kg</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            @foreach (var i in g.ItemsCafe)
-                                            {
-                                                <tr>
-                                                    <td><strong>@i.Nombre</strong></td>
-                                                    <td style="font-family: monospace; color: #6b7280; font-size: 0.78rem;">@(i.Sku ?? "—")</td>
-                                                    <td class="num">@RenderPrecioConLista(i.Lista1Kg, i.Precio1Kg, i.DescuentoPct)</td>
-                                                    <td class="num">@RenderPrecioConLista(i.ListaMedio, i.PrecioMedio, i.DescuentoPct)</td>
-                                                    <td class="num">@RenderPrecioConLista(i.ListaCuarto, i.PrecioCuarto, i.DescuentoPct)</td>
-                                                </tr>
-                                            }
-                                        </tbody>
-                                    </table>
-                                }
-                                @if (g.ItemsOtros.Count > 0)
-                                {
-                                    <table class="lp-table">
-                                        <thead>
-                                            <tr>
-                                                <th>📦 Producto</th>
-                                                <th style="width: 100px;">SKU</th>
-                                                <th class="num" style="width: 130px;">Precio</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            @foreach (var i in g.ItemsOtros)
-                                            {
-                                                <tr>
-                                                    <td><strong>@i.Nombre</strong></td>
-                                                    <td style="font-family: monospace; color: #6b7280; font-size: 0.78rem;">@(i.Sku ?? "—")</td>
-                                                    <td class="num">@RenderPrecioConLista(i.Lista, i.Precio, i.DescuentoPct)</td>
-                                                </tr>
-                                            }
-                                        </tbody>
-                                    </table>
-                                }
-                            </div>
-                        }
-                    }
+            }
+            else
+            {
+                <div style="background: #525659; border-radius: 8px; overflow: hidden; max-width: 100%;">
+                    <embed src="@previewPdfUrl" type="application/pdf" style="width: 100%; height: 75vh; border: none; display: block;" />
                 </div>
-
-                @* AVISO IVA — siempre visible *@
-                <div style="margin-top: 1rem; padding: 0.55rem; text-align: center; font-weight: 800; font-size: 0.95rem; color: #b91c1c; border: 2px solid #b91c1c; border-radius: 6px; background: #fef2f2; letter-spacing: 0.5px;">
-                    ⚠ LOS PRECIOS NO INCLUYEN IVA
-                </div>
-
-                @* BLOQUE COMERCIAL *@
-                <div style="margin-top: 0.8rem; padding: 0.8rem 1rem; background: #fef3c7; border: 1px solid #d97706; border-radius: 6px;">
-                    <div style="font-weight: 700; color: #78350f; margin-bottom: 0.4rem; font-size: 0.88rem;">Condiciones comerciales</div>
-                    <ul style="margin: 0; padding-left: 1.2rem; font-size: 0.82rem; color: #78350f; line-height: 1.6;">
-                        <li>Los precios pueden variar sin previo aviso.</li>
-                        <li>Tipo de cliente aplicado: <strong>@(preview.TipoCliente == "BAR" ? "BAR" : "Comercial")</strong>.</li>
-                        @if (!string.IsNullOrEmpty(preview.Observaciones))
-                        {
-                            foreach (var line in preview.Observaciones.Split('\n', StringSplitOptions.RemoveEmptyEntries))
-                            {
-                                <li>@line.Trim()</li>
-                            }
-                        }
-                    </ul>
-                </div>
-
-                @* FOOTER *@
-                <div style="margin-top: 1rem; padding-top: 0.7rem; border-top: 1px dashed #d1d5db; text-align: center; font-size: 0.82rem; color: #4b5563;">
-                    <div style="font-weight: 700; color: #1e3a8a;">Consultanos y armamos tu pedido ☕</div>
-                    <div style="margin-top: 0.3rem; display: flex; justify-content: center; gap: 0.7rem; flex-wrap: wrap;">
-                        @if (!string.IsNullOrEmpty(preview.Negocio.WhatsappNumero))
-                        {
-                            <a href="@PublicWhatsappLink" target="_blank" style="color: #25D366; font-weight: 700; text-decoration: none;">📱 @preview.Negocio.WhatsappNumero</a>
-                        }
-                        @if (!string.IsNullOrEmpty(preview.Negocio.Telefono) && preview.Negocio.Telefono != preview.Negocio.WhatsappNumero)
-                        {
-                            <span>📞 @preview.Negocio.Telefono</span>
-                        }
-                        @if (!string.IsNullOrEmpty(preview.Negocio.Email))
-                        {
-                            <span>✉ @preview.Negocio.Email</span>
-                        }
-                        @if (!string.IsNullOrEmpty(preview.Negocio.Web))
-                        {
-                            <span>🌐 @preview.Negocio.Web</span>
-                        }
-                    </div>
-                </div>
-            </div>
+                <p style="font-size: 0.75rem; color: #6b7280; text-align: center; margin-top: 0.4rem;">
+                    ⚠ Si no ves el PDF arriba, hacé click en "Descargar PDF" para abrirlo aparte.
+                </p>
+            }
         }
     </div>
 </div>
@@ -378,6 +228,10 @@
     private HashSet<int> formMarcaIds = new();
     private string formObservaciones = "";
     private DateTime? formVigenteDesde;
+    private string formNumeroLista = "";
+
+    // URL del PDF embebido en la previsualizacion (blob://...).
+    private string? previewPdfUrl;
 
     // Preview
     private CafeListaPreciosPreviewDto? preview;
@@ -449,6 +303,7 @@
     private async Task DoPreview()
     {
         isLoading = true;
+        await RevocarPreviewPdfAsync();
         try
         {
             var req = new CafeListaPreciosFiltroRequest
@@ -458,14 +313,38 @@
                 MarcaIds = formMarcaIds.Count > 0 ? formMarcaIds.ToList() : null,
                 Categoria = string.IsNullOrEmpty(formCategoria) ? null : formCategoria,
                 Observaciones = formObservaciones,
-                FechaVigencia = formVigenteDesde
+                FechaVigencia = formVigenteDesde,
+                NumeroLista = string.IsNullOrWhiteSpace(formNumeroLista) ? null : formNumeroLista.Trim()
             };
-            preview = await Api.GetCafeListaPreciosPreviewAsync(req);
+            // Pedimos las DOS cosas en paralelo: el preview JSON (para meta: cliente,
+            // links de WhatsApp, etc) y el PDF real (lo que vamos a mostrar embebido).
+            var previewTask = Api.GetCafeListaPreciosPreviewAsync(req);
+            var pdfTask = Api.ExportCafeListaPreciosPdfAsync(req);
+            await Task.WhenAll(previewTask, pdfTask);
+            preview = previewTask.Result;
+            var pdfBytes = pdfTask.Result;
             if (preview is null) { ToastService.Error("No se pudo generar la previsualización"); return; }
+            if (pdfBytes is null || pdfBytes.Length == 0)
+            {
+                ToastService.Error("No se pudo generar el PDF de previsualización");
+                return;
+            }
+            var b64 = Convert.ToBase64String(pdfBytes);
+            try { previewPdfUrl = await JS.InvokeAsync<string>("createBlobUrl", b64, "application/pdf"); }
+            catch { previewPdfUrl = null; }
             step = 2;
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { isLoading = false; }
+    }
+
+    private async Task RevocarPreviewPdfAsync()
+    {
+        if (!string.IsNullOrEmpty(previewPdfUrl))
+        {
+            try { await JS.InvokeVoidAsync("revokeBlobUrl", previewPdfUrl); } catch { }
+            previewPdfUrl = null;
+        }
     }
 
     private async Task DoPrintPdf()
@@ -481,7 +360,8 @@
                 MarcaIds = formMarcaIds.Count > 0 ? formMarcaIds.ToList() : null,
                 Categoria = string.IsNullOrEmpty(formCategoria) ? null : formCategoria,
                 Observaciones = formObservaciones,
-                FechaVigencia = formVigenteDesde
+                FechaVigencia = formVigenteDesde,
+                NumeroLista = string.IsNullOrWhiteSpace(formNumeroLista) ? null : formNumeroLista.Trim()
             };
             var bytes = await Api.ExportCafeListaPreciosPdfAsync(req);
             if (bytes is null || bytes.Length == 0) { ToastService.Error("No se pudo generar el PDF"); return; }
@@ -509,7 +389,8 @@
                 MarcaIds = formMarcaIds.Count > 0 ? formMarcaIds.ToList() : null,
                 Categoria = string.IsNullOrEmpty(formCategoria) ? null : formCategoria,
                 Observaciones = formObservaciones,
-                FechaVigencia = formVigenteDesde
+                FechaVigencia = formVigenteDesde,
+                NumeroLista = string.IsNullOrWhiteSpace(formNumeroLista) ? null : formNumeroLista.Trim()
             };
             var bytes = await Api.ExportCafeListaPreciosExcelAsync(req);
             if (bytes is null || bytes.Length == 0) { ToastService.Error("No se pudo generar el Excel"); return; }
