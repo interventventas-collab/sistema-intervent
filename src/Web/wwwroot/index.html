@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-    <link rel="stylesheet" href="css/app.css?v=20260520c" />
+    <link rel="stylesheet" href="css/app.css?v=20260520d" />
 </head>
 <body>
     <div id="app">
@@ -388,6 +388,28 @@
                 reader.readAsDataURL(file);
             });
         }
+
+        // Posiciona el popup de personalizar (color + emoji) anclado al boton 🎨 que lo abrio.
+        window.docDrivePositionCustomize = function(anchorId, popupId) {
+            var btn = document.getElementById(anchorId);
+            var pop = document.getElementById(popupId);
+            if (!btn || !pop) return;
+            var r = btn.getBoundingClientRect();
+            pop.style.position = 'fixed';
+            var popH = pop.offsetHeight || 200;
+            var popW = pop.offsetWidth || 280;
+            // Abre debajo del boton; si no entra, hacia arriba.
+            var bottomSpace = window.innerHeight - r.bottom;
+            if (bottomSpace < popH + 12 && r.top > popH + 12) {
+                pop.style.top = (r.top - popH - 4) + 'px';
+            } else {
+                pop.style.top = (r.bottom + 4) + 'px';
+            }
+            // Alinear el borde derecho del popup con el del boton; si no entra a la izquierda, lo corremos.
+            var rightEdge = window.innerWidth - r.right;
+            pop.style.left = 'auto';
+            pop.style.right = Math.max(8, rightEdge) + 'px';
+        };
 
         // Boton "Subir carpeta" — abre input HTML5 con webkitdirectory.
         window.docDrivePickFolder = function(dotnetRef) {

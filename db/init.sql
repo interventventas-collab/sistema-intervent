@@ -3901,3 +3901,17 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='FechaAplicaFraccionamientoFuturo' AND Object_ID=OBJECT_ID('Cafe_Settings'))
     ALTER TABLE Cafe_Settings ADD FechaAplicaFraccionamientoFuturo DATE NULL;
 GO
+
+-- 2026-05-20: tabla FileMetadata para guardar color + emoji custom por carpeta/archivo
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='FileMetadata' AND xtype='U')
+BEGIN
+    CREATE TABLE FileMetadata (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Path NVARCHAR(800) NOT NULL UNIQUE,
+        Color NVARCHAR(20) NULL,
+        IconEmoji NVARCHAR(10) NULL,
+        UpdatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+    );
+    CREATE INDEX IX_FileMetadata_Path ON FileMetadata(Path);
+END
+GO

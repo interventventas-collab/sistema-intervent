@@ -2475,6 +2475,12 @@ public class ApiClient
         return result is not null;
     }
 
+    public async Task<bool> SetFileMetaAsync(string path, string? color, string? iconEmoji)
+    {
+        var result = await PostAsync<object>("/api/files/meta", new { path, color, iconEmoji });
+        return result is not null;
+    }
+
     public async Task<List<FileDeleteResult>?> MoveFilesAsync(IEnumerable<string> paths, string targetPath)
     {
         return await PostAsync<List<FileDeleteResult>>("/api/files/move", new { paths, targetPath });

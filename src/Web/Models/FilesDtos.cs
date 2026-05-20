@@ -7,6 +7,8 @@ public class FileEntryDto
     public bool IsFolder { get; set; }
     public long Size { get; set; }
     public DateTime ModifiedAt { get; set; }
+    public string? Color { get; set; }
+    public string? IconEmoji { get; set; }
 }
 
 public class FilesListResponse

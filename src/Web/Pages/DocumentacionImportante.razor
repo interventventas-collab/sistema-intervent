@@ -93,9 +93,52 @@
                   border-radius: 6px; border: 1px solid #d1d5db; background: white; color: #374151;
                   cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
                   text-decoration: none; font-size: 0.85rem; font-weight: 700; box-shadow: 0 1px 3px rgba(0,0,0,0.08); transition: all 0.1s; }
-    .doc-card-actions a:hover { background: #dbeafe; border-color: #1d4ed8; color: #1d4ed8; transform: scale(1.1); }
+    .doc-card-actions a:hover, .doc-card-actions button:hover { background: #dbeafe; border-color: #1d4ed8; color: #1d4ed8; transform: scale(1.1); }
     .doc-card-actions .btn-borrar { color: #b91c1c; border-color: #fecaca; }
-    .doc-card-actions .btn-borrar:hover { background: #fee2e2; border-color: #dc2626; transform: scale(1.1); }
+    .doc-card-actions .btn-borrar:hover { background: #fee2e2; border-color: #dc2626; transform: scale(1.1); color: #b91c1c; }
+
+    /* Variantes de color para cards — aplican un fondo gradiente sutil */
+    .doc-card.color-amarillo { background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%); border-color: #fde68a; }
+    .doc-card.color-amarillo:hover { background: linear-gradient(180deg, #fef3c7 0%, #fde68a 100%); border-color: #f59e0b; }
+    .doc-card.color-azul { background: linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%); border-color: #bfdbfe; }
+    .doc-card.color-azul:hover { background: linear-gradient(180deg, #dbeafe 0%, #bfdbfe 100%); border-color: #1d4ed8; }
+    .doc-card.color-verde { background: linear-gradient(180deg, #f0fdf4 0%, #dcfce7 100%); border-color: #bbf7d0; }
+    .doc-card.color-verde:hover { background: linear-gradient(180deg, #dcfce7 0%, #bbf7d0 100%); border-color: #15803d; }
+    .doc-card.color-rojo { background: linear-gradient(180deg, #fef2f2 0%, #fee2e2 100%); border-color: #fecaca; }
+    .doc-card.color-rojo:hover { background: linear-gradient(180deg, #fee2e2 0%, #fecaca 100%); border-color: #b91c1c; }
+    .doc-card.color-morado { background: linear-gradient(180deg, #faf5ff 0%, #ede9fe 100%); border-color: #ddd6fe; }
+    .doc-card.color-morado:hover { background: linear-gradient(180deg, #ede9fe 0%, #ddd6fe 100%); border-color: #7c3aed; }
+    .doc-card.color-naranja { background: linear-gradient(180deg, #fff7ed 0%, #ffedd5 100%); border-color: #fed7aa; }
+    .doc-card.color-naranja:hover { background: linear-gradient(180deg, #ffedd5 0%, #fed7aa 100%); border-color: #ea580c; }
+    .doc-card.color-gris { background: linear-gradient(180deg, #f9fafb 0%, #f3f4f6 100%); border-color: #e5e7eb; }
+    .doc-card.color-gris:hover { background: linear-gradient(180deg, #f3f4f6 0%, #e5e7eb 100%); border-color: #6b7280; }
+    .doc-card.color-blanco { background: white; border-color: #e5e7eb; }
+    .doc-card.color-blanco:hover { background: #f9fafb; border-color: #9ca3af; }
+
+    /* Rename inline */
+    .doc-rename-input { font-size: 0.85rem; font-weight: 700; color: #1f2937; text-align: center;
+                        padding: 0.2rem 0.4rem; border: 2px solid #1d4ed8; border-radius: 5px; outline: none; width: 100%; }
+
+    /* Popup de personalizacion (color + emoji) */
+    .doc-customize-popup { position: fixed; z-index: 9999; background: white; border: 1px solid #d1d5db;
+                          border-radius: 10px; box-shadow: 0 12px 28px rgba(0,0,0,0.18); padding: 0.7rem;
+                          min-width: 260px; max-width: 320px; animation: fadeIn 0.12s ease; }
+    .doc-customize-popup .titulo { font-size: 0.72rem; font-weight: 700; color: #6b7280; text-transform: uppercase;
+                                   letter-spacing: 0.05em; margin-bottom: 0.35rem; }
+    .doc-customize-popup .color-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 0.3rem; margin-bottom: 0.6rem; }
+    .doc-customize-popup .color-btn { width: 28px; height: 28px; border-radius: 50%; cursor: pointer;
+                                      border: 2px solid transparent; transition: all 0.1s; }
+    .doc-customize-popup .color-btn:hover { transform: scale(1.15); }
+    .doc-customize-popup .color-btn.activo { border-color: #1f2937; transform: scale(1.15); }
+    .doc-customize-popup .emoji-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 0.3rem; margin-bottom: 0.4rem; }
+    .doc-customize-popup .emoji-btn { font-size: 1.3rem; padding: 0.2rem; cursor: pointer; border-radius: 6px;
+                                      border: 2px solid transparent; background: #f9fafb; line-height: 1; transition: all 0.1s; }
+    .doc-customize-popup .emoji-btn:hover { background: #f3f4f6; transform: scale(1.15); }
+    .doc-customize-popup .emoji-btn.activo { border-color: #1d4ed8; background: #dbeafe; }
+    .doc-customize-popup .reset-btn { width: 100%; padding: 0.35rem; font-size: 0.78rem; font-weight: 600;
+                                      background: #f3f4f6; color: #4b5563; border: 1px solid #e5e7eb;
+                                      border-radius: 6px; cursor: pointer; transition: all 0.1s; }
+    .doc-customize-popup .reset-btn:hover { background: #e5e7eb; }
 
     .vacio { background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%); border: 2px dashed #d1d5db;
              padding: 3rem 1rem; border-radius: 12px; text-align: center; color: #6b7280; }
@@ -180,13 +223,27 @@
                 <div class="doc-grid">
                     @foreach (var c in carpetas.OrderBy(x => x.Name))
                     {
-                        <div class="doc-card carpeta" @onclick="@(() => IrA(c.Path))" title="Abrir @c.Name">
+                        var cId = c.Path;
+                        var clrClass = ClaseColor(c.Color, esCarpeta: true);
+                        <div class="doc-card carpeta @clrClass" @onclick="@(() => IrA(c.Path))" title="Abrir @c.Name">
                             <div class="doc-card-actions">
+                                <button id="@($"cust-{cId.GetHashCode():X}")" @onclick:stopPropagation="true" @onclick="@(() => AbrirCustomize(c))" title="Personalizar (color + icono)">🎨</button>
+                                <button @onclick:stopPropagation="true" @onclick="@(() => EmpezarRename(c))" title="Renombrar">✏</button>
                                 <button class="btn-borrar" @onclick:stopPropagation="true" @onclick="@(() => ConfirmarBorrar(c))" title="Borrar carpeta (y todo lo de adentro)">🗑</button>
                             </div>
-                            <div class="doc-icon">📁</div>
-                            <div class="doc-nombre">@c.Name</div>
-                            <div class="doc-meta">Carpeta</div>
+                            <div class="doc-icon">@(c.IconEmoji ?? "📁")</div>
+                            @if (renamingPath == c.Path)
+                            {
+                                <input class="doc-rename-input" @bind="renameNewName" @bind:event="oninput"
+                                       @onclick:stopPropagation="true"
+                                       @onkeydown="@(async e => { if (e.Key == "Enter") await GuardarRename(); else if (e.Key == "Escape") CancelarRename(); })"
+                                       @ref="renameInputRef" />
+                            }
+                            else
+                            {
+                                <div class="doc-nombre">@c.Name</div>
+                                <div class="doc-meta">Carpeta</div>
+                            }
                         </div>
                     }
                 </div>
@@ -200,27 +257,74 @@
                         var diasViejo = (int)Math.Floor((DateTime.UtcNow - f.ModifiedAt).TotalDays);
                         var esViejo = diasViejo > 90;
                         var (icono, claseTipo) = IconoYClaseArchivo(f.Name);
-                        <a class="doc-card @(esViejo ? "viejo" : "")" href="@DownloadUrl(f.Path)" target="_blank" style="text-decoration: none; color: inherit;" title="Ver / descargar @f.Name">
+                        var clrClass = ClaseColor(f.Color, esCarpeta: false);
+                        var iconoFinal = f.IconEmoji ?? icono;
+                        var fId = f.Path;
+                        <div class="doc-card @clrClass @(esViejo ? "viejo" : "")" style="text-decoration: none; color: inherit;" title="@f.Name">
                             <div class="doc-card-actions">
-                                <button class="btn-borrar" @onclick:preventDefault="true" @onclick:stopPropagation="true" @onclick="@(() => ConfirmarBorrar(f))" title="Borrar">🗑</button>
+                                <button id="@($"cust-{fId.GetHashCode():X}")" @onclick:stopPropagation="true" @onclick="@(() => AbrirCustomize(f))" title="Personalizar (color + icono)">🎨</button>
+                                <button @onclick:stopPropagation="true" @onclick="@(() => EmpezarRename(f))" title="Renombrar">✏</button>
+                                <a href="@DownloadUrl(f.Path)" target="_blank" @onclick:stopPropagation="true" title="Descargar">⬇</a>
+                                <button class="btn-borrar" @onclick:stopPropagation="true" @onclick="@(() => ConfirmarBorrar(f))" title="Borrar">🗑</button>
                             </div>
-                            <div class="doc-icon @claseTipo">@icono</div>
-                            <div class="doc-nombre">@f.Name</div>
-                            <div class="doc-meta">
-                                <span class="chip">@FormatSize(f.Size)</span>
-                                <div style="margin-top: 0.15rem;">@FechaCorta(f.ModifiedAt)</div>
-                                @if (esViejo)
-                                {
-                                    <div><span class="viejo-warn">⚠ +3 meses</span></div>
-                                }
-                            </div>
-                        </a>
+                            <a href="@DownloadUrl(f.Path)" target="_blank" style="text-decoration: none; color: inherit; display: contents;">
+                                <div class="doc-icon @claseTipo">@iconoFinal</div>
+                            </a>
+                            @if (renamingPath == f.Path)
+                            {
+                                <input class="doc-rename-input" @bind="renameNewName" @bind:event="oninput"
+                                       @onclick:stopPropagation="true"
+                                       @onkeydown="@(async e => { if (e.Key == "Enter") await GuardarRename(); else if (e.Key == "Escape") CancelarRename(); })"
+                                       @ref="renameInputRef" />
+                            }
+                            else
+                            {
+                                <a href="@DownloadUrl(f.Path)" target="_blank" style="text-decoration: none; color: inherit; display: contents;">
+                                    <div class="doc-nombre">@f.Name</div>
+                                </a>
+                                <div class="doc-meta">
+                                    <span class="chip">@FormatSize(f.Size)</span>
+                                    <div style="margin-top: 0.15rem;">@FechaCorta(f.ModifiedAt)</div>
+                                    @if (esViejo)
+                                    {
+                                        <div><span class="viejo-warn">⚠ +3 meses</span></div>
+                                    }
+                                </div>
+                            }
+                        </div>
                     }
                 </div>
             }
         }
     </div>
 </div>
+
+@* Popup customizar (color + emoji) *@
+@if (customizing is not null)
+{
+    <div style="position: fixed; inset: 0; z-index: 9998; background: transparent;" @onclick="CerrarCustomize"></div>
+    <div id="doc-customize-popup" class="doc-customize-popup">
+        <div class="titulo">🎨 Color</div>
+        <div class="color-grid">
+            @foreach (var c in ColoresDisponibles)
+            {
+                var bg = MuestraColor(c);
+                var activo = (customizing.Color ?? "") == c;
+                <div class="color-btn @(activo ? "activo" : "")" style="background: @bg;"
+                     @onclick="@(async () => await AplicarColor(c))" title="@c"></div>
+            }
+        </div>
+        <div class="titulo">🔣 Icono @(customizing.IsFolder ? "(cambia el 📁)" : "(cambia el del tipo de archivo)")</div>
+        <div class="emoji-grid">
+            @foreach (var e in customizing.IsFolder ? EmojisCarpetas : EmojisArchivos)
+            {
+                var activo = (customizing.IconEmoji ?? "") == e;
+                <button class="emoji-btn @(activo ? "activo" : "")" @onclick="@(async () => await AplicarEmoji(e))">@e</button>
+            }
+        </div>
+        <button class="reset-btn" @onclick="@(async () => await ResetCustomize())">🔄 Volver al default</button>
+    </div>
+}
 
 @* Modal Nueva carpeta *@
 @if (mostrarNuevaCarpeta)
@@ -286,6 +390,18 @@
     private ElementReference dropZoneRef;
     private DotNetObjectReference<DocumentacionImportante>? selfRef;
 
+    // Rename inline
+    private string? renamingPath;
+    private string renameNewName = "";
+    private ElementReference renameInputRef;
+    private bool renameJustOpened;
+
+    // Popup customize (color + emoji)
+    private FileEntryDto? customizing;
+    private static readonly string[] ColoresDisponibles = new[] { "amarillo", "azul", "verde", "rojo", "morado", "naranja", "gris", "blanco" };
+    private static readonly string[] EmojisCarpetas = new[] { "📁", "📋", "💰", "📊", "🏢", "📦", "🔧", "📞", "💼", "📚", "⭐", "🎯", "🛠", "🏷", "📅", "🎁" };
+    private static readonly string[] EmojisArchivos = new[] { "📄", "📕", "📗", "📘", "📙", "🖼", "🗜", "📝", "🎬", "🎵", "⭐", "🎯", "📌", "💡", "⚠", "✅" };
+
     protected override async Task OnInitializedAsync()
     {
         await AsegurarCarpetaAsync();
@@ -299,6 +415,12 @@
             selfRef = DotNetObjectReference.Create(this);
             try { await JS.InvokeVoidAsync("docDriveInit", dropZoneRef, selfRef); }
             catch { /* helper opcional, no rompemos si no esta */ }
+        }
+        // Focusear el input al abrir el rename inline.
+        if (renameJustOpened && renamingPath is not null)
+        {
+            renameJustOpened = false;
+            try { await renameInputRef.FocusAsync(); } catch { }
         }
     }
 
@@ -484,6 +606,115 @@
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
     }
+
+    // ===== Rename inline =====
+    private void EmpezarRename(FileEntryDto f)
+    {
+        renamingPath = f.Path;
+        renameNewName = f.Name;
+        renameJustOpened = true;
+        CerrarCustomize();
+    }
+
+    private void CancelarRename()
+    {
+        renamingPath = null;
+        renameNewName = "";
+    }
+
+    private async Task GuardarRename()
+    {
+        if (renamingPath is null) return;
+        var nuevo = (renameNewName ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(nuevo)) { CancelarRename(); return; }
+        try
+        {
+            var ok = await Api.RenameFileAsync(renamingPath, nuevo);
+            if (ok)
+            {
+                ToastService.Success("Renombrado");
+                renamingPath = null;
+                renameNewName = "";
+                await Cargar();
+            }
+            else ToastService.Error("No se pudo renombrar");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    // ===== Customize (color + emoji) =====
+    private async Task AbrirCustomize(FileEntryDto f)
+    {
+        customizing = f;
+        // Posicionar el popup cerca del boton que lo abrio.
+        await Task.Yield();
+        try { await JS.InvokeVoidAsync("docDrivePositionCustomize", $"cust-{f.Path.GetHashCode():X}", "doc-customize-popup"); }
+        catch { }
+    }
+
+    private void CerrarCustomize() { customizing = null; }
+
+    private async Task AplicarColor(string color)
+    {
+        if (customizing is null) return;
+        var path = customizing.Path;
+        var emoji = customizing.IconEmoji;
+        try
+        {
+            await Api.SetFileMetaAsync(path, color, emoji);
+            await Cargar();
+            customizing = (carpetas.Concat(archivos)).FirstOrDefault(x => x.Path == path);
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task AplicarEmoji(string emoji)
+    {
+        if (customizing is null) return;
+        var path = customizing.Path;
+        var color = customizing.Color;
+        try
+        {
+            await Api.SetFileMetaAsync(path, color, emoji);
+            await Cargar();
+            customizing = (carpetas.Concat(archivos)).FirstOrDefault(x => x.Path == path);
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task ResetCustomize()
+    {
+        if (customizing is null) return;
+        var path = customizing.Path;
+        try
+        {
+            await Api.SetFileMetaAsync(path, null, null);
+            ToastService.Success("Vuelto al default");
+            customizing = null;
+            await Cargar();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private static string ClaseColor(string? color, bool esCarpeta)
+    {
+        if (string.IsNullOrEmpty(color))
+            return esCarpeta ? "" : "color-blanco";
+        return "color-" + color.ToLowerInvariant();
+    }
+
+    private static string MuestraColor(string color) => color switch
+    {
+        "amarillo" => "linear-gradient(180deg, #fffbeb, #fde68a)",
+        "azul" => "linear-gradient(180deg, #eff6ff, #bfdbfe)",
+        "verde" => "linear-gradient(180deg, #f0fdf4, #bbf7d0)",
+        "rojo" => "linear-gradient(180deg, #fef2f2, #fecaca)",
+        "morado" => "linear-gradient(180deg, #faf5ff, #ddd6fe)",
+        "naranja" => "linear-gradient(180deg, #fff7ed, #fed7aa)",
+        "gris" => "linear-gradient(180deg, #f9fafb, #e5e7eb)",
+        "blanco" => "white",
+        _ => "white"
+    };
 
     private static string DownloadUrl(string path) => $"/api/files/download?path={Uri.EscapeDataString(path)}";
 

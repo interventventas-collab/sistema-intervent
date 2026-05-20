@@ -1,7 +1,10 @@
 using System.Text.Json;
+using Api.Data;
+using Api.Models;
 using Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace Api.Controllers;
 
@@ -12,16 +15,19 @@ public class FilesController : ControllerBase
 {
     private readonly FileStorageService _storage;
     private readonly AuditLogService _audit;
+    private readonly AppDbContext _db;
 
-    public FilesController(FileStorageService storage, AuditLogService audit)
+    public FilesController(FileStorageService storage, AuditLogService audit, AppDbContext db)
     {
         _storage = storage;
         _audit = audit;
+        _db = db;
     }
 
     private string? CurrentUser => User?.Identity?.Name;
 
-    public record FileEntryDto(string Name, string Path, bool IsFolder, long Size, DateTime ModifiedAt);
+    public record FileEntryDto(string Name, string Path, bool IsFolder, long Size, DateTime ModifiedAt,
+        string? Color = null, string? IconEmoji = null);
     public record ListResponse(string Path, string Provider, List<FileEntryDto> Entries);
 
     [HttpGet("list")]
@@ -36,18 +42,69 @@ public class FilesController : ControllerBase
             return NotFound(new { error = "Carpeta no encontrada" });
 
         var entries = new List<FileEntryDto>();
+        var rawEntries = new List<(string name, string relPath, bool isFolder, long size, DateTime modified)>();
         foreach (var dir in Directory.EnumerateDirectories(full))
         {
             var info = new DirectoryInfo(dir);
-            entries.Add(new FileEntryDto(info.Name, _storage.ToRelative(dir), true, 0, info.LastWriteTime));
+            rawEntries.Add((info.Name, _storage.ToRelative(dir), true, 0, info.LastWriteTime));
         }
         foreach (var file in Directory.EnumerateFiles(full))
         {
             var info = new FileInfo(file);
-            entries.Add(new FileEntryDto(info.Name, _storage.ToRelative(file), false, info.Length, info.LastWriteTime));
+            rawEntries.Add((info.Name, _storage.ToRelative(file), false, info.Length, info.LastWriteTime));
+        }
+
+        // Cargar metadata (color + icono) de todos los paths de un saque.
+        var paths = rawEntries.Select(e => e.relPath).ToList();
+        var metas = await _db.FileMetadata.Where(m => paths.Contains(m.Path)).ToDictionaryAsync(m => m.Path);
+
+        foreach (var e in rawEntries)
+        {
+            metas.TryGetValue(e.relPath, out var meta);
+            entries.Add(new FileEntryDto(e.name, e.relPath, e.isFolder, e.size, e.modified, meta?.Color, meta?.IconEmoji));
         }
         var provider = await _storage.GetProviderAsync();
         return Ok(new ListResponse(_storage.ToRelative(full), provider, entries));
+    }
+
+    public class SetMetaRequest
+    {
+        public string Path { get; set; } = "";
+        public string? Color { get; set; }
+        public string? IconEmoji { get; set; }
+    }
+
+    /// <summary>Setea color y/o emoji custom para un archivo o carpeta. Si Color/IconEmoji es null o "",
+    /// limpia ese campo. Si ambos quedan vacios y existia un registro, lo borra.</summary>
+    [HttpPost("meta")]
+    public async Task<IActionResult> SetMeta([FromBody] SetMetaRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Path)) return BadRequest(new { error = "path requerido" });
+        // Validar que el path realmente existe en el storage
+        string full;
+        try { full = _storage.ResolveSafe(req.Path); }
+        catch (UnauthorizedAccessException) { return BadRequest(new { error = "Path invalido" }); }
+        if (!Directory.Exists(full) && !System.IO.File.Exists(full))
+            return NotFound(new { error = "No existe" });
+
+        var color = string.IsNullOrWhiteSpace(req.Color) ? null : req.Color.Trim().ToLowerInvariant();
+        var icon = string.IsNullOrWhiteSpace(req.IconEmoji) ? null : req.IconEmoji.Trim();
+        var meta = await _db.FileMetadata.FirstOrDefaultAsync(m => m.Path == req.Path);
+        if (meta is null)
+        {
+            if (color is null && icon is null) return Ok(new { ok = true });
+            meta = new FileMetadata { Path = req.Path, Color = color, IconEmoji = icon, UpdatedAt = DateTime.UtcNow };
+            _db.FileMetadata.Add(meta);
+        }
+        else
+        {
+            meta.Color = color;
+            meta.IconEmoji = icon;
+            meta.UpdatedAt = DateTime.UtcNow;
+            if (color is null && icon is null) _db.FileMetadata.Remove(meta);
+        }
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, color, iconEmoji = icon });
     }
 
     public record StatsResponse(int Folders, int Files, long TotalBytes, DateTime? LastUploadAt);
@@ -203,12 +260,18 @@ public class FilesController : ControllerBase
                 if (Directory.Exists(full))
                 {
                     Directory.Delete(full, true);
+                    // limpiar metadata de la carpeta + todos sus descendientes
+                    var prefix = p + "/";
+                    var metasDel = await _db.FileMetadata.Where(m => m.Path == p || m.Path.StartsWith(prefix)).ToListAsync();
+                    if (metasDel.Count > 0) { _db.FileMetadata.RemoveRange(metasDel); await _db.SaveChangesAsync(); }
                     await _audit.LogAsync("Files", p, "FILES_FOLDER_DELETE", null, CurrentUser);
                     results.Add(new { path = p, success = true });
                 }
                 else if (System.IO.File.Exists(full))
                 {
                     System.IO.File.Delete(full);
+                    var metaDel = await _db.FileMetadata.FirstOrDefaultAsync(m => m.Path == p);
+                    if (metaDel is not null) { _db.FileMetadata.Remove(metaDel); await _db.SaveChangesAsync(); }
                     await _audit.LogAsync("Files", p, "FILES_DELETE", null, CurrentUser);
                     results.Add(new { path = p, success = true });
                 }
@@ -246,13 +309,28 @@ public class FilesController : ControllerBase
         if (Directory.Exists(dest) || System.IO.File.Exists(dest))
             return BadRequest(new { error = "Ya existe un archivo o carpeta con ese nombre" });
 
+        var oldRel = req.Path;
+        var newRel = _storage.ToRelative(dest);
         if (Directory.Exists(full)) Directory.Move(full, dest);
         else if (System.IO.File.Exists(full)) System.IO.File.Move(full, dest);
         else return NotFound(new { error = "No existe" });
 
+        // Mantener la metadata sincronizada con el nuevo path. Si es carpeta, tambien
+        // actualizamos todos los archivos/subcarpetas que tengan metadata adentro.
+        var oldPrefix = oldRel + "/";
+        var newPrefix = newRel + "/";
+        var metas = await _db.FileMetadata.Where(m => m.Path == oldRel || m.Path.StartsWith(oldPrefix)).ToListAsync();
+        foreach (var m in metas)
+        {
+            if (m.Path == oldRel) m.Path = newRel;
+            else if (m.Path.StartsWith(oldPrefix)) m.Path = newPrefix + m.Path.Substring(oldPrefix.Length);
+            m.UpdatedAt = DateTime.UtcNow;
+        }
+        if (metas.Count > 0) await _db.SaveChangesAsync();
+
         await _audit.LogAsync("Files", req.Path, "FILES_RENAME",
-            JsonSerializer.Serialize(new { from = req.Path, to = _storage.ToRelative(dest) }), CurrentUser);
-        return Ok(new { ok = true, path = _storage.ToRelative(dest) });
+            JsonSerializer.Serialize(new { from = req.Path, to = newRel }), CurrentUser);
+        return Ok(new { ok = true, path = newRel });
     }
 
     public class MoveRequest { public List<string> Paths { get; set; } = new(); public string TargetPath { get; set; } = ""; }
