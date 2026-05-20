@@ -1,0 +1,64 @@
+@inject ApiClient Api
+@inject NavigationManager Navigation
+@implements IDisposable
+
+@* Badge en topbar: muestra cantidad de cobranzas precargadas por repartidores que
+   esperan aprobacion. Click → te lleva a /cafe/cobranzas-pendientes. Refresca cada 60s. *@
+
+@if (count > 0)
+{
+    <div class="cpb-badge" @onclick="@(() => Navigation.NavigateTo("/cafe/cobranzas-pendientes"))"
+         title="@count cobranzas precargadas por repartidores esperando aprobación">
+        <span class="cpb-icon">💰</span>
+        <span class="cpb-num">@count</span>
+    </div>
+}
+
+<style>
+    .cpb-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 0.35rem 0.7rem;
+        background: linear-gradient(135deg, #fef3c7, #fde68a);
+        color: #92400e;
+        border: 1px solid #f59e0b;
+        border-radius: 999px;
+        font-weight: 800;
+        font-size: 0.85rem;
+        cursor: pointer;
+        margin: 0 0.3rem;
+        animation: cpb-pulse 2s ease-in-out infinite;
+        transition: transform 0.15s;
+    }
+    .cpb-badge:hover { transform: scale(1.08); }
+    .cpb-icon { font-size: 1.05rem; }
+    .cpb-num { font-weight: 900; }
+    @@keyframes cpb-pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.45); }
+        50% { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
+    }
+</style>
+
+@code {
+    private int count;
+    private System.Threading.Timer? timer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Refresh();
+        timer = new System.Threading.Timer(async _ => await InvokeAsync(Refresh), null, 60000, 60000);
+    }
+
+    private async Task Refresh()
+    {
+        try
+        {
+            count = await Api.GetCountCobranzasPendientesAsync();
+            StateHasChanged();
+        }
+        catch { /* no critico */ }
+    }
+
+    public void Dispose() => timer?.Dispose();
+}

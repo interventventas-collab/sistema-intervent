@@ -113,7 +113,7 @@ public class CafeVentasController : ControllerBase
         return utc.AddHours(-3).Date;
     }
 
-    private static CafeVentaDto Map(CafeVenta v, bool esSaldoMigracion = false) => new(
+    private static CafeVentaDto Map(CafeVenta v, bool esSaldoMigracion = false, string? entregadoPorRepartidorNombre = null) => new(
         v.Id, v.Numero, v.Fecha,
         v.ClienteId, v.ClienteNombreSnapshot, v.ClienteTipoSnapshot, v.ClienteTelefonoSnapshot,
         v.Subtotal, v.Descuento, v.Total, v.CostoTotal, v.Margen,
@@ -153,7 +153,10 @@ public class CafeVentasController : ControllerBase
         v.EntregaPor,
         v.EstadoPreparacion,
         v.PreparacionUpdatedAt,
-        v.ArcaImpTotal);
+        v.ArcaImpTotal,
+        v.EntregadoPorRepartidorId,
+        entregadoPorRepartidorNombre,
+        v.EntregadoAt);
 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null)
@@ -169,7 +172,14 @@ public class CafeVentasController : ControllerBase
             .Select(s => s.VentaId!.Value)
             .ToListAsync();
         var migrSet = new HashSet<int>(migrIds);
-        return Ok(list.Select(v => Map(v, migrSet.Contains(v.Id))).ToList());
+        // Pre-cargar nombres de repartidores para las ventas que tienen EntregadoPorRepartidorId
+        var repIds = list.Where(v => v.EntregadoPorRepartidorId.HasValue).Select(v => v.EntregadoPorRepartidorId!.Value).Distinct().ToList();
+        var repsDict = repIds.Count == 0
+            ? new Dictionary<int, string>()
+            : await _db.CafeRepartidores.Where(r => repIds.Contains(r.Id)).ToDictionaryAsync(r => r.Id, r => r.Nombre);
+        return Ok(list.Select(v => Map(v, migrSet.Contains(v.Id),
+            v.EntregadoPorRepartidorId.HasValue && repsDict.TryGetValue(v.EntregadoPorRepartidorId.Value, out var nm) ? nm : null
+        )).ToList());
     }
 
     /// <summary>Devuelve TODAS las ventas tipo FA/FB/FC que NO estan autorizadas en ARCA

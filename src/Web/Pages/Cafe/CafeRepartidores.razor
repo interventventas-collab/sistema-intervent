@@ -1,0 +1,160 @@
+@page "/cafe/repartidores"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@using Web.Models
+
+<style>
+    .rep-wrap { max-width: 800px; margin: 0 auto; padding: 0.5rem; }
+    .rep-header { text-align: center; margin-bottom: 1rem; }
+    .rep-card { background: white; border-radius: 10px; padding: 0.7rem 1rem; margin-bottom: 0.5rem; display: flex; gap: 0.6rem; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .rep-card.inactive { opacity: 0.5; }
+    .rep-card-nom { flex: 1; font-weight: 700; font-size: 1rem; }
+    .rep-pin { font-family: monospace; font-size: 0.85rem; padding: 0.2rem 0.5rem; background: #fef3c7; color: #92400e; border-radius: 4px; }
+    .rep-pin.empty { background: #fee2e2; color: #991b1b; font-style: italic; }
+    .rep-actions { display: flex; gap: 0.3rem; }
+    .rep-btn { padding: 0.3rem 0.6rem; border-radius: 4px; border: 1px solid #d1d5db; background: white; cursor: pointer; font-size: 0.78rem; }
+    .rep-btn.borrar { color: #b91c1c; border-color: #fca5a5; }
+    .rep-btn.borrar:hover { background: #fee2e2; }
+    .modal-rep-input { width: 100%; padding: 0.45rem 0.7rem; border: 1px solid #d1d5db; border-radius: 5px; font-size: 0.95rem; margin-bottom: 0.5rem; }
+</style>
+
+<div class="rep-wrap">
+    <div class="rep-header">
+        <h1 style="margin:0;">🚚 Repartidores</h1>
+        <p style="color:#6b7280; margin:0.3rem 0 0; font-size: 0.9rem;">Cada repartidor entra a su pantalla móvil con un PIN (últimos 3 del DNI). Solo vos los configurás.</p>
+    </div>
+
+    <div style="text-align: right; margin-bottom: 0.7rem;">
+        <button class="btn btn-primary" @onclick="AbrirNuevo">+ Nuevo repartidor</button>
+    </div>
+
+    @if (loading)
+    {
+        <p style="text-align: center;">Cargando...</p>
+    }
+    else if (lista.Count == 0)
+    {
+        <p style="text-align: center; color: #6b7280;">No hay repartidores. Tocá "+ Nuevo repartidor" para empezar.</p>
+    }
+    else
+    {
+        @foreach (var r in lista)
+        {
+            <div class="rep-card @(r.IsActive ? "" : "inactive")">
+                <div class="rep-card-nom">@r.Nombre @(r.IsActive ? "" : "(inactivo)")</div>
+                @if (string.IsNullOrEmpty(r.DniUltimos3))
+                {
+                    <span class="rep-pin empty">⚠ sin PIN</span>
+                }
+                else
+                {
+                    <span class="rep-pin">PIN: @r.DniUltimos3</span>
+                }
+                <div class="rep-actions">
+                    <button class="rep-btn" @onclick="() => AbrirEditar(r)">✏️ Editar</button>
+                    <button class="rep-btn borrar" @onclick="() => BorrarConfirmado(r)">🗑</button>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@* Modal Editar/Nuevo *@
+@if (mostrarModal)
+{
+    <div class="modal-overlay" style="position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 9000;"
+         @onclick="@(() => mostrarModal = false)">
+        <div class="modal-card" @onclick:stopPropagation="true" style="background: white; border-radius: 10px; max-width: 400px; width: 90%; padding: 1rem;">
+            <h3 style="margin: 0 0 0.7rem;">@(editandoId is null ? "+ Nuevo repartidor" : "✏️ Editar repartidor")</h3>
+            <label style="font-size: 0.78rem; font-weight: 600;">Nombre</label>
+            <input class="modal-rep-input" @bind="formNombre" placeholder="Ej: Gabriel" />
+            <label style="font-size: 0.78rem; font-weight: 600;">PIN (últimos 3 dígitos del DNI)</label>
+            <input class="modal-rep-input" @bind="formPin" placeholder="Ej: 142" maxlength="3" />
+            <p style="font-size: 0.75rem; color: #6b7280; margin: 0.3rem 0 0.5rem;">Este número es el que el repartidor tipea para entrar a su pantalla móvil. Asegurate de que sea el correcto.</p>
+            @if (editandoId is not null)
+            {
+                <label style="display: flex; align-items: center; gap: 0.3rem; font-size: 0.85rem; margin-bottom: 0.5rem;">
+                    <input type="checkbox" @bind="formIsActive" /> Activo
+                </label>
+            }
+            <div style="display: flex; gap: 0.4rem; justify-content: flex-end;">
+                <button class="btn btn-secondary" @onclick="@(() => mostrarModal = false)">Cancelar</button>
+                <button class="btn btn-primary" @onclick="Guardar" disabled="@(string.IsNullOrWhiteSpace(formNombre))">✓ Guardar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<RepartidorDto> lista = new();
+    private bool loading = true;
+    private bool mostrarModal;
+    private int? editandoId;
+    private string formNombre = "";
+    private string formPin = "";
+    private bool formIsActive = true;
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    private async Task Cargar()
+    {
+        loading = true;
+        try { lista = await Api.GetRepartidoresAsync() ?? new(); }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { loading = false; }
+    }
+
+    private void AbrirNuevo()
+    {
+        editandoId = null;
+        formNombre = "";
+        formPin = "";
+        formIsActive = true;
+        mostrarModal = true;
+    }
+
+    private void AbrirEditar(RepartidorDto r)
+    {
+        editandoId = r.Id;
+        formNombre = r.Nombre;
+        formPin = r.DniUltimos3 ?? "";
+        formIsActive = r.IsActive;
+        mostrarModal = true;
+    }
+
+    private async Task Guardar()
+    {
+        try
+        {
+            if (editandoId is null)
+            {
+                await Api.CrearRepartidorAsync(new CrearRepartidorRequest { Nombre = formNombre.Trim(), DniUltimos3 = string.IsNullOrWhiteSpace(formPin) ? null : formPin.Trim() });
+                ToastService.Success("✓ Repartidor creado");
+            }
+            else
+            {
+                await Api.EditarRepartidorAsync(editandoId.Value, new EditarRepartidorRequest { Nombre = formNombre.Trim(), DniUltimos3 = string.IsNullOrWhiteSpace(formPin) ? null : formPin.Trim(), IsActive = formIsActive });
+                ToastService.Success("✓ Cambios guardados");
+            }
+            mostrarModal = false;
+            await Cargar();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task BorrarConfirmado(RepartidorDto r)
+    {
+        if (!await JsConfirm($"¿Borrar repartidor {r.Nombre}? Si tiene cobranzas asociadas, solo se desactivará.")) return;
+        try
+        {
+            await Api.BorrarRepartidorAsync(r.Id);
+            ToastService.Success("✓ Borrado");
+            await Cargar();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    [Inject] private IJSRuntime JS { get; set; } = null!;
+    private async Task<bool> JsConfirm(string msg) => await JS.InvokeAsync<bool>("confirm", msg);
+}

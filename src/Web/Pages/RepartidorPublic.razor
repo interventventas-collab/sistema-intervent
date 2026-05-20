@@ -1,0 +1,413 @@
+@page "/repartidor/{Token}"
+@layout EmptyLayout
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject HttpClient Http
+@using System.Net.Http.Json
+@using Web.Models
+
+@* ════════════════════════════════════════════════════════════════════════════
+   Pantalla pública mobile-first para el repartidor. Escanea el QR del comprobante,
+   accede a esta URL, elige su nombre + tipea PIN (últimos 3 del DNI, sesión 15 min),
+   y carga si entregó y/o cobró la venta. Pedido del usuario 2026-05-19.
+   No usa el layout principal — pantalla limpia tipo app. Sin auth del sistema.
+   ════════════════════════════════════════════════════════════════════════════ *@
+
+<style>
+    body { background: #f3f4f6 !important; }
+    .rp-shell { min-height: 100vh; display: flex; flex-direction: column; max-width: 480px; margin: 0 auto; padding: 1rem 0.8rem; }
+    .rp-top { background: white; border-radius: 12px; padding: 1rem; box-shadow: 0 2px 6px rgba(0,0,0,0.08); margin-bottom: 1rem; text-align: center; }
+    .rp-top h1 { margin: 0; font-size: 1.2rem; color: #1d4ed8; }
+    .rp-top .sub { color: #6b7280; font-size: 0.85rem; margin-top: 0.3rem; }
+
+    .rp-card { background: white; border-radius: 12px; padding: 1rem 1.2rem; box-shadow: 0 2px 6px rgba(0,0,0,0.08); margin-bottom: 0.8rem; }
+    .rp-section-title { font-size: 0.78rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.4rem; }
+
+    .rp-venta-num { font-family: monospace; font-weight: 800; color: #1d4ed8; font-size: 1rem; }
+    .rp-cliente { font-size: 1.1rem; font-weight: 800; margin-top: 0.3rem; }
+    .rp-dir { font-size: 0.85rem; color: #6b7280; margin-top: 0.15rem; }
+    .rp-total-row { display: flex; justify-content: space-between; align-items: center; margin-top: 0.7rem; padding-top: 0.7rem; border-top: 1px dashed #e5e7eb; }
+    .rp-total-label { font-size: 0.78rem; color: #6b7280; }
+    .rp-total-monto { font-size: 1.5rem; font-weight: 800; color: #16a34a; }
+    .rp-entregada-badge { display: inline-block; padding: 0.2rem 0.6rem; background: #dcfce7; color: #166534; border-radius: 999px; font-size: 0.78rem; font-weight: 700; margin-top: 0.4rem; }
+
+    .rp-items { margin-top: 0.5rem; }
+    .rp-item { display: grid; grid-template-columns: 40px 1fr; gap: 0.5rem; padding: 0.35rem 0; border-bottom: 1px dashed #f3f4f6; align-items: center; }
+    .rp-item-cant { font-size: 1.3rem; font-weight: 800; color: #ea580c; text-align: right; }
+    .rp-item-desc { font-size: 0.88rem; }
+    .rp-item-desc small { color: #6b7280; display: block; font-size: 0.7rem; margin-top: 0.1rem; }
+
+    /* Paso 1: lista de repartidores */
+    .rp-rep-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+    .rp-rep-btn { padding: 1rem; background: white; border: 2px solid #d1d5db; border-radius: 10px; font-size: 1rem; font-weight: 700; cursor: pointer; text-align: center; transition: all 0.15s; }
+    .rp-rep-btn:hover, .rp-rep-btn.activo { border-color: #1d4ed8; background: #eff6ff; color: #1e40af; }
+
+    /* Paso 2: PIN */
+    .rp-pin-input { width: 100%; padding: 1.2rem; font-size: 2rem; text-align: center; border: 2px solid #d1d5db; border-radius: 10px; letter-spacing: 0.5rem; font-family: monospace; }
+    .rp-pin-input:focus { border-color: #1d4ed8; outline: none; }
+
+    /* Paso 3: form cobranza */
+    .rp-check-row { display: flex; gap: 0.6rem; align-items: center; padding: 0.7rem; background: #f9fafb; border-radius: 8px; margin-bottom: 0.6rem; cursor: pointer; }
+    .rp-check-row.activo { background: #dcfce7; border: 1px solid #16a34a; }
+    .rp-check-row input { width: 22px; height: 22px; }
+    .rp-monto-input { width: 100%; padding: 0.9rem; font-size: 1.4rem; text-align: right; border: 2px solid #d1d5db; border-radius: 8px; font-weight: 700; }
+    .rp-textarea { width: 100%; padding: 0.6rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.95rem; resize: vertical; min-height: 60px; }
+
+    .rp-btn-primary { width: 100%; padding: 1rem; background: #16a34a; color: white; border: none; border-radius: 10px; font-size: 1.1rem; font-weight: 800; cursor: pointer; margin-top: 0.5rem; }
+    .rp-btn-primary:hover { background: #15803d; }
+    .rp-btn-primary:disabled { background: #9ca3af; cursor: not-allowed; }
+    .rp-btn-secondary { width: 100%; padding: 0.7rem; background: white; color: #6b7280; border: 1px solid #d1d5db; border-radius: 8px; font-size: 0.9rem; cursor: pointer; margin-top: 0.5rem; }
+
+    .rp-error { background: #fee2e2; color: #991b1b; padding: 0.6rem 0.8rem; border-radius: 6px; font-size: 0.88rem; margin-bottom: 0.5rem; }
+    .rp-ok { background: #dcfce7; color: #166534; padding: 0.7rem 0.9rem; border-radius: 6px; font-size: 0.95rem; font-weight: 700; text-align: center; }
+    .rp-loading { text-align: center; padding: 2rem; color: #6b7280; }
+
+    .rp-saludo { font-size: 0.85rem; color: #6b7280; margin-bottom: 0.5rem; text-align: right; }
+    .rp-saludo b { color: #1d4ed8; }
+    .rp-link-cambiar { font-size: 0.72rem; color: #6b7280; cursor: pointer; text-decoration: underline; }
+</style>
+
+<div class="rp-shell">
+    <div class="rp-top">
+        <h1>🚚 Repartidor</h1>
+        <div class="sub">Cargá si entregaste y/o cobraste esta venta</div>
+    </div>
+
+    @if (loading)
+    {
+        <div class="rp-loading">Cargando venta...</div>
+    }
+    else if (errorCarga is not null)
+    {
+        <div class="rp-card"><div class="rp-error">⚠ @errorCarga</div></div>
+    }
+    else if (info is null)
+    {
+        <div class="rp-card"><div class="rp-error">No se encontró la venta. El link puede estar mal.</div></div>
+    }
+    else
+    {
+        @* INFO de la venta — siempre visible *@
+        <div class="rp-card">
+            <div class="rp-venta-num">@info.Numero</div>
+            <div class="rp-cliente">@(info.ClienteNombre ?? "Consumidor final")</div>
+            @if (!string.IsNullOrEmpty(info.ClienteDireccion))
+            {
+                <div class="rp-dir">📍 @info.ClienteDireccion @(string.IsNullOrEmpty(info.ClienteLocalidad) ? "" : ", " + info.ClienteLocalidad)</div>
+            }
+            @if (info.YaEntregada)
+            {
+                <div class="rp-entregada-badge">✅ Ya entregada por @info.EntregadoPor</div>
+            }
+            <div class="rp-total-row">
+                <div>
+                    <div class="rp-total-label">Saldo pendiente</div>
+                </div>
+                <div class="rp-total-monto">$@info.SaldoPendiente.ToString("N2")</div>
+            </div>
+            @if (info.Items.Count > 0)
+            {
+                <div class="rp-items">
+                    <div class="rp-section-title" style="margin-top:0.6rem;">📦 Items</div>
+                    @foreach (var it in info.Items)
+                    {
+                        <div class="rp-item">
+                            <div class="rp-item-cant">×@it.Cantidad</div>
+                            <div class="rp-item-desc">
+                                <b>@it.Nombre</b>
+                                <small>@it.Formato @(string.IsNullOrEmpty(it.Molienda) ? "" : "· " + it.Molienda) @(it.EsDoyPack ? "· 📦 Doy pack" : "") @(it.EsEnvasePlateado ? "· ⚪ Plateado" : "")</small>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        @* SI no esta logueado: pedimos quien sos + PIN *@
+        @if (sesionRepartidorId is null)
+        {
+            @if (pasoActual == 1)
+            {
+                <div class="rp-card">
+                    <div class="rp-section-title">1️⃣ ¿Quién sos?</div>
+                    @if (repartidoresList is null)
+                    {
+                        <div class="rp-loading">Cargando…</div>
+                    }
+                    else if (repartidoresList.Count == 0)
+                    {
+                        <div class="rp-error">No hay repartidores activos. Avisale al admin.</div>
+                    }
+                    else
+                    {
+                        <div class="rp-rep-grid">
+                            @foreach (var r in repartidoresList)
+                            {
+                                <button class="rp-rep-btn" @onclick="() => SeleccionarRepartidor(r)">@r.Nombre</button>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+            else if (pasoActual == 2)
+            {
+                <div class="rp-card">
+                    <div class="rp-section-title">2️⃣ Tu PIN (últimos 3 del DNI)</div>
+                    <div style="text-align: center; margin-bottom: 0.5rem; font-weight: 700;">Hola @repartidorElegido?.Nombre 👋</div>
+                    <input class="rp-pin-input" type="tel" inputmode="numeric" maxlength="3" pattern="[0-9]*"
+                           @bind="pinIngresado" @bind:event="oninput"
+                           @onkeydown="@(async e => { if (e.Key == "Enter" && pinIngresado.Length == 3) await VerificarPin(); })"
+                           placeholder="•••" autofocus />
+                    @if (errorPin is not null)
+                    {
+                        <div class="rp-error" style="margin-top: 0.5rem;">@errorPin</div>
+                    }
+                    <button class="rp-btn-primary" disabled="@(pinIngresado.Length != 3 || loginEnCurso)" @onclick="VerificarPin">
+                        @(loginEnCurso ? "Verificando…" : "Continuar →")
+                    </button>
+                    <button class="rp-btn-secondary" @onclick="VolverPaso1">← Cambiar repartidor</button>
+                </div>
+            }
+        }
+        @* SI esta logueado: form de cobranza *@
+        else
+        {
+            <div class="rp-card">
+                <div class="rp-saludo">Logueado como <b>@repartidorElegido?.Nombre</b> · <span class="rp-link-cambiar" @onclick="Cerrar">cambiar</span></div>
+
+                @if (resultadoMensaje is not null)
+                {
+                    <div class="rp-ok">@resultadoMensaje</div>
+                    <button class="rp-btn-secondary" @onclick="ReiniciarFormulario" style="margin-top: 0.7rem;">Cargar otra cosa para esta venta</button>
+                }
+                else
+                {
+                    <div class="rp-section-title">3️⃣ ¿Qué hiciste con esta venta?</div>
+
+                    <label class="rp-check-row @(formMarcaEntregado ? "activo" : "")">
+                        <input type="checkbox" @bind="formMarcaEntregado" />
+                        <div>
+                            <b>✅ Entregué la mercadería</b>
+                            <div style="font-size: 0.72rem; color: #6b7280;">(la venta queda marcada "entregada por mí")</div>
+                        </div>
+                    </label>
+
+                    <label class="rp-check-row @(formMarcaCobrado ? "activo" : "")">
+                        <input type="checkbox" @bind="formMarcaCobrado" />
+                        <div>
+                            <b>💰 Cobré en efectivo</b>
+                            <div style="font-size: 0.72rem; color: #6b7280;">(otros medios: los carga central)</div>
+                        </div>
+                    </label>
+
+                    @if (formMarcaCobrado)
+                    {
+                        <div style="margin-top: 0.7rem;">
+                            <div class="rp-section-title">💰 Importe cobrado</div>
+                            <input class="rp-monto-input" type="number" step="0.01" @bind="formImporte" placeholder="0,00" />
+                            <button class="rp-btn-secondary" @onclick="@(() => formImporte = info!.SaldoPendiente)" style="font-size: 0.78rem; padding: 0.4rem;">Usar saldo total ($@info.SaldoPendiente.ToString("N2"))</button>
+                        </div>
+                    }
+
+                    <div style="margin-top: 0.7rem;">
+                        <div class="rp-section-title">📝 Notas (opcional)</div>
+                        <textarea class="rp-textarea" @bind="formNotas" placeholder="Ej: pagó con $2000 de más, dejó propina, etc."></textarea>
+                    </div>
+
+                    @if (errorEnvio is not null)
+                    {
+                        <div class="rp-error" style="margin-top: 0.5rem;">@errorEnvio</div>
+                    }
+
+                    <button class="rp-btn-primary"
+                            disabled="@(!(formMarcaEntregado || (formMarcaCobrado && formImporte > 0)) || enviando)"
+                            @onclick="Enviar">
+                        @(enviando ? "Guardando…" : "✓ Confirmar")
+                    </button>
+                }
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public string Token { get; set; } = "";
+
+    private InfoVentaPublicDto? info;
+    private bool loading = true;
+    private string? errorCarga;
+
+    // Sesión local del repartidor (15 min de inactividad). Guardado en sessionStorage.
+    private int? sesionRepartidorId;
+    private string? sesionPin;
+    private DateTime sesionUltimaAct = DateTime.MinValue;
+    private RepartidorPublicItemDto? repartidorElegido;
+
+    // Flujo
+    private int pasoActual = 1; // 1=elegir nombre, 2=pedir pin
+    private List<RepartidorPublicItemDto>? repartidoresList;
+    private string pinIngresado = "";
+    private string? errorPin;
+    private bool loginEnCurso;
+
+    // Form cobranza
+    private bool formMarcaEntregado;
+    private bool formMarcaCobrado;
+    private decimal? formImporte;
+    private string? formNotas;
+    private string? errorEnvio;
+    private bool enviando;
+    private string? resultadoMensaje;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarVenta();
+        await CargarRepartidores();
+        await CargarSesionDeStorage();
+    }
+
+    private async Task CargarVenta()
+    {
+        loading = true;
+        try
+        {
+            info = await Http.GetFromJsonAsync<InfoVentaPublicDto>($"api/cafe/repartidor-public/venta/{Token}");
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            errorCarga = "Venta no encontrada — el link puede estar mal.";
+        }
+        catch (Exception ex) { errorCarga = "Error al cargar: " + ex.Message; }
+        finally { loading = false; }
+    }
+
+    private async Task CargarRepartidores()
+    {
+        try { repartidoresList = await Http.GetFromJsonAsync<List<RepartidorPublicItemDto>>("api/cafe/repartidor-public/repartidores"); }
+        catch { repartidoresList = new(); }
+    }
+
+    private async Task CargarSesionDeStorage()
+    {
+        try
+        {
+            var data = await JS.InvokeAsync<string?>("sessionStorage.getItem", "repartidor_session");
+            if (string.IsNullOrEmpty(data)) return;
+            var parts = data.Split('|');
+            if (parts.Length != 3) return;
+            if (!int.TryParse(parts[0], out var id)) return;
+            if (!DateTime.TryParse(parts[2], out var ult)) return;
+            if ((DateTime.UtcNow - ult).TotalMinutes > 15) return; // sesion expirada
+            sesionRepartidorId = id;
+            sesionPin = parts[1];
+            sesionUltimaAct = ult;
+            repartidorElegido = repartidoresList?.FirstOrDefault(r => r.Id == id);
+        }
+        catch { }
+    }
+
+    private async Task GuardarSesion()
+    {
+        if (sesionRepartidorId is null || sesionPin is null) return;
+        var data = $"{sesionRepartidorId}|{sesionPin}|{DateTime.UtcNow:O}";
+        try { await JS.InvokeVoidAsync("sessionStorage.setItem", "repartidor_session", data); } catch { }
+    }
+
+    private void SeleccionarRepartidor(RepartidorPublicItemDto r)
+    {
+        repartidorElegido = r;
+        pinIngresado = "";
+        errorPin = null;
+        pasoActual = 2;
+    }
+
+    private void VolverPaso1()
+    {
+        repartidorElegido = null;
+        pinIngresado = "";
+        errorPin = null;
+        pasoActual = 1;
+    }
+
+    private async Task VerificarPin()
+    {
+        if (repartidorElegido is null || pinIngresado.Length != 3) return;
+        loginEnCurso = true;
+        errorPin = null;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync("api/cafe/repartidor-public/login",
+                new { RepartidorId = repartidorElegido.Id, Pin = pinIngresado });
+            if (!resp.IsSuccessStatusCode)
+            {
+                var body = await resp.Content.ReadAsStringAsync();
+                errorPin = body.Contains("PIN incorrecto") ? "PIN incorrecto. Probá de nuevo." : "Error: " + body;
+                return;
+            }
+            sesionRepartidorId = repartidorElegido.Id;
+            sesionPin = pinIngresado;
+            sesionUltimaAct = DateTime.UtcNow;
+            await GuardarSesion();
+        }
+        catch (Exception ex) { errorPin = "Error: " + ex.Message; }
+        finally { loginEnCurso = false; }
+    }
+
+    private async Task Cerrar()
+    {
+        sesionRepartidorId = null;
+        sesionPin = null;
+        repartidorElegido = null;
+        pasoActual = 1;
+        pinIngresado = "";
+        ReiniciarFormulario();
+        try { await JS.InvokeVoidAsync("sessionStorage.removeItem", "repartidor_session"); } catch { }
+    }
+
+    private void ReiniciarFormulario()
+    {
+        formMarcaEntregado = false;
+        formMarcaCobrado = false;
+        formImporte = null;
+        formNotas = null;
+        errorEnvio = null;
+        resultadoMensaje = null;
+    }
+
+    private async Task Enviar()
+    {
+        if (sesionRepartidorId is null || sesionPin is null) return;
+        if (!formMarcaEntregado && !(formMarcaCobrado && formImporte > 0))
+        {
+            errorEnvio = "Marcá al menos algo (entregue o cobre)";
+            return;
+        }
+        enviando = true;
+        errorEnvio = null;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync($"api/cafe/repartidor-public/cobrar/{Token}", new
+            {
+                RepartidorId = sesionRepartidorId.Value,
+                Pin = sesionPin,
+                MarcarEntregado = formMarcaEntregado,
+                Importe = formMarcaCobrado ? formImporte : null,
+                Notas = formNotas
+            });
+            if (!resp.IsSuccessStatusCode)
+            {
+                var body = await resp.Content.ReadAsStringAsync();
+                errorEnvio = "Error: " + body;
+                return;
+            }
+            resultadoMensaje = formMarcaCobrado
+                ? $"✓ Listo! Cobranza precargada por ${formImporte:N2}. El admin la va a aprobar."
+                : "✓ Listo! Marcaste como entregada (sin cobro).";
+            sesionUltimaAct = DateTime.UtcNow;
+            await GuardarSesion();
+            await CargarVenta(); // refresca info
+        }
+        catch (Exception ex) { errorEnvio = "Error: " + ex.Message; }
+        finally { enviando = false; }
+    }
+}

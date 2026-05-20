@@ -283,7 +283,10 @@ public record CafeVentaDto(
     string? EntregaPor = null,
     string? EstadoPreparacion = null,
     DateTime? PreparacionUpdatedAt = null,
-    decimal? ArcaImpTotal = null);
+    decimal? ArcaImpTotal = null,
+    int? EntregadoPorRepartidorId = null,
+    string? EntregadoPorRepartidorNombre = null,
+    DateTime? EntregadoAt = null);
 
 public class CafeCotizarItemRequest
 {

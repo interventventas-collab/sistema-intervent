@@ -1,0 +1,138 @@
+@page "/cafe/cobranzas-pendientes"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject OperatorService Operator
+@using Web.Models
+
+<style>
+    .cp-wrap { max-width: 1100px; margin: 0 auto; padding: 0.5rem; }
+    .cp-header { text-align: center; margin-bottom: 1rem; }
+    .cp-card { background: white; border-radius: 10px; padding: 0.8rem 1rem; margin-bottom: 0.6rem; box-shadow: 0 1px 4px rgba(0,0,0,0.07); border-left: 4px solid #f59e0b; }
+    .cp-card.aprobada { border-left-color: #10b981; opacity: 0.7; }
+    .cp-card.rechazada { border-left-color: #6b7280; opacity: 0.55; }
+    .cp-row { display: grid; grid-template-columns: 1fr auto; gap: 0.6rem; align-items: start; }
+    .cp-info { font-size: 0.9rem; }
+    .cp-info b { font-weight: 700; }
+    .cp-info .meta { font-size: 0.75rem; color: #6b7280; margin-top: 0.2rem; }
+    .cp-importe { font-size: 1.6rem; font-weight: 800; color: #16a34a; text-align: right; }
+    .cp-actions { display: flex; gap: 0.4rem; margin-top: 0.6rem; }
+    .cp-btn { padding: 0.45rem 0.9rem; font-weight: 700; border-radius: 5px; border: none; cursor: pointer; font-size: 0.85rem; }
+    .cp-btn.aprobar { background: #10b981; color: white; }
+    .cp-btn.aprobar:hover { background: #059669; }
+    .cp-btn.rechazar { background: white; color: #b91c1c; border: 1px solid #fca5a5; }
+    .cp-btn.rechazar:hover { background: #fee2e2; }
+    .cp-tag { display: inline-block; padding: 0.1rem 0.4rem; background: #fef3c7; color: #92400e; border-radius: 4px; font-size: 0.7rem; font-weight: 700; margin-left: 0.3rem; }
+    .cp-tabs { display: flex; gap: 0.3rem; margin-bottom: 0.8rem; justify-content: center; }
+    .cp-tab { padding: 0.4rem 0.8rem; border: 1px solid #d1d5db; background: white; border-radius: 5px; cursor: pointer; font-weight: 600; font-size: 0.85rem; }
+    .cp-tab.activo { background: #1d4ed8; color: white; border-color: #1d4ed8; }
+</style>
+
+<div class="cp-wrap">
+    <div class="cp-header">
+        <h1 style="margin: 0;">💰 Cobranzas a aprobar</h1>
+        <p style="color: #6b7280; margin: 0.3rem 0 0; font-size: 0.9rem;">
+            Cobranzas que los repartidores cargaron desde la pantalla móvil. Revisalas y aprobá las correctas.
+        </p>
+    </div>
+
+    <div class="cp-tabs">
+        <button class="cp-tab @(tab == "PENDIENTE" ? "activo" : "")" @onclick='() => CambiarTab("PENDIENTE")'>🟡 Pendientes (@countPendientes)</button>
+        <button class="cp-tab @(tab == "APROBADA" ? "activo" : "")" @onclick='() => CambiarTab("APROBADA")'>✅ Aprobadas</button>
+        <button class="cp-tab @(tab == "RECHAZADA" ? "activo" : "")" @onclick='() => CambiarTab("RECHAZADA")'>❌ Rechazadas</button>
+    </div>
+
+    @if (loading)
+    {
+        <p style="text-align: center;">Cargando...</p>
+    }
+    else if (lista.Count == 0)
+    {
+        <p style="text-align: center; color: #9ca3af; padding: 2rem;">No hay cobranzas en este estado.</p>
+    }
+    else
+    {
+        @foreach (var c in lista)
+        {
+            var cardClass = c.Estado == "APROBADA" ? "aprobada" : (c.Estado == "RECHAZADA" ? "rechazada" : "");
+            <div class="cp-card @cardClass">
+                <div class="cp-row">
+                    <div class="cp-info">
+                        <b>@c.VentaNumero — @(c.ClienteNombre ?? "(sin cliente)")</b>
+                        @if (c.MarcadoEntregado)
+                        {
+                            <span class="cp-tag">✅ ENTREGADO</span>
+                        }
+                        <div class="meta">
+                            🚚 @c.RepartidorNombre · 🕒 @c.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm")
+                            @if (!string.IsNullOrEmpty(c.Notas))
+                            {
+                                <span> · 📝 @c.Notas</span>
+                            }
+                        </div>
+                    </div>
+                    <div class="cp-importe">$@c.Importe.ToString("N2")</div>
+                </div>
+                @if (c.Estado == "PENDIENTE")
+                {
+                    <div class="cp-actions">
+                        <button class="cp-btn aprobar" @onclick="() => Aprobar(c)">✓ Aprobar</button>
+                        <button class="cp-btn rechazar" @onclick="() => Rechazar(c)">✗ Rechazar</button>
+                    </div>
+                }
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private List<CobranzaPendienteDto> lista = new();
+    private bool loading = true;
+    private string tab = "PENDIENTE";
+    private int countPendientes;
+
+    protected override async Task OnInitializedAsync() => await Recargar();
+
+    private async Task Recargar()
+    {
+        loading = true;
+        try
+        {
+            lista = await Api.GetCobranzasPendientesAsync(tab) ?? new();
+            countPendientes = await Api.GetCountCobranzasPendientesAsync();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { loading = false; }
+    }
+
+    private async Task CambiarTab(string t)
+    {
+        tab = t;
+        await Recargar();
+    }
+
+    [Inject] private IJSRuntime JS { get; set; } = null!;
+
+    private async Task Aprobar(CobranzaPendienteDto c)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Aprobar cobranza de {c.ClienteNombre} por ${c.Importe:N2}? Se va a crear una cobranza real en efectivo y se imputa a {c.VentaNumero}.")) return;
+        try
+        {
+            var ok = await Api.AprobarCobranzaPendienteAsync(c.Id, new AprobarCobranzaPendienteRequest { Operador = Operator.Current });
+            if (ok) { ToastService.Success("✓ Aprobada — cobranza creada"); await Recargar(); }
+            else ToastService.Error("No se pudo aprobar");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task Rechazar(CobranzaPendienteDto c)
+    {
+        var motivo = await JS.InvokeAsync<string>("prompt", $"Motivo del rechazo (opcional):");
+        try
+        {
+            var ok = await Api.RechazarCobranzaPendienteAsync(c.Id, new RechazarCobranzaPendienteRequest { Motivo = motivo, Operador = Operator.Current });
+            if (ok) { ToastService.Info("Rechazada"); await Recargar(); }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+}

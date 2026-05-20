@@ -1,0 +1,148 @@
+@page "/cafe/arqueo-repartidor"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@using Web.Models
+
+<style>
+    .arq-wrap { max-width: 900px; margin: 0 auto; padding: 0.5rem; }
+    .arq-header { text-align: center; margin-bottom: 1rem; }
+    .arq-toolbar { display: flex; gap: 0.6rem; align-items: end; justify-content: center; flex-wrap: wrap; background: white; padding: 0.8rem; border-radius: 8px; margin-bottom: 0.8rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .arq-toolbar label { font-size: 0.78rem; font-weight: 600; color: #4b5563; display: block; margin-bottom: 0.2rem; }
+    .arq-toolbar select, .arq-toolbar input { padding: 0.4rem 0.7rem; border: 1px solid #d1d5db; border-radius: 5px; font-size: 0.9rem; }
+    .arq-totales { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.6rem; margin-bottom: 1rem; }
+    @@media (max-width: 600px) { .arq-totales { grid-template-columns: 1fr; } }
+    .arq-card-total { background: white; border-radius: 10px; padding: 1rem 1.2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.07); border-left: 4px solid #d1d5db; }
+    .arq-card-total.pendiente { border-left-color: #f59e0b; }
+    .arq-card-total.aprobado { border-left-color: #10b981; }
+    .arq-card-total.total { border-left-color: #1d4ed8; background: #eff6ff; }
+    .arq-label { font-size: 0.7rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; }
+    .arq-monto { font-size: 1.5rem; font-weight: 800; color: #1f2937; margin-top: 0.2rem; }
+    .arq-meta { font-size: 0.75rem; color: #6b7280; margin-top: 0.15rem; }
+    .arq-tabla { width: 100%; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .arq-tabla th { background: #f9fafb; padding: 0.5rem 0.7rem; text-align: left; font-size: 0.75rem; color: #374151; border-bottom: 1px solid #e5e7eb; }
+    .arq-tabla td { padding: 0.5rem 0.7rem; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem; }
+    .arq-estado-pend { background: #fef3c7; color: #92400e; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.7rem; font-weight: 700; }
+    .arq-estado-aprob { background: #dcfce7; color: #166534; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.7rem; font-weight: 700; }
+</style>
+
+<div class="arq-wrap">
+    <div class="arq-header">
+        <h1 style="margin: 0;">🧾 Arqueo del día — Repartidor</h1>
+        <p style="color: #6b7280; margin: 0.3rem 0 0; font-size: 0.9rem;">Total a entregar a central por cobranzas en efectivo del día.</p>
+    </div>
+
+    <div class="arq-toolbar">
+        <div>
+            <label>Repartidor</label>
+            <select @bind="repartidorId" @bind:after="Recargar">
+                <option value="0">— Elegí —</option>
+                @if (repartidores is not null)
+                {
+                    @foreach (var r in repartidores.Where(x => x.IsActive))
+                    {
+                        <option value="@r.Id">@r.Nombre</option>
+                    }
+                }
+            </select>
+        </div>
+        <div>
+            <label>Fecha</label>
+            <input type="date" @bind="fecha" @bind:after="Recargar" />
+        </div>
+        <div>
+            <label>&nbsp;</label>
+            <button class="btn btn-secondary" @onclick="Recargar">🔄 Refrescar</button>
+        </div>
+    </div>
+
+    @if (arqueo is null || repartidorId == 0)
+    {
+        <p style="text-align: center; color: #9ca3af; padding: 2rem;">Elegí un repartidor para ver su arqueo.</p>
+    }
+    else if (arqueo.Items.Count == 0)
+    {
+        <p style="text-align: center; color: #9ca3af; padding: 2rem;">@arqueo.RepartidorNombre no tiene cobranzas registradas el @arqueo.Fecha.ToString("dd/MM/yyyy").</p>
+    }
+    else
+    {
+        var total = arqueo.TotalPendiente + arqueo.TotalAprobado;
+        <div class="arq-totales">
+            <div class="arq-card-total total">
+                <div class="arq-label">💰 TOTAL A RENDIR</div>
+                <div class="arq-monto" style="color: #1e40af;">$@total.ToString("N2")</div>
+                <div class="arq-meta">@(arqueo.CantPendiente + arqueo.CantAprobado) cobranzas en efectivo</div>
+            </div>
+            <div class="arq-card-total pendiente">
+                <div class="arq-label">🟡 Pendientes de aprobar</div>
+                <div class="arq-monto">$@arqueo.TotalPendiente.ToString("N2")</div>
+                <div class="arq-meta">@arqueo.CantPendiente cobranza(s)</div>
+            </div>
+            <div class="arq-card-total aprobado">
+                <div class="arq-label">✅ Ya aprobadas</div>
+                <div class="arq-monto">$@arqueo.TotalAprobado.ToString("N2")</div>
+                <div class="arq-meta">@arqueo.CantAprobado cobranza(s)</div>
+            </div>
+        </div>
+
+        <table class="arq-tabla">
+            <thead>
+                <tr>
+                    <th>Hora</th>
+                    <th>Venta</th>
+                    <th>Cliente</th>
+                    <th>Estado</th>
+                    <th>Entregó</th>
+                    <th style="text-align: right;">Importe</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var it in arqueo.Items)
+                {
+                    <tr>
+                        <td>@it.CreatedAt.ToLocalTime().ToString("HH:mm")</td>
+                        <td style="font-family: monospace; font-weight: 700;">@it.VentaNumero</td>
+                        <td>@(it.ClienteNombre ?? "—")</td>
+                        <td>
+                            @if (it.Estado == "PENDIENTE")
+                            {
+                                <span class="arq-estado-pend">🟡 PENDIENTE</span>
+                            }
+                            else
+                            {
+                                <span class="arq-estado-aprob">✅ APROBADA</span>
+                            }
+                        </td>
+                        <td>@(it.MarcadoEntregado ? "✅" : "—")</td>
+                        <td style="text-align: right; font-weight: 700; color: #16a34a;">$@it.Importe.ToString("N2")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <p style="text-align: center; font-size: 0.78rem; color: #6b7280; margin-top: 0.8rem;">
+            💡 Las "pendientes" todavía no están confirmadas. Una vez que las apruebes en
+            <a href="/cafe/cobranzas-pendientes">Cobranzas a aprobar</a> pasan a "aprobadas".
+        </p>
+    }
+</div>
+
+@code {
+    private int repartidorId;
+    private DateTime fecha = DateTime.Today;
+    private List<RepartidorDto>? repartidores;
+    private ArqueoDto? arqueo;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { repartidores = await Api.GetRepartidoresAsync() ?? new(); }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task Recargar()
+    {
+        if (repartidorId == 0) { arqueo = null; return; }
+        try { arqueo = await Api.GetArqueoRepartidorAsync(repartidorId, fecha); }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+}

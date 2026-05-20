@@ -325,6 +325,13 @@
                                         var (icon, bg, fg, label) = PreparacionChip(v.EstadoPreparacion);
                                         <span style="display:inline-block; padding:0.15rem 0.5rem; background:@bg; color:@fg; border-radius:999px; font-size:0.7rem; font-weight:700; margin-left:0.2rem;" title="Estado en el tablero de Preparación">@icon @label</span>
                                     }
+                                    @if (!string.IsNullOrEmpty(v.EntregadoPorRepartidorNombre))
+                                    {
+                                        <span style="display:inline-block; padding:0.15rem 0.5rem; background:#dcfce7; color:#166534; border-radius:999px; font-size:0.7rem; font-weight:700; margin-left:0.2rem;"
+                                              title="Marcado como entregado por el repartidor @(v.EntregadoAt?.ToLocalTime().ToString("dd/MM HH:mm"))">
+                                            ✅ Entregó @v.EntregadoPorRepartidorNombre
+                                        </span>
+                                    }
                                 </td>
                                 <td class="actions-cell">
                                     <button class="btn-icon" style="color: #1d4ed8;" @onclick="() => ShowPrint(v)" title="Ver / imprimir / PDF">🖨</button>

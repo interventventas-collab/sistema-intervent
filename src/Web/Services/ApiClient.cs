@@ -731,6 +731,48 @@ public class ApiClient
         return resp.IsSuccessStatusCode;
     }
 
+    // === Repartidores (admin) ===
+    public async Task<List<RepartidorDto>?> GetRepartidoresAsync()
+        => await GetAsync<List<RepartidorDto>>("/api/cafe/repartidores");
+    public async Task<RepartidorDto?> CrearRepartidorAsync(CrearRepartidorRequest req)
+        => await PostAsync<RepartidorDto>("/api/cafe/repartidores", req);
+    public async Task<bool> EditarRepartidorAsync(int id, EditarRepartidorRequest req)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PutAsJsonAsync($"/api/cafe/repartidores/{id}", req);
+        return resp.IsSuccessStatusCode;
+    }
+    public async Task<bool> BorrarRepartidorAsync(int id)
+        => await DeleteAsync($"/api/cafe/repartidores/{id}");
+
+    // === Cobranzas pendientes (admin) ===
+    public async Task<List<CobranzaPendienteDto>?> GetCobranzasPendientesAsync(string estado = "PENDIENTE")
+        => await GetAsync<List<CobranzaPendienteDto>>($"/api/cafe/cobranzas-pendientes?estado={Uri.EscapeDataString(estado)}");
+    public async Task<int> GetCountCobranzasPendientesAsync()
+    {
+        var r = await GetAsync<CountResultDto>("/api/cafe/cobranzas-pendientes/count-pendientes");
+        return r?.Count ?? 0;
+    }
+    public record CountResultDto(int Count);
+    public async Task<bool> AprobarCobranzaPendienteAsync(int id, AprobarCobranzaPendienteRequest req)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/cafe/cobranzas-pendientes/{id}/aprobar", req);
+        return resp.IsSuccessStatusCode;
+    }
+    public async Task<bool> RechazarCobranzaPendienteAsync(int id, RechazarCobranzaPendienteRequest req)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/cafe/cobranzas-pendientes/{id}/rechazar", req);
+        return resp.IsSuccessStatusCode;
+    }
+    public async Task<ArqueoDto?> GetArqueoRepartidorAsync(int repartidorId, DateTime? fecha = null)
+    {
+        var url = $"/api/cafe/cobranzas-pendientes/arqueo/{repartidorId}"
+            + (fecha.HasValue ? $"?fecha={fecha.Value:yyyy-MM-dd}" : "");
+        return await GetAsync<ArqueoDto>(url);
+    }
+
     // === Calendario Notas (2026-05-19) ===
     public async Task<List<CalendarioNotaDto>?> GetCalendarioNotasAsync(DateTime? desde = null, DateTime? hasta = null)
     {

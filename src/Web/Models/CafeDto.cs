@@ -314,6 +314,10 @@ public class CafeVentaDto
     /// Null en cotizaciones, proformas y facturas sin autorizar. Usado para mostrar
     /// el monto cobrable real en el listado de ventas.</summary>
     public decimal? ArcaImpTotal { get; set; }
+    /// <summary>Si un repartidor marco "entregue" desde /repartidor/{token}, su Id+nombre.</summary>
+    public int? EntregadoPorRepartidorId { get; set; }
+    public string? EntregadoPorRepartidorNombre { get; set; }
+    public DateTime? EntregadoAt { get; set; }
 }
 
 /// <summary>Tarjeta de venta en el tablero /cafe/preparacion. Trae solo lo que el

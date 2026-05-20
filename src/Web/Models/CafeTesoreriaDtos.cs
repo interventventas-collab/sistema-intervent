@@ -191,6 +191,113 @@ public class MarcarMovimientosUsadosRequest
     public int CobranzaId { get; set; }
 }
 
+// ========== Repartidores + Cobranzas pendientes (QR) ==========
+public class RepartidorDto
+{
+    public int Id { get; set; }
+    public string Nombre { get; set; } = "";
+    public string? DniUltimos3 { get; set; }
+    public bool IsActive { get; set; } = true;
+}
+
+public class CrearRepartidorRequest
+{
+    public string Nombre { get; set; } = "";
+    public string? DniUltimos3 { get; set; }
+}
+
+public class EditarRepartidorRequest
+{
+    public string Nombre { get; set; } = "";
+    public string? DniUltimos3 { get; set; }
+    public bool IsActive { get; set; } = true;
+}
+
+public class CobranzaPendienteDto
+{
+    public int Id { get; set; }
+    public int VentaId { get; set; }
+    public string VentaNumero { get; set; } = "";
+    public int? ClienteId { get; set; }
+    public string? ClienteNombre { get; set; }
+    public decimal VentaTotal { get; set; }
+    public int RepartidorId { get; set; }
+    public string RepartidorNombre { get; set; } = "";
+    public decimal Importe { get; set; }
+    public bool MarcadoEntregado { get; set; }
+    public string? Notas { get; set; }
+    public string Estado { get; set; } = "";
+    public DateTime CreatedAt { get; set; }
+}
+
+public class AprobarCobranzaPendienteRequest
+{
+    public string? Operador { get; set; }
+    public int? CajaId { get; set; }
+}
+
+public class RechazarCobranzaPendienteRequest
+{
+    public string? Motivo { get; set; }
+    public string? Operador { get; set; }
+}
+
+public class ArqueoItemDto
+{
+    public int VentaId { get; set; }
+    public string VentaNumero { get; set; } = "";
+    public string? ClienteNombre { get; set; }
+    public decimal Importe { get; set; }
+    public bool MarcadoEntregado { get; set; }
+    public string Estado { get; set; } = "";
+    public DateTime CreatedAt { get; set; }
+}
+
+public class ArqueoDto
+{
+    public int RepartidorId { get; set; }
+    public string RepartidorNombre { get; set; } = "";
+    public DateTime Fecha { get; set; }
+    public decimal TotalPendiente { get; set; }
+    public decimal TotalAprobado { get; set; }
+    public int CantPendiente { get; set; }
+    public int CantAprobado { get; set; }
+    public List<ArqueoItemDto> Items { get; set; } = new();
+}
+
+// ========== Repartidor publico (mobile) ==========
+public class RepartidorPublicItemDto
+{
+    public int Id { get; set; }
+    public string Nombre { get; set; } = "";
+}
+
+public class InfoVentaPublicDto
+{
+    public int VentaId { get; set; }
+    public string Numero { get; set; } = "";
+    public DateTime Fecha { get; set; }
+    public string? ClienteNombre { get; set; }
+    public string? ClienteDireccion { get; set; }
+    public string? ClienteLocalidad { get; set; }
+    public string? ClienteCiudad { get; set; }
+    public decimal TotalCobrable { get; set; }
+    public decimal SaldoPendiente { get; set; }
+    public bool YaEntregada { get; set; }
+    public string? EntregadoPor { get; set; }
+    public List<ItemSimplePublicDto> Items { get; set; } = new();
+}
+
+public class ItemSimplePublicDto
+{
+    public int Cantidad { get; set; }
+    public string Nombre { get; set; } = "";
+    public string Formato { get; set; } = "";
+    public string? Molienda { get; set; }
+    public bool EsDoyPack { get; set; }
+    public bool EsEnvasePlateado { get; set; }
+}
+
 public class CobranzaListDto
 {
     public int Id { get; set; }
