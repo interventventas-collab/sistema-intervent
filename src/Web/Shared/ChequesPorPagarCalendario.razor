@@ -26,9 +26,11 @@
     .cal-summary b { color: #1f2937; }
 
     .cal-calendars { display: grid; gap: 0.8rem; }
-    .cal-calendars.compacto { grid-template-columns: 1fr; max-width: 380px; }
-    .cal-calendars.expandido { grid-template-columns: 1fr 1fr; }
-    @@media (max-width: 700px) { .cal-calendars.expandido { grid-template-columns: 1fr; } }
+    .cal-calendars.compacto { grid-template-columns: repeat(3, 1fr); }
+    .cal-calendars.expandido { grid-template-columns: repeat(3, 1fr); }
+    @@media (max-width: 900px) { .cal-calendars.compacto, .cal-calendars.expandido { grid-template-columns: repeat(2, 1fr); } }
+    @@media (max-width: 600px) { .cal-calendars.compacto, .cal-calendars.expandido { grid-template-columns: 1fr; } }
+    .cal-mes.actual { background: #fffbeb; border-radius: 8px; padding: 0.3rem; box-shadow: 0 0 0 2px #fcd34d; }
 
     .cal-mes { }
     .cal-mes-title { font-weight: 700; color: #4b5563; text-align: center; margin-bottom: 0.3rem; font-size: 0.85rem; letter-spacing: 0.04em; }
@@ -38,11 +40,13 @@
     .cal-day:hover { transform: scale(1.08); z-index: 2; }
     .cal-day.empty { background: transparent; cursor: default; }
     .cal-day.empty:hover { transform: none; }
-    .cal-day.hoy { outline: 2px solid #1d4ed8; outline-offset: -2px; font-weight: 800; }
+    .cal-day.hoy { outline: 3px solid #1d4ed8; outline-offset: -3px; font-weight: 800; background: #dbeafe; color: #1e3a8a; box-shadow: 0 0 12px rgba(29, 78, 216, 0.4); }
+    .cal-day.hoy.con-chq { background: #dc2626; color: white; outline-color: #1e40af; }
     .cal-day.con-chq { color: white; font-weight: 800; }
     .cal-day.urg-1 { background: #dc2626; }
     .cal-day.urg-2 { background: #f97316; }
     .cal-day.urg-3 { background: #eab308; color: #1f2937; }
+    .cal-day.pagado { background: #d1fae5; color: #065f46; font-weight: 700; }  /* cheque ya pagado, historico */
     .cal-day .badges { position: absolute; bottom: 1px; right: 2px; display: flex; gap: 1px; }
     .cal-day .badge-dot { width: 5px; height: 5px; border-radius: 50%; }
     .badge-nota { background: #8b5cf6; }
@@ -104,10 +108,17 @@
         </div>
 
         <div class="cal-calendars @(expandido ? "expandido" : "compacto")">
-            @for (int m = 0; m < (expandido ? 2 : 1); m++)
+            @{
+                // Compacto: mes anterior + actual + siguiente (3 meses). Expandido: 6 meses
+                // (1 atras + actual + 4 adelante). El mes actual se resalta con un highlight.
+                var inicioOffset = expandido ? -1 : -1;
+                var cantidad = expandido ? 6 : 3;
+            }
+            @for (int m = 0; m < cantidad; m++)
             {
-                var primerDia = new DateTime(DateTime.Today.AddMonths(m).Year, DateTime.Today.AddMonths(m).Month, 1);
-                <div class="cal-mes">
+                var primerDia = new DateTime(DateTime.Today.AddMonths(m + inicioOffset).Year, DateTime.Today.AddMonths(m + inicioOffset).Month, 1);
+                var esMesActual = primerDia.Year == DateTime.Today.Year && primerDia.Month == DateTime.Today.Month;
+                <div class="cal-mes @(esMesActual ? "actual" : "")">
                     <div class="cal-mes-title">@NombreMes(primerDia) @primerDia.Year</div>
                     <div class="cal-grid">
                         @foreach (var d in new[] { "L", "M", "M", "J", "V", "S", "D" })
@@ -134,11 +145,21 @@
                             if (esHoy) clase += " hoy";
                             if (enFecha is { Count: > 0 })
                             {
-                                clase += " con-chq";
-                                var diasHasta = (fecha - DateTime.Today).Days;
-                                if (diasHasta <= 7) clase += " urg-1";
-                                else if (diasHasta <= 30) clase += " urg-2";
-                                else clase += " urg-3";
+                                // Si TODOS los cheques de ese dia ya estan Pagados, marcamos como pagado.
+                                // Sino aplicamos urgencia (los pendientes).
+                                var todosPagados = enFecha.All(c => string.Equals(c.Estado, "Pagado", StringComparison.OrdinalIgnoreCase));
+                                if (todosPagados)
+                                {
+                                    clase += " pagado";
+                                }
+                                else
+                                {
+                                    clase += " con-chq";
+                                    var diasHasta = (fecha - DateTime.Today).Days;
+                                    if (diasHasta <= 7) clase += " urg-1";
+                                    else if (diasHasta <= 30) clase += " urg-2";
+                                    else clase += " urg-3";
+                                }
                             }
                             <div class="@clase" @onclick="() => AbrirDia(fecha)">
                                 @d
@@ -156,10 +177,12 @@
         </div>
 
         <div class="cal-leyenda">
-            <span><span class="cal-leyenda-dot" style="background:#dc2626;"></span>cheque ≤7 días</span>
-            <span><span class="cal-leyenda-dot" style="background:#f97316;"></span>cheque 8-30 días</span>
-            <span><span class="cal-leyenda-dot" style="background:#eab308;"></span>cheque 31-60 días</span>
-            <span><span class="cal-leyenda-dot" style="background:#8b5cf6;"></span>tiene nota</span>
+            <span><span class="cal-leyenda-dot" style="background:#dc2626;"></span>≤7 días</span>
+            <span><span class="cal-leyenda-dot" style="background:#f97316;"></span>8-30 días</span>
+            <span><span class="cal-leyenda-dot" style="background:#eab308;"></span>31-60 días</span>
+            <span><span class="cal-leyenda-dot" style="background:#d1fae5; border:1px solid #065f46;"></span>ya pagado</span>
+            <span><span class="cal-leyenda-dot" style="background:#8b5cf6;"></span>nota</span>
+            <span><span class="cal-leyenda-dot" style="background:#1d4ed8;"></span>hoy</span>
         </div>
     }
 </div>
@@ -253,14 +276,20 @@
         loading = true;
         try
         {
-            var todos = await Api.GetChequesBancoAsync(tipo: "EMITIDO", estado: "Aceptado") ?? new();
-            var hasta = DateTime.Today.AddDays(90);
-            cheques = todos.Where(c => c.FechaPago.HasValue && c.FechaPago.Value.Date >= DateTime.Today && c.FechaPago.Value.Date <= hasta).OrderBy(c => c.FechaPago).ToList();
-            chequesPorFecha = cheques.GroupBy(c => c.FechaPago!.Value.Date).ToDictionary(g => g.Key, g => g.ToList());
-            chequesPorPagarTotal = cheques.Sum(c => c.Importe);
-
+            // Cheques: traemos los pendientes + los que ya estan en historico del mes pasado
+            // para que se vean los puntos en el mes anterior tambien (mas contexto visual).
             var hoy = DateTime.Today;
-            notas = await Api.GetCalendarioNotasAsync(hoy.AddDays(-31), hoy.AddDays(90)) ?? new();
+            var desde = new DateTime(hoy.Year, hoy.Month, 1).AddMonths(-1);
+            var hasta = hoy.AddDays(180);
+            var pendientes = await Api.GetChequesBancoAsync(tipo: "EMITIDO", estado: "Aceptado") ?? new();
+            var pagados = await Api.GetChequesBancoAsync(tipo: "EMITIDO", estado: "Pagado") ?? new();
+            var todos = pendientes.Concat(pagados);
+            cheques = todos.Where(c => c.FechaPago.HasValue && c.FechaPago.Value.Date >= desde && c.FechaPago.Value.Date <= hasta).OrderBy(c => c.FechaPago).ToList();
+            chequesPorFecha = cheques.GroupBy(c => c.FechaPago!.Value.Date).ToDictionary(g => g.Key, g => g.ToList());
+            // El total "por pagar" solo cuenta los Aceptados a futuro
+            chequesPorPagarTotal = pendientes.Where(c => c.FechaPago.HasValue && c.FechaPago.Value.Date >= hoy).Sum(c => c.Importe);
+
+            notas = await Api.GetCalendarioNotasAsync(desde, hasta) ?? new();
         }
         catch { }
         finally { loading = false; }
