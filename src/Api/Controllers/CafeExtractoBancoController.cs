@@ -132,16 +132,25 @@ public class CafeExtractoBancoController : ControllerBase
     public async Task<IActionResult> Import(IFormFileCollection files)
     {
         if (files == null || files.Count == 0)
-            return BadRequest(new { error = "Subi al menos un archivo Excel del extracto" });
+            return BadRequest(new { error = "Subi al menos un archivo del extracto" });
         var resultados = new List<ImportResultDto>();
         foreach (var file in files)
         {
             try
             {
-                using var stream = file.OpenReadStream();
-                using var wb = new XLWorkbook(stream);
-                var ws = wb.Worksheets.First();
-                var res = await ProcesarExtractoAsync(ws, file.FileName);
+                var ext = System.IO.Path.GetExtension(file.FileName).ToLowerInvariant();
+                ImportResultDto res;
+                if (ext == ".csv" || ext == ".txt")
+                {
+                    res = await ProcesarCsvAsync(file);
+                }
+                else
+                {
+                    using var stream = file.OpenReadStream();
+                    using var wb = new XLWorkbook(stream);
+                    var ws = wb.Worksheets.First();
+                    res = await ProcesarExtractoAsync(ws, file.FileName);
+                }
                 resultados.Add(res);
             }
             catch (Exception ex)
@@ -151,6 +160,122 @@ public class CafeExtractoBancoController : ControllerBase
             }
         }
         return Ok(resultados);
+    }
+
+    /// <summary>Parser de CSV del extracto del Galicia. Mas robusto que el Excel porque
+    /// el banco lo exporta con fechas en formato dd/MM/yyyy directo, sin ISO strings.</summary>
+    private async Task<ImportResultDto> ProcesarCsvAsync(IFormFile file)
+    {
+        var errores = new List<string>();
+        using var reader = new StreamReader(file.OpenReadStream(), System.Text.Encoding.UTF8, true);
+        var allText = await reader.ReadToEndAsync();
+        // Detectar separador (puede ser ; , o tab segun region)
+        char sep = ',';
+        var firstLine = allText.Split('\n').FirstOrDefault() ?? "";
+        if (firstLine.Count(c => c == ';') > firstLine.Count(c => c == ','))
+            sep = ';';
+        else if (firstLine.Count(c => c == '\t') > firstLine.Count(c => c == ','))
+            sep = '\t';
+
+        var lineas = allText.Split('\n').Where(l => !string.IsNullOrWhiteSpace(l)).ToList();
+        if (lineas.Count < 2)
+            return new ImportResultDto(file.FileName, 0, 0, new List<string> { "CSV vacio o sin datos" });
+
+        // Parsear primera linea como header
+        var headers = ParseCsvLine(lineas[0], sep);
+        var idx = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < headers.Length; i++) if (!idx.ContainsKey(headers[i])) idx[headers[i]] = i;
+
+        if (!idx.ContainsKey("Fecha") || !idx.ContainsKey("Saldo"))
+            return new ImportResultDto(file.FileName, 0, 0, new List<string> { "CSV no parece ser un extracto bancario (faltan columnas Fecha o Saldo). Detecte: " + string.Join(", ", headers.Take(5)) });
+
+        var existentes = await _db.CafeExtractoMovimientos.Select(m => m.HashUnico).ToListAsync();
+        var hashSet = new HashSet<string>(existentes);
+        int nuevos = 0, sinCambios = 0;
+
+        for (int li = 1; li < lineas.Count; li++)
+        {
+            try
+            {
+                var celdas = ParseCsvLine(lineas[li], sep);
+                string GetCol(string n) => idx.TryGetValue(n, out var ix) && ix < celdas.Length ? celdas[ix].Trim() : "";
+                DateTime? ParseFecha(string s)
+                {
+                    if (string.IsNullOrWhiteSpace(s)) return null;
+                    var formatos = new[] { "dd/MM/yyyy", "dd-MM-yyyy", "yyyy-MM-dd", "yyyy-MM-ddTHH:mm:ss.fffZ", "yyyy-MM-ddTHH:mm:ssZ", "MM/dd/yyyy" };
+                    foreach (var fmt in formatos)
+                        if (DateTime.TryParseExact(s, fmt, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeLocal, out var d))
+                            return d;
+                    return DateTime.TryParse(s, out var d2) ? d2 : null;
+                }
+                decimal ParseDec(string s) =>
+                    decimal.TryParse(s.Replace(".", "").Replace(",", "."), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : 0m;
+
+                var fecha = ParseFecha(GetCol("Fecha"));
+                if (fecha is null) continue;
+                var desc = GetCol("Descripción");
+                var debitos = ParseDec(GetCol("Débitos"));
+                var creditos = ParseDec(GetCol("Créditos"));
+                var saldo = ParseDec(GetCol("Saldo"));
+
+                var raw = $"{fecha:yyyyMMdd}|{desc}|{debitos}|{creditos}|{saldo}";
+                using var sha = SHA256.Create();
+                var hash = Convert.ToHexString(sha.ComputeHash(Encoding.UTF8.GetBytes(raw))).Substring(0, 32);
+                if (hashSet.Contains(hash)) { sinCambios++; continue; }
+
+                var entrada = new CafeExtractoMovimiento
+                {
+                    Fecha = fecha.Value,
+                    Descripcion = NullIfEmpty(desc),
+                    Origen = NullIfEmpty(GetCol("Origen")),
+                    Debitos = debitos,
+                    Creditos = creditos,
+                    Saldo = saldo,
+                    GrupoConceptos = NullIfEmpty(GetCol("Grupo de Conceptos")),
+                    Concepto = NullIfEmpty(GetCol("Concepto")),
+                    NumeroTerminal = NullIfEmpty(GetCol("Número de Terminal")),
+                    ObservacionesCliente = NullIfEmpty(GetCol("Observaciones Cliente")),
+                    NumeroComprobante = NullIfEmpty(GetCol("Número de Comprobante")),
+                    LeyendaAdicional1 = NullIfEmpty(GetCol("Leyendas Adicionales 1")),
+                    LeyendaAdicional2 = NullIfEmpty(GetCol("Leyendas Adicionales 2")),
+                    LeyendaAdicional3 = NullIfEmpty(GetCol("Leyendas Adicionales 3")),
+                    LeyendaAdicional4 = NullIfEmpty(GetCol("Leyendas Adicionales 4")),
+                    TipoMovimiento = NullIfEmpty(GetCol("Tipo de Movimiento")),
+                    HashUnico = hash,
+                    ArchivoOrigen = file.FileName,
+                    ImportadoAt = DateTime.UtcNow,
+                    CreatedAt = DateTime.UtcNow
+                };
+                _db.CafeExtractoMovimientos.Add(entrada);
+                hashSet.Add(hash);
+                nuevos++;
+            }
+            catch (Exception ex)
+            {
+                errores.Add($"Linea {li + 1}: {ex.Message}");
+            }
+        }
+        await _db.SaveChangesAsync();
+        return new ImportResultDto(file.FileName, nuevos, sinCambios, errores);
+    }
+
+    /// <summary>Parser simple de CSV que respeta comillas. Soporta campos con separador adentro
+    /// si estan entre comillas dobles.</summary>
+    private static string[] ParseCsvLine(string line, char sep)
+    {
+        var result = new List<string>();
+        var current = new System.Text.StringBuilder();
+        bool inQuotes = false;
+        for (int i = 0; i < line.Length; i++)
+        {
+            var c = line[i];
+            if (c == '"') { inQuotes = !inQuotes; continue; }
+            if (c == sep && !inQuotes) { result.Add(current.ToString()); current.Clear(); continue; }
+            if (c == '\r') continue;
+            current.Append(c);
+        }
+        result.Add(current.ToString());
+        return result.ToArray();
     }
 
     private async Task<ImportResultDto> ProcesarExtractoAsync(IXLWorksheet ws, string fileName)
