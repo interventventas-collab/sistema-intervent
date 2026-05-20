@@ -296,8 +296,28 @@ public class CafeCotizacionPdfService
                         }
                     });
 
+                    // Totales movidos al Footer (decision 2026-05-20) para que queden pegados
+                    // al pie de la pagina en vez de "flotando" justo despues de la tabla cuando
+                    // hay pocos items. Ver page.Footer() mas abajo.
+
+                    if (esProforma)
+                    {
+                        col.Item().PaddingTop(4).Background(Colors.Yellow.Lighten4).Border(1).BorderColor(Colors.Yellow.Darken1)
+                            .Padding(5).Text(t =>
+                            {
+                                t.Span("⚠ Proforma — preview de cómo quedaría con IVA cuando emitas factura por ARCA. ").Bold().FontColor("#92400e").FontSize(8);
+                                t.Span("Para esta vista se aplica 21% al neto. Cuando se emita la factura real, los productos con IVA 10,5% (alimentos) se discriminarán por separado.").FontColor("#92400e").FontSize(8);
+                            });
+                    }
+                });
+
+                // ───── FOOTER (fijo al pie de la página) ─────
+                // Totales + Entrega / Observaciones / Días de visita van ACÁ para que queden
+                // siempre pegados al pie en lugar de "flotando" justo despues de la tabla.
+                page.Footer().Column(fc =>
+                {
                     // ─── Totales (alineados a la derecha via Row con filler) ───
-                    col.Item().PaddingTop(8).Row(row =>
+                    fc.Item().PaddingTop(4).Row(row =>
                     {
                         row.RelativeItem();
                         row.ConstantItem(280).Border(1).BorderColor(Colors.Grey.Lighten1).Padding(8).Column(c =>
@@ -344,7 +364,7 @@ public class CafeCotizacionPdfService
                                 });
                             }
                             c.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(Colors.Grey.Lighten1);
-                            // Forma de pago destacada: cuadro gris claro con título arriba + estado a la derecha
+                            // Forma de pago destacada
                             c.Item().PaddingTop(3).Background(Colors.Grey.Lighten4).Border(0.5f).BorderColor(Colors.Grey.Lighten1)
                                 .Padding(6).Row(r =>
                             {
@@ -367,22 +387,6 @@ public class CafeCotizacionPdfService
                         });
                     });
 
-                    if (esProforma)
-                    {
-                        col.Item().PaddingTop(4).Background(Colors.Yellow.Lighten4).Border(1).BorderColor(Colors.Yellow.Darken1)
-                            .Padding(5).Text(t =>
-                            {
-                                t.Span("⚠ Proforma — preview de cómo quedaría con IVA cuando emitas factura por ARCA. ").Bold().FontColor("#92400e").FontSize(8);
-                                t.Span("Para esta vista se aplica 21% al neto. Cuando se emita la factura real, los productos con IVA 10,5% (alimentos) se discriminarán por separado.").FontColor("#92400e").FontSize(8);
-                            });
-                    }
-                });
-
-                // ───── FOOTER (fijo al pie de la página) ─────
-                // Los bloques de Entrega / Observaciones / Días de visita van ACÁ
-                // para que queden siempre pegados al pie, no apretados contra los totales.
-                page.Footer().Column(fc =>
-                {
                     if (!string.IsNullOrWhiteSpace(v.ClienteDomicilioEntregaSnapshot))
                     {
                         fc.Item().PaddingTop(5).Border(1).BorderColor(Colors.Grey.Lighten1)
