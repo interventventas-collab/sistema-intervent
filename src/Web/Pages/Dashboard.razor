@@ -380,6 +380,21 @@
         }
     </div>
 
+    @* Shell Flota — placeholder, esperando API *@
+    <div class="dashboard-detail-card" style="padding: 0.85rem; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 1px solid #f59e0b; position: relative; opacity: 0.85;" title="Próximamente — cuando tengamos la API de Shell, este recuadro mostrará los datos de la flota.">
+        <div style="position: absolute; top: 0.5rem; right: 0.5rem; background: #f59e0b; color: white; font-size: 0.6rem; font-weight: 800; letter-spacing: 0.05em; padding: 0.15rem 0.45rem; border-radius: 4px;">🚧 EN CONSTRUCCIÓN</div>
+        <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem;">
+            <span style="font-size: 1.3rem;">⛽</span>
+            <strong style="font-size: 0.85rem; color: #92400e;">Shell Flota</strong>
+        </div>
+        <div style="font-size: 1.05rem; font-weight: 800; color: #92400e; line-height: 1.2;">
+            Próximamente
+        </div>
+        <div style="font-size: 0.7rem; color: #b45309; margin-top: 0.15rem; font-style: italic;">
+            Esperando API de Shell para integrar
+        </div>
+    </div>
+
     @* Saldo banco Galicia *@
     <div class="dashboard-detail-card" style="padding: 0.85rem; background: linear-gradient(135deg, #1e40af, #2563eb); cursor: pointer;" @onclick='() => Navigation.NavigateTo("/cafe/tesoreria/extracto-banco")' title="Ir al extracto bancario">
         <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem;">
