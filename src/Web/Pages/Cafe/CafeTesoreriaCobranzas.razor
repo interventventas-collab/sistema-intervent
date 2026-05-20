@@ -685,7 +685,8 @@
         return clientes.Where(c => c.IsActive
             && (h(c.Codigo) || h(c.Nombre) || h(c.RazonSocial) || h(c.Cuit)
                 || h(c.Telefono) || h(c.Email)
-                || h(c.Direccion) || h(c.Localidad) || h(c.Ciudad) || h(c.Cp)));
+                || h(c.Direccion) || h(c.DomicilioEntrega)
+                || h(c.Localidad) || h(c.Ciudad) || h(c.Cp)));
     }
 
     private async Task SelectCliente(int id)
