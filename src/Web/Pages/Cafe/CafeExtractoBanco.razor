@@ -299,13 +299,13 @@
                 streams.Add(s);
                 items.Add((f.Name, s));
             }
-            var result = await Api.ImportExtractoAsync(items);
+            var (result, error) = await Api.ImportExtractoAsync(items);
             foreach (var s in streams) try { s.Dispose(); } catch { }
-            if (result is null) { ToastService.Error("No se pudo importar"); return; }
+            if (result is null) { ToastService.Error("No se pudo importar — " + (error ?? "error desconocido")); return; }
             foreach (var r in result)
             {
                 var msg = $"✓ {r.Archivo}: {r.Nuevos} nuevos, {r.SinCambios} sin cambios";
-                if (r.Errores.Count > 0) msg += $" ({r.Errores.Count} errores)";
+                if (r.Errores.Count > 0) msg += $" ({r.Errores.Count} errores: {string.Join(" · ", r.Errores.Take(2))})";
                 ToastService.Success(msg);
             }
             await Recargar();

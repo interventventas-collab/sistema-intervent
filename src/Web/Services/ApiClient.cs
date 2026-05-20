@@ -689,7 +689,7 @@ public class ApiClient
         return await GetAsync<List<ExtractoMovimientoDto>>(url);
     }
 
-    public async Task<List<ImportExtractoResultDto>?> ImportExtractoAsync(IEnumerable<(string name, Stream stream)> archivos)
+    public async Task<(List<ImportExtractoResultDto>? result, string? error)> ImportExtractoAsync(IEnumerable<(string name, Stream stream)> archivos)
     {
         await SetAuthHeaderAsync();
         using var content = new MultipartFormDataContent();
@@ -700,8 +700,13 @@ public class ApiClient
             content.Add(sc, "files", f.name);
         }
         var resp = await _http.PostAsync("/api/cafe/extracto-banco/import", content);
-        if (!resp.IsSuccessStatusCode) return null;
-        return await resp.Content.ReadFromJsonAsync<List<ImportExtractoResultDto>>();
+        if (!resp.IsSuccessStatusCode)
+        {
+            var body = await resp.Content.ReadAsStringAsync();
+            return (null, $"HTTP {(int)resp.StatusCode}: {body}");
+        }
+        var data = await resp.Content.ReadFromJsonAsync<List<ImportExtractoResultDto>>();
+        return (data, null);
     }
 
     public async Task<bool> AsociarMovimientoExtractoAsync(int id, int ventaId, string? operador = null)
