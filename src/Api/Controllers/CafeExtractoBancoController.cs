@@ -178,40 +178,43 @@ public class CafeExtractoBancoController : ControllerBase
         {
             try
             {
-                string Get(string n) => idx.TryGetValue(n, out var c) ? (ws.Cell(r, c).GetString() ?? "").Trim() : "";
+                // ── Lectores defensivos ──
+                // Cada celda se intenta como raw value (object), si falla como string, si falla
+                // como GetFormattedString. Asi sobrevivimos a celdas con t="d" (ISO strings)
+                // que ClosedXML no maneja bien.
+                string SafeRaw(int col)
+                {
+                    var cc = ws.Cell(r, col);
+                    // Intento 1: .Value como object (XLCellValue tiene .ToString() seguro)
+                    try { var v = cc.Value; if (v.IsDateTime) return v.GetDateTime().ToString("o"); if (v.IsNumber) return v.GetNumber().ToString(System.Globalization.CultureInfo.InvariantCulture); if (v.IsText) return v.GetText(); return v.ToString() ?? ""; } catch { }
+                    // Intento 2: GetString tradicional
+                    try { return cc.GetString() ?? ""; } catch { }
+                    // Intento 3: GetFormattedString
+                    try { return cc.GetFormattedString() ?? ""; } catch { }
+                    return "";
+                }
+                string Get(string n) => idx.TryGetValue(n, out var c) ? SafeRaw(c).Trim() : "";
                 DateTime? GetDate(string n)
                 {
                     if (!idx.TryGetValue(n, out var c)) return null;
-                    var cc = ws.Cell(r, c);
-                    // Intento 1: si ClosedXML lo detecta como DateTime, perfecto
-                    try
-                    {
-                        if (cc.DataType == XLDataType.DateTime) return cc.GetDateTime();
-                    }
-                    catch { /* a veces tira pese a tener DataType=DateTime */ }
-                    // Intento 2: si es un numero (serial date de Excel)
-                    try
-                    {
-                        if (cc.DataType == XLDataType.Number)
-                        {
-                            var num = cc.GetDouble();
-                            // Excel serial date: 1 = 1900-01-01
-                            if (num > 1 && num < 100000) return DateTime.FromOADate(num);
-                        }
-                    }
-                    catch { }
-                    // Intento 3: string ISO o formato comun
-                    var s = "";
-                    try { s = (cc.GetString() ?? "").Trim(); } catch { }
-                    if (string.IsNullOrEmpty(s)) return null;
-                    var formatos = new[] { "yyyy-MM-ddTHH:mm:ss.fffZ", "yyyy-MM-ddTHH:mm:ssZ", "yyyy-MM-ddTHH:mm:ss", "yyyy-MM-dd", "dd/MM/yyyy", "dd-MM-yyyy", "MM/dd/yyyy" };
+                    var raw = SafeRaw(c).Trim();
+                    if (string.IsNullOrEmpty(raw)) return null;
+                    // Probar formato ISO primero (caso comun con t="d")
+                    var formatos = new[] { "yyyy-MM-ddTHH:mm:ss.fffZ", "yyyy-MM-ddTHH:mm:ssZ", "yyyy-MM-ddTHH:mm:ss.fffffffZ", "yyyy-MM-ddTHH:mm:ss", "yyyy-MM-dd", "dd/MM/yyyy", "dd-MM-yyyy", "MM/dd/yyyy" };
                     foreach (var fmt in formatos)
                     {
-                        if (DateTime.TryParseExact(s, fmt, System.Globalization.CultureInfo.InvariantCulture,
+                        if (DateTime.TryParseExact(raw, fmt, System.Globalization.CultureInfo.InvariantCulture,
                             System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var d))
                             return d.ToLocalTime();
                     }
-                    if (DateTime.TryParse(s, System.Globalization.CultureInfo.InvariantCulture,
+                    // Excel serial date numerico
+                    if (double.TryParse(raw, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var num)
+                        && num > 1 && num < 100000)
+                    {
+                        try { return DateTime.FromOADate(num); } catch { }
+                    }
+                    // Fallback general
+                    if (DateTime.TryParse(raw, System.Globalization.CultureInfo.InvariantCulture,
                         System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var d2))
                         return d2.ToLocalTime();
                     return null;
@@ -219,16 +222,9 @@ public class CafeExtractoBancoController : ControllerBase
                 decimal GetDec(string n)
                 {
                     if (!idx.TryGetValue(n, out var c)) return 0m;
-                    var cc = ws.Cell(r, c);
-                    try
-                    {
-                        if (cc.DataType == XLDataType.Number) return (decimal)cc.GetDouble();
-                    }
-                    catch { }
-                    var s = "";
-                    try { s = (cc.GetString() ?? "").Trim().Replace(",", "."); } catch { }
-                    if (string.IsNullOrEmpty(s)) return 0m;
-                    return decimal.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : 0m;
+                    var raw = SafeRaw(c).Trim().Replace(",", ".");
+                    if (string.IsNullOrEmpty(raw)) return 0m;
+                    return decimal.TryParse(raw, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : 0m;
                 }
 
                 var fecha = GetDate("Fecha");
