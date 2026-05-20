@@ -87,15 +87,21 @@
     .doc-meta .chip { display: inline-block; background: #f3f4f6; padding: 0.05rem 0.35rem; border-radius: 4px; font-weight: 600; margin: 0 0.1rem; }
     .doc-meta .viejo-warn { background: #fed7aa; color: #9a3412; padding: 0.1rem 0.4rem; border-radius: 4px; font-weight: 700; margin-top: 0.2rem; display: inline-block; font-size: 0.62rem; }
 
-    .doc-card-actions { position: absolute; top: 0.4rem; right: 0.4rem; display: flex; gap: 0.2rem; opacity: 0; transition: opacity 0.12s ease; }
+    .doc-card-actions { position: absolute; top: 0.4rem; right: 0.4rem; display: flex; gap: 0.25rem; opacity: 0; transition: opacity 0.12s ease; }
     .doc-card:hover .doc-card-actions { opacity: 1; }
-    .doc-card-actions a, .doc-card-actions button { width: 26px; height: 26px; padding: 0;
-                  border-radius: 6px; border: 1px solid #d1d5db; background: white; color: #374151;
+    .doc-card-actions a, .doc-card-actions button { width: 32px; height: 32px; padding: 0;
+                  border-radius: 7px; border: 1px solid #d1d5db; background: white; color: #374151;
                   cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
-                  text-decoration: none; font-size: 0.85rem; font-weight: 700; box-shadow: 0 1px 3px rgba(0,0,0,0.08); transition: all 0.1s; }
-    .doc-card-actions a:hover, .doc-card-actions button:hover { background: #dbeafe; border-color: #1d4ed8; color: #1d4ed8; transform: scale(1.1); }
-    .doc-card-actions .btn-borrar { color: #b91c1c; border-color: #fecaca; }
-    .doc-card-actions .btn-borrar:hover { background: #fee2e2; border-color: #dc2626; transform: scale(1.1); color: #b91c1c; }
+                  text-decoration: none; font-size: 1rem; font-weight: 700; box-shadow: 0 2px 4px rgba(0,0,0,0.12); transition: all 0.12s; }
+    /* Cada accion con su color distintivo para que se reconozca a primer vistazo */
+    .doc-card-actions .act-color { background: #fce7f3; border-color: #f9a8d4; color: #be185d; }
+    .doc-card-actions .act-color:hover { background: #fbcfe8; border-color: #db2777; transform: scale(1.15); }
+    .doc-card-actions .act-rename { background: #dbeafe; border-color: #93c5fd; color: #1e40af; }
+    .doc-card-actions .act-rename:hover { background: #bfdbfe; border-color: #1d4ed8; transform: scale(1.15); }
+    .doc-card-actions .act-download { background: #dcfce7; border-color: #86efac; color: #15803d; }
+    .doc-card-actions .act-download:hover { background: #bbf7d0; border-color: #15803d; transform: scale(1.15); }
+    .doc-card-actions .btn-borrar { background: #fee2e2; border-color: #fca5a5; color: #b91c1c; }
+    .doc-card-actions .btn-borrar:hover { background: #fecaca; border-color: #dc2626; transform: scale(1.15); color: #991b1b; }
 
     /* Variantes de color para cards — aplican un fondo gradiente sutil */
     .doc-card.color-amarillo { background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%); border-color: #fde68a; }
@@ -227,8 +233,8 @@
                         var clrClass = ClaseColor(c.Color, esCarpeta: true);
                         <div class="doc-card carpeta @clrClass" @onclick="@(() => IrA(c.Path))" title="Abrir @c.Name">
                             <div class="doc-card-actions">
-                                <button id="@($"cust-{cId.GetHashCode():X}")" @onclick:stopPropagation="true" @onclick="@(() => AbrirCustomize(c))" title="Personalizar (color + icono)">🎨</button>
-                                <button @onclick:stopPropagation="true" @onclick="@(() => EmpezarRename(c))" title="Renombrar">✏</button>
+                                <button class="act-color" id="@($"cust-{cId.GetHashCode():X}")" @onclick:stopPropagation="true" @onclick="@(() => AbrirCustomize(c))" title="Cambiar color e icono">🎨</button>
+                                <button class="act-rename" @onclick:stopPropagation="true" @onclick="@(() => EmpezarRename(c))" title="Renombrar carpeta">✏</button>
                                 <button class="btn-borrar" @onclick:stopPropagation="true" @onclick="@(() => ConfirmarBorrar(c))" title="Borrar carpeta (y todo lo de adentro)">🗑</button>
                             </div>
                             <div class="doc-icon">@(c.IconEmoji ?? "📁")</div>
@@ -262,9 +268,9 @@
                         var fId = f.Path;
                         <div class="doc-card @clrClass @(esViejo ? "viejo" : "")" style="text-decoration: none; color: inherit;" title="@f.Name">
                             <div class="doc-card-actions">
-                                <button id="@($"cust-{fId.GetHashCode():X}")" @onclick:stopPropagation="true" @onclick="@(() => AbrirCustomize(f))" title="Personalizar (color + icono)">🎨</button>
-                                <button @onclick:stopPropagation="true" @onclick="@(() => EmpezarRename(f))" title="Renombrar">✏</button>
-                                <a href="@DownloadUrl(f.Path)" target="_blank" @onclick:stopPropagation="true" title="Descargar">⬇</a>
+                                <button class="act-color" id="@($"cust-{fId.GetHashCode():X}")" @onclick:stopPropagation="true" @onclick="@(() => AbrirCustomize(f))" title="Cambiar color e icono">🎨</button>
+                                <button class="act-rename" @onclick:stopPropagation="true" @onclick="@(() => EmpezarRename(f))" title="Renombrar archivo">✏</button>
+                                <a class="act-download" href="@DownloadUrl(f.Path)" target="_blank" @onclick:stopPropagation="true" title="Descargar">⬇</a>
                                 <button class="btn-borrar" @onclick:stopPropagation="true" @onclick="@(() => ConfirmarBorrar(f))" title="Borrar">🗑</button>
                             </div>
                             <a href="@DownloadUrl(f.Path)" target="_blank" style="text-decoration: none; color: inherit; display: contents;">
