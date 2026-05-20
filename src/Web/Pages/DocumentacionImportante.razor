@@ -1,71 +1,117 @@
 @page "/documentacion"
 @attribute [Authorize]
+@implements IDisposable
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject IJSRuntime JS
 @using Web.Models
 
 @* ════════════════════════════════════════════════════════════════════════════
-   Pantalla 'Documentación importante' — pedido del usuario 2026-05-19: una
-   carpeta siempre a mano con documentos que tienen que estar SUPER actualizados
-   (constancia AFIP, etc). Carpeta fija en el storage: 'Documentacion-Importante'.
+   Pantalla 'Documentación importante' — pedido del usuario 2026-05-19, refinada
+   2026-05-20: vista estilo Google Drive con grilla de cards, drag-and-drop nativo
+   (arrastrar desde el explorador del SO), subir carpeta entera con estructura.
+   Carpeta raíz fija en el storage: 'Documentacion-Importante'.
    ════════════════════════════════════════════════════════════════════════════ *@
 
 <style>
-    .doc-wrap { max-width: 920px; margin: 0 auto; padding: 0.5rem; }
+    .doc-wrap { max-width: 1200px; margin: 0 auto; padding: 0.5rem; }
     .doc-header { text-align: center; margin-bottom: 1rem; }
     .doc-header h1 { font-size: 1.6rem; font-weight: 800; margin: 0 0 0.3rem; color: #1f2937; }
     .doc-header p { color: #6b7280; margin: 0; font-size: 0.92rem; }
 
-    .doc-card { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); padding: 1rem 1.2rem; margin-bottom: 0.8rem; display: flex; align-items: center; gap: 0.8rem; transition: box-shadow 0.15s; }
-    .doc-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,0.10); }
-    .doc-card.viejo { border: 2px solid #fb923c; background: #fff7ed; }
-    .doc-icon { font-size: 2.2rem; line-height: 1; }
-    .doc-info { flex: 1; min-width: 0; }
-    .doc-nombre { font-size: 1rem; font-weight: 700; color: #1f2937; margin: 0 0 0.15rem; word-break: break-word; }
-    .doc-meta { font-size: 0.8rem; color: #6b7280; }
-    .doc-meta .viejo-warn { background: #fed7aa; color: #9a3412; padding: 0.1rem 0.45rem; border-radius: 4px; font-weight: 700; margin-left: 0.4rem; }
-    .doc-actions { display: flex; gap: 0.4rem; flex-shrink: 0; }
-    .doc-actions a, .doc-actions button {
-        padding: 0.45rem 0.8rem; font-size: 0.85rem; font-weight: 600; border-radius: 6px;
-        text-decoration: none; cursor: pointer; border: 1px solid #d1d5db; background: white; color: #374151;
-    }
-    .doc-actions .btn-borrar { color: #b91c1c; border-color: #fca5a5; }
-    .doc-actions .btn-borrar:hover { background: #fee2e2; }
-
-    .upload-zone { background: white; border: 2px dashed #93c5fd; border-radius: 12px; padding: 1.5rem; text-align: center; cursor: pointer; transition: all 0.15s; margin-bottom: 1rem; }
-    .upload-zone:hover { border-color: #1d4ed8; background: #eff6ff; }
-    .upload-zone.uploading { border-color: #16a34a; background: #ecfdf5; }
-    .upload-zone-label { font-size: 1.05rem; font-weight: 700; color: #1e3a8a; }
-    .upload-zone-hint { font-size: 0.8rem; color: #6b7280; margin-top: 0.3rem; }
-
-    /* Barra de acciones con breadcrumb + boton nueva carpeta */
-    .doc-toolbar { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.8rem; padding: 0.5rem 0.8rem; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-    .doc-breadcrumb { display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; flex: 1; font-size: 0.92rem; min-width: 200px; }
-    .doc-breadcrumb a { color: #1d4ed8; text-decoration: none; font-weight: 600; cursor: pointer; }
-    .doc-breadcrumb a:hover { text-decoration: underline; }
+    /* Barra superior con breadcrumb + botones de accion */
+    .doc-toolbar { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.8rem;
+                   padding: 0.6rem 0.9rem; background: white; border-radius: 10px;
+                   box-shadow: 0 1px 4px rgba(0,0,0,0.06); border-left: 4px solid #1d4ed8; }
+    .doc-breadcrumb { display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; flex: 1; font-size: 0.95rem; min-width: 200px; }
+    .doc-breadcrumb a { color: #1d4ed8; text-decoration: none; font-weight: 600; cursor: pointer; padding: 0.2rem 0.4rem; border-radius: 4px; transition: background 0.12s; }
+    .doc-breadcrumb a:hover { background: #dbeafe; }
     .doc-breadcrumb .sep { color: #9ca3af; }
-    .doc-breadcrumb .current { color: #1f2937; font-weight: 700; }
-    .btn-nueva-carpeta { padding: 0.45rem 0.9rem; font-size: 0.88rem; font-weight: 700; border-radius: 6px; border: 1px solid #d1d5db; background: white; color: #374151; cursor: pointer; }
-    .btn-nueva-carpeta:hover { background: #f3f4f6; }
+    .doc-breadcrumb .current { color: #1f2937; font-weight: 700; padding: 0.2rem 0.4rem; }
 
-    /* Card de carpeta (vs archivo) */
-    .doc-card.carpeta { cursor: pointer; background: #fffbeb; border-left: 4px solid #f59e0b; }
-    .doc-card.carpeta:hover { background: #fef3c7; }
+    .doc-toolbar-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+    .btn-toolbar { padding: 0.5rem 0.85rem; font-size: 0.88rem; font-weight: 600; border-radius: 7px;
+                   border: 1px solid #d1d5db; background: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
+                   color: #374151; cursor: pointer; display: inline-flex; align-items: center; gap: 0.35rem;
+                   transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+                   box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+    .btn-toolbar:hover:not(:disabled) { background: white; transform: translateY(-1px); box-shadow: 0 3px 8px rgba(0,0,0,0.08); border-color: #9ca3af; }
+    .btn-toolbar.primary { background: linear-gradient(180deg, #1d4ed8 0%, #1e40af 100%); color: white; border-color: #1e40af; }
+    .btn-toolbar.primary:hover:not(:disabled) { background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%); }
+    .btn-toolbar.success { background: linear-gradient(180deg, #16a34a 0%, #15803d 100%); color: white; border-color: #15803d; }
+    .btn-toolbar.success:hover:not(:disabled) { background: linear-gradient(180deg, #22c55e 0%, #16a34a 100%); }
+    .btn-toolbar:disabled { opacity: 0.55; cursor: not-allowed; }
 
-    .vacio { background: #f9fafb; border: 1px dashed #d1d5db; padding: 2rem 1rem; border-radius: 12px; text-align: center; color: #6b7280; }
+    /* Drop zone global — cubre toda la pantalla cuando arrastrás desde el explorador */
+    .drop-zone { position: relative; min-height: 200px; padding: 0.5rem; border-radius: 12px; transition: all 0.15s; }
+    .drop-zone.dragging { background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); outline: 3px dashed #1d4ed8; outline-offset: -8px; }
+    .drop-zone.dragging::before { content: '📥 Soltá acá para subir'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+                                  font-size: 2rem; font-weight: 800; color: #1e3a8a; z-index: 10; pointer-events: none;
+                                  background: rgba(255,255,255,0.9); padding: 1rem 2rem; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); }
+
+    /* Banner de progreso de subida */
+    .upload-progress { padding: 0.7rem 1rem; background: linear-gradient(90deg, #dcfce7 0%, #bbf7d0 100%);
+                       border: 1px solid #16a34a; border-radius: 8px; margin-bottom: 0.8rem; color: #14532d;
+                       font-weight: 600; display: flex; align-items: center; gap: 0.5rem; }
+
+    /* Seccion (Carpetas / Archivos) */
+    .doc-seccion-titulo { font-size: 0.78rem; color: #6b7280; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+                          margin: 1.2rem 0 0.5rem; padding: 0 0.2rem; display: flex; align-items: center; gap: 0.4rem; }
+    .doc-seccion-titulo .count { background: #e5e7eb; color: #4b5563; padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.7rem; font-weight: 700; }
+
+    /* Grilla de cards estilo Google Drive */
+    .doc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 0.7rem; }
+
+    .doc-card { background: white; border-radius: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+                padding: 0.9rem 0.7rem; display: flex; flex-direction: column; align-items: center;
+                text-align: center; cursor: pointer; transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+                position: relative; border: 1px solid #f3f4f6; overflow: hidden; min-height: 150px; }
+    .doc-card:hover { transform: translateY(-3px) scale(1.04); box-shadow: 0 8px 20px rgba(0,0,0,0.12); z-index: 2; border-color: #d1d5db; }
+    .doc-card.viejo { border: 2px solid #fb923c; background: linear-gradient(180deg, #fff7ed 0%, #ffedd5 100%); }
+    .doc-card.viejo:hover { box-shadow: 0 8px 20px rgba(251,146,60,0.30); }
+
+    .doc-card.carpeta { background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%); border: 1px solid #fde68a; }
+    .doc-card.carpeta:hover { background: linear-gradient(180deg, #fef3c7 0%, #fde68a 100%); border-color: #f59e0b; }
+
+    .doc-icon { font-size: 3.2rem; line-height: 1; margin-bottom: 0.3rem; transition: transform 0.12s ease; }
+    .doc-card:hover .doc-icon { transform: scale(1.1); }
+    .doc-icon.tipo-pdf { color: #dc2626; }
+    .doc-icon.tipo-xls { color: #16a34a; }
+    .doc-icon.tipo-doc { color: #2563eb; }
+    .doc-icon.tipo-img { color: #db2777; }
+    .doc-icon.tipo-zip { color: #7c3aed; }
+
+    .doc-nombre { font-size: 0.85rem; font-weight: 700; color: #1f2937; margin: 0.1rem 0;
+                  word-break: break-word; line-height: 1.25; max-height: 2.5em; overflow: hidden; }
+    .doc-meta { font-size: 0.7rem; color: #6b7280; margin-top: 0.15rem; line-height: 1.4; }
+    .doc-meta .chip { display: inline-block; background: #f3f4f6; padding: 0.05rem 0.35rem; border-radius: 4px; font-weight: 600; margin: 0 0.1rem; }
+    .doc-meta .viejo-warn { background: #fed7aa; color: #9a3412; padding: 0.1rem 0.4rem; border-radius: 4px; font-weight: 700; margin-top: 0.2rem; display: inline-block; font-size: 0.62rem; }
+
+    .doc-card-actions { position: absolute; top: 0.4rem; right: 0.4rem; display: flex; gap: 0.2rem; opacity: 0; transition: opacity 0.12s ease; }
+    .doc-card:hover .doc-card-actions { opacity: 1; }
+    .doc-card-actions a, .doc-card-actions button { width: 26px; height: 26px; padding: 0;
+                  border-radius: 6px; border: 1px solid #d1d5db; background: white; color: #374151;
+                  cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+                  text-decoration: none; font-size: 0.85rem; font-weight: 700; box-shadow: 0 1px 3px rgba(0,0,0,0.08); transition: all 0.1s; }
+    .doc-card-actions a:hover { background: #dbeafe; border-color: #1d4ed8; color: #1d4ed8; transform: scale(1.1); }
+    .doc-card-actions .btn-borrar { color: #b91c1c; border-color: #fecaca; }
+    .doc-card-actions .btn-borrar:hover { background: #fee2e2; border-color: #dc2626; transform: scale(1.1); }
+
+    .vacio { background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%); border: 2px dashed #d1d5db;
+             padding: 3rem 1rem; border-radius: 12px; text-align: center; color: #6b7280; }
+    .vacio strong { font-size: 1.1rem; color: #374151; }
 
     @@media (max-width: 640px) {
-        .doc-card { flex-direction: column; align-items: stretch; }
-        .doc-icon { text-align: center; }
-        .doc-actions { justify-content: center; }
+        .doc-grid { grid-template-columns: repeat(auto-fill, minmax(135px, 1fr)); gap: 0.5rem; }
+        .doc-icon { font-size: 2.6rem; }
+        .doc-card { min-height: 130px; padding: 0.7rem 0.5rem; }
     }
 </style>
 
 <div class="doc-wrap">
     <div class="doc-header">
         <h1>📑 Documentación importante</h1>
-        <p>Documentos que SIEMPRE deben estar actualizados (constancia AFIP, certificados, etc).</p>
+        <p>Documentos que SIEMPRE deben estar actualizados (constancia AFIP, certificados, listas de precios, etc).</p>
     </div>
 
     <div class="doc-toolbar">
@@ -84,74 +130,96 @@
                 }
             }
         </div>
-        <button class="btn-nueva-carpeta" @onclick="@(() => mostrarNuevaCarpeta = true)">📁 Nueva carpeta</button>
+        <div class="doc-toolbar-actions">
+            <button class="btn-toolbar primary" @onclick="@(() => mostrarNuevaCarpeta = true)" title="Crear una subcarpeta acá">
+                📁 Nueva carpeta
+            </button>
+            <label class="btn-toolbar success" title="Subir archivos sueltos (PDF, imagen, Word, Excel, etc)">
+                ⬆ Subir archivos
+                <InputFile OnChange="OnFilesSelected" multiple style="display: none;" />
+            </label>
+            <button class="btn-toolbar" @onclick="PickFolder" title="Subir una carpeta entera del disco — mantiene la estructura adentro">
+                📂 Subir carpeta
+            </button>
+        </div>
     </div>
 
-    <label class="upload-zone @(uploading ? "uploading" : "")">
-        <InputFile OnChange="OnFilesSelected" multiple style="display: none;" />
-        <div class="upload-zone-label">
-            @(uploading ? "⏳ Subiendo..." : "📤 Subir documento (o varios)")
+    @if (uploading)
+    {
+        <div class="upload-progress">
+            ⏳ <span>Subiendo... @uploadStatus</span>
         </div>
-        <div class="upload-zone-hint">PDF, imagen, Word, Excel — cualquier archivo importante. Se sube a la carpeta actual.</div>
-    </label>
+    }
 
-    @if (loading)
-    {
-        <p style="text-align: center; padding: 2rem; color: #6b7280;">⏳ Cargando...</p>
-    }
-    else if (carpetas.Count == 0 && archivos.Count == 0)
-    {
-        <div class="vacio">
-            <div style="font-size: 2.5rem;">📂</div>
-            <strong>Carpeta vacía</strong>
-            <p style="margin: 0.4rem 0 0; font-size: 0.85rem;">Subí archivos o creá una subcarpeta para organizar.</p>
-        </div>
-    }
-    else
-    {
-        @* Carpetas primero, alfabético *@
-        @foreach (var c in carpetas.OrderBy(x => x.Name))
+    @* Drop zone: arrastrá archivos o carpetas desde el explorador de Windows acá *@
+    <div class="drop-zone @(isDragging ? "dragging" : "")"
+         @ref="dropZoneRef"
+         @ondragover:preventDefault="true" @ondragover:stopPropagation="true"
+         @ondrop:preventDefault="true" @ondrop:stopPropagation="true">
+
+        @if (loading)
         {
-            <div class="doc-card carpeta" @onclick="@(() => IrA(c.Path))">
-                <div class="doc-icon">📁</div>
-                <div class="doc-info">
-                    <p class="doc-nombre">@c.Name</p>
-                    <div class="doc-meta">Carpeta</div>
-                </div>
-                <div class="doc-actions">
-                    <button class="btn-borrar" @onclick:stopPropagation="true" @onclick="@(() => ConfirmarBorrar(c))" title="Borrar carpeta (y todo lo que tenga adentro)">🗑 Borrar</button>
-                </div>
+            <p style="text-align: center; padding: 2rem; color: #6b7280;">⏳ Cargando...</p>
+        }
+        else if (carpetas.Count == 0 && archivos.Count == 0)
+        {
+            <div class="vacio">
+                <div style="font-size: 3rem;">📂</div>
+                <strong>Carpeta vacía</strong>
+                <p style="margin: 0.4rem 0 0; font-size: 0.88rem;">
+                    Arrastrá archivos o carpetas desde el explorador,<br/>
+                    o usá los botones de arriba.
+                </p>
             </div>
         }
-        @* Después archivos, más recientes primero *@
-        @foreach (var f in archivos.OrderByDescending(x => x.ModifiedAt))
+        else
         {
-            var diasViejo = (int)Math.Floor((DateTime.UtcNow - f.ModifiedAt).TotalDays);
-            var esViejo = diasViejo > 90;  // > 3 meses se considera viejo
-            <div class="doc-card @(esViejo ? "viejo" : "")">
-                <div class="doc-icon">@IconoArchivo(f.Name)</div>
-                <div class="doc-info">
-                    <p class="doc-nombre">@f.Name</p>
-                    <div class="doc-meta">
-                        <span>📅 Subido @f.ModifiedAt.ToString("dd/MM/yyyy")</span>
-                        @if (diasViejo > 0)
-                        {
-                            <span>· hace @diasViejo día@(diasViejo == 1 ? "" : "s")</span>
-                        }
-                        <span>· @FormatSize(f.Size)</span>
-                        @if (esViejo)
-                        {
-                            <span class="viejo-warn">⚠ +3 meses · revisar</span>
-                        }
-                    </div>
+            @if (carpetas.Count > 0)
+            {
+                <div class="doc-seccion-titulo">📁 Carpetas <span class="count">@carpetas.Count</span></div>
+                <div class="doc-grid">
+                    @foreach (var c in carpetas.OrderBy(x => x.Name))
+                    {
+                        <div class="doc-card carpeta" @onclick="@(() => IrA(c.Path))" title="Abrir @c.Name">
+                            <div class="doc-card-actions">
+                                <button class="btn-borrar" @onclick:stopPropagation="true" @onclick="@(() => ConfirmarBorrar(c))" title="Borrar carpeta (y todo lo de adentro)">🗑</button>
+                            </div>
+                            <div class="doc-icon">📁</div>
+                            <div class="doc-nombre">@c.Name</div>
+                            <div class="doc-meta">Carpeta</div>
+                        </div>
+                    }
                 </div>
-                <div class="doc-actions">
-                    <a href="@DownloadUrl(f.Path)" target="_blank">⬇ Descargar</a>
-                    <button class="btn-borrar" @onclick="@(() => ConfirmarBorrar(f))">🗑 Borrar</button>
+            }
+            @if (archivos.Count > 0)
+            {
+                <div class="doc-seccion-titulo">📄 Archivos <span class="count">@archivos.Count</span></div>
+                <div class="doc-grid">
+                    @foreach (var f in archivos.OrderByDescending(x => x.ModifiedAt))
+                    {
+                        var diasViejo = (int)Math.Floor((DateTime.UtcNow - f.ModifiedAt).TotalDays);
+                        var esViejo = diasViejo > 90;
+                        var (icono, claseTipo) = IconoYClaseArchivo(f.Name);
+                        <a class="doc-card @(esViejo ? "viejo" : "")" href="@DownloadUrl(f.Path)" target="_blank" style="text-decoration: none; color: inherit;" title="Ver / descargar @f.Name">
+                            <div class="doc-card-actions">
+                                <button class="btn-borrar" @onclick:preventDefault="true" @onclick:stopPropagation="true" @onclick="@(() => ConfirmarBorrar(f))" title="Borrar">🗑</button>
+                            </div>
+                            <div class="doc-icon @claseTipo">@icono</div>
+                            <div class="doc-nombre">@f.Name</div>
+                            <div class="doc-meta">
+                                <span class="chip">@FormatSize(f.Size)</span>
+                                <div style="margin-top: 0.15rem;">@FechaCorta(f.ModifiedAt)</div>
+                                @if (esViejo)
+                                {
+                                    <div><span class="viejo-warn">⚠ +3 meses</span></div>
+                                }
+                            </div>
+                        </a>
+                    }
                 </div>
-            </div>
+            }
         }
-    }
+    </div>
 </div>
 
 @* Modal Nueva carpeta *@
@@ -183,11 +251,15 @@
     <div class="modal-overlay" style="z-index: 9100;" @onclick="@(() => aBorrar = null)">
         <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 420px;">
             <div class="modal-header" style="background: #b91c1c; color: white;">
-                <h4 style="margin: 0;">🗑 Borrar documento</h4>
+                <h4 style="margin: 0;">🗑 Borrar @(aBorrar.IsFolder ? "carpeta" : "documento")</h4>
                 <button class="btn-close" @onclick="@(() => aBorrar = null)" style="color: white;">&times;</button>
             </div>
             <div class="modal-body" style="padding: 1rem 1.2rem;">
                 <p>¿Seguro que querés borrar <strong>@aBorrar.Name</strong>?</p>
+                @if (aBorrar.IsFolder)
+                {
+                    <p style="font-size: 0.85rem; color: #b91c1c; font-weight: 600;">⚠ También se borra TODO lo que tenga adentro.</p>
+                }
                 <p style="font-size: 0.8rem; color: #6b7280;">Esta acción no se puede deshacer.</p>
             </div>
             <div class="modal-footer">
@@ -199,21 +271,20 @@
 }
 
 @code {
-    // Carpeta raíz fija. Adentro pueden existir subcarpetas que el usuario crea.
     private const string CarpetaFija = "Documentacion-Importante";
 
     private List<FileEntryDto> archivos = new();
     private List<FileEntryDto> carpetas = new();
     private bool loading = true;
     private bool uploading;
+    private string uploadStatus = "";
     private FileEntryDto? aBorrar;
-
-    // Carpeta actual donde estamos parados. Arranca en la raíz fija.
     private string currentPath = CarpetaFija;
-
-    // Modal nueva carpeta
     private bool mostrarNuevaCarpeta;
     private string nuevaCarpetaNombre = "";
+    private bool isDragging;
+    private ElementReference dropZoneRef;
+    private DotNetObjectReference<DocumentacionImportante>? selfRef;
 
     protected override async Task OnInitializedAsync()
     {
@@ -221,9 +292,100 @@
         await Cargar();
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            selfRef = DotNetObjectReference.Create(this);
+            try { await JS.InvokeVoidAsync("docDriveInit", dropZoneRef, selfRef); }
+            catch { /* helper opcional, no rompemos si no esta */ }
+        }
+    }
+
+    public void Dispose()
+    {
+        try { selfRef?.Dispose(); } catch { }
+    }
+
+    [JSInvokable]
+    public void OnDragEnter() { isDragging = true; StateHasChanged(); }
+    [JSInvokable]
+    public void OnDragLeave() { isDragging = false; StateHasChanged(); }
+
+    /// <summary>JS llama esto con la lista de archivos (con webkitRelativePath si vienen de carpeta).
+    /// Cada item: { name, relativePath, size, content (base64) }.</summary>
+    [JSInvokable]
+    public async Task OnFilesDropped(DroppedFile[] files)
+    {
+        isDragging = false;
+        if (files == null || files.Length == 0) { StateHasChanged(); return; }
+        await SubirArchivosConPaths(files);
+    }
+
+    public record DroppedFile(string name, string? relativePath, long size, string content);
+
+    /// <summary>Procesa archivos con paths relativos: crea subcarpetas y sube cada uno.
+    /// Si relativePath es "carpeta/sub/archivo.pdf", crea carpeta y sub dentro del currentPath.</summary>
+    private async Task SubirArchivosConPaths(DroppedFile[] files)
+    {
+        uploading = true;
+        uploadStatus = $"0 de {files.Length}";
+        StateHasChanged();
+
+        var carpetasCreadas = new HashSet<string>();
+        int ok = 0, fail = 0;
+        for (int i = 0; i < files.Length; i++)
+        {
+            var f = files[i];
+            uploadStatus = $"{i + 1} de {files.Length} — {f.name}";
+            StateHasChanged();
+
+            // Determinar carpeta destino: si relativePath tiene subdirs, crear las que falten.
+            var destFolder = currentPath;
+            var rel = f.relativePath ?? f.name;
+            var parts = rel.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+            for (int p = 0; p < parts.Length - 1; p++)
+            {
+                var subName = parts[p];
+                var key = destFolder + "/" + subName;
+                if (!carpetasCreadas.Contains(key))
+                {
+                    try { await Api.CreateFolderAsync(destFolder, subName); } catch { /* ya existe */ }
+                    carpetasCreadas.Add(key);
+                }
+                destFolder = key;
+            }
+            try
+            {
+                var bytes = Convert.FromBase64String(f.content);
+                using var ms = new MemoryStream(bytes);
+                var result = await Api.UploadFilesAsync(destFolder, new[] { (f.name, (Stream)ms, (long)bytes.Length) });
+                if (result is not null && result.Any(r => r.Success)) ok++;
+                else fail++;
+            }
+            catch { fail++; }
+        }
+
+        uploading = false;
+        uploadStatus = "";
+        if (ok > 0) ToastService.Success($"📤 {ok} archivo{(ok == 1 ? "" : "s")} subido{(ok == 1 ? "" : "s")}");
+        if (fail > 0) ToastService.Error($"⚠ {fail} archivo{(fail == 1 ? "" : "s")} falló");
+        await Cargar();
+    }
+
+    /// <summary>Botón "Subir carpeta": invoca un input HTML5 con webkitdirectory via JS y procesa los archivos resultantes.</summary>
+    private async Task PickFolder()
+    {
+        try
+        {
+            if (selfRef is null) return;
+            await JS.InvokeVoidAsync("docDrivePickFolder", selfRef);
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
     private async Task AsegurarCarpetaAsync()
     {
-        // Si la carpeta raíz no existe (primer uso), la creamos. Idempotente.
         try { await Api.CreateFolderAsync("", CarpetaFija); } catch { }
     }
 
@@ -247,13 +409,9 @@
         await Cargar();
     }
 
-    /// <summary>Segmentos del breadcrumb desde la raíz Documentacion-Importante hasta currentPath.
-    /// El primero (raíz) lo dibujamos a mano fuera de este loop.</summary>
     private IEnumerable<(string nombre, string path, bool esActual)> SegmentosBreadcrumb()
     {
-        // Si estamos en la raíz, no hay subsegmentos.
         if (string.Equals(currentPath, CarpetaFija, StringComparison.OrdinalIgnoreCase)) yield break;
-        // Sacamos el prefijo de la raíz y vamos armando los subsegmentos acumulando paths.
         var rest = currentPath.Substring(CarpetaFija.Length).TrimStart('/');
         var partes = rest.Split('/', StringSplitOptions.RemoveEmptyEntries);
         var acumulado = CarpetaFija;
@@ -281,16 +439,22 @@
 
     private async Task OnFilesSelected(InputFileChangeEventArgs e)
     {
-        var files = e.GetMultipleFiles(20);
+        var files = e.GetMultipleFiles(50);
         if (files.Count == 0) return;
         uploading = true;
+        uploadStatus = $"0 de {files.Count}";
+        StateHasChanged();
         try
         {
-            var items = new List<(string name, Stream stream, long size)>();
             var streams = new List<Stream>();
+            var items = new List<(string name, Stream stream, long size)>();
+            int idx = 0;
             foreach (var f in files)
             {
-                var s = f.OpenReadStream(50 * 1024 * 1024); // 50 MB max
+                idx++;
+                uploadStatus = $"{idx} de {files.Count} — {f.Name}";
+                StateHasChanged();
+                var s = f.OpenReadStream(100 * 1024 * 1024); // 100 MB
                 streams.Add(s);
                 items.Add((f.Name, s, f.Size));
             }
@@ -303,7 +467,7 @@
             await Cargar();
         }
         catch (Exception ex) { ToastService.Error("Error subiendo: " + ex.Message); }
-        finally { uploading = false; }
+        finally { uploading = false; uploadStatus = ""; }
     }
 
     private void ConfirmarBorrar(FileEntryDto f) => aBorrar = f;
@@ -323,17 +487,21 @@
 
     private static string DownloadUrl(string path) => $"/api/files/download?path={Uri.EscapeDataString(path)}";
 
-    private static string IconoArchivo(string nombre)
+    private static (string icono, string clase) IconoYClaseArchivo(string nombre)
     {
         var ext = System.IO.Path.GetExtension(nombre).ToLowerInvariant();
         return ext switch
         {
-            ".pdf" => "📕",
-            ".doc" or ".docx" => "📘",
-            ".xls" or ".xlsx" or ".csv" => "📗",
-            ".jpg" or ".jpeg" or ".png" or ".gif" or ".webp" => "🖼",
-            ".zip" or ".rar" or ".7z" => "🗜",
-            _ => "📄"
+            ".pdf" => ("📕", "tipo-pdf"),
+            ".doc" or ".docx" => ("📘", "tipo-doc"),
+            ".xls" or ".xlsx" or ".csv" => ("📗", "tipo-xls"),
+            ".jpg" or ".jpeg" or ".png" or ".gif" or ".webp" or ".bmp" => ("🖼", "tipo-img"),
+            ".zip" or ".rar" or ".7z" => ("🗜", "tipo-zip"),
+            ".ppt" or ".pptx" => ("📙", "tipo-doc"),
+            ".txt" or ".md" => ("📝", ""),
+            ".mp4" or ".mov" or ".avi" => ("🎬", ""),
+            ".mp3" or ".wav" => ("🎵", ""),
+            _ => ("📄", "")
         };
     }
 
@@ -342,5 +510,15 @@
         if (bytes < 1024) return $"{bytes} B";
         if (bytes < 1024 * 1024) return $"{bytes / 1024.0:N1} KB";
         return $"{bytes / 1024.0 / 1024.0:N1} MB";
+    }
+
+    private static string FechaCorta(DateTime utc)
+    {
+        var local = utc.ToLocalTime();
+        var dias = (int)Math.Floor((DateTime.Now - local).TotalDays);
+        if (dias == 0) return "hoy";
+        if (dias == 1) return "ayer";
+        if (dias < 7) return $"hace {dias} días";
+        return local.ToString("dd/MM/yyyy");
     }
 }

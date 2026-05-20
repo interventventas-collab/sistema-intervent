@@ -380,6 +380,33 @@
         }
     </div>
 
+    @* Documentación importante — acceso directo + stats *@
+    <div class="dashboard-detail-card" style="padding: 0.85rem; background: linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%); border: 1px solid #8b5cf6; cursor: pointer;" @onclick='() => Navigation.NavigateTo("/documentacion")' title="Ir a Documentación importante">
+        <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem;">
+            <span style="font-size: 1.3rem;">📑</span>
+            <strong style="font-size: 0.85rem; color: #5b21b6;">Documentación</strong>
+        </div>
+        @if (docStats is null)
+        {
+            <div style="font-size: 0.95rem; color: #6d28d9;">Cargando...</div>
+        }
+        else
+        {
+            <div style="font-size: 1.3rem; font-weight: 800; color: #5b21b6; line-height: 1.2;">
+                📁 @docStats.Folders · 📄 @docStats.Files
+            </div>
+            <div style="font-size: 0.72rem; color: #6d28d9; margin-top: 0.15rem;">
+                @(docStats.Files == 0 ? "Subí tus primeros archivos →" : $"{docStats.Folders} carpeta{(docStats.Folders == 1 ? "" : "s")} · {docStats.Files} archivo{(docStats.Files == 1 ? "" : "s")}")
+            </div>
+            @if (docStats.LastUploadAt.HasValue)
+            {
+                <div style="font-size: 0.65rem; color: #7c3aed; margin-top: 0.15rem; font-style: italic;">
+                    🔄 Última subida: @FormatearUltimaActualizacion(docStats.LastUploadAt.Value)
+                </div>
+            }
+        }
+    </div>
+
     @* Shell Flota — placeholder, esperando API *@
     <div class="dashboard-detail-card" style="padding: 0.85rem; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 1px solid #f59e0b; position: relative; opacity: 0.85;" title="Próximamente — cuando tengamos la API de Shell, este recuadro mostrará los datos de la flota.">
         <div style="position: absolute; top: 0.5rem; right: 0.5rem; background: #f59e0b; color: white; font-size: 0.6rem; font-weight: 800; letter-spacing: 0.05em; padding: 0.15rem 0.45rem; border-radius: 4px;">🚧 EN CONSTRUCCIÓN</div>
@@ -530,6 +557,7 @@
     private System.Threading.Timer? salesSummaryTimer;
     private SalesSummaryDto? salesSummary;
     private Web.Models.SaldoBancoDto? saldoBanco;
+    private Web.Models.FilesStatsDto? docStats;
 
 
     // Cache-buster para la imagen de fondo (cuando se reemplaza, sube este numero
@@ -579,6 +607,9 @@
         _ = LoadSalesSummaryAsync();
         salesSummaryTimer = new System.Threading.Timer(_ => InvokeAsync(LoadSalesSummaryAsync), null,
             TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+
+        // Stats de la carpeta de Documentacion para la card del dashboard.
+        _ = LoadDocStatsAsync();
 
 
         try
@@ -653,6 +684,16 @@
             saldoBanco = await Api.GetSaldoBancoAsync();
         }
         catch { /* idem, opcional */ }
+        StateHasChanged();
+    }
+
+    private async Task LoadDocStatsAsync()
+    {
+        try
+        {
+            docStats = await Api.GetFilesStatsAsync("Documentacion-Importante");
+        }
+        catch { /* opcional, no rompe */ }
         StateHasChanged();
     }
 

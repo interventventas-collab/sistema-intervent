@@ -50,6 +50,36 @@ public class FilesController : ControllerBase
         return Ok(new ListResponse(_storage.ToRelative(full), provider, entries));
     }
 
+    public record StatsResponse(int Folders, int Files, long TotalBytes, DateTime? LastUploadAt);
+
+    /// <summary>Stats recursivos de una carpeta — usado por la card del Dashboard.</summary>
+    [HttpGet("stats")]
+    public IActionResult Stats([FromQuery] string? path)
+    {
+        Response.Headers["Cache-Control"] = "no-store";
+        string full;
+        try { full = _storage.ResolveSafe(path); }
+        catch (UnauthorizedAccessException) { return BadRequest(new { error = "Path invalido" }); }
+        if (!Directory.Exists(full)) return Ok(new StatsResponse(0, 0, 0, null));
+
+        int folders = 0, files = 0;
+        long bytes = 0;
+        DateTime? last = null;
+        try
+        {
+            foreach (var d in Directory.EnumerateDirectories(full, "*", SearchOption.AllDirectories)) folders++;
+            foreach (var f in Directory.EnumerateFiles(full, "*", SearchOption.AllDirectories))
+            {
+                files++;
+                var fi = new FileInfo(f);
+                bytes += fi.Length;
+                if (!last.HasValue || fi.LastWriteTime > last.Value) last = fi.LastWriteTime;
+            }
+        }
+        catch { /* ignorar errores parciales por permisos */ }
+        return Ok(new StatsResponse(folders, files, bytes, last));
+    }
+
     public record ProviderDto(string Provider, List<ProviderOption> Options);
     public record ProviderOption(string Value, string Label, bool Enabled);
 

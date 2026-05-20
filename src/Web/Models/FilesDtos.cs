@@ -44,3 +44,11 @@ public class FileDeleteResult
     public bool Success { get; set; }
     public string? Error { get; set; }
 }
+
+public class FilesStatsDto
+{
+    public int Folders { get; set; }
+    public int Files { get; set; }
+    public long TotalBytes { get; set; }
+    public DateTime? LastUploadAt { get; set; }
+}

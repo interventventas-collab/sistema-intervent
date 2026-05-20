@@ -2431,6 +2431,13 @@ public class ApiClient
         return await GetAsync<FilesListResponse>($"/api/files/list?path={q}&_={ts}");
     }
 
+    public async Task<FilesStatsDto?> GetFilesStatsAsync(string path)
+    {
+        var q = Uri.EscapeDataString(path ?? "");
+        var ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        return await GetAsync<FilesStatsDto>($"/api/files/stats?path={q}&_={ts}");
+    }
+
     public async Task<StorageProviderResponse?> GetFilesProviderAsync()
     {
         return await GetAsync<StorageProviderResponse>("/api/files/provider");

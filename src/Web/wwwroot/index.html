@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-    <link rel="stylesheet" href="css/app.css?v=20260520b" />
+    <link rel="stylesheet" href="css/app.css?v=20260520c" />
 </head>
 <body>
     <div id="app">
@@ -252,6 +252,171 @@
             menu.style.left = 'auto';
             menu.style.right = (window.innerWidth - r.right) + 'px';
         };
+        // Helpers para la pantalla /documentacion (Google Drive-like).
+        // docDriveInit: engancha drag-and-drop nativo. El usuario puede arrastrar archivos
+        // y/o carpetas desde el explorador del SO sobre el drop-zone — recorremos
+        // recursivamente las carpetas, leemos cada archivo y los pasamos a Blazor con
+        // su path relativo para que se recree la estructura en el storage.
+        window.docDriveInit = function(dropZone, dotnetRef) {
+            if (!dropZone || dropZone._docDriveInit) return;
+            dropZone._docDriveInit = true;
+
+            // Contador para evitar parpadeo cuando el drag pasa por hijos.
+            var dragCounter = 0;
+
+            dropZone.addEventListener('dragenter', function(e) {
+                e.preventDefault(); e.stopPropagation();
+                dragCounter++;
+                if (dragCounter === 1) {
+                    try { dotnetRef.invokeMethodAsync('OnDragEnter'); } catch (err) {}
+                }
+            });
+            dropZone.addEventListener('dragleave', function(e) {
+                e.preventDefault(); e.stopPropagation();
+                dragCounter--;
+                if (dragCounter <= 0) {
+                    dragCounter = 0;
+                    try { dotnetRef.invokeMethodAsync('OnDragLeave'); } catch (err) {}
+                }
+            });
+            dropZone.addEventListener('dragover', function(e) {
+                e.preventDefault(); e.stopPropagation();
+                e.dataTransfer.dropEffect = 'copy';
+            });
+            dropZone.addEventListener('drop', async function(e) {
+                e.preventDefault(); e.stopPropagation();
+                dragCounter = 0;
+                var items = e.dataTransfer.items;
+                var files = [];
+                if (items && items.length > 0 && items[0].webkitGetAsEntry) {
+                    // Usa la API moderna: soporta carpetas con estructura.
+                    var entries = [];
+                    for (var i = 0; i < items.length; i++) {
+                        var entry = items[i].webkitGetAsEntry();
+                        if (entry) entries.push(entry);
+                    }
+                    for (var j = 0; j < entries.length; j++) {
+                        await traverseEntry(entries[j], '', files);
+                    }
+                } else if (e.dataTransfer.files) {
+                    // Fallback: solo archivos sueltos.
+                    for (var k = 0; k < e.dataTransfer.files.length; k++) {
+                        var ff = e.dataTransfer.files[k];
+                        files.push({ name: ff.name, relativePath: ff.name, size: ff.size, file: ff });
+                    }
+                }
+                if (files.length === 0) {
+                    try { dotnetRef.invokeMethodAsync('OnDragLeave'); } catch (err) {}
+                    return;
+                }
+                await sendFilesToBlazor(files, dotnetRef);
+            });
+        };
+
+        // Recorre recursivamente FileSystemEntry (de webkitGetAsEntry) y acumula archivos.
+        async function traverseEntry(entry, prefix, out) {
+            if (entry.isFile) {
+                await new Promise(function(resolve) {
+                    entry.file(function(file) {
+                        out.push({
+                            name: file.name,
+                            relativePath: prefix + file.name,
+                            size: file.size,
+                            file: file
+                        });
+                        resolve();
+                    }, function() { resolve(); });
+                });
+            } else if (entry.isDirectory) {
+                var reader = entry.createReader();
+                // readEntries puede devolver de a tandas — hay que llamar hasta que devuelva vacio.
+                var allEntries = [];
+                while (true) {
+                    var batch = await new Promise(function(resolve) {
+                        reader.readEntries(function(es) { resolve(es); }, function() { resolve([]); });
+                    });
+                    if (!batch || batch.length === 0) break;
+                    for (var i = 0; i < batch.length; i++) allEntries.push(batch[i]);
+                }
+                for (var k = 0; k < allEntries.length; k++) {
+                    await traverseEntry(allEntries[k], prefix + entry.name + '/', out);
+                }
+            }
+        }
+
+        // Lee cada File como base64 y envia a Blazor en tandas (para no romper el limite de InvokeMethodAsync).
+        async function sendFilesToBlazor(files, dotnetRef) {
+            // Filtrar archivos demasiado grandes (>50MB) para esta version.
+            var MAX = 50 * 1024 * 1024;
+            var enviar = [];
+            var omitidos = 0;
+            for (var i = 0; i < files.length; i++) {
+                if (files[i].size > MAX) { omitidos++; continue; }
+                var b64 = await readFileAsBase64(files[i].file);
+                enviar.push({
+                    name: files[i].name,
+                    relativePath: files[i].relativePath || files[i].name,
+                    size: files[i].size,
+                    content: b64
+                });
+            }
+            if (omitidos > 0) {
+                try { console.warn(omitidos + ' archivos omitidos (> 50 MB)'); } catch (e) {}
+            }
+            if (enviar.length === 0) {
+                try { dotnetRef.invokeMethodAsync('OnDragLeave'); } catch (err) {}
+                return;
+            }
+            // Mandar de a 5 para evitar payload gigante en una sola llamada.
+            var batchSize = 5;
+            for (var j = 0; j < enviar.length; j += batchSize) {
+                var chunk = enviar.slice(j, j + batchSize);
+                await dotnetRef.invokeMethodAsync('OnFilesDropped', chunk);
+            }
+        }
+
+        function readFileAsBase64(file) {
+            return new Promise(function(resolve, reject) {
+                var reader = new FileReader();
+                reader.onload = function() {
+                    var result = reader.result || '';
+                    // dataURL: "data:...;base64,XXX" → quedarnos con XXX
+                    var idx = result.indexOf(',');
+                    resolve(idx >= 0 ? result.substring(idx + 1) : '');
+                };
+                reader.onerror = function() { resolve(''); };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // Boton "Subir carpeta" — abre input HTML5 con webkitdirectory.
+        window.docDrivePickFolder = function(dotnetRef) {
+            var input = document.createElement('input');
+            input.type = 'file';
+            input.multiple = true;
+            input.webkitdirectory = true;
+            input.style.display = 'none';
+            document.body.appendChild(input);
+            input.addEventListener('change', async function() {
+                var fs = input.files;
+                if (!fs || fs.length === 0) { document.body.removeChild(input); return; }
+                var arr = [];
+                for (var i = 0; i < fs.length; i++) {
+                    var f = fs[i];
+                    arr.push({
+                        name: f.name,
+                        relativePath: f.webkitRelativePath || f.name,
+                        size: f.size,
+                        file: f
+                    });
+                }
+                try { dotnetRef.invokeMethodAsync('OnDragEnter'); } catch (e) {}
+                await sendFilesToBlazor(arr, dotnetRef);
+                document.body.removeChild(input);
+            }, { once: true });
+            input.click();
+        };
+
         window.copyToClipboard = function(text) {
             if (navigator.clipboard && window.isSecureContext) {
                 return navigator.clipboard.writeText(text);
