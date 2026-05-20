@@ -673,6 +673,22 @@ public class ApiClient
         return resp.IsSuccessStatusCode;
     }
 
+    // === Calendario Notas (2026-05-19) ===
+    public async Task<List<CalendarioNotaDto>?> GetCalendarioNotasAsync(DateTime? desde = null, DateTime? hasta = null)
+    {
+        var qs = new List<string>();
+        if (desde.HasValue) qs.Add($"desde={desde.Value:yyyy-MM-dd}");
+        if (hasta.HasValue) qs.Add($"hasta={hasta.Value:yyyy-MM-dd}");
+        var url = "/api/cafe/calendario/notas" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+        return await GetAsync<List<CalendarioNotaDto>>(url);
+    }
+
+    public async Task<CalendarioNotaDto?> CrearCalendarioNotaAsync(CrearCalendarioNotaRequest req)
+        => await PostAsync<CalendarioNotaDto>("/api/cafe/calendario/notas", req);
+
+    public async Task<bool> BorrarCalendarioNotaAsync(int id)
+        => await DeleteAsync($"/api/cafe/calendario/notas/{id}");
+
     // === Cheques Banco (2026-05-19) ===
     public async Task<ChequesBancoStatsDto?> GetChequesBancoStatsAsync()
         => await GetAsync<ChequesBancoStatsDto>("/api/cafe/cheques-banco/stats");

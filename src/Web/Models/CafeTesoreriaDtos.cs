@@ -106,6 +106,29 @@ public class ImportChequeBancoResultDto
     public List<string> Errores { get; set; } = new();
 }
 
+// ========== Calendario Notas ==========
+public class CalendarioNotaDto
+{
+    public int Id { get; set; }
+    public DateTime Fecha { get; set; }
+    public string Titulo { get; set; } = "";
+    public string? Descripcion { get; set; }
+    public decimal? Importe { get; set; }
+    public string? Color { get; set; }
+    public string? CreadoPor { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+public class CrearCalendarioNotaRequest
+{
+    public DateTime Fecha { get; set; }
+    public string Titulo { get; set; } = "";
+    public string? Descripcion { get; set; }
+    public decimal? Importe { get; set; }
+    public string? Color { get; set; }
+    public string? CreadoPor { get; set; }
+}
+
 public class CobranzaListDto
 {
     public int Id { get; set; }

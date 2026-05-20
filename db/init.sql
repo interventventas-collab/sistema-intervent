@@ -3763,3 +3763,21 @@ BEGIN
     CREATE INDEX IX_ChequesBanco_FechaPago ON Cafe_ChequesBanco(FechaPago);
 END
 GO
+
+-- ─── Calendario Notas (2026-05-19) ───
+-- Notas/eventos manuales que el usuario agrega al calendario del dashboard.
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_CalendarioNotas')
+BEGIN
+    CREATE TABLE Cafe_CalendarioNotas (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Fecha DATE NOT NULL,
+        Titulo NVARCHAR(150) NOT NULL,
+        Descripcion NVARCHAR(500) NULL,
+        Importe DECIMAL(18,2) NULL,
+        Color NVARCHAR(20) NULL,
+        CreadoPor NVARCHAR(120) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+    );
+    CREATE INDEX IX_CafeCalendarioNotas_Fecha ON Cafe_CalendarioNotas(Fecha);
+END
+GO
