@@ -3,6 +3,7 @@
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject IJSRuntime JS
+@inject OperatorService Operator
 
 <div class="card">
     <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
@@ -203,6 +204,18 @@
 
                 @if (selClienteId > 0)
                 {
+                    @if (pendienteOrigen is not null)
+                    {
+                        <div style="margin: 0.8rem 0; padding: 0.7rem 0.9rem; background: #dcfce7; border: 1px solid #16a34a; border-radius: 8px; display: flex; gap: 0.6rem; align-items: center;">
+                            <span style="font-size: 1.5rem;">🚚</span>
+                            <div style="flex: 1; font-size: 0.88rem;">
+                                <b>Cobranza del repartidor @pendienteOrigen.RepartidorNombre</b> por <b style="color:#16a34a;">$@pendienteOrigen.Importe.ToString("N2")</b>
+                                <div style="font-size: 0.78rem; color: #166534; margin-top: 0.15rem;">
+                                    Originalmente para @pendienteOrigen.VentaNumero. Imputalo a donde corresponda y guardá.
+                                </div>
+                            </div>
+                        </div>
+                    }
                     @* --- Comprobantes a cobrar --- *@
                     <div style="margin: 1rem 0; padding: 0.8rem; background: #f9fafb; border-radius: 8px;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
@@ -540,6 +553,10 @@
     /// <summary>Si vino desde el extracto bancario con ?movimiento=Y, precargamos
     /// ese movimiento como forma de cobro tipo Transferencia.</summary>
     [Parameter, SupplyParameterFromQuery(Name = "movimiento")] public int? PreMovimientoId { get; set; }
+    /// <summary>Si vino desde Cobranzas pendientes (repartidor cargo desde QR), precargamos
+    /// la cobranza con efectivo + importe. Al guardar vinculamos la pendiente.</summary>
+    [Parameter, SupplyParameterFromQuery(Name = "pendienteId")] public int? PrePendienteId { get; set; }
+    private CobranzaPendienteDto? pendienteOrigen;
     // Movimientos del banco asociados al cliente actual que aun no se usaron en cobranza.
     private List<MovimientoDisponibleDto> movsBancoDisponibles = new();
     // Ids de movimientos elegidos para esta cobranza (para marcarlos como usados al guardar)
@@ -585,8 +602,37 @@
             // automaticamente como medio de cobro tipo Transferencia.
             if (PreMovimientoId.HasValue && PreMovimientoId.Value > 0)
                 AgregarMovimientoBancoComoMedio(PreMovimientoId.Value);
+            // Si viene desde una cobranza pendiente del repartidor, precargamos efectivo
+            if (PrePendienteId.HasValue && PrePendienteId.Value > 0)
+                await PrecargarDesdePendienteAsync(PrePendienteId.Value);
             RecalcularTotal();
         }
+    }
+
+    /// <summary>Precarga el form con los datos que cargo el repartidor desde el QR:
+    /// medio efectivo + importe + observaciones automaticas con el repartidor que lo cobro.</summary>
+    private async Task PrecargarDesdePendienteAsync(int pendienteId)
+    {
+        try
+        {
+            pendienteOrigen = await Api.GetCobranzaPendienteAsync(pendienteId);
+            if (pendienteOrigen is null) return;
+            // Buscar caja efectivo
+            var cajaEf = cajas?.FirstOrDefault(c => c.IsActive && c.Tipo == "EFECTIVO");
+            if (cajaEf is not null)
+            {
+                formMedios.Add(new MedioForm
+                {
+                    CajaId = cajaEf.Id,
+                    TipoCaja = cajaEf.Tipo,
+                    Importe = pendienteOrigen.Importe,
+                    Referencia = $"Cobrado por {pendienteOrigen.RepartidorNombre} (QR repartidor)"
+                });
+            }
+            formObservaciones = $"Cobranza precargada por {pendienteOrigen.RepartidorNombre} desde el QR" +
+                (string.IsNullOrEmpty(pendienteOrigen.Notas) ? "" : $". Notas: {pendienteOrigen.Notas}");
+        }
+        catch { /* no critico */ }
     }
 
     /// <summary>Agrega un movimiento del extracto como medio de cobro tipo Transferencia.
@@ -825,6 +871,13 @@
             {
                 try { await Api.MarcarMovimientosUsadosAsync(movsBancoUsados.ToList(), r.Id); }
                 catch { /* no critico — si falla, queda como pendiente */ }
+            }
+            // Si vino desde una cobranza pendiente del repartidor, vincularla (queda APROBADA)
+            if (pendienteOrigen is not null)
+            {
+                try { await Api.VincularCobranzaPendienteAsync(pendienteOrigen.Id, r.Id, Operator.Current); }
+                catch { /* no critico */ }
+                pendienteOrigen = null;
             }
             ToastService.Success($"Cobranza {r.Numero} creada");
             showNueva = false;

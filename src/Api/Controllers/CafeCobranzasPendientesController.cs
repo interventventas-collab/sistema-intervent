@@ -53,6 +53,53 @@ public class CafeCobranzasPendientesController : ControllerBase
         return Ok(new { count = c });
     }
 
+    /// <summary>Detalle de una cobranza pendiente para precargarla en el modal de Nueva cobranza.</summary>
+    [HttpGet("{id:int}")]
+    public async Task<IActionResult> GetById(int id)
+    {
+        var p = await _db.CafeCobranzasPendientes
+            .Include(x => x.Venta).Include(x => x.Repartidor)
+            .FirstOrDefaultAsync(x => x.Id == id);
+        if (p is null) return NotFound();
+        return Ok(new PendienteDto(p.Id, p.VentaId,
+            p.Venta?.Numero ?? "?", p.Venta?.ClienteId, p.Venta?.ClienteNombreSnapshot,
+            p.Venta?.Total ?? 0m, p.RepartidorId, p.Repartidor?.Nombre ?? "?",
+            p.Importe, p.MarcadoEntregado, p.Notas, p.Estado, p.CreatedAt));
+    }
+
+    public record VincularRequest(int CobranzaId, string? Operador);
+
+    /// <summary>Marca la cobranza pendiente como APROBADA vinculandola a una CafeCobranza ya
+    /// creada por el admin desde el modal de Nueva Cobranza. La crea_cion de la cobranza
+    /// real con sus imputaciones la hace /cafe/tesoreria/cobranzas con los datos pre-cargados
+    /// (cliente + efectivo + importe). Aca solo hacemos el marcado. Tambien sincroniza el
+    /// estado "entregado" si el repartidor lo habia tildado.</summary>
+    [HttpPost("{id:int}/vincular")]
+    public async Task<IActionResult> Vincular(int id, [FromBody] VincularRequest req)
+    {
+        var p = await _db.CafeCobranzasPendientes.Include(x => x.Venta)
+            .FirstOrDefaultAsync(x => x.Id == id);
+        if (p is null) return NotFound();
+        if (p.Estado != "PENDIENTE") return BadRequest(new { error = $"Ya esta {p.Estado}" });
+        p.Estado = "APROBADA";
+        p.CobranzaCreadaId = req.CobranzaId;
+        p.RevisadaPor = req.Operador;
+        p.RevisadaAt = DateTime.UtcNow;
+        // Si la cobranza tilde "entregado", actualizar la venta
+        if (p.MarcadoEntregado && p.Venta is not null)
+        {
+            p.Venta.EntregadoPorRepartidorId = p.RepartidorId;
+            p.Venta.EntregadoAt = DateTime.UtcNow;
+            if (p.Venta.EstadoPreparacion != null)
+            {
+                p.Venta.EstadoPreparacion = "ENTREGADO";
+                p.Venta.PreparacionUpdatedAt = DateTime.UtcNow;
+            }
+        }
+        await _db.SaveChangesAsync();
+        return Ok();
+    }
+
     public record AprobarRequest(string? Operador, int? CajaId);
 
     /// <summary>Aprueba una cobranza pendiente — crea una CafeCobranza real con un solo medio

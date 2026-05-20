@@ -3,6 +3,7 @@
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject OperatorService Operator
+@inject NavigationManager Navigation
 @using Web.Models
 
 <style>
@@ -76,7 +77,7 @@
                 @if (c.Estado == "PENDIENTE")
                 {
                     <div class="cp-actions">
-                        <button class="cp-btn aprobar" @onclick="() => Aprobar(c)">✓ Aprobar</button>
+                        <button class="cp-btn aprobar" @onclick="() => IrACobrar(c)" title="Te abre el modal de Nueva cobranza precargado con cliente + efectivo + importe — vos elegís a qué venta(s) imputar">💰 Procesar cobranza →</button>
                         <button class="cp-btn rechazar" @onclick="() => Rechazar(c)">✗ Rechazar</button>
                     </div>
                 }
@@ -113,16 +114,16 @@
 
     [Inject] private IJSRuntime JS { get; set; } = null!;
 
-    private async Task Aprobar(CobranzaPendienteDto c)
+    /// <summary>Te lleva al modal de Nueva Cobranza con cliente + efectivo + importe precargados.
+    /// Vos elegís a qué venta(s) imputar. Al guardar, se vincula la pendiente automáticamente.</summary>
+    private void IrACobrar(CobranzaPendienteDto c)
     {
-        if (!await JS.InvokeAsync<bool>("confirm", $"¿Aprobar cobranza de {c.ClienteNombre} por ${c.Importe:N2}? Se va a crear una cobranza real en efectivo y se imputa a {c.VentaNumero}.")) return;
-        try
+        if (c.ClienteId is null)
         {
-            var ok = await Api.AprobarCobranzaPendienteAsync(c.Id, new AprobarCobranzaPendienteRequest { Operador = Operator.Current });
-            if (ok) { ToastService.Success("✓ Aprobada — cobranza creada"); await Recargar(); }
-            else ToastService.Error("No se pudo aprobar");
+            ToastService.Error("La venta no tiene cliente asociado, no se puede cobrar");
+            return;
         }
-        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        Navigation.NavigateTo($"/cafe/tesoreria/cobranzas?cliente={c.ClienteId.Value}&pendienteId={c.Id}");
     }
 
     private async Task Rechazar(CobranzaPendienteDto c)

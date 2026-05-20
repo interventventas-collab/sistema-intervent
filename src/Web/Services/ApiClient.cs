@@ -760,6 +760,15 @@ public class ApiClient
         var resp = await _http.PostAsJsonAsync($"/api/cafe/cobranzas-pendientes/{id}/aprobar", req);
         return resp.IsSuccessStatusCode;
     }
+    public async Task<CobranzaPendienteDto?> GetCobranzaPendienteAsync(int id)
+        => await GetAsync<CobranzaPendienteDto>($"/api/cafe/cobranzas-pendientes/{id}");
+    public async Task<bool> VincularCobranzaPendienteAsync(int pendienteId, int cobranzaId, string? operador = null)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/cafe/cobranzas-pendientes/{pendienteId}/vincular",
+            new { CobranzaId = cobranzaId, Operador = operador });
+        return resp.IsSuccessStatusCode;
+    }
     public async Task<bool> RechazarCobranzaPendienteAsync(int id, RechazarCobranzaPendienteRequest req)
     {
         await SetAuthHeaderAsync();
