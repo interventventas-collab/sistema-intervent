@@ -36,20 +36,18 @@
     .cal-mes-title { font-weight: 700; color: #4b5563; text-align: center; margin-bottom: 0.3rem; font-size: 0.85rem; letter-spacing: 0.04em; }
     .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
     .cal-dayheader { text-align: center; font-size: 0.6rem; color: #6b7280; font-weight: 700; padding: 0.15rem 0; }
-    .cal-day { aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; border-radius: 5px; font-size: 0.7rem; color: #374151; background: #f9fafb; cursor: pointer; transition: transform 0.1s; }
-    .cal-day:hover { transform: scale(1.08); z-index: 2; }
+    .cal-day { aspect-ratio: 1; display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; position: relative; border-radius: 5px; font-size: 0.7rem; color: #374151; background: #f9fafb; cursor: pointer; transition: transform 0.1s; padding: 2px; gap: 1px; min-height: 50px; }
+    .cal-day:hover { transform: scale(1.06); z-index: 2; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
     .cal-day.empty { background: transparent; cursor: default; }
-    .cal-day.empty:hover { transform: none; }
-    .cal-day.hoy { outline: 3px solid #1d4ed8; outline-offset: -3px; font-weight: 800; background: #dbeafe; color: #1e3a8a; box-shadow: 0 0 12px rgba(29, 78, 216, 0.4); }
-    .cal-day.hoy.con-chq { background: #dc2626; color: white; outline-color: #1e40af; }
-    .cal-day.con-chq { color: white; font-weight: 800; }
-    .cal-day.urg-1 { background: #dc2626; }
-    .cal-day.urg-2 { background: #f97316; }
-    .cal-day.urg-3 { background: #eab308; color: #1f2937; }
-    .cal-day.pagado { background: #d1fae5; color: #065f46; font-weight: 700; }  /* cheque ya pagado, historico */
-    .cal-day .badges { position: absolute; bottom: 1px; right: 2px; display: flex; gap: 1px; }
-    .cal-day .badge-dot { width: 5px; height: 5px; border-radius: 50%; }
-    .badge-nota { background: #8b5cf6; }
+    .cal-day.empty:hover { transform: none; box-shadow: none; }
+    .cal-day-numero { font-size: 0.7rem; color: #6b7280; font-weight: 700; line-height: 1; text-align: right; padding: 1px 3px; }
+    .cal-day.hoy { outline: 2px solid #1d4ed8; outline-offset: -2px; background: #dbeafe; box-shadow: 0 0 8px rgba(29, 78, 216, 0.3); }
+    .cal-day.hoy .cal-day-numero { color: #1e3a8a; font-weight: 900; }
+    .cal-day-events { display: flex; flex-direction: column; gap: 1px; flex: 1; overflow: hidden; }
+    .cal-pill { font-size: 0.6rem; padding: 1px 3px; border-radius: 3px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 700; }
+    .cal-pill-cheque { background: #dc2626; color: white; }
+    .cal-pill-cheque-pagado { background: #d1fae5; color: #065f46; }
+    .cal-pill-nota { background: #ede9fe; color: #6b21a8; border: 1px solid #c4b5fd; }
 
     .cal-leyenda { display: flex; gap: 0.7rem; font-size: 0.66rem; color: #6b7280; margin-top: 0.4rem; justify-content: center; flex-wrap: wrap; }
     .cal-leyenda-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 2px; vertical-align: middle; }
@@ -141,34 +139,32 @@
                             var enFecha = chequesPorFecha.TryGetValue(fecha, out var lista) ? lista : null;
                             var notasFecha = notas.Where(n => n.Fecha.Date == fecha).ToList();
                             var esHoy = fecha == DateTime.Today;
-                            var clase = "cal-day";
-                            if (esHoy) clase += " hoy";
-                            if (enFecha is { Count: > 0 })
-                            {
-                                // Si TODOS los cheques de ese dia ya estan Pagados, marcamos como pagado.
-                                // Sino aplicamos urgencia (los pendientes).
-                                var todosPagados = enFecha.All(c => string.Equals(c.Estado, "Pagado", StringComparison.OrdinalIgnoreCase));
-                                if (todosPagados)
-                                {
-                                    clase += " pagado";
-                                }
-                                else
-                                {
-                                    clase += " con-chq";
-                                    var diasHasta = (fecha - DateTime.Today).Days;
-                                    if (diasHasta <= 7) clase += " urg-1";
-                                    else if (diasHasta <= 30) clase += " urg-2";
-                                    else clase += " urg-3";
-                                }
-                            }
+                            var clase = "cal-day" + (esHoy ? " hoy" : "");
+                            // Resumimos eventos del dia para mostrar pildoritas
+                            var chequesPendientes = enFecha?.Where(c => !string.Equals(c.Estado, "Pagado", StringComparison.OrdinalIgnoreCase)).ToList() ?? new();
+                            var chequesPagados = enFecha?.Where(c => string.Equals(c.Estado, "Pagado", StringComparison.OrdinalIgnoreCase)).ToList() ?? new();
                             <div class="@clase" @onclick="() => AbrirDia(fecha)">
-                                @d
-                                @if (notasFecha.Count > 0)
-                                {
-                                    <div class="badges">
-                                        <span class="badge-dot badge-nota" title="@notasFecha.Count nota(s)"></span>
-                                    </div>
-                                }
+                                <div class="cal-day-numero">@d</div>
+                                <div class="cal-day-events">
+                                    @if (chequesPendientes.Count > 0)
+                                    {
+                                        <div class="cal-pill cal-pill-cheque" title="@chequesPendientes.Count cheque(s) a pagar — total $@chequesPendientes.Sum(c => c.Importe).ToString("N0")">
+                                            🔴 @(chequesPendientes.Count == 1 ? "Cheque" : $"Cheques x{chequesPendientes.Count}")
+                                        </div>
+                                    }
+                                    @if (chequesPagados.Count > 0)
+                                    {
+                                        <div class="cal-pill cal-pill-cheque-pagado" title="@chequesPagados.Count cheque(s) ya pagado(s)">
+                                            ✓ @(chequesPagados.Count == 1 ? "Cheque" : $"Cheques x{chequesPagados.Count}")
+                                        </div>
+                                    }
+                                    @if (notasFecha.Count > 0)
+                                    {
+                                        <div class="cal-pill cal-pill-nota" title="@notasFecha.Count nota(s)">
+                                            📝 @(notasFecha.Count == 1 ? "Nota" : $"Notas x{notasFecha.Count}")
+                                        </div>
+                                    }
+                                </div>
                             </div>
                         }
                     </div>
@@ -177,12 +173,10 @@
         </div>
 
         <div class="cal-leyenda">
-            <span><span class="cal-leyenda-dot" style="background:#dc2626;"></span>≤7 días</span>
-            <span><span class="cal-leyenda-dot" style="background:#f97316;"></span>8-30 días</span>
-            <span><span class="cal-leyenda-dot" style="background:#eab308;"></span>31-60 días</span>
-            <span><span class="cal-leyenda-dot" style="background:#d1fae5; border:1px solid #065f46;"></span>ya pagado</span>
-            <span><span class="cal-leyenda-dot" style="background:#8b5cf6;"></span>nota</span>
-            <span><span class="cal-leyenda-dot" style="background:#1d4ed8;"></span>hoy</span>
+            <span><span class="cal-leyenda-dot" style="background:#dc2626;"></span>cheque a pagar</span>
+            <span><span class="cal-leyenda-dot" style="background:#d1fae5; border:1px solid #065f46;"></span>cheque ya pagado</span>
+            <span><span class="cal-leyenda-dot" style="background:#ede9fe; border:1px solid #c4b5fd;"></span>nota</span>
+            <span><span class="cal-leyenda-dot" style="background:#dbeafe; border:1px solid #1d4ed8;"></span>hoy</span>
         </div>
     }
 </div>
