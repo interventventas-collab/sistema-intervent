@@ -2118,20 +2118,20 @@ button {
 
 .actions-cell {
   display: flex;
-  gap: 0.25rem;
+  gap: 0.3rem;
   align-items: center;
   flex-wrap: wrap;
-  width: 170px;
-  max-width: 170px;
+  width: 210px;
+  max-width: 210px;
 }
 
 .actions-cell .btn-icon {
-  width: 30px;
-  height: 30px;
-  border-radius: 7px;
+  width: 60px;
+  height: 60px;
+  border-radius: 10px;
   border: 1px solid #e5e7eb;
   background: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
-  font-size: 0.9rem;
+  font-size: 1.7rem;
   line-height: 1;
   box-shadow: 0 1px 2px rgba(0,0,0,0.04);
   transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease, background 0.12s ease;
