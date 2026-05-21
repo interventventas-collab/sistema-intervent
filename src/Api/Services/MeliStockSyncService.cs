@@ -53,9 +53,14 @@ public class MeliStockSyncService
 
         // Fallback (legacy): items que aun no migraron a MeliItemComponente y tienen el linkeo
         // viejo en MeliItem.CafeProductoId + CafeFormato (cafes ya linkeados desde antes).
-        var itemsLegacy = await _db.MeliItems
+        // Cuidado: MeliItems puede tener duplicados por MeliItemId (multiples cuentas/variations),
+        // por eso usamos GroupBy.First() en vez de ToDictionary directo.
+        var itemsLegacyRaw = await _db.MeliItems
             .Where(mi => itemIds.Contains(mi.MeliItemId) && mi.CafeProductoId.HasValue)
-            .ToDictionaryAsync(mi => mi.MeliItemId);
+            .ToListAsync();
+        var itemsLegacy = itemsLegacyRaw
+            .GroupBy(mi => mi.MeliItemId)
+            .ToDictionary(g => g.Key, g => g.First());
 
         // Cargar todos los productos referenciados (de los 2 lados) de una sola vez.
         var prodIds = componentes.Select(c => c.CafeProductoId)
