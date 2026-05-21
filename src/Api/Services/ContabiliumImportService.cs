@@ -147,10 +147,15 @@ public class ContabiliumImportService
             }
             else
             {
+                var nombreFull = (con.Nombre ?? sku).Trim();
+                // Cafe_Productos.Nombre tiene MaxLength(200). Si el nombre Contabilium es mas largo, truncamos.
+                var nombre = nombreFull.Length > 200 ? nombreFull.Substring(0, 197) + "..." : nombreFull;
+                // Sku tiene MaxLength(50); truncar tambien si fuera necesario
+                var skuTrim = sku.Length > 50 ? sku.Substring(0, 50) : sku;
                 var nuevo = new CafeProducto
                 {
-                    Sku = sku,
-                    Nombre = (con.Nombre ?? sku).Trim(),
+                    Sku = skuTrim,
+                    Nombre = nombre,
                     Categoria = "OTROS",
                     Costo = con.CostoInterno ?? 0m,
                     StockUnidades = (int)Math.Round(con.Stock ?? 0m),
