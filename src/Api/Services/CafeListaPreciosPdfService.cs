@@ -36,14 +36,8 @@ public class CafeListaPreciosPdfService
 
     public byte[] GenerarPdf(CafeListaPreciosPreviewDto p)
     {
-        // Cambios pedidos por el usuario 2026-05-20:
-        // - Header: solo el nombre del negocio (sin logo, direccion, tel, mail, web, CUIT).
-        //   El logo no se ve correctamente — pendiente arreglarlo en otro momento.
-        // - Bloque superior derecho: solo "LISTA DE PRECIOS" + N° de lista si esta cargado.
-        //   Sin Cliente/Tipo/Fecha (la fecha queda en el footer).
-        // - Sin franja de marca/proveedor entre productos.
-        // - Sin bloque "Condiciones comerciales" al final.
         var tituloColor = p.TipoCliente == "BAR" ? "#1d4ed8" : "#15803d";
+        var logoBytes = TryLoadLogoBytes(p.Negocio.LogoUrl) ?? TryLoadLogoFallback(p.Negocio.Cuit);
 
         return Document.Create(container =>
         {
@@ -51,18 +45,16 @@ public class CafeListaPreciosPdfService
             {
                 page.Size(PageSizes.A4);
                 page.Margin(25);
-                page.DefaultTextStyle(t => t.FontSize(9));
+                // Tipografia mas prolija y legible — Helvetica es ancha, clasica y limpia.
+                page.DefaultTextStyle(t => t.FontFamily("Helvetica").FontSize(9));
 
                 // ── HEADER ──
-                // Cambios pedidos 2026-05-20 (segunda iteracion): 3 columnas
-                //   Izquierda: 📞 + 📱 telefonos grandes + ✉ mail chico abajo
-                //   Centro: FRIKAF By / INTERVENT (en 2 lineas) + www.frikaf.com.ar chico debajo
-                //   Derecha: cuadradito chico "LISTA" + numero grande
+                // 3 columnas con tipografia mas prolija (Helvetica) + logo al centro + mail/direccion mas legibles
                 page.Header().Column(headerCol =>
                 {
                     headerCol.Item().PaddingBottom(8).BorderBottom(2).BorderColor(tituloColor).Row(row =>
                     {
-                        // IZQUIERDA: telefonos grandes + mail chico
+                        // IZQUIERDA: telefonos grandes
                         row.RelativeItem(2).Column(c =>
                         {
                             if (!string.IsNullOrEmpty(p.Negocio.Telefono))
@@ -81,36 +73,48 @@ public class CafeListaPreciosPdfService
                                     t.Span(p.Negocio.WhatsappNumero!).FontSize(14).SemiBold();
                                 });
                             }
-                            // Mail chico al final del bloque izquierdo
+                            // Mail + direccion mas legibles (font 9 en vez de 7)
                             if (!string.IsNullOrEmpty(p.Negocio.Email))
                             {
                                 c.Item().PaddingTop(8).Text(t =>
                                 {
-                                    t.Span("✉ ").FontSize(7).FontColor(Colors.Grey.Darken1);
-                                    t.Span(p.Negocio.Email!).FontSize(7).FontColor(Colors.Grey.Darken1);
+                                    t.Span("✉ ").FontSize(9).FontColor(Colors.Grey.Darken2);
+                                    t.Span(p.Negocio.Email!).FontSize(9).FontColor(Colors.Grey.Darken2);
+                                });
+                            }
+                            if (!string.IsNullOrEmpty(p.Negocio.Direccion))
+                            {
+                                c.Item().PaddingTop(2).Text(t =>
+                                {
+                                    t.Span("📍 ").FontSize(9).FontColor(Colors.Grey.Darken2);
+                                    t.Span(p.Negocio.Direccion!).FontSize(9).FontColor(Colors.Grey.Darken2);
                                 });
                             }
                         });
 
-                        // CENTRO: nombre del negocio + web abajo
+                        // CENTRO: logo + nombre del negocio + web abajo
                         row.RelativeItem(2).AlignCenter().Column(c =>
                         {
-                            // El nombre lo dividimos en 2 lineas si tiene "By"
+                            if (logoBytes is not null)
+                            {
+                                c.Item().AlignCenter().Width(55).Height(55).Image(logoBytes).FitArea();
+                                c.Item().PaddingTop(4);
+                            }
                             var nombre = p.Negocio.Nombre ?? "Empresa";
                             var partes = nombre.Split(new[] { " By ", " by " }, StringSplitOptions.None);
                             if (partes.Length == 2)
                             {
-                                c.Item().AlignCenter().Text(partes[0] + " By").FontSize(17).Bold();
-                                c.Item().AlignCenter().Text(partes[1]).FontSize(17).Bold();
+                                c.Item().AlignCenter().Text(partes[0] + " By").FontSize(18).Bold().FontFamily("Helvetica").LetterSpacing(0.5f);
+                                c.Item().AlignCenter().Text(partes[1]).FontSize(18).Bold().FontFamily("Helvetica").LetterSpacing(0.5f);
                             }
                             else
                             {
-                                c.Item().AlignCenter().Text(nombre).FontSize(17).Bold();
+                                c.Item().AlignCenter().Text(nombre).FontSize(18).Bold().FontFamily("Helvetica").LetterSpacing(0.5f);
                             }
                             if (!string.IsNullOrEmpty(p.Negocio.Web))
                             {
-                                c.Item().PaddingTop(6).AlignCenter()
-                                    .Text(p.Negocio.Web!).FontSize(8).FontColor(Colors.Grey.Darken2);
+                                c.Item().PaddingTop(5).AlignCenter()
+                                    .Text(p.Negocio.Web!).FontSize(9).FontColor(Colors.Grey.Darken2).SemiBold();
                             }
                         });
 
@@ -120,16 +124,16 @@ public class CafeListaPreciosPdfService
                             c.Item().AlignRight().Width(80).Border(1).BorderColor(tituloColor).Column(cc =>
                             {
                                 cc.Item().Background(tituloColor).AlignCenter().Padding(4)
-                                    .Text("LISTA").FontSize(9).Bold().FontColor(Colors.White).LetterSpacing(0.05f);
+                                    .Text("LISTA").FontSize(10).Bold().FontColor(Colors.White).LetterSpacing(0.08f);
                                 if (!string.IsNullOrWhiteSpace(p.NumeroLista))
                                 {
                                     cc.Item().AlignCenter().Padding(6)
-                                        .Text(p.NumeroLista!).FontSize(16).Bold().FontColor(tituloColor);
+                                        .Text(p.NumeroLista!).FontSize(18).Bold().FontColor(tituloColor);
                                 }
                                 else
                                 {
                                     cc.Item().AlignCenter().Padding(6)
-                                        .Text(" ").FontSize(16);
+                                        .Text(" ").FontSize(18);
                                 }
                             });
                         });
@@ -257,6 +261,27 @@ public class CafeListaPreciosPdfService
                 var decoded = System.Web.HttpUtility.UrlDecode(qp);
                 var full = _files.ResolveSafe(decoded);
                 if (File.Exists(full)) return File.ReadAllBytes(full);
+            }
+        }
+        catch { }
+        return null;
+    }
+
+    /// <summary>Fallback: si NegocioLogoUrl apunta a un archivo que no existe, busca el
+    /// logo por convencion en 'Logos Empresa/{cuit}/logo.{png|jpg|...}'.</summary>
+    private byte[]? TryLoadLogoFallback(string? cuitRaw)
+    {
+        if (string.IsNullOrWhiteSpace(cuitRaw)) return null;
+        var cuit = new string(cuitRaw.Where(char.IsDigit).ToArray());
+        if (cuit.Length != 11) return null;
+        try
+        {
+            var ext = new[] { ".png", ".jpg", ".jpeg", ".webp" };
+            foreach (var e in ext)
+            {
+                var rel = $"Logos Empresa/{cuit}/logo{e}";
+                var abs = _files.ResolveSafe(rel);
+                if (File.Exists(abs)) return File.ReadAllBytes(abs);
             }
         }
         catch { }
