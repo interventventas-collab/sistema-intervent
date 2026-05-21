@@ -125,6 +125,11 @@
         var vencidos60 = saldos.Where(s => s.DiasMasAntigua >= 60).ToList();
 
         <div class="panel-resumen">
+            <div class="panel-resumen-card" style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-color: #d97706;">
+                <div class="label" style="color: #78350f;">👥 Total deudores</div>
+                <p class="valor" style="color: #78350f; font-size: 1.9rem;">@saldos.Count</p>
+                <p class="sub" style="color: #92400e;">cliente@(saldos.Count == 1 ? "" : "s") con saldo pendiente</p>
+            </div>
             <div class="panel-resumen-card">
                 <div class="label">Total por cobrar</div>
                 <p class="valor">$@FormatMoney(totalTodo)</p>

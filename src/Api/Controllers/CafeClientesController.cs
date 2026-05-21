@@ -367,7 +367,9 @@ public class CafeClientesController : ControllerBase
                 v.Id, v.ClienteId, Total = totalCobrar, v.Fecha, v.TipoComprobante, v.EsSaldoMigracion,
                 Saldo = totalCobrar - (pagadosDict.TryGetValue(v.Id, out var p) ? p : 0m)
             };
-        }).Where(v => v.Saldo > 0).ToList();
+        // Saldo > 0.50: ignoro diferencias menores a medio peso (típicas de redondeo entre Total y ArcaImpTotal+IVA).
+        // Antes era > 0 y aparecían clientes con saldos residuales de centavos (ej: $0,04) marcados como deudores.
+        }).Where(v => v.Saldo > 0.50m).ToList();
         if (ventasConSaldo.Count == 0) return Ok(new List<ClienteSaldoPendienteDto>());
 
         // Agrupar por cliente
