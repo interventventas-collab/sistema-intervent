@@ -9,6 +9,23 @@
 @inject NavigationManager Navigation
 
 <style>
+    /* Tooltip en la celda Cliente: detalle del comprobante al hacer hover. */
+    .cell-cliente-hover .venta-tooltip {
+        display: none;
+        position: absolute;
+        top: calc(100% + 2px);
+        left: 0;
+        z-index: 100;
+        background: white;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+        padding: 0.7rem 0.85rem;
+        min-width: 380px;
+        max-width: 520px;
+    }
+    .cell-cliente-hover:hover .venta-tooltip { display: block; }
+
     /* Pildoritas de días — siempre disponibles (form de carga + viewer) */
     .cafe-day-pill {
         display: inline-flex; align-items: center; justify-content: center;
@@ -261,15 +278,55 @@
                                     }
                                 </td>
                                 <td>@v.Fecha.ToString("dd/MM/yyyy")</td>
-                                <td style="line-height: 1.15;">
+                                <td style="line-height: 1.1; position: relative;" class="cell-cliente-hover">
                                     <strong>@(v.ClienteNombre ?? "—")</strong>
                                     @{
                                         var dir = !string.IsNullOrWhiteSpace(v.ClienteDomicilioEntrega) ? v.ClienteDomicilioEntrega : v.ClienteDireccion;
                                     }
                                     @if (!string.IsNullOrWhiteSpace(dir))
                                     {
-                                        <div style="font-size: 0.7rem; color: #9ca3af; margin-top: 0.05rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px;" title="@dir">📍 @dir</div>
+                                        <div style="font-size: 0.82rem; color: #9ca3af; margin-top: 0.05rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 360px;" title="@dir">📍 @dir</div>
                                     }
+                                    @* Tooltip con detalle del comprobante. Aparece al hacer hover. *@
+                                    <div class="venta-tooltip">
+                                        <div style="font-weight: 700; color: #1f2937; margin-bottom: 0.4rem; padding-bottom: 0.3rem; border-bottom: 1px solid #e5e7eb;">
+                                            @v.Numero — @(v.ClienteNombre ?? "Sin cliente")
+                                        </div>
+                                        @if (v.Items is not null && v.Items.Count > 0)
+                                        {
+                                            <div style="font-size: 0.7rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.2rem;">Productos</div>
+                                            <table style="width: 100%; font-size: 0.82rem; border-collapse: collapse;">
+                                                <thead>
+                                                    <tr style="border-bottom: 1px solid #e5e7eb;">
+                                                        <th style="text-align: left; padding: 0.2rem; font-weight: 600; color: #6b7280;">Producto</th>
+                                                        <th style="text-align: center; padding: 0.2rem; font-weight: 600; color: #6b7280;">Cant</th>
+                                                        <th style="text-align: right; padding: 0.2rem; font-weight: 600; color: #6b7280;">Subtot</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                @foreach (var it in v.Items)
+                                                {
+                                                    <tr>
+                                                        <td style="padding: 0.2rem; line-height: 1.2;">@it.ProductoNombre <span style="color: #9ca3af; font-size: 0.72rem;">@(it.Formato == "1KG" ? "1 kg" : it.Formato == "MEDIO" ? "1/2 kg" : it.Formato == "CUARTO" ? "1/4 kg" : it.Formato)</span></td>
+                                                        <td style="text-align: center; padding: 0.2rem; font-family: monospace;">@it.Cantidad</td>
+                                                        <td style="text-align: right; padding: 0.2rem; font-family: monospace;">$@FormatMoney(it.Subtotal)</td>
+                                                    </tr>
+                                                }
+                                                </tbody>
+                                            </table>
+                                        }
+                                        else
+                                        {
+                                            <div style="color: #9ca3af; font-style: italic; font-size: 0.8rem;">Sin items</div>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(v.Observaciones))
+                                        {
+                                            <div style="margin-top: 0.5rem; padding-top: 0.3rem; border-top: 1px solid #e5e7eb;">
+                                                <div style="font-size: 0.7rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em;">Observaciones</div>
+                                                <div style="font-size: 0.78rem; color: #4b5563; white-space: pre-wrap;">@v.Observaciones</div>
+                                            </div>
+                                        }
+                                    </div>
                                 </td>
                                 <td>
                                     @if (v.ClienteTipo == "BAR")
