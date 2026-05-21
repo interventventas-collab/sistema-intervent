@@ -43,18 +43,24 @@ public class MeliStockSyncService
         if (pending.Count == 0)
             return new StockSyncResult(0, 0, 0, 0, errores);
 
-        // Cargar todos los MeliItems referenciados de una sola vez (eficiente).
+        // Cargar todos los componentes que referencian a los items de las ordenes pendientes.
+        // MeliItemComponente es la fuente de verdad: 1 item MeLi puede mapear a N productos sueltos.
         var itemIds = pending.Select(o => o.ItemId).Distinct().ToList();
-        var meliItems = await _db.MeliItems
-            .Where(mi => itemIds.Contains(mi.MeliItemId))
+        var componentes = await _db.MeliItemComponentes
+            .Where(c => itemIds.Contains(c.MeliItemId))
+            .ToListAsync();
+        var compsByItem = componentes.GroupBy(c => c.MeliItemId).ToDictionary(g => g.Key, g => g.ToList());
+
+        // Fallback (legacy): items que aun no migraron a MeliItemComponente y tienen el linkeo
+        // viejo en MeliItem.CafeProductoId + CafeFormato (cafes ya linkeados desde antes).
+        var itemsLegacy = await _db.MeliItems
+            .Where(mi => itemIds.Contains(mi.MeliItemId) && mi.CafeProductoId.HasValue)
             .ToDictionaryAsync(mi => mi.MeliItemId);
 
-        // Cargar los CafeProductos linkeados
-        var prodIds = meliItems.Values
-            .Where(mi => mi.CafeProductoId.HasValue)
-            .Select(mi => mi.CafeProductoId!.Value)
-            .Distinct()
-            .ToList();
+        // Cargar todos los productos referenciados (de los 2 lados) de una sola vez.
+        var prodIds = componentes.Select(c => c.CafeProductoId)
+            .Concat(itemsLegacy.Values.Where(mi => mi.CafeProductoId.HasValue).Select(mi => mi.CafeProductoId!.Value))
+            .Distinct().ToList();
         var productos = await _db.CafeProductos
             .Where(p => prodIds.Contains(p.Id))
             .ToDictionaryAsync(p => p.Id);
@@ -63,51 +69,57 @@ public class MeliStockSyncService
         {
             try
             {
-                if (!meliItems.TryGetValue(ord.ItemId, out var mi) || !mi.CafeProductoId.HasValue)
+                List<(CafeProducto prod, decimal cant, string? formato)>? toDiscount = null;
+
+                if (compsByItem.TryGetValue(ord.ItemId, out var comps) && comps.Count > 0)
                 {
-                    // Sin linkeo → marcamos descontada igual (no hay nada que hacer).
+                    toDiscount = new();
+                    foreach (var c in comps)
+                    {
+                        if (productos.TryGetValue(c.CafeProductoId, out var prod))
+                            toDiscount.Add((prod, c.Cantidad, c.Formato));
+                    }
+                }
+                else if (itemsLegacy.TryGetValue(ord.ItemId, out var mi) && mi.CafeProductoId.HasValue)
+                {
+                    if (productos.TryGetValue(mi.CafeProductoId.Value, out var prod))
+                        toDiscount = new() { (prod, 1m, mi.CafeFormato) };
+                }
+
+                if (toDiscount is null || toDiscount.Count == 0)
+                {
+                    // Sin linkeo: marcar descontada igual (no hay nada que hacer).
                     ord.StockDiscounted = true;
                     ord.UpdatedAt = DateTime.UtcNow;
                     sinLink++;
                     procesadas++;
                     continue;
                 }
-                if (!productos.TryGetValue(mi.CafeProductoId.Value, out var prod))
-                {
-                    errores.Add($"Orden {ord.MeliOrderId} item {ord.ItemId}: producto {mi.CafeProductoId} no encontrado.");
-                    continue;
-                }
 
-                if (string.Equals(prod.Categoria, "CAFE", StringComparison.OrdinalIgnoreCase))
+                foreach (var (prod, cant, formato) in toDiscount)
                 {
-                    var gramos = (mi.CafeFormato ?? "1KG").ToUpperInvariant() switch
+                    if (string.Equals(prod.Categoria, "CAFE", StringComparison.OrdinalIgnoreCase))
                     {
-                        "1KG" => 1000m,
-                        "MEDIO" => 500m,
-                        "CUARTO" => 250m,
-                        _ => 0m
-                    };
-                    if (gramos <= 0)
-                    {
-                        errores.Add($"Orden {ord.MeliOrderId}: formato '{mi.CafeFormato}' desconocido para CAFE.");
-                        continue;
+                        var gramos = (formato ?? "1KG").ToUpperInvariant() switch
+                        {
+                            "1KG" => 1000m,
+                            "MEDIO" => 500m,
+                            "CUARTO" => 250m,
+                            _ => 1000m  // fallback razonable si no hay formato
+                        };
+                        prod.StockGramos -= gramos * cant * ord.Quantity;
+                        descCafe++;
                     }
-                    var aDescontar = gramos * ord.Quantity;
-                    prod.StockGramos -= aDescontar;
-                    descCafe++;
-                }
-                else
-                {
-                    // OTROS — usa unidades
-                    var mult = 1;
-                    if (string.Equals(mi.CafeFormato, "BULTO", StringComparison.OrdinalIgnoreCase)
-                        && prod.UxB.HasValue && prod.UxB.Value > 0)
+                    else
                     {
-                        mult = prod.UxB.Value;
+                        var mult = 1m;
+                        if (string.Equals(formato, "BULTO", StringComparison.OrdinalIgnoreCase)
+                            && prod.UxB.HasValue && prod.UxB.Value > 0)
+                            mult = prod.UxB.Value;
+                        var unidades = (int)Math.Round(mult * cant * ord.Quantity);
+                        prod.StockUnidades -= unidades;
+                        descOtros++;
                     }
-                    var unidades = mult * ord.Quantity;
-                    prod.StockUnidades -= unidades;
-                    descOtros++;
                 }
 
                 ord.StockDiscounted = true;

@@ -64,8 +64,25 @@
 
         <hr style="margin: 1.5rem 0; border: none; border-top: 1px dashed #d1d5db;" />
 
-        <p style="font-size: 0.85rem; color: #6b7280;">
-            🚧 <strong>Próximamente:</strong> botón "Sincronizar productos y stock" que trae todo el catálogo de Contabilium a este sistema y mantiene linkeados los SKUs.
+        <h4 style="margin: 0 0 0.5rem; color: #1f2937;">🔄 Sincronizar productos y stock</h4>
+        <p style="font-size: 0.85rem; color: #6b7280; margin: 0 0 0.6rem;">
+            Trae todos los productos sueltos de Contabilium (NO combos) que: estén vendidos en MeLi (directo o como componente de combo).
+            Crea los productos faltantes en este sistema con su stock inicial y arma la tabla de mapeo MeLi → producto.
+            Tarda ~5-10 min. Los cafés (F0-F49) no se tocan.
+        </p>
+        <button class="btn btn-primary" @onclick="DoImport" disabled="@(importing || status?.Connected != true)">
+            @(importing ? "Importando... (no cierres la pestaña)" : "🔄 Sincronizar ahora")
+        </button>
+        @if (!string.IsNullOrEmpty(importMessage))
+        {
+            <div style="margin-top: 0.8rem; padding: 0.6rem 0.9rem; background: @(importOk ? "#dcfce7" : "#fee2e2"); border: 1px solid @(importOk ? "#16a34a" : "#dc2626"); border-radius: 6px; color: @(importOk ? "#14532d" : "#991b1b"); white-space: pre-wrap;">
+                @importMessage
+            </div>
+        }
+
+        <p style="font-size: 0.78rem; color: #6b7280; margin: 0.8rem 0 0;">
+            Cuando termine, andá a <a href="/cafe/stock-comparado" style="color: #1d4ed8;">/cafe/stock-comparado</a>
+            para ver la comparación de stock entre este sistema y Contabilium.
         </p>
     </div>
 </div>
@@ -79,6 +96,36 @@
     private string apiKey = "";
     private string? message;
     private bool messageOk;
+    private bool importing;
+    private string? importMessage;
+    private bool importOk;
+
+    private async Task DoImport()
+    {
+        importMessage = null;
+        importing = true;
+        try
+        {
+            var r = await Api.RunContabiliumImportAsync();
+            if (r is not null)
+            {
+                importOk = true;
+                importMessage = "✅ Import terminado:\n" + System.Text.Json.JsonSerializer.Serialize(r, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                ToastService.Success("Productos importados");
+            }
+            else
+            {
+                importOk = false;
+                importMessage = "❌ No se pudo importar.";
+            }
+        }
+        catch (Exception ex)
+        {
+            importOk = false;
+            importMessage = "❌ Error: " + ex.Message;
+        }
+        finally { importing = false; }
+    }
 
     protected override async Task OnInitializedAsync()
     {

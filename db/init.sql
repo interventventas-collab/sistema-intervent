@@ -3938,3 +3938,37 @@ BEGIN
     );
 END
 GO
+
+-- 2026-05-21 madrugada: integracion MeLi/Contabilium - tablas de mapeo y snapshot
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='MeliItemComponentes' AND xtype='U')
+BEGIN
+    CREATE TABLE MeliItemComponentes (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        MeliItemId NVARCHAR(50) NOT NULL,
+        CafeProductoId INT NOT NULL,
+        Cantidad DECIMAL(18,4) NOT NULL DEFAULT 1,
+        Formato NVARCHAR(20) NULL,
+        Source NVARCHAR(40) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT FK_MeliItemComponentes_CafeProducto FOREIGN KEY (CafeProductoId)
+            REFERENCES Cafe_Productos(Id) ON DELETE CASCADE
+    );
+    CREATE INDEX IX_MeliItemComponentes_MeliItemId ON MeliItemComponentes(MeliItemId);
+    CREATE INDEX IX_MeliItemComponentes_CafeProductoId ON MeliItemComponentes(CafeProductoId);
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='StockSnapshots' AND xtype='U')
+BEGIN
+    CREATE TABLE StockSnapshots (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Sku NVARCHAR(100) NOT NULL,
+        Fecha DATETIME2 NOT NULL,
+        StockContabilium DECIMAL(18,4) NOT NULL,
+        Source NVARCHAR(40) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+    );
+    CREATE INDEX IX_StockSnapshots_Sku ON StockSnapshots(Sku);
+    CREATE INDEX IX_StockSnapshots_Fecha ON StockSnapshots(Fecha);
+END
+GO

@@ -1,0 +1,128 @@
+@page "/cafe/stock-comparado"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@using Microsoft.AspNetCore.Components.Web
+
+<div class="card" style="max-width: 1200px; margin: 1rem auto;">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <h3>📊 Stock comparado · Sistema vs Contabilium</h3>
+        @if (lastSnapshotAt.HasValue)
+        {
+            <span style="font-size: 0.78rem; color: #6b7280;">
+                🕐 Último snapshot Contabilium: <strong>@lastSnapshotAt.Value.ToString("dd/MM/yyyy")</strong>
+            </span>
+        }
+        else
+        {
+            <span style="font-size: 0.78rem; color: #b45309;">
+                ⚠ Aún no se generó un snapshot. Se genera automático cada noche a las 4 AM.
+            </span>
+        }
+    </div>
+    <div class="card-body">
+
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.8rem; align-items: center;">
+            <input class="form-input" placeholder="🔍 Buscar SKU o nombre..." @bind="filtro" @bind:event="oninput"
+                   @onkeydown="OnKeyDown" style="flex: 1; min-width: 240px;" />
+            <label style="display: flex; align-items: center; gap: 0.3rem; font-size: 0.88rem; color: #4b5563;">
+                <input type="checkbox" @bind="soloDifs" /> Solo con diferencias
+            </label>
+            <button class="btn btn-primary" @onclick="Recargar" disabled="@loading">@(loading ? "Cargando..." : "Filtrar")</button>
+        </div>
+
+        @if (loading)
+        {
+            <p style="text-align: center; padding: 2rem; color: #6b7280;">⏳ Cargando...</p>
+        }
+        else if (rows is null || rows.Count == 0)
+        {
+            <div style="padding: 2rem; text-align: center; color: #6b7280; background: #f9fafb; border-radius: 8px;">
+                <strong>Sin datos para mostrar.</strong>
+                <p style="margin: 0.5rem 0 0; font-size: 0.85rem;">
+                    Si recién importaste productos, esperá hasta que se genere el primer snapshot de Contabilium
+                    (mañana a las 4 AM, o tocá "Generar snapshot ahora" en /integraciones/contabilium).
+                </p>
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>SKU</th>
+                            <th>Producto</th>
+                            <th class="num">Sistema</th>
+                            <th class="num">Contabilium</th>
+                            <th class="num">Diferencia</th>
+                            <th>Snapshot</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in rows)
+                        {
+                            var diffClass = r.Diferencia.HasValue && r.Diferencia.Value != 0 ? "diff" : "";
+                            <tr>
+                                <td style="font-family: monospace; font-weight: 600;">@r.Sku</td>
+                                <td>@(r.Nombre ?? "—")</td>
+                                <td class="num">@FormatN(r.StockSistema)</td>
+                                <td class="num">@(r.StockContabilium.HasValue ? FormatN(r.StockContabilium.Value) : "—")</td>
+                                <td class="num @diffClass" style="@DiffStyle(r.Diferencia)">
+                                    @(r.Diferencia.HasValue ? FormatDiff(r.Diferencia.Value) : "—")
+                                </td>
+                                <td style="font-size: 0.78rem; color: #6b7280;">
+                                    @(r.FechaSnapshot.HasValue ? r.FechaSnapshot.Value.ToString("dd/MM") : "—")
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <p style="font-size: 0.78rem; color: #6b7280; text-align: right; margin-top: 0.5rem;">
+                Mostrando @rows.Count fila@(rows.Count == 1 ? "" : "s") (límite 1000).
+            </p>
+        }
+    </div>
+</div>
+
+<style>
+    .data-table .num { text-align: right; font-variant-numeric: tabular-nums; font-family: monospace; }
+    .data-table .num.diff { font-weight: 700; }
+</style>
+
+@code {
+    private bool loading = true;
+    private string filtro = "";
+    private bool soloDifs = false;
+    private List<ApiClient.StockComparadoRowDto>? rows;
+    private DateTime? lastSnapshotAt;
+
+    protected override async Task OnInitializedAsync() { await Recargar(); }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Recargar();
+    }
+
+    private async Task Recargar()
+    {
+        loading = true;
+        try
+        {
+            var r = await Api.GetStockComparadoAsync(filtro, soloDifs);
+            rows = r?.Rows ?? new();
+            lastSnapshotAt = r?.LastSnapshotAt;
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { loading = false; }
+    }
+
+    private static string FormatN(decimal v) => v.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+    private static string FormatDiff(decimal v) => (v > 0 ? "+" : "") + v.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+    private static string DiffStyle(decimal? d) =>
+        !d.HasValue ? "" :
+        d.Value > 0 ? "color:#15803d;" :
+        d.Value < 0 ? "color:#b91c1c;" :
+        "color:#9ca3af;";
+}
