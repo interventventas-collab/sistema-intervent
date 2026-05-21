@@ -3972,3 +3972,11 @@ BEGIN
     CREATE INDEX IX_StockSnapshots_Fecha ON StockSnapshots(Fecha);
 END
 GO
+
+-- 2026-05-21: ratio de precio MeLi sobre precio NETO+IVA (captura cuotas+envio+comision)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='PriceRatioOverIva' AND Object_ID=OBJECT_ID('MeliItems'))
+    ALTER TABLE MeliItems ADD PriceRatioOverIva DECIMAL(8,4) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='PriceRatioCapturedAt' AND Object_ID=OBJECT_ID('MeliItems'))
+    ALTER TABLE MeliItems ADD PriceRatioCapturedAt DATETIME2 NULL;
+GO

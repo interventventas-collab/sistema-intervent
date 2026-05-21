@@ -1,0 +1,202 @@
+@page "/cafe/meli-push"
+@attribute [Authorize]
+@implements IDisposable
+@inject ApiClient Api
+@inject ToastService ToastService
+@using Web.Services
+
+<div class="card" style="max-width: 1400px; margin: 1rem auto;">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <h3>☕ Push de precios y stock de café a MercadoLibre</h3>
+        <button class="btn btn-secondary" @onclick="Recargar" disabled="@loading">@(loading ? "..." : "🔄 Recalcular preview")</button>
+    </div>
+    <div class="card-body">
+
+        <div style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 0.7rem 1rem; margin-bottom: 1rem; font-size: 0.88rem;">
+            ⚠ <strong>Importante:</strong> el precio nuevo se calcula como:
+            <code>Precio_NETO_sistema × 1.21 (IVA) × Ratio_de_publicación</code>.
+            El <strong>ratio</strong> de cada publicación captura: cuotas + envío gratis + comisión MeLi + margen. Se midió la primera vez que linkeamos los items.
+            Si el precio sistema sube/baja, MeLi se mueve proporcionalmente respetando cada ratio.
+        </div>
+
+        @if (loading)
+        {
+            <p style="text-align: center; padding: 2rem; color: #6b7280;">⏳ Cargando preview...</p>
+        }
+        else if (rows is null || rows.Count == 0)
+        {
+            <p>Sin datos para mostrar.</p>
+        }
+        else
+        {
+            <p style="font-size: 0.88rem; color: #4b5563; margin-bottom: 0.6rem;">
+                <strong>@rows.Count publicaciones</strong> listas para actualizar. Filas en <span style="background: #fee2e2; padding: 0.05rem 0.3rem;">rojo</span> = diferencia importante (precio baja o sube > 5%).
+            </p>
+
+            <div class="table-responsive" style="max-height: 60vh; overflow-y: auto;">
+                <table class="data-table" style="font-size: 0.82rem;">
+                    <thead style="position: sticky; top: 0; background: white; z-index: 5;">
+                        <tr>
+                            <th>SKU MeLi</th>
+                            <th>Producto</th>
+                            <th>Fmt</th>
+                            <th class="num">Ratio</th>
+                            <th class="num">Precio Actual</th>
+                            <th class="num">Precio Nuevo</th>
+                            <th class="num">Δ Precio</th>
+                            <th class="num">Stock Actual</th>
+                            <th class="num">Stock Nuevo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in rows.OrderBy(x => x.ProductoSku).ThenBy(x => x.Formato))
+                        {
+                            var diffP = r.PrecioNuevoMeLi - r.PrecioActualMeLi;
+                            var diffPct = r.PrecioActualMeLi > 0 ? Math.Round(diffP * 100 / r.PrecioActualMeLi, 1) : 0;
+                            var rowClass = Math.Abs(diffPct) > 5 ? "background:#fee2e2;" : "";
+                            <tr style="@rowClass">
+                                <td style="font-family: monospace;">@r.MeliSku</td>
+                                <td>@r.ProductoNombre</td>
+                                <td>@r.Formato</td>
+                                <td class="num">@r.Ratio.ToString("0.000")</td>
+                                <td class="num">$ @FormatM(r.PrecioActualMeLi)</td>
+                                <td class="num"><strong>$ @FormatM(r.PrecioNuevoMeLi)</strong></td>
+                                <td class="num" style="color:@(diffP > 0 ? "#15803d" : diffP < 0 ? "#b91c1c" : "#6b7280");">
+                                    @(diffP > 0 ? "+" : "")@FormatM(diffP) (@(diffPct > 0 ? "+" : "")@diffPct%)
+                                </td>
+                                <td class="num">@r.StockActualMeLi</td>
+                                <td class="num"><strong>@r.StockNuevoMeLi</strong></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div style="margin-top: 1rem; padding: 0.8rem; background: #f3f4f6; border-radius: 8px; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                @if (pushing)
+                {
+                    <strong style="color: #1d4ed8;">⏳ Push en curso. No cierres la pestaña.</strong>
+                }
+                else
+                {
+                    <button class="btn btn-primary" @onclick="DoPush" disabled="@(rows.Count == 0)">
+                        🚀 Pushear @rows.Count publicaciones a MercadoLibre
+                    </button>
+                    <span style="font-size: 0.78rem; color: #6b7280;">
+                        Esto va a tardar ~@(rows.Count * 2 / 60 + 1) min (rate limit defensivo).
+                    </span>
+                }
+            </div>
+
+            @if (!string.IsNullOrEmpty(pushMessage))
+            {
+                <div style="margin-top: 0.8rem; padding: 0.6rem 0.9rem; background: @(pushOk ? "#dcfce7" : "#fee2e2"); border: 1px solid @(pushOk ? "#16a34a" : "#dc2626"); border-radius: 6px; color: @(pushOk ? "#14532d" : "#991b1b"); white-space: pre-wrap;">
+                    @pushMessage
+                </div>
+            }
+        }
+    </div>
+</div>
+
+<style>
+    .data-table .num { text-align: right; font-variant-numeric: tabular-nums; font-family: monospace; }
+</style>
+
+@code {
+    private bool loading = true;
+    private bool pushing;
+    private List<ApiClient.CafePushPreviewRowDto>? rows;
+    private string? pushMessage;
+    private bool pushOk;
+    private System.Threading.Timer? statusTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Recargar();
+        // Si hay un push en curso, retomar polling.
+        try
+        {
+            var s = await Api.GetCafePushStatusAsync();
+            if (s?.Running == true)
+            {
+                pushing = true;
+                pushMessage = "⏳ Hay un push en curso. Esperando...";
+                statusTimer = new System.Threading.Timer(async _ => await InvokeAsync(CheckStatus), null,
+                    TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+            }
+        }
+        catch { }
+    }
+
+    private async Task Recargar()
+    {
+        loading = true;
+        try
+        {
+            var r = await Api.GetCafePushPreviewAsync();
+            rows = r?.Rows ?? new();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { loading = false; }
+    }
+
+    private async Task DoPush()
+    {
+        pushMessage = null;
+        pushing = true;
+        try
+        {
+            var r = await Api.RunCafePushAsync();
+            if (r is null)
+            {
+                pushing = false;
+                pushOk = false;
+                pushMessage = "❌ No se pudo iniciar el push.";
+                return;
+            }
+            pushOk = true;
+            pushMessage = "⏳ Push iniciado en background. Podés cerrar la pestaña.\nEl estado se actualiza cada 10 segundos abajo.";
+            ToastService.Success("Push iniciado");
+            statusTimer = new System.Threading.Timer(async _ => await InvokeAsync(CheckStatus), null,
+                TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+        }
+        catch (Exception ex) { pushOk = false; pushMessage = "❌ " + ex.Message; pushing = false; }
+    }
+
+    private async Task CheckStatus()
+    {
+        try
+        {
+            var s = await Api.GetCafePushStatusAsync();
+            if (s is null) return;
+            if (s.Running)
+            {
+                var seg = s.StartedAt.HasValue ? (int)(DateTime.UtcNow - s.StartedAt.Value).TotalSeconds : 0;
+                pushMessage = $"⏳ Pusheando... ({seg / 60} min {seg % 60} seg). No cierres la pestaña.";
+            }
+            else
+            {
+                statusTimer?.Dispose();
+                statusTimer = null;
+                pushing = false;
+                if (!string.IsNullOrEmpty(s.Error))
+                {
+                    pushOk = false;
+                    pushMessage = "❌ Error: " + s.Error;
+                }
+                else if (s.Result is not null)
+                {
+                    pushOk = true;
+                    pushMessage = "✅ Push terminado:\n" + System.Text.Json.JsonSerializer.Serialize(s.Result, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                    await Recargar();
+                }
+            }
+            StateHasChanged();
+        }
+        catch { }
+    }
+
+    private static string FormatM(decimal v) => v.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+
+    public void Dispose() { try { statusTimer?.Dispose(); } catch { } }
+}

@@ -2513,6 +2513,18 @@ public class ApiClient
     public async Task<ContabiliumImportStatusDto?> GetContabiliumImportStatusAsync()
         => await GetAsync<ContabiliumImportStatusDto>("/api/contabilium/import/status");
 
+    // ── MeLi cafe push ──
+    public record CafePushPreviewRowDto(string MeliSku, string MeliItemId, string ProductoSku, string ProductoNombre,
+        string Formato, decimal PrecioActualMeLi, decimal PrecioNuevoMeLi, decimal PrecioNetoSistema,
+        decimal Ratio, int StockActualMeLi, int StockNuevoMeLi);
+    public record CafePushPreviewResponse(List<CafePushPreviewRowDto> Rows, int Count);
+    public async Task<CafePushPreviewResponse?> GetCafePushPreviewAsync()
+        => await GetAsync<CafePushPreviewResponse>("/api/meli/cafe/push-preview");
+    public async Task<object?> RunCafePushAsync() => await PostAsync<object>("/api/meli/cafe/push", new { });
+    public record CafePushStatusDto(bool Running, DateTime? StartedAt, DateTime? FinishedAt, string? Error, object? Result);
+    public async Task<CafePushStatusDto?> GetCafePushStatusAsync()
+        => await GetAsync<CafePushStatusDto>("/api/meli/cafe/push/status");
+
     public async Task<List<FileDeleteResult>?> MoveFilesAsync(IEnumerable<string> paths, string targetPath)
     {
         return await PostAsync<List<FileDeleteResult>>("/api/files/move", new { paths, targetPath });

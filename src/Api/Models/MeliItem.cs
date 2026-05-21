@@ -52,6 +52,14 @@ public class MeliItem
     [System.ComponentModel.DataAnnotations.MaxLength(30)]
     public string? LogisticType { get; set; }
 
+    /// <summary>Ratio del precio publicado en MeLi sobre el precio NETO+IVA del sistema.
+    /// Captura: cuotas absorbidas + envio gratis + comision MeLi + margen del vendedor.
+    /// Se usa al pushear precios: precio_meli = precio_neto_sistema × 1.21 × ratio.
+    /// Capturado por el script de inicializacion 2026-05-21.</summary>
+    [System.ComponentModel.DataAnnotations.Schema.Column(TypeName = "decimal(8,4)")]
+    public decimal? PriceRatioOverIva { get; set; }
+    public DateTime? PriceRatioCapturedAt { get; set; }
+
     public int? CafeComboId { get; set; }   // Promo de cafe fraccionado (Cafe_Combos)
     public int? CafeKitId { get; set; }     // Kit compuesto / BOM (Cafe_Kits)
     public CafeKit? CafeKit { get; set; }

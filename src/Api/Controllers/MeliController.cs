@@ -2,6 +2,7 @@ using Api.DTOs;
 using Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace Api.Controllers;
 
@@ -183,6 +184,90 @@ public class MeliController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
+    }
+
+    public record CafePushPreviewRow(string MeliSku, string MeliItemId, string ProductoSku, string ProductoNombre,
+        string Formato, decimal PrecioActualMeLi, decimal PrecioNuevoMeLi, decimal PrecioNetoSistema,
+        decimal Ratio, int StockActualMeLi, int StockNuevoMeLi);
+
+    /// <summary>Muestra una tabla de cómo quedarían los precios y stocks si se hace push de cafés a MeLi.
+    /// NO hace push — es solo preview.</summary>
+    [HttpGet("cafe/push-preview")]
+    public async Task<IActionResult> CafePushPreview([FromServices] MeliCafePricePushService pushSvc,
+                                                     [FromServices] Api.Data.AppDbContext db)
+    {
+        var cfg = await db.CafeSettings.FindAsync(1) ?? new Api.Models.CafeSetting { Id = 1 };
+        var items = await db.MeliItems
+            .Where(mi => mi.CafeProductoId != null && mi.CafeFormato != null && mi.PriceRatioOverIva != null)
+            .OrderBy(mi => mi.Sku).Take(500)
+            .ToListAsync();
+        var prodIds = items.Select(i => i.CafeProductoId!.Value).Distinct().ToList();
+        var prods = await db.CafeProductos.Where(p => prodIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
+
+        var rows = new List<CafePushPreviewRow>();
+        foreach (var mi in items)
+        {
+            if (!prods.TryGetValue(mi.CafeProductoId!.Value, out var prod)) continue;
+            var precioNeto = pushSvc.CalcularPrecioSistemaNeto(prod, mi.CafeFormato!, cfg);
+            if (precioNeto <= 0) continue;
+            var precioNuevo = Math.Round(precioNeto * 1.21m * mi.PriceRatioOverIva!.Value, 0);
+            var gramos = mi.CafeFormato!.ToUpperInvariant() switch { "1KG" => 1000, "MEDIO" => 500, "CUARTO" => 250, _ => 1000 };
+            var stockNuevo = (int)Math.Floor(prod.StockGramos / gramos);
+            if (stockNuevo < 0) stockNuevo = 0;
+            rows.Add(new CafePushPreviewRow(
+                mi.Sku ?? "", mi.MeliItemId, prod.Sku ?? "", prod.Nombre,
+                mi.CafeFormato!, mi.Price, precioNuevo, precioNeto,
+                mi.PriceRatioOverIva!.Value, mi.AvailableQuantity, stockNuevo));
+        }
+        return Ok(new { rows, count = rows.Count });
+    }
+
+    private static int _cafePushRunning = 0;
+    private static DateTime? _cafePushStartedAt;
+    private static DateTime? _cafePushFinishedAt;
+    private static object? _cafePushResult;
+    private static string? _cafePushError;
+
+    /// <summary>Push de precios+stock de cafés a MeLi. Background fire-and-forget.</summary>
+    [HttpPost("cafe/push")]
+    public IActionResult CafePush([FromServices] IServiceScopeFactory scopeFactory)
+    {
+        if (System.Threading.Interlocked.CompareExchange(ref _cafePushRunning, 1, 0) != 0)
+            return Ok(new { ok = true, started = false, message = "Ya hay un push corriendo" });
+        _cafePushStartedAt = DateTime.UtcNow;
+        _cafePushFinishedAt = null;
+        _cafePushResult = null;
+        _cafePushError = null;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = scopeFactory.CreateScope();
+                var svc = scope.ServiceProvider.GetRequiredService<MeliCafePricePushService>();
+                var r = await svc.PushAllCafesAsync(CancellationToken.None);
+                _cafePushResult = new { procesadas = r.Procesadas, ok = r.Ok, errores = r.Errores, mensajes = r.Mensajes.Take(50).ToList() };
+            }
+            catch (Exception ex)
+            {
+                _cafePushError = ex.Message;
+            }
+            finally
+            {
+                _cafePushFinishedAt = DateTime.UtcNow;
+                System.Threading.Interlocked.Exchange(ref _cafePushRunning, 0);
+            }
+        });
+        return Ok(new { ok = true, started = true, message = "Push iniciado en background" });
+    }
+
+    [HttpGet("cafe/push/status")]
+    public IActionResult CafePushStatus()
+    {
+        return Ok(new {
+            running = _cafePushRunning != 0,
+            startedAt = _cafePushStartedAt, finishedAt = _cafePushFinishedAt,
+            error = _cafePushError, result = _cafePushResult
+        });
     }
 
     [HttpGet("items")]

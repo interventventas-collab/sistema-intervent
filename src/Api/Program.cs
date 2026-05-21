@@ -117,6 +117,7 @@ builder.Services.AddScoped<CafeListaPreciosPdfService>();
 builder.Services.AddScoped<ContabiliumService>();
 builder.Services.AddScoped<ContabiliumImportService>();
 builder.Services.AddScoped<MeliStockSyncService>();
+builder.Services.AddScoped<MeliCafePricePushService>();
 builder.Services.AddHostedService<MeliAutoSyncBackgroundService>();
 builder.Services.AddHostedService<ContabiliumNightlySnapshotService>();
 builder.Services.AddScoped<QrRepartidorService>();
