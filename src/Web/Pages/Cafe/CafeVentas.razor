@@ -498,7 +498,10 @@
 @* ═══════════════ MODAL NUEVA / EDITAR VENTA ═══════════════ *@
 @if (showForm)
 {
-    <div class="modal-overlay" @onclick="CloseForm">
+    @* IMPORTANTE: el modal-overlay NO cierra el form al clickear fuera.
+       Antes tenía @onclick="CloseForm" y perdíamos cargas enteras al tocar accidentalmente fuera del card.
+       Para cerrar: el ✕ del header o el botón Cancelar. *@
+    <div class="modal-overlay">
         <div class="modal-card" @onclick:stopPropagation="true" style="max-width: min(1280px, 96vw); width: 96vw; max-height: 94vh; display: flex; flex-direction: column;">
             <div class="modal-header" style="background: @(editingVentaId.HasValue ? "#1d4ed8" : "whitesmoke"); color: @(editingVentaId.HasValue ? "white" : "inherit");">
                 <h3 style="margin: 0;">
