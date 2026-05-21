@@ -1529,11 +1529,35 @@ public class CafeVentasController : ControllerBase
                     var nombreOverride = reqItem is not null && !string.IsNullOrWhiteSpace(reqItem.DescripcionOverride)
                         ? reqItem.DescripcionOverride.Trim()
                         : null;
+
+                    // Concepto libre: item sin producto del catálogo (no descuenta stock).
+                    if (ci.Categoria == "LIBRE")
+                    {
+                        v.Items.Add(new CafeVentaItem
+                        {
+                            ProductoId = null,
+                            EsConceptoLibre = true,
+                            ProductoNombreSnapshot = nombreOverride ?? ci.ProductoNombre,
+                            Categoria = "LIBRE",
+                            Formato = "UNIT",
+                            Cantidad = ci.Cantidad,
+                            PrecioUnitario = ci.PrecioUnitario,
+                            CostoUnitario = 0m,
+                            Subtotal = ci.Subtotal,
+                            GramosDescontados = 0m,
+                            Molienda = null,
+                            EsDoyPack = false,
+                            DescuentoPct = ci.DescuentoPct
+                        });
+                        continue;
+                    }
+
                     var prod = await _db.CafeProductos.FindAsync(ci.ProductoId);
                     if (prod is null) return BadRequest(new { error = $"Producto {ci.ProductoId} no encontrado" });
                     v.Items.Add(new CafeVentaItem
                     {
                         ProductoId = prod.Id,
+                        EsConceptoLibre = false,
                         ProductoNombreSnapshot = nombreOverride ?? prod.Nombre,
                         Categoria = prod.Categoria,
                         Formato = ci.Formato,
