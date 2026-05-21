@@ -33,11 +33,26 @@
                 <strong>@rows.Count publicaciones</strong> listas para actualizar. Filas en <span style="background: #fee2e2; padding: 0.05rem 0.3rem;">rojo</span> = diferencia importante (precio baja o sube > 5%).
             </p>
 
+            @* Buscador para filtrar por SKU o por MeLi ID — útil cuando hay muchas publicaciones del mismo café *@
+            <div style="margin-bottom: 0.6rem; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+                <input class="form-input" style="max-width: 400px; padding: 0.3rem 0.5rem; font-size: 0.85rem;"
+                       placeholder="🔍 Buscar por SKU, MeLi ID o producto..." @bind="busqueda" @bind:event="oninput" />
+                @if (!string.IsNullOrWhiteSpace(busqueda))
+                {
+                    <button class="btn btn-secondary" style="font-size: 0.78rem; padding: 0.25rem 0.6rem;"
+                            @onclick="@(() => busqueda = "")">✕ Limpiar</button>
+                }
+                <span style="font-size: 0.78rem; color: #6b7280;">
+                    @FilteredRows().Count() de @rows.Count
+                </span>
+            </div>
+
             <div class="table-responsive" style="max-height: 60vh; overflow-y: auto;">
                 <table class="data-table" style="font-size: 0.82rem;">
                     <thead style="position: sticky; top: 0; background: white; z-index: 5;">
                         <tr>
-                            <th>SKU MeLi</th>
+                            <th>SKU</th>
+                            <th>MeLi ID</th>
                             <th>Producto</th>
                             <th>Fmt</th>
                             <th class="num">Ratio</th>
@@ -50,7 +65,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var r in rows.OrderBy(x => x.ProductoSku).ThenBy(x => x.Formato))
+                        @foreach (var r in FilteredRows().OrderBy(x => x.ProductoSku).ThenBy(x => x.Formato).ThenBy(x => x.MeliItemId))
                         {
                             var diffP = r.PrecioNuevoMeLi - r.PrecioActualMeLi;
                             var diffPct = r.PrecioActualMeLi > 0 ? Math.Round(diffP * 100 / r.PrecioActualMeLi, 1) : 0;
@@ -58,6 +73,9 @@
                             var rowMeliId = r.MeliItemId;
                             <tr style="@rowClass">
                                 <td style="font-family: monospace;">@r.MeliSku</td>
+                                <td style="font-family: monospace; font-size: 0.72rem; color: #1d4ed8;">
+                                    <a href="https://articulo.mercadolibre.com.ar/@r.MeliItemId" target="_blank" style="text-decoration:none; color:inherit;" title="Abrir en MeLi">@r.MeliItemId</a>
+                                </td>
                                 <td>@r.ProductoNombre</td>
                                 <td>@r.Formato</td>
                                 <td class="num">@r.Ratio.ToString("0.000")</td>
@@ -125,6 +143,19 @@
     private List<ApiClient.CafePushPreviewRowDto>? rows;
     private string? pushMessage;
     private bool pushOk;
+    private string busqueda = ""; // filtro por SKU / MeLi ID / nombre
+
+    private IEnumerable<ApiClient.CafePushPreviewRowDto> FilteredRows()
+    {
+        if (rows is null) return Enumerable.Empty<ApiClient.CafePushPreviewRowDto>();
+        var q = (busqueda ?? "").Trim();
+        if (string.IsNullOrEmpty(q)) return rows;
+        return rows.Where(r =>
+            (r.MeliSku ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)
+            || (r.MeliItemId ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)
+            || (r.ProductoSku ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)
+            || (r.ProductoNombre ?? "").Contains(q, StringComparison.OrdinalIgnoreCase));
+    }
     private System.Threading.Timer? statusTimer;
 
     protected override async Task OnInitializedAsync()
