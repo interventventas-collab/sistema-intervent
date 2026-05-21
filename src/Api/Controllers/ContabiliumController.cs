@@ -56,29 +56,69 @@ public class ContabiliumController : ControllerBase
         return Ok(new { ok = true, total = page.TotalItems, sample = page.Items.Take(2) });
     }
 
-    /// <summary>Corre el import completo: trae productos+combos+stock desde Contabilium y
-    /// pobla CafeProductos + MeliItemComponentes. Tarda ~5-10 min porque pagina y baja detalle de combos.</summary>
+    private static int _importRunning = 0;
+    private static string? _importLastError;
+    private static DateTime? _importStartedAt;
+    private static DateTime? _importFinishedAt;
+    private static object? _importLastResult;
+
+    /// <summary>Dispara el import EN BACKGROUND y devuelve inmediato. El job corre desacoplado del
+    /// HTTP request (asi no se aborta cuando el browser hace timeout a los 100s). Para ver el estado
+    /// usar GET /api/contabilium/import/status.</summary>
     [HttpPost("import")]
-    public async Task<IActionResult> RunImport(CancellationToken ct)
+    public IActionResult RunImport([FromServices] IServiceScopeFactory scopeFactory)
     {
-        try
+        if (System.Threading.Interlocked.CompareExchange(ref _importRunning, 1, 0) != 0)
+            return Ok(new { ok = true, started = false, message = "Ya hay un import corriendo. Esperá a que termine." });
+
+        _importLastError = null;
+        _importStartedAt = DateTime.UtcNow;
+        _importFinishedAt = null;
+        _importLastResult = null;
+
+        // Lanzamos el job sin await — corre desacoplado del HTTP request.
+        _ = Task.Run(async () =>
         {
-            var r = await _import.RunFullImportAsync(ct);
-            return Ok(new {
-                ok = true,
-                creados = r.ProductosCreados,
-                actualizados = r.ProductosActualizados,
-                componentes = r.ComponentesLinkeados,
-                itemsConCombo = r.ItemsConCombo,
-                itemsDirectos = r.ItemsDirectos,
-                itemsSinMatch = r.ItemsSinMatch,
-                warnings = r.Warnings
-            });
-        }
-        catch (Exception ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
+            try
+            {
+                using var scope = scopeFactory.CreateScope();
+                var import = scope.ServiceProvider.GetRequiredService<ContabiliumImportService>();
+                var r = await import.RunFullImportAsync(CancellationToken.None);
+                _importLastResult = new {
+                    creados = r.ProductosCreados,
+                    actualizados = r.ProductosActualizados,
+                    componentes = r.ComponentesLinkeados,
+                    itemsConCombo = r.ItemsConCombo,
+                    itemsDirectos = r.ItemsDirectos,
+                    itemsSinMatch = r.ItemsSinMatch,
+                    warningsCount = r.Warnings.Count
+                };
+            }
+            catch (Exception ex)
+            {
+                _importLastError = ex.Message;
+            }
+            finally
+            {
+                _importFinishedAt = DateTime.UtcNow;
+                System.Threading.Interlocked.Exchange(ref _importRunning, 0);
+            }
+        });
+
+        return Ok(new { ok = true, started = true, message = "Import iniciado en background. Podes cerrar la pestaña. Toca 'Ver estado' o entra a /cafe/stock-comparado cuando termine." });
+    }
+
+    [HttpGet("import/status")]
+    public IActionResult ImportStatus()
+    {
+        var running = _importRunning != 0;
+        return Ok(new {
+            running,
+            startedAt = _importStartedAt,
+            finishedAt = _importFinishedAt,
+            lastError = _importLastError,
+            result = _importLastResult
+        });
     }
 
     public record StockComparadoRow(string Sku, string? Nombre, decimal StockSistema, decimal? StockContabilium, decimal? Diferencia, DateTime? FechaSnapshot);

@@ -1,5 +1,6 @@
 @page "/integraciones/contabilium"
 @attribute [Authorize]
+@implements IDisposable
 @inject ApiClient Api
 @inject ToastService ToastService
 @using Web.Services
@@ -99,6 +100,7 @@
     private bool importing;
     private string? importMessage;
     private bool importOk;
+    private System.Threading.Timer? statusTimer;
 
     private async Task DoImport()
     {
@@ -106,25 +108,67 @@
         importing = true;
         try
         {
+            // 1. Dispara el job en background (devuelve inmediato).
             var r = await Api.RunContabiliumImportAsync();
-            if (r is not null)
-            {
-                importOk = true;
-                importMessage = "✅ Import terminado:\n" + System.Text.Json.JsonSerializer.Serialize(r, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-                ToastService.Success("Productos importados");
-            }
-            else
+            if (r is null)
             {
                 importOk = false;
-                importMessage = "❌ No se pudo importar.";
+                importMessage = "❌ No se pudo iniciar el import.";
+                importing = false;
+                return;
             }
+            importOk = true;
+            importMessage = "⏳ Import iniciado en background. Podés cerrar esta pestaña si querés.\nEl progreso se actualiza solo cada 10 segundos abajo.";
+            ToastService.Success("Import iniciado");
+
+            // 2. Poll cada 10s al estado.
+            statusTimer = new System.Threading.Timer(async _ => await InvokeAsync(CheckStatus), null,
+                TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
         }
         catch (Exception ex)
         {
             importOk = false;
             importMessage = "❌ Error: " + ex.Message;
+            importing = false;
         }
-        finally { importing = false; }
+    }
+
+    private async Task CheckStatus()
+    {
+        try
+        {
+            var s = await Api.GetContabiliumImportStatusAsync();
+            if (s is null) return;
+            if (s.Running)
+            {
+                var min = s.StartedAt.HasValue ? (int)Math.Floor((DateTime.UtcNow - s.StartedAt.Value).TotalMinutes) : 0;
+                importMessage = $"⏳ Sincronizando... ({min} min corriendo). No cierres tu navegador, pero podés navegar a otra pestaña.";
+            }
+            else
+            {
+                statusTimer?.Dispose();
+                statusTimer = null;
+                importing = false;
+                if (!string.IsNullOrEmpty(s.LastError))
+                {
+                    importOk = false;
+                    importMessage = "❌ Error en import: " + s.LastError;
+                }
+                else if (s.Result is not null)
+                {
+                    importOk = true;
+                    importMessage = "✅ Import terminado:\n" + System.Text.Json.JsonSerializer.Serialize(s.Result, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                    ToastService.Success("Productos importados");
+                }
+            }
+            StateHasChanged();
+        }
+        catch { }
+    }
+
+    public void Dispose()
+    {
+        try { statusTimer?.Dispose(); } catch { }
     }
 
     protected override async Task OnInitializedAsync()
@@ -133,6 +177,26 @@
         {
             status = await Api.GetContabiliumStatusAsync();
             if (status?.Connected == true) email = status.Email ?? "";
+        }
+        catch { }
+        // Si hay un import en curso (porque alguien lo arrancó antes), retomar el polling.
+        try
+        {
+            var s = await Api.GetContabiliumImportStatusAsync();
+            if (s is not null && s.Running)
+            {
+                importing = true;
+                importOk = true;
+                var min = s.StartedAt.HasValue ? (int)Math.Floor((DateTime.UtcNow - s.StartedAt.Value).TotalMinutes) : 0;
+                importMessage = $"⏳ Hay un import corriendo desde hace {min} min. Esperando...";
+                statusTimer = new System.Threading.Timer(async _ => await InvokeAsync(CheckStatus), null,
+                    TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+            }
+            else if (s is not null && !s.Running && s.Result is not null)
+            {
+                importOk = true;
+                importMessage = "✅ Último import terminado:\n" + System.Text.Json.JsonSerializer.Serialize(s.Result, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            }
         }
         catch { }
         loading = false;

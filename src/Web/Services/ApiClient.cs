@@ -2509,6 +2509,9 @@ public class ApiClient
         return await GetAsync<StockComparadoResponse>($"/api/contabilium/stock-comparado?{f}soloDiferencias={(soloDiferencias ? "true" : "false")}");
     }
     public async Task<object?> RunContabiliumImportAsync() => await PostAsync<object>("/api/contabilium/import", new { });
+    public record ContabiliumImportStatusDto(bool Running, DateTime? StartedAt, DateTime? FinishedAt, string? LastError, object? Result);
+    public async Task<ContabiliumImportStatusDto?> GetContabiliumImportStatusAsync()
+        => await GetAsync<ContabiliumImportStatusDto>("/api/contabilium/import/status");
 
     public async Task<List<FileDeleteResult>?> MoveFilesAsync(IEnumerable<string> paths, string targetPath)
     {
