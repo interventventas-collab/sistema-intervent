@@ -499,7 +499,7 @@
 @if (showForm)
 {
     <div class="modal-overlay" @onclick="CloseForm">
-        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 1000px; max-height: 92vh; display: flex; flex-direction: column;">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: min(1280px, 96vw); width: 96vw; max-height: 94vh; display: flex; flex-direction: column;">
             <div class="modal-header" style="background: @(editingVentaId.HasValue ? "#1d4ed8" : "whitesmoke"); color: @(editingVentaId.HasValue ? "white" : "inherit");">
                 <h3 style="margin: 0;">
                     @if (editingVentaId.HasValue)
@@ -578,14 +578,27 @@
                             @if (formClienteId > 0)
                             {
                                 var ciSel = clientes?.FirstOrDefault(x => x.Id == formClienteId);
-                                <div style="display: flex; gap: 0.3rem; align-items: center;">
-                                    <div class="form-input" style="flex: 1; background: #ecfdf5; border-color: #10b981; display: flex; align-items: center; gap: 0.5rem;">
-                                        <span style="font-family: monospace; font-weight: 700; color: #1d4ed8;">@(ciSel?.Codigo ?? "—")</span>
-                                        <strong>@(ciSel?.Nombre ?? "?")</strong>
-                                        @if (ciSel is not null)
+                                var dirSel = ciSel is null ? null : (!string.IsNullOrWhiteSpace(ciSel.DomicilioEntrega) ? ciSel.DomicilioEntrega : ciSel.Direccion);
+                                var locSel = ciSel is null ? null : string.Join(" · ", new[] { ciSel.Localidad, ciSel.Ciudad, ciSel.Cp }.Where(x => !string.IsNullOrWhiteSpace(x)));
+                                <div style="display: flex; gap: 0.3rem; align-items: stretch;">
+                                    <div class="form-input" style="flex: 1; background: #ecfdf5; border-color: #10b981; display: flex; flex-direction: column; gap: 0.15rem; padding: 0.45rem 0.6rem; height: auto;">
+                                        <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                                            <span style="font-family: monospace; font-weight: 700; color: #1d4ed8; font-size: 0.95rem;">@(ciSel?.Codigo ?? "—")</span>
+                                            <strong style="font-size: 1rem;">@(ciSel?.Nombre ?? "?")</strong>
+                                            @if (ciSel is not null)
+                                            {
+                                                <span style="font-size: 0.72rem; color: #6b7280;">· @ciSel.Tipo</span>
+                                                @if (!string.IsNullOrEmpty(ciSel.Cuit)) { <span style="font-size: 0.72rem; color: #6b7280;">· @ciSel.Cuit</span> }
+                                                @if (!string.IsNullOrEmpty(ciSel.Telefono)) { <span style="font-size: 0.72rem; color: #6b7280;">· 📞 @ciSel.Telefono</span> }
+                                            }
+                                        </div>
+                                        @if (!string.IsNullOrWhiteSpace(dirSel) || !string.IsNullOrWhiteSpace(locSel))
                                         {
-                                            <span style="font-size: 0.72rem; color: #6b7280;">· @ciSel.Tipo</span>
-                                            @if (!string.IsNullOrEmpty(ciSel.Cuit)) { <span style="font-size: 0.72rem; color: #6b7280;">· @ciSel.Cuit</span> }
+                                            <div style="font-size: 0.8rem; color: #6b7280; line-height: 1.2;">
+                                                @if (!string.IsNullOrWhiteSpace(dirSel)) { <span>📍 @dirSel</span> }
+                                                @if (!string.IsNullOrWhiteSpace(dirSel) && !string.IsNullOrWhiteSpace(locSel)) { <span> · </span> }
+                                                @if (!string.IsNullOrWhiteSpace(locSel)) { <span>@locSel</span> }
+                                            </div>
                                         }
                                     </div>
                                     <button class="btn btn-secondary" type="button" @onclick="ClearCliente" title="Quitar cliente">×</button>
@@ -600,7 +613,7 @@
                                 @if (clienteSearchOpen && !string.IsNullOrWhiteSpace(clienteSearch))
                                 {
                                     var matches = ClientesMatching(clienteSearch).Take(20).ToList();
-                                    <div style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #d1d5db; border-radius: 6px; max-height: 280px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 14px rgba(0,0,0,0.12); margin-top: 0.2rem;">
+                                    <div style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #d1d5db; border-radius: 6px; max-height: 420px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 14px rgba(0,0,0,0.12); margin-top: 0.2rem;">
                                         @if (matches.Count == 0)
                                         {
                                             <div style="padding: 0.6rem; color: #6b7280; font-size: 0.85rem;">Sin resultados.</div>
@@ -610,18 +623,30 @@
                                             @foreach (var ci in matches)
                                             {
                                                 var ciId = ci.Id;
+                                                var dirCi = !string.IsNullOrWhiteSpace(ci.DomicilioEntrega) ? ci.DomicilioEntrega : ci.Direccion;
+                                                var locCi = string.Join(" · ", new[] { ci.Localidad, ci.Ciudad, ci.Cp }.Where(x => !string.IsNullOrWhiteSpace(x)));
                                                 <div class="cli-pick-row" @onclick="() => SelectCliente(ciId)"
-                                                     style="padding: 0.4rem 0.6rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem;">
-                                                    <span style="font-family: monospace; color: #1d4ed8; font-weight: 700; margin-right: 0.5rem;">@ci.Codigo</span>
-                                                    <strong>@ci.Nombre</strong>
-                                                    <span style="color: #6b7280; font-size: 0.78rem;"> · @ci.Tipo</span>
-                                                    @if (!string.IsNullOrEmpty(ci.Cuit))
+                                                     style="padding: 0.55rem 0.75rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; line-height: 1.25;">
+                                                    <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+                                                        <span style="font-family: monospace; color: #1d4ed8; font-weight: 700; font-size: 0.9rem;">@ci.Codigo</span>
+                                                        <strong style="font-size: 0.95rem;">@ci.Nombre</strong>
+                                                        <span style="color: #6b7280; font-size: 0.75rem;">· @ci.Tipo</span>
+                                                        @if (!string.IsNullOrEmpty(ci.Cuit))
+                                                        {
+                                                            <span style="color: #6b7280; font-size: 0.75rem;">· @ci.Cuit</span>
+                                                        }
+                                                        @if (!string.IsNullOrEmpty(ci.Telefono))
+                                                        {
+                                                            <span style="color: #6b7280; font-size: 0.75rem;">· 📞 @ci.Telefono</span>
+                                                        }
+                                                    </div>
+                                                    @if (!string.IsNullOrWhiteSpace(dirCi) || !string.IsNullOrWhiteSpace(locCi))
                                                     {
-                                                        <span style="color: #6b7280; font-size: 0.78rem;"> · @ci.Cuit</span>
-                                                    }
-                                                    @if (!string.IsNullOrEmpty(ci.Telefono))
-                                                    {
-                                                        <span style="color: #6b7280; font-size: 0.78rem;"> · 📞 @ci.Telefono</span>
+                                                        <div style="color: #9ca3af; font-size: 0.78rem; margin-top: 0.1rem;">
+                                                            @if (!string.IsNullOrWhiteSpace(dirCi)) { <span>📍 @dirCi</span> }
+                                                            @if (!string.IsNullOrWhiteSpace(dirCi) && !string.IsNullOrWhiteSpace(locCi)) { <span> · </span> }
+                                                            @if (!string.IsNullOrWhiteSpace(locCi)) { <span>@locCi</span> }
+                                                        </div>
                                                     }
                                                 </div>
                                             }
