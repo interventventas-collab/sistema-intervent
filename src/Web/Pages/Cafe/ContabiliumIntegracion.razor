@@ -1,0 +1,154 @@
+@page "/integraciones/contabilium"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@using Web.Services
+
+<div class="card" style="max-width: 700px; margin: 1rem auto;">
+    <div class="card-header">
+        <h3>📊 Integración con Contabilium</h3>
+    </div>
+    <div class="card-body">
+
+        @if (loading)
+        {
+            <p>⏳ Cargando...</p>
+        }
+        else
+        {
+            @if (status?.Connected == true)
+            {
+                <div style="padding: 0.8rem 1rem; background: linear-gradient(90deg,#dcfce7,#bbf7d0); border: 1px solid #16a34a; border-radius: 8px; margin-bottom: 1rem;">
+                    ✅ <strong>Conectado</strong> como <code>@status.Email</code>
+                </div>
+            }
+            else
+            {
+                <div style="padding: 0.8rem 1rem; background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; margin-bottom: 1rem;">
+                    ⚠ <strong>No conectado.</strong> Cargá tu email y API Key de Contabilium para empezar.
+                </div>
+            }
+
+            <div class="form-group">
+                <label class="form-label">Email de Contabilium</label>
+                <input class="form-input" @bind="email" placeholder="tu-mail@empresa.com" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">API Key</label>
+                <input class="form-input" type="password" @bind="apiKey" placeholder="Pegá la API Key que generaste en Contabilium → Configuración → API" autocomplete="off" />
+                <p style="font-size: 0.78rem; color: #6b7280; margin: 0.2rem 0 0;">
+                    Se guarda encriptada en la base de datos. Si la regenerás en Contabilium, volvé acá y pegá la nueva.
+                </p>
+            </div>
+
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.8rem;">
+                <button class="btn btn-primary" @onclick="DoConnect" disabled="@saving">
+                    @(saving ? "Probando..." : "🔌 Conectar / Validar")
+                </button>
+                @if (status?.Connected == true)
+                {
+                    <button class="btn btn-secondary" @onclick="DoPing" disabled="@pinging">
+                        @(pinging ? "Verificando..." : "🩺 Verificar conexión")
+                    </button>
+                }
+            </div>
+
+            @if (!string.IsNullOrEmpty(message))
+            {
+                <div style="margin-top: 0.8rem; padding: 0.6rem 0.9rem; background: @(messageOk ? "#dcfce7" : "#fee2e2"); border: 1px solid @(messageOk ? "#16a34a" : "#dc2626"); border-radius: 6px; color: @(messageOk ? "#14532d" : "#991b1b");">
+                    @message
+                </div>
+            }
+        }
+
+        <hr style="margin: 1.5rem 0; border: none; border-top: 1px dashed #d1d5db;" />
+
+        <p style="font-size: 0.85rem; color: #6b7280;">
+            🚧 <strong>Próximamente:</strong> botón "Sincronizar productos y stock" que trae todo el catálogo de Contabilium a este sistema y mantiene linkeados los SKUs.
+        </p>
+    </div>
+</div>
+
+@code {
+    private bool loading = true;
+    private bool saving;
+    private bool pinging;
+    private ApiClient.ContabiliumStatusDto? status;
+    private string email = "";
+    private string apiKey = "";
+    private string? message;
+    private bool messageOk;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            status = await Api.GetContabiliumStatusAsync();
+            if (status?.Connected == true) email = status.Email ?? "";
+        }
+        catch { }
+        loading = false;
+    }
+
+    private async Task DoConnect()
+    {
+        message = null;
+        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(apiKey))
+        {
+            message = "Tenés que cargar email y API Key.";
+            messageOk = false;
+            return;
+        }
+        saving = true;
+        try
+        {
+            var (ok, err) = await Api.ConnectContabiliumAsync(email.Trim(), apiKey.Trim());
+            if (ok)
+            {
+                message = "✅ Conectado correctamente.";
+                messageOk = true;
+                ToastService.Success("Contabilium conectado");
+                status = await Api.GetContabiliumStatusAsync();
+                apiKey = ""; // limpiar el campo despues de guardar
+            }
+            else
+            {
+                message = "❌ Error: " + (err ?? "no se pudo conectar.");
+                messageOk = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            message = "❌ Error: " + ex.Message;
+            messageOk = false;
+        }
+        finally { saving = false; }
+    }
+
+    private async Task DoPing()
+    {
+        message = null;
+        pinging = true;
+        try
+        {
+            var r = await Api.PingContabiliumAsync();
+            if (r is not null)
+            {
+                message = "✅ Conexión activa.";
+                messageOk = true;
+            }
+            else
+            {
+                message = "❌ No se pudo verificar.";
+                messageOk = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            message = "❌ Error: " + ex.Message;
+            messageOk = false;
+        }
+        finally { pinging = false; }
+    }
+}

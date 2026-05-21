@@ -125,6 +125,7 @@ public class AppDbContext : DbContext
     public DbSet<CafeDeposito> CafeDepositos => Set<CafeDeposito>();
     public DbSet<CafeStockPorDeposito> CafeStockPorDeposito => Set<CafeStockPorDeposito>();
     public DbSet<FileMetadata> FileMetadata => Set<FileMetadata>();
+    public DbSet<ContabiliumAccount> ContabiliumAccounts => Set<ContabiliumAccount>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -2481,6 +2481,26 @@ public class ApiClient
         return result is not null;
     }
 
+    // ── Contabilium ──
+    public record ContabiliumStatusDto(bool Connected, string? Email, DateTime? LastSyncAt, int? LastSyncCount, string? LastSyncError);
+    public async Task<ContabiliumStatusDto?> GetContabiliumStatusAsync()
+        => await GetAsync<ContabiliumStatusDto>("/api/contabilium/status");
+    public async Task<(bool ok, string? error)> ConnectContabiliumAsync(string email, string apiKey)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync("/api/contabilium/connect", new { email, apiKey });
+        if (resp.IsSuccessStatusCode) return (true, null);
+        var body = await resp.Content.ReadAsStringAsync();
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("error", out var e)) return (false, e.GetString());
+        }
+        catch { }
+        return (false, body);
+    }
+    public async Task<object?> PingContabiliumAsync() => await GetAsync<object>("/api/contabilium/ping");
+
     public async Task<List<FileDeleteResult>?> MoveFilesAsync(IEnumerable<string> paths, string targetPath)
     {
         return await PostAsync<List<FileDeleteResult>>("/api/files/move", new { paths, targetPath });

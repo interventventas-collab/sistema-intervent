@@ -3920,3 +3920,21 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ListaPreciosHeaderImageUrl' AND Object_ID=OBJECT_ID('Cafe_Settings'))
     ALTER TABLE Cafe_Settings ADD ListaPreciosHeaderImageUrl NVARCHAR(500) NULL;
 GO
+
+-- 2026-05-20 noche: integracion con Contabilium (API REST)
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ContabiliumAccounts' AND xtype='U')
+BEGIN
+    CREATE TABLE ContabiliumAccounts (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Email NVARCHAR(200) NOT NULL,
+        ApiKey NVARCHAR(200) NOT NULL,
+        AccessToken NVARCHAR(MAX) NULL,
+        AccessTokenExpiresAt DATETIME2 NULL,
+        LastSyncAt DATETIME2 NULL,
+        LastSyncError NVARCHAR(MAX) NULL,
+        LastSyncCount INT NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NULL
+    );
+END
+GO
