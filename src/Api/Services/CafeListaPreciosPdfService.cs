@@ -36,7 +36,8 @@ public class CafeListaPreciosPdfService
 
     public byte[] GenerarPdf(CafeListaPreciosPreviewDto p)
     {
-        var tituloColor = p.TipoCliente == "BAR" ? "#1d4ed8" : "#15803d";
+        // Color del cuadradito "LISTA" + linea separadora. NEGRO para BAR, verde para OTRO.
+        var tituloColor = p.TipoCliente == "BAR" ? "#000000" : "#15803d";
         var logoBytes = TryLoadLogoBytes(p.Negocio.LogoUrl) ?? TryLoadLogoFallback(p.Negocio.Cuit);
         // Si el negocio cargo una imagen completa para el header de listas, la usamos en vez del header armado a mano.
         var headerImageBytes = TryLoadLogoBytes(p.Negocio.ListaPreciosHeaderImageUrl);
