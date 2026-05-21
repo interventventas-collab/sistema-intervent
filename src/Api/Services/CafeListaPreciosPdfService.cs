@@ -45,8 +45,8 @@ public class CafeListaPreciosPdfService
             {
                 page.Size(PageSizes.A4);
                 page.Margin(25);
-                // Tipografia mas prolija y legible — Helvetica es ancha, clasica y limpia.
-                page.DefaultTextStyle(t => t.FontFamily("Helvetica").FontSize(9));
+                // Default fuente sin especificar — usa la de QuestPDF (Lato) que soporta los emojis 📞 📱 ✉ 🌐
+                page.DefaultTextStyle(t => t.FontSize(9));
 
                 // ── HEADER ──
                 // 3 columnas con tipografia mas prolija (Helvetica) + logo al centro + mail/direccion mas legibles
@@ -54,26 +54,25 @@ public class CafeListaPreciosPdfService
                 {
                     headerCol.Item().PaddingBottom(8).BorderBottom(2).BorderColor(tituloColor).Row(row =>
                     {
-                        // IZQUIERDA: telefonos grandes
+                        // IZQUIERDA: telefonos grandes + mail + web (en lugar de direccion)
                         row.RelativeItem(2).Column(c =>
                         {
                             if (!string.IsNullOrEmpty(p.Negocio.Telefono))
                             {
                                 c.Item().Text(t =>
                                 {
-                                    t.Span("📞 ").FontSize(13);
-                                    t.Span(p.Negocio.Telefono!).FontSize(14).SemiBold();
+                                    t.Span("📞 ").FontSize(15);
+                                    t.Span(p.Negocio.Telefono!).FontSize(17).SemiBold();
                                 });
                             }
                             if (!string.IsNullOrEmpty(p.Negocio.WhatsappNumero))
                             {
-                                c.Item().PaddingTop(2).Text(t =>
+                                c.Item().PaddingTop(4).Text(t =>
                                 {
-                                    t.Span("📱 ").FontSize(13);
-                                    t.Span(p.Negocio.WhatsappNumero!).FontSize(14).SemiBold();
+                                    t.Span("📱 ").FontSize(15);
+                                    t.Span(p.Negocio.WhatsappNumero!).FontSize(17).SemiBold();
                                 });
                             }
-                            // Mail + direccion mas legibles (font 9 en vez de 7)
                             if (!string.IsNullOrEmpty(p.Negocio.Email))
                             {
                                 c.Item().PaddingTop(8).Text(t =>
@@ -82,17 +81,17 @@ public class CafeListaPreciosPdfService
                                     t.Span(p.Negocio.Email!).FontSize(9).FontColor(Colors.Grey.Darken2);
                                 });
                             }
-                            if (!string.IsNullOrEmpty(p.Negocio.Direccion))
+                            if (!string.IsNullOrEmpty(p.Negocio.Web))
                             {
                                 c.Item().PaddingTop(2).Text(t =>
                                 {
-                                    t.Span("📍 ").FontSize(9).FontColor(Colors.Grey.Darken2);
-                                    t.Span(p.Negocio.Direccion!).FontSize(9).FontColor(Colors.Grey.Darken2);
+                                    t.Span("🌐 ").FontSize(9).FontColor(Colors.Grey.Darken2);
+                                    t.Span(p.Negocio.Web!).FontSize(9).FontColor(Colors.Grey.Darken2).SemiBold();
                                 });
                             }
                         });
 
-                        // CENTRO: logo + nombre del negocio + web abajo
+                        // CENTRO: logo + nombre del negocio
                         row.RelativeItem(2).AlignCenter().Column(c =>
                         {
                             if (logoBytes is not null)
@@ -104,17 +103,12 @@ public class CafeListaPreciosPdfService
                             var partes = nombre.Split(new[] { " By ", " by " }, StringSplitOptions.None);
                             if (partes.Length == 2)
                             {
-                                c.Item().AlignCenter().Text(partes[0] + " By").FontSize(18).Bold().FontFamily("Helvetica").LetterSpacing(0.5f);
-                                c.Item().AlignCenter().Text(partes[1]).FontSize(18).Bold().FontFamily("Helvetica").LetterSpacing(0.5f);
+                                c.Item().AlignCenter().Text(partes[0] + " By").FontSize(18).Bold().LetterSpacing(0.5f);
+                                c.Item().AlignCenter().Text(partes[1]).FontSize(18).Bold().LetterSpacing(0.5f);
                             }
                             else
                             {
-                                c.Item().AlignCenter().Text(nombre).FontSize(18).Bold().FontFamily("Helvetica").LetterSpacing(0.5f);
-                            }
-                            if (!string.IsNullOrEmpty(p.Negocio.Web))
-                            {
-                                c.Item().PaddingTop(5).AlignCenter()
-                                    .Text(p.Negocio.Web!).FontSize(9).FontColor(Colors.Grey.Darken2).SemiBold();
+                                c.Item().AlignCenter().Text(nombre).FontSize(18).Bold().LetterSpacing(0.5f);
                             }
                         });
 
