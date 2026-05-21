@@ -1879,6 +1879,58 @@ public class MeliItemService
         var http = _httpFactory.CreateClient();
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
+        // ───────────── LIVE READ desde MeLi ─────────────
+        // No confiamos en LogisticType cacheado (puede estar NULL o desactualizado).
+        // Hacemos GET en MeLi para detectar:
+        //   - logistic_type=fulfillment → MeLi NO permite editar stock por API
+        //   - variations[] → si tiene, tenemos que pushear a cada variation
+        var getResp = await http.GetAsync($"https://api.mercadolibre.com/items/{item.MeliItemId}");
+        if (!getResp.IsSuccessStatusCode)
+            return new MeliPushResult(false, $"No se pudo leer la publicacion en MeLi ({(int)getResp.StatusCode}).", null, null);
+        var getJson = await getResp.Content.ReadAsStringAsync();
+        using var liveDoc = JsonDocument.Parse(getJson);
+        var liveRoot = liveDoc.RootElement;
+
+        var liveIsFull = false;
+        if (liveRoot.TryGetProperty("shipping", out var shipping)
+            && shipping.ValueKind == JsonValueKind.Object
+            && shipping.TryGetProperty("logistic_type", out var lt)
+            && lt.ValueKind == JsonValueKind.String)
+        {
+            liveIsFull = string.Equals(lt.GetString(), "fulfillment", StringComparison.OrdinalIgnoreCase);
+            // Cachear para futuras consultas
+            item.LogisticType = lt.GetString();
+        }
+
+        var liveVariantIds = new List<long>();
+        if (liveRoot.TryGetProperty("variations", out var liveVars) && liveVars.ValueKind == JsonValueKind.Array && liveVars.GetArrayLength() > 0)
+        {
+            foreach (var v in liveVars.EnumerateArray())
+                liveVariantIds.Add(v.GetProperty("id").GetInt64());
+        }
+
+        // Si la publicacion es Full y pediste stock, lo silenciamos (MeLi rechaza).
+        if (liveIsFull && payloadDict.ContainsKey("available_quantity"))
+            payloadDict.Remove("available_quantity");
+
+        // Si hay variations, reformatear el payload (price y stock van adentro de cada variation)
+        if (liveVariantIds.Count > 0)
+        {
+            decimal? pPrice = payloadDict.TryGetValue("price", out var p) ? (decimal)p : null;
+            int? pStock = payloadDict.TryGetValue("available_quantity", out var s) ? (int)s : null;
+            var varList = liveVariantIds.Select(vId =>
+            {
+                var d = new Dictionary<string, object> { ["id"] = vId };
+                if (pPrice.HasValue) d["price"] = pPrice.Value;
+                if (pStock.HasValue) d["available_quantity"] = pStock.Value;
+                return (object)d;
+            }).ToList();
+            payloadDict = new Dictionary<string, object> { ["variations"] = varList };
+        }
+
+        if (payloadDict.Count == 0)
+            return new MeliPushResult(false, "Nada para pushear (Full sin stock + sin precio).", null, null);
+
         var payload = JsonSerializer.Serialize(payloadDict);
         var content = new StringContent(payload, Encoding.UTF8, "application/json");
         var response = await http.PutAsync($"https://api.mercadolibre.com/items/{item.MeliItemId}", content);
@@ -1904,14 +1956,15 @@ public class MeliItemService
 
         // Actualizar la copia local
         if (pushPrice && priceWithVat.HasValue) item.Price = priceWithVat.Value;
-        if (pushStock && stockToPush.HasValue) item.AvailableQuantity = stockToPush.Value;
+        if (pushStock && !liveIsFull && stockToPush.HasValue) item.AvailableQuantity = stockToPush.Value;
         item.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
 
         await _auditLog.LogAsync("MeliItem", item.MeliItemId, "PUSH_FROM_LINKED",
-            JsonSerializer.Serialize(new { productId = item.ProductId, comboId = item.ComboId, cafeProductoId = item.CafeProductoId, cafeFormato = item.CafeFormato, pushPrice, pushStock, priceWithVat, stock = stockToPush }));
+            JsonSerializer.Serialize(new { productId = item.ProductId, comboId = item.ComboId, cafeProductoId = item.CafeProductoId, cafeFormato = item.CafeFormato, pushPrice, pushStock, priceWithVat, stock = stockToPush, liveIsFull }));
 
-        return new MeliPushResult(true, "Publicacion actualizada en MeLi.", priceWithVat, pushStock ? stockToPush : null);
+        var msgExtra = liveIsFull && pushStock ? " (FULL: stock no actualizado, lo administra MeLi)" : "";
+        return new MeliPushResult(true, $"Publicacion actualizada en MeLi.{msgExtra}", priceWithVat, (pushStock && !liveIsFull) ? stockToPush : null);
     }
 
     public record MeliPushResult(bool Success, string Message, decimal? PushedPrice, int? PushedStock);
