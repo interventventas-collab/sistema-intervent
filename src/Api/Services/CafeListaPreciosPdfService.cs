@@ -75,7 +75,7 @@ public class CafeListaPreciosPdfService
                             }
                             if (!string.IsNullOrEmpty(p.Negocio.Email))
                             {
-                                c.Item().PaddingTop(8).Text(t =>
+                                c.Item().PaddingTop(4).Text(t =>
                                 {
                                     t.Span("✉ ").FontSize(9).FontColor(Colors.Grey.Darken2);
                                     t.Span(p.Negocio.Email!).FontSize(9).FontColor(Colors.Grey.Darken2);
