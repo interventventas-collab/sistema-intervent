@@ -16,8 +16,9 @@ public class MeliController : ControllerBase
     private readonly AiService _aiService;
     private readonly SyncProgressService _syncProgress;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly MeliStockSyncService _stockSync;
 
-    public MeliController(MeliAccountService service, MeliOrderService orderService, MeliItemService itemService, AiService aiService, SyncProgressService syncProgress, IServiceScopeFactory scopeFactory)
+    public MeliController(MeliAccountService service, MeliOrderService orderService, MeliItemService itemService, AiService aiService, SyncProgressService syncProgress, IServiceScopeFactory scopeFactory, MeliStockSyncService stockSync)
     {
         _service = service;
         _orderService = orderService;
@@ -25,6 +26,7 @@ public class MeliController : ControllerBase
         _aiService = aiService;
         _syncProgress = syncProgress;
         _scopeFactory = scopeFactory;
+        _stockSync = stockSync;
     }
 
     [HttpGet("accounts")]
@@ -154,7 +156,28 @@ public class MeliController : ControllerBase
             var dateFrom = from ?? DateTime.UtcNow.AddDays(-30);
             var dateTo = to ?? DateTime.UtcNow;
             var result = await _orderService.SyncOrdersAsync(dateFrom, dateTo);
+            // Despues de sincronizar ordenes, descontar stock de las nuevas (las que tienen
+            // StockDiscounted=false). Es no-bloqueante: si falla, el sync queda OK igual.
+            try { await _stockSync.ProcessPendingAsync(); }
+            catch (Exception ex2) { Console.WriteLine($"Stock sync post-orders fallo: {ex2.Message}"); }
             return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>Procesa ordenes MeLi con StockDiscounted=false: descuenta stock de cafes/otros
+    /// segun el linkeo de MeliItems.CafeProductoId + CafeFormato. Util para correr a demanda
+    /// si el auto-trigger no se disparo.</summary>
+    [HttpPost("orders/process-stock-pending")]
+    public async Task<IActionResult> ProcessStockPending()
+    {
+        try
+        {
+            var r = await _stockSync.ProcessPendingAsync(maxBatch: 1000);
+            return Ok(new { ok = true, procesadas = r.Procesadas, descontadasCafe = r.DescontadasCafe, descontadasOtros = r.DescontadasOtros, sinLinkear = r.SinLinkear, errores = r.Errores });
         }
         catch (Exception ex)
         {

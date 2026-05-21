@@ -115,6 +115,7 @@ builder.Services.AddScoped<CafeComodatoPdfService>();
 builder.Services.AddScoped<CafeReciboVisitaCobranzaPdfService>();
 builder.Services.AddScoped<CafeListaPreciosPdfService>();
 builder.Services.AddScoped<ContabiliumService>();
+builder.Services.AddScoped<MeliStockSyncService>();
 builder.Services.AddScoped<QrRepartidorService>();
 builder.Services.AddScoped<CafeReciboCobranzaPdfService>();
 builder.Services.AddScoped<MeliOrderService>();
