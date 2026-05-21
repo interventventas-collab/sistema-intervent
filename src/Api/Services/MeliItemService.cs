@@ -53,7 +53,12 @@ public class MeliItemService
                 i.Sku, i.UserProductId, i.FamilyId, i.FamilyName,
                 i.DateCreated, i.LastUpdated,
                 i.ProductId, i.Product != null ? i.Product.Title : null, i.Product != null ? (int?)i.Product.CriticalStock : null,
-                i.ComboId, i.Combo != null ? i.Combo.Sku : null, i.Combo != null ? i.Combo.Name : null))
+                i.ComboId, i.Combo != null ? i.Combo.Sku : null, i.Combo != null ? i.Combo.Name : null,
+                i.CafeProductoId, i.CafeFormato,
+                i.CafeProducto != null ? i.CafeProducto.Sku : null,
+                i.CafeProducto != null ? i.CafeProducto.Nombre : null,
+                _db.MeliItemComponentes.Count(mc => mc.MeliItemId == i.MeliItemId),
+                i.LogisticType))
             .ToListAsync();
 
         return new MeliItemsResponse(items, total);

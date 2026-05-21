@@ -33,6 +33,19 @@ public class MeliItemDto
     public int? ComboId { get; set; }
     public string? ComboSku { get; set; }
     public string? ComboName { get; set; }
+
+    // Linkeo café (legacy) — 1:1 publicación → café con formato.
+    public int? CafeProductoId { get; set; }
+    public string? CafeFormato { get; set; }
+    public string? CafeProductoSku { get; set; }
+    public string? CafeProductoNombre { get; set; }
+    // Mapeos MeliItemComponentes (sistema nuevo, para combos del sistema).
+    public int ComponentMappingsCount { get; set; }
+    // Logística MeLi cacheada.
+    public string? LogisticType { get; set; }
+
+    /// <summary>True si la publicación tiene cualquier tipo de linkeo (Producto, Combo, Café o Componentes).</summary>
+    public bool TieneLinkeo => ProductId.HasValue || ComboId.HasValue || CafeProductoId.HasValue || ComponentMappingsCount > 0;
 }
 
 public class MeliItemsResponse

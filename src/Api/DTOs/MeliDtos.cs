@@ -134,7 +134,18 @@ public record MeliItemDto(
     int? ProductCriticalStock,
     int? ComboId,
     string? ComboSku,
-    string? ComboName
+    string? ComboName,
+    // ── Linkeo Café (legacy + nuevo) ──
+    // CafeProductoId: linkeo viejo café 1:1 (la publicación es un único café con formato).
+    int? CafeProductoId = null,
+    string? CafeFormato = null,
+    string? CafeProductoSku = null,
+    string? CafeProductoNombre = null,
+    // ComponentMappingsCount: cuántos productos del sistema están linkeados via MeliItemComponentes
+    // (publicaciones que son combos del sistema nuevo, ej: VP8 + tapa + collarín = 100VP8).
+    int ComponentMappingsCount = 0,
+    // LogisticType cacheado de MeLi (fulfillment / cross_docking / drop_off / etc).
+    string? LogisticType = null
 );
 
 public record MeliItemsResponse(List<MeliItemDto> Items, int Total);
