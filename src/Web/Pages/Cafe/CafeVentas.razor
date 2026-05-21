@@ -223,7 +223,10 @@
                     </div>
                 </div>
             }
-            <div class="table-responsive">
+            @* overflow:visible + max-height:none → permite que el tooltip de la celda Cliente se
+               muestre completo aunque haya pocas filas (con `overflow:auto` del default, el tooltip
+               quedaba recortado por el contenedor cuando la tabla era chica). *@
+            <div class="table-responsive" style="overflow: visible; max-height: none;">
                 <table class="data-table">
                     <thead>
                         <tr>
