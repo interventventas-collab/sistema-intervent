@@ -225,6 +225,7 @@ public class CafeSettingDto
     public string? NegocioLocalidad { get; set; }
     public string? NegocioCp { get; set; }
     public DateTime? UpdatedAt { get; set; }
+    public string? ListaPreciosHeaderImageUrl { get; set; }
 }
 
 public class UpdateCafeSettingRequest
@@ -249,6 +250,7 @@ public class UpdateCafeSettingRequest
     public DateTime? NegocioInicioActividad { get; set; }
     public string? NegocioLocalidad { get; set; }
     public string? NegocioCp { get; set; }
+    public string? ListaPreciosHeaderImageUrl { get; set; }
 }
 
 // ===== Ventas =====
@@ -789,6 +791,7 @@ public class CafeListaPreciosNegocioDto
     public string? Email { get; set; }
     public string? Web { get; set; }
     public string? LogoUrl { get; set; }
+    public string? ListaPreciosHeaderImageUrl { get; set; }
 }
 
 public class CafeListaPreciosClienteDto

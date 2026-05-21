@@ -3915,3 +3915,8 @@ BEGIN
     CREATE INDEX IX_FileMetadata_Path ON FileMetadata(Path);
 END
 GO
+
+-- 2026-05-20 noche: imagen del header completo para PDF de listas de precios
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ListaPreciosHeaderImageUrl' AND Object_ID=OBJECT_ID('Cafe_Settings'))
+    ALTER TABLE Cafe_Settings ADD ListaPreciosHeaderImageUrl NVARCHAR(500) NULL;
+GO

@@ -38,6 +38,8 @@ public class CafeListaPreciosPdfService
     {
         var tituloColor = p.TipoCliente == "BAR" ? "#1d4ed8" : "#15803d";
         var logoBytes = TryLoadLogoBytes(p.Negocio.LogoUrl) ?? TryLoadLogoFallback(p.Negocio.Cuit);
+        // Si el negocio cargo una imagen completa para el header de listas, la usamos en vez del header armado a mano.
+        var headerImageBytes = TryLoadLogoBytes(p.Negocio.ListaPreciosHeaderImageUrl);
 
         return Document.Create(container =>
         {
@@ -49,9 +51,37 @@ public class CafeListaPreciosPdfService
                 page.DefaultTextStyle(t => t.FontSize(9));
 
                 // ── HEADER ──
-                // 3 columnas con tipografia mas prolija (Helvetica) + logo al centro + mail/direccion mas legibles
+                // Si el usuario cargo una imagen custom para el header, la usamos a la izquierda con
+                // el cuadradito "LISTA / N°" a la derecha. Sino, fallback al header armado a mano.
                 page.Header().Column(headerCol =>
                 {
+                    if (headerImageBytes is not null)
+                    {
+                        headerCol.Item().PaddingBottom(8).BorderBottom(2).BorderColor(tituloColor).Row(row =>
+                        {
+                            row.RelativeItem().AlignLeft().AlignMiddle()
+                                .Height(110).Image(headerImageBytes).FitArea();
+                            row.ConstantItem(95).AlignRight().AlignTop().Column(c =>
+                            {
+                                c.Item().AlignRight().Width(80).Border(1).BorderColor(tituloColor).Column(cc =>
+                                {
+                                    cc.Item().Background(tituloColor).AlignCenter().Padding(4)
+                                        .Text("LISTA").FontSize(10).Bold().FontColor(Colors.White).LetterSpacing(0.08f);
+                                    if (!string.IsNullOrWhiteSpace(p.NumeroLista))
+                                    {
+                                        cc.Item().AlignCenter().Padding(6)
+                                            .Text(p.NumeroLista!).FontSize(18).Bold().FontColor(tituloColor);
+                                    }
+                                    else
+                                    {
+                                        cc.Item().AlignCenter().Padding(6).Text(" ").FontSize(18);
+                                    }
+                                });
+                            });
+                        });
+                        return; // saltamos el header de fallback
+                    }
+
                     headerCol.Item().PaddingBottom(8).BorderBottom(2).BorderColor(tituloColor).Row(row =>
                     {
                         // IZQUIERDA: telefonos grandes + mail + web (en lugar de direccion)
@@ -133,14 +163,7 @@ public class CafeListaPreciosPdfService
                         });
                     });
 
-                    // BANNER "VIGENTE DESDE X" si aplica
-                    if (p.VigenteDesde.HasValue)
-                    {
-                        headerCol.Item().PaddingTop(8).Background(Colors.Amber.Lighten3).Border(1.5f).BorderColor(Colors.Amber.Darken1)
-                            .Padding(8).AlignCenter()
-                            .Text($"📅 PRECIOS VIGENTES DESDE EL {p.VigenteDesde.Value:dd/MM/yyyy}")
-                            .FontSize(11).Bold().FontColor(Colors.Amber.Darken4);
-                    }
+                    // Banner "PRECIOS VIGENTES DESDE..." sacado por pedido del usuario 2026-05-20 (noche).
                 });
 
                 // ── CONTENT: por marca ──

@@ -147,6 +147,32 @@
                 }
             </div>
 
+            <div class="form-group" style="background: #f9fafb; padding: 0.7rem 0.9rem; border-radius: 8px; border-left: 4px solid #1d4ed8;">
+                <label class="form-label">🎨 Imagen de encabezado para Lista de Precios</label>
+                <div style="display: flex; gap: 0.4rem; align-items: stretch;">
+                    <input class="form-input" style="flex: 1;" @bind="listaPreciosHeaderImageUrl" placeholder="URL de la imagen" />
+                    <label class="btn btn-secondary" style="margin: 0; cursor: pointer;">
+                        @(isUploadingHeader ? "Subiendo..." : "📤 Subir imagen")
+                        <InputFile OnChange="OnHeaderFileChange" accept="image/*" style="display: none;" />
+                    </label>
+                </div>
+                <p style="font-size: 0.72rem; color: #6b7280; margin: 0.2rem 0 0;">
+                    Imagen completa del encabezado del PDF de listas (reemplaza el header armado a mano). Recomendado: <strong>1900 × 540 px</strong> (≈16 × 4,5 cm a 300 DPI). A la derecha siempre aparece el cuadradito "LISTA / N°" dinámico.
+                </p>
+                @if (!string.IsNullOrEmpty(uploadHeaderError))
+                {
+                    <p style="font-size: 0.78rem; color: #b91c1c; margin: 0.3rem 0 0;">⚠ @uploadHeaderError</p>
+                }
+                @if (!string.IsNullOrWhiteSpace(listaPreciosHeaderImageUrl))
+                {
+                    <div style="margin-top: 0.5rem; padding: 0.5rem; background: white; border: 1px solid #e5e7eb; border-radius: 6px;">
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0 0 0.3rem;">Vista previa:</p>
+                        <img src="@listaPreciosHeaderImageUrl" alt="Header" style="max-height: 130px; max-width: 100%; object-fit: contain;" onerror="this.style.display='none'; this.nextSibling.style.display='block';" />
+                        <span style="display:none; color: #b91c1c; font-size: 0.78rem;">⚠ No se pudo cargar la imagen</span>
+                    </div>
+                }
+            </div>
+
             <h4 style="margin: 1rem 0 0.6rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase;">📱 Mensajes pre-armados de WhatsApp</h4>
             <p style="font-size: 0.78rem; color: #6b7280; margin: 0 0 0.5rem;">
                 Hay <strong>dos mensajes</strong> distintos en el comprobante. Cada uno se completa solo con los datos de la venta usando los placeholders:
@@ -210,6 +236,9 @@
     private decimal margenOtro = 60;
     private string negocioNombre = "", negocioTelefono = "", negocioWhatsapp = "", negocioDireccion = "", negocioCuit = "";
     private string negocioEmail = "", negocioWeb = "", negocioLogoUrl = "";
+    private string listaPreciosHeaderImageUrl = "";
+    private bool isUploadingHeader;
+    private string? uploadHeaderError;
     private string negocioRazonSocial = "", negocioCondicionIva = "", negocioIngresosBrutos = "";
     private DateTime? negocioInicioActividad;
     private string negocioLocalidad = "", negocioCp = "";
@@ -265,6 +294,7 @@
                 negocioEmail = s.NegocioEmail ?? "";
                 negocioWeb = s.NegocioWeb ?? "";
                 negocioLogoUrl = s.NegocioLogoUrl ?? "";
+                listaPreciosHeaderImageUrl = s.ListaPreciosHeaderImageUrl ?? "";
                 negocioRazonSocial = s.NegocioRazonSocial ?? "";
                 negocioCondicionIva = s.NegocioCondicionIva ?? "";
                 negocioIngresosBrutos = s.NegocioIngresosBrutos ?? "";
@@ -308,7 +338,8 @@
                 NegocioLocalidad = negocioLocalidad,
                 NegocioCp = negocioCp,
                 WhatsappMensajeTemplate = waTemplate,
-                WhatsappMensajeClienteTemplate = waTemplateCliente
+                WhatsappMensajeClienteTemplate = waTemplateCliente,
+                ListaPreciosHeaderImageUrl = listaPreciosHeaderImageUrl
             });
             ToastService.Success("Configuración guardada");
         }
@@ -349,6 +380,38 @@
             uploadLogoError = ex.Message;
         }
         finally { isUploadingLogo = false; }
+    }
+
+    /// <summary>Sube la imagen del encabezado de lista de precios a /data/files/branding/cafe-lista-header-{ts}.{ext}.</summary>
+    private async Task OnHeaderFileChange(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null) return;
+        if (file.Size > 5 * 1024 * 1024) { uploadHeaderError = "El archivo supera los 5 MB."; return; }
+        uploadHeaderError = null;
+        isUploadingHeader = true;
+        try
+        {
+            var ext = System.IO.Path.GetExtension(file.Name);
+            if (string.IsNullOrEmpty(ext)) ext = ".png";
+            var ts = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
+            var serverName = $"cafe-lista-header-{ts}{ext.ToLowerInvariant()}";
+            using var stream = file.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+            var result = await Api.UploadFilesAsync("branding", new[] { (serverName, (System.IO.Stream)stream, file.Size) });
+            var ok = result?.FirstOrDefault(r => r.Success);
+            if (ok is null || string.IsNullOrEmpty(ok.Path))
+            {
+                uploadHeaderError = result?.FirstOrDefault()?.Error ?? "No se pudo subir la imagen.";
+                return;
+            }
+            listaPreciosHeaderImageUrl = Api.BuildFilesDownloadUrl(ok.Path);
+            ToastService.Success("Imagen de encabezado subida. Tocá Guardar para persistir.");
+        }
+        catch (Exception ex)
+        {
+            uploadHeaderError = ex.Message;
+        }
+        finally { isUploadingHeader = false; }
     }
 
     private decimal Calc(decimal precioKg, decimal fraccion)

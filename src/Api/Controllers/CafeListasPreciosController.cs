@@ -66,7 +66,8 @@ public class CafeListasPreciosController : ControllerBase
         var negocio = new CafeListaPreciosNegocioDto(
             settings.NegocioNombre, settings.NegocioTelefono,
             settings.NegocioWhatsappNumero, settings.NegocioDireccion, settings.NegocioCuit,
-            settings.NegocioEmail, settings.NegocioWeb, settings.NegocioLogoUrl);
+            settings.NegocioEmail, settings.NegocioWeb, settings.NegocioLogoUrl,
+            settings.ListaPreciosHeaderImageUrl);
 
         // Cliente y tipo
         CafeListaPreciosClienteDto? clienteDto = null;

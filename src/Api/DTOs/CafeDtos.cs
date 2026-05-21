@@ -237,7 +237,8 @@ public record CafeSettingDto(
     string? NegocioRazonSocial, string? NegocioCondicionIva,
     string? NegocioIngresosBrutos, DateTime? NegocioInicioActividad,
     string? NegocioLocalidad, string? NegocioCp,
-    DateTime? UpdatedAt);
+    DateTime? UpdatedAt,
+    string? ListaPreciosHeaderImageUrl = null);
 
 public class UpdateCafeSettingRequest
 {
@@ -261,6 +262,7 @@ public class UpdateCafeSettingRequest
     public DateTime? NegocioInicioActividad { get; set; }
     public string? NegocioLocalidad { get; set; }
     public string? NegocioCp { get; set; }
+    public string? ListaPreciosHeaderImageUrl { get; set; }
 }
 
 // ===== Ventas =====
@@ -639,7 +641,8 @@ public class CafeListaPreciosFiltroRequest
 public record CafeListaPreciosNegocioDto(
     string? Nombre, string? Telefono, string? WhatsappNumero,
     string? Direccion, string? Cuit,
-    string? Email, string? Web, string? LogoUrl);
+    string? Email, string? Web, string? LogoUrl,
+    string? ListaPreciosHeaderImageUrl = null);
 
 public record CafeListaPreciosClienteDto(
     int? Id, string? Codigo, string? Nombre, string Tipo,

@@ -79,6 +79,12 @@ public class CafeSetting
     [MaxLength(500)]
     public string? NegocioLogoUrl { get; set; }
 
+    /// <summary>URL de la imagen del ENCABEZADO completo del PDF de lista de precios. Si esta cargada,
+    /// reemplaza el header default (logo + nombre + telefonos + mail + web) por esta imagen. A la
+    /// derecha sigue apareciendo el cuadradito "LISTA + numero" dinamico.</summary>
+    [MaxLength(500)]
+    public string? ListaPreciosHeaderImageUrl { get; set; }
+
     /// <summary>
     /// Texto plantilla del mensaje pre-armado para WhatsApp (lo que el cliente envía cuando toca
     /// "Contactanos por WhatsApp" en el PDF). Soporta los placeholders {numero}, {total}, {cliente}, {fecha}.
