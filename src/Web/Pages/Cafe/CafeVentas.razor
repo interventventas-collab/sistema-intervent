@@ -86,7 +86,9 @@
     td:hover > .pin-postit { display: block; }
 </style>
 
-<div class="card">
+@* overflow:visible para que el tooltip de la celda Cliente no quede recortado por el wrapper .card
+   (que tiene overflow:hidden en el CSS global). *@
+<div class="card" style="overflow: visible;">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
         <h3>🧾 Ventas
             <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;">
