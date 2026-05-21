@@ -54,25 +54,84 @@ public class CafeListaPreciosPdfService
                 page.DefaultTextStyle(t => t.FontSize(9));
 
                 // ── HEADER ──
+                // Cambios pedidos 2026-05-20 (segunda iteracion): 3 columnas
+                //   Izquierda: 📞 + 📱 telefonos grandes + ✉ mail chico abajo
+                //   Centro: FRIKAF By / INTERVENT (en 2 lineas) + www.frikaf.com.ar chico debajo
+                //   Derecha: cuadradito chico "LISTA" + numero grande
                 page.Header().Column(headerCol =>
                 {
                     headerCol.Item().PaddingBottom(8).BorderBottom(2).BorderColor(tituloColor).Row(row =>
                     {
-                        row.RelativeItem(2).AlignMiddle()
-                            .Text(p.Negocio.Nombre ?? "Empresa").FontSize(17).Bold();
-
-                        row.RelativeItem().AlignRight().Column(c =>
+                        // IZQUIERDA: telefonos grandes + mail chico
+                        row.RelativeItem(2).Column(c =>
                         {
-                            c.Item().AlignRight().Background(tituloColor).Padding(6).Text("LISTA DE PRECIOS")
-                                .FontSize(11).Bold().FontColor(Colors.White);
-                            if (!string.IsNullOrWhiteSpace(p.NumeroLista))
+                            if (!string.IsNullOrEmpty(p.Negocio.Telefono))
                             {
-                                c.Item().PaddingTop(5).AlignRight().Text(t =>
+                                c.Item().Text(t =>
                                 {
-                                    t.Span("Lista N° ").Bold().FontSize(10);
-                                    t.Span(p.NumeroLista!).FontSize(10);
+                                    t.Span("📞 ").FontSize(13);
+                                    t.Span(p.Negocio.Telefono!).FontSize(14).SemiBold();
                                 });
                             }
+                            if (!string.IsNullOrEmpty(p.Negocio.WhatsappNumero))
+                            {
+                                c.Item().PaddingTop(2).Text(t =>
+                                {
+                                    t.Span("📱 ").FontSize(13);
+                                    t.Span(p.Negocio.WhatsappNumero!).FontSize(14).SemiBold();
+                                });
+                            }
+                            // Mail chico al final del bloque izquierdo
+                            if (!string.IsNullOrEmpty(p.Negocio.Email))
+                            {
+                                c.Item().PaddingTop(8).Text(t =>
+                                {
+                                    t.Span("✉ ").FontSize(7).FontColor(Colors.Grey.Darken1);
+                                    t.Span(p.Negocio.Email!).FontSize(7).FontColor(Colors.Grey.Darken1);
+                                });
+                            }
+                        });
+
+                        // CENTRO: nombre del negocio + web abajo
+                        row.RelativeItem(2).AlignCenter().Column(c =>
+                        {
+                            // El nombre lo dividimos en 2 lineas si tiene "By"
+                            var nombre = p.Negocio.Nombre ?? "Empresa";
+                            var partes = nombre.Split(new[] { " By ", " by " }, StringSplitOptions.None);
+                            if (partes.Length == 2)
+                            {
+                                c.Item().AlignCenter().Text(partes[0] + " By").FontSize(17).Bold();
+                                c.Item().AlignCenter().Text(partes[1]).FontSize(17).Bold();
+                            }
+                            else
+                            {
+                                c.Item().AlignCenter().Text(nombre).FontSize(17).Bold();
+                            }
+                            if (!string.IsNullOrEmpty(p.Negocio.Web))
+                            {
+                                c.Item().PaddingTop(6).AlignCenter()
+                                    .Text(p.Negocio.Web!).FontSize(8).FontColor(Colors.Grey.Darken2);
+                            }
+                        });
+
+                        // DERECHA: cuadradito "LISTA" + numero
+                        row.RelativeItem().AlignRight().AlignTop().Column(c =>
+                        {
+                            c.Item().AlignRight().Width(80).Border(1).BorderColor(tituloColor).Column(cc =>
+                            {
+                                cc.Item().Background(tituloColor).AlignCenter().Padding(4)
+                                    .Text("LISTA").FontSize(9).Bold().FontColor(Colors.White).LetterSpacing(0.05f);
+                                if (!string.IsNullOrWhiteSpace(p.NumeroLista))
+                                {
+                                    cc.Item().AlignCenter().Padding(6)
+                                        .Text(p.NumeroLista!).FontSize(16).Bold().FontColor(tituloColor);
+                                }
+                                else
+                                {
+                                    cc.Item().AlignCenter().Padding(6)
+                                        .Text(" ").FontSize(16);
+                                }
+                            });
                         });
                     });
 
