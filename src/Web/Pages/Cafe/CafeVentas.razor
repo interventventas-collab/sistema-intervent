@@ -532,7 +532,7 @@
                     <div class="form-row">
                         <div class="form-group" style="flex: 2;">
                             <label class="form-label">Tipo de comprobante *</label>
-                            <select class="form-input" @bind="formTipoComprobante" @bind:after="OnTipoComprobanteChanged">
+                            <select class="form-input" @bind="formTipoComprobante" @bind:after="OnTipoComprobanteChanged" disabled="@modoVentaRapida">
                                 <option value="X">X — Cotización / Remito interno (sin IVA)</option>
                                 <option value="PRO">PRO — Proforma con IVA (preview)</option>
                                 <option value="FA">Factura A — emite por ARCA (con CAE)</option>
@@ -540,6 +540,10 @@
                                 @* Factura C es para monotributistas — PALANICA es Responsable Inscripto, no aplica.
                                    Si en el futuro hay un CUIT MO, se vuelve a habilitar segun NegocioCondicionIva. *@
                             </select>
+                            @if (modoVentaRapida)
+                            {
+                                <p style="font-size: 0.7rem; color: #d97706; margin: 0.2rem 0 0;">⚡ En Venta Rápida solo se emite Remito interno (X).</p>
+                            }
                         </div>
                         <div class="form-group" style="flex: 1;">
                             <label class="form-label">Condición IVA del cliente</label>
@@ -568,10 +572,85 @@
 
                 @* ── Cliente y fecha ── *@
                 <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem; margin-bottom: 0.75rem;">
-                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
                         <span style="background: #3b82f6; color: white; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.78rem;">2</span>
                         <strong>Cliente y fecha</strong>
+                        <div style="margin-left: auto; display: flex; gap: 0.3rem;">
+                            @if (!modoVentaRapida)
+                            {
+                                <button type="button" class="btn btn-secondary" style="font-size: 0.78rem; padding: 0.25rem 0.6rem; background:#fef3c7; border-color:#d97706; color:#78350f;"
+                                        @onclick="ActivarVentaRapida"
+                                        title="Cargar datos del cliente a mano (sin elegir del catálogo). Ideal para ventas eventuales / sin cliente fijo. Solo emite Remito interno (X).">
+                                    ⚡ Venta rápida
+                                </button>
+                            }
+                            else
+                            {
+                                <button type="button" class="btn btn-secondary" style="font-size: 0.78rem; padding: 0.25rem 0.6rem;"
+                                        @onclick="DesactivarVentaRapida"
+                                        title="Volver al buscador de clientes del catálogo.">
+                                    🔍 Volver a elegir cliente
+                                </button>
+                            }
+                        </div>
                     </div>
+                    @if (modoVentaRapida)
+                    {
+                        <div style="background: #fffbeb; border: 1px dashed #d97706; border-radius: 6px; padding: 0.5rem 0.7rem; margin-bottom: 0.5rem; font-size: 0.78rem; color: #78350f;">
+                            ⚡ <strong>Modo Venta Rápida</strong> — los datos se guardan SOLO en esta venta, no se crea un cliente nuevo. Solo emite <strong>X (Remito interno)</strong>.
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group" style="flex: 2;">
+                                <label class="form-label">Nombre / Razón social *</label>
+                                <input class="form-input" type="text" @bind="vrNombre" placeholder="Ej: Juan Pérez · CONSUMIDOR FINAL · Kiosko de la esquina..." />
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label">Tipo</label>
+                                <select class="form-input" @bind="formClienteTipo" @bind:after="Cotizar">
+                                    <option value="OTRO">🏢 Comercial</option>
+                                    <option value="BAR">🍺 BAR</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label">Fecha</label>
+                                <input class="form-input" type="date" @bind="formFecha" />
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label">CUIT / DNI</label>
+                                <input class="form-input" type="text" @bind="vrCuit" placeholder="20-12345678-9" />
+                            </div>
+                            <div class="form-group" style="flex: 2;">
+                                <label class="form-label">Domicilio</label>
+                                <input class="form-input" type="text" @bind="vrDireccion" placeholder="Calle 123, piso, depto..." />
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label">Localidad</label>
+                                <input class="form-input" type="text" @bind="vrLocalidad" placeholder="Ej: Berazategui" />
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label">CP</label>
+                                <input class="form-input" type="text" @bind="vrCp" placeholder="1880" />
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label">Teléfono</label>
+                                <input class="form-input" type="text" @bind="vrTelefono" placeholder="11 1234-5678" />
+                            </div>
+                            <div class="form-group" style="flex: 2;">
+                                <label class="form-label">Domicilio de entrega (si difiere)</label>
+                                <input class="form-input" type="text" @bind="vrDomicilioEntrega" placeholder="Solo si entregás en otra dirección" />
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label">Razón social</label>
+                                <input class="form-input" type="text" @bind="vrRazonSocial" placeholder="Si difiere del nombre" />
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
                     <div class="form-row">
                         <div class="form-group" style="flex: 2; position: relative;">
                             <label class="form-label">Cliente</label>
@@ -668,6 +747,7 @@
                             <input class="form-input" type="date" @bind="formFecha" />
                         </div>
                     </div>
+                    }
 
                     @* Saldo anterior — alerta si el cliente tiene comprobantes impagos *@
                     @if (formClienteId > 0 && unpaidPrevSales.Count > 0)
@@ -1034,12 +1114,27 @@
                                             <td>
                                                 @{
                                                     var skuItem = productos?.FirstOrDefault(p => p.Id == ci.ProductoId)?.Sku;
+                                                    var nombreActual = !string.IsNullOrWhiteSpace(formItem.DescripcionOverride) ? formItem.DescripcionOverride : ci.ProductoNombre;
+                                                    var nombrePisado = !string.IsNullOrWhiteSpace(formItem.DescripcionOverride);
                                                 }
-                                                @if (!string.IsNullOrEmpty(skuItem))
-                                                {
-                                                    <span style="font-family:monospace; font-size:0.7rem; color:#1d4ed8; font-weight:700; margin-right:0.3rem;">@skuItem</span>
-                                                }
-                                                <strong>@ci.ProductoNombre</strong>
+                                                <div style="display:flex; align-items:center; gap:0.3rem; flex-wrap:wrap;">
+                                                    @if (!string.IsNullOrEmpty(skuItem))
+                                                    {
+                                                        <span style="font-family:monospace; font-size:0.7rem; color:#1d4ed8; font-weight:700;">@skuItem</span>
+                                                    }
+                                                    <input type="text" class="form-input desc-inline-edit"
+                                                           style="flex:1; min-width:200px; font-weight:700; font-size:0.9rem; padding:0.2rem 0.4rem; @(nombrePisado ? "background:#fef3c7; border-color:#d97706;" : "background:transparent; border:1px dashed transparent;")"
+                                                           value="@nombreActual"
+                                                           @onchange="@(e => OnItemDescripcionChanged(i, e.Value?.ToString()))"
+                                                           title="@(nombrePisado ? "Nombre modificado para esta venta. ✕ para volver al original." : "Tocá para editar el nombre que aparece en el comprobante (solo en esta venta).")" />
+                                                    @if (nombrePisado)
+                                                    {
+                                                        <span style="font-size:0.7rem; color:#d97706; font-weight:600;" title="Nombre modificado">✏️</span>
+                                                        <button type="button" class="btn-icon" style="color:#6b7280; font-size:0.75rem; padding:0 0.2rem;"
+                                                                @onclick="() => ClearItemDescripcion(i)"
+                                                                title="Volver al nombre original del catálogo">✕</button>
+                                                    }
+                                                </div>
                                                 @if (esCafe)
                                                 {
                                                     <div style="display: flex; gap: 0.3rem; align-items: center; margin-top: 0.25rem; flex-wrap: wrap;">
@@ -2302,6 +2397,19 @@
     private string clienteSearch = "";
     private bool clienteSearchOpen;
     private string formClienteTipo = "OTRO";
+
+    // Modo "Venta Rápida": cliente ad-hoc (no se elige del catálogo, se cargan datos a mano).
+    private bool modoVentaRapida = false;
+    private string vrNombre = "";
+    private string vrRazonSocial = "";
+    private string vrCuit = "";
+    private string vrDireccion = "";
+    private string vrLocalidad = "";
+    private string vrCiudad = "";
+    private string vrCp = "";
+    private string vrTelefono = "";
+    private string vrDomicilioEntrega = "";
+
     private DateTime formFecha = DateTime.Today;
     private decimal formDescuento;
     private string formObservaciones = "";
@@ -2794,6 +2902,8 @@
         unpaidPrevSales = new(); topProductsForClient = new(); includePrevBalanceInNotes = true;
         formClienteId = 0; formClienteTipo = "OTRO";
         clienteSearch = ""; clienteSearchOpen = false;
+        modoVentaRapida = false;
+        vrNombre = vrRazonSocial = vrCuit = vrDireccion = vrLocalidad = vrCiudad = vrCp = vrTelefono = vrDomicilioEntrega = "";
         formFecha = DateTime.Today; formDescuento = 0; formObservaciones = "";
         formTipoComprobante = "X"; formCondicionIva = "CF"; formCondicionPago = "EFECTIVO";
         formItems = new(); cotizacion = null;
@@ -3168,6 +3278,29 @@
         await Cotizar();
     }
 
+    /// <summary>Activa el modo "Venta Rápida": cliente ad-hoc, no del catálogo. Limpia el cliente
+    /// seleccionado, fuerza el tipo de comprobante a X (Remito interno) y abre los inputs de datos
+    /// del cliente para llenar a mano.</summary>
+    private async Task ActivarVentaRapida()
+    {
+        modoVentaRapida = true;
+        formClienteId = 0;
+        clienteSearch = ""; clienteSearchOpen = false;
+        vrNombre = vrRazonSocial = vrCuit = vrDireccion = vrLocalidad = vrCiudad = vrCp = vrTelefono = vrDomicilioEntrega = "";
+        formTipoComprobante = "X";
+        formCondicionIva = "CF";
+        unpaidPrevSales = new();
+        topProductsForClient = new();
+        await Cotizar();
+    }
+
+    /// <summary>Sale del modo "Venta Rápida" y vuelve al buscador de clientes del catálogo.</summary>
+    private void DesactivarVentaRapida()
+    {
+        modoVentaRapida = false;
+        vrNombre = vrRazonSocial = vrCuit = vrDireccion = vrLocalidad = vrCiudad = vrCp = vrTelefono = vrDomicilioEntrega = "";
+    }
+
     /// <summary>Recalcula los comprobantes con saldo pendiente del cliente actual.
     /// Usa el dictionary `saldosPorVenta` (calculado desde cobranzas reales) en vez del flag legacy IsPaid.
     /// Excluye anulados, totalmente pagados y la venta que se esta editando.</summary>
@@ -3449,6 +3582,28 @@
         await Cotizar();
     }
 
+    /// <summary>El operador edita el nombre del producto en la línea (solo afecta esa venta, no el catálogo).
+    /// Si vuelve a coincidir con el nombre original, se limpia el override.</summary>
+    private void OnItemDescripcionChanged(int idx, string? value)
+    {
+        if (idx < 0 || idx >= formItems.Count) return;
+        var v = (value ?? "").Trim();
+        var nombreOriginal = cotizacion?.Items[idx].ProductoNombre?.Trim() ?? "";
+        if (string.IsNullOrEmpty(v) || string.Equals(v, nombreOriginal, StringComparison.Ordinal))
+            formItems[idx].DescripcionOverride = null;
+        else
+            formItems[idx].DescripcionOverride = v;
+        StateHasChanged();
+    }
+
+    /// <summary>Vuelve al nombre del producto del catálogo (sin override).</summary>
+    private void ClearItemDescripcion(int idx)
+    {
+        if (idx < 0 || idx >= formItems.Count) return;
+        formItems[idx].DescripcionOverride = null;
+        StateHasChanged();
+    }
+
     private async Task OnItemDescuentoChanged(int idx, string? value)
     {
         if (idx < 0 || idx >= formItems.Count) return;
@@ -3564,7 +3719,16 @@
             {
                 Fecha = DateTime.SpecifyKind(formFecha, DateTimeKind.Unspecified), // Kind=Unspecified asi System.Text.Json no agrega TZ — el server toma Y/M/D tal cual.
                 ClienteId = formClienteId > 0 ? formClienteId : null,
+                ClienteNombreOverride = modoVentaRapida ? (string.IsNullOrWhiteSpace(vrNombre) ? "Consumidor final" : vrNombre) : null,
                 ClienteTipoOverride = formClienteTipo,
+                ClienteRazonSocialOverride = modoVentaRapida ? vrRazonSocial : null,
+                ClienteCuitOverride = modoVentaRapida ? vrCuit : null,
+                ClienteDireccionOverride = modoVentaRapida ? vrDireccion : null,
+                ClienteLocalidadOverride = modoVentaRapida ? vrLocalidad : null,
+                ClienteCiudadOverride = modoVentaRapida ? vrCiudad : null,
+                ClienteCpOverride = modoVentaRapida ? vrCp : null,
+                ClienteTelefonoOverride = modoVentaRapida ? vrTelefono : null,
+                ClienteDomicilioEntregaOverride = modoVentaRapida ? vrDomicilioEntrega : null,
                 Items = formItems,
                 Descuento = formDescuento,
                 Observaciones = formObservaciones,
@@ -3697,7 +3861,16 @@
                 {
                     Fecha = DateTime.SpecifyKind(formFecha, DateTimeKind.Unspecified), // Kind=Unspecified asi System.Text.Json no agrega TZ — el server toma Y/M/D tal cual.
                     ClienteId = formClienteId > 0 ? formClienteId : null,
+                    ClienteNombreOverride = modoVentaRapida ? (string.IsNullOrWhiteSpace(vrNombre) ? "Consumidor final" : vrNombre) : null,
                     ClienteTipoOverride = formClienteTipo,
+                    ClienteRazonSocialOverride = modoVentaRapida ? vrRazonSocial : null,
+                    ClienteCuitOverride = modoVentaRapida ? vrCuit : null,
+                    ClienteDireccionOverride = modoVentaRapida ? vrDireccion : null,
+                    ClienteLocalidadOverride = modoVentaRapida ? vrLocalidad : null,
+                    ClienteCiudadOverride = modoVentaRapida ? vrCiudad : null,
+                    ClienteCpOverride = modoVentaRapida ? vrCp : null,
+                    ClienteTelefonoOverride = modoVentaRapida ? vrTelefono : null,
+                    ClienteDomicilioEntregaOverride = modoVentaRapida ? vrDomicilioEntrega : null,
                     Items = formItems,
                     Descuento = formDescuento,
                     Observaciones = notesToSave,

@@ -846,8 +846,19 @@ public class CafeVentasController : ControllerBase
         }
         else
         {
+            // Modo "Venta Rápida": cliente ad-hoc, todos los datos vienen de los overrides.
             clienteNombre = string.IsNullOrWhiteSpace(req.ClienteNombreOverride) ? "Consumidor final" : req.ClienteNombreOverride.Trim();
+            clienteRazonSocial = Nz(req.ClienteRazonSocialOverride);
+            clienteCuit = Nz(req.ClienteCuitOverride);
+            clienteDireccion = Nz(req.ClienteDireccionOverride);
+            clienteLocalidad = Nz(req.ClienteLocalidadOverride);
+            clienteCiudad = Nz(req.ClienteCiudadOverride);
+            clienteCp = Nz(req.ClienteCpOverride);
+            clienteTelefono = Nz(req.ClienteTelefonoOverride);
+            clienteDomicilioEntrega = Nz(req.ClienteDomicilioEntregaOverride);
         }
+
+        static string? Nz(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
 
         // Persistir: crear venta + items + descontar stock
         var venta = new CafeVenta
@@ -886,8 +897,15 @@ public class CafeVentasController : ControllerBase
         };
 
         // Mapear items + descontar stock fisico
-        foreach (var it in cot.Items)
+        for (int idx = 0; idx < cot.Items.Count; idx++)
         {
+            var it = cot.Items[idx];
+            // Si el operador editó la descripción de la línea (override), pisa el snapshot del nombre.
+            var reqItem = idx < req.Items.Count ? req.Items[idx] : null;
+            var nombreOverride = reqItem is not null && !string.IsNullOrWhiteSpace(reqItem.DescripcionOverride)
+                ? reqItem.DescripcionOverride.Trim()
+                : null;
+
             // Concepto libre: item sin producto del catálogo (no descuenta stock).
             if (it.Categoria == "LIBRE")
             {
@@ -895,7 +913,7 @@ public class CafeVentasController : ControllerBase
                 {
                     ProductoId = null,
                     EsConceptoLibre = true,
-                    ProductoNombreSnapshot = it.ProductoNombre,
+                    ProductoNombreSnapshot = nombreOverride ?? it.ProductoNombre,
                     Categoria = "LIBRE",
                     Formato = "UNIT",
                     Cantidad = it.Cantidad,
@@ -917,7 +935,7 @@ public class CafeVentasController : ControllerBase
             {
                 ProductoId = prod.Id,
                 EsConceptoLibre = false,
-                ProductoNombreSnapshot = prod.Nombre,
+                ProductoNombreSnapshot = nombreOverride ?? prod.Nombre,
                 Categoria = prod.Categoria,
                 Formato = it.Formato,
                 Cantidad = it.Cantidad,
@@ -1428,19 +1446,20 @@ public class CafeVentasController : ControllerBase
             }
             else
             {
+                // Modo "Venta Rápida": cliente ad-hoc — todos los datos vienen de los overrides.
                 v.ClienteId = null;
                 v.ClienteNombreSnapshot = string.IsNullOrWhiteSpace(req.ClienteNombreOverride)
                     ? "Consumidor final" : req.ClienteNombreOverride.Trim();
                 v.ClienteTipoSnapshot = CafePricingService.ResolverTipo(req.ClienteTipoOverride);
-                v.ClienteTelefonoSnapshot = null;
-                v.ClienteRazonSocialSnapshot = null;
-                v.ClienteDomicilioEntregaSnapshot = null;
+                v.ClienteTelefonoSnapshot = NzU(req.ClienteTelefonoOverride);
+                v.ClienteRazonSocialSnapshot = NzU(req.ClienteRazonSocialOverride);
+                v.ClienteDomicilioEntregaSnapshot = NzU(req.ClienteDomicilioEntregaOverride);
                 v.ClienteComentariosComprobante = null;
-                v.ClienteCuitSnapshot = null;
-                v.ClienteDireccionSnapshot = null;
-                v.ClienteLocalidadSnapshot = null;
-                v.ClienteCiudadSnapshot = null;
-                v.ClienteCpSnapshot = null;
+                v.ClienteCuitSnapshot = NzU(req.ClienteCuitOverride);
+                v.ClienteDireccionSnapshot = NzU(req.ClienteDireccionOverride);
+                v.ClienteLocalidadSnapshot = NzU(req.ClienteLocalidadOverride);
+                v.ClienteCiudadSnapshot = NzU(req.ClienteCiudadOverride);
+                v.ClienteCpSnapshot = NzU(req.ClienteCpOverride);
             }
         }
         else if (!v.ClienteId.HasValue && !string.IsNullOrWhiteSpace(req.ClienteNombreOverride))
@@ -1448,7 +1467,18 @@ public class CafeVentasController : ControllerBase
             v.ClienteNombreSnapshot = req.ClienteNombreOverride.Trim();
             if (!string.IsNullOrWhiteSpace(req.ClienteTipoOverride))
                 v.ClienteTipoSnapshot = CafePricingService.ResolverTipo(req.ClienteTipoOverride);
+            // En venta rápida, también permitimos actualizar el resto de los datos sin remapear ClienteId.
+            if (req.ClienteRazonSocialOverride is not null) v.ClienteRazonSocialSnapshot = NzU(req.ClienteRazonSocialOverride);
+            if (req.ClienteCuitOverride is not null) v.ClienteCuitSnapshot = NzU(req.ClienteCuitOverride);
+            if (req.ClienteDireccionOverride is not null) v.ClienteDireccionSnapshot = NzU(req.ClienteDireccionOverride);
+            if (req.ClienteLocalidadOverride is not null) v.ClienteLocalidadSnapshot = NzU(req.ClienteLocalidadOverride);
+            if (req.ClienteCiudadOverride is not null) v.ClienteCiudadSnapshot = NzU(req.ClienteCiudadOverride);
+            if (req.ClienteCpOverride is not null) v.ClienteCpSnapshot = NzU(req.ClienteCpOverride);
+            if (req.ClienteTelefonoOverride is not null) v.ClienteTelefonoSnapshot = NzU(req.ClienteTelefonoOverride);
+            if (req.ClienteDomicilioEntregaOverride is not null) v.ClienteDomicilioEntregaSnapshot = NzU(req.ClienteDomicilioEntregaOverride);
         }
+
+        static string? NzU(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
 
         // Items: si se envian, reemplazar + ajustar stock + recalcular totales.
         // Solo aplicable si la venta no esta anulada.
@@ -1492,14 +1522,19 @@ public class CafeVentasController : ControllerBase
                 }
 
                 // 3. Persistir items nuevos + descontar stock.
-                foreach (var ci in cot.Items)
+                for (int idx = 0; idx < cot.Items.Count; idx++)
                 {
+                    var ci = cot.Items[idx];
+                    var reqItem = idx < req.Items.Count ? req.Items[idx] : null;
+                    var nombreOverride = reqItem is not null && !string.IsNullOrWhiteSpace(reqItem.DescripcionOverride)
+                        ? reqItem.DescripcionOverride.Trim()
+                        : null;
                     var prod = await _db.CafeProductos.FindAsync(ci.ProductoId);
                     if (prod is null) return BadRequest(new { error = $"Producto {ci.ProductoId} no encontrado" });
                     v.Items.Add(new CafeVentaItem
                     {
                         ProductoId = prod.Id,
-                        ProductoNombreSnapshot = prod.Nombre,
+                        ProductoNombreSnapshot = nombreOverride ?? prod.Nombre,
                         Categoria = prod.Categoria,
                         Formato = ci.Formato,
                         Cantidad = ci.Cantidad,

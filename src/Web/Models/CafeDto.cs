@@ -406,6 +406,8 @@ public class CafeCotizarItemRequest
     public bool EsConceptoLibre { get; set; }
     /// <summary>Descripción libre que el operador escribió (solo si EsConceptoLibre).</summary>
     public string? DescripcionLibre { get; set; }
+    /// <summary>Si viene seteado, pisa el nombre del producto en el snapshot de la línea (no afecta el catálogo).</summary>
+    public string? DescripcionOverride { get; set; }
 }
 
 public class CafeCotizarRequest
@@ -455,6 +457,15 @@ public class CreateCafeVentaRequest
     public int? ClienteId { get; set; }
     public string? ClienteNombreOverride { get; set; }
     public string? ClienteTipoOverride { get; set; }
+    // Overrides ad-hoc para modo "Venta Rápida"
+    public string? ClienteRazonSocialOverride { get; set; }
+    public string? ClienteCuitOverride { get; set; }
+    public string? ClienteDireccionOverride { get; set; }
+    public string? ClienteLocalidadOverride { get; set; }
+    public string? ClienteCiudadOverride { get; set; }
+    public string? ClienteCpOverride { get; set; }
+    public string? ClienteTelefonoOverride { get; set; }
+    public string? ClienteDomicilioEntregaOverride { get; set; }
     public List<CafeCotizarItemRequest> Items { get; set; } = new();
     public decimal Descuento { get; set; }
     public string? Observaciones { get; set; }
@@ -478,6 +489,15 @@ public class UpdateCafeVentaRequest
     public int? ClienteId { get; set; }
     public string? ClienteNombreOverride { get; set; }
     public string? ClienteTipoOverride { get; set; }
+    // Overrides ad-hoc para modo "Venta Rápida"
+    public string? ClienteRazonSocialOverride { get; set; }
+    public string? ClienteCuitOverride { get; set; }
+    public string? ClienteDireccionOverride { get; set; }
+    public string? ClienteLocalidadOverride { get; set; }
+    public string? ClienteCiudadOverride { get; set; }
+    public string? ClienteCpOverride { get; set; }
+    public string? ClienteTelefonoOverride { get; set; }
+    public string? ClienteDomicilioEntregaOverride { get; set; }
     public string? Observaciones { get; set; }
     public string? TipoComprobante { get; set; }
     public string? CondicionIva { get; set; }
