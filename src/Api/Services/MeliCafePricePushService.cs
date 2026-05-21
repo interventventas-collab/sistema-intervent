@@ -174,23 +174,85 @@ public class MeliCafePricePushService
 
     private async Task<(bool ok, string? msg)> PushItemAsync(HttpClient http, string meliItemId, decimal price, int stock)
     {
-        // Primero leo el item para saber si tiene variations.
+        // Leer el item para conocer su estructura (variations + user_product_id).
         var getResp = await http.GetAsync($"https://api.mercadolibre.com/items/{meliItemId}");
         if (!getResp.IsSuccessStatusCode) return (false, $"GET {(int)getResp.StatusCode}");
         var json = await getResp.Content.ReadAsStringAsync();
         var doc = JsonDocument.Parse(json).RootElement;
 
-        Dictionary<string, object> payload;
+        // ¿user_product_id a nivel raíz?
+        string? rootUserProductId = null;
+        if (doc.TryGetProperty("user_product_id", out var uppEl) && uppEl.ValueKind == JsonValueKind.String)
+            rootUserProductId = uppEl.GetString();
+
+        // Variations
+        var variants = new List<(long varId, string? userProductId)>();
         if (doc.TryGetProperty("variations", out var variations) && variations.ValueKind == JsonValueKind.Array && variations.GetArrayLength() > 0)
         {
-            // Multi-variante: aplicar a todas las variations
-            var varList = new List<object>();
             foreach (var v in variations.EnumerateArray())
             {
                 var varId = v.GetProperty("id").GetInt64();
-                varList.Add(new { id = varId, price, available_quantity = stock });
+                string? varUpp = null;
+                if (v.TryGetProperty("user_product_id", out var vUpp) && vUpp.ValueKind == JsonValueKind.String)
+                    varUpp = vUpp.GetString();
+                variants.Add((varId, varUpp));
             }
-            payload = new Dictionary<string, object> { ["variations"] = varList };
+        }
+
+        // ───── Caso A: el item (o sus variations) usa User Product → split price/stock ─────
+        // Stock va por PUT /user-products/{user_product_id}
+        // Price va por PUT /items/{id}
+        if (rootUserProductId is not null || variants.Any(v => v.userProductId is not null))
+        {
+            // 1) PRICE
+            Dictionary<string, object> pricePayload;
+            if (variants.Count > 0)
+            {
+                pricePayload = new Dictionary<string, object>
+                {
+                    ["variations"] = variants.Select(v => (object)new { id = v.varId, price }).ToList()
+                };
+            }
+            else
+            {
+                pricePayload = new Dictionary<string, object> { ["price"] = price };
+            }
+            var priceBody = new StringContent(JsonSerializer.Serialize(pricePayload), Encoding.UTF8, "application/json");
+            var priceResp = await http.PutAsync($"https://api.mercadolibre.com/items/{meliItemId}", priceBody);
+            if (!priceResp.IsSuccessStatusCode)
+            {
+                var err = await priceResp.Content.ReadAsStringAsync();
+                return (false, $"PUT items (price) {(int)priceResp.StatusCode}: {err.Substring(0, Math.Min(200, err.Length))}");
+            }
+
+            // 2) STOCK por user-products
+            var userProductIds = new List<string>();
+            if (rootUserProductId is not null) userProductIds.Add(rootUserProductId);
+            userProductIds.AddRange(variants.Where(v => v.userProductId is not null).Select(v => v.userProductId!));
+
+            foreach (var upId in userProductIds.Distinct())
+            {
+                var stockPayload = new Dictionary<string, object> { ["available_quantity"] = stock };
+                var stockBody = new StringContent(JsonSerializer.Serialize(stockPayload), Encoding.UTF8, "application/json");
+                var stockResp = await http.PutAsync($"https://api.mercadolibre.com/user-products/{upId}/stock", stockBody);
+                if (!stockResp.IsSuccessStatusCode)
+                {
+                    var err = await stockResp.Content.ReadAsStringAsync();
+                    return (false, $"PUT user-products/{upId}/stock {(int)stockResp.StatusCode}: {err.Substring(0, Math.Min(200, err.Length))}");
+                }
+                await Task.Delay(100);
+            }
+            return (true, null);
+        }
+
+        // ───── Caso B: modelo viejo (sin user_product) — el endpoint /items acepta ambos ─────
+        Dictionary<string, object> payload;
+        if (variants.Count > 0)
+        {
+            payload = new Dictionary<string, object>
+            {
+                ["variations"] = variants.Select(v => (object)new { id = v.varId, price, available_quantity = stock }).ToList()
+            };
         }
         else
         {
@@ -200,11 +262,10 @@ public class MeliCafePricePushService
                 ["available_quantity"] = stock
             };
         }
-
         var body = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
         var resp = await http.PutAsync($"https://api.mercadolibre.com/items/{meliItemId}", body);
         if (resp.IsSuccessStatusCode) return (true, null);
         var errBody = await resp.Content.ReadAsStringAsync();
-        return (false, $"PUT {(int)resp.StatusCode}: {errBody.Substring(0, Math.Min(200, errBody.Length))}");
+        return (false, $"PUT items {(int)resp.StatusCode}: {errBody.Substring(0, Math.Min(200, errBody.Length))}");
     }
 }
