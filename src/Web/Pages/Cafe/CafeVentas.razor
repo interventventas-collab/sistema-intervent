@@ -261,7 +261,16 @@
                                     }
                                 </td>
                                 <td>@v.Fecha.ToString("dd/MM/yyyy")</td>
-                                <td><strong>@(v.ClienteNombre ?? "—")</strong></td>
+                                <td style="line-height: 1.15;">
+                                    <strong>@(v.ClienteNombre ?? "—")</strong>
+                                    @{
+                                        var dir = !string.IsNullOrWhiteSpace(v.ClienteDomicilioEntrega) ? v.ClienteDomicilioEntrega : v.ClienteDireccion;
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(dir))
+                                    {
+                                        <div style="font-size: 0.7rem; color: #9ca3af; margin-top: 0.05rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px;" title="@dir">📍 @dir</div>
+                                    }
+                                </td>
                                 <td>
                                     @if (v.ClienteTipo == "BAR")
                                     {
