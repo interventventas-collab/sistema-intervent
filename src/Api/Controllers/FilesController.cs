@@ -200,7 +200,9 @@ public class FilesController : ControllerBase
         try { target = _storage.ResolveSafe(path); }
         catch (UnauthorizedAccessException) { return BadRequest(new { error = "Path invalido" }); }
 
-        if (!Directory.Exists(target)) return NotFound(new { error = "Carpeta destino no existe" });
+        // Si la carpeta destino no existe, la creamos. ResolveSafe ya valido que el path
+        // no se escape del storage root, asi que esto es seguro.
+        if (!Directory.Exists(target)) Directory.CreateDirectory(target);
         if (files is null || files.Count == 0) return BadRequest(new { error = "No se envio ningun archivo" });
 
         var results = new List<object>();
