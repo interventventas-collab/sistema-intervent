@@ -124,6 +124,54 @@ public class MeliCafePricePushService
         return new PushResult(items.Count, ok, err, mensajes);
     }
 
+    /// <summary>Pushea SOLO una publicación específica. Útil para piloto/testing antes de hacer el push masivo.</summary>
+    public async Task<PushResult> PushSingleAsync(string meliItemId, CancellationToken ct = default)
+    {
+        var cfg = await _db.CafeSettings.FindAsync(new object[] { 1 }, ct) ?? new CafeSetting { Id = 1 };
+        var mi = await _db.MeliItems
+            .Include(x => x.MeliAccount)
+            .FirstOrDefaultAsync(x => x.MeliItemId == meliItemId
+                && x.CafeProductoId != null && x.CafeFormato != null
+                && x.PriceRatioOverIva != null && x.PriceRatioOverIva > 0, ct);
+        if (mi is null)
+            return new PushResult(0, 0, 1, new() { $"{meliItemId}: no se encontró la publicación o no es un café linkeado con ratio." });
+
+        var prod = await _db.CafeProductos.FindAsync(new object[] { mi.CafeProductoId!.Value }, ct);
+        if (prod is null)
+            return new PushResult(1, 0, 1, new() { $"{meliItemId}: producto café no encontrado en sistema." });
+
+        if (mi.MeliAccount is null)
+            return new PushResult(1, 0, 1, new() { $"{meliItemId}: cuenta MeLi no asociada." });
+
+        var token = await _meliAccounts.GetValidTokenAsync(mi.MeliAccount);
+        if (token is null)
+            return new PushResult(1, 0, 1, new() { $"Token inválido para {mi.MeliAccount.Nickname}" });
+
+        var precioNeto = CalcularPrecioSistemaNeto(prod, mi.CafeFormato!, cfg);
+        if (precioNeto <= 0)
+            return new PushResult(1, 0, 1, new() { $"{mi.Sku}: precio sistema = 0" });
+
+        var precioMeli = Math.Round(precioNeto * IVA * mi.PriceRatioOverIva!.Value, 0);
+        var gramos = GramosPorFormato(mi.CafeFormato!);
+        var stockMeli = (int)Math.Floor(prod.StockGramos / gramos);
+        if (stockMeli < 0) stockMeli = 0;
+
+        using var http = _httpFactory.CreateClient();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        http.Timeout = TimeSpan.FromSeconds(30);
+
+        var (success, msg) = await PushItemAsync(http, mi.MeliItemId, precioMeli, stockMeli);
+        if (success)
+        {
+            mi.Price = precioMeli;
+            mi.AvailableQuantity = stockMeli;
+            mi.LastUpdated = DateTime.UtcNow;
+            await _db.SaveChangesAsync(ct);
+            return new PushResult(1, 1, 0, new() { $"✅ {mi.Sku}: precio=${precioMeli}, stock={stockMeli}" });
+        }
+        return new PushResult(1, 0, 1, new() { $"❌ {mi.Sku}: {msg}" });
+    }
+
     private async Task<(bool ok, string? msg)> PushItemAsync(HttpClient http, string meliItemId, decimal price, int stock)
     {
         // Primero leo el item para saber si tiene variations.

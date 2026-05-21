@@ -46,6 +46,7 @@
                             <th class="num">Δ Precio</th>
                             <th class="num">Stock Actual</th>
                             <th class="num">Stock Nuevo</th>
+                            <th style="width: 80px; text-align: center;">Push</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -54,6 +55,7 @@
                             var diffP = r.PrecioNuevoMeLi - r.PrecioActualMeLi;
                             var diffPct = r.PrecioActualMeLi > 0 ? Math.Round(diffP * 100 / r.PrecioActualMeLi, 1) : 0;
                             var rowClass = Math.Abs(diffPct) > 5 ? "background:#fee2e2;" : "";
+                            var rowMeliId = r.MeliItemId;
                             <tr style="@rowClass">
                                 <td style="font-family: monospace;">@r.MeliSku</td>
                                 <td>@r.ProductoNombre</td>
@@ -66,6 +68,20 @@
                                 </td>
                                 <td class="num">@r.StockActualMeLi</td>
                                 <td class="num"><strong>@r.StockNuevoMeLi</strong></td>
+                                <td style="text-align: center;">
+                                    @if (pushingOneId == rowMeliId)
+                                    {
+                                        <span style="color: #1d4ed8; font-size: 0.78rem;">⏳</span>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-primary" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;"
+                                                disabled="@(!string.IsNullOrEmpty(pushingOneId) || pushing)"
+                                                @onclick="() => PushOne(rowMeliId)" title="Pushear solo esta publicación a MeLi">
+                                            🚀
+                                        </button>
+                                    }
+                                </td>
                             </tr>
                         }
                     </tbody>
@@ -105,6 +121,7 @@
 @code {
     private bool loading = true;
     private bool pushing;
+    private string? pushingOneId; // MeliItemId que se está pusheando ahora (botón individual)
     private List<ApiClient.CafePushPreviewRowDto>? rows;
     private string? pushMessage;
     private bool pushOk;
@@ -138,6 +155,42 @@
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { loading = false; }
+    }
+
+    /// <summary>Pushea una sola publicación a MeLi. Es sincrónico (no background) porque es 1 sola.</summary>
+    private async Task PushOne(string meliItemId)
+    {
+        if (!string.IsNullOrEmpty(pushingOneId) || pushing) return;
+        pushingOneId = meliItemId;
+        pushMessage = null;
+        try
+        {
+            var r = await Api.RunCafePushOneAsync(meliItemId);
+            if (r is null)
+            {
+                pushOk = false;
+                pushMessage = $"❌ {meliItemId}: no se pudo ejecutar.";
+            }
+            else if (r.Ok > 0)
+            {
+                pushOk = true;
+                pushMessage = $"✅ Pusheado OK: {string.Join("\n", r.Mensajes)}";
+                ToastService.Success("Publicación pusheada");
+                await Recargar();
+            }
+            else
+            {
+                pushOk = false;
+                pushMessage = $"❌ Falló: {string.Join("\n", r.Mensajes)}";
+                ToastService.Error("Error pushing");
+            }
+        }
+        catch (Exception ex)
+        {
+            pushOk = false;
+            pushMessage = "❌ " + ex.Message;
+        }
+        finally { pushingOneId = null; }
     }
 
     private async Task DoPush()

@@ -2521,6 +2521,9 @@ public class ApiClient
     public async Task<CafePushPreviewResponse?> GetCafePushPreviewAsync()
         => await GetAsync<CafePushPreviewResponse>("/api/meli/cafe/push-preview");
     public async Task<object?> RunCafePushAsync() => await PostAsync<object>("/api/meli/cafe/push", new { });
+    public record CafePushOneResult(int Procesadas, int Ok, int Errores, List<string> Mensajes);
+    public async Task<CafePushOneResult?> RunCafePushOneAsync(string meliItemId)
+        => await PostAsync<CafePushOneResult>($"/api/meli/cafe/push-one/{meliItemId}", new { });
     public record CafePushStatusDto(bool Running, DateTime? StartedAt, DateTime? FinishedAt, string? Error, object? Result);
     public async Task<CafePushStatusDto?> GetCafePushStatusAsync()
         => await GetAsync<CafePushStatusDto>("/api/meli/cafe/push/status");

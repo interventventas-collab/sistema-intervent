@@ -260,6 +260,20 @@ public class MeliController : ControllerBase
         return Ok(new { ok = true, started = true, message = "Push iniciado en background" });
     }
 
+    /// <summary>Pushea SOLO una publicación a MeLi. Útil para piloto/testing.
+    /// Devuelve sincrónico (no es background) porque es una sola.</summary>
+    [HttpPost("cafe/push-one/{meliItemId}")]
+    public async Task<IActionResult> CafePushOne(string meliItemId, [FromServices] MeliCafePricePushService svc)
+    {
+        var r = await svc.PushSingleAsync(meliItemId, HttpContext.RequestAborted);
+        return Ok(new {
+            procesadas = r.Procesadas,
+            ok = r.Ok,
+            errores = r.Errores,
+            mensajes = r.Mensajes
+        });
+    }
+
     [HttpGet("cafe/push/status")]
     public IActionResult CafePushStatus()
     {
