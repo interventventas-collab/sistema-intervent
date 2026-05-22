@@ -156,4 +156,8 @@ public class CafeProducto
     /// Lo setean los services que descuentan/devuelven stock (ventas, ordenes MeLi, ajustes manuales).
     /// El job de respaldo lo compara contra LastPushedToMeli para decidir si push.</summary>
     public DateTime? StockChangedAt { get; set; }
+
+    /// <summary>Packs prearmados (formatos extra "Pack x N") que aparecen en el dropdown
+    /// de Formato en el modal de venta. Solo aplica a categoria OTROS.</summary>
+    public ICollection<CafeProductoPack> Packs { get; set; } = new List<CafeProductoPack>();
 }

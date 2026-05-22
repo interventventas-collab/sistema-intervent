@@ -35,12 +35,16 @@ public class CafeProductosController : ControllerBase
         p.PrecioBultoFuturo, p.PrecioBultoOtroFuturo,
         p.UsaPreciosFuturos,
         p.IsVisibleEnVentas,
-        p.ImportSource);
+        p.ImportSource,
+        p.Packs?.Where(pk => pk.IsActive)
+            .OrderBy(pk => pk.SortOrder).ThenBy(pk => pk.Cantidad)
+            .Select(pk => new CafeProductoPackDto(pk.Id, pk.Cantidad, pk.Nombre, pk.PrecioOverride, pk.IsActive, pk.SortOrder))
+            .ToList() ?? new List<CafeProductoPackDto>());
 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] string? categoria = null)
     {
-        var q = _db.CafeProductos.Include(p => p.OemNav).Include(p => p.MarcaNav).AsQueryable();
+        var q = _db.CafeProductos.Include(p => p.OemNav).Include(p => p.MarcaNav).Include(p => p.Packs).AsQueryable();
         if (!string.IsNullOrWhiteSpace(categoria))
         {
             var c = NormCat(categoria);
@@ -84,7 +88,7 @@ public class CafeProductosController : ControllerBase
     [HttpGet("{id:int}")]
     public async Task<IActionResult> GetById(int id)
     {
-        var p = await _db.CafeProductos.Include(x => x.OemNav).Include(x => x.MarcaNav).FirstOrDefaultAsync(x => x.Id == id);
+        var p = await _db.CafeProductos.Include(x => x.OemNav).Include(x => x.MarcaNav).Include(x => x.Packs).FirstOrDefaultAsync(x => x.Id == id);
         if (p is null) return NotFound(new { error = "Producto no encontrado" });
         return Ok(Map(p));
     }
@@ -388,7 +392,7 @@ public class CafeProductosController : ControllerBase
         };
         _db.CafeProductos.Add(p);
         await _db.SaveChangesAsync();
-        var saved = await _db.CafeProductos.Include(x => x.OemNav).Include(x => x.MarcaNav).FirstAsync(x => x.Id == p.Id);
+        var saved = await _db.CafeProductos.Include(x => x.OemNav).Include(x => x.MarcaNav).Include(x => x.Packs).FirstAsync(x => x.Id == p.Id);
         return Ok(Map(saved));
     }
 
@@ -496,7 +500,7 @@ public class CafeProductosController : ControllerBase
         }
 
         await _db.SaveChangesAsync();
-        var saved = await _db.CafeProductos.Include(x => x.OemNav).Include(x => x.MarcaNav).FirstAsync(x => x.Id == p.Id);
+        var saved = await _db.CafeProductos.Include(x => x.OemNav).Include(x => x.MarcaNav).Include(x => x.Packs).FirstAsync(x => x.Id == p.Id);
         return Ok(Map(saved));
     }
 

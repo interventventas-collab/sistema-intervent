@@ -312,7 +312,7 @@
                                                 @foreach (var it in v.Items)
                                                 {
                                                     <tr>
-                                                        <td style="padding: 0.2rem; line-height: 1.2;">@it.ProductoNombre <span style="color: #9ca3af; font-size: 0.72rem;">@(it.Formato == "1KG" ? "1 kg" : it.Formato == "MEDIO" ? "1/2 kg" : it.Formato == "CUARTO" ? "1/4 kg" : it.Formato)</span></td>
+                                                        <td style="padding: 0.2rem; line-height: 1.2;">@it.ProductoNombre <span style="color: #9ca3af; font-size: 0.72rem;">@FormatoLabel(it.Formato)</span></td>
                                                         <td style="text-align: center; padding: 0.2rem; font-family: monospace;">@it.Cantidad</td>
                                                         <td style="text-align: right; padding: 0.2rem; font-family: monospace;">$@FormatMoney(it.Subtotal)</td>
                                                     </tr>
@@ -1023,6 +1023,10 @@
                                 else
                                 {
                                     <option value="UNIT">Suelto</option>
+                                    @foreach (var pack in AddProductoPacks)
+                                    {
+                                        <option value="@($"PACK_{pack.Cantidad}")">@pack.Nombre</option>
+                                    }
                                     @if (AddProductoTieneBulto)
                                     {
                                         <option value="BULTO">@AddProductoBultoLabel</option>
@@ -1113,7 +1117,7 @@
                                                 <input class="form-input" type="number" step="1" min="1"
                                                        style="width: 70px; text-align: right; padding: 0.25rem 0.4rem; font-size: 0.9rem; font-weight: 700;"
                                                        value="@formItem.Cantidad" @onchange="@(e => OnItemCantidadChanged(i, e.Value?.ToString()))" />
-                                                @if (ci.Formato == "BULTO")
+                                                @if (ci.Formato == "BULTO" || (ci.Formato?.StartsWith("PACK_") ?? false))
                                                 {
                                                     var unidadesReales = CantidadParaMostrar(ci.ProductoId, ci.Formato, ci.Cantidad);
                                                     <div style="font-size: 0.7rem; color: #92400e; font-weight: 600; margin-top: 0.15rem; white-space: nowrap;">= @unidadesReales u.</div>
@@ -2548,6 +2552,20 @@
             var p = productos?.FirstOrDefault(x => x.Id == addProductoId);
             var uxb = p?.UxB ?? 0;
             return $"Bulto x {uxb}";
+        }
+    }
+
+    /// <summary>Packs prearmados activos del producto seleccionado (solo OTROS).
+    /// Vacio si no aplica o si no hay packs.</summary>
+    private IReadOnlyList<CafeProductoPackDto> AddProductoPacks
+    {
+        get
+        {
+            var p = productos?.FirstOrDefault(x => x.Id == addProductoId);
+            if (p is null || p.Categoria != "OTROS" || p.Packs is null) return Array.Empty<CafeProductoPackDto>();
+            return p.Packs.Where(x => x.IsActive)
+                .OrderBy(x => x.SortOrder).ThenBy(x => x.Cantidad)
+                .ToList();
         }
     }
 
@@ -4300,42 +4318,60 @@
     private static string FormatGramos(decimal g)
         => $"{(g / 1000m).ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))} kg";
 
-    private static string FormatoLabel(string formato) => formato switch
+    /// <summary>Si el formato es "PACK_N", devuelve N. Sino null.</summary>
+    private static int? ParsePackUnidades(string? formato)
     {
-        "1KG" => "1 kg",
-        "MEDIO" => "1/2 kg",
-        "CUARTO" => "1/4 kg",
-        "UNIT" => "Unidad",
-        "BULTO" => "Bulto",
-        _ => formato
-    };
+        if (string.IsNullOrEmpty(formato) || !formato.StartsWith("PACK_")) return null;
+        return int.TryParse(formato.AsSpan("PACK_".Length), out var n) && n > 0 ? n : (int?)null;
+    }
 
-    /// <summary>Cantidad a mostrar en el ticket: si el item es BULTO, expande cantidad × UxB
-    /// (asi el empleado de deposito ve el TOTAL de unidades a armar). Sino, devuelve la cantidad
-    /// tal cual. Pedido del usuario el 15/05/2026: "el que arma el paquete no entiende que
-    /// 1 bulto = 1000 unidades".</summary>
+    private static string FormatoLabel(string formato)
+    {
+        var packN = ParsePackUnidades(formato);
+        if (packN.HasValue) return $"Pack x {packN.Value}";
+        return formato switch
+        {
+            "1KG" => "1 kg",
+            "MEDIO" => "1/2 kg",
+            "CUARTO" => "1/4 kg",
+            "UNIT" => "Unidad",
+            "BULTO" => "Bulto",
+            _ => formato
+        };
+    }
+
+    /// <summary>Cantidad a mostrar en el ticket: si el item es BULTO o PACK_N, expande cantidad
+    /// × unidades_reales para que el empleado de deposito vea el TOTAL de unidades a armar. Sino
+    /// devuelve la cantidad tal cual. Pedido del usuario el 15/05/2026.</summary>
     private int CantidadParaMostrar(int productoId, string formato, int cantidad)
     {
+        var packN = ParsePackUnidades(formato);
+        if (packN.HasValue) return cantidad * packN.Value;
         if (formato != "BULTO") return cantidad;
         var uxb = productos?.FirstOrDefault(p => p.Id == productoId)?.UxB ?? 0;
         if (uxb <= 1) return cantidad;
         return cantidad * uxb;
     }
 
-    /// <summary>Etiqueta de formato para mostrar en el ticket. Si es BULTO, agrega el "× UxB"
-    /// para que quede claro cuantas unidades trae el bulto.</summary>
+    /// <summary>Etiqueta de formato para mostrar en el ticket. BULTO/PACK_N agregan "× N"
+    /// para que quede claro cuantas unidades trae cada uno.</summary>
     private string FormatoParaMostrar(int productoId, string formato)
     {
+        var packN = ParsePackUnidades(formato);
+        if (packN.HasValue) return $"Pack × {packN.Value}";
         if (formato != "BULTO") return FormatoLabel(formato);
         var uxb = productos?.FirstOrDefault(p => p.Id == productoId)?.UxB ?? 0;
         return uxb > 1 ? $"Bulto × {uxb}" : "Bulto";
     }
 
     /// <summary>Precio unitario EFECTIVO para mostrar (subtotal / unidades_reales). Si el item es
-    /// BULTO, el precio almacenado es por bulto entero; dividimos por UxB para que la matematica
-    /// del ticket cierre a ojo (real_cant × precio_efectivo = subtotal).</summary>
+    /// BULTO o PACK_N, el precio almacenado es por bulto/pack entero; dividimos por las unidades
+    /// reales para que la matematica del ticket cierre a ojo.</summary>
     private decimal PrecioUnitarioParaMostrar(int productoId, string formato, decimal precioUnitario)
     {
+        var packN = ParsePackUnidades(formato);
+        if (packN.HasValue && packN.Value > 1)
+            return Math.Round(precioUnitario / packN.Value, 2, MidpointRounding.AwayFromZero);
         if (formato != "BULTO") return precioUnitario;
         var uxb = productos?.FirstOrDefault(p => p.Id == productoId)?.UxB ?? 0;
         if (uxb <= 1) return precioUnitario;

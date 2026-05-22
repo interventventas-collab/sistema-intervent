@@ -85,7 +85,13 @@ public record CafeProductoDto(
     bool UsaPreciosFuturos = false,
     // 2026-05-22: Clone Contabilium
     bool IsVisibleEnVentas = true,
-    string? ImportSource = null);
+    string? ImportSource = null,
+    // 2026-05-22: Packs prearmados (Pack x 100, etc.). Solo OTROS.
+    List<CafeProductoPackDto>? Packs = null);
+
+public record CafeProductoPackDto(
+    int Id, int Cantidad, string Nombre, decimal? PrecioOverride,
+    bool IsActive, int SortOrder);
 
 public class CreateCafeProductoRequest
 {

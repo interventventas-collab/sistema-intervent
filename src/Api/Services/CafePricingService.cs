@@ -27,9 +27,18 @@ public static class CafePricingService
     public const string FORMATO_CUARTO = "CUARTO";
     public const string FORMATO_UNIT = "UNIT";
     public const string FORMATO_BULTO = "BULTO";  // SOLO OTROS: vende 1 bulto = UxB unidades, precio = PrecioBulto/Otro
+    public const string FORMATO_PACK_PREFIX = "PACK_";  // SOLO OTROS: "PACK_100" = pack prearmado de 100 unidades
 
     public const string TIPO_BAR = "BAR";
     public const string TIPO_OTRO = "OTRO";
+
+    /// <summary>Si el formato es "PACK_N", devuelve N. Sino, null.</summary>
+    public static int? ParsePackUnidades(string? formato)
+    {
+        if (string.IsNullOrEmpty(formato) || !formato.StartsWith(FORMATO_PACK_PREFIX)) return null;
+        var rest = formato.AsSpan(FORMATO_PACK_PREFIX.Length);
+        return int.TryParse(rest, out var n) && n > 0 ? n : null;
+    }
 
     /// <summary>Gramos por unidad segun el formato. Solo aplica a CAFE.</summary>
     public static decimal GramosPorUnidad(string formato) => formato switch
@@ -41,15 +50,20 @@ public static class CafePricingService
     };
 
     /// <summary>Etiqueta legible del formato (para PDFs y UI).</summary>
-    public static string FormatoLabel(string formato) => formato switch
+    public static string FormatoLabel(string formato)
     {
-        FORMATO_1KG => "1 kg",
-        FORMATO_MEDIO => "1/2 kg",
-        FORMATO_CUARTO => "1/4 kg",
-        FORMATO_UNIT => "u.",
-        FORMATO_BULTO => "bulto",
-        _ => formato
-    };
+        var packN = ParsePackUnidades(formato);
+        if (packN.HasValue) return $"pack x {packN.Value}";
+        return formato switch
+        {
+            FORMATO_1KG => "1 kg",
+            FORMATO_MEDIO => "1/2 kg",
+            FORMATO_CUARTO => "1/4 kg",
+            FORMATO_UNIT => "u.",
+            FORMATO_BULTO => "bulto",
+            _ => formato
+        };
+    }
 
     /// <summary>
     /// Desglose de precio: lista (sin descuento), descuento %, precio final.
@@ -105,8 +119,28 @@ public static class CafePricingService
 
         // Elegir el precio directo segun el tipo de cliente.
         // Si el formato es BULTO (solo OTROS), usamos PrecioBulto* como precio del bulto.
+        // Si el formato es PACK_N, usamos pack.PrecioOverride si esta cargado, sino N x precio_unitario.
         decimal? precioDirecto;
-        if (formato == FORMATO_BULTO)
+        var packN = ParsePackUnidades(formato);
+        if (packN.HasValue)
+        {
+            var pack = producto.Packs?.FirstOrDefault(p => p.IsActive && p.Cantidad == packN.Value);
+            if (pack?.PrecioOverride.HasValue == true)
+            {
+                precioDirecto = pack.PrecioOverride.Value;
+            }
+            else
+            {
+                // Fallback: N x precio_unitario del cliente.
+                decimal? unitario;
+                if (tipoCliente == TIPO_BAR)
+                    unitario = precioBarEf ?? precioOtroEf;
+                else
+                    unitario = precioOtroEf ?? precioBarEf;
+                precioDirecto = unitario.HasValue ? unitario.Value * packN.Value : (decimal?)null;
+            }
+        }
+        else if (formato == FORMATO_BULTO)
         {
             if (tipoCliente == TIPO_BAR)
                 precioDirecto = precioBultoEf ?? precioBultoOtroEf;
@@ -206,6 +240,12 @@ public static class CafePricingService
         if (formato == FORMATO_BULTO && producto.UxB.HasValue && producto.UxB.Value > 0)
         {
             return Math.Round(producto.Costo * producto.UxB.Value, 2, MidpointRounding.AwayFromZero);
+        }
+        // PACK_N: 1 "unidad cargada" = N unidades reales, costo_unitario × N.
+        var packN = ParsePackUnidades(formato);
+        if (packN.HasValue)
+        {
+            return Math.Round(producto.Costo * packN.Value, 2, MidpointRounding.AwayFromZero);
         }
         return producto.Costo;
     }

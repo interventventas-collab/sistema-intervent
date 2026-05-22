@@ -111,6 +111,8 @@ public class CafeProductoDto
     // 2026-05-22: Clone Contabilium
     public bool IsVisibleEnVentas { get; set; } = true;
     public string? ImportSource { get; set; }
+    // 2026-05-22: Packs prearmados (Pack x 100, etc.). Solo OTROS.
+    public List<CafeProductoPackDto> Packs { get; set; } = new();
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 
@@ -126,6 +128,16 @@ public class CafeProductoDto
     public decimal? OemPvpSinIva => OemPvpConIva.HasValue && OemIvaPct.HasValue && OemIvaPct.Value > 0
         ? Math.Round(OemPvpConIva.Value / (1 + OemIvaPct.Value / 100m), 2)
         : OemPvpConIva;
+}
+
+public class CafeProductoPackDto
+{
+    public int Id { get; set; }
+    public int Cantidad { get; set; }
+    public string Nombre { get; set; } = "";
+    public decimal? PrecioOverride { get; set; }
+    public bool IsActive { get; set; } = true;
+    public int SortOrder { get; set; }
 }
 
 public class CreateCafeProductoRequest

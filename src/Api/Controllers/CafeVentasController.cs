@@ -26,6 +26,24 @@ public class CafeVentasController : ControllerBase
     private readonly IServiceScopeFactory _scopeFactory;
     private static readonly string[] FormatosValidos = { "1KG", "MEDIO", "CUARTO", "UNIT", "BULTO" };
 
+    /// <summary>Valida formato: los fijos de FormatosValidos o PACK_N (N entero positivo).</summary>
+    private static bool IsFormatoValido(string? formato)
+    {
+        if (string.IsNullOrEmpty(formato)) return false;
+        if (FormatosValidos.Contains(formato)) return true;
+        return CafePricingService.ParsePackUnidades(formato).HasValue;
+    }
+
+    /// <summary>Unidades reales que descuentan stock para una linea OTROS:
+    /// PACK_N → cantidad × N, BULTO → cantidad × UxB, sino cantidad.</summary>
+    private static int UnidadesRealesStock(CafeProducto prod, string formato, int cantidad)
+    {
+        var packN = CafePricingService.ParsePackUnidades(formato);
+        if (packN.HasValue) return cantidad * packN.Value;
+        if (formato == "BULTO") return cantidad * (prod.UxB ?? 1);
+        return cantidad;
+    }
+
     public CafeVentasController(
         AppDbContext db,
         CafeCotizacionPdfService pdfService,
@@ -979,7 +997,7 @@ public class CafeVentasController : ControllerBase
                 prod.StockGramos = Math.Max(0m, prod.StockGramos - it.GramosNecesarios);
             else
             {
-                var unidadesADescontar = it.Formato == "BULTO" ? it.Cantidad * (prod.UxB ?? 1) : it.Cantidad;
+                var unidadesADescontar = UnidadesRealesStock(prod, it.Formato, it.Cantidad);
                 prod.StockUnidades = Math.Max(0, prod.StockUnidades - unidadesADescontar);
             }
             prod.UpdatedAt = DateTime.UtcNow;
@@ -1357,8 +1375,8 @@ public class CafeVentasController : ControllerBase
                 prod.StockGramos += it.GramosDescontados;
             else
             {
-                // Si el formato fue BULTO, devolver cantidad × UxB unidades.
-                var unidadesADevolver = it.Formato == "BULTO" ? it.Cantidad * (prod.UxB ?? 1) : it.Cantidad;
+                // BULTO / PACK_N → expandir a unidades reales (UxB o N).
+                var unidadesADevolver = UnidadesRealesStock(prod, it.Formato, it.Cantidad);
                 prod.StockUnidades += unidadesADevolver;
             }
             prod.UpdatedAt = DateTime.UtcNow;
@@ -1547,7 +1565,7 @@ public class CafeVentasController : ControllerBase
                     if (prod.Categoria == "CAFE") prod.StockGramos += item.GramosDescontados;
                     else
                     {
-                        var unidadesADevolver = item.Formato == "BULTO" ? item.Cantidad * (prod.UxB ?? 1) : item.Cantidad;
+                        var unidadesADevolver = UnidadesRealesStock(prod, item.Formato, item.Cantidad);
                         prod.StockUnidades += unidadesADevolver;
                     }
                     prod.UpdatedAt = DateTime.UtcNow;
@@ -1623,7 +1641,7 @@ public class CafeVentasController : ControllerBase
                         prod.StockGramos = Math.Max(0m, prod.StockGramos - ci.GramosNecesarios);
                     else
                     {
-                        var unidadesADescontar = ci.Formato == "BULTO" ? ci.Cantidad * (prod.UxB ?? 1) : ci.Cantidad;
+                        var unidadesADescontar = UnidadesRealesStock(prod, ci.Formato, ci.Cantidad);
                         prod.StockUnidades = Math.Max(0, prod.StockUnidades - unidadesADescontar);
                     }
                     prod.UpdatedAt = DateTime.UtcNow;
@@ -1691,7 +1709,7 @@ public class CafeVentasController : ControllerBase
                 if (prod.Categoria == "CAFE") prod.StockGramos += it.GramosDescontados;
                 else
                 {
-                    var unidadesADevolver = it.Formato == "BULTO" ? it.Cantidad * (prod.UxB ?? 1) : it.Cantidad;
+                    var unidadesADevolver = UnidadesRealesStock(prod, it.Formato, it.Cantidad);
                     prod.StockUnidades += unidadesADevolver;
                 }
                 prod.StockChangedAt = DateTime.UtcNow;
@@ -1772,7 +1790,7 @@ public class CafeVentasController : ControllerBase
                 continue;
             }
 
-            if (!FormatosValidos.Contains(it.Formato))
+            if (!IsFormatoValido(it.Formato))
             {
                 cotizadoItems.Add(new CafeCotizadoItemDto(
                     it.ProductoId, "?", "?", it.Formato, it.Cantidad, 0m, 0m, 0m, 0m, 0m, 0,
@@ -1781,7 +1799,7 @@ public class CafeVentasController : ControllerBase
                 continue;
             }
 
-            var prod = await _db.CafeProductos.FindAsync(it.ProductoId);
+            var prod = await _db.CafeProductos.Include(p => p.Packs).FirstOrDefaultAsync(p => p.Id == it.ProductoId);
             if (prod is null)
             {
                 cotizadoItems.Add(new CafeCotizadoItemDto(
@@ -1791,10 +1809,12 @@ public class CafeVentasController : ControllerBase
                 continue;
             }
 
-            // Validar combinación: formato unitario / bulto solo para OTROS, formatos kg solo para CAFE.
+            // Validar combinación: formato unitario / bulto / pack solo para OTROS, formatos kg solo para CAFE.
             var esCafe = prod.Categoria == "CAFE";
             var esFormatoCafe = it.Formato is "1KG" or "MEDIO" or "CUARTO";
             var esFormatoBulto = it.Formato == "BULTO";
+            var packUnidades = CafePricingService.ParsePackUnidades(it.Formato);
+            var esFormatoPack = packUnidades.HasValue;
             if (esCafe != esFormatoCafe)
             {
                 cotizadoItems.Add(new CafeCotizadoItemDto(
@@ -1813,6 +1833,20 @@ public class CafeVentasController : ControllerBase
                     NormMolienda(it.Molienda), it.EsDoyPack, descPctManual));
                 todoOk = false;
                 continue;
+            }
+            // PACK_N requiere que el producto tenga un Cafe_ProductoPack activo con Cantidad = N.
+            if (esFormatoPack)
+            {
+                var packRow = prod.Packs?.FirstOrDefault(p => p.IsActive && p.Cantidad == packUnidades!.Value);
+                if (packRow is null)
+                {
+                    cotizadoItems.Add(new CafeCotizadoItemDto(
+                        prod.Id, prod.Nombre, prod.Categoria, it.Formato, it.Cantidad, 0m, 0m, 0m, 0m, prod.StockGramos, prod.StockUnidades,
+                        false, $"Este producto no tiene un pack x {packUnidades.Value} cargado",
+                        NormMolienda(it.Molienda), it.EsDoyPack, descPctManual));
+                    todoOk = false;
+                    continue;
+                }
             }
 
             // Descuento de linea: solo el manual del request. Sin matriz automatica.
@@ -1833,15 +1867,18 @@ public class CafeVentasController : ControllerBase
             // y cantidad >= UxB). Si no aplica, subtotal = cantidad × precioFinal.
             var subtotalLinea = CafePricingService.CalcularSubtotalConBulto(prod, tipo, precioFinal, it.Cantidad);
             var gramosNecesarios = esCafe ? CafePricingService.GramosPorUnidad(it.Formato) * it.Cantidad : 0m;
-            // Si es BULTO, una "unidad" cargada = UxB unidades reales de stock. Sino, 1 a 1.
-            var unidadesNecesarias = esFormatoBulto ? it.Cantidad * (prod.UxB ?? 0) : it.Cantidad;
+            // BULTO → cantidad × UxB, PACK_N → cantidad × N, sino 1 a 1.
+            var unidadesNecesarias = UnidadesRealesStock(prod, it.Formato, it.Cantidad);
             var stockOk = esCafe ? gramosNecesarios <= prod.StockGramos + 0.001m : unidadesNecesarias <= prod.StockUnidades;
             string? aviso = null;
             if (!stockOk)
             {
+                string detalleCantidad = esFormatoBulto ? $"{it.Cantidad} bulto×{prod.UxB}"
+                    : esFormatoPack ? $"{it.Cantidad} pack×{packUnidades}"
+                    : $"{it.Cantidad}";
                 aviso = esCafe
                     ? $"Stock insuficiente. Disponible: {prod.StockGramos:0} g, necesitás {gramosNecesarios:0} g."
-                    : $"Stock insuficiente. Disponible: {prod.StockUnidades} u, necesitás {unidadesNecesarias} u ({(esFormatoBulto ? $"{it.Cantidad} bulto×{prod.UxB}" : $"{it.Cantidad}")}).";
+                    : $"Stock insuficiente. Disponible: {prod.StockUnidades} u, necesitás {unidadesNecesarias} u ({detalleCantidad}).";
                 todoOk = false;
             }
 
