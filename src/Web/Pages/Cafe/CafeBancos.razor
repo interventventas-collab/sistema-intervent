@@ -1,0 +1,229 @@
+@page "/cafe/configuracion/bancos"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div class="card">
+    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+        <div>
+            <h3 style="margin:0;">🏦 Catálogo de bancos (@(bancos?.Count(b => b.IsActive) ?? 0))</h3>
+            <p style="font-size:0.78rem; color:#6b7280; margin:0.25rem 0 0;">
+                Lista maestra para evitar duplicados al cargar cheques. Cada cheque enlaza al banco del catálogo.
+            </p>
+        </div>
+        <div style="display:flex; gap:0.4rem; align-items:center;">
+            <label style="font-size:0.78rem; color:#6b7280; display:flex; align-items:center; gap:0.3rem;">
+                <input type="checkbox" @bind="mostrarInactivos" @bind:after="Load" /> Ver inactivos
+            </label>
+            <button class="btn btn-success" style="font-size:0.8rem;" @onclick="AbrirNuevo">➕ Nuevo banco</button>
+        </div>
+    </div>
+    <div class="card-body" style="padding:0;">
+        @if (loading)
+        {
+            <p class="text-muted" style="padding:1rem;">Cargando...</p>
+        }
+        else if (bancos is null || bancos.Count == 0)
+        {
+            <p class="text-muted" style="padding:1rem;">Sin bancos cargados.</p>
+        }
+        else
+        {
+            <table class="table table-compact">
+                <thead>
+                    <tr>
+                        <th style="width:50px; text-align:center;">Orden</th>
+                        <th>Nombre canónico</th>
+                        <th>Alias (display)</th>
+                        <th>CUIT</th>
+                        <th style="text-align:right;">Usos cheques</th>
+                        <th style="text-align:right;">Usos e-cheqs</th>
+                        <th>Estado</th>
+                        <th style="width:120px;">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var b in bancos.OrderBy(x => x.SortOrder).ThenBy(x => x.Display))
+                    {
+                        <tr style="@(b.IsActive ? "" : "opacity:0.55;")">
+                            <td style="text-align:center; font-family:monospace; color:#6b7280;">@b.SortOrder</td>
+                            <td><b>@b.Nombre</b></td>
+                            <td>@(b.Alias ?? "—")</td>
+                            <td>@(b.Cuit ?? "—")</td>
+                            <td style="text-align:right;">@b.UsoEnCheques</td>
+                            <td style="text-align:right;">@b.UsoEnEcheqs</td>
+                            <td>
+                                @if (b.IsActive) { <span class="badge badge-success">Activo</span> }
+                                else { <span class="badge badge-secondary">Inactivo</span> }
+                            </td>
+                            <td>
+                                <button class="btn-icon" title="Editar" @onclick="() => AbrirEditar(b)">✏</button>
+                                @if (b.IsActive)
+                                {
+                                    <button class="btn-icon" title="Desactivar" @onclick="() => Desactivar(b)">⏸</button>
+                                }
+                                else
+                                {
+                                    <button class="btn-icon" title="Activar" @onclick="() => Activar(b)">▶</button>
+                                }
+                                @if (b.UsoEnCheques == 0 && b.UsoEnEcheqs == 0)
+                                {
+                                    <button class="btn-icon" title="Eliminar (sin uso)" @onclick="() => Eliminar(b)">🗑</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@if (showForm)
+{
+    <div class="modal-overlay">
+        <div class="modal-card" style="max-width: 540px;">
+            <div class="modal-header">
+                <h3 style="margin:0;">@(editingId.HasValue ? "✏ Editar banco" : "➕ Nuevo banco")</h3>
+                <button class="btn-close" @onclick="CerrarForm">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Nombre canónico *</label>
+                    <input class="form-input" @bind="fNombre" placeholder="Ej: Banco Galicia y Buenos Aires" />
+                    <p style="font-size:0.7rem; color:#6b7280; margin:0.2rem 0 0;">El "nombre oficial" del banco. No se repite.</p>
+                </div>
+                <div class="form-row">
+                    <div class="form-group" style="flex:1;">
+                        <label class="form-label">Alias / Display</label>
+                        <input class="form-input" @bind="fAlias" placeholder="Ej: Galicia" />
+                        <p style="font-size:0.7rem; color:#6b7280; margin:0.2rem 0 0;">Cómo se ve en dropdowns y tablas.</p>
+                    </div>
+                    <div class="form-group" style="flex:1;">
+                        <label class="form-label">CUIT (opcional)</label>
+                        <input class="form-input" @bind="fCuit" placeholder="30-12345678-9" />
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Orden de aparición</label>
+                    <input class="form-input" type="number" step="1" @bind="fSortOrder" />
+                    <p style="font-size:0.7rem; color:#6b7280; margin:0.2rem 0 0;">Menor = aparece más arriba en los selects.</p>
+                </div>
+                @if (!string.IsNullOrEmpty(formError))
+                {
+                    <div style="background:#fee2e2; color:#991b1b; padding:0.5rem 0.7rem; border-radius:4px; font-size:0.82rem; margin-top:0.5rem;">@formError</div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CerrarForm" disabled="@saving">Cancelar</button>
+                <button class="btn btn-primary" @onclick="Guardar" disabled="@saving">@(saving ? "Guardando..." : "Guardar")</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<CafeBancoDto>? bancos;
+    private bool loading = true;
+    private bool mostrarInactivos = false;
+
+    // Modal form
+    private bool showForm;
+    private bool saving;
+    private int? editingId;
+    private string? formError;
+    private string fNombre = "";
+    private string fAlias = "";
+    private string fCuit = "";
+    private int fSortOrder = 999;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        loading = true;
+        try { bancos = await Api.GetBancosAsync(mostrarInactivos) ?? new(); }
+        catch { ToastService.Error("Error al cargar"); bancos = new(); }
+        loading = false;
+    }
+
+    private void AbrirNuevo()
+    {
+        editingId = null;
+        fNombre = ""; fAlias = ""; fCuit = "";
+        fSortOrder = (bancos?.Max(b => (int?)b.SortOrder) ?? 0) + 1;
+        formError = null;
+        showForm = true;
+    }
+
+    private void AbrirEditar(CafeBancoDto b)
+    {
+        editingId = b.Id;
+        fNombre = b.Nombre;
+        fAlias = b.Alias ?? "";
+        fCuit = b.Cuit ?? "";
+        fSortOrder = b.SortOrder;
+        formError = null;
+        showForm = true;
+    }
+
+    private void CerrarForm() { if (!saving) showForm = false; }
+
+    private async Task Guardar()
+    {
+        formError = null;
+        if (string.IsNullOrWhiteSpace(fNombre)) { formError = "Nombre obligatorio"; return; }
+        saving = true;
+        try
+        {
+            if (editingId.HasValue)
+            {
+                var (b, err) = await Api.ActualizarBancoAsync(editingId.Value, new UpdateBancoRequest
+                {
+                    Nombre = fNombre.Trim(),
+                    Alias = string.IsNullOrWhiteSpace(fAlias) ? null : fAlias.Trim(),
+                    Cuit = string.IsNullOrWhiteSpace(fCuit) ? null : fCuit.Trim(),
+                    SortOrder = fSortOrder
+                });
+                if (b is null) { formError = err ?? "No se pudo guardar"; return; }
+                ToastService.Success("Banco actualizado");
+            }
+            else
+            {
+                var (b, err) = await Api.CrearBancoAsync(new CreateBancoRequest
+                {
+                    Nombre = fNombre.Trim(),
+                    Alias = string.IsNullOrWhiteSpace(fAlias) ? null : fAlias.Trim(),
+                    Cuit = string.IsNullOrWhiteSpace(fCuit) ? null : fCuit.Trim(),
+                    SortOrder = fSortOrder
+                });
+                if (b is null) { formError = err ?? "No se pudo guardar"; return; }
+                ToastService.Success($"Banco '{b.Display}' agregado");
+            }
+            showForm = false;
+            await Load();
+        }
+        finally { saving = false; }
+    }
+
+    private async Task Desactivar(CafeBancoDto b)
+    {
+        var (_, err) = await Api.ActualizarBancoAsync(b.Id, new UpdateBancoRequest { IsActive = false });
+        if (err is null) { ToastService.Success($"{b.Display} desactivado"); await Load(); }
+        else ToastService.Error(err);
+    }
+
+    private async Task Activar(CafeBancoDto b)
+    {
+        var (_, err) = await Api.ActualizarBancoAsync(b.Id, new UpdateBancoRequest { IsActive = true });
+        if (err is null) { ToastService.Success($"{b.Display} activado"); await Load(); }
+        else ToastService.Error(err);
+    }
+
+    private async Task Eliminar(CafeBancoDto b)
+    {
+        var (ok, err) = await Api.EliminarBancoAsync(b.Id);
+        if (ok) { ToastService.Success($"{b.Display} eliminado"); await Load(); }
+        else ToastService.Error(err ?? "Error");
+    }
+}

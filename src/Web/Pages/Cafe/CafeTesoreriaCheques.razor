@@ -89,7 +89,21 @@
                 <div class="form-row">
                     <div class="form-group" style="flex:2;">
                         <label class="form-label">Banco *</label>
-                        <input class="form-input" @bind="fBanco" placeholder="Ej: Galicia, Macro, Santander" />
+                        <select class="form-input" @bind="fBancoId">
+                            <option value="0">— Elegí un banco —</option>
+                            @if (bancos is not null)
+                            {
+                                @foreach (var b in bancos.OrderBy(x => x.SortOrder).ThenBy(x => x.Display))
+                                {
+                                    <option value="@b.Id">@b.Display</option>
+                                }
+                            }
+                        </select>
+                        <p style="font-size:0.7rem; color:#6b7280; margin:0.2rem 0 0;">
+                            ¿Falta el banco?
+                            <a href="/cafe/configuracion/bancos" target="_blank" style="color:#2563eb;">Agregalo al catálogo</a>
+                            y volvé.
+                        </p>
                     </div>
                     <div class="form-group" style="flex:1.2;">
                         <label class="form-label">Número *</label>
@@ -138,17 +152,21 @@
     private bool showNuevo;
     private bool savingNuevo;
     private string? formError;
-    private string fBanco = "";
+    private int fBancoId;
     private string fNumero = "";
     private string fEmisor = "";
     private decimal fImporte;
     private DateTime? fVenc;
     private string fObs = "";
+    private List<CafeBancoDto>? bancos;
 
-    private void AbrirNuevo()
+    private async Task AbrirNuevo()
     {
-        fBanco = ""; fNumero = ""; fEmisor = ""; fImporte = 0; fVenc = null; fObs = "";
+        fBancoId = 0; fNumero = ""; fEmisor = ""; fImporte = 0; fVenc = null; fObs = "";
         formError = null;
+        // Cargar catalogo de bancos en cada apertura (puede haber cambiado en otra pestaña)
+        try { bancos = await Api.GetBancosAsync() ?? new(); }
+        catch { bancos = new(); }
         showNuevo = true;
     }
 
@@ -161,7 +179,7 @@
     private async Task GuardarNuevo()
     {
         formError = null;
-        if (string.IsNullOrWhiteSpace(fBanco)) { formError = "Banco obligatorio"; return; }
+        if (fBancoId <= 0) { formError = "Elegí un banco del catálogo"; return; }
         if (string.IsNullOrWhiteSpace(fNumero)) { formError = "Número obligatorio"; return; }
         if (fImporte <= 0) { formError = "Importe debe ser mayor a 0"; return; }
         savingNuevo = true;
@@ -169,12 +187,12 @@
         {
             var (cheque, err) = await Api.CrearChequeAsync(new CreateChequeRequest
             {
-                Banco = fBanco.Trim(),
+                BancoId = fBancoId,
                 Numero = fNumero.Trim(),
                 Emisor = string.IsNullOrWhiteSpace(fEmisor) ? null : fEmisor.Trim(),
                 Importe = fImporte,
                 FechaVencimiento = fVenc,
-                FechaCobro = fVenc, // mismo valor por simplicidad — UI no diferencia
+                FechaCobro = fVenc,
                 Observaciones = string.IsNullOrWhiteSpace(fObs) ? null : fObs.Trim()
             });
             if (cheque is null) { formError = err ?? "No se pudo guardar"; return; }

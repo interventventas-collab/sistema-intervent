@@ -2874,6 +2874,57 @@ public class ApiClient
         catch (Exception ex) { return (false, ex.Message); }
     }
 
+    // ===== Tesoreria Cafe: Bancos (catalogo) =====
+    public async Task<List<CafeBancoDto>?> GetBancosAsync(bool incluirInactivos = false)
+        => await GetAsync<List<CafeBancoDto>>($"/api/cafe/bancos?incluirInactivos={(incluirInactivos ? "true" : "false")}");
+
+    public async Task<(CafeBancoDto? banco, string? error)> CrearBancoAsync(CreateBancoRequest req)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/api/cafe/bancos", req);
+            if (resp.IsSuccessStatusCode)
+                return (await resp.Content.ReadFromJsonAsync<CafeBancoDto>(), null);
+            string err = "Error";
+            try { using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                  if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err; }
+            catch { }
+            return (null, err);
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
+    public async Task<(CafeBancoDto? banco, string? error)> ActualizarBancoAsync(int id, UpdateBancoRequest req)
+    {
+        try
+        {
+            var resp = await _http.PutAsJsonAsync($"/api/cafe/bancos/{id}", req);
+            if (resp.IsSuccessStatusCode)
+                return (await resp.Content.ReadFromJsonAsync<CafeBancoDto>(), null);
+            string err = "Error";
+            try { using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                  if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err; }
+            catch { }
+            return (null, err);
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
+    public async Task<(bool ok, string? error)> EliminarBancoAsync(int id)
+    {
+        try
+        {
+            var resp = await _http.DeleteAsync($"/api/cafe/bancos/{id}");
+            if (resp.IsSuccessStatusCode) return (true, null);
+            string err = "Error";
+            try { using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                  if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err; }
+            catch { }
+            return (false, err);
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
     // ===== Tesoreria Cafe: Cheques =====
     public async Task<List<CafeChequeDto>?> GetCafeChequesAsync(string? estado = null)
         => await GetAsync<List<CafeChequeDto>>("/api/cafe/cheques" + (string.IsNullOrWhiteSpace(estado) ? "" : $"?estado={Uri.EscapeDataString(estado)}"));

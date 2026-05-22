@@ -15,6 +15,14 @@ public class CafeCheque
     [Required, MaxLength(150)]
     public string Banco { get; set; } = string.Empty;
 
+    /// <summary>FK opcional al catalogo Cafe_Bancos. Cuando esta cargado, el campo Banco
+    /// queda como snapshot del nombre al momento de la creacion (compat con cheques viejos).
+    /// La UI nueva siempre setea BancoId; las queries que muestran el banco prefieren
+    /// BancoNav?.Alias ?? BancoNav?.Nombre ?? Banco.</summary>
+    public int? BancoId { get; set; }
+    [ForeignKey(nameof(BancoId))]
+    public CafeBanco? BancoNav { get; set; }
+
     [MaxLength(200)]
     public string? Emisor { get; set; }
 

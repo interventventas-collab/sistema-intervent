@@ -42,6 +42,12 @@ public class CafeChequeBanco
     [MaxLength(200)]
     public string? BancoEmisor { get; set; }
 
+    /// <summary>FK opcional al catalogo Cafe_Bancos. BancoEmisor queda como nombre original
+    /// del extracto bancario; BancoId apunta al banco normalizado.</summary>
+    public int? BancoId { get; set; }
+    [ForeignKey(nameof(BancoId))]
+    public CafeBanco? BancoNav { get; set; }
+
     [Column(TypeName = "date")]
     public DateTime? FechaEmision { get; set; }
 

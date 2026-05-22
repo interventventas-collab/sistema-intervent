@@ -35,13 +35,47 @@ public class CafeChequeDto
 public class CreateChequeRequest
 {
     public string Numero { get; set; } = "";
-    public string Banco { get; set; } = "";
+    /// <summary>FK al catalogo Cafe_Bancos (forma nueva). Si va vacio se usa Banco como fallback.</summary>
+    public int? BancoId { get; set; }
+    public string? Banco { get; set; }
     public string? Emisor { get; set; }
     public decimal Importe { get; set; }
     public DateTime? FechaCobro { get; set; }
     public DateTime? FechaVencimiento { get; set; }
     public int? ClienteOrigenId { get; set; }
     public string? Observaciones { get; set; }
+}
+
+// ========== Bancos (catalogo maestro) ==========
+public class CafeBancoDto
+{
+    public int Id { get; set; }
+    public string Nombre { get; set; } = "";
+    public string? Alias { get; set; }
+    public string? Cuit { get; set; }
+    public bool IsActive { get; set; }
+    public int SortOrder { get; set; }
+    public int UsoEnCheques { get; set; }
+    public int UsoEnEcheqs { get; set; }
+    /// <summary>Lo que se muestra en dropdowns y tablas: Alias ?? Nombre.</summary>
+    public string Display => string.IsNullOrWhiteSpace(Alias) ? Nombre : Alias!;
+}
+
+public class CreateBancoRequest
+{
+    public string Nombre { get; set; } = "";
+    public string? Alias { get; set; }
+    public string? Cuit { get; set; }
+    public int? SortOrder { get; set; }
+}
+
+public class UpdateBancoRequest
+{
+    public string? Nombre { get; set; }
+    public string? Alias { get; set; }
+    public string? Cuit { get; set; }
+    public bool? IsActive { get; set; }
+    public int? SortOrder { get; set; }
 }
 
 // ========== Cobranzas ==========

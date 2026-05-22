@@ -31,30 +31,51 @@ public class CafeChequesController : ControllerBase
         DateTime CreatedAt);
 
     public record CreateChequeRequest(
-        string Numero, string Banco, string? Emisor,
+        string Numero, int? BancoId, string? Banco, string? Emisor,
         decimal Importe, DateTime? FechaCobro, DateTime? FechaVencimiento,
         int? ClienteOrigenId, string? Observaciones);
 
     /// <summary>Alta manual de cheque (papel) que entra a cartera. Cliente origen es opcional —
-    /// si se carga sin cliente, despues se asigna al usarlo en una cobranza.</summary>
+    /// si se carga sin cliente, despues se asigna al usarlo en una cobranza.
+    /// BancoId es la forma nueva (apunta al catalogo Cafe_Bancos); Banco string queda
+    /// como fallback para compatibilidad.</summary>
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateChequeRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.Numero)) return BadRequest(new { error = "Número obligatorio" });
-        if (string.IsNullOrWhiteSpace(req.Banco)) return BadRequest(new { error = "Banco obligatorio" });
+        if (!req.BancoId.HasValue && string.IsNullOrWhiteSpace(req.Banco))
+            return BadRequest(new { error = "Banco obligatorio" });
         if (req.Importe <= 0) return BadRequest(new { error = "Importe debe ser mayor a 0" });
-        // Anti-duplicado suave: si ya existe el mismo banco + numero + importe en cartera,
-        // avisar al operador. No es bloqueante (puede haber cheques con mismo numero en bancos distintos).
-        var dup = await _db.CafeCheques.FirstOrDefaultAsync(c =>
-            c.Numero == req.Numero.Trim() && c.Banco == req.Banco.Trim()
-            && c.Importe == req.Importe && c.Estado != "RECHAZADO");
+
+        // Resolver banco del catalogo
+        CafeBanco? banco = null;
+        string bancoTextoFinal;
+        if (req.BancoId.HasValue)
+        {
+            banco = await _db.CafeBancos.FindAsync(req.BancoId.Value);
+            if (banco is null) return BadRequest(new { error = "Banco del catálogo no encontrado" });
+            bancoTextoFinal = banco.Alias ?? banco.Nombre;
+        }
+        else
+        {
+            bancoTextoFinal = req.Banco!.Trim();
+        }
+
+        // Anti-duplicado: mismo banco (preferentemente BancoId, sino texto) + numero + importe en cartera
+        var dupQuery = _db.CafeCheques.Where(c =>
+            c.Numero == req.Numero.Trim() && c.Importe == req.Importe && c.Estado != "RECHAZADO");
+        dupQuery = banco is not null
+            ? dupQuery.Where(c => c.BancoId == banco.Id || c.Banco == bancoTextoFinal)
+            : dupQuery.Where(c => c.Banco == bancoTextoFinal);
+        var dup = await dupQuery.FirstOrDefaultAsync();
         if (dup is not null)
             return Conflict(new { error = $"Ya existe el cheque {dup.Banco} N° {dup.Numero} por ${dup.Importe} (estado: {dup.Estado})", existingId = dup.Id });
 
         var ch = new CafeCheque
         {
             Numero = req.Numero.Trim(),
-            Banco = req.Banco.Trim(),
+            Banco = bancoTextoFinal,
+            BancoId = banco?.Id,
             Emisor = string.IsNullOrWhiteSpace(req.Emisor) ? null : req.Emisor.Trim(),
             Importe = req.Importe,
             FechaCobro = req.FechaCobro,

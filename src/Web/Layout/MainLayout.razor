@@ -141,7 +141,7 @@
                 @if (HasPerm("cafe-tesoreria"))
                 {
                     <NavGroup Label="💵 Tesorería" Icon="@SvgIcons.Database"
-                              HasActiveChild="@(IsActive("/cafe/tesoreria/cajas") || IsActive("/cafe/tesoreria/pagos") || IsActive("/cafe/tesoreria/cheques") || IsActive("/cafe/tesoreria/cheques-banco"))">
+                              HasActiveChild="@(IsActive("/cafe/tesoreria/cajas") || IsActive("/cafe/tesoreria/pagos") || IsActive("/cafe/tesoreria/cheques") || IsActive("/cafe/tesoreria/cheques-banco") || IsActive("/cafe/configuracion/bancos"))">
                         <NavItem Href="/cafe/tesoreria/cajas" Label="💰 Cajas" Icon="@SvgIcons.Database"
                                  IsActive="@IsActive("/cafe/tesoreria/cajas")" OnClick="@(() => NavigateTo("/cafe/tesoreria/cajas"))" />
                         <NavItem Href="/cafe/tesoreria/pagos" Label="📤 Pagos" Icon="@SvgIcons.ShoppingBag"
@@ -152,6 +152,8 @@
                                  IsActive="@IsActive("/cafe/tesoreria/cheques-banco")" OnClick="@(() => NavigateTo("/cafe/tesoreria/cheques-banco"))" />
                         <NavItem Href="/cafe/tesoreria/extracto-banco" Label="🏦 Extracto banco" Icon="@SvgIcons.Database"
                                  IsActive="@IsActive("/cafe/tesoreria/extracto-banco")" OnClick="@(() => NavigateTo("/cafe/tesoreria/extracto-banco"))" />
+                        <NavItem Href="/cafe/configuracion/bancos" Label="🏛 Catálogo de bancos" Icon="@SvgIcons.Settings"
+                                 IsActive="@IsActive("/cafe/configuracion/bancos")" OnClick="@(() => NavigateTo("/cafe/configuracion/bancos"))" />
                         <NavItem Href="/cafe/cobranzas-pendientes" Label="💰 Cobranzas a aprobar" Icon="@SvgIcons.Tag"
                                  IsActive="@IsActive("/cafe/cobranzas-pendientes")" OnClick="@(() => NavigateTo("/cafe/cobranzas-pendientes"))" />
                         <NavItem Href="/cafe/arqueo-repartidor" Label="🧾 Arqueo repartidor" Icon="@SvgIcons.Database"
