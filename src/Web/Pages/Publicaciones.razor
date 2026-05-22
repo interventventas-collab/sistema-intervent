@@ -86,20 +86,20 @@
                                 <i class="fa-solid fa-link"></i> Sin producto vinculado (legacy)
                             </button>
                             <div style="border-top: 1px solid #e5e7eb; margin: 0.25rem 0;"></div>
-                            <button class="more-filters-item @(filterLinkeadoCafe ? "active" : "")" @onclick="() => { filterLinkeadoCafe = !filterLinkeadoCafe; showMoreFilters = false; }">
+                            <button class="more-filters-item @(filterLinkeadoCafe ? "active" : "")" @onclick="() => { filterLinkeadoCafe = !filterLinkeadoCafe; InvalidateFilterCache(); showMoreFilters = false; }">
                                 ☕ Solo cafés linkeados
                             </button>
-                            <button class="more-filters-item @(filterLinkeadoComponentes ? "active" : "")" @onclick="() => { filterLinkeadoComponentes = !filterLinkeadoComponentes; showMoreFilters = false; }">
+                            <button class="more-filters-item @(filterLinkeadoComponentes ? "active" : "")" @onclick="() => { filterLinkeadoComponentes = !filterLinkeadoComponentes; InvalidateFilterCache(); showMoreFilters = false; }">
                                 ✅ Solo combos linkeados (componentes)
                             </button>
-                            <button class="more-filters-item @(filterSinLinkear ? "active" : "")" @onclick="() => { filterSinLinkear = !filterSinLinkear; showMoreFilters = false; }">
+                            <button class="more-filters-item @(filterSinLinkear ? "active" : "")" @onclick="() => { filterSinLinkear = !filterSinLinkear; InvalidateFilterCache(); showMoreFilters = false; }">
                                 ⚠ Sin linkear (ningún tipo)
                             </button>
                             <div style="border-top: 1px solid #e5e7eb; margin: 0.25rem 0;"></div>
-                            <button class="more-filters-item @(filterFull ? "active" : "")" @onclick="() => { filterFull = !filterFull; if (filterFull) filterNoFull = false; showMoreFilters = false; }">
+                            <button class="more-filters-item @(filterFull ? "active" : "")" @onclick="() => { filterFull = !filterFull; if (filterFull) filterNoFull = false; InvalidateFilterCache(); showMoreFilters = false; }">
                                 📦 Solo Full
                             </button>
-                            <button class="more-filters-item @(filterNoFull ? "active" : "")" @onclick="() => { filterNoFull = !filterNoFull; if (filterNoFull) filterFull = false; showMoreFilters = false; }">
+                            <button class="more-filters-item @(filterNoFull ? "active" : "")" @onclick="() => { filterNoFull = !filterNoFull; if (filterNoFull) filterFull = false; InvalidateFilterCache(); showMoreFilters = false; }">
                                 🚚 Solo NO Full (stock pushable)
                             </button>
                         </div>
@@ -380,8 +380,10 @@
                                         }
                                         else if (item.ComponentMappingsCount > 0)
                                         {
-                                            @* Linkeo via MeliItemComponentes: combo del sistema (varios productos) *@
-                                            <span class="product-badge" style="background:#dbeafe; color:#1e40af; border-color:#3b82f6;" title="@($"Linkeado a {item.ComponentMappingsCount} producto(s) del sistema (vía MeliItemComponentes)")">
+                                            @* Linkeo via MeliItemComponentes: combo del sistema (varios productos). *@
+                                            @* El title del span muestra el resumen completo al hacer hover (todos los SKU + cantidades). *@
+                                            <span class="product-badge" style="background:#dbeafe; color:#1e40af; border-color:#3b82f6; cursor: help;"
+                                                  title="@(string.IsNullOrEmpty(item.ComponentMappingsSummary) ? $"Linkeado a {item.ComponentMappingsCount} producto(s) del sistema" : $"Cuando se vende, descuenta:\n{item.ComponentMappingsSummary}")">
                                                 ✅ Linkeado (@item.ComponentMappingsCount)
                                             </span>
                                             <button class="push-meli-btn" @onclick="() => OpenPushModal(item)" title="Push precio + stock a MeLi">📤</button>

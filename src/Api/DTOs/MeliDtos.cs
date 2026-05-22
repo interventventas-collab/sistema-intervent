@@ -144,6 +144,9 @@ public record MeliItemDto(
     // ComponentMappingsCount: cuántos productos del sistema están linkeados via MeliItemComponentes
     // (publicaciones que son combos del sistema nuevo, ej: VP8 + tapa + collarín = 100VP8).
     int ComponentMappingsCount = 0,
+    // ComponentMappingsSummary: string corto con todos los productos linkeados, ej: "VP8 ×100, T-VP8 ×100, P001 ×100".
+    // Útil para mostrar en tooltip / hover y entender qué descuenta cuando se vende.
+    string? ComponentMappingsSummary = null,
     // LogisticType cacheado de MeLi (fulfillment / cross_docking / drop_off / etc).
     string? LogisticType = null
 );

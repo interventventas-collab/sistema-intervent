@@ -41,6 +41,8 @@ public class MeliItemDto
     public string? CafeProductoNombre { get; set; }
     // Mapeos MeliItemComponentes (sistema nuevo, para combos del sistema).
     public int ComponentMappingsCount { get; set; }
+    // Resumen "SKU ×qty, SKU ×qty..." de los productos linkeados (para tooltip).
+    public string? ComponentMappingsSummary { get; set; }
     // Logística MeLi cacheada.
     public string? LogisticType { get; set; }
 

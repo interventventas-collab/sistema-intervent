@@ -58,8 +58,29 @@ public class MeliItemService
                 i.CafeProducto != null ? i.CafeProducto.Sku : null,
                 i.CafeProducto != null ? i.CafeProducto.Nombre : null,
                 _db.MeliItemComponentes.Count(mc => mc.MeliItemId == i.MeliItemId),
+                null, // ComponentMappingsSummary se completa abajo en memoria
                 i.LogisticType))
             .ToListAsync();
+
+        // Cargar resumen de componentes en una sola query y mergear en memoria (más eficiente que sub-query por fila).
+        var meliIds = items.Where(it => it.ComponentMappingsCount > 0).Select(it => it.MeliItemId).ToHashSet();
+        if (meliIds.Count > 0)
+        {
+            var summaries = await (from mc in _db.MeliItemComponentes
+                                   join p in _db.CafeProductos on mc.CafeProductoId equals p.Id
+                                   where meliIds.Contains(mc.MeliItemId)
+                                   select new { mc.MeliItemId, p.Sku, mc.Cantidad })
+                .ToListAsync();
+            var byItem = summaries.GroupBy(s => s.MeliItemId)
+                .ToDictionary(g => g.Key,
+                    g => string.Join(", ", g.Select(x => $"{x.Sku} ×{(x.Cantidad == Math.Floor(x.Cantidad) ? x.Cantidad.ToString("0") : x.Cantidad.ToString("0.##"))}")));
+            // Reemplazar el DTO con la versión que tiene Summary (records son inmutables → with).
+            for (int k = 0; k < items.Count; k++)
+            {
+                if (byItem.TryGetValue(items[k].MeliItemId, out var summary))
+                    items[k] = items[k] with { ComponentMappingsSummary = summary };
+            }
+        }
 
         return new MeliItemsResponse(items, total);
     }
