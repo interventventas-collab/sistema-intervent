@@ -2877,6 +2877,29 @@ public class ApiClient
     // ===== Tesoreria Cafe: Cheques =====
     public async Task<List<CafeChequeDto>?> GetCafeChequesAsync(string? estado = null)
         => await GetAsync<List<CafeChequeDto>>("/api/cafe/cheques" + (string.IsNullOrWhiteSpace(estado) ? "" : $"?estado={Uri.EscapeDataString(estado)}"));
+    /// <summary>Alta manual de cheque (papel) que entra a cartera. Devuelve (cheque, error).
+    /// El error se llena cuando el backend responde con un duplicado (409) o validación (400).</summary>
+    public async Task<(CafeChequeDto? cheque, string? error)> CrearChequeAsync(CreateChequeRequest req)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/api/cafe/cheques", req);
+            if (resp.IsSuccessStatusCode)
+            {
+                var ch = await resp.Content.ReadFromJsonAsync<CafeChequeDto>();
+                return (ch, null);
+            }
+            string err = "Error";
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err;
+            }
+            catch { }
+            return (null, err);
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
     public async Task<bool> DepositarChequeAsync(int id, string? observaciones = null, int? cajaDestinoId = null)
     {
         var r = await PostAsync<object>($"/api/cafe/cheques/{id}/depositar", new { observaciones, cajaDestinoId });

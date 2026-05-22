@@ -32,6 +32,18 @@ public class CafeChequeDto
     public DateTime CreatedAt { get; set; }
 }
 
+public class CreateChequeRequest
+{
+    public string Numero { get; set; } = "";
+    public string Banco { get; set; } = "";
+    public string? Emisor { get; set; }
+    public decimal Importe { get; set; }
+    public DateTime? FechaCobro { get; set; }
+    public DateTime? FechaVencimiento { get; set; }
+    public int? ClienteOrigenId { get; set; }
+    public string? Observaciones { get; set; }
+}
+
 // ========== Cobranzas ==========
 public class ComprobantePendienteDto
 {

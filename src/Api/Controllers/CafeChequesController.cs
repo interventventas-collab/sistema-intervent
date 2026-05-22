@@ -30,6 +30,53 @@ public class CafeChequesController : ControllerBase
         string Estado, DateTime? FechaCambioEstado, string? Observaciones, int? CobranzaOrigenId,
         DateTime CreatedAt);
 
+    public record CreateChequeRequest(
+        string Numero, string Banco, string? Emisor,
+        decimal Importe, DateTime? FechaCobro, DateTime? FechaVencimiento,
+        int? ClienteOrigenId, string? Observaciones);
+
+    /// <summary>Alta manual de cheque (papel) que entra a cartera. Cliente origen es opcional —
+    /// si se carga sin cliente, despues se asigna al usarlo en una cobranza.</summary>
+    [HttpPost]
+    public async Task<IActionResult> Create([FromBody] CreateChequeRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Numero)) return BadRequest(new { error = "Número obligatorio" });
+        if (string.IsNullOrWhiteSpace(req.Banco)) return BadRequest(new { error = "Banco obligatorio" });
+        if (req.Importe <= 0) return BadRequest(new { error = "Importe debe ser mayor a 0" });
+        // Anti-duplicado suave: si ya existe el mismo banco + numero + importe en cartera,
+        // avisar al operador. No es bloqueante (puede haber cheques con mismo numero en bancos distintos).
+        var dup = await _db.CafeCheques.FirstOrDefaultAsync(c =>
+            c.Numero == req.Numero.Trim() && c.Banco == req.Banco.Trim()
+            && c.Importe == req.Importe && c.Estado != "RECHAZADO");
+        if (dup is not null)
+            return Conflict(new { error = $"Ya existe el cheque {dup.Banco} N° {dup.Numero} por ${dup.Importe} (estado: {dup.Estado})", existingId = dup.Id });
+
+        var ch = new CafeCheque
+        {
+            Numero = req.Numero.Trim(),
+            Banco = req.Banco.Trim(),
+            Emisor = string.IsNullOrWhiteSpace(req.Emisor) ? null : req.Emisor.Trim(),
+            Importe = req.Importe,
+            FechaCobro = req.FechaCobro,
+            FechaVencimiento = req.FechaVencimiento,
+            ClienteOrigenId = req.ClienteOrigenId,
+            Observaciones = string.IsNullOrWhiteSpace(req.Observaciones) ? null : req.Observaciones.Trim(),
+            Estado = "EN_CARTERA",
+            FechaCambioEstado = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow
+        };
+        _db.CafeCheques.Add(ch);
+        await _db.SaveChangesAsync();
+        await _audit.LogAsync("CafeCheque", ch.Id.ToString(), "CREAR_MANUAL",
+            $"Alta manual: {ch.Banco} N° {ch.Numero} por ${ch.Importe}{(ch.ClienteOrigenId.HasValue ? $" (cliente origen {ch.ClienteOrigenId.Value})" : " sin cliente")}");
+        return Ok(new ChequeDto(
+            ch.Id, ch.Numero, ch.Banco, ch.Emisor,
+            ch.ClienteOrigenId, null,
+            ch.Importe, ch.FechaCobro, ch.FechaVencimiento,
+            ch.Estado, ch.FechaCambioEstado, ch.Observaciones, ch.CobranzaOrigenId,
+            ch.CreatedAt));
+    }
+
     [HttpGet]
     public async Task<IActionResult> List([FromQuery] string? estado = null, [FromQuery] int take = 500)
     {

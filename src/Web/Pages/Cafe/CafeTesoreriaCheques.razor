@@ -6,7 +6,9 @@
 <div class="card">
     <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
         <h3 style="margin:0;">📄 Cheques en cartera (@(cheques?.Count(c => c.Estado == "EN_CARTERA") ?? 0))</h3>
-        <div style="display:flex; gap:0.4rem;">
+        <div style="display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
+            <button class="btn btn-success" style="font-size:0.8rem;" @onclick="AbrirNuevo">➕ Nuevo cheque</button>
+            <div style="width:1px; height:24px; background:#d1d5db; margin:0 0.25rem;"></div>
             @foreach (var e in estados)
             {
                 <button class="btn @(estadoFiltro == e.key ? "btn-primary" : "btn-secondary")" style="font-size:0.8rem;" @onclick="() => SetFiltro(e.key)">@e.label</button>
@@ -70,10 +72,118 @@
     </div>
 </div>
 
+@* ════════════ Modal Nuevo cheque ════════════ *@
+@if (showNuevo)
+{
+    <div class="modal-overlay">
+        <div class="modal-container" style="max-width: 560px;">
+            <div class="modal-header">
+                <h3 style="margin:0;">➕ Nuevo cheque (alta manual)</h3>
+                <button class="btn-close" @onclick="CerrarNuevo">✕</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size:0.78rem; color:#6b7280; margin:0 0 0.7rem;">
+                    Cargá un cheque físico (papel) que recibiste. Entra a cartera "sin asignar".
+                    Cuando lo uses en una cobranza queda asociado al cliente que pagó.
+                </p>
+                <div class="form-row">
+                    <div class="form-group" style="flex:2;">
+                        <label class="form-label">Banco *</label>
+                        <input class="form-input" @bind="fBanco" placeholder="Ej: Galicia, Macro, Santander" />
+                    </div>
+                    <div class="form-group" style="flex:1.2;">
+                        <label class="form-label">Número *</label>
+                        <input class="form-input" @bind="fNumero" placeholder="Ej: 12345678" />
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Emisor (libra el cheque) — opcional</label>
+                    <input class="form-input" @bind="fEmisor" placeholder="Razón social o nombre del firmante" />
+                </div>
+                <div class="form-row">
+                    <div class="form-group" style="flex:1;">
+                        <label class="form-label">Importe *</label>
+                        <input class="form-input" type="number" step="0.01" min="0" @bind="fImporte" />
+                    </div>
+                    <div class="form-group" style="flex:1;">
+                        <label class="form-label">Fecha cobro / vencimiento</label>
+                        <input class="form-input" type="date"
+                               value="@(fVenc?.ToString("yyyy-MM-dd"))"
+                               @onchange="@(e => fVenc = string.IsNullOrEmpty(e.Value?.ToString()) ? null : DateTime.Parse(e.Value.ToString()!))" />
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Observaciones — opcional</label>
+                    <textarea class="form-input" rows="2" @bind="fObs"></textarea>
+                </div>
+                @if (!string.IsNullOrEmpty(formError))
+                {
+                    <div style="background:#fee2e2; color:#991b1b; padding:0.5rem 0.7rem; border-radius:4px; font-size:0.82rem; margin-top:0.5rem;">@formError</div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CerrarNuevo" disabled="@savingNuevo">Cancelar</button>
+                <button class="btn btn-primary" @onclick="GuardarNuevo" disabled="@savingNuevo">@(savingNuevo ? "Guardando..." : "Guardar cheque")</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private List<CafeChequeDto>? cheques;
     private bool loading = true;
     private string estadoFiltro = "EN_CARTERA";
+
+    // ===== Modal Nuevo cheque =====
+    private bool showNuevo;
+    private bool savingNuevo;
+    private string? formError;
+    private string fBanco = "";
+    private string fNumero = "";
+    private string fEmisor = "";
+    private decimal fImporte;
+    private DateTime? fVenc;
+    private string fObs = "";
+
+    private void AbrirNuevo()
+    {
+        fBanco = ""; fNumero = ""; fEmisor = ""; fImporte = 0; fVenc = null; fObs = "";
+        formError = null;
+        showNuevo = true;
+    }
+
+    private void CerrarNuevo()
+    {
+        if (savingNuevo) return;
+        showNuevo = false;
+    }
+
+    private async Task GuardarNuevo()
+    {
+        formError = null;
+        if (string.IsNullOrWhiteSpace(fBanco)) { formError = "Banco obligatorio"; return; }
+        if (string.IsNullOrWhiteSpace(fNumero)) { formError = "Número obligatorio"; return; }
+        if (fImporte <= 0) { formError = "Importe debe ser mayor a 0"; return; }
+        savingNuevo = true;
+        try
+        {
+            var (cheque, err) = await Api.CrearChequeAsync(new CreateChequeRequest
+            {
+                Banco = fBanco.Trim(),
+                Numero = fNumero.Trim(),
+                Emisor = string.IsNullOrWhiteSpace(fEmisor) ? null : fEmisor.Trim(),
+                Importe = fImporte,
+                FechaVencimiento = fVenc,
+                FechaCobro = fVenc, // mismo valor por simplicidad — UI no diferencia
+                Observaciones = string.IsNullOrWhiteSpace(fObs) ? null : fObs.Trim()
+            });
+            if (cheque is null) { formError = err ?? "No se pudo guardar"; return; }
+            ToastService.Success($"Cheque {cheque.Banco} N° {cheque.Numero} agregado a cartera");
+            showNuevo = false;
+            await Load();
+        }
+        finally { savingNuevo = false; }
+    }
 
     private readonly (string key, string label)[] estados = new[]
     {
