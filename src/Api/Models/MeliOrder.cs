@@ -13,6 +13,10 @@ public class MeliOrder
     public long BuyerId { get; set; }
     public string BuyerNickname { get; set; } = string.Empty;
     public string ItemId { get; set; } = string.Empty;
+    /// <summary>VariationId del item vendido (cuando la publicacion es multi-variante).
+    /// Null = item sin variantes. Necesario para descontar la variante correcta (no todas).
+    /// Agregado 2026-05-22.</summary>
+    public string? VariationId { get; set; }
     public string ItemTitle { get; set; } = string.Empty;
     public int Quantity { get; set; }
     public decimal UnitPrice { get; set; }

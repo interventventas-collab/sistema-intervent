@@ -130,6 +130,16 @@ public class CafeProducto
 
     public bool IsActive { get; set; } = true;
 
+    /// <summary>Si false, el producto NO se muestra en el buscador de productos del modal Nueva Venta.
+    /// Util para productos que solo existen como componentes de combos MeLi (no se venden sueltos).
+    /// Se setea automaticamente por el clone de Contabilium para componentes-solo. Default true.</summary>
+    public bool IsVisibleEnVentas { get; set; } = true;
+
+    /// <summary>Origen del producto cuando fue importado/creado por un job automatico.
+    /// Ej: "CONTABILIUM_CLONE_2026_05_22". Null = producto creado a mano.</summary>
+    [MaxLength(80)]
+    public string? ImportSource { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

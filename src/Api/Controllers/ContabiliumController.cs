@@ -121,6 +121,76 @@ public class ContabiliumController : ControllerBase
         });
     }
 
+    // ============================================================
+    // Clone Contabilium (2026-05-22)
+    // Importa productos + combos completos + relinkea MeliItemComponentes con variation_id.
+    // ============================================================
+
+    private static int _cloneRunning = 0;
+    private static string? _cloneLastError;
+    private static DateTime? _cloneStartedAt;
+    private static DateTime? _cloneFinishedAt;
+    private static object? _cloneLastResult;
+
+    /// <summary>Dispara el clone EN BACKGROUND y devuelve inmediato. Para ver el estado:
+    /// GET /api/contabilium/clone/status.</summary>
+    [HttpPost("clone")]
+    public IActionResult RunClone([FromServices] IServiceScopeFactory scopeFactory)
+    {
+        if (System.Threading.Interlocked.CompareExchange(ref _cloneRunning, 1, 0) != 0)
+            return Ok(new { ok = true, started = false, message = "Ya hay un clone corriendo. Espera a que termine." });
+
+        _cloneLastError = null;
+        _cloneStartedAt = DateTime.UtcNow;
+        _cloneFinishedAt = null;
+        _cloneLastResult = null;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = scopeFactory.CreateScope();
+                var clone = scope.ServiceProvider.GetRequiredService<CloneContabiliumService>();
+                var r = await clone.RunCloneAsync(CancellationToken.None);
+                _cloneLastResult = new {
+                    productosCreados = r.ProductosCreados,
+                    productosActualizados = r.ProductosActualizados,
+                    combosCreados = r.CombosCreados,
+                    combosActualizados = r.CombosActualizados,
+                    mappingsCreados = r.MappingsCreados,
+                    itemsConVariante = r.ItemsConVariante,
+                    itemsSinMatch = r.ItemsSinMatch,
+                    warningsCount = r.Warnings.Count,
+                    warningsSample = r.Warnings.Take(20).ToList()
+                };
+            }
+            catch (Exception ex)
+            {
+                _cloneLastError = ex.Message;
+            }
+            finally
+            {
+                _cloneFinishedAt = DateTime.UtcNow;
+                System.Threading.Interlocked.Exchange(ref _cloneRunning, 0);
+            }
+        });
+
+        return Ok(new { ok = true, started = true, message = "Clone iniciado en background." });
+    }
+
+    [HttpGet("clone/status")]
+    public IActionResult CloneStatus()
+    {
+        var running = _cloneRunning != 0;
+        return Ok(new {
+            running,
+            startedAt = _cloneStartedAt,
+            finishedAt = _cloneFinishedAt,
+            lastError = _cloneLastError,
+            result = _cloneLastResult
+        });
+    }
+
     public record StockComparadoRow(string Sku, string? Nombre, decimal StockSistema, decimal? StockContabilium, decimal? Diferencia, DateTime? FechaSnapshot);
 
     /// <summary>Pantalla comparador: para cada producto importado (no café), muestra el stock acá

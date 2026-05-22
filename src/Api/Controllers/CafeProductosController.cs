@@ -33,7 +33,9 @@ public class CafeProductosController : ControllerBase
         p.FechaAplicaPreciosFuturos,
         p.PrecioPorKgFuturo, p.PrecioBarFuturo, p.PrecioOtroFuturo,
         p.PrecioBultoFuturo, p.PrecioBultoOtroFuturo,
-        p.UsaPreciosFuturos);
+        p.UsaPreciosFuturos,
+        p.IsVisibleEnVentas,
+        p.ImportSource);
 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] string? categoria = null)

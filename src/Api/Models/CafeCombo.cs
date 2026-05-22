@@ -18,6 +18,31 @@ public class CafeCombo
 
     public bool IsActive { get; set; } = true;
 
+    // === Columnas agregadas 2026-05-22 para clone de Contabilium ===
+    // Permiten identificar combos importados desde Contabilium por SKU.
+    // Los combos legacy (promos de cafe fraccionado) dejan estos campos en null.
+
+    /// <summary>SKU del combo (solo combos importados desde Contabilium). Null = combo manual legacy.</summary>
+    [MaxLength(80)]
+    public string? Sku { get; set; }
+
+    [MaxLength(80)]
+    public string? Marca { get; set; }
+
+    /// <summary>CAFE | OTROS. Default OTROS (combos importados).</summary>
+    [Required, MaxLength(40)]
+    public string Categoria { get; set; } = "OTROS";
+
+    /// <summary>Precio de referencia (solo informativo, los combos del clone se cobran via expansion a productos).</summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal PrecioReferencia { get; set; }
+
+    /// <summary>Ej: "CONTABILIUM_CLONE_2026_05_22". Null = combo manual.</summary>
+    [MaxLength(80)]
+    public string? ImportSource { get; set; }
+
+    public string? Notas { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 

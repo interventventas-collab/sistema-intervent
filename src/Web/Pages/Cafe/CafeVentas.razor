@@ -3480,14 +3480,15 @@
         productoSearchOpen = false;
     }
 
-    /// <summary>Filtra productos activos por SKU / código de barras / nombre / marca.</summary>
+    /// <summary>Filtra productos activos + visibles en ventas por SKU / código de barras / nombre / marca.
+    /// IsVisibleEnVentas=false oculta productos que solo existen como componentes de combos MeLi (no se venden sueltos).</summary>
     private IEnumerable<CafeProductoDto> ProductosMatching(string q)
     {
         if (productos is null) return Enumerable.Empty<CafeProductoDto>();
         var t = q.Trim();
-        if (string.IsNullOrEmpty(t)) return productos.Where(p => p.IsActive);
+        if (string.IsNullOrEmpty(t)) return productos.Where(p => p.IsActive && p.IsVisibleEnVentas);
         bool h(string? s) => s.MatchesSearch(t);
-        return productos.Where(p => p.IsActive && (h(p.Sku) || h(p.Barcode) || h(p.Nombre) || h(p.Marca)));
+        return productos.Where(p => p.IsActive && p.IsVisibleEnVentas && (h(p.Sku) || h(p.Barcode) || h(p.Nombre) || h(p.Marca)));
     }
 
     private async Task AddItem()

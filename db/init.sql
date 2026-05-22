@@ -3980,3 +3980,51 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='PriceRatioCapturedAt' AND Object_ID=OBJECT_ID('MeliItems'))
     ALTER TABLE MeliItems ADD PriceRatioCapturedAt DATETIME2 NULL;
 GO
+
+-- 2026-05-22: Clone Contabilium - extender Cafe_Productos con columnas para el clone
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='IsVisibleEnVentas' AND Object_ID=OBJECT_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD IsVisibleEnVentas BIT NOT NULL CONSTRAINT DF_CafeProductos_IsVisibleEnVentas DEFAULT 1;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ImportSource' AND Object_ID=OBJECT_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD ImportSource NVARCHAR(80) NULL;
+GO
+
+-- 2026-05-22: Clone Contabilium - extender Cafe_Combos con columnas para el clone
+-- Mantiene compatibilidad con el schema legacy (promos de cafe fraccionado).
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='Sku' AND Object_ID=OBJECT_ID('Cafe_Combos'))
+    ALTER TABLE Cafe_Combos ADD Sku NVARCHAR(80) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='Marca' AND Object_ID=OBJECT_ID('Cafe_Combos'))
+    ALTER TABLE Cafe_Combos ADD Marca NVARCHAR(80) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='Categoria' AND Object_ID=OBJECT_ID('Cafe_Combos'))
+    ALTER TABLE Cafe_Combos ADD Categoria NVARCHAR(40) NOT NULL CONSTRAINT DF_CafeCombos_Categoria DEFAULT 'OTROS';
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='PrecioReferencia' AND Object_ID=OBJECT_ID('Cafe_Combos'))
+    ALTER TABLE Cafe_Combos ADD PrecioReferencia DECIMAL(18,2) NOT NULL CONSTRAINT DF_CafeCombos_PrecioRef DEFAULT 0;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ImportSource' AND Object_ID=OBJECT_ID('Cafe_Combos'))
+    ALTER TABLE Cafe_Combos ADD ImportSource NVARCHAR(80) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='Notas' AND Object_ID=OBJECT_ID('Cafe_Combos'))
+    ALTER TABLE Cafe_Combos ADD Notas NVARCHAR(MAX) NULL;
+GO
+-- Indice para buscar combos importados desde Contabilium por SKU (no UNIQUE porque pueden haber combos manuales sin SKU)
+-- Nota: usa filtered index → requiere QUOTED_IDENTIFIER ON
+SET QUOTED_IDENTIFIER ON;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_CafeCombos_Sku')
+    CREATE INDEX IX_CafeCombos_Sku ON Cafe_Combos(Sku) WHERE Sku IS NOT NULL;
+GO
+
+-- 2026-05-22: Clone Contabilium - variation_id en mappings y orders MeLi (bug variantes)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='MeliVariationId' AND Object_ID=OBJECT_ID('MeliItemComponentes'))
+    ALTER TABLE MeliItemComponentes ADD MeliVariationId NVARCHAR(40) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_MeliItemComponentes_ItemVar')
+    CREATE INDEX IX_MeliItemComponentes_ItemVar ON MeliItemComponentes(MeliItemId, MeliVariationId);
+GO
+-- MeliOrders ya tiene ItemId; agregamos VariationId para descontar la variante correcta
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='VariationId' AND Object_ID=OBJECT_ID('MeliOrders'))
+    ALTER TABLE MeliOrders ADD VariationId NVARCHAR(40) NULL;
+GO

@@ -49,6 +49,8 @@ public class MeliStockSyncService
         var componentes = await _db.MeliItemComponentes
             .Where(c => itemIds.Contains(c.MeliItemId))
             .ToListAsync();
+        // Agrupado por MeliItemId — el matching por variation_id se hace abajo (puede haber
+        // multiples filas para el mismo MeliItemId, una por variante).
         var compsByItem = componentes.GroupBy(c => c.MeliItemId).ToDictionary(g => g.Key, g => g.ToList());
 
         // Fallback (legacy): items que aun no migraron a MeliItemComponente y tienen el linkeo
@@ -78,11 +80,39 @@ public class MeliStockSyncService
 
                 if (compsByItem.TryGetValue(ord.ItemId, out var comps) && comps.Count > 0)
                 {
-                    toDiscount = new();
-                    foreach (var c in comps)
+                    // BUG-FIX 2026-05-22: Respeta variation_id para descontar SOLO la variante vendida.
+                    // Logica:
+                    //   1) Si la orden tiene VariationId, usar SOLO los componentes con ese variation_id.
+                    //   2) Si no hay match exacto, fallback a componentes SIN variation_id (legacy / aplica a todas).
+                    //   3) Si NO hay variation_id en la orden (publicacion sin variantes), usar todos los
+                    //      componentes (asumimos que no hay multi-variante).
+                    List<MeliItemComponente> compsAplicables;
+                    if (!string.IsNullOrEmpty(ord.VariationId))
                     {
-                        if (productos.TryGetValue(c.CafeProductoId, out var prod))
-                            toDiscount.Add((prod, c.Cantidad, c.Formato));
+                        compsAplicables = comps.Where(c => c.MeliVariationId == ord.VariationId).ToList();
+                        if (compsAplicables.Count == 0)
+                        {
+                            // Fallback: componentes sin variation_id (compat con linkeos pre-bug)
+                            compsAplicables = comps.Where(c => string.IsNullOrEmpty(c.MeliVariationId)).ToList();
+                        }
+                    }
+                    else
+                    {
+                        // Orden sin variation_id: si hay componentes sin variation_id, usar esos.
+                        // Si SOLO hay componentes con variation_id (raro), usar todos (mejor descontar
+                        // algo que nada — el operador puede ajustar a mano).
+                        compsAplicables = comps.Where(c => string.IsNullOrEmpty(c.MeliVariationId)).ToList();
+                        if (compsAplicables.Count == 0) compsAplicables = comps;
+                    }
+
+                    if (compsAplicables.Count > 0)
+                    {
+                        toDiscount = new();
+                        foreach (var c in compsAplicables)
+                        {
+                            if (productos.TryGetValue(c.CafeProductoId, out var prod))
+                                toDiscount.Add((prod, c.Cantidad, c.Formato));
+                        }
                     }
                 }
                 else if (itemsLegacy.TryGetValue(ord.ItemId, out var mi) && mi.CafeProductoId.HasValue)

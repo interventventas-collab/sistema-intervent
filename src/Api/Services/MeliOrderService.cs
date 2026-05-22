@@ -422,8 +422,17 @@ public class MeliOrderService
 
         foreach (var item in items.EnumerateArray())
         {
-            var itemId = item.GetProperty("item").GetProperty("id").GetString() ?? "UNKNOWN";
-            var itemTitle = item.GetProperty("item").GetProperty("title").GetString() ?? "Sin titulo";
+            var itemNode = item.GetProperty("item");
+            var itemId = itemNode.GetProperty("id").GetString() ?? "UNKNOWN";
+            var itemTitle = itemNode.GetProperty("title").GetString() ?? "Sin titulo";
+            // variation_id: solo viene cuando la publicacion es multi-variante (color/talle/etc)
+            string? variationId = null;
+            if (itemNode.TryGetProperty("variation_id", out var varEl) && varEl.ValueKind != JsonValueKind.Null)
+            {
+                variationId = varEl.ValueKind == JsonValueKind.Number
+                    ? varEl.GetInt64().ToString()
+                    : varEl.GetString();
+            }
             var quantity = item.GetProperty("quantity").GetInt32();
             var unitPrice = item.GetProperty("unit_price").GetDecimal();
             decimal? fullUnitPrice = item.TryGetProperty("full_unit_price", out var fup)
@@ -447,6 +456,9 @@ public class MeliOrderService
                 existing.ShippingStatus = shippingStatus;
                 existing.ShippingSubstatus = shippingSubstatus;
                 existing.ShippingMode = shippingMode;
+                // Solo actualizar VariationId si todavia no estaba seteado (no pisar lo que ya capturamos)
+                if (string.IsNullOrEmpty(existing.VariationId))
+                    existing.VariationId = variationId;
                 existing.UpdatedAt = DateTime.UtcNow;
             }
             else
@@ -463,6 +475,7 @@ public class MeliOrderService
                     BuyerId = buyerId,
                     BuyerNickname = buyerNickname,
                     ItemId = itemId,
+                    VariationId = variationId,
                     ItemTitle = itemTitle,
                     Quantity = quantity,
                     UnitPrice = unitPrice,

@@ -108,6 +108,9 @@ public class CafeProductoDto
     public decimal? PrecioBultoFuturo { get; set; }
     public decimal? PrecioBultoOtroFuturo { get; set; }
     public bool UsaPreciosFuturos { get; set; }
+    // 2026-05-22: Clone Contabilium
+    public bool IsVisibleEnVentas { get; set; } = true;
+    public string? ImportSource { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 

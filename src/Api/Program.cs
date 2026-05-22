@@ -116,6 +116,7 @@ builder.Services.AddScoped<CafeReciboVisitaCobranzaPdfService>();
 builder.Services.AddScoped<CafeListaPreciosPdfService>();
 builder.Services.AddScoped<ContabiliumService>();
 builder.Services.AddScoped<ContabiliumImportService>();
+builder.Services.AddScoped<CloneContabiliumService>();
 builder.Services.AddScoped<MeliStockSyncService>();
 builder.Services.AddScoped<MeliCafePricePushService>();
 builder.Services.AddHostedService<MeliAutoSyncBackgroundService>();

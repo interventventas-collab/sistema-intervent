@@ -25,6 +25,13 @@ public class MeliItemComponente
     [MaxLength(50)]
     public string MeliItemId { get; set; } = "";
 
+    /// <summary>VariationId de la publicacion (cuando es multi-variante: ej colores, tamaños).
+    /// Null = publicacion sin variantes O componente que aplica a TODAS las variantes (legacy).
+    /// Agregado 2026-05-22 para arreglar el bug de variantes (publicaciones multi-color que
+    /// descontaban TODOS los colores en vez de la variante vendida).</summary>
+    [MaxLength(40)]
+    public string? MeliVariationId { get; set; }
+
     /// <summary>Id del producto suelto en CafeProductos al que se descuenta stock.</summary>
     public int CafeProductoId { get; set; }
     [ForeignKey(nameof(CafeProductoId))]

@@ -82,7 +82,10 @@ public record CafeProductoDto(
     decimal? PrecioOtroFuturo = null,
     decimal? PrecioBultoFuturo = null,
     decimal? PrecioBultoOtroFuturo = null,
-    bool UsaPreciosFuturos = false);
+    bool UsaPreciosFuturos = false,
+    // 2026-05-22: Clone Contabilium
+    bool IsVisibleEnVentas = true,
+    string? ImportSource = null);
 
 public class CreateCafeProductoRequest
 {
