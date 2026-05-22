@@ -235,7 +235,10 @@ public class CafeVentasController : ControllerBase
         var q = _db.CafeVentas.Include(v => v.Items).AsQueryable();
         if (from.HasValue) q = q.Where(v => v.Fecha >= from.Value.Date);
         if (to.HasValue) q = q.Where(v => v.Fecha <= to.Value.Date);
-        var list = await q.OrderByDescending(v => v.Fecha).ThenByDescending(v => v.Id).Take(200).ToListAsync();
+        // Sin Take: traemos TODAS las ventas que caen dentro del rango (o todas si no hay rango).
+        // El buscador del frontend filtra contra el listado completo, asi una venta vieja
+        // (ej. migracion del sistema antiguo con fecha 01/01) se encuentra igual.
+        var list = await q.OrderByDescending(v => v.Fecha).ThenByDescending(v => v.Id).ToListAsync();
         // Set de VentaIds asociados a saldos de migracion — para marcar visualmente esas ventas
         // como "🔄 Migración" en el listado del frontend.
         var migrIds = await _db.CafeSaldosMigracion
