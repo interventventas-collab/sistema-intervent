@@ -39,8 +39,22 @@ public class CloneContabiliumService
         int MappingsCreados, int ItemsConVariante, int ItemsSinMatch,
         List<string> Warnings);
 
-    /// <summary>Regex para detectar SKUs de cafe (F1, F12, F2.5, FR3, etc) — esos NO se tocan.</summary>
+    /// <summary>Regex para detectar SKUs de cafe (F1, F12, F2.5, FR3, etc) — esos NO se importan como producto suelto
+    /// (los cafes ya viven en Cafe_Productos con SKU F#). PERO sí se mapean cuando aparecen como componente
+    /// de combo (ej: combo "BR1KG-IT1KG-VIE1KG" contiene FR2, FR3, FR5 → mapear a F2, F3, F5 con formato 1KG).</summary>
     private static readonly Regex EsCafeRegex = new(@"^F[R]?\d+(\.\d+)?$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>Parsea un SKU café de Contabilium y devuelve (skuSistema, formato) o null si no es café.
+    /// Ejemplos: FR2 → (F2, 1KG); FR2.2 → (F2, MEDIO); FR2.4 → (F2, CUARTO); F1 → (F1, 1KG); F1.2 → (F1, MEDIO).</summary>
+    private static (string skuSistema, string formato)? ParseCafeSku(string sku)
+    {
+        var m = Regex.Match(sku, @"^F[R]?(?<num>\d+)(\.(?<frac>\d))?$", RegexOptions.IgnoreCase);
+        if (!m.Success) return null;
+        var num = m.Groups["num"].Value;
+        var frac = m.Groups["frac"].Success ? m.Groups["frac"].Value : null;
+        var formato = frac switch { "2" => "MEDIO", "4" => "CUARTO", _ => "1KG" };
+        return ($"F{num}", formato);
+    }
 
     public async Task<CloneResult> RunCloneAsync(CancellationToken ct = default)
     {
@@ -256,9 +270,27 @@ public class CloneContabiliumService
             // Agregar items expandidos. Cantidad es int en Cafe_ComboItems → Math.Ceiling para no perder
             foreach (var (skuComp, cantidad) in expansion)
             {
-                if (EsCafeRegex.IsMatch(skuComp))
+                // ─── CAFE: mapear FR2 → F2 (1KG), FR2.2 → F2 (MEDIO), FR2.4 → F2 (CUARTO) ───
+                var cafeMap = ParseCafeSku(skuComp);
+                if (cafeMap is not null)
                 {
-                    warnings.Add($"Combo {skuCombo}: componente cafe {skuComp} ignorado (linkeo manual de cafes)");
+                    var (skuSistema, formato) = cafeMap.Value;
+                    if (!existingProdsBySku.TryGetValue(skuSistema, out var prodCafe))
+                    {
+                        warnings.Add($"Combo {skuCombo}: cafe {skuComp} → {skuSistema} no encontrado en Cafe_Productos");
+                        continue;
+                    }
+                    int cantCafe = (int)Math.Max(1, Math.Ceiling(cantidad));
+                    combo.Items.Add(new CafeComboItem
+                    {
+                        ProductoId = prodCafe.Id,
+                        Formato = formato,
+                        Cantidad = cantCafe,
+                        Molienda = null,
+                        EsDoyPack = false,
+                        EsEnvasePlateado = false,
+                        SortOrder = combo.Items.Count
+                    });
                     continue;
                 }
                 if (!existingProdsBySku.TryGetValue(skuComp, out var prod))
@@ -315,7 +347,28 @@ public class CloneContabiliumService
                 bool huboMatch = false;
                 foreach (var (cSku, cCant) in comps)
                 {
-                    if (EsCafeRegex.IsMatch(cSku)) continue;
+                    // CAFE en combo: mapear FR2→F2 (1KG), FR2.2→F2 (MEDIO), FR2.4→F2 (CUARTO).
+                    var cafeMap = ParseCafeSku(cSku);
+                    if (cafeMap is not null)
+                    {
+                        var (skuSis, formato) = cafeMap.Value;
+                        if (prodsBySku.TryGetValue(skuSis, out var prodCafe))
+                        {
+                            _db.MeliItemComponentes.Add(new MeliItemComponente
+                            {
+                                MeliItemId = mi.MeliItemId,
+                                MeliVariationId = string.IsNullOrEmpty(mi.VariationId) ? null : mi.VariationId,
+                                CafeProductoId = prodCafe.Id,
+                                Cantidad = cCant,
+                                Formato = formato,
+                                Source = "combo-contabilium",
+                                CreatedAt = DateTime.UtcNow
+                            });
+                            mappingsCreados++;
+                            huboMatch = true;
+                        }
+                        continue;
+                    }
                     if (!prodsBySku.TryGetValue(cSku, out var prod)) continue;
                     _db.MeliItemComponentes.Add(new MeliItemComponente
                     {
