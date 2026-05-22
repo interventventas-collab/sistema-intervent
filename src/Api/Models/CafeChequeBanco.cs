@@ -95,6 +95,17 @@ public class CafeChequeBanco
     public int CantidadCesiones { get; set; }
     public int CantidadAvales { get; set; }
 
+    /// <summary>Si el e-cheq fue asociado a una cobranza, FK al CafeCheque "espejo" en cartera.
+    /// Cuando esta cargado, el e-cheq deja de aparecer en el listado "Disponibles".</summary>
+    public int? CafeChequeId { get; set; }
+    [ForeignKey(nameof(CafeChequeId))]
+    public CafeCheque? CafeCheque { get; set; }
+
+    /// <summary>Cobranza generada al asociar este e-cheq a un cliente + facturas.</summary>
+    public int? CobranzaId { get; set; }
+    [ForeignKey(nameof(CobranzaId))]
+    public CafeCobranza? Cobranza { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

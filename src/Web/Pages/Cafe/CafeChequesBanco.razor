@@ -130,6 +130,7 @@
                     <th>Estado</th>
                     <th>@(tab == "DISPONIBLES" || (tab == "HISTORICO" && tipoFiltro == "RECIBIDO") ? "Librador" : "Contraparte")</th>
                     <th>Motivo</th>
+                    <th style="width:140px;">Acciones</th>
                 </tr>
             </thead>
             <tbody>
@@ -160,12 +161,167 @@
                             }
                         </td>
                         <td style="font-size: 0.8rem; color: #4b5563;">@(c.Motivo ?? "—")</td>
+                        <td>
+                            @if (c.Tipo == "RECIBIDO" && string.Equals(c.Estado, "Disponible", StringComparison.OrdinalIgnoreCase) && !c.CafeChequeId.HasValue)
+                            {
+                                <button class="btn btn-sm btn-success" style="font-size:0.75rem; padding:0.2rem 0.5rem;"
+                                        @onclick="() => AbrirAsociar(c)" title="Asociar a cobranza">🔗 Cobrar</button>
+                            }
+                            else if (c.CobranzaNumero is not null)
+                            {
+                                <span style="font-size:0.72rem; color:#059669; font-weight:600;">✓ Cob. @c.CobranzaNumero</span>
+                            }
+                        </td>
                     </tr>
                 }
             </tbody>
         </table>
     }
 </div>
+
+@* ════════════ Modal Asociar e-cheq a cobranza ════════════ *@
+@if (asociarOpen && asociarEcheq is not null)
+{
+    <div class="modal-overlay">
+        <div class="modal-card" style="max-width: 760px;">
+            <div class="modal-header">
+                <h3 style="margin:0;">🔗 Asociar e-cheq a cobranza</h3>
+                <button class="btn-close" @onclick="CerrarAsociar">✕</button>
+            </div>
+            <div class="modal-body">
+                @{ var ec = asociarEcheq; }
+                <div style="background:#f3f4f6; padding:0.6rem 0.8rem; border-radius:6px; margin-bottom:0.7rem; font-size:0.85rem;">
+                    <div><strong>E-cheq:</strong> @ec.BancoEmisor — N° @ec.Numero — <strong>$@ec.Importe.ToString("N2")</strong></div>
+                    <div style="font-size:0.78rem; color:#6b7280;">Vence: @(ec.FechaPago?.ToString("dd/MM/yyyy") ?? "—") · Librador: <strong>@(ec.LibradorNombre ?? "?")</strong>@(string.IsNullOrEmpty(ec.LibradorCuit) ? "" : $" ({ec.LibradorCuit})")</div>
+                </div>
+
+                @* Cliente *@
+                <div class="form-group">
+                    <label class="form-label">Cliente que pagó *</label>
+                    @if (clienteAsociar is not null)
+                    {
+                        <div style="display:flex; justify-content:space-between; align-items:center; background:#ecfdf5; border:1px solid #059669; padding:0.5rem 0.7rem; border-radius:6px;">
+                            <div>
+                                <strong>@(clienteAsociar.CodigoInterno?.ToString() ?? "—") · @clienteAsociar.Nombre</strong>
+                                @if (!string.IsNullOrEmpty(clienteAsociar.Cuit))
+                                {
+                                    <span style="font-size:0.75rem; color:#065f46;"> · CUIT @clienteAsociar.Cuit</span>
+                                }
+                            </div>
+                            <button class="btn-icon" @onclick="QuitarCliente" title="Cambiar cliente">✕</button>
+                        </div>
+                    }
+                    else
+                    {
+                        @if (sugerencias is { Count: > 0 })
+                        {
+                            <p style="font-size:0.78rem; color:#065f46; margin:0 0 0.3rem;">📌 Cliente sugerido por CUIT del librador:</p>
+                            @foreach (var s in sugerencias)
+                            {
+                                <button class="btn btn-secondary" style="margin-bottom:0.3rem; text-align:left; width:100%;" @onclick="() => ElegirCliente(s)">
+                                    <strong>@(s.CodigoInterno?.ToString() ?? "—") · @s.Nombre</strong>
+                                    @if (!string.IsNullOrEmpty(s.Cuit)) { <span style="font-size:0.75rem; color:#6b7280;"> · CUIT @s.Cuit</span> }
+                                </button>
+                            }
+                        }
+                        <input class="form-input" @bind="clienteSearch" @bind:event="oninput" placeholder="Buscar por nombre, código o CUIT..." />
+                        @if (!string.IsNullOrWhiteSpace(clienteSearch) && clientes is not null)
+                        {
+                            var matches = clientes.Where(c => c.IsActive &&
+                                (c.Nombre.MatchesSearch(clienteSearch) ||
+                                 (c.RazonSocial ?? "").MatchesSearch(clienteSearch) ||
+                                 (c.Cuit ?? "").Contains(clienteSearch, StringComparison.OrdinalIgnoreCase) ||
+                                 (c.CodigoInterno?.ToString() ?? "").Contains(clienteSearch)))
+                                .Take(10).ToList();
+                            <div style="max-height:200px; overflow-y:auto; border:1px solid #e5e7eb; border-radius:4px; margin-top:0.3rem;">
+                                @foreach (var c in matches)
+                                {
+                                    <div style="padding:0.4rem 0.6rem; cursor:pointer; border-bottom:1px solid #f3f4f6;" @onclick="() => ElegirCliente(new SugerenciaClienteEcheqDto { Id = c.Id, Nombre = c.Nombre, Cuit = c.Cuit, CodigoInterno = c.CodigoInterno, RazonSocial = c.RazonSocial })">
+                                        <strong>@(c.CodigoInterno?.ToString() ?? "—") · @c.Nombre</strong>
+                                        @if (!string.IsNullOrEmpty(c.Cuit)) { <span style="font-size:0.75rem; color:#6b7280;"> · CUIT @c.Cuit</span> }
+                                    </div>
+                                }
+                            </div>
+                        }
+                    }
+                </div>
+
+                @* Comprobantes pendientes *@
+                @if (clienteAsociar is not null)
+                {
+                    @if (loadingComprobantes)
+                    {
+                        <p class="text-muted">Cargando comprobantes pendientes...</p>
+                    }
+                    else if (comprobantes is { Count: > 0 })
+                    {
+                        <div class="form-group">
+                            <label class="form-label">Imputar a comprobantes pendientes</label>
+                            <p style="font-size:0.72rem; color:#6b7280; margin:0 0 0.4rem;">
+                                Tildá los que cubrís con este pago. Total a imputar: <strong>$@TotalImputar.ToString("N2")</strong> de <strong>$@ec.Importe.ToString("N2")</strong> @(retenciones > 0 ? $"(+ ${retenciones:N2} retenciones)" : "")
+                            </p>
+                            <table style="width:100%; font-size:0.85rem;">
+                                <thead>
+                                    <tr style="border-bottom:1px solid #e5e7eb;">
+                                        <th style="width:30px;"></th>
+                                        <th style="text-align:left;">Comprobante</th>
+                                        <th style="text-align:right;">Saldo</th>
+                                        <th style="width:130px; text-align:right;">A imputar</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @for (int i = 0; i < comprobantes.Count; i++)
+                                    {
+                                        var idx = i;
+                                        var comp = comprobantes[idx];
+                                        var sel = compSeleccionado[idx];
+                                        <tr>
+                                            <td><input type="checkbox" checked="@sel.Tildado"
+                                                       @onchange="@(e => OnTildarComprobante(idx, (bool)e.Value!))" /></td>
+                                            <td><strong>@comp.Numero</strong> <span style="color:#6b7280; font-size:0.78rem;">@comp.Fecha.ToString("dd/MM/yyyy")</span></td>
+                                            <td style="text-align:right;">$@comp.Saldo.ToString("N2")</td>
+                                            <td style="text-align:right;">
+                                                <input class="form-input" type="number" step="0.01" min="0" style="text-align:right; padding:0.2rem 0.4rem; font-size:0.85rem;"
+                                                       value="@sel.Importe" disabled="@(!sel.Tildado)"
+                                                       @onchange="@(e => OnImporteComprobante(idx, e.Value?.ToString()))" />
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <p style="font-size:0.82rem; color:#6b7280;">Este cliente no tiene comprobantes con saldo. Se va a registrar como "a cuenta".</p>
+                    }
+                    <div class="form-row">
+                        <div class="form-group" style="flex:1;">
+                            <label class="form-label">Retenciones</label>
+                            <input class="form-input" type="number" step="0.01" min="0" @bind="retenciones" />
+                        </div>
+                        <div class="form-group" style="flex:2;">
+                            <label class="form-label">Observaciones (opcional)</label>
+                            <input class="form-input" @bind="observaciones" placeholder="Notas internas" />
+                        </div>
+                    </div>
+                }
+
+                @if (!string.IsNullOrEmpty(asociarError))
+                {
+                    <div style="background:#fee2e2; color:#991b1b; padding:0.5rem 0.7rem; border-radius:4px; font-size:0.82rem; margin-top:0.5rem;">@asociarError</div>
+                }
+                <div style="background:#dbeafe; color:#1e40af; padding:0.4rem 0.6rem; border-radius:4px; font-size:0.78rem; margin-top:0.5rem;">
+                    💡 Al confirmar: se crea una cobranza nueva, el e-cheq entra a cartera vinculado a este cliente, y se imputa a las facturas elegidas. Suma total: <strong>$@(TotalImputar.ToString("N2"))</strong> = e-cheq <strong>$@ec.Importe.ToString("N2")</strong> + retenciones <strong>$@retenciones.ToString("N2")</strong>.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CerrarAsociar" disabled="@asociando">Cancelar</button>
+                <button class="btn btn-primary" @onclick="ConfirmarAsociar" disabled="@(asociando || clienteAsociar is null)">@(asociando ? "Guardando..." : "Confirmar cobranza")</button>
+            </div>
+        </div>
+    </div>
+}
 
 @code {
     private ChequesBancoStatsDto? stats;
@@ -273,4 +429,148 @@
         "rechazado" => "est-rechazado",
         _ => "est-otro"
     };
+
+    // ═══════════ Asociar e-cheq a cobranza ═══════════
+    private bool asociarOpen;
+    private bool asociando;
+    private string? asociarError;
+    private ChequeBancoDto? asociarEcheq;
+    private SugerenciaClienteEcheqDto? clienteAsociar;
+    private List<SugerenciaClienteEcheqDto>? sugerencias;
+    private List<CafeClienteDto>? clientes;
+    private string clienteSearch = "";
+    private List<ComprobantePendienteDto>? comprobantes;
+    private bool loadingComprobantes;
+    private decimal retenciones;
+    private string observaciones = "";
+
+    private class CompSelState { public bool Tildado; public decimal Importe; }
+    private List<CompSelState> compSeleccionado = new();
+
+    private decimal TotalImputar => compSeleccionado.Where(s => s.Tildado).Sum(s => s.Importe);
+    private decimal TotalEsperado => (asociarEcheq?.Importe ?? 0m) + retenciones;
+
+    private async Task AbrirAsociar(ChequeBancoDto ec)
+    {
+        asociarOpen = true;
+        asociarEcheq = ec;
+        clienteAsociar = null;
+        clienteSearch = "";
+        sugerencias = null;
+        comprobantes = null;
+        compSeleccionado = new();
+        retenciones = 0m;
+        observaciones = "";
+        asociarError = null;
+
+        try
+        {
+            // Cargar clientes en background (los necesitamos para buscar)
+            if (clientes is null)
+                clientes = await Api.GetCafeClientesAsync() ?? new();
+            // Sugerencias por CUIT del librador
+            sugerencias = await Api.GetClienteSugeridoECheqAsync(ec.Id) ?? new();
+            // Si hay UNA sola sugerencia, auto-seleccionar
+            if (sugerencias.Count == 1)
+                await ElegirCliente(sugerencias[0]);
+        }
+        catch (Exception ex) { asociarError = "Error cargando: " + ex.Message; }
+    }
+
+    private void CerrarAsociar()
+    {
+        if (asociando) return;
+        asociarOpen = false;
+        asociarEcheq = null;
+    }
+
+    private async Task ElegirCliente(SugerenciaClienteEcheqDto c)
+    {
+        clienteAsociar = c;
+        clienteSearch = "";
+        sugerencias = null;
+        loadingComprobantes = true;
+        try
+        {
+            comprobantes = await Api.GetComprobantesPendientesAsync(c.Id, true) ?? new();
+            // Pre-tildar comprobantes desde la mas vieja hasta cubrir el importe del e-cheq
+            compSeleccionado = comprobantes.Select(_ => new CompSelState()).ToList();
+            decimal restante = asociarEcheq!.Importe;
+            for (int i = 0; i < comprobantes.Count && restante > 0.01m; i++)
+            {
+                var aImputar = Math.Min(comprobantes[i].Saldo, restante);
+                compSeleccionado[i].Tildado = true;
+                compSeleccionado[i].Importe = Math.Round(aImputar, 2);
+                restante -= aImputar;
+            }
+            // Si quedo importe sin imputar y no hay comprobantes, dejamos para "a cuenta" (manejado en el confirm)
+        }
+        finally { loadingComprobantes = false; }
+    }
+
+    private void QuitarCliente()
+    {
+        clienteAsociar = null;
+        comprobantes = null;
+        compSeleccionado = new();
+    }
+
+    private void OnTildarComprobante(int idx, bool tildado)
+    {
+        compSeleccionado[idx].Tildado = tildado;
+        if (tildado && compSeleccionado[idx].Importe <= 0m)
+            compSeleccionado[idx].Importe = comprobantes![idx].Saldo;
+    }
+
+    private void OnImporteComprobante(int idx, string? raw)
+    {
+        if (decimal.TryParse(raw, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v) && v >= 0)
+            compSeleccionado[idx].Importe = Math.Round(v, 2);
+    }
+
+    private async Task ConfirmarAsociar()
+    {
+        asociarError = null;
+        if (asociarEcheq is null || clienteAsociar is null) { asociarError = "Falta cliente"; return; }
+        var sumImputado = TotalImputar;
+        // Si sobra importe del e-cheq sin imputar, va como "a cuenta" (VentaId = null)
+        var diferencia = asociarEcheq.Importe + retenciones - sumImputado;
+        var items = compSeleccionado
+            .Select((s, i) => new { s, comp = comprobantes![i] })
+            .Where(x => x.s.Tildado && x.s.Importe > 0m)
+            .Select(x => new ImputarComprobanteItem { VentaId = x.comp.VentaId, Importe = x.s.Importe })
+            .ToList();
+        if (diferencia > 0.01m)
+        {
+            // Saldo a cuenta del cliente
+            items.Add(new ImputarComprobanteItem { VentaId = null, Importe = Math.Round(diferencia, 2) });
+        }
+        else if (diferencia < -0.01m)
+        {
+            asociarError = $"Imputaste ${sumImputado:N2} pero el e-cheq + retenciones suman ${(asociarEcheq.Importe + retenciones):N2}. Reducí algún importe.";
+            return;
+        }
+        if (items.Count == 0)
+        {
+            // Solo retenciones, sin comprobantes — raro, lo dejamos a cuenta
+            items.Add(new ImputarComprobanteItem { VentaId = null, Importe = asociarEcheq.Importe + retenciones });
+        }
+
+        asociando = true;
+        try
+        {
+            var (cobId, numero, err) = await Api.AsociarECheqACobranzaAsync(asociarEcheq.Id, new AsociarECheqRequest
+            {
+                ClienteId = clienteAsociar.Id,
+                Retenciones = retenciones,
+                Observaciones = string.IsNullOrWhiteSpace(observaciones) ? null : observaciones.Trim(),
+                Comprobantes = items
+            });
+            if (err is not null) { asociarError = err; return; }
+            ToastService.Success($"✓ Cobranza {numero} creada y e-cheq asociado");
+            asociarOpen = false;
+            await Recargar();
+        }
+        finally { asociando = false; }
+    }
 }

@@ -57,6 +57,10 @@ public class CafeCheque
     /// <summary>Pago a proveedor que origino el endoso (si aplica).</summary>
     public int? PagoOrigenId { get; set; }
 
+    /// <summary>Si el cheque entro al sistema desde un e-cheq del extracto bancario,
+    /// FK al CafeChequeBanco origen. Permite ver de donde vino y evitar duplicados.</summary>
+    public int? ChequeBancoId { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

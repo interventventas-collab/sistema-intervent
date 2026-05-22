@@ -126,6 +126,33 @@ public class ChequeBancoDto
     public int CantidadEndosos { get; set; }
     public int CantidadCesiones { get; set; }
     public int CantidadAvales { get; set; }
+    // Linkeo a cobranza (cuando el e-cheq se asocio)
+    public int? CafeChequeId { get; set; }
+    public int? CobranzaId { get; set; }
+    public string? CobranzaNumero { get; set; }
+}
+
+public class SugerenciaClienteEcheqDto
+{
+    public int Id { get; set; }
+    public string Nombre { get; set; } = "";
+    public string? RazonSocial { get; set; }
+    public string? Cuit { get; set; }
+    public int? CodigoInterno { get; set; }
+}
+
+public class AsociarECheqRequest
+{
+    public int ClienteId { get; set; }
+    public decimal Retenciones { get; set; }
+    public string? Observaciones { get; set; }
+    public List<ImputarComprobanteItem> Comprobantes { get; set; } = new();
+}
+
+public class ImputarComprobanteItem
+{
+    public int? VentaId { get; set; }
+    public decimal Importe { get; set; }
 }
 
 public class ChequesResumenDto

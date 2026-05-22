@@ -812,6 +812,34 @@ public class ApiClient
         return await GetAsync<List<ChequeBancoDto>>(url);
     }
 
+    /// <summary>Clientes cuyo CUIT matchea el del librador del e-cheq. Vacio si no hay match.</summary>
+    public async Task<List<SugerenciaClienteEcheqDto>?> GetClienteSugeridoECheqAsync(int echeqId)
+        => await GetAsync<List<SugerenciaClienteEcheqDto>>($"/api/cafe/cheques-banco/{echeqId}/cliente-sugerido");
+
+    /// <summary>Asocia el e-cheq a una cobranza nueva del cliente, imputando a las facturas elegidas.
+    /// Devuelve (cobranzaId, numero, error).</summary>
+    public async Task<(int? cobranzaId, string? numero, string? error)> AsociarECheqACobranzaAsync(int echeqId, AsociarECheqRequest req)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync($"/api/cafe/cheques-banco/{echeqId}/asociar-cobranza", req);
+            if (resp.IsSuccessStatusCode)
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                var root = doc.RootElement;
+                int? cid = root.TryGetProperty("cobranzaId", out var c) ? c.GetInt32() : null;
+                string? num = root.TryGetProperty("numero", out var n) ? n.GetString() : null;
+                return (cid, num, null);
+            }
+            string err = "Error";
+            try { using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                  if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err; }
+            catch { }
+            return (null, null, err);
+        }
+        catch (Exception ex) { return (null, null, ex.Message); }
+    }
+
     public async Task<List<ImportChequeBancoResultDto>?> ImportChequesBancoAsync(IEnumerable<(string name, Stream stream)> archivos)
     {
         await SetAuthHeaderAsync();
