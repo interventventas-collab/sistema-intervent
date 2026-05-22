@@ -73,17 +73,34 @@
                     <button class="view-mode-btn @(viewMode == "product" ? "active" : "")" @onclick='() => viewMode = "product"'>Por Producto</button>
                 </div>
                 <div class="more-filters-wrapper">
-                    <button class="more-filters-btn @(filterPromo || filterNoProduct ? "has-active" : "")" @onclick="ToggleMoreFilters" @onclick:stopPropagation="true">
+                    <button class="more-filters-btn @(GetActiveFilterCount() > 0 ? "has-active" : "")" @onclick="ToggleMoreFilters" @onclick:stopPropagation="true">
                         <i class="fa-solid fa-gear"></i> Más Filtros @(GetActiveFilterCount() > 0 ? $"({GetActiveFilterCount()})" : "") <i class="fa-solid fa-caret-down"></i>
                     </button>
                     @if (showMoreFilters)
                     {
                         <div class="more-filters-dropdown">
                             <button class="more-filters-item @(filterPromo ? "active" : "")" @onclick="() => { TogglePromoFilter(); showMoreFilters = false; }">
-                                <i class="fa-solid fa-tag"></i> En promocion @(filterPromo ? $"({GetCachedFilteredItems().Count})" : "")
+                                <i class="fa-solid fa-tag"></i> En promoción
                             </button>
                             <button class="more-filters-item @(filterNoProduct ? "active" : "")" @onclick="() => { ToggleNoProductFilter(); showMoreFilters = false; }">
-                                <i class="fa-solid fa-link"></i> Sin producto @(filterNoProduct ? $"({GetCachedFilteredItems().Count})" : "")
+                                <i class="fa-solid fa-link"></i> Sin producto vinculado (legacy)
+                            </button>
+                            <div style="border-top: 1px solid #e5e7eb; margin: 0.25rem 0;"></div>
+                            <button class="more-filters-item @(filterLinkeadoCafe ? "active" : "")" @onclick="() => { filterLinkeadoCafe = !filterLinkeadoCafe; showMoreFilters = false; }">
+                                ☕ Solo cafés linkeados
+                            </button>
+                            <button class="more-filters-item @(filterLinkeadoComponentes ? "active" : "")" @onclick="() => { filterLinkeadoComponentes = !filterLinkeadoComponentes; showMoreFilters = false; }">
+                                ✅ Solo combos linkeados (componentes)
+                            </button>
+                            <button class="more-filters-item @(filterSinLinkear ? "active" : "")" @onclick="() => { filterSinLinkear = !filterSinLinkear; showMoreFilters = false; }">
+                                ⚠ Sin linkear (ningún tipo)
+                            </button>
+                            <div style="border-top: 1px solid #e5e7eb; margin: 0.25rem 0;"></div>
+                            <button class="more-filters-item @(filterFull ? "active" : "")" @onclick="() => { filterFull = !filterFull; if (filterFull) filterNoFull = false; showMoreFilters = false; }">
+                                📦 Solo Full
+                            </button>
+                            <button class="more-filters-item @(filterNoFull ? "active" : "")" @onclick="() => { filterNoFull = !filterNoFull; if (filterNoFull) filterFull = false; showMoreFilters = false; }">
+                                🚚 Solo NO Full (stock pushable)
                             </button>
                         </div>
                     }
@@ -2241,6 +2258,12 @@
     private string viewMode = "flat";
     private bool filterPromo = false;
     private bool filterNoProduct = false;
+    // Filtros nuevos para visualizar qué pushear
+    private bool filterLinkeadoCafe = false;          // ☕ solo cafés linkeados
+    private bool filterLinkeadoComponentes = false;   // ✅ solo combos sistema linkeados via componentes
+    private bool filterSinLinkear = false;            // sin ningún tipo de linkeo
+    private bool filterFull = false;                   // solo Mercado Envíos Full
+    private bool filterNoFull = false;                 // solo NO Full (pushear stock OK)
     private bool showMoreFilters = false;
 
     // Selection & bulk actions
@@ -2311,6 +2334,11 @@
         int count = 0;
         if (filterPromo) count++;
         if (filterNoProduct) count++;
+        if (filterLinkeadoCafe) count++;
+        if (filterLinkeadoComponentes) count++;
+        if (filterSinLinkear) count++;
+        if (filterFull) count++;
+        if (filterNoFull) count++;
         return count;
     }
 
@@ -2606,6 +2634,18 @@
         // Sin producto vinculado
         if (filterNoProduct)
             filtered = filtered.Where(i => !i.ProductId.HasValue);
+
+        // ── Filtros nuevos de linkeo ──
+        if (filterLinkeadoCafe)
+            filtered = filtered.Where(i => i.CafeProductoId.HasValue);
+        if (filterLinkeadoComponentes)
+            filtered = filtered.Where(i => i.ComponentMappingsCount > 0);
+        if (filterSinLinkear)
+            filtered = filtered.Where(i => !i.TieneLinkeo);
+        if (filterFull)
+            filtered = filtered.Where(i => string.Equals(i.LogisticType, "fulfillment", StringComparison.OrdinalIgnoreCase));
+        if (filterNoFull)
+            filtered = filtered.Where(i => !string.Equals(i.LogisticType, "fulfillment", StringComparison.OrdinalIgnoreCase));
 
         // Text filters
         foreach (var kv in textFilters.Where(f => !string.IsNullOrEmpty(f.Value)))
