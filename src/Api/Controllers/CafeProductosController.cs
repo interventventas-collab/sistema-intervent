@@ -464,8 +464,18 @@ public class CafeProductosController : ControllerBase
         else if (req.ClearUxB) p.UxB = null;
         if (req.OemId.HasValue) p.OemId = req.OemId.Value;
         else if (req.ClearOemId) p.OemId = null;
-        if (req.StockGramos.HasValue) p.StockGramos = Math.Max(0m, req.StockGramos.Value);
-        if (req.StockUnidades.HasValue) p.StockUnidades = Math.Max(0, req.StockUnidades.Value);
+        var stockCambio = false;
+        if (req.StockGramos.HasValue && req.StockGramos.Value != p.StockGramos)
+        {
+            p.StockGramos = Math.Max(0m, req.StockGramos.Value);
+            stockCambio = true;
+        }
+        if (req.StockUnidades.HasValue && req.StockUnidades.Value != p.StockUnidades)
+        {
+            p.StockUnidades = Math.Max(0, req.StockUnidades.Value);
+            stockCambio = true;
+        }
+        if (stockCambio) p.StockChangedAt = DateTime.UtcNow;
         if (req.Notas is not null) p.Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim();
         if (req.IsActive.HasValue) p.IsActive = req.IsActive.Value;
         if (req.IvaPct.HasValue) p.IvaPct = NormalizeIva(req.IvaPct);

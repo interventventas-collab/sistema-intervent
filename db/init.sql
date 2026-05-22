@@ -4028,3 +4028,38 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='VariationId' AND Object_ID=OBJECT_ID('MeliOrders'))
     ALTER TABLE MeliOrders ADD VariationId NVARCHAR(40) NULL;
 GO
+
+-- 2026-05-22: Webhooks MeLi → sistema (event-driven, reemplaza polling como fuente principal)
+-- Esta tabla loggea TODOS los webhooks que llegan a /api/meli/webhook (para debugging y auditoria).
+SET QUOTED_IDENTIFIER ON;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='MeliWebhookLogs')
+BEGIN
+    CREATE TABLE MeliWebhookLogs (
+        Id INT IDENTITY PRIMARY KEY,
+        Topic NVARCHAR(40) NULL,
+        Resource NVARCHAR(200) NULL,
+        UserId BIGINT NULL,
+        Attempts INT NULL,
+        SentAt DATETIME2 NULL,
+        ReceivedAt DATETIME2 NOT NULL CONSTRAINT DF_MeliWebhookLogs_ReceivedAt DEFAULT SYSUTCDATETIME(),
+        ProcessedAt DATETIME2 NULL,
+        ProcessedOk BIT NULL,
+        ErrorMessage NVARCHAR(MAX) NULL,
+        RawBody NVARCHAR(MAX) NULL
+    );
+    CREATE INDEX IX_MeliWebhookLogs_Topic ON MeliWebhookLogs(Topic);
+    CREATE INDEX IX_MeliWebhookLogs_ReceivedAt ON MeliWebhookLogs(ReceivedAt DESC);
+END
+GO
+
+-- 2026-05-22: Push event-driven sistema → MeLi (cuando cambia stock en sistema, pusheamos a MeLi)
+-- Marca timestamp del ultimo push exitoso a MeLi para que el job de respaldo solo procese los pendientes.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='LastPushedToMeli' AND Object_ID=OBJECT_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD LastPushedToMeli DATETIME2 NULL;
+GO
+-- Marca cuando cambio el stock por ultima vez (lo setean los services que descuentan/devuelven stock).
+-- Si StockChangedAt > LastPushedToMeli (o LastPushedToMeli IS NULL) → hay que pushear.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='StockChangedAt' AND Object_ID=OBJECT_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD StockChangedAt DATETIME2 NULL;
+GO

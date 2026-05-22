@@ -142,4 +142,18 @@ public class CafeProducto
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
+
+    // ─── Push event-driven sistema → MeLi (2026-05-22) ───
+    // Se setean para que el job de respaldo (MeliStockPushBackgroundService) pueda
+    // identificar productos cuyo stock cambio y todavia no se pushearon a MeLi.
+
+    /// <summary>Ultima vez que se pusheo el stock de este producto a MeLi (exitosamente).
+    /// Null = nunca se pusheo. Usado por el job de respaldo: si StockChangedAt > LastPushedToMeli
+    /// (o LastPushedToMeli es null), hay que pushear.</summary>
+    public DateTime? LastPushedToMeli { get; set; }
+
+    /// <summary>Marca la ultima vez que se modifico el stock (StockGramos o StockUnidades).
+    /// Lo setean los services que descuentan/devuelven stock (ventas, ordenes MeLi, ajustes manuales).
+    /// El job de respaldo lo compara contra LastPushedToMeli para decidir si push.</summary>
+    public DateTime? StockChangedAt { get; set; }
 }

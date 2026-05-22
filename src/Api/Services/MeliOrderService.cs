@@ -168,6 +168,54 @@ public class MeliOrderService
         return synced;
     }
 
+    /// <summary>
+    /// Sincroniza UNA sola orden desde MeLi por id. Usado por el webhook handler:
+    /// MeLi nos avisa "se creó/cambió la orden 2000000000" → fetcheamos esa orden puntual
+    /// y la upserteamos (en vez de pedir lista de ordenes de las ultimas 6h).
+    ///
+    /// El upsert es por (MeliOrderId, ItemId) — si la orden tiene N items, escribe N filas.
+    /// Returns: cantidad de filas afectadas (items en la orden).
+    /// </summary>
+    public async Task<int> SyncSingleOrderAsync(long meliOrderId, MeliAccount account)
+    {
+        var token = await _accountService.GetValidTokenAsync(account);
+        if (token is null)
+            throw new InvalidOperationException($"Token invalido para cuenta {account.Nickname}");
+
+        var http = _httpFactory.CreateClient();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var response = await http.GetAsync($"https://api.mercadolibre.com/orders/{meliOrderId}");
+        // Refresh + retry si 401/403
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized ||
+            response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        {
+            var newToken = await _accountService.GetValidTokenAsync(account, forceRefresh: true);
+            if (newToken is not null)
+            {
+                http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", newToken);
+                response = await http.GetAsync($"https://api.mercadolibre.com/orders/{meliOrderId}");
+            }
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync();
+            throw new Exception($"MeLi /orders/{meliOrderId} error ({response.StatusCode}): {errorBody}");
+        }
+
+        var json = await response.Content.ReadAsStringAsync();
+        var order = JsonDocument.Parse(json).RootElement;
+
+        long? packId = order.TryGetProperty("pack_id", out var pid)
+            && pid.ValueKind != JsonValueKind.Null
+            ? pid.GetInt64() : null;
+
+        var n = await UpsertOrderAsync(account.Id, order, packId, http);
+        await _db.SaveChangesAsync();
+        return n;
+    }
+
     public async Task<MeliOrderDetailResponse> GetOrderDetailAsync(long meliOrderId)
     {
         // Find the order in our DB to get the account

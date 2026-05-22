@@ -478,6 +478,108 @@ public class MeliController : ControllerBase
         return Ok(new { deleted });
     }
 
+    /// <summary>Pushea SOLO STOCK (sin tocar precio) a las publicaciones MeLi linkeadas a un
+    /// CafeProducto. Util para forzar sincronizar despues de un ajuste manual.</summary>
+    [HttpPost("stock-push/{cafeProductoId:int}")]
+    public async Task<IActionResult> PushStockForProducto(int cafeProductoId,
+        [FromServices] MeliStockPushService pushSvc)
+    {
+        try
+        {
+            var r = await pushSvc.PushStockForProductoAsync(cafeProductoId, HttpContext.RequestAborted);
+            return Ok(new { procesadas = r.Procesadas, ok = r.Ok, skipped = r.Skipped, errores = r.Errores, mensajes = r.Mensajes });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>Procesa la cola de productos con StockChangedAt > LastPushedToMeli. Lo mismo
+    /// que hace el job de respaldo cada 15 min, pero on-demand.</summary>
+    [HttpPost("stock-push/pending")]
+    public async Task<IActionResult> PushPendingStock([FromServices] MeliStockPushService pushSvc,
+        [FromQuery] int max = 200)
+    {
+        try
+        {
+            var r = await pushSvc.PushPendingAsync(max, HttpContext.RequestAborted);
+            return Ok(new { procesadas = r.Procesadas, ok = r.Ok, skipped = r.Skipped, errores = r.Errores, mensajes = r.Mensajes });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>Configura el callback URL del webhook en la app de MercadoLibre.
+    /// Solo admin. La URL configurada se calcula desde la integration (RedirectUrl host) o
+    /// se puede pasar explicita por query.
+    /// Topics que registramos: orders_v2, items (resto los ignoramos del lado del handler).
+    /// </summary>
+    [HttpPost("configure-webhook")]
+    [Microsoft.AspNetCore.Authorization.Authorize(Roles = "admin")]
+    public async Task<IActionResult> ConfigureWebhook([FromServices] Api.Data.AppDbContext db,
+        [FromServices] IHttpClientFactory httpFactory,
+        [FromServices] MeliAccountService accountSvc,
+        [FromQuery] string? callbackUrl = null)
+    {
+        var integration = await db.Integrations.FirstOrDefaultAsync(i => i.Provider == "mercadolibre");
+        if (integration is null || string.IsNullOrEmpty(integration.AppId))
+            return BadRequest(new { error = "Integration MercadoLibre no configurada" });
+
+        // Si no nos pasan URL, derivar del RedirectUrl: https://app.palanica.com.ar/integraciones/meli/callback → https://app.palanica.com.ar/api/meli/webhook
+        if (string.IsNullOrEmpty(callbackUrl))
+        {
+            var redirect = integration.RedirectUrl ?? "";
+            try
+            {
+                var uri = new Uri(redirect);
+                callbackUrl = $"{uri.Scheme}://{uri.Host}{(uri.IsDefaultPort ? "" : ":" + uri.Port)}/api/meli/webhook";
+            }
+            catch
+            {
+                return BadRequest(new { error = "No pude derivar callbackUrl desde la integration. Pasalo por query: ?callbackUrl=https://..." });
+            }
+        }
+
+        // Necesitamos un access_token valido — usamos el de la primera cuenta conectada.
+        var account = await db.MeliAccounts.OrderByDescending(a => a.UpdatedAt).FirstOrDefaultAsync();
+        if (account is null)
+            return BadRequest(new { error = "No hay cuentas MeLi conectadas" });
+        var token = await accountSvc.GetValidTokenAsync(account);
+        if (token is null)
+            return BadRequest(new { error = "No pude obtener un token valido para configurar el webhook" });
+
+        // POST /applications/{app_id}/notifications
+        var http = httpFactory.CreateClient();
+        http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        // El endpoint exacto de configuracion varia entre la consola del developer y la API.
+        // Lo correcto/oficial es configurarlo en https://developers.mercadolibre.com.ar/devcenter
+        // Aca lo intentamos via API (PUT /applications/{app_id}) con notifications_callback_url y topics.
+        var payload = new
+        {
+            callback_url = callbackUrl,
+            topics = new[] { "orders_v2", "items" }
+        };
+        var body = new StringContent(System.Text.Json.JsonSerializer.Serialize(payload),
+            System.Text.Encoding.UTF8, "application/json");
+        var resp = await http.PutAsync($"https://api.mercadolibre.com/applications/{integration.AppId}", body);
+        var respText = await resp.Content.ReadAsStringAsync();
+
+        return Ok(new
+        {
+            callbackUrl,
+            topics = new[] { "orders_v2", "items" },
+            apiStatus = (int)resp.StatusCode,
+            apiResponse = respText,
+            hint = resp.IsSuccessStatusCode
+                ? "Configurado. Verificalo en developers.mercadolibre.com.ar → tu app → Notificaciones."
+                : "Si el API responde 401/403/404, configura manualmente desde developers.mercadolibre.com.ar → tu app → Notificaciones. Usa la callbackUrl de arriba y los topics orders_v2 + items."
+        });
+    }
+
 
     // --- Publish endpoints ---
 

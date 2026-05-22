@@ -155,6 +155,8 @@ public class MeliStockSyncService
                         prod.StockUnidades -= unidades;
                         descOtros++;
                     }
+                    // Marcar para que el job de respaldo / push event-driven sepa que hay que pushear a MeLi.
+                    prod.StockChangedAt = DateTime.UtcNow;
                 }
 
                 ord.StockDiscounted = true;

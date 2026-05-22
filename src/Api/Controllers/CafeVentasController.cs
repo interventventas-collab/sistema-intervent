@@ -23,6 +23,7 @@ public class CafeVentasController : ControllerBase
     private readonly WhatsAppService _whatsAppService;
     private readonly QrRepartidorService _qrRepartidorService;
     private readonly CafeReciboVisitaCobranzaPdfService _reciboVisitaPdfService;
+    private readonly IServiceScopeFactory _scopeFactory;
     private static readonly string[] FormatosValidos = { "1KG", "MEDIO", "CUARTO", "UNIT", "BULTO" };
 
     public CafeVentasController(
@@ -34,7 +35,8 @@ public class CafeVentasController : ControllerBase
         IntegrationService integrationService,
         WhatsAppService whatsAppService,
         QrRepartidorService qrRepartidorService,
-        CafeReciboVisitaCobranzaPdfService reciboVisitaPdfService)
+        CafeReciboVisitaCobranzaPdfService reciboVisitaPdfService,
+        IServiceScopeFactory scopeFactory)
     {
         _db = db;
         _pdfService = pdfService;
@@ -45,6 +47,29 @@ public class CafeVentasController : ControllerBase
         _whatsAppService = whatsAppService;
         _qrRepartidorService = qrRepartidorService;
         _reciboVisitaPdfService = reciboVisitaPdfService;
+        _scopeFactory = scopeFactory;
+    }
+
+    /// <summary>Dispara push de stock a MeLi en background (fire-and-forget). No bloquea el response.
+    /// Si MeLi falla, queda marcado StockChangedAt y el job de respaldo lo recupera en max 15 min.</summary>
+    private void FireAndForgetPushMeli(List<int> cafeProductoIds)
+    {
+        if (cafeProductoIds is null || cafeProductoIds.Count == 0) return;
+        var scopeFactory = _scopeFactory;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = scopeFactory.CreateScope();
+                var pushSvc = scope.ServiceProvider.GetRequiredService<MeliStockPushService>();
+                foreach (var pid in cafeProductoIds)
+                {
+                    try { await pushSvc.PushStockForProductoAsync(pid); }
+                    catch { /* errores capturados por el service, marca queda en StockChangedAt */ }
+                }
+            }
+            catch { /* el job de respaldo lo recupera */ }
+        });
     }
 
     /// <summary>Genera el PDF "Recibo de Visita por Cobranza" — para imprimir cuando el
@@ -958,10 +983,20 @@ public class CafeVentasController : ControllerBase
                 prod.StockUnidades = Math.Max(0, prod.StockUnidades - unidadesADescontar);
             }
             prod.UpdatedAt = DateTime.UtcNow;
+            prod.StockChangedAt = DateTime.UtcNow; // dispara push a MeLi (event-driven + job de respaldo)
         }
+
+        // Capturar los productos afectados ANTES del SaveChanges para pushear despues.
+        var productosAfectados = venta.Items
+            .Where(i => i.ProductoId.HasValue)
+            .Select(i => i.ProductoId!.Value).Distinct().ToList();
 
         _db.CafeVentas.Add(venta);
         await _db.SaveChangesAsync();
+
+        // Push event-driven a MeLi: fire-and-forget. Si MeLi esta caido o falla, queda
+        // marcado con StockChangedAt y el job de respaldo (15 min) lo recupera.
+        FireAndForgetPushMeli(productosAfectados);
 
         // ============================================================
         // Si es Factura A/B/C, intentar emitir contra ARCA inmediatamente.
@@ -1312,6 +1347,7 @@ public class CafeVentasController : ControllerBase
             return BadRequest(new { error = $"El comprobante tiene CAE de ARCA ({v.ArcaCae}). Para revertirlo hay que emitir una Nota de Crédito." });
 
         // Restaurar stock (concepto libre se saltea, no descontó stock)
+        var productosAnular = new List<int>();
         foreach (var it in v.Items)
         {
             if (it.EsConceptoLibre || it.ProductoId is null) continue;
@@ -1326,10 +1362,13 @@ public class CafeVentasController : ControllerBase
                 prod.StockUnidades += unidadesADevolver;
             }
             prod.UpdatedAt = DateTime.UtcNow;
+            prod.StockChangedAt = DateTime.UtcNow;
+            productosAnular.Add(prod.Id);
         }
         v.Estado = "anulado";
         v.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
+        FireAndForgetPushMeli(productosAnular);
         return Ok(Map(v));
     }
 
@@ -1362,8 +1401,9 @@ public class CafeVentasController : ControllerBase
         // Comprobantes con CAE de ARCA: no se pueden borrar. Solo NC.
         if (v.ArcaEstado == "autorizado")
             return BadRequest(new { error = $"El comprobante tiene CAE de ARCA ({v.ArcaCae}). No se puede eliminar; hay que emitir una Nota de Crédito." });
-        await DeleteVentaInternalAsync(v);
+        var prodIds = await DeleteVentaInternalAsync(v);
         await _db.SaveChangesAsync();
+        FireAndForgetPushMeli(prodIds);
         return Ok(new { deleted = true });
     }
 
@@ -1390,10 +1430,15 @@ public class CafeVentasController : ControllerBase
         var conCae = ventas.Where(v => v.ArcaEstado == "autorizado").ToList();
         var borrables = ventas.Where(v => v.ArcaEstado != "autorizado").ToList();
 
+        var allBulkProdIds = new HashSet<int>();
         foreach (var v in borrables)
-            await DeleteVentaInternalAsync(v);
+        {
+            var ids = await DeleteVentaInternalAsync(v);
+            foreach (var id2 in ids) allBulkProdIds.Add(id2);
+        }
 
         await _db.SaveChangesAsync();
+        FireAndForgetPushMeli(allBulkProdIds.ToList());
         return Ok(new
         {
             deleted = borrables.Count,
@@ -1493,6 +1538,7 @@ public class CafeVentasController : ControllerBase
             try
             {
                 // 1. Devolver stock de los items actuales. Concepto libre se saltea (no descontó).
+                var productosUpdate = new HashSet<int>();
                 foreach (var item in v.Items)
                 {
                     if (item.EsConceptoLibre || item.ProductoId is null) continue;
@@ -1505,6 +1551,8 @@ public class CafeVentasController : ControllerBase
                         prod.StockUnidades += unidadesADevolver;
                     }
                     prod.UpdatedAt = DateTime.UtcNow;
+                    prod.StockChangedAt = DateTime.UtcNow;
+                    productosUpdate.Add(prod.Id);
                 }
                 _db.CafeVentaItems.RemoveRange(v.Items);
                 v.Items.Clear();
@@ -1579,6 +1627,8 @@ public class CafeVentasController : ControllerBase
                         prod.StockUnidades = Math.Max(0, prod.StockUnidades - unidadesADescontar);
                     }
                     prod.UpdatedAt = DateTime.UtcNow;
+                    prod.StockChangedAt = DateTime.UtcNow;
+                    productosUpdate.Add(prod.Id);
                 }
 
                 v.Subtotal = cot.Subtotal;
@@ -1589,6 +1639,7 @@ public class CafeVentasController : ControllerBase
                 v.UpdatedAt = DateTime.UtcNow;
                 await _db.SaveChangesAsync();
                 await tx.CommitAsync();
+                FireAndForgetPushMeli(productosUpdate.ToList());
             }
             catch
             {
@@ -1626,9 +1677,10 @@ public class CafeVentasController : ControllerBase
             throw new UnauthorizedAccessException("Clave incorrecta.");
     }
 
-    private async Task DeleteVentaInternalAsync(CafeVenta v)
+    private async Task<List<int>> DeleteVentaInternalAsync(CafeVenta v)
     {
         // Si estaba emitida, restaurar stock antes de borrar. Concepto libre se saltea.
+        var productosDelete = new List<int>();
         if (v.Estado == "emitido")
         {
             foreach (var it in v.Items)
@@ -1642,6 +1694,8 @@ public class CafeVentasController : ControllerBase
                     var unidadesADevolver = it.Formato == "BULTO" ? it.Cantidad * (prod.UxB ?? 1) : it.Cantidad;
                     prod.StockUnidades += unidadesADevolver;
                 }
+                prod.StockChangedAt = DateTime.UtcNow;
+                productosDelete.Add(prod.Id);
             }
         }
         // Desvincular las cobranzas que referenciaban esta venta (les ponemos VentaId=null = quedan
@@ -1652,6 +1706,7 @@ public class CafeVentasController : ControllerBase
         foreach (var cc in cobranzasItems)
             cc.VentaId = null;
         _db.CafeVentas.Remove(v);
+        return productosDelete;
     }
 
     // ============================================================
