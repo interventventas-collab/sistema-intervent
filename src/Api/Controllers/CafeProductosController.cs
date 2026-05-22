@@ -392,6 +392,24 @@ public class CafeProductosController : ControllerBase
         };
         _db.CafeProductos.Add(p);
         await _db.SaveChangesAsync();
+        if (cat == "OTROS" && req.Packs is { Count: > 0 })
+        {
+            foreach (var pk in req.Packs)
+            {
+                if (pk.Cantidad <= 0 || string.IsNullOrWhiteSpace(pk.Nombre)) continue;
+                _db.CafeProductoPacks.Add(new CafeProductoPack
+                {
+                    ProductoId = p.Id,
+                    Cantidad = pk.Cantidad,
+                    Nombre = pk.Nombre.Trim(),
+                    PrecioOverride = pk.PrecioOverride,
+                    SortOrder = pk.SortOrder,
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
+            await _db.SaveChangesAsync();
+        }
         var saved = await _db.CafeProductos.Include(x => x.OemNav).Include(x => x.MarcaNav).Include(x => x.Packs).FirstAsync(x => x.Id == p.Id);
         return Ok(Map(saved));
     }
@@ -497,6 +515,45 @@ public class CafeProductosController : ControllerBase
                 ChangedAt = DateTime.UtcNow,
                 ChangedBy = User?.Identity?.Name ?? "Sistema"
             });
+        }
+
+        // Sincronizar packs si vinieron en el request (null = no tocar; lista vacia = borrar todos).
+        if (req.Packs is not null)
+        {
+            var existentes = await _db.CafeProductoPacks.Where(x => x.ProductoId == p.Id).ToListAsync();
+            var idsRecibidos = req.Packs.Where(x => x.Id.HasValue).Select(x => x.Id!.Value).ToHashSet();
+            // Borrar los que ya no vienen
+            foreach (var viejo in existentes.Where(x => !idsRecibidos.Contains(x.Id)).ToList())
+            {
+                _db.CafeProductoPacks.Remove(viejo);
+            }
+            // Crear / actualizar
+            foreach (var pk in req.Packs)
+            {
+                if (pk.Cantidad <= 0 || string.IsNullOrWhiteSpace(pk.Nombre)) continue;
+                if (pk.Id.HasValue)
+                {
+                    var existente = existentes.FirstOrDefault(x => x.Id == pk.Id.Value);
+                    if (existente is null) continue;
+                    existente.Cantidad = pk.Cantidad;
+                    existente.Nombre = pk.Nombre.Trim();
+                    existente.PrecioOverride = pk.PrecioOverride;
+                    existente.SortOrder = pk.SortOrder;
+                }
+                else
+                {
+                    _db.CafeProductoPacks.Add(new CafeProductoPack
+                    {
+                        ProductoId = p.Id,
+                        Cantidad = pk.Cantidad,
+                        Nombre = pk.Nombre.Trim(),
+                        PrecioOverride = pk.PrecioOverride,
+                        SortOrder = pk.SortOrder,
+                        IsActive = true,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
+            }
         }
 
         await _db.SaveChangesAsync();

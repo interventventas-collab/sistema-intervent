@@ -140,6 +140,15 @@ public class CafeProductoPackDto
     public int SortOrder { get; set; }
 }
 
+public class CafeProductoPackRequest
+{
+    public int? Id { get; set; }
+    public int Cantidad { get; set; }
+    public string Nombre { get; set; } = "";
+    public decimal? PrecioOverride { get; set; }
+    public int SortOrder { get; set; }
+}
+
 public class CreateCafeProductoRequest
 {
     public string? Sku { get; set; }
@@ -165,6 +174,8 @@ public class CreateCafeProductoRequest
     // Precio del bulto completo (descuento por volumen, SOLO OTROS):
     public decimal? PrecioBulto { get; set; }
     public decimal? PrecioBultoOtro { get; set; }
+    /// <summary>Packs prearmados a crear junto con el producto. Opcional, solo OTROS.</summary>
+    public List<CafeProductoPackRequest>? Packs { get; set; }
 }
 
 public class UpdateCafeProductoRequest
@@ -215,6 +226,8 @@ public class UpdateCafeProductoRequest
     public bool ClearPrecioBultoFuturo { get; set; }
     public decimal? PrecioBultoOtroFuturo { get; set; }
     public bool ClearPrecioBultoOtroFuturo { get; set; }
+    /// <summary>Packs prearmados. Si null, no se tocan; si lista, reemplaza el set completo.</summary>
+    public List<CafeProductoPackRequest>? Packs { get; set; }
 }
 
 public class CafeSettingDto

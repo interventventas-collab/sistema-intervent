@@ -93,6 +93,18 @@ public record CafeProductoPackDto(
     int Id, int Cantidad, string Nombre, decimal? PrecioOverride,
     bool IsActive, int SortOrder);
 
+/// <summary>Item enviado por el frontend cuando edita los packs de un producto. Si Id viene
+/// con valor, se actualiza el pack existente; si Id es null, se crea uno nuevo. Los packs que
+/// existen en DB pero NO vienen en la lista se eliminan.</summary>
+public class CafeProductoPackRequest
+{
+    public int? Id { get; set; }
+    public int Cantidad { get; set; }
+    public string Nombre { get; set; } = string.Empty;
+    public decimal? PrecioOverride { get; set; }
+    public int SortOrder { get; set; }
+}
+
 public class CreateCafeProductoRequest
 {
     public string? Sku { get; set; }
@@ -118,6 +130,8 @@ public class CreateCafeProductoRequest
     // Precio del bulto completo (descuento por volumen, SOLO OTROS).
     public decimal? PrecioBulto { get; set; }
     public decimal? PrecioBultoOtro { get; set; }
+    /// <summary>Packs prearmados a crear junto con el producto. Opcional. Solo OTROS.</summary>
+    public List<CafeProductoPackRequest>? Packs { get; set; }
 }
 
 // ===== Kits (productos compuestos / BOM) =====
@@ -233,6 +247,11 @@ public class UpdateCafeProductoRequest
     public bool ClearPrecioBultoFuturo { get; set; }
     public decimal? PrecioBultoOtroFuturo { get; set; }
     public bool ClearPrecioBultoOtroFuturo { get; set; }
+
+    /// <summary>Packs prearmados del producto. Si es null, no se tocan los packs existentes.
+    /// Si es una lista (incluso vacia), reemplaza la lista actual: items con Id se actualizan,
+    /// items sin Id se crean, items que no aparezcan se borran.</summary>
+    public List<CafeProductoPackRequest>? Packs { get; set; }
 }
 
 // ===== Settings =====
