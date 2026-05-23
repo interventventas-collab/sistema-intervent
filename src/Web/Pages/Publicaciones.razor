@@ -72,6 +72,15 @@
                     <button class="view-mode-btn @(viewMode == "family" ? "active" : "")" @onclick='() => viewMode = "family"'>Por Familia</button>
                     <button class="view-mode-btn @(viewMode == "product" ? "active" : "")" @onclick='() => viewMode = "product"'>Por Producto</button>
                     <button class="view-mode-btn @(viewMode == "sincro" ? "active" : "")" @onclick='() => viewMode = "sincro"'>💰 Sincro precio + stock</button>
+                    @if (viewMode == "flat")
+                    {
+                        <label title="ON: agrupa familias (FamilyId con varios MLAs) en 1 sola fila — vista catálogo de MeLi. OFF: cada MLA es 1 fila — coincide con el conteo de publicaciones de MeLi web."
+                               style="display:inline-flex; align-items:center; gap:0.35rem; padding:0.35rem 0.7rem; margin-left:0.5rem; background:#f3f4f6; border:1px solid #e5e7eb; border-radius:6px; cursor:pointer; font-size:0.82rem; color:#374151;">
+                            <input type="checkbox" checked="@agruparFamilias"
+                                   @onchange="@((ChangeEventArgs e) => { agruparFamilias = (bool)(e.Value ?? true); StateHasChanged(); })" />
+                            <span>📦 Agrupar familias</span>
+                        </label>
+                    }
                 </div>
                 <div class="more-filters-wrapper">
                     <button class="more-filters-btn @(GetActiveFilterCount() > 0 ? "has-active" : "")" @onclick="ToggleMoreFilters" @onclick:stopPropagation="true">
@@ -2355,6 +2364,9 @@
 
     // View mode
     private string viewMode = "flat";
+    // Toggle de la vista "Lista": agrupar familias (mismos FamilyId con N MLAs en 1 fila) vs verlas sueltas (cada MLA = 1 fila).
+    // ON por defecto = matchea la vista catálogo de MeLi. OFF = matchea el conteo de MLAs sueltos de MeLi web (~3.5k).
+    private bool agruparFamilias = true;
     private bool filterPromo = false;
     private bool filterNoProduct = false;
     // Filtros nuevos para visualizar qué pushear
@@ -2875,7 +2887,9 @@
         var seen = new Dictionary<string, GroupedRow>();
         foreach (var it in filtered)
         {
-            bool agruparPorFamilia = !string.IsNullOrEmpty(it.FamilyId)
+            // Si el toggle "Agrupar familias" está OFF, cada MLA va como su propia fila (= conteo MLA suelto de MeLi web).
+            bool agruparPorFamilia = agruparFamilias
+                && !string.IsNullOrEmpty(it.FamilyId)
                 && mlasPorFamilia.GetValueOrDefault(it.FamilyId!, 0) > 1;
             string key = agruparPorFamilia ? $"FAM_{it.FamilyId}" : $"MLA_{it.MeliItemId}";
             if (!seen.TryGetValue(key, out var grp))
