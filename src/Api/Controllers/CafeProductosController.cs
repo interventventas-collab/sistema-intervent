@@ -1,6 +1,7 @@
 using Api.Data;
 using Api.DTOs;
 using Api.Models;
+using Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -13,9 +14,28 @@ namespace Api.Controllers;
 public class CafeProductosController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly IServiceScopeFactory _scopeFactory;
     private static readonly string[] CategoriasValidas = { "CAFE", "OTROS" };
 
-    public CafeProductosController(AppDbContext db) { _db = db; }
+    public CafeProductosController(AppDbContext db, IServiceScopeFactory scopeFactory) { _db = db; _scopeFactory = scopeFactory; }
+
+    /// <summary>Dispara push de stock a MeLi en background (fire-and-forget) cuando el usuario
+    /// edita stock manualmente desde la pantalla de productos. El push respeta los kill switches
+    /// (si master_enabled = false, no hace nada).</summary>
+    private void FireAndForgetPushMeli(int cafeProductoId)
+    {
+        var scopeFactory = _scopeFactory;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = scopeFactory.CreateScope();
+                var pushSvc = scope.ServiceProvider.GetRequiredService<MeliStockPushService>();
+                await pushSvc.PushStockForProductoAsync(cafeProductoId);
+            }
+            catch { /* errores capturados por el service, marca queda en StockChangedAt */ }
+        });
+    }
 
     private static CafeProductoDto Map(CafeProducto p) => new(
         p.Id, p.Sku, p.Barcode,
@@ -498,6 +518,8 @@ public class CafeProductosController : ControllerBase
             stockCambio = true;
         }
         if (stockCambio) p.StockChangedAt = DateTime.UtcNow;
+        // Si cambió el stock, disparar push event-driven a MeLi después del SaveChanges
+        var dispararPush = stockCambio;
         if (req.Notas is not null) p.Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim();
         if (req.IsActive.HasValue) p.IsActive = req.IsActive.Value;
         if (req.IvaPct.HasValue) p.IvaPct = NormalizeIva(req.IvaPct);
@@ -558,6 +580,8 @@ public class CafeProductosController : ControllerBase
 
         await _db.SaveChangesAsync();
         var saved = await _db.CafeProductos.Include(x => x.OemNav).Include(x => x.MarcaNav).Include(x => x.Packs).FirstAsync(x => x.Id == p.Id);
+        // Si cambió el stock, disparar push a MeLi en background (respeta kill switches)
+        if (dispararPush) FireAndForgetPushMeli(p.Id);
         return Ok(Map(saved));
     }
 
