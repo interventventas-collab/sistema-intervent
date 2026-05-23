@@ -1,0 +1,256 @@
+@page "/cafe/historial-stock"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+@* Pantalla "Historial de movimientos de stock".
+   Muestra TODOS los cambios de stock loguados en Stock_Movimientos:
+   - VENTA_NUESTRA: venta cargada desde /cafe/ventas
+   - VENTA_MELI: orden de MercadoLibre (webhook / sync de órdenes)
+   - SUMA / RESTA / SET: ajustes manuales desde la pantalla /stock-modificar
+   - AJUSTE_ADMIN / SINCRO_CONTABILIUM / COMPRA_PROVEEDOR / CANCELACION: otros
+   Permite filtrar por fecha, tipo, texto libre. *@
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
+        <h3 style="margin: 0;">📊 Historial de movimientos de stock</h3>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <button class="btn btn-secondary btn-sm" @onclick="LoadStats" disabled="@isLoading">
+                <i class="fa-solid fa-arrows-rotate"></i> Refrescar
+            </button>
+        </div>
+    </div>
+
+    <div class="card-body">
+        @if (stats is not null)
+        {
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.6rem; margin-bottom: 1rem;">
+                <div class="hist-stat-card stat-total">
+                    <div class="hist-stat-label">Total movimientos</div>
+                    <div class="hist-stat-value">@stats.Total.ToString("N0")</div>
+                </div>
+                @foreach (var t in stats.PorTipo.Take(6))
+                {
+                    <div class="hist-stat-card @GetStatClass(t.TipoMov)">
+                        <div class="hist-stat-label">@GetTipoLabel(t.TipoMov)</div>
+                        <div class="hist-stat-value">@t.Count.ToString("N0")</div>
+                    </div>
+                }
+                @if (stats.Ultimo.HasValue)
+                {
+                    <div class="hist-stat-card stat-ultimo">
+                        <div class="hist-stat-label">Último movimiento</div>
+                        <div class="hist-stat-value" style="font-size: 0.95rem;">@stats.Ultimo.Value.ToLocalTime().ToString("dd/MM HH:mm")</div>
+                    </div>
+                }
+            </div>
+        }
+
+        <div style="background:#f9fafb; border:1px solid #e5e7eb; padding:0.85rem 1rem; border-radius:6px; margin-bottom:1rem;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.6rem; align-items: end;">
+                <div>
+                    <label style="font-size: 0.75rem; color: #6b7280;">Desde</label>
+                    <input type="date" class="form-control form-control-sm" @bind="filtroDesde" />
+                </div>
+                <div>
+                    <label style="font-size: 0.75rem; color: #6b7280;">Hasta</label>
+                    <input type="date" class="form-control form-control-sm" @bind="filtroHasta" />
+                </div>
+                <div>
+                    <label style="font-size: 0.75rem; color: #6b7280;">Tipo</label>
+                    <select class="form-control form-control-sm" @bind="filtroTipoMov">
+                        <option value="">Todos</option>
+                        <option value="VENTA_NUESTRA">Venta del sistema</option>
+                        <option value="VENTA_MELI">Venta de MercadoLibre</option>
+                        <option value="SUMA">Ajuste +SUMA</option>
+                        <option value="RESTA">Ajuste -RESTA</option>
+                        <option value="SET">Ajuste =SET</option>
+                        <option value="AJUSTE_ADMIN">Ajuste admin</option>
+                        <option value="SINCRO_CONTABILIUM">Sincro Contabilium</option>
+                        <option value="COMPRA_PROVEEDOR">Compra proveedor</option>
+                        <option value="CANCELACION">Cancelación</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size: 0.75rem; color: #6b7280;">Buscar (producto/SKU/comentario)</label>
+                    <input type="text" class="form-control form-control-sm" @bind="filtroTexto" @bind:event="oninput" placeholder="Ej: F2.2, MLA987..." />
+                </div>
+                <div>
+                    <label style="font-size: 0.75rem; color: #6b7280;">Limit</label>
+                    <select class="form-control form-control-sm" @bind="filtroLimit">
+                        <option value="100">100</option>
+                        <option value="500">500</option>
+                        <option value="1000">1000</option>
+                        <option value="2000">2000</option>
+                    </select>
+                </div>
+                <div>
+                    <button class="btn btn-primary btn-sm" style="width: 100%;" @onclick="LoadMovimientos" disabled="@isLoading">
+                        <i class="fa-solid fa-magnifying-glass"></i> Filtrar
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        @if (isLoading)
+        {
+            <p class="text-muted">Cargando...</p>
+        }
+        else if (movimientos is null || movimientos.Count == 0)
+        {
+            <p class="text-muted">No hay movimientos para estos filtros.</p>
+        }
+        else
+        {
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; font-size: 0.85rem; color: #6b7280;">
+                <span>Mostrando <strong>@movimientos.Count</strong> movimientos</span>
+                @if (movimientos.Count >= filtroLimit)
+                {
+                    <span style="color: #d97706;">⚠ Límite alcanzado — usar filtros más estrictos o aumentar limit</span>
+                }
+            </div>
+            <div style="overflow-x: auto;">
+                <table class="table table-sm" style="font-size: 0.85rem;">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Producto</th>
+                            <th>SKU</th>
+                            <th>Tipo</th>
+                            <th style="text-align: right;">Antes</th>
+                            <th style="text-align: right;">Cant.</th>
+                            <th style="text-align: right;">Después</th>
+                            <th>Operador</th>
+                            <th>Comentario</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var m in movimientos)
+                        {
+                            <tr>
+                                <td style="white-space: nowrap;">@m.Fecha.ToLocalTime().ToString("dd/MM HH:mm:ss")</td>
+                                <td>@m.ProductoNombre</td>
+                                <td style="font-family: monospace; color: #6b7280;">@(m.Sku ?? "-")</td>
+                                <td><span class="tipo-badge @GetStatClass(m.TipoMov)">@GetTipoLabel(m.TipoMov)</span></td>
+                                <td style="text-align: right;">@m.StockAntes</td>
+                                <td style="text-align: right; font-weight: 600; color: @(m.StockDespues > m.StockAntes ? "#16a34a" : m.StockDespues < m.StockAntes ? "#dc2626" : "#6b7280");">
+                                    @(m.StockDespues > m.StockAntes ? "+" : m.StockDespues < m.StockAntes ? "−" : "")@m.Cantidad
+                                </td>
+                                <td style="text-align: right; font-weight: 700;">@m.StockDespues</td>
+                                <td>@m.Operador</td>
+                                <td style="color: #4b5563; font-size: 0.78rem;">@(m.Comentario ?? "-")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+<style>
+    .hist-stat-card {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 0.65rem 0.85rem;
+        text-align: center;
+    }
+    .hist-stat-label { font-size: 0.7rem; color: #6b7280; margin-bottom: 0.2rem; text-transform: uppercase; letter-spacing: 0.5px; }
+    .hist-stat-value { font-size: 1.35rem; font-weight: 700; color: #111827; }
+    .stat-total { border-color: #93c5fd; background: #eff6ff; }
+    .stat-ultimo { border-color: #d1d5db; background: #f9fafb; }
+    .tipo-badge { padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+    .tipo-venta-meli { background: #fef3c7; color: #92400e; }
+    .tipo-venta-nuestra { background: #dbeafe; color: #1e40af; }
+    .tipo-ajuste { background: #fce7f3; color: #9d174d; }
+    .tipo-suma { background: #dcfce7; color: #14532d; }
+    .tipo-resta { background: #fee2e2; color: #991b1b; }
+    .tipo-set { background: #f3e8ff; color: #6b21a8; }
+    .tipo-sincro { background: #cffafe; color: #155e75; }
+    .tipo-compra { background: #fef9c3; color: #713f12; }
+    .tipo-other { background: #f3f4f6; color: #374151; }
+</style>
+
+@code {
+    private List<StockHistorialItem>? movimientos;
+    private StockHistorialStats? stats;
+    private bool isLoading;
+
+    private DateTime? filtroDesde = DateTime.Today.AddDays(-7);
+    private DateTime? filtroHasta = DateTime.Today;
+    private string filtroTipoMov = "";
+    private string filtroTexto = "";
+    private int filtroLimit = 500;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStats();
+        await LoadMovimientos();
+    }
+
+    private async Task LoadStats()
+    {
+        try
+        {
+            stats = await Api.GetStockHistorialStatsAsync(filtroDesde, filtroHasta);
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error($"Error cargando stats: {ex.Message}");
+        }
+    }
+
+    private async Task LoadMovimientos()
+    {
+        isLoading = true;
+        StateHasChanged();
+        try
+        {
+            movimientos = await Api.GetStockHistorialAsync(
+                desde: filtroDesde,
+                hasta: filtroHasta,
+                tipoMov: string.IsNullOrWhiteSpace(filtroTipoMov) ? null : filtroTipoMov,
+                texto: string.IsNullOrWhiteSpace(filtroTexto) ? null : filtroTexto,
+                limit: filtroLimit
+            );
+            await LoadStats();
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error($"Error cargando movimientos: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private static string GetTipoLabel(string tipoMov) => tipoMov switch
+    {
+        "VENTA_NUESTRA" => "🧾 Venta sistema",
+        "VENTA_MELI" => "🛒 Venta MeLi",
+        "SUMA" => "+ SUMA",
+        "RESTA" => "− RESTA",
+        "SET" => "= SET",
+        "AJUSTE_ADMIN" => "⚙ Ajuste admin",
+        "SINCRO_CONTABILIUM" => "🔁 Sincro Contab.",
+        "COMPRA_PROVEEDOR" => "📦 Compra",
+        "CANCELACION" => "↶ Cancelación",
+        _ => tipoMov
+    };
+
+    private static string GetStatClass(string tipoMov) => tipoMov switch
+    {
+        "VENTA_MELI" => "tipo-venta-meli",
+        "VENTA_NUESTRA" => "tipo-venta-nuestra",
+        "AJUSTE_ADMIN" => "tipo-ajuste",
+        "SUMA" => "tipo-suma",
+        "RESTA" => "tipo-resta",
+        "SET" => "tipo-set",
+        "SINCRO_CONTABILIUM" => "tipo-sincro",
+        "COMPRA_PROVEEDOR" => "tipo-compra",
+        _ => "tipo-other"
+    };
+}

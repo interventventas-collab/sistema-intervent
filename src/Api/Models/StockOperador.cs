@@ -47,8 +47,15 @@ public class StockMovimiento
     [MaxLength(120)]
     public string? DepositoNombreSnap { get; set; }
 
-    /// <summary>SUMA | RESTA | SET.</summary>
-    [Required, MaxLength(10)]
+    /// <summary>Tipo de movimiento. Casos:
+    /// • SUMA / RESTA / SET → ajuste manual desde pantalla /stock-modificar (legacy)
+    /// • VENTA_NUESTRA → venta cargada desde /cafe/ventas (descuenta stock)
+    /// • VENTA_MELI → orden de MercadoLibre procesada por webhook/sync (descuenta stock)
+    /// • AJUSTE_ADMIN → cambio desde pantalla admin de productos
+    /// • SINCRO_CONTABILIUM → import nocturno o manual desde Contabilium
+    /// • COMPRA_PROVEEDOR → entrada por compra registrada
+    /// • CANCELACION → reversa por anulación de venta o devolución</summary>
+    [Required, MaxLength(40)]
     public string TipoMov { get; set; } = "SUMA";
 
     /// <summary>Cantidad cargada por el operador (siempre positiva). Si TipoMov=RESTA, igual va positiva

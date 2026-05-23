@@ -20,11 +20,13 @@ public class MeliStockSyncService
 {
     private readonly AppDbContext _db;
     private readonly ILogger<MeliStockSyncService> _logger;
+    private readonly CafeStockLogger _stockLogger;
 
-    public MeliStockSyncService(AppDbContext db, ILogger<MeliStockSyncService> logger)
+    public MeliStockSyncService(AppDbContext db, ILogger<MeliStockSyncService> logger, CafeStockLogger stockLogger)
     {
         _db = db;
         _logger = logger;
+        _stockLogger = stockLogger;
     }
 
     public record StockSyncResult(int Procesadas, int DescontadasCafe, int DescontadasOtros, int SinLinkear, List<string> Errores);
@@ -144,6 +146,13 @@ public class MeliStockSyncService
                         };
                         prod.StockGramos -= gramos * cant * ord.Quantity;
                         descCafe++;
+                        // Historial: registro el cambio para auditoría
+                        var unidadesEquiv = (int)Math.Round(gramos * cant * ord.Quantity);
+                        var antes = (int)Math.Round(prod.StockGramos + gramos * cant * ord.Quantity);
+                        var despues = (int)Math.Round(prod.StockGramos);
+                        await _stockLogger.LogAsync(prod.Id, "VENTA_MELI", antes, despues,
+                            comentario: $"Orden MeLi #{ord.MeliOrderId} · {cant}x{(formato ?? "1KG")} · {unidadesEquiv}g",
+                            saveChanges: false);
                     }
                     else
                     {
@@ -152,8 +161,13 @@ public class MeliStockSyncService
                             && prod.UxB.HasValue && prod.UxB.Value > 0)
                             mult = prod.UxB.Value;
                         var unidades = (int)Math.Round(mult * cant * ord.Quantity);
+                        var antes = prod.StockUnidades;
                         prod.StockUnidades -= unidades;
                         descOtros++;
+                        // Historial
+                        await _stockLogger.LogAsync(prod.Id, "VENTA_MELI", antes, prod.StockUnidades,
+                            comentario: $"Orden MeLi #{ord.MeliOrderId} · {cant}x{(formato ?? "U")} · -{unidades}u",
+                            saveChanges: false);
                     }
                     // Marcar para que el job de respaldo / push event-driven sepa que hay que pushear a MeLi.
                     prod.StockChangedAt = DateTime.UtcNow;

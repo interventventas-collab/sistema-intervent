@@ -245,18 +245,45 @@ public class StockController : ControllerBase
     [HttpGet("admin/movimientos")]
     [Authorize]
     public async Task<IActionResult> ListMovimientos([FromQuery] DateTime? desde = null,
-        [FromQuery] DateTime? hasta = null, [FromQuery] int? operadorId = null, [FromQuery] int limit = 200)
+        [FromQuery] DateTime? hasta = null, [FromQuery] int? operadorId = null,
+        [FromQuery] int? productoId = null, [FromQuery] string? tipoMov = null,
+        [FromQuery] string? texto = null, [FromQuery] int limit = 200)
     {
-        limit = Math.Clamp(limit, 1, 1000);
+        limit = Math.Clamp(limit, 1, 2000);
         var q = _db.StockMovimientos.Include(m => m.Producto).AsQueryable();
         if (desde.HasValue) q = q.Where(m => m.CreatedAt >= desde.Value);
         if (hasta.HasValue) q = q.Where(m => m.CreatedAt <= hasta.Value.AddDays(1));
         if (operadorId.HasValue) q = q.Where(m => m.OperadorId == operadorId.Value);
+        if (productoId.HasValue) q = q.Where(m => m.ProductoId == productoId.Value);
+        if (!string.IsNullOrWhiteSpace(tipoMov)) q = q.Where(m => m.TipoMov == tipoMov);
+        if (!string.IsNullOrWhiteSpace(texto))
+        {
+            var t = texto.Trim().ToLower();
+            q = q.Where(m => (m.Producto != null && (m.Producto.Nombre.ToLower().Contains(t) || (m.Producto.Sku != null && m.Producto.Sku.ToLower().Contains(t))))
+                || (m.Comentario != null && m.Comentario.ToLower().Contains(t)));
+        }
         var movs = await q.OrderByDescending(m => m.CreatedAt).Take(limit).ToListAsync();
         return Ok(movs.Select(m => new AdminMovDto(m.Id, m.CreatedAt,
             m.ProductoId, m.Producto?.Sku, m.Producto?.Nombre ?? "?",
             m.OperadorNombreSnap ?? "?", m.TipoMov, m.Cantidad,
             m.StockAntes, m.StockDespues, m.Comentario)).ToList());
+    }
+
+    /// <summary>Devuelve estadísticas agregadas para el dashboard del historial:
+    /// total de movimientos, distribución por tipo (VENTA_MELI vs VENTA_NUESTRA vs AJUSTE, etc.), última fecha.</summary>
+    [HttpGet("admin/movimientos/stats")]
+    [Authorize]
+    public async Task<IActionResult> StatsMovimientos([FromQuery] DateTime? desde = null, [FromQuery] DateTime? hasta = null)
+    {
+        var q = _db.StockMovimientos.AsQueryable();
+        if (desde.HasValue) q = q.Where(m => m.CreatedAt >= desde.Value);
+        if (hasta.HasValue) q = q.Where(m => m.CreatedAt <= hasta.Value.AddDays(1));
+        var total = await q.CountAsync();
+        var porTipo = await q.GroupBy(m => m.TipoMov)
+            .Select(g => new { TipoMov = g.Key, Count = g.Count() })
+            .OrderByDescending(x => x.Count).ToListAsync();
+        var ultimo = await q.OrderByDescending(m => m.CreatedAt).Select(m => (DateTime?)m.CreatedAt).FirstOrDefaultAsync();
+        return Ok(new { total, porTipo, ultimo });
     }
 
     /// <summary>Devuelve el token publico actual (admin lo necesita para copiar/mandar el link).</summary>

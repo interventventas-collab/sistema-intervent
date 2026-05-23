@@ -77,6 +77,8 @@
                         @* Stock unificado: entra a Stock masivo, y desde la pantalla hay boton para abrir Stock movil. *@
                         <NavItem Href="/cafe/stock-masivo" Label="📦 Stock" Icon="@SvgIcons.Package"
                                  IsActive="@(IsActive("/cafe/stock-masivo") || IsActive("/stock"))" OnClick="@(() => NavigateTo("/cafe/stock-masivo"))" />
+                        <NavItem Href="/cafe/historial-stock" Label="📊 Historial stock" Icon="@SvgIcons.Tag"
+                                 IsActive="@IsActive("/cafe/historial-stock")" OnClick="@(() => NavigateTo("/cafe/historial-stock"))" />
                     }
                     <NavItem Href="/cafe/clientes" Label="👤 Clientes" Icon="@SvgIcons.Users"
                              IsActive="@IsActive("/cafe/clientes")" OnClick="@(() => NavigateTo("/cafe/clientes"))" />

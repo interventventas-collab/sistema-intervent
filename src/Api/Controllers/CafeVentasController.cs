@@ -24,6 +24,7 @@ public class CafeVentasController : ControllerBase
     private readonly QrRepartidorService _qrRepartidorService;
     private readonly CafeReciboVisitaCobranzaPdfService _reciboVisitaPdfService;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly CafeStockLogger _stockLogger;
     private static readonly string[] FormatosValidos = { "1KG", "MEDIO", "CUARTO", "UNIT", "BULTO" };
 
     /// <summary>Valida formato: los fijos de FormatosValidos o PACK_N (N entero positivo).</summary>
@@ -54,7 +55,8 @@ public class CafeVentasController : ControllerBase
         WhatsAppService whatsAppService,
         QrRepartidorService qrRepartidorService,
         CafeReciboVisitaCobranzaPdfService reciboVisitaPdfService,
-        IServiceScopeFactory scopeFactory)
+        IServiceScopeFactory scopeFactory,
+        CafeStockLogger stockLogger)
     {
         _db = db;
         _pdfService = pdfService;
@@ -66,6 +68,7 @@ public class CafeVentasController : ControllerBase
         _qrRepartidorService = qrRepartidorService;
         _reciboVisitaPdfService = reciboVisitaPdfService;
         _scopeFactory = scopeFactory;
+        _stockLogger = stockLogger;
     }
 
     /// <summary>Dispara push de stock a MeLi en background (fire-and-forget). No bloquea el response.
@@ -997,11 +1000,21 @@ public class CafeVentasController : ControllerBase
 
             // Descontar stock. Si el formato es BULTO, 1 unidad cargada = UxB unidades reales.
             if (prod.Categoria == "CAFE")
+            {
+                var antesG = (int)Math.Round(prod.StockGramos);
                 prod.StockGramos = Math.Max(0m, prod.StockGramos - it.GramosNecesarios);
+                await _stockLogger.LogAsync(prod.Id, "VENTA_NUESTRA", antesG, (int)Math.Round(prod.StockGramos),
+                    comentario: $"Venta #{venta.Numero} · {it.Cantidad}x{it.Formato} · -{(int)Math.Round(it.GramosNecesarios)}g",
+                    saveChanges: false);
+            }
             else
             {
                 var unidadesADescontar = UnidadesRealesStock(prod, it.Formato, it.Cantidad);
+                var antes = prod.StockUnidades;
                 prod.StockUnidades = Math.Max(0, prod.StockUnidades - unidadesADescontar);
+                await _stockLogger.LogAsync(prod.Id, "VENTA_NUESTRA", antes, prod.StockUnidades,
+                    comentario: $"Venta #{venta.Numero} · {it.Cantidad}x{it.Formato} · -{unidadesADescontar}u",
+                    saveChanges: false);
             }
             prod.UpdatedAt = DateTime.UtcNow;
             prod.StockChangedAt = DateTime.UtcNow; // dispara push a MeLi (event-driven + job de respaldo)
@@ -1641,11 +1654,21 @@ public class CafeVentasController : ControllerBase
                         DescuentoPct = ci.DescuentoPct
                     });
                     if (prod.Categoria == "CAFE")
+                    {
+                        var antesG = (int)Math.Round(prod.StockGramos);
                         prod.StockGramos = Math.Max(0m, prod.StockGramos - ci.GramosNecesarios);
+                        await _stockLogger.LogAsync(prod.Id, "VENTA_NUESTRA", antesG, (int)Math.Round(prod.StockGramos),
+                            comentario: $"Edit venta #{v.Numero} · {ci.Cantidad}x{ci.Formato} · -{(int)Math.Round(ci.GramosNecesarios)}g",
+                            saveChanges: false);
+                    }
                     else
                     {
                         var unidadesADescontar = UnidadesRealesStock(prod, ci.Formato, ci.Cantidad);
+                        var antes = prod.StockUnidades;
                         prod.StockUnidades = Math.Max(0, prod.StockUnidades - unidadesADescontar);
+                        await _stockLogger.LogAsync(prod.Id, "VENTA_NUESTRA", antes, prod.StockUnidades,
+                            comentario: $"Edit venta #{v.Numero} · {ci.Cantidad}x{ci.Formato} · -{unidadesADescontar}u",
+                            saveChanges: false);
                     }
                     prod.UpdatedAt = DateTime.UtcNow;
                     prod.StockChangedAt = DateTime.UtcNow;

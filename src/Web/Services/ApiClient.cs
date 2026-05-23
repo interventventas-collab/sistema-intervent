@@ -2039,6 +2039,30 @@ public class ApiClient
             new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
     }
 
+    // ===== Historial de movimientos de stock (/cafe/historial-stock) =====
+    public async Task<List<StockHistorialItem>?> GetStockHistorialAsync(DateTime? desde = null, DateTime? hasta = null,
+        int? operadorId = null, int? productoId = null, string? tipoMov = null, string? texto = null, int limit = 500)
+    {
+        var qs = new List<string>();
+        if (desde.HasValue) qs.Add($"desde={desde.Value:yyyy-MM-dd}");
+        if (hasta.HasValue) qs.Add($"hasta={hasta.Value:yyyy-MM-dd}");
+        if (operadorId.HasValue) qs.Add($"operadorId={operadorId.Value}");
+        if (productoId.HasValue) qs.Add($"productoId={productoId.Value}");
+        if (!string.IsNullOrWhiteSpace(tipoMov)) qs.Add($"tipoMov={Uri.EscapeDataString(tipoMov)}");
+        if (!string.IsNullOrWhiteSpace(texto)) qs.Add($"texto={Uri.EscapeDataString(texto)}");
+        qs.Add($"limit={limit}");
+        return await GetAsync<List<StockHistorialItem>>("/api/stock/admin/movimientos?" + string.Join("&", qs));
+    }
+
+    public async Task<StockHistorialStats?> GetStockHistorialStatsAsync(DateTime? desde = null, DateTime? hasta = null)
+    {
+        var qs = new List<string>();
+        if (desde.HasValue) qs.Add($"desde={desde.Value:yyyy-MM-dd}");
+        if (hasta.HasValue) qs.Add($"hasta={hasta.Value:yyyy-MM-dd}");
+        var url = "/api/stock/admin/movimientos/stats" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+        return await GetAsync<StockHistorialStats>(url);
+    }
+
     public async Task<(MeliItemSyncByIdBatchResult? Result, string? Error)> SyncMeliItemByIdAsync(string meliItemId)
     {
         var response = await _http.PostAsJsonAsync("/api/meli/items/sync-by-id", new { meliItemId });
