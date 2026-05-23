@@ -310,7 +310,7 @@
                             @foreach (var grp in GetGroupedRows())
                             {
                                 var item = grp.Item;
-                                var isExpanded = expandedGroups.Contains(item.MeliItemId);
+                                var isExpanded = expandedGroups.Contains(grp.Key);
                                 <tr class="clickable-row @(selectedItems.Contains(item.Id) ? "row-selected" : "")" @onclick="() => OpenItemModal(item)">
                                     <td class="td-checkbox" @onclick:stopPropagation="true"><input type="checkbox" checked="@selectedItems.Contains(item.Id)" @onchange="() => ToggleSelectItem(item.Id)" /></td>
                                     <td style="text-align: center;">
@@ -335,12 +335,28 @@
                                             <span title="@item.MeliItemId">@Truncate(item.Title, 50)</span>
                                         }
                                         <div class="item-id">
-                                            @item.MeliItemId
-                                            @if (grp.HasVariants)
+                                            @if (grp.IsFamily)
                                             {
-                                                <button @onclick:stopPropagation="true" @onclick="() => ToggleGroupExpand(item.MeliItemId)"
+                                                <span style="background:#fef3c7; color:#92400e; padding:0.05rem 0.3rem; border-radius:3px; font-size:0.7rem; font-weight:700;" title="Catálogo MeLi @item.FamilyId">📦 FAMILIA</span>
+                                                <span style="margin-left:0.3rem;">@(item.FamilyId ?? item.MeliItemId)</span>
+                                            }
+                                            else
+                                            {
+                                                @item.MeliItemId
+                                            }
+                                            @if (grp.HasMultiple)
+                                            {
+                                                <button @onclick:stopPropagation="true" @onclick="() => ToggleGroupExpand(grp.Key)"
                                                         style="margin-left:0.4rem; padding:0 0.4rem; background:#dbeafe; color:#1e40af; border:1px solid #3b82f6; border-radius:8px; font-size:0.7rem; font-weight:600; cursor:pointer;">
-                                                    @(isExpanded ? "▲" : "▼") @grp.Variants.Count variantes
+                                                    @(isExpanded ? "▲" : "▼")
+                                                    @if (grp.IsFamily)
+                                                    {
+                                                        @($"{grp.DistinctMLAs} publicaciones")
+                                                    }
+                                                    else
+                                                    {
+                                                        @($"{grp.Variants.Count} variantes")
+                                                    }
                                                 </button>
                                             }
                                         </div>
@@ -359,7 +375,7 @@
                                         }
                                     </td>
                                     <td style="text-align: center; font-weight: 700;">
-                                        @{ var stockShow = grp.HasVariants ? grp.TotalStock : item.AvailableQuantity; }
+                                        @{ var stockShow = grp.HasMultiple ? grp.TotalStock : item.AvailableQuantity; }
                                         @if (item.ProductCriticalStock.HasValue && item.ProductCriticalStock.Value > 0 && stockShow <= item.ProductCriticalStock.Value)
                                         {
                                             <span class="stock-badge @(stockShow < item.ProductCriticalStock.Value ? "stock-critical" : "stock-warning")">@stockShow</span>
@@ -373,7 +389,7 @@
                                             @stockShow
                                         }
                                     </td>
-                                    <td>@(grp.HasVariants ? grp.TotalSold : item.SoldQuantity)</td>
+                                    <td>@(grp.HasMultiple ? grp.TotalSold : item.SoldQuantity)</td>
                                     <td><span class="status-badge @GetStatusClass(item.Status)">@GetStatusLabel(item.Status)</span></td>
                                     <td>@GetListingTypeLabel(item.ListingTypeId)</td>
                                     <td>@item.AccountNickname</td>
@@ -423,8 +439,9 @@
                                         }
                                     </td>
                                 </tr>
-                                @* Filas variantes (subfilas indentadas) *@
-                                @if (grp.HasVariants && isExpanded)
+                                @* Filas hijas (subfilas indentadas). Si IsFamily: cada hija es un MLA distinto.
+                                   Si NO es Family pero tiene variantes: cada hija es una variante color/talle. *@
+                                @if (grp.HasMultiple && isExpanded)
                                 {
                                     @foreach (var v in grp.Variants)
                                     {
@@ -432,14 +449,23 @@
                                             <td></td>
                                             <td style="text-align:right; color:#6b7280;">↳</td>
                                             <td style="padding-left:1.2rem;">
-                                                <span style="color:#6b7280;">@(v.VariationAttributes ?? "(variante)")</span>
-                                                <div class="item-id" style="font-size:0.7rem;">var. @v.VariationId</div>
+                                                @if (grp.IsFamily)
+                                                {
+                                                    <span style="color:#111;">@Truncate(v.Title, 50)</span>
+                                                    <div class="item-id" style="font-size:0.7rem;">@v.MeliItemId</div>
+                                                }
+                                                else
+                                                {
+                                                    <span style="color:#6b7280;">@(v.VariationAttributes ?? "(variante)")</span>
+                                                    <div class="item-id" style="font-size:0.7rem;">var. @v.VariationId</div>
+                                                }
                                             </td>
                                             <td>@(v.Sku ?? "-")</td>
                                             <td>@v.CurrencyId @v.Price.ToString("N2")</td>
                                             <td style="text-align:center;">@v.AvailableQuantity</td>
                                             <td>@v.SoldQuantity</td>
-                                            <td colspan="3"></td>
+                                            <td><span class="status-badge @GetStatusClass(v.Status)" style="font-size:0.7rem;">@GetStatusLabel(v.Status)</span></td>
+                                            <td colspan="2"></td>
                                             <td class="td-product" @onclick:stopPropagation="true">
                                                 @if (v.CafeProductoId.HasValue)
                                                 {
@@ -449,7 +475,6 @@
                                                 }
                                                 else
                                                 {
-                                                    @* Busca match por SKU en el catalogo del sistema (variante no linkeada directo pero su SKU existe). *@
                                                     var matchSys = FindMatchByVariantSku(v.Sku);
                                                     if (matchSys is not null)
                                                     {
@@ -457,9 +482,9 @@
                                                             🔗 @matchSys.Sku
                                                         </span>
                                                     }
-                                                    else if (item.ComponentMappingsCount > 0)
+                                                    else if (v.ComponentMappingsCount > 0)
                                                     {
-                                                        <span style="color:#9ca3af; font-size:0.7rem; font-style:italic;" title="La publicación padre tiene linkeo via componentes — esta variante hereda ese vínculo">via combo padre</span>
+                                                        <span style="color:#1e40af; font-size:0.72rem;" title="@v.ComponentMappingsSummary">✅ Linkeado (@v.ComponentMappingsCount)</span>
                                                     }
                                                     else
                                                     {
@@ -2802,46 +2827,59 @@
         return _cachedFiltered;
     }
 
-    /// <summary>Grupo de filas a renderizar: la publicacion principal + (si existen) sus variantes.</summary>
+    /// <summary>Grupo de filas a renderizar. Puede ser:
+    ///  • Una FAMILIA (FamilyId con varios MLAs distintos — agrupa publicaciones individuales)
+    ///  • Un MLA único (con o sin variantes de color/talle/etc.)
+    /// La distincion entre ambos cambia el render: en familia, las sub-filas son MLAs;
+    /// en un MLA con variantes, las sub-filas son variantes de la misma publicacion.</summary>
     public class GroupedRow
     {
-        public MeliItemDto Item { get; set; } = default!;     // representante
-        public List<MeliItemDto> Variants { get; set; } = new();  // si Count > 0, son las variantes
-        public bool HasVariants => Variants.Count > 1;
+        public MeliItemDto Item { get; set; } = default!;
+        public List<MeliItemDto> Variants { get; set; } = new();
+        /// <summary>True si el grupo agrupa una FAMILIA (varios MLAs del mismo catalogo MeLi).</summary>
+        public bool IsFamily { get; set; }
+        /// <summary>Cantidad de MLAs distintos en el grupo.</summary>
+        public int DistinctMLAs => Variants.Select(v => v.MeliItemId).Distinct().Count();
+        /// <summary>True si hay que mostrar el boton de expandir (mas de 1 MLA o mas de 1 variante).</summary>
+        public bool HasMultiple => Variants.Count > 1;
         public int TotalStock => Variants.Sum(v => v.AvailableQuantity);
         public int TotalSold => Variants.Sum(v => v.SoldQuantity);
+        /// <summary>Clave de agrupacion: FamilyId o MeliItemId.</summary>
+        public string Key { get; set; } = "";
     }
 
-    /// <summary>HashSet con los MeliItemId de las publicaciones expandidas (variantes visibles).</summary>
+    /// <summary>HashSet con las claves de grupos expandidos (FamilyId o MeliItemId).</summary>
     private HashSet<string> expandedGroups = new();
 
-    private void ToggleGroupExpand(string meliItemId)
+    private void ToggleGroupExpand(string key)
     {
-        if (!expandedGroups.Remove(meliItemId))
-            expandedGroups.Add(meliItemId);
+        if (!expandedGroups.Remove(key))
+            expandedGroups.Add(key);
         StateHasChanged();
     }
 
-    /// <summary>Agrupa los items filtrados por MeliItemId. Cada grupo representa una unica
-    /// publicacion en MeLi. Si la publicacion tiene variantes, el primer item se usa como
-    /// representante y las demas filas quedan disponibles para mostrar al expandir.</summary>
+    /// <summary>Agrupa los items filtrados primero por FamilyId (si la familia tiene varios MLAs distintos)
+    /// y sino por MeliItemId. Asi replica el comportamiento de MeLi UI que muestra "1 publicacion con N
+    /// variantes" cuando varias publicaciones distintas comparten el mismo catalogo (FamilyId).</summary>
     private List<GroupedRow> GetGroupedRows()
     {
         var filtered = GetCachedFilteredItems();
+        // Paso 1: contar cuantos MLAs distintos hay por FamilyId
+        var mlasPorFamilia = filtered.Where(it => !string.IsNullOrEmpty(it.FamilyId))
+            .GroupBy(it => it.FamilyId!)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.MeliItemId).Distinct().Count());
+
         var groups = new List<GroupedRow>();
         var seen = new Dictionary<string, GroupedRow>();
         foreach (var it in filtered)
         {
-            if (string.IsNullOrEmpty(it.MeliItemId))
+            bool agruparPorFamilia = !string.IsNullOrEmpty(it.FamilyId)
+                && mlasPorFamilia.GetValueOrDefault(it.FamilyId!, 0) > 1;
+            string key = agruparPorFamilia ? $"FAM_{it.FamilyId}" : $"MLA_{it.MeliItemId}";
+            if (!seen.TryGetValue(key, out var grp))
             {
-                // defensivo: si no tiene MeliItemId, no agrupa
-                groups.Add(new GroupedRow { Item = it, Variants = new List<MeliItemDto> { it } });
-                continue;
-            }
-            if (!seen.TryGetValue(it.MeliItemId, out var grp))
-            {
-                grp = new GroupedRow { Item = it };
-                seen[it.MeliItemId] = grp;
+                grp = new GroupedRow { Item = it, IsFamily = agruparPorFamilia, Key = key };
+                seen[key] = grp;
                 groups.Add(grp);
             }
             grp.Variants.Add(it);

@@ -66,9 +66,9 @@
                                     <span style="font-size:0.74rem; color:#6b7280;">@p.CafeProductoMarca</span>
                                 }
                                 <a href="https://www.mercadolibre.com.ar/p/@p.MeliItemId" target="_blank" style="font-size:0.74rem; color:#2563eb; text-decoration:none;">@p.MeliItemId ↗</a>
-                                @if (grupo.HasVariants)
+                                @if (grupo.HasMultiple)
                                 {
-                                    <button @onclick="() => ToggleSyncGroupExpand(p.MeliItemId)"
+                                    <button @onclick="() => ToggleSyncGroupExpand(grupo.Key)"
                                             style="padding:0.1rem 0.4rem; background:#dbeafe; color:#1e40af; border:1px solid #3b82f6; border-radius:8px; font-size:0.72rem; font-weight:600; cursor:pointer;">
                                         @(isExpanded ? "▲" : "▼") @grupo.Variants.Count variantes
                                     </button>
@@ -161,7 +161,7 @@
                             </div>
 
                             @* ─── Variantes expandibles ─── *@
-                            @if (grupo.HasVariants && isExpanded)
+                            @if (grupo.HasMultiple && isExpanded)
                             {
                                 <div style="margin-top:0.7rem; padding-top:0.6rem; border-top:1px dashed #d1d5db;">
                                     <div style="font-size:0.78rem; color:#6b7280; margin-bottom:0.3rem;">Variantes individuales:</div>
@@ -300,33 +300,39 @@
     private decimal ajustePct;
     private decimal ajusteFijo;
 
-    // ── Agrupacion por MeliItemId (estilo Mercado Libre) ──
+    // ── Agrupacion estilo Mercado Libre: primero por FamilyId (si hay varios MLAs en la familia),
+    //    sino por MeliItemId (con variantes de color/talle como sub-filas) ──
     public class GrupoSync
     {
         public PublicacionExtendidaDto Representative { get; set; } = default!;
         public List<PublicacionExtendidaDto> Variants { get; set; } = new();
-        public bool HasVariants => Variants.Count > 1;
+        public bool IsFamily { get; set; }
+        public int DistinctMLAs => Variants.Select(v => v.MeliItemId).Distinct().Count();
+        public bool HasMultiple => Variants.Count > 1;
+        public string Key { get; set; } = "";
     }
 
     private HashSet<string> expandedSyncGroups = new();
 
-    private void ToggleSyncGroupExpand(string meliItemId)
+    private void ToggleSyncGroupExpand(string key)
     {
-        if (!expandedSyncGroups.Remove(meliItemId)) expandedSyncGroups.Add(meliItemId);
+        if (!expandedSyncGroups.Remove(key)) expandedSyncGroups.Add(key);
     }
 
-    /// <summary>Agrupa las publicaciones por MeliItemId. Si hay > 1 fila con mismo MLA, son variantes.</summary>
     private List<GrupoSync> GetGrupos()
     {
         var lista = publicaciones ?? new();
+        // Como el endpoint Sincro no devuelve FamilyId todavia, agrupamos por MeliItemId solamente.
+        // Si en el futuro queremos agrupar por familia tambien aca, hay que enriquecer el DTO con FamilyId.
         var grupos = new List<GrupoSync>();
         var seen = new Dictionary<string, GrupoSync>();
         foreach (var p in lista)
         {
-            if (!seen.TryGetValue(p.MeliItemId, out var g))
+            var key = $"MLA_{p.MeliItemId}";
+            if (!seen.TryGetValue(key, out var g))
             {
-                g = new GrupoSync { Representative = p };
-                seen[p.MeliItemId] = g;
+                g = new GrupoSync { Representative = p, IsFamily = false, Key = key };
+                seen[key] = g;
                 grupos.Add(g);
             }
             g.Variants.Add(p);
