@@ -314,6 +314,35 @@ public class MeliController : ControllerBase
         }
     }
 
+    /// <summary>Lista publicaciones MeLi que probablemente fueron pausadas por nuestro push automático
+    /// erróneo (stock=0 en productos OTROS pusheados hoy). No reactiva nada — solo lista.</summary>
+    [HttpGet("items/reactivar-pausadas/candidatos")]
+    public async Task<IActionResult> ListarReactivacionCandidatos([FromServices] MeliReactivacionService svc)
+    {
+        try
+        {
+            var lista = await svc.ListarCandidatosAsync(HttpContext.RequestAborted);
+            return Ok(new { count = lista.Count, items = lista });
+        }
+        catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    public class ReactivacionRequest { public List<string>? MeliItemIds { get; set; } public int StockSafeDefault { get; set; } = 1; }
+
+    /// <summary>Reactiva las publicaciones pausadas que detectamos como falsos pausados por push erróneo.
+    /// Body opcional: { meliItemIds: ["MLA..."] } — si null, reactiva todos los candidatos.</summary>
+    [HttpPost("items/reactivar-pausadas")]
+    public async Task<IActionResult> ReactivarPausadas([FromServices] MeliReactivacionService svc,
+        [FromBody] ReactivacionRequest? req = null)
+    {
+        try
+        {
+            var r = await svc.ReactivarAsync(req?.MeliItemIds, req?.StockSafeDefault ?? 1, HttpContext.RequestAborted);
+            return Ok(r);
+        }
+        catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
     /// <summary>Audita la presencia de MLAs: compara la lista que devuelve MeLi vs lo que tenemos en DB.
     /// Devuelve { Accounts: [{ Nickname, MeliCount, SystemCount, BothCount, MeliOnly: [], SystemOnly: [] }], TotalMeli, TotalSystem, TotalBoth, ... }.
     /// No modifica nada — solo informa. La importación de faltantes va por items/sync-by-id.</summary>

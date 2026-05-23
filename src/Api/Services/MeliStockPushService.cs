@@ -233,6 +233,7 @@ public class MeliStockPushService
             // Multi-variante: una entry por cada variation en el PUT.
             // Para cada variation: calcular stock disponible usando los componentes con MeliVariationId matcheante.
             var varEntries = new List<object>();
+            int sumStock = 0;
             foreach (var vid in meliVariationIds)
             {
                 var vidStr = vid.ToString();
@@ -252,7 +253,15 @@ public class MeliStockPushService
                     stock = CalcStockLegacy(legacyRow, productos);
                 }
                 varEntries.Add(new { id = vid, available_quantity = stock });
+                sumStock += stock;
             }
+
+            // SAFETY GUARD 2026-05-23: NUNCA pushear si TODAS las variations dan stock 0.
+            // Eso pausaría la publicación en MeLi y rompería el posicionamiento (problema real
+            // detectado este día: pusheamos 142 publicaciones a 0 y MeLi las pausó).
+            // Si en realidad no tenemos stock, MEJOR no tocar nada — que MeLi conserve el último valor.
+            if (sumStock == 0)
+                return (PushOutcome.Skipped, "GUARD: stock calculado = 0 en TODAS las variations — no pushear para evitar pausa");
 
             var payload = new Dictionary<string, object> { ["variations"] = varEntries };
             return await DoPut(http, meliItemId, payload, ct);
@@ -271,6 +280,12 @@ public class MeliStockPushService
             {
                 stock = CalcStockLegacy(rows.First(), productos);
             }
+
+            // SAFETY GUARD 2026-05-23: NUNCA pushear stock=0 a MeLi sin variations.
+            // MeLi auto-pausaría la publicación y se rompe el posicionamiento. Mejor no tocar.
+            if (stock == 0)
+                return (PushOutcome.Skipped, "GUARD: stock calculado = 0 — no pushear para evitar pausa");
+
             var payload = new Dictionary<string, object> { ["available_quantity"] = stock };
             return await DoPut(http, meliItemId, payload, ct);
         }

@@ -1,0 +1,190 @@
+@page "/cafe/reactivar-pausadas"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject NavigationManager Nav
+
+@* URGENTE 2026-05-23: pantalla para identificar y reactivar publicaciones MeLi que
+   fueron pausadas erróneamente por nuestro push automático (stock=0 en productos OTROS).
+   Solo lista candidatos basados en evidencia (linkeo + push hoy + stock=0 + paused). *@
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
+        <h3 style="margin: 0;">🚨 Reactivar publicaciones pausadas por push erróneo</h3>
+        <div style="display: flex; gap: 0.5rem;">
+            <button class="btn btn-secondary" @onclick='() => Nav.NavigateTo("/publicaciones")'>← Volver a Publicaciones</button>
+            <button class="btn btn-primary" @onclick="CargarCandidatos" disabled="@isLoading">
+                <i class="fa-solid fa-arrows-rotate"></i> Refrescar
+            </button>
+        </div>
+    </div>
+
+    <div class="card-body">
+        <div style="background:#fef3c7; border:1px solid #fbbf24; padding:0.85rem 1rem; border-radius:6px; margin-bottom:1rem; color:#78350f; font-size:0.9rem;">
+            <strong>⚠ Qué encontramos hoy</strong>
+            <p style="margin: 0.4rem 0;">El push automático de stock a MeLi corría cada 15 minutos y, para los productos OTROS con stock = 0 en el sistema, mandaba "available_quantity = 0" a MeLi. <strong>MeLi auto-pausa las publicaciones con stock 0</strong>, lo que rompe el posicionamiento.</p>
+            <p style="margin: 0.4rem 0;"><strong>Ya se desactivó</strong>:</p>
+            <ul style="margin: 0.4rem 0 0 1.2rem;">
+                <li>✅ Kill switch global del background push (default OFF)</li>
+                <li>✅ Guard "nunca pushear stock=0" en el código de push</li>
+                <li>✅ StockChangedAt reseteado en todos los productos pendientes</li>
+            </ul>
+            <p style="margin: 0.4rem 0 0 0;"><strong>Lo que falta</strong>: reactivar las publicaciones que ya fueron pausadas.</p>
+        </div>
+
+        @if (isLoading)
+        {
+            <p class="text-muted"><i class="fa-solid fa-arrows-rotate fa-spin"></i> Cargando...</p>
+        }
+        else if (candidatos is null)
+        {
+            <p class="text-muted">Hacé click en "Refrescar" para cargar.</p>
+        }
+        else if (candidatos.Count == 0)
+        {
+            <div style="background:#dcfce7; border:1px solid #86efac; padding:0.85rem 1rem; border-radius:6px; color:#14532d;">
+                ✅ <strong>No hay candidatos a reactivar.</strong> Esto significa que el push erróneo no dejó publicaciones pausadas detectables, o ya las reactivaste.
+            </div>
+        }
+        else
+        {
+            <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap;">
+                <div class="reactiv-stat">
+                    <div class="reactiv-label">Candidatos detectados</div>
+                    <div class="reactiv-value">@candidatos.Count</div>
+                </div>
+                <div class="reactiv-stat" style="background:#dbeafe; border-color:#3b82f6;">
+                    <div class="reactiv-label">Cuentas afectadas</div>
+                    <div class="reactiv-value">@candidatos.Select(c => c.Nickname).Distinct().Count()</div>
+                </div>
+                <div class="reactiv-stat" style="background:#fef9c3; border-color:#eab308;">
+                    <div class="reactiv-label">Stock al reactivar</div>
+                    <div class="reactiv-value" style="font-size: 1rem;">
+                        <input type="number" min="1" max="100" @bind="stockSafeDefault" style="width: 60px; padding: 0.25rem;" />
+                        <span style="font-size:0.75rem; display:block; color:#713f12;">(o stock actual MeLi si &gt; 0)</span>
+                    </div>
+                </div>
+                <button class="btn btn-warning" style="font-size: 0.95rem; padding: 0.65rem 1.2rem;" @onclick="ReactivarTodas" disabled="@isReactivating">
+                    @if (isReactivating)
+                    {
+                        <span><i class="fa-solid fa-arrows-rotate fa-spin"></i> Reactivando @reactivedSoFar/@candidatos.Count...</span>
+                    }
+                    else
+                    {
+                        <span>🟢 Reactivar TODAS (@candidatos.Count publicaciones)</span>
+                    }
+                </button>
+            </div>
+
+            @if (resultadoFinal is not null)
+            {
+                <div style="background:@(resultadoFinal.Errores > 0 ? "#fee2e2" : "#dcfce7"); border:1px solid @(resultadoFinal.Errores > 0 ? "#fca5a5" : "#86efac"); padding:0.85rem 1rem; border-radius:6px; margin-bottom:1rem;">
+                    <strong>Resultado:</strong>
+                    ✅ @resultadoFinal.Reactivadas reactivadas ·
+                    ✓ @resultadoFinal.YaActivas ya estaban activas ·
+                    ❌ @resultadoFinal.Errores errores
+                    <details style="margin-top:0.4rem;">
+                        <summary style="cursor:pointer;">Ver detalles (@resultadoFinal.Detalles.Count líneas)</summary>
+                        <div style="max-height:200px; overflow-y:auto; font-family:monospace; font-size:0.75rem; margin-top:0.4rem;">
+                            @foreach (var d in resultadoFinal.Detalles) { <div>@d</div> }
+                        </div>
+                    </details>
+                </div>
+            }
+
+            <div style="overflow-x:auto;">
+                <table class="table table-sm" style="font-size:0.85rem;">
+                    <thead>
+                        <tr>
+                            <th>MLA</th>
+                            <th>Título</th>
+                            <th>SKU MeLi</th>
+                            <th>Producto sistema</th>
+                            <th>Cuenta</th>
+                            <th>Pusheado a las</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var c in candidatos)
+                        {
+                            <tr>
+                                <td style="font-family:monospace; font-size:0.78rem;">@c.MeliItemId</td>
+                                <td>@(c.Title.Length > 60 ? c.Title.Substring(0, 60) + "..." : c.Title)</td>
+                                <td style="font-family:monospace; color:#6b7280;">@c.Sku</td>
+                                <td>@c.CafeProductoSku · <span style="color:#6b7280;">@c.CafeProductoNombre.Substring(0, Math.Min(30, c.CafeProductoNombre.Length))</span></td>
+                                <td>@c.Nickname</td>
+                                <td style="white-space:nowrap;">@c.LastPushedToMeli.ToLocalTime().ToString("HH:mm:ss")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+<style>
+    .reactiv-stat { background:white; border:1px solid #e5e7eb; border-radius:8px; padding:0.7rem 1rem; text-align:center; }
+    .reactiv-label { font-size:0.7rem; color:#6b7280; margin-bottom:0.2rem; text-transform:uppercase; }
+    .reactiv-value { font-size:1.5rem; font-weight:700; color:#111827; }
+</style>
+
+@code {
+    private List<ApiClient.ReactivacionCandidato>? candidatos;
+    private bool isLoading;
+    private bool isReactivating;
+    private int reactivedSoFar;
+    private int stockSafeDefault = 1;
+    private ApiClient.ReactivacionResult? resultadoFinal;
+
+    protected override async Task OnInitializedAsync() => await CargarCandidatos();
+
+    private async Task CargarCandidatos()
+    {
+        isLoading = true;
+        resultadoFinal = null;
+        StateHasChanged();
+        try
+        {
+            var r = await Api.GetReactivacionCandidatosAsync();
+            candidatos = r?.Items ?? new();
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error($"Error: {ex.Message}");
+            candidatos = new();
+        }
+        finally { isLoading = false; StateHasChanged(); }
+    }
+
+    private async Task ReactivarTodas()
+    {
+        if (candidatos is null || candidatos.Count == 0) return;
+        isReactivating = true;
+        reactivedSoFar = 0;
+        resultadoFinal = null;
+        StateHasChanged();
+        try
+        {
+            resultadoFinal = await Api.ReactivarPausadasAsync(null, stockSafeDefault);
+            if (resultadoFinal is null)
+            {
+                ToastService.Error("Falló la reactivación. Reintentar.");
+            }
+            else
+            {
+                if (resultadoFinal.Errores > 0)
+                    ToastService.Warning($"Reactivación parcial: {resultadoFinal.Reactivadas} OK, {resultadoFinal.Errores} errores");
+                else
+                    ToastService.Success($"✅ {resultadoFinal.Reactivadas} publicaciones reactivadas");
+            }
+            // Refrescar la lista — las reactivadas deberían desaparecer
+            await CargarCandidatos();
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error($"Error: {ex.Message}");
+        }
+        finally { isReactivating = false; StateHasChanged(); }
+    }
+}

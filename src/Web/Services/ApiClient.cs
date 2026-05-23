@@ -2025,6 +2025,34 @@ public class ApiClient
     }
 
     /// <summary>Llama /api/meli/items/audit. Compara MLAs de MeLi vs sistema. No modifica nada.
+    // === Reactivación de publicaciones MeLi pausadas por push erróneo ===
+    public class ReactivacionCandidato
+    {
+        public string MeliItemId { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string Sku { get; set; } = "";
+        public int AccountId { get; set; }
+        public string Nickname { get; set; } = "";
+        public int CafeProductoId { get; set; }
+        public string CafeProductoSku { get; set; } = "";
+        public string CafeProductoNombre { get; set; } = "";
+        public DateTime LastPushedToMeli { get; set; }
+    }
+    public class ReactivacionCandidatosResp { public int Count { get; set; } public List<ReactivacionCandidato> Items { get; set; } = new(); }
+    public class ReactivacionResult { public int Procesadas { get; set; } public int Reactivadas { get; set; } public int YaActivas { get; set; } public int Errores { get; set; } public List<string> Detalles { get; set; } = new(); }
+
+    public async Task<ReactivacionCandidatosResp?> GetReactivacionCandidatosAsync()
+        => await GetAsync<ReactivacionCandidatosResp>("/api/meli/items/reactivar-pausadas/candidatos");
+
+    public async Task<ReactivacionResult?> ReactivarPausadasAsync(List<string>? meliItemIds = null, int stockSafeDefault = 1)
+    {
+        using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromMinutes(20));
+        var resp = await _http.PostAsJsonAsync("/api/meli/items/reactivar-pausadas",
+            new { meliItemIds, stockSafeDefault }, cts.Token);
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadFromJsonAsync<ReactivacionResult>();
+    }
+
     /// Demora ~1-2 minutos por cuenta (paginado scroll_id de MeLi).</summary>
     public async Task<MeliAuditResult?> AuditMeliItemsAsync(int? accountId = null)
     {
