@@ -518,6 +518,35 @@ public class CafeProductosController : ControllerBase
             stockCambio = true;
         }
         if (stockCambio) p.StockChangedAt = DateTime.UtcNow;
+        // Si cambió el stock, sincronizar Cafe_StockPorDeposito (deposito principal)
+        // para que la pantalla stock-masivo no quede desfasada.
+        if (stockCambio)
+        {
+            var depDefault = await _db.CafeDepositos
+                .Where(d => d.IsDefault && d.IsActive)
+                .Select(d => (int?)d.Id).FirstOrDefaultAsync();
+            depDefault ??= await _db.CafeDepositos.OrderBy(d => d.Id).Select(d => (int?)d.Id).FirstOrDefaultAsync();
+            if (depDefault.HasValue)
+            {
+                var spd = await _db.CafeStockPorDeposito
+                    .FirstOrDefaultAsync(s => s.ProductoId == p.Id && s.DepositoId == depDefault.Value);
+                if (spd is null)
+                {
+                    _db.CafeStockPorDeposito.Add(new CafeStockPorDeposito
+                    {
+                        ProductoId = p.Id, DepositoId = depDefault.Value,
+                        StockUnidades = p.StockUnidades, StockGramos = p.StockGramos,
+                        UpdatedAt = DateTime.UtcNow
+                    });
+                }
+                else
+                {
+                    spd.StockUnidades = p.StockUnidades;
+                    spd.StockGramos = p.StockGramos;
+                    spd.UpdatedAt = DateTime.UtcNow;
+                }
+            }
+        }
         // Si cambió el stock, disparar push event-driven a MeLi después del SaveChanges
         var dispararPush = stockCambio;
         if (req.Notas is not null) p.Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim();

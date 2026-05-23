@@ -19,10 +19,32 @@ public class CafeStockMasivoController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly AuditLogService _audit;
+    private readonly IServiceScopeFactory _scopeFactory;
 
-    public CafeStockMasivoController(AppDbContext db, AuditLogService audit)
+    public CafeStockMasivoController(AppDbContext db, AuditLogService audit, IServiceScopeFactory scopeFactory)
     {
-        _db = db; _audit = audit;
+        _db = db; _audit = audit; _scopeFactory = scopeFactory;
+    }
+
+    /// <summary>Dispara push de stock a MeLi en background para los productos cambiados (respeta kill switches).</summary>
+    private void FireAndForgetPushMeli(List<int> cafeProductoIds)
+    {
+        if (cafeProductoIds.Count == 0) return;
+        var scopeFactory = _scopeFactory;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = scopeFactory.CreateScope();
+                var pushSvc = scope.ServiceProvider.GetRequiredService<MeliStockPushService>();
+                foreach (var pid in cafeProductoIds)
+                {
+                    try { await pushSvc.PushStockForProductoAsync(pid); }
+                    catch { /* swallow */ }
+                }
+            }
+            catch { /* swallow */ }
+        });
     }
 
     public record StockProductoDto(
@@ -101,6 +123,7 @@ public class CafeStockMasivoController : ControllerBase
         await _db.SaveChangesAsync();
 
         // 2) Re-calcular el TOTAL en Cafe_Productos (suma de todos los depositos)
+        var productosModificados = new List<int>();
         if (cambios > 0)
         {
             var totales = await _db.CafeStockPorDeposito
@@ -112,13 +135,22 @@ public class CafeStockMasivoController : ControllerBase
             {
                 if (productosMap.TryGetValue(t.ProductoId, out var prod))
                 {
+                    var changed = (prod.StockGramos != t.TotalG) || (prod.StockUnidades != t.TotalU);
                     prod.StockGramos = t.TotalG;
                     prod.StockUnidades = t.TotalU;
                     prod.UpdatedAt = DateTime.UtcNow;
+                    if (changed)
+                    {
+                        prod.StockChangedAt = DateTime.UtcNow;  // ← dispara que el push event-driven y el background lo procesen
+                        productosModificados.Add(prod.Id);
+                    }
                 }
             }
             await _db.SaveChangesAsync();
         }
+
+        // 3) Push event-driven a MeLi para los productos que cambiaron
+        FireAndForgetPushMeli(productosModificados);
 
         await _audit.LogAsync("CafeStockMasivo", req.DepositoId.ToString(), "BULK_UPDATE",
             $"Actualizados {cambios} productos en deposito {dep.Nombre}");
