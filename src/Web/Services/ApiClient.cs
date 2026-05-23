@@ -2024,6 +2024,20 @@ public class ApiClient
         return await PostAsync<MeliItemSyncResult>(url, new { });
     }
 
+    // === Snapshot Contabilium pre-corte ===
+    public class SnapshotTriggerResult { public bool Ok { get; set; } public DateTime Fecha { get; set; } public int Skus { get; set; } public int DurationSec { get; set; } }
+
+    public async Task<SnapshotTriggerResult?> TriggerContabiliumSnapshotAsync()
+    {
+        using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromMinutes(10));
+        var resp = await _http.PostAsync("/api/contabilium/snapshot/trigger", null, cts.Token);
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadFromJsonAsync<SnapshotTriggerResult>();
+    }
+
+    public string GetContabiliumSnapshotDownloadUrl(DateTime? fecha = null)
+        => "/api/contabilium/snapshot/download" + (fecha.HasValue ? $"?fecha={fecha.Value:yyyy-MM-dd}" : "");
+
     /// <summary>Llama /api/meli/items/audit. Compara MLAs de MeLi vs sistema. No modifica nada.
     // === Reactivación de publicaciones MeLi pausadas por push erróneo ===
     public class ReactivacionCandidato

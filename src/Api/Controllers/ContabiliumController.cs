@@ -234,4 +234,53 @@ public class ContabiliumController : ControllerBase
         }
         return Ok(new { rows, total = rows.Count, lastSnapshotAt = snaps.Count > 0 ? snaps.Max(s => s.Fecha) : (DateTime?)null });
     }
+
+    /// <summary>Dispara un snapshot fresco de Contabilium AHORA (no espera hasta las 4 AM).
+    /// Útil antes de cortes operativos para tener el "punto cero" actualizado.
+    /// Demora 1-3 minutos (paginado).</summary>
+    [HttpPost("snapshot/trigger")]
+    [Authorize]
+    public async Task<IActionResult> TriggerSnapshot([FromServices] ContabiliumNightlySnapshotService snapSvc)
+    {
+        try
+        {
+            var startedAt = DateTime.UtcNow;
+            await snapSvc.RunOnceManualAsync(HttpContext.RequestAborted);
+            var hoy = DateTime.UtcNow.Date;
+            var count = await _db.StockSnapshots.CountAsync(s => s.Fecha == hoy);
+            return Ok(new { ok = true, fecha = hoy, skus = count, durationSec = (int)(DateTime.UtcNow - startedAt).TotalSeconds });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>Descarga el snapshot de Contabilium del día especificado (o el último) como CSV.
+    /// Columnas: Sku, StockDisponible, FechaSnapshot. Para guardar como Excel offline.</summary>
+    [HttpGet("snapshot/download")]
+    [Authorize]
+    public async Task<IActionResult> DownloadSnapshot([FromQuery] DateTime? fecha = null)
+    {
+        var target = fecha?.Date ?? await _db.StockSnapshots
+            .OrderByDescending(s => s.Fecha).Select(s => (DateTime?)s.Fecha).FirstOrDefaultAsync();
+        if (target is null) return NotFound(new { error = "No hay snapshots" });
+
+        var rows = await _db.StockSnapshots
+            .Where(s => s.Fecha == target.Value)
+            .OrderBy(s => s.Sku)
+            .Select(s => new { s.Sku, s.StockContabilium, s.Fecha })
+            .ToListAsync();
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Sku,StockDisponibleContabilium,FechaSnapshot");
+        foreach (var r in rows)
+        {
+            var sku = (r.Sku ?? "").Replace(",", " ").Replace("\"", "");
+            sb.AppendLine($"{sku},{r.StockContabilium.ToString(System.Globalization.CultureInfo.InvariantCulture)},{r.Fecha:yyyy-MM-dd}");
+        }
+        var bytes = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
+        var fileName = $"snapshot_contabilium_{target.Value:yyyy-MM-dd}.csv";
+        return File(bytes, "text/csv", fileName);
+    }
 }

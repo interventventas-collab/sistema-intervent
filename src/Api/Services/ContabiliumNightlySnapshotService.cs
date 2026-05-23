@@ -44,6 +44,10 @@ public class ContabiliumNightlySnapshotService : BackgroundService
         }
     }
 
+    /// <summary>Wrapper público para que un endpoint admin pueda disparar el snapshot a demanda
+    /// (sin esperar hasta las 4 AM). Útil antes de cortar la sincro de Contabilium → MeLi.</summary>
+    public Task RunOnceManualAsync(CancellationToken ct = default) => RunOnce(ct);
+
     private async Task RunOnce(CancellationToken ct)
     {
         try
