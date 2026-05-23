@@ -1,0 +1,40 @@
+@inject ApiClient Api
+@inject NavigationManager Nav
+@implements IDisposable
+
+@if (canShow)
+{
+    <button class="topbar-bell" @onclick='() => Nav.NavigateTo("/cafe/pedidos-whatsapp")'
+            title="@($"{pending} pedidos por WhatsApp sin procesar")">
+        <i class="fa-brands fa-whatsapp"></i>
+        @if (pending > 0)
+        {
+            <span class="topbar-bell-badge topbar-bell-badge-pulse">@(pending > 99 ? "99+" : pending.ToString())</span>
+        }
+    </button>
+}
+
+<style>
+    .topbar-bell { position:relative; background:transparent; border:none; padding:0.4rem 0.6rem; cursor:pointer; color:#4b5563; font-size:1.1rem; border-radius:6px; transition:background 0.15s; }
+    .topbar-bell:hover { background:#f3f4f6; color:#1f2937; }
+    .topbar-bell .fa-whatsapp { color:#25D366; }
+    .topbar-bell-badge { position:absolute; top:0.05rem; right:0.1rem; background:#25D366; color:white; font-size:0.65rem; font-weight:700; padding:0.1rem 0.35rem; border-radius:999px; min-width:1.1rem; text-align:center; line-height:1; }
+    .topbar-bell-badge-pulse { animation: bell-pulse 1.6s infinite; }
+    @@keyframes bell-pulse { 0%,100% { transform:scale(1); box-shadow:0 0 0 0 rgba(37,211,102,0.6); } 50% { transform:scale(1.1); box-shadow:0 0 0 6px rgba(37,211,102,0); } }
+</style>
+
+@code {
+    private int pending; private bool canShow = true; private int errors; private System.Threading.Timer? timer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Poll();
+        timer = new System.Threading.Timer(async _ => await InvokeAsync(Poll), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+    }
+    private async Task Poll()
+    {
+        try { pending = await Api.GetWhatsAppPedidosCountPendientesAsync(); errors = 0; StateHasChanged(); }
+        catch { errors++; if (errors >= 3) canShow = false; }
+    }
+    public void Dispose() => timer?.Dispose();
+}

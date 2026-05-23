@@ -2095,6 +2095,69 @@ public class ApiClient
     public async Task MarkAllCambiosSeenAsync()
         => await _http.PostAsync("/api/meli/cambios/mark-all-seen", null);
 
+    // === WhatsApp Pedidos ===
+    public class WhatsAppPedidoDto
+    {
+        public int Id { get; set; }
+        public string Telefono { get; set; } = "";
+        public string TextoCrudo { get; set; } = "";
+        public int? ClienteId { get; set; }
+        public string? ClienteNombre { get; set; }
+        public string? ProductosParseados { get; set; }
+        public string? ParseError { get; set; }
+        public string Estado { get; set; } = "";
+        public int? VentaIdGenerada { get; set; }
+        public DateTime RecibidoAt { get; set; }
+        public string Source { get; set; } = "";
+        public DateTime? SeenAt { get; set; }
+    }
+
+    public class WhatsAppPedidoConfig { public string Telefono { get; set; } = ""; public string Trigger { get; set; } = "#PEDIDO"; }
+
+    public async Task<int> GetWhatsAppPedidosCountPendientesAsync()
+    {
+        var r = await GetAsync<CountResp>("/api/whatsapp/pedidos/count-pending");
+        return r?.Count ?? 0;
+    }
+
+    public async Task<List<WhatsAppPedidoDto>?> ListarWhatsAppPedidosAsync(string? estado = null, bool soloSinVer = false, int limit = 100)
+    {
+        var qs = new List<string>();
+        if (!string.IsNullOrWhiteSpace(estado)) qs.Add($"estado={Uri.EscapeDataString(estado)}");
+        if (soloSinVer) qs.Add("soloSinVer=true");
+        qs.Add($"limit={limit}");
+        return await GetAsync<List<WhatsAppPedidoDto>>("/api/whatsapp/pedidos?" + string.Join("&", qs));
+    }
+
+    public class RecibirPedidoResp { public int Id { get; set; } public string Estado { get; set; } = ""; public string? Error { get; set; } }
+    public async Task<RecibirPedidoResp?> RecibirWhatsAppPedidoAsync(string telefono, string texto)
+    {
+        var resp = await _http.PostAsJsonAsync("/api/whatsapp/pedidos/recibir", new { telefono, texto });
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadFromJsonAsync<RecibirPedidoResp>();
+    }
+
+    public async Task<bool> ReParsearWhatsAppPedidoAsync(int id)
+    {
+        var resp = await _http.PostAsync($"/api/whatsapp/pedidos/{id}/re-parsear", null);
+        return resp.IsSuccessStatusCode;
+    }
+
+    public async Task MarkWhatsAppPedidoSeenAsync(int id)
+        => await _http.PostAsync($"/api/whatsapp/pedidos/{id}/mark-seen", null);
+
+    public async Task DescartarWhatsAppPedidoAsync(int id)
+        => await _http.PostAsync($"/api/whatsapp/pedidos/{id}/descartar", null);
+
+    public async Task<WhatsAppPedidoConfig?> GetWhatsAppPedidosConfigAsync()
+        => await GetAsync<WhatsAppPedidoConfig>("/api/whatsapp/pedidos/config");
+
+    public async Task<bool> SetWhatsAppPedidosConfigAsync(string telefono, string trigger)
+    {
+        var resp = await _http.PostAsJsonAsync("/api/whatsapp/pedidos/config", new { telefono, trigger });
+        return resp.IsSuccessStatusCode;
+    }
+
     public async Task<ReactivacionCandidatosResp?> GetReactivacionCandidatosAsync()
         => await GetAsync<ReactivacionCandidatosResp>("/api/meli/items/reactivar-pausadas/candidatos");
 

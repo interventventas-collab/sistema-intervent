@@ -79,6 +79,8 @@
                                  IsActive="@(IsActive("/cafe/stock-masivo") || IsActive("/stock"))" OnClick="@(() => NavigateTo("/cafe/stock-masivo"))" />
                         <NavItem Href="/cafe/historial-stock" Label="📊 Historial stock" Icon="@SvgIcons.Tag"
                                  IsActive="@IsActive("/cafe/historial-stock")" OnClick="@(() => NavigateTo("/cafe/historial-stock"))" />
+                        <NavItem Href="/cafe/pedidos-whatsapp" Label="💬 Pedidos WhatsApp" Icon="@SvgIcons.Tag"
+                                 IsActive="@IsActive("/cafe/pedidos-whatsapp")" OnClick="@(() => NavigateTo("/cafe/pedidos-whatsapp"))" />
                     }
                     <NavItem Href="/cafe/clientes" Label="👤 Clientes" Icon="@SvgIcons.Users"
                              IsActive="@IsActive("/cafe/clientes")" OnClick="@(() => NavigateTo("/cafe/clientes"))" />
@@ -494,6 +496,7 @@
             <CobranzasPendientesBell />
             <MeliQuestionsBell />
             <MeliCambiosBell />
+            <WhatsAppPedidosBell />
             @if (UploadProgress.IsUploading)
             {
                 <div class="topbar-upload-indicator" @onclick="() => UploadProgress.RequestReopen()" title="Ver detalle de subida">

@@ -146,6 +146,7 @@ builder.Services.AddScoped<StockMovementService>();
 builder.Services.AddScoped<CafeStockLogger>();
 builder.Services.AddScoped<MeliReactivacionService>();
 builder.Services.AddScoped<MeliCambioDetectadoService>();
+builder.Services.AddScoped<WhatsAppPedidoService>();
 builder.Services.AddScoped<SaleService>();
 builder.Services.AddScoped<TreasuryService>();
 builder.Services.AddScoped<EmployeeService>();
