@@ -52,7 +52,10 @@ public class CafeSincronizacionMeliController : ControllerBase
         // Diferencia precio sistema vs MeLi
         decimal DiferenciaPrecio, decimal DiferenciaPrecioPct,
         // Config
-        SyncConfigDto Config);
+        SyncConfigDto Config,
+        // Variaciones: si la publicacion tiene varias variantes, esta fila representa UNA de ellas
+        string? VariationId = null,
+        string? VariationAttributes = null);
 
     /// <summary>
     /// Lista publicaciones linkeadas + todos los calculos para que la UI las muestre con margenes.
@@ -155,7 +158,8 @@ public class CafeSincronizacionMeliController : ControllerBase
                 netoConIva, netoSinIva,
                 margenRealConMeli, margenRealConMeliPct,
                 diferenciaPrecio, diferenciaPrecioPct,
-                cfgDto));
+                cfgDto,
+                mi.VariationId, mi.VariationAttributes));
         }
 
         // Ordenar

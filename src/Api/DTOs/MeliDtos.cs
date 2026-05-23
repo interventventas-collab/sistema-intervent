@@ -148,7 +148,11 @@ public record MeliItemDto(
     // Útil para mostrar en tooltip / hover y entender qué descuenta cuando se vende.
     string? ComponentMappingsSummary = null,
     // LogisticType cacheado de MeLi (fulfillment / cross_docking / drop_off / etc).
-    string? LogisticType = null
+    string? LogisticType = null,
+    // Variations: una publicacion MeLi puede tener varias variantes (color/talle/etc.).
+    // Cada variante se guarda como una fila en MeliItems con el mismo MeliItemId y un VariationId distinto.
+    string? VariationId = null,
+    string? VariationAttributes = null
 );
 
 public record MeliItemsResponse(List<MeliItemDto> Items, int Total);

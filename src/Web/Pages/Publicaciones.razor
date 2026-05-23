@@ -8,7 +8,7 @@
 
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-        <h3>Publicaciones de MercadoLibre (@GetCachedFilteredItems().Count de @totalItems)</h3>
+        <h3>Publicaciones de MercadoLibre (@GetGroupedRows().Count publicaciones · @GetCachedFilteredItems().Count filas)</h3>
         <div class="sync-dropdown-wrapper">
             <button class="btn btn-primary" @onclick="() => SyncItems(null, null)" disabled="@isSyncing" style="border-radius: 6px 0 0 6px;">
                 @(isSyncing ? syncingLabel : "Sincronizar")
@@ -304,7 +304,13 @@
                     <tbody>
                         @if (viewMode == "flat")
                         {
-                            <Virtualize Items="@GetCachedFilteredItems()" Context="item" OverscanCount="5" ItemSize="50">
+                            @* Agrupamos por MeliItemId: 1 fila por publicacion. Si tiene variantes,
+                               la fila representante muestra stock+sold totales y un boton ▼ para
+                               expandir las variantes individuales. *@
+                            @foreach (var grp in GetGroupedRows())
+                            {
+                                var item = grp.Item;
+                                var isExpanded = expandedGroups.Contains(item.MeliItemId);
                                 <tr class="clickable-row @(selectedItems.Contains(item.Id) ? "row-selected" : "")" @onclick="() => OpenItemModal(item)">
                                     <td class="td-checkbox" @onclick:stopPropagation="true"><input type="checkbox" checked="@selectedItems.Contains(item.Id)" @onchange="() => ToggleSelectItem(item.Id)" /></td>
                                     <td style="text-align: center;">
@@ -328,7 +334,16 @@
                                         {
                                             <span title="@item.MeliItemId">@Truncate(item.Title, 50)</span>
                                         }
-                                        <div class="item-id">@item.MeliItemId</div>
+                                        <div class="item-id">
+                                            @item.MeliItemId
+                                            @if (grp.HasVariants)
+                                            {
+                                                <button @onclick:stopPropagation="true" @onclick="() => ToggleGroupExpand(item.MeliItemId)"
+                                                        style="margin-left:0.4rem; padding:0 0.4rem; background:#dbeafe; color:#1e40af; border:1px solid #3b82f6; border-radius:8px; font-size:0.7rem; font-weight:600; cursor:pointer;">
+                                                    @(isExpanded ? "▲" : "▼") @grp.Variants.Count variantes
+                                                </button>
+                                            }
+                                        </div>
                                     </td>
                                     <td>@(item.Sku ?? "-")</td>
                                     <td>
@@ -344,20 +359,21 @@
                                         }
                                     </td>
                                     <td style="text-align: center; font-weight: 700;">
-                                        @if (item.ProductCriticalStock.HasValue && item.ProductCriticalStock.Value > 0 && item.AvailableQuantity <= item.ProductCriticalStock.Value)
+                                        @{ var stockShow = grp.HasVariants ? grp.TotalStock : item.AvailableQuantity; }
+                                        @if (item.ProductCriticalStock.HasValue && item.ProductCriticalStock.Value > 0 && stockShow <= item.ProductCriticalStock.Value)
                                         {
-                                            <span class="stock-badge @(item.AvailableQuantity < item.ProductCriticalStock.Value ? "stock-critical" : "stock-warning")">@item.AvailableQuantity</span>
+                                            <span class="stock-badge @(stockShow < item.ProductCriticalStock.Value ? "stock-critical" : "stock-warning")">@stockShow</span>
                                         }
-                                        else if (item.ProductCriticalStock.HasValue && item.ProductCriticalStock.Value > 0 && item.AvailableQuantity > item.ProductCriticalStock.Value)
+                                        else if (item.ProductCriticalStock.HasValue && item.ProductCriticalStock.Value > 0 && stockShow > item.ProductCriticalStock.Value)
                                         {
-                                            <span class="stock-badge stock-healthy">@item.AvailableQuantity</span>
+                                            <span class="stock-badge stock-healthy">@stockShow</span>
                                         }
                                         else
                                         {
-                                            @item.AvailableQuantity
+                                            @stockShow
                                         }
                                     </td>
-                                    <td>@item.SoldQuantity</td>
+                                    <td>@(grp.HasVariants ? grp.TotalSold : item.SoldQuantity)</td>
                                     <td><span class="status-badge @GetStatusClass(item.Status)">@GetStatusLabel(item.Status)</span></td>
                                     <td>@GetListingTypeLabel(item.ListingTypeId)</td>
                                     <td>@item.AccountNickname</td>
@@ -380,7 +396,6 @@
                                         }
                                         else if (item.CafeProductoId.HasValue)
                                         {
-                                            @* Linkeo legacy de café: 1:1 publicación → café con formato *@
                                             <span class="product-badge" style="background:#dcfce7; color:#15803d; border-color:#22c55e;" title="@($"{item.CafeProductoSku} - {item.CafeProductoNombre} ({item.CafeFormato})")">
                                                 ☕ @item.CafeProductoSku
                                                 <span style="opacity:0.7; margin-left:0.2rem;">@item.CafeFormato</span>
@@ -389,8 +404,6 @@
                                         }
                                         else if (item.ComponentMappingsCount > 0)
                                         {
-                                            @* Linkeo via MeliItemComponentes: combo del sistema (varios productos). *@
-                                            @* El title del span muestra el resumen completo al hacer hover (todos los SKU + cantidades). *@
                                             <span class="product-badge" style="background:#dbeafe; color:#1e40af; border-color:#3b82f6; cursor: help;"
                                                   title="@(string.IsNullOrEmpty(item.ComponentMappingsSummary) ? $"Linkeado a {item.ComponentMappingsCount} producto(s) del sistema" : $"Cuando se vende, descuenta:\n{item.ComponentMappingsSummary}")">
                                                 ✅ Linkeado (@item.ComponentMappingsCount)
@@ -410,7 +423,54 @@
                                         }
                                     </td>
                                 </tr>
-                            </Virtualize>
+                                @* Filas variantes (subfilas indentadas) *@
+                                @if (grp.HasVariants && isExpanded)
+                                {
+                                    @foreach (var v in grp.Variants)
+                                    {
+                                        <tr style="background:#f9fafb; font-size:0.85rem;" @onclick="() => OpenItemModal(v)">
+                                            <td></td>
+                                            <td style="text-align:right; color:#6b7280;">↳</td>
+                                            <td style="padding-left:1.2rem;">
+                                                <span style="color:#6b7280;">@(v.VariationAttributes ?? "(variante)")</span>
+                                                <div class="item-id" style="font-size:0.7rem;">var. @v.VariationId</div>
+                                            </td>
+                                            <td>@(v.Sku ?? "-")</td>
+                                            <td>@v.CurrencyId @v.Price.ToString("N2")</td>
+                                            <td style="text-align:center;">@v.AvailableQuantity</td>
+                                            <td>@v.SoldQuantity</td>
+                                            <td colspan="3"></td>
+                                            <td class="td-product" @onclick:stopPropagation="true">
+                                                @if (v.CafeProductoId.HasValue)
+                                                {
+                                                    <span class="product-badge" style="background:#dcfce7; color:#15803d; border-color:#22c55e; font-size:0.72rem;" title="@v.CafeProductoNombre">
+                                                        ☕ @v.CafeProductoSku
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    @* Busca match por SKU en el catalogo del sistema (variante no linkeada directo pero su SKU existe). *@
+                                                    var matchSys = FindMatchByVariantSku(v.Sku);
+                                                    if (matchSys is not null)
+                                                    {
+                                                        <span class="product-badge" style="background:#dbeafe; color:#1e40af; border-color:#3b82f6; font-size:0.72rem;" title="@matchSys.Nombre — match por SKU con producto del sistema">
+                                                            🔗 @matchSys.Sku
+                                                        </span>
+                                                    }
+                                                    else if (item.ComponentMappingsCount > 0)
+                                                    {
+                                                        <span style="color:#9ca3af; font-size:0.7rem; font-style:italic;" title="La publicación padre tiene linkeo via componentes — esta variante hereda ese vínculo">via combo padre</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span style="color:#9ca3af; font-size:0.72rem;">sin vincular</span>
+                                                    }
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            }
                         }
                         else if (viewMode == "family")
                         {
@@ -2373,6 +2433,27 @@
         SyncProgress.OnChange += OnSyncProgressChanged;
         await LoadItems();
         try { meliAccounts = await Api.GetMeliAccountsAsync(); } catch { }
+        // Cargar productos OTROS del sistema para matchear variantes huerfanas por SKU
+        try
+        {
+            var cafeProds = await Api.GetCafeProductosAsync("OTROS") ?? new();
+            cafeProdsBySku = cafeProds
+                .Where(p => !string.IsNullOrWhiteSpace(p.Sku))
+                .GroupBy(p => p.Sku!.ToUpperInvariant())
+                .ToDictionary(g => g.Key, g => g.First());
+        }
+        catch { cafeProdsBySku = new(); }
+    }
+
+    /// <summary>Catalogo de productos OTROS del sistema indexado por SKU (uppercase).
+    /// Usado para mostrar el match de SKU en filas variante que no tienen CafeProductoId.</summary>
+    private Dictionary<string, CafeProductoDto> cafeProdsBySku = new();
+
+    /// <summary>Busca el producto del sistema cuyo SKU matchea el de la variante.</summary>
+    private CafeProductoDto? FindMatchByVariantSku(string? sku)
+    {
+        if (string.IsNullOrWhiteSpace(sku)) return null;
+        return cafeProdsBySku.GetValueOrDefault(sku.Trim().ToUpperInvariant());
     }
 
     private bool _syncReloaded;
@@ -2719,6 +2800,53 @@
             _filterDirty = false;
         }
         return _cachedFiltered;
+    }
+
+    /// <summary>Grupo de filas a renderizar: la publicacion principal + (si existen) sus variantes.</summary>
+    public class GroupedRow
+    {
+        public MeliItemDto Item { get; set; } = default!;     // representante
+        public List<MeliItemDto> Variants { get; set; } = new();  // si Count > 0, son las variantes
+        public bool HasVariants => Variants.Count > 1;
+        public int TotalStock => Variants.Sum(v => v.AvailableQuantity);
+        public int TotalSold => Variants.Sum(v => v.SoldQuantity);
+    }
+
+    /// <summary>HashSet con los MeliItemId de las publicaciones expandidas (variantes visibles).</summary>
+    private HashSet<string> expandedGroups = new();
+
+    private void ToggleGroupExpand(string meliItemId)
+    {
+        if (!expandedGroups.Remove(meliItemId))
+            expandedGroups.Add(meliItemId);
+        StateHasChanged();
+    }
+
+    /// <summary>Agrupa los items filtrados por MeliItemId. Cada grupo representa una unica
+    /// publicacion en MeLi. Si la publicacion tiene variantes, el primer item se usa como
+    /// representante y las demas filas quedan disponibles para mostrar al expandir.</summary>
+    private List<GroupedRow> GetGroupedRows()
+    {
+        var filtered = GetCachedFilteredItems();
+        var groups = new List<GroupedRow>();
+        var seen = new Dictionary<string, GroupedRow>();
+        foreach (var it in filtered)
+        {
+            if (string.IsNullOrEmpty(it.MeliItemId))
+            {
+                // defensivo: si no tiene MeliItemId, no agrupa
+                groups.Add(new GroupedRow { Item = it, Variants = new List<MeliItemDto> { it } });
+                continue;
+            }
+            if (!seen.TryGetValue(it.MeliItemId, out var grp))
+            {
+                grp = new GroupedRow { Item = it };
+                seen[it.MeliItemId] = grp;
+                groups.Add(grp);
+            }
+            grp.Variants.Add(it);
+        }
+        return groups;
     }
 
     private void InvalidateFilterCache()

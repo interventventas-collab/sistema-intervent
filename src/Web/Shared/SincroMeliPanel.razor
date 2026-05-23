@@ -35,12 +35,15 @@
         }
         else
         {
+            var grupos = GetGrupos();
             <div style="padding:0.5rem 1rem; font-size:0.78rem; color:#6b7280; background:#f9fafb; border-bottom:1px solid #e5e7eb;">
-                @publicaciones.Count publicaciones · Total margen real en MeLi: $@FormatMoney(publicaciones.Sum(p => p.MargenRealConMeli)) (sumando 1 venta de c/u)
+                @grupos.Count publicaciones (@publicaciones.Count filas con variantes) · Total margen real en MeLi: $@FormatMoney(publicaciones.Sum(x => x.MargenRealConMeli)) (sumando 1 venta de c/u)
             </div>
 
-            @foreach (var p in publicaciones)
+            @foreach (var grupo in grupos)
             {
+                var p = grupo.Representative;
+                var isExpanded = expandedSyncGroups.Contains(p.MeliItemId);
                 var diffMuyDistinto = Math.Abs(p.DiferenciaPrecioPct) > 5;
                 var stockDistinto = p.StockSistema != p.StockMeli;
                 var margenBueno = p.MargenRealConMeliPct > 50;
@@ -63,6 +66,13 @@
                                     <span style="font-size:0.74rem; color:#6b7280;">@p.CafeProductoMarca</span>
                                 }
                                 <a href="https://www.mercadolibre.com.ar/p/@p.MeliItemId" target="_blank" style="font-size:0.74rem; color:#2563eb; text-decoration:none;">@p.MeliItemId ↗</a>
+                                @if (grupo.HasVariants)
+                                {
+                                    <button @onclick="() => ToggleSyncGroupExpand(p.MeliItemId)"
+                                            style="padding:0.1rem 0.4rem; background:#dbeafe; color:#1e40af; border:1px solid #3b82f6; border-radius:8px; font-size:0.72rem; font-weight:600; cursor:pointer;">
+                                        @(isExpanded ? "▲" : "▼") @grupo.Variants.Count variantes
+                                    </button>
+                                }
                             </div>
                             <div style="color:#6b7280; font-size:0.78rem; margin-top:0.1rem;">@p.Title</div>
 
@@ -149,6 +159,24 @@
                                 <button class="btn btn-sm btn-primary" style="font-size:0.78rem;" @onclick="() => AbrirEditarPrecio(p)">✏ Editar precio</button>
                                 <button class="btn btn-sm btn-secondary" style="font-size:0.78rem;" @onclick="() => AbrirConfigurarAjuste(p)">⚙ Ajuste %/$</button>
                             </div>
+
+                            @* ─── Variantes expandibles ─── *@
+                            @if (grupo.HasVariants && isExpanded)
+                            {
+                                <div style="margin-top:0.7rem; padding-top:0.6rem; border-top:1px dashed #d1d5db;">
+                                    <div style="font-size:0.78rem; color:#6b7280; margin-bottom:0.3rem;">Variantes individuales:</div>
+                                    @foreach (var v in grupo.Variants)
+                                    {
+                                        <div style="display:flex; gap:0.7rem; align-items:center; padding:0.3rem 0.5rem; background:#f9fafb; border-radius:4px; margin-bottom:0.2rem; font-size:0.82rem;">
+                                            <span style="color:#6b7280; min-width:14px;">↳</span>
+                                            <strong style="flex:1;">@(v.VariationAttributes ?? "(variante)")</strong>
+                                            <span style="font-family:monospace; background:#dbeafe; color:#1e40af; padding:0.05rem 0.3rem; border-radius:3px; font-size:0.74rem;">@v.Sku</span>
+                                            <span>Stock MeLi: <strong>@v.StockMeli</strong></span>
+                                            <span style="color:#6b7280;">var. @v.VariationId</span>
+                                        </div>
+                                    }
+                                </div>
+                            }
                         </div>
                     </div>
                 </div>
@@ -271,6 +299,40 @@
     private bool ajusteOpen;
     private decimal ajustePct;
     private decimal ajusteFijo;
+
+    // ── Agrupacion por MeliItemId (estilo Mercado Libre) ──
+    public class GrupoSync
+    {
+        public PublicacionExtendidaDto Representative { get; set; } = default!;
+        public List<PublicacionExtendidaDto> Variants { get; set; } = new();
+        public bool HasVariants => Variants.Count > 1;
+    }
+
+    private HashSet<string> expandedSyncGroups = new();
+
+    private void ToggleSyncGroupExpand(string meliItemId)
+    {
+        if (!expandedSyncGroups.Remove(meliItemId)) expandedSyncGroups.Add(meliItemId);
+    }
+
+    /// <summary>Agrupa las publicaciones por MeliItemId. Si hay > 1 fila con mismo MLA, son variantes.</summary>
+    private List<GrupoSync> GetGrupos()
+    {
+        var lista = publicaciones ?? new();
+        var grupos = new List<GrupoSync>();
+        var seen = new Dictionary<string, GrupoSync>();
+        foreach (var p in lista)
+        {
+            if (!seen.TryGetValue(p.MeliItemId, out var g))
+            {
+                g = new GrupoSync { Representative = p };
+                seen[p.MeliItemId] = g;
+                grupos.Add(g);
+            }
+            g.Variants.Add(p);
+        }
+        return grupos;
+    }
 
     protected override async Task OnInitializedAsync() => await Recargar();
 

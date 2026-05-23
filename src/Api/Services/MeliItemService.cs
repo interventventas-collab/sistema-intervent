@@ -59,7 +59,9 @@ public class MeliItemService
                 i.CafeProducto != null ? i.CafeProducto.Nombre : null,
                 _db.MeliItemComponentes.Count(mc => mc.MeliItemId == i.MeliItemId),
                 null, // ComponentMappingsSummary se completa abajo en memoria
-                i.LogisticType))
+                i.LogisticType,
+                i.VariationId,
+                i.VariationAttributes))
             .ToListAsync();
 
         // Cargar resumen de componentes en una sola query y mergear en memoria (más eficiente que sub-query por fila).
@@ -249,7 +251,11 @@ public class MeliItemService
         item.Sku, item.UserProductId, item.FamilyId, item.FamilyName,
         item.DateCreated, item.LastUpdated,
         item.ProductId, item.Product?.Title, item.Product != null ? (int?)item.Product.CriticalStock : null,
-        item.ComboId, item.Combo?.Sku, item.Combo?.Name);
+        item.ComboId, item.Combo?.Sku, item.Combo?.Name,
+        item.CafeProductoId, item.CafeFormato,
+        item.CafeProducto?.Sku, item.CafeProducto?.Nombre,
+        0, null, item.LogisticType,
+        item.VariationId, item.VariationAttributes);
 
     public async Task<int> DeleteItemsAsync(List<int> ids)
     {

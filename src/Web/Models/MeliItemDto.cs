@@ -48,6 +48,12 @@ public class MeliItemDto
 
     /// <summary>True si la publicación tiene cualquier tipo de linkeo (Producto, Combo, Café o Componentes).</summary>
     public bool TieneLinkeo => ProductId.HasValue || ComboId.HasValue || CafeProductoId.HasValue || ComponentMappingsCount > 0;
+
+    /// <summary>Si esta fila es una variante (color/talle/etc.), Id de la variacion en MeLi.
+    /// Null = publicacion sin variantes, o fila representante del grupo.</summary>
+    public string? VariationId { get; set; }
+    /// <summary>Texto humano de los atributos de variacion. Ej: "Negro / Talle M".</summary>
+    public string? VariationAttributes { get; set; }
 }
 
 public class MeliItemsResponse

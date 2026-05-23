@@ -123,6 +123,10 @@ public class PublicacionExtendidaDto
     public decimal DiferenciaPrecio { get; set; }
     public decimal DiferenciaPrecioPct { get; set; }
     public SyncConfigDto Config { get; set; } = new();
+    /// <summary>Si la fila es una variante (color/talle), Id en MeLi. Null = publicacion sin variantes.</summary>
+    public string? VariationId { get; set; }
+    /// <summary>Texto humano de la variante. Ej: "Negro / Luxury".</summary>
+    public string? VariationAttributes { get; set; }
 }
 
 public class UpdateSyncConfigRequest
