@@ -339,10 +339,12 @@
                                             {
                                                 <span style="background:#fef3c7; color:#92400e; padding:0.05rem 0.3rem; border-radius:3px; font-size:0.7rem; font-weight:700;" title="Catálogo MeLi @item.FamilyId">📦 FAMILIA</span>
                                                 <span style="margin-left:0.3rem;">@(item.FamilyId ?? item.MeliItemId)</span>
+                                                <CopyButton Text="@(item.FamilyId ?? item.MeliItemId)" />
                                             }
                                             else
                                             {
                                                 @item.MeliItemId
+                                                <CopyButton Text="@item.MeliItemId" />
                                             }
                                             @if (grp.HasMultiple)
                                             {
@@ -452,12 +454,12 @@
                                                 @if (grp.IsFamily)
                                                 {
                                                     <span style="color:#111;">@Truncate(v.Title, 50)</span>
-                                                    <div class="item-id" style="font-size:0.7rem;">@v.MeliItemId</div>
+                                                    <div class="item-id" style="font-size:0.7rem;">@v.MeliItemId <CopyButton Text="@v.MeliItemId" /></div>
                                                 }
                                                 else
                                                 {
                                                     <span style="color:#6b7280;">@(v.VariationAttributes ?? "(variante)")</span>
-                                                    <div class="item-id" style="font-size:0.7rem;">var. @v.VariationId</div>
+                                                    <div class="item-id" style="font-size:0.7rem;">var. @v.VariationId <CopyButton Text="@(v.VariationId ?? "")" /></div>
                                                 }
                                             </td>
                                             <td>@(v.Sku ?? "-")</td>

@@ -1,0 +1,31 @@
+@inject IJSRuntime JS
+
+@* Boton inline que copia un texto al portapapeles. Cambia a "✓" 1.5s para dar feedback visual.
+   Usado para copiar MLAs, FamilyIds, SKUs, etc. Stop-propagation para no disparar onclick del padre. *@
+<button class="copy-btn" @onclick="DoCopy" @onclick:stopPropagation="true" title="@($"Copiar {Text}")"
+        style="margin-left:0.2rem; padding:0 0.35rem; background:transparent; border:1px solid #d1d5db; border-radius:4px; font-size:0.72rem; cursor:pointer; color:#6b7280; line-height:1.2;">
+    @(copied ? "✓" : "📋")
+</button>
+
+@code {
+    [Parameter] public string Text { get; set; } = "";
+    private bool copied;
+
+    private async Task DoCopy()
+    {
+        if (string.IsNullOrEmpty(Text)) return;
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", Text);
+            copied = true;
+            StateHasChanged();
+            await Task.Delay(1500);
+            copied = false;
+            StateHasChanged();
+        }
+        catch
+        {
+            // Si clipboard API no disponible (ej. http no HTTPS), ignoramos silenciosamente
+        }
+    }
+}

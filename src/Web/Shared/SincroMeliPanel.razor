@@ -66,6 +66,7 @@
                                     <span style="font-size:0.74rem; color:#6b7280;">@p.CafeProductoMarca</span>
                                 }
                                 <a href="https://www.mercadolibre.com.ar/p/@p.MeliItemId" target="_blank" style="font-size:0.74rem; color:#2563eb; text-decoration:none;">@p.MeliItemId ↗</a>
+                                <CopyButton Text="@p.MeliItemId" />
                                 @if (grupo.HasMultiple)
                                 {
                                     <button @onclick="() => ToggleSyncGroupExpand(grupo.Key)"
