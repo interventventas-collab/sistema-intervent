@@ -197,9 +197,19 @@
                                 }
                                 else
                                 {
-                                    @* PVP BARES: costo × (1 + (BarPctSobreCosto ?? 100)/100). Default 100% si no hay margen específico. *@
+                                    @* PVP BARES: prioridad al precio NUEVO (PrecioBar). Fallback a legacy costo × margen. *@
                                     <td style="text-align: right; font-weight: 700; color: #1d4ed8;" class="precio-clickeable" title="Ver historial" @onclick="() => ShowHistorial(p)">
-                                        @if (p.Costo > 0)
+                                        @if (p.PrecioBar.HasValue && p.PrecioBar.Value > 0)
+                                        {
+                                            var pBar = p.PrecioBar.Value;
+                                            var pBarConIva = Math.Round(pBar * (1 + p.IvaPct / 100m), 2);
+                                            var margenReal = p.Costo > 0 ? Math.Round((pBar / p.Costo - 1m) * 100m, 0, MidpointRounding.AwayFromZero) : 0m;
+                                            <div>$@FormatMoney(pBar)</div>
+                                            <div style="font-size: 0.66rem; color: #6b7280; font-weight: 500;">
+                                                @(p.Costo > 0 ? $"margen {margenReal}%" : "manual") · c/IVA $@FormatMoney(pBarConIva)
+                                            </div>
+                                        }
+                                        else if (p.Costo > 0)
                                         {
                                             var pctBar = p.BarPctSobreCosto ?? 100m;
                                             var precioBar = Math.Round(p.Costo * (1m + pctBar / 100m), 2);
@@ -211,9 +221,16 @@
                                         }
                                         else { <span>—</span> }
                                     </td>
-                                    @* PVP SUGERIDO: del OEM si está vinculado (lo "real"); fallback al Pvp2 cargado en el producto. *@
+                                    @* PVP SUGERIDO (OTRO): prioridad al precio NUEVO (PrecioOtro). Despues OEM. Fallback Pvp2 legacy. *@
                                     <td style="text-align: right; font-weight: 700; color: #15803d;" class="precio-clickeable" title="Ver historial" @onclick="() => ShowHistorial(p)">
-                                        @if (p.OemPvpConIva.HasValue)
+                                        @if (p.PrecioOtro.HasValue && p.PrecioOtro.Value > 0)
+                                        {
+                                            var pOtro = p.PrecioOtro.Value;
+                                            var pOtroConIva = Math.Round(pOtro * (1 + p.IvaPct / 100m), 2);
+                                            <div>$@FormatMoney(pOtro)</div>
+                                            <div style="font-size: 0.7rem; color: #6b7280; font-weight: 500;">manual · c/IVA $@FormatMoney(pOtroConIva)</div>
+                                        }
+                                        else if (p.OemPvpConIva.HasValue)
                                         {
                                             <div>$@FormatMoney(p.OemPvpSinIva!.Value)</div>
                                             <div style="font-size: 0.7rem; color: #6b7280; font-weight: 500;">del OEM · c/IVA $@FormatMoney(p.OemPvpConIva.Value)</div>
