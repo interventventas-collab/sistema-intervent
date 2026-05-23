@@ -2902,6 +2902,47 @@ public class ApiClient
         catch (Exception ex) { return (false, ex.Message); }
     }
 
+    // ===== Sincronizacion MeLi (publicaciones extendidas) =====
+    public async Task<List<PublicacionExtendidaDto>?> GetPublicacionesSincroAsync(string? q = null, string? categoria = null, string? sortBy = null)
+    {
+        var qs = new List<string>();
+        if (!string.IsNullOrWhiteSpace(q)) qs.Add("q=" + Uri.EscapeDataString(q));
+        if (!string.IsNullOrWhiteSpace(categoria)) qs.Add("categoria=" + Uri.EscapeDataString(categoria));
+        if (!string.IsNullOrWhiteSpace(sortBy)) qs.Add("sortBy=" + Uri.EscapeDataString(sortBy));
+        var url = "/api/cafe/sincronizacion-meli/publicaciones" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+        return await GetAsync<List<PublicacionExtendidaDto>>(url);
+    }
+
+    public async Task<(SyncConfigDto? config, string? error)> ActualizarSyncConfigAsync(string meliItemId, UpdateSyncConfigRequest req)
+    {
+        try
+        {
+            var resp = await _http.PutAsJsonAsync($"/api/cafe/sincronizacion-meli/{meliItemId}/config", req);
+            if (resp.IsSuccessStatusCode) return (await resp.Content.ReadFromJsonAsync<SyncConfigDto>(), null);
+            string err = "Error";
+            try { using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                  if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err; }
+            catch { }
+            return (null, err);
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
+    public async Task<(UpdatePrecioResultDto? result, string? error)> PushPrecioAMeliAsync(string meliItemId, decimal precio)
+    {
+        try
+        {
+            var resp = await _http.PutAsJsonAsync($"/api/cafe/sincronizacion-meli/{meliItemId}/precio", new { precio });
+            if (resp.IsSuccessStatusCode) return (await resp.Content.ReadFromJsonAsync<UpdatePrecioResultDto>(), null);
+            string err = "Error";
+            try { using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                  if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err; }
+            catch { }
+            return (null, err);
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
     // ===== Tesoreria Cafe: Bancos (catalogo) =====
     public async Task<List<CafeBancoDto>?> GetBancosAsync(bool incluirInactivos = false)
         => await GetAsync<List<CafeBancoDto>>($"/api/cafe/bancos?incluirInactivos={(incluirInactivos ? "true" : "false")}");

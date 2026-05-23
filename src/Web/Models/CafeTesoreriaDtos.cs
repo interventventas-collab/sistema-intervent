@@ -78,6 +78,69 @@ public class UpdateBancoRequest
     public int? SortOrder { get; set; }
 }
 
+// ========== Sincronizacion MeLi (publicaciones extendidas) ==========
+public class SyncConfigDto
+{
+    public bool SyncStock { get; set; } = true;
+    public bool SyncPrecio { get; set; }
+    public decimal AjustePct { get; set; }
+    public decimal AjusteFijo { get; set; }
+    public DateTime? LastSyncAt { get; set; }
+}
+
+public class PublicacionExtendidaDto
+{
+    public string MeliItemId { get; set; } = "";
+    public string Title { get; set; } = "";
+    public string Sku { get; set; } = "";
+    public string? Thumbnail { get; set; }
+    public string Status { get; set; } = "";
+    public string? LogisticType { get; set; }
+    public string CategoryId { get; set; } = "";
+    public string ListingTypeId { get; set; } = "";
+    public int CafeProductoId { get; set; }
+    public string CafeProductoNombre { get; set; } = "";
+    public string? CafeProductoMarca { get; set; }
+    public decimal Costo { get; set; }
+    public decimal IvaPct { get; set; }
+    public decimal? PrecioBar { get; set; }
+    public decimal? PrecioOtro { get; set; }
+    public decimal? PrecioBarConIva { get; set; }
+    public decimal? PrecioOtroConIva { get; set; }
+    public decimal MargenSinComisDollar { get; set; }
+    public decimal MargenSinComisPct { get; set; }
+    public int StockSistema { get; set; }
+    public int StockMeli { get; set; }
+    public decimal PrecioMeli { get; set; }
+    public decimal? PrecioMeliCalculado { get; set; }
+    public decimal ComisionPct { get; set; }
+    public decimal ComisionFija { get; set; }
+    public decimal ComisionTotal { get; set; }
+    public decimal NetoDeMeliConIva { get; set; }
+    public decimal NetoDeMeliSinIva { get; set; }
+    public decimal MargenRealConMeli { get; set; }
+    public decimal MargenRealConMeliPct { get; set; }
+    public decimal DiferenciaPrecio { get; set; }
+    public decimal DiferenciaPrecioPct { get; set; }
+    public SyncConfigDto Config { get; set; } = new();
+}
+
+public class UpdateSyncConfigRequest
+{
+    public bool SyncStock { get; set; } = true;
+    public bool SyncPrecio { get; set; }
+    public decimal AjustePct { get; set; }
+    public decimal AjusteFijo { get; set; }
+}
+
+public class UpdatePrecioResultDto
+{
+    public decimal NuevoPrecio { get; set; }
+    public decimal ComisionTotal { get; set; }
+    public decimal NetoConIva { get; set; }
+    public decimal NetoSinIva { get; set; }
+}
+
 // ========== Cobranzas ==========
 public class ComprobantePendienteDto
 {
