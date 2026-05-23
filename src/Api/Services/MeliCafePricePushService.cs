@@ -61,8 +61,28 @@ public class MeliCafePricePushService
         "1KG" => 1000, "MEDIO" => 500, "CUARTO" => 250, _ => 1000
     };
 
+    /// <summary>Chequea AppSettings["meli.price_push.enabled"]. Si no está en "true" lanza excepción.
+    /// Default = false (seguridad). El usuario tiene que habilitarlo explícitamente.</summary>
+    private async Task EnsurePricePushEnabledAsync(CancellationToken ct)
+    {
+        var setting = await _db.AppSettings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Key == "meli.price_push.enabled", ct);
+        var enabled = setting != null
+            && string.Equals(setting.Value?.Trim(), "true", System.StringComparison.OrdinalIgnoreCase);
+        if (!enabled)
+        {
+            throw new InvalidOperationException(
+                "Push de precios a MeLi DESHABILITADO. Para habilitarlo: setear AppSettings['meli.price_push.enabled']='true'. " +
+                "Esta protección existe para que no se modifiquen precios en MeLi sin OK explícito.");
+        }
+    }
+
     public async Task<PushResult> PushAllCafesAsync(CancellationToken ct = default)
     {
+        // KILL SWITCH 2026-05-23: NUNCA pushear precios sin que el flag esté en true.
+        await EnsurePricePushEnabledAsync(ct);
+
         var cfg = await _db.CafeSettings.FindAsync(new object[] { 1 }, ct) ?? new CafeSetting { Id = 1 };
         // Cargo todos los MeliItems linkeados a cafés con ratio capturado.
         var items = await _db.MeliItems
@@ -127,6 +147,9 @@ public class MeliCafePricePushService
     /// <summary>Pushea SOLO una publicación específica. Útil para piloto/testing antes de hacer el push masivo.</summary>
     public async Task<PushResult> PushSingleAsync(string meliItemId, CancellationToken ct = default)
     {
+        // KILL SWITCH 2026-05-23: respeta el mismo flag global que el push masivo.
+        await EnsurePricePushEnabledAsync(ct);
+
         var cfg = await _db.CafeSettings.FindAsync(new object[] { 1 }, ct) ?? new CafeSetting { Id = 1 };
         var mi = await _db.MeliItems
             .Include(x => x.MeliAccount)
