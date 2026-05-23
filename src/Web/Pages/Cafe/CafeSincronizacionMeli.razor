@@ -11,7 +11,7 @@
                 Control de precio + stock por publicación. Te muestra costo, margen y comisión real de MeLi.
             </p>
         </div>
-        <div style="display:flex; gap:0.4rem; align-items:center;">
+        <div style="display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
             <input class="form-input" style="font-size:0.8rem; max-width:240px;" placeholder="Buscar SKU, título o MLA..."
                    @bind="busqueda" @bind:event="oninput" @bind:after="Buscar" />
             <select class="form-input" style="font-size:0.8rem;" @bind="ordenar" @bind:after="Recargar">
@@ -20,6 +20,10 @@
                 <option value="neto">Mayor neto en bolsillo ↓</option>
                 <option value="precio">Mayor precio MeLi ↓</option>
             </select>
+            <label style="font-size:0.78rem; color:#6b7280; display:flex; align-items:center; gap:0.3rem; cursor:pointer;">
+                <input type="checkbox" @bind="soloConPrecio" @bind:after="Recargar" />
+                Solo con precio cargado
+            </label>
         </div>
     </div>
     <div class="card-body" style="padding:0;">
@@ -64,6 +68,9 @@
                             </div>
                             <div style="color:#6b7280; font-size:0.78rem; margin-top:0.1rem;">@p.Title</div>
 
+                            @{
+                                var tienePrecioSist = p.PrecioOtroConIva.HasValue && p.PrecioOtroConIva.Value > 0;
+                            }
                             @* ─── Grid de números clave ─── *@
                             <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:0.5rem; margin-top:0.6rem; font-size:0.82rem;">
                                 @* Columna 1: Costo + Precio sistema *@
@@ -71,23 +78,45 @@
                                     <div style="color:#6b7280; font-size:0.7rem; text-transform:uppercase;">Costo (s/IVA)</div>
                                     <div style="font-weight:700;">$@FormatMoney(p.Costo)</div>
                                     <div style="color:#6b7280; font-size:0.7rem; margin-top:0.2rem;">Sistema OTRO c/IVA</div>
-                                    <div style="font-weight:600;">$@FormatMoney(p.PrecioOtroConIva ?? 0)</div>
+                                    @if (tienePrecioSist)
+                                    {
+                                        <div style="font-weight:600;">$@FormatMoney(p.PrecioOtroConIva!.Value)</div>
+                                    }
+                                    else
+                                    {
+                                        <div style="font-weight:600; color:#9ca3af; font-style:italic;">sin cargar</div>
+                                    }
                                 </div>
-                                @* Columna 2: Precio MeLi + diferencia *@
-                                <div style="background:@(diffMuyDistinto ? "#fef2f2" : "#f0fdf4"); padding:0.4rem 0.6rem; border-radius:4px;">
+                                @* Columna 2: Precio MeLi + diferencia (solo si hay precio sistema) *@
+                                <div style="background:@(tienePrecioSist && diffMuyDistinto ? "#fef2f2" : "#f0fdf4"); padding:0.4rem 0.6rem; border-radius:4px;">
                                     <div style="color:#6b7280; font-size:0.7rem; text-transform:uppercase;">Precio MeLi</div>
                                     <div style="font-weight:700;">$@FormatMoney(p.PrecioMeli)</div>
-                                    <div style="color:@(diffMuyDistinto ? "#991b1b" : "#15803d"); font-size:0.7rem; margin-top:0.2rem;">
-                                        Dif: @(p.DiferenciaPrecio >= 0 ? "+" : "")$@FormatMoney(p.DiferenciaPrecio) (@(p.DiferenciaPrecioPct >= 0 ? "+" : "")@p.DiferenciaPrecioPct.ToString("0.#")%)
-                                    </div>
+                                    @if (tienePrecioSist)
+                                    {
+                                        <div style="color:@(diffMuyDistinto ? "#991b1b" : "#15803d"); font-size:0.7rem; margin-top:0.2rem;">
+                                            Dif: @(p.DiferenciaPrecio >= 0 ? "+" : "")$@FormatMoney(p.DiferenciaPrecio) (@(p.DiferenciaPrecioPct >= 0 ? "+" : "")@p.DiferenciaPrecioPct.ToString("0.#")%)
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div style="color:#9ca3af; font-size:0.7rem; margin-top:0.2rem; font-style:italic;">sin comparar (cargá PrecioOtro)</div>
+                                    }
                                 </div>
-                                @* Columna 3: Margen sin comisiones *@
-                                <div style="background:#ecfdf5; padding:0.4rem 0.6rem; border-radius:4px;">
-                                    <div style="color:#065f46; font-size:0.7rem; text-transform:uppercase;">Margen sin comisión MeLi</div>
-                                    <div style="font-weight:700;">$@FormatMoney(p.MargenSinComisDollar)</div>
-                                    <div style="color:#065f46; font-size:0.7rem; margin-top:0.2rem;">@p.MargenSinComisPct.ToString("0")%</div>
+                                @* Columna 3: Margen sin comisiones (solo si hay precio sistema) *@
+                                <div style="background:@(tienePrecioSist ? "#ecfdf5" : "#f9fafb"); padding:0.4rem 0.6rem; border-radius:4px;">
+                                    <div style="color:#6b7280; font-size:0.7rem; text-transform:uppercase;">Margen sin comisión MeLi</div>
+                                    @if (tienePrecioSist)
+                                    {
+                                        <div style="font-weight:700; color:@(p.MargenSinComisDollar > 0 ? "#065f46" : "#991b1b");">$@FormatMoney(p.MargenSinComisDollar)</div>
+                                        <div style="color:#065f46; font-size:0.7rem; margin-top:0.2rem;">@p.MargenSinComisPct.ToString("0")% sobre costo</div>
+                                    }
+                                    else
+                                    {
+                                        <div style="color:#9ca3af; font-style:italic;">—</div>
+                                        <div style="color:#9ca3af; font-size:0.7rem; margin-top:0.2rem;">cargá precio en el producto</div>
+                                    }
                                 </div>
-                                @* Columna 4: Comisión MeLi + neto *@
+                                @* Columna 4: Comisión MeLi + margen real (siempre se puede calcular) *@
                                 <div style="background:@(margenBueno ? "#fef3c7" : "#fee2e2"); padding:0.4rem 0.6rem; border-radius:4px;">
                                     <div style="color:@(margenBueno ? "#92400e" : "#991b1b"); font-size:0.7rem; text-transform:uppercase;">Comisión MeLi</div>
                                     <div style="font-weight:700;">−$@FormatMoney(p.ComisionTotal)</div>
@@ -230,6 +259,7 @@
     private bool loading = true;
     private string busqueda = "";
     private string ordenar = "diferencia";
+    private bool soloConPrecio = false;
     private System.Threading.CancellationTokenSource? buscarCts;
 
     // Modal editar precio
@@ -251,9 +281,12 @@
         loading = true;
         try
         {
-            publicaciones = await Api.GetPublicacionesSincroAsync(
+            var todas = await Api.GetPublicacionesSincroAsync(
                 string.IsNullOrWhiteSpace(busqueda) ? null : busqueda,
                 null, ordenar) ?? new();
+            if (soloConPrecio)
+                todas = todas.Where(p => p.PrecioOtroConIva.HasValue && p.PrecioOtroConIva.Value > 0).ToList();
+            publicaciones = todas;
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); publicaciones = new(); }
         loading = false;
