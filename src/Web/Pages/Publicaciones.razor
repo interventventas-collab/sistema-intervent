@@ -71,6 +71,7 @@
                     <button class="view-mode-btn @(viewMode == "flat" ? "active" : "")" @onclick='() => viewMode = "flat"'>Lista</button>
                     <button class="view-mode-btn @(viewMode == "family" ? "active" : "")" @onclick='() => viewMode = "family"'>Por Familia</button>
                     <button class="view-mode-btn @(viewMode == "product" ? "active" : "")" @onclick='() => viewMode = "product"'>Por Producto</button>
+                    <button class="view-mode-btn @(viewMode == "sincro" ? "active" : "")" @onclick='() => viewMode = "sincro"'>💰 Sincro precio + stock</button>
                 </div>
                 <div class="more-filters-wrapper">
                     <button class="more-filters-btn @(GetActiveFilterCount() > 0 ? "has-active" : "")" @onclick="ToggleMoreFilters" @onclick:stopPropagation="true">
@@ -123,6 +124,14 @@
                 </div>
             }
 
+            @if (viewMode == "sincro")
+            {
+                <div style="margin-top:1rem;">
+                    <SincroMeliPanel />
+                </div>
+            }
+            else
+            {
                         <div class="table-responsive">
                 <table class="data-table">
                     <thead>
@@ -630,6 +639,7 @@
                     </tbody>
                 </table>
             </div>
+            }
         }
     </div>
 </div>

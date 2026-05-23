@@ -249,8 +249,6 @@
                 {
                     <NavItem Href="/publicaciones" Label="Publicaciones" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/publicaciones")" OnClick="@(() => NavigateTo("/publicaciones"))" />
-                    <NavItem Href="/cafe/sincronizacion-meli" Label="🔄 Sincro precio + stock" Icon="@SvgIcons.Database"
-                             IsActive="@IsActive("/cafe/sincronizacion-meli")" OnClick="@(() => NavigateTo("/cafe/sincronizacion-meli"))" />
                 }
                 @if (HasPerm("ordenes"))
                 {
