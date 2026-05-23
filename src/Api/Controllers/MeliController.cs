@@ -396,6 +396,46 @@ public class MeliController : ControllerBase
         return Ok(new { updated = n });
     }
 
+    /// <summary>PUSH MASIVO: marca todos los productos OTROS como "stock pendiente de push" y los
+    /// procesa via el background sweep. Útil después de un import masivo donde el push event-driven
+    /// no se disparó. Idempotente: se puede llamar las veces que sea.</summary>
+    [HttpPost("items/push-stock-masivo-otros")]
+    public async Task<IActionResult> PushStockMasivoOtros([FromServices] MeliStockPushService pushSvc,
+        [FromServices] Api.Data.AppDbContext db,
+        [FromQuery] int batchSize = 50)
+    {
+        // 1) Activar el master kill switch si está OFF (la idea es operar ahora)
+        var master = await db.AppSettings.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Key == "meli.stock_push.master_enabled");
+        if (master == null || !string.Equals(master.Value?.Trim(), "true", StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { error = "master_enabled está en false. Activalo primero." });
+
+        // 2) Tomar los productos OTROS linkeados a MLAs activas
+        var productosIds = await (
+            from p in db.CafeProductos
+            join mc in db.MeliItemComponentes on p.Id equals mc.CafeProductoId
+            join mi in db.MeliItems on mc.MeliItemId equals mi.MeliItemId
+            where p.Categoria == "OTROS" && p.IsActive && mi.Status == "active"
+            select p.Id
+        ).Distinct().Take(batchSize).ToListAsync();
+
+        if (productosIds.Count == 0) return Ok(new { ok = true, message = "No hay productos para procesar" });
+
+        int ok = 0, skipped = 0, err = 0;
+        var detalle = new List<string>();
+        foreach (var pid in productosIds)
+        {
+            try
+            {
+                var r = await pushSvc.PushStockForProductoAsync(pid, HttpContext.RequestAborted);
+                ok += r.Ok; skipped += r.Skipped; err += r.Errores;
+                if (r.Mensajes.Count > 0) detalle.Add($"Producto {pid}: {string.Join(" | ", r.Mensajes.Take(2))}");
+            }
+            catch (Exception ex) { err++; detalle.Add($"Producto {pid}: {ex.Message}"); }
+        }
+        return Ok(new { procesados = productosIds.Count, ok, skipped, err, detalle = detalle.Take(20).ToList() });
+    }
+
     /// <summary>Lista publicaciones MeLi que probablemente fueron pausadas por nuestro push automático
     /// erróneo (stock=0 en productos OTROS pusheados hoy). No reactiva nada — solo lista.</summary>
     [HttpGet("items/reactivar-pausadas/candidatos")]
