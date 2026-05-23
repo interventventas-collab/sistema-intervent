@@ -314,6 +314,88 @@ public class MeliController : ControllerBase
         }
     }
 
+    public class CambioDto
+    {
+        public int Id { get; set; }
+        public string MeliItemId { get; set; } = "";
+        public string? Sku { get; set; }
+        public string? Title { get; set; }
+        public string Tipo { get; set; } = "";
+        public string? ValorAnterior { get; set; }
+        public string? ValorNuevo { get; set; }
+        public decimal? Delta { get; set; }
+        public decimal? DeltaPct { get; set; }
+        public string Source { get; set; } = "";
+        public DateTime DetectedAt { get; set; }
+        public DateTime? SeenAt { get; set; }
+        public string? AccountNickname { get; set; }
+    }
+
+    /// <summary>Lista cambios detectados (precio sube/baja, status active/paused).
+    /// Filtros: soloSinVer, tipos, desde, hasta, limit. Default: últimos 200 sin filtro.</summary>
+    [HttpGet("cambios")]
+    public async Task<IActionResult> GetCambios(
+        [FromQuery] bool soloSinVer = false,
+        [FromQuery] string? tipo = null,
+        [FromQuery] DateTime? desde = null,
+        [FromQuery] DateTime? hasta = null,
+        [FromQuery] int limit = 200)
+    {
+        limit = Math.Clamp(limit, 1, 1000);
+        var q = _itemService is null ? null : _itemService.GetType(); // dummy, real query below
+        var query = HttpContext.RequestServices.GetRequiredService<Api.Data.AppDbContext>().MeliCambiosDetectados
+            .AsNoTracking().AsQueryable();
+        if (soloSinVer) query = query.Where(c => c.SeenAt == null);
+        if (!string.IsNullOrWhiteSpace(tipo)) query = query.Where(c => c.Tipo == tipo);
+        if (desde.HasValue) query = query.Where(c => c.DetectedAt >= desde.Value);
+        if (hasta.HasValue) query = query.Where(c => c.DetectedAt <= hasta.Value.AddDays(1));
+
+        var lista = await query
+            .OrderByDescending(c => c.DetectedAt)
+            .Take(limit)
+            .ToListAsync();
+
+        // Resolver nicknames de cuenta
+        var accIds = lista.Where(c => c.MeliAccountId.HasValue).Select(c => c.MeliAccountId!.Value).Distinct().ToList();
+        var accs = await HttpContext.RequestServices.GetRequiredService<Api.Data.AppDbContext>().MeliAccounts
+            .Where(a => accIds.Contains(a.Id))
+            .ToDictionaryAsync(a => a.Id, a => a.Nickname);
+
+        return Ok(lista.Select(c => new CambioDto
+        {
+            Id = c.Id, MeliItemId = c.MeliItemId, Sku = c.Sku, Title = c.Title,
+            Tipo = c.Tipo, ValorAnterior = c.ValorAnterior, ValorNuevo = c.ValorNuevo,
+            Delta = c.Delta, DeltaPct = c.DeltaPct, Source = c.Source,
+            DetectedAt = c.DetectedAt, SeenAt = c.SeenAt,
+            AccountNickname = c.MeliAccountId.HasValue && accs.TryGetValue(c.MeliAccountId.Value, out var nk) ? nk : null
+        }).ToList());
+    }
+
+    [HttpGet("cambios/count-pending")]
+    public async Task<IActionResult> CountCambiosPendientes([FromServices] MeliCambioDetectadoService svc)
+    {
+        var n = await svc.CountUnseenAsync(HttpContext.RequestAborted);
+        return Ok(new { count = n });
+    }
+
+    [HttpPost("cambios/{id:int}/mark-seen")]
+    public async Task<IActionResult> MarkCambioSeen(int id, [FromServices] Api.Data.AppDbContext db)
+    {
+        var c = await db.MeliCambiosDetectados.FindAsync(id);
+        if (c is null) return NotFound();
+        c.SeenAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        return Ok();
+    }
+
+    [HttpPost("cambios/mark-all-seen")]
+    public async Task<IActionResult> MarkAllCambiosSeen([FromServices] Api.Data.AppDbContext db)
+    {
+        var sql = "UPDATE MeliCambiosDetectados SET SeenAt = SYSUTCDATETIME() WHERE SeenAt IS NULL";
+        var n = await db.Database.ExecuteSqlRawAsync(sql);
+        return Ok(new { updated = n });
+    }
+
     /// <summary>Lista publicaciones MeLi que probablemente fueron pausadas por nuestro push automático
     /// erróneo (stock=0 en productos OTROS pusheados hoy). No reactiva nada — solo lista.</summary>
     [HttpGet("items/reactivar-pausadas/candidatos")]

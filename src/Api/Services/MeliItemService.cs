@@ -16,8 +16,9 @@ public class MeliItemService
     private readonly AuditLogService _auditLog;
     private readonly AiService _aiService;
     private readonly SyncProgressService _syncProgress;
+    private readonly MeliCambioDetectadoService _detector;
 
-    public MeliItemService(AppDbContext db, IHttpClientFactory httpFactory, MeliAccountService accountService, AuditLogService auditLog, AiService aiService, SyncProgressService syncProgress)
+    public MeliItemService(AppDbContext db, IHttpClientFactory httpFactory, MeliAccountService accountService, AuditLogService auditLog, AiService aiService, SyncProgressService syncProgress, MeliCambioDetectadoService detector)
     {
         _db = db;
         _httpFactory = httpFactory;
@@ -25,6 +26,7 @@ public class MeliItemService
         _auditLog = auditLog;
         _aiService = aiService;
         _syncProgress = syncProgress;
+        _detector = detector;
     }
 
     public async Task<MeliItemsResponse> GetItemsAsync(int? meliAccountId = null, string? status = null)
@@ -1335,6 +1337,14 @@ public class MeliItemService
 
         if (existing is not null)
         {
+            // DETECTOR DE CAMBIOS 2026-05-23: capturar valores anteriores ANTES de actualizar
+            // para detectar cambios de precio y status. Solo si esto NO es el primer registro
+            // (es decir, ya teníamos un valor anterior real).
+            var oldPrice = existing.Price;
+            var oldStatus = existing.Status;
+            await _detector.LogPriceChangeAsync(meliItemId, accountId, sku, title, oldPrice, price, "sync");
+            await _detector.LogStatusChangeAsync(meliItemId, accountId, sku, title, oldStatus, status, "sync");
+
             existing.Title = title;
             existing.CategoryId = categoryId;
             existing.Price = price;

@@ -140,10 +140,23 @@ public class MeliWebhookController : ControllerBase
                                 ok = true;
                                 break;
                             case "items":
-                                // De momento solo logueamos. Si necesitamos refrescar el MeliItem
-                                // podemos llamar a MeliItemService.SyncItemsByIdAsync(...).
-                                bgLogger.LogInformation("[MeLi webhook] items: {Resource} (account={Acc}) — solo log",
-                                    resource, account.Nickname);
+                                // Re-sync del item para detectar cambios (precio / status) y dispararemos
+                                // el detector que loguea en MeliCambiosDetectados.
+                                if (!string.IsNullOrEmpty(resource))
+                                {
+                                    var rawId = resource.Replace("/items/", "").Trim();
+                                    try
+                                    {
+                                        var itemSvc = sp.GetRequiredService<MeliItemService>();
+                                        await itemSvc.SyncItemsByIdAsync(rawId);
+                                        bgLogger.LogInformation("[MeLi webhook] items: {Resource} re-sincronizado (account={Acc})",
+                                            resource, account.Nickname);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        bgLogger.LogWarning(ex, "[MeLi webhook] items: error re-sincronizando {Resource}", resource);
+                                    }
+                                }
                                 ok = true;
                                 break;
                             default:

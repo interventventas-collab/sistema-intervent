@@ -1,0 +1,190 @@
+@page "/cafe/cambios-meli"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+@* Pantalla de "Cambios detectados en MeLi": registro de cada vez que cambió un precio
+   o el status (paused↔active) de una publicación. Se llena via webhook items + sync periódico. *@
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
+        <h3 style="margin: 0;">🔔 Cambios detectados en MercadoLibre</h3>
+        <div style="display: flex; gap: 0.5rem;">
+            <button class="btn btn-secondary btn-sm" @onclick="Refrescar" disabled="@isLoading">
+                <i class="fa-solid fa-arrows-rotate"></i> Refrescar
+            </button>
+            <button class="btn btn-warning btn-sm" @onclick="MarcarTodosVistos" disabled="@(items is null || items.All(x => x.SeenAt != null))">
+                ✓ Marcar todos como vistos
+            </button>
+        </div>
+    </div>
+
+    <div class="card-body">
+        <div style="background:#eff6ff; border:1px solid #93c5fd; padding:0.85rem 1rem; border-radius:6px; margin-bottom:1rem; color:#1e3a8a; font-size:0.88rem;">
+            <strong>Qué muestra esta pantalla</strong>
+            <p style="margin: 0.4rem 0;">Cada vez que MeLi nos avisa que cambió algo en una publicación (vía webhook), o cuando hacemos un sync, comparamos contra el valor anterior. Si cambió el <strong>precio</strong> (sube/baja) o el <strong>status</strong> (paused↔active), queda registrado acá.</p>
+            <ul style="margin: 0.4rem 0 0 1.2rem; font-size: 0.85rem;">
+                <li>🟢 <strong>Subió de precio</strong> — alguien (vos, MeLi, otro tool) modificó hacia arriba.</li>
+                <li>🔴 <strong>Bajó de precio</strong> — modificación hacia abajo (alerta si fue por error).</li>
+                <li>🟡 <strong>Se pausó</strong> — la publicación dejó de estar visible.</li>
+                <li>🟢 <strong>Se activó</strong> — volvió a estar visible.</li>
+            </ul>
+        </div>
+
+        <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; align-items: center;">
+            <label style="font-size: 0.85rem;">Filtro:</label>
+            <select class="form-control form-control-sm" style="width: auto;" @bind="filtroTipo" @bind:after="Refrescar">
+                <option value="">Todos</option>
+                <option value="PRECIO_BAJA">🔴 Bajó de precio</option>
+                <option value="PRECIO_SUBE">🟢 Subió de precio</option>
+                <option value="STATUS_PAUSED">🟡 Pausada</option>
+                <option value="STATUS_ACTIVE">🟢 Activada</option>
+            </select>
+            <label style="font-size: 0.85rem; display: flex; align-items: center; gap: 0.3rem; cursor: pointer;">
+                <input type="checkbox" @bind="soloSinVer" @bind:after="Refrescar" />
+                Solo sin ver
+            </label>
+        </div>
+
+        @if (isLoading)
+        {
+            <p class="text-muted"><i class="fa-solid fa-arrows-rotate fa-spin"></i> Cargando...</p>
+        }
+        else if (items is null || items.Count == 0)
+        {
+            <div style="background:#dcfce7; border:1px solid #86efac; padding:1rem; border-radius:6px; color:#14532d; text-align: center;">
+                ✅ <strong>No hay cambios detectados</strong> con estos filtros.
+                <p style="margin-top: 0.3rem; font-size: 0.85rem;">Esto significa que las publicaciones que tenemos en sistema no cambiaron de precio ni de status desde el último sync.</p>
+            </div>
+        }
+        else
+        {
+            <div style="overflow-x: auto;">
+                <table class="table table-sm" style="font-size:0.85rem;">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>MLA</th>
+                            <th>Publicación</th>
+                            <th>SKU</th>
+                            <th>Cuenta</th>
+                            <th>Tipo</th>
+                            <th>Anterior</th>
+                            <th>Nuevo</th>
+                            <th>Δ</th>
+                            <th>Origen</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var c in items)
+                        {
+                            <tr style="@(c.SeenAt is null ? "background: #fef3c7;" : "")">
+                                <td style="white-space:nowrap;">@c.DetectedAt.ToLocalTime().ToString("dd/MM HH:mm:ss")</td>
+                                <td style="font-family:monospace; font-size:0.78rem;">
+                                    <a href="https://www.mercadolibre.com.ar/p/@c.MeliItemId" target="_blank">@c.MeliItemId</a>
+                                </td>
+                                <td>@(c.Title ?? "")</td>
+                                <td style="font-family:monospace; color:#6b7280;">@(c.Sku ?? "-")</td>
+                                <td>@(c.AccountNickname ?? "-")</td>
+                                <td><span class="@GetTipoCss(c.Tipo)">@GetTipoLabel(c.Tipo)</span></td>
+                                <td style="text-align:right; color:#6b7280;">@(c.ValorAnterior ?? "-")</td>
+                                <td style="text-align:right; font-weight:600;">@(c.ValorNuevo ?? "-")</td>
+                                <td style="text-align:right; font-weight:700; color: @(c.Delta < 0 ? "#dc2626" : c.Delta > 0 ? "#16a34a" : "#6b7280");">
+                                    @if (c.Delta.HasValue)
+                                    {
+                                        @($"{(c.Delta > 0 ? "+" : "")}{c.Delta.Value:N2}")
+                                        @if (c.DeltaPct.HasValue)
+                                        {
+                                            <div style="font-size:0.72rem; color:#6b7280;">@($"{(c.DeltaPct > 0 ? "+" : "")}{c.DeltaPct.Value:N1}%")</div>
+                                        }
+                                    }
+                                </td>
+                                <td style="font-size:0.78rem; color:#6b7280;">@c.Source</td>
+                                <td>
+                                    @if (c.SeenAt is null)
+                                    {
+                                        <button class="btn btn-sm" style="padding: 0.15rem 0.5rem; font-size: 0.75rem; background: #f3f4f6; border: 1px solid #d1d5db;"
+                                                @onclick="() => MarcarVisto(c)">✓</button>
+                                    }
+                                    else
+                                    {
+                                        <span style="color:#9ca3af; font-size:0.72rem;">visto</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+<style>
+    .tipo-baja { background:#fee2e2; color:#991b1b; padding:0.15rem 0.5rem; border-radius:4px; font-size:0.78rem; font-weight:700; }
+    .tipo-sube { background:#dcfce7; color:#14532d; padding:0.15rem 0.5rem; border-radius:4px; font-size:0.78rem; font-weight:700; }
+    .tipo-paused { background:#fef3c7; color:#92400e; padding:0.15rem 0.5rem; border-radius:4px; font-size:0.78rem; font-weight:700; }
+    .tipo-active { background:#dbeafe; color:#1e40af; padding:0.15rem 0.5rem; border-radius:4px; font-size:0.78rem; font-weight:700; }
+</style>
+
+@code {
+    private List<ApiClient.MeliCambioDto>? items;
+    private bool isLoading;
+    private string filtroTipo = "";
+    private bool soloSinVer = true;
+
+    protected override async Task OnInitializedAsync() => await Refrescar();
+
+    private async Task Refrescar()
+    {
+        isLoading = true;
+        StateHasChanged();
+        try
+        {
+            items = await Api.GetMeliCambiosAsync(soloSinVer, string.IsNullOrEmpty(filtroTipo) ? null : filtroTipo, 500) ?? new();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); items = new(); }
+        finally { isLoading = false; StateHasChanged(); }
+    }
+
+    private async Task MarcarVisto(ApiClient.MeliCambioDto c)
+    {
+        try
+        {
+            await Api.MarkCambioSeenAsync(c.Id);
+            c.SeenAt = DateTime.UtcNow;
+            StateHasChanged();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task MarcarTodosVistos()
+    {
+        try
+        {
+            await Api.MarkAllCambiosSeenAsync();
+            ToastService.Success("Marcados como vistos");
+            await Refrescar();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private static string GetTipoLabel(string tipo) => tipo switch
+    {
+        "PRECIO_BAJA" => "🔴 Bajó precio",
+        "PRECIO_SUBE" => "🟢 Subió precio",
+        "STATUS_PAUSED" => "🟡 Pausada",
+        "STATUS_ACTIVE" => "🟢 Activada",
+        _ => tipo
+    };
+
+    private static string GetTipoCss(string tipo) => tipo switch
+    {
+        "PRECIO_BAJA" => "tipo-baja",
+        "PRECIO_SUBE" => "tipo-sube",
+        "STATUS_PAUSED" => "tipo-paused",
+        "STATUS_ACTIVE" => "tipo-active",
+        _ => ""
+    };
+}

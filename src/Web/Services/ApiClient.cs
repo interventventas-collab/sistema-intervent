@@ -2055,6 +2055,46 @@ public class ApiClient
     public class ReactivacionCandidatosResp { public int Count { get; set; } public List<ReactivacionCandidato> Items { get; set; } = new(); }
     public class ReactivacionResult { public int Procesadas { get; set; } public int Reactivadas { get; set; } public int YaActivas { get; set; } public int Errores { get; set; } public List<string> Detalles { get; set; } = new(); }
 
+    // === Cambios detectados (precio + status MeLi) ===
+    public class MeliCambioDto
+    {
+        public int Id { get; set; }
+        public string MeliItemId { get; set; } = "";
+        public string? Sku { get; set; }
+        public string? Title { get; set; }
+        public string Tipo { get; set; } = "";
+        public string? ValorAnterior { get; set; }
+        public string? ValorNuevo { get; set; }
+        public decimal? Delta { get; set; }
+        public decimal? DeltaPct { get; set; }
+        public string Source { get; set; } = "";
+        public DateTime DetectedAt { get; set; }
+        public DateTime? SeenAt { get; set; }
+        public string? AccountNickname { get; set; }
+    }
+
+    public async Task<List<MeliCambioDto>?> GetMeliCambiosAsync(bool soloSinVer = false, string? tipo = null, int limit = 200)
+    {
+        var qs = new List<string>();
+        if (soloSinVer) qs.Add("soloSinVer=true");
+        if (!string.IsNullOrWhiteSpace(tipo)) qs.Add($"tipo={Uri.EscapeDataString(tipo)}");
+        qs.Add($"limit={limit}");
+        return await GetAsync<List<MeliCambioDto>>("/api/meli/cambios?" + string.Join("&", qs));
+    }
+
+    public class CountResp { public int Count { get; set; } }
+    public async Task<int> GetMeliCambiosCountPendientesAsync()
+    {
+        var r = await GetAsync<CountResp>("/api/meli/cambios/count-pending");
+        return r?.Count ?? 0;
+    }
+
+    public async Task MarkCambioSeenAsync(int id)
+        => await _http.PostAsync($"/api/meli/cambios/{id}/mark-seen", null);
+
+    public async Task MarkAllCambiosSeenAsync()
+        => await _http.PostAsync("/api/meli/cambios/mark-all-seen", null);
+
     public async Task<ReactivacionCandidatosResp?> GetReactivacionCandidatosAsync()
         => await GetAsync<ReactivacionCandidatosResp>("/api/meli/items/reactivar-pausadas/candidatos");
 
