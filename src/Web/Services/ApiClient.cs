@@ -2024,6 +2024,21 @@ public class ApiClient
         return await PostAsync<MeliItemSyncResult>(url, new { });
     }
 
+    /// <summary>Llama /api/meli/items/audit. Compara MLAs de MeLi vs sistema. No modifica nada.
+    /// Demora ~1-2 minutos por cuenta (paginado scroll_id de MeLi).</summary>
+    public async Task<MeliAuditResult?> AuditMeliItemsAsync(int? accountId = null)
+    {
+        var url = "/api/meli/items/audit";
+        if (accountId.HasValue) url += $"?accountId={accountId.Value}";
+        // Timeout amplio porque puede demorar varios minutos
+        using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromMinutes(15));
+        var response = await _http.PostAsync(url, null, cts.Token);
+        if (!response.IsSuccessStatusCode) return null;
+        var json = await response.Content.ReadAsStringAsync();
+        return System.Text.Json.JsonSerializer.Deserialize<MeliAuditResult>(json,
+            new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+    }
+
     public async Task<(MeliItemSyncByIdBatchResult? Result, string? Error)> SyncMeliItemByIdAsync(string meliItemId)
     {
         var response = await _http.PostAsJsonAsync("/api/meli/items/sync-by-id", new { meliItemId });

@@ -163,6 +163,36 @@ public record MeliItemSyncSingleResult(string Action, string AccountNickname, Me
 
 public record SyncItemByIdRequest(string MeliItemId);
 
+// ===== Auditoría MeLi vs Sistema =====
+// Compara la lista de MLAs que devuelve la API de MeLi contra los MeliItems que tenemos en DB.
+// Sirve para detectar publicaciones que MeLi tiene pero el sistema no (gap peligroso si entran ventas)
+// o publicaciones que tenemos en sistema pero MeLi ya no (probablemente borradas hace tiempo, no critico).
+public class MeliAuditAccountResult
+{
+    public int AccountId { get; set; }
+    public string Nickname { get; set; } = "";
+    public int MeliCount { get; set; }
+    public int SystemCount { get; set; }
+    public int BothCount { get; set; }
+    /// <summary>MLAs que están en MeLi pero NO en el sistema. Lista de IDs para que el usuario importe.</summary>
+    public List<string> MeliOnly { get; set; } = new();
+    /// <summary>MLAs que están en el sistema pero NO en MeLi (probablemente cerradas hace tiempo).</summary>
+    public List<string> SystemOnly { get; set; } = new();
+    public string? Error { get; set; }
+}
+
+public class MeliAuditResult
+{
+    public List<MeliAuditAccountResult> Accounts { get; set; } = new();
+    public int TotalMeli { get; set; }
+    public int TotalSystem { get; set; }
+    public int TotalBoth { get; set; }
+    public int TotalMeliOnly { get; set; }
+    public int TotalSystemOnly { get; set; }
+    public DateTime FinishedAt { get; set; }
+    public int DurationSeconds { get; set; }
+}
+
 public record MeliItemSyncByIdResultItem(string MeliItemId, string? Action, string? AccountNickname, string? Error);
 
 public record MeliItemSyncByIdBatchResult(int TotalRequested, int TotalSynced, int TotalErrors, List<MeliItemSyncByIdResultItem> Results);

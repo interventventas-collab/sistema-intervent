@@ -3,12 +3,17 @@
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject IJSRuntime JS
+@inject NavigationManager Nav
 @inject SyncProgressTracker SyncProgress
 @implements IDisposable
 
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
         <h3>Publicaciones de MercadoLibre (@GetGroupedRows().Count publicaciones · @GetCachedFilteredItems().Count filas)</h3>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+        <button class="btn btn-secondary" @onclick='() => Nav.NavigateTo("/publicaciones/auditoria")' title="Comparar lista de MLAs entre MeLi y el sistema">
+            <i class="fa-solid fa-magnifying-glass"></i> Auditar vs MeLi
+        </button>
         <div class="sync-dropdown-wrapper">
             <button class="btn btn-primary" @onclick="() => SyncItems(null, null)" disabled="@isSyncing" style="border-radius: 6px 0 0 6px;">
                 @(isSyncing ? syncingLabel : "Sincronizar")
@@ -52,6 +57,7 @@
                     </button>
                 </div>
             }
+        </div>
         </div>
     </div>
     <div class="card-body" style="padding: 0;">

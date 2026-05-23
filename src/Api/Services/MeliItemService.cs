@@ -628,6 +628,137 @@ public class MeliItemService
         return new MeliItemSyncSingleResult(action, ownerAccount.Nickname, dto);
     }
 
+    /// <summary>Audita: para cada cuenta conectada, pide a MeLi la lista completa de MLAs (solo IDs, sin descargar detalles)
+    /// y compara contra los MeliItemId que tenemos en DB. Devuelve 3 conjuntos: match, en MeLi falta en sistema, en sistema falta en MeLi.
+    /// No modifica nada — solo informa. La importación de los faltantes se hace después con SyncItemsByIdAsync.</summary>
+    public async Task<MeliAuditResult> AuditAccountsAsync(int? accountId = null)
+    {
+        var startedAt = DateTime.UtcNow;
+        var result = new MeliAuditResult();
+        var accounts = await _accountService.GetAllAccountEntitiesAsync();
+        if (accountId.HasValue)
+            accounts = accounts.Where(a => a.Id == accountId.Value).ToList();
+
+        foreach (var account in accounts)
+        {
+            var accResult = new MeliAuditAccountResult
+            {
+                AccountId = account.Id,
+                Nickname = account.Nickname ?? $"Cuenta {account.Id}"
+            };
+
+            try
+            {
+                var token = await _accountService.GetValidTokenAsync(account);
+                if (token is null)
+                {
+                    accResult.Error = "Sin token válido — la cuenta debe reconectarse";
+                    result.Accounts.Add(accResult);
+                    continue;
+                }
+
+                // 1) Bajar TODOS los MLAs de MeLi via scroll_id (sin filtro de estado → trae activos + pausados + en revision + cerrados que MeLi todavia listee)
+                var meliIds = await GetAllItemIdsFromMeliAsync(account, token);
+
+                // 2) Traer los MeliItemId del sistema para esa cuenta (distinct, sin importar status)
+                var systemIds = await _db.MeliItems
+                    .Where(x => x.MeliAccountId == account.Id)
+                    .Select(x => x.MeliItemId)
+                    .Distinct()
+                    .ToListAsync();
+
+                var meliSet = new HashSet<string>(meliIds);
+                var systemSet = new HashSet<string>(systemIds);
+
+                var meliOnly = meliSet.Except(systemSet).ToList();
+                var systemOnly = systemSet.Except(meliSet).ToList();
+                var both = meliSet.Intersect(systemSet).Count();
+
+                accResult.MeliCount = meliSet.Count;
+                accResult.SystemCount = systemSet.Count;
+                accResult.BothCount = both;
+                // Limitar listados a primeros 500 para no saturar el JSON de respuesta
+                accResult.MeliOnly = meliOnly.Take(500).ToList();
+                accResult.SystemOnly = systemOnly.Take(500).ToList();
+            }
+            catch (Exception ex)
+            {
+                accResult.Error = ex.Message;
+            }
+
+            result.Accounts.Add(accResult);
+        }
+
+        result.TotalMeli = result.Accounts.Sum(a => a.MeliCount);
+        result.TotalSystem = result.Accounts.Sum(a => a.SystemCount);
+        result.TotalBoth = result.Accounts.Sum(a => a.BothCount);
+        result.TotalMeliOnly = result.Accounts.Sum(a => a.MeliOnly.Count);
+        result.TotalSystemOnly = result.Accounts.Sum(a => a.SystemOnly.Count);
+        result.FinishedAt = DateTime.UtcNow;
+        result.DurationSeconds = (int)(DateTime.UtcNow - startedAt).TotalSeconds;
+        return result;
+    }
+
+    /// <summary>Trae todos los MeliItemId de una cuenta paginando con scroll_id. Sin filtro de estado.
+    /// Equivalente al primer paso de SyncItemsForAccountAsync pero sin descargar los detalles.</summary>
+    private async Task<List<string>> GetAllItemIdsFromMeliAsync(MeliAccount account, string token)
+    {
+        var http = _httpFactory.CreateClient();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var ids = new List<string>();
+        int limit = 100;
+        string? scrollId = null;
+        bool isFirstRequest = true;
+
+        while (true)
+        {
+            var url = $"https://api.mercadolibre.com/users/{account.MeliUserId}/items/search" +
+                $"?search_type=scan&limit={limit}";
+            if (!isFirstRequest && !string.IsNullOrEmpty(scrollId))
+                url += $"&scroll_id={scrollId}";
+
+            var response = await http.GetAsync(url);
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized ||
+                response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+            {
+                var newToken = await _accountService.GetValidTokenAsync(account, forceRefresh: true);
+                if (newToken is not null)
+                {
+                    token = newToken;
+                    http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                    response = await http.GetAsync(url);
+                }
+            }
+            if (!response.IsSuccessStatusCode)
+            {
+                var errBody = await response.Content.ReadAsStringAsync();
+                throw new Exception($"MeLi API error ({response.StatusCode}): {errBody}");
+            }
+
+            var json = await response.Content.ReadAsStringAsync();
+            var doc = JsonDocument.Parse(json).RootElement;
+            var results = doc.GetProperty("results");
+            int count = 0;
+            foreach (var idEl in results.EnumerateArray())
+            {
+                var itemId = idEl.GetString();
+                if (!string.IsNullOrEmpty(itemId))
+                {
+                    ids.Add(itemId);
+                    count++;
+                }
+            }
+
+            scrollId = doc.TryGetProperty("scroll_id", out var sid) && sid.ValueKind != JsonValueKind.Null
+                ? sid.GetString() : null;
+            isFirstRequest = false;
+            if (count == 0 || string.IsNullOrEmpty(scrollId)) break;
+        }
+
+        return ids;
+    }
+
     public async Task<MeliItemSyncResult> SyncItemsAsync(string? statusFilter = null, int? accountId = null, string? progressId = null)
     {
         var accounts = await _accountService.GetAllAccountEntitiesAsync();

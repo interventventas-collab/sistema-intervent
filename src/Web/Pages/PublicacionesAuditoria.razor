@@ -1,0 +1,255 @@
+@page "/publicaciones/auditoria"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject NavigationManager Nav
+
+@* Pantalla de auditoría: compara la lista de MLAs en MeLi vs la que tenemos en DB.
+   Sirve para detectar publicaciones que MeLi tiene pero el sistema no (gap peligroso)
+   o publicaciones que solo viven en nuestra DB (cerradas hace tiempo, no critico). *@
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
+        <h3 style="margin: 0;">🔍 Auditoría MeLi vs Sistema</h3>
+        <div style="display: flex; gap: 0.5rem;">
+            <button class="btn btn-secondary" @onclick='() => Nav.NavigateTo("/publicaciones")'>← Volver a Publicaciones</button>
+            <button class="btn btn-primary" @onclick="RunAudit" disabled="@isRunning">
+                @if (isRunning)
+                {
+                    <span><i class="fa-solid fa-arrows-rotate fa-spin"></i> Auditando... (~1-2 min)</span>
+                }
+                else
+                {
+                    <span><i class="fa-solid fa-magnifying-glass"></i> Auditar contra MeLi</span>
+                }
+            </button>
+        </div>
+    </div>
+
+    <div class="card-body">
+        <div style="background:#eff6ff; border:1px solid #93c5fd; padding:0.85rem 1rem; border-radius:6px; margin-bottom:1rem; color:#1e3a8a; font-size:0.9rem;">
+            <strong>¿Qué hace esto?</strong>
+            Le pide a la API de MeLi la lista <strong>completa</strong> de publicaciones (todas, sin filtro de estado) de cada cuenta conectada,
+            y la compara contra lo que tenemos en la base de datos del sistema. Te muestra 3 grupos:
+            <ul style="margin: 0.4rem 0 0 1.2rem;">
+                <li>✅ <strong>Match</strong> — publicaciones que están en MeLi y también en sistema.</li>
+                <li>⚠ <strong>En MeLi falta en sistema</strong> — gap peligroso, si entra una venta no la vamos a poder descontar de stock.</li>
+                <li>📁 <strong>En sistema falta en MeLi</strong> — probablemente cerradas/borradas hace tiempo. No es crítico.</li>
+            </ul>
+            <strong>No modifica nada</strong> — solo te informa. Si hay faltantes, podés importarlos con un click.
+        </div>
+
+        @if (isRunning)
+        {
+            <div style="padding:2rem; text-align:center; color:#6b7280;">
+                <i class="fa-solid fa-arrows-rotate fa-spin" style="font-size:2rem;"></i>
+                <p style="margin-top:0.6rem;">Consultando MeLi cuenta por cuenta. Esto puede tardar 1-2 minutos por cada cuenta.</p>
+            </div>
+        }
+        else if (result is null)
+        {
+            <p class="text-muted">Hacé clic en <strong>"Auditar contra MeLi"</strong> para empezar.</p>
+        }
+        else
+        {
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; margin-bottom: 1.25rem;">
+                <div class="audit-stat-card stat-meli">
+                    <div class="audit-stat-label">MeLi total</div>
+                    <div class="audit-stat-value">@result.TotalMeli.ToString("N0")</div>
+                </div>
+                <div class="audit-stat-card stat-system">
+                    <div class="audit-stat-label">Sistema total</div>
+                    <div class="audit-stat-value">@result.TotalSystem.ToString("N0")</div>
+                </div>
+                <div class="audit-stat-card stat-match">
+                    <div class="audit-stat-label">✅ Match</div>
+                    <div class="audit-stat-value">@result.TotalBoth.ToString("N0")</div>
+                </div>
+                <div class="audit-stat-card @(result.TotalMeliOnly > 0 ? "stat-warning" : "stat-ok")">
+                    <div class="audit-stat-label">⚠ MeLi → falta sistema</div>
+                    <div class="audit-stat-value">@result.TotalMeliOnly.ToString("N0")</div>
+                </div>
+                <div class="audit-stat-card stat-info">
+                    <div class="audit-stat-label">📁 Sistema → falta MeLi</div>
+                    <div class="audit-stat-value">@result.TotalSystemOnly.ToString("N0")</div>
+                </div>
+            </div>
+
+            <p style="color:#6b7280; font-size:0.85rem;">
+                Auditoría completada en @result.DurationSeconds segundos · @result.FinishedAt.ToLocalTime().ToString("dd/MM HH:mm")
+            </p>
+
+            @foreach (var acc in result.Accounts)
+            {
+                <div class="account-section">
+                    <h4 style="margin: 1rem 0 0.5rem 0; display: flex; align-items: center; gap: 0.5rem;">
+                        <i class="fa-solid fa-user"></i> @acc.Nickname
+                    </h4>
+
+                    @if (!string.IsNullOrEmpty(acc.Error))
+                    {
+                        <div style="background:#fee2e2; border:1px solid #fca5a5; padding:0.7rem 1rem; border-radius:6px; color:#991b1b;">
+                            ❌ Error en esta cuenta: @acc.Error
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.75rem;">
+                            <span class="badge-stat">MeLi: <strong>@acc.MeliCount.ToString("N0")</strong></span>
+                            <span class="badge-stat">Sistema: <strong>@acc.SystemCount.ToString("N0")</strong></span>
+                            <span class="badge-stat badge-ok">✅ Match: <strong>@acc.BothCount.ToString("N0")</strong></span>
+                            <span class="badge-stat @(acc.MeliOnly.Count > 0 ? "badge-warning" : "badge-muted")">
+                                ⚠ MeLi falta sistema: <strong>@acc.MeliOnly.Count.ToString("N0")</strong>
+                            </span>
+                            <span class="badge-stat badge-muted">📁 Sistema falta MeLi: <strong>@acc.SystemOnly.Count.ToString("N0")</strong></span>
+                        </div>
+
+                        @if (acc.MeliOnly.Count > 0)
+                        {
+                            <div style="background:#fef3c7; border:1px solid #fbbf24; padding:0.85rem 1rem; border-radius:6px; margin-bottom:0.75rem;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+                                    <strong>⚠ @acc.MeliOnly.Count publicaciones en MeLi que NO tenemos en sistema</strong>
+                                    <button class="btn btn-warning btn-sm" @onclick="() => ImportMissing(acc)"
+                                            disabled="@isImporting">
+                                        @if (isImporting && importingAccountId == acc.AccountId)
+                                        {
+                                            <span><i class="fa-solid fa-arrows-rotate fa-spin"></i> Importando @importedSoFar/@acc.MeliOnly.Count...</span>
+                                        }
+                                        else
+                                        {
+                                            <span>📥 Importar las @acc.MeliOnly.Count faltantes</span>
+                                        }
+                                    </button>
+                                </div>
+                                <div style="margin-top:0.5rem; font-size:0.78rem; color:#78350f; max-height:100px; overflow-y:auto;">
+                                    @string.Join(", ", acc.MeliOnly.Take(50))
+                                    @if (acc.MeliOnly.Count > 50) { <text>... y @(acc.MeliOnly.Count - 50) más</text> }
+                                </div>
+                            </div>
+                        }
+
+                        @if (acc.SystemOnly.Count > 0)
+                        {
+                            <details style="background:#f9fafb; border:1px solid #e5e7eb; padding:0.7rem 1rem; border-radius:6px;">
+                                <summary style="cursor:pointer; color:#4b5563;">
+                                    📁 @acc.SystemOnly.Count publicaciones en sistema que MeLi ya no tiene
+                                    <span style="color:#9ca3af; font-size:0.8rem;">(probablemente cerradas hace tiempo, no crítico)</span>
+                                </summary>
+                                <div style="margin-top:0.5rem; font-size:0.78rem; color:#6b7280; max-height:120px; overflow-y:auto;">
+                                    @string.Join(", ", acc.SystemOnly.Take(50))
+                                    @if (acc.SystemOnly.Count > 50) { <text>... y @(acc.SystemOnly.Count - 50) más</text> }
+                                </div>
+                            </details>
+                        }
+
+                        @if (acc.MeliOnly.Count == 0 && acc.SystemOnly.Count == 0)
+                        {
+                            <div style="background:#dcfce7; border:1px solid #86efac; padding:0.7rem 1rem; border-radius:6px; color:#14532d;">
+                                ✅ Perfecto match — todas las publicaciones de MeLi están en el sistema y viceversa.
+                            </div>
+                        }
+                    }
+                </div>
+            }
+        }
+    </div>
+</div>
+
+<style>
+    .audit-stat-card {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 0.85rem 1rem;
+        text-align: center;
+    }
+    .audit-stat-label { font-size: 0.75rem; color: #6b7280; margin-bottom: 0.25rem; }
+    .audit-stat-value { font-size: 1.65rem; font-weight: 700; color: #111827; }
+    .stat-meli { border-color: #fcd34d; background: #fffbeb; }
+    .stat-system { border-color: #93c5fd; background: #eff6ff; }
+    .stat-match { border-color: #86efac; background: #dcfce7; }
+    .stat-warning { border-color: #fca5a5; background: #fee2e2; }
+    .stat-ok { border-color: #86efac; background: #f0fdf4; }
+    .stat-info { border-color: #d1d5db; background: #f9fafb; }
+    .badge-stat { padding: 0.3rem 0.7rem; border-radius: 4px; font-size: 0.85rem; background: #f3f4f6; color: #374151; }
+    .badge-ok { background: #dcfce7; color: #14532d; }
+    .badge-warning { background: #fef3c7; color: #92400e; }
+    .badge-muted { background: #f3f4f6; color: #6b7280; }
+    .account-section { padding: 0.75rem 0; border-top: 1px solid #f3f4f6; }
+    .account-section:first-of-type { border-top: 0; }
+</style>
+
+@code {
+    private MeliAuditResult? result;
+    private bool isRunning;
+    private bool isImporting;
+    private int importingAccountId;
+    private int importedSoFar;
+
+    private async Task RunAudit()
+    {
+        isRunning = true;
+        result = null;
+        StateHasChanged();
+        try
+        {
+            result = await Api.AuditMeliItemsAsync();
+            if (result is null)
+                ToastService.Error("La auditoría falló. Reintentá en unos segundos.");
+            else
+                ToastService.Success($"Auditoría completada — {result.TotalMeliOnly} faltantes en sistema");
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error($"Error en auditoría: {ex.Message}");
+        }
+        finally
+        {
+            isRunning = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ImportMissing(MeliAuditAccountResult acc)
+    {
+        if (acc.MeliOnly.Count == 0) return;
+        isImporting = true;
+        importingAccountId = acc.AccountId;
+        importedSoFar = 0;
+        StateHasChanged();
+        try
+        {
+            int success = 0, errors = 0;
+            foreach (var meliId in acc.MeliOnly)
+            {
+                try
+                {
+                    var (res, err) = await Api.SyncMeliItemByIdAsync(meliId);
+                    if (res is not null && res.Results.Count > 0 && res.Results[0].Error is null)
+                        success++;
+                    else
+                        errors++;
+                }
+                catch
+                {
+                    errors++;
+                }
+                importedSoFar++;
+                if (importedSoFar % 5 == 0) StateHasChanged();
+            }
+            ToastService.Success($"Importadas {success} publicaciones · {errors} errores");
+            // Re-run audit to refresh numbers
+            await RunAudit();
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error($"Error importando: {ex.Message}");
+        }
+        finally
+        {
+            isImporting = false;
+            importedSoFar = 0;
+            StateHasChanged();
+        }
+    }
+}

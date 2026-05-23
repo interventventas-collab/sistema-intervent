@@ -314,6 +314,23 @@ public class MeliController : ControllerBase
         }
     }
 
+    /// <summary>Audita la presencia de MLAs: compara la lista que devuelve MeLi vs lo que tenemos en DB.
+    /// Devuelve { Accounts: [{ Nickname, MeliCount, SystemCount, BothCount, MeliOnly: [], SystemOnly: [] }], TotalMeli, TotalSystem, TotalBoth, ... }.
+    /// No modifica nada — solo informa. La importación de faltantes va por items/sync-by-id.</summary>
+    [HttpPost("items/audit")]
+    public async Task<IActionResult> AuditItems([FromQuery] int? accountId = null)
+    {
+        try
+        {
+            var result = await _itemService.AuditAccountsAsync(accountId);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpPost("items/sync")]
     public IActionResult SyncItems([FromQuery] string? status = null, [FromQuery] int? accountId = null)
     {

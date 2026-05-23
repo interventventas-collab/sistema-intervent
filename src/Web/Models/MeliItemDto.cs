@@ -70,6 +70,31 @@ public class MeliItemSyncResult
     public string? ProgressId { get; set; }
 }
 
+// ===== Auditoria MeLi vs Sistema (presencia de MLAs) =====
+public class MeliAuditAccountResult
+{
+    public int AccountId { get; set; }
+    public string Nickname { get; set; } = "";
+    public int MeliCount { get; set; }
+    public int SystemCount { get; set; }
+    public int BothCount { get; set; }
+    public List<string> MeliOnly { get; set; } = new();
+    public List<string> SystemOnly { get; set; } = new();
+    public string? Error { get; set; }
+}
+
+public class MeliAuditResult
+{
+    public List<MeliAuditAccountResult> Accounts { get; set; } = new();
+    public int TotalMeli { get; set; }
+    public int TotalSystem { get; set; }
+    public int TotalBoth { get; set; }
+    public int TotalMeliOnly { get; set; }
+    public int TotalSystemOnly { get; set; }
+    public DateTime FinishedAt { get; set; }
+    public int DurationSeconds { get; set; }
+}
+
 public class MeliItemSyncSingleResult
 {
     public string Action { get; set; } = string.Empty;
