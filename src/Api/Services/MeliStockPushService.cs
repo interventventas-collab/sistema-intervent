@@ -227,6 +227,9 @@ public class MeliStockPushService
                 meliVariationIds.Add(v.GetProperty("id").GetInt64());
         }
 
+        // Leer status actual para decidir si hay que re-activar (paused → active al subir stock).
+        var statusActual = doc.TryGetProperty("status", out var st) ? st.GetString() : null;
+
         // Calcular stock disponible.
         if (meliVariationIds.Count > 0)
         {
@@ -256,14 +259,13 @@ public class MeliStockPushService
                 sumStock += stock;
             }
 
-            // SAFETY GUARD 2026-05-23: NUNCA pushear si TODAS las variations dan stock 0.
-            // Eso pausaría la publicación en MeLi y rompería el posicionamiento (problema real
-            // detectado este día: pusheamos 142 publicaciones a 0 y MeLi las pausó).
-            // Si en realidad no tenemos stock, MEJOR no tocar nada — que MeLi conserve el último valor.
-            if (sumStock == 0)
-                return (PushOutcome.Skipped, "GUARD: stock calculado = 0 en TODAS las variations — no pushear para evitar pausa");
-
+            // POLITICA 2026-05-23: pushear SIEMPRE el stock real, incluso 0.
+            // Si sumStock=0, MeLi va a auto-pausar la publicacion — eso es lo correcto:
+            // mejor pausa que oversell. El usuario lo prefiere asi explicitamente.
+            // Si sumStock > 0 y la publicacion estaba paused (por nuestro 0 anterior), re-activar.
             var payload = new Dictionary<string, object> { ["variations"] = varEntries };
+            if (sumStock > 0 && string.Equals(statusActual, "paused", StringComparison.OrdinalIgnoreCase))
+                payload["status"] = "active";
             return await DoPut(http, meliItemId, payload, ct);
         }
         else
@@ -281,12 +283,12 @@ public class MeliStockPushService
                 stock = CalcStockLegacy(rows.First(), productos);
             }
 
-            // SAFETY GUARD 2026-05-23: NUNCA pushear stock=0 a MeLi sin variations.
-            // MeLi auto-pausaría la publicación y se rompe el posicionamiento. Mejor no tocar.
-            if (stock == 0)
-                return (PushOutcome.Skipped, "GUARD: stock calculado = 0 — no pushear para evitar pausa");
-
+            // POLITICA 2026-05-23: pushear stock real (0 incluido) para que MeLi refleje la verdad.
+            // Si sistema queda en 0, MeLi pausa = comportamiento deseado (no vender lo que no hay).
+            // Si stock > 0 y la publicacion estaba paused, reactivar automaticamente.
             var payload = new Dictionary<string, object> { ["available_quantity"] = stock };
+            if (stock > 0 && string.Equals(statusActual, "paused", StringComparison.OrdinalIgnoreCase))
+                payload["status"] = "active";
             return await DoPut(http, meliItemId, payload, ct);
         }
     }
