@@ -46,12 +46,30 @@ public class MeliStockPushService
 
     public record PushStockResult(int Procesadas, int Ok, int Skipped, int Errores, List<string> Mensajes);
 
+    /// <summary>MASTER KILL SWITCH 2026-05-23: chequea AppSettings["meli.stock_push.master_enabled"].
+    /// Si está en "false" o "0", NINGÚN push de stock a MeLi se ejecuta (ni event-driven ni background).
+    /// Default = true (la app funciona normal). Para ROLLBACK: setear "false".
+    /// </summary>
+    private async Task<bool> IsMasterEnabledAsync(CancellationToken ct = default)
+    {
+        var s = await _db.AppSettings.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Key == "meli.stock_push.master_enabled", ct);
+        // Default true si la clave no existe (no rompemos lo existente).
+        if (s is null) return true;
+        var v = s.Value?.Trim().ToLowerInvariant();
+        return v is null || (v != "false" && v != "0" && v != "off");
+    }
+
     /// <summary>
     /// Pushea stock a MeLi de TODAS las publicaciones afectadas por un cambio de stock
     /// en este CafeProducto. Considera el producto como componente de combos MeLi tambien.
     /// </summary>
     public async Task<PushStockResult> PushStockForProductoAsync(int cafeProductoId, CancellationToken ct = default)
     {
+        // MASTER KILL SWITCH: si está OFF, no pushear nada (ni event-driven ni background).
+        if (!await IsMasterEnabledAsync(ct))
+            return new PushStockResult(0, 0, 1, 0, new() { "Push DESHABILITADO (master kill switch). Para activar: AppSettings['meli.stock_push.master_enabled']='true'" });
+
         // 1) Identificar todas las publicaciones MeLi afectadas por este producto.
         //    a) Linkeo legacy: MeliItem.CafeProductoId == X
         //    b) Linkeo nuevo: MeliItemComponente.CafeProductoId == X
@@ -80,6 +98,10 @@ public class MeliStockPushService
     /// </summary>
     public async Task<PushStockResult> PushStockForMeliItemsAsync(List<string> meliItemIds, CancellationToken ct = default)
     {
+        // MASTER KILL SWITCH: si está OFF, no pushear nada.
+        if (!await IsMasterEnabledAsync(ct))
+            return new PushStockResult(0, 0, meliItemIds.Count, 0, new() { "Push DESHABILITADO (master kill switch)" });
+
         if (meliItemIds.Count == 0)
             return new PushStockResult(0, 0, 0, 0, new());
 
