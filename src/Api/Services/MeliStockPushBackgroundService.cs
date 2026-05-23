@@ -23,10 +23,8 @@ public class MeliStockPushBackgroundService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<MeliStockPushBackgroundService> _logger;
-    // TEMPORAL 2026-05-23: period reducido a 1 min para catch-up post-corte.
-    // Después de procesar los ~1345 pendientes, conviene volver a 15 min (period original).
-    private static readonly TimeSpan Period = TimeSpan.FromMinutes(1);
-    private static readonly TimeSpan FirstDelay = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan Period = TimeSpan.FromMinutes(15);
+    private static readonly TimeSpan FirstDelay = TimeSpan.FromMinutes(5);
 
     public MeliStockPushBackgroundService(IServiceScopeFactory scopeFactory,
         ILogger<MeliStockPushBackgroundService> logger)
@@ -62,7 +60,7 @@ public class MeliStockPushBackgroundService : BackgroundService
                 else
                 {
                     var pushSvc = scope.ServiceProvider.GetRequiredService<MeliStockPushService>();
-                    var r = await pushSvc.PushPendingAsync(maxProductos: 500, stoppingToken);
+                    var r = await pushSvc.PushPendingAsync(maxProductos: 200, stoppingToken);
                     if (r.Procesadas > 0)
                     {
                         _logger.LogInformation("[Push stock MeLi] {P} publicaciones procesadas (ok={O}, skipped={S}, err={E})",
