@@ -230,6 +230,16 @@ public class MeliStockPushService
         // Leer status actual para decidir si hay que re-activar (paused → active al subir stock).
         var statusActual = doc.TryGetProperty("status", out var st) ? st.GetString() : null;
 
+        // RESERVA INTERNA 2026-05-23: leer AppSetting `meli.stock_push.reserva_interna`.
+        // Por defecto = 1. Significa: del stock real, reservamos N unidades para venta interna
+        // (no las publicamos en MeLi). Si el producto tiene <=N unidades, MeLi recibe 0 y se pausa.
+        // El usuario puede modificar esto en AppSettings cuando quiera (ej. 0 para "publicar todo").
+        var reservaSetting = await _db.AppSettings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Key == "meli.stock_push.reserva_interna", ct);
+        int reserva = 1;
+        if (reservaSetting != null && int.TryParse(reservaSetting.Value, out var r) && r >= 0) reserva = r;
+
         // Calcular stock disponible.
         if (meliVariationIds.Count > 0)
         {
@@ -255,8 +265,10 @@ public class MeliStockPushService
                     var legacyRow = rows.FirstOrDefault(r => r.VariationId == vidStr) ?? rows.First();
                     stock = CalcStockLegacy(legacyRow, productos);
                 }
-                varEntries.Add(new { id = vid, available_quantity = stock });
-                sumStock += stock;
+                // Aplicar reserva interna: saturar a 0 si stock <= reserva.
+                var stockMeli = Math.Max(0, stock - reserva);
+                varEntries.Add(new { id = vid, available_quantity = stockMeli });
+                sumStock += stockMeli;
             }
 
             // POLITICA 2026-05-23: pushear SIEMPRE el stock real, incluso 0.
@@ -283,11 +295,12 @@ public class MeliStockPushService
                 stock = CalcStockLegacy(rows.First(), productos);
             }
 
-            // POLITICA 2026-05-23: pushear stock real (0 incluido) para que MeLi refleje la verdad.
-            // Si sistema queda en 0, MeLi pausa = comportamiento deseado (no vender lo que no hay).
-            // Si stock > 0 y la publicacion estaba paused, reactivar automaticamente.
-            var payload = new Dictionary<string, object> { ["available_quantity"] = stock };
-            if (stock > 0 && string.Equals(statusActual, "paused", StringComparison.OrdinalIgnoreCase))
+            // POLITICA 2026-05-23: pushear stock real (0 incluido) menos reserva interna.
+            // Si sistema queda en <=reserva, MeLi pausa = no vender lo que no hay buffer.
+            // Si stock > 0 (despues de reserva) y la publicacion estaba paused, reactivar automaticamente.
+            var stockMeliSingle = Math.Max(0, stock - reserva);
+            var payload = new Dictionary<string, object> { ["available_quantity"] = stockMeliSingle };
+            if (stockMeliSingle > 0 && string.Equals(statusActual, "paused", StringComparison.OrdinalIgnoreCase))
                 payload["status"] = "active";
             return await DoPut(http, meliItemId, payload, ct);
         }
