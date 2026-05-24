@@ -725,32 +725,70 @@ app.post('/whatsapp/messages/list', async (req, res) => {
     await sleep(500);
 
     // Extraer mensajes del DOM
+    // Estrategia robusta multi-fallback porque WhatsApp Web cambia clases seguido.
     const messages = await state.page.evaluate(() => {
       const items = [];
       const nodes = document.querySelectorAll('div[data-id]');
+
+      const extractTextFromNode = (node) => {
+        // 1) Preferido: contenedor .copyable-text con data-pre-plain-text
+        //    Su innerText típicamente es solo el cuerpo del mensaje.
+        const copyableWithMeta = node.querySelector('.copyable-text[data-pre-plain-text]');
+        if (copyableWithMeta) {
+          // El hijo selectable-text contiene el body limpio
+          const sel = copyableWithMeta.querySelector('span.selectable-text, .selectable-text');
+          if (sel) {
+            const t = (sel.innerText || sel.textContent || '').trim();
+            if (t) return t;
+          }
+          const t = (copyableWithMeta.innerText || '').trim();
+          if (t) return t;
+        }
+        // 2) Cualquier .copyable-text dentro del nodo
+        const copy = node.querySelector('.copyable-text');
+        if (copy) {
+          const t = (copy.innerText || copy.textContent || '').trim();
+          if (t) return t;
+        }
+        // 3) Spans selectables
+        const selSpans = node.querySelectorAll('span.selectable-text, .selectable-text');
+        for (let i = selSpans.length - 1; i >= 0; i--) {
+          const t = (selSpans[i].innerText || selSpans[i].textContent || '').trim();
+          if (t) return t;
+        }
+        // 4) Último recurso: innerText completo del bubble, limpiando líneas de metadata
+        const raw = (node.innerText || '').trim();
+        if (raw) {
+          const lines = raw.split('\n').map(l => l.trim()).filter(l => l && !/^\d{1,2}:\d{2}/.test(l));
+          if (lines.length > 0) return lines.join(' ').trim();
+          return raw;
+        }
+        return '';
+      };
+
       nodes.forEach(node => {
         const id = node.getAttribute('data-id') || '';
         if (!id) return;
-        const isMessage = node.querySelector('span.selectable-text') !== null
-                       || node.querySelector('[data-pre-plain-text]') !== null
-                       || node.classList.contains('message-in')
-                       || node.classList.contains('message-out');
-        if (!isMessage) return;
-        const fromMe = node.classList.contains('message-out') || id.startsWith('true_');
-        let text = '';
-        const textSpans = node.querySelectorAll('span.selectable-text span, span.selectable-text');
-        if (textSpans.length > 0) {
-          for (let i = textSpans.length - 1; i >= 0; i--) {
-            const t = (textSpans[i].textContent || '').trim();
-            if (t) { text = t; break; }
-          }
-        }
+        // Filtrar quick-replies / divisores / etc — un mensaje real tiene .copyable-text o selectable-text
+        const looksLikeMessage = node.querySelector('.copyable-text') !== null
+                              || node.querySelector('span.selectable-text, .selectable-text') !== null
+                              || node.querySelector('[data-pre-plain-text]') !== null
+                              || node.classList.contains('message-in')
+                              || node.classList.contains('message-out');
+        if (!looksLikeMessage) return;
+
+        const fromMe = node.classList.contains('message-out')
+                    || id.startsWith('true_')
+                    || /^[A-F0-9]+_true/i.test(id);
+
+        const text = extractTextFromNode(node);
         const meta = node.querySelector('[data-pre-plain-text]');
         const metaAttr = meta ? meta.getAttribute('data-pre-plain-text') : '';
         items.push({ id, text, fromMe, meta: metaAttr });
       });
       return items;
     });
+    try { console.log(`[wa] messages/list extracted ${messages.length} nodes (with text: ${messages.filter(m => m.text).length})`); } catch {}
 
     let filtered = messages;
     if (sinceId) {
