@@ -18,10 +18,11 @@ public class WhatsAppPedidosController : ControllerBase
     private readonly WhatsAppPedidoService _svc;
     private readonly IHttpClientFactory _httpFactory;
     private readonly ILogger<WhatsAppPedidosController> _log;
+    private readonly IServiceScopeFactory _scopeFactory;
 
-    public WhatsAppPedidosController(AppDbContext db, WhatsAppPedidoService svc, IHttpClientFactory httpFactory, ILogger<WhatsAppPedidosController> log)
+    public WhatsAppPedidosController(AppDbContext db, WhatsAppPedidoService svc, IHttpClientFactory httpFactory, ILogger<WhatsAppPedidosController> log, IServiceScopeFactory scopeFactory)
     {
-        _db = db; _svc = svc; _httpFactory = httpFactory; _log = log;
+        _db = db; _svc = svc; _httpFactory = httpFactory; _log = log; _scopeFactory = scopeFactory;
     }
 
     public class RecibirPedidoRequest
@@ -118,28 +119,38 @@ public class WhatsAppPedidosController : ControllerBase
         p.SeenAt ??= DateTime.UtcNow;
         await _db.SaveChangesAsync();
 
-        // Mandar segunda respuesta WhatsApp con el detalle de la venta cargada (si esta autorizada la auto-respuesta)
+        // Mandar segunda respuesta WhatsApp con el detalle de la venta cargada (si esta autorizada la auto-respuesta).
+        // IMPORTANTE: usar IServiceScopeFactory para tener un DbContext propio, porque el _db inyectado
+        // se dispose al terminar el request HTTP, antes que corra esta Task.
+        var telefonoDest = p.Telefono;
+        var pedidoIdLocal = p.Id;
+        var ventaIdLocal = req.VentaId;
         _ = Task.Run(async () =>
         {
-            try { await EnviarDetalleVentaPorWhatsApp(p.Telefono, p.Id, req.VentaId, HttpContext.RequestAborted); }
-            catch (Exception ex) { _log.LogError(ex, "[WA pedidos] error enviando detalle venta {VentaId}", req.VentaId); }
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                await EnviarDetalleVentaPorWhatsApp(db, telefonoDest, pedidoIdLocal, ventaIdLocal, CancellationToken.None);
+            }
+            catch (Exception ex) { _log.LogError(ex, "[WA pedidos] error enviando detalle venta {VentaId}", ventaIdLocal); }
         });
 
         return Ok();
     }
 
     /// <summary>Arma el mensaje con detalle de la venta y se lo manda al telefono que originalmente envio el pedido.</summary>
-    private async Task EnviarDetalleVentaPorWhatsApp(string telefonoDestino, int pedidoId, int ventaId, CancellationToken ct)
+    private async Task EnviarDetalleVentaPorWhatsApp(AppDbContext db, string telefonoDestino, int pedidoId, int ventaId, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(telefonoDestino)) return;
 
         // Chequear si auto-respuesta esta activada
-        var arSetting = await _db.AppSettings.AsNoTracking().FirstOrDefaultAsync(s => s.Key == "whatsapp.pedidos.auto_responder_enabled", ct);
+        var arSetting = await db.AppSettings.AsNoTracking().FirstOrDefaultAsync(s => s.Key == "whatsapp.pedidos.auto_responder_enabled", ct);
         var autoRespOn = arSetting is null || string.Equals(arSetting.Value?.Trim(), "true", StringComparison.OrdinalIgnoreCase);
         if (!autoRespOn) return;
 
         // Cargar venta con items
-        var venta = await _db.CafeVentas.AsNoTracking()
+        var venta = await db.CafeVentas.AsNoTracking()
             .Include(v => v.Items)
             .FirstOrDefaultAsync(v => v.Id == ventaId, ct);
         if (venta is null) return;
