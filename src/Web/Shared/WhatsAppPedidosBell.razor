@@ -4,12 +4,20 @@
 
 @if (canShow)
 {
-    <button class="topbar-bell" @onclick='() => Nav.NavigateTo("/cafe/pedidos-whatsapp")'
-            title="@($"{pending} pedidos por WhatsApp sin procesar")">
+    <button class="topbar-bell @StatusCssClass" @onclick='() => Nav.NavigateTo("/cafe/pedidos-whatsapp")'
+            title="@Tooltip">
         <i class="fa-brands fa-whatsapp"></i>
         @if (pending > 0)
         {
             <span class="topbar-bell-badge topbar-bell-badge-pulse">@(pending > 99 ? "99+" : pending.ToString())</span>
+        }
+        @if (Connection == ConnState.Disconnected)
+        {
+            <span class="wa-status-dot wa-status-dot-red" title="WhatsApp desconectado"></span>
+        }
+        else if (Connection == ConnState.Linking)
+        {
+            <span class="wa-status-dot wa-status-dot-yellow" title="Esperando QR"></span>
         }
     </button>
 }
@@ -17,24 +25,84 @@
 <style>
     .topbar-bell { position:relative; background:transparent; border:none; padding:0.4rem 0.6rem; cursor:pointer; color:#4b5563; font-size:1.1rem; border-radius:6px; transition:background 0.15s; }
     .topbar-bell:hover { background:#f3f4f6; color:#1f2937; }
-    .topbar-bell .fa-whatsapp { color:#25D366; }
+
+    /* Color del icono según estado de conexión */
+    .topbar-bell.wa-connected .fa-whatsapp { color:#25D366; }
+    .topbar-bell.wa-disconnected .fa-whatsapp { color:#dc2626; }
+    .topbar-bell.wa-linking .fa-whatsapp { color:#f59e0b; animation: wa-blink 1s infinite; }
+    .topbar-bell.wa-unknown .fa-whatsapp { color:#9ca3af; }
+
+    /* Punto rojo/amarillo overlay para señal extra */
+    .wa-status-dot { position:absolute; bottom:0.3rem; right:0.3rem; width:10px; height:10px; border-radius:50%; border:2px solid white; }
+    .wa-status-dot-red { background:#dc2626; animation: wa-pulse-red 1.4s infinite; }
+    .wa-status-dot-yellow { background:#f59e0b; animation: wa-blink 1s infinite; }
+
+    /* Badge de pedidos pendientes */
     .topbar-bell-badge { position:absolute; top:0.05rem; right:0.1rem; background:#25D366; color:white; font-size:0.65rem; font-weight:700; padding:0.1rem 0.35rem; border-radius:999px; min-width:1.1rem; text-align:center; line-height:1; }
     .topbar-bell-badge-pulse { animation: bell-pulse 1.6s infinite; }
+
     @@keyframes bell-pulse { 0%,100% { transform:scale(1); box-shadow:0 0 0 0 rgba(37,211,102,0.6); } 50% { transform:scale(1.1); box-shadow:0 0 0 6px rgba(37,211,102,0); } }
+    @@keyframes wa-pulse-red { 0%,100% { transform:scale(1); box-shadow:0 0 0 0 rgba(220,38,38,0.7); } 50% { transform:scale(1.2); box-shadow:0 0 0 4px rgba(220,38,38,0); } }
+    @@keyframes wa-blink { 0%,100% { opacity:1; } 50% { opacity:0.35; } }
 </style>
 
 @code {
     private int pending; private bool canShow = true; private int errors; private System.Threading.Timer? timer;
+
+    private enum ConnState { Unknown, Connected, Disconnected, Linking }
+    private ConnState Connection = ConnState.Unknown;
+
+    private string StatusCssClass => Connection switch
+    {
+        ConnState.Connected => "wa-connected",
+        ConnState.Disconnected => "wa-disconnected",
+        ConnState.Linking => "wa-linking",
+        _ => "wa-unknown"
+    };
+
+    private string Tooltip
+    {
+        get
+        {
+            var connText = Connection switch
+            {
+                ConnState.Connected => "✅ WhatsApp vinculado",
+                ConnState.Disconnected => "🔴 WhatsApp DESCONECTADO — escaneá el QR en Integraciones",
+                ConnState.Linking => "🟡 Esperando escaneo de QR…",
+                _ => "Estado de WhatsApp desconocido"
+            };
+            return pending > 0 ? $"{pending} pedidos sin procesar · {connText}" : connText;
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
         await Poll();
         timer = new System.Threading.Timer(async _ => await InvokeAsync(Poll), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
     }
+
     private async Task Poll()
     {
-        try { pending = await Api.GetWhatsAppPedidosCountPendientesAsync(); errors = 0; StateHasChanged(); }
+        try
+        {
+            pending = await Api.GetWhatsAppPedidosCountPendientesAsync();
+            errors = 0;
+        }
         catch { errors++; if (errors >= 3) canShow = false; }
+
+        // Pollear también el estado de conexión WhatsApp
+        try
+        {
+            var st = await Api.GetWhatsAppStatusAsync();
+            if (st is null) { Connection = ConnState.Unknown; }
+            else if (st.IsLinking) { Connection = ConnState.Linking; }
+            else if (st.Linked || string.Equals(st.Info?.Trim(), "Vinculado", StringComparison.OrdinalIgnoreCase))
+                { Connection = ConnState.Connected; }
+            else { Connection = ConnState.Disconnected; }
+        }
+        catch { Connection = ConnState.Unknown; }
+
+        StateHasChanged();
     }
     public void Dispose() => timer?.Dispose();
 }

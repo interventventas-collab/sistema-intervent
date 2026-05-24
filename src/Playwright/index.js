@@ -108,12 +108,37 @@ async function launchContext(useStorageState) {
 }
 
 async function isLinkedOnPage(page) {
-  // Si aparecen los chats (#pane-side o role "grid"), ya está vinculado
+  // Estrategia robusta multi-fallback porque WhatsApp Web cambia selectores muy seguido.
+  // 1) Selectores históricos
+  // 2) Cualquier indicio de la app abierta (lista de chats, footer compose, header)
+  // 3) Fallback negativo: si hay <canvas> visible del QR, NO está linkeado
   try {
-    const paneSide = await page.$('#pane-side');
-    if (paneSide) return true;
-    const chatList = await page.$('[role="grid"]');
-    if (chatList) return true;
+    const positives = [
+      '#pane-side',
+      '[role="grid"]',
+      '#side',
+      'div[aria-label="Lista de chats"]',
+      'div[aria-label="Chat list"]',
+      '[data-testid="chat-list"]',
+      'header[data-testid="chatlist-header"]',
+      'footer div[contenteditable="true"]',
+      'div[data-testid="conversation-panel-wrapper"]'
+    ];
+    for (const sel of positives) {
+      const el = await page.$(sel).catch(() => null);
+      if (el) return true;
+    }
+    // Fallback negativo: si hay un canvas QR visible, no está linkeado
+    const qrCanvas = await page.$('canvas[aria-label*="QR" i], canvas[aria-label*="código" i], div[data-ref] canvas').catch(() => null);
+    if (qrCanvas) return false;
+
+    // Último fallback: evaluar el DOM y buscar palabras que indiquen sesión activa
+    const looksLikeApp = await page.evaluate(() => {
+      // Si vemos "Mensaje nuevo", "Nuevo chat" o el ícono de search es señal de sesión activa
+      const txt = (document.body.innerText || '').slice(0, 4000);
+      return /mensaje|chat|conversaci/i.test(txt) && !/escan(é|e)alo|escanea el código/i.test(txt);
+    }).catch(() => false);
+    if (looksLikeApp) return true;
   } catch {}
   return false;
 }
@@ -238,16 +263,23 @@ app.get('/whatsapp/qr', async (req, res) => {
 // GET /whatsapp/status
 app.get('/whatsapp/status', async (req, res) => {
   try {
-    // Si tenemos página viva, re-chequear
-    let linked = state.linked;
+    // Re-chequear si hay pagina viva. Si el live check falla pero ya estabamos linked
+    // antes y la pagina sigue viva, mantenemos linked=true (WA Web cambia selectores
+    // y el detector puede fallar transitoriamente, pero la sesion sigue activa).
+    let linked = false;
     if (state.page && !state.page.isClosed()) {
       try {
-        linked = await isLinkedOnPage(state.page);
+        const liveCheck = await isLinkedOnPage(state.page);
+        if (liveCheck) {
+          linked = true;
+        } else if (state.linked) {
+          // El detector dice no, pero antes estabamos linked → confiar en el flag previo
+          // si la pagina sigue abierta y no estamos esperando QR.
+          linked = !state.isLinking;
+        }
       } catch {
-        linked = false;
+        linked = state.linked && !state.isLinking;
       }
-    } else {
-      linked = false;
     }
     state.linked = linked;
     res.json({ linked, isLinking: state.isLinking, info: state.lastInfo });
@@ -356,6 +388,11 @@ app.post('/whatsapp/send-bulk', async (req, res) => {
 
       const result = await sendWhatsAppMessage(phone, text);
       results.push({ phone: r.phone, name: r.name, success: result.success, message: result.message });
+    }
+
+    // Persistir sesión a disco si al menos una operación fue OK. Idempotente.
+    if (results.some(r => r.success)) {
+      try { await saveStorageState(); } catch {}
     }
 
     messagesListBusy = false;
@@ -810,6 +847,12 @@ app.post('/whatsapp/messages/list', async (req, res) => {
     if (sinceId) {
       const idx = messages.findIndex(m => m.id === sinceId);
       if (idx >= 0) filtered = messages.slice(idx + 1);
+    }
+
+    // Si llegamos hasta acá la sesión está activa — guardar storage-state idempotente.
+    // Esto asegura que aunque el container reinicie, la sesión sobrevive.
+    if (messages.length > 0 || !fs.existsSync(STORAGE_STATE_PATH)) {
+      try { await saveStorageState(); } catch {}
     }
 
     messagesListBusy = false;
