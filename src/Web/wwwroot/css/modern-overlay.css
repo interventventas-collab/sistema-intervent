@@ -1,0 +1,320 @@
+/* ============================================================
+   MODERN OVERLAY 2026-05-24
+   Mejoras visuales que se aplican ENCIMA de app.css.
+   Para revertir: comentar la línea del <link> en index.html.
+   ============================================================ */
+
+/* ─── Tokens nuevos / refinados ─── */
+:root {
+  /* Sombras más suaves y modernas (similar a Linear/Vercel) */
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.04);
+  --shadow-md-soft: 0 2px 4px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.06);
+  --shadow-glow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+
+  /* Sidebar más profundo con gradient */
+  --sidebar-bg-gradient: linear-gradient(180deg, #1a1a2e 0%, #161629 100%);
+  --sidebar-accent: #34d399;
+
+  /* Verde con un poco más de pop */
+  --primary-gradient: linear-gradient(135deg, #10b981 0%, #059669 100%);
+
+  /* Spacing escala */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+}
+
+/* ─── Tipografía: respiro y jerarquía ─── */
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.005em;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+
+/* ─── Sidebar: gradient + items con respiro ─── */
+.sidebar {
+  background: var(--sidebar-bg-gradient) !important;
+  box-shadow: 1px 0 0 rgba(255, 255, 255, 0.04) inset;
+}
+
+.sidebar-brand {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+.sidebar-nav {
+  padding: 0.5rem 0.5rem !important;
+}
+
+/* Items del menú con bordes redondeados y micro-animación */
+.sidebar-nav a,
+.sidebar-nav .nav-item,
+.sidebar-nav .nav-group-header {
+  border-radius: 8px !important;
+  margin: 1px 0 !important;
+  transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease !important;
+}
+
+.sidebar-nav a:hover,
+.sidebar-nav .nav-item:hover,
+.sidebar-nav .nav-group-header:hover {
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: #ffffff !important;
+  transform: translateX(2px);
+}
+
+/* Item activo con accent verde sutil */
+.sidebar-nav a.active,
+.sidebar-nav .nav-item.active {
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.18), rgba(16, 185, 129, 0.08)) !important;
+  color: #ffffff !important;
+  font-weight: 500 !important;
+  position: relative;
+}
+.sidebar-nav a.active::before,
+.sidebar-nav .nav-item.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  background: var(--sidebar-accent);
+  border-radius: 0 2px 2px 0;
+}
+
+/* ─── Topbar: línea sutil ─── */
+.topbar {
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.02) !important;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.6) !important;
+}
+
+/* ─── Cards: sombras suaves ─── */
+.card {
+  border: 1px solid rgba(226, 232, 240, 0.7) !important;
+  box-shadow: var(--shadow-soft) !important;
+  border-radius: 12px !important;
+  transition: box-shadow 0.2s ease, transform 0.2s ease !important;
+}
+
+.card:hover {
+  box-shadow: var(--shadow-md-soft) !important;
+}
+
+.card-header {
+  background: rgba(249, 250, 251, 0.6) !important;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.5) !important;
+  border-radius: 12px 12px 0 0 !important;
+}
+
+/* ─── Stat cards (Dashboard) con identidad moderna ─── */
+.stat-card,
+[class*="kpi"] {
+  border-radius: 14px !important;
+  border: 1px solid rgba(226, 232, 240, 0.6) !important;
+  box-shadow: var(--shadow-soft) !important;
+  transition: transform 0.18s ease, box-shadow 0.18s ease !important;
+}
+
+.stat-card:hover,
+[class*="kpi"]:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md-soft) !important;
+}
+
+/* ─── Botones primarios: gradiente sutil + hover lift ─── */
+.btn-primary {
+  background: var(--primary-gradient) !important;
+  border: none !important;
+  color: white !important;
+  font-weight: 500 !important;
+  box-shadow: 0 1px 2px rgba(16, 185, 129, 0.2) !important;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease !important;
+}
+
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3) !important;
+  filter: brightness(1.05);
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn-primary:disabled {
+  opacity: 0.55 !important;
+  cursor: not-allowed !important;
+}
+
+/* ─── Botones secundarios: borde sutil + hover claro ─── */
+.btn-secondary {
+  background: #ffffff !important;
+  border: 1px solid #d1d5db !important;
+  color: #374151 !important;
+  font-weight: 500 !important;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.12s ease !important;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #f9fafb !important;
+  border-color: #9ca3af !important;
+}
+
+/* ─── Inputs con focus ring verde suave ─── */
+.form-input:focus,
+.form-control:focus,
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
+input[type="number"]:focus,
+input[type="search"]:focus,
+input[type="tel"]:focus,
+input[type="date"]:focus,
+select:focus,
+textarea:focus {
+  outline: none !important;
+  border-color: var(--primary) !important;
+  box-shadow: var(--shadow-glow) !important;
+}
+
+/* ─── Tables con estilo moderno (rows hover, borders suaves) ─── */
+.table tbody tr,
+table tbody tr {
+  transition: background 0.12s ease;
+}
+
+.table tbody tr:hover,
+table tbody tr:hover {
+  background: rgba(16, 185, 129, 0.025) !important;
+}
+
+.table th,
+table th {
+  font-weight: 600 !important;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: #6b7280 !important;
+  background: #f9fafb !important;
+  border-bottom: 1px solid #e5e7eb !important;
+}
+
+/* ─── Scrollbar custom (moderno, fino) ─── */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.22);
+  background-clip: content-box;
+  border: 2px solid transparent;
+}
+
+/* ─── Sidebar scrollbar (más sutil sobre fondo oscuro) ─── */
+.sidebar ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  background-clip: content-box;
+  border: 2px solid transparent;
+}
+
+/* ─── Badges modernizados ─── */
+[class*="badge"],
+.estado-badge {
+  font-weight: 600 !important;
+  letter-spacing: 0.02em !important;
+}
+
+/* ─── Modales con sombra elegante ─── */
+.modal-card {
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05) !important;
+  border-radius: 16px !important;
+}
+
+.modal-header {
+  border-radius: 16px 16px 0 0 !important;
+}
+
+/* ─── Toasts modernos ─── */
+[class*="toast"] {
+  border-radius: 12px !important;
+  box-shadow: var(--shadow-md-soft) !important;
+  backdrop-filter: blur(8px);
+}
+
+/* ─── Tags / chips con redondez moderna ─── */
+[class*="chip"],
+.tag {
+  border-radius: 999px !important;
+  font-weight: 500 !important;
+  font-size: 0.78rem !important;
+  padding: 0.18rem 0.6rem !important;
+}
+
+/* ─── Animation: fade-in suave para contenido nuevo ─── */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.card,
+.modal-card,
+.pedido-card,
+.pedido-wa-card {
+  animation: fade-in-up 0.22s ease;
+}
+
+/* ─── Banner DEV / PROD: más sutil ─── */
+.dev-environment-banner,
+.prod-environment-banner {
+  letter-spacing: 0.08em !important;
+  font-size: 0.7rem !important;
+}
+
+/* ─── Skeleton loaders (cuando se agregue loading state) ─── */
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #e5e7eb 0%, #f3f4f6 50%, #e5e7eb 100%);
+  background-size: 200% 100%;
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+/* ─── FAB modernizado ─── */
+.fab-nueva-venta {
+  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.35), 0 1px 3px rgba(0, 0, 0, 0.08) !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.fab-nueva-venta:hover {
+  box-shadow: 0 10px 24px rgba(16, 185, 129, 0.45), 0 2px 6px rgba(0, 0, 0, 0.1) !important;
+  transform: translateY(-2px) !important;
+}

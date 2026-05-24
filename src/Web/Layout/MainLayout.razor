@@ -58,9 +58,18 @@
                    Pedido del usuario 2026-05-19: una carpeta con los accesos mas usados que aparezca
                    PRIMERO y RESALTADA. Para que empleados (proxima sesion con login propio) tengan
                    todo a un click sin tener que recorrer el resto del sidebar. *@
+                @* Reordenado 2026-05-24 por uso real (últimos 14 días en prod):
+                   1. Ventas (#1 más usado)
+                   2. Cobranzas (155 CREATE en 14 días)
+                   3. Pedidos WhatsApp (nuevo flujo crítico)
+                   4. Stock + Historial (control diario)
+                   5. Clientes (consulta diaria)
+                   6. Productos / Listas precios (uso medio)
+                   7. Mapa de clientes / Mapeados (uso bajo)
+                   8. Documentación (al final) *@
                 <NavGroup Label="⭐ Favoritos" Icon="@SvgIcons.Dashboard"
                           Highlight="true" DefaultExpanded="true"
-                          HasActiveChild="@(IsActive("/cafe/ventas") || IsActive("/cafe/tesoreria/cobranzas") || IsActive("/cafe/productos") || IsActive("/cafe/listas-precios") || IsActive("/cafe/stock-masivo") || IsActive("/cafe/clientes") || IsActive("/mapeo") || IsActive("/cafe/clientes-mapeados") || IsActive("/documentacion"))">
+                          HasActiveChild="@(IsActive("/cafe/ventas") || IsActive("/cafe/tesoreria/cobranzas") || IsActive("/cafe/pedidos-whatsapp") || IsActive("/cafe/productos") || IsActive("/cafe/listas-precios") || IsActive("/cafe/stock-masivo") || IsActive("/cafe/historial-stock") || IsActive("/cafe/clientes") || IsActive("/mapeo") || IsActive("/cafe/clientes-mapeados") || IsActive("/documentacion"))">
                     <NavItem Href="/cafe/ventas" Label="🛒 Ventas" Icon="@SvgIcons.ShoppingBag"
                              IsActive="@IsActive("/cafe/ventas")" OnClick="@(() => NavigateTo("/cafe/ventas"))" />
                     @if (HasPerm("cafe-tesoreria"))
@@ -68,22 +77,22 @@
                         <NavItem Href="/cafe/tesoreria/cobranzas" Label="📥 Cobranzas" Icon="@SvgIcons.ShoppingBag"
                                  IsActive="@IsActive("/cafe/tesoreria/cobranzas")" OnClick="@(() => NavigateTo("/cafe/tesoreria/cobranzas"))" />
                     }
-                    <NavItem Href="/cafe/productos" Label="🏷 Productos" Icon="@SvgIcons.Package"
-                             IsActive="@IsActive("/cafe/productos")" OnClick="@(() => NavigateTo("/cafe/productos"))" />
-                    <NavItem Href="/cafe/listas-precios" Label="💲 Listas de precios" Icon="@SvgIcons.Tag"
-                             IsActive="@IsActive("/cafe/listas-precios")" OnClick="@(() => NavigateTo("/cafe/listas-precios"))" />
                     @if (HasPerm("cafe-depositos"))
                     {
+                        <NavItem Href="/cafe/pedidos-whatsapp" Label="💬 Pedidos WhatsApp" Icon="@SvgIcons.Tag"
+                                 IsActive="@IsActive("/cafe/pedidos-whatsapp")" OnClick="@(() => NavigateTo("/cafe/pedidos-whatsapp"))" />
                         @* Stock unificado: entra a Stock masivo, y desde la pantalla hay boton para abrir Stock movil. *@
                         <NavItem Href="/cafe/stock-masivo" Label="📦 Stock" Icon="@SvgIcons.Package"
                                  IsActive="@(IsActive("/cafe/stock-masivo") || IsActive("/stock"))" OnClick="@(() => NavigateTo("/cafe/stock-masivo"))" />
                         <NavItem Href="/cafe/historial-stock" Label="📊 Historial stock" Icon="@SvgIcons.Tag"
                                  IsActive="@IsActive("/cafe/historial-stock")" OnClick="@(() => NavigateTo("/cafe/historial-stock"))" />
-                        <NavItem Href="/cafe/pedidos-whatsapp" Label="💬 Pedidos WhatsApp" Icon="@SvgIcons.Tag"
-                                 IsActive="@IsActive("/cafe/pedidos-whatsapp")" OnClick="@(() => NavigateTo("/cafe/pedidos-whatsapp"))" />
                     }
                     <NavItem Href="/cafe/clientes" Label="👤 Clientes" Icon="@SvgIcons.Users"
                              IsActive="@IsActive("/cafe/clientes")" OnClick="@(() => NavigateTo("/cafe/clientes"))" />
+                    <NavItem Href="/cafe/productos" Label="🏷 Productos" Icon="@SvgIcons.Package"
+                             IsActive="@IsActive("/cafe/productos")" OnClick="@(() => NavigateTo("/cafe/productos"))" />
+                    <NavItem Href="/cafe/listas-precios" Label="💲 Listas de precios" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive("/cafe/listas-precios")" OnClick="@(() => NavigateTo("/cafe/listas-precios"))" />
                     <NavItem Href="/mapeo" Label="🗺 Mapa de clientes" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/mapeo")" OnClick="@(() => NavigateTo("/mapeo"))" />
                     <NavItem Href="/cafe/clientes-mapeados" Label="👥 Clientes Mapeados" Icon="@SvgIcons.Tag"
