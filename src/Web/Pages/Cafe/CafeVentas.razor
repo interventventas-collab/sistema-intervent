@@ -503,7 +503,7 @@
 @* ═══════════════ MODAL SELECCIÓN PEDIDO WHATSAPP ═══════════════ *@
 @if (mostrarSelectorPedidoWA)
 {
-    <div class="modal-overlay" @onclick="CerrarSelectorPedidoWA" style="z-index: 2100;">
+    <div class="modal-overlay" @onclick="CerrarSelectorPedidoWA" style="z-index: 9500 !important;">
         <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 720px; width: 90vw; max-height: 85vh; display: flex; flex-direction: column;">
             <div class="modal-header" style="background:#25D366; color:white;">
                 <h3 style="margin: 0;">💬 Pedidos de WhatsApp pendientes</h3>
@@ -564,7 +564,7 @@
     </div>
     <style>
         .cafe-wa-floating {
-            position: fixed; z-index: 9000;
+            position: fixed; z-index: 9400;
             background: #fefce8; border:2px solid #fde68a; border-radius:10px;
             box-shadow: 0 10px 25px rgba(0,0,0,0.25);
             display: flex; flex-direction: column;
