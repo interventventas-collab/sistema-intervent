@@ -47,14 +47,17 @@ public class WhatsAppPedidoService
         public string? Error { get; set; }
     }
 
-    /// <summary>Parsea un texto crudo de WhatsApp y devuelve los productos identificados contra el catálogo.</summary>
+    /// <summary>Parsea un texto crudo de WhatsApp y devuelve los productos identificados contra el catálogo.
+    /// Usa Claude (Anthropic) como motor IA. Si no está configurado, intenta OpenAI como fallback.</summary>
     public async Task<ParseResult> ParseTextoAsync(string textoCrudo, CancellationToken ct = default)
     {
         var result = new ParseResult();
-        var apiKey = await _integration.GetSecretAsync("openai");
-        if (string.IsNullOrEmpty(apiKey))
+        // Priorizar Claude (Anthropic), fallback a OpenAI
+        var anthropicKey = await _integration.GetSecretAsync("anthropic");
+        var openaiKey = string.IsNullOrEmpty(anthropicKey) ? await _integration.GetSecretAsync("openai") : null;
+        if (string.IsNullOrEmpty(anthropicKey) && string.IsNullOrEmpty(openaiKey))
         {
-            result.Error = "OpenAI no configurado. Configurá la API key en /integraciones/openai";
+            result.Error = "Sin IA configurada. Cargá la API key de Claude (Anthropic) o OpenAI en /integraciones";
             return result;
         }
 
@@ -128,30 +131,70 @@ Respondé ESTRICTAMENTE este JSON (sin markdown, sin texto adicional):
         {
             var http = _httpFactory.CreateClient();
             http.Timeout = TimeSpan.FromSeconds(60);
-            http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
 
-            var body = new
+            string content;
+            if (!string.IsNullOrEmpty(anthropicKey))
             {
-                model = "gpt-4o-mini",
-                messages = new[]
+                // === CLAUDE (Anthropic) ===
+                http.DefaultRequestHeaders.Add("x-api-key", anthropicKey);
+                http.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
+
+                var body = new
                 {
-                    new { role = "system", content = "Sos un asistente que parsea pedidos. Respondés SOLO JSON válido sin texto adicional." },
-                    new { role = "user", content = prompt }
-                },
-                temperature = 0.1,
-                max_tokens = 4000
-            };
-            var json = JsonSerializer.Serialize(body);
-            var resp = await http.PostAsync("https://api.openai.com/v1/chat/completions",
-                new StringContent(json, Encoding.UTF8, "application/json"), ct);
-            if (!resp.IsSuccessStatusCode)
-            {
-                result.Error = $"OpenAI error {(int)resp.StatusCode}: {(await resp.Content.ReadAsStringAsync()).Substring(0, Math.Min(200, 200))}";
-                return result;
+                    model = "claude-haiku-4-5-20251001",
+                    max_tokens = 4000,
+                    system = "Sos un asistente que parsea pedidos de WhatsApp para una distribuidora. Respondés EXCLUSIVAMENTE con JSON valido sin texto adicional ni markdown.",
+                    messages = new[] { new { role = "user", content = prompt } }
+                };
+                var json = JsonSerializer.Serialize(body);
+                var resp = await http.PostAsync("https://api.anthropic.com/v1/messages",
+                    new StringContent(json, Encoding.UTF8, "application/json"), ct);
+                if (!resp.IsSuccessStatusCode)
+                {
+                    var rb = await resp.Content.ReadAsStringAsync();
+                    result.Error = $"Anthropic error {(int)resp.StatusCode}: {rb.Substring(0, Math.Min(300, rb.Length))}";
+                    return result;
+                }
+                var rj = await resp.Content.ReadAsStringAsync();
+                using var rdoc = JsonDocument.Parse(rj);
+                // Claude devuelve content como array: [{ type: "text", text: "..." }]
+                var contentArr = rdoc.RootElement.GetProperty("content");
+                content = "";
+                foreach (var block in contentArr.EnumerateArray())
+                {
+                    if (block.TryGetProperty("type", out var tp) && tp.GetString() == "text"
+                        && block.TryGetProperty("text", out var tx)) { content = tx.GetString() ?? ""; break; }
+                }
             }
-            var rj = await resp.Content.ReadAsStringAsync();
-            using var rdoc = JsonDocument.Parse(rj);
-            var content = rdoc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? "{}";
+            else
+            {
+                // === OpenAI (fallback) ===
+                http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", openaiKey);
+                var body = new
+                {
+                    model = "gpt-4o-mini",
+                    messages = new[]
+                    {
+                        new { role = "system", content = "Sos un asistente que parsea pedidos. Respondés SOLO JSON válido sin texto adicional." },
+                        new { role = "user", content = prompt }
+                    },
+                    temperature = 0.1,
+                    max_tokens = 4000
+                };
+                var json = JsonSerializer.Serialize(body);
+                var resp = await http.PostAsync("https://api.openai.com/v1/chat/completions",
+                    new StringContent(json, Encoding.UTF8, "application/json"), ct);
+                if (!resp.IsSuccessStatusCode)
+                {
+                    var rb = await resp.Content.ReadAsStringAsync();
+                    result.Error = $"OpenAI error {(int)resp.StatusCode}: {rb.Substring(0, Math.Min(300, rb.Length))}";
+                    return result;
+                }
+                var rj = await resp.Content.ReadAsStringAsync();
+                using var rdoc = JsonDocument.Parse(rj);
+                content = rdoc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? "{}";
+            }
+
             content = content.Trim();
             if (content.StartsWith("```")) content = content.Substring(content.IndexOf('\n') + 1);
             if (content.EndsWith("```")) content = content[..content.LastIndexOf("```")];
