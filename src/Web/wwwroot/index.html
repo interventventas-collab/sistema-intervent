@@ -859,6 +859,53 @@
                 window.__qrScannerRef = null;
             }
         };
+
+        // ───── Sub-ventana flotante de Pedido WhatsApp en Nueva Venta ─────
+        // Engancha drag al header (clase .cafe-wa-floating-header) del div .cafe-wa-floating.
+        // Idempotente: si ya está enganchado, no duplica listeners.
+        window.initCafeWaFloating = function() {
+            const win = document.getElementById('cafe-wa-floating');
+            if (!win || win.dataset.dragBound === '1') return;
+            const header = win.querySelector('.cafe-wa-floating-header');
+            if (!header) return;
+            win.dataset.dragBound = '1';
+
+            let dragging = false, startX = 0, startY = 0, startLeft = 0, startTop = 0;
+            header.addEventListener('mousedown', function(e) {
+                // Ignorar clicks en los botones del header (minimizar / cerrar)
+                if (e.target.closest('button')) return;
+                dragging = true;
+                startX = e.clientX; startY = e.clientY;
+                const rect = win.getBoundingClientRect();
+                startLeft = rect.left; startTop = rect.top;
+                e.preventDefault();
+            });
+            document.addEventListener('mousemove', function(e) {
+                if (!dragging) return;
+                const dx = e.clientX - startX, dy = e.clientY - startY;
+                const newLeft = Math.max(0, Math.min(window.innerWidth - 60, startLeft + dx));
+                const newTop = Math.max(0, Math.min(window.innerHeight - 30, startTop + dy));
+                win.style.left = newLeft + 'px';
+                win.style.top = newTop + 'px';
+            });
+            document.addEventListener('mouseup', function() { dragging = false; });
+            // Touch (mobile)
+            header.addEventListener('touchstart', function(e) {
+                if (e.target.closest('button')) return;
+                const t = e.touches[0];
+                dragging = true; startX = t.clientX; startY = t.clientY;
+                const rect = win.getBoundingClientRect();
+                startLeft = rect.left; startTop = rect.top;
+            }, { passive: true });
+            document.addEventListener('touchmove', function(e) {
+                if (!dragging) return;
+                const t = e.touches[0];
+                const dx = t.clientX - startX, dy = t.clientY - startY;
+                win.style.left = Math.max(0, startLeft + dx) + 'px';
+                win.style.top = Math.max(0, startTop + dy) + 'px';
+            }, { passive: true });
+            document.addEventListener('touchend', function() { dragging = false; });
+        };
     </script>
 </body>
 </html>

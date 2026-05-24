@@ -2839,6 +2839,12 @@
             try { await JS.InvokeVoidAsync("enableModalDrag", "#confirm-emision-modal"); }
             catch { /* si el helper no está cargado aún, lo intentamos el próximo render */ }
         }
+        // Enganchar el drag a la sub-ventana flotante de Pedido WhatsApp cuando esté visible
+        if (pedidoWASeleccionado is not null)
+        {
+            try { await JS.InvokeVoidAsync("initCafeWaFloating"); }
+            catch { }
+        }
         // Posicionar el dropdown "+" anclado al boton que lo abrio.
         if (actionsMenuOpenForVentaId.HasValue)
         {
