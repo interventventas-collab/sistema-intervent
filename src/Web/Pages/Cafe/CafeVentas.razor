@@ -525,14 +525,13 @@
                     <p style="margin:0 0 0.6rem; font-size:0.85rem; color:#6b7280;">Click en uno para traerlo a la venta:</p>
                     @foreach (var p in pedidosWADisponibles)
                     {
-                        <div style="border:1px solid #e5e7eb; border-radius:8px; padding:0.7rem; margin-bottom:0.5rem; cursor:pointer; background:white;"
-                             @onclick="() => SeleccionarPedidoWA(p)"
-                             @onmouseover="@(e => { /* hover style */ })">
+                        <div class="pedido-wa-card"
+                             @onclick="() => SeleccionarPedidoWA(p)">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.3rem;">
                                 <strong style="font-size:0.88rem;">📞 @p.Telefono</strong>
                                 <span style="color:#6b7280; font-size:0.78rem;">@p.RecibidoAt.ToLocalTime().ToString("dd/MM HH:mm")</span>
                             </div>
-                            <pre style="background:#f9fafb; padding:0.5rem; border-radius:4px; font-size:0.78rem; margin:0; max-height:90px; overflow:hidden; white-space:pre-wrap;">@(p.TextoCrudo.Length > 200 ? p.TextoCrudo.Substring(0, 200) + "…" : p.TextoCrudo)</pre>
+                            <pre style="background:#f9fafb; padding:0.5rem; border-radius:4px; font-size:0.82rem; margin:0; max-height:300px; overflow:auto; white-space:pre-wrap; word-wrap:break-word; font-family:'Menlo','Monaco',monospace;">@p.TextoCrudo</pre>
                         </div>
                     }
                 }
@@ -584,6 +583,16 @@
         .cafe-wa-floating-btn:hover { background:rgba(0,0,0,0.15); border-radius:3px; }
         .cafe-wa-floating-body {
             flex:1 1 auto; overflow:auto; padding:0.7rem 0.9rem;
+        }
+        /* Cards del selector de pedidos pendientes */
+        .pedido-wa-card {
+            border:1px solid #e5e7eb; border-radius:8px;
+            padding:0.7rem; margin-bottom:0.5rem; cursor:pointer; background:white;
+            transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
+        }
+        .pedido-wa-card:hover {
+            background:#f0fdf4; border-color:#86efac;
+            box-shadow:0 2px 8px rgba(34,197,94,0.15);
         }
     </style>
 }
