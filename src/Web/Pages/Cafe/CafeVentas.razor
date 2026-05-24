@@ -2930,6 +2930,19 @@
         convirtiendoPedidoWAId = p.Id;
         mostrarSelectorPedidoWA = false;
         subventanaWAMin = false;
+
+        // Si el pedido tiene cliente detectado (por #CODIGO en el texto), pre-seleccionarlo en la venta
+        if (p.ClienteId.HasValue && p.ClienteId.Value > 0)
+        {
+            var cli = clientes?.FirstOrDefault(c => c.Id == p.ClienteId.Value);
+            if (cli is not null)
+            {
+                formClienteId = cli.Id;
+                clienteSearch = "";
+                clienteSearchOpen = false;
+                ToastService.Success($"Cliente detectado: {cli.Nombre}");
+            }
+        }
         StateHasChanged();
     }
 

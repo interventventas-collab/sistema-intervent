@@ -157,6 +157,12 @@ fact A, x flete, ctacte" style="font-family: monospace; font-size:0.85rem;"></te
                             <span style="color:#6b7280; font-size:0.85rem;">@p.RecibidoAt.ToLocalTime().ToString("dd/MM HH:mm:ss")</span>
                             @if (!string.IsNullOrEmpty(p.Telefono)) { <span style="color:#6b7280; font-size:0.78rem;">📞 @p.Telefono</span> }
                             <span style="color:#6b7280; font-size:0.78rem;">vía @p.Source</span>
+                            @if (p.ClienteId.HasValue && !string.IsNullOrEmpty(p.ClienteNombre))
+                            {
+                                <span style="background:#dcfce7; color:#14532d; font-size:0.75rem; padding:0.1rem 0.4rem; border-radius:4px; font-weight:600;" title="Cliente detectado automáticamente por #código">
+                                    👤 @p.ClienteNombre
+                                </span>
+                            }
                         </div>
                         <div style="display:flex; gap:0.3rem;">
                             <button class="btn btn-success btn-sm" @onclick="() => IrANuevaVenta(p.Id)" title="Cargar esta venta">

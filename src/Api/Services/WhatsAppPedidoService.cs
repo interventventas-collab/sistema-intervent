@@ -241,7 +241,10 @@ Respondé ESTRICTAMENTE este JSON (sin markdown, sin texto adicional):
 
     /// <summary>Crea un registro WhatsAppPedidoRecibido en estado NUEVO con SOLO el texto crudo.
     /// MODO SIMPLE 2026-05-23: no intenta parsear con IA. El usuario lee el texto y carga la venta a mano.
-    /// (El parseo IA queda disponible en ParseTextoAsync para uso futuro cuando configure Claude/OpenAI.)</summary>
+    /// (El parseo IA queda disponible en ParseTextoAsync para uso futuro cuando configure Claude/OpenAI.)
+    ///
+    /// DETECCION DE CLIENTE 2026-05-24: si el texto contiene un patron #NUMERO (ej "#PED #134"),
+    /// busca CafeCliente con ese CodigoInterno y lo asocia automaticamente al pedido.</summary>
     public async Task<WhatsAppPedidoRecibido> RecibirPedidoAsync(string telefono, string textoCrudo, string source = "manual", CancellationToken ct = default)
     {
         var pedido = new WhatsAppPedidoRecibido
@@ -252,9 +255,39 @@ Respondé ESTRICTAMENTE este JSON (sin markdown, sin texto adicional):
             Estado = "NUEVO",
             RecibidoAt = DateTime.UtcNow
         };
+
+        // Detectar codigo de cliente: buscar #NUMERO en cualquier lugar del texto.
+        // Excluir el #PED del trigger para no matchear con eso.
+        var (clienteId, clienteNombre) = await TryDetectarClienteAsync(textoCrudo, ct);
+        if (clienteId.HasValue)
+        {
+            pedido.ClienteId = clienteId;
+            pedido.ClienteNombre = clienteNombre;
+        }
+
         _db.WhatsAppPedidosRecibidos.Add(pedido);
         await _db.SaveChangesAsync(ct);
         return pedido;
+    }
+
+    /// <summary>Intenta detectar el cliente del pedido buscando #NUMERO en el texto, donde NUMERO
+    /// es el CodigoInterno de un CafeCliente activo. Devuelve (Id, Nombre) si encuentra match.
+    /// El trigger #PED se ignora (no se considera código).</summary>
+    private async Task<(int? Id, string? Nombre)> TryDetectarClienteAsync(string textoCrudo, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(textoCrudo)) return (null, null);
+        // Regex: # seguido de UNO O MÁS digitos (ignorar # seguido de letras como #PED)
+        var matches = System.Text.RegularExpressions.Regex.Matches(textoCrudo, @"#(\d+)");
+        foreach (System.Text.RegularExpressions.Match m in matches)
+        {
+            if (!int.TryParse(m.Groups[1].Value, out var codigo)) continue;
+            var cliente = await _db.CafeClientes.AsNoTracking()
+                .Where(c => c.IsActive && c.CodigoInterno == codigo)
+                .Select(c => new { c.Id, c.Nombre })
+                .FirstOrDefaultAsync(ct);
+            if (cliente is not null) return (cliente.Id, cliente.Nombre);
+        }
+        return (null, null);
     }
 
     public Task<int> CountUnseenAsync(CancellationToken ct = default)
