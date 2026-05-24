@@ -26,17 +26,35 @@
         {
             <div style="background:#eff6ff; border:1px solid #93c5fd; border-radius:6px; padding:0.85rem 1rem; margin-bottom:1rem;">
                 <strong>Configuración</strong>
-                <div style="display:grid; grid-template-columns: 1fr 1fr auto; gap:0.6rem; margin-top:0.6rem; align-items:end;">
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.6rem; margin-top:0.6rem; align-items:end;">
                     <div>
                         <label style="font-size:0.78rem; color:#6b7280;">Teléfono del vendedor (con código país, sin espacios)</label>
-                        <input type="text" class="form-control form-control-sm" @bind="configTelefono" placeholder="5491155556666" />
+                        <input type="text" class="form-control form-control-sm" @bind="configTelefono" placeholder="5491122525458" />
                     </div>
                     <div>
-                        <label style="font-size:0.78rem; color:#6b7280;">Trigger (lo que tiene que arrancar el mensaje)</label>
-                        <input type="text" class="form-control form-control-sm" @bind="configTrigger" placeholder="#PEDIDO" />
+                        <label style="font-size:0.78rem; color:#6b7280;">Trigger (al inicio del mensaje)</label>
+                        <input type="text" class="form-control form-control-sm" @bind="configTrigger" placeholder="#PED" />
                     </div>
-                    <button class="btn btn-primary btn-sm" @onclick="GuardarConfig" disabled="@cargando">Guardar</button>
                 </div>
+                <div style="margin-top:0.7rem; display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                    <label style="display:flex; align-items:center; gap:0.35rem; cursor:pointer; padding:0.4rem 0.8rem; background:@(configPollEnabled ? "#dcfce7" : "#f3f4f6"); border:1px solid @(configPollEnabled ? "#22c55e" : "#d1d5db"); border-radius:6px; font-size:0.88rem; user-select:none;">
+                        <input type="checkbox" @bind="configPollEnabled" />
+                        <strong>🟢 Lectura automática de WhatsApp (cada 45s)</strong>
+                    </label>
+                    @if (!string.IsNullOrEmpty(configLastMessageId))
+                    {
+                        <span style="font-size:0.75rem; color:#6b7280;">Último msg leído: <span style="font-family:monospace;">@configLastMessageId.Substring(0, Math.Min(40, configLastMessageId.Length))...</span></span>
+                    }
+                    <button class="btn btn-secondary btn-sm" @onclick="ResetCursor" disabled="@cargando">
+                        🔄 Resetear cursor
+                    </button>
+                    <button class="btn btn-primary btn-sm" @onclick="GuardarConfig" disabled="@cargando">
+                        💾 Guardar
+                    </button>
+                </div>
+                <p style="margin:0.5rem 0 0 0; font-size:0.78rem; color:#6b7280;">
+                    Cuando esté activado, el sistema cada 45s lee mensajes nuevos del chat de ese teléfono. Si empiezan con <strong>@configTrigger</strong>, los procesa con IA.
+                </p>
             </div>
         }
 
@@ -187,7 +205,9 @@
     private string telefonoNuevo = "";
     private bool mostrarConfig;
     private string configTelefono = "";
-    private string configTrigger = "#PEDIDO";
+    private string configTrigger = "#PED";
+    private bool configPollEnabled;
+    private string configLastMessageId = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -208,7 +228,11 @@
         try
         {
             var cfg = await Api.GetWhatsAppPedidosConfigAsync();
-            if (cfg is not null) { configTelefono = cfg.Telefono; configTrigger = cfg.Trigger; }
+            if (cfg is not null)
+            {
+                configTelefono = cfg.Telefono; configTrigger = cfg.Trigger;
+                configPollEnabled = cfg.PollEnabled; configLastMessageId = cfg.LastMessageId;
+            }
         }
         catch { }
     }
@@ -218,11 +242,23 @@
         cargando = true;
         try
         {
-            var ok = await Api.SetWhatsAppPedidosConfigAsync(configTelefono, configTrigger);
+            var ok = await Api.SetWhatsAppPedidosConfigAsync(configTelefono, configTrigger, configPollEnabled);
             if (ok) ToastService.Success("Configuración guardada");
             else ToastService.Error("No se pudo guardar");
         }
         finally { cargando = false; }
+    }
+
+    private async Task ResetCursor()
+    {
+        cargando = true;
+        try
+        {
+            var ok = await Api.ResetWhatsAppPedidosCursorAsync();
+            if (ok) { ToastService.Success("Cursor reseteado"); configLastMessageId = ""; }
+            else ToastService.Error("No se pudo resetear");
+        }
+        finally { cargando = false; StateHasChanged(); }
     }
 
     private void ToggleConfig() => mostrarConfig = !mostrarConfig;

@@ -2112,7 +2112,13 @@ public class ApiClient
         public DateTime? SeenAt { get; set; }
     }
 
-    public class WhatsAppPedidoConfig { public string Telefono { get; set; } = ""; public string Trigger { get; set; } = "#PEDIDO"; }
+    public class WhatsAppPedidoConfig
+    {
+        public string Telefono { get; set; } = "";
+        public string Trigger { get; set; } = "#PED";
+        public bool PollEnabled { get; set; }
+        public string LastMessageId { get; set; } = "";
+    }
 
     public async Task<int> GetWhatsAppPedidosCountPendientesAsync()
     {
@@ -2152,9 +2158,15 @@ public class ApiClient
     public async Task<WhatsAppPedidoConfig?> GetWhatsAppPedidosConfigAsync()
         => await GetAsync<WhatsAppPedidoConfig>("/api/whatsapp/pedidos/config");
 
-    public async Task<bool> SetWhatsAppPedidosConfigAsync(string telefono, string trigger)
+    public async Task<bool> SetWhatsAppPedidosConfigAsync(string telefono, string trigger, bool? pollEnabled = null)
     {
-        var resp = await _http.PostAsJsonAsync("/api/whatsapp/pedidos/config", new { telefono, trigger });
+        var resp = await _http.PostAsJsonAsync("/api/whatsapp/pedidos/config", new { telefono, trigger, pollEnabled });
+        return resp.IsSuccessStatusCode;
+    }
+
+    public async Task<bool> ResetWhatsAppPedidosCursorAsync()
+    {
+        var resp = await _http.PostAsync("/api/whatsapp/pedidos/reset-cursor", null);
         return resp.IsSuccessStatusCode;
     }
 

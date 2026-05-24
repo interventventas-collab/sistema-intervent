@@ -635,6 +635,139 @@ async function sendWhatsAppMessage(phone, text) {
 }
 
 // ============================================================
+// LEER MENSAJES de un chat de WhatsApp (para pedidos del vendedor).
+//
+// POST /whatsapp/messages/list body: { phone: "5491155556666", sinceId?: "true_xxx" }
+// Devuelve: { messages: [{ id, text, fromMe, timestamp }], total: N }
+//
+// Estrategia:
+// - Navega al chat del teléfono pedido (open chat by URL).
+// - Espera que cargue el pane derecho.
+// - Lee los últimos N mensajes (scraping del DOM).
+// - Filtra los que sean DESPUÉS de sinceId (si viene).
+// El caller (C# background service) guarda el último id leído y lo usa como cursor.
+// ============================================================
+
+// Mutex simple para evitar múltiples lecturas simultáneas (cambios de chat se pisan)
+let messagesListBusy = false;
+
+app.post('/whatsapp/messages/list', async (req, res) => {
+  const phoneInput = (req.body && req.body.phone) || '';
+  const sinceId = (req.body && req.body.sinceId) || '';
+  if (!phoneInput) return res.status(400).json({ error: 'phone requerido' });
+
+  const phone = normalizePhone(phoneInput);
+  if (phone.length < 8) return res.status(400).json({ error: 'phone invalido' });
+
+  if (messagesListBusy) return res.status(429).json({ error: 'busy', message: 'Otro listado en curso' });
+  messagesListBusy = true;
+
+  try {
+    // Asegurar sesión
+    const alive = await ensureSessionAlive();
+    if (!alive) {
+      try { await startSession({ useStorageState: true }); } catch {}
+      if (!state.page || state.page.isClosed()) {
+        messagesListBusy = false;
+        return res.status(503).json({ error: 'WhatsApp no vinculado' });
+      }
+    }
+
+    // Navegar al chat
+    const url = `https://web.whatsapp.com/send?phone=${encodeURIComponent(phone)}`;
+    try {
+      await state.page.goto(url, { waitUntil: 'load', timeout: 30000 });
+    } catch (gotoErr) {
+      // Tolerar timeouts de navegación menores — WA es SPA
+      console.warn('[wa] goto warning:', gotoErr.message);
+    }
+
+    // Esperar que aparezca el footer (compose box) — señal de chat abierto
+    let composeBox = null;
+    let invalidPopup = false;
+    const deadline = Date.now() + 25000;
+    while (Date.now() < deadline) {
+      try {
+        const popup = await state.page.$('div[data-testid="popup-contents"], div[role="dialog"]');
+        if (popup) {
+          const txt = (await popup.innerText().catch(() => '')).toLowerCase();
+          if (txt.includes('invalid') || txt.includes('inválido') || txt.includes('phone number')) {
+            invalidPopup = true; break;
+          }
+        }
+        composeBox = await state.page.$('footer div[contenteditable="true"]');
+        if (composeBox) break;
+      } catch (waitErr) {
+        // Si fallo por navegación, esperar un poco y reintentar
+        console.warn('[wa] wait warn:', waitErr.message);
+      }
+      await sleep(700);
+    }
+    if (invalidPopup) {
+      messagesListBusy = false;
+      return res.status(400).json({ error: 'Numero invalido o sin WhatsApp' });
+    }
+    if (!composeBox) {
+      messagesListBusy = false;
+      return res.status(504).json({ error: 'Timeout abriendo chat (footer no encontrado)' });
+    }
+
+    // Dejar que renderice los mensajes
+    await sleep(2000);
+
+    // Scroll al final por las dudas, así los más nuevos están visibles
+    try {
+      await state.page.evaluate(() => {
+        const main = document.querySelector('[role="application"] [role="main"]');
+        if (main) main.scrollTop = main.scrollHeight;
+      });
+    } catch {}
+    await sleep(500);
+
+    // Extraer mensajes del DOM
+    const messages = await state.page.evaluate(() => {
+      const items = [];
+      const nodes = document.querySelectorAll('div[data-id]');
+      nodes.forEach(node => {
+        const id = node.getAttribute('data-id') || '';
+        if (!id) return;
+        const isMessage = node.querySelector('span.selectable-text') !== null
+                       || node.querySelector('[data-pre-plain-text]') !== null
+                       || node.classList.contains('message-in')
+                       || node.classList.contains('message-out');
+        if (!isMessage) return;
+        const fromMe = node.classList.contains('message-out') || id.startsWith('true_');
+        let text = '';
+        const textSpans = node.querySelectorAll('span.selectable-text span, span.selectable-text');
+        if (textSpans.length > 0) {
+          for (let i = textSpans.length - 1; i >= 0; i--) {
+            const t = (textSpans[i].textContent || '').trim();
+            if (t) { text = t; break; }
+          }
+        }
+        const meta = node.querySelector('[data-pre-plain-text]');
+        const metaAttr = meta ? meta.getAttribute('data-pre-plain-text') : '';
+        items.push({ id, text, fromMe, meta: metaAttr });
+      });
+      return items;
+    });
+
+    let filtered = messages;
+    if (sinceId) {
+      const idx = messages.findIndex(m => m.id === sinceId);
+      if (idx >= 0) filtered = messages.slice(idx + 1);
+    }
+
+    messagesListBusy = false;
+    return res.json({ messages: filtered, total: messages.length, phone });
+  } catch (err) {
+    messagesListBusy = false;
+    console.error('[wa] messages/list error:', err.message || err);
+    return res.status(500).json({ error: err.message || 'error' });
+  }
+});
+
+// ============================================================
 // ARCA (ex AFIP) — Test de login + scraping del Registro Único Tributario.
 // Usa un browser ISOLADO (no comparte contexto con WhatsApp). Single-test
 // concurrente: si hay uno corriendo, el segundo recibe 409.

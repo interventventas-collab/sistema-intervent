@@ -122,23 +122,45 @@ public class WhatsAppPedidosController : ControllerBase
     {
         var telefono = await _db.AppSettings.AsNoTracking().FirstOrDefaultAsync(s => s.Key == "whatsapp.pedidos.vendedor_telefono");
         var trigger = await _db.AppSettings.AsNoTracking().FirstOrDefaultAsync(s => s.Key == "whatsapp.pedidos.trigger");
-        return Ok(new { telefono = telefono?.Value ?? "", trigger = trigger?.Value ?? "#PEDIDO" });
+        var pollEnabled = await _db.AppSettings.AsNoTracking().FirstOrDefaultAsync(s => s.Key == "whatsapp.pedidos.poll_enabled");
+        var lastId = await _db.AppSettings.AsNoTracking().FirstOrDefaultAsync(s => s.Key == "whatsapp.pedidos.last_message_id");
+        return Ok(new
+        {
+            telefono = telefono?.Value ?? "",
+            trigger = trigger?.Value ?? "#PED",
+            pollEnabled = string.Equals(pollEnabled?.Value?.Trim(), "true", StringComparison.OrdinalIgnoreCase),
+            lastMessageId = lastId?.Value ?? ""
+        });
     }
 
-    public class ConfigRequest { public string? Telefono { get; set; } public string? Trigger { get; set; } }
+    public class ConfigRequest { public string? Telefono { get; set; } public string? Trigger { get; set; } public bool? PollEnabled { get; set; } }
 
     [HttpPost("config")]
     public async Task<IActionResult> SetConfig([FromBody] ConfigRequest req)
     {
         var telefono = (req.Telefono ?? "").Trim();
-        var trigger = string.IsNullOrWhiteSpace(req.Trigger) ? "#PEDIDO" : req.Trigger.Trim();
-        var s1 = await _db.AppSettings.FirstOrDefaultAsync(s => s.Key == "whatsapp.pedidos.vendedor_telefono");
-        if (s1 is null) { _db.AppSettings.Add(new Models.AppSetting { Key = "whatsapp.pedidos.vendedor_telefono", Value = telefono, UpdatedAt = DateTime.UtcNow }); }
-        else { s1.Value = telefono; s1.UpdatedAt = DateTime.UtcNow; }
-        var s2 = await _db.AppSettings.FirstOrDefaultAsync(s => s.Key == "whatsapp.pedidos.trigger");
-        if (s2 is null) { _db.AppSettings.Add(new Models.AppSetting { Key = "whatsapp.pedidos.trigger", Value = trigger, UpdatedAt = DateTime.UtcNow }); }
-        else { s2.Value = trigger; s2.UpdatedAt = DateTime.UtcNow; }
+        var trigger = string.IsNullOrWhiteSpace(req.Trigger) ? "#PED" : req.Trigger.Trim();
+
+        async Task UpsertAsync(string key, string value)
+        {
+            var s = await _db.AppSettings.FirstOrDefaultAsync(x => x.Key == key);
+            if (s is null) _db.AppSettings.Add(new Models.AppSetting { Key = key, Value = value, UpdatedAt = DateTime.UtcNow });
+            else { s.Value = value; s.UpdatedAt = DateTime.UtcNow; }
+        }
+        await UpsertAsync("whatsapp.pedidos.vendedor_telefono", telefono);
+        await UpsertAsync("whatsapp.pedidos.trigger", trigger);
+        if (req.PollEnabled.HasValue)
+            await UpsertAsync("whatsapp.pedidos.poll_enabled", req.PollEnabled.Value ? "true" : "false");
         await _db.SaveChangesAsync();
-        return Ok(new { telefono, trigger });
+        return Ok(new { telefono, trigger, pollEnabled = req.PollEnabled });
+    }
+
+    /// <summary>Resetea el cursor de mensajes leídos. Útil para forzar re-lectura de todo el chat.</summary>
+    [HttpPost("reset-cursor")]
+    public async Task<IActionResult> ResetCursor()
+    {
+        var s = await _db.AppSettings.FirstOrDefaultAsync(x => x.Key == "whatsapp.pedidos.last_message_id");
+        if (s is not null) { s.Value = ""; s.UpdatedAt = DateTime.UtcNow; await _db.SaveChangesAsync(); }
+        return Ok();
     }
 }
