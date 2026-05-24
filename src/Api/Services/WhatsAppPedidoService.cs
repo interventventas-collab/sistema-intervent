@@ -239,7 +239,9 @@ Respondé ESTRICTAMENTE este JSON (sin markdown, sin texto adicional):
         return result;
     }
 
-    /// <summary>Crea un registro WhatsAppPedidoRecibido en NUEVO y dispara el parseo.</summary>
+    /// <summary>Crea un registro WhatsAppPedidoRecibido en estado NUEVO con SOLO el texto crudo.
+    /// MODO SIMPLE 2026-05-23: no intenta parsear con IA. El usuario lee el texto y carga la venta a mano.
+    /// (El parseo IA queda disponible en ParseTextoAsync para uso futuro cuando configure Claude/OpenAI.)</summary>
     public async Task<WhatsAppPedidoRecibido> RecibirPedidoAsync(string telefono, string textoCrudo, string source = "manual", CancellationToken ct = default)
     {
         var pedido = new WhatsAppPedidoRecibido
@@ -252,17 +254,6 @@ Respondé ESTRICTAMENTE este JSON (sin markdown, sin texto adicional):
         };
         _db.WhatsAppPedidosRecibidos.Add(pedido);
         await _db.SaveChangesAsync(ct);
-
-        // Parsear inmediato
-        var parsed = await ParseTextoAsync(textoCrudo, ct);
-        pedido.ClienteNombre = parsed.ClienteNombre;
-        pedido.ClienteId = parsed.ClienteId;
-        pedido.ProductosParseados = JsonSerializer.Serialize(parsed);
-        pedido.ParseadoAt = DateTime.UtcNow;
-        pedido.Estado = string.IsNullOrEmpty(parsed.Error) ? "PARSEADO" : "ERROR";
-        pedido.ParseError = parsed.Error;
-        await _db.SaveChangesAsync(ct);
-
         return pedido;
     }
 
