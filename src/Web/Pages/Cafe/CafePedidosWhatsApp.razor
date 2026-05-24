@@ -1,5 +1,6 @@
 @page "/cafe/pedidos-whatsapp"
 @attribute [Authorize]
+@implements IDisposable
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject NavigationManager Nav
@@ -197,10 +198,32 @@ fact A, x flete, ctacte" style="font-family: monospace; font-size:0.85rem;"></te
     private string nuevoTelefono = "";
     private string nuevaEtiqueta = "";
 
+    // Auto-refresh para mantener la lista sincronizada con los pedidos que llegan via poller.
+    private System.Threading.Timer? autoRefreshTimer;
+
     protected override async Task OnInitializedAsync()
     {
         await Refrescar();
         await CargarConfig();
+        // Cada 15 segundos refrescar la lista en silencio (sin loader visible) para que aparezcan
+        // los pedidos nuevos sin que el usuario tenga que tocar "Refrescar".
+        autoRefreshTimer = new System.Threading.Timer(async _ => await InvokeAsync(RefrescarSilencioso),
+            null, TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(15));
+    }
+
+    private async Task RefrescarSilencioso()
+    {
+        try
+        {
+            var nueva = await Api.ListarWhatsAppPedidosAsync();
+            if (nueva is not null) { pedidos = nueva; StateHasChanged(); }
+        }
+        catch { /* silencioso */ }
+    }
+
+    public void Dispose()
+    {
+        autoRefreshTimer?.Dispose();
     }
 
     private async Task Refrescar()
