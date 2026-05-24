@@ -301,15 +301,28 @@ app.post('/whatsapp/cancel-link', async (req, res) => {
 
 // POST /whatsapp/send-bulk - Body: { recipients: [{phone, name, message?}], message: string }
 app.post('/whatsapp/send-bulk', async (req, res) => {
+  // Esperar a que cualquier messages/list en curso termine. Sin esto, las dos
+  // operaciones llaman page.goto(...) al mismo tiempo y se pisan → Execution
+  // context destroyed.
+  const waitDeadline = Date.now() + 60000;
+  while (messagesListBusy && Date.now() < waitDeadline) {
+    await sleep(250);
+  }
+  if (messagesListBusy) {
+    return res.status(429).json({ error: 'busy', message: 'Otra operacion de WhatsApp en curso' });
+  }
+  messagesListBusy = true;
   try {
     const { recipients, message } = req.body || {};
     if (!Array.isArray(recipients) || recipients.length === 0) {
+      messagesListBusy = false;
       return res.status(400).json({ error: 'recipients vacío' });
     }
 
     // Restaurar sesión desde storage si no hay browser
     if (!state.page || state.page.isClosed()) {
       if (!fs.existsSync(STORAGE_STATE_PATH)) {
+        messagesListBusy = false;
         return res.status(400).json({ error: 'WhatsApp no esta vinculado' });
       }
       await startSession({ useStorageState: true });
@@ -317,6 +330,7 @@ app.post('/whatsapp/send-bulk', async (req, res) => {
       await sleep(5000);
       const linked = await isLinkedOnPage(state.page);
       if (!linked) {
+        messagesListBusy = false;
         return res.status(400).json({ error: 'WhatsApp no esta vinculado' });
       }
       state.linked = true;
@@ -344,8 +358,10 @@ app.post('/whatsapp/send-bulk', async (req, res) => {
       results.push({ phone: r.phone, name: r.name, success: result.success, message: result.message });
     }
 
+    messagesListBusy = false;
     res.json(results);
   } catch (err) {
+    messagesListBusy = false;
     console.error('[wa] error en /send-bulk:', err);
     res.status(500).json({ error: err.message });
   }

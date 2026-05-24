@@ -135,14 +135,13 @@ public class WhatsAppPedidosPollerService : BackgroundService
                 var pedido = await svc.RecibirPedidoAsync(tel.Telefono, texto, source: "whatsapp_auto", ct);
                 _logger.LogInformation("[WA pedidos poll] pedido recibido #{PedidoId} de {Tel}", pedido.Id, tel.Telefono);
 
-                // Auto-respuesta
+                // Auto-respuesta SINCRÓNICA — no usar Task.Run porque Playwright
+                // tiene un solo browser y la navegación de send-bulk choca con la
+                // del próximo messages/list (Execution context was destroyed).
                 if (autoRespond)
                 {
-                    _ = Task.Run(async () =>
-                    {
-                        try { await EnviarAutoRespuestaAsync(http, playwrightUrl, tel.Telefono, pedido.Id, texto, CancellationToken.None); }
-                        catch (Exception ex) { _logger.LogError(ex, "[WA pedidos poll] error auto-respuesta a {Tel}", tel.Telefono); }
-                    });
+                    try { await EnviarAutoRespuestaAsync(http, playwrightUrl, tel.Telefono, pedido.Id, texto, ct); }
+                    catch (Exception ex) { _logger.LogError(ex, "[WA pedidos poll] error auto-respuesta a {Tel}", tel.Telefono); }
                 }
             }
             catch (Exception ex)
