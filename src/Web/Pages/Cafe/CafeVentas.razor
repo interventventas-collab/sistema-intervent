@@ -500,6 +500,94 @@
     }
 }
 
+@* ═══════════════ MODAL SELECCIÓN PEDIDO WHATSAPP ═══════════════ *@
+@if (mostrarSelectorPedidoWA)
+{
+    <div class="modal-overlay" @onclick="CerrarSelectorPedidoWA" style="z-index: 2100;">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 720px; width: 90vw; max-height: 85vh; display: flex; flex-direction: column;">
+            <div class="modal-header" style="background:#25D366; color:white;">
+                <h3 style="margin: 0;">💬 Pedidos de WhatsApp pendientes</h3>
+                <button class="btn-close" @onclick="CerrarSelectorPedidoWA" style="color:white;">&times;</button>
+            </div>
+            <div class="modal-body" style="overflow-y:auto;">
+                @if (pedidosWADisponibles is null)
+                {
+                    <p class="text-muted">Cargando...</p>
+                }
+                else if (pedidosWADisponibles.Count == 0)
+                {
+                    <div style="text-align:center; padding:2rem; color:#6b7280;">
+                        No hay pedidos pendientes.
+                    </div>
+                }
+                else
+                {
+                    <p style="margin:0 0 0.6rem; font-size:0.85rem; color:#6b7280;">Click en uno para traerlo a la venta:</p>
+                    @foreach (var p in pedidosWADisponibles)
+                    {
+                        <div style="border:1px solid #e5e7eb; border-radius:8px; padding:0.7rem; margin-bottom:0.5rem; cursor:pointer; background:white;"
+                             @onclick="() => SeleccionarPedidoWA(p)"
+                             @onmouseover="@(e => { /* hover style */ })">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.3rem;">
+                                <strong style="font-size:0.88rem;">📞 @p.Telefono</strong>
+                                <span style="color:#6b7280; font-size:0.78rem;">@p.RecibidoAt.ToLocalTime().ToString("dd/MM HH:mm")</span>
+                            </div>
+                            <pre style="background:#f9fafb; padding:0.5rem; border-radius:4px; font-size:0.78rem; margin:0; max-height:90px; overflow:hidden; white-space:pre-wrap;">@(p.TextoCrudo.Length > 200 ? p.TextoCrudo.Substring(0, 200) + "…" : p.TextoCrudo)</pre>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@* ═══════════════ SUB-VENTANA FLOTANTE WhatsApp ═══════════════ *@
+@if (pedidoWASeleccionado is not null)
+{
+    <div id="cafe-wa-floating" class="cafe-wa-floating"
+         style="left:@(pedidoWAPosX)px; top:@(pedidoWAPosY)px; width:@(pedidoWAWidth)px; height:@(pedidoWAHeight)px;">
+        <div class="cafe-wa-floating-header" id="cafe-wa-floating-header">
+            <span>💬 Pedido WhatsApp · 📞 @pedidoWASeleccionado.Telefono</span>
+            <div style="display:flex; gap:0.3rem;">
+                <button class="cafe-wa-floating-btn" @onclick="MinimizarSubventanaWA" title="@(subventanaWAMin ? "Restaurar" : "Minimizar")">
+                    @(subventanaWAMin ? "▢" : "—")
+                </button>
+                <button class="cafe-wa-floating-btn" @onclick="CerrarSubventanaWA" title="Cerrar">✕</button>
+            </div>
+        </div>
+        @if (!subventanaWAMin)
+        {
+            <div class="cafe-wa-floating-body">
+                <pre style="background:transparent; color:#111827; padding:0; margin:0; font-family:'Menlo','Monaco',monospace; font-size:0.88rem; white-space:pre-wrap; word-wrap:break-word;">@pedidoWASeleccionado.TextoCrudo</pre>
+            </div>
+        }
+    </div>
+    <style>
+        .cafe-wa-floating {
+            position: fixed; z-index: 9000;
+            background: #fefce8; border:2px solid #fde68a; border-radius:10px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+            display: flex; flex-direction: column;
+            overflow: hidden; resize: both;
+            min-width: 280px; min-height: 80px;
+        }
+        .cafe-wa-floating-header {
+            background:#25D366; color:white; padding:0.45rem 0.7rem;
+            font-weight:600; font-size:0.85rem;
+            display:flex; justify-content:space-between; align-items:center;
+            cursor:move; user-select:none;
+        }
+        .cafe-wa-floating-btn {
+            background:transparent; border:none; color:white;
+            cursor:pointer; padding:0.1rem 0.4rem; font-size:0.95rem; line-height:1;
+        }
+        .cafe-wa-floating-btn:hover { background:rgba(0,0,0,0.15); border-radius:3px; }
+        .cafe-wa-floating-body {
+            flex:1 1 auto; overflow:auto; padding:0.7rem 0.9rem;
+        }
+    </style>
+}
+
 @* ═══════════════ MODAL NUEVA / EDITAR VENTA ═══════════════ *@
 @if (showForm)
 {
@@ -523,7 +611,17 @@
                         <span>🧾 Nueva Venta</span>
                     }
                 </h3>
-                <button class="btn-close" @onclick="CloseForm" style="@(editingVentaId.HasValue ? "color: white;" : "")">&times;</button>
+                <div style="display:flex; gap:0.4rem; align-items:center;">
+                    @if (!editingVentaId.HasValue)
+                    {
+                        <button class="btn btn-secondary btn-sm" @onclick="AbrirSelectorPedidoWhatsApp"
+                                style="background:#25D366; border-color:#25D366; color:white; font-weight:600;"
+                                title="Traer un pedido recibido por WhatsApp y verlo en una ventana flotante mientras cargás la venta">
+                            💬 Traer pedido WhatsApp@(pedidoWhatsAppCount > 0 ? $" ({pedidoWhatsAppCount})" : "")
+                        </button>
+                    }
+                    <button class="btn-close" @onclick="CloseForm" style="@(editingVentaId.HasValue ? "color: white;" : "")">&times;</button>
+                </div>
             </div>
             <div class="modal-body" style="overflow-y: auto;">
                 @if (!string.IsNullOrEmpty(formError))
@@ -2404,6 +2502,17 @@
     // Form state
     private bool showForm, saving, previewLoading;
     private bool showConfirmEmision; // doble-check antes de emitir contra ARCA
+
+    // ═══ Pedido WhatsApp ═══
+    private int pedidoWhatsAppCount;
+    private bool mostrarSelectorPedidoWA;
+    private List<ApiClient.WhatsAppPedidoDto>? pedidosWADisponibles;
+    private ApiClient.WhatsAppPedidoDto? pedidoWASeleccionado;
+    private int? convirtiendoPedidoWAId;
+    private int? lastPedidoWAQuery;
+    private int pedidoWAPosX = 60, pedidoWAPosY = 110;
+    private int pedidoWAWidth = 340, pedidoWAHeight = 280;
+    private bool subventanaWAMin;
     private string? formError;
     private int formClienteId;
     private string clienteSearch = "";
@@ -2757,6 +2866,10 @@
         TryHandleNuevaVentaShortcut();
         // Si veníamos de "Convertir preventa" con ?preventa=ID, cargar la preventa pre-poblada
         await TryHandleConvertirPreventaAsync();
+        // Si veníamos de /cafe/pedidos-whatsapp con ?pedidoId=X, abrir el modal con sub-ventana
+        await TryHandleConvertirPedidoWAAsync();
+        // Cargar count de pedidos pendientes para mostrar en el botón
+        await RefrescarPedidoWACount();
     }
 
     private void OnOperatorChange() => InvokeAsync(StateHasChanged);
@@ -2770,7 +2883,78 @@
         {
             TryHandleNuevaVentaShortcut();
             await TryHandleConvertirPreventaAsync();
+            await TryHandleConvertirPedidoWAAsync();
         });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Pedido WhatsApp — selector + sub-ventana flotante
+    // ═══════════════════════════════════════════════════════════════════
+
+    private async Task RefrescarPedidoWACount()
+    {
+        try { pedidoWhatsAppCount = await Api.GetWhatsAppPedidosCountPendientesAsync(); }
+        catch { pedidoWhatsAppCount = 0; }
+    }
+
+    private async Task AbrirSelectorPedidoWhatsApp()
+    {
+        mostrarSelectorPedidoWA = true;
+        pedidosWADisponibles = null;
+        StateHasChanged();
+        try { pedidosWADisponibles = await Api.ListarPedidosDisponiblesParaVentaAsync(); }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); pedidosWADisponibles = new(); }
+        StateHasChanged();
+    }
+
+    private void CerrarSelectorPedidoWA() => mostrarSelectorPedidoWA = false;
+
+    private void SeleccionarPedidoWA(ApiClient.WhatsAppPedidoDto p)
+    {
+        pedidoWASeleccionado = p;
+        convirtiendoPedidoWAId = p.Id;
+        mostrarSelectorPedidoWA = false;
+        subventanaWAMin = false;
+        StateHasChanged();
+    }
+
+    private void CerrarSubventanaWA()
+    {
+        pedidoWASeleccionado = null;
+        convirtiendoPedidoWAId = null;
+    }
+
+    private void MinimizarSubventanaWA()
+    {
+        subventanaWAMin = !subventanaWAMin;
+        if (subventanaWAMin) { pedidoWAHeight = 40; }
+        else { pedidoWAHeight = 280; }
+    }
+
+    /// <summary>Si la URL trae ?pedidoId=X, abre el modal de Nueva Venta y muestra el pedido en la sub-ventana flotante.</summary>
+    private async Task TryHandleConvertirPedidoWAAsync()
+    {
+        var uri = new Uri(Navigation.Uri);
+        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        var idStr = query["pedidoId"];
+        if (string.IsNullOrEmpty(idStr)) return;
+        if (!int.TryParse(idStr, out var pedidoId)) return;
+        if (lastPedidoWAQuery == pedidoId) return;
+        lastPedidoWAQuery = pedidoId;
+
+        // Traer el pedido específico (lo busco en la lista de disponibles)
+        var lista = await Api.ListarPedidosDisponiblesParaVentaAsync();
+        var pedido = lista?.FirstOrDefault(p => p.Id == pedidoId);
+        if (pedido is null) { ToastService.Warning("Ese pedido ya no está disponible (¿se cargó o se descartó?)"); return; }
+
+        // Abrir el modal de Nueva Venta si no está abierto
+        if (!showForm) ShowCreate();
+
+        // Mostrar la sub-ventana flotante
+        pedidoWASeleccionado = pedido;
+        convirtiendoPedidoWAId = pedido.Id;
+        subventanaWAMin = false;
+        StateHasChanged();
     }
 
     /// <summary>Si la URL trae ?preventa=ID, abre el modal de Nueva Venta con los items pre-cargados
@@ -3922,6 +4106,21 @@
                     catch { /* la venta ya se creó, no romper si falla el vincular */ }
                     convirtiendoPreventaId = null;
                     lastPreventaQuery = null;
+                }
+
+                // Si veníamos de un pedido de WhatsApp, vincularlo y marcarlo como cargado
+                if (convirtiendoPedidoWAId.HasValue)
+                {
+                    try
+                    {
+                        await Api.VincularPedidoAVentaAsync(convirtiendoPedidoWAId.Value, v.Id);
+                        ToastService.Success("✓ Pedido WhatsApp marcado como cargado");
+                    }
+                    catch { /* no romper si falla el vincular */ }
+                    convirtiendoPedidoWAId = null;
+                    lastPedidoWAQuery = null;
+                    pedidoWASeleccionado = null;
+                    await RefrescarPedidoWACount();
                 }
             }
 

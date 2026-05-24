@@ -4063,3 +4063,35 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='StockChangedAt' AND Object_ID=OBJECT_ID('Cafe_Productos'))
     ALTER TABLE Cafe_Productos ADD StockChangedAt DATETIME2 NULL;
 GO
+
+-- 2026-05-24: WhatsApp pedidos - multiples telefonos autorizados + auto-respuesta
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'WhatsAppPedidosTelefonos')
+BEGIN
+    CREATE TABLE [WhatsAppPedidosTelefonos] (
+        [Id] INT IDENTITY(1,1) PRIMARY KEY,
+        [Telefono] NVARCHAR(40) NOT NULL,
+        [Etiqueta] NVARCHAR(80) NULL,
+        [Activo] BIT NOT NULL DEFAULT 1,
+        [LastMessageId] NVARCHAR(200) NULL,
+        [CreatedAt] DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        [LastReadAt] DATETIME2 NULL
+    );
+    CREATE INDEX [IX_WhatsAppPedidosTelefonos_Telefono] ON [WhatsAppPedidosTelefonos]([Telefono]);
+END
+GO
+
+-- Migracion soft: si habia un telefono legacy en AppSettings, lo movemos a la tabla
+IF EXISTS (SELECT 1 FROM AppSettings WHERE [Key] = 'whatsapp.pedidos.vendedor_telefono')
+BEGIN
+    DECLARE @tel NVARCHAR(40), @cursor NVARCHAR(200);
+    SELECT @tel = Value FROM AppSettings WHERE [Key] = 'whatsapp.pedidos.vendedor_telefono';
+    SELECT @cursor = Value FROM AppSettings WHERE [Key] = 'whatsapp.pedidos.last_message_id';
+    IF @tel IS NOT NULL AND LEN(@tel) > 0 AND NOT EXISTS (SELECT 1 FROM WhatsAppPedidosTelefonos WHERE Telefono = @tel)
+        INSERT INTO WhatsAppPedidosTelefonos(Telefono, Etiqueta, Activo, LastMessageId) VALUES (@tel, 'Vendedor (legacy)', 1, @cursor);
+END
+GO
+
+-- AppSetting: auto-respuesta activada por default
+IF NOT EXISTS (SELECT 1 FROM AppSettings WHERE [Key] = 'whatsapp.pedidos.auto_responder_enabled')
+    INSERT INTO AppSettings([Key], Value, UpdatedAt) VALUES ('whatsapp.pedidos.auto_responder_enabled', 'true', SYSUTCDATETIME());
+GO

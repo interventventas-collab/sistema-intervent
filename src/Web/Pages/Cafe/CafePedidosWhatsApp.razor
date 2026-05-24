@@ -6,7 +6,8 @@
 @inject IJSRuntime JS
 
 @* Pantalla de pedidos recibidos por WhatsApp.
-   Por ahora soporta solo PASTE manual del texto (Fase 1). Próximamente Playwright auto-scraping. *@
+   - Lista pedidos recibidos (manuales + automáticos vía poller)
+   - Config: lista de teléfonos autorizados, trigger, auto-respuesta *@
 
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.6rem;">
@@ -25,36 +26,90 @@
         @if (mostrarConfig)
         {
             <div style="background:#eff6ff; border:1px solid #93c5fd; border-radius:6px; padding:0.85rem 1rem; margin-bottom:1rem;">
-                <strong>Configuración</strong>
+                <strong>Configuración general</strong>
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.6rem; margin-top:0.6rem; align-items:end;">
-                    <div>
-                        <label style="font-size:0.78rem; color:#6b7280;">Teléfono del vendedor (con código país, sin espacios)</label>
-                        <input type="text" class="form-control form-control-sm" @bind="configTelefono" placeholder="5491122525458" />
-                    </div>
                     <div>
                         <label style="font-size:0.78rem; color:#6b7280;">Trigger (al inicio del mensaje)</label>
                         <input type="text" class="form-control form-control-sm" @bind="configTrigger" placeholder="#PED" />
                     </div>
+                    <div style="display:flex; flex-direction:column; gap:0.4rem;">
+                        <label style="display:flex; align-items:center; gap:0.35rem; cursor:pointer; padding:0.4rem 0.8rem; background:@(configPollEnabled ? "#dcfce7" : "#f3f4f6"); border:1px solid @(configPollEnabled ? "#22c55e" : "#d1d5db"); border-radius:6px; font-size:0.88rem; user-select:none;">
+                            <input type="checkbox" @bind="configPollEnabled" />
+                            <strong>🟢 Lectura automática (cada 45s)</strong>
+                        </label>
+                        <label style="display:flex; align-items:center; gap:0.35rem; cursor:pointer; padding:0.4rem 0.8rem; background:@(configAutoRespEnabled ? "#dcfce7" : "#f3f4f6"); border:1px solid @(configAutoRespEnabled ? "#22c55e" : "#d1d5db"); border-radius:6px; font-size:0.88rem; user-select:none;">
+                            <input type="checkbox" @bind="configAutoRespEnabled" />
+                            <strong>✅ Responder automáticamente "PEDIDO RECIBIDO"</strong>
+                        </label>
+                    </div>
                 </div>
-                <div style="margin-top:0.7rem; display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
-                    <label style="display:flex; align-items:center; gap:0.35rem; cursor:pointer; padding:0.4rem 0.8rem; background:@(configPollEnabled ? "#dcfce7" : "#f3f4f6"); border:1px solid @(configPollEnabled ? "#22c55e" : "#d1d5db"); border-radius:6px; font-size:0.88rem; user-select:none;">
-                        <input type="checkbox" @bind="configPollEnabled" />
-                        <strong>🟢 Lectura automática de WhatsApp (cada 45s)</strong>
-                    </label>
-                    @if (!string.IsNullOrEmpty(configLastMessageId))
-                    {
-                        <span style="font-size:0.75rem; color:#6b7280;">Último msg leído: <span style="font-family:monospace;">@configLastMessageId.Substring(0, Math.Min(40, configLastMessageId.Length))...</span></span>
-                    }
-                    <button class="btn btn-secondary btn-sm" @onclick="ResetCursor" disabled="@cargando">
-                        🔄 Resetear cursor
-                    </button>
-                    <button class="btn btn-primary btn-sm" @onclick="GuardarConfig" disabled="@cargando">
-                        💾 Guardar
-                    </button>
+                <div style="margin-top:0.7rem; display:flex; gap:0.5rem; justify-content:flex-end;">
+                    <button class="btn btn-primary btn-sm" @onclick="GuardarConfig" disabled="@cargando">💾 Guardar config</button>
                 </div>
-                <p style="margin:0.5rem 0 0 0; font-size:0.78rem; color:#6b7280;">
-                    Cuando esté activado, el sistema cada 45s lee mensajes nuevos del chat de ese teléfono. Si empiezan con <strong>@configTrigger</strong>, los procesa con IA.
+
+                <hr style="margin:1rem 0;" />
+
+                <strong>Teléfonos autorizados</strong>
+                <p style="margin:0.3rem 0 0.6rem 0; font-size:0.78rem; color:#6b7280;">
+                    El sistema chequea cada uno de estos números cada 45s buscando mensajes que empiecen con <strong>@configTrigger</strong>.
                 </p>
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr 80px 120px; gap:0.5rem; align-items:end; margin-bottom:0.6rem;">
+                    <div>
+                        <label style="font-size:0.78rem; color:#6b7280;">Teléfono nuevo (código país, sin +)</label>
+                        <input type="text" class="form-control form-control-sm" @bind="nuevoTelefono" placeholder="5491122525458" />
+                    </div>
+                    <div>
+                        <label style="font-size:0.78rem; color:#6b7280;">Etiqueta (opcional)</label>
+                        <input type="text" class="form-control form-control-sm" @bind="nuevaEtiqueta" placeholder="Hermano, Yo móvil, etc." />
+                    </div>
+                    <div></div>
+                    <div>
+                        <button class="btn btn-success btn-sm" style="width:100%;" @onclick="AgregarTelefono" disabled="@(cargando || string.IsNullOrWhiteSpace(nuevoTelefono))">
+                            ➕ Agregar
+                        </button>
+                    </div>
+                </div>
+
+                @if (telefonos is null || telefonos.Count == 0)
+                {
+                    <div style="background:#fef3c7; padding:0.6rem; border-radius:6px; color:#92400e; font-size:0.85rem;">
+                        ⚠ No hay teléfonos cargados. Hasta que agregues al menos uno, el sistema no va a leer ningún pedido automático.
+                    </div>
+                }
+                else
+                {
+                    <table class="table table-sm" style="margin-bottom:0;">
+                        <thead style="background:#f9fafb;">
+                            <tr>
+                                <th>Activo</th>
+                                <th>Teléfono</th>
+                                <th>Etiqueta</th>
+                                <th>Última lectura</th>
+                                <th style="text-align:right;">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var t in telefonos)
+                        {
+                            <tr>
+                                <td>
+                                    <input type="checkbox" checked="@t.Activo" @onchange="@(e => ToggleActivo(t, (bool)(e.Value ?? false)))" />
+                                </td>
+                                <td style="font-family:monospace;">@t.Telefono</td>
+                                <td>@(t.Etiqueta ?? "—")</td>
+                                <td style="color:#6b7280; font-size:0.8rem;">
+                                    @(t.LastReadAt?.ToLocalTime().ToString("dd/MM HH:mm:ss") ?? "—")
+                                </td>
+                                <td style="text-align:right;">
+                                    <button class="btn btn-secondary btn-sm" @onclick="() => ResetCursorTelefono(t.Id)" title="Re-leer todo el chat">🔄</button>
+                                    <button class="btn btn-danger btn-sm" @onclick="() => BorrarTelefono(t)" title="Borrar">🗑</button>
+                                </td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                }
             </div>
         }
 
@@ -103,8 +158,8 @@ fact A, x flete, ctacte" style="font-family: monospace; font-size:0.85rem;"></te
                             <span style="color:#6b7280; font-size:0.78rem;">vía @p.Source</span>
                         </div>
                         <div style="display:flex; gap:0.3rem;">
-                            <button class="btn btn-success btn-sm" @onclick='() => Nav.NavigateTo("/cafe/ventas")' title="Ir a Nueva Venta">
-                                <i class="fa-solid fa-cart-shopping"></i> Ir a Nueva Venta
+                            <button class="btn btn-success btn-sm" @onclick="() => IrANuevaVenta(p.Id)" title="Cargar esta venta">
+                                <i class="fa-solid fa-cart-shopping"></i> Cargar venta
                             </button>
                             <button class="btn btn-secondary btn-sm" @onclick="() => MarcarVisto(p.Id)" title="Marcar como visto/usado">
                                 ✓ Visto
@@ -125,26 +180,22 @@ fact A, x flete, ctacte" style="font-family: monospace; font-size:0.85rem;"></te
     .pedido-card { border:1px solid #e5e7eb; border-radius:8px; padding:0.85rem; margin-bottom:0.6rem; background:white; }
     .pedido-nuevo { background:#fffbeb; border-color:#fde68a; }
     .estado-badge { font-size:0.72rem; padding:0.1rem 0.5rem; border-radius:4px; font-weight:600; }
-    .estado-NUEVO { background:#fef3c7; color:#92400e; }
-    .estado-PARSEADO { background:#dbeafe; color:#1e40af; }
-    .estado-VENTA_CREADA { background:#dcfce7; color:#14532d; }
-    .estado-ERROR { background:#fee2e2; color:#991b1b; }
-    .estado-DESCARTADO { background:#f3f4f6; color:#6b7280; }
-    .confianza-ok { background:#dcfce7; color:#14532d; padding:0.1rem 0.4rem; border-radius:3px; font-size:0.78rem; font-weight:600; }
-    .confianza-medio { background:#fef3c7; color:#92400e; padding:0.1rem 0.4rem; border-radius:3px; font-size:0.78rem; font-weight:600; }
-    .confianza-bajo { background:#fee2e2; color:#991b1b; padding:0.1rem 0.4rem; border-radius:3px; font-size:0.78rem; font-weight:600; }
 </style>
 
 @code {
     private List<ApiClient.WhatsAppPedidoDto>? pedidos;
+    private List<ApiClient.WhatsAppPedidoTelefonoDto>? telefonos;
     private bool cargando;
     private string textoNuevo = "";
     private string telefonoNuevo = "";
     private bool mostrarConfig;
-    private string configTelefono = "";
+
     private string configTrigger = "#PED";
     private bool configPollEnabled;
-    private string configLastMessageId = "";
+    private bool configAutoRespEnabled = true;
+
+    private string nuevoTelefono = "";
+    private string nuevaEtiqueta = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -167,8 +218,10 @@ fact A, x flete, ctacte" style="font-family: monospace; font-size:0.85rem;"></te
             var cfg = await Api.GetWhatsAppPedidosConfigAsync();
             if (cfg is not null)
             {
-                configTelefono = cfg.Telefono; configTrigger = cfg.Trigger;
-                configPollEnabled = cfg.PollEnabled; configLastMessageId = cfg.LastMessageId;
+                configTrigger = cfg.Trigger;
+                configPollEnabled = cfg.PollEnabled;
+                configAutoRespEnabled = cfg.AutoResponderEnabled;
+                telefonos = cfg.Telefonos;
             }
         }
         catch { }
@@ -179,28 +232,50 @@ fact A, x flete, ctacte" style="font-family: monospace; font-size:0.85rem;"></te
         cargando = true;
         try
         {
-            var ok = await Api.SetWhatsAppPedidosConfigAsync(configTelefono, configTrigger, configPollEnabled);
+            var ok = await Api.SetWhatsAppPedidosConfigAsync(configTrigger, configPollEnabled, configAutoRespEnabled);
             if (ok) ToastService.Success("Configuración guardada");
             else ToastService.Error("No se pudo guardar");
         }
         finally { cargando = false; }
     }
 
-    private async Task ResetCursor()
+    private async Task AgregarTelefono()
     {
+        if (string.IsNullOrWhiteSpace(nuevoTelefono)) return;
         cargando = true;
         try
         {
-            var ok = await Api.ResetWhatsAppPedidosCursorAsync();
-            if (ok) { ToastService.Success("Cursor reseteado"); configLastMessageId = ""; }
-            else ToastService.Error("No se pudo resetear");
+            var r = await Api.AgregarTelefonoAutorizadoAsync(nuevoTelefono.Trim(), string.IsNullOrWhiteSpace(nuevaEtiqueta) ? null : nuevaEtiqueta.Trim());
+            if (r is not null) { ToastService.Success("Teléfono agregado"); nuevoTelefono = ""; nuevaEtiqueta = ""; await CargarConfig(); }
+            else ToastService.Error("No se pudo agregar (¿ya existía o teléfono inválido?)");
         }
-        finally { cargando = false; StateHasChanged(); }
+        finally { cargando = false; }
+    }
+
+    private async Task ToggleActivo(ApiClient.WhatsAppPedidoTelefonoDto t, bool activo)
+    {
+        t.Activo = activo;
+        await Api.EditarTelefonoAutorizadoAsync(t.Id, null, null, activo);
+    }
+
+    private async Task BorrarTelefono(ApiClient.WhatsAppPedidoTelefonoDto t)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Borrar {t.Telefono}?")) return;
+        var ok = await Api.BorrarTelefonoAutorizadoAsync(t.Id);
+        if (ok) { ToastService.Success("Borrado"); await CargarConfig(); }
+        else ToastService.Error("No se pudo borrar");
+    }
+
+    private async Task ResetCursorTelefono(int id)
+    {
+        var ok = await Api.ResetCursorTelefonoAsync(id);
+        if (ok) { ToastService.Success("Cursor reseteado, va a re-leer todo"); await CargarConfig(); }
     }
 
     private void ToggleConfig() => mostrarConfig = !mostrarConfig;
 
-    private string GetEstadoCls(string e) => "estado-" + e;
+    private void IrANuevaVenta(int pedidoId)
+        => Nav.NavigateTo($"/cafe/ventas?pedidoId={pedidoId}");
 
     private async Task ProcesarTextoNuevo()
     {

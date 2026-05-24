@@ -2114,10 +2114,20 @@ public class ApiClient
 
     public class WhatsAppPedidoConfig
     {
-        public string Telefono { get; set; } = "";
         public string Trigger { get; set; } = "#PED";
         public bool PollEnabled { get; set; }
-        public string LastMessageId { get; set; } = "";
+        public bool AutoResponderEnabled { get; set; } = true;
+        public List<WhatsAppPedidoTelefonoDto> Telefonos { get; set; } = new();
+    }
+
+    public class WhatsAppPedidoTelefonoDto
+    {
+        public int Id { get; set; }
+        public string Telefono { get; set; } = "";
+        public string? Etiqueta { get; set; }
+        public bool Activo { get; set; } = true;
+        public string? LastMessageId { get; set; }
+        public DateTime? LastReadAt { get; set; }
     }
 
     public async Task<int> GetWhatsAppPedidosCountPendientesAsync()
@@ -2158,15 +2168,51 @@ public class ApiClient
     public async Task<WhatsAppPedidoConfig?> GetWhatsAppPedidosConfigAsync()
         => await GetAsync<WhatsAppPedidoConfig>("/api/whatsapp/pedidos/config");
 
-    public async Task<bool> SetWhatsAppPedidosConfigAsync(string telefono, string trigger, bool? pollEnabled = null)
+    public async Task<bool> SetWhatsAppPedidosConfigAsync(string trigger, bool? pollEnabled = null, bool? autoResponderEnabled = null)
     {
-        var resp = await _http.PostAsJsonAsync("/api/whatsapp/pedidos/config", new { telefono, trigger, pollEnabled });
+        var resp = await _http.PostAsJsonAsync("/api/whatsapp/pedidos/config", new { trigger, pollEnabled, autoResponderEnabled });
         return resp.IsSuccessStatusCode;
     }
 
     public async Task<bool> ResetWhatsAppPedidosCursorAsync()
     {
         var resp = await _http.PostAsync("/api/whatsapp/pedidos/reset-cursor", null);
+        return resp.IsSuccessStatusCode;
+    }
+
+    // === Teléfonos autorizados ===
+    public async Task<WhatsAppPedidoTelefonoDto?> AgregarTelefonoAutorizadoAsync(string telefono, string? etiqueta)
+    {
+        var resp = await _http.PostAsJsonAsync("/api/whatsapp/pedidos/telefonos", new { telefono, etiqueta, activo = true });
+        if (!resp.IsSuccessStatusCode) return null;
+        return await resp.Content.ReadFromJsonAsync<WhatsAppPedidoTelefonoDto>();
+    }
+
+    public async Task<bool> EditarTelefonoAutorizadoAsync(int id, string? telefono, string? etiqueta, bool? activo)
+    {
+        var resp = await _http.PostAsJsonAsync($"/api/whatsapp/pedidos/telefonos/{id}", new { telefono, etiqueta, activo });
+        return resp.IsSuccessStatusCode;
+    }
+
+    public async Task<bool> BorrarTelefonoAutorizadoAsync(int id)
+    {
+        var resp = await _http.DeleteAsync($"/api/whatsapp/pedidos/telefonos/{id}");
+        return resp.IsSuccessStatusCode;
+    }
+
+    public async Task<bool> ResetCursorTelefonoAsync(int id)
+    {
+        var resp = await _http.PostAsync($"/api/whatsapp/pedidos/telefonos/{id}/reset-cursor", null);
+        return resp.IsSuccessStatusCode;
+    }
+
+    // Para "traer pedido" en Nueva Venta
+    public async Task<List<WhatsAppPedidoDto>?> ListarPedidosDisponiblesParaVentaAsync(int limit = 50)
+        => await GetAsync<List<WhatsAppPedidoDto>>($"/api/whatsapp/pedidos/disponibles-para-venta?limit={limit}");
+
+    public async Task<bool> VincularPedidoAVentaAsync(int pedidoId, int ventaId)
+    {
+        var resp = await _http.PostAsJsonAsync($"/api/whatsapp/pedidos/{pedidoId}/vincular-venta", new { ventaId });
         return resp.IsSuccessStatusCode;
     }
 
