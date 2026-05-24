@@ -62,7 +62,7 @@ public class WhatsAppPedidosPollerService : BackgroundService
         var pollEnabled = settings.TryGetValue("whatsapp.pedidos.poll_enabled", out var pe) && string.Equals(pe?.Trim(), "true", StringComparison.OrdinalIgnoreCase);
         if (!pollEnabled) return;
 
-        var trigger = settings.TryGetValue("whatsapp.pedidos.trigger", out var tr) ? (tr ?? "#PED").Trim() : "#PED";
+        // El trigger ya no es una palabra fija: aceptamos `##` (venta ciega) o `#NUMERO` (cliente por código).
         var autoRespond = settings.TryGetValue("whatsapp.pedidos.auto_responder_enabled", out var ar) && string.Equals(ar?.Trim(), "true", StringComparison.OrdinalIgnoreCase);
 
         // 2) Cargar lista de teléfonos autorizados (solo activos)
@@ -83,7 +83,7 @@ public class WhatsAppPedidosPollerService : BackgroundService
             if (ct.IsCancellationRequested) break;
             try
             {
-                await ProcesarTelefonoAsync(db, svc, http, playwrightUrl, tel, trigger, autoRespond, ct);
+                await ProcesarTelefonoAsync(db, svc, http, playwrightUrl, tel, autoRespond, ct);
             }
             catch (Exception ex)
             {
@@ -94,7 +94,7 @@ public class WhatsAppPedidosPollerService : BackgroundService
 
     private async Task ProcesarTelefonoAsync(
         AppDbContext db, WhatsAppPedidoService svc, HttpClient http, string playwrightUrl,
-        WhatsAppPedidosTelefono tel, string trigger, bool autoRespond, CancellationToken ct)
+        WhatsAppPedidosTelefono tel, bool autoRespond, CancellationToken ct)
     {
         var sinceId = tel.LastMessageId ?? "";
 
@@ -121,14 +121,14 @@ public class WhatsAppPedidosPollerService : BackgroundService
 
         _logger.LogInformation("[WA pedidos poll] {Tel}: {N} mensajes nuevos", tel.Telefono, data.Messages.Count);
 
-        var triggerUpper = trigger.ToUpperInvariant();
         WaMessage? ultimoProcesado = null;
         foreach (var m in data.Messages)
         {
             if (m.FromMe) { ultimoProcesado = m; continue; }
             var texto = (m.Text ?? "").Trim();
             if (string.IsNullOrEmpty(texto)) { ultimoProcesado = m; continue; }
-            if (!texto.ToUpperInvariant().StartsWith(triggerUpper)) { ultimoProcesado = m; continue; }
+            // Trigger nuevo: `##` (venta ciega) o `#NUMERO` (cliente por código interno)
+            if (!WhatsAppPedidoService.EsTriggerValido(texto)) { ultimoProcesado = m; continue; }
 
             try
             {

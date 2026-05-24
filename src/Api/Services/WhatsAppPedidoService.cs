@@ -272,12 +272,16 @@ Respondé ESTRICTAMENTE este JSON (sin markdown, sin texto adicional):
 
     /// <summary>Intenta detectar el cliente del pedido buscando #NUMERO en el texto, donde NUMERO
     /// es el CodigoInterno de un CafeCliente activo. Devuelve (Id, Nombre) si encuentra match.
-    /// El trigger #PED se ignora (no se considera código).</summary>
+    /// IMPORTANTE: si el mensaje empieza con `##` se considera "venta ciega" y NO se detecta cliente.</summary>
     private async Task<(int? Id, string? Nombre)> TryDetectarClienteAsync(string textoCrudo, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(textoCrudo)) return (null, null);
-        // Regex: # seguido de UNO O MÁS digitos (ignorar # seguido de letras como #PED)
-        var matches = System.Text.RegularExpressions.Regex.Matches(textoCrudo, @"#(\d+)");
+        var trimmed = textoCrudo.TrimStart();
+        // Si empieza con `##` es venta ciega (sin cliente)
+        if (trimmed.StartsWith("##")) return (null, null);
+
+        // Regex: # seguido SOLO de digitos (ignorar # seguido de letras como #PED y `##` que ya filtramos arriba)
+        var matches = System.Text.RegularExpressions.Regex.Matches(textoCrudo, @"#(\d+)\b");
         foreach (System.Text.RegularExpressions.Match m in matches)
         {
             if (!int.TryParse(m.Groups[1].Value, out var codigo)) continue;
@@ -288,6 +292,17 @@ Respondé ESTRICTAMENTE este JSON (sin markdown, sin texto adicional):
             if (cliente is not null) return (cliente.Id, cliente.Nombre);
         }
         return (null, null);
+    }
+
+    /// <summary>Verifica si un texto es un pedido valido (empieza con `##` o `#NUMERO`).
+    /// Devuelve true si el mensaje debe procesarse como pedido.</summary>
+    public static bool EsTriggerValido(string? textoCrudo)
+    {
+        if (string.IsNullOrWhiteSpace(textoCrudo)) return false;
+        var t = textoCrudo.TrimStart();
+        if (t.StartsWith("##")) return true;
+        // `#` seguido inmediatamente de digito
+        return System.Text.RegularExpressions.Regex.IsMatch(t, @"^#\d+\b");
     }
 
     public Task<int> CountUnseenAsync(CancellationToken ct = default)

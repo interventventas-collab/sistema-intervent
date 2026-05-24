@@ -28,21 +28,22 @@
         {
             <div style="background:#eff6ff; border:1px solid #93c5fd; border-radius:6px; padding:0.85rem 1rem; margin-bottom:1rem;">
                 <strong>Configuración general</strong>
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.6rem; margin-top:0.6rem; align-items:end;">
-                    <div>
-                        <label style="font-size:0.78rem; color:#6b7280;">Trigger (al inicio del mensaje)</label>
-                        <input type="text" class="form-control form-control-sm" @bind="configTrigger" placeholder="#PED" />
-                    </div>
-                    <div style="display:flex; flex-direction:column; gap:0.4rem;">
-                        <label style="display:flex; align-items:center; gap:0.35rem; cursor:pointer; padding:0.4rem 0.8rem; background:@(configPollEnabled ? "#dcfce7" : "#f3f4f6"); border:1px solid @(configPollEnabled ? "#22c55e" : "#d1d5db"); border-radius:6px; font-size:0.88rem; user-select:none;">
-                            <input type="checkbox" @bind="configPollEnabled" />
-                            <strong>🟢 Lectura automática (cada 45s)</strong>
-                        </label>
-                        <label style="display:flex; align-items:center; gap:0.35rem; cursor:pointer; padding:0.4rem 0.8rem; background:@(configAutoRespEnabled ? "#dcfce7" : "#f3f4f6"); border:1px solid @(configAutoRespEnabled ? "#22c55e" : "#d1d5db"); border-radius:6px; font-size:0.88rem; user-select:none;">
-                            <input type="checkbox" @bind="configAutoRespEnabled" />
-                            <strong>✅ Responder automáticamente "PEDIDO RECIBIDO"</strong>
-                        </label>
-                    </div>
+                <div style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:6px; padding:0.7rem; margin-top:0.6rem; font-size:0.85rem; color:#0c4a6e;">
+                    <strong>📝 Formato de mensajes que reconoce el sistema:</strong>
+                    <ul style="margin:0.3rem 0 0 1.2rem; padding:0;">
+                        <li><code style="background:#dbeafe; padding:0.05rem 0.3rem; border-radius:3px;">##</code> al inicio del mensaje → pedido <strong>sin cliente</strong> (lo elegís manualmente)</li>
+                        <li><code style="background:#dbeafe; padding:0.05rem 0.3rem; border-radius:3px;">#134</code> (un solo # + número) → pedido directo para el cliente con <strong>código interno 134</strong></li>
+                    </ul>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:0.4rem; margin-top:0.6rem;">
+                    <label style="display:flex; align-items:center; gap:0.35rem; cursor:pointer; padding:0.4rem 0.8rem; background:@(configPollEnabled ? "#dcfce7" : "#f3f4f6"); border:1px solid @(configPollEnabled ? "#22c55e" : "#d1d5db"); border-radius:6px; font-size:0.88rem; user-select:none;">
+                        <input type="checkbox" @bind="configPollEnabled" />
+                        <strong>🟢 Lectura automática (cada 45s)</strong>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:0.35rem; cursor:pointer; padding:0.4rem 0.8rem; background:@(configAutoRespEnabled ? "#dcfce7" : "#f3f4f6"); border:1px solid @(configAutoRespEnabled ? "#22c55e" : "#d1d5db"); border-radius:6px; font-size:0.88rem; user-select:none;">
+                        <input type="checkbox" @bind="configAutoRespEnabled" />
+                        <strong>✅ Responder automáticamente "PEDIDO RECIBIDO"</strong>
+                    </label>
                 </div>
                 <div style="margin-top:0.7rem; display:flex; gap:0.5rem; justify-content:flex-end;">
                     <button class="btn btn-primary btn-sm" @onclick="GuardarConfig" disabled="@cargando">💾 Guardar config</button>
@@ -52,7 +53,7 @@
 
                 <strong>Teléfonos autorizados</strong>
                 <p style="margin:0.3rem 0 0.6rem 0; font-size:0.78rem; color:#6b7280;">
-                    El sistema chequea cada uno de estos números cada 45s buscando mensajes que empiecen con <strong>@configTrigger</strong>.
+                    El sistema chequea cada uno de estos números cada 45s buscando mensajes que empiecen con <strong><code>##</code></strong> o <strong><code>#NÚMERO</code></strong>.
                 </p>
 
                 <div style="display:grid; grid-template-columns: 1fr 1fr 80px 120px; gap:0.5rem; align-items:end; margin-bottom:0.6rem;">
@@ -119,7 +120,7 @@
             <p style="margin:0.3rem 0; font-size:0.85rem; color:#854d0e;">
                 Pegá el texto del WhatsApp del vendedor. Se guarda como pedido pendiente para que lo cargues en /cafe/ventas.
             </p>
-            <textarea class="form-control" rows="6" @bind="textoNuevo" placeholder="#PED ESC NUCLEO
+            <textarea class="form-control" rows="6" @bind="textoNuevo" placeholder="#134
 25 kg cafe premium
 5 culkre sin cargo
 1 caja vasos 120
