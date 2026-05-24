@@ -164,8 +164,8 @@ fact A, x flete, ctacte" style="font-family: monospace; font-size:0.85rem;"></te
                             <button class="btn btn-secondary btn-sm" @onclick="() => MarcarVisto(p.Id)" title="Marcar como visto/usado">
                                 ✓ Visto
                             </button>
-                            <button class="btn btn-secondary btn-sm" @onclick="() => Descartar(p.Id)" title="Descartar">
-                                <i class="fa-solid fa-xmark"></i>
+                            <button class="btn btn-danger btn-sm" @onclick="() => Eliminar(p.Id)" title="Eliminar definitivamente">
+                                <i class="fa-solid fa-trash"></i>
                             </button>
                         </div>
                     </div>
@@ -303,6 +303,18 @@ fact A, x flete, ctacte" style="font-family: monospace; font-size:0.85rem;"></te
     private async Task Descartar(int id)
     {
         try { await Api.DescartarWhatsAppPedidoAsync(id); await Refrescar(); }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task Eliminar(int id)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "¿Eliminar este pedido definitivamente? No se podrá recuperar.")) return;
+        try
+        {
+            var ok = await Api.EliminarWhatsAppPedidoAsync(id);
+            if (ok) { ToastService.Success("Pedido eliminado"); await Refrescar(); }
+            else ToastService.Error("No se pudo eliminar");
+        }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
     }
 }

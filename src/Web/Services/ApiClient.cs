@@ -2165,6 +2165,12 @@ public class ApiClient
     public async Task DescartarWhatsAppPedidoAsync(int id)
         => await _http.PostAsync($"/api/whatsapp/pedidos/{id}/descartar", null);
 
+    public async Task<bool> EliminarWhatsAppPedidoAsync(int id)
+    {
+        var r = await _http.DeleteAsync($"/api/whatsapp/pedidos/{id}");
+        return r.IsSuccessStatusCode;
+    }
+
     public async Task<WhatsAppPedidoConfig?> GetWhatsAppPedidosConfigAsync()
         => await GetAsync<WhatsAppPedidoConfig>("/api/whatsapp/pedidos/config");
 

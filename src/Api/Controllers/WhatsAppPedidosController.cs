@@ -3,6 +3,8 @@ using Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 
 namespace Api.Controllers;
@@ -14,10 +16,12 @@ public class WhatsAppPedidosController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly WhatsAppPedidoService _svc;
+    private readonly IHttpClientFactory _httpFactory;
+    private readonly ILogger<WhatsAppPedidosController> _log;
 
-    public WhatsAppPedidosController(AppDbContext db, WhatsAppPedidoService svc)
+    public WhatsAppPedidosController(AppDbContext db, WhatsAppPedidoService svc, IHttpClientFactory httpFactory, ILogger<WhatsAppPedidosController> log)
     {
-        _db = db; _svc = svc;
+        _db = db; _svc = svc; _httpFactory = httpFactory; _log = log;
     }
 
     public class RecibirPedidoRequest
@@ -99,7 +103,8 @@ public class WhatsAppPedidosController : ControllerBase
         return Ok(lista);
     }
 
-    /// <summary>Vincula un pedido a una venta recién creada. Marca como VENTA_CREADA + asocia VentaId.</summary>
+    /// <summary>Vincula un pedido a una venta recién creada. Marca como VENTA_CREADA + asocia VentaId.
+    /// Además envía al emisor del pedido un WhatsApp con el detalle de los items y el total.</summary>
     public class VincularRequest { public int VentaId { get; set; } }
 
     [HttpPost("{id:int}/vincular-venta")]
@@ -111,6 +116,103 @@ public class WhatsAppPedidosController : ControllerBase
         p.Estado = "VENTA_CREADA";
         p.VentaCreadaAt = DateTime.UtcNow;
         p.SeenAt ??= DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        // Mandar segunda respuesta WhatsApp con el detalle de la venta cargada (si esta autorizada la auto-respuesta)
+        _ = Task.Run(async () =>
+        {
+            try { await EnviarDetalleVentaPorWhatsApp(p.Telefono, p.Id, req.VentaId, HttpContext.RequestAborted); }
+            catch (Exception ex) { _log.LogError(ex, "[WA pedidos] error enviando detalle venta {VentaId}", req.VentaId); }
+        });
+
+        return Ok();
+    }
+
+    /// <summary>Arma el mensaje con detalle de la venta y se lo manda al telefono que originalmente envio el pedido.</summary>
+    private async Task EnviarDetalleVentaPorWhatsApp(string telefonoDestino, int pedidoId, int ventaId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(telefonoDestino)) return;
+
+        // Chequear si auto-respuesta esta activada
+        var arSetting = await _db.AppSettings.AsNoTracking().FirstOrDefaultAsync(s => s.Key == "whatsapp.pedidos.auto_responder_enabled", ct);
+        var autoRespOn = arSetting is null || string.Equals(arSetting.Value?.Trim(), "true", StringComparison.OrdinalIgnoreCase);
+        if (!autoRespOn) return;
+
+        // Cargar venta con items
+        var venta = await _db.CafeVentas.AsNoTracking()
+            .Include(v => v.Items)
+            .FirstOrDefaultAsync(v => v.Id == ventaId, ct);
+        if (venta is null) return;
+
+        // Armar el texto
+        var sb = new StringBuilder();
+        sb.AppendLine($"✅ PEDIDO #{pedidoId} CARGADO (venta {venta.Numero})");
+        sb.AppendLine();
+        var nombreCli = venta.ClienteNombreSnapshot ?? "Consumidor final";
+        sb.AppendLine(nombreCli);
+        sb.AppendLine();
+        foreach (var it in venta.Items.OrderBy(i => i.Id))
+        {
+            // Formato: • 25x Cafe Brasil Premium 1KG — $135.000,00
+            var formato = !string.IsNullOrEmpty(it.Formato) && it.Formato != "UNIT" ? $" {it.Formato}" : "";
+            var subtotalStr = it.Subtotal == 0 ? "sin cargo" : $"${it.Subtotal:N2}";
+            sb.AppendLine($"• {it.Cantidad}x {it.ProductoNombreSnapshot}{formato} — {subtotalStr}");
+        }
+        sb.AppendLine();
+        if (venta.Descuento > 0) sb.AppendLine($"Descuento: -${venta.Descuento:N2}");
+        sb.AppendLine($"*TOTAL: ${venta.Total:N2}*");
+        sb.AppendLine();
+        var tipoStr = venta.TipoComprobante switch
+        {
+            "FA" => "Factura A",
+            "FB" => "Factura B",
+            "FC" => "Factura C",
+            "PRO" => "Proforma",
+            _ => "Remito interno"
+        };
+        var cpStr = venta.CondicionPago switch
+        {
+            "EFECTIVO" => "Efectivo",
+            "TRANSFERENCIA" => "Transferencia",
+            "MERCADOPAGO" => "Mercado Pago",
+            "DEBITO" => "Débito",
+            "CREDITO" => "Crédito",
+            "CTA_CORRIENTE" => "Cta. Cte.",
+            "CHEQUE" => "Cheque",
+            _ => venta.CondicionPago
+        };
+        sb.Append(tipoStr).Append(" · ").Append(cpStr);
+        if (!string.IsNullOrEmpty(venta.EntregaPor))
+            sb.Append(" · ").Append(venta.EntregaPor);
+        sb.AppendLine();
+
+        var texto = sb.ToString();
+        var playwrightUrl = Environment.GetEnvironmentVariable("PLAYWRIGHT_URL") ?? "http://playwright:3001";
+        var http = _httpFactory.CreateClient();
+        http.Timeout = TimeSpan.FromMinutes(2);
+        try
+        {
+            var body = new { recipients = new[] { new { phone = telefonoDestino, message = texto } } };
+            var resp = await http.PostAsJsonAsync($"{playwrightUrl}/whatsapp/send-bulk", body, ct);
+            if (!resp.IsSuccessStatusCode)
+            {
+                var err = await resp.Content.ReadAsStringAsync(ct);
+                _log.LogWarning("[WA pedidos detalle venta] Playwright {Code}: {Err}", (int)resp.StatusCode, err.Substring(0, Math.Min(200, err.Length)));
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "[WA pedidos detalle venta] error enviando a {Tel}", telefonoDestino);
+        }
+    }
+
+    /// <summary>Elimina un pedido definitivamente de la DB.</summary>
+    [HttpDelete("{id:int}")]
+    public async Task<IActionResult> Eliminar(int id)
+    {
+        var p = await _db.WhatsAppPedidosRecibidos.FindAsync(id);
+        if (p is null) return NotFound();
+        _db.WhatsAppPedidosRecibidos.Remove(p);
         await _db.SaveChangesAsync();
         return Ok();
     }
