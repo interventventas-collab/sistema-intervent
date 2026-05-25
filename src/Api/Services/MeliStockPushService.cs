@@ -236,8 +236,38 @@ public class MeliStockPushService
             && lt.ValueKind == JsonValueKind.String
             && string.Equals(lt.GetString(), "fulfillment", StringComparison.OrdinalIgnoreCase);
 
+        // FULL (dual stock): MeLi NO permite modificar `available_quantity` via PUT /items/{id},
+        // pero SÍ se puede modificar el stock del depósito propio (selling_address) via
+        // PUT /user-products/{upg_id}/stock/type/selling_address (endpoint descubierto el
+        // 2026-05-25 analizando addin Integraly). Requiere header `x-version` fresco.
+        // El stock del Full (meli_facility) NO se toca — eso lo maneja MeLi.
         if (isFulfillment)
-            return (PushOutcome.Skipped, "FULL: MeLi no permite modificar stock por API");
+        {
+            // Necesitamos el user_product_id que viene en el GET del item.
+            if (!doc.TryGetProperty("user_product_id", out var upgProp) || upgProp.ValueKind != JsonValueKind.String)
+                return (PushOutcome.Skipped, "FULL: sin user_product_id, no se puede pushear");
+            var upgId = upgProp.GetString();
+            if (string.IsNullOrEmpty(upgId))
+                return (PushOutcome.Skipped, "FULL: user_product_id vacío");
+
+            // Para Full no hay variations (típicamente, según el código Integraly). Si las hay,
+            // por ahora calculamos un único stock total y lo metemos en selling_address.
+            // Cargar componentes/legacy stock.
+            var compsForFull = compsThisItem;
+            int stockFull;
+            if (compsForFull.Count > 0)
+                stockFull = CalcStockMinComponentes(compsForFull, productos);
+            else
+                stockFull = CalcStockLegacy(rows.First(), productos);
+            // Aplicar reserva interna (mismo criterio que items normales).
+            var reservaSettingFull = await _db.AppSettings.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Key == "meli.stock_push.reserva_interna", ct);
+            int reservaFull = 1;
+            if (reservaSettingFull != null && int.TryParse(reservaSettingFull.Value, out var rf) && rf >= 0) reservaFull = rf;
+            var qtySellingAddress = Math.Max(0, stockFull - reservaFull);
+
+            return await PushSellingAddressForFullAsync(http, upgId!, qtySellingAddress, ct);
+        }
 
         // ¿Tiene variations en MeLi?
         var meliVariationIds = new List<long>();
@@ -326,6 +356,64 @@ public class MeliStockPushService
                 payload["status"] = "active";
             return await DoPut(http, meliItemId, payload, ct);
         }
+    }
+
+    /// <summary>Actualiza el stock del depósito propio (selling_address) de una publicación
+    /// Full (logistic_type=fulfillment) sin tocar el stock del Full (meli_facility).
+    ///
+    /// Endpoint descubierto el 2026-05-25 analizando addin Integraly:
+    ///   PUT /user-products/{upg_id}/stock/type/selling_address
+    ///   Header: x-version (fresco, obtenido con GET previo)
+    ///   Body: { "quantity": N }
+    ///
+    /// Maneja 409 (version mismatch) reintentando con el x-version nuevo.</summary>
+    private async Task<(PushOutcome, string?)> PushSellingAddressForFullAsync(
+        HttpClient http, string userProductId, int quantity, CancellationToken ct)
+    {
+        // 1) GET para obtener el x-version actual.
+        var getUrl = $"https://api.mercadolibre.com/user-products/{userProductId}/stock";
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            string? xVersion;
+            try
+            {
+                using var getResp = await http.GetAsync(getUrl, ct);
+                if (!getResp.IsSuccessStatusCode)
+                    return (PushOutcome.Error, $"FULL GET user-product stock {(int)getResp.StatusCode}");
+                xVersion = getResp.Headers.TryGetValues("x-version", out var xvVals)
+                    ? xvVals.FirstOrDefault() : null;
+            }
+            catch (Exception ex)
+            {
+                return (PushOutcome.Error, "FULL GET ex: " + ex.Message);
+            }
+            if (string.IsNullOrEmpty(xVersion))
+                return (PushOutcome.Error, "FULL sin x-version header en GET");
+
+            // 2) PUT a /stock/type/selling_address con x-version.
+            var putUrl = $"https://api.mercadolibre.com/user-products/{userProductId}/stock/type/selling_address";
+            var jsonBody = JsonSerializer.Serialize(new { quantity });
+            using var req = new HttpRequestMessage(HttpMethod.Put, putUrl)
+            {
+                Content = new StringContent(jsonBody, Encoding.UTF8, "application/json")
+            };
+            req.Headers.TryAddWithoutValidation("x-version", xVersion);
+            HttpResponseMessage resp;
+            try { resp = await http.SendAsync(req, ct); }
+            catch (Exception ex) { return (PushOutcome.Error, "FULL PUT ex: " + ex.Message); }
+
+            // 204 No Content = OK
+            if (resp.IsSuccessStatusCode)
+                return (PushOutcome.Ok, $"FULL selling_address pusheado (qty={quantity})");
+
+            // 409 = version mismatch, reintentar con x-version nuevo (max 1 retry)
+            if (resp.StatusCode == System.Net.HttpStatusCode.Conflict && attempt == 0)
+                continue;
+
+            var err = await resp.Content.ReadAsStringAsync(ct);
+            return (PushOutcome.Error, $"FULL PUT {(int)resp.StatusCode}: {Trim(err)}");
+        }
+        return (PushOutcome.Error, "FULL: agotados los reintentos por version mismatch");
     }
 
     private async Task<(PushOutcome, string?)> DoPut(HttpClient http, string meliItemId,
