@@ -663,6 +663,182 @@ public class MeliController : ControllerBase
         }
     }
 
+    // ============================================================
+    // PANTALLA "SKUs Mercado Libre" (árbol genealógico)
+    // ============================================================
+
+    public record SkuMeliRow(
+        string Sku,
+        int CantPubsActivas,
+        int CantPubsPausadas,
+        int? StockMeliMax,                  // max(AvailableQuantity) entre las pubs
+        string Estado,                       // "ok" / "sin_link" / "sin_combo" / "producto_suelto"
+        int? ComboId,                        // Cafe_Combos.Id si existe
+        string? ComboNombre,
+        int StockArmableCombo,               // stock que se puede armar segun min(componentes/cantidad)
+        List<SkuMeliComponenteRow> Componentes,
+        int? ProductoSueltoId,
+        string? ProductoSueltoNombre,
+        int? ProductoSueltoStock
+    );
+
+    public record SkuMeliComponenteRow(int ProductoId, string Sku, string Nombre, int Cantidad, int StockDisponible);
+    public record SkuMeliPubRow(string MeliItemId, string Status, int AvailableQuantity, string? Permalink);
+
+    /// <summary>Devuelve el listado de SKUs únicos de MeliItems con su árbol genealógico:
+    /// publicaciones que lo usan, combo del sistema (si existe), componentes, stock armable.
+    /// Soporta filtros: estado (ok/sin_link/sin_combo/producto_suelto) + búsqueda por SKU.</summary>
+    [HttpGet("skus-meli")]
+    public async Task<IActionResult> GetSkusMeli(
+        [FromServices] Api.Data.AppDbContext db,
+        [FromQuery] string? buscar = null,
+        [FromQuery] string? estado = null,
+        [FromQuery] int limit = 1000)
+    {
+        // 1) SKUs únicos de MeliItems (excluye cerradas, incluye paused y active)
+        var skusBaseQ = db.MeliItems.AsNoTracking()
+            .Where(mi => mi.Sku != null && mi.Sku != "" && (mi.Status == "active" || mi.Status == "paused"));
+        if (!string.IsNullOrWhiteSpace(buscar))
+        {
+            var t = buscar.Trim().ToUpper();
+            skusBaseQ = skusBaseQ.Where(mi => mi.Sku!.ToUpper().Contains(t));
+        }
+
+        var skusAgg = await skusBaseQ
+            .GroupBy(mi => mi.Sku)
+            .Select(g => new {
+                Sku = g.Key!,
+                CantActivas = g.Sum(x => x.Status == "active" ? 1 : 0),
+                CantPausadas = g.Sum(x => x.Status == "paused" ? 1 : 0),
+                StockMeliMax = g.Max(x => (int?)x.AvailableQuantity),
+                HayLinkeado = g.Sum(x => x.CafeComboId != null || x.CafeProductoId != null ? 1 : 0)
+            })
+            .OrderBy(x => x.Sku)
+            .Take(limit + 200)  // tomamos un poquito mas porque despues filtramos
+            .ToListAsync();
+
+        var skuList = skusAgg.Select(x => x.Sku).ToList();
+
+        // 2) Combos que matchean por SKU
+        var combos = await db.CafeCombos.AsNoTracking()
+            .Where(c => skuList.Contains(c.Sku))
+            .Select(c => new { c.Id, c.Sku, c.Nombre })
+            .ToListAsync();
+        var comboBySku = combos.ToDictionary(c => c.Sku, c => c);
+        var comboIds = combos.Select(c => c.Id).ToList();
+
+        // 3) Componentes de esos combos
+        var compsRaw = await db.CafeComboItems.AsNoTracking()
+            .Where(ci => comboIds.Contains(ci.ComboId))
+            .Join(db.CafeProductos.AsNoTracking(),
+                ci => ci.ProductoId, p => p.Id,
+                (ci, p) => new {
+                    ci.ComboId, ci.ProductoId, p.Sku, p.Nombre, ci.Cantidad, p.StockUnidades
+                })
+            .ToListAsync();
+        var compsByCombo = compsRaw.GroupBy(c => c.ComboId).ToDictionary(g => g.Key, g => g.ToList());
+
+        // 4) Productos sueltos (cuando el SKU del MeLi corresponde a un Cafe_Productos, NO a Cafe_Combos)
+        var productos = await db.CafeProductos.AsNoTracking()
+            .Where(p => skuList.Contains(p.Sku!))
+            .Select(p => new { p.Id, p.Sku, p.Nombre, p.StockUnidades })
+            .ToListAsync();
+        var prodBySku = productos.ToDictionary(p => p.Sku!, p => p);
+
+        var result = new List<SkuMeliRow>();
+        foreach (var s in skusAgg)
+        {
+            string estadoCalc;
+            int? comboId = null; string? comboNombre = null;
+            int stockArmable = 0;
+            List<SkuMeliComponenteRow> componentes = new();
+            int? prodId = null; string? prodNombre = null; int? prodStock = null;
+
+            if (comboBySku.TryGetValue(s.Sku, out var cb))
+            {
+                comboId = cb.Id; comboNombre = cb.Nombre;
+                if (compsByCombo.TryGetValue(cb.Id, out var comps))
+                {
+                    componentes = comps.Select(c => new SkuMeliComponenteRow(
+                        c.ProductoId, c.Sku ?? "", c.Nombre, c.Cantidad, c.StockUnidades
+                    )).ToList();
+                    // stock armable = MIN(stock_componente / cantidad) entre todos los componentes
+                    if (componentes.Count > 0)
+                    {
+                        stockArmable = componentes
+                            .Where(c => c.Cantidad > 0)
+                            .Select(c => (int)Math.Floor(c.StockDisponible / (double)c.Cantidad))
+                            .DefaultIfEmpty(0).Min();
+                    }
+                }
+                estadoCalc = s.HayLinkeado > 0 ? "ok" : "sin_link";
+            }
+            else if (prodBySku.TryGetValue(s.Sku, out var prd))
+            {
+                prodId = prd.Id; prodNombre = prd.Nombre; prodStock = prd.StockUnidades;
+                stockArmable = prd.StockUnidades;
+                estadoCalc = s.HayLinkeado > 0 ? "ok" : "producto_suelto";
+            }
+            else
+            {
+                estadoCalc = "sin_combo";
+            }
+
+            // Filtro por estado
+            if (!string.IsNullOrEmpty(estado) && estado != estadoCalc) continue;
+
+            result.Add(new SkuMeliRow(
+                Sku: s.Sku,
+                CantPubsActivas: s.CantActivas,
+                CantPubsPausadas: s.CantPausadas,
+                StockMeliMax: s.StockMeliMax,
+                Estado: estadoCalc,
+                ComboId: comboId, ComboNombre: comboNombre,
+                StockArmableCombo: stockArmable,
+                Componentes: componentes,
+                ProductoSueltoId: prodId, ProductoSueltoNombre: prodNombre, ProductoSueltoStock: prodStock
+            ));
+            if (result.Count >= limit) break;
+        }
+
+        // Stats globales (sin paginar)
+        var totalSkus = skusAgg.Count;
+        return Ok(new {
+            total = totalSkus,
+            mostrados = result.Count,
+            items = result
+        });
+    }
+
+    /// <summary>Devuelve las publicaciones MeLi de un SKU puntual.</summary>
+    [HttpGet("skus-meli/{sku}/pubs")]
+    public async Task<IActionResult> GetSkuMeliPubs(string sku, [FromServices] Api.Data.AppDbContext db)
+    {
+        var pubs = await db.MeliItems.AsNoTracking()
+            .Where(mi => mi.Sku == sku && (mi.Status == "active" || mi.Status == "paused"))
+            .OrderByDescending(mi => mi.AvailableQuantity)
+            .Select(mi => new SkuMeliPubRow(mi.MeliItemId, mi.Status ?? "", mi.AvailableQuantity, mi.Permalink))
+            .ToListAsync();
+        return Ok(pubs);
+    }
+
+    /// <summary>Linkea automáticamente todas las pubs MeLi de un SKU al combo del sistema con
+    /// el mismo SKU. Setea MeliItems.CafeComboId. Idempotente.</summary>
+    [HttpPost("skus-meli/{sku}/linkear")]
+    public async Task<IActionResult> LinkearSkuMeli(string sku, [FromServices] Api.Data.AppDbContext db)
+    {
+        var combo = await db.CafeCombos.AsNoTracking().FirstOrDefaultAsync(c => c.Sku == sku);
+        if (combo is null) return BadRequest(new { error = $"No existe combo con SKU '{sku}' en el sistema" });
+
+        var pubs = await db.MeliItems
+            .Where(mi => mi.Sku == sku && mi.CafeComboId == null && (mi.Status == "active" || mi.Status == "paused"))
+            .ToListAsync();
+        foreach (var p in pubs) p.CafeComboId = combo.Id;
+        await db.SaveChangesAsync();
+
+        return Ok(new { ok = true, comboId = combo.Id, pubsLinkeadas = pubs.Count });
+    }
+
     /// <summary>Devuelve el valor global de meli.stock_push.reserva_interna (default 1).
     /// La UI lo muestra en la ficha producto para que el usuario sepa qué valor se aplica
     /// cuando el campo StockMinimoMeLi está vacío.</summary>

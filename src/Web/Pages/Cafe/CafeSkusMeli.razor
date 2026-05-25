@@ -1,0 +1,295 @@
+@page "/cafe/skus-meli"
+@attribute [Authorize]
+@inject HttpClient Http
+@inject ToastService ToastService
+@inject IJSRuntime JS
+
+<PageTitle>SKUs Mercado Libre — Inter Vent</PageTitle>
+
+<div class="card">
+    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+        <div>
+            <h3 style="margin:0;">🛒 SKUs Mercado Libre</h3>
+            <p style="font-size:0.78rem; color:#6b7280; margin:0.2rem 0 0;">
+                Árbol genealógico de cada SKU de MeLi → combo del sistema → componentes.
+                Acá controlás qué descuenta cada venta de MeLi.
+            </p>
+        </div>
+        <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+            <input class="form-input" style="width:200px;" placeholder="🔍 Buscar SKU…"
+                   @bind="buscar" @bind:event="oninput" @onkeyup="OnSearchKey" />
+            <select class="form-input" style="width:auto;" @bind="estadoFiltro" @bind:after="Recargar">
+                <option value="">Todos</option>
+                <option value="ok">🟢 Linkeado OK</option>
+                <option value="sin_link">🟡 Sin linkear (combo existe)</option>
+                <option value="sin_combo">🔴 Sin combo en sistema</option>
+                <option value="producto_suelto">⚪ Producto suelto (no combo)</option>
+            </select>
+            <button class="btn btn-secondary" @onclick="Recargar" disabled="@cargando">@(cargando ? "..." : "🔄 Refrescar")</button>
+        </div>
+    </div>
+
+    <div class="card-body" style="padding:0.6rem 1rem;">
+        @if (response is not null)
+        {
+            <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:0.6rem; font-size:0.85rem;">
+                <span><b>Total SKUs:</b> @response.total</span>
+                <span>· Mostrando: <b>@response.mostrados</b></span>
+                <span style="color:#16a34a;">🟢 @CountEstado("ok") OK</span>
+                <span style="color:#d97706;">🟡 @CountEstado("sin_link") sin linkear</span>
+                <span style="color:#b91c1c;">🔴 @CountEstado("sin_combo") sin combo</span>
+                <span style="color:#6b7280;">⚪ @CountEstado("producto_suelto") productos sueltos</span>
+            </div>
+        }
+    </div>
+
+    <div class="card-body" style="padding:0; max-height:75vh; overflow-y:auto;">
+        @if (cargando && response is null)
+        {
+            <p style="text-align:center; padding:2rem; color:#6b7280;">Cargando SKUs…</p>
+        }
+        else if (response is null || response.items.Count == 0)
+        {
+            <p style="text-align:center; padding:2rem; color:#6b7280;">Sin resultados.</p>
+        }
+        else
+        {
+            @foreach (var sku in response.items)
+            {
+                var skuLocal = sku;
+                var color = ColorPorEstado(sku.estado);
+                var icono = IconoPorEstado(sku.estado);
+                var label = LabelPorEstado(sku.estado);
+                var expandido = expandidos.Contains(sku.sku);
+                <div style="border-bottom:1px solid #f3f4f6;">
+                    <div style="display:flex; align-items:center; padding:0.6rem 1rem; cursor:pointer; gap:0.6rem;"
+                         @onclick="() => ToggleExpand(skuLocal.sku)">
+                        <span style="font-size:0.9rem; width:18px;">@(expandido ? "▼" : "▶")</span>
+                        <span style="font-size:1rem;">@icono</span>
+                        <span style="background:@color.Bg; color:@color.Fg; padding:0.15rem 0.45rem; border-radius:4px; font-size:0.7rem; font-weight:700; min-width:96px; text-align:center;">@label</span>
+                        <span style="font-family:monospace; font-weight:700; color:#1d4ed8; min-width:160px;">@sku.sku</span>
+                        <span style="color:#6b7280; font-size:0.85rem;">
+                            @(sku.cantPubsActivas) activas
+                            @if (sku.cantPubsPausadas > 0) { <span> · @sku.cantPubsPausadas pausadas</span> }
+                            @if (sku.stockMeliMax.HasValue) { <span> · MeLi: <b>@sku.stockMeliMax</b></span> }
+                        </span>
+                        @if (sku.estado == "sin_link")
+                        {
+                            <button class="btn btn-warning btn-sm" style="margin-left:auto; font-size:0.78rem; padding:0.25rem 0.6rem;"
+                                    @onclick="() => LinkearAuto(skuLocal.sku)"
+                                    @onclick:stopPropagation="true">
+                                🔗 Linkear automático
+                            </button>
+                        }
+                    </div>
+
+                    @if (expandido)
+                    {
+                        <div style="padding:0.8rem 2rem 1rem; background:#fafafa;">
+                            @* PUBLICACIONES *@
+                            <div style="margin-bottom:0.7rem;">
+                                <strong style="font-size:0.82rem; color:#1f2937;">📋 PUBLICACIONES MELI</strong>
+                                @if (pubsCache.TryGetValue(sku.sku, out var pubsList))
+                                {
+                                    <ul style="margin:0.3rem 0 0 1rem; padding:0; list-style:none;">
+                                        @foreach (var pub in pubsList)
+                                        {
+                                            <li style="font-size:0.78rem; padding:0.15rem 0;">
+                                                <span style="font-family:monospace; color:#1d4ed8;">@pub.meliItemId</span>
+                                                <span style="background:@(pub.status == "active" ? "#dcfce7" : "#fee2e2"); padding:0.05rem 0.3rem; border-radius:3px; font-size:0.7rem; margin:0 0.3rem;">@pub.status</span>
+                                                Stock: <b>@pub.availableQuantity</b>
+                                                @if (!string.IsNullOrEmpty(pub.permalink))
+                                                {
+                                                    <a href="@pub.permalink" target="_blank" style="margin-left:0.4rem; font-size:0.72rem; color:#1d4ed8;">ver en MeLi ↗</a>
+                                                }
+                                            </li>
+                                        }
+                                    </ul>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-sm" style="font-size:0.7rem; margin-left:0.5rem;" @onclick="() => CargarPubs(skuLocal.sku)">Cargar pubs…</button>
+                                }
+                            </div>
+
+                            @* ÁRBOL DEL COMBO O PRODUCTO *@
+                            @if (sku.comboId.HasValue)
+                            {
+                                <div style="background:white; border:1px solid #e5e7eb; border-radius:6px; padding:0.6rem;">
+                                    <strong style="font-size:0.82rem;">🌳 COMBO DEL SISTEMA</strong>
+                                    <p style="font-size:0.78rem; color:#6b7280; margin:0.2rem 0 0.5rem;">
+                                        ID @sku.comboId — @sku.comboNombre
+                                    </p>
+                                    @if (sku.componentes.Count > 0)
+                                    {
+                                        <table style="width:100%; font-size:0.82rem; border-collapse:collapse;">
+                                            <thead>
+                                                <tr style="border-bottom:1px solid #e5e7eb; text-align:left;">
+                                                    <th style="padding:0.3rem;">Cant.</th>
+                                                    <th style="padding:0.3rem;">SKU</th>
+                                                    <th style="padding:0.3rem;">Componente</th>
+                                                    <th style="padding:0.3rem; text-align:right;">Stock</th>
+                                                    <th style="padding:0.3rem; text-align:right;">Alcanza para</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var c in sku.componentes)
+                                                {
+                                                    var alcanza = c.cantidad > 0 ? (int)Math.Floor((double)c.stockDisponible / c.cantidad) : 0;
+                                                    <tr>
+                                                        <td style="padding:0.3rem; font-weight:700;">@c.cantidad×</td>
+                                                        <td style="padding:0.3rem; font-family:monospace; color:#1d4ed8;">@c.sku</td>
+                                                        <td style="padding:0.3rem; color:#374151;">@c.nombre</td>
+                                                        <td style="padding:0.3rem; text-align:right; font-weight:600;">@c.stockDisponible u.</td>
+                                                        <td style="padding:0.3rem; text-align:right; color:@(alcanza > 0 ? "#16a34a" : "#b91c1c");">@alcanza combos</td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                        <div style="margin-top:0.6rem; padding:0.5rem; background:#f0fdf4; border:1px solid #16a34a; border-radius:4px; font-size:0.82rem;">
+                                            <b>📊 Stock armable del combo: @sku.stockArmableCombo unidades</b>
+                                            (limitado por el componente más escaso)
+                                        </div>
+                                        @if (sku.stockMeliMax.HasValue && sku.stockMeliMax.Value != sku.stockArmableCombo)
+                                        {
+                                            <div style="margin-top:0.3rem; padding:0.4rem; background:#fffbeb; border:1px solid #d97706; border-radius:4px; font-size:0.78rem;">
+                                                ⚠ MeLi muestra <b>@sku.stockMeliMax</b> pero el combo armable es <b>@sku.stockArmableCombo</b> — al pushear se ajusta.
+                                            </div>
+                                        }
+                                        <div style="margin-top:0.6rem; padding:0.5rem; background:#fff; border:1px dashed #d1d5db; border-radius:4px; font-size:0.78rem; color:#4b5563;">
+                                            🎯 <b>Si se vende 1 unidad por MeLi:</b><br/>
+                                            @foreach (var c in sku.componentes)
+                                            {
+                                                <span>· descuenta <b>@c.cantidad</b> de <span style="font-family:monospace; color:#1d4ed8;">@c.sku</span> (queda @(c.stockDisponible - c.cantidad))<br/></span>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            else if (sku.productoSueltoId.HasValue)
+                            {
+                                <div style="background:white; border:1px solid #e5e7eb; border-radius:6px; padding:0.6rem;">
+                                    <strong style="font-size:0.82rem;">📦 PRODUCTO SUELTO (no es combo)</strong>
+                                    <p style="font-size:0.78rem; margin:0.3rem 0; color:#374151;">
+                                        @sku.productoSueltoNombre · Stock: <b>@sku.productoSueltoStock u.</b>
+                                    </p>
+                                </div>
+                            }
+                            else
+                            {
+                                <div style="background:#fef2f2; border:1px solid #fca5a5; border-radius:6px; padding:0.6rem;">
+                                    <strong style="font-size:0.82rem; color:#991b1b;">⚠ NO HAY COMBO NI PRODUCTO EN EL SISTEMA CON ESTE SKU</strong>
+                                    <p style="font-size:0.78rem; margin:0.3rem 0 0; color:#7f1d1d;">
+                                        Cuando se vende esta publicación, el sistema NO descuenta nada.
+                                        Hay que crear el combo o producto correspondiente.
+                                    </p>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private SkusMeliResponse? response;
+    private bool cargando;
+    private string buscar = "";
+    private string estadoFiltro = "";
+    private HashSet<string> expandidos = new();
+    private Dictionary<string, List<PubRow>> pubsCache = new();
+    private System.Threading.Timer? debounce;
+
+    public record SkusMeliResponse(int total, int mostrados, List<SkuRow> items);
+    public record SkuRow(
+        string sku, int cantPubsActivas, int cantPubsPausadas, int? stockMeliMax,
+        string estado, int? comboId, string? comboNombre, int stockArmableCombo,
+        List<ComponenteRow> componentes, int? productoSueltoId, string? productoSueltoNombre, int? productoSueltoStock
+    );
+    public record ComponenteRow(int productoId, string sku, string nombre, int cantidad, int stockDisponible);
+    public record PubRow(string meliItemId, string status, int availableQuantity, string? permalink);
+
+    protected override async Task OnInitializedAsync() => await Recargar();
+
+    private async Task Recargar()
+    {
+        cargando = true; StateHasChanged();
+        try
+        {
+            var qs = new List<string>();
+            if (!string.IsNullOrWhiteSpace(buscar)) qs.Add($"buscar={Uri.EscapeDataString(buscar.Trim())}");
+            if (!string.IsNullOrEmpty(estadoFiltro)) qs.Add($"estado={estadoFiltro}");
+            var url = "/api/meli/skus-meli" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+            response = await Http.GetFromJsonAsync<SkusMeliResponse>(url);
+        }
+        catch (Exception ex) { ToastService.Error("Error al cargar: " + ex.Message); }
+        finally { cargando = false; StateHasChanged(); }
+    }
+
+    private int CountEstado(string est) => response?.items.Count(s => s.estado == est) ?? 0;
+
+    private void OnSearchKey(KeyboardEventArgs e)
+    {
+        debounce?.Dispose();
+        debounce = new System.Threading.Timer(async _ => await InvokeAsync(Recargar), null, 400, System.Threading.Timeout.Infinite);
+    }
+
+    private void ToggleExpand(string sku)
+    {
+        if (expandidos.Contains(sku)) expandidos.Remove(sku);
+        else { expandidos.Add(sku); if (!pubsCache.ContainsKey(sku)) _ = CargarPubs(sku); }
+    }
+
+    private async Task CargarPubs(string sku)
+    {
+        try
+        {
+            var pubs = await Http.GetFromJsonAsync<List<PubRow>>($"/api/meli/skus-meli/{Uri.EscapeDataString(sku)}/pubs");
+            if (pubs != null) pubsCache[sku] = pubs;
+            StateHasChanged();
+        }
+        catch { /* ignore */ }
+    }
+
+    private async Task LinkearAuto(string sku)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Linkear todas las pubs MeLi de SKU '{sku}' al combo del sistema?")) return;
+        try
+        {
+            var resp = await Http.PostAsync($"/api/meli/skus-meli/{Uri.EscapeDataString(sku)}/linkear", null);
+            if (resp.IsSuccessStatusCode)
+            {
+                var result = await resp.Content.ReadFromJsonAsync<LinkResp>();
+                ToastService.Success($"✓ Linkeadas {result?.pubsLinkeadas ?? 0} pubs");
+                await Recargar();
+            }
+            else
+            {
+                var err = await resp.Content.ReadAsStringAsync();
+                ToastService.Error("Error: " + err);
+            }
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+    private record LinkResp(bool ok, int comboId, int pubsLinkeadas);
+
+    private (string Bg, string Fg) ColorPorEstado(string est) => est switch
+    {
+        "ok"               => ("#dcfce7", "#166534"),
+        "sin_link"         => ("#fef3c7", "#92400e"),
+        "sin_combo"        => ("#fee2e2", "#991b1b"),
+        "producto_suelto"  => ("#e5e7eb", "#374151"),
+        _                  => ("#f3f4f6", "#6b7280")
+    };
+    private string IconoPorEstado(string est) => est switch
+    {
+        "ok" => "🟢", "sin_link" => "🟡", "sin_combo" => "🔴", "producto_suelto" => "⚪", _ => "❔"
+    };
+    private string LabelPorEstado(string est) => est switch
+    {
+        "ok" => "LINKEADO OK", "sin_link" => "SIN LINKEAR", "sin_combo" => "SIN COMBO",
+        "producto_suelto" => "PRODUCTO", _ => "?"
+    };
+}
