@@ -663,6 +663,19 @@ public class MeliController : ControllerBase
         }
     }
 
+    /// <summary>Devuelve el valor global de meli.stock_push.reserva_interna (default 1).
+    /// La UI lo muestra en la ficha producto para que el usuario sepa qué valor se aplica
+    /// cuando el campo StockMinimoMeLi está vacío (caso: 'Vacío = heredado del global X').</summary>
+    [HttpGet("stock-reserva-global")]
+    public async Task<IActionResult> GetStockReservaGlobal([FromServices] Api.Data.AppDbContext db)
+    {
+        var s = await db.AppSettings.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Key == "meli.stock_push.reserva_interna");
+        int valor = 1;
+        if (s != null && int.TryParse(s.Value, out var v) && v >= 0) valor = v;
+        return Ok(new { reservaGlobal = valor });
+    }
+
     /// <summary>Devuelve un diccionario { CafeProductoId → thumbnail_url } con la primera imagen
     /// del primer MeliItem linkeado a cada producto. Para mostrar en el listado /cafe/productos.</summary>
     [HttpGet("product-thumbnails")]

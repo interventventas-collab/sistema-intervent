@@ -679,13 +679,28 @@
                         <input class="form-input" type="number" step="1" min="0" @bind="formStockUnidades" />
                     </div>
                     <div class="form-group" style="background:#fff7ed; border:1px solid #fdba74; border-radius:6px; padding:0.6rem;">
-                        <label class="form-label" style="color:#9a3412;">🛒 Stock mínimo para MeLi (opcional)</label>
-                        <input class="form-input" type="number" step="1" min="0" placeholder="Vacío = usar default global"
+                        <label class="form-label" style="color:#9a3412;">🛒 Stock mínimo para MeLi</label>
+                        @{
+                            var aplicado = formStockMinimoMeli ?? reservaGlobalMeli;
+                            var heredado = !formStockMinimoMeli.HasValue;
+                        }
+                        <div style="background:white; border:1px solid #fdba74; border-radius:4px; padding:0.4rem 0.6rem; margin-bottom:0.4rem; font-size:0.85rem;">
+                            <b style="color:#9a3412;">📌 Actualmente se aplica: @aplicado</b>
+                            @if (heredado)
+                            {
+                                <span style="color:#a16207;"> (heredado del global)</span>
+                            }
+                            else
+                            {
+                                <span style="color:#15803d;"> (override propio del producto)</span>
+                            }
+                        </div>
+                        <input class="form-input" type="number" step="1" min="0" placeholder="@($"Vacío = heredar del global ({reservaGlobalMeli})")"
                                @bind="formStockMinimoMeli" />
                         <small style="display:block; margin-top:0.3rem; color:#7c2d12; font-size:0.72rem;">
-                            Si pongo <b>2</b>: MeLi recibe <i>(stock − 2)</i> y se pausa cuando quedan ≤ 2 en sistema.
-                            Si lo dejo <b>vacío</b>: usa el valor global de Configuración.
+                            Si pongo <b>2</b>: MeLi recibe <i>(stock − 2)</i> y se pausa cuando quedan ≤ 2.
                             Si pongo <b>0</b>: MeLi siempre ve el stock real (sin reservar).
+                            Si lo dejo <b>vacío</b>: usa el global (@reservaGlobalMeli).
                         </small>
                     </div>
                 }
@@ -1468,6 +1483,9 @@
     private string? ThumbnailFor(int productoId)
         => thumbsByProductoId.TryGetValue(productoId, out var t) ? t : null;
 
+    // 2026-05-25: valor global de meli.stock_push.reserva_interna (para mostrar en la ficha)
+    private int reservaGlobalMeli = 1;
+
     protected override async Task OnInitializedAsync()
     {
         // Cargo OEMs, marcas y reglas de precios en paralelo a productos
@@ -1493,7 +1511,17 @@
                 .ToDictionary(kv => int.Parse(kv.Key), kv => kv.Value);
         }
         catch { thumbsByProductoId = new(); }
+
+        // Cargar también el valor global de reserva para mostrar en la ficha
+        try
+        {
+            var r = await Http.GetFromJsonAsync<ReservaGlobalResp>("/api/meli/stock-reserva-global");
+            if (r != null) reservaGlobalMeli = r.reservaGlobal;
+        }
+        catch { /* mantengo el default 1 */ }
     }
+
+    private record ReservaGlobalResp(int reservaGlobal);
 
     private async Task LoadMarcasCatalog()
     {
