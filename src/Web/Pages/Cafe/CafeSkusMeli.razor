@@ -35,10 +35,10 @@
             <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:0.6rem; font-size:0.85rem;">
                 <span><b>Total SKUs:</b> @response.total</span>
                 <span>· Mostrando: <b>@response.mostrados</b></span>
-                <span style="color:#16a34a;">🟢 @CountEstado("ok") OK</span>
-                <span style="color:#d97706;">🟡 @CountEstado("sin_link") sin linkear</span>
-                <span style="color:#b91c1c;">🔴 @CountEstado("sin_combo") sin combo</span>
-                <span style="color:#6b7280;">⚪ @CountEstado("producto_suelto") productos sueltos</span>
+                <span style="color:#16a34a;">🟢 @(response.stats?.ok ?? 0) OK</span>
+                <span style="color:#d97706;">🟡 @(response.stats?.sin_link ?? 0) sin linkear</span>
+                <span style="color:#b91c1c;">🔴 @(response.stats?.sin_combo ?? 0) sin combo</span>
+                <span style="color:#6b7280;">⚪ @(response.stats?.producto_suelto ?? 0) productos sueltos</span>
             </div>
         }
     </div>
@@ -268,7 +268,8 @@
     private Dictionary<string, List<PubRow>> pubsCache = new();
     private System.Threading.Timer? debounce;
 
-    public record SkusMeliResponse(int total, int mostrados, List<SkuRow> items);
+    public record SkusMeliResponse(int total, int mostrados, StatsCounts? stats, List<SkuRow> items);
+    public record StatsCounts(int ok, int sin_link, int sin_combo, int producto_suelto);
     public record SkuRow(
         string sku, int cantPubsActivas, int cantPubsPausadas, int? stockMeliMax,
         string estado, int? comboId, string? comboNombre, int stockArmableCombo,
