@@ -663,6 +663,47 @@ public class MeliController : ControllerBase
         }
     }
 
+    /// <summary>Devuelve un diccionario { CafeProductoId → thumbnail_url } con la primera imagen
+    /// del primer MeliItem linkeado a cada producto. Para mostrar en el listado /cafe/productos.</summary>
+    [HttpGet("product-thumbnails")]
+    public async Task<IActionResult> GetProductThumbnails([FromServices] Api.Data.AppDbContext db)
+    {
+        var map = new Dictionary<int, string>();
+
+        // 1) Legacy: MeliItem.CafeProductoId directo
+        var legacy = await db.MeliItems.AsNoTracking()
+            .Where(mi => mi.CafeProductoId != null && mi.Thumbnail != null && mi.Status == "active")
+            .Select(mi => new { mi.CafeProductoId, mi.Thumbnail, mi.UpdatedAt })
+            .ToListAsync();
+        foreach (var g in legacy.GroupBy(x => x.CafeProductoId!.Value))
+        {
+            var best = g.OrderByDescending(x => x.UpdatedAt).First();
+            if (!string.IsNullOrEmpty(best.Thumbnail)) map[g.Key] = best.Thumbnail!;
+        }
+
+        // 2) Vía componentes: para los que aún no tienen thumb, buscar via MeliItemComponente
+        var falta = await db.CafeProductos.AsNoTracking()
+            .Where(p => p.IsActive && !map.Keys.Contains(p.Id))
+            .Select(p => p.Id).ToListAsync();
+        if (falta.Count > 0)
+        {
+            var viaComp = await (
+                from c in db.MeliItemComponentes
+                join mi in db.MeliItems on c.MeliItemId equals mi.MeliItemId
+                where falta.Contains(c.CafeProductoId)
+                   && mi.Thumbnail != null && mi.Status == "active"
+                select new { c.CafeProductoId, mi.Thumbnail, mi.UpdatedAt }
+            ).ToListAsync();
+            foreach (var g in viaComp.GroupBy(x => x.CafeProductoId))
+            {
+                var best = g.OrderByDescending(x => x.UpdatedAt).First();
+                if (!string.IsNullOrEmpty(best.Thumbnail)) map[g.Key] = best.Thumbnail!;
+            }
+        }
+
+        return Ok(map);
+    }
+
     /// <summary>Sincroniza el stock Full (meli_facility) de MeLi hacia Cafe_StockPorDeposito[Full].
     /// Iteración por todos los UPGs linkeados (~1500). Se llama solo o por job cada 30 min.
     /// Opcionalmente filtrá por un solo producto pasando ?cafeProductoId=N.</summary>

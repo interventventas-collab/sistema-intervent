@@ -59,7 +59,8 @@ public class CafeProductosController : ControllerBase
         p.Packs?.Where(pk => pk.IsActive)
             .OrderBy(pk => pk.SortOrder).ThenBy(pk => pk.Cantidad)
             .Select(pk => new CafeProductoPackDto(pk.Id, pk.Cantidad, pk.Nombre, pk.PrecioOverride, pk.IsActive, pk.SortOrder))
-            .ToList() ?? new List<CafeProductoPackDto>());
+            .ToList() ?? new List<CafeProductoPackDto>(),
+        StockMinimoMeLi: p.StockMinimoMeLi);
 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] string? categoria = null)
@@ -405,6 +406,8 @@ public class CafeProductosController : ControllerBase
             OemId = cat == "OTROS" ? req.OemId : null,
             StockGramos = Math.Max(0m, req.StockGramos ?? 0m),
             StockUnidades = Math.Max(0, req.StockUnidades ?? 0),
+            StockMinimoMeLi = req.StockMinimoMeLi.HasValue && req.StockMinimoMeLi.Value >= 0
+                ? req.StockMinimoMeLi.Value : (int?)null,
             Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim(),
             IvaPct = NormalizeIva(req.IvaPct),
             IsActive = true,
@@ -518,6 +521,9 @@ public class CafeProductosController : ControllerBase
             stockCambio = true;
         }
         if (stockCambio) p.StockChangedAt = DateTime.UtcNow;
+        // 2026-05-25: stock mínimo MeLi por producto. Si vino el flag clear → null. Si no, asignar el valor.
+        if (req.ClearStockMinimoMeLi) p.StockMinimoMeLi = null;
+        else if (req.StockMinimoMeLi.HasValue && req.StockMinimoMeLi.Value >= 0) p.StockMinimoMeLi = req.StockMinimoMeLi.Value;
         // Si cambió el stock, sincronizar Cafe_StockPorDeposito (deposito principal)
         // para que la pantalla stock-masivo no quede desfasada.
         if (stockCambio)

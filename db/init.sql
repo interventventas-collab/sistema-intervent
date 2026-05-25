@@ -4136,3 +4136,8 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='LogisticType' AND object_id=OBJECT_ID('MeliOrders'))
     ALTER TABLE MeliOrders ADD LogisticType NVARCHAR(40) NULL;
 GO
+
+-- 2026-05-25: Stock mínimo MeLi por producto (override del global reserva_interna)
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='StockMinimoMeLi' AND object_id=OBJECT_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD StockMinimoMeLi INT NULL;
+GO

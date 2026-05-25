@@ -125,6 +125,12 @@ public class CafeProducto
 
     public int StockUnidades { get; set; }
 
+    /// <summary>Reserva interna específica para este producto al pushear stock a MeLi.
+    /// Si tiene valor: MeLi recibe (stock - StockMinimoMeLi). Si es null: se usa el global
+    /// AppSettings["meli.stock_push.reserva_interna"]. Si pongo 0 → MeLi ve el stock real (sin reserva).
+    /// Si pongo 2 → MeLi ve (stock-2), o sea quedan 2 reservadas para mí.</summary>
+    public int? StockMinimoMeLi { get; set; }
+
     [MaxLength(500)]
     public string? Notas { get; set; }
 

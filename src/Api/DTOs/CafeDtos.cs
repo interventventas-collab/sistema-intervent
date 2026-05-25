@@ -87,7 +87,9 @@ public record CafeProductoDto(
     bool IsVisibleEnVentas = true,
     string? ImportSource = null,
     // 2026-05-22: Packs prearmados (Pack x 100, etc.). Solo OTROS.
-    List<CafeProductoPackDto>? Packs = null);
+    List<CafeProductoPackDto>? Packs = null,
+    // 2026-05-25: stock mínimo de reserva al pushear a MeLi (override por producto, null = global)
+    int? StockMinimoMeLi = null);
 
 public record CafeProductoPackDto(
     int Id, int Cantidad, string Nombre, decimal? PrecioOverride,
@@ -122,6 +124,9 @@ public class CreateCafeProductoRequest
     public int? OemId { get; set; }
     public decimal? StockGramos { get; set; }
     public int? StockUnidades { get; set; }
+    /// <summary>Override por producto: reserva interna que se le resta al stock al pushear a MeLi.
+    /// Null = usar el global de AppSettings (default 1). 0 = sin reserva. N = reservar N unidades.</summary>
+    public int? StockMinimoMeLi { get; set; }
     public string? Notas { get; set; }
     public decimal? IvaPct { get; set; }
     // Modelo nuevo de precios para OTROS:
@@ -219,6 +224,10 @@ public class UpdateCafeProductoRequest
     public bool ClearOemId { get; set; }
     public decimal? StockGramos { get; set; }
     public int? StockUnidades { get; set; }
+    /// <summary>Override por producto: reserva interna que se le resta al stock al pushear a MeLi.
+    /// Null = no cambiar. 0 explícito = sin reserva. ClearStockMinimoMeLi=true → poner null.</summary>
+    public int? StockMinimoMeLi { get; set; }
+    public bool ClearStockMinimoMeLi { get; set; }
     public string? Notas { get; set; }
     public bool? IsActive { get; set; }
     public decimal? IvaPct { get; set; }

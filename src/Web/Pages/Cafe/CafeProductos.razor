@@ -3,6 +3,7 @@
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject IJSRuntime JS
+@inject HttpClient Http
 
 <style>
     .cli-pick-row:hover { background: #f0f9ff; }
@@ -84,6 +85,7 @@
                                     <input type="checkbox" @onchange="ToggleAllVisibles" checked="@TodosVisiblesSeleccionados" />
                                 </th>
                             }
+                            <th style="width: 56px;">Img</th>
                             <th style="width: 100px;">SKU</th>
                             <th>Nombre</th>
                             <th>Categoría</th>
@@ -111,6 +113,19 @@
                                                @onchange="@((ChangeEventArgs e) => ToggleProducto(capturado.Id, (bool)e.Value!))" />
                                     </td>
                                 }
+                                <td style="text-align:center;">
+                                    @{
+                                        var thumb = ThumbnailFor(p.Id);
+                                    }
+                                    @if (!string.IsNullOrEmpty(thumb))
+                                    {
+                                        <img src="@thumb" alt="" style="width:42px; height:42px; object-fit:cover; border-radius:6px; border:1px solid #e5e7eb;" loading="lazy" />
+                                    }
+                                    else
+                                    {
+                                        <div style="width:42px; height:42px; background:#f3f4f6; border-radius:6px; display:inline-flex; align-items:center; justify-content:center; color:#9ca3af; font-size:1.1rem;" title="Sin imagen MeLi">📦</div>
+                                    }
+                                </td>
                                 <td style="font-family: monospace; font-weight: 700; color: #1d4ed8;">
                                     @(p.Sku ?? "—")
                                     @if (!string.IsNullOrEmpty(p.OemCodigo))
@@ -662,6 +677,16 @@
                     <div class="form-group">
                         <label class="form-label">Stock (unidades)</label>
                         <input class="form-input" type="number" step="1" min="0" @bind="formStockUnidades" />
+                    </div>
+                    <div class="form-group" style="background:#fff7ed; border:1px solid #fdba74; border-radius:6px; padding:0.6rem;">
+                        <label class="form-label" style="color:#9a3412;">🛒 Stock mínimo para MeLi (opcional)</label>
+                        <input class="form-input" type="number" step="1" min="0" placeholder="Vacío = usar default global"
+                               @bind="formStockMinimoMeli" />
+                        <small style="display:block; margin-top:0.3rem; color:#7c2d12; font-size:0.72rem;">
+                            Si pongo <b>2</b>: MeLi recibe <i>(stock − 2)</i> y se pausa cuando quedan ≤ 2 en sistema.
+                            Si lo dejo <b>vacío</b>: usa el valor global de Configuración.
+                            Si pongo <b>0</b>: MeLi siempre ve el stock real (sin reservar).
+                        </small>
                     </div>
                 }
 
@@ -1241,6 +1266,8 @@
     private bool oemSearchOpen;
     private decimal formStockGramos;
     private int formStockUnidades;
+    // 2026-05-25: stock mínimo de reserva para MeLi (override por producto). Null = usar default global.
+    private int? formStockMinimoMeli;
     private string formNotas = "";
     private bool formIsActive = true;
 
@@ -1436,16 +1463,36 @@
         return new MarkupString($"<span style=\"color:#9ca3af; text-decoration:line-through;\">{ant}</span> → <b style=\"color:{color};\">{nue}</b>");
     }
 
+    // 2026-05-25: dict CafeProductoId → thumbnail MeLi (primer item linkeado al producto)
+    private Dictionary<int, string> thumbsByProductoId = new();
+    private string? ThumbnailFor(int productoId)
+        => thumbsByProductoId.TryGetValue(productoId, out var t) ? t : null;
+
     protected override async Task OnInitializedAsync()
     {
         // Cargo OEMs, marcas y reglas de precios en paralelo a productos
         var loadOems = LoadOems();
         var loadMarcas = LoadMarcasCatalog();
         var loadReglas = LoadReglasPrecios();
+        var loadThumbs = LoadThumbnails();
         await Load();
         await loadOems;
         await loadMarcas;
         await loadReglas;
+        await loadThumbs;
+    }
+
+    private async Task LoadThumbnails()
+    {
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<Dictionary<string, string>>("/api/meli/product-thumbnails");
+            if (resp is null) return;
+            thumbsByProductoId = resp
+                .Where(kv => int.TryParse(kv.Key, out _))
+                .ToDictionary(kv => int.Parse(kv.Key), kv => kv.Value);
+        }
+        catch { thumbsByProductoId = new(); }
     }
 
     private async Task LoadMarcasCatalog()
@@ -1574,7 +1621,7 @@
         formPrecioBultoFuturo = null;
         formPrecioBultoOtroFuturo = null;
         formOemId = 0; oemSearch = ""; oemSearchOpen = false;
-        formStockGramos = 0; formStockUnidades = 0;
+        formStockGramos = 0; formStockUnidades = 0; formStockMinimoMeli = null;
         formStockKg = 0;
         formNotas = ""; formIsActive = true;
         formError = null; showForm = true;
@@ -1636,6 +1683,7 @@
             .ToList() ?? new();
         formOemId = p.OemId ?? 0; oemSearch = ""; oemSearchOpen = false;
         formStockGramos = p.StockGramos; formStockUnidades = p.StockUnidades;
+        formStockMinimoMeli = p.StockMinimoMeLi;
         formStockKg = Math.Round(p.StockGramos / 1000m, 3, MidpointRounding.AwayFromZero);
         formNotas = p.Notas ?? ""; formIsActive = p.IsActive;
         formError = null; showForm = true;
@@ -1708,6 +1756,8 @@
                     OemId = oemIdFinal, ClearOemId = clearOemId,
                     StockGramos = stockGramosFinal,
                     StockUnidades = formCategoria == "OTROS" ? formStockUnidades : 0,
+                    StockMinimoMeLi = formStockMinimoMeli,
+                    ClearStockMinimoMeLi = !formStockMinimoMeli.HasValue,
                     Notas = formNotas, IsActive = formIsActive,
                     IvaPct = formIvaPct,
                     // Modelo NUEVO de precios (solo OTROS):
@@ -1766,6 +1816,7 @@
                     OemId = oemIdFinal,
                     StockGramos = stockGramosFinal,
                     StockUnidades = formCategoria == "OTROS" ? formStockUnidades : 0,
+                    StockMinimoMeLi = formStockMinimoMeli,
                     Notas = formNotas,
                     IvaPct = formIvaPct,
                     // Modelo NUEVO de precios (solo OTROS):

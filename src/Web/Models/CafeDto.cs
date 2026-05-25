@@ -91,6 +91,9 @@ public class CafeProductoDto
     public string? OemCodigo { get; set; }
     public decimal StockGramos { get; set; }
     public int StockUnidades { get; set; }
+    /// <summary>Override por producto: reserva interna que se descuenta del stock al pushear a MeLi.
+    /// null = usa el global. 0 = sin reserva. N = reservar N unidades.</summary>
+    public int? StockMinimoMeLi { get; set; }
     public string? Notas { get; set; }
     public bool IsActive { get; set; }
     public decimal IvaPct { get; set; } = 21m;
@@ -166,6 +169,7 @@ public class CreateCafeProductoRequest
     public int? OemId { get; set; }
     public decimal? StockGramos { get; set; }
     public int? StockUnidades { get; set; }
+    public int? StockMinimoMeLi { get; set; }
     public string? Notas { get; set; }
     public decimal? IvaPct { get; set; }
     // Modelo NUEVO de precios (solo OTROS):
@@ -199,6 +203,8 @@ public class UpdateCafeProductoRequest
     public bool ClearOemId { get; set; }
     public decimal? StockGramos { get; set; }
     public int? StockUnidades { get; set; }
+    public int? StockMinimoMeLi { get; set; }
+    public bool ClearStockMinimoMeLi { get; set; }
     public string? Notas { get; set; }
     public bool? IsActive { get; set; }
     public decimal? IvaPct { get; set; }

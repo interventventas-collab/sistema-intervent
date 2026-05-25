@@ -264,6 +264,20 @@ public class MeliStockPushService
                 .FirstOrDefaultAsync(s => s.Key == "meli.stock_push.reserva_interna", ct);
             int reservaFull = 1;
             if (reservaSettingFull != null && int.TryParse(reservaSettingFull.Value, out var rf) && rf >= 0) reservaFull = rf;
+            // Override por producto (Cafe_Productos.StockMinimoMeLi): MAX de los seteados.
+            int? maxOverrideFull = null;
+            var prodIdsFull = compsForFull.Select(c => c.CafeProductoId)
+                .Concat(rows.Where(r => r.CafeProductoId.HasValue).Select(r => r.CafeProductoId!.Value))
+                .Distinct();
+            foreach (var pid in prodIdsFull)
+            {
+                if (productos.TryGetValue(pid, out var p) && p.StockMinimoMeLi.HasValue)
+                {
+                    if (maxOverrideFull == null || p.StockMinimoMeLi.Value > maxOverrideFull.Value)
+                        maxOverrideFull = p.StockMinimoMeLi.Value;
+                }
+            }
+            if (maxOverrideFull.HasValue) reservaFull = maxOverrideFull.Value;
             var qtySellingAddress = Math.Max(0, stockFull - reservaFull);
 
             return await PushSellingAddressForFullAsync(http, upgId!, qtySellingAddress, ct);
@@ -282,15 +296,32 @@ public class MeliStockPushService
         // Leer status actual para decidir si hay que re-activar (paused → active al subir stock).
         var statusActual = doc.TryGetProperty("status", out var st) ? st.GetString() : null;
 
-        // RESERVA INTERNA 2026-05-23: leer AppSetting `meli.stock_push.reserva_interna`.
-        // Por defecto = 1. Significa: del stock real, reservamos N unidades para venta interna
-        // (no las publicamos en MeLi). Si el producto tiene <=N unidades, MeLi recibe 0 y se pausa.
-        // El usuario puede modificar esto en AppSettings cuando quiera (ej. 0 para "publicar todo").
+        // RESERVA INTERNA 2026-05-23: leer AppSetting `meli.stock_push.reserva_interna` (default).
+        // 2026-05-25: ahora el override es por producto. Si cualquier producto involucrado tiene
+        // Cafe_Productos.StockMinimoMeLi seteado, usamos el MAX entre los seteados (más conservador).
+        // Si ninguno tiene → usar el global.
         var reservaSetting = await _db.AppSettings
             .AsNoTracking()
             .FirstOrDefaultAsync(s => s.Key == "meli.stock_push.reserva_interna", ct);
-        int reserva = 1;
-        if (reservaSetting != null && int.TryParse(reservaSetting.Value, out var r) && r >= 0) reserva = r;
+        int reservaGlobal = 1;
+        if (reservaSetting != null && int.TryParse(reservaSetting.Value, out var r) && r >= 0) reservaGlobal = r;
+
+        // Calcular reserva efectiva para esta publicación: MAX entre los StockMinimoMeLi de los
+        // productos involucrados. Si ninguno tiene seteado → reservaGlobal.
+        int reserva = reservaGlobal;
+        var todosProdIds = compsThisItem.Select(c => c.CafeProductoId)
+            .Concat(rows.Where(r => r.CafeProductoId.HasValue).Select(r => r.CafeProductoId!.Value))
+            .Distinct().ToList();
+        int? maxOverride = null;
+        foreach (var pid in todosProdIds)
+        {
+            if (productos.TryGetValue(pid, out var p) && p.StockMinimoMeLi.HasValue)
+            {
+                if (maxOverride == null || p.StockMinimoMeLi.Value > maxOverride.Value)
+                    maxOverride = p.StockMinimoMeLi.Value;
+            }
+        }
+        if (maxOverride.HasValue) reserva = maxOverride.Value;
 
         // Calcular stock disponible.
         if (meliVariationIds.Count > 0)

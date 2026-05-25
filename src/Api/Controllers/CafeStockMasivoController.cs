@@ -51,14 +51,39 @@ public class CafeStockMasivoController : ControllerBase
         int ProductoId, string Codigo, string Nombre, string Categoria,
         decimal StockGramos, int StockUnidades);
 
-    /// <summary>Lista todos los productos con su stock en el deposito indicado.</summary>
+    /// <summary>Lista productos con su stock en el deposito indicado.
+    /// 2026-05-25: Si el depósito es 'Full MeLi', filtramos solo los productos que tienen
+    /// al menos 1 publicación MeLi con logistic_type=fulfillment linkeada (sea via
+    /// MeliItemComponente o legacy MeliItem.CafeProductoId). Para los demás depósitos
+    /// se devuelven TODOS los productos (comportamiento original).</summary>
     [HttpGet("{depositoId:int}")]
     public async Task<IActionResult> ListarStockEnDeposito(int depositoId)
     {
         var dep = await _db.CafeDepositos.FindAsync(depositoId);
         if (dep is null) return NotFound(new { error = "Deposito no encontrado" });
 
-        var query = from p in _db.CafeProductos
+        IQueryable<Models.CafeProducto> baseQ = _db.CafeProductos;
+
+        if (dep.Nombre == "Full MeLi")
+        {
+            // Productos con al menos un MeliItem Full linkeado (componente o legacy).
+            // Como LogisticType puede estar NULL para items que aún no se re-sincronizaron,
+            // también incluimos productos que tienen registro en Cafe_StockPorDeposito[Full]
+            // (ya pasaron por el sync de Full y se confirmó que están en meli_facility).
+            var prodIdsFull = await (
+                from p in _db.CafeProductos
+                where _db.MeliItems.Any(mi =>
+                          mi.LogisticType == "fulfillment" &&
+                          (mi.CafeProductoId == p.Id ||
+                           _db.MeliItemComponentes.Any(c => c.MeliItemId == mi.MeliItemId && c.CafeProductoId == p.Id)))
+                   || _db.CafeStockPorDeposito.Any(s => s.DepositoId == depositoId && s.ProductoId == p.Id && (s.StockUnidades > 0 || s.StockGramos > 0))
+                select p.Id
+            ).Distinct().ToListAsync();
+
+            baseQ = baseQ.Where(p => prodIdsFull.Contains(p.Id));
+        }
+
+        var query = from p in baseQ
                     join s in _db.CafeStockPorDeposito
                         on new { ProductoId = p.Id, DepositoId = depositoId }
                         equals new { s.ProductoId, s.DepositoId } into ss
