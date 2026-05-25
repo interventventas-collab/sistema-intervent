@@ -663,6 +663,60 @@ public class MeliController : ControllerBase
         }
     }
 
+    /// <summary>Devuelve el valor global de meli.stock_push.reserva_interna (default 1).
+    /// La UI lo muestra en la ficha producto para que el usuario sepa qué valor se aplica
+    /// cuando el campo StockMinimoMeLi está vacío.</summary>
+    [HttpGet("stock-reserva-global")]
+    public async Task<IActionResult> GetStockReservaGlobal([FromServices] Api.Data.AppDbContext db)
+    {
+        var s = await db.AppSettings.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Key == "meli.stock_push.reserva_interna");
+        int valor = 1;
+        if (s != null && int.TryParse(s.Value, out var v) && v >= 0) valor = v;
+        return Ok(new { reservaGlobal = valor });
+    }
+
+    /// <summary>Detalle completo de stock de UN producto para el panel de la ficha:
+    /// stock propio (9 de Abril), Full MeLi, total real, reserva aplicada y publicado en MeLi.</summary>
+    [HttpGet("producto-stock-detail/{cafeProductoId:int}")]
+    public async Task<IActionResult> GetProductoStockDetail(int cafeProductoId, [FromServices] Api.Data.AppDbContext db)
+    {
+        var prod = await db.CafeProductos.AsNoTracking().FirstOrDefaultAsync(p => p.Id == cafeProductoId);
+        if (prod is null) return NotFound(new { error = "Producto no encontrado" });
+
+        int stockSistema = prod.StockUnidades;
+
+        // Full
+        var depFullId = await db.CafeDepositos.AsNoTracking()
+            .Where(d => d.Nombre == "Full MeLi").Select(d => (int?)d.Id).FirstOrDefaultAsync();
+        int stockFull = 0;
+        if (depFullId.HasValue)
+        {
+            var spdFull = await db.CafeStockPorDeposito.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.ProductoId == cafeProductoId && s.DepositoId == depFullId.Value);
+            stockFull = spdFull?.StockUnidades ?? 0;
+        }
+
+        // Reserva aplicada
+        int reservaGlobal = 1;
+        var rs = await db.AppSettings.AsNoTracking().FirstOrDefaultAsync(x => x.Key == "meli.stock_push.reserva_interna");
+        if (rs != null && int.TryParse(rs.Value, out var rg) && rg >= 0) reservaGlobal = rg;
+        int reservaAplicada = prod.StockMinimoMeLi ?? reservaGlobal;
+        string reservaSource = prod.StockMinimoMeLi.HasValue ? "producto" : "global";
+
+        int publicadoSimple = Math.Max(0, stockSistema - reservaAplicada);
+        int stockReal = stockSistema + stockFull;
+
+        return Ok(new {
+            stockSistema,
+            stockFull,
+            stockReal,
+            reservaAplicada,
+            reservaSource,
+            publicadoMeLi = publicadoSimple
+        });
+    }
+
     /// <summary>Devuelve un diccionario { CafeProductoId → thumbnail_url } con la primera imagen
     /// del primer MeliItem linkeado a cada producto. Para mostrar en el listado /cafe/productos.</summary>
     [HttpGet("product-thumbnails")]
