@@ -693,6 +693,8 @@ public class MeliController : ControllerBase
         [FromServices] Api.Data.AppDbContext db,
         [FromQuery] string? buscar = null,
         [FromQuery] string? estado = null,
+        [FromQuery] string? armableRango = null,  // "0", "1-4", "5-9", "10+"
+        [FromQuery] string ordenarPor = "armable_desc",  // armable_desc | armable_asc | sku
         [FromQuery] int limit = 1000)
     {
         // 1) SKUs únicos de MeliItems (excluye cerradas, incluye paused y active)
@@ -787,6 +789,21 @@ public class MeliController : ControllerBase
             // Filtro por estado
             if (!string.IsNullOrEmpty(estado) && estado != estadoCalc) continue;
 
+            // Filtro por rango de combos armables
+            int stockEfectivo = componentes.Count > 0 ? stockArmable : (prodStock ?? 0);
+            if (!string.IsNullOrEmpty(armableRango))
+            {
+                bool pasa = armableRango switch
+                {
+                    "0" => stockEfectivo == 0,
+                    "1-4" => stockEfectivo >= 1 && stockEfectivo <= 4,
+                    "5-9" => stockEfectivo >= 5 && stockEfectivo <= 9,
+                    "10+" => stockEfectivo >= 10,
+                    _ => true
+                };
+                if (!pasa) continue;
+            }
+
             result.Add(new SkuMeliRow(
                 Sku: s.Sku,
                 CantPubsActivas: s.CantActivas,
@@ -798,8 +815,17 @@ public class MeliController : ControllerBase
                 Componentes: componentes,
                 ProductoSueltoId: prodId, ProductoSueltoNombre: prodNombre, ProductoSueltoStock: prodStock
             ));
-            if (result.Count >= limit) break;
         }
+
+        // Ordenar
+        result = ordenarPor switch
+        {
+            "armable_asc" => result.OrderBy(r => r.Componentes.Count > 0 ? r.StockArmableCombo : (r.ProductoSueltoStock ?? 0)).ThenBy(r => r.Sku).ToList(),
+            "armable_desc" => result.OrderByDescending(r => r.Componentes.Count > 0 ? r.StockArmableCombo : (r.ProductoSueltoStock ?? 0)).ThenBy(r => r.Sku).ToList(),
+            "sku" => result.OrderBy(r => r.Sku).ToList(),
+            _ => result.OrderByDescending(r => r.Componentes.Count > 0 ? r.StockArmableCombo : (r.ProductoSueltoStock ?? 0)).ThenBy(r => r.Sku).ToList()
+        };
+        if (result.Count > limit) result = result.Take(limit).ToList();
 
         // Stats GLOBALES (sobre TODOS los SKUs sin paginar, no solo los mostrados)
         // Recorremos skusAgg entero (que ya esta limitado a limit+200) si el filtro de buscar lo achico,

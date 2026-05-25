@@ -18,12 +18,27 @@
         <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
             <input class="form-input" style="width:200px;" placeholder="🔍 Buscar SKU…"
                    @bind="buscar" @bind:event="oninput" @onkeyup="OnSearchKey" />
-            <select class="form-input" style="width:auto;" @bind="estadoFiltro" @bind:after="Recargar">
-                <option value="">Todos</option>
+            <select class="form-input" style="width:auto;" @bind="estadoFiltro" @bind:after="Recargar"
+                    title="Estado del linkeo">
+                <option value="">Estado: Todos</option>
                 <option value="ok">🟢 Linkeado OK</option>
                 <option value="sin_link">🟡 Sin linkear (combo existe)</option>
                 <option value="sin_combo">🔴 Sin combo en sistema</option>
                 <option value="producto_suelto">⚪ Producto suelto (no combo)</option>
+            </select>
+            <select class="form-input" style="width:auto;" @bind="armableFiltro" @bind:after="Recargar"
+                    title="Cantidad de combos armables">
+                <option value="">Armables: Todos</option>
+                <option value="10+">📦 10 o más combos</option>
+                <option value="5-9">📦 5 a 9 combos</option>
+                <option value="1-4">📦 1 a 4 combos</option>
+                <option value="0">⚠ 0 (sin stock para armar)</option>
+            </select>
+            <select class="form-input" style="width:auto;" @bind="ordenarPor" @bind:after="Recargar"
+                    title="Orden">
+                <option value="armable_desc">↓ Más armables primero</option>
+                <option value="armable_asc">↑ Menos armables primero</option>
+                <option value="sku">🔤 Por SKU</option>
             </select>
             <button class="btn btn-secondary" @onclick="Recargar" disabled="@cargando">@(cargando ? "..." : "🔄 Refrescar")</button>
         </div>
@@ -61,10 +76,10 @@
                 var icono = IconoPorEstado(sku.estado);
                 var label = LabelPorEstado(sku.estado);
                 var expandido = expandidos.Contains(sku.sku);
-                <div style="border-bottom:1px solid #e5e7eb; background:@(expandido ? "#fefce8" : "white"); transition:background 0.15s;">
-                    <div style="display:flex; align-items:center; padding:0.85rem 1rem; cursor:pointer; gap:0.75rem; min-height:62px;"
+                <div style="border-bottom:1px solid #d1d5db; background:@(expandido ? "#fefce8" : "white"); transition:background 0.15s;">
+                    <div style="display:flex; align-items:center; padding:1rem 1.25rem; cursor:pointer; gap:1rem; min-height:78px;"
                          @onclick="() => ToggleExpand(skuLocal.sku)"
-                         onmouseover="this.style.background='#f9fafb'"
+                         onmouseover="this.style.background='#f3f4f6'"
                          onmouseout="this.style.background='@(expandido ? "#fefce8" : "white")'">
                         @* Caret + icono estado *@
                         <span style="font-size:0.9rem; width:16px; color:#9ca3af;">@(expandido ? "▼" : "▶")</span>
@@ -74,11 +89,11 @@
                         <span style="background:@color.Bg; color:@color.Fg; padding:0.25rem 0.55rem; border-radius:6px; font-size:0.68rem; font-weight:700; min-width:110px; text-align:center; letter-spacing:0.03em;">@label</span>
 
                         @* SKU grande *@
-                        <div style="min-width:180px;">
-                            <div style="font-family:monospace; font-weight:800; color:#1d4ed8; font-size:1.05rem;">@sku.sku</div>
+                        <div style="min-width:200px;">
+                            <div style="font-family:monospace; font-weight:800; color:#1d4ed8; font-size:1.2rem; line-height:1.1;">@sku.sku</div>
                             @if (!string.IsNullOrEmpty(sku.comboNombre))
                             {
-                                <div style="font-size:0.7rem; color:#9ca3af; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@sku.comboNombre</div>
+                                <div style="font-size:0.78rem; color:#6b7280; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:0.15rem;">@sku.comboNombre</div>
                             }
                         </div>
 
@@ -106,15 +121,17 @@
                             }
                         </div>
 
-                        @* STOCK ARMABLE (destacado) *@
+                        @* STOCK ARMABLE (destacado, grande) *@
                         @if (sku.componentes.Count > 0 || sku.productoSueltoStock.HasValue)
                         {
-                            <div style="text-align:center; min-width:90px; padding:0 0.4rem;">
-                                <div style="font-size:1.4rem; font-weight:800; color:@(sku.stockArmableCombo > 0 ? "#16a34a" : "#b91c1c"); line-height:1;">
-                                    @(sku.componentes.Count > 0 ? sku.stockArmableCombo : (sku.productoSueltoStock ?? 0))
+                            var cant = sku.componentes.Count > 0 ? sku.stockArmableCombo : (sku.productoSueltoStock ?? 0);
+                            var colorCant = cant >= 10 ? "#16a34a" : (cant >= 5 ? "#65a30d" : (cant >= 1 ? "#d97706" : "#b91c1c"));
+                            <div style="text-align:center; min-width:110px; padding:0 0.4rem; border-left:1px dashed #e5e7eb; border-right:1px dashed #e5e7eb;">
+                                <div style="font-size:2rem; font-weight:900; color:@colorCant; line-height:1;">
+                                    @cant
                                 </div>
-                                <div style="font-size:0.65rem; color:#6b7280; text-transform:uppercase; letter-spacing:0.05em; margin-top:0.15rem;">
-                                    @(sku.componentes.Count > 0 ? "combos armables" : "unidades")
+                                <div style="font-size:0.72rem; color:#4b5563; text-transform:uppercase; letter-spacing:0.05em; margin-top:0.2rem; font-weight:600;">
+                                    @(sku.componentes.Count > 0 ? "armables" : "unidades")
                                 </div>
                             </div>
                         }
@@ -264,6 +281,8 @@
     private bool cargando;
     private string buscar = "";
     private string estadoFiltro = "";
+    private string armableFiltro = "";
+    private string ordenarPor = "armable_desc";
     private HashSet<string> expandidos = new();
     private Dictionary<string, List<PubRow>> pubsCache = new();
     private System.Threading.Timer? debounce;
@@ -288,6 +307,8 @@
             var qs = new List<string>();
             if (!string.IsNullOrWhiteSpace(buscar)) qs.Add($"buscar={Uri.EscapeDataString(buscar.Trim())}");
             if (!string.IsNullOrEmpty(estadoFiltro)) qs.Add($"estado={estadoFiltro}");
+            if (!string.IsNullOrEmpty(armableFiltro)) qs.Add($"armableRango={Uri.EscapeDataString(armableFiltro)}");
+            if (!string.IsNullOrEmpty(ordenarPor)) qs.Add($"ordenarPor={ordenarPor}");
             var url = "/api/meli/skus-meli" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
             response = await Http.GetFromJsonAsync<SkusMeliResponse>(url);
         }
