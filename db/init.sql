@@ -4124,3 +4124,15 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_StockMov_Auditoria')
     ALTER TABLE Stock_Movimientos WITH CHECK ADD CONSTRAINT FK_StockMov_Auditoria FOREIGN KEY (AuditoriaId) REFERENCES Stock_Auditorias(Id);
 GO
+
+-- 2026-05-25: Depósito Full + LogisticType en órdenes MeLi (para descontar bien Full vs propio)
+-- Renombrar Depósito Principal → 9 de Abril (era nombre genérico)
+UPDATE Cafe_Depositos SET Nombre = '9 de Abril' WHERE Nombre = 'Depósito Principal';
+-- Crear depósito virtual Full MeLi (solo-lectura; se sincroniza desde MeLi)
+IF NOT EXISTS (SELECT 1 FROM Cafe_Depositos WHERE Nombre = 'Full MeLi')
+    INSERT INTO Cafe_Depositos (Nombre, IsDefault, IsActive, Orden) VALUES ('Full MeLi', 0, 1, 99);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='LogisticType' AND object_id=OBJECT_ID('MeliOrders'))
+    ALTER TABLE MeliOrders ADD LogisticType NVARCHAR(40) NULL;
+GO

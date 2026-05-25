@@ -1179,6 +1179,18 @@ public class MeliItemService
         var userProductId = item.TryGetProperty("user_product_id", out var upid) && upid.ValueKind != JsonValueKind.Null
             ? upid.GetString() : null;
 
+        // 2026-05-25: capturar logistic_type del shipping para distinguir Full vs no-Full.
+        // Lo necesitamos para el sync de stock Full y para descontar bien las órdenes
+        // (MeliFullStockSyncService + MeliStockSyncService).
+        string? logisticType = null;
+        if (item.TryGetProperty("shipping", out var shippingProp)
+            && shippingProp.ValueKind == JsonValueKind.Object
+            && shippingProp.TryGetProperty("logistic_type", out var ltProp)
+            && ltProp.ValueKind == JsonValueKind.String)
+        {
+            logisticType = ltProp.GetString();
+        }
+
         // Family grouping - try multiple locations
         string? familyId = null;
         string? familyName = null;
@@ -1304,7 +1316,7 @@ public class MeliItemService
                 title, categoryId, vPrice, vOriginal, currencyId,
                 vQty, vSold, status, condition, listingTypeId,
                 vThumb, permalink, vSku, userProductId, familyId, familyName,
-                installmentTag, freeShipping, dateCreated, lastUpdated);
+                installmentTag, freeShipping, dateCreated, lastUpdated, logisticType);
             rowsUpserted++;
         }
 
@@ -1330,7 +1342,7 @@ public class MeliItemService
         int availableQty, int soldQty, string status, string? condition, string? listingTypeId,
         string? thumbnail, string? permalink, string? sku, string? userProductId,
         string? familyId, string? familyName, string? installmentTag, bool freeShipping,
-        DateTime? dateCreated, DateTime? lastUpdated)
+        DateTime? dateCreated, DateTime? lastUpdated, string? logisticType = null)
     {
         var existing = await _db.MeliItems
             .FirstOrDefaultAsync(i => i.MeliItemId == meliItemId && i.VariationId == variationId);
@@ -1365,6 +1377,9 @@ public class MeliItemService
             existing.FreeShipping = freeShipping;
             existing.LastUpdated = lastUpdated;
             existing.VariationAttributes = variationAttributes;
+            // Solo overrideamos LogisticType si vino del API. Si vino null (no estaba en la response),
+            // mantenemos el valor cacheado para no perder info.
+            if (logisticType != null) existing.LogisticType = logisticType;
             existing.UpdatedAt = DateTime.UtcNow;
         }
         else
@@ -1394,7 +1409,8 @@ public class MeliItemService
                 InstallmentTag = installmentTag,
                 FreeShipping = freeShipping,
                 DateCreated = dateCreated,
-                LastUpdated = lastUpdated
+                LastUpdated = lastUpdated,
+                LogisticType = logisticType
             });
         }
     }

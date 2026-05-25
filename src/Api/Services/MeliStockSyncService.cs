@@ -45,6 +45,14 @@ public class MeliStockSyncService
         if (pending.Count == 0)
             return new StockSyncResult(0, 0, 0, 0, errores);
 
+        // 2026-05-25: cargar id del depósito Full una sola vez. Si la orden es Full
+        // (LogisticType=fulfillment), descontamos de Cafe_StockPorDeposito[Full] en vez
+        // de tocar Cafe_Productos.StockUnidades (que representa el stock propio en 9 de Abril).
+        // El total real disponible se calcula al vuelo como StockUnidades + Full en las pantallas.
+        var depFullId = await _db.CafeDepositos
+            .Where(d => d.Nombre == "Full MeLi" && d.IsActive)
+            .Select(d => (int?)d.Id).FirstOrDefaultAsync();
+
         // Cargar todos los componentes que referencian a los items de las ordenes pendientes.
         // MeliItemComponente es la fuente de verdad: 1 item MeLi puede mapear a N productos sueltos.
         var itemIds = pending.Select(o => o.ItemId).Distinct().ToList();
@@ -133,6 +141,11 @@ public class MeliStockSyncService
                     continue;
                 }
 
+                // 2026-05-25: detectar si la orden es Full (sale del depósito de MeLi) vs no-Full
+                // (sale de nuestro depósito 9 de Abril). El descuento va al depósito correcto.
+                bool esFull = string.Equals(ord.LogisticType, "fulfillment", StringComparison.OrdinalIgnoreCase)
+                              && depFullId.HasValue;
+
                 foreach (var (prod, cant, formato) in toDiscount)
                 {
                     if (string.Equals(prod.Categoria, "CAFE", StringComparison.OrdinalIgnoreCase))
@@ -144,15 +157,47 @@ public class MeliStockSyncService
                             "CUARTO" => 250m,
                             _ => 1000m  // fallback razonable si no hay formato
                         };
-                        prod.StockGramos -= gramos * cant * ord.Quantity;
+                        var gramosADescontar = gramos * cant * ord.Quantity;
+
+                        if (esFull)
+                        {
+                            // Orden Full: descontar de Cafe_StockPorDeposito[Full]. NO tocar StockGramos.
+                            var spdFull = await _db.CafeStockPorDeposito
+                                .FirstOrDefaultAsync(s => s.ProductoId == prod.Id && s.DepositoId == depFullId!.Value);
+                            var antesG = spdFull?.StockGramos ?? 0m;
+                            if (spdFull is null)
+                            {
+                                spdFull = new CafeStockPorDeposito
+                                {
+                                    ProductoId = prod.Id,
+                                    DepositoId = depFullId!.Value,
+                                    StockGramos = 0m,
+                                    StockUnidades = 0,
+                                    UpdatedAt = DateTime.UtcNow
+                                };
+                                _db.CafeStockPorDeposito.Add(spdFull);
+                            }
+                            spdFull.StockGramos = Math.Max(0m, spdFull.StockGramos - gramosADescontar);
+                            spdFull.UpdatedAt = DateTime.UtcNow;
+                            await _stockLogger.LogAsync(prod.Id, "VENTA_MELI_FULL",
+                                (int)Math.Round(antesG), (int)Math.Round(spdFull.StockGramos),
+                                comentario: $"Orden MeLi Full #{ord.MeliOrderId} · {cant}x{(formato ?? "1KG")} · {(int)Math.Round(gramosADescontar)}g (Full)",
+                                saveChanges: false);
+                        }
+                        else
+                        {
+                            prod.StockGramos -= gramosADescontar;
+                            // Historial: registro el cambio para auditoría
+                            var unidadesEquiv = (int)Math.Round(gramosADescontar);
+                            var antes = (int)Math.Round(prod.StockGramos + gramosADescontar);
+                            var despues = (int)Math.Round(prod.StockGramos);
+                            await _stockLogger.LogAsync(prod.Id, "VENTA_MELI", antes, despues,
+                                comentario: $"Orden MeLi #{ord.MeliOrderId} · {cant}x{(formato ?? "1KG")} · {unidadesEquiv}g",
+                                saveChanges: false);
+                            prod.StockChangedAt = DateTime.UtcNow;
+                            await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
+                        }
                         descCafe++;
-                        // Historial: registro el cambio para auditoría
-                        var unidadesEquiv = (int)Math.Round(gramos * cant * ord.Quantity);
-                        var antes = (int)Math.Round(prod.StockGramos + gramos * cant * ord.Quantity);
-                        var despues = (int)Math.Round(prod.StockGramos);
-                        await _stockLogger.LogAsync(prod.Id, "VENTA_MELI", antes, despues,
-                            comentario: $"Orden MeLi #{ord.MeliOrderId} · {cant}x{(formato ?? "1KG")} · {unidadesEquiv}g",
-                            saveChanges: false);
                     }
                     else
                     {
@@ -161,18 +206,44 @@ public class MeliStockSyncService
                             && prod.UxB.HasValue && prod.UxB.Value > 0)
                             mult = prod.UxB.Value;
                         var unidades = (int)Math.Round(mult * cant * ord.Quantity);
-                        var antes = prod.StockUnidades;
-                        prod.StockUnidades -= unidades;
+
+                        if (esFull)
+                        {
+                            // Orden Full: descontar de Cafe_StockPorDeposito[Full]. NO tocar StockUnidades.
+                            var spdFull = await _db.CafeStockPorDeposito
+                                .FirstOrDefaultAsync(s => s.ProductoId == prod.Id && s.DepositoId == depFullId!.Value);
+                            var antes = spdFull?.StockUnidades ?? 0;
+                            if (spdFull is null)
+                            {
+                                spdFull = new CafeStockPorDeposito
+                                {
+                                    ProductoId = prod.Id,
+                                    DepositoId = depFullId!.Value,
+                                    StockGramos = 0m,
+                                    StockUnidades = 0,
+                                    UpdatedAt = DateTime.UtcNow
+                                };
+                                _db.CafeStockPorDeposito.Add(spdFull);
+                            }
+                            spdFull.StockUnidades = Math.Max(0, spdFull.StockUnidades - unidades);
+                            spdFull.UpdatedAt = DateTime.UtcNow;
+                            await _stockLogger.LogAsync(prod.Id, "VENTA_MELI_FULL", antes, spdFull.StockUnidades,
+                                comentario: $"Orden MeLi Full #{ord.MeliOrderId} · {cant}x{(formato ?? "U")} · -{unidades}u (Full)",
+                                saveChanges: false);
+                        }
+                        else
+                        {
+                            var antes = prod.StockUnidades;
+                            prod.StockUnidades -= unidades;
+                            // Historial
+                            await _stockLogger.LogAsync(prod.Id, "VENTA_MELI", antes, prod.StockUnidades,
+                                comentario: $"Orden MeLi #{ord.MeliOrderId} · {cant}x{(formato ?? "U")} · -{unidades}u",
+                                saveChanges: false);
+                            prod.StockChangedAt = DateTime.UtcNow;
+                            await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
+                        }
                         descOtros++;
-                        // Historial
-                        await _stockLogger.LogAsync(prod.Id, "VENTA_MELI", antes, prod.StockUnidades,
-                            comentario: $"Orden MeLi #{ord.MeliOrderId} · {cant}x{(formato ?? "U")} · -{unidades}u",
-                            saveChanges: false);
                     }
-                    // Marcar para que el job de respaldo / push event-driven sepa que hay que pushear a MeLi.
-                    prod.StockChangedAt = DateTime.UtcNow;
-                    // Sincronizar Cafe_StockPorDeposito (parche 2026-05-25).
-                    await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
                 }
 
                 ord.StockDiscounted = true;

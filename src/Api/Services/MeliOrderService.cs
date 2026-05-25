@@ -441,10 +441,11 @@ public class MeliOrderService
             && shId.ValueKind != JsonValueKind.Null
             ? shId.GetInt64() : (long?)null;
 
-        // Fetch shipping status + substatus + mode from shipments API
+        // Fetch shipping status + substatus + mode + logistic_type from shipments API
         string? shippingStatus = null;
         string? shippingSubstatus = null;
         string? shippingMode = null;
+        string? logisticType = null;
         if (shippingId.HasValue)
         {
             try
@@ -460,6 +461,11 @@ public class MeliOrderService
                         shippingSubstatus = shipSub.GetString();
                     if (shipDoc.TryGetProperty("mode", out var shipMd) && shipMd.ValueKind != JsonValueKind.Null)
                         shippingMode = shipMd.GetString();
+                    // 2026-05-25: logistic_type del shipment indica si la orden sale de Full o de tu depósito.
+                    // Posibles valores: fulfillment (Full), self_service (Flex), drop_off, xd_drop_off,
+                    // cross_docking, custom. Lo usamos para descontar del depósito correcto.
+                    if (shipDoc.TryGetProperty("logistic_type", out var shipLt) && shipLt.ValueKind != JsonValueKind.Null)
+                        logisticType = shipLt.GetString();
                 }
             }
             catch { /* ignore shipping fetch errors */ }
@@ -504,6 +510,8 @@ public class MeliOrderService
                 existing.ShippingStatus = shippingStatus;
                 existing.ShippingSubstatus = shippingSubstatus;
                 existing.ShippingMode = shippingMode;
+                // Solo overrideamos LogisticType si vino del shipment (no perder valor previo si null)
+                if (logisticType != null) existing.LogisticType = logisticType;
                 // Solo actualizar VariationId si todavia no estaba seteado (no pisar lo que ya capturamos)
                 if (string.IsNullOrEmpty(existing.VariationId))
                     existing.VariationId = variationId;
@@ -532,7 +540,8 @@ public class MeliOrderService
                     PackId = packId,
                     ShippingStatus = shippingStatus,
                     ShippingSubstatus = shippingSubstatus,
-                    ShippingMode = shippingMode
+                    ShippingMode = shippingMode,
+                    LogisticType = logisticType
                 });
             }
             count++;

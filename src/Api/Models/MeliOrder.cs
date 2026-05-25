@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace Api.Models;
 
 public class MeliOrder
@@ -27,6 +29,14 @@ public class MeliOrder
     public string? ShippingSubstatus { get; set; }
     /// <summary>Modo de envio segun MeLi: me1, me2, custom, not_specified. Util para marcar ordenes ME1 en la grilla.</summary>
     public string? ShippingMode { get; set; }
+
+    /// <summary>Logistic type del envio segun MeLi: fulfillment (=Full), cross_docking, self_service,
+    /// drop_off, xd_drop_off, ... Capturado del shipment.logistic_type para distinguir si la orden sale
+    /// del depósito Full de MeLi (en cuyo caso descontamos de Cafe_StockPorDeposito[Full]) o de nuestro
+    /// depósito propio 9 de Abril (Cafe_StockPorDeposito[9 de Abril]).</summary>
+    [MaxLength(40)]
+    public string? LogisticType { get; set; }
+
     public bool StockDiscounted { get; set; } = false;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }

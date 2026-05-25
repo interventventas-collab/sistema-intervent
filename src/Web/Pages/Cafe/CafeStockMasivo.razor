@@ -64,9 +64,16 @@
                 <option value="CAFE">CAFE</option>
                 <option value="OTROS">OTROS</option>
             </select>
-            <button class="btn btn-primary" @onclick="Guardar" disabled="@(!HayCambios || guardando)">
-                @(guardando ? "..." : $"💾 Guardar {CountCambios} cambios")
+            <button class="btn btn-primary" @onclick="Guardar" disabled="@(!HayCambios || guardando || EsDepositoFull)">
+                @(guardando ? "..." : EsDepositoFull ? "(solo lectura)" : $"💾 Guardar {CountCambios} cambios")
             </button>
+            @if (EsDepositoFull)
+            {
+                <button class="btn btn-warning" @onclick="SincronizarFullAhora" disabled="@sincronizandoFull"
+                        title="Trae stock de Full desde MeLi (todas las publicaciones Full linkeadas)">
+                    @(sincronizandoFull ? "Sincronizando..." : "🔄 Sincronizar Full desde MeLi")
+                </button>
+            }
             <a href="/stock" class="btn btn-secondary" title="Operadores + Auditorías + historial de cargas móviles"
                style="background:#1f2937; color:white; border:none;">
                 📋 Operadores y auditorías
@@ -91,12 +98,19 @@
                             <th style="text-align:right; width:130px;">Stock actual</th>
                             <th style="text-align:right; width:200px;">
                                 <span style="display:inline-flex; align-items:center; gap:0.3rem; justify-content:flex-end;">
-                                    Stock nuevo
-                                    <button @onclick="() => edicionHabilitada = !edicionHabilitada"
-                                            title="@(edicionHabilitada ? "Bloquear edición" : "Desbloquear para editar")"
-                                            style="background:@(edicionHabilitada ? "#fef3c7" : "#f3f4f6"); border:1px solid #d1d5db; border-radius:4px; padding:0.1rem 0.4rem; cursor:pointer; font-size:0.85rem;">
-                                        @(edicionHabilitada ? "🔓" : "🔒")
-                                    </button>
+                                    @(EsDepositoFull ? "Stock Full (solo lectura)" : "Stock nuevo")
+                                    @if (!EsDepositoFull)
+                                    {
+                                        <button @onclick="() => edicionHabilitada = !edicionHabilitada"
+                                                title="@(edicionHabilitada ? "Bloquear edición" : "Desbloquear para editar")"
+                                                style="background:@(edicionHabilitada ? "#fef3c7" : "#f3f4f6"); border:1px solid #d1d5db; border-radius:4px; padding:0.1rem 0.4rem; cursor:pointer; font-size:0.85rem;">
+                                            @(edicionHabilitada ? "🔓" : "🔒")
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <span title="Este depósito se sincroniza desde MeLi automáticamente" style="font-size:0.85rem;">🔒</span>
+                                    }
                                 </span>
                             </th>
                         </tr>
@@ -160,6 +174,10 @@
     private Dictionary<int, int> nuevoStockUnidades = new();
 
     [Parameter, SupplyParameterFromQuery(Name = "dep")] public int? PreDepositoId { get; set; }
+
+    // === Detectar depósito Full (solo lectura, se sincroniza desde MeLi) ===
+    private bool EsDepositoFull => depositos?.FirstOrDefault(d => d.Id == depositoIdSeleccionado)?.Nombre == "Full MeLi";
+    private bool sincronizandoFull = false;
 
     // === Bloque QR (token + URLs derivadas) ===
     private string token = "";
@@ -275,4 +293,26 @@
         catch (Exception ex) { ToastService.Error(ex.Message); }
         finally { guardando = false; }
     }
+
+    /// <summary>Dispara el sync de stock Full desde MeLi (lee meli_facility de todos los UPGs
+    /// linkeados y los guarda en Cafe_StockPorDeposito[Full MeLi]).</summary>
+    private async Task SincronizarFullAhora()
+    {
+        sincronizandoFull = true;
+        try
+        {
+            var resp = await Http.PostAsync("/api/meli/full-stock-sync", null);
+            if (resp.IsSuccessStatusCode)
+            {
+                var r = await resp.Content.ReadFromJsonAsync<FullSyncResp>();
+                ToastService.Success($"✓ Full sync: {r?.upgsConFull} pubs Full · {r?.productosActualizados} productos actualizados");
+                if (EsDepositoFull) await CargarStock();
+            }
+            else { ToastService.Error("Error al sincronizar Full"); }
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { sincronizandoFull = false; }
+    }
+
+    private record FullSyncResp(int upgsProcesados, int upgsConFull, int productosActualizados, int errores);
 }

@@ -663,6 +663,29 @@ public class MeliController : ControllerBase
         }
     }
 
+    /// <summary>Sincroniza el stock Full (meli_facility) de MeLi hacia Cafe_StockPorDeposito[Full].
+    /// Iteración por todos los UPGs linkeados (~1500). Se llama solo o por job cada 30 min.
+    /// Opcionalmente filtrá por un solo producto pasando ?cafeProductoId=N.</summary>
+    [HttpPost("full-stock-sync")]
+    public async Task<IActionResult> FullStockSync(
+        [FromServices] MeliFullStockSyncService svc,
+        [FromQuery] int? cafeProductoId = null)
+    {
+        try
+        {
+            var r = await svc.SyncAllAsync(cafeProductoId, HttpContext.RequestAborted);
+            return Ok(new
+            {
+                upgsProcesados = r.UpgsProcesados,
+                upgsConFull = r.UpgsFull,
+                productosActualizados = r.ProductosActualizados,
+                errores = r.Errores,
+                mensajes = r.Mensajes
+            });
+        }
+        catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
     /// <summary>Procesa la cola de productos con StockChangedAt > LastPushedToMeli. Lo mismo
     /// que hace el job de respaldo cada 15 min, pero on-demand.</summary>
     [HttpPost("stock-push/pending")]
