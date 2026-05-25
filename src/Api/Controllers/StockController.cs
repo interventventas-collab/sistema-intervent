@@ -19,7 +19,25 @@ namespace Api.Controllers;
 public class StockController : ControllerBase
 {
     private readonly AppDbContext _db;
-    public StockController(AppDbContext db) { _db = db; }
+    private readonly IServiceScopeFactory _scopeFactory;
+    public StockController(AppDbContext db, IServiceScopeFactory scopeFactory) { _db = db; _scopeFactory = scopeFactory; }
+
+    /// <summary>Fire-and-forget push de stock a MeLi tras editar stock desde el endpoint movil.
+    /// Mismo patron que CafeProductosController.FireAndForgetPushMeli. Respeta kill switches.</summary>
+    private void FireAndForgetPushMeli(int cafeProductoId)
+    {
+        var sf = _scopeFactory;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = sf.CreateScope();
+                var pushSvc = scope.ServiceProvider.GetRequiredService<Api.Services.MeliStockPushService>();
+                await pushSvc.PushStockForProductoAsync(cafeProductoId);
+            }
+            catch { /* error queda en StockChangedAt, lo retoma el background */ }
+        });
+    }
 
     // ============================================================
     // ENDPOINTS PUBLICOS (sin auth, por token)
@@ -128,6 +146,9 @@ public class StockController : ControllerBase
         };
         prod.StockUnidades = despues;
         prod.UpdatedAt = DateTime.UtcNow;
+        // Marcar StockChangedAt para que el push event-driven + background lo capturen.
+        // Sin esto, MeLi se queda con el stock viejo (bug observado 2026-05-24 con DELLA001).
+        if (antes != despues) prod.StockChangedAt = DateTime.UtcNow;
 
         var mov = new StockMovimiento
         {
@@ -145,6 +166,9 @@ public class StockController : ControllerBase
         };
         _db.StockMovimientos.Add(mov);
         await _db.SaveChangesAsync();
+
+        // Push event-driven a MeLi (fire-and-forget). Si el master kill-switch esta off, no hace nada.
+        if (antes != despues) FireAndForgetPushMeli(prod.Id);
 
         return Ok(new { ok = true, stockAntes = antes, stockDespues = despues, movId = mov.Id });
     }
