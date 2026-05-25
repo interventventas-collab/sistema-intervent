@@ -697,12 +697,9 @@ public class MeliController : ControllerBase
             stockFull = spdFull?.StockUnidades ?? 0;
         }
 
-        // Reserva aplicada
-        int reservaGlobal = 1;
-        var rs = await db.AppSettings.AsNoTracking().FirstOrDefaultAsync(x => x.Key == "meli.stock_push.reserva_interna");
-        if (rs != null && int.TryParse(rs.Value, out var rg) && rg >= 0) reservaGlobal = rg;
-        int reservaAplicada = prod.StockMinimoMeLi ?? reservaGlobal;
-        string reservaSource = prod.StockMinimoMeLi.HasValue ? "producto" : "global";
+        // Reserva (regla 2026-05-25, opción A): vacío o 0 = sin reserva. N > 0 = reservar N.
+        int reservaAplicada = prod.StockMinimoMeLi ?? 0;
+        string reservaSource = reservaAplicada > 0 ? "producto" : "sin_reserva";
 
         int publicadoSimple = Math.Max(0, stockSistema - reservaAplicada);
         int stockReal = stockSistema + stockFull;
