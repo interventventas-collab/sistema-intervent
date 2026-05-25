@@ -4095,3 +4095,32 @@ GO
 IF NOT EXISTS (SELECT 1 FROM AppSettings WHERE [Key] = 'whatsapp.pedidos.auto_responder_enabled')
     INSERT INTO AppSettings([Key], Value, UpdatedAt) VALUES ('whatsapp.pedidos.auto_responder_enabled', 'true', SYSUTCDATETIME());
 GO
+
+-- 2026-05-25: Auditoría de stock (conteo manual masivo desde Stock móvil)
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'Stock_Auditorias')
+BEGIN
+    CREATE TABLE [Stock_Auditorias] (
+        [Id] INT IDENTITY(1,1) PRIMARY KEY,
+        [IniciadaAt] DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        [IniciadaPorOperadorId] INT NULL,
+        [IniciadaPorNombre] NVARCHAR(120) NULL,
+        [CerradaAt] DATETIME2 NULL,
+        [CerradaPorNombre] NVARCHAR(120) NULL,
+        [Notas] NVARCHAR(500) NULL,
+        CONSTRAINT FK_StockAuditorias_Operador FOREIGN KEY (IniciadaPorOperadorId) REFERENCES Stock_Operadores(Id)
+    );
+    CREATE INDEX IX_StockAuditorias_CerradaAt ON Stock_Auditorias(CerradaAt);
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name = 'AuditoriaId' AND Object_ID = OBJECT_ID('Stock_Movimientos'))
+    ALTER TABLE Stock_Movimientos ADD AuditoriaId INT NULL;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name = 'Reverted' AND Object_ID = OBJECT_ID('Stock_Movimientos'))
+    ALTER TABLE Stock_Movimientos ADD Reverted BIT NOT NULL CONSTRAINT DF_StockMov_Reverted DEFAULT 0;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_StockMov_Auditoria')
+    ALTER TABLE Stock_Movimientos WITH CHECK ADD CONSTRAINT FK_StockMov_Auditoria FOREIGN KEY (AuditoriaId) REFERENCES Stock_Auditorias(Id);
+GO

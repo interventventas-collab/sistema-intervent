@@ -108,6 +108,7 @@ public class AppDbContext : DbContext
     // Stock — carga rapida via link publico (mobile-first, escaneo de codigos)
     public DbSet<StockOperador> StockOperadores => Set<StockOperador>();
     public DbSet<StockMovimiento> StockMovimientos => Set<StockMovimiento>();
+    public DbSet<StockAuditoria> StockAuditorias => Set<StockAuditoria>();
 
     // Preventas / Pedidos de vendedor — link publico para que vendedor en la calle (Gaby)
     // cargue pedidos desde el celular sin lidiar con codigos/precios/stock.

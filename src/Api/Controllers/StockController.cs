@@ -45,10 +45,13 @@ public class StockController : ControllerBase
 
     public record StockOperadorPubDto(int Id, string Nombre);
     public record StockProductoPubDto(int Id, string? Sku, string? Barcode, string Nombre,
-        string Categoria, string? Marca, int StockActual);
-    public record StockInitPubDto(string Token, List<StockOperadorPubDto> Operadores, string DepositoActual);
+        string Categoria, string? Marca, int StockActual,
+        DateTime? UltimaModifAt, string? UltimaModifOperador, bool YaEnAuditoriaActiva);
+    public record StockInitPubDto(string Token, List<StockOperadorPubDto> Operadores, string DepositoActual,
+        StockAuditoriaPubDto? AuditoriaActiva);
     public record StockMovimientoPubDto(int Id, DateTime Fecha, string ProductoNombre, string? Sku,
         string Operador, string TipoMov, int Cantidad, int StockAntes, int StockDespues, string? Comentario);
+    public record StockAuditoriaPubDto(int Id, DateTime IniciadaAt, string? IniciadaPorNombre, int ItemsContados);
 
     private async Task<bool> TokenValidoAsync(string token)
     {
@@ -57,7 +60,7 @@ public class StockController : ControllerBase
         return s?.Value == token;
     }
 
-    /// <summary>Datos iniciales para el celular: lista de operadores activos + nombre del depósito.</summary>
+    /// <summary>Datos iniciales para el celular: lista de operadores activos + nombre del depósito + auditoría activa.</summary>
     [HttpGet("publica/{token}/init")]
     [AllowAnonymous]
     public async Task<IActionResult> GetInit(string token)
@@ -68,10 +71,24 @@ public class StockController : ControllerBase
             .OrderBy(o => o.Orden).ThenBy(o => o.Nombre)
             .Select(o => new StockOperadorPubDto(o.Id, o.Nombre))
             .ToListAsync();
-        return Ok(new StockInitPubDto(token, ops, "9 de Abril"));
+
+        var audAct = await _db.StockAuditorias
+            .Where(a => a.CerradaAt == null)
+            .OrderByDescending(a => a.IniciadaAt)
+            .FirstOrDefaultAsync();
+        StockAuditoriaPubDto? audDto = null;
+        if (audAct is not null)
+        {
+            var items = await _db.StockMovimientos
+                .Where(m => m.AuditoriaId == audAct.Id && !m.Reverted)
+                .Select(m => m.ProductoId).Distinct().CountAsync();
+            audDto = new StockAuditoriaPubDto(audAct.Id, audAct.IniciadaAt, audAct.IniciadaPorNombre, items);
+        }
+
+        return Ok(new StockInitPubDto(token, ops, "9 de Abril", audDto));
     }
 
-    /// <summary>Busca productos por SKU, barcode o nombre. Devuelve hasta 25 resultados con stock actual.</summary>
+    /// <summary>Busca productos. Devuelve hasta 25 con stock actual + última modificación + flag auditoría.</summary>
     [HttpGet("publica/{token}/search")]
     [AllowAnonymous]
     public async Task<IActionResult> Search(string token, [FromQuery] string q = "")
@@ -79,31 +96,127 @@ public class StockController : ControllerBase
         if (!await TokenValidoAsync(token)) return NotFound(new { error = "Token inválido" });
         if (string.IsNullOrWhiteSpace(q) || q.Trim().Length < 1)
             return Ok(new List<StockProductoPubDto>());
-        var term = q.Trim().ToUpperInvariant();
 
-        // Si parece un código de barras (todo dígito) y matchea exact, devolvemos solo ese.
+        // Auditoría activa (si hay), para marcar productos ya contados.
+        var audActId = await _db.StockAuditorias
+            .Where(a => a.CerradaAt == null)
+            .OrderByDescending(a => a.IniciadaAt)
+            .Select(a => (int?)a.Id).FirstOrDefaultAsync();
+
+        var term = q.Trim().ToUpperInvariant();
+        IQueryable<Models.CafeProducto> baseQ;
+
         if (term.All(char.IsDigit) && term.Length >= 8)
         {
-            var exact = await _db.CafeProductos
-                .Where(p => p.IsActive && p.Barcode == term)
-                .Select(p => new StockProductoPubDto(p.Id, p.Sku, p.Barcode, p.Nombre,
-                    p.Categoria, p.Marca, p.StockUnidades))
-                .ToListAsync();
-            if (exact.Count > 0) return Ok(exact);
+            baseQ = _db.CafeProductos.Where(p => p.IsActive && p.Barcode == term);
+            if (!await baseQ.AnyAsync())
+                baseQ = _db.CafeProductos.Where(p => p.IsActive && (
+                    (p.Sku != null && p.Sku.ToUpper().Contains(term))
+                    || (p.Barcode != null && p.Barcode.Contains(term))
+                    || p.Nombre.ToUpper().Contains(term)));
         }
-
-        // Sino: búsqueda por SKU (LIKE prefix) + Nombre (LIKE contains) + Barcode (LIKE)
-        var q2 = _db.CafeProductos
-            .Where(p => p.IsActive)
-            .Where(p =>
+        else
+        {
+            baseQ = _db.CafeProductos.Where(p => p.IsActive && (
                 (p.Sku != null && p.Sku.ToUpper().Contains(term))
                 || (p.Barcode != null && p.Barcode.Contains(term))
-                || p.Nombre.ToUpper().Contains(term))
+                || p.Nombre.ToUpper().Contains(term)));
+        }
+
+        var prods = await baseQ.OrderBy(p => p.Sku).Take(25).ToListAsync();
+        var prodIds = prods.Select(p => p.Id).ToList();
+
+        var ultimasModifs = await _db.StockMovimientos
+            .Where(m => prodIds.Contains(m.ProductoId) && !m.Reverted)
+            .GroupBy(m => m.ProductoId)
+            .Select(g => new {
+                ProductoId = g.Key,
+                Ultima = g.OrderByDescending(m => m.CreatedAt).Select(m => new {
+                    m.CreatedAt, m.OperadorNombreSnap
+                }).FirstOrDefault()
+            })
+            .ToListAsync();
+        var ultMap = ultimasModifs.ToDictionary(x => x.ProductoId, x => x.Ultima);
+
+        HashSet<int> enAuditoria = new();
+        if (audActId.HasValue)
+        {
+            enAuditoria = (await _db.StockMovimientos
+                .Where(m => m.AuditoriaId == audActId.Value && !m.Reverted && prodIds.Contains(m.ProductoId))
+                .Select(m => m.ProductoId).Distinct().ToListAsync()).ToHashSet();
+        }
+
+        var result = prods.Select(p => new StockProductoPubDto(
+            p.Id, p.Sku, p.Barcode, p.Nombre, p.Categoria, p.Marca, p.StockUnidades,
+            ultMap.TryGetValue(p.Id, out var um) ? um?.CreatedAt : null,
+            ultMap.TryGetValue(p.Id, out var um2) ? um2?.OperadorNombreSnap : null,
+            enAuditoria.Contains(p.Id)
+        )).ToList();
+        return Ok(result);
+    }
+
+    /// <summary>Lista TODOS los productos activos paginados (para modo auditoría que recorre el depósito).</summary>
+    [HttpGet("publica/{token}/all")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetAll(string token, [FromQuery] int page = 1, [FromQuery] int pageSize = 50, [FromQuery] string? filter = null)
+    {
+        if (!await TokenValidoAsync(token)) return NotFound(new { error = "Token inválido" });
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 10, 200);
+
+        var audActId = await _db.StockAuditorias
+            .Where(a => a.CerradaAt == null)
+            .OrderByDescending(a => a.IniciadaAt)
+            .Select(a => (int?)a.Id).FirstOrDefaultAsync();
+
+        IQueryable<Models.CafeProducto> baseQ = _db.CafeProductos.Where(p => p.IsActive);
+
+        // Filtro: "pendientes" (solo los NO modificados en la auditoría activa) / "hechos" (los SÍ modificados) / null = todos
+        if (audActId.HasValue && (filter == "pendientes" || filter == "hechos"))
+        {
+            var enAud = _db.StockMovimientos
+                .Where(m => m.AuditoriaId == audActId.Value && !m.Reverted)
+                .Select(m => m.ProductoId).Distinct();
+            if (filter == "pendientes")
+                baseQ = baseQ.Where(p => !enAud.Contains(p.Id));
+            else
+                baseQ = baseQ.Where(p => enAud.Contains(p.Id));
+        }
+
+        var total = await baseQ.CountAsync();
+        var prods = await baseQ
             .OrderBy(p => p.Sku)
-            .Take(25)
-            .Select(p => new StockProductoPubDto(p.Id, p.Sku, p.Barcode, p.Nombre,
-                p.Categoria, p.Marca, p.StockUnidades));
-        return Ok(await q2.ToListAsync());
+            .Skip((page - 1) * pageSize).Take(pageSize)
+            .ToListAsync();
+        var prodIds = prods.Select(p => p.Id).ToList();
+
+        var ultimasModifs = await _db.StockMovimientos
+            .Where(m => prodIds.Contains(m.ProductoId) && !m.Reverted)
+            .GroupBy(m => m.ProductoId)
+            .Select(g => new {
+                ProductoId = g.Key,
+                Ultima = g.OrderByDescending(m => m.CreatedAt).Select(m => new {
+                    m.CreatedAt, m.OperadorNombreSnap
+                }).FirstOrDefault()
+            })
+            .ToListAsync();
+        var ultMap = ultimasModifs.ToDictionary(x => x.ProductoId, x => x.Ultima);
+
+        HashSet<int> enAuditoria = new();
+        if (audActId.HasValue)
+        {
+            enAuditoria = (await _db.StockMovimientos
+                .Where(m => m.AuditoriaId == audActId.Value && !m.Reverted && prodIds.Contains(m.ProductoId))
+                .Select(m => m.ProductoId).Distinct().ToListAsync()).ToHashSet();
+        }
+
+        var items = prods.Select(p => new StockProductoPubDto(
+            p.Id, p.Sku, p.Barcode, p.Nombre, p.Categoria, p.Marca, p.StockUnidades,
+            ultMap.TryGetValue(p.Id, out var um) ? um?.CreatedAt : null,
+            ultMap.TryGetValue(p.Id, out var um2) ? um2?.OperadorNombreSnap : null,
+            enAuditoria.Contains(p.Id)
+        )).ToList();
+        return Ok(new { items, total, page, pageSize });
     }
 
     public class CrearMovimientoRequest
@@ -114,6 +227,9 @@ public class StockController : ControllerBase
         public string TipoMov { get; set; } = "SUMA";
         public int Cantidad { get; set; }
         public string? Comentario { get; set; }
+        /// <summary>Si viene seteado, el movimiento se asocia a esa sesión de auditoría
+        /// (se usa para marcar productos "ya stockeados en esta auditoría"). Null = movimiento normal.</summary>
+        public int? AuditoriaId { get; set; }
     }
 
     /// <summary>El operador confirma un movimiento. Actualiza StockUnidades + guarda movimiento.</summary>
@@ -135,6 +251,16 @@ public class StockController : ControllerBase
 
         var prod = await _db.CafeProductos.FindAsync(req.ProductoId);
         if (prod is null || !prod.IsActive) return BadRequest(new { error = "Producto no encontrado" });
+
+        // Validar AuditoriaId si vino: tiene que existir y estar abierta.
+        int? auditoriaIdValida = null;
+        if (req.AuditoriaId.HasValue && req.AuditoriaId.Value > 0)
+        {
+            var aud = await _db.StockAuditorias.FindAsync(req.AuditoriaId.Value);
+            if (aud is null) return BadRequest(new { error = "Auditoría no encontrada" });
+            if (aud.CerradaAt.HasValue) return BadRequest(new { error = "La auditoría ya fue cerrada" });
+            auditoriaIdValida = aud.Id;
+        }
 
         var antes = prod.StockUnidades;
         int despues = tipo switch
@@ -164,7 +290,8 @@ public class StockController : ControllerBase
             StockAntes = antes,
             StockDespues = despues,
             Comentario = string.IsNullOrWhiteSpace(req.Comentario) ? null : req.Comentario.Trim(),
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            AuditoriaId = auditoriaIdValida
         };
         _db.StockMovimientos.Add(mov);
         await _db.SaveChangesAsync();
@@ -173,6 +300,308 @@ public class StockController : ControllerBase
         if (antes != despues) FireAndForgetPushMeli(prod.Id);
 
         return Ok(new { ok = true, stockAntes = antes, stockDespues = despues, movId = mov.Id });
+    }
+
+    // ============================================================
+    // AUDITORIA (sesion de conteo masivo desde el celu)
+    // ============================================================
+
+    public class IniciarAuditoriaRequest
+    {
+        public int OperadorId { get; set; }
+        public string? Notas { get; set; }
+    }
+
+    /// <summary>Inicia una sesión de auditoría. Si ya hay una abierta, devuelve esa (no duplica).</summary>
+    [HttpPost("publica/{token}/auditoria/iniciar")]
+    [AllowAnonymous]
+    public async Task<IActionResult> IniciarAuditoria(string token, [FromBody] IniciarAuditoriaRequest req)
+    {
+        if (!await TokenValidoAsync(token)) return NotFound(new { error = "Token inválido" });
+        if (req.OperadorId <= 0) return BadRequest(new { error = "Falta indicar el operador" });
+
+        var op = await _db.StockOperadores.FindAsync(req.OperadorId);
+        if (op is null || !op.IsActive) return BadRequest(new { error = "Operador no encontrado" });
+
+        // Si ya hay una abierta, devolverla (lock simple — no permitimos dos en simultáneo).
+        var existente = await _db.StockAuditorias
+            .Where(a => a.CerradaAt == null)
+            .OrderByDescending(a => a.IniciadaAt)
+            .FirstOrDefaultAsync();
+        if (existente is not null)
+        {
+            var itemsExist = await _db.StockMovimientos
+                .Where(m => m.AuditoriaId == existente.Id && !m.Reverted)
+                .Select(m => m.ProductoId).Distinct().CountAsync();
+            return Ok(new StockAuditoriaPubDto(existente.Id, existente.IniciadaAt, existente.IniciadaPorNombre, itemsExist));
+        }
+
+        var aud = new StockAuditoria
+        {
+            IniciadaAt = DateTime.UtcNow,
+            IniciadaPorOperadorId = op.Id,
+            IniciadaPorNombre = op.Nombre,
+            Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas.Trim()
+        };
+        _db.StockAuditorias.Add(aud);
+        await _db.SaveChangesAsync();
+        return Ok(new StockAuditoriaPubDto(aud.Id, aud.IniciadaAt, aud.IniciadaPorNombre, 0));
+    }
+
+    public class CerrarAuditoriaRequest
+    {
+        public int? OperadorId { get; set; }
+        public string? Notas { get; set; }
+    }
+
+    /// <summary>Cierra la auditoría indicada (setea CerradaAt). Idempotente: si ya está cerrada, devuelve OK igual.</summary>
+    [HttpPost("publica/{token}/auditoria/{id:int}/cerrar")]
+    [AllowAnonymous]
+    public async Task<IActionResult> CerrarAuditoria(string token, int id, [FromBody] CerrarAuditoriaRequest req)
+    {
+        if (!await TokenValidoAsync(token)) return NotFound(new { error = "Token inválido" });
+        var aud = await _db.StockAuditorias.FindAsync(id);
+        if (aud is null) return NotFound(new { error = "Auditoría no encontrada" });
+        if (aud.CerradaAt.HasValue) return Ok(new { ok = true, alreadyClosed = true });
+
+        string? nombreCerro = null;
+        if (req?.OperadorId.HasValue == true && req.OperadorId.Value > 0)
+        {
+            var op = await _db.StockOperadores.FindAsync(req.OperadorId.Value);
+            nombreCerro = op?.Nombre;
+        }
+        aud.CerradaAt = DateTime.UtcNow;
+        aud.CerradaPorNombre = nombreCerro;
+        if (req != null && !string.IsNullOrWhiteSpace(req.Notas))
+            aud.Notas = (aud.Notas is null ? "" : aud.Notas + " | ") + req.Notas.Trim();
+        await _db.SaveChangesAsync();
+
+        var items = await _db.StockMovimientos
+            .Where(m => m.AuditoriaId == aud.Id && !m.Reverted)
+            .Select(m => m.ProductoId).Distinct().CountAsync();
+        return Ok(new { ok = true, id = aud.Id, items, cerradaAt = aud.CerradaAt });
+    }
+
+    public class BatchMovimientoItem
+    {
+        public int ProductoId { get; set; }
+        public string TipoMov { get; set; } = "SET";
+        public int Cantidad { get; set; }
+        public string? Comentario { get; set; }
+    }
+
+    public class BatchMovimientoRequest
+    {
+        public int OperadorId { get; set; }
+        public int? AuditoriaId { get; set; }
+        public List<BatchMovimientoItem> Items { get; set; } = new();
+    }
+
+    /// <summary>Aplica varios movimientos juntos (modo "confirmar varios items que conté en el pasillo").
+    /// Recorre uno a uno y devuelve un resumen con éxitos / errores por item — NO hace rollback global.</summary>
+    [HttpPost("publica/{token}/movimientos-batch")]
+    [AllowAnonymous]
+    public async Task<IActionResult> CrearMovimientosBatch(string token, [FromBody] BatchMovimientoRequest req)
+    {
+        if (!await TokenValidoAsync(token)) return NotFound(new { error = "Token inválido" });
+        if (req.OperadorId <= 0) return BadRequest(new { error = "Tenés que indicar quién carga" });
+        if (req.Items is null || req.Items.Count == 0) return BadRequest(new { error = "No mandaste items" });
+        if (req.Items.Count > 200) return BadRequest(new { error = "Demasiados items en un batch (máx 200)" });
+
+        var op = await _db.StockOperadores.FindAsync(req.OperadorId);
+        if (op is null || !op.IsActive) return BadRequest(new { error = "Operador no encontrado" });
+
+        int? auditoriaIdValida = null;
+        if (req.AuditoriaId.HasValue && req.AuditoriaId.Value > 0)
+        {
+            var aud = await _db.StockAuditorias.FindAsync(req.AuditoriaId.Value);
+            if (aud is null) return BadRequest(new { error = "Auditoría no encontrada" });
+            if (aud.CerradaAt.HasValue) return BadRequest(new { error = "La auditoría ya fue cerrada" });
+            auditoriaIdValida = aud.Id;
+        }
+
+        var prodIds = req.Items.Select(i => i.ProductoId).Distinct().ToList();
+        var prods = await _db.CafeProductos.Where(p => prodIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
+
+        var okList = new List<object>();
+        var errList = new List<object>();
+        var pushIds = new HashSet<int>();
+
+        foreach (var it in req.Items)
+        {
+            try
+            {
+                var tipo = (it.TipoMov ?? "SET").Trim().ToUpperInvariant();
+                if (tipo != "SUMA" && tipo != "RESTA" && tipo != "SET")
+                {
+                    errList.Add(new { it.ProductoId, error = "Tipo inválido" });
+                    continue;
+                }
+                if (it.Cantidad <= 0 && tipo != "SET")
+                {
+                    errList.Add(new { it.ProductoId, error = "Cantidad debe ser > 0" });
+                    continue;
+                }
+                if (it.Cantidad < 0)
+                {
+                    errList.Add(new { it.ProductoId, error = "Cantidad no puede ser negativa" });
+                    continue;
+                }
+                if (!prods.TryGetValue(it.ProductoId, out var prod) || !prod.IsActive)
+                {
+                    errList.Add(new { it.ProductoId, error = "Producto no encontrado" });
+                    continue;
+                }
+
+                var antes = prod.StockUnidades;
+                int despues = tipo switch
+                {
+                    "SUMA" => antes + it.Cantidad,
+                    "RESTA" => Math.Max(0, antes - it.Cantidad),
+                    "SET" => it.Cantidad,
+                    _ => antes
+                };
+                prod.StockUnidades = despues;
+                prod.UpdatedAt = DateTime.UtcNow;
+                if (antes != despues)
+                {
+                    prod.StockChangedAt = DateTime.UtcNow;
+                    await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
+                    pushIds.Add(prod.Id);
+                }
+
+                var mov = new StockMovimiento
+                {
+                    ProductoId = prod.Id,
+                    OperadorId = op.Id,
+                    OperadorNombreSnap = op.Nombre,
+                    DepositoId = null,
+                    DepositoNombreSnap = "9 de Abril",
+                    TipoMov = tipo,
+                    Cantidad = it.Cantidad,
+                    StockAntes = antes,
+                    StockDespues = despues,
+                    Comentario = string.IsNullOrWhiteSpace(it.Comentario) ? null : it.Comentario.Trim(),
+                    CreatedAt = DateTime.UtcNow,
+                    AuditoriaId = auditoriaIdValida
+                };
+                _db.StockMovimientos.Add(mov);
+                okList.Add(new { it.ProductoId, stockAntes = antes, stockDespues = despues });
+            }
+            catch (Exception ex)
+            {
+                errList.Add(new { it.ProductoId, error = ex.Message });
+            }
+        }
+
+        await _db.SaveChangesAsync();
+        // Push a MeLi tras guardar todo, una vez por producto.
+        foreach (var pid in pushIds) FireAndForgetPushMeli(pid);
+
+        return Ok(new {
+            ok = errList.Count == 0,
+            aplicados = okList.Count,
+            errores = errList.Count,
+            detalleOk = okList,
+            detalleErr = errList
+        });
+    }
+
+    public class DeshacerUltimoRequest
+    {
+        public int OperadorId { get; set; }
+        /// <summary>Si viene, solo deshace el último DE ESA auditoría (no toca movimientos sueltos previos).</summary>
+        public int? AuditoriaId { get; set; }
+    }
+
+    /// <summary>Deshace el último movimiento NO revertido (del operador, opcionalmente filtrado por auditoría).
+    /// Genera un movimiento inverso + marca el original como Reverted=true. NO borra historial.</summary>
+    [HttpPost("publica/{token}/deshacer-ultimo")]
+    [AllowAnonymous]
+    public async Task<IActionResult> DeshacerUltimo(string token, [FromBody] DeshacerUltimoRequest req)
+    {
+        if (!await TokenValidoAsync(token)) return NotFound(new { error = "Token inválido" });
+        if (req.OperadorId <= 0) return BadRequest(new { error = "Falta operador" });
+
+        var op = await _db.StockOperadores.FindAsync(req.OperadorId);
+        if (op is null || !op.IsActive) return BadRequest(new { error = "Operador no encontrado" });
+
+        var q = _db.StockMovimientos.Where(m => !m.Reverted && m.OperadorId == op.Id);
+        if (req.AuditoriaId.HasValue) q = q.Where(m => m.AuditoriaId == req.AuditoriaId.Value);
+
+        var ult = await q.OrderByDescending(m => m.CreatedAt).FirstOrDefaultAsync();
+        if (ult is null) return BadRequest(new { error = "No hay nada para deshacer" });
+
+        var prod = await _db.CafeProductos.FindAsync(ult.ProductoId);
+        if (prod is null) return BadRequest(new { error = "Producto del último movimiento no existe" });
+
+        // Restaurar al StockAntes original (no recalculamos: usamos el snapshot que ya está guardado).
+        var antes = prod.StockUnidades;
+        var despues = ult.StockAntes;
+        prod.StockUnidades = despues;
+        prod.UpdatedAt = DateTime.UtcNow;
+        if (antes != despues)
+        {
+            prod.StockChangedAt = DateTime.UtcNow;
+            await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
+        }
+
+        // Marcar el original como revertido para que no cuente en "ya stockeados en auditoría".
+        ult.Reverted = true;
+
+        // Crear un movimiento inverso para que quede el historial visible.
+        var inverso = new StockMovimiento
+        {
+            ProductoId = prod.Id,
+            OperadorId = op.Id,
+            OperadorNombreSnap = op.Nombre,
+            DepositoId = null,
+            DepositoNombreSnap = "9 de Abril",
+            TipoMov = "SET",
+            Cantidad = despues,
+            StockAntes = antes,
+            StockDespues = despues,
+            Comentario = $"Deshacer último (mov #{ult.Id})",
+            CreatedAt = DateTime.UtcNow,
+            AuditoriaId = ult.AuditoriaId,
+            // Tambien marcamos el inverso como Reverted para que NO cuente como "stockeado en auditoría".
+            Reverted = true
+        };
+        _db.StockMovimientos.Add(inverso);
+        await _db.SaveChangesAsync();
+
+        if (antes != despues) FireAndForgetPushMeli(prod.Id);
+
+        return Ok(new { ok = true, movRevertedId = ult.Id, productoId = prod.Id, stockAntes = antes, stockDespues = despues });
+    }
+
+    /// <summary>Lista las últimas N auditorías (cerradas + abierta si la hay) para mostrar historial.</summary>
+    [HttpGet("publica/{token}/auditorias")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ListAuditoriasPub(string token, [FromQuery] int limit = 20)
+    {
+        if (!await TokenValidoAsync(token)) return NotFound(new { error = "Token inválido" });
+        limit = Math.Clamp(limit, 1, 100);
+        var auds = await _db.StockAuditorias
+            .OrderByDescending(a => a.IniciadaAt)
+            .Take(limit).ToListAsync();
+        var ids = auds.Select(a => a.Id).ToList();
+        var counts = await _db.StockMovimientos
+            .Where(m => m.AuditoriaId != null && ids.Contains(m.AuditoriaId.Value) && !m.Reverted)
+            .GroupBy(m => m.AuditoriaId!.Value)
+            .Select(g => new { Id = g.Key, Items = g.Select(x => x.ProductoId).Distinct().Count() })
+            .ToListAsync();
+        var dic = counts.ToDictionary(x => x.Id, x => x.Items);
+        var result = auds.Select(a => new {
+            a.Id,
+            a.IniciadaAt,
+            a.IniciadaPorNombre,
+            a.CerradaAt,
+            a.CerradaPorNombre,
+            a.Notas,
+            Items = dic.TryGetValue(a.Id, out var c) ? c : 0
+        }).ToList();
+        return Ok(result);
     }
 
     /// <summary>Últimos N movimientos cargados por un operador (para que el celular muestre el "feed" reciente).</summary>
@@ -310,6 +739,56 @@ public class StockController : ControllerBase
             .OrderByDescending(x => x.Count).ToListAsync();
         var ultimo = await q.OrderByDescending(m => m.CreatedAt).Select(m => (DateTime?)m.CreatedAt).FirstOrDefaultAsync();
         return Ok(new { total, porTipo, ultimo });
+    }
+
+    public record AdminAuditoriaDto(int Id, DateTime IniciadaAt, string? IniciadaPorNombre,
+        DateTime? CerradaAt, string? CerradaPorNombre, string? Notas, int ItemsContados,
+        int MovimientosTotales);
+
+    /// <summary>Lista de auditorías (admin) con conteo de movimientos y productos únicos contados.</summary>
+    [HttpGet("admin/auditorias")]
+    [Authorize]
+    public async Task<IActionResult> ListAuditoriasAdmin([FromQuery] int limit = 50)
+    {
+        limit = Math.Clamp(limit, 1, 500);
+        var auds = await _db.StockAuditorias
+            .OrderByDescending(a => a.IniciadaAt)
+            .Take(limit).ToListAsync();
+        var ids = auds.Select(a => a.Id).ToList();
+        var movs = await _db.StockMovimientos
+            .Where(m => m.AuditoriaId != null && ids.Contains(m.AuditoriaId.Value))
+            .Select(m => new { m.AuditoriaId, m.ProductoId, m.Reverted })
+            .ToListAsync();
+        var byAud = movs.GroupBy(m => m.AuditoriaId!.Value).ToDictionary(g => g.Key, g => g.ToList());
+        var result = auds.Select(a =>
+        {
+            var list = byAud.TryGetValue(a.Id, out var l) ? l : new();
+            var items = list.Where(x => !x.Reverted).Select(x => x.ProductoId).Distinct().Count();
+            var totalMovs = list.Count(x => !x.Reverted);
+            return new AdminAuditoriaDto(a.Id, a.IniciadaAt, a.IniciadaPorNombre,
+                a.CerradaAt, a.CerradaPorNombre, a.Notas, items, totalMovs);
+        }).ToList();
+        return Ok(result);
+    }
+
+    /// <summary>Detalle de una auditoría (admin): lista de movimientos con producto + operador.</summary>
+    [HttpGet("admin/auditorias/{id:int}")]
+    [Authorize]
+    public async Task<IActionResult> GetAuditoriaAdmin(int id)
+    {
+        var aud = await _db.StockAuditorias.FindAsync(id);
+        if (aud is null) return NotFound();
+        var movs = await _db.StockMovimientos
+            .Include(m => m.Producto)
+            .Where(m => m.AuditoriaId == id)
+            .OrderBy(m => m.CreatedAt)
+            .ToListAsync();
+        return Ok(new {
+            aud.Id, aud.IniciadaAt, aud.IniciadaPorNombre, aud.CerradaAt, aud.CerradaPorNombre, aud.Notas,
+            movimientos = movs.Select(m => new AdminMovDto(m.Id, m.CreatedAt, m.ProductoId, m.Producto?.Sku,
+                m.Producto?.Nombre ?? "?", m.OperadorNombreSnap ?? "?", m.TipoMov, m.Cantidad,
+                m.StockAntes, m.StockDespues, m.Comentario)).ToList()
+        });
     }
 
     /// <summary>Devuelve el token publico actual (admin lo necesita para copiar/mandar el link).</summary>

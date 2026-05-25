@@ -3,14 +3,17 @@
 @layout Web.Layout.LoginLayout
 @inject HttpClient Http
 @inject IJSRuntime JS
+@inject NavigationManager Nav
 
-@* Carga de stock mobile-first. El operador entra, elige su nombre, busca productos por SKU o
-   código de barras (con scanner bluetooth o tipeando), toca un producto, elige Sumar/Restar/Setear,
-   carga cantidad + comentario opcional, confirma. *@
+@* Carga de stock mobile-first. Dos modos:
+   1) NORMAL (default): operador busca producto, lo edita uno por uno (suma/resta/setear).
+   2) AUDITORIA (?modo=auditoria): operador recorre el depósito. Los productos ya stockeados se ven
+      en VERDE, los pendientes en GRIS. Puede confirmar varios juntos (batch). Hay botón "deshacer último".
+*@
 
 <style>
     body { background: linear-gradient(135deg, #f1f5f9, #e2e8f0); min-height: 100vh; }
-    .sp-wrap { max-width: 540px; margin: 0 auto; padding: 0.8rem; }
+    .sp-wrap { max-width: 560px; margin: 0 auto; padding: 0.8rem; }
     .sp-card { background: white; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); padding: 1rem; margin-bottom: 0.7rem; }
     .sp-h1 { font-size: 1.3rem; font-weight: 700; margin: 0 0 0.2rem; color: #1f2937; }
     .sp-sub { font-size: 0.85rem; color: #6b7280; margin: 0; }
@@ -20,18 +23,23 @@
     .sp-op-btn:hover, .sp-op-btn.active { border-color: #1d4ed8; background: #dbeafe; color: #1e40af; }
 
     .sp-header-active { background: #1d4ed8; color: white; border-radius: 10px; padding: 0.6rem 0.9rem; display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.7rem; }
+    .sp-header-active.audit { background: linear-gradient(135deg, #b45309, #d97706); }
     .sp-header-active strong { font-size: 1.05rem; }
     .sp-header-cambiar { background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.4); padding: 0.3rem 0.55rem; border-radius: 6px; font-size: 0.78rem; cursor: pointer; }
 
-    .sp-search { width: 100%; padding: 0.9rem; font-size: 1.05rem; border: 2px solid #d1d5db; border-radius: 10px; box-sizing: border-box; }
+    .sp-search { width: 100%; padding: 1.1rem 1rem; font-size: 1.2rem; border: 2px solid #d1d5db; border-radius: 10px; box-sizing: border-box; }
     .sp-search:focus { outline: none; border-color: #1d4ed8; box-shadow: 0 0 0 3px rgba(29,78,216,0.15); }
 
-    .sp-prod { background: white; border: 1px solid #e5e7eb; border-radius: 10px; padding: 0.7rem; margin-bottom: 0.4rem; cursor: pointer; transition: 0.15s; }
+    .sp-prod { background: white; border: 1px solid #e5e7eb; border-radius: 10px; padding: 0.75rem; margin-bottom: 0.45rem; cursor: pointer; transition: 0.15s; position: relative; }
     .sp-prod:hover { border-color: #1d4ed8; background: #f0f9ff; }
+    .sp-prod.audit-hecho { background: #dcfce7; border-color: #16a34a; }
+    .sp-prod.audit-hecho:hover { background: #bbf7d0; }
     .sp-prod-sku { display: inline-block; padding: 0.15rem 0.45rem; background: #1d4ed8; color: white; border-radius: 4px; font-family: monospace; font-size: 0.78rem; font-weight: 700; margin-right: 0.4rem; }
     .sp-prod-nombre { font-weight: 600; color: #1f2937; }
-    .sp-prod-stock { float: right; font-weight: 700; font-size: 1.1rem; color: #1d4ed8; }
+    .sp-prod-stock { float: right; font-weight: 700; font-size: 1.15rem; color: #1d4ed8; }
     .sp-prod-stock.cero { color: #b91c1c; }
+    .sp-prod-modif { display:block; font-size: 0.72rem; color: #6b7280; margin-top: 0.25rem; }
+    .sp-prod-modif.reciente { color: #166534; font-weight: 600; }
 
     .sp-action-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.3rem; margin-bottom: 0.7rem; }
     .sp-action-tabs button { padding: 0.6rem; font-size: 0.9rem; font-weight: 700; border: 2px solid #e5e7eb; border-radius: 8px; background: white; cursor: pointer; color: #4b5563; }
@@ -39,15 +47,15 @@
     .sp-action-tabs button.active.resta { background: #b91c1c; border-color: #991b1b; color: white; }
     .sp-action-tabs button.active.set { background: #d97706; border-color: #b45309; color: white; }
 
-    .sp-cant-input { width: 100%; padding: 0.9rem; font-size: 1.8rem; text-align: center; border: 2px solid #d1d5db; border-radius: 10px; font-weight: 700; color: #1d4ed8; box-sizing: border-box; }
-    .sp-cant-quick { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.3rem; margin: 0.4rem 0; }
-    .sp-cant-quick button { padding: 0.5rem; font-size: 0.9rem; font-weight: 700; border: 2px solid #e5e7eb; border-radius: 6px; background: white; cursor: pointer; }
-    .sp-cant-quick button.active { border-color: #1d4ed8; background: #dbeafe; color: #1d4ed8; }
+    .sp-cant-input { width: 100%; padding: 1rem; font-size: 2rem; text-align: center; border: 2px solid #d1d5db; border-radius: 10px; font-weight: 700; color: #1d4ed8; box-sizing: border-box; }
 
-    .sp-btn { width: 100%; padding: 0.9rem; font-size: 1.05rem; font-weight: 700; border: none; border-radius: 10px; cursor: pointer; }
+    .sp-btn { width: 100%; padding: 0.95rem; font-size: 1.05rem; font-weight: 700; border: none; border-radius: 10px; cursor: pointer; }
     .sp-btn-confirm { background: #1d4ed8; color: white; }
     .sp-btn-confirm:disabled { background: #9ca3af; cursor: not-allowed; }
     .sp-btn-cancel { background: white; color: #4b5563; border: 1px solid #d1d5db; margin-top: 0.4rem; }
+    .sp-btn-audit { background: #b45309; color: white; }
+    .sp-btn-audit:disabled { background: #9ca3af; cursor: not-allowed; }
+    .sp-btn-deshacer { background: #fbbf24; color: #78350f; margin-top: 0.4rem; }
 
     .sp-textarea { width: 100%; padding: 0.55rem; font-size: 0.9rem; border: 1px solid #d1d5db; border-radius: 8px; resize: vertical; min-height: 50px; box-sizing: border-box; }
 
@@ -61,6 +69,22 @@
     .sp-feed-cant { font-weight: 700; font-size: 1.05rem; color: #1d4ed8; }
 
     .sp-toast { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); background: #16a34a; color: white; padding: 0.7rem 1.4rem; border-radius: 999px; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.2); z-index: 9999; }
+
+    .sp-nav { display: flex; gap: 0.4rem; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
+    .sp-nav button { padding: 0.55rem 0.9rem; font-size: 0.9rem; font-weight: 700; border: 2px solid #d1d5db; border-radius: 8px; background: white; cursor: pointer; color: #1f2937; }
+    .sp-nav button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .sp-nav span { font-size: 0.85rem; color: #4b5563; }
+
+    .sp-filter { display: flex; gap: 0.4rem; margin-bottom: 0.5rem; }
+    .sp-filter button { flex: 1; padding: 0.55rem; font-size: 0.85rem; font-weight: 700; border: 2px solid #e5e7eb; border-radius: 8px; background: white; cursor: pointer; color: #4b5563; }
+    .sp-filter button.active { background: #1d4ed8; border-color: #1d4ed8; color: white; }
+
+    .sp-batch-card { background:#fff7ed; border:2px solid #d97706; border-radius:10px; padding:0.7rem; margin-bottom:0.6rem; }
+    .sp-batch-item { display:flex; justify-content:space-between; align-items:center; padding:0.4rem 0; border-bottom:1px dashed #fed7aa; font-size:0.85rem; }
+    .sp-batch-item:last-child { border-bottom:none; }
+    .sp-batch-item .x { background:none; border:none; color:#b91c1c; font-size:1.1rem; cursor:pointer; padding: 0 0.4rem; }
+
+    .sp-modo-pill { display:inline-block; background:#fef3c7; color:#92400e; padding:0.15rem 0.5rem; border-radius:999px; font-size:0.72rem; font-weight:700; margin-left:0.4rem; vertical-align: middle; }
 </style>
 
 <div class="sp-wrap">
@@ -79,8 +103,19 @@
     {
         @* === PASO 1: elegir operador === *@
         <div class="sp-card">
-            <h1 class="sp-h1">📦 Carga de stock</h1>
+            <h1 class="sp-h1">
+                @(ModoAuditoria ? "📋 Auditoría de stock" : "📦 Carga de stock")
+                @if (ModoAuditoria) { <span class="sp-modo-pill">MODO AUDITORÍA</span> }
+            </h1>
             <p class="sp-sub">Depósito: <strong>@init.DepositoActual</strong></p>
+            @if (ModoAuditoria && init.AuditoriaActiva is not null)
+            {
+                <div style="background:#dcfce7; border:1px solid #16a34a; border-radius:8px; padding:0.6rem; margin-top:0.5rem; font-size:0.85rem;">
+                    🟢 Hay una auditoría abierta desde <strong>@init.AuditoriaActiva.IniciadaAt.ToLocalTime().ToString("dd/MM HH:mm")</strong>
+                    (iniciada por <strong>@(init.AuditoriaActiva.IniciadaPorNombre ?? "?")</strong>, @init.AuditoriaActiva.ItemsContados ítems contados).
+                    Sumate al conteo.
+                </div>
+            }
             <p class="sp-sub" style="margin-top:0.7rem;"><strong>¿Quién está cargando?</strong></p>
             <div class="sp-op-list">
                 @foreach (var op in init.Operadores)
@@ -92,58 +127,126 @@
     }
     else
     {
-        @* === PASO 2: operador activo, buscar producto === *@
-        <div class="sp-header-active">
+        @* === PASO 2: operador activo === *@
+        <div class="sp-header-active @(ModoAuditoria ? "audit" : "")">
             <div>
                 👤 <strong>@operadorActivo.Nombre</strong>
                 <span style="font-size:0.78rem; opacity:0.85; margin-left:0.4rem;">· @init.DepositoActual</span>
+                @if (ModoAuditoria) { <span style="font-size:0.7rem; opacity:0.9; display:block;">📋 AUDITORÍA</span> }
             </div>
-            <button class="sp-header-cambiar" @onclick="() => { operadorActivo = null; productosBuscados = null; queryBusqueda = string.Empty; }">Cambiar</button>
+            <button class="sp-header-cambiar" @onclick="ResetOperador">Cambiar</button>
         </div>
 
-        @if (productoSeleccionado is null)
+        @if (ModoAuditoria && auditoriaActiva is null)
         {
+            @* === Auditoría: NO hay sesión abierta, hay que iniciarla === *@
+            <div class="sp-card">
+                <h3 style="margin:0 0 0.3rem;">¿Empezamos la auditoría?</h3>
+                <p style="font-size:0.85rem; color:#6b7280; margin:0 0 0.7rem;">Esto abre una sesión de conteo. Los productos que vayas marcando quedan registrados como "stockeados en esta auditoría" para que vos y otros operadores no los repitan.</p>
+                <textarea class="sp-textarea" @bind="auditNotas" placeholder="Notas opcionales (ej: 'Conteo mensual mayo')"></textarea>
+                <button class="sp-btn sp-btn-audit" style="margin-top:0.5rem;" @onclick="IniciarAuditoriaAsync" disabled="@guardando">
+                    @(guardando ? "Iniciando..." : "📋 Iniciar auditoría")
+                </button>
+            </div>
+        }
+        else if (productoSeleccionado is null && (!ModoAuditoria || auditoriaActiva is not null))
+        {
+            @if (ModoAuditoria && auditoriaActiva is not null)
+            {
+                <div class="sp-card" style="padding:0.7rem; display:flex; justify-content:space-between; align-items:center;">
+                    <div style="font-size:0.85rem;">
+                        🟢 Auditoría #@auditoriaActiva.Id
+                        <span style="color:#6b7280; font-size:0.78rem; display:block;">@auditoriaActiva.ItemsContados ítems contados</span>
+                    </div>
+                    <button class="sp-btn sp-btn-cancel" style="width:auto; margin:0; padding:0.5rem 0.8rem; font-size:0.85rem;" @onclick="CerrarAuditoriaAsync" disabled="@guardando">
+                        ✓ Cerrar
+                    </button>
+                </div>
+            }
+
             <div class="sp-card">
                 <input class="sp-search" type="text" autocomplete="off"
-                       placeholder="🔍 Buscá por código (ej: C8733)"
+                       placeholder="🔍 Buscá por código o nombre"
                        value="@queryBusqueda"
                        @oninput="OnSearchInput"
                        @onkeydown="OnSearchKeyDown" />
-                <p style="font-size:0.72rem; color:#6b7280; margin: 0.3rem 0 0;">Tip: usá un escáner bluetooth o tipeá el SKU. Mín. 1 carácter.</p>
+                <p style="font-size:0.72rem; color:#6b7280; margin: 0.3rem 0 0;">Tip: escáner bluetooth o tipeá el SKU (mín. 1 carácter).</p>
             </div>
 
-            @if (buscando)
+            @if (ModoAuditoria && string.IsNullOrWhiteSpace(queryBusqueda))
             {
-                <p style="text-align:center; color:#6b7280;">Buscando...</p>
-            }
-            else if (productosBuscados is not null && productosBuscados.Count == 0)
-            {
-                <div class="sp-card" style="text-align:center; color:#6b7280;">
-                    Sin resultados para "@queryBusqueda"
+                @* En modo auditoría sin búsqueda activa: lista paginada del depósito con filtro pendientes/hechos *@
+                <div class="sp-filter">
+                    <button class="@(auditFilter == "pendientes" ? "active" : "")" @onclick='@(() => CambiarFiltroAuditoria("pendientes"))'>⏳ Pendientes</button>
+                    <button class="@(auditFilter == "hechos" ? "active" : "")" @onclick='@(() => CambiarFiltroAuditoria("hechos"))'>✅ Hechos</button>
+                    <button class="@(auditFilter == "todos" ? "active" : "")" @onclick='@(() => CambiarFiltroAuditoria("todos"))'>Todos</button>
                 </div>
-            }
-            else if (productosBuscados is not null && productosBuscados.Count > 0)
-            {
-                <div class="sp-card">
-                    <p style="font-size:0.78rem; color:#6b7280; margin: 0 0 0.5rem;">@productosBuscados.Count resultado(s)</p>
-                    @foreach (var p in productosBuscados)
-                    {
-                        <div class="sp-prod" @onclick="() => SeleccionarProducto(p)">
-                            <span class="sp-prod-stock @(p.StockActual <= 0 ? "cero" : "")">@p.StockActual</span>
-                            @if (!string.IsNullOrEmpty(p.Sku)) { <span class="sp-prod-sku">@p.Sku</span> }
-                            <span class="sp-prod-nombre">@p.Nombre</span>
-                            <div style="font-size:0.72rem; color:#9ca3af; margin-top:0.2rem;">
-                                @p.Categoria @(string.IsNullOrEmpty(p.Marca) ? "" : "· " + p.Marca)
+
+                <div class="sp-nav">
+                    <button @onclick="PaginaAnterior" disabled="@(pageActual <= 1)">← Atrás</button>
+                    <span>Página @pageActual de @pageTotal · @totalItems items</span>
+                    <button @onclick="PaginaSiguiente" disabled="@(pageActual >= pageTotal)">Adelante →</button>
+                </div>
+
+                @if (cargandoLista)
+                {
+                    <p style="text-align:center; color:#6b7280;">Cargando...</p>
+                }
+                else if (listaProductos is not null && listaProductos.Count > 0)
+                {
+                    <div class="sp-card">
+                        @foreach (var p in listaProductos)
+                        {
+                            <div class="sp-prod @(p.YaEnAuditoriaActiva ? "audit-hecho" : "")" @onclick="() => SeleccionarProducto(p)">
+                                @RenderProductoRow(p)
                             </div>
-                        </div>
-                    }
-                </div>
+                        }
+                    </div>
+                    <div class="sp-nav">
+                        <button @onclick="PaginaAnterior" disabled="@(pageActual <= 1)">← Atrás</button>
+                        <span>Página @pageActual de @pageTotal</span>
+                        <button @onclick="PaginaSiguiente" disabled="@(pageActual >= pageTotal)">Adelante →</button>
+                    </div>
+                }
+                else
+                {
+                    <p style="text-align:center; color:#6b7280;">No hay productos en este filtro.</p>
+                }
+            }
+            else
+            {
+                @* Modo normal o auditoría con búsqueda activa *@
+                @if (buscando)
+                {
+                    <p style="text-align:center; color:#6b7280;">Buscando...</p>
+                }
+                else if (productosBuscados is not null && productosBuscados.Count == 0)
+                {
+                    <div class="sp-card" style="text-align:center; color:#6b7280;">
+                        Sin resultados para "@queryBusqueda"
+                    </div>
+                }
+                else if (productosBuscados is not null && productosBuscados.Count > 0)
+                {
+                    <div class="sp-card">
+                        <p style="font-size:0.78rem; color:#6b7280; margin: 0 0 0.5rem;">@productosBuscados.Count resultado(s)</p>
+                        @foreach (var p in productosBuscados)
+                        {
+                            <div class="sp-prod @(p.YaEnAuditoriaActiva && ModoAuditoria ? "audit-hecho" : "")" @onclick="() => SeleccionarProducto(p)">
+                                @RenderProductoRow(p)
+                            </div>
+                        }
+                    </div>
+                }
             }
 
-            @if (ultimosMovs is not null && ultimosMovs.Count > 0)
+            @if (!ModoAuditoria && ultimosMovs is not null && ultimosMovs.Count > 0)
             {
                 <div class="sp-card">
-                    <p style="font-size:0.78rem; color:#6b7280; margin: 0 0 0.3rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em;">Tus últimas cargas</p>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <p style="font-size:0.78rem; color:#6b7280; margin: 0; font-weight:700; text-transform:uppercase; letter-spacing:0.05em;">Tus últimas cargas</p>
+                        <button class="sp-btn sp-btn-deshacer" style="width:auto; padding:0.3rem 0.6rem; font-size:0.75rem; margin:0;" @onclick="DeshacerUltimoAsync" disabled="@guardando">↩ Deshacer último</button>
+                    </div>
                     @foreach (var m in ultimosMovs.Take(8))
                     {
                         <div class="sp-feed-item">
@@ -158,7 +261,7 @@
                 </div>
             }
         }
-        else
+        else if (productoSeleccionado is not null)
         {
             @* === PASO 3: producto seleccionado, elegir acción === *@
             <div class="sp-card">
@@ -167,6 +270,14 @@
                         @if (!string.IsNullOrEmpty(productoSeleccionado.Sku))
                         { <span class="sp-prod-sku">@productoSeleccionado.Sku</span> }
                         <strong style="font-size:0.95rem;">@productoSeleccionado.Nombre</strong>
+                        @if (productoSeleccionado.UltimaModifAt.HasValue)
+                        {
+                            <div style="font-size:0.72rem; color:#6b7280; margin-top:0.3rem;">
+                                Última modificación: <strong>@FormatFecha(productoSeleccionado.UltimaModifAt.Value)</strong>
+                                @if (!string.IsNullOrEmpty(productoSeleccionado.UltimaModifOperador))
+                                { <span>· @productoSeleccionado.UltimaModifOperador</span> }
+                            </div>
+                        }
                     </div>
                 </div>
                 <div style="background:#f3f4f6; border-radius:8px; padding:0.6rem; margin-bottom:0.7rem; text-align:center;">
@@ -181,21 +292,14 @@
                 </div>
 
                 <label style="font-size:0.78rem; color:#4b5563; font-weight:600;">Cantidad</label>
-                <input class="sp-cant-input" type="number" min="1" @bind="cantidad" @bind:event="oninput" />
-                <div class="sp-cant-quick">
-                    @foreach (var q in new[] { 1, 5, 10, 25, 50, 100 })
-                    {
-                        var activo = cantidad == q;
-                        <button class="@(activo ? "active" : "")" @onclick="() => cantidad = q">@q</button>
-                    }
-                </div>
+                <input class="sp-cant-input" type="number" min="0" @bind="cantidad" @bind:event="oninput" />
 
                 @if (tipoMov == "SUMA" || tipoMov == "RESTA" || tipoMov == "SET")
                 {
                     var preview = tipoMov == "SUMA" ? productoSeleccionado.StockActual + cantidad
                                 : tipoMov == "RESTA" ? Math.Max(0, productoSeleccionado.StockActual - cantidad)
                                 : cantidad;
-                    <div style="background:#f0fdf4; border:1px solid #16a34a; border-radius:8px; padding:0.5rem; margin-bottom:0.5rem; text-align:center; font-size:0.85rem;">
+                    <div style="background:#f0fdf4; border:1px solid #16a34a; border-radius:8px; padding:0.5rem; margin:0.5rem 0; text-align:center; font-size:0.85rem;">
                         Stock va a quedar en: <strong style="font-size:1.1rem; color:#16a34a;">@preview</strong>
                     </div>
                 }
@@ -203,9 +307,22 @@
                 <label style="font-size:0.78rem; color:#4b5563; font-weight:600;">Comentario (opcional)</label>
                 <textarea class="sp-textarea" @bind="comentario" placeholder="Ej: rotura, vencidos, recibido del proveedor X"></textarea>
 
-                <button class="sp-btn sp-btn-confirm" style="margin-top:0.5rem;" @onclick="ConfirmarMovimientoAsync" disabled="@guardando">
-                    @(guardando ? "Guardando..." : "✓ Confirmar")
-                </button>
+                @if (ModoAuditoria)
+                {
+                    @* En auditoría, además del Confirmar directo, ofrecemos agregar al lote (batch) *@
+                    <button class="sp-btn sp-btn-confirm" style="margin-top:0.5rem;" @onclick="ConfirmarMovimientoAsync" disabled="@guardando">
+                        @(guardando ? "Guardando..." : "✓ Confirmar y siguiente")
+                    </button>
+                    <button class="sp-btn sp-btn-audit" style="margin-top:0.4rem;" @onclick="AgregarAlBatch">
+                        ➕ Agregar al lote (confirmar varios juntos)
+                    </button>
+                }
+                else
+                {
+                    <button class="sp-btn sp-btn-confirm" style="margin-top:0.5rem;" @onclick="ConfirmarMovimientoAsync" disabled="@guardando">
+                        @(guardando ? "Guardando..." : "✓ Confirmar")
+                    </button>
+                }
                 <button class="sp-btn sp-btn-cancel" @onclick="CancelarSeleccion">Cancelar</button>
 
                 @if (!string.IsNullOrEmpty(errorMsg))
@@ -213,6 +330,33 @@
                     <p style="color:#b91c1c; font-size:0.85rem; margin-top:0.5rem; text-align:center;">⚠ @errorMsg</p>
                 }
             </div>
+        }
+
+        @if (ModoAuditoria && batchItems.Count > 0 && productoSeleccionado is null)
+        {
+            <div class="sp-batch-card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+                    <strong>🧺 Lote pendiente (@batchItems.Count)</strong>
+                    <button class="sp-btn sp-btn-audit" style="width:auto; padding:0.4rem 0.8rem; font-size:0.85rem; margin:0;" @onclick="ConfirmarBatchAsync" disabled="@guardando">
+                        @(guardando ? "..." : "✓ Confirmar todo")
+                    </button>
+                </div>
+                @foreach (var bi in batchItems)
+                {
+                    <div class="sp-batch-item">
+                        <div style="flex:1; min-width:0; overflow:hidden;">
+                            <strong style="display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">@(bi.Sku ?? "") @bi.Nombre</strong>
+                            <span style="font-size:0.78rem; color:#6b7280;">@bi.TipoMov @bi.Cantidad</span>
+                        </div>
+                        <button class="x" @onclick="() => batchItems.Remove(bi)">✕</button>
+                    </div>
+                }
+            </div>
+        }
+
+        @if (ModoAuditoria && operadorActivo is not null && productoSeleccionado is null)
+        {
+            <button class="sp-btn sp-btn-deshacer" @onclick="DeshacerUltimoAsync" disabled="@guardando">↩ Deshacer mi último movimiento</button>
         }
     }
 
@@ -224,7 +368,10 @@
 
 @code {
     [Parameter] public string Token { get; set; } = "";
-    private bool loading = true, buscando, guardando, toastVisible;
+    [SupplyParameterFromQuery(Name = "modo")] public string? Modo { get; set; }
+    private bool ModoAuditoria => string.Equals(Modo, "auditoria", StringComparison.OrdinalIgnoreCase);
+
+    private bool loading = true, buscando, guardando, toastVisible, cargandoLista;
     private string? errorMsg, toastMensaje;
     private StockInitPubDto? init;
     private StockOperadorPubDto? operadorActivo;
@@ -237,28 +384,69 @@
     private string comentario = "";
     private System.Threading.Timer? debounceTimer;
 
+    // Auditoría
+    private StockAuditoriaPubDto? auditoriaActiva;
+    private string auditNotas = "";
+    private string auditFilter = "pendientes"; // pendientes | hechos | todos
+    private int pageActual = 1, pageSize = 30, totalItems = 0;
+    private int pageTotal => Math.Max(1, (int)Math.Ceiling((double)totalItems / pageSize));
+    private List<StockProductoPubDto>? listaProductos;
+    private List<BatchItem> batchItems = new();
+
     public record StockOperadorPubDto(int Id, string Nombre);
     public record StockProductoPubDto(int Id, string? Sku, string? Barcode, string Nombre,
-        string Categoria, string? Marca, int StockActual);
-    public record StockInitPubDto(string Token, List<StockOperadorPubDto> Operadores, string DepositoActual);
+        string Categoria, string? Marca, int StockActual,
+        DateTime? UltimaModifAt, string? UltimaModifOperador, bool YaEnAuditoriaActiva);
+    public record StockAuditoriaPubDto(int Id, DateTime IniciadaAt, string? IniciadaPorNombre, int ItemsContados);
+    public record StockInitPubDto(string Token, List<StockOperadorPubDto> Operadores, string DepositoActual, StockAuditoriaPubDto? AuditoriaActiva);
     public record StockMovimientoPubDto(int Id, DateTime Fecha, string ProductoNombre, string? Sku,
         string Operador, string TipoMov, int Cantidad, int StockAntes, int StockDespues, string? Comentario);
+    public record AllResp(List<StockProductoPubDto> items, int total, int page, int pageSize);
+    public class BatchItem
+    {
+        public int ProductoId { get; set; }
+        public string? Sku { get; set; }
+        public string Nombre { get; set; } = "";
+        public string TipoMov { get; set; } = "SET";
+        public int Cantidad { get; set; }
+        public string? Comentario { get; set; }
+    }
 
     protected override async Task OnInitializedAsync()
+    {
+        await CargarInitAsync();
+        loading = false;
+    }
+
+    private async Task CargarInitAsync()
     {
         try
         {
             var resp = await Http.GetAsync($"api/stock/publica/{Uri.EscapeDataString(Token)}/init");
-            if (resp.IsSuccessStatusCode) init = await resp.Content.ReadFromJsonAsync<StockInitPubDto>();
+            if (resp.IsSuccessStatusCode)
+            {
+                init = await resp.Content.ReadFromJsonAsync<StockInitPubDto>();
+                if (init is not null) auditoriaActiva = init.AuditoriaActiva;
+            }
         }
         catch { init = null; }
-        finally { loading = false; }
     }
 
     private async Task SeleccionarOperador(StockOperadorPubDto op)
     {
         operadorActivo = op;
-        await CargarUltimosMovs();
+        if (!ModoAuditoria) await CargarUltimosMovs();
+        else if (auditoriaActiva is not null) await CargarListaAuditoria();
+    }
+
+    private void ResetOperador()
+    {
+        operadorActivo = null;
+        productoSeleccionado = null;
+        productosBuscados = null;
+        listaProductos = null;
+        queryBusqueda = "";
+        batchItems.Clear();
     }
 
     private async Task CargarUltimosMovs()
@@ -281,7 +469,6 @@
 
     private async Task OnSearchKeyDown(KeyboardEventArgs e)
     {
-        // Si el operador usa un scanner bluetooth, suele mandar Enter al final del código.
         if (e.Key == "Enter") await BuscarAsync();
     }
 
@@ -301,8 +488,9 @@
     private void SeleccionarProducto(StockProductoPubDto p)
     {
         productoSeleccionado = p;
-        tipoMov = "SUMA";
-        cantidad = 1;
+        // En auditoría default a SET (corregir conteo); en normal default a SUMA.
+        tipoMov = ModoAuditoria ? "SET" : "SUMA";
+        cantidad = ModoAuditoria ? p.StockActual : 1;
         comentario = "";
         errorMsg = null;
     }
@@ -316,7 +504,8 @@
     private async Task ConfirmarMovimientoAsync()
     {
         if (productoSeleccionado is null || operadorActivo is null) return;
-        if (cantidad <= 0) { errorMsg = "Cantidad tiene que ser mayor a 0"; return; }
+        if (cantidad < 0) { errorMsg = "Cantidad inválida"; return; }
+        if (cantidad == 0 && tipoMov != "SET") { errorMsg = "Cantidad tiene que ser mayor a 0"; return; }
         errorMsg = null;
         guardando = true;
         try
@@ -327,7 +516,8 @@
                 ProductoId = productoSeleccionado.Id,
                 TipoMov = tipoMov,
                 Cantidad = cantidad,
-                Comentario = comentario
+                Comentario = comentario,
+                AuditoriaId = ModoAuditoria ? (int?)auditoriaActiva?.Id : null
             };
             var resp = await Http.PostAsJsonAsync($"api/stock/publica/{Uri.EscapeDataString(Token)}/movimiento", body);
             if (!resp.IsSuccessStatusCode)
@@ -336,15 +526,23 @@
                 return;
             }
             var saved = await resp.Content.ReadFromJsonAsync<MovimientoResp>();
-            toastMensaje = $"✓ Stock {productoSeleccionado.Sku ?? ""}: {saved?.stockAntes} → {saved?.stockDespues}";
+            toastMensaje = $"✓ {productoSeleccionado.Sku ?? ""}: {saved?.stockAntes} → {saved?.stockDespues}";
             toastVisible = true;
-            // Reset volver a la búsqueda
             productoSeleccionado = null;
-            queryBusqueda = "";
-            productosBuscados = null;
-            await CargarUltimosMovs();
+            if (!ModoAuditoria)
+            {
+                queryBusqueda = "";
+                productosBuscados = null;
+                await CargarUltimosMovs();
+            }
+            else
+            {
+                // Refrescar lista + auditoría
+                await CargarInitAsync();
+                await CargarListaAuditoria();
+            }
             StateHasChanged();
-            await Task.Delay(2500);
+            await Task.Delay(2000);
             toastVisible = false;
         }
         catch (Exception ex)
@@ -354,5 +552,210 @@
         finally { guardando = false; }
     }
 
+    private void AgregarAlBatch()
+    {
+        if (productoSeleccionado is null) return;
+        if (cantidad < 0) { errorMsg = "Cantidad inválida"; return; }
+        // Reemplaza si ya está
+        var existing = batchItems.FirstOrDefault(b => b.ProductoId == productoSeleccionado.Id);
+        if (existing is not null) batchItems.Remove(existing);
+        batchItems.Add(new BatchItem
+        {
+            ProductoId = productoSeleccionado.Id,
+            Sku = productoSeleccionado.Sku,
+            Nombre = productoSeleccionado.Nombre,
+            TipoMov = tipoMov,
+            Cantidad = cantidad,
+            Comentario = string.IsNullOrWhiteSpace(comentario) ? null : comentario
+        });
+        productoSeleccionado = null;
+        toastMensaje = $"➕ Agregado al lote ({batchItems.Count})";
+        toastVisible = true;
+        StateHasChanged();
+        _ = Task.Run(async () => { await Task.Delay(1500); toastVisible = false; await InvokeAsync(StateHasChanged); });
+    }
+
+    private async Task ConfirmarBatchAsync()
+    {
+        if (batchItems.Count == 0 || operadorActivo is null) return;
+        guardando = true;
+        try
+        {
+            var body = new
+            {
+                OperadorId = operadorActivo.Id,
+                AuditoriaId = (int?)auditoriaActiva?.Id,
+                Items = batchItems.Select(b => new {
+                    b.ProductoId, b.TipoMov, b.Cantidad, b.Comentario
+                }).ToList()
+            };
+            var resp = await Http.PostAsJsonAsync($"api/stock/publica/{Uri.EscapeDataString(Token)}/movimientos-batch", body);
+            if (resp.IsSuccessStatusCode)
+            {
+                var r = await resp.Content.ReadFromJsonAsync<BatchResp>();
+                toastMensaje = r?.errores == 0
+                    ? $"✓ Lote aplicado ({r?.aplicados})"
+                    : $"⚠ {r?.aplicados} OK, {r?.errores} con error";
+                toastVisible = true;
+                batchItems.Clear();
+                await CargarInitAsync();
+                await CargarListaAuditoria();
+                StateHasChanged();
+                await Task.Delay(2500); toastVisible = false;
+            }
+            else { errorMsg = "Error guardando lote"; }
+        }
+        catch (Exception ex) { errorMsg = ex.Message; }
+        finally { guardando = false; }
+    }
+
+    private async Task DeshacerUltimoAsync()
+    {
+        if (operadorActivo is null) return;
+        guardando = true;
+        try
+        {
+            var body = new {
+                OperadorId = operadorActivo.Id,
+                AuditoriaId = ModoAuditoria ? (int?)auditoriaActiva?.Id : null
+            };
+            var resp = await Http.PostAsJsonAsync($"api/stock/publica/{Uri.EscapeDataString(Token)}/deshacer-ultimo", body);
+            if (resp.IsSuccessStatusCode)
+            {
+                toastMensaje = "↩ Último movimiento revertido";
+                toastVisible = true;
+                if (!ModoAuditoria) await CargarUltimosMovs();
+                else { await CargarInitAsync(); await CargarListaAuditoria(); }
+                StateHasChanged();
+                await Task.Delay(2000); toastVisible = false;
+            }
+            else
+            {
+                var msg = await resp.Content.ReadAsStringAsync();
+                errorMsg = string.IsNullOrWhiteSpace(msg) ? "No hay nada que deshacer" : msg;
+            }
+        }
+        catch (Exception ex) { errorMsg = ex.Message; }
+        finally { guardando = false; }
+    }
+
+    // === Auditoría ===
+    private async Task IniciarAuditoriaAsync()
+    {
+        if (operadorActivo is null) return;
+        guardando = true;
+        try
+        {
+            var body = new { OperadorId = operadorActivo.Id, Notas = auditNotas };
+            var resp = await Http.PostAsJsonAsync($"api/stock/publica/{Uri.EscapeDataString(Token)}/auditoria/iniciar", body);
+            if (resp.IsSuccessStatusCode)
+            {
+                auditoriaActiva = await resp.Content.ReadFromJsonAsync<StockAuditoriaPubDto>();
+                await CargarListaAuditoria();
+            }
+        }
+        catch { /* ignore */ }
+        finally { guardando = false; }
+    }
+
+    private async Task CerrarAuditoriaAsync()
+    {
+        if (auditoriaActiva is null) return;
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Cerrar la auditoría #{auditoriaActiva.Id}? Después no se puede agregar más conteos.")) return;
+        guardando = true;
+        try
+        {
+            var body = new { OperadorId = operadorActivo?.Id, Notas = (string?)null };
+            var resp = await Http.PostAsJsonAsync($"api/stock/publica/{Uri.EscapeDataString(Token)}/auditoria/{auditoriaActiva.Id}/cerrar", body);
+            if (resp.IsSuccessStatusCode)
+            {
+                toastMensaje = "✓ Auditoría cerrada";
+                toastVisible = true;
+                auditoriaActiva = null;
+                listaProductos = null;
+                await CargarInitAsync();
+                StateHasChanged();
+                await Task.Delay(2000); toastVisible = false;
+            }
+        }
+        catch { /* ignore */ }
+        finally { guardando = false; }
+    }
+
+    private async Task CargarListaAuditoria()
+    {
+        if (!ModoAuditoria) return;
+        cargandoLista = true; StateHasChanged();
+        try
+        {
+            var filterParam = auditFilter == "todos" ? "" : $"&filter={auditFilter}";
+            var r = await Http.GetAsync($"api/stock/publica/{Uri.EscapeDataString(Token)}/all?page={pageActual}&pageSize={pageSize}{filterParam}");
+            if (r.IsSuccessStatusCode)
+            {
+                var resp = await r.Content.ReadFromJsonAsync<AllResp>();
+                listaProductos = resp?.items;
+                totalItems = resp?.total ?? 0;
+            }
+        }
+        catch { listaProductos = null; }
+        finally { cargandoLista = false; StateHasChanged(); }
+    }
+
+    private async Task CambiarFiltroAuditoria(string f)
+    {
+        auditFilter = f;
+        pageActual = 1;
+        await CargarListaAuditoria();
+    }
+
+    private async Task PaginaAnterior()
+    {
+        if (pageActual <= 1) return;
+        pageActual--;
+        await CargarListaAuditoria();
+    }
+
+    private async Task PaginaSiguiente()
+    {
+        if (pageActual >= pageTotal) return;
+        pageActual++;
+        await CargarListaAuditoria();
+    }
+
+    private string FormatFecha(DateTime utc)
+    {
+        var local = utc.ToLocalTime();
+        var diff = DateTime.Now - local;
+        if (diff.TotalMinutes < 1) return "hace instantes";
+        if (diff.TotalMinutes < 60) return $"hace {(int)diff.TotalMinutes} min";
+        if (diff.TotalHours < 24) return $"hace {(int)diff.TotalHours} h";
+        if (diff.TotalDays < 7) return $"hace {(int)diff.TotalDays} d · {local:HH:mm}";
+        return local.ToString("dd/MM/yy HH:mm");
+    }
+
+    private RenderFragment RenderProductoRow(StockProductoPubDto p) => __builder =>
+    {
+        <span class="sp-prod-stock @(p.StockActual <= 0 ? "cero" : "")">@p.StockActual</span>
+        @if (!string.IsNullOrEmpty(p.Sku))
+        {
+            <span class="sp-prod-sku">@p.Sku</span>
+        }
+        <span class="sp-prod-nombre">@p.Nombre</span>
+        @if (p.UltimaModifAt.HasValue)
+        {
+            var local = p.UltimaModifAt.Value.ToLocalTime();
+            var reciente = (DateTime.Now - local).TotalHours < 6;
+            <span class="sp-prod-modif @(reciente ? "reciente" : "")">
+                @(p.YaEnAuditoriaActiva && ModoAuditoria ? "✅ Contado en esta auditoría · " : "")
+                Última modif: @FormatFecha(p.UltimaModifAt.Value)@(string.IsNullOrEmpty(p.UltimaModifOperador) ? "" : " · " + p.UltimaModifOperador)
+            </span>
+        }
+        else
+        {
+            <span class="sp-prod-modif">Sin movimientos registrados</span>
+        }
+    };
+
     private record MovimientoResp(bool ok, int stockAntes, int stockDespues, int movId);
+    private record BatchResp(bool ok, int aplicados, int errores);
 }

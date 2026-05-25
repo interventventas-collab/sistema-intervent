@@ -82,6 +82,87 @@
     </div>
 
     @* Log de movimientos *@
+    @* === Historial de auditorías === *@
+    <div class="sa-card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+            <h3 style="margin:0;">📋 Auditorías de stock</h3>
+            <span style="font-size:0.78rem; color:#6b7280;">Sesiones de conteo masivo (modo auditoría desde el celular)</span>
+        </div>
+        @if (auditorias is null) { <p style="color:#6b7280;">Cargando...</p> }
+        else if (auditorias.Count == 0) { <p style="color:#6b7280;">Aún no se hizo ninguna auditoría. Mostrá el QR de auditoría desde "Stock masivo".</p> }
+        else
+        {
+            <table class="sa-tab">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Inicio</th>
+                        <th>Iniciada por</th>
+                        <th>Cierre</th>
+                        <th>Estado</th>
+                        <th style="text-align:right;">Items</th>
+                        <th style="text-align:right;">Movs</th>
+                        <th>Notas</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var a in auditorias)
+                    {
+                        <tr style="@(a.CerradaAt is null ? "background:#dcfce7;" : "")">
+                            <td><strong>@a.Id</strong></td>
+                            <td>@a.IniciadaAt.ToLocalTime().ToString("dd/MM HH:mm")</td>
+                            <td>@(a.IniciadaPorNombre ?? "-")</td>
+                            <td>@(a.CerradaAt?.ToLocalTime().ToString("dd/MM HH:mm") ?? "-")</td>
+                            <td>
+                                @if (a.CerradaAt is null) { <span class="sa-tag SUMA">🟢 ABIERTA</span> }
+                                else { <span class="sa-tag" style="background:#e5e7eb; color:#4b5563;">CERRADA</span> }
+                            </td>
+                            <td style="text-align:right; font-weight:700;">@a.ItemsContados</td>
+                            <td style="text-align:right; color:#6b7280;">@a.MovimientosTotales</td>
+                            <td style="font-size:0.78rem; color:#4b5563; max-width:200px; overflow:hidden; text-overflow:ellipsis;">@(a.Notas ?? "")</td>
+                            <td><button class="sa-btn-mini" @onclick="() => VerDetalleAud(a.Id)">Ver detalle</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+
+        @if (audDetalle is not null)
+        {
+            <div style="margin-top:0.7rem; border-top:1px solid #e5e7eb; padding-top:0.7rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
+                    <h4 style="margin:0;">Detalle auditoría #@audDetalle.Id</h4>
+                    <button class="sa-btn-mini" @onclick="() => audDetalle = null">✕ Cerrar</button>
+                </div>
+                <p style="font-size:0.78rem; color:#6b7280; margin:0 0 0.5rem;">
+                    @audDetalle.Movimientos.Count() movimientos · Iniciada por @(audDetalle.IniciadaPorNombre ?? "-") el @audDetalle.IniciadaAt.ToLocalTime().ToString("dd/MM HH:mm")
+                </p>
+                <table class="sa-tab">
+                    <thead><tr><th>Fecha</th><th>Operador</th><th>Producto</th><th>Tipo</th><th style="text-align:right;">Cant.</th><th style="text-align:right;">Stock</th><th>Coment.</th></tr></thead>
+                    <tbody>
+                        @foreach (var m in audDetalle.Movimientos)
+                        {
+                            <tr>
+                                <td>@m.Fecha.ToLocalTime().ToString("dd/MM HH:mm:ss")</td>
+                                <td>@m.Operador</td>
+                                <td>
+                                    @if (!string.IsNullOrEmpty(m.Sku))
+                                    { <span style="font-family:monospace; color:#1d4ed8; font-weight:700;">@m.Sku</span> <span>·</span> }
+                                    @m.ProductoNombre
+                                </td>
+                                <td><span class="sa-tag @m.TipoMov">@m.TipoMov</span></td>
+                                <td style="text-align:right; font-weight:700;">@m.Cantidad</td>
+                                <td style="text-align:right; font-size:0.78rem;">@m.StockAntes → <strong>@m.StockDespues</strong></td>
+                                <td style="font-size:0.78rem; color:#4b5563;">@(m.Comentario ?? "")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+
     <div class="sa-card">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
             <h3 style="margin:0;">Movimientos recientes</h3>
@@ -130,10 +211,16 @@
     public record AdminOperadorDto(int Id, string Nombre, bool IsActive, int Orden, int TotalMovimientos);
     public record AdminMovDto(int Id, DateTime Fecha, int ProductoId, string? Sku, string ProductoNombre,
         string Operador, string TipoMov, int Cantidad, int StockAntes, int StockDespues, string? Comentario);
+    public record AdminAuditoriaDto(int Id, DateTime IniciadaAt, string? IniciadaPorNombre,
+        DateTime? CerradaAt, string? CerradaPorNombre, string? Notas, int ItemsContados, int MovimientosTotales);
+    public record AdminAuditoriaDetalleDto(int Id, DateTime IniciadaAt, string? IniciadaPorNombre,
+        DateTime? CerradaAt, string? CerradaPorNombre, string? Notas, List<AdminMovDto> Movimientos);
 
     private string token = "";
     private List<AdminOperadorDto>? operadores;
     private List<AdminMovDto>? movs;
+    private List<AdminAuditoriaDto>? auditorias;
+    private AdminAuditoriaDetalleDto? audDetalle;
     private bool showFormOp, savingOp;
     private string formNombre = "";
     private int formOrden = 99;
@@ -162,6 +249,7 @@
             token = tokResp?.token ?? "";
             operadores = await Http.GetFromJsonAsync<List<AdminOperadorDto>>("api/stock/admin/operadores");
             movs = await Http.GetFromJsonAsync<List<AdminMovDto>>("api/stock/admin/movimientos?limit=100");
+            auditorias = await Http.GetFromJsonAsync<List<AdminAuditoriaDto>>("api/stock/admin/auditorias?limit=30");
         }
         catch { }
     }
@@ -225,5 +313,14 @@
             ToastService.Success("Token regenerado");
             await RecargarTodo();
         }
+    }
+
+    private async Task VerDetalleAud(int id)
+    {
+        try
+        {
+            audDetalle = await Http.GetFromJsonAsync<AdminAuditoriaDetalleDto>($"api/stock/admin/auditorias/{id}");
+        }
+        catch { ToastService.Error("Error al cargar detalle"); }
     }
 }

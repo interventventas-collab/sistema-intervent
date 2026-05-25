@@ -2,6 +2,46 @@
 @attribute [Authorize]
 @inject ApiClient Api
 @inject ToastService ToastService
+@inject HttpClient Http
+@inject NavigationManager Nav
+
+@* === Bloque QR superior ===
+   2 entradas mobile (pedido del usuario 2026-05-25):
+   - Stock móvil: QR fijo, siempre visible, para carga rápida diaria desde el celular.
+   - Auditoría: QR desplegable (oculto por default), abre el mismo link pero en modo audit
+     (=conteo masivo del depósito, marca productos ya stockeados para no repetir).
+*@
+<div class="card" style="margin-bottom:0.8rem;">
+    <div class="card-body" style="padding:1rem;">
+        <div style="display:flex; gap:1rem; align-items:flex-start; flex-wrap:wrap;">
+            <div style="display:flex; gap:0.8rem; align-items:center; flex:1; min-width:280px;">
+                <img src="@QrMovilUrl" alt="QR Stock móvil" style="width:120px; height:120px; border:2px solid #1d4ed8; border-radius:8px; padding:4px; background:white;" />
+                <div>
+                    <h4 style="margin:0 0 0.3rem; color:#1f2937;">📱 Stock móvil</h4>
+                    <p style="margin:0 0 0.5rem; font-size:0.85rem; color:#6b7280;">Escaneá con el celular para cargar stock de a uno (ajustes diarios, roturas, recepciones).</p>
+                    <a href="@LinkMovil" target="_blank" class="btn btn-secondary" style="font-size:0.78rem; padding:0.3rem 0.6rem;">Abrir en pestaña nueva ↗</a>
+                </div>
+            </div>
+            <div style="flex:1; min-width:280px; border-left:1px solid #e5e7eb; padding-left:1rem;">
+                <button class="btn @(showAuditoriaQr ? "btn-warning" : "btn-secondary")" style="font-size:0.85rem;"
+                        @onclick="() => showAuditoriaQr = !showAuditoriaQr">
+                    @(showAuditoriaQr ? "▼ Ocultar QR Auditoría" : "▶ Mostrar QR Auditoría (conteo masivo)")
+                </button>
+                @if (showAuditoriaQr)
+                {
+                    <div style="display:flex; gap:0.8rem; align-items:center; margin-top:0.7rem;">
+                        <img src="@QrAuditoriaUrl" alt="QR Auditoría stock" style="width:120px; height:120px; border:2px solid #b45309; border-radius:8px; padding:4px; background:white;" />
+                        <div>
+                            <h4 style="margin:0 0 0.3rem; color:#b45309;">📋 Modo auditoría</h4>
+                            <p style="margin:0 0 0.5rem; font-size:0.82rem; color:#6b7280;">Recorré el depósito marcando lo contado. Los que ya stockeaste se ven en verde, los pendientes en gris. Ideal para inventario mensual.</p>
+                            <a href="@LinkAuditoria" target="_blank" class="btn btn-warning" style="font-size:0.78rem; padding:0.3rem 0.6rem;">Abrir auditoría ↗</a>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
 
 <div class="card">
     <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
@@ -27,12 +67,9 @@
             <button class="btn btn-primary" @onclick="Guardar" disabled="@(!HayCambios || guardando)">
                 @(guardando ? "..." : $"💾 Guardar {CountCambios} cambios")
             </button>
-            @* Acceso al Stock movil (link publico de carga rapida para empleados con celular).
-               Lo metimos aca el 2026-05-19 para sacar el item duplicado del sidebar. *@
-            <a href="/stock" target="_blank" class="btn btn-secondary"
-               title="Abrir Stock móvil (carga rápida desde el celular)"
+            <a href="/stock" class="btn btn-secondary" title="Operadores + Auditorías + historial de cargas móviles"
                style="background:#1f2937; color:white; border:none;">
-                📱 Stock móvil
+                📋 Operadores y auditorías
             </a>
         </div>
     </div>
@@ -124,6 +161,15 @@
 
     [Parameter, SupplyParameterFromQuery(Name = "dep")] public int? PreDepositoId { get; set; }
 
+    // === Bloque QR (token + URLs derivadas) ===
+    private string token = "";
+    private bool showAuditoriaQr = false;
+    private string Origin => new Uri(Nav.BaseUri).GetLeftPart(UriPartial.Authority);
+    private string LinkMovil => string.IsNullOrEmpty(token) ? "#" : $"{Origin}/stock/{token}";
+    private string LinkAuditoria => string.IsNullOrEmpty(token) ? "#" : $"{Origin}/stock/{token}?modo=auditoria";
+    private string QrMovilUrl => $"https://api.qrserver.com/v1/create-qr-code/?size=240x240&data={Uri.EscapeDataString(LinkMovil)}";
+    private string QrAuditoriaUrl => $"https://api.qrserver.com/v1/create-qr-code/?size=240x240&data={Uri.EscapeDataString(LinkAuditoria)}";
+
     private int CountCambios =>
         rows is null ? 0 :
         rows.Count(r => HaModificado(r));
@@ -136,8 +182,17 @@
         depositoIdSeleccionado = PreDepositoId
             ?? depositos.FirstOrDefault(d => d.IsDefault)?.Id
             ?? depositos.FirstOrDefault()?.Id ?? 0;
+        // Cargar token del link público de stock (para los QR del header)
+        try
+        {
+            var tk = await Http.GetFromJsonAsync<TokenDto>("api/stock/admin/token");
+            token = tk?.token ?? "";
+        }
+        catch { token = ""; }
         await CargarStock();
     }
+
+    private record TokenDto(string token);
 
     private async Task CambiarDeposito()
     {
