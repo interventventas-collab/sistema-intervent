@@ -801,11 +801,52 @@ public class MeliController : ControllerBase
             if (result.Count >= limit) break;
         }
 
-        // Stats globales (sin paginar)
-        var totalSkus = skusAgg.Count;
+        // Stats GLOBALES (sobre TODOS los SKUs sin paginar, no solo los mostrados)
+        // Recorremos skusAgg entero (que ya esta limitado a limit+200) si el filtro de buscar lo achico,
+        // pero si no, hacemos un query liviano por separado.
+        var statsBaseQ = db.MeliItems.AsNoTracking()
+            .Where(mi => mi.Sku != null && mi.Sku != "" && (mi.Status == "active" || mi.Status == "paused"));
+        if (!string.IsNullOrWhiteSpace(buscar))
+        {
+            var t = buscar.Trim().ToUpper();
+            statsBaseQ = statsBaseQ.Where(mi => mi.Sku!.ToUpper().Contains(t));
+        }
+        var statsRaw = await statsBaseQ
+            .GroupBy(mi => mi.Sku)
+            .Select(g => new {
+                Sku = g.Key!,
+                HayLink = g.Sum(x => x.CafeComboId != null || x.CafeProductoId != null ? 1 : 0)
+            }).ToListAsync();
+
+        var skusAllList = statsRaw.Select(x => x.Sku).ToList();
+        var combosAll = await db.CafeCombos.AsNoTracking()
+            .Where(c => skusAllList.Contains(c.Sku!))
+            .Select(c => c.Sku!).ToListAsync();
+        var prodsAll = await db.CafeProductos.AsNoTracking()
+            .Where(p => skusAllList.Contains(p.Sku!))
+            .Select(p => p.Sku!).ToListAsync();
+        var combosAllSet = new HashSet<string>(combosAll);
+        var prodsAllSet = new HashSet<string>(prodsAll);
+
+        int statsOk = 0, statsSinLink = 0, statsSinCombo = 0, statsProdSuelto = 0;
+        foreach (var s in statsRaw)
+        {
+            bool tieneCombo = combosAllSet.Contains(s.Sku);
+            bool tieneProd  = prodsAllSet.Contains(s.Sku) && !tieneCombo;
+            string est;
+            if (tieneCombo) est = s.HayLink > 0 ? "ok" : "sin_link";
+            else if (tieneProd) est = s.HayLink > 0 ? "ok" : "producto_suelto";
+            else est = "sin_combo";
+            if (est == "ok") statsOk++;
+            else if (est == "sin_link") statsSinLink++;
+            else if (est == "sin_combo") statsSinCombo++;
+            else statsProdSuelto++;
+        }
+
         return Ok(new {
-            total = totalSkus,
+            total = statsRaw.Count,
             mostrados = result.Count,
+            stats = new { ok = statsOk, sin_link = statsSinLink, sin_combo = statsSinCombo, producto_suelto = statsProdSuelto },
             items = result
         });
     }
