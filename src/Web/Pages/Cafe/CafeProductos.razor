@@ -674,6 +674,54 @@
                             <p style="font-size: 0.7rem; color: #065f46; margin: 0.35rem 0 0; font-style: italic;">Sin packs cargados.</p>
                         }
                     </div>
+                    @* === PANEL VISUAL DE STOCK (2026-05-25) === *@
+                    @if (isEditing && stockDetail is not null)
+                    {
+                        <div class="form-group" style="background:#f9fafb; border:1px solid #d1d5db; border-radius:8px; padding:0.8rem; margin-bottom:0.7rem;">
+                            <div style="font-weight:700; color:#1f2937; margin-bottom:0.6rem; font-size:0.95rem;">
+                                📊 Stock de este producto
+                            </div>
+                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem;">
+                                @* 9 de Abril — VERDE *@
+                                <div style="background:#dcfce7; border:2px solid #16a34a; border-radius:8px; padding:0.6rem; text-align:center;">
+                                    <div style="font-size:0.68rem; color:#166534; font-weight:700; letter-spacing:0.05em;">🏠 9 DE ABRIL</div>
+                                    <div style="font-size:1.8rem; font-weight:800; color:#166534; margin:0.2rem 0;">@stockDetail.stockSistema</div>
+                                    <div style="font-size:0.7rem; color:#166534;">unidades (tu depósito)</div>
+                                </div>
+                                @* Full MeLi — AZUL *@
+                                <div style="background:@(stockDetail.stockFull > 0 ? "#dbeafe" : "#f3f4f6"); border:2px solid @(stockDetail.stockFull > 0 ? "#1d4ed8" : "#9ca3af"); border-radius:8px; padding:0.6rem; text-align:center;">
+                                    <div style="font-size:0.68rem; color:@(stockDetail.stockFull > 0 ? "#1e40af" : "#6b7280"); font-weight:700; letter-spacing:0.05em;">🚚 FULL MELI</div>
+                                    <div style="font-size:1.8rem; font-weight:800; color:@(stockDetail.stockFull > 0 ? "#1e40af" : "#9ca3af"); margin:0.2rem 0;">@stockDetail.stockFull</div>
+                                    <div style="font-size:0.7rem; color:@(stockDetail.stockFull > 0 ? "#1e40af" : "#6b7280");">unidades (depósito MeLi)</div>
+                                </div>
+                                @* Stock real total — GRIS *@
+                                <div style="background:#1f2937; border:2px solid #1f2937; border-radius:8px; padding:0.6rem; text-align:center; color:white;">
+                                    <div style="font-size:0.68rem; font-weight:700; letter-spacing:0.05em; opacity:0.9;">📦 STOCK REAL</div>
+                                    <div style="font-size:1.8rem; font-weight:800; margin:0.2rem 0;">@stockDetail.stockReal</div>
+                                    <div style="font-size:0.7rem; opacity:0.9;">total disponible</div>
+                                </div>
+                                @* Publicado MeLi — AMARILLO *@
+                                <div style="background:#fef3c7; border:2px solid #d97706; border-radius:8px; padding:0.6rem; text-align:center;">
+                                    <div style="font-size:0.68rem; color:#92400e; font-weight:700; letter-spacing:0.05em;">🛒 PUBLICADO EN MELI</div>
+                                    <div style="font-size:1.8rem; font-weight:800; color:#92400e; margin:0.2rem 0;">@stockDetail.publicadoMeLi</div>
+                                    <div style="font-size:0.7rem; color:#92400e;">lo que ven los compradores</div>
+                                </div>
+                            </div>
+                            <div style="margin-top:0.6rem; padding:0.4rem 0.6rem; background:#fffbeb; border:1px dashed #d97706; border-radius:6px; font-size:0.78rem; color:#78350f;">
+                                @if (stockDetail.reservaAplicada == 0)
+                                {
+                                    <span>ℹ️ MeLi ve los <b>@stockDetail.stockSistema</b> reales (sin reserva).</span>
+                                }
+                                else
+                                {
+                                    var fuente = stockDetail.reservaSource == "producto"
+                                        ? $"reservado por vos en este producto"
+                                        : $"reservado preventivo (global)";
+                                    <span>ℹ️ MeLi recibe <b>@stockDetail.publicadoMeLi</b> = @stockDetail.stockSistema − <b>@stockDetail.reservaAplicada</b> @fuente.</span>
+                                }
+                            </div>
+                        </div>
+                    }
                     <div class="form-group">
                         <label class="form-label">Stock (unidades)</label>
                         <input class="form-input" type="number" step="1" min="0" @bind="formStockUnidades" />
@@ -1655,9 +1703,23 @@
         formError = null; showForm = true;
     }
 
+    // 2026-05-25: detalle de stock por producto para el panel visual (ficha)
+    private StockDetailDto? stockDetail;
+    private record StockDetailDto(int stockSistema, int stockFull, int stockReal,
+        int reservaAplicada, string reservaSource, int publicadoMeLi);
+
+    private async Task LoadStockDetail(int productoId)
+    {
+        try { stockDetail = await Http.GetFromJsonAsync<StockDetailDto>($"/api/meli/producto-stock-detail/{productoId}"); }
+        catch { stockDetail = null; }
+        await InvokeAsync(StateHasChanged);
+    }
+
     private void ShowEdit(CafeProductoDto p)
     {
         isEditing = true; editingId = p.Id;
+        stockDetail = null;
+        _ = LoadStockDetail(p.Id); // fire-and-forget: carga el panel mientras se renderiza el modal
         formNombre = p.Nombre; formSku = p.Sku ?? ""; formBarcode = p.Barcode ?? "";
         formCategoria = p.Categoria; formMarca = p.Marca ?? "";
         formCosto = p.Costo; formPvp1 = p.Pvp1; formPvp2 = p.Pvp2;
