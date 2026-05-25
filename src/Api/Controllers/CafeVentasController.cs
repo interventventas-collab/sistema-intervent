@@ -1018,6 +1018,8 @@ public class CafeVentasController : ControllerBase
             }
             prod.UpdatedAt = DateTime.UtcNow;
             prod.StockChangedAt = DateTime.UtcNow; // dispara push a MeLi (event-driven + job de respaldo)
+            // Sincronizar Cafe_StockPorDeposito (parche 2026-05-25).
+            await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
         }
 
         // Capturar los productos afectados ANTES del SaveChanges para pushear despues.
@@ -1397,6 +1399,7 @@ public class CafeVentasController : ControllerBase
             }
             prod.UpdatedAt = DateTime.UtcNow;
             prod.StockChangedAt = DateTime.UtcNow;
+            await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
             productosAnular.Add(prod.Id);
         }
         v.Estado = "anulado";
@@ -1586,6 +1589,7 @@ public class CafeVentasController : ControllerBase
                     }
                     prod.UpdatedAt = DateTime.UtcNow;
                     prod.StockChangedAt = DateTime.UtcNow;
+                    await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
                     productosUpdate.Add(prod.Id);
                 }
                 _db.CafeVentaItems.RemoveRange(v.Items);
@@ -1672,6 +1676,7 @@ public class CafeVentasController : ControllerBase
                     }
                     prod.UpdatedAt = DateTime.UtcNow;
                     prod.StockChangedAt = DateTime.UtcNow;
+                    await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
                     productosUpdate.Add(prod.Id);
                 }
 
@@ -1739,6 +1744,7 @@ public class CafeVentasController : ControllerBase
                     prod.StockUnidades += unidadesADevolver;
                 }
                 prod.StockChangedAt = DateTime.UtcNow;
+                await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
                 productosDelete.Add(prod.Id);
             }
         }

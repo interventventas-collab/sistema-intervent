@@ -149,6 +149,8 @@ public class StockController : ControllerBase
         // Marcar StockChangedAt para que el push event-driven + background lo capturen.
         // Sin esto, MeLi se queda con el stock viejo (bug observado 2026-05-24 con DELLA001).
         if (antes != despues) prod.StockChangedAt = DateTime.UtcNow;
+        // Sincronizar Cafe_StockPorDeposito (parche 2026-05-25, ver CafeStockHelper).
+        if (antes != despues) await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
 
         var mov = new StockMovimiento
         {

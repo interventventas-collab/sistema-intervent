@@ -171,6 +171,8 @@ public class MeliStockSyncService
                     }
                     // Marcar para que el job de respaldo / push event-driven sepa que hay que pushear a MeLi.
                     prod.StockChangedAt = DateTime.UtcNow;
+                    // Sincronizar Cafe_StockPorDeposito (parche 2026-05-25).
+                    await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
                 }
 
                 ord.StockDiscounted = true;
