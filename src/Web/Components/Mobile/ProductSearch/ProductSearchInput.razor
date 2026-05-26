@@ -62,16 +62,6 @@
                     }
                 </div>
             }
-            @if (cargadosHoy.Count > 0)
-            {
-                <div class="psi-section-label">🕐 ÚLTIMOS CARGADOS HOY</div>
-                <div class="psi-chips">
-                    @foreach (var item in cargadosHoy)
-                    {
-                        @RenderChip(item)
-                    }
-                </div>
-            }
             @if (frecuentes.Count > 0)
             {
                 <div class="psi-section-label">🔥 FRECUENTES</div>
@@ -124,6 +114,9 @@
     [Parameter] public bool ShowRecent { get; set; } = true;
     [Parameter] public bool ShowFavorites { get; set; } = true;
     [Parameter] public string KeyboardMode { get; set; } = "custom";
+    // Por defecto NO mostrar combos/kits (caso típico stock: solo productos individuales).
+    // En /cafe/ventas se va a pasar IncludeCombos="true" cuando integremos.
+    [Parameter] public bool IncludeCombos { get; set; } = false;
 
     private string value = "";
     private List<SearchHit> results = new();
@@ -144,9 +137,11 @@
     private void RefreshEmptyState()
     {
         var (fav, hoy, frec) = Catalog.EmptyState();
-        favoritos = ShowFavorites ? fav : new();
-        cargadosHoy = ShowRecent ? hoy : new();
-        frecuentes = frec;
+        // Si no incluimos combos, filtrarlos también del estado vacío
+        Func<CatalogItem, bool> okType = it => IncludeCombos || it.Tipo == "producto";
+        favoritos = ShowFavorites ? fav.Where(okType).ToList() : new();
+        cargadosHoy = ShowRecent ? hoy.Where(okType).ToList() : new();
+        frecuentes = frec.Where(okType).ToList();
     }
 
     private async Task OnKeyboardValueChanged(string newValue)
@@ -166,7 +161,14 @@
             return;
         }
         var t0 = DateTime.UtcNow;
-        results = Catalog.Search(value, 10, FilterFn);
+        // Componer filtros: el del consumidor + el filtro de "solo productos" (excluir combos) si corresponde
+        Func<CatalogItem, bool>? combined = FilterFn;
+        if (!IncludeCombos)
+        {
+            var orig = combined;
+            combined = it => it.Tipo == "producto" && (orig == null || orig(it));
+        }
+        results = Catalog.Search(value, 10, combined);
         LastSearchMs = (DateTime.UtcNow - t0).TotalMilliseconds;
     }
 
