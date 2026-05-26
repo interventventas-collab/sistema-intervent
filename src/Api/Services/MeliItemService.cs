@@ -69,22 +69,40 @@ public class MeliItemService
             .ToListAsync();
 
         // Cargar resumen de componentes en una sola query y mergear en memoria (más eficiente que sub-query por fila).
+        // IMPORTANTE: filtrar por VariationId del MeliItem para no mezclar variantes hermanas (color/talle/etc).
+        // Solo aceptar componentes con MeliVariationId == variationId del item, o componentes sin variation_id.
         var meliIds = items.Where(it => it.ComponentMappingsCount > 0).Select(it => it.MeliItemId).ToHashSet();
         if (meliIds.Count > 0)
         {
-            var summaries = await (from mc in _db.MeliItemComponentes
-                                   join p in _db.CafeProductos on mc.CafeProductoId equals p.Id
-                                   where meliIds.Contains(mc.MeliItemId)
-                                   select new { mc.MeliItemId, p.Sku, mc.Cantidad })
+            var summariesRaw = await (from mc in _db.MeliItemComponentes
+                                      join p in _db.CafeProductos on mc.CafeProductoId equals p.Id
+                                      where meliIds.Contains(mc.MeliItemId)
+                                      select new { mc.MeliItemId, p.Sku, mc.Cantidad, mc.MeliVariationId })
                 .ToListAsync();
-            var byItem = summaries.GroupBy(s => s.MeliItemId)
-                .ToDictionary(g => g.Key,
-                    g => string.Join(", ", g.Select(x => $"{x.Sku} ×{(x.Cantidad == Math.Floor(x.Cantidad) ? x.Cantidad.ToString("0") : x.Cantidad.ToString("0.##"))}")));
+            // Indexar por (MeliItemId, VariationId-o-null)
             // Reemplazar el DTO con la versión que tiene Summary (records son inmutables → with).
             for (int k = 0; k < items.Count; k++)
             {
-                if (byItem.TryGetValue(items[k].MeliItemId, out var summary))
-                    items[k] = items[k] with { ComponentMappingsSummary = summary };
+                var it = items[k];
+                // Componentes que aplican a ESTA fila (su variante o sin variation)
+                var aplicables = summariesRaw.Where(s => s.MeliItemId == it.MeliItemId &&
+                    (
+                        // Si el item tiene VariationId, aceptar componentes con ese variation_id o sin variation
+                        (it.VariationId != null && (s.MeliVariationId == it.VariationId || string.IsNullOrEmpty(s.MeliVariationId)))
+                        ||
+                        // Si el item NO tiene VariationId, aceptar solo componentes sin variation_id
+                        (it.VariationId == null && string.IsNullOrEmpty(s.MeliVariationId))
+                    )).ToList();
+                if (aplicables.Count > 0)
+                {
+                    var summary = string.Join(", ", aplicables.Select(x => $"{x.Sku} ×{(x.Cantidad == Math.Floor(x.Cantidad) ? x.Cantidad.ToString("0") : x.Cantidad.ToString("0.##"))}"));
+                    items[k] = it with { ComponentMappingsSummary = summary, ComponentMappingsCount = aplicables.Count };
+                }
+                else
+                {
+                    // No tiene componentes propios → resetear a 0 para no confundir
+                    items[k] = it with { ComponentMappingsCount = 0 };
+                }
             }
         }
 
