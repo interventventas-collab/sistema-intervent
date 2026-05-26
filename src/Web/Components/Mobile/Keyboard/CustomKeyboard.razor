@@ -17,16 +17,29 @@
     @* Sugerencias contextuales (sufijos de color) — siempre 1 fila reservada *@
     @if (!NumericOnly)
     {
-        <div class="kbd-hint-row" style="@(ContextualHints != null && ContextualHints.Count > 0 ? "" : "visibility:hidden;")">
+        <div class="kbd-hint-row">
             <span class="kbd-hint-label">💡</span>
-            @if (ContextualHints != null)
+            @if (ContextualHints != null && ContextualHints.Count > 0)
             {
                 @foreach (var h in ContextualHints)
                 {
                     <button class="kbd-hint-btn" @onclick="@(() => InsertText(h))">+@h</button>
                 }
             }
+            else
+            {
+                <span class="kbd-hint-empty">sufijos aparecen al escribir</span>
+            }
         </div>
+
+        @* Acciones SIEMPRE visibles arriba: LIMPIAR + ABC (para que no se corten en pantallas chicas) *@
+        @if (!showAbc)
+        {
+            <div class="kbd-top-actions">
+                <button class="kbd-action-clear" @onclick="Clear">⌫ LIMPIAR</button>
+                <button class="kbd-action-abc" @onclick="@(() => { showAbc = true; })">ABC ↕</button>
+            </div>
+        }
     }
 
     @if (showAbc && !NumericOnly)
@@ -101,12 +114,6 @@
             <button class="kbd-num-back" @onclick="Backspace">⌫</button>
             <button class="kbd-num-key" @onclick="@(() => InsertText("0"))">0</button>
             <button class="kbd-num-enter" @onclick="EnterAsync">↵</button>
-        </div>
-
-        @* Acciones secundarias: LIMPIAR + ABC *@
-        <div class="kbd-actions-row">
-            <button class="kbd-action-clear" @onclick="Clear">LIMPIAR</button>
-            <button class="kbd-action-abc" @onclick="@(() => { showAbc = true; })">ABC ↕</button>
         </div>
     }
 </div>
@@ -212,7 +219,7 @@
         gap: 8px;
     }
 
-    /* Sufijos contextuales (siempre 1 fila, hidden si no aplica para no mover layout) */
+    /* Sufijos contextuales (siempre 1 fila, con texto placeholder si está vacía) */
     .kbd-hint-row {
         display: flex;
         gap: 8px;
@@ -220,12 +227,15 @@
         align-items: center;
         overflow-x: auto;
         scrollbar-width: none;
-        min-height: 44px;
+        min-height: 36px;
+        background: #fffbeb;
+        border-radius: 8px;
     }
     .kbd-hint-row::-webkit-scrollbar { display: none; }
-    .kbd-hint-label { font-size: 1rem; padding-right: 2px; }
+    .kbd-hint-label { font-size: 0.95rem; padding-left: 6px; padding-right: 2px; }
+    .kbd-hint-empty { font-size: 0.78rem; color: #92400e; opacity: 0.7; font-style: italic; }
     .kbd-hint-btn {
-        min-width: 64px; min-height: 38px;
+        min-width: 64px; min-height: 32px;
         background: #fef3c7; color: #92400e;
         border: 1px solid #fbbf24; border-radius: 10px;
         font-weight: 700; font-size: 0.95rem;
@@ -233,6 +243,13 @@
         touch-action: manipulation;
     }
     .kbd-hint-btn:active { background: #fde68a; }
+
+    /* Top actions row (LIMPIAR + ABC) — siempre visible arriba de prefijos */
+    .kbd-top-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+    }
 
     /* Prefijos grandes 2x3 */
     .kbd-prefix-grid {
@@ -290,15 +307,9 @@
     }
     .kbd-num-enter:active { background: #15803d; }
 
-    /* Acciones secundarias */
-    .kbd-actions-row {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 10px;
-        margin-top: 2px;
-    }
+    /* Acciones (LIMPIAR + ABC) — usadas en .kbd-top-actions */
     .kbd-action-clear, .kbd-action-abc {
-        min-height: 48px;
+        min-height: 44px;
         border: 1px solid #d1d5db;
         border-radius: 10px;
         font-weight: 700;
@@ -308,8 +319,8 @@
     }
     .kbd-action-clear { background: #fef2f2; color: #991b1b; border-color: #fca5a5; }
     .kbd-action-clear:active { background: #fecaca; }
-    .kbd-action-abc { background: #6b7280; color: white; border-color: #4b5563; }
-    .kbd-action-abc:active { background: #4b5563; }
+    .kbd-action-abc { background: #475569; color: white; border-color: #334155; font-size: 1rem; }
+    .kbd-action-abc:active { background: #334155; }
 
     /* Modo ABC expandido (cuando el usuario quiere letras) */
     .kbd-abc-mode {
