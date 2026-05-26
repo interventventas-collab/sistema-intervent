@@ -121,6 +121,30 @@ public class CatalogIndex
         return (favoritos, cargadosHoy, frecuentes);
     }
 
+    /// <summary>
+    /// Dado un prefijo tipeado (ej: "C9333"), devuelve los sufijos posibles que EXISTEN
+    /// en el catálogo real. Ej: si hay C9333BL, C9333GR, C9333NEG → devuelve ["BL","GR","NEG"].
+    /// Ordena por frecuencia (cuántos SKUs comparten ese sufijo) y desempata por largo del sufijo.
+    /// Se usa para reemplazar los prefijos azules por sufijos contextuales mientras el operario tipea.
+    /// </summary>
+    public List<string> SuggestSuffixes(string prefix, int max = 6, Func<CatalogItem, bool>? filter = null)
+    {
+        if (_items == null || string.IsNullOrEmpty(prefix)) return new();
+        var prefixUp = prefix.ToUpperInvariant();
+        return _items
+            .Where(it => (filter == null || filter(it))
+                         && it.SkuUpper.Length > prefixUp.Length
+                         && it.SkuUpper.StartsWith(prefixUp))
+            .Select(it => it.SkuUpper.Substring(prefixUp.Length))
+            .Where(s => !string.IsNullOrEmpty(s) && s.Length <= 6)  // sufijos razonables (no códigos largos)
+            .GroupBy(s => s)
+            .OrderByDescending(g => g.Count())
+            .ThenBy(g => g.Key.Length)
+            .Take(max)
+            .Select(g => g.Key)
+            .ToList();
+    }
+
     /// <summary>Levenshtein simple: true si la distancia es 0, 1 o 2 (caro: solo en strings cortos).</summary>
     private static bool LevenshteinUnder2(string s, string t)
     {
