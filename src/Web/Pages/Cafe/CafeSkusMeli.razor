@@ -124,35 +124,24 @@
                             }
                         </div>
 
-                        @* STOCK ARMABLE (destacado) *@
+                        @* COMPARACION STOCK SISTEMA <> MELI *@
                         @if (sku.componentes.Count > 0 || sku.productoSueltoStock.HasValue)
                         {
-                            var stockEf = sku.componentes.Count > 0 ? sku.stockArmableCombo : (sku.productoSueltoStock ?? 0);
-                            var colorStock = stockEf >= 10 ? "#15803d" : (stockEf >= 5 ? "#65a30d" : (stockEf >= 1 ? "#d97706" : "#b91c1c"));
-                            <div style="text-align:center; min-width:110px; padding:0 0.6rem; border-left:1px dashed #d1d5db; border-right:1px dashed #d1d5db;">
-                                <div style="font-size:2rem; font-weight:900; color:@colorStock; line-height:1;">
-                                    @stockEf
-                                </div>
-                                <div style="font-size:0.68rem; color:#4b5563; text-transform:uppercase; letter-spacing:0.05em; margin-top:0.2rem; font-weight:600;">
-                                    @(sku.componentes.Count > 0 ? "combos armables" : "unidades")
-                                </div>
+                            var stockSist = sku.componentes.Count > 0 ? sku.stockArmableCombo : (sku.productoSueltoStock ?? 0);
+                            var stockMeli = sku.stockMeliMax ?? 0;
+                            var diff = Math.Abs(stockSist - stockMeli);
+                            // Tolerancia: coincide si diff <= 2 o <= 10%
+                            var tolerancia = Math.Max(2, (int)(Math.Max(stockSist, stockMeli) * 0.1));
+                            var coincide = diff <= tolerancia;
+                            var icono2 = coincide ? "✅" : "⚠";
+                            var colorCheck = coincide ? "#16a34a" : "#d97706";
+                            <div style="text-align:right; min-width:200px; padding:0 0.5rem; font-family:monospace; font-size:0.95rem;">
+                                <span style="color:#374151;">sist <b style="color:#1f2937;">@stockSist</b></span>
+                                <span style="color:#9ca3af; margin:0 0.3rem;">↔</span>
+                                <span style="color:#374151;">MeLi <b style="color:#1d4ed8;">@stockMeli</b></span>
+                                <span style="margin-left:0.4rem; color:@colorCheck; font-size:1rem;">@icono2</span>
                             </div>
                         }
-
-                        @* PUBS + MELI *@
-                        <div style="text-align:right; min-width:130px; padding:0 0.4rem;">
-                            <div style="font-size:0.85rem; color:#374151;">
-                                <b>@(sku.cantPubsActivas)</b> @(sku.cantPubsActivas == 1 ? "pub" : "pubs") activa@(sku.cantPubsActivas == 1 ? "" : "s")
-                                @if (sku.cantPubsPausadas > 0)
-                                {
-                                    <span style="color:#9ca3af;"> + @sku.cantPubsPausadas pausada@(sku.cantPubsPausadas == 1 ? "" : "s")</span>
-                                }
-                            </div>
-                            @if (sku.stockMeliMax.HasValue)
-                            {
-                                <div style="font-size:0.78rem; color:#9ca3af;">MeLi muestra: <b style="color:#1d4ed8;">@sku.stockMeliMax</b></div>
-                            }
-                        </div>
 
                         @* BOTÓN ACCIÓN *@
                         @if (sku.estado == "sin_link" || sku.estado == "producto_suelto")
@@ -163,9 +152,6 @@
                                 🔗 Linkear
                             </button>
                         }
-                        else if (sku.estado == "ok_combo" || sku.estado == "ok_producto")
-                        {
-                            <span style="font-size:0.7rem; color:#16a34a; padding:0.4rem 0.7rem; font-weight:600;">✓ Activo</span>
                         }
                     </div>
 
