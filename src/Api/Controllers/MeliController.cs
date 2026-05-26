@@ -1260,6 +1260,172 @@ public class MeliController : ControllerBase
     }
     public class PushConservativeRequest { public List<string>? MeliItemIds { get; set; } }
 
+    // ============================================================
+    // PUSH DE QUIETOS — productos "sin movimiento" desde el corte de Contabilium
+    // ============================================================
+
+    public record QuietoPreviewRow(
+        int ProductoId,
+        string? Sku,
+        string Nombre,
+        string? Categoria,
+        decimal StockSistema,
+        decimal? StockContab,
+        string MeliItemId,
+        string? VariationId,
+        string TitulMeLi,
+        int StockMeLiActual,
+        string StatusMeLi,
+        int Reserva,
+        int APushear,
+        decimal? Cantidad,
+        string Diagnostico);
+
+    /// <summary>Preview de productos "quietos" candidatos al push masivo: sin venta MeLi
+    /// desde el 24/05, sin cambio de stock sistema desde el 23/05, stock > 0, no café.</summary>
+    [HttpGet("quietos-preview")]
+    public async Task<IActionResult> QuietosPreview([FromQuery] string fuente = "sistema",
+        [FromQuery] bool incluirCafe = false,
+        [FromServices] Api.Data.AppDbContext db = null!)
+    {
+        // 1) Lista de productos "quietos"
+        var hoy = DateTime.UtcNow;
+        var corteVentas = new DateTime(2026, 5, 24, 0, 0, 0, DateTimeKind.Utc);
+        var corteSistema = new DateTime(2026, 5, 23, 0, 0, 0, DateTimeKind.Utc);
+        var fechaSnapshot = new DateTime(2026, 5, 26, 0, 0, 0, DateTimeKind.Utc);
+
+        // Productos vendidos en MeLi desde el corte (los excluimos)
+        var productosVendidos = await (
+            from mo in db.MeliOrders
+            join mic in db.MeliItemComponentes
+                on mo.ItemId equals mic.MeliItemId
+            where mo.DateClosed >= corteVentas
+                && (mo.Status == "paid" || mo.Status == "shipped" || mo.Status == "delivered")
+                && (mic.MeliVariationId == null || mo.VariationId == null || mic.MeliVariationId == mo.VariationId)
+            select mic.CafeProductoId
+        ).Distinct().ToListAsync();
+
+        // Productos candidatos (quietos)
+        var query = db.CafeProductos
+            .Where(cp => cp.IsActive
+                && (cp.StockChangedAt == null || cp.StockChangedAt < corteSistema)
+                && cp.StockUnidades > 0
+                && !productosVendidos.Contains(cp.Id));
+        if (!incluirCafe) query = query.Where(cp => cp.Categoria != "CAFE");
+
+        var productos = await query
+            .Select(cp => new
+            {
+                cp.Id, cp.Sku, cp.Nombre, cp.Categoria, cp.StockUnidades, cp.StockMinimoMeLi
+            })
+            .ToListAsync();
+
+        if (productos.Count == 0)
+            return Ok(new { rows = new List<QuietoPreviewRow>(), total = 0 });
+
+        var prodIds = productos.Select(p => p.Id).ToList();
+
+        // Componentes que apuntan a estos productos
+        var componentes = await db.MeliItemComponentes
+            .Where(c => prodIds.Contains(c.CafeProductoId))
+            .ToListAsync();
+
+        var meliItemIds = componentes.Select(c => c.MeliItemId).Distinct().ToList();
+        var meliItems = await db.MeliItems
+            .Where(mi => meliItemIds.Contains(mi.MeliItemId) && mi.Status == "active")
+            .ToListAsync();
+
+        // Snapshots de Contabilium del 26/05
+        var skusList = productos.Where(p => p.Sku != null).Select(p => p.Sku!).Distinct().ToList();
+        var snapshots = await db.StockSnapshots
+            .Where(s => skusList.Contains(s.Sku) && s.Fecha >= fechaSnapshot && s.Fecha < fechaSnapshot.AddDays(1))
+            .ToDictionaryAsync(s => s.Sku, s => s.StockContabilium);
+
+        // Armar filas: una por MeliItem (con su variante si aplica) afectado por este producto
+        var rows = new List<QuietoPreviewRow>();
+        foreach (var p in productos)
+        {
+            var compsProd = componentes.Where(c => c.CafeProductoId == p.Id).ToList();
+            foreach (var comp in compsProd)
+            {
+                var mi = meliItems.FirstOrDefault(m => m.MeliItemId == comp.MeliItemId
+                    && (comp.MeliVariationId == null || comp.MeliVariationId == m.VariationId
+                        || string.IsNullOrEmpty(m.VariationId)));
+                if (mi == null) continue;
+
+                int reserva = p.StockMinimoMeLi ?? 0;
+                int stockCombo = comp.Cantidad > 0 ? (int)Math.Floor(p.StockUnidades / comp.Cantidad) : 0;
+                int aPushear = Math.Max(0, stockCombo - reserva);
+                decimal? stkContab = snapshots.TryGetValue(p.Sku ?? "", out var c) ? c : (decimal?)null;
+
+                string diag;
+                if (aPushear <= 0) diag = "skip-cero";
+                else if (mi.AvailableQuantity > aPushear + 5) diag = "baja-fuerte";
+                else if (mi.AvailableQuantity > aPushear) diag = "baja";
+                else if (mi.AvailableQuantity < aPushear) diag = "sube";
+                else diag = "igual";
+
+                rows.Add(new QuietoPreviewRow(
+                    p.Id, p.Sku, p.Nombre, p.Categoria,
+                    p.StockUnidades, stkContab,
+                    mi.MeliItemId, mi.VariationId,
+                    mi.Title ?? "", mi.AvailableQuantity, mi.Status ?? "",
+                    reserva, aPushear, comp.Cantidad, diag));
+            }
+        }
+
+        return Ok(new { rows, total = rows.Count });
+    }
+
+    public class QuietosPushRequest
+    {
+        public List<int> ProductoIds { get; set; } = new();
+        public string Fuente { get; set; } = "sistema";
+    }
+
+    /// <summary>Pushea un lote de productos quietos en modo safeBulk: no pausa, no reactiva.</summary>
+    [HttpPost("quietos-push")]
+    public async Task<IActionResult> QuietosPush([FromServices] MeliStockPushService pushSvc,
+        [FromServices] Api.Data.AppDbContext db,
+        [FromBody] QuietosPushRequest req)
+    {
+        if (req?.ProductoIds == null || req.ProductoIds.Count == 0)
+            return BadRequest(new { error = "Lista vacia" });
+
+        // Productos a tocar
+        var productos = await db.CafeProductos
+            .Where(p => req.ProductoIds.Contains(p.Id) && p.IsActive)
+            .ToListAsync();
+        if (productos.Count == 0) return BadRequest(new { error = "Ningun producto valido" });
+
+        // Marcar StockChangedAt para que el push event-driven los procese (y el job de respaldo también)
+        var now = DateTime.UtcNow;
+        foreach (var p in productos) p.StockChangedAt = now;
+        await db.SaveChangesAsync();
+
+        // Encontrar MeLi items afectados
+        var prodIds = productos.Select(p => p.Id).ToList();
+        var meliItemIds = await db.MeliItemComponentes
+            .Where(c => prodIds.Contains(c.CafeProductoId))
+            .Select(c => c.MeliItemId).Distinct().ToListAsync();
+
+        if (meliItemIds.Count == 0)
+            return Ok(new { procesadas = 0, ok = 0, skipped = 0, errores = 0, mensajes = new[] { "Sin MLAs linkeadas" } });
+
+        // Ejecutar push con safeBulkMode = true
+        var r = await pushSvc.PushStockForMeliItemsAsync(meliItemIds, HttpContext.RequestAborted, conservativeMode: false, safeBulkMode: true);
+
+        return Ok(new
+        {
+            procesadas = r.Procesadas,
+            ok = r.Ok,
+            skipped = r.Skipped,
+            errores = r.Errores,
+            mensajes = r.Mensajes
+        });
+    }
+
+
     /// <summary>Configura el callback URL del webhook en la app de MercadoLibre.
     /// Solo admin. La URL configurada se calcula desde la integration (RedirectUrl host) o
     /// se puede pasar explicita por query.

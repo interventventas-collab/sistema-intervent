@@ -2822,6 +2822,19 @@ public class ApiClient
     public async Task<CafePushStatusDto?> GetCafePushStatusAsync()
         => await GetAsync<CafePushStatusDto>("/api/meli/cafe/push/status");
 
+    // ─── Push de QUIETOS (sistema → MeLi, modo safeBulk) ───
+    public record QuietoPreviewRow(int ProductoId, string? Sku, string Nombre, string? Categoria,
+        decimal StockSistema, decimal? StockContab, string MeliItemId, string? VariationId,
+        string TitulMeLi, int StockMeLiActual, string StatusMeLi, int Reserva, int APushear,
+        decimal? Cantidad, string Diagnostico);
+    public record QuietosPreviewResponse(List<QuietoPreviewRow> Rows, int Total);
+    public async Task<QuietosPreviewResponse?> GetQuietosPreviewAsync(string fuente = "sistema", bool incluirCafe = false)
+        => await GetAsync<QuietosPreviewResponse>($"/api/meli/quietos-preview?fuente={Uri.EscapeDataString(fuente)}&incluirCafe={incluirCafe}");
+
+    public record QuietosPushResult(int Procesadas, int Ok, int Skipped, int Errores, List<string> Mensajes);
+    public async Task<QuietosPushResult?> RunQuietosPushAsync(List<int> productoIds, string fuente = "sistema")
+        => await PostAsync<QuietosPushResult>("/api/meli/quietos-push", new { ProductoIds = productoIds, Fuente = fuente });
+
     public async Task<List<FileDeleteResult>?> MoveFilesAsync(IEnumerable<string> paths, string targetPath)
     {
         return await PostAsync<List<FileDeleteResult>>("/api/files/move", new { paths, targetPath });

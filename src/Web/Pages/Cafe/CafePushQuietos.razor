@@ -1,0 +1,276 @@
+@page "/cafe/push-quietos"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@using Web.Services
+
+<div class="card" style="max-width: 1600px; margin: 1rem auto;">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <h3>🛡 Push de stock "quietos" → MercadoLibre (modo seguro)</h3>
+        <button class="btn btn-secondary" @onclick="Recargar" disabled="@loading">
+            @(loading ? "⏳ Cargando..." : "🔄 Recargar preview")
+        </button>
+    </div>
+    <div class="card-body">
+        <div style="background: #ecfdf5; border: 1px solid #10b981; border-radius: 6px; padding: 0.8rem 1rem; margin-bottom: 1rem; font-size: 0.87rem;">
+            ✅ <strong>Modo seguro (safeBulk):</strong>
+            <ul style="margin: 0.5rem 0 0 1.2rem;">
+                <li>Salta publicaciones <strong>pausadas</strong> (no las reactiva).</li>
+                <li>Salta cuando el resultado daría <strong>stock 0</strong> en MeLi (no las pausa).</li>
+                <li>Sí permite <strong>subir</strong> stock cuando corresponde.</li>
+                <li>Filtros aplicados: sin venta MeLi desde 24/05 + sin cambio sistema desde 23/05 + stock>0 + no café.</li>
+            </ul>
+        </div>
+
+        @if (loading)
+        {
+            <p style="text-align: center; padding: 2rem;">⏳ Cargando preview...</p>
+        }
+        else if (preview is null || preview.Rows.Count == 0)
+        {
+            <p>Sin filas para mostrar. Apretá "Recargar preview" si esperabas resultados.</p>
+        }
+        else
+        {
+            <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.8rem; align-items: center;">
+                <input class="form-input" style="max-width: 350px; font-size: 0.85rem;"
+                       placeholder="🔍 Buscar SKU, MLA o nombre..."
+                       @bind="busqueda" @bind:event="oninput" />
+                <span style="font-size: 0.85rem; color: #6b7280;">
+                    <strong>@FilteredRows().Count()</strong> de @preview.Rows.Count filas mostradas
+                </span>
+                <span style="font-size: 0.85rem; color: #1e40af;">
+                    Próximo lote: <strong>@(Math.Min(loteSize, NoPusheadasYSeleccionadas()))</strong> productos
+                </span>
+                <button class="btn btn-secondary" style="font-size: 0.78rem;"
+                        @onclick="SeleccionarTodos">☑ Marcar todos</button>
+                <button class="btn btn-secondary" style="font-size: 0.78rem;"
+                        @onclick="DeseleccionarTodos">☐ Desmarcar todos</button>
+            </div>
+
+            <div class="table-responsive" style="max-height: 65vh; overflow-y: auto;">
+                <table class="data-table" style="font-size: 0.82rem;">
+                    <thead style="position: sticky; top: 0; background: white; z-index: 5;">
+                        <tr>
+                            <th style="width: 30px;">☑</th>
+                            <th>SKU</th>
+                            <th>Producto</th>
+                            <th class="num">Contab</th>
+                            <th class="num">Sistema</th>
+                            <th class="num">MeLi</th>
+                            <th class="num">A pushear</th>
+                            <th>MLA</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in FilteredRows())
+                        {
+                            var rowKey = $"{r.ProductoId}-{r.MeliItemId}-{r.VariationId}";
+                            var seleccionada = !excluidos.Contains(rowKey);
+                            var (bg, label) = ColorEstado(r);
+                            var yaPusheada = pusheados.Contains(r.ProductoId);
+                            <tr style="background:@(yaPusheada ? "#f3f4f6" : bg);">
+                                <td>
+                                    @if (yaPusheada)
+                                    {
+                                        <span title="Pusheada en este lote">✅</span>
+                                    }
+                                    else
+                                    {
+                                        <input type="checkbox" checked="@seleccionada"
+                                               @onchange="@((ChangeEventArgs e) => ToggleFila(rowKey, (bool)e.Value!))" />
+                                    }
+                                </td>
+                                <td style="font-family: monospace;">@r.Sku</td>
+                                <td><span title="@r.TitulMeLi">@TruncarSafe(r.Nombre, 35)</span></td>
+                                <td class="num">@(r.StockContab.HasValue ? r.StockContab.Value.ToString("0") : "—")</td>
+                                <td class="num"><strong>@r.StockSistema.ToString("0")</strong></td>
+                                <td class="num">@r.StockMeLiActual</td>
+                                <td class="num"><strong style="color: #1e40af;">@r.APushear</strong></td>
+                                <td style="font-family: monospace; font-size: 0.72rem;">
+                                    <a href="https://articulo.mercadolibre.com.ar/@r.MeliItemId" target="_blank">@r.MeliItemId</a>
+                                </td>
+                                <td><span style="font-size: 0.72rem;">@label</span></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div style="margin-top: 1rem; padding: 0.9rem; background: #f3f4f6; border-radius: 8px; display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap;">
+                <label style="font-size: 0.85rem; display: flex; align-items: center; gap: 0.4rem;">
+                    Tamaño del lote:
+                    <select @bind="loteSize" style="padding: 0.25rem 0.5rem; font-size: 0.85rem;">
+                        <option value="5">5 (prueba)</option>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                        <option value="200">200</option>
+                    </select>
+                </label>
+                @if (pushing)
+                {
+                    <strong style="color: #1e40af;">⏳ Pusheando lote, no cierres la pestaña...</strong>
+                }
+                else
+                {
+                    <button class="btn btn-primary" @onclick="PushearProximoLote" disabled="@(NoPusheadasYSeleccionadas() == 0)">
+                        🚀 Pushear próximo lote (@(Math.Min(loteSize, NoPusheadasYSeleccionadas())) productos)
+                    </button>
+                    <span style="font-size: 0.78rem; color: #6b7280;">
+                        Quedan @NoPusheadasYSeleccionadas() productos seleccionados sin pushear.
+                    </span>
+                }
+            </div>
+
+            @if (!string.IsNullOrEmpty(lastResult))
+            {
+                <div style="margin-top: 0.8rem; padding: 0.7rem 0.9rem; background: @(lastResultOk ? "#dcfce7" : "#fee2e2"); border: 1px solid @(lastResultOk ? "#16a34a" : "#dc2626"); border-radius: 6px; white-space: pre-wrap; font-size: 0.85rem;">
+                    @lastResult
+                </div>
+            }
+        }
+    </div>
+</div>
+
+<style>
+    .data-table .num { text-align: right; font-variant-numeric: tabular-nums; font-family: monospace; }
+    .data-table th, .data-table td { padding: 0.35rem 0.55rem; border-bottom: 1px solid #e5e7eb; }
+</style>
+
+@code {
+    private bool loading = true;
+    private bool pushing = false;
+    private ApiClient.QuietosPreviewResponse? preview;
+    private string busqueda = "";
+    private int loteSize = 5;
+    private HashSet<string> excluidos = new();
+    private HashSet<int> pusheados = new();
+    private string lastResult = "";
+    private bool lastResultOk = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Recargar();
+    }
+
+    private async Task Recargar()
+    {
+        loading = true;
+        excluidos.Clear();
+        pusheados.Clear();
+        try
+        {
+            preview = await Api.GetQuietosPreviewAsync();
+            if (preview is null || preview.Rows.Count == 0)
+            {
+                ToastService.Info("No hay productos quietos para pushear.");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error: " + ex.Message);
+        }
+        finally { loading = false; }
+    }
+
+    private IEnumerable<ApiClient.QuietoPreviewRow> FilteredRows()
+    {
+        if (preview is null) return Array.Empty<ApiClient.QuietoPreviewRow>();
+        if (string.IsNullOrWhiteSpace(busqueda)) return preview.Rows;
+        var q = busqueda.Trim().ToUpper();
+        return preview.Rows.Where(r =>
+            (r.Sku ?? "").ToUpper().Contains(q)
+            || r.Nombre.ToUpper().Contains(q)
+            || r.MeliItemId.Contains(q)
+            || r.TitulMeLi.ToUpper().Contains(q));
+    }
+
+    private void ToggleFila(string key, bool checkd)
+    {
+        if (checkd) excluidos.Remove(key);
+        else excluidos.Add(key);
+    }
+
+    private void SeleccionarTodos() => excluidos.Clear();
+
+    private void DeseleccionarTodos()
+    {
+        if (preview is null) return;
+        foreach (var r in preview.Rows)
+        {
+            var key = $"{r.ProductoId}-{r.MeliItemId}-{r.VariationId}";
+            excluidos.Add(key);
+        }
+    }
+
+    private int NoPusheadasYSeleccionadas()
+    {
+        if (preview is null) return 0;
+        return preview.Rows
+            .Where(r => !pusheados.Contains(r.ProductoId))
+            .Where(r => !excluidos.Contains($"{r.ProductoId}-{r.MeliItemId}-{r.VariationId}"))
+            .Select(r => r.ProductoId)
+            .Distinct()
+            .Count();
+    }
+
+    private async Task PushearProximoLote()
+    {
+        if (preview is null) return;
+        var candidatos = preview.Rows
+            .Where(r => !pusheados.Contains(r.ProductoId))
+            .Where(r => !excluidos.Contains($"{r.ProductoId}-{r.MeliItemId}-{r.VariationId}"))
+            .Select(r => r.ProductoId)
+            .Distinct()
+            .Take(loteSize)
+            .ToList();
+
+        if (candidatos.Count == 0) { ToastService.Info("No hay nada para pushear"); return; }
+
+        pushing = true;
+        lastResult = "";
+        try
+        {
+            var r = await Api.RunQuietosPushAsync(candidatos);
+            if (r is null)
+            {
+                lastResult = "Error: respuesta nula del servidor.";
+                lastResultOk = false;
+            }
+            else
+            {
+                foreach (var pid in candidatos) pusheados.Add(pid);
+                lastResultOk = r.Errores == 0;
+                lastResult = $"Lote ejecutado: {r.Procesadas} procesadas — ✅ {r.Ok} OK, ⏭ {r.Skipped} saltadas, ❌ {r.Errores} errores.";
+                if (r.Mensajes != null && r.Mensajes.Count > 0)
+                {
+                    lastResult += "\n\nDetalle:\n" + string.Join("\n", r.Mensajes.Take(20));
+                    if (r.Mensajes.Count > 20) lastResult += $"\n... y {r.Mensajes.Count - 20} más.";
+                }
+                ToastService.Success($"Lote pusheado: {r.Ok} OK, {r.Skipped} saltadas, {r.Errores} errores.");
+            }
+        }
+        catch (Exception ex)
+        {
+            lastResultOk = false;
+            lastResult = "Error: " + ex.Message;
+            ToastService.Error("Error pusheando: " + ex.Message);
+        }
+        finally { pushing = false; }
+    }
+
+    private (string bg, string label) ColorEstado(ApiClient.QuietoPreviewRow r) => r.Diagnostico switch
+    {
+        "sube" => ("#dcfce7", "🟢 Sube"),
+        "baja" => ("#fef3c7", "🟡 Baja"),
+        "baja-fuerte" => ("#fee2e2", "🔴 Baja mucho"),
+        "igual" => ("#f9fafb", "⚪ Sin cambio"),
+        "skip-cero" => ("#f9fafb", "⏭ Skip (0)"),
+        _ => ("#f9fafb", "—")
+    };
+
+    private static string TruncarSafe(string s, int len)
+        => string.IsNullOrEmpty(s) ? "" : (s.Length > len ? s.Substring(0, len) + "..." : s);
+}
