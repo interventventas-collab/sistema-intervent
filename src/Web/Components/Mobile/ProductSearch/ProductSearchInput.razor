@@ -182,6 +182,12 @@
     {
         await Prefs.RegistrarUsoAsync(item.Sku);
         await OnSelect.InvokeAsync(item);
+        // Limpiar el input y resetear estado para listo-para-el-siguiente
+        value = "";
+        results.Clear();
+        LastSearchMs = null;
+        RefreshEmptyState();
+        StateHasChanged();
     }
 
     private async Task ClearValue()
