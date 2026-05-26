@@ -101,7 +101,8 @@
             Value="@value"
             ValueChanged="@OnKeyboardValueChanged"
             OnEnter="OnEnterPressed"
-            ContextualHints="@GetContextualHints()" />
+            ContextualHints="@GetContextualHints()"
+            DynamicSuffixes="@GetDynamicSuffixes()" />
     }
 </div>
 
@@ -201,13 +202,31 @@
 
     private List<string>? GetContextualHints()
     {
-        // Si el usuario ya tipeó letras + número (típico del SKU base), sugerir sufijos de color
+        // Sufijos hint del fondo: SOLO cuando NO hay sufijos dinámicos del catálogo (para no duplicar info).
+        if (GetDynamicSuffixes() != null) return null;
         if (string.IsNullOrEmpty(value)) return null;
         bool hasLetter = value.Any(char.IsLetter);
         bool hasDigit = value.Any(char.IsDigit);
         if (hasLetter && hasDigit)
             return new() { "BL", "ROJ", "NEG", "VER", "AZ" };
         return null;
+    }
+
+    /// <summary>
+    /// Sufijos sugeridos en tiempo real desde el catálogo real:
+    /// activa cuando el operario ya tipeó letras+dígitos (ej: "C9333") y hay matches.
+    /// Reemplaza los prefijos azules por estos sufijos naranjas en el grid 2x3.
+    /// </summary>
+    private List<string>? GetDynamicSuffixes()
+    {
+        if (string.IsNullOrEmpty(value) || value.Length < 2) return null;
+        bool hasLetter = value.Any(char.IsLetter);
+        bool hasDigit = value.Any(char.IsDigit);
+        if (!hasLetter || !hasDigit) return null;
+        // Aplicar el mismo filtro de combos que el buscador
+        Func<CatalogItem, bool>? filter = IncludeCombos ? null : (it => it.Tipo == "producto");
+        var sufs = Catalog.SuggestSuffixes(value, 6, filter);
+        return sufs.Count > 0 ? sufs : null;
     }
 
     private async Task ToggleFavoritoAsync(string sku)

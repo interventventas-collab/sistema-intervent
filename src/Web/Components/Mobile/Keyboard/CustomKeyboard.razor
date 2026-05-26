@@ -64,18 +64,31 @@
     }
     else
     {
-        @* Modo normal: prefijos arriba + numérico abajo *@
-        @* Prefijos: 6 grandes 2x3 *@
+        @* Modo normal: prefijos arriba (o sufijos sugeridos si el operario ya tipeó) + numérico abajo *@
+        @{
+            bool hasDynamicSuffixes = DynamicSuffixes != null && DynamicSuffixes.Count > 0;
+            var topList = hasDynamicSuffixes
+                ? DynamicSuffixes!.Take(6).ToList()
+                : (Prefixes ?? Prefs.Prefijos).Take(6).ToList();
+        }
+        @if (hasDynamicSuffixes)
+        {
+            <div class="kbd-suffix-label">↓ SUFIJOS POSIBLES PARA "@Value"</div>
+        }
         <div class="kbd-prefix-grid">
-            @{
-                var prefList = (Prefixes ?? Prefs.Prefijos).Take(6).ToList();
-            }
-            @foreach (var p in prefList)
+            @foreach (var p in topList)
             {
-                <button class="kbd-prefix-big" @onclick="@(() => InsertPrefijoAsync(p))">@p</button>
+                @if (hasDynamicSuffixes)
+                {
+                    <button class="kbd-suffix-big" @onclick="@(() => InsertText(p))">+@p</button>
+                }
+                else
+                {
+                    <button class="kbd-prefix-big" @onclick="@(() => InsertPrefijoAsync(p))">@p</button>
+                }
             }
             @* Si hay menos de 6, llenar con celdas vacías para mantener el grid *@
-            @for (int i = prefList.Count; i < 6; i++)
+            @for (int i = topList.Count; i < 6; i++)
             {
                 <div></div>
             }
@@ -122,6 +135,9 @@
     [Parameter] public bool NumericOnly { get; set; } = false;
     [Parameter] public List<string>? Prefixes { get; set; }
     [Parameter] public List<string>? ContextualHints { get; set; }
+    // Sufijos sugeridos dinámicamente desde el catálogo. Si vienen, REEMPLAZAN visualmente
+    // a los prefijos azules (mismo grid 2x3) en color naranja, con label "+XX".
+    [Parameter] public List<string>? DynamicSuffixes { get; set; }
     [Parameter] public int MaxLength { get; set; } = 20;
     [Parameter] public bool HapticFeedback { get; set; } = true;
 
@@ -265,6 +281,27 @@
     }
     .kbd-prefix-big:active {
         background: #1e3a8a;
+        transform: scale(0.96);
+        transition: all 0.05s ease;
+    }
+
+    /* Sufijos dinámicos (mismo grid 2x3 que prefijos, color naranja para distinguir) */
+    .kbd-suffix-label {
+        font-size: 0.72rem; font-weight: 700;
+        color: #c2410c; letter-spacing: 0.3px;
+        padding: 2px 4px; margin-bottom: -2px;
+    }
+    .kbd-suffix-big {
+        min-height: 56px;
+        background: #ea580c; color: white;
+        border: none; border-radius: 12px;
+        font-weight: 800; font-size: 1.35rem;
+        cursor: pointer;
+        touch-action: manipulation;
+        box-shadow: 0 2px 4px rgba(234,88,12,0.25);
+    }
+    .kbd-suffix-big:active {
+        background: #c2410c;
         transform: scale(0.96);
         transition: all 0.05s ease;
     }
