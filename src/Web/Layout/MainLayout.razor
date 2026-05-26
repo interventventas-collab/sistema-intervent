@@ -289,6 +289,11 @@
                     <NavItem Href="/relink-meli-orphans" Label="Re-vincular publicaciones" Icon="@SvgIcons.Refresh"
                              IsActive="@IsActive("/relink-meli-orphans")" OnClick="@(() => NavigateTo("/relink-meli-orphans"))" />
                 }
+                @if (HasPerm("publicaciones"))
+                {
+                    <NavItem Href="/cafe/push-quietos" Label="Push de stock (lote seguro)" Icon="@SvgIcons.Upload"
+                             IsActive="@IsActive("/cafe/push-quietos")" OnClick="@(() => NavigateTo("/cafe/push-quietos"))" />
+                }
             </NavGroup>
         }
 
