@@ -1237,6 +1237,29 @@ public class MeliController : ControllerBase
         }
     }
 
+    /// <summary>Push CONSERVADOR masivo: aplica reglas estrictas (no pausa, no activa, solo baja stock).
+    /// Recibe lista de MeliItemIds. Por cada uno: skip si paused, skip si subiria/igualaria, skip si daria 0.
+    /// Solo se ejecuta el PUT cuando hay una bajada real de stock con la pub activa.
+    /// </summary>
+    [HttpPost("stock-push/conservative")]
+    public async Task<IActionResult> PushStockConservative(
+        [FromServices] MeliStockPushService pushSvc,
+        [FromBody] PushConservativeRequest req)
+    {
+        try
+        {
+            if (req?.MeliItemIds == null || req.MeliItemIds.Count == 0)
+                return BadRequest(new { error = "Lista vacia" });
+            var r = await pushSvc.PushStockForMeliItemsAsync(req.MeliItemIds, HttpContext.RequestAborted, conservativeMode: true);
+            return Ok(new { procesadas = r.Procesadas, ok = r.Ok, skipped = r.Skipped, errores = r.Errores, mensajes = r.Mensajes });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+    public class PushConservativeRequest { public List<string>? MeliItemIds { get; set; } }
+
     /// <summary>Configura el callback URL del webhook en la app de MercadoLibre.
     /// Solo admin. La URL configurada se calcula desde la integration (RedirectUrl host) o
     /// se puede pasar explicita por query.

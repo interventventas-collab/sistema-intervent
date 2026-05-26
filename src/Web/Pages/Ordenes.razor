@@ -1538,7 +1538,8 @@
             var search = kv.Value;
             filtered = kv.Key switch
             {
-                "orden" => filtered.Where(o => o.MeliOrderId.ToString().Contains(search, StringComparison.OrdinalIgnoreCase)),
+                "orden" => filtered.Where(o => o.MeliOrderId.ToString().Contains(search, StringComparison.OrdinalIgnoreCase)
+                                              || (o.PackId != null && o.PackId.ToString()!.Contains(search, StringComparison.OrdinalIgnoreCase))),
                 "comprador" => filtered.Where(o => o.BuyerNickname.Contains(search, StringComparison.OrdinalIgnoreCase)),
                 "producto" => filtered.Where(o => o.ItemTitle.Contains(search, StringComparison.OrdinalIgnoreCase)),
                 _ => filtered
