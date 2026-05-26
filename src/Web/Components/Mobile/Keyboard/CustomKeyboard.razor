@@ -1,0 +1,268 @@
+@inject IJSRuntime JS
+@inject Web.Services.Mobile.KeyboardPrefs Prefs
+@implements IDisposable
+
+@*
+  CustomKeyboard — Teclado in-app reutilizable.
+  Props:
+    - Value: string actual (two-way binding con @bind-Value)
+    - OnEnter: callback al apretar Enter
+    - NumericOnly: si true, muestra solo teclas numéricas grandes
+    - Prefixes: lista opcional de prefijos rápidos (si null, usa Prefs.Prefijos)
+    - ContextualHints: lista opcional de sufijos sugeridos (BL, NEG, ROJ...)
+    - MaxLength: tope de caracteres (default 20)
+    - HapticFeedback: si true, vibra 10ms al tocar (default true)
+*@
+
+<div class="kbd-root @(NumericOnly ? "kbd-numeric" : "")">
+    @* Fila de prefijos rápidos *@
+    @if (!NumericOnly && (Prefixes ?? Prefs.Prefijos).Count > 0)
+    {
+        <div class="kbd-prefix-row">
+            <span class="kbd-prefix-label">⚡</span>
+            @foreach (var p in (Prefixes ?? Prefs.Prefijos))
+            {
+                <button class="kbd-prefix-btn" @onclick="@(() => InsertText(p))">@p</button>
+            }
+            <button class="kbd-toggle-layout" @onclick="ToggleLayoutAsync" title="Cambiar layout">
+                @(Prefs.Layout == "abc" ? "ABC" : "QWE")
+            </button>
+        </div>
+    }
+
+    @* Sugerencias contextuales (sufijos de color) *@
+    @if (ContextualHints != null && ContextualHints.Count > 0 && !NumericOnly)
+    {
+        <div class="kbd-hint-row">
+            <span class="kbd-hint-label">💡</span>
+            @foreach (var h in ContextualHints)
+            {
+                <button class="kbd-hint-btn" @onclick="@(() => InsertText(h))">+@h</button>
+            }
+        </div>
+    }
+
+    @if (NumericOnly)
+    {
+        @* Teclado numérico grande *@
+        <div class="kbd-num-grid">
+            @foreach (var n in new[] { "7", "8", "9", "4", "5", "6", "1", "2", "3", "0" })
+            {
+                <button class="kbd-num-key" @onclick="@(() => InsertText(n))">@n</button>
+            }
+            <button class="kbd-num-back" @onclick="Backspace">⌫</button>
+            <button class="kbd-num-enter" @onclick="EnterAsync">↵</button>
+        </div>
+    }
+    else
+    {
+        @* Fila de números *@
+        <div class="kbd-row kbd-row-nums">
+            @foreach (var n in new[] { "1", "2", "3", "4", "5", "6", "7", "8", "9", "0" })
+            {
+                <button class="kbd-key kbd-num" @onclick="@(() => InsertText(n))">@n</button>
+            }
+        </div>
+        @* Filas de letras según layout *@
+        @foreach (var row in GetLetterRows())
+        {
+            <div class="kbd-row">
+                @foreach (var k in row)
+                {
+                    <button class="kbd-key" @onclick="@(() => InsertText(k))">@k</button>
+                }
+            </div>
+        }
+        @* Fila de acciones *@
+        <div class="kbd-row kbd-row-actions">
+            <button class="kbd-key kbd-action kbd-clear" @onclick="Clear">LIMPIAR</button>
+            <button class="kbd-key kbd-action kbd-back" @onclick="Backspace">⌫ BORRAR</button>
+            <button class="kbd-key kbd-action kbd-enter" @onclick="EnterAsync">✅ ENTER</button>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public EventCallback OnEnter { get; set; }
+    [Parameter] public bool NumericOnly { get; set; } = false;
+    [Parameter] public List<string>? Prefixes { get; set; }
+    [Parameter] public List<string>? ContextualHints { get; set; }
+    [Parameter] public int MaxLength { get; set; } = 20;
+    [Parameter] public bool HapticFeedback { get; set; } = true;
+
+    // QWERTY layout
+    private static readonly List<string[]> QwertyRows = new()
+    {
+        new[] {"Q","W","E","R","T","Y","U","I","O","P"},
+        new[] {"A","S","D","F","G","H","J","K","L","Ñ"},
+        new[] {"Z","X","C","V","B","N","M","-",".","/"},
+    };
+
+    // ABC alfabético (decidido como default 2026-05-26)
+    private static readonly List<string[]> AbcRows = new()
+    {
+        new[] {"A","B","C","D","E","F","G","H","I","J"},
+        new[] {"K","L","M","N","Ñ","O","P","Q","R","S"},
+        new[] {"T","U","V","W","X","Y","Z","-",".","/"},
+    };
+
+    private List<string[]> GetLetterRows()
+        => Prefs.Layout == "qwerty" ? QwertyRows : AbcRows;
+
+    private async Task InsertText(string s)
+    {
+        if (Value.Length + s.Length > MaxLength) return;
+        await Haptic();
+        Value += s;
+        await ValueChanged.InvokeAsync(Value);
+    }
+
+    private async Task Backspace()
+    {
+        if (Value.Length == 0) return;
+        await Haptic();
+        Value = Value.Substring(0, Value.Length - 1);
+        await ValueChanged.InvokeAsync(Value);
+    }
+
+    private async Task Clear()
+    {
+        if (Value.Length == 0) return;
+        await Haptic();
+        Value = "";
+        await ValueChanged.InvokeAsync(Value);
+    }
+
+    private async Task EnterAsync()
+    {
+        await Haptic();
+        await OnEnter.InvokeAsync();
+    }
+
+    private async Task ToggleLayoutAsync()
+    {
+        await Haptic();
+        await Prefs.SetLayoutAsync(Prefs.Layout == "abc" ? "qwerty" : "abc");
+        StateHasChanged();
+    }
+
+    private async Task Haptic()
+    {
+        if (!HapticFeedback) return;
+        try { await JS.InvokeVoidAsync("navigator.vibrate", 10); } catch { /* no-op si no soporta */ }
+    }
+
+    public void Dispose() { /* nada por ahora */ }
+}
+
+<style>
+    .kbd-root {
+        background: #f3f4f6;
+        padding: 8px 6px;
+        border-top: 1px solid #d1d5db;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    /* Fila de prefijos */
+    .kbd-prefix-row, .kbd-hint-row {
+        display: flex;
+        gap: 6px;
+        padding: 4px 2px 6px;
+        align-items: center;
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+    .kbd-prefix-row::-webkit-scrollbar, .kbd-hint-row::-webkit-scrollbar { display: none; }
+    .kbd-prefix-label, .kbd-hint-label { font-size: 0.85rem; padding-right: 2px; }
+    .kbd-prefix-btn {
+        min-width: 52px; min-height: 36px;
+        background: #1e40af; color: white;
+        border: none; border-radius: 8px;
+        font-weight: 700; font-size: 0.95rem;
+        cursor: pointer;
+    }
+    .kbd-prefix-btn:active { background: #1e3a8a; }
+    .kbd-hint-btn {
+        min-width: 56px; min-height: 36px;
+        background: #fef3c7; color: #92400e;
+        border: 1px solid #fbbf24; border-radius: 8px;
+        font-weight: 700; font-size: 0.92rem;
+        cursor: pointer;
+    }
+    .kbd-hint-btn:active { background: #fde68a; }
+    .kbd-toggle-layout {
+        margin-left: auto;
+        min-width: 48px; min-height: 36px;
+        background: #6b7280; color: white;
+        border: none; border-radius: 8px;
+        font-size: 0.78rem; font-weight: 700;
+        cursor: pointer;
+    }
+
+    /* Fila de teclas */
+    .kbd-row {
+        display: grid;
+        grid-template-columns: repeat(10, 1fr);
+        gap: 4px;
+        padding: 3px 0;
+    }
+    .kbd-row-nums { background: rgba(0,0,0,0.03); border-radius: 6px; padding: 4px 2px; }
+    .kbd-key {
+        min-height: 48px;
+        background: white;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        font-size: 1.05rem;
+        font-weight: 600;
+        color: #111827;
+        cursor: pointer;
+        touch-action: manipulation;
+    }
+    .kbd-key:active {
+        background: #d1d5db;
+        transform: scale(0.95);
+        transition: all 0.05s ease;
+    }
+    .kbd-num { font-weight: 700; color: #1e40af; }
+
+    /* Fila de acciones */
+    .kbd-row-actions {
+        grid-template-columns: 1fr 1fr 1.5fr;
+        margin-top: 6px;
+    }
+    .kbd-action {
+        min-height: 54px;
+        font-size: 0.95rem;
+        font-weight: 800;
+    }
+    .kbd-clear { background: #fef2f2; color: #991b1b; border-color: #fca5a5; }
+    .kbd-clear:active { background: #fecaca; }
+    .kbd-back { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
+    .kbd-back:active { background: #fde68a; }
+    .kbd-enter { background: #16a34a; color: white; border-color: #15803d; }
+    .kbd-enter:active { background: #15803d; }
+
+    /* Modo numérico grande */
+    .kbd-num-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
+        padding: 6px;
+    }
+    .kbd-num-grid > * {
+        min-height: 64px;
+        font-size: 1.5rem;
+        font-weight: 800;
+        background: white;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        cursor: pointer;
+        color: #111827;
+    }
+    .kbd-num-back { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
+    .kbd-num-enter { background: #16a34a; color: white; border-color: #15803d; }
+</style>

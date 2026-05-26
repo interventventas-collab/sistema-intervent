@@ -27,4 +27,8 @@ builder.Services.AddScoped<CurrentCompanyService>();
 builder.Services.AddSingleton<UploadProgressService>();
 builder.Services.AddScoped<CpService>();
 
+// ── Componentes móviles (rediseño 2026-05-26): índice de catálogo en memoria + prefs ──
+builder.Services.AddSingleton<Web.Services.Mobile.KeyboardPrefs>();
+builder.Services.AddSingleton<Web.Services.Mobile.CatalogIndex>();
+
 await builder.Build().RunAsync();

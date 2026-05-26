@@ -1,0 +1,346 @@
+@inject Web.Services.Mobile.CatalogIndex Catalog
+@inject Web.Services.Mobile.KeyboardPrefs Prefs
+@inject IJSRuntime JS
+@using Web.Models.Mobile
+@using Web.Components.Mobile.Keyboard
+
+@*
+  ProductSearchInput — Buscador inteligente reutilizable.
+  Props:
+    - OnSelect: callback al seleccionar un producto
+    - Placeholder: texto del input
+    - AutoFocus: bool
+    - Context: string opcional ("stock" | "ventas" | "remitos") para tracking
+    - FilterFn: filtro opcional sobre el catálogo
+    - ShowRecent / ShowFavorites: bool (default true)
+    - KeyboardMode: "custom" (default) | "native"
+*@
+
+<div class="psi-root">
+    @* Input visible con el valor que va tipeando *@
+    <div class="psi-input-row">
+        <div class="psi-input">
+            <span class="psi-search-icon">🔍</span>
+            <span class="psi-value">@(string.IsNullOrEmpty(value) ? Placeholder : value)</span>
+            @if (!string.IsNullOrEmpty(value))
+            {
+                <button class="psi-clear-btn" @onclick="ClearValue">✕</button>
+            }
+        </div>
+        @if (LastSearchMs.HasValue)
+        {
+            <span class="psi-search-time">@LastSearchMs ms · @results.Count hits</span>
+        }
+    </div>
+
+    @* Resultados o estado vacío *@
+    @if (string.IsNullOrEmpty(value))
+    {
+        @if (favoritos.Count == 0 && cargadosHoy.Count == 0 && frecuentes.Count == 0)
+        {
+            <div class="psi-empty-state">
+                <p>👋 Tocá las teclas o un prefijo rápido para empezar a buscar.</p>
+                @if (!isCatalogLoaded)
+                {
+                    <p style="color:#6b7280">⏳ Cargando catálogo...</p>
+                }
+                else
+                {
+                    <p style="color:#6b7280">Catálogo: @Catalog.Count productos cargados.</p>
+                }
+            </div>
+        }
+        else
+        {
+            @if (favoritos.Count > 0)
+            {
+                <div class="psi-section-label">⭐ FAVORITOS</div>
+                <div class="psi-chips">
+                    @foreach (var item in favoritos)
+                    {
+                        @RenderChip(item, isFav: true)
+                    }
+                </div>
+            }
+            @if (cargadosHoy.Count > 0)
+            {
+                <div class="psi-section-label">🕐 ÚLTIMOS CARGADOS HOY</div>
+                <div class="psi-chips">
+                    @foreach (var item in cargadosHoy)
+                    {
+                        @RenderChip(item)
+                    }
+                </div>
+            }
+            @if (frecuentes.Count > 0)
+            {
+                <div class="psi-section-label">🔥 FRECUENTES</div>
+                <div class="psi-chips">
+                    @foreach (var item in frecuentes)
+                    {
+                        @RenderChip(item)
+                    }
+                </div>
+            }
+        }
+    }
+    else
+    {
+        @if (results.Count == 0)
+        {
+            <div class="psi-no-results">
+                <p>Sin resultados para <strong>"@value"</strong></p>
+                <p style="font-size:0.85rem; color:#6b7280">Probá con menos letras o cambiá el prefijo.</p>
+            </div>
+        }
+        else
+        {
+            <div class="psi-chips">
+                @foreach (var hit in results)
+                {
+                    @RenderChip(hit.Item, hit: hit)
+                }
+            </div>
+        }
+    }
+
+    @* Teclado custom abajo *@
+    @if (KeyboardMode == "custom")
+    {
+        <CustomKeyboard
+            Value="@value"
+            ValueChanged="@OnKeyboardValueChanged"
+            OnEnter="OnEnterPressed"
+            ContextualHints="@GetContextualHints()" />
+    }
+</div>
+
+@code {
+    [Parameter] public EventCallback<CatalogItem> OnSelect { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "Buscar SKU o nombre...";
+    [Parameter] public bool AutoFocus { get; set; } = true;
+    [Parameter] public string Context { get; set; } = "default";
+    [Parameter] public Func<CatalogItem, bool>? FilterFn { get; set; }
+    [Parameter] public bool ShowRecent { get; set; } = true;
+    [Parameter] public bool ShowFavorites { get; set; } = true;
+    [Parameter] public string KeyboardMode { get; set; } = "custom";
+
+    private string value = "";
+    private List<SearchHit> results = new();
+    private List<CatalogItem> favoritos = new();
+    private List<CatalogItem> cargadosHoy = new();
+    private List<CatalogItem> frecuentes = new();
+    private bool isCatalogLoaded = false;
+    public double? LastSearchMs { get; private set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Prefs.LoadAsync();
+        await Catalog.EnsureLoadedAsync();
+        isCatalogLoaded = Catalog.Count > 0;
+        RefreshEmptyState();
+    }
+
+    private void RefreshEmptyState()
+    {
+        var (fav, hoy, frec) = Catalog.EmptyState();
+        favoritos = ShowFavorites ? fav : new();
+        cargadosHoy = ShowRecent ? hoy : new();
+        frecuentes = frec;
+    }
+
+    private async Task OnKeyboardValueChanged(string newValue)
+    {
+        value = newValue;
+        RunSearch();
+        await Task.CompletedTask;
+    }
+
+    private void RunSearch()
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            results.Clear();
+            RefreshEmptyState();
+            LastSearchMs = null;
+            return;
+        }
+        var t0 = DateTime.UtcNow;
+        results = Catalog.Search(value, 10, FilterFn);
+        LastSearchMs = (DateTime.UtcNow - t0).TotalMilliseconds;
+    }
+
+    private async Task OnEnterPressed()
+    {
+        if (results.Count > 0)
+        {
+            await SelectItem(results[0].Item);
+        }
+    }
+
+    private async Task SelectItem(CatalogItem item)
+    {
+        await Prefs.RegistrarUsoAsync(item.Sku);
+        await OnSelect.InvokeAsync(item);
+    }
+
+    private async Task ClearValue()
+    {
+        value = "";
+        RunSearch();
+        await Task.CompletedTask;
+    }
+
+    private List<string>? GetContextualHints()
+    {
+        // Si el usuario ya tipeó letras + número (típico del SKU base), sugerir sufijos de color
+        if (string.IsNullOrEmpty(value)) return null;
+        bool hasLetter = value.Any(char.IsLetter);
+        bool hasDigit = value.Any(char.IsDigit);
+        if (hasLetter && hasDigit)
+            return new() { "BL", "ROJ", "NEG", "VER", "AZ" };
+        return null;
+    }
+
+    private async Task ToggleFavoritoAsync(string sku)
+    {
+        await Prefs.ToggleFavoritoAsync(sku);
+        RefreshEmptyState();
+        StateHasChanged();
+    }
+
+    private RenderFragment RenderChip(CatalogItem item, bool isFav = false, SearchHit? hit = null) => @<text>
+        <button class="psi-chip @(item.Stock <= 0 ? "psi-chip-nostock" : "")"
+                @onclick="@(() => SelectItem(item))"
+                @oncontextmenu:preventDefault
+                @oncontextmenu="@(() => ToggleFavoritoAsync(item.Sku))">
+            @if (Prefs.IsFavorito(item.Sku))
+            {
+                <span class="psi-chip-fav">⭐</span>
+            }
+            <span class="psi-chip-sku">@HighlightMatch(item.Sku)</span>
+            <span class="psi-chip-name">@TruncSafe(item.Nombre, 28)</span>
+            <span class="psi-chip-stock @(item.Stock > 0 ? "ok" : "zero")">
+                @FormatStock(item)
+            </span>
+        </button>
+    </text>;
+
+    private MarkupString HighlightMatch(string sku)
+    {
+        if (string.IsNullOrEmpty(value)) return (MarkupString)sku;
+        var skuUp = sku.ToUpperInvariant();
+        var q = value.ToUpperInvariant();
+        int idx = skuUp.IndexOf(q);
+        if (idx < 0) return (MarkupString)sku;
+        var pre = sku.Substring(0, idx);
+        var mid = sku.Substring(idx, q.Length);
+        var post = sku.Substring(idx + q.Length);
+        return (MarkupString)$"{pre}<mark>{mid}</mark>{post}";
+    }
+
+    private static string TruncSafe(string s, int len)
+        => string.IsNullOrEmpty(s) ? "" : (s.Length > len ? s.Substring(0, len) + "..." : s);
+
+    private static string FormatStock(CatalogItem it)
+    {
+        if (it.Tipo == "combo") return "combo";
+        if (it.EsCafe) return $"{it.Stock:0}g";
+        return $"{it.Stock:0}u";
+    }
+}
+
+<style>
+    .psi-root {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        background: #fafafa;
+    }
+    .psi-input-row {
+        padding: 8px 10px;
+        background: white;
+        border-bottom: 1px solid #e5e7eb;
+        display: flex; align-items: center; gap: 8px;
+    }
+    .psi-input {
+        flex: 1; display: flex; align-items: center; gap: 6px;
+        padding: 10px 12px;
+        background: #f3f4f6; border-radius: 10px;
+        min-height: 44px;
+    }
+    .psi-search-icon { font-size: 1.1rem; }
+    .psi-value {
+        flex: 1;
+        font-family: monospace;
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: #111827;
+        letter-spacing: 0.5px;
+    }
+    .psi-value:empty::before {
+        content: attr(data-placeholder);
+        color: #9ca3af;
+    }
+    .psi-clear-btn {
+        background: transparent; border: none; cursor: pointer;
+        font-size: 1rem; color: #6b7280; padding: 4px 8px;
+    }
+    .psi-search-time { font-size: 0.7rem; color: #6b7280; }
+
+    .psi-section-label {
+        font-size: 0.78rem; font-weight: 700;
+        color: #6b7280; padding: 10px 12px 4px;
+        letter-spacing: 0.5px;
+    }
+    .psi-chips {
+        display: flex; gap: 8px;
+        padding: 4px 10px 10px;
+        overflow-x: auto;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+    }
+    .psi-chips::-webkit-scrollbar { display: none; }
+    .psi-chip {
+        position: relative;
+        min-width: 130px; max-width: 160px;
+        min-height: 78px;
+        padding: 10px 12px;
+        background: white;
+        border: 2px solid #d1d5db;
+        border-radius: 12px;
+        display: flex; flex-direction: column; gap: 4px;
+        cursor: pointer;
+        text-align: left;
+        touch-action: manipulation;
+    }
+    .psi-chip:active { background: #e0f2fe; border-color: #0284c7; }
+    .psi-chip-nostock { border-color: #fca5a5; background: #fef2f2; }
+    .psi-chip-sku {
+        font-family: monospace; font-weight: 800;
+        font-size: 1.05rem; color: #111827;
+        line-height: 1.2;
+    }
+    .psi-chip-sku mark {
+        background: #fef08a; color: #854d0e;
+        padding: 0 1px; border-radius: 2px;
+    }
+    .psi-chip-name {
+        font-size: 0.75rem; color: #4b5563;
+        line-height: 1.2;
+    }
+    .psi-chip-stock {
+        position: absolute; bottom: 6px; right: 8px;
+        font-size: 0.72rem; font-weight: 700;
+    }
+    .psi-chip-stock.ok { color: #16a34a; }
+    .psi-chip-stock.zero { color: #b91c1c; }
+    .psi-chip-fav {
+        position: absolute; top: 4px; right: 6px;
+        font-size: 0.85rem;
+    }
+    .psi-empty-state, .psi-no-results {
+        text-align: center; padding: 30px 20px;
+        color: #4b5563;
+    }
+</style>
