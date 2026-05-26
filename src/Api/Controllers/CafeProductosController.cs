@@ -377,8 +377,12 @@ public class CafeProductosController : ControllerBase
         if (req.Costo < 0) return BadRequest(new { error = "El costo no puede ser negativo" });
         var cat = NormCat(req.Categoria);
 
-        // OTROS exige PVP (Pvp2) cargado a mano
-        if (cat == "OTROS" && (!req.Pvp2.HasValue || req.Pvp2.Value < 0))
+        // OTROS exige PVP cargado a mano. Acepta cualquiera de los dos modelos:
+        //   - Legacy: Pvp2
+        //   - Nuevo (2026-05): PrecioOtro
+        if (cat == "OTROS"
+            && (!req.Pvp2.HasValue || req.Pvp2.Value <= 0)
+            && (!req.PrecioOtro.HasValue || req.PrecioOtro.Value <= 0))
             return BadRequest(new { error = "Para productos OTROS el PVP es obligatorio" });
 
         // Resolver MarcaId: si vino MarcaId valido, lo uso. Si no, intento crear marca al vuelo desde el string Marca.
