@@ -96,7 +96,7 @@ public class MeliStockPushService
     /// Pushea stock para una lista especifica de MeliItemIds. Util cuando se sabe exactamente
     /// que publicaciones tocar (por ej. el job de respaldo).
     /// </summary>
-    public async Task<PushStockResult> PushStockForMeliItemsAsync(List<string> meliItemIds, CancellationToken ct = default)
+    public async Task<PushStockResult> PushStockForMeliItemsAsync(List<string> meliItemIds, CancellationToken ct = default, bool conservativeMode = false)
     {
         // MASTER KILL SWITCH: si está OFF, no pushear nada.
         if (!await IsMasterEnabledAsync(ct))
@@ -173,7 +173,7 @@ public class MeliStockPushService
                     grupo.Key.MeliItemId,
                     grupo.ToList(),
                     componentes.Where(c => c.MeliItemId == grupo.Key.MeliItemId).ToList(),
-                    productos, token, ct);
+                    productos, token, ct, conservativeMode);
 
                 switch (resultStatus)
                 {
@@ -218,7 +218,8 @@ public class MeliStockPushService
         List<MeliItem> rows,
         List<MeliItemComponente> compsThisItem,
         Dictionary<int, CafeProducto> productos,
-        string token, CancellationToken ct)
+        string token, CancellationToken ct,
+        bool conservativeMode = false)
     {
         using var http = _httpFactory.CreateClient();
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -306,10 +307,15 @@ public class MeliStockPushService
         // Calcular stock disponible.
         if (meliVariationIds.Count > 0)
         {
+            // ── MODO CONSERVADOR (no pausa, no activa, solo baja) ──
+            // Skip total si la publicacion esta paused: NO la despertamos.
+            if (conservativeMode && string.Equals(statusActual, "paused", StringComparison.OrdinalIgnoreCase))
+                return (PushOutcome.Skipped, "ConservativeMode: paused no se toca");
+
             // Multi-variante: una entry por cada variation en el PUT.
-            // Para cada variation: calcular stock disponible usando los componentes con MeliVariationId matcheante.
             var varEntries = new List<object>();
             int sumStock = 0;
+            bool algunoBaja = false; // en conservative: solo pushear si AL MENOS UNA variante baja stock real
             foreach (var vid in meliVariationIds)
             {
                 var vidStr = vid.ToString();
@@ -324,23 +330,50 @@ public class MeliStockPushService
                 }
                 else
                 {
-                    // Fallback: usar el legacy MeliItem.CafeProductoId si esta seteado.
                     var legacyRow = rows.FirstOrDefault(r => r.VariationId == vidStr) ?? rows.First();
                     stock = CalcStockLegacy(legacyRow, productos);
                 }
-                // Aplicar reserva interna: saturar a 0 si stock <= reserva.
-                var stockMeli = Math.Max(0, stock - reserva);
-                varEntries.Add(new { id = vid, available_quantity = stockMeli });
-                sumStock += stockMeli;
+                var stockMeliCalc = Math.Max(0, stock - reserva);
+
+                // En modo conservador: si esta variante daria 0 o subiria/igualaria, mantener el valor actual de MeLi
+                // (asi no se pausa ni se sube stock virtual).
+                int stockFinal = stockMeliCalc;
+                if (conservativeMode)
+                {
+                    var rowVar = rows.FirstOrDefault(r => r.VariationId == vidStr);
+                    int meliQtyActual = rowVar?.AvailableQuantity ?? 0;
+                    if (stockMeliCalc <= 0)
+                    {
+                        // No pausar: dejar la qty actual de MeLi
+                        stockFinal = meliQtyActual;
+                    }
+                    else if (stockMeliCalc >= meliQtyActual)
+                    {
+                        // No subir ni igualar: dejar la qty actual
+                        stockFinal = meliQtyActual;
+                    }
+                    else
+                    {
+                        // baja real: stockFinal queda en stockMeliCalc
+                        algunoBaja = true;
+                    }
+                }
+                varEntries.Add(new { id = vid, available_quantity = stockFinal });
+                sumStock += stockFinal;
             }
 
-            // POLITICA 2026-05-23: pushear SIEMPRE el stock real, incluso 0.
-            // Si sumStock=0, MeLi va a auto-pausar la publicacion — eso es lo correcto:
-            // mejor pausa que oversell. El usuario lo prefiere asi explicitamente.
-            // Si sumStock > 0 y la publicacion estaba paused (por nuestro 0 anterior), re-activar.
+            // Si conservative y NINGUNA variante baja: skip total (no hay cambios reales)
+            if (conservativeMode && !algunoBaja)
+                return (PushOutcome.Skipped, "ConservativeMode: ninguna variante baja stock");
+
             var payload = new Dictionary<string, object> { ["variations"] = varEntries };
-            if (sumStock > 0 && string.Equals(statusActual, "paused", StringComparison.OrdinalIgnoreCase))
-                payload["status"] = "active";
+            if (!conservativeMode)
+            {
+                // Modo normal: si stock>0 y estaba paused, reactivar
+                if (sumStock > 0 && string.Equals(statusActual, "paused", StringComparison.OrdinalIgnoreCase))
+                    payload["status"] = "active";
+            }
+            // Conservative: NUNCA agregar "status" al payload → NO cambia status
             return await DoPut(http, meliItemId, payload, ct);
         }
         else
@@ -359,9 +392,24 @@ public class MeliStockPushService
             }
 
             // POLITICA 2026-05-23: pushear stock real (0 incluido) menos reserva interna.
-            // Si sistema queda en <=reserva, MeLi pausa = no vender lo que no hay buffer.
-            // Si stock > 0 (despues de reserva) y la publicacion estaba paused, reactivar automaticamente.
             var stockMeliSingle = Math.Max(0, stock - reserva);
+
+            if (conservativeMode)
+            {
+                // Skip total si esta paused
+                if (string.Equals(statusActual, "paused", StringComparison.OrdinalIgnoreCase))
+                    return (PushOutcome.Skipped, "ConservativeMode: paused no se toca");
+                // Skip si daria 0 o subiria/igualaria
+                int meliQtyActual = rows.First().AvailableQuantity;
+                if (stockMeliSingle <= 0)
+                    return (PushOutcome.Skipped, "ConservativeMode: daria 0, no pausar");
+                if (stockMeliSingle >= meliQtyActual)
+                    return (PushOutcome.Skipped, "ConservativeMode: subiria o igualaria, no permitido");
+                // Solo cuando baja real
+                var payloadC = new Dictionary<string, object> { ["available_quantity"] = stockMeliSingle };
+                return await DoPut(http, meliItemId, payloadC, ct);
+            }
+
             var payload = new Dictionary<string, object> { ["available_quantity"] = stockMeliSingle };
             if (stockMeliSingle > 0 && string.Equals(statusActual, "paused", StringComparison.OrdinalIgnoreCase))
                 payload["status"] = "active";
