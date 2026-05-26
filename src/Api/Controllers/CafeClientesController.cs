@@ -132,9 +132,37 @@ public class CafeClientesController : ControllerBase
             var coords = await _mapsResolver.TryResolverCoordenadasAsync(c.MapeoLink);
             if (coords.HasValue) { c.MapeoLat = coords.Value.lat; c.MapeoLng = coords.Value.lng; }
         }
+        // Si el frontend pre-asignó un código interno (con el botón "Asignar código" antes de guardar),
+        // lo respetamos si está libre; si está tomado por otro cliente, asignamos el siguiente disponible
+        // para no romper la carga (el frontend muestra el código real en el toast de éxito).
+        if (req.CodigoInterno.HasValue && req.CodigoInterno.Value > 0)
+        {
+            var pedido = req.CodigoInterno.Value;
+            var existe = await _db.CafeClientes.AnyAsync(x => x.CodigoInterno == pedido);
+            if (!existe) { c.CodigoInterno = pedido; }
+            else
+            {
+                var maxActual = await _db.CafeClientes
+                    .Where(x => x.CodigoInterno != null)
+                    .MaxAsync(x => (int?)x.CodigoInterno) ?? 0;
+                c.CodigoInterno = maxActual + 1;
+            }
+        }
         _db.CafeClientes.Add(c);
         await _db.SaveChangesAsync();
         return Ok(Map(c));
+    }
+
+    /// <summary>Devuelve el próximo código interno disponible (MAX + 1) SIN asignarlo a ningún cliente.
+    /// Lo usa el frontend cuando el usuario aprieta "Asignar código" antes de guardar un cliente nuevo:
+    /// muestra el número que va a tener, y al guardar lo manda en el payload de Create.</summary>
+    [HttpGet("next-codigo-interno")]
+    public async Task<IActionResult> GetNextCodigoInterno()
+    {
+        var maxActual = await _db.CafeClientes
+            .Where(x => x.CodigoInterno != null)
+            .MaxAsync(x => (int?)x.CodigoInterno) ?? 0;
+        return Ok(new { codigoInterno = maxActual + 1 });
     }
 
     /// <summary>

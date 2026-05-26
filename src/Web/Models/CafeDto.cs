@@ -48,6 +48,9 @@ public class CreateCafeClienteRequest
     public string? Notas { get; set; }
     public string? ComentariosComprobante { get; set; }
     public string? MapeoLink { get; set; }
+    /// <summary>Código interno pre-asignado en el frontend (con el botón "Asignar código"
+    /// antes de guardar). El backend lo respeta si está libre; si está tomado asigna el siguiente.</summary>
+    public int? CodigoInterno { get; set; }
 }
 
 public class UpdateCafeClienteRequest
