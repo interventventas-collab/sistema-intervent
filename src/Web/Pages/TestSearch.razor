@@ -1,0 +1,61 @@
+@page "/test-search"
+@attribute [Authorize]
+@using Web.Components.Mobile.ProductSearch
+@using Web.Models.Mobile
+
+<div style="display:flex; flex-direction:column; height: 100vh; max-width: 480px; margin: 0 auto; background:#fafafa;">
+    @* Header chico *@
+    <div style="background:#1e40af; color:white; padding:10px 14px; display:flex; align-items:center; gap:8px;">
+        <strong>🧪 Test buscador móvil</strong>
+        <span style="font-size:0.78rem; opacity:0.85; margin-left:auto;">v0.1</span>
+    </div>
+
+    @* Producto seleccionado (resultado del onSelect) *@
+    @if (lastSelected != null)
+    {
+        <div style="background:#dcfce7; padding:10px 14px; border-bottom:1px solid #86efac;">
+            <div style="font-size:0.7rem; color:#166534; font-weight:700;">ÚLTIMO SELECCIONADO</div>
+            <div style="font-family:monospace; font-weight:800; font-size:1.15rem;">@lastSelected.Sku</div>
+            <div style="font-size:0.85rem;">@lastSelected.Nombre</div>
+            <div style="font-size:0.75rem; color:#16a34a;">
+                Tipo: @lastSelected.Tipo · Stock: @lastSelected.Stock
+                @if (selectedAt.HasValue)
+                {
+                    <span> · Tiempo: @((int)((selectedAt.Value - sessionStart).TotalSeconds))s desde inicio</span>
+                }
+            </div>
+        </div>
+    }
+
+    @* El componente *@
+    <div style="flex: 1; overflow: hidden; display: flex; flex-direction: column;">
+        <ProductSearchInput OnSelect="HandleSelect" Context="test" />
+    </div>
+
+    @* Log al final *@
+    @if (log.Count > 0)
+    {
+        <div style="background:white; border-top:2px solid #e5e7eb; padding:8px 12px; max-height: 120px; overflow-y: auto;">
+            <div style="font-size:0.7rem; color:#6b7280; font-weight:700;">LOG ÚLTIMAS @log.Count SELECCIONES</div>
+            @foreach (var entry in log.AsEnumerable().Reverse().Take(5))
+            {
+                <div style="font-size:0.75rem; font-family:monospace; color:#374151;">@entry</div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private CatalogItem? lastSelected;
+    private DateTime? selectedAt;
+    private DateTime sessionStart = DateTime.UtcNow;
+    private List<string> log = new();
+
+    private void HandleSelect(CatalogItem item)
+    {
+        lastSelected = item;
+        selectedAt = DateTime.UtcNow;
+        var dt = selectedAt.Value.ToLocalTime().ToString("HH:mm:ss");
+        log.Add($"[{dt}] {item.Sku} · {item.Nombre.Substring(0, Math.Min(item.Nombre.Length, 30))}");
+    }
+}
