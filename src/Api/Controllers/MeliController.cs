@@ -672,7 +672,7 @@ public class MeliController : ControllerBase
         int CantPubsActivas,
         int CantPubsPausadas,
         int? StockMeliMax,                  // max(AvailableQuantity) entre las pubs
-        string Estado,                       // "ok" / "sin_link" / "sin_combo" / "producto_suelto"
+        string Estado,                       // "ok_combo" / "ok_producto" / "sin_link" / "producto_suelto" / "sin_combo"
         int? ComboId,                        // Cafe_Combos.Id si existe
         string? ComboNombre,
         int StockArmableCombo,               // stock que se puede armar segun min(componentes/cantidad)
@@ -687,7 +687,8 @@ public class MeliController : ControllerBase
 
     /// <summary>Devuelve el listado de SKUs únicos de MeliItems con su árbol genealógico:
     /// publicaciones que lo usan, combo del sistema (si existe), componentes, stock armable.
-    /// Soporta filtros: estado (ok/sin_link/sin_combo/producto_suelto) + búsqueda por SKU.</summary>
+    /// Soporta filtros: estado (ok_combo/ok_producto/sin_link/producto_suelto/sin_combo) + búsqueda por SKU.
+    /// Acepta tambien "ok" como alias retrocompatible (combina ok_combo + ok_producto).</summary>
     [HttpGet("skus-meli")]
     public async Task<IActionResult> GetSkusMeli(
         [FromServices] Api.Data.AppDbContext db,
@@ -773,21 +774,25 @@ public class MeliController : ControllerBase
                             .DefaultIfEmpty(0).Min();
                     }
                 }
-                estadoCalc = s.HayLinkeado > 0 ? "ok" : "sin_link";
+                estadoCalc = s.HayLinkeado > 0 ? "ok_combo" : "sin_link";
             }
             else if (prodBySku.TryGetValue(s.Sku, out var prd))
             {
                 prodId = prd.Id; prodNombre = prd.Nombre; prodStock = prd.StockUnidades;
                 stockArmable = prd.StockUnidades;
-                estadoCalc = s.HayLinkeado > 0 ? "ok" : "producto_suelto";
+                estadoCalc = s.HayLinkeado > 0 ? "ok_producto" : "producto_suelto";
             }
             else
             {
                 estadoCalc = "sin_combo";
             }
 
-            // Filtro por estado
-            if (!string.IsNullOrEmpty(estado) && estado != estadoCalc) continue;
+            // Filtro por estado (acepta "ok" como alias para ok_combo+ok_producto retrocompat)
+            if (!string.IsNullOrEmpty(estado))
+            {
+                bool match = estado == estadoCalc || (estado == "ok" && (estadoCalc == "ok_combo" || estadoCalc == "ok_producto"));
+                if (!match) continue;
+            }
 
             // Filtro por rango de combos armables
             int stockEfectivo = componentes.Count > 0 ? stockArmable : (prodStock ?? 0);
@@ -854,27 +859,247 @@ public class MeliController : ControllerBase
         var combosAllSet = new HashSet<string>(combosAll);
         var prodsAllSet = new HashSet<string>(prodsAll);
 
-        int statsOk = 0, statsSinLink = 0, statsSinCombo = 0, statsProdSuelto = 0;
+        int statsOkCombo = 0, statsOkProd = 0, statsSinLink = 0, statsSinCombo = 0, statsProdSueltoSinLink = 0;
         foreach (var s in statsRaw)
         {
             bool tieneCombo = combosAllSet.Contains(s.Sku);
             bool tieneProd  = prodsAllSet.Contains(s.Sku) && !tieneCombo;
             string est;
-            if (tieneCombo) est = s.HayLink > 0 ? "ok" : "sin_link";
-            else if (tieneProd) est = s.HayLink > 0 ? "ok" : "producto_suelto";
+            if (tieneCombo) est = s.HayLink > 0 ? "ok_combo" : "sin_link";
+            else if (tieneProd) est = s.HayLink > 0 ? "ok_producto" : "producto_suelto";
             else est = "sin_combo";
-            if (est == "ok") statsOk++;
+            if (est == "ok_combo") statsOkCombo++;
+            else if (est == "ok_producto") statsOkProd++;
             else if (est == "sin_link") statsSinLink++;
             else if (est == "sin_combo") statsSinCombo++;
-            else statsProdSuelto++;
+            else statsProdSueltoSinLink++;
         }
 
         return Ok(new {
             total = statsRaw.Count,
             mostrados = result.Count,
-            stats = new { ok = statsOk, sin_link = statsSinLink, sin_combo = statsSinCombo, producto_suelto = statsProdSuelto },
+            stats = new {
+                ok_combo = statsOkCombo,
+                ok_producto = statsOkProd,
+                sin_link = statsSinLink,
+                producto_suelto = statsProdSueltoSinLink,
+                sin_combo = statsSinCombo,
+                ok = statsOkCombo + statsOkProd  // retrocompat
+            },
             items = result
         });
+    }
+
+    /// <summary>Exporta CSV con SKU MeLi + composicion del sistema, para cotejar contra Contabilium.</summary>
+    [HttpGet("skus-meli/export-csv")]
+    public async Task<IActionResult> ExportSkusMeliCsv([FromServices] Api.Data.AppDbContext db)
+    {
+        // 1. SKUs unicos de MeliItems activos/pausados
+        var skusAgg = await db.MeliItems.AsNoTracking()
+            .Where(mi => mi.Sku != null && mi.Sku != "" && (mi.Status == "active" || mi.Status == "paused"))
+            .GroupBy(mi => mi.Sku)
+            .Select(g => new {
+                Sku = g.Key!,
+                CantActivas = g.Sum(x => x.Status == "active" ? 1 : 0),
+                CantPausadas = g.Sum(x => x.Status == "paused" ? 1 : 0),
+                StockMeliMax = g.Max(x => (int?)x.AvailableQuantity),
+                MlasSample = g.OrderByDescending(x => x.AvailableQuantity).Select(x => x.MeliItemId).FirstOrDefault()
+            })
+            .OrderBy(x => x.Sku)
+            .ToListAsync();
+
+        var skuList = skusAgg.Select(x => x.Sku).ToList();
+
+        // 2. Combos por SKU
+        var combos = await db.CafeCombos.AsNoTracking()
+            .Where(c => skuList.Contains(c.Sku))
+            .Select(c => new { c.Id, c.Sku, c.Nombre })
+            .ToListAsync();
+        var comboBySku = combos.ToDictionary(c => c.Sku, c => c);
+        var comboIds = combos.Select(c => c.Id).ToList();
+
+        // 3. Componentes de los combos del sistema (Cafe_ComboItems) — fallback solo si no hay reglas MeLi
+        var compsCombo = await db.CafeComboItems.AsNoTracking()
+            .Where(ci => comboIds.Contains(ci.ComboId))
+            .Join(db.CafeProductos.AsNoTracking(),
+                ci => ci.ProductoId, p => p.Id,
+                (ci, p) => new { ci.ComboId, p.Sku, p.Nombre, ci.Cantidad, p.StockUnidades, p.StockGramos })
+            .ToListAsync();
+        var compsByCombo = compsCombo.GroupBy(c => c.ComboId).ToDictionary(g => g.Key, g => g.ToList());
+
+        // 4. Productos sueltos
+        var productos = await db.CafeProductos.AsNoTracking()
+            .Where(p => skuList.Contains(p.Sku!))
+            .Select(p => new { p.Id, p.Sku, p.Nombre, p.StockUnidades, p.StockGramos })
+            .ToListAsync();
+        var prodBySku = productos.ToDictionary(p => p.Sku!, p => p);
+
+        // 5. MeliItemComponentes (LA VERDAD del descuento al vender)
+        // IMPORTANTE: filtrar por VariationId del MeliItem para no mezclar variantes hermanas
+        var meliCompsRaw = await db.MeliItemComponentes.AsNoTracking()
+            .Join(db.MeliItems.AsNoTracking(),
+                mc => mc.MeliItemId, mi => mi.MeliItemId,
+                (mc, mi) => new { mi.Sku, mi.VariationId, mc.CafeProductoId, mc.Cantidad, mc.Formato, mc.MeliVariationId })
+            .Where(x => skuList.Contains(x.Sku!))
+            .ToListAsync();
+        // Filtrar: si el MeliItem tiene VariationId, solo aceptar componentes con MeliVariationId == ese, o sin MeliVariationId
+        // Si el MeliItem NO tiene VariationId, solo aceptar componentes sin MeliVariationId
+        meliCompsRaw = meliCompsRaw.Where(x =>
+            (x.VariationId != null && (x.MeliVariationId == x.VariationId || string.IsNullOrEmpty(x.MeliVariationId))) ||
+            (x.VariationId == null && string.IsNullOrEmpty(x.MeliVariationId))
+        ).ToList();
+        // Join con productos para sacar SKU + Nombre + StockGramos del componente
+        var prodById = await db.CafeProductos.AsNoTracking()
+            .Select(p => new { p.Id, p.Sku, p.Nombre, p.StockUnidades, p.StockGramos })
+            .ToListAsync();
+        var prodByIdDict = prodById.ToDictionary(p => p.Id, p => p);
+        // Agrupar por SKU MeLi, deduplicar por (CafeProductoId,Formato) tomando max cantidad
+        var meliCompsBySku = meliCompsRaw
+            .GroupBy(x => x.Sku!)
+            .ToDictionary(g => g.Key, g => g
+                .GroupBy(x => new { x.CafeProductoId, x.Formato })
+                .Select(gg => new {
+                    CafeProductoId = gg.Key.CafeProductoId,
+                    Formato = gg.Key.Formato,
+                    Cantidad = gg.Max(z => z.Cantidad)
+                }).ToList());
+
+        // 6. Armar CSV
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("SKU_MELI;TIPO;NOMBRE_SISTEMA;COMPOSICION;CANT_COMPONENTES;STOCK_ARMABLE_SISTEMA;STOCK_UNIDADES_SISTEMA;STOCK_GRAMOS_SISTEMA;STOCK_MELI_MAX;PUBS_ACTIVAS;PUBS_PAUSADAS;MLA_EJEMPLO;FUENTE_COMPOSICION");
+
+        // Mostrar formato (1KG = 1 kg ⇒ omitir, MEDIO = 0.5kg, CUARTO = 0.25kg)
+        static string FormatComp(decimal cant, string sku, string? formato)
+        {
+            var f = (formato ?? "").ToUpperInvariant();
+            string suf = f switch {
+                "MEDIO" => " (1/2kg)",
+                "CUARTO" => " (1/4kg)",
+                "1KG" => "",  // 1kg es la unidad por defecto en cafe, no aclarar
+                _ => ""
+            };
+            return (cant > 1 || cant != Math.Floor(cant) ? $"{(cant == Math.Floor(cant) ? cant.ToString("0") : cant.ToString("0.##"))}x " : "") + sku + suf;
+        }
+
+        foreach (var s in skusAgg)
+        {
+            string tipo, nombre = "", composicion = "", stockArmableStr = "", stockUnidadesStr = "", stockGramosStr = "", fuente = "";
+            int cantComp = 0;
+
+            // 1ra prioridad: MeliItemComponentes (la regla REAL que aplica el runtime)
+            if (meliCompsBySku.TryGetValue(s.Sku, out var meliComps) && meliComps.Count > 0)
+            {
+                fuente = "MeliItemComponentes";
+                var parts = new List<string>();
+                int? stockArm = null;
+                decimal? totalGr = 0;
+                foreach (var mc in meliComps)
+                {
+                    if (prodByIdDict.TryGetValue(mc.CafeProductoId, out var pr))
+                    {
+                        parts.Add(FormatComp(mc.Cantidad, pr.Sku ?? "?", mc.Formato));
+                        // Calcular stock armable
+                        var gramosPorUnidad = (mc.Formato ?? "").ToUpperInvariant() switch {
+                            "1KG" => 1000m, "MEDIO" => 500m, "CUARTO" => 250m, _ => 1m
+                        };
+                        var necesitaG = mc.Cantidad * gramosPorUnidad;
+                        if (necesitaG > 0 && pr.StockGramos > 0)
+                        {
+                            var puede = (int)Math.Floor(pr.StockGramos / necesitaG);
+                            stockArm = stockArm.HasValue ? Math.Min(stockArm.Value, puede) : puede;
+                        }
+                        else if (necesitaG > 0 && pr.StockUnidades > 0)
+                        {
+                            // componente en unidades (raro pero posible)
+                            var puede = (int)Math.Floor(pr.StockUnidades / mc.Cantidad);
+                            stockArm = stockArm.HasValue ? Math.Min(stockArm.Value, puede) : puede;
+                        }
+                        else
+                        {
+                            stockArm = 0;
+                        }
+                    }
+                }
+                cantComp = meliComps.Count;
+                composicion = string.Join(" + ", parts);
+                if (stockArm.HasValue) stockArmableStr = stockArm.Value.ToString();
+                // tipo según hay combo o producto en sistema
+                if (comboBySku.TryGetValue(s.Sku, out var cb1)) { tipo = "COMBO"; nombre = cb1.Nombre ?? ""; }
+                else if (prodBySku.TryGetValue(s.Sku, out var prd1)) { tipo = "PRODUCTO"; nombre = prd1.Nombre ?? ""; stockUnidadesStr = prd1.StockUnidades.ToString(); stockGramosStr = prd1.StockGramos > 0 ? prd1.StockGramos.ToString("F0") : ""; }
+                else { tipo = "MELI_COMP_SOLO"; nombre = ""; }
+            }
+            // 2da: combo sistema con Cafe_ComboItems
+            else if (comboBySku.TryGetValue(s.Sku, out var cb) && compsByCombo.TryGetValue(cb.Id, out var comps) && comps.Count > 0)
+            {
+                fuente = "Cafe_ComboItems";
+                tipo = "COMBO";
+                nombre = cb.Nombre ?? "";
+                cantComp = comps.Count;
+                composicion = string.Join(" + ", comps.Select(c => c.Cantidad > 1 ? $"{c.Cantidad}x {c.Sku}" : c.Sku ?? ""));
+                var armable = comps.Where(c => c.Cantidad > 0)
+                    .Select(c => (int)Math.Floor(c.StockUnidades / (double)c.Cantidad))
+                    .DefaultIfEmpty(0).Min();
+                stockArmableStr = armable.ToString();
+            }
+            // 3ra: producto suelto
+            else if (prodBySku.TryGetValue(s.Sku, out var prd))
+            {
+                fuente = "Cafe_Productos";
+                tipo = "PRODUCTO";
+                nombre = prd.Nombre ?? "";
+                composicion = prd.Sku ?? "";
+                cantComp = 1;
+                // Si el producto tiene stock en gramos, mostrar armable como kg
+                if (prd.StockGramos > 0)
+                {
+                    stockArmableStr = ((int)(prd.StockGramos / 1000m)).ToString() + "kg";
+                }
+                else
+                {
+                    stockArmableStr = prd.StockUnidades.ToString();
+                }
+                stockUnidadesStr = prd.StockUnidades.ToString();
+                stockGramosStr = prd.StockGramos > 0 ? prd.StockGramos.ToString("F0") : "";
+            }
+            // 4to: combo sin componentes (rota)
+            else if (comboBySku.TryGetValue(s.Sku, out var cb2))
+            {
+                fuente = "Combo_Vacio";
+                tipo = "COMBO";
+                nombre = cb2.Nombre ?? "";
+                composicion = "";
+            }
+            else
+            {
+                fuente = "Nada";
+                tipo = "SIN_SISTEMA";
+                nombre = "";
+                composicion = "";
+            }
+
+            // Escape CSV (separador ;, escapar " y ;)
+            string Esc(string? v) => v == null ? "" : (v.Contains(';') || v.Contains('"') || v.Contains('\n'))
+                ? "\"" + v.Replace("\"", "\"\"") + "\"" : v;
+
+            sb.Append(Esc(s.Sku)).Append(';');
+            sb.Append(tipo).Append(';');
+            sb.Append(Esc(nombre)).Append(';');
+            sb.Append(Esc(composicion)).Append(';');
+            sb.Append(cantComp).Append(';');
+            sb.Append(stockArmableStr).Append(';');
+            sb.Append(stockUnidadesStr).Append(';');
+            sb.Append(stockGramosStr).Append(';');
+            sb.Append(s.StockMeliMax?.ToString() ?? "").Append(';');
+            sb.Append(s.CantActivas).Append(';');
+            sb.Append(s.CantPausadas).Append(';');
+            sb.Append(s.MlasSample ?? "").Append(';');
+            sb.Append(fuente);
+            sb.AppendLine();
+        }
+
+        var bytes = System.Text.Encoding.UTF8.GetPreamble().Concat(System.Text.Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
+        var fname = $"skus_meli_linkeo_{DateTime.UtcNow:yyyyMMdd_HHmmss}.csv";
+        return File(bytes, "text/csv; charset=utf-8", fname);
     }
 
     /// <summary>Devuelve las publicaciones MeLi de un SKU puntual.</summary>
