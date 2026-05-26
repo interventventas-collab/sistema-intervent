@@ -96,7 +96,7 @@ public class MeliStockPushService
     /// Pushea stock para una lista especifica de MeliItemIds. Util cuando se sabe exactamente
     /// que publicaciones tocar (por ej. el job de respaldo).
     /// </summary>
-    public async Task<PushStockResult> PushStockForMeliItemsAsync(List<string> meliItemIds, CancellationToken ct = default, bool conservativeMode = false)
+    public async Task<PushStockResult> PushStockForMeliItemsAsync(List<string> meliItemIds, CancellationToken ct = default, bool conservativeMode = false, bool safeBulkMode = false)
     {
         // MASTER KILL SWITCH: si está OFF, no pushear nada.
         if (!await IsMasterEnabledAsync(ct))
@@ -173,7 +173,7 @@ public class MeliStockPushService
                     grupo.Key.MeliItemId,
                     grupo.ToList(),
                     componentes.Where(c => c.MeliItemId == grupo.Key.MeliItemId).ToList(),
-                    productos, token, ct, conservativeMode);
+                    productos, token, ct, conservativeMode, safeBulkMode);
 
                 switch (resultStatus)
                 {
@@ -219,7 +219,8 @@ public class MeliStockPushService
         List<MeliItemComponente> compsThisItem,
         Dictionary<int, CafeProducto> productos,
         string token, CancellationToken ct,
-        bool conservativeMode = false)
+        bool conservativeMode = false,
+        bool safeBulkMode = false)
     {
         using var http = _httpFactory.CreateClient();
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -312,10 +313,16 @@ public class MeliStockPushService
             if (conservativeMode && string.Equals(statusActual, "paused", StringComparison.OrdinalIgnoreCase))
                 return (PushOutcome.Skipped, "ConservativeMode: paused no se toca");
 
+            // ── MODO SAFE-BULK (no pausa publicaciones, no las reactiva, permite subir/bajar) ──
+            // Skip si la publicacion esta paused: NO la despertamos.
+            if (safeBulkMode && string.Equals(statusActual, "paused", StringComparison.OrdinalIgnoreCase))
+                return (PushOutcome.Skipped, "SafeBulk: paused no se toca");
+
             // Multi-variante: una entry por cada variation en el PUT.
             var varEntries = new List<object>();
             int sumStock = 0;
             bool algunoBaja = false; // en conservative: solo pushear si AL MENOS UNA variante baja stock real
+            bool todasMayorACero = true; // en safeBulk: si alguna variante queda en 0 → skip pub completa (no pausamos)
             foreach (var vid in meliVariationIds)
             {
                 var vidStr = vid.ToString();
@@ -358,6 +365,12 @@ public class MeliStockPushService
                         algunoBaja = true;
                     }
                 }
+                // En modo safeBulk: si la variante quedaría en 0, marcamos para skip total de la pub
+                // (no queremos que MeLi pause publicaciones al recibir 0).
+                if (safeBulkMode && stockFinal <= 0)
+                {
+                    todasMayorACero = false;
+                }
                 varEntries.Add(new { id = vid, available_quantity = stockFinal });
                 sumStock += stockFinal;
             }
@@ -366,14 +379,18 @@ public class MeliStockPushService
             if (conservativeMode && !algunoBaja)
                 return (PushOutcome.Skipped, "ConservativeMode: ninguna variante baja stock");
 
+            // SafeBulk: si alguna variante quedaría en 0, skip total para no pausar nada
+            if (safeBulkMode && !todasMayorACero)
+                return (PushOutcome.Skipped, "SafeBulk: alguna variante daria 0, skip para no pausar");
+
             var payload = new Dictionary<string, object> { ["variations"] = varEntries };
-            if (!conservativeMode)
+            if (!conservativeMode && !safeBulkMode)
             {
                 // Modo normal: si stock>0 y estaba paused, reactivar
                 if (sumStock > 0 && string.Equals(statusActual, "paused", StringComparison.OrdinalIgnoreCase))
                     payload["status"] = "active";
             }
-            // Conservative: NUNCA agregar "status" al payload → NO cambia status
+            // Conservative/SafeBulk: NUNCA agregar "status" al payload → NO cambia status
             return await DoPut(http, meliItemId, payload, ct);
         }
         else
@@ -408,6 +425,19 @@ public class MeliStockPushService
                 // Solo cuando baja real
                 var payloadC = new Dictionary<string, object> { ["available_quantity"] = stockMeliSingle };
                 return await DoPut(http, meliItemId, payloadC, ct);
+            }
+
+            if (safeBulkMode)
+            {
+                // Skip si paused (no reactivamos)
+                if (string.Equals(statusActual, "paused", StringComparison.OrdinalIgnoreCase))
+                    return (PushOutcome.Skipped, "SafeBulk: paused no se toca");
+                // Skip si daria 0 (no pausamos)
+                if (stockMeliSingle <= 0)
+                    return (PushOutcome.Skipped, "SafeBulk: daria 0, no pausar");
+                // Permite tanto subir como bajar — pero NUNCA agrega status: active
+                var payloadSb = new Dictionary<string, object> { ["available_quantity"] = stockMeliSingle };
+                return await DoPut(http, meliItemId, payloadSb, ct);
             }
 
             var payload = new Dictionary<string, object> { ["available_quantity"] = stockMeliSingle };
