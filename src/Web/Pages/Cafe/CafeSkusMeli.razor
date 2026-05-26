@@ -21,10 +21,11 @@
             <select class="form-input" style="width:auto;" @bind="estadoFiltro" @bind:after="Recargar"
                     title="Estado del linkeo">
                 <option value="">Estado: Todos</option>
-                <option value="ok">🟢 Linkeado OK</option>
-                <option value="sin_link">🟡 Sin linkear (combo existe)</option>
-                <option value="sin_combo">🔴 Sin combo en sistema</option>
-                <option value="producto_suelto">⚪ Producto suelto (no combo)</option>
+                <option value="ok_combo">🟢 Combo linkeado</option>
+                <option value="ok_producto">🔵 Producto linkeado</option>
+                <option value="sin_link">🟡 Combo sin linkear</option>
+                <option value="producto_suelto">⚪ Producto sin linkear</option>
+                <option value="sin_combo">🔴 Sin combo ni producto</option>
             </select>
             <select class="form-input" style="width:auto;" @bind="armableFiltro" @bind:after="Recargar"
                     title="Cantidad de combos armables">
@@ -41,6 +42,7 @@
                 <option value="sku">🔤 Por SKU</option>
             </select>
             <button class="btn btn-secondary" @onclick="Recargar" disabled="@cargando">@(cargando ? "..." : "🔄 Refrescar")</button>
+            <a class="btn btn-success" href="/api/meli/skus-meli/export-csv" target="_blank" style="text-decoration:none;" title="Descargar CSV con todos los SKUs MeLi + composicion (para cotejar con Contabilium)">📥 Bajar Excel</a>
         </div>
     </div>
 
@@ -50,10 +52,11 @@
             <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:0.6rem; font-size:0.85rem;">
                 <span><b>Total SKUs:</b> @response.total</span>
                 <span>· Mostrando: <b>@response.mostrados</b></span>
-                <span style="color:#16a34a;">🟢 @(response.stats?.ok ?? 0) OK</span>
-                <span style="color:#d97706;">🟡 @(response.stats?.sin_link ?? 0) sin linkear</span>
-                <span style="color:#b91c1c;">🔴 @(response.stats?.sin_combo ?? 0) sin combo</span>
-                <span style="color:#6b7280;">⚪ @(response.stats?.producto_suelto ?? 0) productos sueltos</span>
+                <span style="color:#16a34a;">🟢 @(response.stats?.ok_combo ?? 0) combos linkeados</span>
+                <span style="color:#1e40af;">🔵 @(response.stats?.ok_producto ?? 0) productos linkeados</span>
+                <span style="color:#d97706;">🟡 @(response.stats?.sin_link ?? 0) combos sin linkear</span>
+                <span style="color:#6b7280;">⚪ @(response.stats?.producto_suelto ?? 0) productos sin linkear</span>
+                <span style="color:#b91c1c;">🔴 @(response.stats?.sin_combo ?? 0) sin nada</span>
             </div>
         }
     </div>
@@ -152,7 +155,7 @@
                         </div>
 
                         @* BOTÓN ACCIÓN *@
-                        @if (sku.estado == "sin_link")
+                        @if (sku.estado == "sin_link" || sku.estado == "producto_suelto")
                         {
                             <button class="btn btn-warning" style="font-size:0.78rem; padding:0.4rem 0.7rem; white-space:nowrap;"
                                     @onclick="() => LinkearAuto(skuLocal.sku)"
@@ -160,7 +163,7 @@
                                 🔗 Linkear
                             </button>
                         }
-                        else if (sku.estado == "ok")
+                        else if (sku.estado == "ok_combo" || sku.estado == "ok_producto")
                         {
                             <span style="font-size:0.7rem; color:#16a34a; padding:0.4rem 0.7rem; font-weight:600;">✓ Activo</span>
                         }
@@ -288,7 +291,7 @@
     private System.Threading.Timer? debounce;
 
     public record SkusMeliResponse(int total, int mostrados, StatsCounts? stats, List<SkuRow> items);
-    public record StatsCounts(int ok, int sin_link, int sin_combo, int producto_suelto);
+    public record StatsCounts(int ok_combo, int ok_producto, int sin_link, int sin_combo, int producto_suelto, int? ok);
     public record SkuRow(
         string sku, int cantPubsActivas, int cantPubsPausadas, int? stockMeliMax,
         string estado, int? comboId, string? comboNombre, int stockArmableCombo,
@@ -365,19 +368,29 @@
 
     private (string Bg, string Fg) ColorPorEstado(string est) => est switch
     {
-        "ok"               => ("#dcfce7", "#166534"),
-        "sin_link"         => ("#fef3c7", "#92400e"),
-        "sin_combo"        => ("#fee2e2", "#991b1b"),
-        "producto_suelto"  => ("#e5e7eb", "#374151"),
+        "ok_combo"         => ("#dcfce7", "#166534"),  // verde
+        "ok_producto"      => ("#dbeafe", "#1e40af"),  // celeste
+        "sin_link"         => ("#fef3c7", "#92400e"),  // amarillo
+        "producto_suelto"  => ("#e5e7eb", "#374151"),  // gris
+        "sin_combo"        => ("#fee2e2", "#991b1b"),  // rojo
         _                  => ("#f3f4f6", "#6b7280")
     };
     private string IconoPorEstado(string est) => est switch
     {
-        "ok" => "🟢", "sin_link" => "🟡", "sin_combo" => "🔴", "producto_suelto" => "⚪", _ => "❔"
+        "ok_combo" => "🟢",
+        "ok_producto" => "🔵",
+        "sin_link" => "🟡",
+        "producto_suelto" => "⚪",
+        "sin_combo" => "🔴",
+        _ => "❔"
     };
     private string LabelPorEstado(string est) => est switch
     {
-        "ok" => "LINKEADO OK", "sin_link" => "SIN LINKEAR", "sin_combo" => "SIN COMBO",
-        "producto_suelto" => "PRODUCTO", _ => "?"
+        "ok_combo"        => "COMBO LINKEADO",
+        "ok_producto"     => "PRODUCTO LINKEADO",
+        "sin_link"        => "COMBO SIN LINKEAR",
+        "producto_suelto" => "PRODUCTO SIN LINKEAR",
+        "sin_combo"       => "SIN COMBO NI PRODUCTO",
+        _ => "?"
     };
 }
