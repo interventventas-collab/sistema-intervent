@@ -65,20 +65,14 @@
     else
     {
         @* Modo normal: prefijos arriba (o sufijos sugeridos si el operario ya tipeó) + numérico abajo *@
-        @{
-            bool hasDynamicSuffixes = DynamicSuffixes != null && DynamicSuffixes.Count > 0;
-            var topList = hasDynamicSuffixes
-                ? DynamicSuffixes!.Take(6).ToList()
-                : (Prefixes ?? Prefs.Prefijos).Take(6).ToList();
-        }
-        @if (hasDynamicSuffixes)
+        @if (HasDynamicSuffixes)
         {
             <div class="kbd-suffix-label">↓ SUFIJOS POSIBLES PARA "@Value"</div>
         }
         <div class="kbd-prefix-grid">
-            @foreach (var p in topList)
+            @foreach (var p in TopList)
             {
-                @if (hasDynamicSuffixes)
+                @if (HasDynamicSuffixes)
                 {
                     <button class="kbd-suffix-big" @onclick="@(() => InsertText(p))">+@p</button>
                 }
@@ -88,7 +82,7 @@
                 }
             }
             @* Si hay menos de 6, llenar con celdas vacías para mantener el grid *@
-            @for (int i = topList.Count; i < 6; i++)
+            @for (int i = TopList.Count; i < 6; i++)
             {
                 <div></div>
             }
@@ -142,6 +136,13 @@
     [Parameter] public bool HapticFeedback { get; set; } = true;
 
     private bool showAbc = false;
+
+    // Helpers para el grid de arriba: si hay sufijos dinámicos, muestra esos (naranjas);
+    // si no, muestra los prefijos del operario (azules).
+    private bool HasDynamicSuffixes => DynamicSuffixes != null && DynamicSuffixes.Count > 0;
+    private List<string> TopList => HasDynamicSuffixes
+        ? DynamicSuffixes!.Take(6).ToList()
+        : (Prefixes ?? Prefs.Prefijos).Take(6).ToList();
 
     // QWERTY layout
     private static readonly List<string[]> QwertyRows = new()
