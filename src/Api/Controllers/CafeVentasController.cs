@@ -1409,6 +1409,48 @@ public class CafeVentasController : ControllerBase
         return Ok(Map(v));
     }
 
+    /// <summary>Recupera una venta anulada: vuelve a descontar stock + estado pasa de "anulado" a "emitido".
+    /// Requiere operador permitido + clave (misma config que delete).</summary>
+    [HttpPost("{id:int}/recuperar")]
+    public async Task<IActionResult> Recuperar(int id, [FromBody] DeleteCafeVentaRequest req)
+    {
+        var op = HttpContext.Request.Headers["X-Operator-Name"].ToString();
+        try
+        {
+            await ValidateDeletePermissionAsync(op, req.Password);
+        }
+        catch (UnauthorizedAccessException ex) { return StatusCode(403, new { error = ex.Message }); }
+
+        var v = await _db.CafeVentas.Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == id);
+        if (v is null) return NotFound(new { error = "Venta no encontrada" });
+        if (v.Estado != "anulado") return BadRequest(new { error = $"La venta no esta anulada (estado actual: {v.Estado}). Solo se pueden recuperar ventas anuladas." });
+
+        // Volver a descontar stock (inverso del Anular). Concepto libre se saltea.
+        var productosRecuperar = new List<int>();
+        foreach (var it in v.Items)
+        {
+            if (it.EsConceptoLibre || it.ProductoId is null) continue;
+            var prod = await _db.CafeProductos.FindAsync(it.ProductoId.Value);
+            if (prod is null) continue;
+            if (prod.Categoria == "CAFE")
+                prod.StockGramos -= it.GramosDescontados;
+            else
+            {
+                var unidadesADescontar = UnidadesRealesStock(prod, it.Formato, it.Cantidad);
+                prod.StockUnidades -= unidadesADescontar;
+            }
+            prod.UpdatedAt = DateTime.UtcNow;
+            prod.StockChangedAt = DateTime.UtcNow;
+            await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
+            productosRecuperar.Add(prod.Id);
+        }
+        v.Estado = "emitido";
+        v.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        FireAndForgetPushMeli(productosRecuperar);
+        return Ok(Map(v));
+    }
+
     /// <summary>Devuelve quien puede eliminar y el hint de la clave (sin la clave en si).</summary>
     [HttpGet("delete-settings")]
     public async Task<IActionResult> GetDeleteSettings()
