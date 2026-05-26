@@ -54,6 +54,11 @@ public class MeliItemDto
     public string? VariationId { get; set; }
     /// <summary>Texto humano de los atributos de variacion. Ej: "Negro / Talle M".</summary>
     public string? VariationAttributes { get; set; }
+
+    /// <summary>Última vez que se pusheó stock a MeLi para esta publicación.
+    /// Calculado como MAX(LastPushedToMeli) entre el CafeProducto linkeado + componentes.
+    /// Null = nunca pusheado.</summary>
+    public DateTime? LastStockPushedToMeli { get; set; }
 }
 
 public class MeliItemsResponse

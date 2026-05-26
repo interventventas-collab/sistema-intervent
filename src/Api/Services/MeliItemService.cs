@@ -63,7 +63,9 @@ public class MeliItemService
                 null, // ComponentMappingsSummary se completa abajo en memoria
                 i.LogisticType,
                 i.VariationId,
-                i.VariationAttributes))
+                i.VariationAttributes,
+                null  // LastStockPushedToMeli — se completa abajo en memoria
+                ))
             .ToListAsync();
 
         // Cargar resumen de componentes en una sola query y mergear en memoria (más eficiente que sub-query por fila).
@@ -83,6 +85,48 @@ public class MeliItemService
             {
                 if (byItem.TryGetValue(items[k].MeliItemId, out var summary))
                     items[k] = items[k] with { ComponentMappingsSummary = summary };
+            }
+        }
+
+        // ── Calcular LastStockPushedToMeli por cada item ──
+        // Es el MAX(LastPushedToMeli) entre: el CafeProductoId directo (legacy) + todos los productos linkeados via MeliItemComponentes.
+        // Si no hay ningún producto linkeado pusheado, queda null = nunca pusheado.
+        var allItemIds = items.Select(it => it.MeliItemId).ToHashSet();
+        if (allItemIds.Count > 0)
+        {
+            // Via CafeProductoId directo (legacy)
+            var legacyPushes = await (from mi in _db.MeliItems
+                                      join p in _db.CafeProductos on mi.CafeProductoId equals p.Id
+                                      where allItemIds.Contains(mi.MeliItemId) && p.LastPushedToMeli != null
+                                      select new { mi.MeliItemId, p.LastPushedToMeli })
+                .ToListAsync();
+            // Via componentes
+            var compPushes = await (from mc in _db.MeliItemComponentes
+                                    join p in _db.CafeProductos on mc.CafeProductoId equals p.Id
+                                    where allItemIds.Contains(mc.MeliItemId) && p.LastPushedToMeli != null
+                                    select new { mc.MeliItemId, p.LastPushedToMeli })
+                .ToListAsync();
+            var lastPushByItem = new Dictionary<string, DateTime>();
+            foreach (var lp in legacyPushes)
+            {
+                if (lp.LastPushedToMeli.HasValue)
+                {
+                    if (!lastPushByItem.TryGetValue(lp.MeliItemId, out var cur) || lp.LastPushedToMeli.Value > cur)
+                        lastPushByItem[lp.MeliItemId] = lp.LastPushedToMeli.Value;
+                }
+            }
+            foreach (var cp in compPushes)
+            {
+                if (cp.LastPushedToMeli.HasValue)
+                {
+                    if (!lastPushByItem.TryGetValue(cp.MeliItemId, out var cur) || cp.LastPushedToMeli.Value > cur)
+                        lastPushByItem[cp.MeliItemId] = cp.LastPushedToMeli.Value;
+                }
+            }
+            for (int k = 0; k < items.Count; k++)
+            {
+                if (lastPushByItem.TryGetValue(items[k].MeliItemId, out var lp))
+                    items[k] = items[k] with { LastStockPushedToMeli = lp };
             }
         }
 
