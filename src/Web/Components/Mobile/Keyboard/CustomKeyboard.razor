@@ -14,32 +14,13 @@
 
 <div class="kbd-root @(NumericOnly ? "kbd-numeric" : "")">
 
-    @* Sugerencias contextuales (sufijos de color) — siempre 1 fila reservada *@
-    @if (!NumericOnly)
+    @* Acciones SIEMPRE visibles arriba: LIMPIAR + ABC (para que no se corten en pantallas chicas) *@
+    @if (!NumericOnly && !showAbc)
     {
-        <div class="kbd-hint-row">
-            <span class="kbd-hint-label">💡</span>
-            @if (ContextualHints != null && ContextualHints.Count > 0)
-            {
-                @foreach (var h in ContextualHints)
-                {
-                    <button class="kbd-hint-btn" @onclick="@(() => InsertText(h))">+@h</button>
-                }
-            }
-            else
-            {
-                <span class="kbd-hint-empty">sufijos aparecen al escribir</span>
-            }
+        <div class="kbd-top-actions">
+            <button class="kbd-action-clear" @onclick="Clear">⌫ LIMPIAR</button>
+            <button class="kbd-action-abc" @onclick="@(() => { showAbc = true; })">ABC ↕</button>
         </div>
-
-        @* Acciones SIEMPRE visibles arriba: LIMPIAR + ABC (para que no se corten en pantallas chicas) *@
-        @if (!showAbc)
-        {
-            <div class="kbd-top-actions">
-                <button class="kbd-action-clear" @onclick="Clear">⌫ LIMPIAR</button>
-                <button class="kbd-action-abc" @onclick="@(() => { showAbc = true; })">ABC ↕</button>
-            </div>
-        }
     }
 
     @if (showAbc && !NumericOnly)
@@ -114,6 +95,22 @@
             <button class="kbd-num-back" @onclick="Backspace">⌫</button>
             <button class="kbd-num-key" @onclick="@(() => InsertText("0"))">0</button>
             <button class="kbd-num-enter" @onclick="EnterAsync">↵</button>
+        </div>
+
+        @* Sufijos contextuales (color, tipo BL/ROJ/NEG) — abajo de todo *@
+        <div class="kbd-hint-row">
+            <span class="kbd-hint-label">💡</span>
+            @if (ContextualHints != null && ContextualHints.Count > 0)
+            {
+                @foreach (var h in ContextualHints)
+                {
+                    <button class="kbd-hint-btn" @onclick="@(() => InsertText(h))">+@h</button>
+                }
+            }
+            else
+            {
+                <span class="kbd-hint-empty">sufijos de color aparecen al escribir</span>
+            }
         </div>
     }
 </div>
