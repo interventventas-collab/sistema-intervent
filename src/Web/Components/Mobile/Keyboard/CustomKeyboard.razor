@@ -22,7 +22,7 @@
             <span class="kbd-prefix-label">⚡</span>
             @foreach (var p in (Prefixes ?? Prefs.Prefijos))
             {
-                <button class="kbd-prefix-btn" @onclick="@(() => InsertText(p))">@p</button>
+                <button class="kbd-prefix-btn" @onclick="@(() => InsertPrefijoAsync(p))">@p</button>
             }
             <button class="kbd-toggle-layout" @onclick="ToggleLayoutAsync" title="Cambiar layout">
                 @(Prefs.Layout == "abc" ? "ABC" : "QWE")
@@ -119,6 +119,17 @@
         await ValueChanged.InvokeAsync(Value);
     }
 
+    /// <summary>Igual que InsertText pero registra el uso del prefijo para reordenarlo.</summary>
+    private async Task InsertPrefijoAsync(string prefijo)
+    {
+        if (Value.Length + prefijo.Length > MaxLength) return;
+        await Haptic();
+        await Prefs.RegistrarUsoPrefijoAsync(prefijo);
+        Value += prefijo;
+        await ValueChanged.InvokeAsync(Value);
+        StateHasChanged();   // re-render para reordenar los prefijos según el nuevo uso
+    }
+
     private async Task Backspace()
     {
         if (Value.Length == 0) return;
@@ -160,7 +171,7 @@
 <style>
     .kbd-root {
         background: #f3f4f6;
-        padding: 8px 6px;
+        padding: 10px 8px 12px;
         border-top: 1px solid #d1d5db;
         user-select: none;
         -webkit-user-select: none;
@@ -207,20 +218,21 @@
     .kbd-row {
         display: grid;
         grid-template-columns: repeat(10, 1fr);
-        gap: 4px;
-        padding: 3px 0;
+        gap: 8px;
+        padding: 5px 0;
     }
-    .kbd-row-nums { background: rgba(0,0,0,0.03); border-radius: 6px; padding: 4px 2px; }
+    .kbd-row-nums { background: rgba(0,0,0,0.04); border-radius: 8px; padding: 6px 4px; margin-bottom: 4px; }
     .kbd-key {
-        min-height: 48px;
+        min-height: 52px;
         background: white;
         border: 1px solid #d1d5db;
-        border-radius: 6px;
+        border-radius: 8px;
         font-size: 1.05rem;
         font-weight: 600;
         color: #111827;
         cursor: pointer;
         touch-action: manipulation;
+        box-shadow: 0 1px 0 rgba(0,0,0,0.05);
     }
     .kbd-key:active {
         background: #d1d5db;
@@ -232,10 +244,11 @@
     /* Fila de acciones */
     .kbd-row-actions {
         grid-template-columns: 1fr 1fr 1.5fr;
-        margin-top: 6px;
+        margin-top: 10px;
+        gap: 10px;
     }
     .kbd-action {
-        min-height: 54px;
+        min-height: 58px;
         font-size: 0.95rem;
         font-weight: 800;
     }
