@@ -484,6 +484,12 @@
                     <span class="ic">⊘</span><span>Anular (no se puede con CAE)</span>
                 </button>
             }
+            else if (anuladaM)
+            {
+                <button class="actions-popup-item" style="color:#15803d;" @onclick="() => { CloseActionsMenu(); OpenRecuperarModal(vMenu); }">
+                    <span class="ic" style="color:#15803d;">↺</span><span>@(CanDelete ? "Recuperar venta" : $"Recuperar (solo {(deleteSettings?.AllowedOperator ?? "OSMAR")})")</span>
+                </button>
+            }
             @if (!tieneCaeM)
             {
                 <button class="actions-popup-item" style="color:#b91c1c;" @onclick="() => { CloseActionsMenu(); OpenDeleteModal(vMenu); }">
@@ -2243,6 +2249,45 @@
                 <button class="btn btn-secondary" @onclick="CloseDeleteModal" disabled="@isDeleting">Cancelar</button>
                 <button class="btn" style="background: #7f1d1d; color: white; border: none;" @onclick="DoDelete" disabled="@(isDeleting || string.IsNullOrEmpty(deletePassword))">
                     @(isDeleting ? "Eliminando..." : "🗑 Eliminar definitivamente")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ====== RECUPERAR UNA VENTA ANULADA (con clave, solo OSMAR) ====== *@
+@if (toRecuperar is not null)
+{
+    <div class="modal-overlay" @onclick="CloseRecuperarModal">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background: #15803d; color: white;">
+                <h4 style="margin: 0;">↺ Recuperar venta anulada</h4>
+                <button class="btn-close" @onclick="CloseRecuperarModal" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Vas a <strong>recuperar</strong> el comprobante <strong>@toRecuperar.Numero</strong> de @toRecuperar.Fecha.ToString("dd/MM/yyyy") por <strong>$@FormatMoney(toRecuperar.Total)</strong>.</p>
+                <p style="color:#15803d; font-weight: 600;">✓ El comprobante vuelve a quedar emitido y el stock se vuelve a descontar.</p>
+                <div class="form-group">
+                    <label class="form-label">Clave secreta *</label>
+                    <input class="form-input" type="password" @bind="recuperarPassword" @bind:event="oninput"
+                           @onkeydown="OnRecuperarPasswordKey"
+                           placeholder="Ingresá la clave" autofocus />
+                    @if (!string.IsNullOrEmpty(deleteSettings?.Hint))
+                    {
+                        <p style="font-size: 0.8rem; color: #6b7280; margin: 0.3rem 0 0;">
+                            💡 Pista: <strong>@deleteSettings.Hint</strong>
+                        </p>
+                    }
+                </div>
+                @if (!string.IsNullOrEmpty(recuperarError))
+                {
+                    <div class="form-error">@recuperarError</div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseRecuperarModal" disabled="@isRecuperando">Cancelar</button>
+                <button class="btn" style="background: #15803d; color: white; border: none;" @onclick="DoRecuperar" disabled="@(isRecuperando || string.IsNullOrEmpty(recuperarPassword))">
+                    @(isRecuperando ? "Recuperando..." : "↺ Recuperar venta")
                 </button>
             </div>
         </div>
@@ -4371,6 +4416,56 @@
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { showAnularConfirm = false; toAnular = null; }
+    }
+
+    // ── Recuperar venta anulada (con clave, solo OSMAR) ──
+    private CafeVentaDto? toRecuperar;
+    private string recuperarPassword = "";
+    private string recuperarError = "";
+    private bool isRecuperando = false;
+
+    private void OpenRecuperarModal(CafeVentaDto v)
+    {
+        if (!CanDelete)
+        {
+            ToastService.Error($"Solo {(deleteSettings?.AllowedOperator ?? "OSMAR")} puede recuperar ventas anuladas.");
+            return;
+        }
+        toRecuperar = v;
+        recuperarPassword = "";
+        recuperarError = "";
+    }
+
+    private void CloseRecuperarModal()
+    {
+        toRecuperar = null;
+        recuperarPassword = "";
+        recuperarError = "";
+    }
+
+    private async Task OnRecuperarPasswordKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrEmpty(recuperarPassword) && !isRecuperando)
+            await DoRecuperar();
+    }
+
+    private async Task DoRecuperar()
+    {
+        if (toRecuperar is null) return;
+        if (string.IsNullOrEmpty(recuperarPassword)) { recuperarError = "Ingresá la clave"; return; }
+        isRecuperando = true;
+        recuperarError = "";
+        try
+        {
+            await Api.RecuperarCafeVentaAsync(toRecuperar.Id, recuperarPassword);
+            ToastService.Success("✓ Venta recuperada — stock descontado nuevamente");
+            recuperarPassword = "";
+            toRecuperar = null;
+            await Load();
+            await LoadCatalogos();
+        }
+        catch (Exception ex) { recuperarError = ex.Message; }
+        finally { isRecuperando = false; }
     }
 
     // ── Multi-select ──

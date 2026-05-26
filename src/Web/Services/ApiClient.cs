@@ -1296,6 +1296,15 @@ public class ApiClient
         return false;
     }
 
+    public async Task<bool> RecuperarCafeVentaAsync(int id, string password)
+    {
+        await SetAuthHeaderAsync();
+        var response = await _http.PostAsJsonAsync($"/api/cafe/ventas/{id}/recuperar", new { password });
+        if (response.IsSuccessStatusCode) return true;
+        await ThrowIfErrorAsync(response);
+        return false;
+    }
+
     public async Task<int> BulkDeleteCafeVentasAsync(List<int> ids, string password)
     {
         await SetAuthHeaderAsync();
