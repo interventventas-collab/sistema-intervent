@@ -117,6 +117,16 @@
                             <button class="more-filters-item @(filterNoFull ? "active" : "")" @onclick="() => { filterNoFull = !filterNoFull; if (filterNoFull) filterFull = false; InvalidateFilterCache(); showMoreFilters = false; }">
                                 🚚 Solo NO Full (stock pushable)
                             </button>
+                            <div style="border-top: 1px solid #e5e7eb; margin: 0.25rem 0;"></div>
+                            <button class="more-filters-item @(filterStockPushNunca ? "active" : "")" @onclick="() => { filterStockPushNunca = !filterStockPushNunca; if (filterStockPushNunca) { filterStockPushOk = false; filterStockPushViejo = false; } InvalidateFilterCache(); showMoreFilters = false; }">
+                                🔴 Stock NUNCA pusheado
+                            </button>
+                            <button class="more-filters-item @(filterStockPushOk ? "active" : "")" @onclick="() => { filterStockPushOk = !filterStockPushOk; if (filterStockPushOk) { filterStockPushNunca = false; filterStockPushViejo = false; } InvalidateFilterCache(); showMoreFilters = false; }">
+                                🟢 Stock pusheado reciente (≤7 días)
+                            </button>
+                            <button class="more-filters-item @(filterStockPushViejo ? "active" : "")" @onclick="() => { filterStockPushViejo = !filterStockPushViejo; if (filterStockPushViejo) { filterStockPushNunca = false; filterStockPushOk = false; } InvalidateFilterCache(); showMoreFilters = false; }">
+                                🟡 Stock pusheado viejo (+7 días)
+                            </button>
                         </div>
                     }
                 </div>
@@ -354,11 +364,13 @@
                                                 <span style="background:#fef3c7; color:#92400e; padding:0.05rem 0.3rem; border-radius:3px; font-size:0.7rem; font-weight:700;" title="Catálogo MeLi @item.FamilyId">📦 FAMILIA</span>
                                                 <span style="margin-left:0.3rem;">@(item.FamilyId ?? item.MeliItemId)</span>
                                                 <CopyButton Text="@(item.FamilyId ?? item.MeliItemId)" />
+                                                @StockPushChip(item)
                                             }
                                             else
                                             {
                                                 @item.MeliItemId
                                                 <CopyButton Text="@item.MeliItemId" />
+                                                @StockPushChip(item)
                                             }
                                             @if (grp.HasMultiple)
                                             {
@@ -548,7 +560,7 @@
                                             {
                                                 <span title="@item.MeliItemId">@Truncate(item.Title, 50)</span>
                                             }
-                                            <div class="item-id">@item.MeliItemId</div>
+                                            <div class="item-id">@item.MeliItemId @StockPushChip(item)</div>
                                         </td>
                                         <td>@(item.Sku ?? "-")</td>
                                         <td>
@@ -638,7 +650,7 @@
                                                 {
                                                     <span title="@item.MeliItemId">@Truncate(item.Title, 50)</span>
                                                 }
-                                                <div class="item-id">@item.MeliItemId</div>
+                                                <div class="item-id">@item.MeliItemId @StockPushChip(item)</div>
                                             </td>
                                             <td>@(item.Sku ?? "-")</td>
                                             <td>
@@ -700,7 +712,7 @@
                                             {
                                                 <span title="@item.MeliItemId">@Truncate(item.Title, 50)</span>
                                             }
-                                            <div class="item-id">@item.MeliItemId</div>
+                                            <div class="item-id">@item.MeliItemId @StockPushChip(item)</div>
                                         </td>
                                         <td>@(item.Sku ?? "-")</td>
                                         <td>
@@ -2380,6 +2392,10 @@
     private bool filterSinLinkear = false;            // sin ningún tipo de linkeo
     private bool filterFull = false;                   // solo Mercado Envíos Full
     private bool filterNoFull = false;                 // solo NO Full (pushear stock OK)
+    // Filtros de estado de push de stock
+    private bool filterStockPushNunca = false;         // 🔴 nunca se pusheo stock
+    private bool filterStockPushOk = false;            // 🟢 pusheado reciente (<=7 dias)
+    private bool filterStockPushViejo = false;         // 🟡 pusheado viejo (>7 dias)
     private bool showMoreFilters = false;
 
     // Selection & bulk actions
@@ -2445,6 +2461,47 @@
 
     private void ToggleMoreFilters() { showMoreFilters = !showMoreFilters; }
 
+    // Chip visual del estado de push de stock de un item MeLi.
+    // Devuelve un MarkupString con un <span> de color (verde/amarillo/rojo) según LastStockPushedToMeli.
+    private MarkupString StockPushChip(MeliItemDto item)
+    {
+        // Solo aplicar a publicaciones con linkeo (sin linkeo no tiene sentido pushear)
+        bool tieneLink = item.CafeProductoId.HasValue || item.ComponentMappingsCount > 0;
+        if (!tieneLink) return new MarkupString("");
+
+        var last = item.LastStockPushedToMeli;
+        string emoji, color, bg, tooltip, label;
+        if (!last.HasValue)
+        {
+            emoji = "🔴"; color = "#991b1b"; bg = "#fee2e2";
+            label = "Nunca pusheado";
+            tooltip = "Stock NUNCA pusheado a MeLi";
+        }
+        else
+        {
+            var ago = DateTime.UtcNow - last.Value;
+            var localDate = last.Value.ToLocalTime();
+            string ageStr = ago.TotalMinutes < 60 ? $"{(int)ago.TotalMinutes}m"
+                : ago.TotalHours < 24 ? $"{(int)ago.TotalHours}h"
+                : ago.TotalDays < 30 ? $"{(int)ago.TotalDays}d"
+                : $"{(int)(ago.TotalDays / 30)}mes";
+            if (ago.TotalDays > 7)
+            {
+                emoji = "🟡"; color = "#92400e"; bg = "#fef3c7";
+                label = $"hace {ageStr}";
+                tooltip = $"Stock pusheado a MeLi hace {ageStr} ({localDate:yyyy-MM-dd HH:mm}). Considera re-pushear.";
+            }
+            else
+            {
+                emoji = "🟢"; color = "#166534"; bg = "#dcfce7";
+                label = $"hace {ageStr}";
+                tooltip = $"Stock pusheado a MeLi hace {ageStr} ({localDate:yyyy-MM-dd HH:mm}).";
+            }
+        }
+        var html = $"<span title=\"{tooltip}\" style=\"display:inline-block;background:{bg};color:{color};padding:0.05rem 0.4rem;border-radius:4px;font-size:0.65rem;font-weight:600;margin-left:0.3rem;\">{emoji} {label}</span>";
+        return new MarkupString(html);
+    }
+
     private int GetActiveFilterCount()
     {
         int count = 0;
@@ -2455,6 +2512,9 @@
         if (filterSinLinkear) count++;
         if (filterFull) count++;
         if (filterNoFull) count++;
+        if (filterStockPushNunca) count++;
+        if (filterStockPushOk) count++;
+        if (filterStockPushViejo) count++;
         return count;
     }
 
@@ -2783,6 +2843,15 @@
             filtered = filtered.Where(i => string.Equals(i.LogisticType, "fulfillment", StringComparison.OrdinalIgnoreCase));
         if (filterNoFull)
             filtered = filtered.Where(i => !string.Equals(i.LogisticType, "fulfillment", StringComparison.OrdinalIgnoreCase));
+
+        // ── Filtros de estado de push de stock ──
+        var sieteDias = DateTime.UtcNow.AddDays(-7);
+        if (filterStockPushNunca)
+            filtered = filtered.Where(i => !i.LastStockPushedToMeli.HasValue);
+        if (filterStockPushOk)
+            filtered = filtered.Where(i => i.LastStockPushedToMeli.HasValue && i.LastStockPushedToMeli.Value >= sieteDias);
+        if (filterStockPushViejo)
+            filtered = filtered.Where(i => i.LastStockPushedToMeli.HasValue && i.LastStockPushedToMeli.Value < sieteDias);
 
         // Text filters
         foreach (var kv in textFilters.Where(f => !string.IsNullOrEmpty(f.Value)))

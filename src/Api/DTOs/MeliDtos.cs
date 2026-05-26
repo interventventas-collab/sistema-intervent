@@ -152,7 +152,11 @@ public record MeliItemDto(
     // Variations: una publicacion MeLi puede tener varias variantes (color/talle/etc.).
     // Cada variante se guarda como una fila en MeliItems con el mismo MeliItemId y un VariationId distinto.
     string? VariationId = null,
-    string? VariationAttributes = null
+    string? VariationAttributes = null,
+    // Última vez que se pusheó stock a MeLi para ESTE item.
+    // Calculado como MAX(LastPushedToMeli) entre el CafeProducto linkeado directo + todos los componentes.
+    // Null = nunca se pusheó.
+    DateTime? LastStockPushedToMeli = null
 );
 
 public record MeliItemsResponse(List<MeliItemDto> Items, int Total);
