@@ -14,18 +14,38 @@ public class KeyboardPrefs
     private const string KEY_FAVS = "mobile.search.favoritos";   // JSON: lista de SKUs
     private const string KEY_USOS = "mobile.search.usos";        // JSON: dict SKU → cantUsos
     private const string KEY_PREFIJOS = "mobile.kbd.prefijos";   // JSON: lista de prefijos custom
+    private const string KEY_USOS_PREFIJOS = "mobile.kbd.prefijos.usos"; // JSON: dict prefijo → cantUsos
 
     public string Layout { get; private set; } = "abc";  // default ABC alfabético (decidido 2026-05-26)
     private HashSet<string> _favoritos = new();
     private Dictionary<string, int> _usos = new();
+    private Dictionary<string, int> _usosPrefijos = new();
     private List<string>? _prefijosCustom;
 
-    // Default: top 7 prefijos del catálogo (analizado 2026-05-26)
+    // Default: top 7 prefijos del catálogo (analizado 2026-05-26). El orden inicial
+    // viene de las estadísticas, pero se reordena en runtime según uso del operario.
     public static readonly List<string> PrefijosDefault = new() { "C", "M", "FR", "D", "V", "F", "HE" };
 
     public KeyboardPrefs(IJSRuntime js) { _js = js; }
 
-    public List<string> Prefijos => _prefijosCustom ?? PrefijosDefault;
+    /// <summary>
+    /// Devuelve los prefijos ordenados según uso (los más tocados primero).
+    /// Si el operario nunca tocó nada, mantiene el orden default del catálogo.
+    /// </summary>
+    public List<string> Prefijos
+    {
+        get
+        {
+            var baseList = _prefijosCustom ?? PrefijosDefault;
+            // Ordenar por uso DESC, los empatados conservan el orden original
+            return baseList
+                .Select((p, idx) => new { Prefijo = p, Uso = _usosPrefijos.TryGetValue(p, out var u) ? u : 0, OrigIdx = idx })
+                .OrderByDescending(x => x.Uso)
+                .ThenBy(x => x.OrigIdx)
+                .Select(x => x.Prefijo)
+                .ToList();
+        }
+    }
 
     public async Task LoadAsync()
     {
@@ -45,8 +65,21 @@ public class KeyboardPrefs
             var prefsJson = await _js.InvokeAsync<string?>("localStorage.getItem", KEY_PREFIJOS);
             if (!string.IsNullOrEmpty(prefsJson))
                 _prefijosCustom = System.Text.Json.JsonSerializer.Deserialize<List<string>>(prefsJson);
+
+            var usosPrefsJson = await _js.InvokeAsync<string?>("localStorage.getItem", KEY_USOS_PREFIJOS);
+            if (!string.IsNullOrEmpty(usosPrefsJson))
+                _usosPrefijos = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, int>>(usosPrefsJson) ?? new();
         }
         catch { /* primera carga: sin nada */ }
+    }
+
+    /// <summary>Registra que el operario tocó un prefijo (para reordenar la fila).</summary>
+    public async Task RegistrarUsoPrefijoAsync(string prefijo)
+    {
+        if (string.IsNullOrEmpty(prefijo)) return;
+        _usosPrefijos[prefijo] = (_usosPrefijos.TryGetValue(prefijo, out var n) ? n : 0) + 1;
+        var json = System.Text.Json.JsonSerializer.Serialize(_usosPrefijos);
+        await _js.InvokeVoidAsync("localStorage.setItem", KEY_USOS_PREFIJOS, json);
     }
 
     public async Task SetLayoutAsync(string layout)
