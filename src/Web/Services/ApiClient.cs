@@ -610,6 +610,15 @@ public class ApiClient
     public async Task<CafeClienteDto?> AsignarCodigoInternoAsync(int id)
         => await PostAsync<CafeClienteDto>($"/api/cafe/clientes/{id}/asignar-codigo-interno", new { });
 
+    /// <summary>Devuelve el próximo código interno disponible (MAX + 1) SIN asignarlo.
+    /// Usado para mostrar el código antes de guardar un cliente nuevo.</summary>
+    public async Task<int?> GetNextCodigoInternoAsync()
+    {
+        var resp = await GetAsync<NextCodigoInternoResponse>("/api/cafe/clientes/next-codigo-interno");
+        return resp?.CodigoInterno;
+    }
+    private class NextCodigoInternoResponse { public int CodigoInterno { get; set; } }
+
     /// <summary>Re-extrae las coordenadas a partir del MapeoLink (si falló la primera vez).</summary>
     public async Task<CafeClienteDto?> ReExtraerCoordsAsync(int id)
         => await PostAsync<CafeClienteDto>($"/api/cafe/clientes/{id}/reextraer-coords", new { });

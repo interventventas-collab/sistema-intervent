@@ -31,6 +31,9 @@ public class CreateCafeClienteRequest
     /// <summary>Enlace de Google Maps cargado al crear el cliente. Si viene, intentamos
     /// extraer las coordenadas automáticamente en el backend.</summary>
     public string? MapeoLink { get; set; }
+    /// <summary>Código interno (correlativo) pre-asignado en el frontend antes de guardar.
+    /// Si viene, el backend lo valida: si está libre lo usa, si está tomado asigna el siguiente disponible.</summary>
+    public int? CodigoInterno { get; set; }
 }
 
 public class UpdateCafeClienteRequest

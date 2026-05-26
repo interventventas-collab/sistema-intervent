@@ -191,53 +191,49 @@
 @if (showForm)
 {
     <div class="modal-overlay" @onclick="CloseForm">
-        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+        <div class="modal-card" @onclick:stopPropagation="true"
+             style="max-width: min(1280px, 96vw); width: 96vw; max-height: 94vh; display: flex; flex-direction: column;">
             <div class="modal-header" style="background: whitesmoke;">
                 <h3>@(isEditing ? "Editar cliente" : "Nuevo cliente")</h3>
                 <button class="btn-close" @onclick="CloseForm">&times;</button>
             </div>
-            <div class="modal-body">
+            <div class="modal-body" style="overflow-y: auto; flex: 1 1 auto;">
                 @if (!string.IsNullOrEmpty(formError))
                 {
                     <div class="form-error">@formError</div>
                 }
-                @* ─── Código interno (destacado arriba para que sea fácil de ver / asignar) ─── *@
+                @* ─── Código interno (destacado arriba; se puede asignar antes de guardar) ─── *@
                 <div style="background: #eff6ff; border: 2px solid #3b82f6; border-radius: 8px; padding: 1rem 1.1rem; margin-bottom: 1rem;">
                     <label class="form-label" style="font-size: 1rem; color: #1e3a8a; font-weight: 700; margin-bottom: 0.5rem;">
                         🆔 Código interno
                     </label>
-                    @if (isEditing && editingId.HasValue)
+                    @if (formCodigoInterno.HasValue)
                     {
-                        @if (formCodigoInterno.HasValue)
-                        {
-                            <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
-                                <span style="font-family: monospace; font-weight: 800; font-size: 1.8rem; color: #1e40af; line-height: 1;">@formCodigoInterno</span>
-                                <button type="button" class="btn btn-secondary" @onclick="QuitarCodigoInterno"
-                                        style="font-size: 0.9rem; padding: 0.5rem 0.9rem;">🗑 Quitar</button>
-                            </div>
-                            <p style="font-size: 0.8rem; color: #1e3a8a; margin: 0.4rem 0 0;">
-                                Código único de este cliente para uso interno (búsquedas rápidas, etiquetas, etc).
-                            </p>
-                        }
-                        else
-                        {
-                            <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
-                                <span style="font-size: 1rem; color: #6b7280; font-style: italic;">— sin asignar —</span>
-                                <button type="button" class="btn btn-primary" @onclick="AsignarCodigoInterno"
-                                        disabled="@asignandoCodigo"
-                                        style="font-size: 1rem; padding: 0.65rem 1.2rem; font-weight: 600;">
-                                    @(asignandoCodigo ? "⏳ Asignando..." : "🎯 Asignar código interno")
-                                </button>
-                            </div>
-                            <p style="font-size: 0.8rem; color: #1e3a8a; margin: 0.5rem 0 0;">
-                                Asigna automáticamente el próximo código disponible para este cliente.
-                            </p>
-                        }
+                        <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+                            <span style="font-family: monospace; font-weight: 800; font-size: 1.8rem; color: #1e40af; line-height: 1;">@formCodigoInterno</span>
+                            <button type="button" class="btn btn-secondary" @onclick="QuitarCodigoInterno"
+                                    style="font-size: 0.9rem; padding: 0.5rem 0.9rem;">🗑 Quitar</button>
+                        </div>
+                        <p style="font-size: 0.8rem; color: #1e3a8a; margin: 0.4rem 0 0;">
+                            @if (isEditing) {
+                                <text>Código único de este cliente para uso interno (búsquedas rápidas, etiquetas, etc).</text>
+                            } else {
+                                <text>Este código se va a guardar cuando aprietes <strong>Crear</strong>. Si entre medio otro usuario tomó el mismo número, el sistema asigna el siguiente disponible y te avisa.</text>
+                            }
+                        </p>
                     }
                     else
                     {
-                        <p style="font-size: 0.9rem; color: #6b7280; margin: 0;">
-                            💡 El código interno se asigna <strong>después de guardar</strong> el cliente. Cuando lo edites, vas a ver acá el botón <strong>🎯 Asignar código interno</strong>.
+                        <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+                            <span style="font-size: 1rem; color: #6b7280; font-style: italic;">— sin asignar —</span>
+                            <button type="button" class="btn btn-primary" @onclick="AsignarCodigoInterno"
+                                    disabled="@asignandoCodigo"
+                                    style="font-size: 1rem; padding: 0.65rem 1.2rem; font-weight: 600;">
+                                @(asignandoCodigo ? "⏳ Asignando..." : "🎯 Asignar código interno")
+                            </button>
+                        </div>
+                        <p style="font-size: 0.8rem; color: #1e3a8a; margin: 0.5rem 0 0;">
+                            Asigna automáticamente el próximo código disponible.
                         </p>
                     }
                 </div>
@@ -715,18 +711,33 @@
 
     private async Task AsignarCodigoInterno()
     {
-        if (!editingId.HasValue) return;
         asignandoCodigo = true;
         try
         {
-            var updated = await Api.AsignarCodigoInternoAsync(editingId.Value);
-            if (updated is not null)
+            if (editingId.HasValue)
             {
-                formCodigoInterno = updated.CodigoInterno;
-                ToastService.Success($"Código interno asignado: {updated.CodigoInterno}");
-                await Load();   // refresca el listado
+                // Cliente existente → asignar y persistir en DB
+                var updated = await Api.AsignarCodigoInternoAsync(editingId.Value);
+                if (updated is not null)
+                {
+                    formCodigoInterno = updated.CodigoInterno;
+                    ToastService.Success($"Código interno asignado: {updated.CodigoInterno}");
+                    await Load();   // refresca el listado
+                }
+                else { ToastService.Error("No se pudo asignar el código"); }
             }
-            else { ToastService.Error("No se pudo asignar el código"); }
+            else
+            {
+                // Cliente nuevo (todavía no guardado) → pedir el próximo libre, mostrarlo,
+                // y se persistirá al apretar Crear (mandado en el payload de Create).
+                var next = await Api.GetNextCodigoInternoAsync();
+                if (next.HasValue)
+                {
+                    formCodigoInterno = next.Value;
+                    ToastService.Success($"Código interno pre-asignado: {next.Value}. Se confirma al apretar Crear.");
+                }
+                else { ToastService.Error("No se pudo obtener el próximo código"); }
+            }
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { asignandoCodigo = false; }
@@ -734,15 +745,23 @@
 
     private async Task QuitarCodigoInterno()
     {
-        if (!editingId.HasValue) return;
         try
         {
-            var updated = await Api.QuitarCodigoInternoAsync(editingId.Value);
-            if (updated is not null)
+            if (editingId.HasValue)
             {
+                // Cliente existente → quitar en DB
+                var updated = await Api.QuitarCodigoInternoAsync(editingId.Value);
+                if (updated is not null)
+                {
+                    formCodigoInterno = null;
+                    ToastService.Success("Código interno quitado");
+                    await Load();
+                }
+            }
+            else
+            {
+                // Cliente nuevo → solo borrar del form (nada que persistir aún)
                 formCodigoInterno = null;
-                ToastService.Success("Código interno quitado");
-                await Load();
             }
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
@@ -778,6 +797,7 @@
             else
             {
                 var mapeoLinkClean = (formMapeoLink ?? "").Trim();
+                var pedidoCodigo = formCodigoInterno;
                 var c = await Api.CreateCafeClienteAsync(new CreateCafeClienteRequest
                 {
                     Nombre = formNombre, RazonSocial = formRazonSocial, Tipo = formTipo,
@@ -786,10 +806,23 @@
                     Localidad = formLocalidad, Ciudad = formCiudad, Cp = formCp,
                     CondicionIvaDefault = formCondicionIvaDefault,
                     Notas = formNotas, ComentariosComprobante = formComentariosComprobante,
-                    MapeoLink = string.IsNullOrEmpty(mapeoLinkClean) ? null : mapeoLinkClean
+                    MapeoLink = string.IsNullOrEmpty(mapeoLinkClean) ? null : mapeoLinkClean,
+                    CodigoInterno = formCodigoInterno
                 });
                 if (c is null) { formError = "No se pudo crear"; return; }
-                ToastService.Success("Cliente creado");
+                // Si el backend tuvo que reasignar (porque alguien tomó el código entre medio), avisamos.
+                if (pedidoCodigo.HasValue && c.CodigoInterno.HasValue && c.CodigoInterno.Value != pedidoCodigo.Value)
+                {
+                    ToastService.Success($"Cliente creado. El código {pedidoCodigo} ya estaba tomado, te asignamos el {c.CodigoInterno}.");
+                }
+                else if (c.CodigoInterno.HasValue)
+                {
+                    ToastService.Success($"Cliente creado con código {c.CodigoInterno}");
+                }
+                else
+                {
+                    ToastService.Success("Cliente creado");
+                }
             }
             showForm = false;
             await Load();
