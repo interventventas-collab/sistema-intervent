@@ -201,6 +201,46 @@
                 {
                     <div class="form-error">@formError</div>
                 }
+                @* ─── Código interno (destacado arriba para que sea fácil de ver / asignar) ─── *@
+                <div style="background: #eff6ff; border: 2px solid #3b82f6; border-radius: 8px; padding: 1rem 1.1rem; margin-bottom: 1rem;">
+                    <label class="form-label" style="font-size: 1rem; color: #1e3a8a; font-weight: 700; margin-bottom: 0.5rem;">
+                        🆔 Código interno
+                    </label>
+                    @if (isEditing && editingId.HasValue)
+                    {
+                        @if (formCodigoInterno.HasValue)
+                        {
+                            <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+                                <span style="font-family: monospace; font-weight: 800; font-size: 1.8rem; color: #1e40af; line-height: 1;">@formCodigoInterno</span>
+                                <button type="button" class="btn btn-secondary" @onclick="QuitarCodigoInterno"
+                                        style="font-size: 0.9rem; padding: 0.5rem 0.9rem;">🗑 Quitar</button>
+                            </div>
+                            <p style="font-size: 0.8rem; color: #1e3a8a; margin: 0.4rem 0 0;">
+                                Código único de este cliente para uso interno (búsquedas rápidas, etiquetas, etc).
+                            </p>
+                        }
+                        else
+                        {
+                            <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+                                <span style="font-size: 1rem; color: #6b7280; font-style: italic;">— sin asignar —</span>
+                                <button type="button" class="btn btn-primary" @onclick="AsignarCodigoInterno"
+                                        disabled="@asignandoCodigo"
+                                        style="font-size: 1rem; padding: 0.65rem 1.2rem; font-weight: 600;">
+                                    @(asignandoCodigo ? "⏳ Asignando..." : "🎯 Asignar código interno")
+                                </button>
+                            </div>
+                            <p style="font-size: 0.8rem; color: #1e3a8a; margin: 0.5rem 0 0;">
+                                Asigna automáticamente el próximo código disponible para este cliente.
+                            </p>
+                        }
+                    }
+                    else
+                    {
+                        <p style="font-size: 0.9rem; color: #6b7280; margin: 0;">
+                            💡 El código interno se asigna <strong>después de guardar</strong> el cliente. Cuando lo edites, vas a ver acá el botón <strong>🎯 Asignar código interno</strong>.
+                        </p>
+                    }
+                </div>
                 <div class="form-row">
                     <div class="form-group" style="flex: 2;">
                         <label class="form-label">Nombre fantasía *</label>
@@ -318,39 +358,8 @@
                         Estos comentarios <strong>aparecen en TODOS los comprobantes</strong> de este cliente.
                     </p>
                 </div>
-                @* ─── Vinculación a Mapeo (campo enlace siempre disponible; código interno solo al editar) ─── *@
+                @* ─── Enlace Google Maps (el código interno se movió arriba de todo) ─── *@
                 <div style="background: #eff6ff; border: 1px solid #3b82f6; border-radius: 6px; padding: 0.6rem 0.8rem; margin-top: 0.5rem;">
-                    @if (isEditing && editingId.HasValue)
-                    {
-                        <div class="form-group" style="margin-bottom: 0.5rem;">
-                            <label class="form-label" style="font-size: 0.78rem; color: #1e40af;">🆔 Código interno (uso interno)</label>
-                            @if (formCodigoInterno.HasValue)
-                            {
-                                <div style="display: flex; gap: 0.4rem; align-items: center;">
-                                    <span style="font-family: monospace; font-weight: 700; font-size: 1.1rem; color: #1e40af;">@formCodigoInterno</span>
-                                    <button type="button" class="btn btn-secondary" @onclick="QuitarCodigoInterno"
-                                            style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">🗑 Quitar</button>
-                                </div>
-                            }
-                            else
-                            {
-                                <div style="display: flex; gap: 0.4rem; align-items: center;">
-                                    <span style="font-size: 0.85rem; color: #6b7280;">— sin asignar —</span>
-                                    <button type="button" class="btn btn-secondary" @onclick="AsignarCodigoInterno"
-                                            disabled="@asignandoCodigo"
-                                            style="font-size: 0.78rem; padding: 0.3rem 0.6rem;">
-                                        @(asignandoCodigo ? "⏳..." : "🎯 Asignar código")
-                                    </button>
-                                </div>
-                            }
-                        </div>
-                    }
-                    else
-                    {
-                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0 0 0.5rem;">
-                            💡 El <strong>código interno</strong> se asigna después de guardar el cliente (con un botón en la edición).
-                        </p>
-                    }
                     <div class="form-group" style="margin-bottom: 0;">
                         <label class="form-label" style="font-size: 0.78rem; color: #1e40af;">🗺 Enlace Google Maps (corto)</label>
                         <input class="form-input" @bind="formMapeoLink"
