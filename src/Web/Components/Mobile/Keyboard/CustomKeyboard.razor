@@ -4,80 +4,109 @@
 
 @*
   CustomKeyboard — Teclado in-app reutilizable.
-  Props:
-    - Value: string actual (two-way binding con @bind-Value)
-    - OnEnter: callback al apretar Enter
-    - NumericOnly: si true, muestra solo teclas numéricas grandes
-    - Prefixes: lista opcional de prefijos rápidos (si null, usa Prefs.Prefijos)
-    - ContextualHints: lista opcional de sufijos sugeridos (BL, NEG, ROJ...)
-    - MaxLength: tope de caracteres (default 20)
-    - HapticFeedback: si true, vibra 10ms al tocar (default true)
+  Diseño (decidido 2026-05-26 noche):
+    - Prefijos grandes 2x3 (los 6 top más usados por el operario)
+    - Numérico estilo teléfono grande (1-2-3 arriba)
+    - Letras A-Z escondidas detrás de botón "ABC" (se despliega)
+    - Layout ALTURA FIJA para no causar shifts en pantalla
+  Props: Value (two-way), OnEnter, NumericOnly, ContextualHints, MaxLength
 *@
 
 <div class="kbd-root @(NumericOnly ? "kbd-numeric" : "")">
-    @* Fila de prefijos rápidos *@
-    @if (!NumericOnly && (Prefixes ?? Prefs.Prefijos).Count > 0)
-    {
-        <div class="kbd-prefix-row">
-            <span class="kbd-prefix-label">⚡</span>
-            @foreach (var p in (Prefixes ?? Prefs.Prefijos))
-            {
-                <button class="kbd-prefix-btn" @onclick="@(() => InsertPrefijoAsync(p))">@p</button>
-            }
-            <button class="kbd-toggle-layout" @onclick="ToggleLayoutAsync" title="Cambiar layout">
-                @(Prefs.Layout == "abc" ? "ABC" : "QWE")
-            </button>
-        </div>
-    }
 
-    @* Sugerencias contextuales (sufijos de color) *@
-    @if (ContextualHints != null && ContextualHints.Count > 0 && !NumericOnly)
+    @* Sugerencias contextuales (sufijos de color) — siempre 1 fila reservada *@
+    @if (!NumericOnly)
     {
-        <div class="kbd-hint-row">
+        <div class="kbd-hint-row" style="@(ContextualHints != null && ContextualHints.Count > 0 ? "" : "visibility:hidden;")">
             <span class="kbd-hint-label">💡</span>
-            @foreach (var h in ContextualHints)
+            @if (ContextualHints != null)
             {
-                <button class="kbd-hint-btn" @onclick="@(() => InsertText(h))">+@h</button>
+                @foreach (var h in ContextualHints)
+                {
+                    <button class="kbd-hint-btn" @onclick="@(() => InsertText(h))">+@h</button>
+                }
             }
         </div>
     }
 
-    @if (NumericOnly)
+    @if (showAbc && !NumericOnly)
     {
-        @* Teclado numérico grande *@
-        <div class="kbd-num-grid">
-            @foreach (var n in new[] { "7", "8", "9", "4", "5", "6", "1", "2", "3", "0" })
+        @* Modo expandido: muestra A-Z completo, sin prefijos ni numérico *@
+        <div class="kbd-abc-mode">
+            <div class="kbd-abc-header">
+                <button class="kbd-abc-close" @onclick="@(() => { showAbc = false; })">← Volver al numérico</button>
+                <button class="kbd-toggle-layout" @onclick="ToggleLayoutAsync">
+                    @(Prefs.Layout == "abc" ? "ABC" : "QWE")
+                </button>
+            </div>
+            @foreach (var row in GetLetterRows())
             {
-                <button class="kbd-num-key" @onclick="@(() => InsertText(n))">@n</button>
+                <div class="kbd-row-letters">
+                    @foreach (var k in row)
+                    {
+                        <button class="kbd-key kbd-key-letter" @onclick="@(() => InsertText(k))">@k</button>
+                    }
+                </div>
             }
+        </div>
+    }
+    else if (NumericOnly)
+    {
+        @* Modo solo numérico, grande *@
+        <div class="kbd-num-grid">
+            <button class="kbd-num-key" @onclick="@(() => InsertText("1"))">1</button>
+            <button class="kbd-num-key" @onclick="@(() => InsertText("2"))">2</button>
+            <button class="kbd-num-key" @onclick="@(() => InsertText("3"))">3</button>
+            <button class="kbd-num-key" @onclick="@(() => InsertText("4"))">4</button>
+            <button class="kbd-num-key" @onclick="@(() => InsertText("5"))">5</button>
+            <button class="kbd-num-key" @onclick="@(() => InsertText("6"))">6</button>
+            <button class="kbd-num-key" @onclick="@(() => InsertText("7"))">7</button>
+            <button class="kbd-num-key" @onclick="@(() => InsertText("8"))">8</button>
+            <button class="kbd-num-key" @onclick="@(() => InsertText("9"))">9</button>
             <button class="kbd-num-back" @onclick="Backspace">⌫</button>
+            <button class="kbd-num-key" @onclick="@(() => InsertText("0"))">0</button>
             <button class="kbd-num-enter" @onclick="EnterAsync">↵</button>
         </div>
     }
     else
     {
-        @* Fila de números *@
-        <div class="kbd-row kbd-row-nums">
-            @foreach (var n in new[] { "1", "2", "3", "4", "5", "6", "7", "8", "9", "0" })
+        @* Modo normal: prefijos arriba + numérico abajo *@
+        @* Prefijos: 6 grandes 2x3 *@
+        <div class="kbd-prefix-grid">
+            @{
+                var prefList = (Prefixes ?? Prefs.Prefijos).Take(6).ToList();
+            }
+            @foreach (var p in prefList)
             {
-                <button class="kbd-key kbd-num" @onclick="@(() => InsertText(n))">@n</button>
+                <button class="kbd-prefix-big" @onclick="@(() => InsertPrefijoAsync(p))">@p</button>
+            }
+            @* Si hay menos de 6, llenar con celdas vacías para mantener el grid *@
+            @for (int i = prefList.Count; i < 6; i++)
+            {
+                <div></div>
             }
         </div>
-        @* Filas de letras según layout *@
-        @foreach (var row in GetLetterRows())
-        {
-            <div class="kbd-row">
-                @foreach (var k in row)
-                {
-                    <button class="kbd-key" @onclick="@(() => InsertText(k))">@k</button>
-                }
-            </div>
-        }
-        @* Fila de acciones *@
-        <div class="kbd-row kbd-row-actions">
-            <button class="kbd-key kbd-action kbd-clear" @onclick="Clear">LIMPIAR</button>
-            <button class="kbd-key kbd-action kbd-back" @onclick="Backspace">⌫ BORRAR</button>
-            <button class="kbd-key kbd-action kbd-enter" @onclick="EnterAsync">✅ ENTER</button>
+
+        @* Numérico estilo teléfono grande *@
+        <div class="kbd-num-grid">
+            <button class="kbd-num-key" @onclick="@(() => InsertText("1"))">1</button>
+            <button class="kbd-num-key" @onclick="@(() => InsertText("2"))">2</button>
+            <button class="kbd-num-key" @onclick="@(() => InsertText("3"))">3</button>
+            <button class="kbd-num-key" @onclick="@(() => InsertText("4"))">4</button>
+            <button class="kbd-num-key" @onclick="@(() => InsertText("5"))">5</button>
+            <button class="kbd-num-key" @onclick="@(() => InsertText("6"))">6</button>
+            <button class="kbd-num-key" @onclick="@(() => InsertText("7"))">7</button>
+            <button class="kbd-num-key" @onclick="@(() => InsertText("8"))">8</button>
+            <button class="kbd-num-key" @onclick="@(() => InsertText("9"))">9</button>
+            <button class="kbd-num-back" @onclick="Backspace">⌫</button>
+            <button class="kbd-num-key" @onclick="@(() => InsertText("0"))">0</button>
+            <button class="kbd-num-enter" @onclick="EnterAsync">↵</button>
+        </div>
+
+        @* Acciones secundarias: LIMPIAR + ABC *@
+        <div class="kbd-actions-row">
+            <button class="kbd-action-clear" @onclick="Clear">LIMPIAR</button>
+            <button class="kbd-action-abc" @onclick="@(() => { showAbc = true; })">ABC ↕</button>
         </div>
     }
 </div>
@@ -92,6 +121,8 @@
     [Parameter] public int MaxLength { get; set; } = 20;
     [Parameter] public bool HapticFeedback { get; set; } = true;
 
+    private bool showAbc = false;
+
     // QWERTY layout
     private static readonly List<string[]> QwertyRows = new()
     {
@@ -100,7 +131,7 @@
         new[] {"Z","X","C","V","B","N","M","-",".","/"},
     };
 
-    // ABC alfabético (decidido como default 2026-05-26)
+    // ABC alfabético (default)
     private static readonly List<string[]> AbcRows = new()
     {
         new[] {"A","B","C","D","E","F","G","H","I","J"},
@@ -119,7 +150,6 @@
         await ValueChanged.InvokeAsync(Value);
     }
 
-    /// <summary>Igual que InsertText pero registra el uso del prefijo para reordenarlo.</summary>
     private async Task InsertPrefijoAsync(string prefijo)
     {
         if (Value.Length + prefijo.Length > MaxLength) return;
@@ -127,7 +157,7 @@
         await Prefs.RegistrarUsoPrefijoAsync(prefijo);
         Value += prefijo;
         await ValueChanged.InvokeAsync(Value);
-        StateHasChanged();   // re-render para reordenar los prefijos según el nuevo uso
+        StateHasChanged();
     }
 
     private async Task Backspace()
@@ -162,120 +192,170 @@
     private async Task Haptic()
     {
         if (!HapticFeedback) return;
-        try { await JS.InvokeVoidAsync("navigator.vibrate", 10); } catch { /* no-op si no soporta */ }
+        try { await JS.InvokeVoidAsync("navigator.vibrate", 10); } catch { }
     }
 
-    public void Dispose() { /* nada por ahora */ }
+    public void Dispose() { }
 }
 
 <style>
     .kbd-root {
         background: #f3f4f6;
-        padding: 10px 8px 12px;
-        border-top: 1px solid #d1d5db;
+        padding: 8px 8px 12px;
+        border-top: 2px solid #d1d5db;
         user-select: none;
         -webkit-user-select: none;
         -webkit-tap-highlight-color: transparent;
+        /* CRÍTICO: altura mínima fija para evitar layout shift al mostrar/ocultar sufijos */
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
     }
 
-    /* Fila de prefijos */
-    .kbd-prefix-row, .kbd-hint-row {
+    /* Sufijos contextuales (siempre 1 fila, hidden si no aplica para no mover layout) */
+    .kbd-hint-row {
         display: flex;
-        gap: 6px;
-        padding: 4px 2px 6px;
+        gap: 8px;
+        padding: 4px 2px;
         align-items: center;
         overflow-x: auto;
         scrollbar-width: none;
+        min-height: 44px;
     }
-    .kbd-prefix-row::-webkit-scrollbar, .kbd-hint-row::-webkit-scrollbar { display: none; }
-    .kbd-prefix-label, .kbd-hint-label { font-size: 0.85rem; padding-right: 2px; }
-    .kbd-prefix-btn {
-        min-width: 52px; min-height: 36px;
+    .kbd-hint-row::-webkit-scrollbar { display: none; }
+    .kbd-hint-label { font-size: 1rem; padding-right: 2px; }
+    .kbd-hint-btn {
+        min-width: 64px; min-height: 38px;
+        background: #fef3c7; color: #92400e;
+        border: 1px solid #fbbf24; border-radius: 10px;
+        font-weight: 700; font-size: 0.95rem;
+        cursor: pointer;
+        touch-action: manipulation;
+    }
+    .kbd-hint-btn:active { background: #fde68a; }
+
+    /* Prefijos grandes 2x3 */
+    .kbd-prefix-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+    }
+    .kbd-prefix-big {
+        min-height: 56px;
         background: #1e40af; color: white;
-        border: none; border-radius: 8px;
+        border: none; border-radius: 12px;
+        font-weight: 800; font-size: 1.35rem;
+        cursor: pointer;
+        touch-action: manipulation;
+        box-shadow: 0 2px 4px rgba(30,64,175,0.25);
+    }
+    .kbd-prefix-big:active {
+        background: #1e3a8a;
+        transform: scale(0.96);
+        transition: all 0.05s ease;
+    }
+
+    /* Numérico estilo teléfono grande (4x3) */
+    .kbd-num-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        padding: 4px 0;
+    }
+    .kbd-num-grid > * {
+        min-height: 64px;
+        font-size: 1.6rem;
+        font-weight: 800;
+        background: white;
+        border: 1px solid #d1d5db;
+        border-radius: 12px;
+        cursor: pointer;
+        color: #111827;
+        touch-action: manipulation;
+        box-shadow: 0 1px 0 rgba(0,0,0,0.08);
+    }
+    .kbd-num-key:active {
+        background: #e5e7eb;
+        transform: scale(0.96);
+        transition: all 0.05s ease;
+    }
+    .kbd-num-back {
+        background: #fef3c7; color: #92400e;
+        border-color: #fcd34d;
+    }
+    .kbd-num-back:active { background: #fde68a; }
+    .kbd-num-enter {
+        background: #16a34a; color: white;
+        border-color: #15803d;
+    }
+    .kbd-num-enter:active { background: #15803d; }
+
+    /* Acciones secundarias */
+    .kbd-actions-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-top: 2px;
+    }
+    .kbd-action-clear, .kbd-action-abc {
+        min-height: 48px;
+        border: 1px solid #d1d5db;
+        border-radius: 10px;
+        font-weight: 700;
+        font-size: 0.95rem;
+        cursor: pointer;
+        touch-action: manipulation;
+    }
+    .kbd-action-clear { background: #fef2f2; color: #991b1b; border-color: #fca5a5; }
+    .kbd-action-clear:active { background: #fecaca; }
+    .kbd-action-abc { background: #6b7280; color: white; border-color: #4b5563; }
+    .kbd-action-abc:active { background: #4b5563; }
+
+    /* Modo ABC expandido (cuando el usuario quiere letras) */
+    .kbd-abc-mode {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .kbd-abc-header {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+    }
+    .kbd-abc-close {
+        flex: 1;
+        min-height: 44px;
+        background: #1e40af; color: white;
+        border: none; border-radius: 10px;
         font-weight: 700; font-size: 0.95rem;
         cursor: pointer;
     }
-    .kbd-prefix-btn:active { background: #1e3a8a; }
-    .kbd-hint-btn {
-        min-width: 56px; min-height: 36px;
-        background: #fef3c7; color: #92400e;
-        border: 1px solid #fbbf24; border-radius: 8px;
-        font-weight: 700; font-size: 0.92rem;
-        cursor: pointer;
-    }
-    .kbd-hint-btn:active { background: #fde68a; }
     .kbd-toggle-layout {
-        margin-left: auto;
-        min-width: 48px; min-height: 36px;
+        min-width: 60px; min-height: 44px;
         background: #6b7280; color: white;
-        border: none; border-radius: 8px;
-        font-size: 0.78rem; font-weight: 700;
+        border: none; border-radius: 10px;
+        font-size: 0.85rem; font-weight: 700;
         cursor: pointer;
     }
-
-    /* Fila de teclas */
-    .kbd-row {
+    .kbd-row-letters {
         display: grid;
         grid-template-columns: repeat(10, 1fr);
-        gap: 8px;
-        padding: 5px 0;
+        gap: 6px;
     }
-    .kbd-row-nums { background: rgba(0,0,0,0.04); border-radius: 8px; padding: 6px 4px; margin-bottom: 4px; }
-    .kbd-key {
-        min-height: 52px;
+    .kbd-key-letter {
+        min-height: 50px;
         background: white;
         border: 1px solid #d1d5db;
         border-radius: 8px;
-        font-size: 1.05rem;
-        font-weight: 600;
+        font-size: 1.1rem;
+        font-weight: 700;
         color: #111827;
         cursor: pointer;
         touch-action: manipulation;
         box-shadow: 0 1px 0 rgba(0,0,0,0.05);
     }
-    .kbd-key:active {
+    .kbd-key-letter:active {
         background: #d1d5db;
         transform: scale(0.95);
-        transition: all 0.05s ease;
     }
-    .kbd-num { font-weight: 700; color: #1e40af; }
-
-    /* Fila de acciones */
-    .kbd-row-actions {
-        grid-template-columns: 1fr 1fr 1.5fr;
-        margin-top: 10px;
-        gap: 10px;
-    }
-    .kbd-action {
-        min-height: 58px;
-        font-size: 0.95rem;
-        font-weight: 800;
-    }
-    .kbd-clear { background: #fef2f2; color: #991b1b; border-color: #fca5a5; }
-    .kbd-clear:active { background: #fecaca; }
-    .kbd-back { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
-    .kbd-back:active { background: #fde68a; }
-    .kbd-enter { background: #16a34a; color: white; border-color: #15803d; }
-    .kbd-enter:active { background: #15803d; }
-
-    /* Modo numérico grande */
-    .kbd-num-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 6px;
-        padding: 6px;
-    }
-    .kbd-num-grid > * {
-        min-height: 64px;
-        font-size: 1.5rem;
-        font-weight: 800;
-        background: white;
-        border: 1px solid #d1d5db;
-        border-radius: 8px;
-        cursor: pointer;
-        color: #111827;
-    }
-    .kbd-num-back { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
-    .kbd-num-enter { background: #16a34a; color: white; border-color: #15803d; }
 </style>
