@@ -14,6 +14,7 @@ public class CatalogItem
     public decimal Stock { get; set; }
     public bool EsCafe { get; set; }
     public DateTime? StockChangedAt { get; set; }
+    public string? Marca { get; set; }   // FRIKAF, COLOMBRARO, MASCARDI, etc. (null en combos)
 
     // Campos pre-calculados al cargar (para ranking rápido)
     public string SkuUpper { get; set; } = "";
