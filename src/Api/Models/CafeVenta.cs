@@ -80,6 +80,11 @@ public class CafeVenta
     [MaxLength(50)]
     public string? WeekDays { get; set; }
 
+    /// <summary>"EN RADAR" - jerga interna: cuando estemos por la zona. Si está activo, en lugar
+    /// de listar días específicos en el PDF se imprime "a coordinar". USO INTERNO: el cliente NO ve
+    /// "EN RADAR" en ningún lado. La UI lo activa tildeando los 6 días LUN-SAB o tocando el botón.</summary>
+    public bool EnRadar { get; set; } = false;
+
     /// <summary>Si esta marcado como pagado (estampa el sello en el PDF).</summary>
     public bool IsPaid { get; set; }
 

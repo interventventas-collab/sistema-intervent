@@ -1368,23 +1368,39 @@
                             </div>
                             <textarea class="form-input" rows="2" @bind="formObservaciones" placeholder="Notas internas (opcional)"></textarea>
 
-                            @* Dias de visita / reparto (chiquitos) *@
+                            @* Dias de visita / reparto — con ✓ check y botón EN RADAR (interno) *@
                             <div style="margin-top: 0.6rem;">
                                 <label style="font-size: 0.72rem; color: #6b7280; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;">Días de visita / reparto</label>
-                                <div style="display: flex; gap: 0.25rem; flex-wrap: wrap; margin-top: 0.3rem;">
+                                <div style="display: flex; gap: 0.3rem; flex-wrap: wrap; margin-top: 0.3rem; align-items: center;">
                                     @foreach (var d in AllWeekDays)
                                     {
                                         var on = formWeekDays.Contains(d);
-                                        var bg = on ? "#1f2937" : "white";
-                                        var fg = on ? "white" : "#374151";
-                                        var bd = on ? "#1f2937" : "#d1d5db";
+                                        var bg = on ? "#dbeafe" : "white";
+                                        var fg = on ? "#1e3a8a" : "#374151";
+                                        var bd = on ? "#1e40af" : "#d1d5db";
+                                        var bw = on ? "2px" : "1px";
                                         <button type="button"
                                                 @onclick="() => ToggleFormDay(d)"
-                                                style="display: inline-flex; align-items: center; justify-content: center; padding: 0.2rem 0.5rem; border: 1px solid @bd; background: @bg; color: @fg; border-radius: 4px; font-weight: 700; font-size: 0.72rem; cursor: pointer; min-width: 36px; user-select: none;">
-                                            @d
+                                                style="display: inline-flex; align-items: center; justify-content: center; padding: 0.25rem 0.5rem; border: @bw solid @bd; background: @bg; color: @fg; border-radius: 5px; font-weight: 700; font-size: 0.72rem; cursor: pointer; min-width: 42px; user-select: none;">
+                                            @(on ? "✓ " : "")@d
                                         </button>
                                     }
+                                    @{
+                                        var radarBg = formEnRadar ? "#1d4ed8" : "white";
+                                        var radarFg = formEnRadar ? "white" : "#374151";
+                                        var radarBd = formEnRadar ? "#1e3a8a" : "#d1d5db";
+                                    }
+                                    <button type="button"
+                                            @onclick="ToggleEnRadar"
+                                            title="Cuando estemos por la zona (uso interno — el cliente ve 'a coordinar' en el PDF)"
+                                            style="display: inline-flex; align-items: center; gap: 0.2rem; padding: 0.25rem 0.6rem; border: 2px solid @radarBd; background: @radarBg; color: @radarFg; border-radius: 5px; font-weight: 800; font-size: 0.72rem; cursor: pointer; user-select: none; margin-left: 0.4rem;">
+                                        @(formEnRadar ? "✓ " : "")🛰 EN RADAR
+                                    </button>
                                 </div>
+                                @if (formEnRadar)
+                                {
+                                    <div style="font-size: 0.68rem; color: #1e3a8a; margin-top: 0.3rem;">📍 Uso interno · El cliente verá <strong>"a coordinar"</strong> en el comprobante.</div>
+                                }
                             </div>
 
                             @* Entrega: quien lleva la mercaderia. Opcional. Pedido del usuario 2026-05-20. *@
@@ -2594,6 +2610,9 @@
     private List<CafeCotizarItemRequest> formItems = new();
     private CafeCotizadoDto? cotizacion;
     private HashSet<string> formWeekDays = new();
+    // "EN RADAR" — interno, en el PDF se muestra como "a coordinar".
+    // Se prende cuando los 6 días LUN-SAB están tildados (manual o vía botón). Se apaga al destildar cualquiera.
+    private bool formEnRadar = false;
     private bool formIsPaid;
     private string formEntregaPor = "";
 
@@ -3196,7 +3215,7 @@
         addMode = "PRODUCTO";
         addComboId = 0; addComboCantidad = 1;
         comboSearch = ""; comboSearchOpen = false;
-        formWeekDays = new(); formIsPaid = false; formEntregaPor = "";
+        formWeekDays = new(); formEnRadar = false; formIsPaid = false; formEntregaPor = "";
         // Reset del panel "Enviar al cliente" — todos los checkboxes empiezan apagados
         // para que nunca mandes algo sin querer. El operador tilda lo que necesite por venta.
         envioEmail = false; envioWhatsappWeb = false; envioWhatsappInterno = false;
@@ -3204,9 +3223,35 @@
         formError = null; showForm = true;
     }
 
+    /// <summary>EN RADAR cubre LUN a SAB (no DOM — DOM es caso particular separado).</summary>
+    private static readonly string[] RadarDays = { "LUN", "MAR", "MIE", "JUE", "VIE", "SAB" };
+
     private void ToggleFormDay(string d)
     {
         if (!formWeekDays.Add(d)) formWeekDays.Remove(d);
+        // Lógica auto-radar:
+        //  - Si destildaste un día LUN-SAB y EN RADAR estaba activo → se apaga (ya no es "cualquier día")
+        //  - Si tildando manualmente quedaron los 6 LUN-SAB tildados → EN RADAR se enciende solo
+        bool todosRadarOn = RadarDays.All(x => formWeekDays.Contains(x));
+        if (formEnRadar && !todosRadarOn) formEnRadar = false;
+        else if (!formEnRadar && todosRadarOn) formEnRadar = true;
+    }
+
+    /// <summary>Botón EN RADAR: tildea los 6 días LUN-SAB y prende el flag.
+    /// Si ya estaba activo, destildea todos los días LUN-SAB y apaga el flag.
+    /// DOM queda intocado (es independiente).</summary>
+    private void ToggleEnRadar()
+    {
+        if (formEnRadar)
+        {
+            foreach (var d in RadarDays) formWeekDays.Remove(d);
+            formEnRadar = false;
+        }
+        else
+        {
+            foreach (var d in RadarDays) formWeekDays.Add(d);
+            formEnRadar = true;
+        }
     }
 
     /// <summary>Cuando el operador cambia el tipo de comprobante, sugerimos defaults coherentes:
@@ -3521,6 +3566,7 @@
             comboSearch = ""; comboSearchOpen = false;
             formWeekDays = (payload.WeekDays ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
                 .Select(s => s.Trim().ToUpperInvariant()).ToHashSet();
+            formEnRadar = payload.EnRadar;
             formIsPaid = false; // empezás impago, el cobro de la nueva es independiente
             formError = null; showForm = true;
             // Cargar info del cliente (productos top, deudas, condIva default si cambió)
@@ -4017,6 +4063,7 @@
                 Descuento = formDescuento,
                 Observaciones = formObservaciones,
                 WeekDays = weekCsv,
+                EnRadar = formEnRadar,
                 IsPaid = formIsPaid,
                 TipoComprobante = formTipoComprobante,
                 CondicionIva = formCondicionIva,
@@ -4109,6 +4156,7 @@
                     Descuento = formDescuento,
                     Observaciones = notesToSave,
                     WeekDays = weekCsv ?? "",
+                    EnRadar = formEnRadar,
                     IsPaid = formIsPaid,
                     TipoComprobante = formTipoComprobante,
                     CondicionIva = formCondicionIva,
@@ -4159,6 +4207,7 @@
                     Descuento = formDescuento,
                     Observaciones = notesToSave,
                     WeekDays = weekCsv,
+                    EnRadar = formEnRadar,
                     IsPaid = false,  // NUNCA marcar pagado al crear — el flag se sincroniza por la cobranza
                     TipoComprobante = formTipoComprobante,
                     CondicionIva = formCondicionIva,
@@ -4597,6 +4646,7 @@
         formWeekDays = string.IsNullOrWhiteSpace(v.WeekDays)
             ? new HashSet<string>()
             : v.WeekDays.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(s => s.Trim().ToUpperInvariant()).ToHashSet();
+        formEnRadar = v.EnRadar;
         formIsPaid = v.IsPaid;
         formEntregaPor = v.EntregaPor ?? "";
         // Items: convertir a CafeCotizarItemRequest para que el form los muestre y los pueda editar.
