@@ -49,7 +49,9 @@ public class CafeCotizacionPdfService
                         ?? TryLoadLogoFallback(cfg.NegocioCuit);
         var diasActivos = (v.WeekDays ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
             .Select(s => s.Trim().ToUpperInvariant()).ToHashSet();
-        var allDays = new[] { "LUN", "MAR", "MIE", "JUE", "VIE", "SAB", "DOM" };
+        // Días a mostrar: LUN-SAB siempre + DOM solo si fue tildado (caso particular)
+        var diasDelComp = new List<string> { "LUN", "MAR", "MIE", "JUE", "VIE", "SAB" };
+        if (diasActivos.Contains("DOM")) diasDelComp.Add("DOM");
 
         var pdf = Document.Create(container =>
         {
@@ -426,20 +428,30 @@ public class CafeCotizacionPdfService
                         });
                     }
 
-                    // Días de visita / reparto
+                    // Días de visita / reparto — con ✓ check + EN RADAR muestra "a coordinar"
                     fc.Item().PaddingTop(5).Border(1).BorderColor(Colors.Grey.Lighten1).Padding(5).Row(row =>
                     {
                         row.AutoItem().AlignMiddle().PaddingRight(6).Text("Días de visita / reparto:")
                             .FontSize(8).FontColor(Colors.Grey.Darken1);
-                        foreach (var d in allDays)
+                        if (v.EnRadar)
                         {
-                            var on = diasActivos.Contains(d);
-                            var bg = on ? Colors.Grey.Darken4 : Colors.White;
-                            var fg = on ? Colors.White : Colors.Grey.Darken2;
-                            var bd = on ? Colors.Grey.Darken4 : Colors.Grey.Lighten1;
-                            row.ConstantItem(36).PaddingHorizontal(2).Border(1).BorderColor(bd)
-                                .Background(bg).AlignCenter().AlignMiddle().Padding(2)
-                                .Text(d).Bold().FontSize(8).FontColor(fg);
+                            // Cliente ve "a coordinar" — EN RADAR es interno (jerga: "cuando estemos por la zona")
+                            row.AutoItem().AlignMiddle().Padding(3)
+                                .Text("a coordinar").Bold().FontSize(10).FontColor(Colors.Blue.Darken3);
+                        }
+                        else
+                        {
+                            foreach (var d in diasDelComp)
+                            {
+                                var on = diasActivos.Contains(d);
+                                var bg = on ? Colors.Blue.Lighten5 : Colors.White;
+                                var fg = on ? Colors.Blue.Darken3 : Colors.Grey.Darken2;
+                                var bd = on ? Colors.Blue.Darken2 : Colors.Grey.Lighten1;
+                                var bw = on ? 1.5f : 1f;
+                                row.ConstantItem(40).PaddingHorizontal(2).Border(bw).BorderColor(bd)
+                                    .Background(bg).AlignCenter().AlignMiddle().Padding(2)
+                                    .Text(on ? $"✓{d}" : d).Bold().FontSize(8).FontColor(fg);
+                            }
                         }
                     });
 

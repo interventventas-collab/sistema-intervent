@@ -192,7 +192,7 @@ public class CafeVentasController : ControllerBase
         v.ClienteId, v.ClienteNombreSnapshot, v.ClienteTipoSnapshot, v.ClienteTelefonoSnapshot,
         v.Subtotal, v.Descuento, v.Total, v.CostoTotal, v.Margen,
         v.Observaciones, v.Estado,
-        v.WeekDays, v.IsPaid,
+        v.WeekDays, v.EnRadar, v.IsPaid,
         v.TipoComprobante, v.CondicionIva, v.CondicionPago,
         v.CreatedAt,
         v.Items.Select(i => new CafeVentaItemDto(
@@ -631,6 +631,7 @@ public class CafeVentasController : ControllerBase
             IsPaid = v.IsPaid,
             TipoClienteTag = v.ClienteTipoSnapshot,
             DiasVisita = v.WeekDays,
+            EnRadar = v.EnRadar,
             ComentariosCliente = v.ClienteComentariosComprobante,
             Observaciones = v.Observaciones,
             CondicionPago = v.CondicionPago,
@@ -643,14 +644,26 @@ public class CafeVentasController : ControllerBase
             var puConDesc = it.DescuentoPct > 0 && it.Cantidad > 0
                 ? Math.Round(it.Subtotal / it.Cantidad, 2, MidpointRounding.AwayFromZero)
                 : it.PrecioUnitario;
-            var desc = it.ProductoNombreSnapshot;
-            if (!string.IsNullOrEmpty(it.Molienda)) desc += $" — {it.Molienda}";
-            if (it.EsDoyPack) desc += " (d.p.)"; else if (it.EsEnvasePlateado) desc += " (env. plat.)";
-            if (!it.EsConceptoLibre) desc += $" · {it.Formato}";
+            // Producto: solo el nombre (snapshot) + sufijos d.p./env. plat. si aplica
+            var prodName = it.ProductoNombreSnapshot;
+            if (it.EsDoyPack) prodName += " (d.p.)";
+            else if (it.EsEnvasePlateado) prodName += " (env. plat.)";
+
+            // Formato: molienda + formato físico (ej "EN GRANOS · 1KG")
+            var fmtParts = new List<string>();
+            if (!string.IsNullOrEmpty(it.Molienda)) fmtParts.Add(it.Molienda!);
+            if (!it.EsConceptoLibre) fmtParts.Add(it.Formato);
+            var fmtStr = string.Join(" · ", fmtParts);
+
+            // Descripcion (legacy): texto unico que se usa como fallback en PDF si no hay separación
+            var desc = prodName + (string.IsNullOrEmpty(fmtStr) ? "" : $" — {fmtStr}");
 
             comp.Items.Add(new PdfItem
             {
                 Descripcion = desc,
+                Sku = it.ProductoNav?.Sku,           // SKU separado (columna propia)
+                Producto = prodName,                  // Nombre limpio
+                Formato = fmtStr,                     // Formato limpio
                 Cantidad = it.Cantidad,
                 PrecioUnitario = puConDesc,
                 AlicPct = letra == "C" ? 0 : 21m, // Hardcoded 21% — coherente con la emisión
@@ -812,6 +825,7 @@ public class CafeVentasController : ControllerBase
             Observaciones = req.Observaciones,
             Estado = "emitido",
             WeekDays = NormWeekDays(req.WeekDays),
+            EnRadar = req.EnRadar,
             IsPaid = req.IsPaid,
             TipoComprobante = NormTipoComprobante(req.TipoComprobante),
             CondicionIva = NormCondicionIva(req.CondicionIva),
@@ -934,6 +948,7 @@ public class CafeVentasController : ControllerBase
             Observaciones = string.IsNullOrWhiteSpace(req.Observaciones) ? null : req.Observaciones.Trim(),
             Estado = "emitido",
             WeekDays = NormWeekDays(req.WeekDays),
+            EnRadar = req.EnRadar,
             IsPaid = req.IsPaid,
             TipoComprobante = NormTipoComprobante(req.TipoComprobante),
             CondicionIva = NormCondicionIva(req.CondicionIva),
@@ -1350,6 +1365,7 @@ public class CafeVentasController : ControllerBase
             CondicionIva: v.CondicionIva,
             CondicionPago: v.CondicionPago,
             WeekDays: v.WeekDays,
+            EnRadar: v.EnRadar,
             Observaciones: v.Observaciones,
             Items: items,
             OrigenNumero: v.Numero);
@@ -1364,6 +1380,7 @@ public class CafeVentasController : ControllerBase
         var v = await _db.CafeVentas.Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == id);
         if (v is null) return NotFound(new { error = "Venta no encontrada" });
         if (req.WeekDays is not null) v.WeekDays = NormWeekDays(req.WeekDays);
+        if (req.EnRadar.HasValue) v.EnRadar = req.EnRadar.Value;
         if (req.IsPaid.HasValue) v.IsPaid = req.IsPaid.Value;
         v.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
@@ -1544,6 +1561,7 @@ public class CafeVentasController : ControllerBase
         if (req.CondicionIva is not null) v.CondicionIva = NormCondicionIva(req.CondicionIva);
         if (req.CondicionPago is not null) v.CondicionPago = NormCondicionPago(req.CondicionPago);
         if (req.WeekDays is not null) v.WeekDays = NormWeekDays(req.WeekDays);
+        if (req.EnRadar.HasValue) v.EnRadar = req.EnRadar.Value;
         if (req.IsPaid.HasValue) v.IsPaid = req.IsPaid.Value;
         if (req.EntregaPor is not null) v.EntregaPor = string.IsNullOrWhiteSpace(req.EntregaPor) ? null : req.EntregaPor.Trim();
 

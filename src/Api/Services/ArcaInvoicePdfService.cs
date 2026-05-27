@@ -137,14 +137,8 @@ public class ArcaInvoicePdfService
                                 t.Span(receptor.CondicionVenta!);
                             });
                         }
-                        if (!string.IsNullOrWhiteSpace(comp.DiasVisita))
-                        {
-                            c.Item().Text(t =>
-                            {
-                                t.Span("Días de visita: ").SemiBold();
-                                t.Span(comp.DiasVisita!).FontSize(8);
-                            });
-                        }
+                        // Días de visita ya NO se muestra acá — vive abajo en el bloque
+                        // DOMICILIO DE ENTREGA junto con los pills LUN-DOM (más prolijo y único lugar).
                         // Comentarios del cliente para el comprobante (notas del cliente que aparecen en TODOS sus comprobantes)
                         if (!string.IsNullOrWhiteSpace(comp.ComentariosCliente))
                         {
@@ -167,31 +161,41 @@ public class ArcaInvoicePdfService
                 // ───── CONTENIDO (items) ─────
                 page.Content().PaddingTop(10).Table(table =>
                 {
+                    // Tabla con orden: Cant / SKU / Producto / Formato / P.Unitario / Desc. / [IVA%] / Subtotal
+                    // Letra A: muestra columna IVA% (8 columnas). Letras B/C: sin IVA% (7 columnas).
                     if (discriminaIva)
                     {
                         table.ColumnsDefinition(cols =>
                         {
-                            cols.RelativeColumn(5);  // Descripción
-                            cols.ConstantColumn(55); // Cantidad
-                            cols.ConstantColumn(70); // Precio U.
-                            cols.ConstantColumn(45); // IVA %
-                            cols.ConstantColumn(75); // Subtotal
+                            cols.ConstantColumn(35); // Cant.
+                            cols.ConstantColumn(50); // SKU
+                            cols.RelativeColumn(4);  // Producto
+                            cols.RelativeColumn(2);  // Formato
+                            cols.ConstantColumn(60); // P. Unitario
+                            cols.ConstantColumn(40); // Desc.
+                            cols.ConstantColumn(38); // IVA %
+                            cols.ConstantColumn(70); // Subtotal
                         });
                         table.Header(h =>
                         {
-                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).Text("Descripción").SemiBold();
                             h.Cell().Background(Colors.Grey.Lighten3).Padding(3).AlignRight().Text("Cant.").SemiBold();
-                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).AlignRight().Text("Precio U.").SemiBold();
+                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).Text("SKU").SemiBold();
+                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).Text("Producto").SemiBold();
+                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).Text("Formato").SemiBold();
+                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).AlignRight().Text("P. Unitario").SemiBold();
+                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).AlignRight().Text("Desc.").SemiBold();
                             h.Cell().Background(Colors.Grey.Lighten3).Padding(3).AlignRight().Text("IVA %").SemiBold();
                             h.Cell().Background(Colors.Grey.Lighten3).Padding(3).AlignRight().Text("Subtotal").SemiBold();
                         });
                         foreach (var it in comp.Items)
                         {
                             var sub = Math.Round(it.Cantidad * it.PrecioUnitario, 2, MidpointRounding.AwayFromZero);
-                            table.Cell().BorderBottom(0.3f).Padding(2).Text(it.Descripcion);
+                            var prod = it.Producto ?? it.Descripcion;
+                            var fmt = it.Formato ?? "";
                             table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text(it.Cantidad.ToString("N2", new CultureInfo("es-AR")));
-                            // Precio U.: si hubo descuento de linea, mostramos el ORIGINAL tachado
-                            // + el final + "X% desc." debajo. Si no, solo el precio normal.
+                            table.Cell().BorderBottom(0.3f).Padding(2).Text(it.Sku ?? "").FontSize(8).FontColor(Colors.Blue.Darken2).SemiBold();
+                            table.Cell().BorderBottom(0.3f).Padding(2).Text(prod);
+                            table.Cell().BorderBottom(0.3f).Padding(2).Text(fmt).FontSize(8).FontColor(Colors.Grey.Darken1);
                             table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text(t =>
                             {
                                 if (it.DescuentoPct.HasValue && it.PrecioOriginal.HasValue)
@@ -199,36 +203,41 @@ public class ArcaInvoicePdfService
                                     t.Span("$ " + it.PrecioOriginal.Value.ToString("N2", new CultureInfo("es-AR")))
                                         .Strikethrough().FontColor(Colors.Grey.Medium);
                                     t.Span("\n");
-                                    t.Span(it.DescuentoPct.Value.ToString("0.##") + "% desc.")
-                                        .FontSize(7).FontColor(Colors.Red.Darken1);
+                                    t.Span("$ " + it.PrecioUnitario.ToString("N2", new CultureInfo("es-AR")));
                                 }
                                 else
                                 {
                                     t.Span("$ " + it.PrecioUnitario.ToString("N2", new CultureInfo("es-AR")));
                                 }
                             });
+                            table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text(
+                                it.DescuentoPct.HasValue ? it.DescuentoPct.Value.ToString("0.##") + "%" : "—"
+                            ).FontSize(8);
                             table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text(it.AlicPct.ToString("0.##") + "%");
                             table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text("$ " + sub.ToString("N2", new CultureInfo("es-AR")));
                         }
                     }
                     else
                     {
-                        // B / C — el "Precio U." y "Subtotal" se muestran CON IVA INCLUIDO
-                        // (estilo Contabilium / Régimen de Transparencia Fiscal Ley 27.743).
-                        // El cliente ve directamente lo que paga; el IVA queda "contenido"
-                        // y se informa abajo. En letra C la alícuota es 0, así que no cambia.
+                        // B / C — sin IVA% (queda incluido en Precio U.) — 7 columnas.
                         table.ColumnsDefinition(cols =>
                         {
-                            cols.RelativeColumn(6);   // Descripción
-                            cols.ConstantColumn(55);  // Cantidad
-                            cols.ConstantColumn(85);  // Precio U. (con IVA)
-                            cols.ConstantColumn(90);  // Subtotal (con IVA)
+                            cols.ConstantColumn(35); // Cant.
+                            cols.ConstantColumn(50); // SKU
+                            cols.RelativeColumn(4);  // Producto
+                            cols.RelativeColumn(2);  // Formato
+                            cols.ConstantColumn(70); // P. Unitario (con IVA)
+                            cols.ConstantColumn(40); // Desc.
+                            cols.ConstantColumn(80); // Subtotal (con IVA)
                         });
                         table.Header(h =>
                         {
-                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).Text("Descripción").SemiBold();
                             h.Cell().Background(Colors.Grey.Lighten3).Padding(3).AlignRight().Text("Cant.").SemiBold();
-                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).AlignRight().Text("Precio U.").SemiBold();
+                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).Text("SKU").SemiBold();
+                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).Text("Producto").SemiBold();
+                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).Text("Formato").SemiBold();
+                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).AlignRight().Text("P. Unitario").SemiBold();
+                            h.Cell().Background(Colors.Grey.Lighten3).Padding(3).AlignRight().Text("Desc.").SemiBold();
                             h.Cell().Background(Colors.Grey.Lighten3).Padding(3).AlignRight().Text("Subtotal").SemiBold();
                         });
                         foreach (var it in comp.Items)
@@ -236,13 +245,15 @@ public class ArcaInvoicePdfService
                             var pct = esTipoC ? 0m : it.AlicPct;
                             var pcuConIva = Math.Round(it.PrecioUnitario * (1 + pct / 100m), 2, MidpointRounding.AwayFromZero);
                             var subConIva = Math.Round(it.Cantidad * pcuConIva, 2, MidpointRounding.AwayFromZero);
-                            // Precio original CON IVA (para que la comparacion sea consistente — en letra B
-                            // todos los precios mostrados llevan IVA incluido).
                             var pcuOrigConIva = it.PrecioOriginal.HasValue
                                 ? Math.Round(it.PrecioOriginal.Value * (1 + pct / 100m), 2, MidpointRounding.AwayFromZero)
                                 : 0m;
-                            table.Cell().BorderBottom(0.3f).Padding(2).Text(it.Descripcion);
+                            var prod = it.Producto ?? it.Descripcion;
+                            var fmt = it.Formato ?? "";
                             table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text(it.Cantidad.ToString("N2", new CultureInfo("es-AR")));
+                            table.Cell().BorderBottom(0.3f).Padding(2).Text(it.Sku ?? "").FontSize(8).FontColor(Colors.Blue.Darken2).SemiBold();
+                            table.Cell().BorderBottom(0.3f).Padding(2).Text(prod);
+                            table.Cell().BorderBottom(0.3f).Padding(2).Text(fmt).FontSize(8).FontColor(Colors.Grey.Darken1);
                             table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text(t =>
                             {
                                 if (it.DescuentoPct.HasValue && it.PrecioOriginal.HasValue)
@@ -250,14 +261,16 @@ public class ArcaInvoicePdfService
                                     t.Span("$ " + pcuOrigConIva.ToString("N2", new CultureInfo("es-AR")))
                                         .Strikethrough().FontColor(Colors.Grey.Medium);
                                     t.Span("\n");
-                                    t.Span(it.DescuentoPct.Value.ToString("0.##") + "% desc.")
-                                        .FontSize(7).FontColor(Colors.Red.Darken1);
+                                    t.Span("$ " + pcuConIva.ToString("N2", new CultureInfo("es-AR")));
                                 }
                                 else
                                 {
                                     t.Span("$ " + pcuConIva.ToString("N2", new CultureInfo("es-AR")));
                                 }
                             });
+                            table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text(
+                                it.DescuentoPct.HasValue ? it.DescuentoPct.Value.ToString("0.##") + "%" : "—"
+                            ).FontSize(8);
                             table.Cell().BorderBottom(0.3f).Padding(2).AlignRight().Text("$ " + subConIva.ToString("N2", new CultureInfo("es-AR")));
                         }
                     }
@@ -310,7 +323,9 @@ public class ArcaInvoicePdfService
                             .Split(',', StringSplitOptions.RemoveEmptyEntries)
                             .Select(s => s.Trim().ToUpperInvariant())
                             .ToHashSet();
-                        var allDays = new[] { "LUN", "MAR", "MIE", "JUE", "VIE", "SAB", "DOM" };
+                        // DOM solo se muestra si está tildado (caso particular). LUN-SAB siempre.
+                        var diasDelComp = new List<string> { "LUN", "MAR", "MIE", "JUE", "VIE", "SAB" };
+                        if (diasActivos.Contains("DOM")) diasDelComp.Add("DOM");
 
                         col.Item().PaddingTop(4).Background(Colors.Grey.Lighten4).Border(0.5f).BorderColor(Colors.Grey.Lighten1)
                             .Padding(5).Row(r =>
@@ -328,24 +343,37 @@ public class ArcaInvoicePdfService
                                         t.Span(comp.EntregaPor!).Bold().FontSize(9).FontColor(Colors.Grey.Darken4);
                                     });
                                 }
-                                // Pills LUN-DOM con el formato de la cotizacion (dia marcado en
-                                // negro/blanco, dia no marcado en blanco/gris). Solo se dibujan
-                                // si hay al menos un dia configurado en la venta.
-                                if (diasActivos.Count > 0)
+                                // Si "EN RADAR" está activo, el cliente ve "a coordinar" en lugar de los pills.
+                                // "EN RADAR" es jerga interna (cuando estemos por la zona) — NUNCA se imprime literal.
+                                if (comp.EnRadar)
                                 {
                                     cc.Item().PaddingTop(3).Row(daysRow =>
                                     {
                                         daysRow.AutoItem().AlignMiddle().PaddingRight(4)
                                             .Text("Días de entrega:").FontSize(7).FontColor(Colors.Grey.Darken1);
-                                        foreach (var d in allDays)
+                                        daysRow.AutoItem().AlignMiddle().Padding(2)
+                                            .Text("a coordinar").Bold().FontSize(9).FontColor(Colors.Blue.Darken3);
+                                    });
+                                }
+                                else if (diasActivos.Count > 0)
+                                {
+                                    // Pills LUN-SAB (+ DOM si está tildado): día marcado lleva ✓ con borde azul,
+                                    // día no marcado queda en blanco/gris. Cambio respecto al diseño anterior
+                                    // (que sombreaba): ahora se ve más claro qué está y qué no.
+                                    cc.Item().PaddingTop(3).Row(daysRow =>
+                                    {
+                                        daysRow.AutoItem().AlignMiddle().PaddingRight(4)
+                                            .Text("Días de entrega:").FontSize(7).FontColor(Colors.Grey.Darken1);
+                                        foreach (var d in diasDelComp)
                                         {
                                             var on = diasActivos.Contains(d);
-                                            var bg = on ? Colors.Grey.Darken4 : Colors.White;
-                                            var fg = on ? Colors.White : Colors.Grey.Darken2;
-                                            var bd = on ? Colors.Grey.Darken4 : Colors.Grey.Lighten1;
-                                            daysRow.ConstantItem(28).PaddingHorizontal(1).Border(1).BorderColor(bd)
-                                                .Background(bg).AlignCenter().AlignMiddle().Padding(1)
-                                                .Text(d).Bold().FontSize(7).FontColor(fg);
+                                            var bg = on ? Colors.Blue.Lighten5 : Colors.White;
+                                            var fg = on ? Colors.Blue.Darken3 : Colors.Grey.Darken2;
+                                            var bd = on ? Colors.Blue.Darken2 : Colors.Grey.Lighten1;
+                                            var bw = on ? 1.5f : 0.5f;
+                                            daysRow.ConstantItem(30).PaddingHorizontal(1).Border(bw).BorderColor(bd)
+                                                .Background(bg).AlignCenter().AlignMiddle().Padding(2)
+                                                .Text(on ? $"✓{d}" : d).Bold().FontSize(7).FontColor(fg);
                                         }
                                     });
                                 }
@@ -565,6 +593,9 @@ public class PdfComprobante
     public string? TipoClienteTag { get; set; }
     /// <summary>Días de visita/reparto (LUN/MAR/...) como CSV. Si null no se muestra.</summary>
     public string? DiasVisita { get; set; }
+    /// <summary>"EN RADAR" — uso interno: cuando estemos por la zona. Si está en true,
+    /// el footer reemplaza los pills de días por "a coordinar". El cliente NUNCA ve "EN RADAR" textual.</summary>
+    public bool EnRadar { get; set; }
     /// <summary>Quien entrega la venta (Gabriel, Nacho, Maxi, Alexis, Miguel, Rodrigo, o
     /// 'Logistica tercerizada'). Si esta seteado se muestra en el bloque DOMICILIO DE ENTREGA.</summary>
     public string? EntregaPor { get; set; }
@@ -582,7 +613,15 @@ public class PdfComprobante
 
 public class PdfItem
 {
+    /// <summary>Descripción full (legacy): "Café Brasil Selección — EN GRANOS · 1KG".
+    /// Se usa como fallback si Sku/Producto/Formato no están seteados.</summary>
     public string Descripcion { get; set; } = "";
+    /// <summary>SKU del producto (ej "F1", "C8733BL"). Si null/vacío, no se muestra en columna SKU.</summary>
+    public string? Sku { get; set; }
+    /// <summary>Nombre del producto separado (ej "Café Brasil Selección"). Si null usa Descripcion.</summary>
+    public string? Producto { get; set; }
+    /// <summary>Formato del producto separado (ej "EN GRANOS · 1KG"). Si null queda vacío.</summary>
+    public string? Formato { get; set; }
     public decimal Cantidad { get; set; }
     /// <summary>Precio unitario FINAL (con descuento ya aplicado si lo hay).</summary>
     public decimal PrecioUnitario { get; set; }
