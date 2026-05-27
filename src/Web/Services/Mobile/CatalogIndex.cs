@@ -126,13 +126,13 @@ public class CatalogIndex
     /// Ej: con marca COLOMBRARO seleccionada, devuelve los prefijos más frecuentes de SKUs COLOMBRARO.
     /// Útil para que los botones azules del teclado se adapten al subset filtrado.
     /// </summary>
-    public List<string> GetCommonPrefixes(Func<CatalogItem, bool>? filter, int max = 6)
+    public List<string> GetCommonPrefixes(Func<CatalogItem, bool>? filter, int max = 6, int maxPrefixLen = 8)
     {
         if (_items == null) return new();
         return _items
             .Where(it => filter == null || filter(it))
             .Select(it => ExtractLeadingLetters(it.SkuUpper))
-            .Where(p => !string.IsNullOrEmpty(p) && p.Length <= 4)
+            .Where(p => !string.IsNullOrEmpty(p) && p.Length <= maxPrefixLen)
             .GroupBy(p => p)
             .OrderByDescending(g => g.Count())
             .ThenBy(g => g.Key.Length)

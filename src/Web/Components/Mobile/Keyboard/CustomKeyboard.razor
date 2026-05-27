@@ -74,7 +74,8 @@
             {
                 @if (HasDynamicSuffixes)
                 {
-                    <button class="kbd-suffix-big" @onclick="@(() => InsertText(p))">+@p</button>
+                    @* Sufijos naranjas: también con toggle (2do tap saca) *@
+                    <button class="kbd-suffix-big" @onclick="@(() => InsertPrefijoAsync(p))">+@p</button>
                 }
                 else
                 {
@@ -173,10 +174,19 @@
 
     private async Task InsertPrefijoAsync(string prefijo)
     {
-        if (Value.Length + prefijo.Length > MaxLength) return;
         await Haptic();
-        await Prefs.RegistrarUsoPrefijoAsync(prefijo);
-        Value += prefijo;
+        // Toggle: si el value YA termina con este prefijo, sacarlo (segundo tap = deseleccionar).
+        // Si no, agregarlo.
+        if (!string.IsNullOrEmpty(Value) && Value.EndsWith(prefijo, StringComparison.OrdinalIgnoreCase))
+        {
+            Value = Value.Substring(0, Value.Length - prefijo.Length);
+        }
+        else
+        {
+            if (Value.Length + prefijo.Length > MaxLength) return;
+            await Prefs.RegistrarUsoPrefijoAsync(prefijo);
+            Value += prefijo;
+        }
         await ValueChanged.InvokeAsync(Value);
         StateHasChanged();
     }
