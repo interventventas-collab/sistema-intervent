@@ -32,27 +32,35 @@ public class MeliOrderService
             query = query.Where(o => o.MeliAccountId == meliAccountId.Value);
 
         var total = await query.CountAsync();
+        // BUG-FIX 2026-05-27: antes hacíamos GroupJoin+SelectMany contra MeliItems por
+        // MeliItemId solo. Cuando el MLA tiene N variantes (color, talle), eso explotaba
+        // 1 orden en N filas en el listado, dando la impresión de que se vendieron todas
+        // las variantes (ver Pack 2000013199907009: 1 venta real pero la UI mostraba 5).
+        // Fix: subquery correlada que prioriza match por VariationId si la orden tiene
+        // variant. Devuelve UNA fila por orden.
         var orders = await query
             .OrderByDescending(o => o.DateCreated)
-            .GroupJoin(
-                _db.MeliItems,
-                o => o.ItemId,
-                i => i.MeliItemId,
-                (o, items) => new { Order = o, Items = items })
-            .SelectMany(
-                x => x.Items.DefaultIfEmpty(),
-                (x, item) => new MeliOrderDto(
-                    x.Order.Id, x.Order.MeliOrderId, x.Order.MeliAccountId,
-                    x.Order.MeliAccount != null ? x.Order.MeliAccount.Nickname : "Desconocida",
-                    x.Order.Status, x.Order.DateCreated, x.Order.DateClosed,
-                    x.Order.TotalAmount, x.Order.CurrencyId,
-                    x.Order.BuyerId, x.Order.BuyerNickname,
-                    x.Order.ItemId, x.Order.ItemTitle, x.Order.Quantity, x.Order.UnitPrice, x.Order.FullUnitPrice,
-                    x.Order.ShippingId, x.Order.PackId,
-                    item != null ? item.Thumbnail : null,
-                    x.Order.ShippingStatus,
-                    x.Order.ShippingSubstatus,
-                    x.Order.ShippingMode))
+            .Select(o => new MeliOrderDto(
+                o.Id, o.MeliOrderId, o.MeliAccountId,
+                o.MeliAccount != null ? o.MeliAccount.Nickname : "Desconocida",
+                o.Status, o.DateCreated, o.DateClosed,
+                o.TotalAmount, o.CurrencyId,
+                o.BuyerId, o.BuyerNickname,
+                o.ItemId, o.ItemTitle, o.Quantity, o.UnitPrice, o.FullUnitPrice,
+                o.ShippingId, o.PackId,
+                // Thumbnail: priorizar variante exacta, fallback al primero del MeliItemId.
+                _db.MeliItems
+                    .Where(i => i.MeliItemId == o.ItemId
+                        && (o.VariationId == null || i.VariationId == o.VariationId))
+                    .Select(i => i.Thumbnail)
+                    .FirstOrDefault()
+                ?? _db.MeliItems
+                    .Where(i => i.MeliItemId == o.ItemId)
+                    .Select(i => i.Thumbnail)
+                    .FirstOrDefault(),
+                o.ShippingStatus,
+                o.ShippingSubstatus,
+                o.ShippingMode))
             .ToListAsync();
 
         return new MeliOrdersResponse(orders, total);
