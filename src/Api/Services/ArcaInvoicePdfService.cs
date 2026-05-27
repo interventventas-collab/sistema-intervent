@@ -279,32 +279,40 @@ public class ArcaInvoicePdfService
                 // ───── FOOTER ─────
                 page.Footer().Column(col =>
                 {
-                    // Totales
+                    // Totales (columna derecha)
                     col.Item().AlignRight().Column(c =>
                     {
-                        if (comp.IvasDesglosados.Count > 0)
+                        if (comp.IvasDesglosados.Count > 0 && discriminaIva)
                         {
-                            if (discriminaIva)
+                            // Letra A: IVA discriminado por norma — Importe Neto Gravado + IVA por alícuota.
+                            // Letra B/C: NO va en la columna de totales — se muestra en el bloque
+                            // "Régimen de Transparencia Fiscal" al pie (estilo Contabilium).
+                            c.Item().Text($"Importe Neto Gravado: $ {comp.ImpNeto.ToString("N2", new CultureInfo("es-AR"))}");
+                            foreach (var iva in comp.IvasDesglosados)
                             {
-                                // Letra A: IVA discriminado por norma — Importe Neto Gravado + IVA por alícuota.
-                                c.Item().Text($"Importe Neto Gravado: $ {comp.ImpNeto.ToString("N2", new CultureInfo("es-AR"))}");
-                                foreach (var iva in comp.IvasDesglosados)
-                                {
-                                    c.Item().Text($"IVA {iva.Pct.ToString("0.##")}%: $ {iva.Importe.ToString("N2", new CultureInfo("es-AR"))}");
-                                }
-                            }
-                            else
-                            {
-                                // Letra B: estilo Régimen de Transparencia Fiscal (Ley 27.743).
-                                // El IVA NO se discrimina al cliente — el precio en la fila ya
-                                // viene con IVA incluido. Sólo se informa cuánto IVA está "contenido"
-                                // dentro de ese total.
-                                var ivaContenido = comp.IvasDesglosados.Sum(iva => iva.Importe);
-                                c.Item().Text($"IVA contenido: $ {ivaContenido.ToString("N2", new CultureInfo("es-AR"))}").FontSize(8).Italic();
+                                c.Item().Text($"IVA {iva.Pct.ToString("0.##")}%: $ {iva.Importe.ToString("N2", new CultureInfo("es-AR"))}");
                             }
                         }
                         c.Item().PaddingTop(2).Text($"Importe Total: $ {comp.ImpTotal.ToString("N2", new CultureInfo("es-AR"))}").FontSize(11).Bold();
                     });
+
+                    // Bloque "Régimen de Transparencia Fiscal al Consumidor (Ley 27.743)"
+                    // SOLO aparece en Letra B (cuando el IVA va contenido en el precio).
+                    // Layout estilo Contabilium: alineado a la izquierda, chico, gris, italic.
+                    // Las 3 líneas son las que la Ley 27.743 obliga a mostrar a no-RI (CF, MO, EX).
+                    if (!discriminaIva && comp.IvasDesglosados.Count > 0)
+                    {
+                        var ivaContenido = comp.IvasDesglosados.Sum(iva => iva.Importe);
+                        col.Item().PaddingTop(6).AlignLeft().Column(rc =>
+                        {
+                            rc.Item().Text("Régimen de Transparencia Fiscal al Consumidor (Ley 27.743)")
+                                .FontSize(7).Italic().FontColor(Colors.Grey.Darken1);
+                            rc.Item().Text($"IVA contenido $ {ivaContenido.ToString("N2", new CultureInfo("es-AR"))}")
+                                .FontSize(7).FontColor(Colors.Grey.Darken2);
+                            rc.Item().Text("Otros impuestos Nacionales Indirectos $ 0,00")
+                                .FontSize(7).FontColor(Colors.Grey.Darken2);
+                        });
+                    }
 
                     // Pedido del usuario 2026-05-18: la forma de pago ahora aparece ARRIBA (en la
                     // cabecera del receptor como "Forma de pago: ..."), y abajo destacamos el
