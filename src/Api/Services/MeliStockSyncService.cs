@@ -90,6 +90,23 @@ public class MeliStockSyncService
 
         foreach (var ord in pending)
         {
+            // BUG-FIX 2026-05-27: race condition con webhooks MeLi reintentados.
+            // MeLi reintenta el mismo webhook varias veces (at-least-once). Si dos llegan casi
+            // simultaneamente, ambos invocan ProcessPendingAsync, ambos ven StockDiscounted=false
+            // y ambos descuentan stock → log duplicado en Stock_Movimientos (y riesgo de doble descuento real).
+            // Fix: claim atómico via UPDATE ... WHERE StockDiscounted=0. SQL Server garantiza que
+            // solo UN UPDATE concurrent gana (rowsAffected=1), los demás devuelven 0 y skipean.
+            var claimedRows = await _db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE MeliOrders SET StockDiscounted = 1, UpdatedAt = SYSUTCDATETIME() WHERE Id = {ord.Id} AND StockDiscounted = 0");
+            if (claimedRows == 0)
+            {
+                _logger.LogDebug("Orden MeLi #{Id} ya fue claim-eada por otro proceso, salteando", ord.MeliOrderId);
+                continue;
+            }
+            // Sincronizar el ChangeTracker para que el SaveChanges final no sobrescriba el claim.
+            ord.StockDiscounted = true;
+            ord.UpdatedAt = DateTime.UtcNow;
+
             try
             {
                 List<(CafeProducto prod, decimal cant, string? formato)>? toDiscount = null;
@@ -139,9 +156,7 @@ public class MeliStockSyncService
 
                 if (toDiscount is null || toDiscount.Count == 0)
                 {
-                    // Sin linkeo: marcar descontada igual (no hay nada que hacer).
-                    ord.StockDiscounted = true;
-                    ord.UpdatedAt = DateTime.UtcNow;
+                    // Sin linkeo: ya quedó marcada como descontada en el claim atómico arriba.
                     sinLink++;
                     procesadas++;
                     continue;
@@ -256,14 +271,16 @@ public class MeliStockSyncService
                     }
                 }
 
-                ord.StockDiscounted = true;
-                ord.UpdatedAt = DateTime.UtcNow;
+                // StockDiscounted ya quedó en true por el claim atómico al inicio del loop.
                 procesadas++;
             }
             catch (Exception ex)
             {
+                // El claim ya marcó la orden como descontada. Si el procesamiento falló a mitad,
+                // dejamos la orden marcada igual para evitar reprocesarla en loop. El operador
+                // ve el error en `errores` y ajusta a mano. Preferimos perder 1 orden a duplicar.
                 errores.Add($"Orden {ord.MeliOrderId}: {ex.Message}");
-                _logger.LogWarning(ex, "Error descontando stock de MeliOrder {Id}", ord.MeliOrderId);
+                _logger.LogWarning(ex, "Error descontando stock de MeliOrder {Id} (quedó marcada como descontada por claim previo)", ord.MeliOrderId);
             }
         }
 
