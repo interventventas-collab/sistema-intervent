@@ -94,6 +94,11 @@
                     @if (showMoreFilters)
                     {
                         <div class="more-filters-dropdown">
+                            <button class="more-filters-item @(filterUrgente ? "active" : "")" @onclick="() => { filterUrgente = !filterUrgente; InvalidateFilterCache(); showMoreFilters = false; }"
+                                    style="background:@(filterUrgente ? "#fee2e2" : "transparent"); color:@(filterUrgente ? "#991b1b" : "inherit"); font-weight:700;">
+                                🚨 URGENTE: agotadas (stock 0) o pausadas
+                            </button>
+                            <div style="border-top: 1px solid #e5e7eb; margin: 0.25rem 0;"></div>
                             <button class="more-filters-item @(filterPromo ? "active" : "")" @onclick="() => { TogglePromoFilter(); showMoreFilters = false; }">
                                 <i class="fa-solid fa-tag"></i> En promoción
                             </button>
@@ -2396,6 +2401,7 @@
     private bool filterStockPushNunca = false;         // 🔴 nunca se pusheo stock
     private bool filterStockPushOk = false;            // 🟢 pusheado reciente (<=7 dias)
     private bool filterStockPushViejo = false;         // 🟡 pusheado viejo (>7 dias)
+    private bool filterUrgente = false;                // 🚨 stock=0 OR status=paused (urgente reponer)
     private bool showMoreFilters = false;
 
     // Selection & bulk actions
@@ -2515,6 +2521,7 @@
         if (filterStockPushNunca) count++;
         if (filterStockPushOk) count++;
         if (filterStockPushViejo) count++;
+        if (filterUrgente) count++;
         return count;
     }
 
@@ -2852,6 +2859,13 @@
             filtered = filtered.Where(i => i.LastStockPushedToMeli.HasValue && i.LastStockPushedToMeli.Value >= sieteDias);
         if (filterStockPushViejo)
             filtered = filtered.Where(i => i.LastStockPushedToMeli.HasValue && i.LastStockPushedToMeli.Value < sieteDias);
+
+        // 🚨 Filtro URGENTE: stock=0 OR pausada (las que urgen reponer / reactivar).
+        // Pedido del operario: detectar al toque las publicaciones críticas que necesitan atención.
+        if (filterUrgente)
+            filtered = filtered.Where(i =>
+                i.AvailableQuantity <= 0 ||
+                string.Equals(i.Status, "paused", StringComparison.OrdinalIgnoreCase));
 
         // Text filters
         foreach (var kv in textFilters.Where(f => !string.IsNullOrEmpty(f.Value)))
