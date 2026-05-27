@@ -261,18 +261,9 @@ public class MeliStockPushService
                 stockFull = CalcStockMinComponentes(compsForFull, productos);
             else
                 stockFull = CalcStockLegacy(rows.First(), productos);
-            // Reserva por producto (regla 2026-05-25): MAX de los StockMinimoMeLi seteados.
-            // Si ninguno tiene valor → reserva 0 (MeLi recibe el stock real).
-            int reservaFull = 0;
-            var prodIdsFull = compsForFull.Select(c => c.CafeProductoId)
-                .Concat(rows.Where(r => r.CafeProductoId.HasValue).Select(r => r.CafeProductoId!.Value))
-                .Distinct();
-            foreach (var pid in prodIdsFull)
-            {
-                if (productos.TryGetValue(pid, out var p) && p.StockMinimoMeLi.HasValue && p.StockMinimoMeLi.Value > reservaFull)
-                    reservaFull = p.StockMinimoMeLi.Value;
-            }
-            var qtySellingAddress = Math.Max(0, stockFull - reservaFull);
+            // Reserva ya aplicada DENTRO de CalcStockMinComponentes/CalcStockLegacy desde 2026-05-27
+            // (fix bug HE410X6: ahora se descuenta del producto base ANTES de dividir por la cantidad del pack).
+            var qtySellingAddress = Math.Max(0, stockFull);
 
             return await PushSellingAddressForFullAsync(http, upgId!, qtySellingAddress, ct);
         }
@@ -290,20 +281,12 @@ public class MeliStockPushService
         // Leer status actual para decidir si hay que re-activar (paused → active al subir stock).
         var statusActual = doc.TryGetProperty("status", out var st) ? st.GetString() : null;
 
-        // RESERVA INTERNA — 2026-05-25 regla nueva (Opción A pedida por Osmar):
-        // Cada producto tiene su StockMinimoMeLi explícito. Si la pub mapea a varios productos,
-        // usamos el MAX (el más conservador). Si todos los productos lo tienen vacío (null o 0),
-        // NO hay reserva — MeLi recibe el stock real.
-        // El AppSetting global "meli.stock_push.reserva_interna" ya NO se usa para items normales.
+        // RESERVA INTERNA — desde 2026-05-27 la reserva (StockMinimoMeLi) se aplica
+        // DENTRO de CalcStockMinComponentes y CalcStockLegacy al producto BASE,
+        // antes de dividir por la cantidad del componente. Esto arregla el bug HE410X6
+        // donde restar la reserva al stock final del pack daba 1 menos de lo correcto.
+        // Variable `reserva` retenida = 0 acá porque ya se aplicó adentro.
         int reserva = 0;
-        var todosProdIds = compsThisItem.Select(c => c.CafeProductoId)
-            .Concat(rows.Where(r => r.CafeProductoId.HasValue).Select(r => r.CafeProductoId!.Value))
-            .Distinct().ToList();
-        foreach (var pid in todosProdIds)
-        {
-            if (productos.TryGetValue(pid, out var p) && p.StockMinimoMeLi.HasValue && p.StockMinimoMeLi.Value > reserva)
-                reserva = p.StockMinimoMeLi.Value;
-        }
 
         // Calcular stock disponible.
         if (meliVariationIds.Count > 0)
@@ -532,6 +515,11 @@ public class MeliStockPushService
     private static int CalcStockMinComponentes(List<MeliItemComponente> comps,
         Dictionary<int, CafeProducto> productos)
     {
+        // IMPORTANTE: la reserva (StockMinimoMeLi) se aplica AL PRODUCTO BASE ANTES de dividir
+        // por la cantidad del componente. Si la aplicas después (al stock final del pack)
+        // la división se hace sobre el stock total y la reserva no se "magnifica" — bug detectado
+        // 2026-05-27 con HE410X6: si HE410=22 y reserva=1, lo correcto es floor((22-1)/6)=3,
+        // NO floor(22/6)-1=2.
         int? min = null;
         foreach (var c in comps)
         {
@@ -544,8 +532,11 @@ public class MeliStockPushService
                     "1KG" => 1000m, "MEDIO" => 500m, "CUARTO" => 250m, _ => 1000m
                 };
                 var gramosNecesariosPorUnidad = gramos * c.Cantidad;
+                // Reserva en gramos: convertir StockMinimoMeLi (que está en gramos para café) — usamos como gramos directos
+                var reservaGramos = (prod.StockMinimoMeLi ?? 0);
+                var stockGramosDisponibles = Math.Max(0m, prod.StockGramos - reservaGramos);
                 disp = gramosNecesariosPorUnidad > 0
-                    ? (int)Math.Floor(prod.StockGramos / gramosNecesariosPorUnidad)
+                    ? (int)Math.Floor(stockGramosDisponibles / gramosNecesariosPorUnidad)
                     : 0;
             }
             else
@@ -553,8 +544,11 @@ public class MeliStockPushService
                 var unidadesPorBulto = string.Equals(c.Formato, "BULTO", StringComparison.OrdinalIgnoreCase)
                     && prod.UxB.HasValue && prod.UxB.Value > 0 ? prod.UxB.Value : 1;
                 var unidadesNecesariasPorUnidad = c.Cantidad * unidadesPorBulto;
+                // Aplicar reserva (StockMinimoMeLi) al producto BASE antes de dividir.
+                var reservaUnits = prod.StockMinimoMeLi ?? 0;
+                var stockUnidadesDisponibles = Math.Max(0, prod.StockUnidades - reservaUnits);
                 disp = unidadesNecesariasPorUnidad > 0
-                    ? (int)Math.Floor(prod.StockUnidades / unidadesNecesariasPorUnidad)
+                    ? (int)Math.Floor(stockUnidadesDisponibles / unidadesNecesariasPorUnidad)
                     : 0;
             }
             if (disp < 0) disp = 0;
@@ -568,18 +562,23 @@ public class MeliStockPushService
     {
         if (!mi.CafeProductoId.HasValue) return 0;
         if (!productos.TryGetValue(mi.CafeProductoId.Value, out var prod)) return 0;
+        // Aplicar reserva (StockMinimoMeLi) al stock base — coherente con CalcStockMinComponentes
+        // (la reserva siempre se descuenta del producto base, NUNCA del stock ya calculado del pack)
+        var reservaUnits = prod.StockMinimoMeLi ?? 0;
         if (string.Equals(prod.Categoria, "CAFE", StringComparison.OrdinalIgnoreCase))
         {
             var gramos = (mi.CafeFormato ?? "1KG").ToUpperInvariant() switch
             {
                 "1KG" => 1000m, "MEDIO" => 500m, "CUARTO" => 250m, _ => 1000m
             };
-            var disp = gramos > 0 ? (int)Math.Floor(prod.StockGramos / gramos) : 0;
+            var reservaGramos = reservaUnits;  // StockMinimoMeLi en café es directamente gramos
+            var stockGramosDisp = Math.Max(0m, prod.StockGramos - reservaGramos);
+            var disp = gramos > 0 ? (int)Math.Floor(stockGramosDisp / gramos) : 0;
             return disp < 0 ? 0 : disp;
         }
         else
         {
-            var disp = prod.StockUnidades;
+            var disp = Math.Max(0, prod.StockUnidades - reservaUnits);
             return disp < 0 ? 0 : disp;
         }
     }
