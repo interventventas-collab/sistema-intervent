@@ -33,6 +33,15 @@
         }
     </div>
 
+    @* Chip de marca activa (solo aparece cuando hay un filtro de marca seleccionado) *@
+    @if (!string.IsNullOrEmpty(marcaFiltro))
+    {
+        <div class="psi-marca-active">
+            <span>🏷 Filtrando: <strong>@marcaFiltro</strong></span>
+            <button class="psi-marca-clear" @onclick="@(() => { marcaFiltro = null; RunSearch(); StateHasChanged(); })">✕ Quitar</button>
+        </div>
+    }
+
     @* Resultados o estado vacío — wrapper con flex:1 para absorber el cambio de tamaño y NO mover el teclado *@
     <div class="psi-results-wrap">
     @if (string.IsNullOrEmpty(value))
@@ -70,6 +79,22 @@
                     @foreach (var item in frecuentes)
                     {
                         @RenderChip(item)
+                    }
+                </div>
+            }
+
+            @* MARCAS — abajo de todo, accesible scrolleando hacia abajo *@
+            @if (marcas.Count > 0)
+            {
+                <div class="psi-section-label">🏷 MARCAS (tocá una para filtrar)</div>
+                <div class="psi-marca-grid">
+                    @foreach (var (m, count) in marcas)
+                    {
+                        <button class="psi-marca-chip @(marcaFiltro == m ? "active" : "")"
+                                @onclick="@(() => SelectMarca(m))">
+                            <span class="psi-marca-name">@m</span>
+                            <span class="psi-marca-count">@count</span>
+                        </button>
                     }
                 </div>
             }
@@ -126,6 +151,8 @@
     private List<CatalogItem> favoritos = new();
     private List<CatalogItem> cargadosHoy = new();
     private List<CatalogItem> frecuentes = new();
+    private List<(string Marca, int Count)> marcas = new();
+    private string? marcaFiltro = null;  // marca activa (null = todas)
     private bool isCatalogLoaded = false;
     public double? LastSearchMs { get; private set; }
 
@@ -134,7 +161,34 @@
         await Prefs.LoadAsync();
         await Catalog.EnsureLoadedAsync();
         isCatalogLoaded = Catalog.Count > 0;
+        marcas = Catalog.GetMarcas(20);
         RefreshEmptyState();
+    }
+
+    private void SelectMarca(string marca)
+    {
+        marcaFiltro = (marcaFiltro == marca) ? null : marca;
+        RunSearch();
+        StateHasChanged();
+    }
+
+    /// <summary>Filtro combinado: combos (según IncludeCombos) + marca activa (si hay).</summary>
+    private Func<CatalogItem, bool>? BuildFilter()
+    {
+        Func<CatalogItem, bool>? f = FilterFn;
+        if (!IncludeCombos)
+        {
+            var prev = f;
+            f = it => it.Tipo == "producto" && (prev == null || prev(it));
+        }
+        if (!string.IsNullOrEmpty(marcaFiltro))
+        {
+            var prev = f;
+            f = it => !string.IsNullOrWhiteSpace(it.Marca)
+                      && it.Marca.Trim().Equals(marcaFiltro, StringComparison.OrdinalIgnoreCase)
+                      && (prev == null || prev(it));
+        }
+        return f;
     }
 
     private void RefreshEmptyState()
@@ -164,14 +218,7 @@
             return;
         }
         var t0 = DateTime.UtcNow;
-        // Componer filtros: el del consumidor + el filtro de "solo productos" (excluir combos) si corresponde
-        Func<CatalogItem, bool>? combined = FilterFn;
-        if (!IncludeCombos)
-        {
-            var orig = combined;
-            combined = it => it.Tipo == "producto" && (orig == null || orig(it));
-        }
-        results = Catalog.Search(value, 10, combined);
+        results = Catalog.Search(value, 10, BuildFilter());
         LastSearchMs = (DateTime.UtcNow - t0).TotalMilliseconds;
     }
 
@@ -227,9 +274,8 @@
         bool hasDigit = value.Any(char.IsDigit);
         if (!hasLetter || !hasDigit) return null;
 
-        // 1) Catálogo con el filtro aplicado (productos solamente por default)
-        Func<CatalogItem, bool>? filter = IncludeCombos ? null : (it => it.Tipo == "producto");
-        var sufs = Catalog.SuggestSuffixes(value, 6, filter);
+        // 1) Catálogo con filtro completo (productos + marca activa si hay)
+        var sufs = Catalog.SuggestSuffixes(value, 6, BuildFilter());
         if (sufs.Count > 0) return sufs;
 
         // 2) Catálogo SIN filtro (incluir combos sólo como hint visual: ayuda a entender la convención de SKU)
@@ -334,6 +380,45 @@
         min-height: 0;
         -webkit-overflow-scrolling: touch;
     }
+
+    /* Chip de marca activa (arriba, debajo del input) */
+    .psi-marca-active {
+        background: #fef3c7;
+        border-bottom: 2px solid #f59e0b;
+        padding: 8px 12px;
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 8px;
+        font-size: 0.85rem;
+        color: #78350f;
+    }
+    .psi-marca-clear {
+        background: #b91c1c; color: white;
+        border: none; border-radius: 8px;
+        padding: 6px 12px;
+        font-size: 0.8rem; font-weight: 700;
+        cursor: pointer;
+    }
+
+    /* Grid de marcas (scrolleable, en el empty state) */
+    .psi-marca-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+        padding: 4px 10px 16px;
+    }
+    .psi-marca-chip {
+        background: white;
+        border: 2px solid #d1d5db;
+        border-radius: 10px;
+        padding: 10px 12px;
+        display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+        cursor: pointer;
+        touch-action: manipulation;
+    }
+    .psi-marca-chip:active { background: #e0f2fe; border-color: #0284c7; }
+    .psi-marca-chip.active { background: #1e40af; color: white; border-color: #1e3a8a; }
+    .psi-marca-name { font-weight: 800; font-size: 0.92rem; }
+    .psi-marca-count { font-size: 0.72rem; opacity: 0.7; }
 
     .psi-section-label {
         font-size: 0.78rem; font-weight: 700;

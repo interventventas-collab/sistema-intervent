@@ -28,7 +28,8 @@ public class CatalogoBuscadorController : ControllerBase
         string? Categoria,
         decimal Stock,        // unidades o gramos según EsCafe
         bool EsCafe,
-        DateTime? StockChangedAt);
+        DateTime? StockChangedAt,
+        string? Marca);       // FRIKAF, COLOMBRARO, MASCARDI, etc. - usado para filtro rapido en buscador mobile
 
     /// <summary>Devuelve todos los SKUs activos en un solo blob. Pensado para cargar
     /// en memoria del cliente y buscar localmente (sin ida-y-vuelta por keystroke).</summary>
@@ -46,7 +47,8 @@ public class CatalogoBuscadorController : ControllerBase
                 p.Categoria,
                 p.Categoria == "CAFE" ? p.StockGramos : p.StockUnidades,
                 p.Categoria == "CAFE",
-                p.StockChangedAt))
+                p.StockChangedAt,
+                p.Marca))
             .ToListAsync();
 
         var combos = await _db.CafeCombos
@@ -60,7 +62,8 @@ public class CatalogoBuscadorController : ControllerBase
                 c.Categoria,
                 0m,             // los combos no tienen stock propio (se calcula sobre los componentes)
                 false,
-                c.UpdatedAt))
+                c.UpdatedAt,
+                null))         // los combos no tienen marca propia
             .ToListAsync();
 
         var all = productos.Concat(combos).ToList();

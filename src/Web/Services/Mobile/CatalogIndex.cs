@@ -122,6 +122,22 @@ public class CatalogIndex
     }
 
     /// <summary>
+    /// Devuelve las marcas distintas del catálogo, ordenadas por cantidad de productos (DESC).
+    /// Útil para el chip de filtro rápido (FRIKAF, COLOMBRARO, MASCARDI, etc).
+    /// </summary>
+    public List<(string Marca, int Count)> GetMarcas(int max = 30)
+    {
+        if (_items == null) return new();
+        return _items
+            .Where(it => !string.IsNullOrWhiteSpace(it.Marca))
+            .GroupBy(it => it.Marca!.Trim().ToUpperInvariant())
+            .Select(g => (Marca: g.Key, Count: g.Count()))
+            .OrderByDescending(x => x.Count)
+            .Take(max)
+            .ToList();
+    }
+
+    /// <summary>
     /// Dado un prefijo tipeado (ej: "C9333"), devuelve los sufijos posibles que EXISTEN
     /// en el catálogo real. Ej: si hay C9333BL, C9333GR, C9333NEG → devuelve ["BL","GR","NEG"].
     /// Ordena por frecuencia (cuántos SKUs comparten ese sufijo) y desempata por largo del sufijo.
