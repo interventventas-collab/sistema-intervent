@@ -21,12 +21,15 @@ public class MeliStockSyncService
     private readonly AppDbContext _db;
     private readonly ILogger<MeliStockSyncService> _logger;
     private readonly CafeStockLogger _stockLogger;
+    private readonly IServiceScopeFactory _scopeFactory;
 
-    public MeliStockSyncService(AppDbContext db, ILogger<MeliStockSyncService> logger, CafeStockLogger stockLogger)
+    public MeliStockSyncService(AppDbContext db, ILogger<MeliStockSyncService> logger,
+        CafeStockLogger stockLogger, IServiceScopeFactory scopeFactory)
     {
         _db = db;
         _logger = logger;
         _stockLogger = stockLogger;
+        _scopeFactory = scopeFactory;
     }
 
     public record StockSyncResult(int Procesadas, int DescontadasCafe, int DescontadasOtros, int SinLinkear, List<string> Errores);
@@ -41,9 +44,12 @@ public class MeliStockSyncService
 
         int procesadas = 0, descCafe = 0, descOtros = 0, sinLink = 0;
         var errores = new List<string>();
-
-        if (pending.Count == 0)
-            return new StockSyncResult(0, 0, 0, 0, errores);
+        // Set de productos cuyo stock se modificó durante el procesamiento.
+        // Al final, vamos a disparar PUSH inmediato para todos los CafeProductoIds afectados
+        // y así actualizar las OTRAS publicaciones MeLi que dependen del mismo producto base.
+        // Bug detectado 2026-05-27: cuando se vendía un pack (ej. HE410X6), descontaba stock pero
+        // no republicaba las otras pubs que dependen del mismo producto base (HE410 y sus packs).
+        var productosTocadosParaPush = new HashSet<int>();
 
         // 2026-05-25: cargar id del depósito Full una sola vez. Si la orden es Full
         // (LogisticType=fulfillment), descontamos de Cafe_StockPorDeposito[Full] en vez
@@ -196,6 +202,8 @@ public class MeliStockSyncService
                                 saveChanges: false);
                             prod.StockChangedAt = DateTime.UtcNow;
                             await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
+                            // Stock base cambió → republicar las pubs que dependen de este producto.
+                            productosTocadosParaPush.Add(prod.Id);
                         }
                         descCafe++;
                     }
@@ -241,6 +249,8 @@ public class MeliStockSyncService
                                 saveChanges: false);
                             prod.StockChangedAt = DateTime.UtcNow;
                             await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
+                            // Stock base cambió → republicar las pubs que dependen de este producto.
+                            productosTocadosParaPush.Add(prod.Id);
                         }
                         descOtros++;
                     }
@@ -258,6 +268,33 @@ public class MeliStockSyncService
         }
 
         await _db.SaveChangesAsync();
+
+        // PUSH EN CASCADA: después de descontar stock por ventas MeLi, republicamos TODAS las
+        // pubs que dependen de los productos afectados. Fire-and-forget para no demorar este job.
+        // Cada producto va en su propio scope (DbContext fresco) para no chocar con _db actual.
+        // Si una venta de pack baja el stock de HE410, esto republica las otras pubs de HE410 + sus packs.
+        if (productosTocadosParaPush.Count > 0)
+        {
+            _logger.LogInformation("Disparando push en cascada para {N} productos tocados por ventas MeLi",
+                productosTocadosParaPush.Count);
+            foreach (var pid in productosTocadosParaPush)
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        using var scope = _scopeFactory.CreateScope();
+                        var pushSvc = scope.ServiceProvider.GetRequiredService<MeliStockPushService>();
+                        await pushSvc.PushStockForProductoAsync(pid);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Error pusheando producto {Id} en cascada tras venta MeLi", pid);
+                    }
+                });
+            }
+        }
+
         return new StockSyncResult(procesadas, descCafe, descOtros, sinLink, errores);
     }
 }
