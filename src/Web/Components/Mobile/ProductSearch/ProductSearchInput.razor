@@ -213,20 +213,29 @@
     }
 
     /// <summary>
-    /// Sufijos sugeridos en tiempo real desde el catálogo real:
-    /// activa cuando el operario ya tipeó letras+dígitos (ej: "C9333") y hay matches.
-    /// Reemplaza los prefijos azules por estos sufijos naranjas en el grid 2x3.
+    /// Sufijos sugeridos en tiempo real para REEMPLAZAR a los prefijos azules
+    /// apenas el operario tipea letra+dígito (estado típico "ya empecé a escribir un SKU").
+    /// Cascada: catálogo con filtro → catálogo sin filtro → colores comunes hardcodeados.
+    /// SIEMPRE devuelve algo cuando hay letra+dígito (para que los prefijos azules siempre se oculten).
     /// </summary>
     private List<string>? GetDynamicSuffixes()
     {
-        if (string.IsNullOrEmpty(value) || value.Length < 2) return null;
+        if (string.IsNullOrEmpty(value)) return null;
         bool hasLetter = value.Any(char.IsLetter);
         bool hasDigit = value.Any(char.IsDigit);
         if (!hasLetter || !hasDigit) return null;
-        // Aplicar el mismo filtro de combos que el buscador
+
+        // 1) Catálogo con el filtro aplicado (productos solamente por default)
         Func<CatalogItem, bool>? filter = IncludeCombos ? null : (it => it.Tipo == "producto");
         var sufs = Catalog.SuggestSuffixes(value, 6, filter);
-        return sufs.Count > 0 ? sufs : null;
+        if (sufs.Count > 0) return sufs;
+
+        // 2) Catálogo SIN filtro (incluir combos sólo como hint visual: ayuda a entender la convención de SKU)
+        sufs = Catalog.SuggestSuffixes(value, 6, null);
+        if (sufs.Count > 0) return sufs;
+
+        // 3) Último recurso: sufijos de color comunes (hardcoded)
+        return new() { "BL", "ROJ", "NEG", "VER", "AZ", "GR" };
     }
 
     private async Task ToggleFavoritoAsync(string sku)
