@@ -46,58 +46,55 @@
     <div class="psi-results-wrap">
     @if (string.IsNullOrEmpty(value))
     {
-        @if (favoritos.Count == 0 && cargadosHoy.Count == 0 && frecuentes.Count == 0)
+        @if (!isCatalogLoaded)
         {
             <div class="psi-empty-state">
-                <p>👋 Tocá las teclas o un prefijo rápido para empezar a buscar.</p>
-                @if (!isCatalogLoaded)
+                <p>⏳ Cargando catálogo...</p>
+            </div>
+        }
+        @if (favoritos.Count > 0)
+        {
+            <div class="psi-section-label">⭐ FAVORITOS</div>
+            <div class="psi-chips">
+                @foreach (var item in favoritos)
                 {
-                    <p style="color:#6b7280">⏳ Cargando catálogo...</p>
-                }
-                else
-                {
-                    <p style="color:#6b7280">Catálogo: @Catalog.Count productos cargados.</p>
+                    @RenderChip(item, isFav: true)
                 }
             </div>
         }
-        else
+        @if (frecuentes.Count > 0)
         {
-            @if (favoritos.Count > 0)
-            {
-                <div class="psi-section-label">⭐ FAVORITOS</div>
-                <div class="psi-chips">
-                    @foreach (var item in favoritos)
-                    {
-                        @RenderChip(item, isFav: true)
-                    }
-                </div>
-            }
-            @if (frecuentes.Count > 0)
-            {
-                <div class="psi-section-label">🔥 FRECUENTES</div>
-                <div class="psi-chips">
-                    @foreach (var item in frecuentes)
-                    {
-                        @RenderChip(item)
-                    }
-                </div>
-            }
+            <div class="psi-section-label">🔥 FRECUENTES</div>
+            <div class="psi-chips">
+                @foreach (var item in frecuentes)
+                {
+                    @RenderChip(item)
+                }
+            </div>
+        }
 
-            @* MARCAS — abajo de todo, accesible scrolleando hacia abajo *@
-            @if (marcas.Count > 0)
-            {
-                <div class="psi-section-label">🏷 MARCAS (tocá una para filtrar)</div>
-                <div class="psi-marca-grid">
-                    @foreach (var (m, count) in marcas)
-                    {
-                        <button class="psi-marca-chip @(marcaFiltro == m ? "active" : "")"
-                                @onclick="@(() => SelectMarca(m))">
-                            <span class="psi-marca-name">@m</span>
-                            <span class="psi-marca-count">@count</span>
-                        </button>
-                    }
-                </div>
-            }
+        @* MARCAS — SIEMPRE visible en empty state (no dentro de otro if) *@
+        @if (marcas.Count > 0)
+        {
+            <div class="psi-section-label">🏷 MARCAS (tocá una para filtrar)</div>
+            <div class="psi-marca-grid">
+                @foreach (var (m, count) in marcas)
+                {
+                    <button class="psi-marca-chip @(marcaFiltro == m ? "active" : "")"
+                            @onclick="@(() => SelectMarca(m))">
+                        <span class="psi-marca-name">@m</span>
+                        <span class="psi-marca-count">@count</span>
+                    </button>
+                }
+            </div>
+        }
+
+        @if (favoritos.Count == 0 && frecuentes.Count == 0 && marcas.Count == 0 && isCatalogLoaded)
+        {
+            <div class="psi-empty-state">
+                <p>👋 Tocá las teclas o un prefijo rápido para empezar.</p>
+                <p style="color:#6b7280">Catálogo: @Catalog.Count productos.</p>
+            </div>
         }
     }
     else
