@@ -33,14 +33,6 @@
         }
     </div>
 
-    @* Chip de marca activa (solo aparece cuando hay un filtro de marca seleccionado) *@
-    @if (!string.IsNullOrEmpty(marcaFiltro))
-    {
-        <div class="psi-marca-active">
-            <span>🏷 Filtrando: <strong>@marcaFiltro</strong></span>
-            <button class="psi-marca-clear" @onclick="@(() => { marcaFiltro = null; RunSearch(); StateHasChanged(); })">✕ Quitar</button>
-        </div>
-    }
 
     @* Resultados o estado vacío — wrapper con flex:1 para absorber el cambio de tamaño y NO mover el teclado *@
     <div class="psi-results-wrap">
@@ -125,8 +117,19 @@
             Value="@value"
             ValueChanged="@OnKeyboardValueChanged"
             OnEnter="OnEnterPressed"
+            Prefixes="@GetPrefixesForKeyboard()"
             ContextualHints="@GetContextualHints()"
             DynamicSuffixes="@GetDynamicSuffixes()" />
+    }
+
+    @* Chip de marca activa AL FINAL — debajo del teclado, último elemento de la pantalla.
+       Cuando no hay marca, no se ve. Cuando hay, aparece como una franja chica abajo de todo. *@
+    @if (!string.IsNullOrEmpty(marcaFiltro))
+    {
+        <div class="psi-marca-footer">
+            <span>🏷 Filtrando: <strong>@marcaFiltro</strong></span>
+            <button class="psi-marca-clear" @onclick="@(() => { marcaFiltro = null; RunSearch(); StateHasChanged(); })">✕ Quitar</button>
+        </div>
     }
 </div>
 
@@ -221,10 +224,27 @@
 
     private async Task OnEnterPressed()
     {
-        if (results.Count > 0)
+        // SOLO selecciona automáticamente si hay un único resultado o si el top match es EXACTO con el SKU
+        // tipeado. Evita agregar cualquier cosa por error cuando hay matches débiles (fuzzy/contains).
+        if (string.IsNullOrEmpty(value) || results.Count == 0) return;
+        var top = results[0];
+        bool exact = top.Item.SkuUpper.Equals(value.ToUpperInvariant(), StringComparison.Ordinal);
+        if (exact || results.Count == 1)
         {
-            await SelectItem(results[0].Item);
+            await SelectItem(top.Item);
         }
+        // Si hay varios y ninguno es exacto, NO selecciona — el operario tiene que tocar el chip
+    }
+
+    /// <summary>
+    /// Prefijos a mostrar en los botones azules del teclado.
+    /// Si hay marca activa, calcula los prefijos más comunes de esa marca (mejor predicción).
+    /// Si no hay marca, devuelve null y el teclado usa los prefijos default del operario.
+    /// </summary>
+    private List<string>? GetPrefixesForKeyboard()
+    {
+        if (string.IsNullOrEmpty(marcaFiltro)) return null;
+        return Catalog.GetCommonPrefixes(BuildFilter(), 6);
     }
 
     private async Task SelectItem(CatalogItem item)
@@ -378,21 +398,21 @@
         -webkit-overflow-scrolling: touch;
     }
 
-    /* Chip de marca activa (arriba, debajo del input) */
-    .psi-marca-active {
+    /* Chip de marca activa al final (abajo del teclado, última cosa en pantalla) */
+    .psi-marca-footer {
         background: #fef3c7;
-        border-bottom: 2px solid #f59e0b;
-        padding: 8px 12px;
+        border-top: 2px solid #f59e0b;
+        padding: 6px 12px;
         display: flex; align-items: center; justify-content: space-between;
         gap: 8px;
-        font-size: 0.85rem;
+        font-size: 0.8rem;
         color: #78350f;
     }
     .psi-marca-clear {
         background: #b91c1c; color: white;
         border: none; border-radius: 8px;
-        padding: 6px 12px;
-        font-size: 0.8rem; font-weight: 700;
+        padding: 4px 10px;
+        font-size: 0.75rem; font-weight: 700;
         cursor: pointer;
     }
 
