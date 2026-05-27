@@ -65,10 +65,10 @@
     else
     {
         @* Modo normal: prefijos arriba (o sufijos sugeridos si el operario ya tipeó) + numérico abajo *@
-        @if (HasDynamicSuffixes)
-        {
-            <div class="kbd-suffix-label">↓ SUFIJOS POSIBLES PARA "@Value"</div>
-        }
+        @* Cartelito SIEMPRE ocupa el espacio (visibility:hidden cuando no aplica) para NO mover el teclado *@
+        <div class="kbd-suffix-label" style="@(HasDynamicSuffixes ? "" : "visibility:hidden;")">
+            ↓ SUFIJOS POSIBLES PARA "@Value"
+        </div>
         <div class="kbd-prefix-grid">
             @foreach (var p in TopList)
             {
