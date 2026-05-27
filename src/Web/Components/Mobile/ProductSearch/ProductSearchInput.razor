@@ -122,13 +122,23 @@
             DynamicSuffixes="@GetDynamicSuffixes()" />
     }
 
-    @* Chip de marca activa AL FINAL — debajo del teclado, último elemento de la pantalla.
-       Cuando no hay marca, no se ve. Cuando hay, aparece como una franja chica abajo de todo. *@
-    @if (!string.IsNullOrEmpty(marcaFiltro))
+    @* Lista de marcas SIEMPRE visible al final — debajo del teclado.
+       Strip horizontal scrolleable. La marca activa se muestra azul.
+       Permite cambiar de marca al vuelo mientras carga productos. *@
+    @if (marcas.Count > 0)
     {
-        <div class="psi-marca-footer">
-            <span>🏷 Filtrando: <strong>@marcaFiltro</strong></span>
-            <button class="psi-marca-clear" @onclick="@(() => { marcaFiltro = null; RunSearch(); StateHasChanged(); })">✕ Quitar</button>
+        <div class="psi-marca-strip">
+            <button class="psi-marca-mini @(string.IsNullOrEmpty(marcaFiltro) ? "active" : "")"
+                    @onclick="@(() => { marcaFiltro = null; RunSearch(); StateHasChanged(); })">
+                TODAS
+            </button>
+            @foreach (var (m, count) in marcas)
+            {
+                <button class="psi-marca-mini @(marcaFiltro == m ? "active" : "")"
+                        @onclick="@(() => SelectMarca(m))">
+                    @m
+                </button>
+            }
         </div>
     }
 </div>
@@ -244,7 +254,13 @@
     private List<string>? GetPrefixesForKeyboard()
     {
         if (string.IsNullOrEmpty(marcaFiltro)) return null;
-        return Catalog.GetCommonPrefixes(BuildFilter(), 6);
+        var prefs = Catalog.GetCommonPrefixes(BuildFilter(), 5);
+        // El nombre de la marca SIEMPRE aparece como primera opción (ej: VERTICE seleccionado → botón "VERTICE")
+        if (!prefs.Any(p => p.Equals(marcaFiltro, StringComparison.OrdinalIgnoreCase)))
+        {
+            prefs.Insert(0, marcaFiltro);
+        }
+        return prefs.Take(6).ToList();
     }
 
     private async Task SelectItem(CatalogItem item)
@@ -398,23 +414,37 @@
         -webkit-overflow-scrolling: touch;
     }
 
-    /* Chip de marca activa al final (abajo del teclado, última cosa en pantalla) */
-    .psi-marca-footer {
-        background: #fef3c7;
-        border-top: 2px solid #f59e0b;
+    /* Strip de marcas siempre visible al final, scroll horizontal */
+    .psi-marca-strip {
+        display: flex;
+        gap: 6px;
+        overflow-x: auto;
+        padding: 8px 10px;
+        background: #f3f4f6;
+        border-top: 2px solid #d1d5db;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+    }
+    .psi-marca-strip::-webkit-scrollbar { display: none; }
+    .psi-marca-mini {
+        flex-shrink: 0;
         padding: 6px 12px;
-        display: flex; align-items: center; justify-content: space-between;
-        gap: 8px;
-        font-size: 0.8rem;
-        color: #78350f;
-    }
-    .psi-marca-clear {
-        background: #b91c1c; color: white;
-        border: none; border-radius: 8px;
-        padding: 4px 10px;
-        font-size: 0.75rem; font-weight: 700;
+        background: white;
+        border: 1px solid #d1d5db;
+        border-radius: 999px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: #374151;
         cursor: pointer;
+        touch-action: manipulation;
+        white-space: nowrap;
     }
+    .psi-marca-mini.active {
+        background: #1e40af;
+        color: white;
+        border-color: #1e3a8a;
+    }
+    .psi-marca-mini:active { transform: scale(0.95); }
 
     /* Grid de marcas (scrolleable, en el empty state) */
     .psi-marca-grid {
