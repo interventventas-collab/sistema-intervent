@@ -62,6 +62,23 @@ public class CafeProductosController : ControllerBase
             .ToList() ?? new List<CafeProductoPackDto>(),
         StockMinimoMeLi: p.StockMinimoMeLi);
 
+    /// <summary>Búsqueda rápida (solo Id, Sku, Nombre, StockUnidades). Usado por la UI de
+    /// edición de componentes MeLi en /cafe/skus-meli (selector de producto).</summary>
+    [HttpGet("search")]
+    public async Task<IActionResult> Search([FromQuery] string q, [FromQuery] int limit = 15)
+    {
+        if (string.IsNullOrWhiteSpace(q) || q.Length < 2)
+            return Ok(new List<object>());
+        var qUp = q.Trim().ToUpperInvariant();
+        var result = await _db.CafeProductos.AsNoTracking()
+            .Where(p => p.IsActive && (p.Sku!.ToUpper().Contains(qUp) || p.Nombre.ToUpper().Contains(qUp)))
+            .OrderBy(p => p.Sku)
+            .Take(Math.Min(limit, 50))
+            .Select(p => new { Id = p.Id, Sku = p.Sku ?? "", Nombre = p.Nombre, StockUnidades = p.StockUnidades })
+            .ToListAsync();
+        return Ok(result);
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] string? categoria = null)
     {

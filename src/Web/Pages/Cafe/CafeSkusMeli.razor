@@ -188,20 +188,44 @@
                             @if (sku.comboId.HasValue)
                             {
                                 <div style="background:white; border:1px solid #e5e7eb; border-radius:6px; padding:0.6rem;">
-                                    <strong style="font-size:0.82rem;">🌳 COMBO DEL SISTEMA</strong>
-                                    <p style="font-size:0.78rem; color:#6b7280; margin:0.2rem 0 0.5rem;">
-                                        ID @sku.comboId — @sku.comboNombre
-                                    </p>
-                                    @if (sku.componentes.Count > 0)
+                                    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.5rem;">
+                                        <div style="flex:1;">
+                                            <strong style="font-size:0.82rem;">🌳 COMBO DEL SISTEMA</strong>
+                                            <p style="font-size:0.78rem; color:#6b7280; margin:0.2rem 0 0.5rem;">
+                                                ID @sku.comboId — @sku.comboNombre
+                                            </p>
+                                        </div>
+                                        @if (editandoSku != sku.sku)
+                                        {
+                                            <button class="btn btn-sm" @onclick="@(() => IniciarEdicion(sku.sku))"
+                                                    style="background:#dbeafe; color:#1e40af; border:1px solid #93c5fd; padding:0.3rem 0.6rem; border-radius:4px; cursor:pointer; font-size:0.78rem; font-weight:600;">
+                                                ✎ Editar componentes
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-sm" @onclick="@(() => CerrarEdicion(sku.sku))"
+                                                    style="background:#16a34a; color:white; border:none; padding:0.3rem 0.6rem; border-radius:4px; cursor:pointer; font-size:0.78rem; font-weight:600;">
+                                                ✓ Listo
+                                            </button>
+                                        }
+                                    </div>
+                                    @if (sku.componentes.Count > 0 || editandoSku == sku.sku)
                                     {
+                                        var enEdicion = editandoSku == sku.sku;
+                                        var primeraMla = pubsCache.GetValueOrDefault(sku.sku)?.FirstOrDefault()?.meliItemId ?? sku.sku;
                                         <table style="width:100%; font-size:0.82rem; border-collapse:collapse;">
                                             <thead>
                                                 <tr style="border-bottom:1px solid #e5e7eb; text-align:left;">
-                                                    <th style="padding:0.3rem;">Cant.</th>
+                                                    <th style="padding:0.3rem; width:90px;">Cant.</th>
                                                     <th style="padding:0.3rem;">SKU</th>
                                                     <th style="padding:0.3rem;">Componente</th>
                                                     <th style="padding:0.3rem; text-align:right;">Stock</th>
-                                                    <th style="padding:0.3rem; text-align:right;">Alcanza para</th>
+                                                    <th style="padding:0.3rem; text-align:right;">Alcanza</th>
+                                                    @if (enEdicion)
+                                                    {
+                                                        <th style="padding:0.3rem; width:40px;"></th>
+                                                    }
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -209,15 +233,74 @@
                                                 {
                                                     var alcanza = c.cantidad > 0 ? (int)Math.Floor((double)c.stockDisponible / c.cantidad) : 0;
                                                     <tr>
-                                                        <td style="padding:0.3rem; font-weight:700;">@c.cantidad×</td>
+                                                        <td style="padding:0.3rem; font-weight:700;">
+                                                            @if (enEdicion)
+                                                            {
+                                                                <input type="number" min="1" step="0.01" value="@c.cantidad"
+                                                                       @onchange="@((ChangeEventArgs e) => OnCantidadChange(c.componenteId, e.Value?.ToString()))"
+                                                                       style="width:70px; padding:0.2rem; border:1px solid #d1d5db; border-radius:4px; font-weight:700;" />
+                                                            }
+                                                            else
+                                                            {
+                                                                <span>@c.cantidad×</span>
+                                                            }
+                                                        </td>
                                                         <td style="padding:0.3rem; font-family:monospace; color:#1d4ed8;">@c.sku</td>
                                                         <td style="padding:0.3rem; color:#374151;">@c.nombre</td>
                                                         <td style="padding:0.3rem; text-align:right; font-weight:600;">@c.stockDisponible u.</td>
-                                                        <td style="padding:0.3rem; text-align:right; color:@(alcanza > 0 ? "#16a34a" : "#b91c1c");">@alcanza combos</td>
+                                                        <td style="padding:0.3rem; text-align:right; color:@(alcanza > 0 ? "#16a34a" : "#b91c1c");">@alcanza</td>
+                                                        @if (enEdicion)
+                                                        {
+                                                            <td style="padding:0.3rem; text-align:center;">
+                                                                <button class="btn btn-sm" @onclick="@(() => EliminarComponente(c.componenteId, sku.sku))"
+                                                                        style="background:#fee2e2; color:#991b1b; border:none; padding:0.2rem 0.4rem; border-radius:4px; cursor:pointer;"
+                                                                        title="Eliminar este componente">🗑</button>
+                                                            </td>
+                                                        }
                                                     </tr>
                                                 }
                                             </tbody>
                                         </table>
+
+                                        @* Modo edición: caja para agregar componente nuevo + buscador *@
+                                        @if (enEdicion)
+                                        {
+                                            <div style="margin-top:0.6rem; padding:0.5rem; background:#f0f9ff; border:1px dashed #0284c7; border-radius:4px;">
+                                                <div style="font-size:0.78rem; font-weight:700; color:#075985; margin-bottom:0.3rem;">➕ AGREGAR COMPONENTE</div>
+                                                <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                                                    <input type="number" min="1" step="0.01" @bind="addCantidad" placeholder="Cant."
+                                                           style="width:70px; padding:0.3rem; border:1px solid #d1d5db; border-radius:4px;" />
+                                                    <input type="text" @bind="addBuscarProducto" @bind:event="oninput" @onkeyup="@((KeyboardEventArgs e) => BuscarProductos())"
+                                                           placeholder="🔍 SKU o nombre del producto..."
+                                                           style="flex:1; min-width:220px; padding:0.3rem; border:1px solid #d1d5db; border-radius:4px;" />
+                                                    <button class="btn btn-primary btn-sm" @onclick="@(() => AgregarComponente(primeraMla, sku.sku))"
+                                                            disabled="@(productoAddSeleccionado is null || addCantidad <= 0)"
+                                                            style="padding:0.3rem 0.7rem;">
+                                                        ➕ Agregar
+                                                    </button>
+                                                </div>
+                                                @if (resultadosBusqueda.Count > 0)
+                                                {
+                                                    <div style="margin-top:0.3rem; max-height:150px; overflow-y:auto; background:white; border:1px solid #e5e7eb; border-radius:4px;">
+                                                        @foreach (var p in resultadosBusqueda)
+                                                        {
+                                                            <div @onclick="@(() => SeleccionarProducto(p))"
+                                                                 style="padding:0.3rem 0.5rem; cursor:pointer; border-bottom:1px solid #f3f4f6; font-size:0.78rem; @(productoAddSeleccionado?.Id == p.Id ? "background:#dbeafe;" : "")">
+                                                                <strong style="font-family:monospace; color:#1d4ed8;">@p.Sku</strong>
+                                                                <span style="color:#374151;"> · @p.Nombre</span>
+                                                                <span style="color:#6b7280; font-size:0.72rem;"> (stock: @p.StockUnidades)</span>
+                                                            </div>
+                                                        }
+                                                    </div>
+                                                }
+                                                @if (productoAddSeleccionado is not null)
+                                                {
+                                                    <div style="margin-top:0.3rem; font-size:0.78rem; color:#075985;">
+                                                        Seleccionado: <strong>@productoAddSeleccionado.Sku</strong> · @productoAddSeleccionado.Nombre
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
                                         <div style="margin-top:0.6rem; padding:0.5rem; background:#f0fdf4; border:1px solid #16a34a; border-radius:4px; font-size:0.82rem;">
                                             <b>📊 Stock armable del combo: @sku.stockArmableCombo unidades</b>
                                             (limitado por el componente más escaso)
@@ -276,6 +359,16 @@
     private Dictionary<string, List<PubRow>> pubsCache = new();
     private System.Threading.Timer? debounce;
 
+    // ── Estado de edición de componentes ──
+    private string? editandoSku;  // SKU que está en modo edición (solo uno a la vez)
+    private decimal addCantidad = 1;
+    private string addBuscarProducto = "";
+    private List<ProductoBuscadoRow> resultadosBusqueda = new();
+    private ProductoBuscadoRow? productoAddSeleccionado;
+    private System.Threading.Timer? debounceBuscar;
+
+    public record ProductoBuscadoRow(int Id, string Sku, string Nombre, int StockUnidades);
+
     public record SkusMeliResponse(int total, int mostrados, StatsCounts? stats, List<SkuRow> items);
     public record StatsCounts(int ok_combo, int ok_producto, int sin_link, int sin_combo, int producto_suelto, int? ok);
     public record SkuRow(
@@ -283,7 +376,7 @@
         string estado, int? comboId, string? comboNombre, int stockArmableCombo,
         List<ComponenteRow> componentes, int? productoSueltoId, string? productoSueltoNombre, int? productoSueltoStock
     );
-    public record ComponenteRow(int productoId, string sku, string nombre, int cantidad, int stockDisponible);
+    public record ComponenteRow(int productoId, string sku, string nombre, int cantidad, int stockDisponible, int componenteId);
     public record PubRow(string meliItemId, string status, int availableQuantity, string? permalink);
 
     protected override async Task OnInitializedAsync() => await Recargar();
@@ -379,4 +472,133 @@
         "sin_combo"       => "SIN COMBO NI PRODUCTO",
         _ => "?"
     };
+
+    // ════════════════════════════════════════════════════════════════════════
+    // EDICION DE COMPONENTES (CRUD inline)
+    // ════════════════════════════════════════════════════════════════════════
+
+    private void IniciarEdicion(string sku)
+    {
+        editandoSku = sku;
+        addCantidad = 1;
+        addBuscarProducto = "";
+        resultadosBusqueda = new();
+        productoAddSeleccionado = null;
+    }
+
+    private void CerrarEdicion(string sku)
+    {
+        editandoSku = null;
+        productoAddSeleccionado = null;
+        resultadosBusqueda = new();
+    }
+
+    private async Task OnCantidadChange(int componenteId, string? rawValue)
+    {
+        if (componenteId <= 0) { ToastService.Warning("Este componente no tiene linkeo MeLi — agregalo de nuevo."); return; }
+        if (!decimal.TryParse(rawValue, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var cant) || cant <= 0)
+        {
+            ToastService.Warning("Cantidad inválida");
+            return;
+        }
+        try
+        {
+            var resp = await Http.PutAsJsonAsync($"/api/meli/componente/{componenteId}", new { cantidad = cant });
+            if (resp.IsSuccessStatusCode)
+            {
+                ToastService.Success("✓ Cantidad actualizada y stock pusheado a MeLi");
+                await Recargar();
+            }
+            else
+            {
+                var err = await resp.Content.ReadAsStringAsync();
+                ToastService.Error("Error: " + err);
+            }
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private async Task EliminarComponente(int componenteId, string sku)
+    {
+        if (componenteId <= 0) { ToastService.Warning("Este componente no tiene linkeo MeLi"); return; }
+        if (!await JS.InvokeAsync<bool>("confirm", "¿Eliminar este componente del linkeo MeLi? La publicación dejará de descontar este producto al venderse.")) return;
+        try
+        {
+            var resp = await Http.DeleteAsync($"/api/meli/componente/{componenteId}");
+            if (resp.IsSuccessStatusCode)
+            {
+                ToastService.Success("✓ Componente eliminado y stock pusheado");
+                await Recargar();
+            }
+            else
+            {
+                var err = await resp.Content.ReadAsStringAsync();
+                ToastService.Error("Error: " + err);
+            }
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private void BuscarProductos()
+    {
+        debounceBuscar?.Dispose();
+        debounceBuscar = new System.Threading.Timer(async _ => await InvokeAsync(EjecutarBusqueda), null, 300, System.Threading.Timeout.Infinite);
+    }
+
+    private async Task EjecutarBusqueda()
+    {
+        if (string.IsNullOrWhiteSpace(addBuscarProducto) || addBuscarProducto.Length < 2)
+        {
+            resultadosBusqueda = new();
+            StateHasChanged();
+            return;
+        }
+        try
+        {
+            var url = $"/api/cafe/productos/search?q={Uri.EscapeDataString(addBuscarProducto.Trim())}&limit=15";
+            var raw = await Http.GetFromJsonAsync<List<ProductoBuscadoRow>>(url);
+            resultadosBusqueda = raw ?? new();
+            StateHasChanged();
+        }
+        catch { resultadosBusqueda = new(); }
+    }
+
+    private void SeleccionarProducto(ProductoBuscadoRow p)
+    {
+        productoAddSeleccionado = p;
+        addBuscarProducto = $"{p.Sku} · {p.Nombre}";
+        resultadosBusqueda = new();
+    }
+
+    private async Task AgregarComponente(string meliItemId, string sku)
+    {
+        if (productoAddSeleccionado is null) { ToastService.Warning("Seleccioná un producto primero"); return; }
+        if (addCantidad <= 0) { ToastService.Warning("Cantidad inválida"); return; }
+        try
+        {
+            var body = new
+            {
+                meliItemId = meliItemId,
+                cafeProductoId = productoAddSeleccionado.Id,
+                cantidad = addCantidad,
+                formato = (string?)null,
+                meliVariationId = (string?)null
+            };
+            var resp = await Http.PostAsJsonAsync("/api/meli/componente", body);
+            if (resp.IsSuccessStatusCode)
+            {
+                ToastService.Success($"✓ Agregado {productoAddSeleccionado.Sku} (x{addCantidad}) y pusheado");
+                addBuscarProducto = "";
+                productoAddSeleccionado = null;
+                addCantidad = 1;
+                await Recargar();
+            }
+            else
+            {
+                var err = await resp.Content.ReadAsStringAsync();
+                ToastService.Error("Error: " + err);
+            }
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
 }

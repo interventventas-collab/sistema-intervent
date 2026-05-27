@@ -682,7 +682,7 @@ public class MeliController : ControllerBase
         int? ProductoSueltoStock
     );
 
-    public record SkuMeliComponenteRow(int ProductoId, string Sku, string Nombre, int Cantidad, int StockDisponible);
+    public record SkuMeliComponenteRow(int ProductoId, string Sku, string Nombre, int Cantidad, int StockDisponible, int ComponenteId);
     public record SkuMeliPubRow(string MeliItemId, string Status, int AvailableQuantity, string? Permalink);
 
     /// <summary>Devuelve el listado de SKUs únicos de MeliItems con su árbol genealógico:
@@ -748,6 +748,17 @@ public class MeliController : ControllerBase
             .ToListAsync();
         var prodBySku = productos.ToDictionary(p => p.Sku!, p => p);
 
+        // 4b) MeliItemComponentes asociados a estos SKUs (para sacar el ComponenteId que la UI necesita para editar).
+        // Lookup: (Sku, CafeProductoId) → primer ComponenteId disponible (cualquiera de las MLAs sirve, son equivalentes)
+        var compIdsRaw = await db.MeliItemComponentes.AsNoTracking()
+            .Join(db.MeliItems.AsNoTracking(), c => c.MeliItemId, mi => mi.MeliItemId,
+                (c, mi) => new { CompId = c.Id, mi.Sku, c.CafeProductoId })
+            .Where(x => x.Sku != null && skuList.Contains(x.Sku!))
+            .ToListAsync();
+        var compIdBySkuProd = compIdsRaw
+            .GroupBy(x => new { x.Sku, x.CafeProductoId })
+            .ToDictionary(g => g.Key, g => g.First().CompId);
+
         var result = new List<SkuMeliRow>();
         foreach (var s in skusAgg)
         {
@@ -763,7 +774,8 @@ public class MeliController : ControllerBase
                 if (compsByCombo.TryGetValue(cb.Id, out var comps))
                 {
                     componentes = comps.Select(c => new SkuMeliComponenteRow(
-                        c.ProductoId, c.Sku ?? "", c.Nombre, c.Cantidad, c.StockUnidades
+                        c.ProductoId, c.Sku ?? "", c.Nombre, c.Cantidad, c.StockUnidades,
+                        ComponenteId: compIdBySkuProd.TryGetValue(new { Sku = (string?)s.Sku, c.ProductoId }, out var cid) ? cid : 0
                     )).ToList();
                     // stock armable = MIN(stock_componente / cantidad) entre todos los componentes
                     if (componentes.Count > 0)
@@ -1641,6 +1653,109 @@ public class MeliController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════
+    // CRUD de MeliItemComponentes — edición inline desde /cafe/skus-meli
+    // ═════════════════════════════════════════════════════════════════════════
+    // Cada componente dice: "1 venta de tal MLA descuenta X unidades de tal CafeProducto".
+    // Cambiar componentes afecta cómo se calcula el stock y cómo se descuenta al vender.
+    // Después de cualquier cambio, AUTO-PUSHEAMOS el stock a MeLi para que MeLi vea el cálculo nuevo.
+
+    public record UpsertComponenteRequest(string MeliItemId, int CafeProductoId, decimal Cantidad,
+        string? Formato, string? MeliVariationId);
+    public record UpdateComponenteRequest(decimal Cantidad, string? Formato);
+
+    /// <summary>Actualiza cantidad/formato de un componente existente. Auto-pushea stock al MeLi.</summary>
+    [HttpPut("componente/{id:int}")]
+    public async Task<IActionResult> UpdateComponente(int id, [FromBody] UpdateComponenteRequest req,
+        [FromServices] MeliStockPushService pushSvc)
+    {
+        if (req.Cantidad <= 0)
+            return BadRequest(new { error = "Cantidad debe ser mayor a 0" });
+
+        var comp = await _db.MeliItemComponentes.FirstOrDefaultAsync(c => c.Id == id);
+        if (comp is null) return NotFound(new { error = "Componente no encontrado" });
+
+        comp.Cantidad = req.Cantidad;
+        if (req.Formato is not null) comp.Formato = string.IsNullOrWhiteSpace(req.Formato) ? null : req.Formato;
+        await _db.SaveChangesAsync();
+
+        // Auto-push: stock cambió para esta MLA, mandamos el nuevo a MeLi.
+        try
+        {
+            await pushSvc.PushStockForMeliItemsAsync(new List<string> { comp.MeliItemId });
+        }
+        catch (Exception ex)
+        {
+            return Ok(new { ok = true, push = "error", pushError = ex.Message });
+        }
+
+        return Ok(new { ok = true, push = "disparado" });
+    }
+
+    /// <summary>Crea un componente nuevo (linkea producto X con cantidad Y a una MLA).
+    /// Si ya existe para ese (meliItemId + productoId + variationId), devuelve error.</summary>
+    [HttpPost("componente")]
+    public async Task<IActionResult> CreateComponente([FromBody] UpsertComponenteRequest req,
+        [FromServices] MeliStockPushService pushSvc)
+    {
+        if (req.Cantidad <= 0) return BadRequest(new { error = "Cantidad debe ser mayor a 0" });
+        if (string.IsNullOrWhiteSpace(req.MeliItemId)) return BadRequest(new { error = "MeliItemId requerido" });
+
+        // Verificar que el MeliItem existe
+        var meliItemExists = await _db.MeliItems.AnyAsync(mi => mi.MeliItemId == req.MeliItemId);
+        if (!meliItemExists) return NotFound(new { error = $"MeliItem {req.MeliItemId} no encontrado" });
+
+        // Verificar que el producto existe
+        var prod = await _db.CafeProductos.FirstOrDefaultAsync(p => p.Id == req.CafeProductoId);
+        if (prod is null) return NotFound(new { error = $"Producto id={req.CafeProductoId} no encontrado" });
+
+        // Anti-duplicado: no permitir 2 componentes iguales (misma MLA+producto+variation)
+        var dup = await _db.MeliItemComponentes.AnyAsync(c =>
+            c.MeliItemId == req.MeliItemId &&
+            c.CafeProductoId == req.CafeProductoId &&
+            ((req.MeliVariationId == null && c.MeliVariationId == null) || c.MeliVariationId == req.MeliVariationId));
+        if (dup) return Conflict(new { error = "Ya existe un componente con ese producto/variación. Edítalo en vez de duplicar." });
+
+        var comp = new MeliItemComponente
+        {
+            MeliItemId = req.MeliItemId,
+            CafeProductoId = req.CafeProductoId,
+            Cantidad = req.Cantidad,
+            Formato = string.IsNullOrWhiteSpace(req.Formato) ? null : req.Formato,
+            MeliVariationId = string.IsNullOrWhiteSpace(req.MeliVariationId) ? null : req.MeliVariationId,
+            Source = "manual_ui",
+            CreatedAt = DateTime.UtcNow
+        };
+        _db.MeliItemComponentes.Add(comp);
+        await _db.SaveChangesAsync();
+
+        // Auto-push
+        try { await pushSvc.PushStockForMeliItemsAsync(new List<string> { req.MeliItemId }); }
+        catch (Exception ex) { return Ok(new { ok = true, id = comp.Id, push = "error", pushError = ex.Message }); }
+
+        return Ok(new { ok = true, id = comp.Id, push = "disparado" });
+    }
+
+    /// <summary>Elimina un componente. Si era el último de la MLA, la publicación queda
+    /// sin descontar nada al venderse (advertencia visual en la UI).</summary>
+    [HttpDelete("componente/{id:int}")]
+    public async Task<IActionResult> DeleteComponente(int id,
+        [FromServices] MeliStockPushService pushSvc)
+    {
+        var comp = await _db.MeliItemComponentes.FirstOrDefaultAsync(c => c.Id == id);
+        if (comp is null) return NotFound(new { error = "Componente no encontrado" });
+
+        var meliItemId = comp.MeliItemId;
+        _db.MeliItemComponentes.Remove(comp);
+        await _db.SaveChangesAsync();
+
+        // Auto-push (con el cálculo nuevo — si quedó sin componentes el cálculo será 0 o legacy)
+        try { await pushSvc.PushStockForMeliItemsAsync(new List<string> { meliItemId }); }
+        catch (Exception ex) { return Ok(new { ok = true, push = "error", pushError = ex.Message }); }
+
+        return Ok(new { ok = true, push = "disparado" });
     }
 }
 
