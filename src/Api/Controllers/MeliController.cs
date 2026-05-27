@@ -773,10 +773,12 @@ public class MeliController : ControllerBase
                 comboId = cb.Id; comboNombre = cb.Nombre;
                 if (compsByCombo.TryGetValue(cb.Id, out var comps))
                 {
-                    componentes = comps.Select(c => new SkuMeliComponenteRow(
-                        c.ProductoId, c.Sku ?? "", c.Nombre, c.Cantidad, c.StockUnidades,
-                        ComponenteId: compIdBySkuProd.TryGetValue(new { Sku = (string?)s.Sku, c.ProductoId }, out var cid) ? cid : 0
-                    )).ToList();
+                    componentes = comps.Select(c =>
+                    {
+                        var lookupKey = new { Sku = (string?)s.Sku, CafeProductoId = c.ProductoId };
+                        var compId = compIdBySkuProd.TryGetValue(lookupKey, out var cid) ? cid : 0;
+                        return new SkuMeliComponenteRow(c.ProductoId, c.Sku ?? "", c.Nombre, c.Cantidad, c.StockUnidades, compId);
+                    }).ToList();
                     // stock armable = MIN(stock_componente / cantidad) entre todos los componentes
                     if (componentes.Count > 0)
                     {
@@ -1669,6 +1671,7 @@ public class MeliController : ControllerBase
     /// <summary>Actualiza cantidad/formato de un componente existente. Auto-pushea stock al MeLi.</summary>
     [HttpPut("componente/{id:int}")]
     public async Task<IActionResult> UpdateComponente(int id, [FromBody] UpdateComponenteRequest req,
+        [FromServices] Api.Data.AppDbContext _db,
         [FromServices] MeliStockPushService pushSvc)
     {
         if (req.Cantidad <= 0)
@@ -1698,6 +1701,7 @@ public class MeliController : ControllerBase
     /// Si ya existe para ese (meliItemId + productoId + variationId), devuelve error.</summary>
     [HttpPost("componente")]
     public async Task<IActionResult> CreateComponente([FromBody] UpsertComponenteRequest req,
+        [FromServices] Api.Data.AppDbContext _db,
         [FromServices] MeliStockPushService pushSvc)
     {
         if (req.Cantidad <= 0) return BadRequest(new { error = "Cantidad debe ser mayor a 0" });
@@ -1718,7 +1722,7 @@ public class MeliController : ControllerBase
             ((req.MeliVariationId == null && c.MeliVariationId == null) || c.MeliVariationId == req.MeliVariationId));
         if (dup) return Conflict(new { error = "Ya existe un componente con ese producto/variación. Edítalo en vez de duplicar." });
 
-        var comp = new MeliItemComponente
+        var comp = new Api.Models.MeliItemComponente
         {
             MeliItemId = req.MeliItemId,
             CafeProductoId = req.CafeProductoId,
@@ -1742,6 +1746,7 @@ public class MeliController : ControllerBase
     /// sin descontar nada al venderse (advertencia visual en la UI).</summary>
     [HttpDelete("componente/{id:int}")]
     public async Task<IActionResult> DeleteComponente(int id,
+        [FromServices] Api.Data.AppDbContext _db,
         [FromServices] MeliStockPushService pushSvc)
     {
         var comp = await _db.MeliItemComponentes.FirstOrDefaultAsync(c => c.Id == id);
