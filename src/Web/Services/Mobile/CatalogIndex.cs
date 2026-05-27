@@ -122,6 +122,33 @@ public class CatalogIndex
     }
 
     /// <summary>
+    /// Devuelve los prefijos (letras iniciales del SKU) más comunes en los items que matchean el filtro.
+    /// Ej: con marca COLOMBRARO seleccionada, devuelve los prefijos más frecuentes de SKUs COLOMBRARO.
+    /// Útil para que los botones azules del teclado se adapten al subset filtrado.
+    /// </summary>
+    public List<string> GetCommonPrefixes(Func<CatalogItem, bool>? filter, int max = 6)
+    {
+        if (_items == null) return new();
+        return _items
+            .Where(it => filter == null || filter(it))
+            .Select(it => ExtractLeadingLetters(it.SkuUpper))
+            .Where(p => !string.IsNullOrEmpty(p) && p.Length <= 4)
+            .GroupBy(p => p)
+            .OrderByDescending(g => g.Count())
+            .ThenBy(g => g.Key.Length)
+            .Take(max)
+            .Select(g => g.Key)
+            .ToList();
+    }
+
+    private static string ExtractLeadingLetters(string sku)
+    {
+        int i = 0;
+        while (i < sku.Length && char.IsLetter(sku[i])) i++;
+        return sku.Substring(0, i);
+    }
+
+    /// <summary>
     /// Devuelve las marcas distintas del catálogo, ordenadas por cantidad de productos (DESC).
     /// Útil para el chip de filtro rápido (FRIKAF, COLOMBRARO, MASCARDI, etc).
     /// </summary>
