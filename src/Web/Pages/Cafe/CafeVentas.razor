@@ -639,6 +639,31 @@
                 </div>
             </div>
             <div class="modal-body" style="overflow-y: auto;">
+                @* Banner de borrador pendiente — aparece sólo si hay un auto-guardado de sesión previa *@
+                @if (borradorBannerVisible && pendingBorrador is not null && !editingVentaId.HasValue)
+                {
+                    <div style="background:#fffbeb; border:2px solid #f59e0b; border-radius:8px; padding:0.7rem 1rem; margin-bottom:0.8rem; display:flex; align-items:center; gap:0.8rem; flex-wrap:wrap;">
+                        <div style="font-size:1.4rem;">💾</div>
+                        <div style="flex:1; min-width: 220px;">
+                            <div style="font-weight:700; color:#78350f;">Tenés un borrador guardado</div>
+                            <div style="font-size:0.82rem; color:#78350f;">
+                                @if (!string.IsNullOrWhiteSpace(pendingBorrador.ClienteNombreSnap))
+                                {
+                                    <span><strong>@pendingBorrador.ClienteNombreSnap</strong> · </span>
+                                }
+                                <span>@pendingBorrador.ItemsCount producto@(pendingBorrador.ItemsCount == 1 ? "" : "s")</span>
+                                @if (pendingBorrador.TotalCalc > 0)
+                                {
+                                    <span> · Total: $@pendingBorrador.TotalCalc.ToString("N2")</span>
+                                }
+                                <span> · Guardado @(((int)(DateTime.UtcNow - pendingBorrador.SavedAt).TotalMinutes)) min atrás</span>
+                            </div>
+                        </div>
+                        <button class="btn btn-primary btn-sm" @onclick="CargarBorradorAsync">📂 Cargar borrador</button>
+                        <button class="btn btn-secondary btn-sm" @onclick="DiscardBorradorAsync" style="background:#fee2e2; color:#991b1b; border-color:#fca5a5;">🗑 Descartar</button>
+                        <button class="btn btn-secondary btn-sm" @onclick="@(() => { borradorBannerVisible = false; })">✕ Ignorar</button>
+                    </div>
+                }
                 @if (!string.IsNullOrEmpty(formError))
                 {
                     <div class="form-error">@formError</div>
@@ -1570,6 +1595,10 @@
                 </div>
             }
             <div class="modal-footer">
+                @if (!editingVentaId.HasValue && lastBorradorSavedAt.HasValue)
+                {
+                    <span style="font-size:0.75rem; color:#16a34a; margin-right:auto;">💾 Auto-guardado · @LastSavedAgo()</span>
+                }
                 <button class="btn btn-secondary" @onclick="CloseForm" disabled="@saving">Cancelar</button>
                 <button class="btn btn-secondary" @onclick="PreviewPdf" disabled="@(saving || previewLoading || formItems.Count == 0 || cotizacion?.TodoOk != true)"
                         title="Ver cómo quedaría el PDF sin guardar la venta">
@@ -1578,7 +1607,7 @@
                 <button class="btn btn-primary" @onclick="ConfirmarEmision" disabled="@(saving || formItems.Count == 0 || cotizacion?.TodoOk != true)">
                     @(saving
                         ? (editingVentaId.HasValue ? "Guardando..." : "Emitiendo...")
-                        : (editingVentaId.HasValue ? "💾 Guardar cambios" : "Emitir comprobante"))
+                        : (editingVentaId.HasValue ? "💾 Guardar cambios" : $"Emitir {EmitirLabelForTipo(formTipoComprobante)}"))
                 </button>
             </div>
         </div>
@@ -3221,10 +3250,200 @@
         envioEmail = false; envioWhatsappWeb = false; envioWhatsappInterno = false;
         envioEmailTo = ""; envioWhatsappPhone = "";
         formError = null; showForm = true;
+
+        // Chequear si hay borrador local guardado (auto-save de sesión previa).
+        // Si existe, lo cargamos en `pendingBorrador` y el banner del modal lo ofrece.
+        // Fire-and-forget para mantener ShowCreate sync y no romper call sites existentes.
+        _ = CheckBorradorPendienteAsync();
     }
 
     /// <summary>EN RADAR cubre LUN a SAB (no DOM — DOM es caso particular separado).</summary>
     private static readonly string[] RadarDays = { "LUN", "MAR", "MIE", "JUE", "VIE", "SAB" };
+
+    /// <summary>Label dinámico para el botón Emitir según el tipo seleccionado en el dropdown.
+    /// Doble-check visual: el operario ve QUÉ va a emitir antes de tocar el botón.</summary>
+    private static string EmitirLabelForTipo(string tipo) => tipo switch
+    {
+        "X" => "cotización",
+        "PRO" => "proforma",
+        "FA" => "Factura A",
+        "FB" => "Factura B",
+        "FC" => "Factura C",
+        _ => "comprobante"
+    };
+
+    // ════════════════════════════════════════════════════════════════════════
+    // BORRADOR AUTO-SAVE (localStorage del navegador)
+    // ════════════════════════════════════════════════════════════════════════
+    // El form se guarda solo cada X segundos mientras el operario tipea.
+    // Si cierra la ventana sin emitir, al volver a abrir Nueva Venta aparece un
+    // banner ofreciendo "Cargar borrador". Al emitir con éxito se borra solo.
+    private const string BorradorKey = "cafe_venta_borrador_v1";
+    private DateTime? lastBorradorSavedAt;
+    private CafeVentaBorrador? pendingBorrador;  // si != null, mostramos banner en el modal
+    private bool borradorBannerVisible;
+
+    /// <summary>Snapshot serializable del form. Se guarda en localStorage.</summary>
+    public class CafeVentaBorrador
+    {
+        public DateTime SavedAt { get; set; }
+        public int FormClienteId { get; set; }
+        public string FormClienteTipo { get; set; } = "OTRO";
+        public string? ClienteNombreSnap { get; set; }  // para mostrar en el banner
+        public string FormTipoComprobante { get; set; } = "X";
+        public string FormCondicionIva { get; set; } = "CF";
+        public string FormCondicionPago { get; set; } = "EFECTIVO";
+        public DateTime FormFecha { get; set; }
+        public decimal FormDescuento { get; set; }
+        public string FormObservaciones { get; set; } = "";
+        public List<CafeCotizarItemRequest> FormItems { get; set; } = new();
+        public List<string> FormWeekDays { get; set; } = new();
+        public bool FormEnRadar { get; set; }
+        public bool FormIsPaid { get; set; }
+        public string FormEntregaPor { get; set; } = "";
+        // Modo venta rápida
+        public bool ModoVentaRapida { get; set; }
+        public string VrNombre { get; set; } = "";
+        public string VrRazonSocial { get; set; } = "";
+        public string VrCuit { get; set; } = "";
+        public string VrDireccion { get; set; } = "";
+        public string VrLocalidad { get; set; } = "";
+        public string VrCiudad { get; set; } = "";
+        public string VrCp { get; set; } = "";
+        public string VrTelefono { get; set; } = "";
+        public string VrDomicilioEntrega { get; set; } = "";
+        // Resumen para mostrar en el banner
+        public decimal TotalCalc { get; set; }
+        public int ItemsCount => FormItems?.Count ?? 0;
+    }
+
+    /// <summary>Construye el snapshot a partir del form actual.</summary>
+    private CafeVentaBorrador BuildBorradorSnapshot()
+    {
+        return new CafeVentaBorrador
+        {
+            SavedAt = DateTime.UtcNow,
+            FormClienteId = formClienteId,
+            FormClienteTipo = formClienteTipo,
+            ClienteNombreSnap = formClienteId > 0
+                ? clientes.FirstOrDefault(c => c.Id == formClienteId)?.Nombre
+                : (modoVentaRapida ? vrNombre : null),
+            FormTipoComprobante = formTipoComprobante,
+            FormCondicionIva = formCondicionIva,
+            FormCondicionPago = formCondicionPago,
+            FormFecha = formFecha,
+            FormDescuento = formDescuento,
+            FormObservaciones = formObservaciones ?? "",
+            FormItems = formItems?.ToList() ?? new(),
+            FormWeekDays = formWeekDays?.ToList() ?? new(),
+            FormEnRadar = formEnRadar,
+            FormIsPaid = formIsPaid,
+            FormEntregaPor = formEntregaPor ?? "",
+            ModoVentaRapida = modoVentaRapida,
+            VrNombre = vrNombre ?? "",
+            VrRazonSocial = vrRazonSocial ?? "",
+            VrCuit = vrCuit ?? "",
+            VrDireccion = vrDireccion ?? "",
+            VrLocalidad = vrLocalidad ?? "",
+            VrCiudad = vrCiudad ?? "",
+            VrCp = vrCp ?? "",
+            VrTelefono = vrTelefono ?? "",
+            VrDomicilioEntrega = vrDomicilioEntrega ?? "",
+            TotalCalc = cotizacion?.Total ?? 0m,
+        };
+    }
+
+    /// <summary>Guarda el snapshot a localStorage. Solo si hay algo cargado (cliente o items),
+    /// para no guardar borradores vacíos basura.</summary>
+    private async Task SaveBorradorAsync()
+    {
+        // No auto-guardar si estamos editando una venta existente (eso se guarda con "Guardar cambios")
+        if (editingVentaId.HasValue) return;
+        // No guardar si no hay nada significativo cargado
+        bool tieneAlgo = (formClienteId > 0) || (formItems?.Count ?? 0) > 0
+                        || !string.IsNullOrWhiteSpace(formObservaciones) || modoVentaRapida;
+        if (!tieneAlgo) return;
+        try
+        {
+            var snap = BuildBorradorSnapshot();
+            var json = System.Text.Json.JsonSerializer.Serialize(snap);
+            await JS.InvokeVoidAsync("localStorage.setItem", BorradorKey, json);
+            lastBorradorSavedAt = DateTime.UtcNow;
+        }
+        catch { /* localStorage puede fallar en private browsing — no romper la app */ }
+    }
+
+    /// <summary>Lee el borrador de localStorage. Si existe, lo deja en pendingBorrador y
+    /// muestra el banner. Se llama al abrir el modal Nueva Venta.</summary>
+    private async Task CheckBorradorPendienteAsync()
+    {
+        try
+        {
+            var json = await JS.InvokeAsync<string?>("localStorage.getItem", BorradorKey);
+            if (string.IsNullOrEmpty(json)) { pendingBorrador = null; borradorBannerVisible = false; return; }
+            var snap = System.Text.Json.JsonSerializer.Deserialize<CafeVentaBorrador>(json);
+            if (snap is null) return;
+            // Si el borrador es muy viejo (más de 24hs), lo descartamos solo
+            if ((DateTime.UtcNow - snap.SavedAt).TotalHours > 24)
+            {
+                await DiscardBorradorAsync();
+                return;
+            }
+            pendingBorrador = snap;
+            borradorBannerVisible = true;
+            StateHasChanged();
+        }
+        catch { pendingBorrador = null; borradorBannerVisible = false; }
+    }
+
+    /// <summary>El operario tocó "Cargar borrador" — restaura todo el form desde el snapshot.</summary>
+    private async Task CargarBorradorAsync()
+    {
+        if (pendingBorrador is null) return;
+        var b = pendingBorrador;
+        formClienteId = b.FormClienteId;
+        formClienteTipo = b.FormClienteTipo;
+        formTipoComprobante = b.FormTipoComprobante;
+        formCondicionIva = b.FormCondicionIva;
+        formCondicionPago = b.FormCondicionPago;
+        formFecha = b.FormFecha;
+        formDescuento = b.FormDescuento;
+        formObservaciones = b.FormObservaciones;
+        formItems = b.FormItems?.ToList() ?? new();
+        formWeekDays = b.FormWeekDays?.ToHashSet() ?? new();
+        formEnRadar = b.FormEnRadar;
+        formIsPaid = b.FormIsPaid;
+        formEntregaPor = b.FormEntregaPor;
+        modoVentaRapida = b.ModoVentaRapida;
+        vrNombre = b.VrNombre; vrRazonSocial = b.VrRazonSocial; vrCuit = b.VrCuit;
+        vrDireccion = b.VrDireccion; vrLocalidad = b.VrLocalidad; vrCiudad = b.VrCiudad;
+        vrCp = b.VrCp; vrTelefono = b.VrTelefono; vrDomicilioEntrega = b.VrDomicilioEntrega;
+        borradorBannerVisible = false;
+        ToastService.Success("Borrador cargado");
+        // Re-cotizar para que aparezca el total
+        await Cotizar();
+    }
+
+    /// <summary>Elimina el borrador de localStorage. Se llama al emitir, al descartar manual,
+    /// o cuando el borrador es muy viejo.</summary>
+    private async Task DiscardBorradorAsync()
+    {
+        try { await JS.InvokeVoidAsync("localStorage.removeItem", BorradorKey); }
+        catch { }
+        pendingBorrador = null;
+        borradorBannerVisible = false;
+        lastBorradorSavedAt = null;
+    }
+
+    /// <summary>Texto humano del tiempo desde el último auto-save (ej "hace 12 seg").</summary>
+    private string LastSavedAgo()
+    {
+        if (!lastBorradorSavedAt.HasValue) return "";
+        var s = (int)(DateTime.UtcNow - lastBorradorSavedAt.Value).TotalSeconds;
+        if (s < 5) return "ahora";
+        if (s < 60) return $"hace {s} seg";
+        return $"hace {s / 60} min";
+    }
 
     private void ToggleFormDay(string d)
     {
@@ -4033,6 +4252,9 @@
             });
         }
         catch (Exception ex) { ToastService.Error("Error al cotizar: " + ex.Message); }
+        // Auto-save del borrador después de cada cotización — ahí tenemos el total fresco
+        // para mostrar en el banner si después se restaura. Fire-and-forget.
+        _ = SaveBorradorAsync();
     }
 
     /// <summary>Genera un PDF de PREVIEW con los datos del modal sin guardar la venta.
@@ -4216,6 +4438,8 @@
                 });
                 if (v is null) { formError = "No se pudo crear"; return; }
                 ToastService.Success($"Venta {v.Numero} emitida — Total ${v.Total:N2}");
+                // Emisión exitosa → borramos el auto-borrador
+                await DiscardBorradorAsync();
 
                 // Si veníamos de convertir una preventa, vincularla a la venta nueva
                 if (convirtiendoPreventaId.HasValue)
