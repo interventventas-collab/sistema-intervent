@@ -388,13 +388,10 @@
             </NavGroup>
         }
 
-        @* ═════════════ 9. COMUNICACIONES (links externos) ═════════════ *@
-        <NavGroup Label="Comunicaciones" Icon="@SvgIcons.MessageCircle" HasActiveChild="false">
-            <NavItem Href="https://web.whatsapp.com" Label="WhatsApp Web" Icon="@SvgIcons.MessageCircle" IsExternal="true" />
-            <NavItem Href="https://mail.google.com" Label="Gmail" Icon="@SvgIcons.Mail" IsExternal="true" />
-            <NavItem Href="https://calendar.google.com" Label="Google Calendar" Icon="@SvgIcons.Calendar" IsExternal="true" />
-            <NavItem Href="https://drive.google.com" Label="Google Drive" Icon="@SvgIcons.Folder" IsExternal="true" />
-        </NavGroup>
+        @* 2026-05-28: seccion "Comunicaciones" eliminada (Gmail, Calendar, Drive, WhatsApp Web).
+           Eran bookmarks externos sin integracion real con el sistema. Drive ya tiene boton
+           directo en /cafe/preparacion que apunta a la carpeta correcta. Si en el futuro hace
+           falta agregar algun acceso externo, restaurar este bloque desde el historial git. *@
 
         @* ═════════════ 10. ADMINISTRACION (sistema) ═════════════
            Solo cosas de configuracion del sistema: usuarios, roles, integraciones, archivos
