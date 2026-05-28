@@ -615,6 +615,51 @@
             try { window.open(url, '_blank'); } catch (e) { console.error('openInNewTab error', e); }
         };
 
+        // 2026-05-28: drag de la calculadora flotante.
+        // Permite arrastrar la ventana con mouse y touch.
+        // Reporta nueva posición a Blazor via DotNetObjectReference.
+        (function () {
+            var calcDragRef = null;
+            var startMouseX = 0, startMouseY = 0, startElX = 0, startElY = 0;
+            var dragging = false;
+
+            window.registerCalcDrag = function (dotNetRef) {
+                calcDragRef = dotNetRef;
+            };
+            window.unregisterCalcDrag = function () {
+                calcDragRef = null;
+                dragging = false;
+            };
+            window.startCalcDrag = function (mouseX, mouseY, elX, elY) {
+                startMouseX = mouseX; startMouseY = mouseY;
+                startElX = elX; startElY = elY;
+                dragging = true;
+            };
+
+            function onMove(clientX, clientY) {
+                if (!dragging || !calcDragRef) return;
+                var dx = clientX - startMouseX;
+                var dy = clientY - startMouseY;
+                var newX = startElX + dx;
+                var newY = startElY + dy;
+                // Limitar a viewport
+                var maxX = Math.max(0, window.innerWidth - 100);
+                var maxY = Math.max(0, window.innerHeight - 50);
+                newX = Math.max(0, Math.min(newX, maxX));
+                newY = Math.max(0, Math.min(newY, maxY));
+                calcDragRef.invokeMethodAsync('UpdatePosition', newX, newY);
+            }
+            function endDrag() { dragging = false; }
+
+            document.addEventListener('mousemove', function (e) { if (dragging) onMove(e.clientX, e.clientY); });
+            document.addEventListener('mouseup', endDrag);
+            document.addEventListener('touchmove', function (e) {
+                if (!dragging || e.touches.length === 0) return;
+                onMove(e.touches[0].clientX, e.touches[0].clientY);
+            }, { passive: true });
+            document.addEventListener('touchend', endDrag);
+        })();
+
         // Recibe bytes en base64 y abre el PDF en una pestaña nueva del browser.
         // Útil para "previsualizar" PDFs sin forzar la descarga.
         window.openPdfInNewTab = function(base64) {

@@ -1,4 +1,21 @@
 @inherits LayoutComponentBase
+
+<style>
+    /* 2026-05-28: botón para abrir herramientas flotantes (calculadora + post-its). */
+    .topbar-tool-btn {
+        background: transparent;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        padding: 0.35rem 0.5rem;
+        font-size: 1rem;
+        line-height: 1;
+        cursor: pointer;
+        transition: background 0.1s;
+    }
+    .topbar-tool-btn:hover { background: #f3f4f6; }
+    .topbar-tool-btn:active { transform: scale(0.95); }
+</style>
+
 @inject AuthService AuthService
 @inject NavigationManager Navigation
 @inject ToastService ToastService
@@ -523,6 +540,13 @@
                     </button>
                 </div>
             }
+            @* 2026-05-28: botones de herramientas flotantes (calculadora + post-its propios) *@
+            <button class="topbar-tool-btn" @onclick="ToggleCalc"
+                    title="Calculadora (se puede mover por la pantalla)"
+                    aria-label="Calculadora">🧮</button>
+            <button class="topbar-tool-btn" @onclick="TogglePostits"
+                    title="Mis post-its (solo los tuyos)"
+                    aria-label="Post-its">📝</button>
             <button class="topbar-hard-reload" @onclick="DoHardReload"
                     title="Forzar recarga (limpia el cache del navegador). Usalo si un cambio nuevo no aparece."
                     aria-label="Forzar recarga">
@@ -735,6 +759,11 @@
 @* Asistente flotante en todas las pantallas (sin permiso especial: cualquier usuario logueado lo ve). *@
 <AssistantWidget />
 
+@* 2026-05-28: herramientas flotantes globales (calculadora + post-its propios). Se muestran
+   al togglear desde la topbar. Disponibles en todas las pantallas. *@
+<CalculadoraFlotante @ref="calcRef" />
+<PostitsFlotantes @ref="postitsRef" Username="@username" />
+
 @code {
     /// <summary>True si la app está corriendo en el entorno de DESARROLLO (puerto 3000 o
     /// el host es una IP en vez de un dominio). En ese caso se muestra un banner visible
@@ -794,6 +823,12 @@
     private string username = "usuario";
     private string role = "user";
     private List<string> permissions = new();
+
+    // 2026-05-28: refs a las herramientas flotantes globales (calculadora + post-its).
+    private CalculadoraFlotante? calcRef;
+    private PostitsFlotantes? postitsRef;
+    private async Task ToggleCalc() { if (calcRef is not null) await calcRef.ToggleAsync(); }
+    private async Task TogglePostits() { if (postitsRef is not null) await postitsRef.ToggleAsync(); }
 
     private static readonly Dictionary<string, string> RouteToMenuKey = new()
     {
