@@ -875,6 +875,25 @@ public class ApiClient
         return resp.IsSuccessStatusCode;
     }
 
+    /// <summary>Oculta UNA venta del tablero de Preparacion (la venta y el PDF en Drive siguen intactos).</summary>
+    public async Task<bool> OcultarPreparacionAsync(int id)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsync($"/api/cafe/ventas/preparacion/ocultar/{id}", null);
+        return resp.IsSuccessStatusCode;
+    }
+
+    /// <summary>Oculta TODAS las ventas que estan en el tablero ahora. Devuelve cuantas oculto.</summary>
+    public async Task<int> LimpiarTableroPreparacionAsync(int dias = 7)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsync($"/api/cafe/ventas/preparacion/limpiar-tablero?dias={dias}", null);
+        if (!resp.IsSuccessStatusCode) return 0;
+        var data = await resp.Content.ReadFromJsonAsync<LimpiarTableroResponse>();
+        return data?.ocultas ?? 0;
+    }
+    private record LimpiarTableroResponse(int ocultas);
+
     // === Preventas (admin) ===
     public async Task<List<CafePreventaAdminDto>?> GetCafePreventasAdminAsync(string estado = "pendiente")
         => await GetAsync<List<CafePreventaAdminDto>>($"/api/preventas/admin?estado={Uri.EscapeDataString(estado)}");
