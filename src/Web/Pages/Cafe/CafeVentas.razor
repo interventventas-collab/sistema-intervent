@@ -3862,6 +3862,22 @@
             envioEmailTo = "";
             envioWhatsappPhone = "";
         }
+        // FIX 2026-05-28: si el usuario cambia el cliente, sacar de Observaciones cualquier línea
+        // "Saldo anterior: $X (comprobantes: Y)" que haya quedado del cliente ANTERIOR. Si no
+        // limpiamos, se arrastra la deuda de otro cliente a este comprobante (bug que causó
+        // que CAFE-2026-0314 saliera con la deuda de CAFE-2026-0313 de otro cliente).
+        // El saldo anterior del cliente NUEVO se vuelve a inyectar limpio al emitir, si corresponde.
+        if (!string.IsNullOrWhiteSpace(formObservaciones))
+        {
+            // Separa por saltos de línea Y por " · " (que es el separador típico que usa Cotizar()).
+            var partes = formObservaciones
+                .Split(new[] { "\n", "\r\n", " · " }, StringSplitOptions.None)
+                .Where(p => !p.TrimStart().StartsWith("Saldo anterior", StringComparison.OrdinalIgnoreCase))
+                .Select(p => p.Trim())
+                .Where(p => !string.IsNullOrEmpty(p))
+                .ToList();
+            formObservaciones = string.Join("\n", partes);
+        }
         RecomputeUnpaidPrevSales();
         await LoadTopProductsForClient();
         await Cotizar();
