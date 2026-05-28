@@ -1,0 +1,292 @@
+@* Calculadora flotante: ventanita arrastrable que se abre desde el botón de la topbar.
+   Se puede mover a cualquier lado de la pantalla, recuerda la última posición en
+   localStorage. Funciona en cualquier pantalla del sistema porque vive en MainLayout.
+   Pedido del usuario 2026-05-28. *@
+
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@if (visible)
+{
+    <div class="calc-floating" id="calc-floating"
+         style="left: @(posX)px; top: @(posY)px;">
+        <div class="calc-header" @onmousedown="StartDrag" @ontouchstart="StartDragTouch">
+            <span class="calc-title">🧮 Calculadora</span>
+            <button class="calc-close" @onclick="Close" title="Cerrar">×</button>
+        </div>
+        <div class="calc-display" title="@history">@display</div>
+        <div class="calc-grid">
+            <button class="calc-btn calc-fn" @onclick="Clear">C</button>
+            <button class="calc-btn calc-fn" @onclick="ClearEntry">CE</button>
+            <button class="calc-btn calc-fn" @onclick="Backspace">⌫</button>
+            <button class="calc-btn calc-op" @onclick='() => SetOperator("/")'>÷</button>
+
+            <button class="calc-btn" @onclick='() => Digit("7")'>7</button>
+            <button class="calc-btn" @onclick='() => Digit("8")'>8</button>
+            <button class="calc-btn" @onclick='() => Digit("9")'>9</button>
+            <button class="calc-btn calc-op" @onclick='() => SetOperator("*")'>×</button>
+
+            <button class="calc-btn" @onclick='() => Digit("4")'>4</button>
+            <button class="calc-btn" @onclick='() => Digit("5")'>5</button>
+            <button class="calc-btn" @onclick='() => Digit("6")'>6</button>
+            <button class="calc-btn calc-op" @onclick='() => SetOperator("-")'>−</button>
+
+            <button class="calc-btn" @onclick='() => Digit("1")'>1</button>
+            <button class="calc-btn" @onclick='() => Digit("2")'>2</button>
+            <button class="calc-btn" @onclick='() => Digit("3")'>3</button>
+            <button class="calc-btn calc-op" @onclick='() => SetOperator("+")'>+</button>
+
+            <button class="calc-btn" @onclick="ToggleSign">±</button>
+            <button class="calc-btn" @onclick='() => Digit("0")'>0</button>
+            <button class="calc-btn" @onclick="Decimal">,</button>
+            <button class="calc-btn calc-eq" @onclick="Equals">=</button>
+        </div>
+    </div>
+}
+
+<style>
+    .calc-floating {
+        position: fixed;
+        z-index: 9000;
+        width: 240px;
+        background: #1f2937;
+        border-radius: 12px;
+        box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+        color: #f9fafb;
+        font-family: 'Segoe UI', sans-serif;
+        user-select: none;
+        -webkit-user-select: none;
+    }
+    .calc-header {
+        background: #111827;
+        padding: 0.5rem 0.75rem;
+        border-top-left-radius: 12px;
+        border-top-right-radius: 12px;
+        display: flex;
+        align-items: center;
+        cursor: move;
+        gap: 0.5rem;
+    }
+    .calc-title { flex: 1; font-size: 0.82rem; font-weight: 700; }
+    .calc-close {
+        background: transparent;
+        border: none;
+        color: #f9fafb;
+        font-size: 1.3rem;
+        line-height: 1;
+        padding: 0 0.4rem;
+        cursor: pointer;
+        border-radius: 4px;
+    }
+    .calc-close:hover { background: #dc2626; }
+    .calc-display {
+        background: #111827;
+        padding: 0.7rem 0.8rem;
+        font-family: monospace;
+        font-size: 1.4rem;
+        font-weight: 800;
+        text-align: right;
+        min-height: 1.6rem;
+        overflow-x: auto;
+        border-bottom: 1px solid #374151;
+        white-space: nowrap;
+    }
+    .calc-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 4px;
+        padding: 8px;
+    }
+    .calc-btn {
+        background: #374151;
+        color: #f9fafb;
+        border: none;
+        padding: 0.65rem 0.4rem;
+        font-size: 1rem;
+        font-weight: 700;
+        cursor: pointer;
+        border-radius: 6px;
+        transition: background 0.05s;
+    }
+    .calc-btn:hover { background: #4b5563; }
+    .calc-btn:active { transform: scale(0.95); }
+    .calc-fn { background: #6b7280; }
+    .calc-fn:hover { background: #7e8694; }
+    .calc-op { background: #f59e0b; color: white; }
+    .calc-op:hover { background: #d97706; }
+    .calc-op.active { background: #fbbf24; }
+    .calc-eq { background: #16a34a; color: white; }
+    .calc-eq:hover { background: #15803d; }
+</style>
+
+@code {
+    // Estado expuesto al MainLayout para poder abrir/cerrar desde el botón de la topbar.
+    private bool visible = false;
+    private double posX = 100, posY = 100;
+    private string display = "0";
+    private string history = "";
+    private double? acumulado = null;
+    private string? operador = null;
+    private bool esperandoNuevoNumero = true;
+    private DotNetObjectReference<CalculadoraFlotante>? selfRef;
+    private bool jsHooked = false;
+
+    public async Task ToggleAsync()
+    {
+        visible = !visible;
+        if (visible)
+        {
+            // Cargar posición previa
+            try
+            {
+                var saved = await JS.InvokeAsync<string?>("localStorage.getItem", "calc.position");
+                if (!string.IsNullOrEmpty(saved))
+                {
+                    var parts = saved.Split(',');
+                    if (parts.Length == 2 && double.TryParse(parts[0], out var x) && double.TryParse(parts[1], out var y))
+                    {
+                        posX = x; posY = y;
+                    }
+                }
+            }
+            catch { /* primera apertura */ }
+
+            // Registrar JS para drag
+            if (!jsHooked)
+            {
+                selfRef ??= DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("registerCalcDrag", selfRef);
+                jsHooked = true;
+            }
+        }
+        StateHasChanged();
+    }
+
+    public bool IsVisible => visible;
+
+    private void Close() { visible = false; StateHasChanged(); }
+
+    private async Task StartDrag(MouseEventArgs e)
+    {
+        await JS.InvokeVoidAsync("startCalcDrag", e.ClientX, e.ClientY, posX, posY);
+    }
+
+    private async Task StartDragTouch(TouchEventArgs e)
+    {
+        if (e.Touches.Length == 0) return;
+        var t = e.Touches[0];
+        await JS.InvokeVoidAsync("startCalcDrag", t.ClientX, t.ClientY, posX, posY);
+    }
+
+    [JSInvokable]
+    public async Task UpdatePosition(double x, double y)
+    {
+        posX = x; posY = y;
+        StateHasChanged();
+        try { await JS.InvokeVoidAsync("localStorage.setItem", "calc.position", $"{x},{y}"); } catch { }
+    }
+
+    // ─── Lógica de la calculadora ───
+    private void Digit(string d)
+    {
+        if (esperandoNuevoNumero) { display = d; esperandoNuevoNumero = false; }
+        else { if (display == "0") display = d; else display += d; }
+        StateHasChanged();
+    }
+
+    private void Decimal()
+    {
+        if (esperandoNuevoNumero) { display = "0,"; esperandoNuevoNumero = false; }
+        else if (!display.Contains(',')) display += ",";
+        StateHasChanged();
+    }
+
+    private void Clear()
+    {
+        display = "0"; acumulado = null; operador = null; esperandoNuevoNumero = true; history = "";
+        StateHasChanged();
+    }
+
+    private void ClearEntry()
+    {
+        display = "0"; esperandoNuevoNumero = true;
+        StateHasChanged();
+    }
+
+    private void Backspace()
+    {
+        if (display.Length <= 1 || (display.Length == 2 && display.StartsWith("-"))) display = "0";
+        else display = display.Substring(0, display.Length - 1);
+        StateHasChanged();
+    }
+
+    private void ToggleSign()
+    {
+        if (display == "0") return;
+        if (display.StartsWith("-")) display = display.Substring(1);
+        else display = "-" + display;
+        StateHasChanged();
+    }
+
+    private void SetOperator(string op)
+    {
+        if (!esperandoNuevoNumero && acumulado.HasValue && operador != null)
+        {
+            Calculate(); // Cadena de operaciones: 2+3+ → calcula 2+3 antes de poner el siguiente +
+        }
+        else
+        {
+            acumulado = ParseDisplay();
+        }
+        operador = op;
+        esperandoNuevoNumero = true;
+        history = $"{FormatNumber(acumulado!.Value)} {OpSymbol(op)}";
+        StateHasChanged();
+    }
+
+    private void Equals()
+    {
+        Calculate();
+        operador = null;
+        StateHasChanged();
+    }
+
+    private void Calculate()
+    {
+        if (!acumulado.HasValue || operador == null) return;
+        double b = ParseDisplay();
+        double r = operador switch
+        {
+            "+" => acumulado.Value + b,
+            "-" => acumulado.Value - b,
+            "*" => acumulado.Value * b,
+            "/" => b == 0 ? double.NaN : acumulado.Value / b,
+            _ => b
+        };
+        history = $"{FormatNumber(acumulado.Value)} {OpSymbol(operador)} {FormatNumber(b)} =";
+        if (double.IsNaN(r) || double.IsInfinity(r)) { display = "Error"; acumulado = null; }
+        else { display = FormatNumber(r); acumulado = r; }
+        esperandoNuevoNumero = true;
+    }
+
+    private double ParseDisplay()
+    {
+        var s = display.Replace(",", ".");
+        return double.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var n) ? n : 0;
+    }
+
+    private static string FormatNumber(double n)
+    {
+        // Quitar ceros sobrantes pero conservar decimales si los hay
+        var s = n.ToString("0.##########", System.Globalization.CultureInfo.InvariantCulture);
+        return s.Replace(".", ",");
+    }
+
+    private static string OpSymbol(string op) => op switch { "+" => "+", "-" => "−", "*" => "×", "/" => "÷", _ => op };
+
+    public async ValueTask DisposeAsync()
+    {
+        selfRef?.Dispose();
+        try { await JS.InvokeVoidAsync("unregisterCalcDrag"); } catch { }
+    }
+}
