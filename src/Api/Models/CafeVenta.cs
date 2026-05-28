@@ -142,6 +142,12 @@ public class CafeVenta
     /// "armado hace X minutos" en el tablero.</summary>
     public DateTime? PreparacionUpdatedAt { get; set; }
 
+    /// <summary>Si != null, la venta queda OCULTA del tablero de Preparacion aunque tenga
+    /// PDF subido a Drive. Se setea desde el boton X individual o el boton "Limpiar tablero".
+    /// La venta sigue existiendo y el PDF en Drive tambien — solo deja de mostrarse en
+    /// /cafe/preparacion. Pedido 2026-05-28.</summary>
+    public DateTime? PreparacionOcultoAt { get; set; }
+
     /// <summary>Repartidor que entrego la venta (cuando lo marca desde /repartidor/{token}).
     /// Distinto de EntregaPor (que es el repartidor "asignado" antes del reparto).</summary>
     public int? EntregadoPorRepartidorId { get; set; }

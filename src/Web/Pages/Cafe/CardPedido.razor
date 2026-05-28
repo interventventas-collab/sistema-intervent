@@ -1,18 +1,13 @@
 @* Tarjeta individual de pedido en el tablero de Preparacion.
-   Diseno "ticket de cocina": cantidades GIGANTES, checklist por item, boton grande
-   "Avanzar →" abajo. Cuando todos los items estan tildados, el boton se vuelve verde
-   y palpita para invitar al armador a marcarlo como armado. El tildado es solo visual
-   (no se persiste en la DB) — al recargar, los items vuelven a estar destildados pero
-   el estado del pedido sigue donde estaba. *@
+   Modo compacto por default (solo header) — el armador despliega la composicion con el boton
+   "Ver composicion". Al desplegar aparece la lista de items con checkboxes (visual, no se
+   persiste) y el boton "Marcar como LISTO" que saca el pedido del tablero. *@
 
 <div class="prep-card">
     @{
         var todoTildado = tildados.Count >= Venta.Items.Count && Venta.Items.Count > 0;
-        // 2026-05-28: el boton principal ahora marca como LISTO directamente (saltea EN_PREPARACION
-        // del flujo viejo). El usuario quiere que tras "Listo" desaparezca del tablero.
-        var headerClass = "armar";
     }
-    <div class="prep-card-header @headerClass" style="gap:0.7rem;">
+    <div class="prep-card-header armar" style="gap:0.7rem;">
         @* Lado izquierdo: icono PDF rojo gigante estilo Drive con el numero del comprobante.
            Click abre el PDF en Drive (si está subido). *@
         @if (Venta.DriveSubidoAt.HasValue && !string.IsNullOrEmpty(Venta.DriveFileId))
@@ -48,7 +43,7 @@
                 {
                     <span class="prep-card-pill" style="background:#dbeafe; color:#1e40af;">🚚 @Venta.EntregaPor</span>
                 }
-                <button class="prep-btn-quitar" @onclick="OnQuitarDelFlujo" title="Quitar del tablero — la venta vuelve a su estado original en /cafe/ventas" style="margin-left:auto;">×</button>
+                <button class="prep-btn-quitar" @onclick="OnQuitarDelFlujo" title="Sacar del tablero (la venta y el PDF quedan intactos)" style="margin-left:auto;">×</button>
             </div>
             <div class="prep-card-cliente" style="margin-top:0.25rem;">👤 @Venta.ClienteNombre</div>
             @if (!string.IsNullOrEmpty(Venta.ClienteLocalidad) || !string.IsNullOrEmpty(Venta.ClienteCiudad))
@@ -57,50 +52,66 @@
             }
         </div>
     </div>
-    <div class="prep-card-body">
-        @if (Venta.Items.Count == 0)
+
+    @* Boton para desplegar la composicion del pedido. Por default cerrado. *@
+    <button class="prep-btn-ver-comp" @onclick="() => mostrarComposicion = !mostrarComposicion">
+        @if (mostrarComposicion)
         {
-            <div class="prep-empty">Sin items.</div>
+            <span>▲ Ocultar composición</span>
         }
         else
         {
-            @foreach (var it in Venta.Items)
+            <span>📋 Ver composición (@Venta.Items.Count @(Venta.Items.Count == 1 ? "item" : "items"))</span>
+        }
+    </button>
+
+    @if (mostrarComposicion)
+    {
+        <div class="prep-card-body">
+            @if (Venta.Items.Count == 0)
             {
-                var tildado = tildados.Contains(it.Id);
-                <div class="prep-item @(tildado ? "tildado" : "")">
-                    <input type="checkbox" class="prep-check" checked="@tildado" @onclick="() => ToggleTildado(it.Id)" />
-                    <div class="prep-item-cant"><span class="x">×</span> @it.Cantidad</div>
-                    <div>
-                        <div class="prep-item-desc-prod prep-item-desc">@it.ProductoNombre</div>
-                        <div class="prep-item-tags">
-                            <span class="prep-tag prep-tag-formato">@FormatoLabel(it.Formato)</span>
-                            @if (!string.IsNullOrEmpty(it.Molienda))
-                            {
-                                <span class="prep-tag prep-tag-molienda">@MoliendaIcon(it.Molienda) @it.Molienda</span>
-                            }
-                            @if (it.EsDoyPack)
-                            {
-                                <span class="prep-tag prep-tag-envase-doypack">📦 Doy pack</span>
-                            }
-                            else if (it.EsEnvasePlateado)
-                            {
-                                <span class="prep-tag prep-tag-envase-plateado">⚪ Envase plateado</span>
-                            }
-                            else if (it.Categoria == "CAFE")
-                            {
-                                <span class="prep-tag prep-tag-envase-negro">⚫ Envase negro</span>
-                            }
+                <div class="prep-empty">Sin items.</div>
+            }
+            else
+            {
+                @foreach (var it in Venta.Items)
+                {
+                    var tildado = tildados.Contains(it.Id);
+                    <div class="prep-item @(tildado ? "tildado" : "")">
+                        <input type="checkbox" class="prep-check" checked="@tildado" @onclick="() => ToggleTildado(it.Id)" />
+                        <div class="prep-item-cant"><span class="x">×</span> @it.Cantidad</div>
+                        <div>
+                            <div class="prep-item-desc-prod prep-item-desc">@it.ProductoNombre</div>
+                            <div class="prep-item-tags">
+                                <span class="prep-tag prep-tag-formato">@FormatoLabel(it.Formato)</span>
+                                @if (!string.IsNullOrEmpty(it.Molienda))
+                                {
+                                    <span class="prep-tag prep-tag-molienda">@MoliendaIcon(it.Molienda) @it.Molienda</span>
+                                }
+                                @if (it.EsDoyPack)
+                                {
+                                    <span class="prep-tag prep-tag-envase-doypack">📦 Doy pack</span>
+                                }
+                                else if (it.EsEnvasePlateado)
+                                {
+                                    <span class="prep-tag prep-tag-envase-plateado">⚪ Envase plateado</span>
+                                }
+                                else if (it.Categoria == "CAFE")
+                                {
+                                    <span class="prep-tag prep-tag-envase-negro">⚫ Envase negro</span>
+                                }
+                            </div>
                         </div>
                     </div>
-                </div>
+                }
             }
-        }
-    </div>
-    <div class="prep-card-footer">
-        <button class="prep-btn-avanzar listo @(todoTildado ? "todo-tildado" : "")" @onclick="OnAvanzar" style="flex:1;">
-            ✅ Marcar como LISTO
-        </button>
-    </div>
+        </div>
+        <div class="prep-card-footer">
+            <button class="prep-btn-avanzar listo @(todoTildado ? "todo-tildado" : "")" @onclick="OnAvanzar" style="flex:1;">
+                ✅ Marcar como LISTO
+            </button>
+        </div>
+    }
 </div>
 
 @code {
@@ -108,6 +119,9 @@
     [Parameter] public EventCallback OnAvanzar { get; set; }
     [Parameter] public EventCallback OnRetroceder { get; set; }
     [Parameter] public EventCallback OnQuitarDelFlujo { get; set; }
+
+    // Por default la composicion esta colapsada (el armador la despliega cuando va a armar ese pedido).
+    private bool mostrarComposicion = false;
 
     // IDs de items tildados (solo visual, no se persiste).
     private HashSet<int> tildados = new();

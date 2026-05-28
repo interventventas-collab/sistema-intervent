@@ -3709,6 +3709,12 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='PreparacionUpdatedAt' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
     ALTER TABLE Cafe_Ventas ADD PreparacionUpdatedAt DATETIME2 NULL;
 GO
+-- Columna PreparacionOcultoAt: si !=null, la venta queda OCULTA del tablero de Preparacion
+-- aunque tenga PDF en Drive. Se setea desde el boton X o el boton "Limpiar tablero".
+-- La venta y el PDF siguen intactos — solo deja de mostrarse en /cafe/preparacion.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='PreparacionOcultoAt' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD PreparacionOcultoAt DATETIME2 NULL;
+GO
 IF NOT EXISTS (SELECT name FROM sys.indexes WHERE name='IX_CafeVentas_EstadoPreparacion' AND object_id=OBJECT_ID('Cafe_Ventas'))
     CREATE INDEX IX_CafeVentas_EstadoPreparacion ON Cafe_Ventas (EstadoPreparacion) WHERE EstadoPreparacion IS NOT NULL;
 GO

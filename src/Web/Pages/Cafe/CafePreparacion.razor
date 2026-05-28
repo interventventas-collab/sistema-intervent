@@ -240,15 +240,31 @@
         cursor: pointer;
     }
     .prep-btn-drive:hover { background: #f3f4f6; }
-    /* Grid de pedidos estilo Drive: cards de ancho fijo, 2-3 por fila segun pantalla. */
+    /* Grid de pedidos estilo Drive: cards uniformes y compactas (solo header por default).
+       Cuando el armador despliega la composicion, la card crece pero el resto se reordena. */
     .drive-pedidos-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(520px, 1fr));
-        gap: 1rem;
+        grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+        gap: 0.7rem;
+        align-items: start;
     }
     @@media (max-width: 768px) {
         .drive-pedidos-grid { grid-template-columns: 1fr; }
     }
+    /* Boton "Ver composicion" debajo del header, antes del body. Por default cerrado. */
+    .prep-btn-ver-comp {
+        width: 100%;
+        padding: 0.5rem;
+        border: none;
+        border-top: 1px solid #fde68a;
+        background: #fffbeb;
+        color: #92400e;
+        font-size: 0.82rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.1s;
+    }
+    .prep-btn-ver-comp:hover { background: #fef3c7; }
     /* Icono PDF rojo estilo Drive (caja con esquina doblada). Click → abre en Drive. */
     .prep-drive-icon-link { display:inline-block; text-decoration:none; transition: transform .1s; }
     .prep-drive-icon-link:hover { transform: scale(1.05); }
@@ -321,6 +337,14 @@
            style="text-decoration:none;">
             📁 Abrir carpeta en Drive
         </a>
+        @if (ParaArmar.Count > 0)
+        {
+            <button class="btn btn-secondary" @onclick="LimpiarTablero"
+                    title="Saca todos los pedidos actuales del tablero. Las ventas y los PDFs en Drive quedan intactos. Los nuevos pedidos que subas a Drive vuelven a aparecer."
+                    style="color:#b91c1c; border-color:#fca5a5;">
+                🧹 Limpiar tablero
+            </button>
+        }
         <span class="prep-refresh-indicator">
             Auto-refresh cada 10 s · última: @ultimaActualizacion.ToString("HH:mm:ss")
         </span>
@@ -347,7 +371,7 @@
             <div class="drive-pedidos-grid">
                 @foreach (var v in ParaArmar)
                 {
-                    <CardPedido Venta="v" OnAvanzar="() => Avanzar(v)" OnRetroceder="() => Retroceder(v)" OnQuitarDelFlujo="() => QuitarDelFlujo(v)" />
+                    <CardPedido Venta="v" OnAvanzar="() => Avanzar(v)" OnQuitarDelFlujo="() => QuitarDelFlujo(v)" />
                 }
             </div>
         }
@@ -414,17 +438,10 @@
         }
     }
 
-    /// <summary>Saca la venta del tablero de preparacion — EstadoPreparacion vuelve a null
-    /// y la venta queda en /cafe/ventas como si nunca hubiera tocado el boton "📦". El log
-    /// igual queda con el evento por si despues hay que reconstruir lo que paso.</summary>
+    /// <summary>Saca UNA venta del tablero (la oculta). La venta y el PDF en Drive quedan intactos.</summary>
     private async Task QuitarDelFlujo(CafePreparacionVentaDto v)
     {
-        var ok = await Api.CambiarEstadoPreparacionAsync(v.Id, new CafeCambiarEstadoPreparacionRequest
-        {
-            EstadoNuevo = "",
-            OperadorNombre = Operator.Current ?? "",
-            Notas = "Quitado del tablero (vuelve a estado original)"
-        });
+        var ok = await Api.OcultarPreparacionAsync(v.Id);
         if (ok)
         {
             lista?.RemoveAll(x => x.Id == v.Id);
@@ -437,33 +454,20 @@
         }
     }
 
-    private async Task Retroceder(CafePreparacionVentaDto v)
+    /// <summary>Saca TODAS las ventas que estan ahora en el tablero. Las nuevas que se suban
+    /// a Drive a partir de aca, aparecen de nuevo.</summary>
+    private async Task LimpiarTablero()
     {
-        var anterior = v.EstadoPreparacion switch
+        var n = await Api.LimpiarTableroPreparacionAsync(7);
+        if (n > 0)
         {
-            "EN_PREPARACION" => "PARA_PREPARAR",
-            "LISTO" => "EN_PREPARACION",
-            "EN_CAMINO" => "LISTO",
-            "ENTREGADO" => "EN_CAMINO",
-            _ => null
-        };
-        if (anterior is null)
-        {
-            ToastService.Info("No se puede retroceder más");
-            return;
-        }
-        var ok = await Api.CambiarEstadoPreparacionAsync(v.Id, new CafeCambiarEstadoPreparacionRequest
-        {
-            EstadoNuevo = anterior,
-            OperadorNombre = Operator.Current ?? "",
-            Notas = "Retroceso"
-        });
-        if (ok)
-        {
-            v.EstadoPreparacion = anterior;
-            v.PreparacionUpdatedAt = DateTime.UtcNow;
-            ToastService.Info($"{v.Numero} ← {anterior.Replace("_", " ")}");
+            lista = new();
+            ToastService.Success($"{n} pedidos sacados del tablero. Los nuevos van a aparecer apenas se suban a Drive ✅");
             StateHasChanged();
+        }
+        else
+        {
+            ToastService.Info("No habia nada para limpiar");
         }
     }
 

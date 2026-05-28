@@ -2329,6 +2329,7 @@ public class CafeVentasController : ControllerBase
         var ventas = await _db.CafeVentas
             .Include(v => v.Items)
             .Where(v => v.DriveSubidoAt != null
+                && v.PreparacionOcultoAt == null
                 && (v.EstadoPreparacion == null
                     || v.EstadoPreparacion == "PARA_PREPARAR"
                     || v.EstadoPreparacion == "EN_PREPARACION")
@@ -2369,5 +2370,42 @@ public class CafeVentasController : ControllerBase
             })
             .ToListAsync();
         return Ok(ventas);
+    }
+
+    /// <summary>Oculta UNA venta del tablero de Preparacion. La venta y el PDF en Drive
+    /// siguen intactos — solo deja de mostrarse en /cafe/preparacion. Usado por el boton X
+    /// de cada card y por "Limpiar tablero" (que llama a este endpoint en bucle).</summary>
+    [HttpPost("preparacion/ocultar/{id:int}")]
+    public async Task<IActionResult> OcultarDeTablero(int id)
+    {
+        var v = await _db.CafeVentas.FirstOrDefaultAsync(x => x.Id == id);
+        if (v is null) return NotFound();
+        if (v.PreparacionOcultoAt is not null) return Ok(new { id, oculto = true, mensaje = "Ya estaba oculto" });
+        v.PreparacionOcultoAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { id, oculto = true });
+    }
+
+    /// <summary>Oculta TODAS las ventas que estan actualmente en el tablero (mismo filtro que
+    /// /preparacion). Despues de esto, /cafe/preparacion queda vacio. Las ventas nuevas que se
+    /// suban a Drive de aca en mas SI aparecen (porque su PreparacionOcultoAt arranca en null).
+    /// Pedido del usuario 2026-05-28: "arranquemos el tablero limpio".</summary>
+    [HttpPost("preparacion/limpiar-tablero")]
+    public async Task<IActionResult> LimpiarTablero([FromQuery] int dias = 7)
+    {
+        var desde = DateTime.UtcNow.Date.AddDays(-Math.Max(1, dias));
+        var ahora = DateTime.UtcNow;
+        var ventas = await _db.CafeVentas
+            .Where(v => v.DriveSubidoAt != null
+                && v.PreparacionOcultoAt == null
+                && (v.EstadoPreparacion == null
+                    || v.EstadoPreparacion == "PARA_PREPARAR"
+                    || v.EstadoPreparacion == "EN_PREPARACION")
+                && v.CreatedAt >= desde
+                && v.Estado != "anulado")
+            .ToListAsync();
+        foreach (var v in ventas) v.PreparacionOcultoAt = ahora;
+        await _db.SaveChangesAsync();
+        return Ok(new { ocultas = ventas.Count });
     }
 }
