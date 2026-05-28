@@ -1695,6 +1695,134 @@ public class ApiClient
         return body;
     }
 
+    public async Task<string?> TestGoogleDriveAsync()
+    {
+        await SetAuthHeaderAsync();
+        var response = await _http.PostAsync("/api/integrations/google-drive/test", null);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            await _authService.LogoutAsync();
+            _navigation.NavigateTo("/login", forceLoad: true);
+            return null;
+        }
+
+        var body = await response.Content.ReadAsStringAsync();
+        try
+        {
+            var doc = System.Text.Json.JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("message", out var msg))
+                return msg.GetString();
+            if (doc.RootElement.TryGetProperty("error", out var err))
+                throw new Exception(err.GetString());
+        }
+        catch (System.Text.Json.JsonException) { }
+
+        if (!response.IsSuccessStatusCode)
+            throw new Exception($"Error del servidor ({response.StatusCode})");
+
+        return body;
+    }
+
+    /// <summary>Pide la URL de Google Auth al backend para abrir el popup/redirect del OAuth.</summary>
+    public async Task<string?> GetGoogleDriveOAuthUrlAsync(string redirectUri)
+    {
+        await SetAuthHeaderAsync();
+        var response = await _http.GetAsync($"/api/integrations/google-drive/oauth-start?redirectUri={Uri.EscapeDataString(redirectUri)}");
+
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            await _authService.LogoutAsync();
+            _navigation.NavigateTo("/login", forceLoad: true);
+            return null;
+        }
+
+        var body = await response.Content.ReadAsStringAsync();
+        try
+        {
+            var doc = System.Text.Json.JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("url", out var u))
+                return u.GetString();
+            if (doc.RootElement.TryGetProperty("error", out var err))
+                throw new Exception(err.GetString());
+        }
+        catch (System.Text.Json.JsonException) { }
+
+        if (!response.IsSuccessStatusCode)
+            throw new Exception($"Error del servidor ({response.StatusCode})");
+
+        return null;
+    }
+
+    /// <summary>Canjea el code que devolvió Google por el refresh_token y lo guarda en el backend.</summary>
+    public async Task<string?> ExchangeGoogleDriveOAuthCodeAsync(string code, string redirectUri)
+    {
+        await SetAuthHeaderAsync();
+        var payload = new { code, redirectUri };
+        var json = System.Text.Json.JsonSerializer.Serialize(payload);
+        var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+        var response = await _http.PostAsync("/api/integrations/google-drive/oauth-exchange", content);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            await _authService.LogoutAsync();
+            _navigation.NavigateTo("/login", forceLoad: true);
+            return null;
+        }
+
+        var body = await response.Content.ReadAsStringAsync();
+        try
+        {
+            var doc = System.Text.Json.JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("message", out var msg))
+                return msg.GetString();
+            if (doc.RootElement.TryGetProperty("error", out var err))
+                throw new Exception(err.GetString());
+        }
+        catch (System.Text.Json.JsonException) { }
+
+        if (!response.IsSuccessStatusCode)
+            throw new Exception($"Error del servidor ({response.StatusCode})");
+
+        return body;
+    }
+
+    /// <summary>Sube el PDF de una venta a Google Drive. Devuelve (fileId, link a Drive, fecha de subida).</summary>
+    public async Task<(string fileId, string link, DateTime? subidoAt)> SubirVentaADriveAsync(int ventaId)
+    {
+        await SetAuthHeaderAsync();
+        var response = await _http.PostAsync($"/api/cafe/ventas/{ventaId}/drive-upload", null);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            await _authService.LogoutAsync();
+            _navigation.NavigateTo("/login", forceLoad: true);
+            return ("", "", null);
+        }
+
+        var body = await response.Content.ReadAsStringAsync();
+        System.Text.Json.JsonDocument? doc = null;
+        try { doc = System.Text.Json.JsonDocument.Parse(body); } catch { }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var msg = "Error desconocido";
+            if (doc is not null && doc.RootElement.TryGetProperty("error", out var err))
+                msg = err.GetString() ?? msg;
+            throw new Exception(msg);
+        }
+
+        var root = doc!.RootElement;
+        var fileId = root.TryGetProperty("fileId", out var f) ? (f.GetString() ?? "") : "";
+        var link = root.TryGetProperty("link", out var l) ? (l.GetString() ?? "") : "";
+        DateTime? subidoAt = null;
+        if (root.TryGetProperty("subidoAt", out var sa) && sa.ValueKind == System.Text.Json.JsonValueKind.String)
+        {
+            if (DateTime.TryParse(sa.GetString(), out var dt)) subidoAt = dt;
+        }
+        return (fileId, link, subidoAt);
+    }
+
     // --- MercadoLibre Accounts ---
     public async Task<List<MeliAccountDto>?> GetMeliAccountsAsync()
     {

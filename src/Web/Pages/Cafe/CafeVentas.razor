@@ -1736,6 +1736,22 @@
                             @onclick="@(() => OpenReenvio(printVenta))" title="Mandar este comprobante por mail / WhatsApp">
                         📤 Enviar al cliente
                     </button>
+                    @if (printVenta.DriveSubidoAt.HasValue)
+                    {
+                        <a class="btn" href="https://drive.google.com/file/d/@printVenta.DriveFileId/view" target="_blank"
+                           style="background:#4285f4; color: white; border: none; font-size: 0.85rem; text-decoration: none;"
+                           title="Abrir comprobante en Google Drive">
+                            📁 Ver en Drive
+                        </a>
+                    }
+                    else
+                    {
+                        <button class="btn" style="background:#4285f4; color: white; border: none; font-size: 0.85rem;"
+                                @onclick="@(() => SubirADrive(printVenta!))" disabled="@subiendoDrive"
+                                title="Subir este comprobante a Google Drive">
+                            @(subiendoDrive ? "Subiendo..." : "📁 Subir a Drive")
+                        </button>
+                    }
                     @if (HasWhatsapp)
                     {
                         <a class="btn" style="background:#25D366;color:white;border:none;font-size: 0.85rem; text-decoration: none;"
@@ -4592,6 +4608,39 @@
             await Load();
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private bool subiendoDrive;
+    /// <summary>Sube el PDF de la venta a Google Drive y actualiza el printVenta para
+    /// que el botón cambie a "Ver en Drive". Si Drive no está configurado o falla,
+    /// muestra el error en un toast.</summary>
+    private async Task SubirADrive(CafeVentaDto v)
+    {
+        if (subiendoDrive) return;
+        subiendoDrive = true;
+        try
+        {
+            var (fileId, link, subidoAt) = await Api.SubirVentaADriveAsync(v.Id);
+            if (!string.IsNullOrEmpty(fileId))
+            {
+                // Refrescar el DTO mostrado en pantalla.
+                if (printVenta is not null)
+                {
+                    printVenta.DriveFileId = fileId;
+                    printVenta.DriveSubidoAt = subidoAt ?? DateTime.UtcNow;
+                }
+                ToastService.Success("Comprobante subido a Drive");
+                await Load();
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error al subir a Drive: " + ex.Message);
+        }
+        finally
+        {
+            subiendoDrive = false;
+        }
     }
 
     private bool arcaRetrying;

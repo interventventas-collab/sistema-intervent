@@ -1,0 +1,81 @@
+@page "/google-drive-callback"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject NavigationManager Navigation
+@inject ToastService ToastService
+
+<div class="view-header">
+    <h2>Conectando con Google Drive...</h2>
+    <p class="view-subtitle">@message</p>
+</div>
+
+@if (hasError)
+{
+    <div class="card">
+        <div class="card-body">
+            <div class="form-error">@message</div>
+            <div class="form-actions">
+                <button class="btn btn-primary" @onclick="GoBack">Volver a Integraciones</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string message = "Procesando autorización...";
+    private bool hasError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var uri = new Uri(Navigation.Uri);
+        var code = GetQueryParam(uri.Query, "code");
+        var errorParam = GetQueryParam(uri.Query, "error");
+
+        if (!string.IsNullOrEmpty(errorParam))
+        {
+            message = $"Google rechazó la autorización: {errorParam}";
+            hasError = true;
+            return;
+        }
+
+        if (string.IsNullOrEmpty(code))
+        {
+            message = "No se recibió el código de autorización de Google.";
+            hasError = true;
+            return;
+        }
+
+        try
+        {
+            // El redirectUri DEBE ser idéntico al que se usó para pedir el code,
+            // sino Google rechaza el canje con "redirect_uri_mismatch".
+            var redirectUri = $"{uri.Scheme}://{uri.Authority}/google-drive-callback";
+            var result = await Api.ExchangeGoogleDriveOAuthCodeAsync(code, redirectUri);
+            ToastService.Success(result ?? "Google Drive conectado correctamente");
+            Navigation.NavigateTo("/integraciones");
+        }
+        catch (Exception ex)
+        {
+            message = "Error al conectar con Google Drive: " + ex.Message;
+            hasError = true;
+        }
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo("/integraciones");
+    }
+
+    private static string? GetQueryParam(string query, string key)
+    {
+        if (string.IsNullOrEmpty(query)) return null;
+        var q = query.TrimStart('?');
+        foreach (var part in q.Split('&'))
+        {
+            var kv = part.Split('=', 2);
+            if (kv.Length == 2 && kv[0] == key)
+                return Uri.UnescapeDataString(kv[1]);
+        }
+        return null;
+    }
+}

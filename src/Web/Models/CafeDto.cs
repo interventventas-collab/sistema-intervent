@@ -380,6 +380,10 @@ public class CafeVentaDto
     public int? EntregadoPorRepartidorId { get; set; }
     public string? EntregadoPorRepartidorNombre { get; set; }
     public DateTime? EntregadoAt { get; set; }
+    /// <summary>ID del archivo en Google Drive cuando se subió el PDF del comprobante. Null si nunca se subió.</summary>
+    public string? DriveFileId { get; set; }
+    /// <summary>Cuándo se subió el PDF a Google Drive. Null si nunca se subió.</summary>
+    public DateTime? DriveSubidoAt { get; set; }
 }
 
 /// <summary>Tarjeta de venta en el tablero /cafe/preparacion. Trae solo lo que el

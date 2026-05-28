@@ -99,6 +99,7 @@ builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<RoleService>();
 builder.Services.AddScoped<IntegrationService>();
+builder.Services.AddScoped<GoogleDriveService>();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<MeliAccountService>();
 builder.Services.AddScoped<ArcaAccountService>();

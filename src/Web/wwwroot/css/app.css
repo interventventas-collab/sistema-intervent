@@ -2607,6 +2607,11 @@ button {
   color: white;
 }
 
+.drive-logo {
+  background: linear-gradient(135deg, #4285f4 0%, #34a853 100%);
+  color: white;
+}
+
 .openai-logo {
   background: linear-gradient(135deg, #10a37f 0%, #0d7f6a 100%);
   color: #ffffff !important;

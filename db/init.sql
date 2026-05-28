@@ -4146,3 +4146,17 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='StockMinimoMeLi' AND object_id=OBJECT_ID('Cafe_Productos'))
     ALTER TABLE Cafe_Productos ADD StockMinimoMeLi INT NULL;
 GO
+
+-- 2026-05-28: Integración Google Drive — track de cuándo se subió el PDF
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='DriveFileId' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD DriveFileId NVARCHAR(100) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='DriveSubidoAt' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD DriveSubidoAt DATETIME2 NULL;
+GO
+
+-- 2026-05-28: Integrations.AppSecret necesita más espacio que 255 chars.
+-- Google Drive Service Account JSON tiene ~2500 chars (private_key larga).
+IF EXISTS (SELECT 1 FROM sys.columns WHERE name='AppSecret' AND object_id=OBJECT_ID('Integrations') AND max_length = 510 /*nvarchar(255)*/)
+    ALTER TABLE Integrations ALTER COLUMN AppSecret NVARCHAR(MAX) NULL;
+GO
