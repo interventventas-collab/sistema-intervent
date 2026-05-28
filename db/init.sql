@@ -4160,3 +4160,9 @@ GO
 IF EXISTS (SELECT 1 FROM sys.columns WHERE name='AppSecret' AND object_id=OBJECT_ID('Integrations') AND max_length = 510 /*nvarchar(255)*/)
     ALTER TABLE Integrations ALTER COLUMN AppSecret NVARCHAR(MAX) NULL;
 GO
+
+-- 2026-05-28: Contador de subidas a Drive. UI usa esto para distinguir visualmente
+-- venta nunca subida (icono gris) vs subida 1 vez (color normal) vs re-subida (badge naranja).
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='DriveSubidasCount' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD DriveSubidasCount INT NOT NULL CONSTRAINT DF_CafeVentas_DriveSubidasCount DEFAULT 0;
+GO

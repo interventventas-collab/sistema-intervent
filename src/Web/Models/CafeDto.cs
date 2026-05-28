@@ -384,6 +384,8 @@ public class CafeVentaDto
     public string? DriveFileId { get; set; }
     /// <summary>Cuándo se subió el PDF a Google Drive. Null si nunca se subió.</summary>
     public DateTime? DriveSubidoAt { get; set; }
+    /// <summary>Cuántas veces se subió. 0 = nunca, 1 = subida normal, 2+ = re-subido (UI marca diferente).</summary>
+    public int DriveSubidasCount { get; set; }
 }
 
 /// <summary>Tarjeta de venta en el tablero /cafe/preparacion. Trae solo lo que el

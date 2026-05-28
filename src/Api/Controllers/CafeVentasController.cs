@@ -232,7 +232,8 @@ public class CafeVentasController : ControllerBase
         entregadoPorRepartidorNombre,
         v.EntregadoAt,
         v.DriveFileId,
-        v.DriveSubidoAt);
+        v.DriveSubidoAt,
+        v.DriveSubidasCount);
 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null)
@@ -390,9 +391,10 @@ public class CafeVentasController : ControllerBase
 
             v.DriveFileId = fileId;
             v.DriveSubidoAt = DateTime.UtcNow;
+            v.DriveSubidasCount = v.DriveSubidasCount + 1;
             await _db.SaveChangesAsync();
 
-            return Ok(new { ok = true, fileId, link, subidoAt = v.DriveSubidoAt });
+            return Ok(new { ok = true, fileId, link, subidoAt = v.DriveSubidoAt, subidasCount = v.DriveSubidasCount });
         }
         catch (Exception ex)
         {
