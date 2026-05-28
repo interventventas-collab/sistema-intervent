@@ -715,7 +715,7 @@
                     Elegi tu nombre para que el sistema registre quien hace cada accion.
                 </p>
                 <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem;">
-                    @foreach (var op in OperatorService.Operators)
+                    @foreach (var op in OperatorService.ForPermissions(permissions))
                     {
                         var name = op;
                         <button class="btn @(Operator.Current == name ? "btn-primary" : "btn-secondary")"

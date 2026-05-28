@@ -13,10 +13,25 @@ public class OperatorService
     private readonly IJSRuntime _js;
     private string? _current;
 
+    // 2026-05-28: MAXI eliminado (ya no trabaja). Lista global = todos los que SÍ trabajan.
     public static readonly string[] Operators =
     {
-        "OSMAR", "GERMAN", "GABRIEL", "MIGUEL", "MAXI", "ALEXIS", "WALTER", "RODRIGO"
+        "OSMAR", "GERMAN", "GABRIEL", "MIGUEL", "ALEXIS", "WALTER", "RODRIGO"
     };
+
+    // Operadores por rol (para mostrar solo los del equipo correspondiente en el modal).
+    public static readonly string[] OperatorsOficina = { "OSMAR", "GERMAN", "GABRIEL" };
+    public static readonly string[] OperatorsDeposito = { "ALEXIS", "WALTER", "RODRIGO" };
+
+    /// <summary>Devuelve la lista de operadores que el usuario logueado puede elegir, en base
+    /// a sus permisos. Admin (con "cafe") ve todos. OFICINA ve los de su equipo. DEPOSITO ve los suyos.</summary>
+    public static string[] ForPermissions(List<string> perms)
+    {
+        if (perms.Contains("cafe")) return Operators;       // admin / interno: ve todos
+        if (perms.Contains("oficina")) return OperatorsOficina;
+        if (perms.Contains("deposito")) return OperatorsDeposito;
+        return Operators;                                    // fallback
+    }
 
     public string? Current => _current;
     public bool HasOperator => !string.IsNullOrWhiteSpace(_current);
