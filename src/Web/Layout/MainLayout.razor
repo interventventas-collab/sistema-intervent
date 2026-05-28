@@ -49,6 +49,25 @@
 
         @* ═════════════ 1B. CAFE (modulo independiente, debajo de Dashboard) ═════════════
            Negocio de venta de cafe e insumos, totalmente aislado del resto del ERP. *@
+        @* ═════════════ MENÚ REDUCIDO PARA USUARIOS DE DEPÓSITO ═════════════
+           Solo visible si el usuario tiene el permiso "deposito" y NO tiene "cafe" completo.
+           Pensado para empleados del depósito (rol DEPOSITO) que solo necesitan ver
+           Productos, Stock y Preparación pedidos. Si el día de mañana lo dejas con "cafe"
+           también, esta sección se oculta y le aparece el menú café completo. *@
+        @if (HasPerm("deposito") && !HasPerm("cafe"))
+        {
+            <NavGroup Label="🏭 Depósito" Icon="@SvgIcons.Store"
+                      Highlight="true" DefaultExpanded="true"
+                      HasActiveChild="@(IsActive("/cafe/productos") || IsActive("/cafe/stock-masivo") || IsActive("/cafe/preparacion") || IsActive("/stock"))">
+                <NavItem Href="/cafe/productos" Label="🏷 Productos" Icon="@SvgIcons.Package"
+                         IsActive="@IsActive("/cafe/productos")" OnClick="@(() => NavigateTo("/cafe/productos"))" />
+                <NavItem Href="/cafe/stock-masivo" Label="📦 Stock" Icon="@SvgIcons.Package"
+                         IsActive="@(IsActive("/cafe/stock-masivo") || IsActive("/stock"))" OnClick="@(() => NavigateTo("/cafe/stock-masivo"))" />
+                <NavItem Href="/cafe/preparacion" Label="📋 Imprimir pedidos de Osmar" Icon="@SvgIcons.Package"
+                         IsActive="@IsActive("/cafe/preparacion")" OnClick="@(() => NavigateTo("/cafe/preparacion"))" />
+            </NavGroup>
+        }
+
         @if (HasPerm("cafe"))
         {
             <NavGroup Label="Ventas por fuera" Icon="@SvgIcons.Brand"
@@ -899,6 +918,12 @@
         if (permissions.Count == 0) return; // permissions not loaded yet
 
         var relativePath = Navigation.ToBaseRelativePath(Navigation.Uri).TrimStart('/').Split('?')[0].Split('#')[0];
+
+        // 2026-05-28: rol "deposito" puede entrar a productos, stock y preparacion aunque no tenga "cafe".
+        if (permissions.Contains("deposito") && (relativePath == "cafe/productos" || relativePath == "cafe/stock-masivo" || relativePath == "cafe/preparacion" || relativePath == "stock"))
+        {
+            return; // permitido
+        }
 
         if (RouteToMenuKey.TryGetValue(relativePath, out var menuKey))
         {
