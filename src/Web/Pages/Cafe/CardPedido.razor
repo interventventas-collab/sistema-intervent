@@ -59,19 +59,16 @@
             }
         </div>
         @* Botones de la derecha: Mini impresora individual + checkbox de seleccion multiple.
-           Solo se muestran si el cliente tiene activado el flag TieneMiniImpresora. *@
-        @if (Venta.TieneMiniImpresora)
-        {
-            <div class="prep-mini-impresora-actions">
-                <button class="prep-btn-mini-impresora" @onclick="OnImprimir" title="Imprimir este ticket en mini impresora">
-                    🖨️
-                </button>
-                <label class="prep-check-print-wrap" title="Seleccionar para imprimir varios juntos">
-                    <input type="checkbox" class="prep-check-print" checked="@SelectedForPrint" @onchange="OnToggleSelect" />
-                    <span style="font-size:0.65rem; color:#6b7280;">Sel.</span>
-                </label>
-            </div>
-        }
+           Disponible para TODAS las cards (el usuario lo pidio asi 2026-05-28 — "como en el listado de ventas"). *@
+        <div class="prep-mini-impresora-actions">
+            <button class="prep-btn-mini-impresora" @onclick="OnImprimir" title="Imprimir este ticket">
+                🖨️
+            </button>
+            <label class="prep-check-print-wrap" title="Seleccionar para imprimir varios juntos">
+                <input type="checkbox" class="prep-check-print" checked="@SelectedForPrint" @onchange="OnToggleSelect" />
+                <span style="font-size:0.65rem; color:#6b7280;">Sel.</span>
+            </label>
+        </div>
     </div>
 
     @* Boton para desplegar la composicion del pedido. Por default cerrado. *@

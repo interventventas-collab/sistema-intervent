@@ -394,17 +394,6 @@
                         </select>
                     </div>
                 }
-                @* 2026-05-28: flag para mostrar boton mini impresora en /cafe/preparacion.
-                   Pensado para clientes mayoristas (KENZAI, DEFENSORES DE GLEW, etc) que reciben
-                   muchas ventas seguidas y necesitan imprimir el ticket rapido. *@
-                <div class="form-group" style="grid-column: 1 / -1;">
-                    <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer; padding:0.5rem 0.7rem; background:#fffbeb; border:1px solid #fde68a; border-radius:6px;">
-                        <input type="checkbox" @bind="formTieneMiniImpresora" />
-                        <span>🖨️ <strong>Mostrar botón mini impresora</strong> en el tablero <em>IMPRIMIR PEDIDOS DE OSMAR</em>
-                            <span style="font-size:0.78rem; color:#92400e; display:block; margin-top:0.15rem;">Activá esto para clientes que necesitan imprimir el ticket rápido al armar (mayoristas, repartos con muchos pedidos).</span>
-                        </span>
-                    </label>
-                </div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" @onclick="CloseForm" disabled="@saving">Cancelar</button>
