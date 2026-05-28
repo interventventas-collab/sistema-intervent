@@ -405,6 +405,10 @@ public class CafePreparacionVentaDto
     public string EstadoPreparacion { get; set; } = "";
     public DateTime? PreparacionUpdatedAt { get; set; }
     public decimal Total { get; set; }
+    /// <summary>Si está subido a Drive, ID del archivo. Para mostrar botón "Ver PDF" en la tarjeta.</summary>
+    public string? DriveFileId { get; set; }
+    /// <summary>Cuándo se subió a Drive. Null = nunca subido (mostrar botón "Subir a Drive").</summary>
+    public DateTime? DriveSubidoAt { get; set; }
     public List<CafePreparacionItemDto> Items { get; set; } = new();
 }
 
