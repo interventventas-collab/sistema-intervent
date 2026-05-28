@@ -198,6 +198,144 @@ public class IntegrationsController : ControllerBase
         }
     }
 
+    [HttpPost("google-drive/test")]
+    public async Task<IActionResult> TestGoogleDrive([FromServices] GoogleDriveService driveSvc)
+    {
+        try
+        {
+            var ok = await driveSvc.TestConnectionAsync();
+            if (!ok) return BadRequest(new { error = "No se pudo conectar a Google Drive. Verifica la conexión y el ID de carpeta." });
+            return Ok(new { message = "Conexión OK. Drive listo para usar." });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = "Error: " + ex.Message });
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  Google Drive — OAuth 2.0 flow
+    // ════════════════════════════════════════════════════════════════════
+    // Reemplaza el esquema de Service Account (que no funciona en cuentas
+    // gmail gratis — devuelve "Service Accounts do not have storage quota").
+    // El usuario crea un OAuth Client en Google Cloud Console, pega
+    // client_id + client_secret + folderId en /integraciones, toca
+    // "Conectar con Google", aprueba en la pantalla de Google, y se guarda
+    // el refresh_token en AppSecret. A partir de ahí UploadFileAsync funciona
+    // como antes (el library refresca el access_token solo).
+
+    /// <summary>
+    /// Devuelve la URL de Google Auth a la que el frontend debe redirigir / abrir
+    /// en popup. El frontend pasa redirectUri = window.location.origin + "/google-drive-callback".
+    /// </summary>
+    [HttpGet("google-drive/oauth-start")]
+    public async Task<IActionResult> GoogleDriveOAuthStart([FromQuery] string redirectUri)
+    {
+        if (string.IsNullOrWhiteSpace(redirectUri))
+            return BadRequest(new { error = "Falta redirectUri" });
+
+        var integration = await _service.GetByProviderAsync("google-drive");
+        if (integration is null)
+            return BadRequest(new { error = "Primero guardá Client ID, Client Secret y carpeta destino." });
+
+        string? clientId = null;
+        if (!string.IsNullOrWhiteSpace(integration.Settings))
+        {
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(integration.Settings);
+                if (doc.RootElement.TryGetProperty("clientId", out var ci)) clientId = ci.GetString();
+            }
+            catch { }
+        }
+        if (string.IsNullOrWhiteSpace(clientId))
+            return BadRequest(new { error = "Falta Client ID. Guardalo primero." });
+
+        var scope = Uri.EscapeDataString("https://www.googleapis.com/auth/drive.file");
+        var redirect = Uri.EscapeDataString(redirectUri);
+        var url = $"https://accounts.google.com/o/oauth2/v2/auth"
+                + $"?client_id={Uri.EscapeDataString(clientId)}"
+                + $"&redirect_uri={redirect}"
+                + $"&response_type=code"
+                + $"&scope={scope}"
+                + $"&access_type=offline"
+                + $"&prompt=consent";
+        return Ok(new { url });
+    }
+
+    public record GoogleDriveOAuthExchangeRequest(string Code, string RedirectUri);
+
+    /// <summary>
+    /// Canjea el code de Google por access_token + refresh_token y guarda el
+    /// refresh_token en Integrations.AppSecret. NO modifica los Settings (los
+    /// preserva tal cual estaban: clientId/clientSecret/folderId).
+    /// </summary>
+    [HttpPost("google-drive/oauth-exchange")]
+    public async Task<IActionResult> GoogleDriveOAuthExchange([FromBody] GoogleDriveOAuthExchangeRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Code) || string.IsNullOrWhiteSpace(req.RedirectUri))
+            return BadRequest(new { error = "Faltan code o redirectUri" });
+
+        var integration = await _service.GetByProviderAsync("google-drive");
+        if (integration is null)
+            return BadRequest(new { error = "No hay integración configurada" });
+
+        string? clientId = null, clientSecret = null;
+        if (!string.IsNullOrWhiteSpace(integration.Settings))
+        {
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(integration.Settings);
+                if (doc.RootElement.TryGetProperty("clientId", out var ci)) clientId = ci.GetString();
+                if (doc.RootElement.TryGetProperty("clientSecret", out var cs)) clientSecret = cs.GetString();
+            }
+            catch { }
+        }
+        if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
+            return BadRequest(new { error = "Falta Client ID o Client Secret" });
+
+        var http = _httpFactory.CreateClient();
+        var form = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["code"] = req.Code,
+            ["client_id"] = clientId,
+            ["client_secret"] = clientSecret,
+            ["redirect_uri"] = req.RedirectUri,
+            ["grant_type"] = "authorization_code"
+        });
+
+        var resp = await http.PostAsync("https://oauth2.googleapis.com/token", form);
+        var body = await resp.Content.ReadAsStringAsync();
+        if (!resp.IsSuccessStatusCode)
+            return BadRequest(new { error = $"Google rechazó el canje del code: {body}" });
+
+        string? refreshToken = null;
+        try
+        {
+            using var tokenDoc = System.Text.Json.JsonDocument.Parse(body);
+            if (tokenDoc.RootElement.TryGetProperty("refresh_token", out var rt))
+                refreshToken = rt.GetString();
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = "No se pudo parsear la respuesta de Google: " + ex.Message });
+        }
+
+        if (string.IsNullOrEmpty(refreshToken))
+            return BadRequest(new { error = "Google no devolvió refresh_token. Volvé a conectar y aprobá TODOS los permisos. Si ya autorizaste antes, revocá el acceso en https://myaccount.google.com/permissions y reintenta." });
+
+        // Guardar refresh_token en AppSecret, preservando Settings (clientId/clientSecret/folderId).
+        var saved = await _service.SaveAsync(new SaveIntegrationRequest(
+            Provider: "google-drive",
+            AppId: integration.AppId,
+            AppSecret: refreshToken,
+            RedirectUrl: null,
+            Settings: integration.Settings,
+            IsActive: true
+        ));
+        return Ok(new { ok = true, message = "Conectado a Google Drive correctamente.", id = saved.Id });
+    }
+
     [HttpDelete("{provider}")]
     public async Task<IActionResult> Delete(string provider)
     {

@@ -230,7 +230,9 @@ public class CafeVentasController : ControllerBase
         v.ArcaImpTotal,
         v.EntregadoPorRepartidorId,
         entregadoPorRepartidorNombre,
-        v.EntregadoAt);
+        v.EntregadoAt,
+        v.DriveFileId,
+        v.DriveSubidoAt);
 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null)
@@ -348,6 +350,54 @@ public class CafeVentasController : ControllerBase
         var qr = await _qrRepartidorService.GenerarQrAsync(v.PublicToken);
         var bytes = _pdfService.GenerarPdfBytes(v, cfg, qr);
         return File(bytes, "application/pdf", BuildPdfFilename(v));
+    }
+
+    /// <summary>
+    /// Genera el PDF del comprobante (cotización o factura ARCA según el tipo) y lo sube a
+    /// Google Drive. Devuelve el ID del archivo y un link para abrirlo. Registra DriveFileId
+    /// y DriveSubidoAt en la venta para mostrar "Ver en Drive" en lugar del botón de subir.
+    /// </summary>
+    [HttpPost("{id:int}/drive-upload")]
+    public async Task<IActionResult> SubirADrive(int id, [FromServices] GoogleDriveService driveSvc)
+    {
+        var v = await _db.CafeVentas.Include(x => x.Items).ThenInclude(i => i.ProductoNav).FirstOrDefaultAsync(x => x.Id == id);
+        if (v is null) return NotFound(new { error = "Venta no encontrada" });
+        var cfg = await _db.CafeSettings.FindAsync(1);
+
+        try
+        {
+            // Reusamos la misma lógica de selección de PDF que GetPdf: ARCA si está autorizada, sino cotización.
+            var esFacturaArca = v.TipoComprobante is "FA" or "FB" or "FC";
+            var autorizada = v.ArcaEstado == "autorizado"
+                             && !string.IsNullOrEmpty(v.ArcaCae)
+                             && v.ArcaCbteNro.HasValue
+                             && v.ArcaPtoVta.HasValue
+                             && v.ArcaCbteTipoNum.HasValue;
+
+            byte[] pdfBytes;
+            if (esFacturaArca && autorizada)
+            {
+                pdfBytes = BuildArcaPdf(v, cfg!);
+            }
+            else
+            {
+                var qr = await _qrRepartidorService.GenerarQrAsync(v.PublicToken);
+                pdfBytes = _pdfService.GenerarPdfBytes(v, cfg, qr);
+            }
+
+            var fileName = BuildPdfFilename(v);
+            var (fileId, link) = await driveSvc.UploadFileAsync(fileName, pdfBytes, "application/pdf");
+
+            v.DriveFileId = fileId;
+            v.DriveSubidoAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+
+            return Ok(new { ok = true, fileId, link, subidoAt = v.DriveSubidoAt });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = "Error al subir a Drive: " + ex.Message });
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════════

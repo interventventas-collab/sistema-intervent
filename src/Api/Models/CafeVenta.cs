@@ -177,6 +177,13 @@ public class CafeVenta
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 
+    /// <summary>ID del archivo en Google Drive cuando el PDF se subió. Null si nunca se subió.</summary>
+    [MaxLength(100)]
+    public string? DriveFileId { get; set; }
+
+    /// <summary>Cuándo se subió el PDF a Google Drive. Null si nunca se subió.</summary>
+    public DateTime? DriveSubidoAt { get; set; }
+
     public ICollection<CafeVentaItem> Items { get; set; } = new List<CafeVentaItem>();
 }
 

@@ -352,7 +352,9 @@ public record CafeVentaDto(
     decimal? ArcaImpTotal = null,
     int? EntregadoPorRepartidorId = null,
     string? EntregadoPorRepartidorNombre = null,
-    DateTime? EntregadoAt = null);
+    DateTime? EntregadoAt = null,
+    string? DriveFileId = null,
+    DateTime? DriveSubidoAt = null);
 
 public class CafeCotizarItemRequest
 {

@@ -17,7 +17,9 @@ public record IntegrationDto(
 public record SaveIntegrationRequest(
     [Required][MaxLength(50)] string Provider,
     [MaxLength(255)] string? AppId,
-    [MaxLength(255)] string? AppSecret,
+    // AppSecret SIN limite — algunos providers (ej. Google Drive Service Account)
+    // guardan un JSON completo que puede llegar a 2500-3000 chars.
+    string? AppSecret,
     [MaxLength(500)] string? RedirectUrl,
     string? Settings,
     bool IsActive
