@@ -1,9 +1,12 @@
 @* Tarjeta individual de pedido en el tablero de Preparacion.
    Modo compacto por default (solo header) — el armador despliega la composicion con el boton
    "Ver composicion". Al desplegar aparece la lista de items con checkboxes (visual, no se
-   persiste) y el boton "Marcar como LISTO" que saca el pedido del tablero. *@
+   persiste) y el boton "Marcar como LISTO" que saca el pedido del tablero.
 
-<div class="prep-card">
+   Si el cliente tiene TieneMiniImpresora=true, aparece tambien un boton "🖨️" para imprimir
+   el ticket rapido. Y un checkbox para seleccion multiple (imprimir varios juntos). *@
+
+<div class="prep-card @(SelectedForPrint ? "prep-card-selected" : "")">
     @{
         var todoTildado = tildados.Count >= Venta.Items.Count && Venta.Items.Count > 0;
     }
@@ -43,6 +46,10 @@
                 {
                     <span class="prep-card-pill" style="background:#dbeafe; color:#1e40af;">🚚 @Venta.EntregaPor</span>
                 }
+                @if (Venta.ImpresaAt.HasValue)
+                {
+                    <span class="prep-card-pill prep-card-pill-impresa" title="@($"Impreso {Venta.ImpresaCount} ve{(Venta.ImpresaCount == 1 ? "z" : "ces")}")">✅ Impreso @HaceCuanto(Venta.ImpresaAt)</span>
+                }
                 <button class="prep-btn-quitar" @onclick="OnQuitarDelFlujo" title="Sacar del tablero (la venta y el PDF quedan intactos)" style="margin-left:auto;">×</button>
             </div>
             <div class="prep-card-cliente" style="margin-top:0.25rem;">👤 @Venta.ClienteNombre</div>
@@ -51,6 +58,20 @@
                 <div class="prep-card-meta">📍 @(string.Join(" · ", new[] { Venta.ClienteLocalidad, Venta.ClienteCiudad }.Where(s => !string.IsNullOrEmpty(s))))</div>
             }
         </div>
+        @* Botones de la derecha: Mini impresora individual + checkbox de seleccion multiple.
+           Solo se muestran si el cliente tiene activado el flag TieneMiniImpresora. *@
+        @if (Venta.TieneMiniImpresora)
+        {
+            <div class="prep-mini-impresora-actions">
+                <button class="prep-btn-mini-impresora" @onclick="OnImprimir" title="Imprimir este ticket en mini impresora">
+                    🖨️
+                </button>
+                <label class="prep-check-print-wrap" title="Seleccionar para imprimir varios juntos">
+                    <input type="checkbox" class="prep-check-print" checked="@SelectedForPrint" @onchange="OnToggleSelect" />
+                    <span style="font-size:0.65rem; color:#6b7280;">Sel.</span>
+                </label>
+            </div>
+        }
     </div>
 
     @* Boton para desplegar la composicion del pedido. Por default cerrado. *@
@@ -119,6 +140,9 @@
     [Parameter] public EventCallback OnAvanzar { get; set; }
     [Parameter] public EventCallback OnRetroceder { get; set; }
     [Parameter] public EventCallback OnQuitarDelFlujo { get; set; }
+    [Parameter] public EventCallback OnImprimir { get; set; }
+    [Parameter] public EventCallback<bool> OnToggleSelectForPrint { get; set; }
+    [Parameter] public bool SelectedForPrint { get; set; }
 
     // Por default la composicion esta colapsada (el armador la despliega cuando va a armar ese pedido).
     private bool mostrarComposicion = false;
@@ -129,6 +153,12 @@
     private void ToggleTildado(int itemId)
     {
         if (!tildados.Add(itemId)) tildados.Remove(itemId);
+    }
+
+    private async Task OnToggleSelect(ChangeEventArgs e)
+    {
+        var val = e.Value is bool b ? b : false;
+        await OnToggleSelectForPrint.InvokeAsync(val);
     }
 
     private static string FormatoLabel(string f) => f switch
@@ -156,5 +186,15 @@
             .Select(s => s.Trim().ToUpperInvariant())
             .ToArray();
         return string.Join(" ", partes);
+    }
+
+    private static string HaceCuanto(DateTime? t)
+    {
+        if (t is null) return "";
+        var diff = DateTime.UtcNow - t.Value;
+        if (diff.TotalMinutes < 1) return "ahora";
+        if (diff.TotalMinutes < 60) return $"hace {(int)diff.TotalMinutes}'";
+        if (diff.TotalHours < 24) return $"hace {(int)diff.TotalHours}h";
+        return $"hace {(int)diff.TotalDays}d";
     }
 }

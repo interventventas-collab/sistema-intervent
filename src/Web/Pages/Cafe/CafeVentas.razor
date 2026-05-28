@@ -1608,6 +1608,14 @@
                                    style="flex: 1; font-size: 0.8rem; padding: 0.3rem 0.5rem; max-width: 200px;"
                                    @bind="envioWhatsappPhone" disabled="@(!envioWhatsappInterno)" />
                         </label>
+                        @* 2026-05-28: nuevo check para enviar al tablero "IMPRIMIR PEDIDOS DE OSMAR"
+                           (Drive). Default tildado porque la mayoria de las ventas van al armado. *@
+                        <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem;">
+                            <input type="checkbox" @bind="envioDrive" />
+                            <span>📁 <strong>Enviar a IMPRIMIR PEDIDOS DE OSMAR</strong>
+                                <span style="font-size: 0.72rem; color: #6b7280;">(sube el PDF a Drive y aparece en /cafe/preparacion para armar)</span>
+                            </span>
+                        </label>
                     </div>
                     @if (formClienteId == 0 && (envioEmail || envioWhatsappWeb || envioWhatsappInterno))
                     {
@@ -2698,6 +2706,9 @@
     private bool envioEmail;
     private bool envioWhatsappWeb;
     private bool envioWhatsappInterno;
+    // 2026-05-28: nuevo canal — al confirmar la venta, sube el PDF a Drive (tablero IMPRIMIR PEDIDOS DE OSMAR).
+    // Default tildado porque la gran mayoria de las ventas van al armado.
+    private bool envioDrive = true;
     // Destinatarios: se autocompletan desde el cliente si tiene email/telefono.
     // Si no tiene, el operador puede tipear el numero/mail a mano.
     private string envioEmailTo = "";
@@ -4584,6 +4595,29 @@
                 {
                     await DispararCanalesDeEnvioAsync(v.Id, v.Numero);
                 }
+
+                // 2026-05-28: si "Enviar a IMPRIMIR PEDIDOS DE OSMAR" estaba tildado,
+                // subir el PDF a Drive en background — no bloqueamos el flujo de la venta.
+                if (envioDrive)
+                {
+                    var ventaIdParaDrive = v.Id;
+                    var numeroParaToast = v.Numero;
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            var (fileId, _, _) = await Api.SubirVentaADriveAsync(ventaIdParaDrive);
+                            if (!string.IsNullOrEmpty(fileId))
+                            {
+                                await InvokeAsync(() => ToastService.Success($"{numeroParaToast} enviado a IMPRIMIR PEDIDOS DE OSMAR ✅"));
+                            }
+                        }
+                        catch (Exception driveEx)
+                        {
+                            await InvokeAsync(() => ToastService.Error("No se pudo subir a Drive: " + driveEx.Message));
+                        }
+                    });
+                }
             }
 
             // Recargar listado y catalogos en segundo plano (la UI ya cerro el modal).
@@ -4664,14 +4698,18 @@
             var (fileId, link, subidoAt) = await Api.SubirVentaADriveAsync(v.Id);
             if (!string.IsNullOrEmpty(fileId))
             {
-                // Refrescar el DTO mostrado en pantalla.
-                if (printVenta is not null)
+                // 2026-05-28: NO recargamos toda la lista (eso congelaba la UI varios segundos).
+                // En su lugar actualizamos SOLO esta venta en la lista local — instantáneo.
+                v.DriveFileId = fileId;
+                v.DriveSubidoAt = subidoAt ?? DateTime.UtcNow;
+                v.DriveSubidasCount = v.DriveSubidasCount + 1;
+                if (printVenta is not null && printVenta.Id == v.Id)
                 {
                     printVenta.DriveFileId = fileId;
                     printVenta.DriveSubidoAt = subidoAt ?? DateTime.UtcNow;
                 }
                 ToastService.Success("Comprobante subido a Drive");
-                await Load();
+                StateHasChanged();
             }
         }
         catch (Exception ex)

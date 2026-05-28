@@ -894,6 +894,23 @@ public class ApiClient
     }
     private record LimpiarTableroResponse(int ocultas);
 
+    /// <summary>Lista las ventas ya MARCADAS COMO LISTO/EN_CAMINO/ENTREGADO — para la sección
+    /// colapsable "Ya armados" del tablero.</summary>
+    public async Task<List<CafePreparacionVentaDto>?> GetCafePreparacionArmadosAsync(int dias = 7)
+        => await GetAsync<List<CafePreparacionVentaDto>>($"/api/cafe/ventas/preparacion/armados?dias={dias}");
+
+    /// <summary>Marca una venta como impresa (chip "Impreso hace X min" en la card).</summary>
+    public async Task<bool> MarcarImpresaAsync(int id)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsync($"/api/cafe/ventas/{id}/marcar-impresa", null);
+        return resp.IsSuccessStatusCode;
+    }
+
+    /// <summary>URL del endpoint para imprimir PDF combinado de varias ventas. Para usar con un &lt;a target="_blank"&gt;.</summary>
+    public string GetImprimirPdfCombinadoUrl(IEnumerable<int> ids)
+        => $"/api/cafe/ventas/imprimir-pdf-combinado?ids={string.Join(",", ids)}";
+
     // === Preventas (admin) ===
     public async Task<List<CafePreventaAdminDto>?> GetCafePreventasAdminAsync(string estado = "pendiente")
         => await GetAsync<List<CafePreventaAdminDto>>($"/api/preventas/admin?estado={Uri.EscapeDataString(estado)}");

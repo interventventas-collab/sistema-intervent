@@ -10,7 +10,8 @@ public record CafeClienteDto(
     string? Notas, string? ComentariosComprobante,
     bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt,
     int? CodigoInterno = null, string? MapeoLink = null,
-    decimal? MapeoLat = null, decimal? MapeoLng = null);
+    decimal? MapeoLat = null, decimal? MapeoLng = null,
+    bool TieneMiniImpresora = false);
 
 public class CreateCafeClienteRequest
 {
@@ -55,6 +56,8 @@ public class UpdateCafeClienteRequest
     public bool? IsActive { get; set; }
     public string? MapeoLink { get; set; }
     public bool ClearMapeoLink { get; set; }
+    /// <summary>Si true, en /cafe/preparacion las cards de este cliente muestran botón mini impresora.</summary>
+    public bool? TieneMiniImpresora { get; set; }
 }
 
 // ===== Productos =====

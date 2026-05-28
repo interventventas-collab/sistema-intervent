@@ -148,6 +148,12 @@ public class CafeVenta
     /// /cafe/preparacion. Pedido 2026-05-28.</summary>
     public DateTime? PreparacionOcultoAt { get; set; }
 
+    /// <summary>Ultima vez que se imprimio desde el tablero de Preparacion (boton mini impresora).
+    /// Sirve para mostrar chip "Impreso hace X min" en la card. Pedido 2026-05-28.</summary>
+    public DateTime? ImpresaAt { get; set; }
+    /// <summary>Cuantas veces se imprimio desde el tablero. Permite reimprimir siempre.</summary>
+    public int ImpresaCount { get; set; }
+
     /// <summary>Repartidor que entrego la venta (cuando lo marca desde /repartidor/{token}).
     /// Distinto de EntregaPor (que es el repartidor "asignado" antes del reparto).</summary>
     public int? EntregadoPorRepartidorId { get; set; }
