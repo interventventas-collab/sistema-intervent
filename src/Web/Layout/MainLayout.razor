@@ -900,6 +900,14 @@
 
         // Cargar operador desde localStorage. Si no hay, abrir modal obligatorio.
         await Operator.LoadAsync();
+        // 2026-05-28: validar que el operador cargado esté en la lista permitida para este rol.
+        // Si OFICINA tenía GERMAN guardado y se loguea DEPOSITO (que solo ve ALEXIS/WALTER/RODRIGO),
+        // limpiamos el operador para forzar a elegir uno válido.
+        var operadoresPermitidos = OperatorService.ForPermissions(permissions);
+        if (Operator.HasOperator && !operadoresPermitidos.Contains(Operator.Current!))
+        {
+            await Operator.ClearAsync();
+        }
         if (!Operator.HasOperator) showOperatorModal = true;
 
         // Selector de empresa DESACTIVADO: limpiamos la empresa al arrancar para que la app
@@ -974,9 +982,21 @@
             // Empty menuKey means always allowed (like /perfil)
             if (!string.IsNullOrEmpty(menuKey) && !permissions.Contains(menuKey))
             {
-                Navigation.NavigateTo("/");
+                // 2026-05-28: si no tiene dashboard pero es deposito/oficina, llevarlo a su home.
+                // Antes redirigia a "/" que es la misma ruta → loop sin efecto → el dashboard se renderizaba igual.
+                var homeRoute = GetHomeRouteForUser();
+                Navigation.NavigateTo(homeRoute);
             }
         }
+    }
+
+    /// <summary>Ruta "home" según el rol del usuario. Si no tiene dashboard, lo llevamos a la
+    /// pantalla principal de su rol. Para admins (con cafe) la home sigue siendo "/".</summary>
+    private string GetHomeRouteForUser()
+    {
+        if (permissions.Contains("dashboard")) return "/";
+        if (permissions.Contains("deposito") || permissions.Contains("oficina")) return "/cafe/preparacion";
+        return "/perfil";
     }
 
     private bool HasPerm(string key) => permissions.Contains(key);
