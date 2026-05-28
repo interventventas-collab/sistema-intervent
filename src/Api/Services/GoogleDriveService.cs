@@ -159,7 +159,10 @@ public class GoogleDriveService
     }
 
     /// <summary>
-    /// Sube un archivo a Drive dentro de la subcarpeta {año}/{MM-Mes}/.
+    /// Sube un archivo a Drive directamente en la carpeta raíz (estructura plana).
+    /// Decisión 2026-05-28: el negocio imprime los comprobantes desde Drive y necesita
+    /// verlos todos juntos sin tener que entrar a sub-niveles año/mes. El orden cronológico
+    /// se mantiene porque el nombre del archivo ya incluye la fecha (CAFE-2026-MMDD-XXXX.pdf).
     /// Devuelve el ID del archivo + webViewLink para abrirlo en el browser.
     /// </summary>
     public async Task<(string fileId, string webViewLink)> UploadFileAsync(
@@ -168,15 +171,10 @@ public class GoogleDriveService
         var (clientId, clientSecret, refreshToken, rootFolderId) = await GetConfigAsync();
         var service = BuildClient(clientId, clientSecret, refreshToken);
 
-        // Estructura jerárquica: rootFolderId / {año} / {MM-Mes} /
-        var now = DateTime.Now; // usamos hora local Argentina (mismo timezone del server)
-        var yearFolderId  = await GetOrCreateSubfolderAsync(service, rootFolderId, now.Year.ToString());
-        var monthFolderId = await GetOrCreateSubfolderAsync(service, yearFolderId, MesesEs[now.Month]);
-
         var meta = new DriveData.File
         {
             Name = fileName,
-            Parents = new[] { monthFolderId }
+            Parents = new[] { rootFolderId }
         };
 
         using var stream = new MemoryStream(content);
