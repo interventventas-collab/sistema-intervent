@@ -240,6 +240,27 @@
         cursor: pointer;
     }
     .prep-btn-drive:hover { background: #f3f4f6; }
+    /* Grid de pedidos estilo Drive: cards de ancho fijo, 2-3 por fila segun pantalla. */
+    .drive-pedidos-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(520px, 1fr));
+        gap: 1rem;
+    }
+    @@media (max-width: 768px) {
+        .drive-pedidos-grid { grid-template-columns: 1fr; }
+    }
+    /* Icono PDF rojo estilo Drive (caja con esquina doblada). Click → abre en Drive. */
+    .prep-drive-icon-link { display:inline-block; text-decoration:none; transition: transform .1s; }
+    .prep-drive-icon-link:hover { transform: scale(1.05); }
+    .prep-drive-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 50px;
+        height: 60px;
+        flex-shrink: 0;
+        filter: drop-shadow(0 1px 2px rgba(0,0,0,0.15));
+    }
     .prep-entregados-lista {
         background: white;
         border: 1px solid #e5e7eb;
@@ -311,102 +332,37 @@
     }
     else
     {
-        @* ── PARA ARMAR ── *@
-        <div class="prep-section">
-            <div class="prep-section-header armar">
-                🔨 Para armar
-                <span class="prep-count-badge">@ParaArmar.Count</span>
-            </div>
-            @if (ParaArmar.Count == 0)
-            {
-                <div class="prep-empty">No hay pedidos para armar. ¡Buen trabajo! 🎉</div>
-            }
-            else
-            {
-                <div class="prep-cards">
-                    @foreach (var v in ParaArmar)
-                    {
-                        <CardPedido Venta="v" OnAvanzar="() => Avanzar(v)" OnRetroceder="() => Retroceder(v)" OnQuitarDelFlujo="() => QuitarDelFlujo(v)" />
-                    }
+        @* ── PEDIDOS PARA ARMAR (todos los que están subidos a Drive y no están listos) ── *@
+        @if (ParaArmar.Count == 0)
+        {
+            <div class="prep-empty" style="padding:2rem; font-size:1rem;">
+                No hay pedidos para armar. ¡Buen trabajo! 🎉
+                <div style="margin-top:0.5rem; color:#6b7280; font-size:0.85rem;">
+                    Para que aparezcan acá, subí los comprobantes a Drive desde /cafe/ventas.
                 </div>
-            }
-        </div>
-
-        @* ── LISTOS / EN CAMINO ── *@
-        <div class="prep-section">
-            <div class="prep-section-header listos" @onclick="() => listosExpanded = !listosExpanded">
-                📦 Listos y en camino
-                <span class="prep-count-badge">@Listos.Count</span>
-                <span style="font-size:0.9rem;">@(listosExpanded ? "▼" : "▶")</span>
             </div>
-            @if (listosExpanded)
-            {
-                @if (Listos.Count == 0)
+        }
+        else
+        {
+            <div class="drive-pedidos-grid">
+                @foreach (var v in ParaArmar)
                 {
-                    <div class="prep-empty">Nada para entregar todavía.</div>
+                    <CardPedido Venta="v" OnAvanzar="() => Avanzar(v)" OnRetroceder="() => Retroceder(v)" OnQuitarDelFlujo="() => QuitarDelFlujo(v)" />
                 }
-                else
-                {
-                    <div class="prep-cards prep-cards-compact">
-                        @foreach (var v in Listos)
-                        {
-                            <CardPedido Venta="v" Compact="true" OnAvanzar="() => Avanzar(v)" OnRetroceder="() => Retroceder(v)" OnQuitarDelFlujo="() => QuitarDelFlujo(v)" />
-                        }
-                    </div>
-                }
-            }
-        </div>
-
-        @* ── ENTREGADOS HOY (lista chiquita) ── *@
-        <div class="prep-section">
-            <div class="prep-section-header entregados" @onclick="() => entregadosExpanded = !entregadosExpanded">
-                ✅ Entregados hoy
-                <span class="prep-count-badge">@EntregadosHoy.Count</span>
-                <span style="font-size:0.9rem;">@(entregadosExpanded ? "▼" : "▶")</span>
             </div>
-            @if (entregadosExpanded)
-            {
-                @if (EntregadosHoy.Count == 0)
-                {
-                    <div class="prep-empty">Aún no se entregó nada hoy.</div>
-                }
-                else
-                {
-                    <div class="prep-entregados-lista">
-                        @foreach (var v in EntregadosHoy)
-                        {
-                            <div class="prep-entregado-row">
-                                <span style="font-family:monospace; color:#6b7280;">@v.Numero</span>
-                                <strong>@v.ClienteNombre</strong>
-                                @if (!string.IsNullOrEmpty(v.EntregaPor))
-                                {
-                                    <span style="color:#6b7280;">· 🚚 @v.EntregaPor</span>
-                                }
-                                <span style="margin-left:auto; color:#9ca3af; font-size:0.75rem;">@HaceCuanto(v.PreparacionUpdatedAt)</span>
-                                <button class="prep-btn-retroceder" @onclick="() => Retroceder(v)" title="Volver a En camino">↩</button>
-                            </div>
-                        }
-                    </div>
-                }
-            }
-        </div>
+        }
     }
 </div>
 
 @code {
     private List<CafePreparacionVentaDto>? lista;
     private bool loading = true;
-    private bool listosExpanded = true;
-    private bool entregadosExpanded = true;
     private DateTime ultimaActualizacion = DateTime.Now;
     private System.Threading.Timer? refreshTimer;
 
-    private List<CafePreparacionVentaDto> ParaArmar => lista?.Where(v =>
-        v.EstadoPreparacion is "PARA_PREPARAR" or "EN_PREPARACION").ToList() ?? new();
-    private List<CafePreparacionVentaDto> Listos => lista?.Where(v =>
-        v.EstadoPreparacion is "LISTO" or "EN_CAMINO").ToList() ?? new();
-    private List<CafePreparacionVentaDto> EntregadosHoy => lista?.Where(v =>
-        v.EstadoPreparacion == "ENTREGADO" && v.PreparacionUpdatedAt?.Date == DateTime.UtcNow.Date).ToList() ?? new();
+    // El backend ya filtra por DriveSubidoAt != null + estados no-finalizados, así que mostramos todo lo que viene.
+    // (Si en el futuro queremos volver a separar Para Armar / Listos / Entregados, se restablece el filtro.)
+    private List<CafePreparacionVentaDto> ParaArmar => lista ?? new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -437,15 +393,9 @@
 
     private async Task Avanzar(CafePreparacionVentaDto v)
     {
-        var siguiente = v.EstadoPreparacion switch
-        {
-            "PARA_PREPARAR" => "EN_PREPARACION",
-            "EN_PREPARACION" => "LISTO",
-            "LISTO" => "EN_CAMINO",
-            "EN_CAMINO" => "ENTREGADO",
-            _ => null
-        };
-        if (siguiente is null) return;
+        // 2026-05-28: el flujo se simplifico — un solo click marca como LISTO y la venta sale
+        // del tablero (porque el endpoint /preparacion solo trae ventas en estado armado o null).
+        const string siguiente = "LISTO";
         var ok = await Api.CambiarEstadoPreparacionAsync(v.Id, new CafeCambiarEstadoPreparacionRequest
         {
             EstadoNuevo = siguiente,
@@ -453,14 +403,14 @@
         });
         if (ok)
         {
-            v.EstadoPreparacion = siguiente;
-            v.PreparacionUpdatedAt = DateTime.UtcNow;
-            ToastService.Success($"{v.Numero} → {siguiente.Replace("_", " ")}");
+            // Sacar la venta de la lista local para que desaparezca al toque (sin esperar refresh)
+            lista?.RemoveAll(x => x.Id == v.Id);
+            ToastService.Success($"{v.Numero} marcado como LISTO ✅");
             StateHasChanged();
         }
         else
         {
-            ToastService.Error("No se pudo avanzar el estado");
+            ToastService.Error("No se pudo marcar como LISTO");
         }
     }
 
