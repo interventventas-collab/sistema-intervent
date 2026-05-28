@@ -2334,6 +2334,9 @@ public class CafeVentasController : ControllerBase
                 preparacionUpdatedAt = v.PreparacionUpdatedAt,
                 // Total real cobrable (con IVA si es factura ARCA)
                 total = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total,
+                // Drive: para mostrar boton "Ver PDF" / "Subir a Drive" en la tarjeta de preparacion.
+                driveFileId = v.DriveFileId,
+                driveSubidoAt = v.DriveSubidoAt,
                 items = v.Items.Select(i => new
                 {
                     id = i.Id,
