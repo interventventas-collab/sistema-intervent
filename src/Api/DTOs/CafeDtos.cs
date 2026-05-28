@@ -354,7 +354,8 @@ public record CafeVentaDto(
     string? EntregadoPorRepartidorNombre = null,
     DateTime? EntregadoAt = null,
     string? DriveFileId = null,
-    DateTime? DriveSubidoAt = null);
+    DateTime? DriveSubidoAt = null,
+    int DriveSubidasCount = 0);
 
 public class CafeCotizarItemRequest
 {

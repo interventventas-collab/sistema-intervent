@@ -184,6 +184,11 @@ public class CafeVenta
     /// <summary>Cuándo se subió el PDF a Google Drive. Null si nunca se subió.</summary>
     public DateTime? DriveSubidoAt { get; set; }
 
+    /// <summary>Cuántas veces se subió el PDF a Drive. Permite mostrar visualmente si
+    /// se re-subió (color/badge distinto en el botón de la tabla de ventas).
+    /// 0 = nunca subido, 1 = normal, 2+ = re-subido (atención).</summary>
+    public int DriveSubidasCount { get; set; }
+
     public ICollection<CafeVentaItem> Items { get; set; } = new List<CafeVentaItem>();
 }
 
