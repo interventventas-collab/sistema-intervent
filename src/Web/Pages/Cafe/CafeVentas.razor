@@ -421,6 +421,13 @@
                                     }
                                     <button class="btn-icon btn-edit" @onclick="() => OpenEditModal(v)" title="Editar comprobante">✎</button>
 
+                                    @* Boton subir/re-subir a Drive (estructura plana, va directo a la carpeta raiz). *@
+                                    <button class="btn-icon" style="color: #4285f4;"
+                                            @onclick="() => SubirADrive(v)" disabled="@subiendoDrive"
+                                            title="@(v.DriveSubidoAt.HasValue ? $"Re-subir a Drive (último: {v.DriveSubidoAt:dd/MM HH:mm})" : "Subir a Drive")">
+                                        @(v.DriveSubidoAt.HasValue ? "🔄" : "📁")
+                                    </button>
+
                                     @* Boton "+" abre dropdown con el resto de las acciones *@
                                     <button id="@($"act-btn-{v.Id}")" class="btn-icon" style="color: #4b5563;"
                                             @onclick="() => ToggleActionsMenu(v.Id)" title="Más acciones">+</button>
@@ -1736,21 +1743,23 @@
                             @onclick="@(() => OpenReenvio(printVenta))" title="Mandar este comprobante por mail / WhatsApp">
                         📤 Enviar al cliente
                     </button>
-                    @if (printVenta.DriveSubidoAt.HasValue)
+                    @* Boton Subir a Drive — SIEMPRE visible (permite re-subir si hubo cambios o si la
+                       carpeta de destino cambio). Si ya esta subido, mostramos un mini link "👁" al lado
+                       para abrir el PDF actual en Drive. *@
+                    <button class="btn" style="background:#4285f4; color: white; border: none; font-size: 0.85rem;"
+                            @onclick="@(() => SubirADrive(printVenta!))" disabled="@subiendoDrive"
+                            title="@(printVenta.DriveSubidoAt.HasValue ? $"Re-subir a Drive (último: {printVenta.DriveSubidoAt:dd/MM HH:mm})" : "Subir a Drive")">
+                        @(subiendoDrive
+                            ? "Subiendo..."
+                            : (printVenta.DriveSubidoAt.HasValue ? "🔄 Re-subir a Drive" : "📁 Subir a Drive"))
+                    </button>
+                    @if (printVenta.DriveSubidoAt.HasValue && !string.IsNullOrEmpty(printVenta.DriveFileId))
                     {
                         <a class="btn" href="https://drive.google.com/file/d/@printVenta.DriveFileId/view" target="_blank"
-                           style="background:#4285f4; color: white; border: none; font-size: 0.85rem; text-decoration: none;"
-                           title="Abrir comprobante en Google Drive">
-                            📁 Ver en Drive
+                           style="background:white; color:#4285f4; border:1px solid #4285f4; font-size: 0.85rem; text-decoration: none; padding: 0.3rem 0.6rem;"
+                           title="Abrir el PDF actual en Drive">
+                            👁 Ver actual
                         </a>
-                    }
-                    else
-                    {
-                        <button class="btn" style="background:#4285f4; color: white; border: none; font-size: 0.85rem;"
-                                @onclick="@(() => SubirADrive(printVenta!))" disabled="@subiendoDrive"
-                                title="Subir este comprobante a Google Drive">
-                            @(subiendoDrive ? "Subiendo..." : "📁 Subir a Drive")
-                        </button>
                     }
                     @if (HasWhatsapp)
                     {
