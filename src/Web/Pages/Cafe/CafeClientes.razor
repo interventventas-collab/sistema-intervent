@@ -394,6 +394,17 @@
                         </select>
                     </div>
                 }
+                @* 2026-05-28: flag para mostrar boton mini impresora en /cafe/preparacion.
+                   Pensado para clientes mayoristas (KENZAI, DEFENSORES DE GLEW, etc) que reciben
+                   muchas ventas seguidas y necesitan imprimir el ticket rapido. *@
+                <div class="form-group" style="grid-column: 1 / -1;">
+                    <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer; padding:0.5rem 0.7rem; background:#fffbeb; border:1px solid #fde68a; border-radius:6px;">
+                        <input type="checkbox" @bind="formTieneMiniImpresora" />
+                        <span>🖨️ <strong>Mostrar botón mini impresora</strong> en el tablero <em>IMPRIMIR PEDIDOS DE OSMAR</em>
+                            <span style="font-size:0.78rem; color:#92400e; display:block; margin-top:0.15rem;">Activá esto para clientes que necesitan imprimir el ticket rápido al armar (mayoristas, repartos con muchos pedidos).</span>
+                        </span>
+                    </label>
+                </div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" @onclick="CloseForm" disabled="@saving">Cancelar</button>
@@ -630,6 +641,7 @@
     }
 
     private bool formIsActive = true;
+    private bool formTieneMiniImpresora = false;
     private bool showDeleteConfirm;
     private CafeClienteDto? toDelete;
 
@@ -657,7 +669,7 @@
         formCodigoInterno = null; formMapeoLink = "";
         formMapeoLat = null; formMapeoLng = null;
         localidadesSugeridas = new();
-        formIsActive = true; formError = null; showForm = true;
+        formIsActive = true; formTieneMiniImpresora = false; formError = null; showForm = true;
         await Task.CompletedTask;
     }
 
@@ -678,7 +690,7 @@
         formMapeoLng = c.MapeoLng;
         // Pre-cargar localidades sugeridas segun la provincia del cliente
         localidadesSugeridas = await CpService.GetLocalidadesAsync(formCiudad);
-        formIsActive = c.IsActive; formError = null; showForm = true;
+        formIsActive = c.IsActive; formTieneMiniImpresora = c.TieneMiniImpresora; formError = null; showForm = true;
     }
 
     private async Task ReExtraerCoords()
@@ -788,6 +800,7 @@
                     CondicionIvaDefault = formCondicionIvaDefault,
                     Notas = formNotas, ComentariosComprobante = formComentariosComprobante,
                     IsActive = formIsActive,
+                    TieneMiniImpresora = formTieneMiniImpresora,
                     MapeoLink = string.IsNullOrEmpty(mapeoLinkClean) ? null : mapeoLinkClean,
                     ClearMapeoLink = string.IsNullOrEmpty(mapeoLinkClean)
                 });
@@ -810,6 +823,12 @@
                     CodigoInterno = formCodigoInterno
                 });
                 if (c is null) { formError = "No se pudo crear"; return; }
+                // 2026-05-28: si crearon con "Mini impresora" tildado, hacemos un update inmediato
+                // (no esta en el CreateRequest porque es un flag opcional).
+                if (formTieneMiniImpresora)
+                {
+                    await Api.UpdateCafeClienteAsync(c.Id, new UpdateCafeClienteRequest { TieneMiniImpresora = true });
+                }
                 // Si el backend tuvo que reasignar (porque alguien tomó el código entre medio), avisamos.
                 if (pedidoCodigo.HasValue && c.CodigoInterno.HasValue && c.CodigoInterno.Value != pedidoCodigo.Value)
                 {

@@ -265,6 +265,103 @@
         transition: background 0.1s;
     }
     .prep-btn-ver-comp:hover { background: #fef3c7; }
+    /* Mini impresora — boton + checkbox en cards de clientes con flag TieneMiniImpresora */
+    .prep-mini-impresora-actions {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.3rem;
+        flex-shrink: 0;
+    }
+    .prep-btn-mini-impresora {
+        background: #1e40af;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-size: 1.3rem;
+        line-height: 1;
+        padding: 0.45rem 0.6rem;
+        cursor: pointer;
+        box-shadow: 0 2px 4px rgba(30,64,175,0.25);
+        transition: all 0.1s;
+    }
+    .prep-btn-mini-impresora:hover { background: #1e3a8a; transform: scale(1.05); }
+    .prep-check-print-wrap { display:flex; flex-direction:column; align-items:center; cursor:pointer; }
+    .prep-check-print { width: 18px; height: 18px; cursor: pointer; accent-color: #1e40af; }
+    .prep-card-pill-impresa { background: #dcfce7 !important; color: #166534 !important; }
+    .prep-card.prep-card-selected {
+        outline: 3px solid #1e40af;
+        outline-offset: -1px;
+        background: #eff6ff;
+    }
+    /* Bar fija con boton "Imprimir N seleccionados" que aparece cuando hay >= 1 card tildada */
+    .prep-print-bar {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        background: #1e40af;
+        color: white;
+        padding: 0.7rem 1rem;
+        border-radius: 8px;
+        margin-bottom: 0.7rem;
+        display: flex;
+        align-items: center;
+        gap: 0.7rem;
+        box-shadow: 0 4px 12px rgba(30,64,175,0.3);
+        animation: slide-down-print-bar 0.2s ease-out;
+    }
+    @@keyframes slide-down-print-bar { from { transform: translateY(-10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    .prep-print-bar button {
+        background: white;
+        color: #1e40af;
+        border: none;
+        padding: 0.5rem 0.9rem;
+        border-radius: 6px;
+        font-weight: 700;
+        cursor: pointer;
+        font-size: 0.88rem;
+    }
+    .prep-print-bar button:hover { background: #dbeafe; }
+    .prep-print-bar button.ghost { background: transparent; color: white; border: 1px solid rgba(255,255,255,0.5); }
+    .prep-print-bar button.ghost:hover { background: rgba(255,255,255,0.15); }
+    /* Seccion "Ya armados" — header colapsable + grid mini */
+    .prep-armados-header {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        padding: 0.6rem 0.8rem;
+        background: #f0fdf4;
+        border-left: 4px solid #16a34a;
+        border-radius: 6px;
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #166534;
+        cursor: pointer;
+        user-select: none;
+        margin-top: 1.5rem;
+    }
+    .prep-armado-mini {
+        background: white;
+        border: 1px solid #d1fae5;
+        border-radius: 8px;
+        padding: 0.6rem 0.8rem;
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        font-size: 0.85rem;
+    }
+    .prep-armado-mini .pdf-icon-mini {
+        width: 28px; height: 36px; flex-shrink: 0;
+    }
+    .prep-armado-mini .check-armado {
+        margin-left: auto;
+        background: #dcfce7;
+        color: #166534;
+        padding: 0.15rem 0.5rem;
+        border-radius: 999px;
+        font-size: 0.72rem;
+        font-weight: 700;
+    }
     /* Icono PDF rojo estilo Drive (caja con esquina doblada). Click → abre en Drive. */
     .prep-drive-icon-link { display:inline-block; text-decoration:none; transition: transform .1s; }
     .prep-drive-icon-link:hover { transform: scale(1.05); }
@@ -356,6 +453,17 @@
     }
     else
     {
+        @* Bar flotante de impresion multiple (aparece cuando hay >= 1 card tildada) *@
+        @if (seleccionadosParaImprimir.Count > 0)
+        {
+            <div class="prep-print-bar">
+                <span style="font-size:1.2rem;">🖨️</span>
+                <strong>@seleccionadosParaImprimir.Count pedido@(seleccionadosParaImprimir.Count == 1 ? "" : "s") seleccionado@(seleccionadosParaImprimir.Count == 1 ? "" : "s")</strong>
+                <button @onclick="ImprimirSeleccionados">Imprimir todo junto</button>
+                <button class="ghost" @onclick="LimpiarSeleccion">Limpiar selección</button>
+            </div>
+        }
+
         @* ── PEDIDOS PARA ARMAR (todos los que están subidos a Drive y no están listos) ── *@
         @if (ParaArmar.Count == 0)
         {
@@ -371,21 +479,77 @@
             <div class="drive-pedidos-grid">
                 @foreach (var v in ParaArmar)
                 {
-                    <CardPedido Venta="v" OnAvanzar="() => Avanzar(v)" OnQuitarDelFlujo="() => QuitarDelFlujo(v)" />
+                    <CardPedido Venta="v"
+                                SelectedForPrint="seleccionadosParaImprimir.Contains(v.Id)"
+                                OnAvanzar="() => Avanzar(v)"
+                                OnQuitarDelFlujo="() => QuitarDelFlujo(v)"
+                                OnImprimir="() => ImprimirUno(v)"
+                                OnToggleSelectForPrint="(sel) => ToggleSeleccion(v.Id, sel)" />
                 }
             </div>
+        }
+
+        @* ── SECCION COLAPSABLE: YA ARMADOS (historial últimos 7 días) ── *@
+        <div class="prep-armados-header" @onclick="ToggleArmados">
+            <span>@(armadosExpanded ? "▼" : "▶")</span>
+            <span>📦 Ya armados (últimos 7 días)</span>
+            <span style="margin-left:auto; font-weight:600;">@(armados?.Count ?? 0)</span>
+        </div>
+        @if (armadosExpanded)
+        {
+            @if (armados is null)
+            {
+                <p style="padding:0.5rem;">Cargando historial...</p>
+            }
+            else if (armados.Count == 0)
+            {
+                <div class="prep-empty">Todavía no hay pedidos marcados como LISTO en los últimos 7 días.</div>
+            }
+            else
+            {
+                <div class="drive-pedidos-grid" style="margin-top:0.5rem;">
+                    @foreach (var v in armados)
+                    {
+                        <div class="prep-armado-mini">
+                            @if (v.DriveSubidoAt.HasValue && !string.IsNullOrEmpty(v.DriveFileId))
+                            {
+                                <a href="https://drive.google.com/file/d/@v.DriveFileId/view" target="_blank" title="Abrir PDF en Drive" style="text-decoration:none;">
+                                    <svg class="pdf-icon-mini" viewBox="0 0 24 30" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M14 0H4C1.79 0 0 1.79 0 4v22c0 2.21 1.79 4 4 4h16c2.21 0 4-1.79 4-4V10L14 0z" fill="#ea4335"/>
+                                        <text x="12" y="22" text-anchor="middle" fill="white" font-size="6" font-weight="700" font-family="Arial">PDF</text>
+                                    </svg>
+                                </a>
+                            }
+                            <div style="flex:1; min-width:0;">
+                                <div style="font-family:monospace; font-size:0.78rem; color:#6b7280;">@v.Numero</div>
+                                <div style="font-weight:700;">@v.ClienteNombre</div>
+                                @if (v.PreparacionUpdatedAt.HasValue)
+                                {
+                                    <div style="font-size:0.72rem; color:#16a34a;">✅ Armado @HaceCuanto(v.PreparacionUpdatedAt)</div>
+                                }
+                            </div>
+                            <span class="check-armado">@v.EstadoPreparacion</span>
+                        </div>
+                    }
+                </div>
+            }
         }
     }
 </div>
 
 @code {
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+
     private List<CafePreparacionVentaDto>? lista;
+    private List<CafePreparacionVentaDto>? armados;
+    private bool armadosExpanded = false;
     private bool loading = true;
     private DateTime ultimaActualizacion = DateTime.Now;
     private System.Threading.Timer? refreshTimer;
+    // Seleccion multiple para imprimir varios juntos.
+    private HashSet<int> seleccionadosParaImprimir = new();
 
     // El backend ya filtra por DriveSubidoAt != null + estados no-finalizados, así que mostramos todo lo que viene.
-    // (Si en el futuro queremos volver a separar Para Armar / Listos / Entregados, se restablece el filtro.)
     private List<CafePreparacionVentaDto> ParaArmar => lista ?? new();
 
     protected override async Task OnInitializedAsync()
@@ -413,6 +577,63 @@
             loading = false;
             StateHasChanged();
         }
+    }
+
+    private async Task ToggleArmados()
+    {
+        armadosExpanded = !armadosExpanded;
+        if (armadosExpanded && armados is null)
+        {
+            armados = await Api.GetCafePreparacionArmadosAsync(7) ?? new();
+        }
+        StateHasChanged();
+    }
+
+    private void ToggleSeleccion(int ventaId, bool seleccionar)
+    {
+        if (seleccionar) seleccionadosParaImprimir.Add(ventaId);
+        else seleccionadosParaImprimir.Remove(ventaId);
+        StateHasChanged();
+    }
+
+    private void LimpiarSeleccion()
+    {
+        seleccionadosParaImprimir.Clear();
+        StateHasChanged();
+    }
+
+    /// <summary>Imprimir UN ticket: abre el PDF en pestaña nueva y marca como impresa.</summary>
+    private async Task ImprimirUno(CafePreparacionVentaDto v)
+    {
+        var url = Api.GetImprimirPdfCombinadoUrl(new[] { v.Id });
+        // Marcamos como impresa en background y abrimos PDF en pestaña nueva
+        // (el endpoint en sí también marca, pero refleja en UI tambien)
+        v.ImpresaAt = DateTime.UtcNow;
+        v.ImpresaCount = v.ImpresaCount + 1;
+        StateHasChanged();
+        await JS.InvokeVoidAsync("window.open", url, "_blank");
+    }
+
+    /// <summary>Imprimir VARIOS: genera un PDF combinado con todos los seleccionados.</summary>
+    private async Task ImprimirSeleccionados()
+    {
+        if (seleccionadosParaImprimir.Count == 0) return;
+        var ids = seleccionadosParaImprimir.ToList();
+        var url = Api.GetImprimirPdfCombinadoUrl(ids);
+        // Marcamos cada uno como impreso en UI (el endpoint ya los marca en la DB)
+        var ahora = DateTime.UtcNow;
+        if (lista is not null)
+        {
+            foreach (var v in lista.Where(x => ids.Contains(x.Id)))
+            {
+                v.ImpresaAt = ahora;
+                v.ImpresaCount = v.ImpresaCount + 1;
+            }
+        }
+        ToastService.Success($"Generando PDF combinado con {ids.Count} ticket{(ids.Count == 1 ? "" : "s")}...");
+        await JS.InvokeVoidAsync("window.open", url, "_blank");
+        seleccionadosParaImprimir.Clear();
+        StateHasChanged();
     }
 
     private async Task Avanzar(CafePreparacionVentaDto v)

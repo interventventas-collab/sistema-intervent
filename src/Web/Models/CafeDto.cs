@@ -27,6 +27,8 @@ public class CafeClienteDto
     public decimal? MapeoLat { get; set; }
     /// <summary>Longitud extraída del MapeoLink.</summary>
     public decimal? MapeoLng { get; set; }
+    /// <summary>Si true, en /cafe/preparacion las cards de este cliente muestran botón mini impresora.</summary>
+    public bool TieneMiniImpresora { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 }
@@ -72,6 +74,8 @@ public class UpdateCafeClienteRequest
     public bool? IsActive { get; set; }
     public string? MapeoLink { get; set; }
     public bool ClearMapeoLink { get; set; }
+    /// <summary>Si true, en /cafe/preparacion las cards de este cliente muestran botón mini impresora.</summary>
+    public bool? TieneMiniImpresora { get; set; }
 }
 
 public class CafeProductoDto
@@ -409,6 +413,14 @@ public class CafePreparacionVentaDto
     public string? DriveFileId { get; set; }
     /// <summary>Cuándo se subió a Drive. Null = nunca subido (mostrar botón "Subir a Drive").</summary>
     public DateTime? DriveSubidoAt { get; set; }
+    /// <summary>Si true, el cliente tiene flag "mini impresora" — la card muestra botón impresora.</summary>
+    public bool TieneMiniImpresora { get; set; }
+    /// <summary>Cuándo se imprimió por última vez desde el tablero. Para chip "Impreso hace X".</summary>
+    public DateTime? ImpresaAt { get; set; }
+    /// <summary>Cuántas veces se imprimió en total.</summary>
+    public int ImpresaCount { get; set; }
+    /// <summary>Para sección "Ya armados": cantidad de items (sin traer el listado completo).</summary>
+    public int? ItemsCount { get; set; }
     public List<CafePreparacionItemDto> Items { get; set; } = new();
 }
 

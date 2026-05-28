@@ -63,6 +63,11 @@ public class CafeCliente
 
     public bool IsActive { get; set; } = true;
 
+    /// <summary>Si true, en /cafe/preparacion las cards de este cliente muestran un boton
+    /// "mini impresora" para imprimir el ticket rapido. Pensado para clientes mayoristas
+    /// que reciben muchas ventas seguidas. Pedido 2026-05-28.</summary>
+    public bool TieneMiniImpresora { get; set; } = false;
+
     /// <summary>Código interno correlativo asignado por el operador (botón en la ficha).
     /// NO confundir con `Codigo` (que es texto libre). Este es un número único para uso interno
     /// del operador: identificar clientes en mapeo, reportes, integraciones externas, etc.</summary>

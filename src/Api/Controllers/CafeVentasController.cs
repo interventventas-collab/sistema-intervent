@@ -367,24 +367,7 @@ public class CafeVentasController : ControllerBase
 
         try
         {
-            // Reusamos la misma lógica de selección de PDF que GetPdf: ARCA si está autorizada, sino cotización.
-            var esFacturaArca = v.TipoComprobante is "FA" or "FB" or "FC";
-            var autorizada = v.ArcaEstado == "autorizado"
-                             && !string.IsNullOrEmpty(v.ArcaCae)
-                             && v.ArcaCbteNro.HasValue
-                             && v.ArcaPtoVta.HasValue
-                             && v.ArcaCbteTipoNum.HasValue;
-
-            byte[] pdfBytes;
-            if (esFacturaArca && autorizada)
-            {
-                pdfBytes = BuildArcaPdf(v, cfg!);
-            }
-            else
-            {
-                var qr = await _qrRepartidorService.GenerarQrAsync(v.PublicToken);
-                pdfBytes = _pdfService.GenerarPdfBytes(v, cfg, qr);
-            }
+            var pdfBytes = await GenerarPdfBytesAsync(v, cfg);
 
             var fileName = BuildPdfFilename(v);
             var (fileId, link) = await driveSvc.UploadFileAsync(fileName, pdfBytes, "application/pdf");
@@ -400,6 +383,8 @@ public class CafeVentasController : ControllerBase
                 v.EstadoPreparacion = "PARA_PREPARAR";
                 v.PreparacionUpdatedAt = DateTime.UtcNow;
             }
+            // Si la venta estaba "oculta" del tablero, al re-subir a Drive la volvemos a mostrar.
+            v.PreparacionOcultoAt = null;
             await _db.SaveChangesAsync();
 
             return Ok(new { ok = true, fileId, link, subidoAt = v.DriveSubidoAt, subidasCount = v.DriveSubidasCount });
@@ -408,6 +393,24 @@ public class CafeVentasController : ControllerBase
         {
             return BadRequest(new { error = "Error al subir a Drive: " + ex.Message });
         }
+    }
+
+    /// <summary>Genera los bytes del PDF de una venta (ARCA si esta autorizada, cotizacion sino).
+    /// Centralizado aca para poder reusarlo desde drive-upload Y desde imprimir-pdf-combinado.</summary>
+    private async Task<byte[]> GenerarPdfBytesAsync(Models.CafeVenta v, Models.CafeSetting? cfg)
+    {
+        var esFacturaArca = v.TipoComprobante is "FA" or "FB" or "FC";
+        var autorizada = v.ArcaEstado == "autorizado"
+                         && !string.IsNullOrEmpty(v.ArcaCae)
+                         && v.ArcaCbteNro.HasValue
+                         && v.ArcaPtoVta.HasValue
+                         && v.ArcaCbteTipoNum.HasValue;
+        if (esFacturaArca && autorizada)
+        {
+            return BuildArcaPdf(v, cfg!);
+        }
+        var qr = await _qrRepartidorService.GenerarQrAsync(v.PublicToken);
+        return _pdfService.GenerarPdfBytes(v, cfg, qr);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -2355,6 +2358,10 @@ public class CafeVentasController : ControllerBase
                 // Drive: para mostrar boton "Ver PDF" / "Subir a Drive" en la tarjeta de preparacion.
                 driveFileId = v.DriveFileId,
                 driveSubidoAt = v.DriveSubidoAt,
+                // Mini impresora: flag por cliente + tracking de impresion (2026-05-28)
+                tieneMiniImpresora = v.ClienteId != null && _db.CafeClientes.Where(c => c.Id == v.ClienteId).Select(c => c.TieneMiniImpresora).FirstOrDefault(),
+                impresaAt = v.ImpresaAt,
+                impresaCount = v.ImpresaCount,
                 items = v.Items.Select(i => new
                 {
                     id = i.Id,
@@ -2407,5 +2414,107 @@ public class CafeVentasController : ControllerBase
         foreach (var v in ventas) v.PreparacionOcultoAt = ahora;
         await _db.SaveChangesAsync();
         return Ok(new { ocultas = ventas.Count });
+    }
+
+    /// <summary>Lista las ventas ya MARCADAS COMO LISTO (historial) — para la seccion colapsable
+    /// "Ya armados" del tablero. Mismo filtro que /preparacion pero invertido en estado.
+    /// Pedido 2026-05-28.</summary>
+    [HttpGet("preparacion/armados")]
+    public async Task<IActionResult> ListarArmados([FromQuery] int dias = 7)
+    {
+        var desde = DateTime.UtcNow.Date.AddDays(-Math.Max(1, dias));
+        var ventas = await _db.CafeVentas
+            .Include(v => v.Items)
+            .Where(v => v.DriveSubidoAt != null
+                && v.PreparacionOcultoAt == null
+                && (v.EstadoPreparacion == "LISTO"
+                    || v.EstadoPreparacion == "EN_CAMINO"
+                    || v.EstadoPreparacion == "ENTREGADO")
+                && v.CreatedAt >= desde
+                && v.Estado != "anulado")
+            .OrderByDescending(v => v.PreparacionUpdatedAt ?? v.DriveSubidoAt)
+            .Select(v => new
+            {
+                id = v.Id,
+                numero = v.Numero,
+                fecha = v.Fecha,
+                clienteNombre = v.ClienteNombreSnapshot ?? "Consumidor final",
+                clienteLocalidad = v.ClienteLocalidadSnapshot,
+                clienteCiudad = v.ClienteCiudadSnapshot,
+                estadoPreparacion = v.EstadoPreparacion,
+                preparacionUpdatedAt = v.PreparacionUpdatedAt,
+                driveFileId = v.DriveFileId,
+                driveSubidoAt = v.DriveSubidoAt,
+                tieneMiniImpresora = v.ClienteId != null && _db.CafeClientes.Where(c => c.Id == v.ClienteId).Select(c => c.TieneMiniImpresora).FirstOrDefault(),
+                impresaAt = v.ImpresaAt,
+                impresaCount = v.ImpresaCount,
+                itemsCount = v.Items.Count
+            })
+            .ToListAsync();
+        return Ok(ventas);
+    }
+
+    /// <summary>Marca una venta como impresa (actualiza ImpresaAt + incrementa ImpresaCount).
+    /// Pedido 2026-05-28 — botón mini impresora en /cafe/preparacion.</summary>
+    [HttpPost("{id:int}/marcar-impresa")]
+    public async Task<IActionResult> MarcarImpresa(int id)
+    {
+        var v = await _db.CafeVentas.FirstOrDefaultAsync(x => x.Id == id);
+        if (v is null) return NotFound();
+        v.ImpresaAt = DateTime.UtcNow;
+        v.ImpresaCount = v.ImpresaCount + 1;
+        await _db.SaveChangesAsync();
+        return Ok(new { id, impresaAt = v.ImpresaAt, impresaCount = v.ImpresaCount });
+    }
+
+    /// <summary>Devuelve UN PDF que combina los comprobantes de varias ventas (para imprimir
+    /// todo junto en una sola operacion). Tambien marca cada una como impresa.
+    /// IDs van separados por coma: ?ids=1,2,3 — máximo 50 por request.
+    /// Pedido 2026-05-28.</summary>
+    [HttpGet("imprimir-pdf-combinado")]
+    public async Task<IActionResult> ImprimirPdfCombinado([FromQuery] string ids)
+    {
+        if (string.IsNullOrWhiteSpace(ids)) return BadRequest(new { error = "Faltan IDs" });
+        var idList = ids.Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => int.TryParse(s.Trim(), out var n) ? n : 0)
+            .Where(n => n > 0)
+            .Distinct()
+            .Take(50)
+            .ToList();
+        if (idList.Count == 0) return BadRequest(new { error = "IDs invalidos" });
+
+        var cfg = await _db.CafeSettings.FindAsync(1);
+        var ventas = await _db.CafeVentas
+            .Include(x => x.Items).ThenInclude(i => i.ProductoNav)
+            .Where(x => idList.Contains(x.Id))
+            .ToListAsync();
+        // Mantener orden de los IDs recibidos
+        ventas = idList.Select(id => ventas.FirstOrDefault(v => v.Id == id)).Where(v => v != null).Cast<Models.CafeVenta>().ToList();
+        if (ventas.Count == 0) return NotFound(new { error = "Ninguna venta encontrada" });
+
+        // Generar bytes de cada PDF y concatenar con PdfSharpCore
+        var combined = new PdfSharpCore.Pdf.PdfDocument();
+        var ahora = DateTime.UtcNow;
+        foreach (var v in ventas)
+        {
+            var bytes = await GenerarPdfBytesAsync(v, cfg);
+            using var ms = new MemoryStream(bytes);
+            var src = PdfSharpCore.Pdf.IO.PdfReader.Open(ms, PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Import);
+            for (int i = 0; i < src.PageCount; i++)
+            {
+                combined.AddPage(src.Pages[i]);
+            }
+            v.ImpresaAt = ahora;
+            v.ImpresaCount = v.ImpresaCount + 1;
+        }
+        await _db.SaveChangesAsync();
+
+        using var outMs = new MemoryStream();
+        combined.Save(outMs, false);
+        var pdfBytes = outMs.ToArray();
+        var fileName = ventas.Count == 1
+            ? BuildPdfFilename(ventas[0])
+            : $"imprimir-{ventas.Count}-comprobantes-{DateTime.Now:yyyyMMddHHmm}.pdf";
+        return File(pdfBytes, "application/pdf", fileName);
     }
 }

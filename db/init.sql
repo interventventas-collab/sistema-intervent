@@ -3715,6 +3715,19 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='PreparacionOcultoAt' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
     ALTER TABLE Cafe_Ventas ADD PreparacionOcultoAt DATETIME2 NULL;
 GO
+-- 2026-05-28: Flag por cliente para mostrar boton "mini impresora" en cards del tablero
+-- de Preparacion. Pensado para clientes mayoristas que necesitan imprimir ticket rapido.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='TieneMiniImpresora' AND Object_ID=OBJECT_ID('Cafe_Clientes'))
+    ALTER TABLE Cafe_Clientes ADD TieneMiniImpresora BIT NOT NULL CONSTRAINT DF_CafeClientes_TieneMiniImpresora DEFAULT 0;
+GO
+-- 2026-05-28: Trackeo de impresiones desde el tablero de Preparacion. ImpresaAt = ultima
+-- vez impresa. ImpresaCount = cuantas veces se imprimio. Permite chip "Impreso hace X" y reimprimir.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ImpresaAt' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD ImpresaAt DATETIME2 NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ImpresaCount' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD ImpresaCount INT NOT NULL CONSTRAINT DF_CafeVentas_ImpresaCount DEFAULT 0;
+GO
 IF NOT EXISTS (SELECT name FROM sys.indexes WHERE name='IX_CafeVentas_EstadoPreparacion' AND object_id=OBJECT_ID('Cafe_Ventas'))
     CREATE INDEX IX_CafeVentas_EstadoPreparacion ON Cafe_Ventas (EstadoPreparacion) WHERE EstadoPreparacion IS NOT NULL;
 GO
