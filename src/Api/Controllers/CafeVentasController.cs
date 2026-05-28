@@ -392,6 +392,14 @@ public class CafeVentasController : ControllerBase
             v.DriveFileId = fileId;
             v.DriveSubidoAt = DateTime.UtcNow;
             v.DriveSubidasCount = v.DriveSubidasCount + 1;
+            // 2026-05-28: subir a Drive equivale a "mandar al tablero IMPRIMIR PEDIDOS DE OSMAR".
+            // Si la venta no tiene EstadoPreparacion seteado, la marcamos como PARA_PREPARAR para
+            // que aparezca en /cafe/preparacion. Si ya fue armada/entregada NO la revivimos.
+            if (string.IsNullOrEmpty(v.EstadoPreparacion))
+            {
+                v.EstadoPreparacion = "PARA_PREPARAR";
+                v.PreparacionUpdatedAt = DateTime.UtcNow;
+            }
             await _db.SaveChangesAsync();
 
             return Ok(new { ok = true, fileId, link, subidoAt = v.DriveSubidoAt, subidasCount = v.DriveSubidasCount });
@@ -2312,12 +2320,21 @@ public class CafeVentasController : ControllerBase
     public async Task<IActionResult> ListarPreparacion([FromQuery] int dias = 7)
     {
         var desde = DateTime.UtcNow.Date.AddDays(-Math.Max(1, dias));
-        // Solo las que entraron al flujo (EstadoPreparacion no es null) en los ultimos N dias.
-        // No incluimos Cliente porque usamos los snapshots de la venta (ClienteNombreSnapshot, etc).
+        // 2026-05-28: ahora el tablero muestra ventas con PDF SUBIDO A DRIVE que aun no
+        // estan armadas. Reemplaza la logica vieja de "EstadoPreparacion != null".
+        // Criterio:
+        //   1) DriveSubidoAt != null (= ya esta en la carpeta de Drive del armador)
+        //   2) NO marcada como LISTO/EN_CAMINO/ENTREGADO (sigue pendiente de armar)
+        //   3) Creada en los ultimos N dias y no anulada
         var ventas = await _db.CafeVentas
             .Include(v => v.Items)
-            .Where(v => v.EstadoPreparacion != null && v.CreatedAt >= desde)
-            .OrderBy(v => v.PreparacionUpdatedAt ?? v.CreatedAt)
+            .Where(v => v.DriveSubidoAt != null
+                && (v.EstadoPreparacion == null
+                    || v.EstadoPreparacion == "PARA_PREPARAR"
+                    || v.EstadoPreparacion == "EN_PREPARACION")
+                && v.CreatedAt >= desde
+                && v.Estado != "anulado")
+            .OrderByDescending(v => v.DriveSubidoAt)
             .Select(v => new
             {
                 id = v.Id,
