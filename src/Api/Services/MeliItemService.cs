@@ -2054,7 +2054,14 @@ public class MeliItemService
             if (pushStock)
             {
                 int gramosPorUnidad = formato switch { "MEDIO" => 500, "CUARTO" => 250, _ => 1000 };
-                stockToPush = (int)Math.Floor(cafe.StockGramos / gramosPorUnidad);
+                // 2026-05-29: regla "Full desenlazado". Para publicaciones cross_docking, el
+                // stock que se publica es SOLO el del depósito 9 de Abril (DepositoId=1),
+                // sin sumar lo que está en Full MeLi.
+                const int DEPOSITO_9_ABRIL_ID = 1;
+                var spd9 = await _db.CafeStockPorDeposito
+                    .FirstOrDefaultAsync(s => s.ProductoId == cafe.Id && s.DepositoId == DEPOSITO_9_ABRIL_ID);
+                var stockGramos9 = spd9?.StockGramos ?? 0m;
+                stockToPush = (int)Math.Floor(stockGramos9 / gramosPorUnidad);
                 payloadDict["available_quantity"] = stockToPush.Value;
             }
         }
