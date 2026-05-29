@@ -1999,7 +1999,7 @@ public class MeliItemService
     /// Para combos, el precio se calcula segun el modo (manual/auto/percent) y el
     /// stock es el minimo disponible considerando la cantidad de cada item.
     /// </summary>
-    public async Task<MeliPushResult> PushFromProductAsync(int meliItemId, bool pushPrice = true, bool pushStock = true)
+    public async Task<MeliPushResult> PushFromProductAsync(int meliItemId, bool pushPrice = true, bool pushStock = true, decimal? overridePrice = null)
     {
         var item = await _db.MeliItems
             .Include(i => i.MeliAccount)
@@ -2032,20 +2032,27 @@ public class MeliItemService
 
             if (pushPrice)
             {
-                // 2026-05-29: a MeLi va el precio "consumidor final / venta x fuera" (PrecioOtro / Pvp2),
-                // NUNCA el mayorista (PrecioBar / Pvp1). Coherente con MeliCafePricePushService.
-                var listaKg = cafe.PrecioOtro ?? cafe.Pvp2 ?? cafe.PrecioPorKg ?? 0m;
-                decimal precioSinIva = formato switch
+                // 2026-05-29: si vino overridePrice (frontend con ajuste Δ/% + redondeo aplicados),
+                // usarlo tal cual. Sino, calcular desde PrecioOtro (consumidor final, NUNCA Pvp1 mayorista).
+                if (overridePrice.HasValue && overridePrice.Value > 0)
                 {
-                    "1KG" => listaKg,
-                    "MEDIO" => Math.Round(listaKg / 2m + settings.CostoFraccionamiento, 2, MidpointRounding.AwayFromZero),
-                    "CUARTO" => Math.Round(listaKg / 4m + settings.CostoFraccionamiento, 2, MidpointRounding.AwayFromZero),
-                    _ => listaKg
-                };
-                var rate = cafe.IvaPct;
-                priceWithVat = rate > 0m
-                    ? Math.Round(precioSinIva * (1m + rate / 100m), 2, MidpointRounding.AwayFromZero)
-                    : precioSinIva;
+                    priceWithVat = overridePrice.Value;
+                }
+                else
+                {
+                    var listaKg = cafe.PrecioOtro ?? cafe.Pvp2 ?? cafe.PrecioPorKg ?? 0m;
+                    decimal precioSinIva = formato switch
+                    {
+                        "1KG" => listaKg,
+                        "MEDIO" => Math.Round(listaKg / 2m + settings.CostoFraccionamiento, 2, MidpointRounding.AwayFromZero),
+                        "CUARTO" => Math.Round(listaKg / 4m + settings.CostoFraccionamiento, 2, MidpointRounding.AwayFromZero),
+                        _ => listaKg
+                    };
+                    var rate = cafe.IvaPct;
+                    priceWithVat = rate > 0m
+                        ? Math.Round(precioSinIva * (1m + rate / 100m), 2, MidpointRounding.AwayFromZero)
+                        : precioSinIva;
+                }
                 payloadDict["price"] = priceWithVat;
             }
             if (pushStock)
