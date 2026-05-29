@@ -7,11 +7,63 @@
 }
 else
 {
-    <a href="@Href" class="nav-item @(IsActive ? "active" : "")" @onclick="OnClick" @onclick:preventDefault>
-        <span class="nav-icon">@Icon</span>
-        <span class="nav-label">@Label</span>
-    </a>
+    <div class="nav-item-wrap">
+        <a href="@Href" class="nav-item @(IsActive ? "active" : "")" @onclick="OnClick" @onclick:preventDefault>
+            <span class="nav-icon">@Icon</span>
+            <span class="nav-label">@Label</span>
+        </a>
+        @* 2026-05-28: chips D/O para modo edición del admin. Solo se muestran si EditMode=true y hay MenuKey. *@
+        @if (EditMode && !string.IsNullOrEmpty(MenuKey))
+        {
+            <div class="nav-edit-chips">
+                <button class="nav-chip @(DepoEnabled ? "on" : "off")"
+                        title="Mostrar a DEPOSITO"
+                        @onclick:preventDefault="true" @onclick:stopPropagation="true"
+                        @onclick="@(() => OnToggleVisibility.InvokeAsync(("deposito", !DepoEnabled)))">D</button>
+                <button class="nav-chip @(OfiEnabled ? "on" : "off")"
+                        title="Mostrar a OFICINA"
+                        @onclick:preventDefault="true" @onclick:stopPropagation="true"
+                        @onclick="@(() => OnToggleVisibility.InvokeAsync(("oficina", !OfiEnabled)))">O</button>
+            </div>
+        }
+    </div>
 }
+
+<style>
+    .nav-item-wrap {
+        position: relative;
+        display: flex;
+        align-items: center;
+    }
+    .nav-item-wrap > .nav-item { flex: 1; }
+    .nav-edit-chips {
+        display: flex;
+        gap: 4px;
+        padding-right: 6px;
+        flex-shrink: 0;
+    }
+    .nav-chip {
+        width: 24px; height: 24px;
+        border: 1px solid rgba(255,255,255,0.25);
+        border-radius: 6px;
+        background: rgba(255,255,255,0.08);
+        color: rgba(255,255,255,0.5);
+        font-size: 0.7rem;
+        font-weight: 800;
+        cursor: pointer;
+        padding: 0;
+        line-height: 1;
+        transition: all 0.1s;
+    }
+    .nav-chip.on {
+        background: #16a34a;
+        color: white;
+        border-color: #15803d;
+        box-shadow: 0 0 0 2px rgba(22,163,74,0.15);
+    }
+    .nav-chip.off:hover { background: rgba(255,255,255,0.15); color: white; }
+    .nav-chip:active { transform: scale(0.9); }
+</style>
 
 @code {
     [Parameter] public string Href { get; set; } = "#";
@@ -20,4 +72,10 @@ else
     [Parameter] public bool IsActive { get; set; }
     [Parameter] public EventCallback OnClick { get; set; }
     [Parameter] public bool IsExternal { get; set; }
+    // 2026-05-28: modo edición para que el admin tilde D/O al lado del item.
+    [Parameter] public bool EditMode { get; set; } = false;
+    [Parameter] public string? MenuKey { get; set; }
+    [Parameter] public bool DepoEnabled { get; set; }
+    [Parameter] public bool OfiEnabled { get; set; }
+    [Parameter] public EventCallback<(string Role, bool Enabled)> OnToggleVisibility { get; set; }
 }

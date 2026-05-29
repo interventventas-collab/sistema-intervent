@@ -4185,3 +4185,29 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='DriveSubidasCount' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
     ALTER TABLE Cafe_Ventas ADD DriveSubidasCount INT NOT NULL CONSTRAINT DF_CafeVentas_DriveSubidasCount DEFAULT 0;
 GO
+
+-- 2026-05-28: Tabla MenuVisibility - controla qué items del sidebar ve cada rol no-admin.
+-- El admin tiene UI para tildar/destildar items por rol (DEPOSITO, OFICINA) sin tocar codigo.
+-- Pedido del usuario "ME GUSTARIA Q LOGUEADO CON ADMIN, ME DEJE TODOS LO VISIBLE,
+-- ACTIVAR O NO EN CADA UNO DE LOS OTROS DOS USUARIOS".
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='MenuVisibility')
+BEGIN
+    CREATE TABLE MenuVisibility (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        RoleName NVARCHAR(50) NOT NULL,
+        MenuKey NVARCHAR(200) NOT NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        CONSTRAINT UQ_MenuVisibility_RoleKey UNIQUE (RoleName, MenuKey)
+    );
+END;
+GO
+-- Pre-carga: el rol deposito y oficina arrancan con los items que tenian hardcoded
+IF NOT EXISTS (SELECT 1 FROM MenuVisibility WHERE RoleName='deposito' AND MenuKey='cafe/productos') INSERT INTO MenuVisibility (RoleName, MenuKey) VALUES ('deposito', 'cafe/productos');
+IF NOT EXISTS (SELECT 1 FROM MenuVisibility WHERE RoleName='deposito' AND MenuKey='cafe/stock-masivo') INSERT INTO MenuVisibility (RoleName, MenuKey) VALUES ('deposito', 'cafe/stock-masivo');
+IF NOT EXISTS (SELECT 1 FROM MenuVisibility WHERE RoleName='deposito' AND MenuKey='cafe/preparacion') INSERT INTO MenuVisibility (RoleName, MenuKey) VALUES ('deposito', 'cafe/preparacion');
+IF NOT EXISTS (SELECT 1 FROM MenuVisibility WHERE RoleName='oficina' AND MenuKey='cafe/productos') INSERT INTO MenuVisibility (RoleName, MenuKey) VALUES ('oficina', 'cafe/productos');
+IF NOT EXISTS (SELECT 1 FROM MenuVisibility WHERE RoleName='oficina' AND MenuKey='cafe/stock-masivo') INSERT INTO MenuVisibility (RoleName, MenuKey) VALUES ('oficina', 'cafe/stock-masivo');
+IF NOT EXISTS (SELECT 1 FROM MenuVisibility WHERE RoleName='oficina' AND MenuKey='cafe/preparacion') INSERT INTO MenuVisibility (RoleName, MenuKey) VALUES ('oficina', 'cafe/preparacion');
+IF NOT EXISTS (SELECT 1 FROM MenuVisibility WHERE RoleName='oficina' AND MenuKey='cafe/tesoreria/cobranzas') INSERT INTO MenuVisibility (RoleName, MenuKey) VALUES ('oficina', 'cafe/tesoreria/cobranzas');
+IF NOT EXISTS (SELECT 1 FROM MenuVisibility WHERE RoleName='oficina' AND MenuKey='mapeo') INSERT INTO MenuVisibility (RoleName, MenuKey) VALUES ('oficina', 'mapeo');
+GO
