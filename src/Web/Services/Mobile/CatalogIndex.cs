@@ -29,13 +29,23 @@ public class CatalogIndex
         _prefs = prefs;
     }
 
-    public async Task EnsureLoadedAsync()
+    /// <summary>
+    /// Carga el catálogo desde el backend (1 sola vez por instancia singleton).
+    /// - onlyProductos=true: baja ~60% del payload (1.893 vs 4.134 items).
+    /// - customUrl: usar una URL distinta del default. Útil para la pantalla pública
+    ///   de stock móvil que tiene su propio endpoint con token en lugar de JWT.
+    /// 2026-05-28 (Prompt 2 cargador stock móvil).
+    /// </summary>
+    public async Task EnsureLoadedAsync(bool onlyProductos = false, string? customUrl = null)
     {
         if (_items != null || _loading) return;
         _loading = true;
         try
         {
-            var resp = await _http.GetFromJsonAsync<CatalogoResp>("/api/catalogo-buscador/all");
+            var url = customUrl ?? (onlyProductos
+                ? "/api/catalogo-buscador/all?onlyProductos=true"
+                : "/api/catalogo-buscador/all");
+            var resp = await _http.GetFromJsonAsync<CatalogoResp>(url);
             if (resp?.Items != null)
             {
                 foreach (var it in resp.Items)

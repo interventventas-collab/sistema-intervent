@@ -88,6 +88,52 @@ public class StockController : ControllerBase
         return Ok(new StockInitPubDto(token, ops, "9 de Abril", audDto));
     }
 
+    /// <summary>
+    /// 2026-05-28 (Prompt 2 cargador stock móvil): catálogo público para la pantalla móvil V2.
+    /// Mismo formato que /api/catalogo-buscador/all pero validando el token de stock público
+    /// en lugar de JWT. Devuelve solo productos puros (los combos NO se cargan manualmente).
+    /// READ-ONLY: este endpoint no toca stock ni movimientos.
+    /// </summary>
+    public record CatalogoPubItemDto(
+        string Sku, string Nombre, string Tipo, int Id, string? Categoria,
+        decimal Stock, bool EsCafe, DateTime? StockChangedAt, string? Marca);
+
+    [HttpGet("publica/{token}/catalogo")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetCatalogo(string token, [FromQuery] bool onlyProductos = true)
+    {
+        if (!await TokenValidoAsync(token)) return NotFound(new { error = "Token inválido" });
+
+        var productos = await _db.CafeProductos
+            .AsNoTracking()
+            .Where(p => p.IsActive && p.Sku != null && p.Sku != "")
+            .Select(p => new CatalogoPubItemDto(
+                p.Sku!,
+                p.Nombre,
+                "producto",
+                p.Id,
+                p.Categoria,
+                p.Categoria == "CAFE" ? p.StockGramos : p.StockUnidades,
+                p.Categoria == "CAFE",
+                p.StockChangedAt,
+                p.Marca))
+            .ToListAsync();
+
+        if (onlyProductos)
+        {
+            return Ok(new { count = productos.Count, items = productos });
+        }
+
+        // Por completitud incluimos combos también si alguien pide onlyProductos=false (no es el caso de uso esperado).
+        var combos = await _db.CafeCombos
+            .AsNoTracking()
+            .Where(c => c.IsActive && c.Sku != null)
+            .Select(c => new CatalogoPubItemDto(c.Sku!, c.Nombre, "combo", c.Id, c.Categoria, 0m, false, c.UpdatedAt, null))
+            .ToListAsync();
+        var all = productos.Concat(combos).ToList();
+        return Ok(new { count = all.Count, items = all });
+    }
+
     /// <summary>Busca productos. Devuelve hasta 25 con stock actual + última modificación + flag auditoría.</summary>
     [HttpGet("publica/{token}/search")]
     [AllowAnonymous]

@@ -155,6 +155,12 @@
     // Por defecto NO mostrar combos/kits (caso típico stock: solo productos individuales).
     // En /cafe/ventas se va a pasar IncludeCombos="true" cuando integremos.
     [Parameter] public bool IncludeCombos { get; set; } = false;
+    /// <summary>2026-05-28: si true, llama al endpoint con onlyProductos=true (60% menos payload).
+    /// Usado por la pantalla de stock móvil V2.</summary>
+    [Parameter] public bool LoadOnlyProductos { get; set; } = false;
+    /// <summary>URL alternativa para cargar el catálogo (ej: endpoint público con token
+    /// para StockPublicaV2). Si viene, sobrescribe la lógica de LoadOnlyProductos.</summary>
+    [Parameter] public string? CustomCatalogUrl { get; set; }
 
     private string value = "";
     private List<SearchHit> results = new();
@@ -169,7 +175,9 @@
     protected override async Task OnInitializedAsync()
     {
         await Prefs.LoadAsync();
-        await Catalog.EnsureLoadedAsync();
+        // 2026-05-28: la pantalla de stock móvil V2 pasa LoadOnlyProductos=true (sin combos)
+        // y/o CustomCatalogUrl (endpoint público con token).
+        await Catalog.EnsureLoadedAsync(LoadOnlyProductos, CustomCatalogUrl);
         isCatalogLoaded = Catalog.Count > 0;
         marcas = Catalog.GetMarcas(20);
         RefreshEmptyState();
