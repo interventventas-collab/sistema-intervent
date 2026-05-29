@@ -524,6 +524,29 @@ public class ApiClient
     public async Task<bool> DeletePostitAsync(int id)
         => await DeleteAsync($"/api/postits/{id}");
 
+    // --- Visibilidad granular del sidebar por rol (2026-05-28) ---
+    public async Task<Dictionary<string, List<string>>?> GetMenuVisibilityAsync()
+        => await GetAsync<Dictionary<string, List<string>>>("/api/menu-visibility");
+
+    public async Task<bool> SetMenuVisibilityAsync(string role, string key, bool enabled)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync("/api/menu-visibility/set", new { role, key, enabled });
+        return resp.IsSuccessStatusCode;
+    }
+
+    /// <summary>Verifica si la password coincide con la del usuario logueado. Usado para
+    /// proteger acciones sensibles (ej: activar modo edición del sidebar).</summary>
+    public async Task<bool> VerifyMyPasswordAsync(string password)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync("/api/auth/verify-password", new { password });
+        if (!resp.IsSuccessStatusCode) return false;
+        var data = await resp.Content.ReadFromJsonAsync<VerifyPasswordResponse>();
+        return data?.ok ?? false;
+    }
+    private record VerifyPasswordResponse(bool ok);
+
     // --- Asistente ---
     public async Task<AssistantChatResponse?> AssistantChatAsync(List<AssistantChatMessage> messages)
         => await PostAsync<AssistantChatResponse>("/api/assistant/chat", new AssistantChatRequest { Messages = messages });

@@ -217,6 +217,21 @@ public class AuthController : ControllerBase
     }
 
     [Authorize]
+    /// <summary>2026-05-28: verifica si la password recibida coincide con la del usuario logueado.
+    /// Usado para protejer acciones sensibles (ej: activar modo edición del sidebar) sin re-loguear.</summary>
+    public record VerifyPasswordRequest(string Password);
+    [HttpPost("verify-password")]
+    public async Task<IActionResult> VerifyPassword([FromBody] VerifyPasswordRequest request)
+    {
+        var userId = GetUserId();
+        if (userId is null) return Unauthorized();
+        var user = await _db.Users.FindAsync(userId.Value);
+        if (user is null) return NotFound();
+        var ok = !string.IsNullOrEmpty(request.Password)
+                 && BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash);
+        return Ok(new { ok });
+    }
+
     [HttpPut("password")]
     public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
     {

@@ -14,6 +14,85 @@
     }
     .topbar-tool-btn:hover { background: #f3f4f6; }
     .topbar-tool-btn:active { transform: scale(0.95); }
+
+    /* 2026-05-28: botón "Editar visibilidad" en el sidebar del admin. */
+    .sidebar-edit-btn {
+        margin: 8px 12px;
+        padding: 0.45rem 0.7rem;
+        background: rgba(251,191,36,0.15);
+        border: 1px dashed rgba(251,191,36,0.6);
+        color: #fbbf24;
+        border-radius: 8px;
+        font-size: 0.82rem;
+        font-weight: 700;
+        cursor: pointer;
+        width: calc(100% - 24px);
+        text-align: center;
+    }
+    .sidebar-edit-btn:hover { background: rgba(251,191,36,0.25); }
+    .sidebar-edit-btn.active {
+        background: #16a34a;
+        color: white;
+        border-color: #15803d;
+        border-style: solid;
+    }
+    /* Panel de edición de visibilidad — solo visible cuando menuEditMode=true */
+    .menu-edit-panel {
+        margin: 4px 12px 12px;
+        background: rgba(251,191,36,0.08);
+        border: 1px solid rgba(251,191,36,0.35);
+        border-radius: 10px;
+        overflow: hidden;
+    }
+    .menu-edit-panel-header {
+        padding: 0.55rem 0.7rem;
+        background: rgba(251,191,36,0.18);
+        color: #fbbf24;
+        font-weight: 700;
+        font-size: 0.85rem;
+    }
+    .menu-edit-panel-body {
+        max-height: 50vh;
+        overflow-y: auto;
+        padding: 4px;
+    }
+    .menu-edit-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 8px;
+        border-radius: 6px;
+    }
+    .menu-edit-row:hover { background: rgba(255,255,255,0.05); }
+    .menu-edit-row-label {
+        flex: 1;
+        color: #e5e7eb;
+        font-size: 0.82rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    /* Chips del modo edición — reuso los estilos de NavItem.razor */
+    .menu-edit-row .nav-chip {
+        width: 24px; height: 24px;
+        border: 1px solid rgba(255,255,255,0.25);
+        border-radius: 6px;
+        background: rgba(255,255,255,0.08);
+        color: rgba(255,255,255,0.5);
+        font-size: 0.7rem;
+        font-weight: 800;
+        cursor: pointer;
+        padding: 0;
+        line-height: 1;
+        flex-shrink: 0;
+    }
+    .menu-edit-row .nav-chip.on {
+        background: #16a34a;
+        color: white;
+        border-color: #15803d;
+    }
+    .menu-edit-row .nav-chip.off:hover { background: rgba(255,255,255,0.15); color: white; }
+    .menu-edit-row .nav-chip:active { transform: scale(0.9); }
 </style>
 
 @inject AuthService AuthService
@@ -57,6 +136,55 @@
         </button>
     </div>
     <nav class="sidebar-nav" role="navigation" aria-label="Menu principal">
+        @* 2026-05-28: botón "Editar visibilidad" solo visible para admin (con permiso "cafe").
+           Al activarse aparecen chips D/O al lado de cada item editable. *@
+        @if (HasPerm("cafe"))
+        {
+            <button class="sidebar-edit-btn @(menuEditMode ? "active" : "")" @onclick="ToggleMenuEditMode"
+                    title="@(menuEditMode ? "Salir del modo edición" : "Modo edición de visibilidad por rol")">
+                @if (menuEditMode)
+                {
+                    <span>✓ Terminar edición</span>
+                }
+                else
+                {
+                    <span>✏️ Editar visibilidad</span>
+                }
+            </button>
+        }
+        @* 2026-05-28: cuando admin activa modo edición, mostramos UNA panel especial con
+           todos los items del catálogo + chips D/O. No tocamos el sidebar real con chips. *@
+        @if (menuEditMode && HasPerm("cafe"))
+        {
+            <div class="menu-edit-panel">
+                <div class="menu-edit-panel-header">
+                    🛠 Editar visibilidad por rol
+                    <div style="font-size:0.72rem; font-weight:400; margin-top: 0.2rem; color: #fed7aa;">
+                        Tildá <strong>D</strong> (DEPOSITO) u <strong>O</strong> (OFICINA) según querés
+                        que vean cada item. Guarda al toque.
+                    </div>
+                </div>
+                <div class="menu-edit-panel-body">
+                    @foreach (var entry in MenuCatalog)
+                    {
+                        var key = entry.Key;
+                        var label = entry.Value.Label;
+                        var emoji = entry.Value.Emoji;
+                        var depo = MenuVisibility.IsEnabled("deposito", key);
+                        var ofi = MenuVisibility.IsEnabled("oficina", key);
+                        <div class="menu-edit-row">
+                            <span class="menu-edit-row-label">@emoji @label</span>
+                            <button class="nav-chip @(depo ? "on" : "off")"
+                                    title="Mostrar a DEPOSITO"
+                                    @onclick="@(() => OnMenuToggleVisibility(key, "deposito", !depo))">D</button>
+                            <button class="nav-chip @(ofi ? "on" : "off")"
+                                    title="Mostrar a OFICINA"
+                                    @onclick="@(() => OnMenuToggleVisibility(key, "oficina", !ofi))">O</button>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
         @* ═════════════ 1. DASHBOARD ═════════════ *@
         @if (HasPerm("dashboard"))
         {
@@ -67,27 +195,30 @@
         @* ═════════════ 1B. CAFE (modulo independiente, debajo de Dashboard) ═════════════
            Negocio de venta de cafe e insumos, totalmente aislado del resto del ERP. *@
         @* ═════════════ MENÚ REDUCIDO PARA USUARIOS DE DEPÓSITO Y OFICINA ═════════════
-           Solo visible si el usuario tiene el permiso "deposito" u "oficina" y NO "cafe" completo.
-           - DEPOSITO: ve Productos, Stock, Preparación pedidos
-           - OFICINA: ve lo de depósito + Cobranzas + Mapa de clientes
-           Cada item se gate-ea por el permiso correspondiente. *@
-        @if ((HasPerm("deposito") || HasPerm("oficina")) && !HasPerm("cafe"))
+           Ahora dinámico: lee de la tabla MenuVisibility (admin edita desde su sidebar).
+           Cada item habilitado se renderiza con su emoji/label/href del MenuCatalog. *@
+        @if (IsRoleWithCustomSidebar())
         {
-            <NavGroup Label="@(HasPerm("oficina") ? "🏢 Oficina" : "🏭 Depósito")" Icon="@SvgIcons.Store"
+            var role = GetEffectiveRoleForVisibility();
+            var enabledKeys = MenuVisibility.GetEnabledKeys(role);
+            <NavGroup Label="@(role == "oficina" ? "🏢 Oficina" : "🏭 Depósito")" Icon="@SvgIcons.Store"
                       Highlight="true" DefaultExpanded="true"
-                      HasActiveChild="@(IsActive("/cafe/productos") || IsActive("/cafe/stock-masivo") || IsActive("/cafe/preparacion") || IsActive("/stock") || IsActive("/cafe/tesoreria/cobranzas") || IsActive("/mapeo"))">
-                <NavItem Href="/cafe/productos" Label="🏷 Productos" Icon="@SvgIcons.Package"
-                         IsActive="@IsActive("/cafe/productos")" OnClick="@(() => NavigateTo("/cafe/productos"))" />
-                <NavItem Href="/cafe/stock-masivo" Label="📦 Stock" Icon="@SvgIcons.Package"
-                         IsActive="@(IsActive("/cafe/stock-masivo") || IsActive("/stock"))" OnClick="@(() => NavigateTo("/cafe/stock-masivo"))" />
-                <NavItem Href="/cafe/preparacion" Label="📋 Imprimir pedidos de Osmar" Icon="@SvgIcons.Package"
-                         IsActive="@IsActive("/cafe/preparacion")" OnClick="@(() => NavigateTo("/cafe/preparacion"))" />
-                @if (HasPerm("oficina"))
+                      HasActiveChild="@(enabledKeys.Any(k => IsActive("/" + k)))">
+                @foreach (var k in enabledKeys)
                 {
-                    <NavItem Href="/cafe/tesoreria/cobranzas" Label="📥 Cobranzas" Icon="@SvgIcons.ShoppingBag"
-                             IsActive="@IsActive("/cafe/tesoreria/cobranzas")" OnClick="@(() => NavigateTo("/cafe/tesoreria/cobranzas"))" />
-                    <NavItem Href="/mapeo" Label="🗺 Mapa de clientes" Icon="@SvgIcons.Tag"
-                             IsActive="@IsActive("/mapeo")" OnClick="@(() => NavigateTo("/mapeo"))" />
+                    if (MenuCatalog.TryGetValue(k, out var entry))
+                    {
+                        var href = entry.Href;
+                        var label = $"{entry.Emoji} {entry.Label}";
+                        <NavItem Href="@href" Label="@label" Icon="@SvgIcons.Package"
+                                 IsActive="@IsActive(href)" OnClick="@(() => NavigateTo(href))" />
+                    }
+                }
+                @if (enabledKeys.Count == 0)
+                {
+                    <div style="padding: 0.5rem 0.8rem; font-size: 0.78rem; color: #9ca3af; font-style: italic;">
+                        El admin todavía no te asignó pantallas.
+                    </div>
                 }
             </NavGroup>
         }
@@ -759,6 +890,35 @@
 @* Asistente flotante en todas las pantallas (sin permiso especial: cualquier usuario logueado lo ve). *@
 <AssistantWidget />
 
+@* 2026-05-28: modal para pedir clave del admin al activar modo edición del sidebar. *@
+@if (showMenuEditPasswordModal)
+{
+    <div class="modal-overlay" @onclick="() => showMenuEditPasswordModal = false">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h4 style="margin:0;">🔒 Confirmar tu clave</h4>
+                <button class="btn-close" @onclick="() => showMenuEditPasswordModal = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.88rem; margin-bottom: 0.7rem;">
+                    Para activar el modo edición de visibilidad del menú, ingresá tu clave de admin.
+                </p>
+                @if (!string.IsNullOrEmpty(menuEditPasswordError))
+                {
+                    <div class="form-error">@menuEditPasswordError</div>
+                }
+                <input type="password" class="form-input" @bind="menuEditPassword"
+                       @onkeyup="@(async (e) => { if (e.Key == "Enter") await ConfirmMenuEditPassword(); })"
+                       placeholder="Tu clave..." autofocus />
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showMenuEditPasswordModal = false">Cancelar</button>
+                <button class="btn btn-primary" @onclick="ConfirmMenuEditPassword">Activar</button>
+            </div>
+        </div>
+    </div>
+}
+
 @* 2026-05-28: herramientas flotantes globales (calculadora + post-its propios). Se muestran
    al togglear desde la topbar. Disponibles en todas las pantallas. *@
 <CalculadoraFlotante @ref="calcRef" />
@@ -786,6 +946,122 @@
 
     private bool sidebarOpen;
     private bool sidebarCollapsed;
+
+    // 2026-05-28: Modo edición de visibilidad del sidebar (solo admin).
+    // Al activarlo, todos los NavItems muestran chips D/O al lado para tildar quién los ve.
+    [Inject] private MenuVisibilityService MenuVisibility { get; set; } = default!;
+    private bool menuEditMode = false;
+    private bool showMenuEditPasswordModal = false;
+    private string menuEditPassword = "";
+    private string? menuEditPasswordError;
+
+    /// <summary>El "rol" del usuario para chequear visibilidad. Tomamos el primer permiso
+    /// no-default que no sea "dashboard". Para deposito/oficina, devuelve esos.</summary>
+    private string GetEffectiveRoleForVisibility()
+    {
+        if (permissions.Contains("oficina")) return "oficina";
+        if (permissions.Contains("deposito")) return "deposito";
+        return "";
+    }
+
+    private bool IsRoleWithCustomSidebar() => !permissions.Contains("cafe")
+        && (permissions.Contains("deposito") || permissions.Contains("oficina"));
+
+    private async Task ToggleMenuEditMode()
+    {
+        if (menuEditMode)
+        {
+            // Salir sin clave
+            menuEditMode = false;
+            StateHasChanged();
+            return;
+        }
+        // Para entrar, pedir clave del admin
+        menuEditPassword = "";
+        menuEditPasswordError = null;
+        showMenuEditPasswordModal = true;
+        StateHasChanged();
+        await Task.CompletedTask;
+    }
+
+    private async Task ConfirmMenuEditPassword()
+    {
+        if (string.IsNullOrEmpty(menuEditPassword))
+        {
+            menuEditPasswordError = "Ingresá tu clave";
+            return;
+        }
+        var ok = await Api.VerifyMyPasswordAsync(menuEditPassword);
+        if (!ok)
+        {
+            menuEditPasswordError = "Clave incorrecta";
+            return;
+        }
+        menuEditMode = true;
+        showMenuEditPasswordModal = false;
+        menuEditPassword = "";
+        StateHasChanged();
+    }
+
+    private async Task OnMenuToggleVisibility(string menuKey, string role, bool enabled)
+    {
+        try
+        {
+            await MenuVisibility.SetAsync(role, menuKey, enabled);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error guardando: " + ex.Message);
+        }
+    }
+
+    /// <summary>Catálogo de items conocidos: key → (icon, label, href). Usado en el sidebar
+    /// reducido de DEPOSITO/OFICINA para renderizar lo que el admin habilitó. La key es la ruta
+    /// relativa sin slash inicial (ej: "cafe/ventas").</summary>
+    private static readonly Dictionary<string, (string Emoji, string Label, string Href)> MenuCatalog = new()
+    {
+        // Ventas / cobranzas / clientes
+        { "cafe/ventas", ("🛒", "Ventas", "/cafe/ventas") },
+        { "cafe/tesoreria/cobranzas", ("📥", "Cobranzas", "/cafe/tesoreria/cobranzas") },
+        { "cafe/clientes", ("👤", "Clientes", "/cafe/clientes") },
+        { "cafe/clientes-mapeados", ("👥", "Clientes Mapeados", "/cafe/clientes-mapeados") },
+        { "cafe/proveedores", ("🏭", "Proveedores", "/cafe/proveedores") },
+        { "mapeo", ("🗺", "Mapa de clientes", "/mapeo") },
+        // Catálogo
+        { "cafe/productos", ("🏷", "Productos", "/cafe/productos") },
+        { "cafe/skus-meli", ("🛒", "SKUs MeLi", "/cafe/skus-meli") },
+        { "cafe/combos", ("📦", "Combos", "/cafe/combos") },
+        { "cafe/kits", ("📦", "Kits", "/cafe/kits") },
+        { "cafe/oems", ("🏷", "OEMs", "/cafe/oems") },
+        { "cafe/marcas", ("🏷", "Marcas", "/cafe/marcas") },
+        { "cafe/listas-precios", ("💲", "Listas de precios", "/cafe/listas-precios") },
+        // Stock / pedidos
+        { "cafe/stock-masivo", ("📦", "Stock", "/cafe/stock-masivo") },
+        { "cafe/historial-stock", ("📊", "Historial stock", "/cafe/historial-stock") },
+        { "cafe/preparacion", ("📋", "Imprimir pedidos de Osmar", "/cafe/preparacion") },
+        { "cafe/pedidos-whatsapp", ("💬", "Pedidos WhatsApp", "/cafe/pedidos-whatsapp") },
+        { "cafe/preventas", ("🛒", "Pedidos de Gaby", "/cafe/preventas") },
+        // Tesorería
+        { "cafe/tesoreria/cajas", ("💰", "Cajas", "/cafe/tesoreria/cajas") },
+        { "cafe/tesoreria/pagos", ("📤", "Pagos", "/cafe/tesoreria/pagos") },
+        { "cafe/tesoreria/cheques", ("📄", "Cheques", "/cafe/tesoreria/cheques") },
+        { "cafe/tesoreria/resumen", ("📊", "Resumen Tesorería", "/cafe/tesoreria/resumen") },
+        { "cafe/cobranzas-pendientes", ("💰", "Cobranzas a aprobar", "/cafe/cobranzas-pendientes") },
+        { "cafe/arqueo-repartidor", ("🧾", "Arqueo repartidor", "/cafe/arqueo-repartidor") },
+        { "cafe/repartidores", ("🚚", "Repartidores", "/cafe/repartidores") },
+        // Compras
+        { "cafe/compras", ("📋", "Compras", "/cafe/compras") },
+        { "cafe/depositos", ("📦", "Depósitos", "/cafe/depositos") },
+        // Otros
+        { "cafe/consultas", ("🔍", "Consultas", "/cafe/consultas") },
+        { "cafe/configuracion", ("⚙", "Configuración", "/cafe/configuracion") },
+        { "documentacion", ("📑", "Documentación", "/documentacion") },
+        { "horas-extras", ("🕐", "Horas Extras", "/horas-extras") },
+        { "viajes", ("🚚", "Viajes", "/viajes") },
+        // Dashboard
+        { "", ("🏠", "Inicio", "/") },
+    };
 
     /// <summary>Equivalente a Ctrl+Shift+R: limpia caches + service workers y recarga
     /// con cache-busting. Para usuarios que no recuerdan el atajo de teclado.</summary>
@@ -897,6 +1173,11 @@
             role = user.Role;
             permissions = user.Permissions ?? new();
         }
+
+        // 2026-05-28: cargar mapa de visibilidad del sidebar (qué items ve cada rol).
+        // Lo necesitan tanto el sidebar reducido de DEPOSITO/OFICINA como el modo edición del admin.
+        await MenuVisibility.EnsureLoadedAsync();
+        MenuVisibility.OnChange += OnMenuVisibilityChanged;
 
         // Cargar operador desde localStorage. Si no hay, abrir modal obligatorio.
         await Operator.LoadAsync();
@@ -1038,7 +1319,10 @@
         Company.OnChange -= OnCompanyChanged;
         Navigation.LocationChanged -= OnLocationChanged;
         BrandSettings.OnChange -= OnBrandChanged;
+        MenuVisibility.OnChange -= OnMenuVisibilityChanged;
     }
+
+    private void OnMenuVisibilityChanged() => InvokeAsync(StateHasChanged);
 
     private void OnUploadProgressChanged() => InvokeAsync(StateHasChanged);
     private void OnOperatorChanged() => InvokeAsync(StateHasChanged);

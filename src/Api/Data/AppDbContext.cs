@@ -70,6 +70,8 @@ public class AppDbContext : DbContext
     public DbSet<VaultEntry> VaultEntries => Set<VaultEntry>();
     // Postits del dashboard
     public DbSet<Postit> Postits => Set<Postit>();
+    // Visibilidad granular del sidebar por rol — admin controla qué ven los demás (2026-05-28)
+    public DbSet<MenuVisibility> MenuVisibility => Set<MenuVisibility>();
     // Modulo Cafe (independiente)
     public DbSet<CafeCliente> CafeClientes => Set<CafeCliente>();
     public DbSet<CafeProducto> CafeProductos => Set<CafeProducto>();
