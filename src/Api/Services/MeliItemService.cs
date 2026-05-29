@@ -2026,13 +2026,9 @@ public class MeliItemService
             linkedCafe = cafe;
             var settings = await _db.CafeSettings.FindAsync(1) ?? new Models.CafeSetting { Id = 1 };
             var formato = string.IsNullOrEmpty(item.CafeFormato) ? "1KG" : item.CafeFormato;
-            // Si es Full (Mercado Envios Full), el stock lo administra ML — no se puede pushear via API estandar de items.
-            bool esFull = string.Equals(item.LogisticType, "fulfillment", StringComparison.OrdinalIgnoreCase);
-            if (esFull && pushStock && !pushPrice)
-            {
-                return new MeliPushResult(false, "Esta publicación es Full — el stock lo administra MercadoLibre y no se puede actualizar desde acá.", null, null);
-            }
-            if (esFull && pushStock) pushStock = false;
+            // 2026-05-29: regla aclarada. Para Full no usamos el endpoint estándar de items
+            // (MeLi rechaza available_quantity), pero SÍ empujamos al "selling_address" con
+            // stock de 9 de Abril. Se decide más abajo después del live read (liveIsFull).
 
             if (pushPrice)
             {
@@ -2172,9 +2168,25 @@ public class MeliItemService
                 liveVariantIds.Add(v.GetProperty("id").GetInt64());
         }
 
-        // Si la publicacion es Full y pediste stock, lo silenciamos (MeLi rechaza).
-        if (liveIsFull && payloadDict.ContainsKey("available_quantity"))
+        // 2026-05-29: si es Full + pushStock, sacamos available_quantity del payload del PUT estándar
+        // (MeLi lo rechaza). En su lugar, abajo hacemos un PUT separado al endpoint selling_address
+        // para empujar "nuestra parte" del stock (lo que no es meli_facility).
+        string? userProductIdForFull = null;
+        bool pushFullSellingAddress = false;
+        int qtyForSellingAddress = 0;
+        if (liveIsFull && pushStock && stockToPush.HasValue)
+        {
             payloadDict.Remove("available_quantity");
+            if (liveRoot.TryGetProperty("user_product_id", out var upgProp) && upgProp.ValueKind == JsonValueKind.String)
+            {
+                userProductIdForFull = upgProp.GetString();
+                if (!string.IsNullOrEmpty(userProductIdForFull))
+                {
+                    pushFullSellingAddress = true;
+                    qtyForSellingAddress = Math.Max(0, stockToPush.Value);
+                }
+            }
+        }
 
         // Si hay variations, reformatear el payload (price y stock van adentro de cada variation)
         if (liveVariantIds.Count > 0)
@@ -2191,35 +2203,73 @@ public class MeliItemService
             payloadDict = new Dictionary<string, object> { ["variations"] = varList };
         }
 
-        if (payloadDict.Count == 0)
-            return new MeliPushResult(false, "Nada para pushear (Full sin stock + sin precio).", null, null);
+        // Si NO hay nada en el payload estándar Y tampoco hay push Full → nada para hacer.
+        if (payloadDict.Count == 0 && !pushFullSellingAddress)
+            return new MeliPushResult(false, "Nada para pushear.", null, null);
 
-        var payload = JsonSerializer.Serialize(payloadDict);
-        var content = new StringContent(payload, Encoding.UTF8, "application/json");
-        var response = await http.PutAsync($"https://api.mercadolibre.com/items/{item.MeliItemId}", content);
-
-        // Retry con token refrescado si da 401/403
-        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized ||
-            response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        // PUT estándar al item (solo si hay algo que pushear ahí: precio o stock no-Full)
+        if (payloadDict.Count > 0)
         {
-            var newToken = await _accountService.GetValidTokenAsync(item.MeliAccount, forceRefresh: true);
-            if (newToken is not null)
+            var payload = JsonSerializer.Serialize(payloadDict);
+            var content = new StringContent(payload, Encoding.UTF8, "application/json");
+            var response = await http.PutAsync($"https://api.mercadolibre.com/items/{item.MeliItemId}", content);
+
+            // Retry con token refrescado si da 401/403
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized ||
+                response.StatusCode == System.Net.HttpStatusCode.Forbidden)
             {
-                http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", newToken);
-                content = new StringContent(payload, Encoding.UTF8, "application/json");
-                response = await http.PutAsync($"https://api.mercadolibre.com/items/{item.MeliItemId}", content);
+                var newToken = await _accountService.GetValidTokenAsync(item.MeliAccount, forceRefresh: true);
+                if (newToken is not null)
+                {
+                    http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", newToken);
+                    content = new StringContent(payload, Encoding.UTF8, "application/json");
+                    response = await http.PutAsync($"https://api.mercadolibre.com/items/{item.MeliItemId}", content);
+                }
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                return new MeliPushResult(false, $"Error de MeLi ({(int)response.StatusCode}): {FormatMeliError(body)}", null, null);
             }
         }
 
-        if (!response.IsSuccessStatusCode)
+        // 2026-05-29: PUT al selling_address de la publicación Full (con stock 9 de Abril − reserva).
+        // Esto NO toca el stock de Full (meli_facility) — solo nuestra parte propia.
+        if (pushFullSellingAddress && !string.IsNullOrEmpty(userProductIdForFull))
         {
-            var body = await response.Content.ReadAsStringAsync();
-            return new MeliPushResult(false, $"Error de MeLi ({(int)response.StatusCode}): {FormatMeliError(body)}", null, null);
+            var getStockUrl = $"https://api.mercadolibre.com/user-products/{userProductIdForFull}/stock";
+            string? xVersion = null;
+            using (var getRespFull = await http.GetAsync(getStockUrl))
+            {
+                if (!getRespFull.IsSuccessStatusCode)
+                    return new MeliPushResult(false, $"FULL GET user-product stock {(int)getRespFull.StatusCode}", null, null);
+                if (getRespFull.Headers.TryGetValues("x-version", out var xvVals))
+                    xVersion = xvVals.FirstOrDefault();
+            }
+            if (string.IsNullOrEmpty(xVersion))
+                return new MeliPushResult(false, "FULL sin x-version header en GET", null, null);
+
+            var putUrl = $"https://api.mercadolibre.com/user-products/{userProductIdForFull}/stock/type/selling_address";
+            var bodyJson = JsonSerializer.Serialize(new { quantity = qtyForSellingAddress });
+            using var req = new HttpRequestMessage(HttpMethod.Put, putUrl)
+            {
+                Content = new StringContent(bodyJson, Encoding.UTF8, "application/json")
+            };
+            req.Headers.TryAddWithoutValidation("x-version", xVersion);
+            using var resp = await http.SendAsync(req);
+            if (!resp.IsSuccessStatusCode)
+            {
+                var err = await resp.Content.ReadAsStringAsync();
+                return new MeliPushResult(false, $"FULL selling_address {(int)resp.StatusCode}: {FormatMeliError(err)}", null, null);
+            }
         }
 
         // Actualizar la copia local
         if (pushPrice && priceWithVat.HasValue) item.Price = priceWithVat.Value;
-        if (pushStock && !liveIsFull && stockToPush.HasValue) item.AvailableQuantity = stockToPush.Value;
+        // 2026-05-29: para Full también guardamos la cantidad que pusheamos al selling_address.
+        // El AvailableQuantity cacheado refleja lo que VOS tenés como parte propia en MeLi.
+        if (pushStock && stockToPush.HasValue) item.AvailableQuantity = stockToPush.Value;
         item.UpdatedAt = DateTime.UtcNow;
 
         // ───────────── Activar sync automatica hacia adelante ─────────────
@@ -2238,7 +2288,8 @@ public class MeliItemService
         //   - Si StockChangedAt ya estaba seteado, no lo tocamos: respetamos cambios
         //     pendientes que pudieran haber entrado entre que leimos el cafe y guardamos.
         // Solo aplica al caso CafeProductoId — Products y Combos legacy no tienen estas columnas.
-        if (pushStock && !liveIsFull && stockToPush.HasValue && linkedCafe is not null)
+        // 2026-05-29: ahora también activa el sync para Full (sacamos el `!liveIsFull`).
+        if (pushStock && stockToPush.HasValue && linkedCafe is not null)
         {
             var now = DateTime.UtcNow;
             linkedCafe.LastPushedToMeli = now;
