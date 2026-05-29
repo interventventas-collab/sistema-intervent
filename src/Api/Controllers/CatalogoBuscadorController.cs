@@ -32,9 +32,16 @@ public class CatalogoBuscadorController : ControllerBase
         string? Marca);       // FRIKAF, COLOMBRARO, MASCARDI, etc. - usado para filtro rapido en buscador mobile
 
     /// <summary>Devuelve todos los SKUs activos en un solo blob. Pensado para cargar
-    /// en memoria del cliente y buscar localmente (sin ida-y-vuelta por keystroke).</summary>
+    /// en memoria del cliente y buscar localmente (sin ida-y-vuelta por keystroke).
+    ///
+    /// Parámetro opcional onlyProductos (default false):
+    ///   - false: devuelve productos + combos (compatibilidad con /test-search y otros)
+    ///   - true: devuelve SOLO productos puros (~1.893 items en lugar de ~4.136)
+    ///           usado por la pantalla de carga de stock móvil (no se cargan combos manuales)
+    /// 2026-05-28 (Prompt 2 cargador stock móvil).
+    /// </summary>
     [HttpGet("all")]
-    public async Task<IActionResult> GetAll()
+    public async Task<IActionResult> GetAll([FromQuery] bool onlyProductos = false)
     {
         var productos = await _db.CafeProductos
             .AsNoTracking()
@@ -50,6 +57,12 @@ public class CatalogoBuscadorController : ControllerBase
                 p.StockChangedAt,
                 p.Marca))
             .ToListAsync();
+
+        if (onlyProductos)
+        {
+            // Cargador de stock móvil: solo productos puros, sin combos. Baja el JSON a la mitad.
+            return Ok(new { count = productos.Count, items = productos });
+        }
 
         var combos = await _db.CafeCombos
             .AsNoTracking()
