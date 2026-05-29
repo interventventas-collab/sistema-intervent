@@ -2032,8 +2032,9 @@ public class MeliItemService
 
             if (pushPrice)
             {
-                // Motor del cafe: lista_kg = Pvp1; para 1/2 y 1/4, agrega costoFracc.
-                var listaKg = cafe.Pvp1 ?? cafe.Pvp2 ?? cafe.PrecioPorKg ?? 0m;
+                // 2026-05-29: a MeLi va el precio "consumidor final / venta x fuera" (PrecioOtro / Pvp2),
+                // NUNCA el mayorista (PrecioBar / Pvp1). Coherente con MeliCafePricePushService.
+                var listaKg = cafe.PrecioOtro ?? cafe.Pvp2 ?? cafe.PrecioPorKg ?? 0m;
                 decimal precioSinIva = formato switch
                 {
                     "1KG" => listaKg,
@@ -2049,15 +2050,29 @@ public class MeliItemService
             }
             if (pushStock)
             {
-                int gramosPorUnidad = formato switch { "MEDIO" => 500, "CUARTO" => 250, _ => 1000 };
-                // 2026-05-29: regla "Full desenlazado". Para publicaciones cross_docking, el
-                // stock que se publica es SOLO el del depósito 9 de Abril (DepositoId=1),
-                // sin sumar lo que está en Full MeLi.
+                // 2026-05-29: el stock SIEMPRE se publica desde el depósito 9 de Abril (DepositoId=1),
+                // sin sumar Full MeLi.
                 const int DEPOSITO_9_ABRIL_ID = 1;
                 var spd9 = await _db.CafeStockPorDeposito
                     .FirstOrDefaultAsync(s => s.ProductoId == cafe.Id && s.DepositoId == DEPOSITO_9_ABRIL_ID);
-                var stockGramos9 = spd9?.StockGramos ?? 0m;
-                stockToPush = (int)Math.Floor(stockGramos9 / gramosPorUnidad);
+
+                // 2026-05-29 (post-bug ABEAZU): diferenciar CAFE (stock en gramos) vs OTROS (stock en unidades).
+                // El bug previo trataba todo como café -> dividía StockGramos/1000 -> para OTROS daba 0 -> MeLi pausaba.
+                if (string.Equals(cafe.Categoria, "CAFE", StringComparison.OrdinalIgnoreCase))
+                {
+                    int gramosPorUnidad = formato switch { "MEDIO" => 500, "CUARTO" => 250, _ => 1000 };
+                    var stockGramos9 = spd9?.StockGramos ?? 0m;
+                    // Restar reserva (StockMinimoMeLi en café = gramos directos)
+                    var reservaGramos = (cafe.StockMinimoMeLi ?? 0);
+                    var stockGramosDisp = Math.Max(0m, stockGramos9 - reservaGramos);
+                    stockToPush = (int)Math.Floor(stockGramosDisp / gramosPorUnidad);
+                }
+                else
+                {
+                    var stockUnits9 = spd9?.StockUnidades ?? 0;
+                    var reservaUnits = cafe.StockMinimoMeLi ?? 0;
+                    stockToPush = Math.Max(0, stockUnits9 - reservaUnits);
+                }
                 payloadDict["available_quantity"] = stockToPush.Value;
             }
         }
