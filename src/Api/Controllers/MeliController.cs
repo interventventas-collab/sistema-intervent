@@ -1593,7 +1593,7 @@ public class MeliController : ControllerBase
         }
     }
 
-    public record PushFromProductRequest(bool PushPrice = true, bool PushStock = true);
+    public record PushFromProductRequest(bool PushPrice = true, bool PushStock = true, decimal? OverridePrice = null);
 
     [HttpPost("items/{id}/push-from-product")]
     public async Task<IActionResult> PushFromProduct(int id, [FromBody] PushFromProductRequest? request)
@@ -1601,7 +1601,7 @@ public class MeliController : ControllerBase
         try
         {
             var req = request ?? new PushFromProductRequest();
-            var result = await _itemService.PushFromProductAsync(id, req.PushPrice, req.PushStock);
+            var result = await _itemService.PushFromProductAsync(id, req.PushPrice, req.PushStock, req.OverridePrice);
             if (!result.Success) return BadRequest(new { error = result.Message });
             return Ok(result);
         }

@@ -2623,10 +2623,10 @@ public class ApiClient
         return result.GetProperty("deleted").GetInt32();
     }
 
-    public async Task<MeliPushResultDto?> PushMeliItemFromProductAsync(int itemId, bool pushPrice = true, bool pushStock = true)
+    public async Task<MeliPushResultDto?> PushMeliItemFromProductAsync(int itemId, bool pushPrice = true, bool pushStock = true, decimal? overridePrice = null)
     {
         await SetAuthHeaderAsync();
-        var body = new { pushPrice, pushStock };
+        var body = new { pushPrice, pushStock, overridePrice };
         var response = await _http.PostAsJsonAsync($"/api/meli/items/{itemId}/push-from-product", body);
         if (response.IsSuccessStatusCode)
             return await response.Content.ReadFromJsonAsync<MeliPushResultDto>();
