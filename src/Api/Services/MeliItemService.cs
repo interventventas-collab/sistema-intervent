@@ -2014,11 +2014,16 @@ public class MeliItemService
         var payloadDict = new Dictionary<string, object>();
         decimal? priceWithVat = null;
         int? stockToPush = null;
+        // Referencia al CafeProducto vinculado (si aplica). La capturamos aca afuera para
+        // poder marcarle StockChangedAt + LastPushedToMeli despues del push exitoso y asi
+        // activarlo en el radar del background sync hacia adelante.
+        Models.CafeProducto? linkedCafe = null;
 
         if (item.CafeProductoId.HasValue)
         {
             var cafe = await _db.CafeProductos.FirstOrDefaultAsync(p => p.Id == item.CafeProductoId.Value);
             if (cafe is null) throw new InvalidOperationException("El cafe vinculado no existe.");
+            linkedCafe = cafe;
             var settings = await _db.CafeSettings.FindAsync(1) ?? new Models.CafeSetting { Id = 1 };
             var formato = string.IsNullOrEmpty(item.CafeFormato) ? "1KG" : item.CafeFormato;
             // Si es Full (Mercado Envios Full), el stock lo administra ML — no se puede pushear via API estandar de items.
@@ -2209,10 +2214,34 @@ public class MeliItemService
         if (pushPrice && priceWithVat.HasValue) item.Price = priceWithVat.Value;
         if (pushStock && !liveIsFull && stockToPush.HasValue) item.AvailableQuantity = stockToPush.Value;
         item.UpdatedAt = DateTime.UtcNow;
+
+        // ───────────── Activar sync automatica hacia adelante ─────────────
+        // El boton "📦 Push Stock" desde /publicaciones espera dos cosas:
+        //   1) Empujar el stock actual a MeLi ahora.
+        //   2) Que de aca en adelante, futuros cambios de stock se sincronicen solos.
+        //
+        // El job de respaldo (MeliStockPushService.PushPendingAsync) selecciona
+        // CafeProductos con StockChangedAt != null AND StockChangedAt > LastPushedToMeli.
+        // Por eso:
+        //   - Seteamos LastPushedToMeli = NOW() (acabamos de empujar OK).
+        //   - Si StockChangedAt estaba en NULL (caso bug #119: 1081 productos importados
+        //     de Contabilium nunca tuvieron movimiento), lo seteamos a NOW() para
+        //     "activar" la columna. Ventas y ajustes futuros van a seguir actualizandola,
+        //     y el bg job va a poder comparar (hoy con StockChangedAt = NULL nunca dispara).
+        //   - Si StockChangedAt ya estaba seteado, no lo tocamos: respetamos cambios
+        //     pendientes que pudieran haber entrado entre que leimos el cafe y guardamos.
+        // Solo aplica al caso CafeProductoId — Products y Combos legacy no tienen estas columnas.
+        if (pushStock && !liveIsFull && stockToPush.HasValue && linkedCafe is not null)
+        {
+            var now = DateTime.UtcNow;
+            linkedCafe.LastPushedToMeli = now;
+            if (linkedCafe.StockChangedAt is null) linkedCafe.StockChangedAt = now;
+        }
+
         await _db.SaveChangesAsync();
 
         await _auditLog.LogAsync("MeliItem", item.MeliItemId, "PUSH_FROM_LINKED",
-            JsonSerializer.Serialize(new { productId = item.ProductId, comboId = item.ComboId, cafeProductoId = item.CafeProductoId, cafeFormato = item.CafeFormato, pushPrice, pushStock, priceWithVat, stock = stockToPush, liveIsFull }));
+            JsonSerializer.Serialize(new { productId = item.ProductId, comboId = item.ComboId, cafeProductoId = item.CafeProductoId, cafeFormato = item.CafeFormato, pushPrice, pushStock, priceWithVat, stock = stockToPush, liveIsFull, activatedSync = linkedCafe is not null && pushStock }));
 
         var msgExtra = liveIsFull && pushStock ? " (FULL: stock no actualizado, lo administra MeLi)" : "";
         return new MeliPushResult(true, $"Publicacion actualizada en MeLi.{msgExtra}", priceWithVat, (pushStock && !liveIsFull) ? stockToPush : null);
