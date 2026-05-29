@@ -42,7 +42,7 @@ public class MeliStockSyncService
             .Take(maxBatch)
             .ToListAsync();
 
-        int procesadas = 0, descCafe = 0, descOtros = 0, sinLink = 0;
+        int procesadas = 0, descCafe = 0, descOtros = 0, sinLink = 0, fullOmitidas = 0;
         var errores = new List<string>();
         // Set de productos cuyo stock se modificó durante el procesamiento.
         // Al final, vamos a disparar PUSH inmediato para todos los CafeProductoIds afectados
@@ -163,9 +163,22 @@ public class MeliStockSyncService
                 }
 
                 // 2026-05-25: detectar si la orden es Full (sale del depósito de MeLi) vs no-Full
-                // (sale de nuestro depósito 9 de Abril). El descuento va al depósito correcto.
+                // (sale de nuestro depósito 9 de Abril).
+                // 2026-05-29: regla "Full desenlazado". Si la orden es Full, NO descontamos nada
+                // del sistema — Full lo administra MeLi. La orden igual se marca como procesada
+                // (StockDiscounted=true arriba) para no reprocesarla. Solo registramos en logs
+                // para que el usuario vea las ventas Full en sus dashboards.
                 bool esFull = string.Equals(ord.LogisticType, "fulfillment", StringComparison.OrdinalIgnoreCase)
                               && depFullId.HasValue;
+
+                if (esFull)
+                {
+                    // No-op: orden Full marcada como procesada, sin tocar stock.
+                    _logger.LogInformation("Orden MeLi Full #{Id} omitida del descuento (Full desenlazado del sistema)", ord.MeliOrderId);
+                    fullOmitidas++;
+                    procesadas++;
+                    continue;
+                }
 
                 foreach (var (prod, cant, formato) in toDiscount)
                 {
@@ -180,46 +193,20 @@ public class MeliStockSyncService
                         };
                         var gramosADescontar = gramos * cant * ord.Quantity;
 
-                        if (esFull)
-                        {
-                            // Orden Full: descontar de Cafe_StockPorDeposito[Full]. NO tocar StockGramos.
-                            var spdFull = await _db.CafeStockPorDeposito
-                                .FirstOrDefaultAsync(s => s.ProductoId == prod.Id && s.DepositoId == depFullId!.Value);
-                            var antesG = spdFull?.StockGramos ?? 0m;
-                            if (spdFull is null)
-                            {
-                                spdFull = new CafeStockPorDeposito
-                                {
-                                    ProductoId = prod.Id,
-                                    DepositoId = depFullId!.Value,
-                                    StockGramos = 0m,
-                                    StockUnidades = 0,
-                                    UpdatedAt = DateTime.UtcNow
-                                };
-                                _db.CafeStockPorDeposito.Add(spdFull);
-                            }
-                            spdFull.StockGramos = Math.Max(0m, spdFull.StockGramos - gramosADescontar);
-                            spdFull.UpdatedAt = DateTime.UtcNow;
-                            await _stockLogger.LogAsync(prod.Id, "VENTA_MELI_FULL",
-                                (int)Math.Round(antesG), (int)Math.Round(spdFull.StockGramos),
-                                comentario: $"Orden MeLi Full #{ord.MeliOrderId} · {cant}x{(formato ?? "1KG")} · {(int)Math.Round(gramosADescontar)}g (Full)",
-                                saveChanges: false);
-                        }
-                        else
-                        {
-                            prod.StockGramos -= gramosADescontar;
-                            // Historial: registro el cambio para auditoría
-                            var unidadesEquiv = (int)Math.Round(gramosADescontar);
-                            var antes = (int)Math.Round(prod.StockGramos + gramosADescontar);
-                            var despues = (int)Math.Round(prod.StockGramos);
-                            await _stockLogger.LogAsync(prod.Id, "VENTA_MELI", antes, despues,
-                                comentario: $"Orden MeLi #{ord.MeliOrderId} · {cant}x{(formato ?? "1KG")} · {unidadesEquiv}g",
-                                saveChanges: false);
-                            prod.StockChangedAt = DateTime.UtcNow;
-                            await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
-                            // Stock base cambió → republicar las pubs que dependen de este producto.
-                            productosTocadosParaPush.Add(prod.Id);
-                        }
+                        // 2026-05-29: Full desenlazado. El branch esFull se eliminó porque
+                        // las órdenes Full se cortan con `continue` antes de entrar al loop.
+                        prod.StockGramos -= gramosADescontar;
+                        // Historial: registro el cambio para auditoría
+                        var unidadesEquiv = (int)Math.Round(gramosADescontar);
+                        var antes = (int)Math.Round(prod.StockGramos + gramosADescontar);
+                        var despues = (int)Math.Round(prod.StockGramos);
+                        await _stockLogger.LogAsync(prod.Id, "VENTA_MELI", antes, despues,
+                            comentario: $"Orden MeLi #{ord.MeliOrderId} · {cant}x{(formato ?? "1KG")} · {unidadesEquiv}g",
+                            saveChanges: false);
+                        prod.StockChangedAt = DateTime.UtcNow;
+                        await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
+                        // Stock base cambió → republicar las pubs que dependen de este producto.
+                        productosTocadosParaPush.Add(prod.Id);
                         descCafe++;
                     }
                     else
@@ -230,43 +217,18 @@ public class MeliStockSyncService
                             mult = prod.UxB.Value;
                         var unidades = (int)Math.Round(mult * cant * ord.Quantity);
 
-                        if (esFull)
-                        {
-                            // Orden Full: descontar de Cafe_StockPorDeposito[Full]. NO tocar StockUnidades.
-                            var spdFull = await _db.CafeStockPorDeposito
-                                .FirstOrDefaultAsync(s => s.ProductoId == prod.Id && s.DepositoId == depFullId!.Value);
-                            var antes = spdFull?.StockUnidades ?? 0;
-                            if (spdFull is null)
-                            {
-                                spdFull = new CafeStockPorDeposito
-                                {
-                                    ProductoId = prod.Id,
-                                    DepositoId = depFullId!.Value,
-                                    StockGramos = 0m,
-                                    StockUnidades = 0,
-                                    UpdatedAt = DateTime.UtcNow
-                                };
-                                _db.CafeStockPorDeposito.Add(spdFull);
-                            }
-                            spdFull.StockUnidades = Math.Max(0, spdFull.StockUnidades - unidades);
-                            spdFull.UpdatedAt = DateTime.UtcNow;
-                            await _stockLogger.LogAsync(prod.Id, "VENTA_MELI_FULL", antes, spdFull.StockUnidades,
-                                comentario: $"Orden MeLi Full #{ord.MeliOrderId} · {cant}x{(formato ?? "U")} · -{unidades}u (Full)",
-                                saveChanges: false);
-                        }
-                        else
-                        {
-                            var antes = prod.StockUnidades;
-                            prod.StockUnidades -= unidades;
-                            // Historial
-                            await _stockLogger.LogAsync(prod.Id, "VENTA_MELI", antes, prod.StockUnidades,
-                                comentario: $"Orden MeLi #{ord.MeliOrderId} · {cant}x{(formato ?? "U")} · -{unidades}u",
-                                saveChanges: false);
-                            prod.StockChangedAt = DateTime.UtcNow;
-                            await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
-                            // Stock base cambió → republicar las pubs que dependen de este producto.
-                            productosTocadosParaPush.Add(prod.Id);
-                        }
+                        // 2026-05-29: Full desenlazado. El branch esFull se eliminó porque
+                        // las órdenes Full se cortan con `continue` antes de entrar al loop.
+                        var antes = prod.StockUnidades;
+                        prod.StockUnidades -= unidades;
+                        // Historial
+                        await _stockLogger.LogAsync(prod.Id, "VENTA_MELI", antes, prod.StockUnidades,
+                            comentario: $"Orden MeLi #{ord.MeliOrderId} · {cant}x{(formato ?? "U")} · -{unidades}u",
+                            saveChanges: false);
+                        prod.StockChangedAt = DateTime.UtcNow;
+                        await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
+                        // Stock base cambió → republicar las pubs que dependen de este producto.
+                        productosTocadosParaPush.Add(prod.Id);
                         descOtros++;
                     }
                 }

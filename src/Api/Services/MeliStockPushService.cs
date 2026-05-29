@@ -130,6 +130,16 @@ public class MeliStockPushService
             .Where(p => prodIds.Contains(p.Id))
             .ToDictionaryAsync(p => p.Id, ct);
 
+        // 2026-05-29: regla "Full desenlazado". Para publicaciones cross_docking el push
+        // debe usar SOLO el stock del depósito 9 de Abril (DepositoId=1), no el total que
+        // incluye Full MeLi. Cargamos un dict auxiliar (StockUnidades, StockGramos) por
+        // producto. Si el producto no tiene fila en Cafe_StockPorDeposito para 9 de Abril
+        // (caso raro), retornamos (0, 0) -> nada disponible.
+        const int DEPOSITO_9_ABRIL_ID = 1;
+        var stock9Abril = await _db.CafeStockPorDeposito
+            .Where(s => s.DepositoId == DEPOSITO_9_ABRIL_ID && prodIds.Contains(s.ProductoId))
+            .ToDictionaryAsync(s => s.ProductoId, s => (s.StockUnidades, s.StockGramos), ct);
+
         int ok = 0, skipped = 0, err = 0;
         var mensajes = new List<string>();
 
@@ -173,7 +183,7 @@ public class MeliStockPushService
                     grupo.Key.MeliItemId,
                     grupo.ToList(),
                     componentes.Where(c => c.MeliItemId == grupo.Key.MeliItemId).ToList(),
-                    productos, token, ct, conservativeMode, safeBulkMode);
+                    productos, stock9Abril, token, ct, conservativeMode, safeBulkMode);
 
                 switch (resultStatus)
                 {
@@ -218,6 +228,7 @@ public class MeliStockPushService
         List<MeliItem> rows,
         List<MeliItemComponente> compsThisItem,
         Dictionary<int, CafeProducto> productos,
+        Dictionary<int, (int StockUnidades, decimal StockGramos)> stock9Abril,
         string token, CancellationToken ct,
         bool conservativeMode = false,
         bool safeBulkMode = false)
@@ -238,34 +249,12 @@ public class MeliStockPushService
             && lt.ValueKind == JsonValueKind.String
             && string.Equals(lt.GetString(), "fulfillment", StringComparison.OrdinalIgnoreCase);
 
-        // FULL (dual stock): MeLi NO permite modificar `available_quantity` via PUT /items/{id},
-        // pero SÍ se puede modificar el stock del depósito propio (selling_address) via
-        // PUT /user-products/{upg_id}/stock/type/selling_address (endpoint descubierto el
-        // 2026-05-25 analizando addin Integraly). Requiere header `x-version` fresco.
-        // El stock del Full (meli_facility) NO se toca — eso lo maneja MeLi.
+        // 2026-05-29: regla "Full desenlazado". El sistema NO informa stock a publicaciones
+        // Full. Full lo administra MeLi por su cuenta. Cuando enlazamos en el futuro,
+        // restaurar el bloque que pusheaba a selling_address (ver git blame de esta línea).
         if (isFulfillment)
         {
-            // Necesitamos el user_product_id que viene en el GET del item.
-            if (!doc.TryGetProperty("user_product_id", out var upgProp) || upgProp.ValueKind != JsonValueKind.String)
-                return (PushOutcome.Skipped, "FULL: sin user_product_id, no se puede pushear");
-            var upgId = upgProp.GetString();
-            if (string.IsNullOrEmpty(upgId))
-                return (PushOutcome.Skipped, "FULL: user_product_id vacío");
-
-            // Para Full no hay variations (típicamente, según el código Integraly). Si las hay,
-            // por ahora calculamos un único stock total y lo metemos en selling_address.
-            // Cargar componentes/legacy stock.
-            var compsForFull = compsThisItem;
-            int stockFull;
-            if (compsForFull.Count > 0)
-                stockFull = CalcStockMinComponentes(compsForFull, productos);
-            else
-                stockFull = CalcStockLegacy(rows.First(), productos);
-            // Reserva ya aplicada DENTRO de CalcStockMinComponentes/CalcStockLegacy desde 2026-05-27
-            // (fix bug HE410X6: ahora se descuenta del producto base ANTES de dividir por la cantidad del pack).
-            var qtySellingAddress = Math.Max(0, stockFull);
-
-            return await PushSellingAddressForFullAsync(http, upgId!, qtySellingAddress, ct);
+            return (PushOutcome.Skipped, "Full desenlazado del sistema por configuración (2026-05-29)");
         }
 
         // ¿Tiene variations en MeLi?
@@ -316,12 +305,12 @@ public class MeliStockPushService
                 int stock;
                 if (compsForVar.Count > 0)
                 {
-                    stock = CalcStockMinComponentes(compsForVar, productos);
+                    stock = CalcStockMinComponentes(compsForVar, productos, stock9Abril);
                 }
                 else
                 {
                     var legacyRow = rows.FirstOrDefault(r => r.VariationId == vidStr) ?? rows.First();
-                    stock = CalcStockLegacy(legacyRow, productos);
+                    stock = CalcStockLegacy(legacyRow, productos, stock9Abril);
                 }
                 var stockMeliCalc = Math.Max(0, stock - reserva);
 
@@ -384,11 +373,11 @@ public class MeliStockPushService
             if (compsForItem.Count == 0) compsForItem = compsThisItem;
             if (compsForItem.Count > 0)
             {
-                stock = CalcStockMinComponentes(compsForItem, productos);
+                stock = CalcStockMinComponentes(compsForItem, productos, stock9Abril);
             }
             else
             {
-                stock = CalcStockLegacy(rows.First(), productos);
+                stock = CalcStockLegacy(rows.First(), productos, stock9Abril);
             }
 
             // POLITICA 2026-05-23: pushear stock real (0 incluido) menos reserva interna.
@@ -511,9 +500,12 @@ public class MeliStockPushService
     private static string Trim(string s) => s.Length > 200 ? s.Substring(0, 200) : s;
 
     /// <summary>Calcula stock disponible para un mapping de N componentes. Devuelve el minimo
-    /// (la publicacion solo se puede armar la cantidad de veces que el componente mas escaso permita).</summary>
+    /// (la publicacion solo se puede armar la cantidad de veces que el componente mas escaso permita).
+    /// 2026-05-29: usa SOLO el stock del depósito 9 de Abril (stock9Abril). El depósito Full MeLi
+    /// está desenlazado del sistema por configuración — su stock no se ofrece en cross_docking.</summary>
     private static int CalcStockMinComponentes(List<MeliItemComponente> comps,
-        Dictionary<int, CafeProducto> productos)
+        Dictionary<int, CafeProducto> productos,
+        Dictionary<int, (int StockUnidades, decimal StockGramos)> stock9Abril)
     {
         // IMPORTANTE: la reserva (StockMinimoMeLi) se aplica AL PRODUCTO BASE ANTES de dividir
         // por la cantidad del componente. Si la aplicas después (al stock final del pack)
@@ -524,6 +516,7 @@ public class MeliStockPushService
         foreach (var c in comps)
         {
             if (!productos.TryGetValue(c.CafeProductoId, out var prod)) continue;
+            var s9 = stock9Abril.GetValueOrDefault(c.CafeProductoId, (0, 0m));
             int disp;
             if (string.Equals(prod.Categoria, "CAFE", StringComparison.OrdinalIgnoreCase))
             {
@@ -534,7 +527,7 @@ public class MeliStockPushService
                 var gramosNecesariosPorUnidad = gramos * c.Cantidad;
                 // Reserva en gramos: convertir StockMinimoMeLi (que está en gramos para café) — usamos como gramos directos
                 var reservaGramos = (prod.StockMinimoMeLi ?? 0);
-                var stockGramosDisponibles = Math.Max(0m, prod.StockGramos - reservaGramos);
+                var stockGramosDisponibles = Math.Max(0m, s9.Item2 - reservaGramos);
                 disp = gramosNecesariosPorUnidad > 0
                     ? (int)Math.Floor(stockGramosDisponibles / gramosNecesariosPorUnidad)
                     : 0;
@@ -546,7 +539,7 @@ public class MeliStockPushService
                 var unidadesNecesariasPorUnidad = c.Cantidad * unidadesPorBulto;
                 // Aplicar reserva (StockMinimoMeLi) al producto BASE antes de dividir.
                 var reservaUnits = prod.StockMinimoMeLi ?? 0;
-                var stockUnidadesDisponibles = Math.Max(0, prod.StockUnidades - reservaUnits);
+                var stockUnidadesDisponibles = Math.Max(0, s9.Item1 - reservaUnits);
                 disp = unidadesNecesariasPorUnidad > 0
                     ? (int)Math.Floor(stockUnidadesDisponibles / unidadesNecesariasPorUnidad)
                     : 0;
@@ -557,11 +550,14 @@ public class MeliStockPushService
         return min ?? 0;
     }
 
-    /// <summary>Legacy: MeliItem.CafeProductoId + CafeFormato (sin pasar por MeliItemComponentes).</summary>
-    private static int CalcStockLegacy(MeliItem mi, Dictionary<int, CafeProducto> productos)
+    /// <summary>Legacy: MeliItem.CafeProductoId + CafeFormato (sin pasar por MeliItemComponentes).
+    /// 2026-05-29: usa SOLO el stock del depósito 9 de Abril (stock9Abril). Ver comentario en CalcStockMinComponentes.</summary>
+    private static int CalcStockLegacy(MeliItem mi, Dictionary<int, CafeProducto> productos,
+        Dictionary<int, (int StockUnidades, decimal StockGramos)> stock9Abril)
     {
         if (!mi.CafeProductoId.HasValue) return 0;
         if (!productos.TryGetValue(mi.CafeProductoId.Value, out var prod)) return 0;
+        var s9 = stock9Abril.GetValueOrDefault(mi.CafeProductoId.Value, (0, 0m));
         // Aplicar reserva (StockMinimoMeLi) al stock base — coherente con CalcStockMinComponentes
         // (la reserva siempre se descuenta del producto base, NUNCA del stock ya calculado del pack)
         var reservaUnits = prod.StockMinimoMeLi ?? 0;
@@ -572,13 +568,13 @@ public class MeliStockPushService
                 "1KG" => 1000m, "MEDIO" => 500m, "CUARTO" => 250m, _ => 1000m
             };
             var reservaGramos = reservaUnits;  // StockMinimoMeLi en café es directamente gramos
-            var stockGramosDisp = Math.Max(0m, prod.StockGramos - reservaGramos);
+            var stockGramosDisp = Math.Max(0m, s9.Item2 - reservaGramos);
             var disp = gramos > 0 ? (int)Math.Floor(stockGramosDisp / gramos) : 0;
             return disp < 0 ? 0 : disp;
         }
         else
         {
-            var disp = Math.Max(0, prod.StockUnidades - reservaUnits);
+            var disp = Math.Max(0, s9.Item1 - reservaUnits);
             return disp < 0 ? 0 : disp;
         }
     }
