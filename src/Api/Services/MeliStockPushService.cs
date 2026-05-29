@@ -249,12 +249,28 @@ public class MeliStockPushService
             && lt.ValueKind == JsonValueKind.String
             && string.Equals(lt.GetString(), "fulfillment", StringComparison.OrdinalIgnoreCase);
 
-        // 2026-05-29: regla "Full desenlazado". El sistema NO informa stock a publicaciones
-        // Full. Full lo administra MeLi por su cuenta. Cuando enlazamos en el futuro,
-        // restaurar el bloque que pusheaba a selling_address (ver git blame de esta línea).
+        // 2026-05-29 (final): regla aclarada por el usuario. Una publicación puede tener
+        // stock Full + stock propio simultáneamente. El sistema empuja SOLO su parte (stock
+        // de 9 de Abril − reserva) al "selling_address". Lo que MeLi tenga en "meli_facility"
+        // (Full) no se toca — eso lo administra MeLi.
         if (isFulfillment)
         {
-            return (PushOutcome.Skipped, "Full desenlazado del sistema por configuración (2026-05-29)");
+            if (!doc.TryGetProperty("user_product_id", out var upgProp) || upgProp.ValueKind != JsonValueKind.String)
+                return (PushOutcome.Skipped, "FULL: sin user_product_id, no se puede pushear selling_address");
+            var upgId = upgProp.GetString();
+            if (string.IsNullOrEmpty(upgId))
+                return (PushOutcome.Skipped, "FULL: user_product_id vacío");
+
+            // Calcular stock con la misma regla que cross_docking: SOLO 9 de Abril − reserva.
+            int stockFullProp;
+            if (compsThisItem.Count > 0)
+                stockFullProp = CalcStockMinComponentes(compsThisItem, productos, stock9Abril);
+            else
+                stockFullProp = CalcStockLegacy(rows.First(), productos, stock9Abril);
+            // Reserva ya aplicada DENTRO de los calculadores (al producto base, antes de dividir).
+            var qtySellingAddress = Math.Max(0, stockFullProp);
+
+            return await PushSellingAddressForFullAsync(http, upgId!, qtySellingAddress, ct);
         }
 
         // ¿Tiene variations en MeLi?
