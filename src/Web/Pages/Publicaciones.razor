@@ -433,7 +433,8 @@
                                                 @Truncate(item.ProductTitle ?? "", 18)
                                                 <button class="product-badge-unlink" @onclick="() => UnlinkProduct(item)" title="Desvincular">&times;</button>
                                             </span>
-                                            <button class="push-meli-btn" @onclick="() => OpenPushModal(item)" title="Push precio + stock a MeLi">📤</button>
+                                            <button class="push-meli-btn push-stock" @onclick="() => QuickPushStock(item)" title="Pushear SOLO stock a MeLi (usa el del sistema)">📦</button>
+                                            <button class="push-meli-btn push-precio" @onclick="() => QuickPushPrecio(item)" title="Pushear SOLO precio a MeLi (usa el del sistema)">💵</button>
                                         }
                                         else if (item.ComboId.HasValue)
                                         {
@@ -441,7 +442,8 @@
                                                 🎁 @Truncate(item.ComboName ?? "", 16)
                                                 <button class="product-badge-unlink" @onclick="() => UnlinkProduct(item)" title="Desvincular">&times;</button>
                                             </span>
-                                            <button class="push-meli-btn" @onclick="() => OpenPushModal(item)" title="Push precio + stock a MeLi">📤</button>
+                                            <button class="push-meli-btn push-stock" @onclick="() => QuickPushStock(item)" title="Pushear SOLO stock a MeLi (usa el del sistema)">📦</button>
+                                            <button class="push-meli-btn push-precio" @onclick="() => QuickPushPrecio(item)" title="Pushear SOLO precio a MeLi (usa el del sistema)">💵</button>
                                         }
                                         else if (item.CafeProductoId.HasValue)
                                         {
@@ -449,7 +451,8 @@
                                                 ☕ @item.CafeProductoSku
                                                 <span style="opacity:0.7; margin-left:0.2rem;">@item.CafeFormato</span>
                                             </span>
-                                            <button class="push-meli-btn" @onclick="() => OpenPushModal(item)" title="Push precio + stock a MeLi">📤</button>
+                                            <button class="push-meli-btn push-stock" @onclick="() => QuickPushStock(item)" title="Pushear SOLO stock a MeLi (usa el del sistema)">📦</button>
+                                            <button class="push-meli-btn push-precio" @onclick="() => QuickPushPrecio(item)" title="Pushear SOLO precio a MeLi (usa el del sistema)">💵</button>
                                         }
                                         else if (item.ComponentMappingsCount > 0)
                                         {
@@ -457,7 +460,8 @@
                                                   title="@(string.IsNullOrEmpty(item.ComponentMappingsSummary) ? $"Linkeado a {item.ComponentMappingsCount} producto(s) del sistema" : $"Cuando se vende, descuenta:\n{item.ComponentMappingsSummary}")">
                                                 ✅ Linkeado (@item.ComponentMappingsCount)
                                             </span>
-                                            <button class="push-meli-btn" @onclick="() => OpenPushModal(item)" title="Push precio + stock a MeLi">📤</button>
+                                            <button class="push-meli-btn push-stock" @onclick="() => QuickPushStock(item)" title="Pushear SOLO stock a MeLi (usa el del sistema)">📦</button>
+                                            <button class="push-meli-btn push-precio" @onclick="() => QuickPushPrecio(item)" title="Pushear SOLO precio a MeLi (usa el del sistema)">💵</button>
                                         }
                                         else
                                         {
@@ -605,7 +609,8 @@
                                                     @Truncate(item.ProductTitle ?? "", 18)
                                                     <button class="product-badge-unlink" @onclick="() => UnlinkProduct(item)" title="Desvincular">&times;</button>
                                                 </span>
-                                                <button class="push-meli-btn" @onclick="() => OpenPushModal(item)" title="Push precio + stock a MeLi">📤</button>
+                                                <button class="push-meli-btn push-stock" @onclick="() => QuickPushStock(item)" title="Pushear SOLO stock a MeLi (usa el del sistema)">📦</button>
+                                            <button class="push-meli-btn push-precio" @onclick="() => QuickPushPrecio(item)" title="Pushear SOLO precio a MeLi (usa el del sistema)">💵</button>
                                             }
                                             else
                                             {
@@ -3940,6 +3945,53 @@
     }
 
     // === Push a MeLi ===
+
+    /// <summary>2026-05-29: push rápido SOLO stock (sin modal, directo).</summary>
+    private async Task QuickPushStock(MeliItemDto item)
+    {
+        await DoQuickPush(item, pushPrice: false, pushStock: true, what: "stock");
+    }
+
+    /// <summary>2026-05-29: push rápido SOLO precio (sin modal, directo).</summary>
+    private async Task QuickPushPrecio(MeliItemDto item)
+    {
+        await DoQuickPush(item, pushPrice: true, pushStock: false, what: "precio");
+    }
+
+    private async Task DoQuickPush(MeliItemDto item, bool pushPrice, bool pushStock, string what)
+    {
+        if (item.ProductId is null && item.ComboId is null && item.CafeProductoId is null && item.ComponentMappingsCount == 0)
+        {
+            ToastService.Error("Esta publicación no tiene producto vinculado.");
+            return;
+        }
+        try
+        {
+            var result = await Api.PushMeliItemFromProductAsync(item.Id, pushPrice, pushStock);
+            if (result is not null && result.Success)
+            {
+                ToastService.Success($"✓ {what} actualizado en MeLi: {result.Message}");
+                // Refrescar la fila al toque con el nuevo valor
+                if (items is not null)
+                {
+                    var idx = items.FindIndex(i => i.Id == item.Id);
+                    if (idx >= 0)
+                    {
+                        if (pushPrice && result.PushedPrice.HasValue) items[idx].Price = result.PushedPrice.Value;
+                        if (pushStock && result.PushedStock.HasValue) items[idx].AvailableQuantity = result.PushedStock.Value;
+                    }
+                }
+            }
+            else
+            {
+                ToastService.Error(result?.Message ?? $"Error al pushear {what}");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error($"Error pusheando {what}: " + ex.Message);
+        }
+    }
 
     private async Task OpenPushModal(MeliItemDto item)
     {

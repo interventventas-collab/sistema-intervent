@@ -49,6 +49,16 @@
 		Referrer-Policy "strict-origin-when-cross-origin"
 	}
 
+	# 2026-05-29: alojamiento temporal aislado para presentacion externa.
+	# Sirve archivos estaticos desde /srv/static/cajadeloscuidados/.
+	# No afecta a ninguna otra ruta — todo el resto sigue yendo al reverse_proxy.
+	# Para remover: borrar este handle_path + reload caddy + (opcional) rm carpeta.
+	handle_path /cajadeloscuidados* {
+		root * /srv/static/cajadeloscuidados
+		try_files {path} {path}/ /index.html
+		file_server
+	}
+
 	reverse_proxy web-prod:80
 }
 
