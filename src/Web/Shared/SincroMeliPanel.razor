@@ -264,13 +264,31 @@
                         <label class="form-label">Ajuste fijo $</label>
                         <input class="form-input" type="number" step="1" @bind="ajusteFijo" @bind:event="oninput" />
                     </div>
+                    <div class="form-group" style="flex:1;">
+                        <label class="form-label">Redondear ↑ a</label>
+                        <select class="form-input" @bind="ajusteRedondeo">
+                            <option value="">Sin redondeo</option>
+                            <option value="99">Termina en 99</option>
+                            <option value="999">Termina en 999</option>
+                            <option value="000">Múltiplo de 1000</option>
+                        </select>
+                    </div>
                 </div>
                 @{
                     var baseAj = editItem.PrecioOtroConIva ?? 0m;
-                    var precioCalc = Math.Round(baseAj * (1 + ajustePct/100m) + ajusteFijo, 2);
+                    var precioConAjuste = Math.Round(baseAj * (1 + ajustePct/100m) + ajusteFijo, 2);
+                    var precioCalc = AplicarRedondeoUp(precioConAjuste, ajusteRedondeo);
                 }
                 <div style="background:#dbeafe; padding:0.6rem; border-radius:4px; font-size:0.85rem;">
-                    <strong>Resultado:</strong> $@FormatMoney(baseAj) × (1 + @ajustePct/100) + $@FormatMoney(ajusteFijo) = <strong>$@FormatMoney(precioCalc)</strong>
+                    <strong>Resultado:</strong> $@FormatMoney(baseAj) × (1 + @ajustePct/100) + $@FormatMoney(ajusteFijo)
+                    @if (!string.IsNullOrEmpty(ajusteRedondeo))
+                    {
+                        <span>= $@FormatMoney(precioConAjuste) → redondea a <strong>$@FormatMoney(precioCalc)</strong></span>
+                    }
+                    else
+                    {
+                        <span>= <strong>$@FormatMoney(precioCalc)</strong></span>
+                    }
                 </div>
             </div>
             <div class="modal-footer">
@@ -300,6 +318,7 @@
     private bool ajusteOpen;
     private decimal ajustePct;
     private decimal ajusteFijo;
+    private string ajusteRedondeo = "";
 
     // ── Agrupacion estilo Mercado Libre: primero por FamilyId (si hay varios MLAs en la familia),
     //    sino por MeliItemId (con variantes de color/talle como sub-filas) ──
@@ -410,7 +429,8 @@
         var (cfg, err) = await Api.ActualizarSyncConfigAsync(p.MeliItemId, new UpdateSyncConfigRequest
         {
             SyncStock = valor, SyncPrecio = p.Config.SyncPrecio,
-            AjustePct = p.Config.AjustePct, AjusteFijo = p.Config.AjusteFijo
+            AjustePct = p.Config.AjustePct, AjusteFijo = p.Config.AjusteFijo,
+            AjusteRedondeo = p.Config.AjusteRedondeo
         });
         if (cfg is not null) { p.Config = cfg; ToastService.Success($"Sync stock: {(valor ? "ON" : "OFF")}"); }
         else ToastService.Error(err ?? "Error");
@@ -421,7 +441,8 @@
         var (cfg, err) = await Api.ActualizarSyncConfigAsync(p.MeliItemId, new UpdateSyncConfigRequest
         {
             SyncStock = p.Config.SyncStock, SyncPrecio = valor,
-            AjustePct = p.Config.AjustePct, AjusteFijo = p.Config.AjusteFijo
+            AjustePct = p.Config.AjustePct, AjusteFijo = p.Config.AjusteFijo,
+            AjusteRedondeo = p.Config.AjusteRedondeo
         });
         if (cfg is not null) { p.Config = cfg; ToastService.Success($"Sync precio: {(valor ? "ON" : "OFF")}"); }
         else ToastService.Error(err ?? "Error");
@@ -433,6 +454,7 @@
         editItem = p;
         ajustePct = p.Config.AjustePct;
         ajusteFijo = p.Config.AjusteFijo;
+        ajusteRedondeo = p.Config.AjusteRedondeo ?? "";
         ajusteOpen = true;
     }
 
@@ -444,7 +466,8 @@
         var (cfg, err) = await Api.ActualizarSyncConfigAsync(editItem.MeliItemId, new UpdateSyncConfigRequest
         {
             SyncStock = editItem.Config.SyncStock, SyncPrecio = editItem.Config.SyncPrecio,
-            AjustePct = ajustePct, AjusteFijo = ajusteFijo
+            AjustePct = ajustePct, AjusteFijo = ajusteFijo,
+            AjusteRedondeo = string.IsNullOrEmpty(ajusteRedondeo) ? null : ajusteRedondeo
         });
         if (cfg is not null)
         {
@@ -457,4 +480,23 @@
     }
 
     private static string FormatMoney(decimal v) => v.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+
+    /// <summary>Redondea HACIA ARRIBA al siguiente número que cumpla la terminación.
+    /// "" = sin redondeo. "99" / "999" / "000".</summary>
+    private static decimal AplicarRedondeoUp(decimal valor, string? modo)
+    {
+        if (string.IsNullOrEmpty(modo) || valor <= 0) return valor;
+        int term = modo switch { "99" => 99, "999" => 999, "000" => 0, _ => -1 };
+        int step = modo switch { "99" => 100, "999" => 1000, "000" => 1000, _ => 1 };
+        if (step <= 1) return valor;
+        int valorInt = (int)Math.Ceiling(valor);
+        int siguiente;
+        if (valorInt % step == term && valorInt >= valor) siguiente = valorInt;
+        else
+        {
+            siguiente = ((valorInt - term + step - 1) / step) * step + term;
+            if (siguiente < valor) siguiente += step;
+        }
+        return siguiente;
+    }
 }

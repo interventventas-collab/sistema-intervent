@@ -34,6 +34,12 @@ public class MeliItemSyncConfig
     [Column(TypeName = "decimal(18,2)")]
     public decimal AjusteFijo { get; set; } = 0m;
 
+    /// <summary>2026-05-29: redondeo al final de la cuenta (despues de aplicar Pct y Fijo).
+    /// Valores: "" (sin redondeo), "99" (terminacion 99), "999" (terminacion 999), "000" (multiplo de 1000).
+    /// Siempre redondea HACIA ARRIBA — no le baja al usuario sin querer.</summary>
+    [MaxLength(8)]
+    public string? AjusteRedondeo { get; set; }
+
     /// <summary>Ultima vez que el sistema pusheo precio o stock para este item.</summary>
     public DateTime? LastSyncAt { get; set; }
 

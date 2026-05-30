@@ -85,6 +85,8 @@ public class SyncConfigDto
     public bool SyncPrecio { get; set; }
     public decimal AjustePct { get; set; }
     public decimal AjusteFijo { get; set; }
+    /// <summary>2026-05-29: terminación al redondear hacia arriba ("" / "99" / "999" / "000").</summary>
+    public string? AjusteRedondeo { get; set; }
     public DateTime? LastSyncAt { get; set; }
 }
 
@@ -135,6 +137,7 @@ public class UpdateSyncConfigRequest
     public bool SyncPrecio { get; set; }
     public decimal AjustePct { get; set; }
     public decimal AjusteFijo { get; set; }
+    public string? AjusteRedondeo { get; set; }
 }
 
 public class UpdatePrecioResultDto
