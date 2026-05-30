@@ -65,9 +65,7 @@ public class MeliItemService
                 i.VariationId,
                 i.VariationAttributes,
                 null,  // LastStockPushedToMeli — se completa abajo en memoria
-                i.AjustePctOverride,
-                i.AjustePesosOverride,
-                i.AjusteRedondeoOverride
+                true, false, 0m, 0m, null  // SyncStock/SyncPrecio/AjustePct/AjusteFijo/AjusteRedondeo — se completan abajo desde MeliItemSyncConfigs
                 ))
             .ToListAsync();
 
@@ -148,6 +146,26 @@ public class MeliItemService
             {
                 if (lastPushByItem.TryGetValue(items[k].MeliItemId, out var lp))
                     items[k] = items[k] with { LastStockPushedToMeli = lp };
+            }
+        }
+
+        // 2026-05-29: cargar configuraciones de Sync por publicación (SyncStock/SyncPrecio/Ajustes).
+        // Esto reemplaza la lectura desde las 3 columnas viejas de MeliItems (AjustePctOverride/etc).
+        var configsByItemId = await _db.MeliItemSyncConfigs
+            .Where(c => allItemIds.Contains(c.MeliItemId))
+            .ToDictionaryAsync(c => c.MeliItemId);
+        for (int k = 0; k < items.Count; k++)
+        {
+            if (configsByItemId.TryGetValue(items[k].MeliItemId, out var cfg))
+            {
+                items[k] = items[k] with
+                {
+                    SyncStock = cfg.SyncStock,
+                    SyncPrecio = cfg.SyncPrecio,
+                    AjustePct = cfg.AjustePct,
+                    AjusteFijo = cfg.AjusteFijo,
+                    AjusteRedondeo = cfg.AjusteRedondeo
+                };
             }
         }
 
@@ -324,7 +342,7 @@ public class MeliItemService
         0, null, item.LogisticType,
         item.VariationId, item.VariationAttributes,
         null, // LastStockPushedToMeli
-        item.AjustePctOverride, item.AjustePesosOverride, item.AjusteRedondeoOverride);
+        true, false, 0m, 0m, null); // SyncConfig (no se carga en este path single-item, queda en default)
 
     public async Task<int> DeleteItemsAsync(List<int> ids)
     {

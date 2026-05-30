@@ -157,10 +157,14 @@ public record MeliItemDto(
     // Calculado como MAX(LastPushedToMeli) entre el CafeProducto linkeado directo + todos los componentes.
     // Null = nunca se pusheó.
     DateTime? LastStockPushedToMeli = null,
-    // 2026-05-29: ajustes de precio Contabilium-style por publicación (% + $ + redondeo).
-    decimal? AjustePctOverride = null,
-    decimal? AjustePesosOverride = null,
-    string? AjusteRedondeoOverride = null
+    // 2026-05-29: ajustes desde MeliItem_SyncConfig (tabla unificada).
+    // Antes habia 3 columnas en MeliItems (AjustePctOverride/etc) que se eliminaran
+    // en el paso 5 del refactor.
+    bool SyncStock = true,
+    bool SyncPrecio = false,
+    decimal AjustePct = 0m,
+    decimal AjusteFijo = 0m,
+    string? AjusteRedondeo = null
 );
 
 public record MeliItemsResponse(List<MeliItemDto> Items, int Total);

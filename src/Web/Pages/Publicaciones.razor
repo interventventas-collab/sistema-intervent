@@ -2596,60 +2596,11 @@
         ["estado"] = new HashSet<string> { "Activa" }
     };
 
-    private bool ajustesMigrationDone = false;
+    // 2026-05-29: la migración one-time de localStorage -> DB ya se ejecutó en sesiones previas
+    // (todos los ajustes que tenías en localStorage ya están en MeliItem_SyncConfig vía paso 2).
+    // La logica vieja se removió aquí. Si alguien tiene un localStorage que sobrevive de versiones
+    // muy viejas, queda ahí sin afectar nada (no se lee).
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        // Esperar a que items esté cargado antes de intentar la migración.
-        // (LoadItems es async — el primer render puede ocurrir con items=null o vacío.)
-        if (ajustesMigrationDone) return;
-        if (items is null || items.Count == 0) return;
-        ajustesMigrationDone = true;
-
-        // Migración one-time: si el navegador tiene ajustes en localStorage (versión anterior)
-        // y la fila correspondiente en DB no los tiene, los subimos a DB. NO borramos
-        // localStorage — la migración es idempotente (si corre dos veces, la segunda no hace
-        // nada porque la DB ya tiene los valores y el bloque `dbHasIt` la saltea).
-        try
-        {
-            var json = await JS.InvokeAsync<string?>("localStorage.getItem", "publicaciones-ajustes-precio");
-            if (string.IsNullOrEmpty(json)) return;
-            var legacy = System.Text.Json.JsonSerializer.Deserialize<Dictionary<int, AjustePrecio>>(json);
-            if (legacy is null || legacy.Count == 0) return;
-
-            int migrated = 0;
-            foreach (var (itemId, aj) in legacy)
-            {
-                var item = items.FirstOrDefault(i => i.Id == itemId);
-                if (item is null) continue;
-                bool dbHasIt = item.AjustePctOverride.HasValue
-                    || item.AjustePesosOverride.HasValue
-                    || !string.IsNullOrEmpty(item.AjusteRedondeoOverride);
-                if (dbHasIt) continue;
-                try
-                {
-                    await Api.SetMeliItemAjustePrecioAsync(itemId, aj.DeltaPct, aj.DeltaPesos, aj.Redondeo);
-                    item.AjustePctOverride = aj.DeltaPct;
-                    item.AjustePesosOverride = aj.DeltaPesos;
-                    item.AjusteRedondeoOverride = aj.Redondeo;
-                    if (ajustesPrecio.TryGetValue(itemId, out var memAj))
-                    {
-                        memAj.DeltaPct = aj.DeltaPct;
-                        memAj.DeltaPesos = aj.DeltaPesos;
-                        memAj.Redondeo = aj.Redondeo ?? "";
-                    }
-                    migrated++;
-                }
-                catch { /* si falla un item, seguimos con el resto */ }
-            }
-            if (migrated > 0)
-            {
-                ToastService.Success($"✓ Migrados {migrated} ajuste(s) de tu browser a la base de datos. Ahora se ven en cualquier dispositivo.");
-                StateHasChanged();
-            }
-        }
-        catch { /* si falla todo, no rompemos la página */ }
-    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -4086,33 +4037,49 @@
     private Dictionary<int, AjustePrecio> ajustesPrecio = new();
 
     /// <summary>Devuelve el ajuste de la fila. Si todavía no está en memoria, lo hidrata desde
-    /// los campos del DTO (que ya vienen poblados desde la DB cuando se carga el listado).</summary>
+    /// los campos del DTO (que ya vienen poblados desde MeliItem_SyncConfig).
+    /// 2026-05-29: ahora lee de los campos unificados AjustePct/AjusteFijo/AjusteRedondeo.</summary>
     private AjustePrecio GetAjuste(MeliItemDto item)
     {
         if (!ajustesPrecio.TryGetValue(item.Id, out var a))
         {
             a = new AjustePrecio
             {
-                DeltaPct = item.AjustePctOverride,
-                DeltaPesos = item.AjustePesosOverride,
-                Redondeo = item.AjusteRedondeoOverride ?? ""
+                DeltaPct = item.AjustePct != 0 ? item.AjustePct : (decimal?)null,
+                DeltaPesos = item.AjusteFijo != 0 ? item.AjusteFijo : (decimal?)null,
+                Redondeo = item.AjusteRedondeo ?? ""
             };
             ajustesPrecio[item.Id] = a;
         }
         return a;
     }
 
-    /// <summary>2026-05-29: persistir el ajuste de la fila en DB via API. Se llama después de
-    /// cada cambio en %, $ o redondeo. Si falla la API, queda en memoria igual.</summary>
+    /// <summary>2026-05-29: persistir el ajuste en MeliItem_SyncConfig (tabla unificada).
+    /// Usa el endpoint Sincro existente (ActualizarSyncConfigAsync), respetando SyncStock/SyncPrecio actuales.</summary>
     private async Task SaveAjusteToDb(MeliItemDto item)
     {
         var aj = GetAjuste(item);
         try
         {
-            await Api.SetMeliItemAjustePrecioAsync(item.Id, aj.DeltaPct, aj.DeltaPesos, aj.Redondeo);
-            item.AjustePctOverride = aj.DeltaPct;
-            item.AjustePesosOverride = aj.DeltaPesos;
-            item.AjusteRedondeoOverride = aj.Redondeo;
+            var (cfg, err) = await Api.ActualizarSyncConfigAsync(item.MeliItemId, new UpdateSyncConfigRequest
+            {
+                SyncStock = item.SyncStock,
+                SyncPrecio = item.SyncPrecio,
+                AjustePct = aj.DeltaPct ?? 0m,
+                AjusteFijo = aj.DeltaPesos ?? 0m,
+                AjusteRedondeo = string.IsNullOrEmpty(aj.Redondeo) ? null : aj.Redondeo
+            });
+            if (cfg is null)
+            {
+                ToastService.Error("No se pudo guardar el ajuste: " + (err ?? "Error"));
+                return;
+            }
+            // Refrescar el DTO en memoria con lo que devolvió el server (para que siga consistente al re-render).
+            item.AjustePct = cfg.AjustePct;
+            item.AjusteFijo = cfg.AjusteFijo;
+            item.AjusteRedondeo = cfg.AjusteRedondeo;
+            item.SyncStock = cfg.SyncStock;
+            item.SyncPrecio = cfg.SyncPrecio;
         }
         catch (Exception ex)
         {
