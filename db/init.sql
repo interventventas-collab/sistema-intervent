@@ -4088,6 +4088,13 @@ IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='StockChangedAt' AND Object_
     ALTER TABLE Cafe_Productos ADD StockChangedAt DATETIME2 NULL;
 GO
 
+-- 2026-05-30: Push event-driven de PRECIO (cuando cambia PrecioOtro o IvaPct, pusheamos a publicaciones "claimed").
+-- "Claimed" = MeliItem_SyncConfig.SyncPrecio = true (lo setea el primer push manual).
+-- Lo setea CafeProductosController al guardar. El MeliPriceAutoPushService lo usa para detectar pendientes.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='PriceChangedAt' AND Object_ID=OBJECT_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD PriceChangedAt DATETIME2 NULL;
+GO
+
 -- 2026-05-24: WhatsApp pedidos - multiples telefonos autorizados + auto-respuesta
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'WhatsAppPedidosTelefonos')
 BEGIN

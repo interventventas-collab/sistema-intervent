@@ -37,6 +37,24 @@ public class CafeProductosController : ControllerBase
         });
     }
 
+    /// <summary>2026-05-30: dispara push de PRECIO a MeLi en background (fire-and-forget)
+    /// cuando se modifica PrecioOtro o IvaPct. Solo pushea publicaciones "claimed"
+    /// (SyncPrecio=true en MeliItem_SyncConfig). Las no-claimed se respetan en silencio.</summary>
+    private void FireAndForgetPushPrecioMeli(int cafeProductoId)
+    {
+        var scopeFactory = _scopeFactory;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = scopeFactory.CreateScope();
+                var pushSvc = scope.ServiceProvider.GetRequiredService<MeliPricePushService>();
+                await pushSvc.PushPrecioForProductoAsync(cafeProductoId);
+            }
+            catch { /* errores capturados por el service, marca queda en PriceChangedAt */ }
+        });
+    }
+
     private static CafeProductoDto Map(CafeProducto p) => new(
         p.Id, p.Sku, p.Barcode,
         p.Nombre, p.Categoria, p.Marca,
@@ -466,6 +484,8 @@ public class CafeProductosController : ControllerBase
 
         // Snapshot de los valores ANTERIORES para grabar historial si cambian.
         var oldPvp1 = p.Pvp1; var oldPvp2 = p.Pvp2; var oldCosto = p.Costo; var oldIva = p.IvaPct;
+        // 2026-05-30: snapshot de precio (PrecioOtro) e IVA para detectar cambio y disparar push.
+        var oldPrecioOtro = p.PrecioOtro;
         if (req.Nombre is not null)
         {
             if (string.IsNullOrWhiteSpace(req.Nombre)) return BadRequest(new { error = "El nombre no puede ser vacio" });
@@ -581,6 +601,12 @@ public class CafeProductosController : ControllerBase
         if (req.IvaPct.HasValue) p.IvaPct = NormalizeIva(req.IvaPct);
         p.UpdatedAt = DateTime.UtcNow;
 
+        // 2026-05-30: detectar cambio de PRECIO (PrecioOtro o IvaPct) y disparar push event-driven.
+        // Marca PriceChangedAt para que el background service también lo procese si el push inline falla.
+        bool precioOtroOIvaCambio = (oldPrecioOtro ?? -1m) != (p.PrecioOtro ?? -1m) || oldIva != p.IvaPct;
+        if (precioOtroOIvaCambio) p.PriceChangedAt = DateTime.UtcNow;
+        var dispararPushPrecio = precioOtroOIvaCambio;
+
         // Si algun precio cambio, grabar historial.
         bool precioCambio = oldPvp1 != p.Pvp1 || oldPvp2 != p.Pvp2 || oldCosto != p.Costo || oldIva != p.IvaPct;
         if (precioCambio)
@@ -638,6 +664,9 @@ public class CafeProductosController : ControllerBase
         var saved = await _db.CafeProductos.Include(x => x.OemNav).Include(x => x.MarcaNav).Include(x => x.Packs).FirstAsync(x => x.Id == p.Id);
         // Si cambió el stock, disparar push a MeLi en background (respeta kill switches)
         if (dispararPush) FireAndForgetPushMeli(p.Id);
+        // 2026-05-30: si cambió el precio (PrecioOtro o IvaPct), disparar push de PRECIO a las
+        // publicaciones "claimed" (SyncPrecio=true). Las no-claimed se ignoran en silencio.
+        if (dispararPushPrecio) FireAndForgetPushPrecioMeli(p.Id);
         return Ok(Map(saved));
     }
 
