@@ -1690,13 +1690,45 @@ public class MeliController : ControllerBase
         var conAjuste = Math.Round(precioBase.Value * (1 + pct / 100m) + fijo, 2);
         var precioFinal = AplicarRedondeoUpHelper(conAjuste, redondeo);
 
-        // 3. PUT a MeLi.
+        // 3. PUT a MeLi. IMPORTANTE: si la publicación tiene variants, MeLi NO acepta
+        // {price: X} al nivel item — hay que mandar el precio dentro de cada variations[].
+        // Si NO tiene variants, se manda al nivel item. El GET live es la única manera
+        // confiable de saber qué variants existen (cache puede estar viejo).
         var token = await accSvc.GetValidTokenAsync(item.MeliAccount);
         if (string.IsNullOrWhiteSpace(token)) return BadRequest(new { error = "Token MeLi inválido" });
 
         using var http = httpFactory.CreateClient();
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        var body = new StringContent(JsonSerializer.Serialize(new { price = precioFinal }), Encoding.UTF8, "application/json");
+
+        // 3a. GET live para detectar variants.
+        var getResp = await http.GetAsync($"https://api.mercadolibre.com/items/{item.MeliItemId}?attributes=variations");
+        if (!getResp.IsSuccessStatusCode)
+            return BadRequest(new { error = $"No se pudo leer el item ({(int)getResp.StatusCode})" });
+        var getJson = await getResp.Content.ReadAsStringAsync();
+        var liveVariantIds = new List<long>();
+        using (var liveDoc = JsonDocument.Parse(getJson))
+        {
+            if (liveDoc.RootElement.TryGetProperty("variations", out var liveVars) && liveVars.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var v in liveVars.EnumerateArray())
+                    liveVariantIds.Add(v.GetProperty("id").GetInt64());
+            }
+        }
+
+        // 3b. Armar payload según si hay variants o no.
+        object payload;
+        if (liveVariantIds.Count > 0)
+        {
+            payload = new
+            {
+                variations = liveVariantIds.Select(vId => new { id = vId, price = precioFinal }).ToList()
+            };
+        }
+        else
+        {
+            payload = new { price = precioFinal };
+        }
+        var body = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
         var resp = await http.PutAsync($"https://api.mercadolibre.com/items/{item.MeliItemId}", body);
         if (!resp.IsSuccessStatusCode)
         {
