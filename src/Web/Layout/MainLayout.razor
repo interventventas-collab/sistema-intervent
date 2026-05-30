@@ -656,7 +656,8 @@
         <div class="topbar-actions">
             @* Atajos del modulo Cafe — stack vertical para que entren varios sin agrandar el topbar.
                Iteramos con el usuario, sumando botones de uno: '+ Nueva Venta', 'Ventas', etc. *@
-            @if (HasPerm("cafe"))
+            @* 2026-05-30: oficina también puede cargar ventas (igual que admin con permiso cafe). *@
+            @if (HasPerm("cafe") || HasPerm("oficina"))
             {
                 <div class="topbar-cafe-stack">
                     <button class="fab-nueva-venta" @onclick="OpenNuevaVentaShortcut"
@@ -1258,7 +1259,26 @@
             return; // permitido
         }
         // 2026-05-28: rol "oficina" — lo mismo que deposito + cobranzas + mapeo.
-        if (permissions.Contains("oficina") && (relativePath == "cafe/productos" || relativePath == "cafe/stock-masivo" || relativePath == "cafe/preparacion" || relativePath == "stock" || relativePath == "cafe/tesoreria/cobranzas" || relativePath == "mapeo"))
+        // 2026-05-30: oficina amplia: tambien puede acceder a ventas, clientes, listas, pedidos
+        //             whatsapp, historial stock, clientes mapeados y documentacion (todo lo que
+        //             ya esta en su sidebar pero antes no podia abrir por falta de whitelist).
+        if (permissions.Contains("oficina") && (
+                relativePath == "cafe/productos"
+             || relativePath == "cafe/stock-masivo"
+             || relativePath == "cafe/preparacion"
+             || relativePath == "stock"
+             || relativePath == "cafe/tesoreria/cobranzas"
+             || relativePath == "mapeo"
+             || relativePath == "cafe/ventas"
+             || relativePath == "cafe/clientes"
+             || relativePath == "cafe/listas-precios"
+             || relativePath == "cafe/pedidos-whatsapp"
+             || relativePath == "cafe/historial-stock"
+             || relativePath == "cafe/clientes-mapeados"
+             || relativePath == "documentacion"
+             || relativePath == "cafe/preventas"
+             || relativePath == "cafe/consultas"
+             || relativePath == "cafe"))
         {
             return; // permitido
         }
