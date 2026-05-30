@@ -30,7 +30,7 @@ public class CafeSincronizacionMeliController : ControllerBase
         _logger = logger;
     }
 
-    public record SyncConfigDto(bool SyncStock, bool SyncPrecio, decimal AjustePct, decimal AjusteFijo, DateTime? LastSyncAt);
+    public record SyncConfigDto(bool SyncStock, bool SyncPrecio, decimal AjustePct, decimal AjusteFijo, string? AjusteRedondeo, DateTime? LastSyncAt);
 
     public record PublicacionExtendidaDto(
         string MeliItemId, string Title, string Sku, string? Thumbnail, string Status, string? LogisticType,
@@ -137,12 +137,17 @@ public class CafeSincronizacionMeliController : ControllerBase
                 cfg?.SyncPrecio ?? false,
                 cfg?.AjustePct ?? 0m,
                 cfg?.AjusteFijo ?? 0m,
+                cfg?.AjusteRedondeo,
                 cfg?.LastSyncAt);
 
-            // Precio MeLi calculado con la formula del ajuste (lo que el sistema pushearia hoy)
+            // Precio MeLi calculado con la formula del ajuste (lo que el sistema pushearia hoy):
+            // base × (1 + Pct/100) + Fijo → redondear hacia arriba según AjusteRedondeo.
             decimal? precioMeliCalc = null;
             if (precioOtroConIva.HasValue)
-                precioMeliCalc = Math.Round(precioOtroConIva.Value * (1 + cfgDto.AjustePct/100m) + cfgDto.AjusteFijo, 2);
+            {
+                var conAjuste = Math.Round(precioOtroConIva.Value * (1 + cfgDto.AjustePct/100m) + cfgDto.AjusteFijo, 2);
+                precioMeliCalc = AplicarRedondeoHaciaArriba(conAjuste, cfgDto.AjusteRedondeo);
+            }
 
             result.Add(new PublicacionExtendidaDto(
                 mi.MeliItemId, mi.Title, mi.Sku ?? "", mi.Thumbnail, mi.Status, mi.LogisticType,
@@ -175,7 +180,7 @@ public class CafeSincronizacionMeliController : ControllerBase
         return Ok(result);
     }
 
-    public record UpdateSyncConfigRequest(bool SyncStock, bool SyncPrecio, decimal AjustePct, decimal AjusteFijo);
+    public record UpdateSyncConfigRequest(bool SyncStock, bool SyncPrecio, decimal AjustePct, decimal AjusteFijo, string? AjusteRedondeo);
 
     [HttpPut("{meliItemId}/config")]
     public async Task<IActionResult> UpdateConfig(string meliItemId, [FromBody] UpdateSyncConfigRequest req)
@@ -193,10 +198,32 @@ public class CafeSincronizacionMeliController : ControllerBase
         cfg.SyncPrecio = req.SyncPrecio;
         cfg.AjustePct = req.AjustePct;
         cfg.AjusteFijo = req.AjusteFijo;
+        cfg.AjusteRedondeo = string.IsNullOrEmpty(req.AjusteRedondeo) ? null : req.AjusteRedondeo;
         cfg.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
 
-        return Ok(new SyncConfigDto(cfg.SyncStock, cfg.SyncPrecio, cfg.AjustePct, cfg.AjusteFijo, cfg.LastSyncAt));
+        return Ok(new SyncConfigDto(cfg.SyncStock, cfg.SyncPrecio, cfg.AjustePct, cfg.AjusteFijo, cfg.AjusteRedondeo, cfg.LastSyncAt));
+    }
+
+    /// <summary>Redondea HACIA ARRIBA al siguiente número que cumpla la terminación.
+    /// "" / null = sin redondeo. "99" = termina en 99 (ej: 24684 → 24699).
+    /// "999" = termina en 999 (ej: 24684 → 24999). "000" = múltiplo de 1000 (ej: 24684 → 25000).</summary>
+    private static decimal AplicarRedondeoHaciaArriba(decimal valor, string? modo)
+    {
+        if (string.IsNullOrEmpty(modo) || valor <= 0) return valor;
+        int term = modo switch { "99" => 99, "999" => 999, "000" => 0, _ => -1 };
+        int step = modo switch { "99" => 100, "999" => 1000, "000" => 1000, _ => 1 };
+        if (step <= 1) return valor;
+        int valorInt = (int)Math.Ceiling(valor);
+        int siguiente;
+        if (valorInt % step == term && valorInt >= valor)
+            siguiente = valorInt;
+        else
+        {
+            siguiente = ((valorInt - term + step - 1) / step) * step + term;
+            if (siguiente < valor) siguiente += step;
+        }
+        return siguiente;
     }
 
     public record UpdatePrecioRequest(decimal Precio);

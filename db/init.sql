@@ -4226,3 +4226,12 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='AjusteRedondeoOverride' AND Object_ID=OBJECT_ID('MeliItems'))
     ALTER TABLE MeliItems ADD AjusteRedondeoOverride NVARCHAR(8) NULL;
 GO
+
+-- 2026-05-29 (continuación): Unificación de ajustes de precio MeLi.
+-- MeliItem_SyncConfig pasa a ser la ÚNICA tabla de ajustes. Agregamos AjusteRedondeo
+-- para que la pantalla "Sincro precio + stock" y la columna AJUSTE de /publicaciones
+-- usen la misma fuente de verdad. Reemplaza las 3 columnas que se agregaron antes a
+-- MeliItems (que serán eliminadas en el paso 5 del refactor).
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='AjusteRedondeo' AND Object_ID=OBJECT_ID('MeliItem_SyncConfig'))
+    ALTER TABLE MeliItem_SyncConfig ADD AjusteRedondeo NVARCHAR(8) NULL;
+GO
