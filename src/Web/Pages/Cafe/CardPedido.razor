@@ -57,6 +57,20 @@
             {
                 <div class="prep-card-meta">📍 @(string.Join(" · ", new[] { Venta.ClienteLocalidad, Venta.ClienteCiudad }.Where(s => !string.IsNullOrEmpty(s))))</div>
             }
+            @* 2026-05-30: tel + domicilio de entrega — compacto, solo si existen. *@
+            @if (!string.IsNullOrEmpty(Venta.ClienteTelefono) || !string.IsNullOrEmpty(Venta.DomicilioEntrega))
+            {
+                <div class="prep-card-meta" style="display:flex; flex-wrap:wrap; gap:0.6rem;">
+                    @if (!string.IsNullOrEmpty(Venta.ClienteTelefono))
+                    {
+                        <span>📞 @Venta.ClienteTelefono</span>
+                    }
+                    @if (!string.IsNullOrEmpty(Venta.DomicilioEntrega))
+                    {
+                        <span title="Domicilio de entrega">🏠 @Venta.DomicilioEntrega</span>
+                    }
+                </div>
+            }
         </div>
         @* Botones de la derecha: Mini impresora individual + checkbox de seleccion multiple.
            Disponible para TODAS las cards (el usuario lo pidio asi 2026-05-28 — "como en el listado de ventas"). *@
@@ -86,6 +100,21 @@
     @if (mostrarComposicion)
     {
         <div class="prep-card-body">
+            @* 2026-05-30: barra superior con fecha/hora + observaciones — compacto. *@
+            <div style="display:flex; flex-wrap:wrap; gap:0.6rem; align-items:center; font-size:0.72rem; color:#6b7280; margin:0 0 0.4rem 0;">
+                <span>🕒 @Venta.Fecha.ToLocalTime().ToString("dd/MM HH:mm")</span>
+                @if (!string.IsNullOrEmpty(Venta.ComentariosCliente))
+                {
+                    <span title="Comentario fijo del cliente">💬 @Venta.ComentariosCliente</span>
+                }
+            </div>
+            @if (!string.IsNullOrEmpty(Venta.Observaciones))
+            {
+                <div style="background:#fef3c7; border-left:3px solid #f59e0b; padding:0.3rem 0.5rem; margin:0 0 0.5rem 0; font-size:0.78rem; color:#92400e; border-radius:3px;"
+                     title="Observaciones de esta venta">
+                    📝 @Venta.Observaciones
+                </div>
+            }
             @if (Venta.Items.Count == 0)
             {
                 <div class="prep-empty">Sin items.</div>
@@ -99,7 +128,13 @@
                         <input type="checkbox" class="prep-check" checked="@tildado" @onclick="() => ToggleTildado(it.Id)" />
                         <div class="prep-item-cant"><span class="x">×</span> @it.Cantidad</div>
                         <div>
-                            <div class="prep-item-desc-prod prep-item-desc">@it.ProductoNombre</div>
+                            <div class="prep-item-desc-prod prep-item-desc">
+                                @it.ProductoNombre
+                                @if (!string.IsNullOrEmpty(it.Sku))
+                                {
+                                    <span style="font-family:monospace; font-size:0.7rem; color:#6b7280; margin-left:0.4rem; background:#f3f4f6; padding:1px 5px; border-radius:3px;" title="SKU del producto">@it.Sku</span>
+                                }
+                            </div>
                             <div class="prep-item-tags">
                                 <span class="prep-tag prep-tag-formato">@FormatoLabel(it.Formato)</span>
                                 @if (!string.IsNullOrEmpty(it.Molienda))

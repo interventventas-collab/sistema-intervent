@@ -2349,6 +2349,11 @@ public class CafeVentasController : ControllerBase
                 clienteLocalidad = v.ClienteLocalidadSnapshot,
                 clienteCiudad = v.ClienteCiudadSnapshot,
                 clienteTipo = v.ClienteTipoSnapshot,
+                // 2026-05-30: info adicional para que el armador del depósito tenga más contexto
+                clienteTelefono = v.ClienteTelefonoSnapshot,
+                domicilioEntrega = v.ClienteDomicilioEntregaSnapshot,
+                observaciones = v.Observaciones,
+                comentariosCliente = v.ClienteComentariosComprobante,
                 weekDays = v.WeekDays,
                 entregaPor = v.EntregaPor,
                 estadoPreparacion = v.EstadoPreparacion,
@@ -2366,6 +2371,8 @@ public class CafeVentasController : ControllerBase
                 {
                     id = i.Id,
                     productoNombre = i.ProductoNombreSnapshot,
+                    // 2026-05-30: SKU del producto (si está linkeado al catálogo) — pedido del depósito
+                    sku = i.ProductoId != null ? _db.CafeProductos.Where(p => p.Id == i.ProductoId).Select(p => p.Sku).FirstOrDefault() : null,
                     formato = i.Formato,
                     cantidad = i.Cantidad,
                     molienda = i.Molienda,
