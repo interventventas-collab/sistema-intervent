@@ -43,7 +43,8 @@
             @foreach (var grupo in grupos)
             {
                 var p = grupo.Representative;
-                var isExpanded = expandedSyncGroups.Contains(p.MeliItemId);
+                // Fix 2026-05-29: usar grupo.Key (no p.MeliItemId) — el toggle usa Key con prefijo "MLA_"
+                var isExpanded = expandedSyncGroups.Contains(grupo.Key);
                 var diffMuyDistinto = Math.Abs(p.DiferenciaPrecioPct) > 5;
                 var stockDistinto = p.StockSistema != p.StockMeli;
                 var margenBueno = p.MargenRealConMeliPct > 50;
