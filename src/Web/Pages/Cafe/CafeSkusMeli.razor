@@ -152,13 +152,14 @@
                                 🔗 Linkear
                             </button>
                         }
-                        @* 2026-05-30 — Pieza 2: si no hay combo ni producto en sistema, ofrecer crearlo aquí mismo *@
-                        @if (sku.estado == "sin_combo")
+                        @* 2026-05-30 — Pieza 2: ofrecer crear producto del sistema si no existe uno con este SKU.
+                           Puede haber combo igual (independiente) — el producto se usa para linkear el OEM/precio. *@
+                        @if (!sku.productoSueltoId.HasValue)
                         {
                             <button class="btn btn-primary" style="font-size:0.78rem; padding:0.4rem 0.7rem; white-space:nowrap; background:#1d4ed8;"
                                     @onclick="() => AbrirModalCrearProducto(skuLocal)"
                                     @onclick:stopPropagation="true"
-                                    title="Crear este SKU como producto en el sistema y auto-linkear sus publicaciones MeLi">
+                                    title="Crear este SKU como producto en el sistema (para OEM/precio) y auto-linkear sus publicaciones MeLi">
                                 ➕ Crear producto
                             </button>
                         }
