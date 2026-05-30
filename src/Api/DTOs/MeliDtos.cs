@@ -164,7 +164,11 @@ public record MeliItemDto(
     bool SyncPrecio = false,
     decimal AjustePct = 0m,
     decimal AjusteFijo = 0m,
-    string? AjusteRedondeo = null
+    string? AjusteRedondeo = null,
+    // PrecioOtroConIvaCalc: precio base del sistema con IVA (suma de componentes si es combo).
+    // Usado como base para calcular el preview del ajuste en /publicaciones,
+    // y para el push push-precio-ajustado (que NO usa item.Price = MeLi cache).
+    decimal? PrecioOtroConIvaCalc = null
 );
 
 public record MeliItemsResponse(List<MeliItemDto> Items, int Total);

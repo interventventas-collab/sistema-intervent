@@ -65,7 +65,8 @@ public class MeliItemService
                 i.VariationId,
                 i.VariationAttributes,
                 null,  // LastStockPushedToMeli — se completa abajo en memoria
-                true, false, 0m, 0m, null  // SyncStock/SyncPrecio/AjustePct/AjusteFijo/AjusteRedondeo — se completan abajo desde MeliItemSyncConfigs
+                true, false, 0m, 0m, null,  // SyncStock/SyncPrecio/AjustePct/AjusteFijo/AjusteRedondeo — se completan abajo desde MeliItemSyncConfigs
+                null  // PrecioOtroConIvaCalc — se completa abajo en memoria
                 ))
             .ToListAsync();
 
@@ -167,6 +168,55 @@ public class MeliItemService
                     AjusteRedondeo = cfg.AjusteRedondeo
                 };
             }
+        }
+
+        // 2026-05-29: calcular PrecioOtroConIvaCalc por cada item (precio del SISTEMA con IVA).
+        // Si tiene CafeProductoId legacy: PrecioOtro × (1+IvaPct/100)
+        // Si tiene componentes (combos): sumatoria(PrecioOtro × Cantidad), IVA del primer componente.
+        // Este valor es la base correcta para los previews y para el endpoint push-precio-ajustado.
+        var componentesForPrecio = await _db.MeliItemComponentes
+            .Where(c => allItemIds.Contains(c.MeliItemId))
+            .ToListAsync();
+        var prodIdsParaPrecio = items.Where(it => it.CafeProductoId.HasValue).Select(it => it.CafeProductoId!.Value).Distinct()
+            .Concat(componentesForPrecio.Select(c => c.CafeProductoId)).Distinct().ToList();
+        var prodsPrecio = await _db.CafeProductos
+            .Where(p => prodIdsParaPrecio.Contains(p.Id))
+            .Select(p => new { p.Id, p.PrecioOtro, p.IvaPct })
+            .ToDictionaryAsync(p => p.Id);
+        var componentesByItemId = componentesForPrecio.GroupBy(c => c.MeliItemId).ToDictionary(g => g.Key, g => g.ToList());
+
+        for (int k = 0; k < items.Count; k++)
+        {
+            var it = items[k];
+            decimal? precioBase = null;
+            if (it.CafeProductoId.HasValue && prodsPrecio.TryGetValue(it.CafeProductoId.Value, out var p))
+            {
+                if (p.PrecioOtro.HasValue && p.PrecioOtro.Value > 0)
+                    precioBase = Math.Round(p.PrecioOtro.Value * (1 + p.IvaPct / 100m), 2);
+            }
+            else if (componentesByItemId.TryGetValue(it.MeliItemId, out var comps))
+            {
+                // Filtrar componentes por VariationId si aplica
+                var compsForItem = comps.Where(c =>
+                {
+                    if (!string.IsNullOrEmpty(it.VariationId))
+                        return c.MeliVariationId == it.VariationId || string.IsNullOrEmpty(c.MeliVariationId);
+                    return string.IsNullOrEmpty(c.MeliVariationId);
+                }).ToList();
+                if (compsForItem.Count == 0) compsForItem = comps;
+                decimal sum = 0m;
+                decimal ivaPct = 21m;
+                bool hasData = false;
+                foreach (var c in compsForItem)
+                {
+                    if (!prodsPrecio.TryGetValue(c.CafeProductoId, out var pc)) continue;
+                    if (!pc.PrecioOtro.HasValue || pc.PrecioOtro.Value <= 0) continue;
+                    sum += pc.PrecioOtro.Value * c.Cantidad;
+                    if (!hasData) { ivaPct = pc.IvaPct; hasData = true; }
+                }
+                if (hasData) precioBase = Math.Round(sum * (1 + ivaPct / 100m), 2);
+            }
+            if (precioBase.HasValue) items[k] = it with { PrecioOtroConIvaCalc = precioBase };
         }
 
         return new MeliItemsResponse(items, total);
@@ -342,7 +392,8 @@ public class MeliItemService
         0, null, item.LogisticType,
         item.VariationId, item.VariationAttributes,
         null, // LastStockPushedToMeli
-        true, false, 0m, 0m, null); // SyncConfig (no se carga en este path single-item, queda en default)
+        true, false, 0m, 0m, null, // SyncConfig (no se carga en este path single-item, queda en default)
+        null); // PrecioOtroConIvaCalc (no se carga en este path)
 
     public async Task<int> DeleteItemsAsync(List<int> ids)
     {

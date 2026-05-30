@@ -2634,13 +2634,28 @@ public class ApiClient
         return null;
     }
 
-    /// <summary>2026-05-29: persiste el ajuste de precio (% / $ / redondeo) de una publicación en DB.</summary>
+    /// <summary>2026-05-29: persiste el ajuste de precio (% / $ / redondeo) de una publicación en DB.
+    /// LEGACY: queda hasta el paso 5 del refactor, no se usa más desde el frontend.</summary>
     public async Task SetMeliItemAjustePrecioAsync(int itemId, decimal? ajustePct, decimal? ajustePesos, string? ajusteRedondeo)
     {
         await SetAuthHeaderAsync();
         var body = new { ajustePctOverride = ajustePct, ajustePesosOverride = ajustePesos, ajusteRedondeoOverride = ajusteRedondeo };
         var response = await _http.PutAsJsonAsync($"/api/meli/items/{itemId}/ajuste-precio", body);
         if (!response.IsSuccessStatusCode) await ThrowIfErrorAsync(response);
+    }
+
+    public record PushPrecioAjustadoResultDto(bool Success, string Message, decimal? PushedPrice, decimal? PrecioBaseSistema);
+
+    /// <summary>2026-05-29: pushea precio a MeLi calculado desde PrecioOtro del sistema + ajuste
+    /// configurado en MeliItem_SyncConfig. Funciona para CUALQUIER publicación linkeada.</summary>
+    public async Task<PushPrecioAjustadoResultDto?> PushPrecioAjustadoAsync(int itemId)
+    {
+        await SetAuthHeaderAsync();
+        var response = await _http.PostAsync($"/api/meli/items/{itemId}/push-precio-ajustado", null);
+        if (response.IsSuccessStatusCode)
+            return await response.Content.ReadFromJsonAsync<PushPrecioAjustadoResultDto>();
+        await ThrowIfErrorAsync(response);
+        return null;
     }
 
     public async Task<BulkCreateProductResult?> CreateProductFromItemAsync(int itemId)

@@ -53,6 +53,8 @@ public class MeliItemDto
     public decimal AjustePct { get; set; }
     public decimal AjusteFijo { get; set; }
     public string? AjusteRedondeo { get; set; }
+    /// <summary>Precio del sistema (PrecioOtro c/IVA) — sumatoria si es combo. Base para el preview del ajuste.</summary>
+    public decimal? PrecioOtroConIvaCalc { get; set; }
 
     /// <summary>True si la publicación tiene cualquier tipo de linkeo (Producto, Combo, Café o Componentes).</summary>
     public bool TieneLinkeo => ProductId.HasValue || ComboId.HasValue || CafeProductoId.HasValue || ComponentMappingsCount > 0;
