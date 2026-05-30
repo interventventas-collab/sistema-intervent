@@ -2708,7 +2708,9 @@
     private bool envioWhatsappInterno;
     // 2026-05-28: nuevo canal — al confirmar la venta, sube el PDF a Drive (tablero IMPRIMIR PEDIDOS DE OSMAR).
     // Default tildado porque la gran mayoria de las ventas van al armado.
-    private bool envioDrive = true;
+    // 2026-05-30: default depende del operador actual. Solo OSMAR arranca tildado.
+    // Se setea en cada apertura del modal (ShowCreate / duplicar / editar).
+    private bool envioDrive;
     // Destinatarios: se autocompletan desde el cliente si tiene email/telefono.
     // Si no tiene, el operador puede tipear el numero/mail a mano.
     private string envioEmailTo = "";
@@ -3301,6 +3303,8 @@
         // para que nunca mandes algo sin querer. El operador tilda lo que necesite por venta.
         envioEmail = false; envioWhatsappWeb = false; envioWhatsappInterno = false;
         envioEmailTo = ""; envioWhatsappPhone = "";
+        // 2026-05-30: solo OSMAR arranca con "Enviar a IMPRIMIR PEDIDOS" tildado.
+        envioDrive = string.Equals(Operator.Current ?? "", "OSMAR", StringComparison.OrdinalIgnoreCase);
         formError = null; showForm = true;
 
         // Chequear si hay borrador local guardado (auto-save de sesión previa).
@@ -3839,6 +3843,8 @@
                 .Select(s => s.Trim().ToUpperInvariant()).ToHashSet();
             formEnRadar = payload.EnRadar;
             formIsPaid = false; // empezás impago, el cobro de la nueva es independiente
+            // 2026-05-30: solo OSMAR arranca con "Enviar a IMPRIMIR PEDIDOS" tildado.
+            envioDrive = string.Equals(Operator.Current ?? "", "OSMAR", StringComparison.OrdinalIgnoreCase);
             formError = null; showForm = true;
             // Cargar info del cliente (productos top, deudas, condIva default si cambió)
             if (formClienteId > 0) await OnClienteChanged();
@@ -5027,6 +5033,8 @@
         comboSearch = ""; comboSearchOpen = false;
         formError = null;
         includePrevBalanceInNotes = false;  // al editar no quiero injerir saldo retroactivamente
+        // 2026-05-30: solo OSMAR arranca con "Enviar a IMPRIMIR PEDIDOS" tildado.
+        envioDrive = string.Equals(Operator.Current ?? "", "OSMAR", StringComparison.OrdinalIgnoreCase);
         showForm = true;
         // Refrescar saldo anterior + sugerencias del cliente y cotizar precios.
         RecomputeUnpaidPrevSales();
