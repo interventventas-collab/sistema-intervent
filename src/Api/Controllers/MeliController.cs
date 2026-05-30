@@ -1148,6 +1148,76 @@ public class MeliController : ControllerBase
         return Ok(new { ok = true, comboId = combo.Id, pubsLinkeadas = pubs.Count });
     }
 
+    public record CrearProductoDesdeSkuRequest(string? Nombre, int? OemId, decimal? MultiplicadorOem);
+    public record CrearProductoDesdeSkuResult(int ProductoId, string Sku, string Nombre, int PubsLinkeadas);
+
+    /// <summary>2026-05-30 — Pieza 2: crea un Cafe_Producto desde un SKU MeLi y auto-linkea
+    /// todas las publicaciones MeLi con ese SKU. Usado por el botón "+ Crear producto" en
+    /// /cafe/skus-meli. Si el producto ya existe en sistema, devuelve error.
+    ///
+    /// Argumentos opcionales: Nombre (default = título de la publicación), OemId (default null),
+    /// MultiplicadorOem (default null = ×1). Si tiene OemId, el precio sistema viene del OEM.</summary>
+    [HttpPost("skus-meli/{sku}/crear-producto")]
+    public async Task<IActionResult> CrearProductoDesdeSku(string sku,
+        [FromBody] CrearProductoDesdeSkuRequest req,
+        [FromServices] Api.Data.AppDbContext db)
+    {
+        if (string.IsNullOrWhiteSpace(sku))
+            return BadRequest(new { error = "SKU vacío" });
+        sku = sku.Trim().ToUpperInvariant();
+
+        // 1) Validar que no exista ya
+        var existing = await db.CafeProductos.FirstOrDefaultAsync(p => p.Sku == sku);
+        if (existing != null)
+            return BadRequest(new { error = $"Ya existe un producto con SKU '{sku}' (Id {existing.Id} — '{existing.Nombre}')" });
+
+        // 2) Buscar título representativo desde MeLi (la publicación más reciente)
+        var meliRepresentativo = await db.MeliItems.AsNoTracking()
+            .Where(mi => mi.Sku == sku && (mi.Status == "active" || mi.Status == "paused"))
+            .OrderByDescending(mi => mi.Id)
+            .Select(mi => new { mi.Title })
+            .FirstOrDefaultAsync();
+
+        var nombre = string.IsNullOrWhiteSpace(req?.Nombre)
+            ? (meliRepresentativo?.Title ?? sku)
+            : req!.Nombre!.Trim();
+        if (nombre.Length > 200) nombre = nombre.Substring(0, 200);
+
+        // 3) Validar OEM si vino
+        if (req?.OemId.HasValue == true)
+        {
+            var oemExiste = await db.CafeOems.AnyAsync(o => o.Id == req.OemId.Value);
+            if (!oemExiste) return BadRequest(new { error = $"OEM Id {req.OemId.Value} no existe" });
+        }
+
+        // 4) Crear producto
+        var producto = new Api.Models.CafeProducto
+        {
+            Sku = sku,
+            Nombre = nombre,
+            Categoria = "OTROS",
+            IsActive = true,
+            IsVisibleEnVentas = true,
+            IvaPct = 21m,
+            OemId = req?.OemId,
+            MultiplicadorOem = req?.MultiplicadorOem,
+            CreatedAt = DateTime.UtcNow,
+        };
+        db.CafeProductos.Add(producto);
+        await db.SaveChangesAsync();
+
+        // 5) Auto-link: todas las MeliItems con este SKU activas/paused y sin CafeProductoId previo
+        var pubs = await db.MeliItems
+            .Where(mi => mi.Sku == sku
+                && (mi.Status == "active" || mi.Status == "paused")
+                && mi.CafeProductoId == null)
+            .ToListAsync();
+        foreach (var p in pubs) p.CafeProductoId = producto.Id;
+        if (pubs.Count > 0) await db.SaveChangesAsync();
+
+        return Ok(new CrearProductoDesdeSkuResult(producto.Id, producto.Sku!, producto.Nombre, pubs.Count));
+    }
+
     /// <summary>Devuelve el valor global de meli.stock_push.reserva_interna (default 1).
     /// La UI lo muestra en la ficha producto para que el usuario sepa qué valor se aplica
     /// cuando el campo StockMinimoMeLi está vacío.</summary>

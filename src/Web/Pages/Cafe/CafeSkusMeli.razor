@@ -152,6 +152,16 @@
                                 🔗 Linkear
                             </button>
                         }
+                        @* 2026-05-30 — Pieza 2: si no hay combo ni producto en sistema, ofrecer crearlo aquí mismo *@
+                        @if (sku.estado == "sin_combo")
+                        {
+                            <button class="btn btn-primary" style="font-size:0.78rem; padding:0.4rem 0.7rem; white-space:nowrap; background:#1d4ed8;"
+                                    @onclick="() => AbrirModalCrearProducto(skuLocal)"
+                                    @onclick:stopPropagation="true"
+                                    title="Crear este SKU como producto en el sistema y auto-linkear sus publicaciones MeLi">
+                                ➕ Crear producto
+                            </button>
+                        }
                         }
                     </div>
 
@@ -348,6 +358,65 @@
     </div>
 </div>
 
+@* 2026-05-30 — Pieza 2: modal para crear producto del sistema desde un SKU MeLi *@
+@if (showCrearModal && crearSkuRow != null)
+{
+    <div class="modal-overlay" @onclick="CerrarModalCrearProducto">
+        <div class="modal" style="max-width:520px;" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>➕ Crear producto desde MeLi</h3>
+                <button class="btn-close" @onclick="CerrarModalCrearProducto">×</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size:0.82rem; color:#6b7280; margin-bottom:0.8rem;">
+                    Vas a crear un producto en el sistema con el SKU <strong>@crearSkuRow.sku</strong>
+                    y auto-linkear todas sus publicaciones MeLi.
+                </p>
+                <div class="form-group">
+                    <label class="form-label">SKU</label>
+                    <input class="form-input" value="@crearSkuRow.sku" disabled
+                           style="font-family:monospace; background:#f3f4f6;" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Nombre del producto *</label>
+                    <input class="form-input" @bind="crearNombre" placeholder="Nombre descriptivo" maxlength="200" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">OEM (opcional) — si lo asignás, el precio del sistema viene del OEM</label>
+                    <select class="form-input" @bind="crearOemId">
+                        <option value="0">— Sin OEM (cargás precio a mano) —</option>
+                        @if (oemsLista != null)
+                        {
+                            @foreach (var oem in oemsLista)
+                            {
+                                <option value="@oem.id">@oem.codigo · @oem.descripcion · @(oem.pvpConIva.HasValue ? $"${oem.pvpConIva.Value:N2}" : "(sin precio)")</option>
+                            }
+                        }
+                    </select>
+                </div>
+                @if (crearOemId > 0)
+                {
+                    <div class="form-group">
+                        <label class="form-label">Multiplicador (default 1)</label>
+                        <input class="form-input" type="number" step="0.01" min="0.0001"
+                               @bind="crearMultiplicador" placeholder="1" />
+                        <small style="font-size:0.72rem; color:#6b7280;">
+                            Precio sistema = OEM × Multiplicador. Usá 2 si es pack de 2, etc.
+                        </small>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CerrarModalCrearProducto" disabled="@crearGuardando">Cancelar</button>
+                <button class="btn btn-primary" @onclick="ConfirmarCrearProducto"
+                        disabled="@(crearGuardando || string.IsNullOrWhiteSpace(crearNombre))">
+                    @(crearGuardando ? "Guardando..." : "✅ Crear y linkear")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private SkusMeliResponse? response;
     private bool cargando;
@@ -379,7 +448,117 @@
     public record ComponenteRow(int productoId, string sku, string nombre, int cantidad, int stockDisponible, int componenteId);
     public record PubRow(string meliItemId, string status, int availableQuantity, string? permalink);
 
-    protected override async Task OnInitializedAsync() => await Recargar();
+    // 2026-05-30 — Pieza 2: Modal "Crear producto"
+    private bool showCrearModal;
+    private SkuRow? crearSkuRow;
+    private string crearNombre = "";
+    private int crearOemId;  // 0 = sin OEM
+    private decimal crearMultiplicador = 1m;
+    private bool crearGuardando;
+    private List<OemLite>? oemsLista;
+    public record OemLite(int id, string codigo, string? descripcion, decimal? pvpConIva);
+    public record CrearProductoResult(int productoId, string sku, string nombre, int pubsLinkeadas);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Recargar();
+        // Cargar OEMs en background para el modal (no bloquea la pantalla)
+        _ = CargarOems();
+    }
+
+    private async Task CargarOems()
+    {
+        try
+        {
+            var oems = await Http.GetFromJsonAsync<List<System.Text.Json.JsonElement>>("/api/cafe/oems");
+            if (oems != null)
+            {
+                oemsLista = oems.Select(o => new OemLite(
+                    o.GetProperty("id").GetInt32(),
+                    o.GetProperty("codigo").GetString() ?? "",
+                    o.TryGetProperty("descripcion", out var d) && d.ValueKind != System.Text.Json.JsonValueKind.Null ? d.GetString() : null,
+                    o.TryGetProperty("pvpConIva", out var p) && p.ValueKind != System.Text.Json.JsonValueKind.Null ? p.GetDecimal() : (decimal?)null
+                )).OrderBy(o => o.codigo).ToList();
+                StateHasChanged();
+            }
+        }
+        catch { /* silencioso: si no carga, el dropdown muestra solo "Sin OEM" */ }
+    }
+
+    private void AbrirModalCrearProducto(SkuRow sku)
+    {
+        crearSkuRow = sku;
+        // Pre-llenar nombre desde combo si existe, sino producto suelto, sino el SKU
+        crearNombre = !string.IsNullOrEmpty(sku.comboNombre) ? sku.comboNombre
+                     : !string.IsNullOrEmpty(sku.productoSueltoNombre) ? sku.productoSueltoNombre!
+                     : sku.sku;
+        // Sugerir OEM por patrón: si el SKU es del estilo "C9172ROJ" → quitar "C" prefix y sufijos comunes → buscar OEM
+        crearOemId = SugerirOemPorSku(sku.sku);
+        crearMultiplicador = 1m;
+        showCrearModal = true;
+    }
+
+    private int SugerirOemPorSku(string sku)
+    {
+        if (oemsLista == null || string.IsNullOrEmpty(sku)) return 0;
+        var skuU = sku.Trim().ToUpperInvariant();
+        // Quitar prefijos comunes ("C")
+        var sinC = skuU.StartsWith("C") ? skuU.Substring(1) : skuU;
+        // Buscar OEM cuyo Codigo esté contenido al principio del SKU (sin prefijo)
+        var match = oemsLista
+            .Where(o => !string.IsNullOrEmpty(o.codigo) && sinC.StartsWith(o.codigo.ToUpperInvariant()))
+            .OrderByDescending(o => o.codigo.Length) // preferir match más largo (más específico)
+            .FirstOrDefault();
+        return match?.id ?? 0;
+    }
+
+    private void CerrarModalCrearProducto()
+    {
+        if (crearGuardando) return;
+        showCrearModal = false;
+        crearSkuRow = null;
+    }
+
+    private async Task ConfirmarCrearProducto()
+    {
+        if (crearSkuRow == null) return;
+        if (string.IsNullOrWhiteSpace(crearNombre))
+        {
+            ToastService.Error("El nombre no puede quedar vacío");
+            return;
+        }
+        crearGuardando = true; StateHasChanged();
+        try
+        {
+            var body = new
+            {
+                Nombre = crearNombre.Trim(),
+                OemId = crearOemId > 0 ? (int?)crearOemId : null,
+                MultiplicadorOem = crearOemId > 0 ? (decimal?)crearMultiplicador : null
+            };
+            var sku = Uri.EscapeDataString(crearSkuRow.sku);
+            var resp = await Http.PostAsJsonAsync($"/api/meli/skus-meli/{sku}/crear-producto", body);
+            if (!resp.IsSuccessStatusCode)
+            {
+                var err = await resp.Content.ReadAsStringAsync();
+                ToastService.Error("No se pudo crear: " + err);
+                return;
+            }
+            var r = await resp.Content.ReadFromJsonAsync<CrearProductoResult>();
+            ToastService.Success($"✅ Producto creado (Id {r?.productoId}) — {r?.pubsLinkeadas} publicación{(r?.pubsLinkeadas == 1 ? "" : "es")} linkeada{(r?.pubsLinkeadas == 1 ? "" : "s")}");
+            showCrearModal = false;
+            crearSkuRow = null;
+            await Recargar();
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error: " + ex.Message);
+        }
+        finally
+        {
+            crearGuardando = false; StateHasChanged();
+        }
+    }
 
     private async Task Recargar()
     {
