@@ -64,5 +64,15 @@ public class MeliItem
     public int? CafeKitId { get; set; }     // Kit compuesto / BOM (Cafe_Kits)
     public CafeKit? CafeKit { get; set; }
 
+    /// <summary>2026-05-29: ajuste opcional para el push de precio (Contabilium-style).
+    /// Si está cargado, se aplica al precio base: precio_final = base * (1+Pct/100) + Pesos -> redondear.
+    /// Persiste por dispositivo (se ve desde cualquier compu del usuario).</summary>
+    [System.ComponentModel.DataAnnotations.Schema.Column(TypeName = "decimal(18,4)")]
+    public decimal? AjustePctOverride { get; set; }
+    [System.ComponentModel.DataAnnotations.Schema.Column(TypeName = "decimal(18,2)")]
+    public decimal? AjustePesosOverride { get; set; }
+    /// <summary>"" / "99" / "999" / "000" — terminación al redondear hacia arriba.</summary>
+    public string? AjusteRedondeoOverride { get; set; }
+
     public MeliAccount? MeliAccount { get; set; }
 }

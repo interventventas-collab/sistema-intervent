@@ -1569,6 +1569,25 @@ public class MeliController : ControllerBase
 
     public record PushFromProductRequest(bool PushPrice = true, bool PushStock = true, decimal? OverridePrice = null);
 
+    public record AjustePrecioRequest(decimal? AjustePctOverride, decimal? AjustePesosOverride, string? AjusteRedondeoOverride);
+
+    /// <summary>2026-05-29: persiste los 3 valores del ajuste de precio (% / $ / redondeo)
+    /// en la fila MeliItems. Devuelve 204 si OK, 404 si el item no existe.</summary>
+    [HttpPut("items/{id}/ajuste-precio")]
+    public async Task<IActionResult> SetAjustePrecio(int id,
+        [FromBody] AjustePrecioRequest req,
+        [FromServices] Api.Data.AppDbContext db)
+    {
+        var item = await db.MeliItems.FindAsync(id);
+        if (item is null) return NotFound();
+        item.AjustePctOverride = req.AjustePctOverride;
+        item.AjustePesosOverride = req.AjustePesosOverride;
+        item.AjusteRedondeoOverride = string.IsNullOrEmpty(req.AjusteRedondeoOverride) ? null : req.AjusteRedondeoOverride;
+        item.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        return NoContent();
+    }
+
     [HttpPost("items/{id}/push-from-product")]
     public async Task<IActionResult> PushFromProduct(int id, [FromBody] PushFromProductRequest? request)
     {

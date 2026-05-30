@@ -46,6 +46,12 @@ public class MeliItemDto
     // Logística MeLi cacheada.
     public string? LogisticType { get; set; }
 
+    // 2026-05-29: ajustes de precio Contabilium-style (% y $ y redondeo).
+    // Persistidos en DB. El frontend los carga al listar items y los actualiza via PUT.
+    public decimal? AjustePctOverride { get; set; }
+    public decimal? AjustePesosOverride { get; set; }
+    public string? AjusteRedondeoOverride { get; set; }
+
     /// <summary>True si la publicación tiene cualquier tipo de linkeo (Producto, Combo, Café o Componentes).</summary>
     public bool TieneLinkeo => ProductId.HasValue || ComboId.HasValue || CafeProductoId.HasValue || ComponentMappingsCount > 0;
 

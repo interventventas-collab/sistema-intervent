@@ -2634,6 +2634,15 @@ public class ApiClient
         return null;
     }
 
+    /// <summary>2026-05-29: persiste el ajuste de precio (% / $ / redondeo) de una publicación en DB.</summary>
+    public async Task SetMeliItemAjustePrecioAsync(int itemId, decimal? ajustePct, decimal? ajustePesos, string? ajusteRedondeo)
+    {
+        await SetAuthHeaderAsync();
+        var body = new { ajustePctOverride = ajustePct, ajustePesosOverride = ajustePesos, ajusteRedondeoOverride = ajusteRedondeo };
+        var response = await _http.PutAsJsonAsync($"/api/meli/items/{itemId}/ajuste-precio", body);
+        if (!response.IsSuccessStatusCode) await ThrowIfErrorAsync(response);
+    }
+
     public async Task<BulkCreateProductResult?> CreateProductFromItemAsync(int itemId)
     {
         await SetAuthHeaderAsync();

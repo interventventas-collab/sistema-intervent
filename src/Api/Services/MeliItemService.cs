@@ -64,7 +64,10 @@ public class MeliItemService
                 i.LogisticType,
                 i.VariationId,
                 i.VariationAttributes,
-                null  // LastStockPushedToMeli — se completa abajo en memoria
+                null,  // LastStockPushedToMeli — se completa abajo en memoria
+                i.AjustePctOverride,
+                i.AjustePesosOverride,
+                i.AjusteRedondeoOverride
                 ))
             .ToListAsync();
 
@@ -319,7 +322,9 @@ public class MeliItemService
         item.CafeProductoId, item.CafeFormato,
         item.CafeProducto?.Sku, item.CafeProducto?.Nombre,
         0, null, item.LogisticType,
-        item.VariationId, item.VariationAttributes);
+        item.VariationId, item.VariationAttributes,
+        null, // LastStockPushedToMeli
+        item.AjustePctOverride, item.AjustePesosOverride, item.AjusteRedondeoOverride);
 
     public async Task<int> DeleteItemsAsync(List<int> ids)
     {
