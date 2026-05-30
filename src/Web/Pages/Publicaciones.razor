@@ -211,15 +211,8 @@
                                 </div>
                             </th>
                             <!-- Vendidos: sort only -->
-                            <th class="th-sortable" @onclick='() => ToggleSort("vendidos")'>
-                                <div class="th-inner">
-                                    <span class="th-label">Vendidos</span>
-                                    <span class="sort-icon">
-                                        <span class="@(sortColumn == "vendidos" && sortAsc ? "sort-up-active" : "")">&#9650;</span>
-                                        <span class="@(sortColumn == "vendidos" && !sortAsc ? "sort-down-active" : "")">&#9660;</span>
-                                    </span>
-                                </div>
-                            </th>
+                            <!-- 2026-05-29: VENDIDOS sale como columna y pasa a sub-texto en el título.
+                                 Razón: liberar ancho para la nueva columna AJUSTE y que los botones 📦/💵 vuelvan a verse sin scroll. -->
                             <!-- Estado: checkbox dropdown -->
                             <th class="th-dropdown @(activeFilterColumn == "estado" ? "filter-open" : "")">
                                 <div class="th-inner">
@@ -428,32 +421,35 @@
                                             @stockShow
                                         }
                                     </td>
-                                    <td>@(grp.HasMultiple ? grp.TotalSold : item.SoldQuantity)</td>
                                     <td><span class="status-badge @GetStatusClass(item.Status)">@GetStatusLabel(item.Status)</span></td>
                                     <td>@GetListingTypeLabel(item.ListingTypeId)</td>
                                     <td>@item.AccountNickname</td>
                                     <td class="td-ajuste" @onclick:stopPropagation="true">
                                         @{ var aj1 = GetAjuste(item); var prev1 = PreviewPrecioAjustado(item); }
-                                        <div class="ajuste-controls">
-                                            <input type="number" step="any" class="ajuste-delta" placeholder="Δ"
-                                                   value="@(aj1.Delta?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")"
-                                                   @onchange="(e) => OnAjusteDeltaChange(item, e.Value?.ToString())"
-                                                   title="Sumar/restar al precio (+/-)" />
-                                            <select class="ajuste-tipo" @bind="aj1.Tipo" title="$ pesos · % porcentaje">
-                                                <option value="$">$</option>
-                                                <option value="%">%</option>
-                                            </select>
+                                        <div class="ajuste-pill">
+                                            <span class="ajuste-prefix">%</span>
+                                            <input type="number" step="any" class="ajuste-input"
+                                                   value="@(aj1.DeltaPct?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")"
+                                                   @onchange="(e) => OnAjustePctChange(item, e.Value?.ToString())"
+                                                   placeholder="0" title="Porcentaje a sumar (10 = +10%)" />
+                                            <span class="ajuste-sep"></span>
+                                            <span class="ajuste-prefix">$</span>
+                                            <input type="number" step="any" class="ajuste-input"
+                                                   value="@(aj1.DeltaPesos?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")"
+                                                   @onchange="(e) => OnAjustePesosChange(item, e.Value?.ToString())"
+                                                   placeholder="0" title="Pesos adicionales (315 = +$315)" />
+                                            <span class="ajuste-sep"></span>
                                             <select class="ajuste-redondeo" @bind="aj1.Redondeo" title="Redondear hacia arriba">
                                                 <option value="">—</option>
                                                 <option value="99">99</option>
                                                 <option value="999">999</option>
                                                 <option value="000">000</option>
                                             </select>
-                                            @if (!string.IsNullOrEmpty(prev1))
-                                            {
-                                                <small class="ajuste-preview" title="Precio final a pushear">→$@prev1</small>
-                                            }
                                         </div>
+                                        @if (!string.IsNullOrEmpty(prev1))
+                                        {
+                                            <div class="ajuste-preview-box" title="Precio final a pushear">→ $@prev1</div>
+                                        }
                                     </td>
                                     <td class="td-product" @onclick:stopPropagation="true">
                                         @if (item.ProductId.HasValue)
@@ -529,7 +525,6 @@
                                             <td>@(v.Sku ?? "-")</td>
                                             <td>@v.CurrencyId @v.Price.ToString("N2")</td>
                                             <td style="text-align:center;">@v.AvailableQuantity</td>
-                                            <td>@v.SoldQuantity</td>
                                             <td><span class="status-badge @GetStatusClass(v.Status)" style="font-size:0.7rem;">@GetStatusLabel(v.Status)</span></td>
                                             <td colspan="3"></td>
                                             <td class="td-product" @onclick:stopPropagation="true">
@@ -568,7 +563,7 @@
                             @foreach (var family in GetFamilyGroups())
                             {
                                 <tr class="group-header-row">
-                                    <td colspan="12">
+                                    <td colspan="11">
                                         <strong>@(family.FamilyName ?? "Sin familia")</strong>
                                         <small class="text-muted" style="margin-left: 0.5rem;">(@family.Items.Count items)</small>
                                     </td>
@@ -627,32 +622,35 @@
                                             @item.AvailableQuantity
                                         }
                                     </td>
-                                        <td>@item.SoldQuantity</td>
                                         <td><span class="status-badge @GetStatusClass(item.Status)">@GetStatusLabel(item.Status)</span></td>
                                         <td>@GetListingTypeLabel(item.ListingTypeId)</td>
                                         <td>@item.AccountNickname</td>
                                         <td class="td-ajuste" @onclick:stopPropagation="true">
                                             @{ var aj2 = GetAjuste(item); var prev2 = PreviewPrecioAjustado(item); }
-                                            <div class="ajuste-controls">
-                                                <input type="number" step="any" class="ajuste-delta" placeholder="Δ"
-                                                       value="@(aj2.Delta?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")"
-                                                       @onchange="(e) => OnAjusteDeltaChange(item, e.Value?.ToString())"
-                                                       title="Sumar/restar al precio (+/-)" />
-                                                <select class="ajuste-tipo" @bind="aj2.Tipo" title="$ pesos · % porcentaje">
-                                                    <option value="$">$</option>
-                                                    <option value="%">%</option>
-                                                </select>
+                                            <div class="ajuste-pill">
+                                                <span class="ajuste-prefix">%</span>
+                                                <input type="number" step="any" class="ajuste-input"
+                                                       value="@(aj2.DeltaPct?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")"
+                                                       @onchange="(e) => OnAjustePctChange(item, e.Value?.ToString())"
+                                                       placeholder="0" title="Porcentaje a sumar" />
+                                                <span class="ajuste-sep"></span>
+                                                <span class="ajuste-prefix">$</span>
+                                                <input type="number" step="any" class="ajuste-input"
+                                                       value="@(aj2.DeltaPesos?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")"
+                                                       @onchange="(e) => OnAjustePesosChange(item, e.Value?.ToString())"
+                                                       placeholder="0" title="Pesos adicionales" />
+                                                <span class="ajuste-sep"></span>
                                                 <select class="ajuste-redondeo" @bind="aj2.Redondeo" title="Redondear hacia arriba">
                                                     <option value="">—</option>
                                                     <option value="99">99</option>
                                                     <option value="999">999</option>
                                                     <option value="000">000</option>
                                                 </select>
-                                                @if (!string.IsNullOrEmpty(prev2))
-                                                {
-                                                    <small class="ajuste-preview" title="Precio final a pushear">→$@prev2</small>
-                                                }
                                             </div>
+                                            @if (!string.IsNullOrEmpty(prev2))
+                                            {
+                                                <div class="ajuste-preview-box" title="Precio final a pushear">→ $@prev2</div>
+                                            }
                                         </td>
                                         <td class="td-product" @onclick:stopPropagation="true">
                                             @if (item.ProductId.HasValue)
@@ -741,7 +739,6 @@
                                             @item.AvailableQuantity
                                         }
                                     </td>
-                                            <td>@item.SoldQuantity</td>
                                             <td><span class="status-badge @GetStatusClass(item.Status)">@GetStatusLabel(item.Status)</span></td>
                                             <td>@GetListingTypeLabel(item.ListingTypeId)</td>
                                             <td>@item.AccountNickname</td>
@@ -803,7 +800,6 @@
                                             @item.AvailableQuantity
                                         }
                                     </td>
-                                        <td>@item.SoldQuantity</td>
                                         <td><span class="status-badge @GetStatusClass(item.Status)">@GetStatusLabel(item.Status)</span></td>
                                         <td>@GetListingTypeLabel(item.ListingTypeId)</td>
                                         <td>@item.AccountNickname</td>
@@ -4014,18 +4010,18 @@
     }
 
     // ─────────────────────────────────────────────────────────────────────
-    // Ajustes de precio por fila (no se persisten en DB, solo en memoria de
-    // la página + opcional localStorage para que sobreviva refresh).
-    // Estructura: key = MeliItem.Id (int), value = AjustePrecio.
+    // Ajustes de precio por fila (Contabilium-style). Inputs independientes:
+    //   - DeltaPct (%):    suma/resta porcentaje sobre el precio base
+    //   - DeltaPesos ($):  suma/resta pesos directos
+    //   - Redondeo:        terminación al redondear hacia arriba (— / 99 / 999 / 000)
+    // Si se llenan los 2, se aplican AMBOS efectos (igual que Contabilium).
+    // Orden: base → +pct → +pesos → redondeo.
     // ─────────────────────────────────────────────────────────────────────
     public class AjustePrecio
     {
-        /// <summary>Valor del campo Δ (puede ser positivo o negativo). Null o 0 = sin ajuste de delta.</summary>
-        public decimal? Delta { get; set; }
-        /// <summary>"$" = sumar pesos directos · "%" = sumar/restar porcentaje.</summary>
-        public string Tipo { get; set; } = "$";
-        /// <summary>"" (sin redondeo) · "99" · "999" · "000".</summary>
-        public string Redondeo { get; set; } = "";
+        public decimal? DeltaPct { get; set; }      // ej: 10 = +10%
+        public decimal? DeltaPesos { get; set; }    // ej: 315 = +$315 (puede ser negativo)
+        public string Redondeo { get; set; } = "";  // "" / "99" / "999" / "000"
     }
 
     private Dictionary<int, AjustePrecio> ajustesPrecio = new();
@@ -4040,74 +4036,77 @@
         return a;
     }
 
-    /// <summary>Calcula el precio que debería ir a MeLi después de aplicar Δ + tipo + redondeo.
-    /// Devuelve null si no hay ningún ajuste cargado (entonces el backend calcula como hoy).</summary>
+    /// <summary>Calcula el precio final que debería ir a MeLi aplicando %, $ y redondeo.
+    /// Devuelve null si NO hay ningún ajuste cargado (backend usa el precio del sistema).</summary>
     private decimal? CalcularPrecioConAjuste(MeliItemDto item)
     {
         var aj = GetAjuste(item);
-        bool hayDelta = aj.Delta.HasValue && aj.Delta.Value != 0;
+        bool hayPct = aj.DeltaPct.HasValue && aj.DeltaPct.Value != 0;
+        bool hayPesos = aj.DeltaPesos.HasValue && aj.DeltaPesos.Value != 0;
         bool hayRedondeo = !string.IsNullOrEmpty(aj.Redondeo);
-        if (!hayDelta && !hayRedondeo) return null; // sin ajuste → backend usa precio normal
+        if (!hayPct && !hayPesos && !hayRedondeo) return null;
 
-        // Precio base: el actual de la publicación en MeLi (item.Price es lo que vemos en la tabla).
         decimal baseP = item.Price;
         if (baseP <= 0) return null;
 
-        // 1) Aplicar delta
-        decimal conDelta = baseP;
-        if (hayDelta)
-        {
-            if (aj.Tipo == "%") conDelta = baseP * (1m + aj.Delta!.Value / 100m);
-            else conDelta = baseP + aj.Delta!.Value;
-        }
+        // 1) Aplicar % sobre el base
+        decimal conPct = baseP;
+        if (hayPct) conPct = baseP * (1m + aj.DeltaPct!.Value / 100m);
 
-        // 2) Aplicar redondeo (siempre hacia arriba para no bajar el precio sin querer)
-        decimal final = conDelta;
+        // 2) Aplicar $ encima del resultado
+        decimal conPesos = conPct;
+        if (hayPesos) conPesos = conPct + aj.DeltaPesos!.Value;
+
+        // 3) Aplicar redondeo (siempre hacia arriba — no le baja al usuario sin querer)
+        decimal final = conPesos;
         if (hayRedondeo)
         {
             int term = aj.Redondeo switch { "99" => 99, "999" => 999, "000" => 0, _ => -1 };
             int step = aj.Redondeo switch { "99" => 100, "999" => 1000, "000" => 1000, _ => 1 };
             if (step > 1)
             {
-                int conDeltaInt = (int)Math.Ceiling(conDelta);
-                // Redondear hacia arriba al siguiente número que cumpla la terminación.
-                int siguiente = ((conDeltaInt / step) + 1) * step + term;
-                // Si el calculado ya cumple la terminación y es >= conDelta, no hace falta sumar otro step.
-                if (conDeltaInt % step == term && conDeltaInt >= conDelta) siguiente = conDeltaInt;
-                else if (((conDeltaInt - term) % step) == 0 && conDeltaInt >= conDelta) siguiente = conDeltaInt;
-                else siguiente = ((conDeltaInt - term + step - 1) / step) * step + term;
-                if (siguiente < conDelta) siguiente += step;
+                int conPesosInt = (int)Math.Ceiling(conPesos);
+                // Buscar el siguiente número >= conPesos que cumpla "termina en term" módulo step.
+                int siguiente;
+                if (conPesosInt % step == term && conPesosInt >= conPesos)
+                    siguiente = conPesosInt;
+                else
+                {
+                    siguiente = ((conPesosInt - term + step - 1) / step) * step + term;
+                    if (siguiente < conPesos) siguiente += step;
+                }
                 final = siguiente;
             }
         }
         return Math.Round(final, 2, MidpointRounding.AwayFromZero);
     }
 
-    /// <summary>Vista previa del precio que va a pushear (para tooltip o badge).</summary>
     private string PreviewPrecioAjustado(MeliItemDto item)
     {
         var p = CalcularPrecioConAjuste(item);
         return p.HasValue ? p.Value.ToString("N0") : "";
     }
 
-    /// <summary>Handler del input Δ. Parsea el string (acepta vacío) y guarda en el ajuste de la fila.</summary>
-    private void OnAjusteDeltaChange(MeliItemDto item, string? value)
+    /// <summary>Handler para los inputs % y $ (acepta vacío, coma o punto decimal).</summary>
+    private void OnAjustePctChange(MeliItemDto item, string? value)
     {
         var aj = GetAjuste(item);
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            aj.Delta = null;
-        }
-        else
-        {
-            // Aceptar coma o punto como separador decimal.
-            var clean = value.Replace(",", ".");
-            if (decimal.TryParse(clean, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d))
-                aj.Delta = d;
-            else
-                aj.Delta = null;
-        }
+        aj.DeltaPct = ParseNumericOrNull(value);
         StateHasChanged();
+    }
+
+    private void OnAjustePesosChange(MeliItemDto item, string? value)
+    {
+        var aj = GetAjuste(item);
+        aj.DeltaPesos = ParseNumericOrNull(value);
+        StateHasChanged();
+    }
+
+    private static decimal? ParseNumericOrNull(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var clean = value.Replace(",", ".");
+        return decimal.TryParse(clean, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : null;
     }
 
     private async Task DoQuickPush(MeliItemDto item, bool pushPrice, bool pushStock, string what, decimal? overridePrice = null)

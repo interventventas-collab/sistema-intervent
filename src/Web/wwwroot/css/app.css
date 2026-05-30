@@ -3020,54 +3020,88 @@ textarea.form-input {
 .push-meli-btn.push-precio { background: #fef3c7; border-color: #f59e0b; }
 .push-meli-btn.push-precio:hover { background: #fde68a; border-color: #d97706; }
 
-/* ───── Columna AJUSTE (Δ + tipo $/% + redondeo) en /publicaciones ───── */
-.td-ajuste { padding: 0.25rem 0.4rem; vertical-align: middle; }
-.ajuste-controls {
-    display: flex;
-    align-items: center;
-    gap: 0.2rem;
-    flex-wrap: wrap;
-}
-.ajuste-controls .ajuste-delta {
-    width: 60px;
-    padding: 0.18rem 0.3rem;
-    font-size: 0.78rem;
+/* ───── Columna AJUSTE — diseño Contabilium-style (pill segmentado) ───── */
+.td-ajuste { padding: 0.3rem 0.4rem; vertical-align: middle; }
+.th-ajuste .th-label { font-size: 0.78rem; color: #4b5563; font-weight: 600; }
+
+.ajuste-pill {
+    display: inline-flex;
+    align-items: stretch;
+    background: white;
     border: 1px solid #d1d5db;
-    border-radius: 4px;
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    height: 28px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.ajuste-pill:focus-within {
+    border-color: #6366f1;
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.18);
+}
+
+.ajuste-prefix {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 0.35rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #6b7280;
+    background: #f9fafb;
+    user-select: none;
+    min-width: 18px;
+}
+
+.ajuste-input {
+    width: 52px;
+    padding: 0 0.3rem;
+    font-size: 0.82rem;
+    border: none;
+    outline: none;
     text-align: right;
+    background: white;
+    color: #111827;
     -moz-appearance: textfield;
 }
-.ajuste-controls .ajuste-delta::-webkit-outer-spin-button,
-.ajuste-controls .ajuste-delta::-webkit-inner-spin-button {
+.ajuste-input::-webkit-outer-spin-button,
+.ajuste-input::-webkit-inner-spin-button {
     -webkit-appearance: none;
     margin: 0;
 }
-.ajuste-controls .ajuste-delta:focus {
-    border-color: #6366f1;
-    outline: none;
-    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+.ajuste-input::placeholder { color: #d1d5db; }
+.ajuste-input:focus { background: #fafbff; }
+
+.ajuste-sep {
+    width: 1px;
+    background: #e5e7eb;
+    align-self: stretch;
 }
-.ajuste-controls .ajuste-tipo,
-.ajuste-controls .ajuste-redondeo {
-    padding: 0.18rem 0.2rem;
+
+.ajuste-redondeo {
+    padding: 0 0.2rem 0 0.35rem;
     font-size: 0.78rem;
-    border: 1px solid #d1d5db;
-    border-radius: 4px;
+    border: none;
+    outline: none;
     background: white;
+    color: #111827;
     cursor: pointer;
+    min-width: 52px;
 }
-.ajuste-controls .ajuste-tipo { width: 38px; }
-.ajuste-controls .ajuste-redondeo { width: 52px; }
-.ajuste-controls .ajuste-preview {
-    font-size: 0.72rem;
+.ajuste-redondeo:focus { background: #fafbff; }
+
+.ajuste-preview-box {
+    display: inline-block;
+    margin-top: 0.25rem;
+    font-size: 0.78rem;
     font-weight: 700;
     color: #15803d;
     background: #dcfce7;
-    padding: 0.1rem 0.35rem;
-    border-radius: 3px;
+    border: 1px solid #86efac;
+    padding: 0.12rem 0.45rem;
+    border-radius: 4px;
     white-space: nowrap;
 }
-.th-ajuste .th-label { font-size: 0.78rem; color: #6b7280; }
 
 /* Link Product Modal */
 .link-product-list {
