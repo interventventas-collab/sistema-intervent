@@ -143,9 +143,30 @@ public class MeliStockPushService
         int ok = 0, skipped = 0, err = 0;
         var mensajes = new List<string>();
 
+        // 2026-05-30 — Dedup por UserProductId ANTES de agrupar: cuando 2+ publicaciones MeLi
+        // comparten el mismo user_product_id (caso "catálogo MeLi" = misma publicación aparece
+        // como normal + catálogo con stock compartido), pushear a una sola alcanza. Antes se
+        // hacía 1 PUT por MLA, llegando 2 PUTs al mismo destino.
+        var seenUpgKeys = new HashSet<string>();
+        var skipMeliItemIds = new HashSet<string>();
+        foreach (var rep in meliItems
+            .GroupBy(m => m.MeliItemId)
+            .Select(g => g.First()))
+        {
+            if (string.IsNullOrEmpty(rep.UserProductId)) continue;
+            var key = $"{rep.MeliAccountId}|{rep.UserProductId}";
+            if (!seenUpgKeys.Add(key))
+            {
+                skipMeliItemIds.Add(rep.MeliItemId);
+                _logger.LogInformation("[StockPush] Skip {Mla}: UserProductId {Upg} ya procesado en este batch (catálogo compartido)",
+                    rep.MeliItemId, rep.UserProductId);
+            }
+        }
+
         // Agrupar por (cuenta MeLi, MeliItemId) para emitir 1 PUT por publicacion.
         // (las multiples filas con variation se procesan adentro del mismo PUT).
         var grupos = meliItems
+            .Where(mi => !skipMeliItemIds.Contains(mi.MeliItemId))
             .GroupBy(mi => new { mi.MeliAccountId, mi.MeliItemId })
             .ToList();
 
