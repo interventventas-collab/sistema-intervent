@@ -2600,51 +2600,55 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && !ajustesMigrationDone)
+        // Esperar a que items esté cargado antes de intentar la migración.
+        // (LoadItems es async — el primer render puede ocurrir con items=null o vacío.)
+        if (ajustesMigrationDone) return;
+        if (items is null || items.Count == 0) return;
+        ajustesMigrationDone = true;
+
+        // Migración one-time: si el navegador tiene ajustes en localStorage (versión anterior)
+        // y la fila correspondiente en DB no los tiene, los subimos a DB. NO borramos
+        // localStorage — la migración es idempotente (si corre dos veces, la segunda no hace
+        // nada porque la DB ya tiene los valores y el bloque `dbHasIt` la saltea).
+        try
         {
-            ajustesMigrationDone = true;
-            // Migración one-time: si el navegador tiene ajustes en localStorage (versión anterior)
-            // y la fila correspondiente en DB no los tiene, los subimos a DB y borramos localStorage.
-            try
+            var json = await JS.InvokeAsync<string?>("localStorage.getItem", "publicaciones-ajustes-precio");
+            if (string.IsNullOrEmpty(json)) return;
+            var legacy = System.Text.Json.JsonSerializer.Deserialize<Dictionary<int, AjustePrecio>>(json);
+            if (legacy is null || legacy.Count == 0) return;
+
+            int migrated = 0;
+            foreach (var (itemId, aj) in legacy)
             {
-                var json = await JS.InvokeAsync<string?>("localStorage.getItem", "publicaciones-ajustes-precio");
-                if (!string.IsNullOrEmpty(json) && items is not null)
+                var item = items.FirstOrDefault(i => i.Id == itemId);
+                if (item is null) continue;
+                bool dbHasIt = item.AjustePctOverride.HasValue
+                    || item.AjustePesosOverride.HasValue
+                    || !string.IsNullOrEmpty(item.AjusteRedondeoOverride);
+                if (dbHasIt) continue;
+                try
                 {
-                    var legacy = System.Text.Json.JsonSerializer.Deserialize<Dictionary<int, AjustePrecio>>(json);
-                    if (legacy is not null)
+                    await Api.SetMeliItemAjustePrecioAsync(itemId, aj.DeltaPct, aj.DeltaPesos, aj.Redondeo);
+                    item.AjustePctOverride = aj.DeltaPct;
+                    item.AjustePesosOverride = aj.DeltaPesos;
+                    item.AjusteRedondeoOverride = aj.Redondeo;
+                    if (ajustesPrecio.TryGetValue(itemId, out var memAj))
                     {
-                        foreach (var (itemId, aj) in legacy)
-                        {
-                            // Si la fila aún tiene los campos vacíos en DB → migrar.
-                            var item = items.FirstOrDefault(i => i.Id == itemId);
-                            if (item is null) continue;
-                            bool dbHasIt = item.AjustePctOverride.HasValue
-                                || item.AjustePesosOverride.HasValue
-                                || !string.IsNullOrEmpty(item.AjusteRedondeoOverride);
-                            if (dbHasIt) continue;
-                            try
-                            {
-                                await Api.SetMeliItemAjustePrecioAsync(itemId, aj.DeltaPct, aj.DeltaPesos, aj.Redondeo);
-                                item.AjustePctOverride = aj.DeltaPct;
-                                item.AjustePesosOverride = aj.DeltaPesos;
-                                item.AjusteRedondeoOverride = aj.Redondeo;
-                                if (ajustesPrecio.TryGetValue(itemId, out var memAj))
-                                {
-                                    memAj.DeltaPct = aj.DeltaPct;
-                                    memAj.DeltaPesos = aj.DeltaPesos;
-                                    memAj.Redondeo = aj.Redondeo ?? "";
-                                }
-                            }
-                            catch { /* si falla un item, seguimos con el resto */ }
-                        }
-                        // Migración OK → borramos localStorage para no repetir.
-                        await JS.InvokeVoidAsync("localStorage.removeItem", "publicaciones-ajustes-precio");
-                        StateHasChanged();
+                        memAj.DeltaPct = aj.DeltaPct;
+                        memAj.DeltaPesos = aj.DeltaPesos;
+                        memAj.Redondeo = aj.Redondeo ?? "";
                     }
+                    migrated++;
                 }
+                catch { /* si falla un item, seguimos con el resto */ }
             }
-            catch { /* si falla todo, no rompemos la página */ }
+            if (migrated > 0)
+            {
+                ToastService.Success($"✓ Migrados {migrated} ajuste(s) de tu browser a la base de datos. Ahora se ven en cualquier dispositivo.");
+                StateHasChanged();
+            }
         }
+        catch { /* si falla todo, no rompemos la página */ }
     }
 
     protected override async Task OnInitializedAsync()
