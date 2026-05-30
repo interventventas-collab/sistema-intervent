@@ -1189,7 +1189,12 @@
         {
             await Operator.ClearAsync();
         }
-        if (!Operator.HasOperator) showOperatorModal = true;
+        // 2026-05-30: usuarios SOLO depósito (sin cafe ni oficina) no necesitan elegir
+        // operador todavía. No abrimos el modal automático para ellos.
+        bool isDepositoOnly = permissions.Contains("deposito")
+            && !permissions.Contains("cafe")
+            && !permissions.Contains("oficina");
+        if (!Operator.HasOperator && !isDepositoOnly) showOperatorModal = true;
 
         // Selector de empresa DESACTIVADO: limpiamos la empresa al arrancar para que la app
         // funcione sin filtros (Company.HasCompany == false → todo se muestra sin restriccion).
