@@ -227,17 +227,34 @@ public class MeliPricePushService
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
     /// <summary>Calcula el precio base del sistema para un MeliItem (sin ajuste).
-    /// Mirror de la lógica en MeliController.PushPrecioAjustado.</summary>
+    /// 2026-05-30: respeta el modelo OEM. Si un producto tiene OemId y el OEM tiene PvpConIva,
+    /// el precio = OEM.PvpConIva × MultiplicadorOem (default 1). Si no, PrecioOtro × (1 + IvaPct/100).</summary>
     private async Task<(decimal Price, bool Found)> CalcularPrecioBaseAsync(MeliItem item, CancellationToken ct)
     {
+        // Helper local que devuelve precio c/IVA de un producto, respetando OEM.
+        async Task<decimal?> PrecioCIvaAsync(int prodId)
+        {
+            var p = await _db.CafeProductos.FindAsync(new object[] { prodId }, ct);
+            if (p is null) return null;
+            if (p.OemId.HasValue)
+            {
+                var oem = await _db.CafeOems.FindAsync(new object[] { p.OemId.Value }, ct);
+                if (oem?.PvpConIva is decimal pvp && pvp > 0)
+                {
+                    var mult = p.MultiplicadorOem ?? 1m;
+                    if (mult <= 0) mult = 1m;
+                    return Math.Round(pvp * mult, 2);
+                }
+            }
+            if (p.PrecioOtro is decimal po && po > 0)
+                return Math.Round(po * (1 + p.IvaPct / 100m), 2);
+            return null;
+        }
+
         if (item.CafeProductoId.HasValue)
         {
-            var p = await _db.CafeProductos.FindAsync(new object[] { item.CafeProductoId.Value }, ct);
-            if (p?.PrecioOtro is decimal po && po > 0)
-            {
-                return (Math.Round(po * (1 + p.IvaPct / 100m), 2), true);
-            }
-            return (0m, false);
+            var price = await PrecioCIvaAsync(item.CafeProductoId.Value);
+            return price.HasValue ? (price.Value, true) : (0m, false);
         }
 
         var comps = await _db.MeliItemComponentes.Where(c => c.MeliItemId == item.MeliItemId).ToListAsync(ct);
@@ -250,21 +267,17 @@ public class MeliPricePushService
         if (compsForItem.Count == 0) compsForItem = comps;
         if (compsForItem.Count == 0) return (0m, false);
 
-        var prodIds = compsForItem.Select(c => c.CafeProductoId).Distinct().ToList();
-        var prods = await _db.CafeProductos.Where(p => prodIds.Contains(p.Id))
-            .Select(p => new { p.Id, p.PrecioOtro, p.IvaPct }).ToDictionaryAsync(p => p.Id, ct);
         decimal sum = 0m;
-        decimal iva = 21m;
         bool any = false;
         foreach (var c in compsForItem)
         {
-            if (!prods.TryGetValue(c.CafeProductoId, out var pc)) continue;
-            if (!pc.PrecioOtro.HasValue || pc.PrecioOtro.Value <= 0) continue;
-            sum += pc.PrecioOtro.Value * c.Cantidad;
-            if (!any) { iva = pc.IvaPct; any = true; }
+            var pCIva = await PrecioCIvaAsync(c.CafeProductoId);
+            if (pCIva == null) continue;
+            sum += pCIva.Value * c.Cantidad;
+            any = true;
         }
         if (!any) return (0m, false);
-        return (Math.Round(sum * (1 + iva / 100m), 2), true);
+        return (Math.Round(sum, 2), true);
     }
 
     private static decimal AplicarRedondeoUp(decimal valor, string? modo)

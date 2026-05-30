@@ -4095,6 +4095,13 @@ IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='PriceChangedAt' AND Object_
     ALTER TABLE Cafe_Productos ADD PriceChangedAt DATETIME2 NULL;
 GO
 
+-- 2026-05-30: Modelo OEM-Multiplicador. Si OemId != null, el precio del producto =
+-- OEM.PvpConIva × MultiplicadorOem (default 1). Permite que el OEM sea fuente de verdad
+-- y propague precio a productos hijos. Si MultiplicadorOem es null, se asume 1.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='MultiplicadorOem' AND Object_ID=OBJECT_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD MultiplicadorOem DECIMAL(10,4) NULL;
+GO
+
 -- 2026-05-24: WhatsApp pedidos - multiples telefonos autorizados + auto-respuesta
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'WhatsAppPedidosTelefonos')
 BEGIN

@@ -1632,137 +1632,17 @@ public class MeliController : ControllerBase
     /// linkeo directo. Es el endpoint que usa el boton 💵 de /publicaciones.</summary>
     [HttpPost("items/{id}/push-precio-ajustado")]
     public async Task<IActionResult> PushPrecioAjustado(int id,
-        [FromServices] Api.Data.AppDbContext db,
-        [FromServices] IHttpClientFactory httpFactory,
-        [FromServices] MeliAccountService accSvc)
+        [FromServices] MeliPricePushService pricePushSvc)
     {
-        var item = await db.MeliItems.Include(i => i.MeliAccount).FirstOrDefaultAsync(i => i.Id == id);
-        if (item is null) return NotFound(new { error = "Item no encontrado" });
-        if (item.MeliAccount is null) return BadRequest(new { error = "Cuenta MeLi no cargada" });
-
-        // 1. Calcular PrecioOtroConIva base — igual que ListItemsAsync.
-        decimal? precioBase = null;
-        decimal ivaPctBase = 21m;
-        if (item.CafeProductoId.HasValue)
-        {
-            var p = await db.CafeProductos.FindAsync(item.CafeProductoId.Value);
-            if (p?.PrecioOtro is decimal po && po > 0)
-            {
-                ivaPctBase = p.IvaPct;
-                precioBase = Math.Round(po * (1 + ivaPctBase / 100m), 2);
-            }
-        }
-        else
-        {
-            var comps = await db.MeliItemComponentes.Where(c => c.MeliItemId == item.MeliItemId).ToListAsync();
-            var compsForItem = comps.Where(c =>
-            {
-                if (!string.IsNullOrEmpty(item.VariationId))
-                    return c.MeliVariationId == item.VariationId || string.IsNullOrEmpty(c.MeliVariationId);
-                return string.IsNullOrEmpty(c.MeliVariationId);
-            }).ToList();
-            if (compsForItem.Count == 0) compsForItem = comps;
-            if (compsForItem.Count > 0)
-            {
-                var prodIds = compsForItem.Select(c => c.CafeProductoId).Distinct().ToList();
-                var prods = await db.CafeProductos.Where(p => prodIds.Contains(p.Id))
-                    .Select(p => new { p.Id, p.PrecioOtro, p.IvaPct }).ToDictionaryAsync(p => p.Id);
-                decimal sum = 0m;
-                bool hasData = false;
-                foreach (var c in compsForItem)
-                {
-                    if (!prods.TryGetValue(c.CafeProductoId, out var pc)) continue;
-                    if (!pc.PrecioOtro.HasValue || pc.PrecioOtro.Value <= 0) continue;
-                    sum += pc.PrecioOtro.Value * c.Cantidad;
-                    if (!hasData) { ivaPctBase = pc.IvaPct; hasData = true; }
-                }
-                if (hasData) precioBase = Math.Round(sum * (1 + ivaPctBase / 100m), 2);
-            }
-        }
-        if (!precioBase.HasValue || precioBase.Value <= 0)
-            return BadRequest(new { error = "No se pudo calcular el precio base del sistema (sin PrecioOtro cargado)" });
-
-        // 2. Aplicar ajuste del SyncConfig (Pct/Fijo/Redondeo).
-        var cfg = await db.MeliItemSyncConfigs.FindAsync(item.MeliItemId);
-        var pct = cfg?.AjustePct ?? 0m;
-        var fijo = cfg?.AjusteFijo ?? 0m;
-        var redondeo = cfg?.AjusteRedondeo;
-        var conAjuste = Math.Round(precioBase.Value * (1 + pct / 100m) + fijo, 2);
-        var precioFinal = AplicarRedondeoUpHelper(conAjuste, redondeo);
-
-        // 3. PUT a MeLi. IMPORTANTE: si la publicación tiene variants, MeLi NO acepta
-        // {price: X} al nivel item — hay que mandar el precio dentro de cada variations[].
-        // Si NO tiene variants, se manda al nivel item. El GET live es la única manera
-        // confiable de saber qué variants existen (cache puede estar viejo).
-        var token = await accSvc.GetValidTokenAsync(item.MeliAccount);
-        if (string.IsNullOrWhiteSpace(token)) return BadRequest(new { error = "Token MeLi inválido" });
-
-        using var http = httpFactory.CreateClient();
-        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-
-        // 3a. GET live para detectar variants.
-        var getResp = await http.GetAsync($"https://api.mercadolibre.com/items/{item.MeliItemId}?attributes=variations");
-        if (!getResp.IsSuccessStatusCode)
-            return BadRequest(new { error = $"No se pudo leer el item ({(int)getResp.StatusCode})" });
-        var getJson = await getResp.Content.ReadAsStringAsync();
-        var liveVariantIds = new List<long>();
-        using (var liveDoc = JsonDocument.Parse(getJson))
-        {
-            if (liveDoc.RootElement.TryGetProperty("variations", out var liveVars) && liveVars.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var v in liveVars.EnumerateArray())
-                    liveVariantIds.Add(v.GetProperty("id").GetInt64());
-            }
-        }
-
-        // 3b. Armar payload según si hay variants o no.
-        object payload;
-        if (liveVariantIds.Count > 0)
-        {
-            payload = new
-            {
-                variations = liveVariantIds.Select(vId => new { id = vId, price = precioFinal }).ToList()
-            };
-        }
-        else
-        {
-            payload = new { price = precioFinal };
-        }
-        var body = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-        var resp = await http.PutAsync($"https://api.mercadolibre.com/items/{item.MeliItemId}", body);
-        if (!resp.IsSuccessStatusCode)
-        {
-            var err = await resp.Content.ReadAsStringAsync();
-            return BadRequest(new { error = $"MeLi rechazó el cambio ({(int)resp.StatusCode}): {err}" });
-        }
-
-        // 4. Actualizar cache local. 2026-05-30: marcar SyncPrecio=true ("claimed") — desde
-        // este momento, cualquier cambio futuro de precio del sistema se va a propagar
-        // automáticamente a esta publicación (vía MeliPricePushService).
-        item.Price = precioFinal;
-        item.UpdatedAt = DateTime.UtcNow;
-        if (cfg is null)
-        {
-            cfg = new Api.Models.MeliItemSyncConfig
-            {
-                MeliItemId = item.MeliItemId,
-                SyncPrecio = true,
-                LastSyncAt = DateTime.UtcNow,
-                CreatedAt = DateTime.UtcNow
-            };
-            db.MeliItemSyncConfigs.Add(cfg);
-        }
-        else
-        {
-            cfg.SyncPrecio = true; // primer push manual = claimed
-            cfg.LastSyncAt = DateTime.UtcNow;
-            cfg.UpdatedAt = DateTime.UtcNow;
-        }
-        await db.SaveChangesAsync();
-
-        return Ok(new PushPrecioAjustadoResult(true,
-            $"Precio actualizado en MeLi a ${precioFinal:N2}",
-            precioFinal, precioBase));
+        // 2026-05-30: delegar al servicio compartido para evitar duplicar lógica.
+        // markAsClaimed=true porque es el push manual desde /publicaciones: al primer push
+        // queda "claimed" (SyncPrecio=true) y a partir de ahí auto-propaga cambios futuros
+        // del sistema. El servicio respeta el modelo OEM: si el producto tiene OEM cargado,
+        // precio = OEM.PvpConIva × MultiplicadorOem; si no, PrecioOtro × IVA; si combo, suma.
+        var result = await pricePushSvc.PushPrecioForItemAsync(id, markAsClaimed: true);
+        if (!result.Ok)
+            return BadRequest(new { error = result.Message });
+        return Ok(new PushPrecioAjustadoResult(true, result.Message, result.PushedPrice, result.BasePrice));
     }
 
     private static decimal AplicarRedondeoUpHelper(decimal valor, string? modo)

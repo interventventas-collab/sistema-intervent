@@ -171,9 +171,9 @@ public class MeliItemService
         }
 
         // 2026-05-29: calcular PrecioOtroConIvaCalc por cada item (precio del SISTEMA con IVA).
-        // Si tiene CafeProductoId legacy: PrecioOtro × (1+IvaPct/100)
-        // Si tiene componentes (combos): sumatoria(PrecioOtro × Cantidad), IVA del primer componente.
-        // Este valor es la base correcta para los previews y para el endpoint push-precio-ajustado.
+        // 2026-05-30: extendido — si el producto tiene OemId y el OEM tiene PvpConIva, el precio
+        // viene del OEM (OEM.PvpConIva × MultiplicadorOem) en lugar de PrecioOtro × IVA.
+        // Permite que el OEM sea fuente única de verdad y propague a todos los productos hijos.
         var componentesForPrecio = await _db.MeliItemComponentes
             .Where(c => allItemIds.Contains(c.MeliItemId))
             .ToListAsync();
@@ -181,18 +181,42 @@ public class MeliItemService
             .Concat(componentesForPrecio.Select(c => c.CafeProductoId)).Distinct().ToList();
         var prodsPrecio = await _db.CafeProductos
             .Where(p => prodIdsParaPrecio.Contains(p.Id))
-            .Select(p => new { p.Id, p.PrecioOtro, p.IvaPct })
+            .Select(p => new { p.Id, p.PrecioOtro, p.IvaPct, p.OemId, p.MultiplicadorOem })
             .ToDictionaryAsync(p => p.Id);
+        // OEMs referenciados por los productos
+        var oemIdsRef = prodsPrecio.Values.Where(p => p.OemId.HasValue).Select(p => p.OemId!.Value).Distinct().ToList();
+        var oemsPvp = oemIdsRef.Count == 0
+            ? new Dictionary<int, decimal>()
+            : await _db.CafeOems
+                .Where(o => oemIdsRef.Contains(o.Id) && o.PvpConIva != null && o.PvpConIva > 0)
+                .Select(o => new { o.Id, Pvp = o.PvpConIva!.Value })
+                .ToDictionaryAsync(o => o.Id, o => o.Pvp);
         var componentesByItemId = componentesForPrecio.GroupBy(c => c.MeliItemId).ToDictionary(g => g.Key, g => g.ToList());
+
+        // Helper local: precio c/IVA de un producto, respetando OEM si aplica.
+        // Si tiene OEM y el OEM tiene PvpConIva → OEM × Multiplicador (default 1).
+        // Si no → PrecioOtro × (1 + IvaPct/100).
+        decimal? PrecioCIvaProducto(int prodId)
+        {
+            if (!prodsPrecio.TryGetValue(prodId, out var pp)) return null;
+            if (pp.OemId.HasValue && oemsPvp.TryGetValue(pp.OemId.Value, out var oemPvp) && oemPvp > 0)
+            {
+                var mult = pp.MultiplicadorOem ?? 1m;
+                if (mult <= 0) mult = 1m;
+                return Math.Round(oemPvp * mult, 2);
+            }
+            if (pp.PrecioOtro.HasValue && pp.PrecioOtro.Value > 0)
+                return Math.Round(pp.PrecioOtro.Value * (1 + pp.IvaPct / 100m), 2);
+            return null;
+        }
 
         for (int k = 0; k < items.Count; k++)
         {
             var it = items[k];
             decimal? precioBase = null;
-            if (it.CafeProductoId.HasValue && prodsPrecio.TryGetValue(it.CafeProductoId.Value, out var p))
+            if (it.CafeProductoId.HasValue)
             {
-                if (p.PrecioOtro.HasValue && p.PrecioOtro.Value > 0)
-                    precioBase = Math.Round(p.PrecioOtro.Value * (1 + p.IvaPct / 100m), 2);
+                precioBase = PrecioCIvaProducto(it.CafeProductoId.Value);
             }
             else if (componentesByItemId.TryGetValue(it.MeliItemId, out var comps))
             {
@@ -205,16 +229,15 @@ public class MeliItemService
                 }).ToList();
                 if (compsForItem.Count == 0) compsForItem = comps;
                 decimal sum = 0m;
-                decimal ivaPct = 21m;
                 bool hasData = false;
                 foreach (var c in compsForItem)
                 {
-                    if (!prodsPrecio.TryGetValue(c.CafeProductoId, out var pc)) continue;
-                    if (!pc.PrecioOtro.HasValue || pc.PrecioOtro.Value <= 0) continue;
-                    sum += pc.PrecioOtro.Value * c.Cantidad;
-                    if (!hasData) { ivaPct = pc.IvaPct; hasData = true; }
+                    var pCIva = PrecioCIvaProducto(c.CafeProductoId);
+                    if (pCIva == null) continue;
+                    sum += pCIva.Value * c.Cantidad;
+                    hasData = true;
                 }
-                if (hasData) precioBase = Math.Round(sum * (1 + ivaPct / 100m), 2);
+                if (hasData) precioBase = Math.Round(sum, 2);
             }
             if (precioBase.HasValue) items[k] = it with { PrecioOtroConIvaCalc = precioBase };
         }

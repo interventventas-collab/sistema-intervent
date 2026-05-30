@@ -169,6 +169,15 @@ public class CafeProducto
     /// (SyncPrecio=true) que necesitan re-push.</summary>
     public DateTime? PriceChangedAt { get; set; }
 
+    /// <summary>2026-05-30 — Multiplicador del OEM cuando el producto referencia un OEM.
+    /// Lógica: si OemId != null y OemNav.PvpConIva != null, el precio del producto =
+    /// OEM.PvpConIva × MultiplicadorOem (default 1). Si es null o 0, se asume 1.
+    /// Ejemplo: OEM 9172 ($38.528) con multiplicador 1 → producto $38.528.
+    /// Ejemplo: pack de 2 → multiplicador 2 → producto $77.056.
+    /// Si el producto NO tiene OEM, se ignora este campo y se usa PrecioOtro como antes.</summary>
+    [Column(TypeName = "decimal(10,4)")]
+    public decimal? MultiplicadorOem { get; set; }
+
     /// <summary>Packs prearmados (formatos extra "Pack x N") que aparecen en el dropdown
     /// de Formato en el modal de venta. Solo aplica a categoria OTROS.</summary>
     public ICollection<CafeProductoPack> Packs { get; set; } = new List<CafeProductoPack>();
