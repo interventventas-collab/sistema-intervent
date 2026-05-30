@@ -2658,6 +2658,20 @@ public class ApiClient
         return null;
     }
 
+    public record PushStockMeliItemResultDto(bool Success, string Message, int OkCount, int Skipped, int Errores);
+
+    /// <summary>2026-05-29: push de stock para UNA publicación MeLi (legacy o componentes).
+    /// Reemplaza el botón 📦 que antes usaba push-from-product (no soportaba componentes).</summary>
+    public async Task<PushStockMeliItemResultDto?> PushStockMeliItemAsync(int itemId)
+    {
+        await SetAuthHeaderAsync();
+        var response = await _http.PostAsync($"/api/meli/items/{itemId}/push-stock-meliitem", null);
+        if (response.IsSuccessStatusCode)
+            return await response.Content.ReadFromJsonAsync<PushStockMeliItemResultDto>();
+        await ThrowIfErrorAsync(response);
+        return null;
+    }
+
     public async Task<BulkCreateProductResult?> CreateProductFromItemAsync(int itemId)
     {
         await SetAuthHeaderAsync();

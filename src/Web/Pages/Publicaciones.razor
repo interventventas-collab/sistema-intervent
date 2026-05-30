@@ -4005,9 +4005,36 @@
     // === Push a MeLi ===
 
     /// <summary>2026-05-29: push rápido SOLO stock (sin modal, directo).</summary>
+    /// <summary>2026-05-29: push de stock usando el endpoint nuevo push-stock-meliitem
+    /// que pasa por MeliStockPushService. Maneja componentes y legacy, sin requerir
+    /// CafeProductoId/ProductId/ComboId directos.</summary>
     private async Task QuickPushStock(MeliItemDto item)
     {
-        await DoQuickPush(item, pushPrice: false, pushStock: true, what: "stock");
+        if (item.ProductId is null && item.ComboId is null && item.CafeProductoId is null && item.ComponentMappingsCount == 0)
+        {
+            ToastService.Error("Esta publicación no tiene producto vinculado.");
+            return;
+        }
+        try
+        {
+            var result = await Api.PushStockMeliItemAsync(item.Id);
+            if (result is not null && result.Success)
+            {
+                ToastService.Success(result.Message);
+            }
+            else if (result is not null && result.Skipped > 0)
+            {
+                ToastService.Info(result.Message);
+            }
+            else
+            {
+                ToastService.Error(result?.Message ?? "Error al pushear stock");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error pusheando stock: " + ex.Message);
+        }
     }
 
     /// <summary>2026-05-29: push de precio usando el endpoint nuevo push-precio-ajustado.

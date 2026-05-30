@@ -1576,6 +1576,30 @@ public class MeliController : ControllerBase
 
     public record PushPrecioAjustadoResult(bool Success, string Message, decimal? PushedPrice, decimal? PrecioBaseSistema);
 
+    /// <summary>2026-05-29: push de stock para UNA publicación MeLi via MeliStockPushService.
+    /// Maneja TANTO linkeo legacy CafeProductoId COMO componentes MeliItemComponentes.
+    /// Reemplaza el botón 📦 de /publicaciones para que funcione en publis sin linkeo legacy.</summary>
+    [HttpPost("items/{id}/push-stock-meliitem")]
+    public async Task<IActionResult> PushStockMeliItem(int id,
+        [FromServices] Api.Data.AppDbContext db,
+        [FromServices] MeliStockPushService pushSvc)
+    {
+        var item = await db.MeliItems.FindAsync(id);
+        if (item is null) return NotFound(new { error = "Item no encontrado" });
+
+        var result = await pushSvc.PushStockForMeliItemsAsync(new List<string> { item.MeliItemId }, HttpContext.RequestAborted);
+        var msg = result.Mensajes.Count > 0 ? string.Join(" · ", result.Mensajes) : "";
+        bool ok = result.Ok > 0;
+        return Ok(new
+        {
+            success = ok,
+            message = ok ? $"✓ Stock pusheado a MeLi. {msg}" : (msg.Length > 0 ? msg : "Nada para pushear"),
+            okCount = result.Ok,
+            skipped = result.Skipped,
+            errores = result.Errores
+        });
+    }
+
     /// <summary>2026-05-29: pushea precio a MeLi calculado desde PrecioOtroConIva del sistema +
     /// ajuste (Pct/Fijo/Redondeo) guardado en MeliItem_SyncConfig. Funciona para CUALQUIER
     /// publicación (legacy CafeProductoId o componentes via MeliItemComponentes), sin requerir
