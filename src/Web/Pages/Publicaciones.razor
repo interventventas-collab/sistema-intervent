@@ -369,12 +369,14 @@
                                                 <span style="margin-left:0.3rem;">@(item.FamilyId ?? item.MeliItemId)</span>
                                                 <CopyButton Text="@(item.FamilyId ?? item.MeliItemId)" />
                                                 @StockPushChip(item)
+                                                @PrecioSyncChip(item)
                                             }
                                             else
                                             {
                                                 @item.MeliItemId
                                                 <CopyButton Text="@item.MeliItemId" />
                                                 @StockPushChip(item)
+                                                @PrecioSyncChip(item)
                                             }
                                             @if (grp.HasMultiple)
                                             {
@@ -594,7 +596,7 @@
                                             {
                                                 <span title="@item.MeliItemId">@Truncate(item.Title, 50)</span>
                                             }
-                                            <div class="item-id">@item.MeliItemId @StockPushChip(item)</div>
+                                            <div class="item-id">@item.MeliItemId @StockPushChip(item) @PrecioSyncChip(item)</div>
                                         </td>
                                         <td>@SkuConPrecioSistema(item)</td>
                                         <td>
@@ -712,7 +714,7 @@
                                                 {
                                                     <span title="@item.MeliItemId">@Truncate(item.Title, 50)</span>
                                                 }
-                                                <div class="item-id">@item.MeliItemId @StockPushChip(item)</div>
+                                                <div class="item-id">@item.MeliItemId @StockPushChip(item) @PrecioSyncChip(item)</div>
                                             </td>
                                             <td>@SkuConPrecioSistema(item)</td>
                                             <td>
@@ -774,7 +776,7 @@
                                             {
                                                 <span title="@item.MeliItemId">@Truncate(item.Title, 50)</span>
                                             }
-                                            <div class="item-id">@item.MeliItemId @StockPushChip(item)</div>
+                                            <div class="item-id">@item.MeliItemId @StockPushChip(item) @PrecioSyncChip(item)</div>
                                         </td>
                                         <td>@SkuConPrecioSistema(item)</td>
                                         <td>
@@ -2560,6 +2562,31 @@
                 label = $"hace {ageStr}";
                 tooltip = $"Stock pusheado a MeLi hace {ageStr} ({localDate:yyyy-MM-dd HH:mm}).";
             }
+        }
+        var html = $"<span title=\"{tooltip}\" style=\"display:inline-block;background:{bg};color:{color};padding:0.05rem 0.4rem;border-radius:4px;font-size:0.65rem;font-weight:600;margin-left:0.3rem;\">{emoji} {label}</span>";
+        return new MarkupString(html);
+    }
+
+    /// <summary>2026-05-30 — Chip que indica si esta publicación tiene PUSH DE PRECIO automático activo.
+    /// "🔄 Sync" verde si está claimed (SyncPrecio=true): cualquier cambio de precio del sistema se
+    /// propaga automáticamente. "✋ Manual" gris si nunca se pusheó: hay que hacerlo a mano.</summary>
+    private MarkupString PrecioSyncChip(MeliItemDto item)
+    {
+        bool tieneLink = item.CafeProductoId.HasValue || item.ComponentMappingsCount > 0;
+        if (!tieneLink) return new MarkupString("");
+
+        string emoji, color, bg, tooltip, label;
+        if (item.SyncPrecio)
+        {
+            emoji = "🔄"; color = "#166534"; bg = "#dcfce7";
+            label = "Sync";
+            tooltip = "Push de precio AUTOMÁTICO activo. Cuando cambies el precio del sistema, se propaga solo a MeLi (con el ajuste configurado).";
+        }
+        else
+        {
+            emoji = "✋"; color = "#6b7280"; bg = "#f3f4f6";
+            label = "Manual";
+            tooltip = "Push de precio MANUAL. Cambios en el sistema NO se propagan a MeLi hasta que apretés el botón 💵. El primer push manual la activa en modo Sync.";
         }
         var html = $"<span title=\"{tooltip}\" style=\"display:inline-block;background:{bg};color:{color};padding:0.05rem 0.4rem;border-radius:4px;font-size:0.65rem;font-weight:600;margin-left:0.3rem;\">{emoji} {label}</span>";
         return new MarkupString(html);

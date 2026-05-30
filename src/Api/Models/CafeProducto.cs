@@ -163,6 +163,12 @@ public class CafeProducto
     /// El job de respaldo lo compara contra LastPushedToMeli para decidir si push.</summary>
     public DateTime? StockChangedAt { get; set; }
 
+    /// <summary>2026-05-30 — Marca la ultima vez que se modifico el precio (PrecioOtro o IvaPct).
+    /// Lo setea CafeProductosController al guardar cambios. El servicio MeliPriceAutoPushService
+    /// (event-driven + background de respaldo) lo usa para detectar publicaciones MeLi "claimed"
+    /// (SyncPrecio=true) que necesitan re-push.</summary>
+    public DateTime? PriceChangedAt { get; set; }
+
     /// <summary>Packs prearmados (formatos extra "Pack x N") que aparecen en el dropdown
     /// de Formato en el modal de venta. Solo aplica a categoria OTROS.</summary>
     public ICollection<CafeProductoPack> Packs { get; set; } = new List<CafeProductoPack>();

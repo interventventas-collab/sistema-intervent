@@ -121,12 +121,15 @@ builder.Services.AddScoped<CloneContabiliumService>();
 builder.Services.AddScoped<MeliStockSyncService>();
 builder.Services.AddScoped<MeliCafePricePushService>();
 builder.Services.AddScoped<MeliStockPushService>();
+// 2026-05-30: push event-driven de PRECIO (paralelo al de stock).
+builder.Services.AddScoped<MeliPricePushService>();
 builder.Services.AddScoped<MeliFullStockSyncService>();
 builder.Services.AddHostedService<MeliAutoSyncBackgroundService>();
 // 2026-05-29: regla "Full desenlazado". El sistema NO importa stock desde Full.
 // Full se administra 100% desde MeLi. Cuando se enlace en el futuro, reactivar.
 // builder.Services.AddHostedService<MeliFullStockSyncBackgroundService>();
 builder.Services.AddHostedService<MeliStockPushBackgroundService>();
+builder.Services.AddHostedService<MeliPricePushBackgroundService>();
 builder.Services.AddHostedService<ContabiliumNightlySnapshotService>();
 builder.Services.AddScoped<QrRepartidorService>();
 builder.Services.AddScoped<CafeReciboCobranzaPdfService>();

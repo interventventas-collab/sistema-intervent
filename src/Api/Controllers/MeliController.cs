@@ -1736,10 +1736,28 @@ public class MeliController : ControllerBase
             return BadRequest(new { error = $"MeLi rechazó el cambio ({(int)resp.StatusCode}): {err}" });
         }
 
-        // 4. Actualizar cache local.
+        // 4. Actualizar cache local. 2026-05-30: marcar SyncPrecio=true ("claimed") — desde
+        // este momento, cualquier cambio futuro de precio del sistema se va a propagar
+        // automáticamente a esta publicación (vía MeliPricePushService).
         item.Price = precioFinal;
         item.UpdatedAt = DateTime.UtcNow;
-        if (cfg is not null) { cfg.LastSyncAt = DateTime.UtcNow; cfg.UpdatedAt = DateTime.UtcNow; }
+        if (cfg is null)
+        {
+            cfg = new Api.Models.MeliItemSyncConfig
+            {
+                MeliItemId = item.MeliItemId,
+                SyncPrecio = true,
+                LastSyncAt = DateTime.UtcNow,
+                CreatedAt = DateTime.UtcNow
+            };
+            db.MeliItemSyncConfigs.Add(cfg);
+        }
+        else
+        {
+            cfg.SyncPrecio = true; // primer push manual = claimed
+            cfg.LastSyncAt = DateTime.UtcNow;
+            cfg.UpdatedAt = DateTime.UtcNow;
+        }
         await db.SaveChangesAsync();
 
         return Ok(new PushPrecioAjustadoResult(true,
