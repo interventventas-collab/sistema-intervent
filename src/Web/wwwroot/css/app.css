@@ -3020,47 +3020,59 @@ textarea.form-input {
 .push-meli-btn.push-precio { background: #fef3c7; border-color: #f59e0b; }
 .push-meli-btn.push-precio:hover { background: #fde68a; border-color: #d97706; }
 
-/* ───── Columna AJUSTE — diseño Contabilium-style (pill segmentado) ───── */
-.td-ajuste { padding: 0.3rem 0.4rem; vertical-align: middle; }
-.th-ajuste .th-label { font-size: 0.78rem; color: #4b5563; font-weight: 600; }
+/* ───── Columna AJUSTE — diseño Contabilium-style (pill segmentado compacto) ───── */
+.td-ajuste { padding: 0.25rem 0.35rem; vertical-align: middle; }
+.th-ajuste .th-label { font-size: 0.75rem; color: #4b5563; font-weight: 600; }
 
 .ajuste-pill {
     display: inline-flex;
     align-items: stretch;
+    flex-wrap: nowrap;
     background: white;
     border: 1px solid #d1d5db;
-    border-radius: 6px;
+    border-radius: 5px;
     overflow: hidden;
     box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-    height: 28px;
-    transition: border-color 0.15s, box-shadow 0.15s;
+    height: 24px;
+    transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+    white-space: nowrap;
 }
 .ajuste-pill:focus-within {
     border-color: #6366f1;
     box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.18);
+}
+/* Pill RESALTADO cuando hay ajuste cargado */
+.ajuste-pill.has-ajuste {
+    border-color: #f59e0b;
+    background: #fffbeb;
+    box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.25);
+}
+.ajuste-pill.has-ajuste .ajuste-prefix {
+    background: #fef3c7;
+    color: #92400e;
 }
 
 .ajuste-prefix {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 0 0.35rem;
-    font-size: 0.78rem;
+    padding: 0 0.25rem;
+    font-size: 0.72rem;
     font-weight: 700;
     color: #6b7280;
     background: #f9fafb;
     user-select: none;
-    min-width: 18px;
+    min-width: 14px;
 }
 
 .ajuste-input {
-    width: 52px;
-    padding: 0 0.3rem;
-    font-size: 0.82rem;
+    width: 36px;
+    padding: 0 0.2rem;
+    font-size: 0.74rem;
     border: none;
     outline: none;
     text-align: right;
-    background: white;
+    background: transparent;
     color: #111827;
     -moz-appearance: textfield;
 }
@@ -3070,7 +3082,7 @@ textarea.form-input {
     margin: 0;
 }
 .ajuste-input::placeholder { color: #d1d5db; }
-.ajuste-input:focus { background: #fafbff; }
+.ajuste-input:focus { background: rgba(99, 102, 241, 0.06); }
 
 .ajuste-sep {
     width: 1px;
@@ -3079,28 +3091,55 @@ textarea.form-input {
 }
 
 .ajuste-redondeo {
-    padding: 0 0.2rem 0 0.35rem;
-    font-size: 0.78rem;
+    padding: 0 0.15rem 0 0.25rem;
+    font-size: 0.72rem;
     border: none;
     outline: none;
-    background: white;
+    background: transparent;
     color: #111827;
     cursor: pointer;
-    min-width: 52px;
+    min-width: 42px;
 }
-.ajuste-redondeo:focus { background: #fafbff; }
+.ajuste-redondeo:focus { background: rgba(99, 102, 241, 0.06); }
 
 .ajuste-preview-box {
     display: inline-block;
-    margin-top: 0.25rem;
-    font-size: 0.78rem;
+    margin-top: 0.2rem;
+    font-size: 0.72rem;
     font-weight: 700;
     color: #15803d;
     background: #dcfce7;
     border: 1px solid #86efac;
-    padding: 0.12rem 0.45rem;
+    padding: 0.08rem 0.35rem;
     border-radius: 4px;
     white-space: nowrap;
+}
+
+/* Chip "ajuste 💵" al lado del precio cuando hay ajuste cargado */
+.ajuste-chip-precio {
+    display: inline-block;
+    margin-top: 0.2rem;
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: #92400e;
+    background: #fef3c7;
+    border: 1px solid #fbbf24;
+    padding: 0.05rem 0.3rem;
+    border-radius: 3px;
+    white-space: nowrap;
+}
+
+/* Botón 💵 destacado cuando la fila tiene ajuste cargado */
+.push-meli-btn.push-precio.has-ajuste {
+    background: #fb923c;
+    border-color: #c2410c;
+    color: white;
+    font-weight: 700;
+    box-shadow: 0 0 0 2px rgba(251, 146, 60, 0.25);
+}
+.push-meli-btn.push-precio.has-ajuste:hover {
+    background: #ea580c;
+    border-color: #9a3412;
 }
 
 /* Link Product Modal */
