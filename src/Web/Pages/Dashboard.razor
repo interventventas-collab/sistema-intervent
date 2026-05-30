@@ -14,6 +14,11 @@
     <p class="view-subtitle">Panel de control</p>
 </div>
 
+@* 2026-05-30: para usuarios SOLO depósito (sin cafe ni oficina), ocultar todos los
+   widgets del dashboard — ellos operan solo desde el sidebar (Imprimir pedidos,
+   Productos, Stock). El resto sigue viendo el dashboard normal. *@
+@if (!isDepositoOnly)
+{
 @* Fila superior: HOLA + dolar + reloj AR/ES combinado + postits (responsive) *@
 <div class="dashboard-top-grid">
     <div class="dashboard-detail-card" style="padding: 1rem; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.5rem;">
@@ -535,9 +540,15 @@
         }
     </div>
 </div>
+} @* fin @if (!isDepositoOnly) *@
 
 @code {
     private string username = "usuario";
+    // 2026-05-30: hide widgets dashboard para usuarios SOLO depósito.
+    private List<string> userPermissions = new();
+    private bool isDepositoOnly => userPermissions.Contains("deposito")
+        && !userPermissions.Contains("cafe")
+        && !userPermissions.Contains("oficina");
     private string totalItems = "--";
     private string totalProducts = "--";
     private string itemsSinProducto = "--";
@@ -580,6 +591,8 @@
         if (user is not null)
         {
             username = user.Username;
+            // 2026-05-30: cargar permisos para ocultar widgets a usuarios solo depósito.
+            userPermissions = user.Permissions ?? new();
         }
 
         // Re-renderizar cuando el usuario cambia de empresa desde el topbar
