@@ -404,6 +404,11 @@ public class CafePreparacionVentaDto
     public string? ClienteLocalidad { get; set; }
     public string? ClienteCiudad { get; set; }
     public string? ClienteTipo { get; set; }
+    // 2026-05-30: info extra del comprobante para el armador del depósito.
+    public string? ClienteTelefono { get; set; }
+    public string? DomicilioEntrega { get; set; }
+    public string? Observaciones { get; set; }
+    public string? ComentariosCliente { get; set; }
     public string? WeekDays { get; set; }
     public string? EntregaPor { get; set; }
     public string EstadoPreparacion { get; set; } = "";
@@ -428,6 +433,8 @@ public class CafePreparacionItemDto
 {
     public int Id { get; set; }
     public string ProductoNombre { get; set; } = "";
+    // 2026-05-30: SKU del producto (si está linkeado al catálogo) — pedido del depósito.
+    public string? Sku { get; set; }
     public string Formato { get; set; } = "";
     public int Cantidad { get; set; }
     public string? Molienda { get; set; }
