@@ -405,6 +405,7 @@
                                         {
                                             <span>@item.CurrencyId @item.Price.ToString("N2")</span>
                                         }
+                                        @AjusteChipPrecio(item)
                                     </td>
                                     <td style="text-align: center; font-weight: 700;">
                                         @{ var stockShow = grp.HasMultiple ? grp.TotalStock : item.AvailableQuantity; }
@@ -426,7 +427,7 @@
                                     <td>@item.AccountNickname</td>
                                     <td class="td-ajuste" @onclick:stopPropagation="true">
                                         @{ var aj1 = GetAjuste(item); var prev1 = PreviewPrecioAjustado(item); }
-                                        <div class="ajuste-pill">
+                                        <div class="ajuste-pill @(HasAjuste(item) ? "has-ajuste" : "")">
                                             <span class="ajuste-prefix">%</span>
                                             <input type="number" step="any" class="ajuste-input"
                                                    value="@(aj1.DeltaPct?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")"
@@ -459,7 +460,7 @@
                                                 <button class="product-badge-unlink" @onclick="() => UnlinkProduct(item)" title="Desvincular">&times;</button>
                                             </span>
                                             <button class="push-meli-btn push-stock" @onclick="() => QuickPushStock(item)" title="Pushear SOLO stock a MeLi (usa el del sistema)">📦</button>
-                                            <button class="push-meli-btn push-precio" @onclick="() => QuickPushPrecio(item)" title="Pushear SOLO precio a MeLi (usa el del sistema)">💵</button>
+                                            <button class="push-meli-btn push-precio @(HasAjuste(item) ? "has-ajuste" : "")" @onclick="() => QuickPushPrecio(item)" title="@(HasAjuste(item) ? "Pushear precio con AJUSTE aplicado" : "Pushear SOLO precio a MeLi (usa el del sistema)")">💵</button>
                                         }
                                         else if (item.ComboId.HasValue)
                                         {
@@ -468,7 +469,7 @@
                                                 <button class="product-badge-unlink" @onclick="() => UnlinkProduct(item)" title="Desvincular">&times;</button>
                                             </span>
                                             <button class="push-meli-btn push-stock" @onclick="() => QuickPushStock(item)" title="Pushear SOLO stock a MeLi (usa el del sistema)">📦</button>
-                                            <button class="push-meli-btn push-precio" @onclick="() => QuickPushPrecio(item)" title="Pushear SOLO precio a MeLi (usa el del sistema)">💵</button>
+                                            <button class="push-meli-btn push-precio @(HasAjuste(item) ? "has-ajuste" : "")" @onclick="() => QuickPushPrecio(item)" title="@(HasAjuste(item) ? "Pushear precio con AJUSTE aplicado" : "Pushear SOLO precio a MeLi (usa el del sistema)")">💵</button>
                                         }
                                         else if (item.CafeProductoId.HasValue)
                                         {
@@ -477,7 +478,7 @@
                                                 <span style="opacity:0.7; margin-left:0.2rem;">@item.CafeFormato</span>
                                             </span>
                                             <button class="push-meli-btn push-stock" @onclick="() => QuickPushStock(item)" title="Pushear SOLO stock a MeLi (usa el del sistema)">📦</button>
-                                            <button class="push-meli-btn push-precio" @onclick="() => QuickPushPrecio(item)" title="Pushear SOLO precio a MeLi (usa el del sistema)">💵</button>
+                                            <button class="push-meli-btn push-precio @(HasAjuste(item) ? "has-ajuste" : "")" @onclick="() => QuickPushPrecio(item)" title="@(HasAjuste(item) ? "Pushear precio con AJUSTE aplicado" : "Pushear SOLO precio a MeLi (usa el del sistema)")">💵</button>
                                         }
                                         else if (item.ComponentMappingsCount > 0)
                                         {
@@ -486,7 +487,7 @@
                                                 ✅ Linkeado (@item.ComponentMappingsCount)
                                             </span>
                                             <button class="push-meli-btn push-stock" @onclick="() => QuickPushStock(item)" title="Pushear SOLO stock a MeLi (usa el del sistema)">📦</button>
-                                            <button class="push-meli-btn push-precio" @onclick="() => QuickPushPrecio(item)" title="Pushear SOLO precio a MeLi (usa el del sistema)">💵</button>
+                                            <button class="push-meli-btn push-precio @(HasAjuste(item) ? "has-ajuste" : "")" @onclick="() => QuickPushPrecio(item)" title="@(HasAjuste(item) ? "Pushear precio con AJUSTE aplicado" : "Pushear SOLO precio a MeLi (usa el del sistema)")">💵</button>
                                         }
                                         else
                                         {
@@ -607,6 +608,7 @@
                                         {
                                             <span>@item.CurrencyId @item.Price.ToString("N2")</span>
                                         }
+                                        @AjusteChipPrecio(item)
                                     </td>
                                         <td style="text-align: center; font-weight: 700;">
                                         @if (item.ProductCriticalStock.HasValue && item.ProductCriticalStock.Value > 0 && item.AvailableQuantity <= item.ProductCriticalStock.Value)
@@ -627,7 +629,7 @@
                                         <td>@item.AccountNickname</td>
                                         <td class="td-ajuste" @onclick:stopPropagation="true">
                                             @{ var aj2 = GetAjuste(item); var prev2 = PreviewPrecioAjustado(item); }
-                                            <div class="ajuste-pill">
+                                            <div class="ajuste-pill @(HasAjuste(item) ? "has-ajuste" : "")">
                                                 <span class="ajuste-prefix">%</span>
                                                 <input type="number" step="any" class="ajuste-input"
                                                        value="@(aj2.DeltaPct?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")"
@@ -660,7 +662,7 @@
                                                     <button class="product-badge-unlink" @onclick="() => UnlinkProduct(item)" title="Desvincular">&times;</button>
                                                 </span>
                                                 <button class="push-meli-btn push-stock" @onclick="() => QuickPushStock(item)" title="Pushear SOLO stock a MeLi (usa el del sistema)">📦</button>
-                                            <button class="push-meli-btn push-precio" @onclick="() => QuickPushPrecio(item)" title="Pushear SOLO precio a MeLi (usa el del sistema)">💵</button>
+                                            <button class="push-meli-btn push-precio @(HasAjuste(item) ? "has-ajuste" : "")" @onclick="() => QuickPushPrecio(item)" title="@(HasAjuste(item) ? "Pushear precio con AJUSTE aplicado" : "Pushear SOLO precio a MeLi (usa el del sistema)")">💵</button>
                                             }
                                             else
                                             {
@@ -724,6 +726,7 @@
                                         {
                                             <span>@item.CurrencyId @item.Price.ToString("N2")</span>
                                         }
+                                        @AjusteChipPrecio(item)
                                     </td>
                                             <td style="text-align: center; font-weight: 700;">
                                         @if (item.ProductCriticalStock.HasValue && item.ProductCriticalStock.Value > 0 && item.AvailableQuantity <= item.ProductCriticalStock.Value)
@@ -785,6 +788,7 @@
                                         {
                                             <span>@item.CurrencyId @item.Price.ToString("N2")</span>
                                         }
+                                        @AjusteChipPrecio(item)
                                     </td>
                                         <td style="text-align: center; font-weight: 700;">
                                         @if (item.ProductCriticalStock.HasValue && item.ProductCriticalStock.Value > 0 && item.AvailableQuantity <= item.ProductCriticalStock.Value)
@@ -4086,6 +4090,32 @@
         var p = CalcularPrecioConAjuste(item);
         return p.HasValue ? p.Value.ToString("N0") : "";
     }
+
+    /// <summary>True si la fila tiene algún ajuste cargado (% o $ o redondeo).
+    /// Usado para clases CSS condicionales (pill resaltado + chip + botón 💵 destacado).</summary>
+    private bool HasAjuste(MeliItemDto item)
+    {
+        var aj = GetAjuste(item);
+        return (aj.DeltaPct.HasValue && aj.DeltaPct.Value != 0)
+            || (aj.DeltaPesos.HasValue && aj.DeltaPesos.Value != 0)
+            || !string.IsNullOrEmpty(aj.Redondeo);
+    }
+
+    /// <summary>Chip visual mostrado al lado del precio cuando la fila tiene ajuste cargado.
+    /// Permite identificar a simple vista qué filas van a pushear con override.</summary>
+    private RenderFragment AjusteChipPrecio(MeliItemDto item) => __builder =>
+    {
+        if (!HasAjuste(item)) return;
+        var prev = PreviewPrecioAjustado(item);
+        var titulo = string.IsNullOrEmpty(prev)
+            ? "Esta publicación tiene ajuste de precio cargado"
+            : $"Ajuste cargado · al pushear 💵 va a $ {prev}";
+        __builder.OpenElement(0, "div");
+        __builder.AddAttribute(1, "class", "ajuste-chip-precio");
+        __builder.AddAttribute(2, "title", titulo);
+        __builder.AddContent(3, "💵 con ajuste");
+        __builder.CloseElement();
+    };
 
     /// <summary>Handler para los inputs % y $ (acepta vacío, coma o punto decimal).</summary>
     private void OnAjustePctChange(MeliItemDto item, string? value)
