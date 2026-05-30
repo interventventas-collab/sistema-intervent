@@ -393,7 +393,7 @@
                                             }
                                         </div>
                                     </td>
-                                    <td>@(item.Sku ?? "-")</td>
+                                    <td>@SkuConPrecioSistema(item)</td>
                                     <td>
                                         @if (item.OriginalPrice.HasValue && item.OriginalPrice.Value > 0 && item.OriginalPrice.Value != item.Price)
                                         {
@@ -523,7 +523,7 @@
                                                     <div class="item-id" style="font-size:0.7rem;">var. @v.VariationId <CopyButton Text="@(v.VariationId ?? "")" /></div>
                                                 }
                                             </td>
-                                            <td>@(v.Sku ?? "-")</td>
+                                            <td>@SkuConPrecioSistema(v)</td>
                                             <td>@v.CurrencyId @v.Price.ToString("N2")</td>
                                             <td style="text-align:center;">@v.AvailableQuantity</td>
                                             <td><span class="status-badge @GetStatusClass(v.Status)" style="font-size:0.7rem;">@GetStatusLabel(v.Status)</span></td>
@@ -596,7 +596,7 @@
                                             }
                                             <div class="item-id">@item.MeliItemId @StockPushChip(item)</div>
                                         </td>
-                                        <td>@(item.Sku ?? "-")</td>
+                                        <td>@SkuConPrecioSistema(item)</td>
                                         <td>
                                         @if (item.OriginalPrice.HasValue && item.OriginalPrice.Value > 0 && item.OriginalPrice.Value != item.Price)
                                         {
@@ -714,7 +714,7 @@
                                                 }
                                                 <div class="item-id">@item.MeliItemId @StockPushChip(item)</div>
                                             </td>
-                                            <td>@(item.Sku ?? "-")</td>
+                                            <td>@SkuConPrecioSistema(item)</td>
                                             <td>
                                         @if (item.OriginalPrice.HasValue && item.OriginalPrice.Value > 0 && item.OriginalPrice.Value != item.Price)
                                         {
@@ -776,7 +776,7 @@
                                             }
                                             <div class="item-id">@item.MeliItemId @StockPushChip(item)</div>
                                         </td>
-                                        <td>@(item.Sku ?? "-")</td>
+                                        <td>@SkuConPrecioSistema(item)</td>
                                         <td>
                                         @if (item.OriginalPrice.HasValue && item.OriginalPrice.Value > 0 && item.OriginalPrice.Value != item.Price)
                                         {
@@ -4215,6 +4215,25 @@
         __builder.AddAttribute(2, "title", titulo);
         __builder.AddContent(3, "💵 con ajuste");
         __builder.CloseElement();
+    };
+
+    /// <summary>2026-05-30 — Renderiza el SKU + el precio del sistema (PrecioOtroConIvaCalc)
+    /// abajo en gris chiquito. Si no hay precio (publicación sin linkeo o sin componentes
+    /// que aporten precio), muestra solo el SKU como antes.</summary>
+    private RenderFragment SkuConPrecioSistema(MeliItemDto item) => __builder =>
+    {
+        __builder.OpenElement(0, "div");
+        __builder.AddContent(1, item.Sku ?? "-");
+        __builder.CloseElement();
+        if (item.PrecioOtroConIvaCalc.HasValue && item.PrecioOtroConIvaCalc.Value > 0)
+        {
+            var fmt = item.PrecioOtroConIvaCalc.Value.ToString("N0", new System.Globalization.CultureInfo("es-AR"));
+            __builder.OpenElement(2, "div");
+            __builder.AddAttribute(3, "style", "font-size:0.7rem; color:#6b7280; font-weight:600; margin-top:2px;");
+            __builder.AddAttribute(4, "title", "Precio del sistema (PrecioOtro c/IVA del producto linkeado o suma de componentes)");
+            __builder.AddContent(5, $"$ {fmt}");
+            __builder.CloseElement();
+        }
     };
 
     /// <summary>Handler para el input % (acepta vacío, coma o punto decimal). Persiste en DB.</summary>
