@@ -440,7 +440,7 @@
                                                    @onchange="(e) => OnAjustePesosChange(item, e.Value?.ToString())"
                                                    placeholder="0" title="Pesos adicionales (315 = +$315)" />
                                             <span class="ajuste-sep"></span>
-                                            <select class="ajuste-redondeo" @bind="aj1.Redondeo" title="Redondear hacia arriba">
+                                            <select class="ajuste-redondeo" value="@aj1.Redondeo" @onchange="(e) => OnAjusteRedondeoChange(item, e)" title="Redondear hacia arriba">
                                                 <option value="">—</option>
                                                 <option value="99">99</option>
                                                 <option value="999">999</option>
@@ -642,7 +642,7 @@
                                                        @onchange="(e) => OnAjustePesosChange(item, e.Value?.ToString())"
                                                        placeholder="0" title="Pesos adicionales" />
                                                 <span class="ajuste-sep"></span>
-                                                <select class="ajuste-redondeo" @bind="aj2.Redondeo" title="Redondear hacia arriba">
+                                                <select class="ajuste-redondeo" value="@aj2.Redondeo" @onchange="(e) => OnAjusteRedondeoChange(item, e)" title="Redondear hacia arriba">
                                                     <option value="">—</option>
                                                     <option value="99">99</option>
                                                     <option value="999">999</option>
@@ -2596,6 +2596,15 @@
         ["estado"] = new HashSet<string> { "Activa" }
     };
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Cargar ajustes de precio guardados en localStorage (persisten entre sesiones del browser).
+            await LoadAjustesFromStorage();
+        }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         SyncProgress.OnChange += OnSyncProgressChanged;
@@ -4029,6 +4038,8 @@
     }
 
     private Dictionary<int, AjustePrecio> ajustesPrecio = new();
+    private const string AJUSTES_STORAGE_KEY = "publicaciones-ajustes-precio";
+    private bool ajustesLoadedFromStorage = false;
 
     private AjustePrecio GetAjuste(MeliItemDto item)
     {
@@ -4038,6 +4049,40 @@
             ajustesPrecio[item.Id] = a;
         }
         return a;
+    }
+
+    /// <summary>Carga los ajustes de precio desde localStorage del navegador. Persistencia entre sesiones.</summary>
+    private async Task LoadAjustesFromStorage()
+    {
+        if (ajustesLoadedFromStorage) return;
+        try
+        {
+            var json = await JS.InvokeAsync<string?>("localStorage.getItem", AJUSTES_STORAGE_KEY);
+            if (!string.IsNullOrEmpty(json))
+            {
+                var parsed = System.Text.Json.JsonSerializer.Deserialize<Dictionary<int, AjustePrecio>>(json);
+                if (parsed is not null) ajustesPrecio = parsed;
+            }
+        }
+        catch { /* si falla, arranca vacío */ }
+        ajustesLoadedFromStorage = true;
+        StateHasChanged();
+    }
+
+    /// <summary>Guarda en localStorage solo las entries con datos cargados (no infla con vacías).</summary>
+    private async Task SaveAjustesToStorage()
+    {
+        try
+        {
+            var toSave = ajustesPrecio
+                .Where(kv => (kv.Value.DeltaPct.HasValue && kv.Value.DeltaPct.Value != 0)
+                          || (kv.Value.DeltaPesos.HasValue && kv.Value.DeltaPesos.Value != 0)
+                          || !string.IsNullOrEmpty(kv.Value.Redondeo))
+                .ToDictionary(kv => kv.Key, kv => kv.Value);
+            var json = System.Text.Json.JsonSerializer.Serialize(toSave);
+            await JS.InvokeVoidAsync("localStorage.setItem", AJUSTES_STORAGE_KEY, json);
+        }
+        catch { /* si falla, sigue en memoria pero no persiste */ }
     }
 
     /// <summary>Calcula el precio final que debería ir a MeLi aplicando %, $ y redondeo.
@@ -4117,18 +4162,29 @@
         __builder.CloseElement();
     };
 
-    /// <summary>Handler para los inputs % y $ (acepta vacío, coma o punto decimal).</summary>
-    private void OnAjustePctChange(MeliItemDto item, string? value)
+    /// <summary>Handler para los inputs % y $ (acepta vacío, coma o punto decimal). Guarda en localStorage.</summary>
+    private async Task OnAjustePctChange(MeliItemDto item, string? value)
     {
         var aj = GetAjuste(item);
         aj.DeltaPct = ParseNumericOrNull(value);
+        await SaveAjustesToStorage();
         StateHasChanged();
     }
 
-    private void OnAjustePesosChange(MeliItemDto item, string? value)
+    private async Task OnAjustePesosChange(MeliItemDto item, string? value)
     {
         var aj = GetAjuste(item);
         aj.DeltaPesos = ParseNumericOrNull(value);
+        await SaveAjustesToStorage();
+        StateHasChanged();
+    }
+
+    /// <summary>Handler del select de redondeo. Reemplaza el @bind para poder persistir tras cambiar.</summary>
+    private async Task OnAjusteRedondeoChange(MeliItemDto item, ChangeEventArgs e)
+    {
+        var aj = GetAjuste(item);
+        aj.Redondeo = e.Value?.ToString() ?? "";
+        await SaveAjustesToStorage();
         StateHasChanged();
     }
 
