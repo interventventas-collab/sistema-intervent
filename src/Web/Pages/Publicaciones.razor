@@ -3034,7 +3034,14 @@
         public int DistinctMLAs => Variants.Select(v => v.MeliItemId).Distinct().Count();
         /// <summary>True si hay que mostrar el boton de expandir (mas de 1 MLA o mas de 1 variante).</summary>
         public bool HasMultiple => Variants.Count > 1;
-        public int TotalStock => Variants.Sum(v => v.AvailableQuantity);
+        /// <summary>2026-05-30 — Stock total del grupo SIN duplicar publicaciones que comparten
+        /// UserProductId. Caso típico: catálogo MeLi publica el mismo item como "normal" + "catálogo"
+        /// (2 MLAs, mismo UserProductId, mismo stock). Sumarlos daba 155 cuando real era 77.</summary>
+        public int TotalStock => Variants
+            .GroupBy(v => string.IsNullOrEmpty(v.UserProductId)
+                ? $"MLA|{v.MeliItemId}|{v.VariationId}"
+                : $"UPG|{v.UserProductId}")
+            .Sum(g => g.First().AvailableQuantity);
         public int TotalSold => Variants.Sum(v => v.SoldQuantity);
         /// <summary>Clave de agrupacion: FamilyId o MeliItemId.</summary>
         public string Key { get; set; } = "";
