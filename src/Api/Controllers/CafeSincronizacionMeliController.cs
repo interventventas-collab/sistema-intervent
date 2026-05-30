@@ -64,57 +64,142 @@ public class CafeSincronizacionMeliController : ControllerBase
     public async Task<IActionResult> ListPublicaciones([FromQuery] string? q = null,
         [FromQuery] string? categoria = null, [FromQuery] string? sortBy = "diferencia")
     {
-        // 1. MeLi items linkeados a productos
+        // 2026-05-29: ahora también incluye publicaciones linkeadas via MeliItemComponentes
+        // (combos del sistema nuevo). Para esos casos, costo/precio = sumatoria de componentes × cantidad.
+
+        // 1. MeLi items activos. Filtramos linkeo después (legacy o componentes).
         var qItems = _db.MeliItems
-            .Where(mi => mi.Status == "active" && mi.CafeProductoId != null)
+            .Where(mi => mi.Status == "active")
             .AsQueryable();
         if (!string.IsNullOrWhiteSpace(q))
         {
             var t = q.Trim();
             qItems = qItems.Where(mi => mi.Title.Contains(t) || (mi.Sku ?? "").Contains(t) || mi.MeliItemId.Contains(t));
         }
-        var items = await qItems.ToListAsync();
+        var allItems = await qItems.ToListAsync();
+        if (allItems.Count == 0) return Ok(new List<PublicacionExtendidaDto>());
+
+        // 1b. Cargar componentes para identificar combos
+        var allMeliIds = allItems.Select(mi => mi.MeliItemId).Distinct().ToList();
+        var componentesRaw = await _db.MeliItemComponentes
+            .Where(c => allMeliIds.Contains(c.MeliItemId))
+            .ToListAsync();
+        var componentesByMeliId = componentesRaw
+            .GroupBy(c => c.MeliItemId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        // 2. Filtrar: aceptar items con CafeProductoId directo O con al menos un componente.
+        var items = allItems
+            .Where(mi => mi.CafeProductoId != null || componentesByMeliId.ContainsKey(mi.MeliItemId))
+            .ToList();
         if (items.Count == 0) return Ok(new List<PublicacionExtendidaDto>());
 
-        // 2. Productos referenciados
-        var prodIds = items.Select(mi => mi.CafeProductoId!.Value).Distinct().ToList();
+        // 3. Cargar TODOS los CafeProductos referenciados (legacy + componentes).
+        var prodIds = items.Where(mi => mi.CafeProductoId != null).Select(mi => mi.CafeProductoId!.Value)
+            .Concat(componentesRaw.Select(c => c.CafeProductoId))
+            .Distinct().ToList();
         var productos = await _db.CafeProductos
             .Include(p => p.MarcaNav)
             .Where(p => prodIds.Contains(p.Id))
             .ToDictionaryAsync(p => p.Id);
+
+        // Filtro categoria: aplica si TODOS los productos del item son de esa categoria.
         if (!string.IsNullOrWhiteSpace(categoria))
         {
             var c = categoria.Trim().ToUpperInvariant();
-            items = items.Where(mi => productos.TryGetValue(mi.CafeProductoId!.Value, out var p) && p.Categoria == c).ToList();
+            items = items.Where(mi =>
+            {
+                if (mi.CafeProductoId.HasValue && productos.TryGetValue(mi.CafeProductoId.Value, out var pLeg))
+                    return pLeg.Categoria == c;
+                // Combos: aceptar si al menos uno de los componentes coincide
+                if (componentesByMeliId.TryGetValue(mi.MeliItemId, out var comps))
+                    return comps.Any(co => productos.TryGetValue(co.CafeProductoId, out var pc) && pc.Categoria == c);
+                return false;
+            }).ToList();
         }
 
-        // 3. Configs
+        // 4. Configs
         var meliIds = items.Select(mi => mi.MeliItemId).ToList();
         var configs = await _db.MeliItemSyncConfigs
             .Where(c => meliIds.Contains(c.MeliItemId))
             .ToDictionaryAsync(c => c.MeliItemId);
 
-        // 4. Comisiones cacheadas
+        // 5. Comisiones cacheadas
         var ratesAll = await _db.MeliCommissionRates.ToListAsync();
         var ratesByKey = ratesAll.ToDictionary(r => $"{r.CategoryId}|{r.ListingTypeId}");
-
-        // Default fallback: 16% + $1.250 (gold_special MLA47752 — mate/cafe/te)
         var defaultPct = 16.00m;
         var defaultFijo = 1250.00m;
 
         var result = new List<PublicacionExtendidaDto>();
         foreach (var mi in items)
         {
-            if (!productos.TryGetValue(mi.CafeProductoId!.Value, out var p)) continue;
+            // Calcular costo, precio, stock — distinto si es legacy 1:1 o combo de componentes.
+            decimal costoBase = 0m, precioBarBase = 0m, precioOtroBase = 0m;
+            decimal ivaPct = 21m;
+            int stockSistema = 0;
+            int productoIdRef = 0;
+            string productoNombre = mi.Title ?? "";
+            string? marcaNombre = null;
+            bool tieneDatos = false;
 
-            var ivaPct = p.IvaPct;
-            var precioBarConIva = p.PrecioBar.HasValue ? Math.Round(p.PrecioBar.Value * (1 + ivaPct/100m), 2) : (decimal?)null;
-            var precioOtroConIva = p.PrecioOtro.HasValue ? Math.Round(p.PrecioOtro.Value * (1 + ivaPct/100m), 2) : (decimal?)null;
-            // Margen sin comisiones MeLi = PrecioOtro - Costo (en sin IVA)
-            var margenSinComisDollar = (p.PrecioOtro ?? 0) - p.Costo;
-            var margenSinComisPct = p.Costo > 0 ? Math.Round(margenSinComisDollar / p.Costo * 100m, 0) : 0m;
+            if (mi.CafeProductoId.HasValue && productos.TryGetValue(mi.CafeProductoId.Value, out var pLegacy))
+            {
+                // CASO LEGACY: 1 producto del sistema linkeado directo a la publicación.
+                ivaPct = pLegacy.IvaPct;
+                costoBase = pLegacy.Costo;
+                precioBarBase = pLegacy.PrecioBar ?? 0;
+                precioOtroBase = pLegacy.PrecioOtro ?? 0;
+                stockSistema = pLegacy.StockUnidades;
+                productoIdRef = pLegacy.Id;
+                productoNombre = pLegacy.Nombre;
+                marcaNombre = pLegacy.MarcaNav?.Nombre;
+                tieneDatos = true;
+            }
+            else if (componentesByMeliId.TryGetValue(mi.MeliItemId, out var compsAll))
+            {
+                // CASO COMBO: sumar costos/precios de los componentes (variation_id si aplica).
+                var compsForItem = compsAll.Where(c =>
+                {
+                    // Si la publicación tiene VariationId, aceptar componentes con ese VariationId o sin (defecto).
+                    if (!string.IsNullOrEmpty(mi.VariationId))
+                        return c.MeliVariationId == mi.VariationId || string.IsNullOrEmpty(c.MeliVariationId);
+                    // Si no tiene VariationId, aceptar solo componentes sin VariationId.
+                    return string.IsNullOrEmpty(c.MeliVariationId);
+                }).ToList();
+                if (compsForItem.Count == 0) compsForItem = compsAll;
 
-            // Comision MeLi efectiva
+                int? minStock = null;
+                foreach (var co in compsForItem)
+                {
+                    if (!productos.TryGetValue(co.CafeProductoId, out var pc)) continue;
+                    var cant = co.Cantidad <= 0 ? 1 : co.Cantidad;
+                    costoBase += pc.Costo * cant;
+                    precioBarBase += (pc.PrecioBar ?? 0) * cant;
+                    precioOtroBase += (pc.PrecioOtro ?? 0) * cant;
+                    // Tomar IVA del primer componente con IVA seteado
+                    if (!tieneDatos && pc.IvaPct > 0) { ivaPct = pc.IvaPct; }
+                    // Stock posible del combo = mínimo entre componentes / cantidad
+                    var dispComp = cant > 0 ? (int)(pc.StockUnidades / cant) : 0;
+                    if (minStock is null || dispComp < minStock) minStock = dispComp;
+                    if (!tieneDatos) { marcaNombre = pc.MarcaNav?.Nombre; }
+                    tieneDatos = true;
+                }
+                stockSistema = minStock ?? 0;
+                productoNombre = $"🎁 Combo: {string.Join(", ", compsForItem.Take(3).Select(c => productos.TryGetValue(c.CafeProductoId, out var p) ? $"{p.Sku} ×{(int)c.Cantidad}" : "?"))}"
+                    + (compsForItem.Count > 3 ? $" +{compsForItem.Count - 3} más" : "");
+                productoIdRef = -1; // -1 = combo, no hay un único ProductoId
+            }
+            if (!tieneDatos) continue; // Skip items sin nada cargable
+
+            costoBase = Math.Round(costoBase, 2);
+            precioBarBase = Math.Round(precioBarBase, 2);
+            precioOtroBase = Math.Round(precioOtroBase, 2);
+
+            var precioBarConIva = precioBarBase > 0 ? Math.Round(precioBarBase * (1 + ivaPct/100m), 2) : (decimal?)null;
+            var precioOtroConIva = precioOtroBase > 0 ? Math.Round(precioOtroBase * (1 + ivaPct/100m), 2) : (decimal?)null;
+            var margenSinComisDollar = precioOtroBase - costoBase;
+            var margenSinComisPct = costoBase > 0 ? Math.Round(margenSinComisDollar / costoBase * 100m, 0) : 0m;
+
             var key = $"{mi.CategoryId ?? "?"}|{mi.ListingTypeId ?? "?"}";
             var rate = ratesByKey.GetValueOrDefault(key);
             var comisPct = rate?.PercentageFee ?? defaultPct;
@@ -123,14 +208,12 @@ public class CafeSincronizacionMeliController : ControllerBase
             var comisionTotal = Math.Round(precioMeli * comisPct / 100m + comisFija, 2);
             var netoConIva = Math.Round(precioMeli - comisionTotal, 2);
             var netoSinIva = ivaPct > 0 ? Math.Round(netoConIva / (1 + ivaPct/100m), 2) : netoConIva;
-            var margenRealConMeli = Math.Round(netoSinIva - p.Costo, 2);
-            var margenRealConMeliPct = p.Costo > 0 ? Math.Round(margenRealConMeli / p.Costo * 100m, 0) : 0m;
+            var margenRealConMeli = Math.Round(netoSinIva - costoBase, 2);
+            var margenRealConMeliPct = costoBase > 0 ? Math.Round(margenRealConMeli / costoBase * 100m, 0) : 0m;
 
-            // Diferencia precio sistema (PrecioOtroConIva) vs MeLi
             var diferenciaPrecio = precioMeli - (precioOtroConIva ?? 0);
             var diferenciaPrecioPct = (precioOtroConIva ?? 0) > 0 ? Math.Round(diferenciaPrecio / precioOtroConIva!.Value * 100m, 1) : 0m;
 
-            // Config
             var cfg = configs.GetValueOrDefault(mi.MeliItemId);
             var cfgDto = new SyncConfigDto(
                 cfg?.SyncStock ?? true,
@@ -140,8 +223,6 @@ public class CafeSincronizacionMeliController : ControllerBase
                 cfg?.AjusteRedondeo,
                 cfg?.LastSyncAt);
 
-            // Precio MeLi calculado con la formula del ajuste (lo que el sistema pushearia hoy):
-            // base × (1 + Pct/100) + Fijo → redondear hacia arriba según AjusteRedondeo.
             decimal? precioMeliCalc = null;
             if (precioOtroConIva.HasValue)
             {
@@ -152,12 +233,12 @@ public class CafeSincronizacionMeliController : ControllerBase
             result.Add(new PublicacionExtendidaDto(
                 mi.MeliItemId, mi.Title, mi.Sku ?? "", mi.Thumbnail, mi.Status, mi.LogisticType,
                 mi.CategoryId ?? "?", mi.ListingTypeId ?? "?",
-                p.Id, p.Nombre, p.MarcaNav?.Nombre,
-                p.Costo, ivaPct,
-                p.PrecioBar, p.PrecioOtro,
+                productoIdRef, productoNombre, marcaNombre,
+                costoBase, ivaPct,
+                precioBarBase > 0 ? precioBarBase : (decimal?)null, precioOtroBase > 0 ? precioOtroBase : (decimal?)null,
                 precioBarConIva, precioOtroConIva,
                 margenSinComisDollar, margenSinComisPct,
-                p.StockUnidades, mi.AvailableQuantity,
+                stockSistema, mi.AvailableQuantity,
                 precioMeli, precioMeliCalc,
                 comisPct, comisFija, comisionTotal,
                 netoConIva, netoSinIva,
