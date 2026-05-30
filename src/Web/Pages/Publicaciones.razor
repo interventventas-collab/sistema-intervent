@@ -4010,13 +4010,37 @@
         await DoQuickPush(item, pushPrice: false, pushStock: true, what: "stock");
     }
 
-    /// <summary>2026-05-29: push rápido SOLO precio. Si la fila tiene ajuste cargado (Δ + tipo + redondeo),
-    /// calcula el precio final aplicando esos ajustes y lo manda como overridePrice. Sino, push directo.</summary>
+    /// <summary>2026-05-29: push de precio usando el endpoint nuevo push-precio-ajustado.
+    /// El backend toma el PrecioOtro del sistema, aplica Pct/Fijo/Redondeo del SyncConfig
+    /// y pushea a MeLi. NO requiere linkeo legacy — funciona para CUALQUIER publicación.</summary>
     private async Task QuickPushPrecio(MeliItemDto item)
     {
-        // Calcular el override (puede ser null si no hay ajuste cargado)
-        decimal? overridePrice = CalcularPrecioConAjuste(item);
-        await DoQuickPush(item, pushPrice: true, pushStock: false, what: "precio", overridePrice: overridePrice);
+        if (item.ProductId is null && item.ComboId is null && item.CafeProductoId is null && item.ComponentMappingsCount == 0)
+        {
+            ToastService.Error("Esta publicación no tiene producto vinculado.");
+            return;
+        }
+        try
+        {
+            var result = await Api.PushPrecioAjustadoAsync(item.Id);
+            if (result is not null && result.Success)
+            {
+                ToastService.Success($"✓ {result.Message}");
+                if (items is not null && result.PushedPrice.HasValue)
+                {
+                    var idx = items.FindIndex(i => i.Id == item.Id);
+                    if (idx >= 0) items[idx].Price = result.PushedPrice.Value;
+                }
+            }
+            else
+            {
+                ToastService.Error(result?.Message ?? "Error al pushear precio");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error pusheando precio: " + ex.Message);
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -4097,7 +4121,9 @@
         bool hayRedondeo = !string.IsNullOrEmpty(aj.Redondeo);
         if (!hayPct && !hayPesos && !hayRedondeo) return null;
 
-        decimal baseP = item.Price;
+        // 2026-05-29: preferimos PrecioOtroConIvaCalc (sistema) sobre item.Price (cache MeLi)
+        // para que el preview cuadre con el cálculo del backend al pushear.
+        decimal baseP = item.PrecioOtroConIvaCalc ?? item.Price;
         if (baseP <= 0) return null;
 
         // 1) Aplicar % sobre el base
