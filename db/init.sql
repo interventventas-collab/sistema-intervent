@@ -4211,3 +4211,18 @@ IF NOT EXISTS (SELECT 1 FROM MenuVisibility WHERE RoleName='oficina' AND MenuKey
 IF NOT EXISTS (SELECT 1 FROM MenuVisibility WHERE RoleName='oficina' AND MenuKey='cafe/tesoreria/cobranzas') INSERT INTO MenuVisibility (RoleName, MenuKey) VALUES ('oficina', 'cafe/tesoreria/cobranzas');
 IF NOT EXISTS (SELECT 1 FROM MenuVisibility WHERE RoleName='oficina' AND MenuKey='mapeo') INSERT INTO MenuVisibility (RoleName, MenuKey) VALUES ('oficina', 'mapeo');
 GO
+
+-- 2026-05-29: Ajustes de precio por publicacion para el push a MeLi (Contabilium-style).
+-- Cada fila de /publicaciones puede tener un ajuste cargado: % + $ + redondeo.
+-- Antes vivian en localStorage del navegador, ahora se persisten en DB para que se
+-- vean desde cualquier dispositivo y sobrevivan a limpiezas de cache.
+-- Aplicacion: precio_final = precio_base * (1 + Pct/100) + Pesos -> redondear hacia arriba.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='AjustePctOverride' AND Object_ID=OBJECT_ID('MeliItems'))
+    ALTER TABLE MeliItems ADD AjustePctOverride DECIMAL(18,4) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='AjustePesosOverride' AND Object_ID=OBJECT_ID('MeliItems'))
+    ALTER TABLE MeliItems ADD AjustePesosOverride DECIMAL(18,2) NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='AjusteRedondeoOverride' AND Object_ID=OBJECT_ID('MeliItems'))
+    ALTER TABLE MeliItems ADD AjusteRedondeoOverride NVARCHAR(8) NULL;
+GO

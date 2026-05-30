@@ -156,7 +156,11 @@ public record MeliItemDto(
     // Última vez que se pusheó stock a MeLi para ESTE item.
     // Calculado como MAX(LastPushedToMeli) entre el CafeProducto linkeado directo + todos los componentes.
     // Null = nunca se pusheó.
-    DateTime? LastStockPushedToMeli = null
+    DateTime? LastStockPushedToMeli = null,
+    // 2026-05-29: ajustes de precio Contabilium-style por publicación (% + $ + redondeo).
+    decimal? AjustePctOverride = null,
+    decimal? AjustePesosOverride = null,
+    string? AjusteRedondeoOverride = null
 );
 
 public record MeliItemsResponse(List<MeliItemDto> Items, int Total);
