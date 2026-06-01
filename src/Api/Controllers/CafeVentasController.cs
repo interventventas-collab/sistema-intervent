@@ -808,6 +808,7 @@ public class CafeVentasController : ControllerBase
 
         var ids = grouped.Select(x => x.ProductoId).Distinct().ToList();
         var productos = await _db.CafeProductos
+            .Include(p => p.OemNav)
             .Where(p => ids.Contains(p.Id) && p.IsActive)
             .ToListAsync();
 
@@ -2045,7 +2046,7 @@ public class CafeVentasController : ControllerBase
                 continue;
             }
 
-            var prod = await _db.CafeProductos.Include(p => p.Packs).FirstOrDefaultAsync(p => p.Id == it.ProductoId);
+            var prod = await _db.CafeProductos.Include(p => p.Packs).Include(p => p.OemNav).FirstOrDefaultAsync(p => p.Id == it.ProductoId);
             if (prod is null)
             {
                 cotizadoItems.Add(new CafeCotizadoItemDto(
