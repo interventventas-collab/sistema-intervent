@@ -338,6 +338,7 @@ public class CafeVentaDto
     public string Estado { get; set; } = "emitido";
     public string? WeekDays { get; set; }
     public bool EnRadar { get; set; }
+    public bool Retira { get; set; }
     public bool IsPaid { get; set; }
     public string TipoComprobante { get; set; } = "X";
     public string CondicionIva { get; set; } = "CF";
@@ -541,6 +542,7 @@ public class CreateCafeVentaRequest
     public string? Observaciones { get; set; }
     public string? WeekDays { get; set; }
     public bool EnRadar { get; set; }
+    public bool Retira { get; set; }
     public bool IsPaid { get; set; }
     public string? TipoComprobante { get; set; }
     public string? CondicionIva { get; set; }
@@ -552,6 +554,7 @@ public class UpdateCafeVentaFlagsRequest
 {
     public string? WeekDays { get; set; }
     public bool? EnRadar { get; set; }
+    public bool? Retira { get; set; }
     public bool? IsPaid { get; set; }
 }
 
@@ -576,6 +579,7 @@ public class UpdateCafeVentaRequest
     public string? CondicionPago { get; set; }
     public string? WeekDays { get; set; }
     public bool? EnRadar { get; set; }
+    public bool? Retira { get; set; }
     public bool? IsPaid { get; set; }
     public List<CafeCotizarItemRequest>? Items { get; set; }
     public decimal? Descuento { get; set; }

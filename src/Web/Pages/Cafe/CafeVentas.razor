@@ -1479,10 +1479,26 @@
                                             style="display: inline-flex; align-items: center; gap: 0.2rem; padding: 0.25rem 0.6rem; border: 2px solid @radarBd; background: @radarBg; color: @radarFg; border-radius: 5px; font-weight: 800; font-size: 0.72rem; cursor: pointer; user-select: none; margin-left: 0.4rem;">
                                         @(formEnRadar ? "✓ " : "")🛰 EN RADAR
                                     </button>
+                                    @* 2026-06-01: boton RETIRA — el cliente retira la mercaderia en el local *@
+                                    @{
+                                        var retiraBg = formRetira ? "#16a34a" : "white";
+                                        var retiraFg = formRetira ? "white" : "#374151";
+                                        var retiraBd = formRetira ? "#15803d" : "#d1d5db";
+                                    }
+                                    <button type="button"
+                                            @onclick="ToggleRetira"
+                                            title="El cliente retira la mercaderia en el local (no se reparte)"
+                                            style="display: inline-flex; align-items: center; gap: 0.2rem; padding: 0.25rem 0.6rem; border: 2px solid @retiraBd; background: @retiraBg; color: @retiraFg; border-radius: 5px; font-weight: 800; font-size: 0.72rem; cursor: pointer; user-select: none; margin-left: 0.4rem;">
+                                        @(formRetira ? "✓ " : "")🚗 RETIRA
+                                    </button>
                                 </div>
                                 @if (formEnRadar)
                                 {
                                     <div style="font-size: 0.68rem; color: #1e3a8a; margin-top: 0.3rem;">📍 Uso interno · El cliente verá <strong>"a coordinar"</strong> en el comprobante.</div>
+                                }
+                                @if (formRetira)
+                                {
+                                    <div style="font-size: 0.68rem; color: #15803d; margin-top: 0.3rem;">🚗 El cliente <strong>retira en el local</strong> — el comprobante muestra "RETIRA EN LOCAL".</div>
                                 }
                             </div>
 
@@ -2726,6 +2742,8 @@
     // "EN RADAR" — interno, en el PDF se muestra como "a coordinar".
     // Se prende cuando los 6 días LUN-SAB están tildados (manual o vía botón). Se apaga al destildar cualquiera.
     private bool formEnRadar = false;
+    // 2026-06-01: "RETIRA" — el cliente retira la mercaderia en el local (no se reparte).
+    private bool formRetira = false;
     private bool formIsPaid;
     private string formEntregaPor = "";
 
@@ -3333,7 +3351,7 @@
         addMode = "PRODUCTO";
         addComboId = 0; addComboCantidad = 1;
         comboSearch = ""; comboSearchOpen = false;
-        formWeekDays = new(); formEnRadar = false; formIsPaid = false; formEntregaPor = "";
+        formWeekDays = new(); formEnRadar = false; formRetira = false; formIsPaid = false; formEntregaPor = "";
         // Reset del panel "Enviar al cliente" — todos los checkboxes empiezan apagados
         // para que nunca mandes algo sin querer. El operador tilda lo que necesite por venta.
         envioEmail = false; envioWhatsappWeb = false; envioWhatsappInterno = false;
@@ -3390,6 +3408,7 @@
         public List<CafeCotizarItemRequest> FormItems { get; set; } = new();
         public List<string> FormWeekDays { get; set; } = new();
         public bool FormEnRadar { get; set; }
+        public bool FormRetira { get; set; }
         public bool FormIsPaid { get; set; }
         public string FormEntregaPor { get; set; } = "";
         // Modo venta rápida
@@ -3428,6 +3447,7 @@
             FormItems = formItems?.ToList() ?? new(),
             FormWeekDays = formWeekDays?.ToList() ?? new(),
             FormEnRadar = formEnRadar,
+            FormRetira = formRetira,
             FormIsPaid = formIsPaid,
             FormEntregaPor = formEntregaPor ?? "",
             ModoVentaRapida = modoVentaRapida,
@@ -3503,6 +3523,7 @@
         formItems = b.FormItems?.ToList() ?? new();
         formWeekDays = b.FormWeekDays?.ToHashSet() ?? new();
         formEnRadar = b.FormEnRadar;
+        formRetira = b.FormRetira;
         formIsPaid = b.FormIsPaid;
         formEntregaPor = b.FormEntregaPor;
         modoVentaRapida = b.ModoVentaRapida;
@@ -3561,6 +3582,23 @@
         {
             foreach (var d in RadarDays) formWeekDays.Add(d);
             formEnRadar = true;
+        }
+    }
+
+    /// <summary>2026-06-01: Toggle de "RETIRA" — el cliente retira la mercaderia en el local.
+    /// Al activar, limpia los dias de visita y desactiva EN RADAR (son mutuamente excluyentes:
+    /// si retira, no hay reparto que coordinar).</summary>
+    private void ToggleRetira()
+    {
+        if (formRetira)
+        {
+            formRetira = false;
+        }
+        else
+        {
+            formRetira = true;
+            formWeekDays.Clear();
+            formEnRadar = false;
         }
     }
 
@@ -3877,6 +3915,7 @@
             formWeekDays = (payload.WeekDays ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
                 .Select(s => s.Trim().ToUpperInvariant()).ToHashSet();
             formEnRadar = payload.EnRadar;
+            formRetira = payload.Retira;
             formIsPaid = false; // empezás impago, el cobro de la nueva es independiente
             // 2026-05-30: solo OSMAR arranca con "Enviar a IMPRIMIR PEDIDOS" tildado.
             envioDrive = string.Equals(Operator.Current ?? "", "OSMAR", StringComparison.OrdinalIgnoreCase);
@@ -4419,6 +4458,7 @@
                 Observaciones = formObservaciones,
                 WeekDays = weekCsv,
                 EnRadar = formEnRadar,
+                Retira = formRetira,
                 IsPaid = formIsPaid,
                 TipoComprobante = formTipoComprobante,
                 CondicionIva = formCondicionIva,
@@ -4512,6 +4552,7 @@
                     Observaciones = notesToSave,
                     WeekDays = weekCsv ?? "",
                     EnRadar = formEnRadar,
+                Retira = formRetira,
                     IsPaid = formIsPaid,
                     TipoComprobante = formTipoComprobante,
                     CondicionIva = formCondicionIva,
@@ -4563,6 +4604,7 @@
                     Observaciones = notesToSave,
                     WeekDays = weekCsv,
                     EnRadar = formEnRadar,
+                Retira = formRetira,
                     IsPaid = false,  // NUNCA marcar pagado al crear — el flag se sincroniza por la cobranza
                     TipoComprobante = formTipoComprobante,
                     CondicionIva = formCondicionIva,

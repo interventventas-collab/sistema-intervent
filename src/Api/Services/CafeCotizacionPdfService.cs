@@ -433,7 +433,13 @@ public class CafeCotizacionPdfService
                     {
                         row.AutoItem().AlignMiddle().PaddingRight(6).Text("Días de visita / reparto:")
                             .FontSize(8).FontColor(Colors.Grey.Darken1);
-                        if (v.EnRadar)
+                        if (v.Retira)
+                        {
+                            // 2026-06-01: el cliente retira la mercaderia en el local.
+                            row.AutoItem().AlignMiddle().Padding(3)
+                                .Text("🚗 RETIRA EN LOCAL").Bold().FontSize(10).FontColor(Colors.Green.Darken3);
+                        }
+                        else if (v.EnRadar)
                         {
                             // Cliente ve "a coordinar" — EN RADAR es interno (jerga: "cuando estemos por la zona")
                             row.AutoItem().AlignMiddle().Padding(3)

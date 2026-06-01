@@ -85,6 +85,10 @@ public class CafeVenta
     /// "EN RADAR" en ningún lado. La UI lo activa tildeando los 6 días LUN-SAB o tocando el botón.</summary>
     public bool EnRadar { get; set; } = false;
 
+    /// <summary>2026-06-01: "RETIRA" - el cliente retira la mercaderia en el local (no se reparte).
+    /// Si es true, en el PDF se imprime "🚗 RETIRA EN LOCAL" en lugar de dias de visita.</summary>
+    public bool Retira { get; set; } = false;
+
     /// <summary>Si esta marcado como pagado (estampa el sello en el PDF).</summary>
     public bool IsPaid { get; set; }
 

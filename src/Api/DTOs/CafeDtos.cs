@@ -329,7 +329,7 @@ public record CafeVentaDto(
     decimal Subtotal, decimal Descuento, decimal Total,
     decimal CostoTotal, decimal Margen,
     string? Observaciones, string Estado,
-    string? WeekDays, bool EnRadar, bool IsPaid,
+    string? WeekDays, bool EnRadar, bool IsPaid, bool Retira,
     string TipoComprobante, string CondicionIva, string CondicionPago,
     DateTime CreatedAt,
     List<CafeVentaItemDto> Items,
@@ -445,6 +445,7 @@ public class CreateCafeVentaRequest
     public string? Observaciones { get; set; }
     public string? WeekDays { get; set; }
     public bool EnRadar { get; set; }
+    public bool Retira { get; set; }
     public bool IsPaid { get; set; }
     public string? TipoComprobante { get; set; }
     public string? CondicionIva { get; set; }
@@ -456,6 +457,7 @@ public class UpdateCafeVentaFlagsRequest
 {
     public string? WeekDays { get; set; }
     public bool? EnRadar { get; set; }
+    public bool? Retira { get; set; }
     public bool? IsPaid { get; set; }
 }
 
@@ -485,6 +487,7 @@ public class UpdateCafeVentaRequest
     public string? CondicionPago { get; set; }
     public string? WeekDays { get; set; }
     public bool? EnRadar { get; set; }
+    public bool? Retira { get; set; }
     public bool? IsPaid { get; set; }
     public List<CafeCotizarItemRequest>? Items { get; set; }
     public decimal? Descuento { get; set; }
@@ -847,6 +850,7 @@ public record DuplicarVentaPayloadDto(
     string CondicionPago,
     string? WeekDays,
     bool EnRadar,
+    bool Retira,
     string? Observaciones,
     List<CafeCotizarItemRequest> Items,
     string? OrigenNumero);   // ej "CAFE-2026-0001" — solo para mostrar en el modal "Duplicado de X"
