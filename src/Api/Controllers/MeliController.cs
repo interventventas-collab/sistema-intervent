@@ -439,6 +439,124 @@ public class MeliController : ControllerBase
         return Ok(new { procesados = productosIds.Count, ok, skipped, err, detalle = detalle.Take(20).ToList() });
     }
 
+    /// <summary>2026-06-01: devuelve el costo total del producto/combo asociado a una MLA. Util para
+    /// calcular margen en el modal de detalle. Si la MLA tiene CafeProductoId directo, devuelve su Costo.
+    /// Si tiene CafeComboId o MeliItemComponentes, suma costos de los componentes × cantidad.</summary>
+    public record ProductCostDto(decimal TotalCost, List<ProductCostDto.Comp> Components, string Source)
+    {
+        public record Comp(string Sku, string Nombre, decimal CostoUnit, decimal Cantidad, decimal CostoTotal);
+    }
+
+    [HttpGet("items/{meliItemId}/product-cost")]
+    public async Task<IActionResult> GetProductCost(string meliItemId, [FromServices] Api.Data.AppDbContext db)
+    {
+        var mi = await db.MeliItems.AsNoTracking().FirstOrDefaultAsync(x => x.MeliItemId == meliItemId);
+        if (mi == null) return NotFound(new { error = "MLA no encontrada" });
+
+        var comps = new List<ProductCostDto.Comp>();
+        string source = "none";
+
+        // 1) Modelo nuevo: MeliItemComponentes (combos via componentes)
+        var mecs = await (
+            from c in db.MeliItemComponentes
+            join p in db.CafeProductos on c.CafeProductoId equals p.Id
+            where c.MeliItemId == meliItemId
+            select new { p.Sku, p.Nombre, p.Costo, c.Cantidad }
+        ).ToListAsync();
+
+        if (mecs.Count > 0)
+        {
+            source = "componentes";
+            foreach (var x in mecs)
+                comps.Add(new ProductCostDto.Comp(x.Sku ?? "", x.Nombre ?? "", x.Costo, x.Cantidad, x.Costo * x.Cantidad));
+        }
+        else if (mi.CafeComboId.HasValue)
+        {
+            // 2) Legacy: combo directo, expandir items
+            var items = await (
+                from ci in db.CafeComboItems
+                join p in db.CafeProductos on ci.ProductoId equals p.Id
+                where ci.ComboId == mi.CafeComboId.Value
+                select new { p.Sku, p.Nombre, p.Costo, ci.Cantidad }
+            ).ToListAsync();
+            source = "combo_legacy";
+            foreach (var x in items)
+                comps.Add(new ProductCostDto.Comp(x.Sku ?? "", x.Nombre ?? "", x.Costo, x.Cantidad, x.Costo * x.Cantidad));
+        }
+        else if (mi.CafeProductoId.HasValue)
+        {
+            // 3) Legacy: producto suelto directo
+            var p = await db.CafeProductos.AsNoTracking().FirstOrDefaultAsync(x => x.Id == mi.CafeProductoId.Value);
+            if (p != null)
+            {
+                source = "producto_directo";
+                comps.Add(new ProductCostDto.Comp(p.Sku ?? "", p.Nombre ?? "", p.Costo, 1, p.Costo));
+            }
+        }
+
+        var total = comps.Sum(c => c.CostoTotal);
+        return Ok(new ProductCostDto(total, comps, source));
+    }
+
+    /// <summary>2026-06-01 PUSH MASIVO AGRESIVO: pushea stock a TODAS las publicaciones con SyncStock=ON,
+    /// en modo agresivo (puede pausar/activar segun stock). Mantiene la reserva interna de 1 unidad.
+    /// Lanza la ejecucion en background y devuelve inmediato con el conteo encolado. El usuario debe
+    /// despues consultar la tabla MeliPushSnapshot_*_post para ver resultados.</summary>
+    [HttpPost("items/push-stock-masivo-agresivo")]
+    [Microsoft.AspNetCore.Authorization.Authorize(Roles = "admin")]
+    public async Task<IActionResult> PushStockMasivoAgresivo([FromServices] IServiceScopeFactory scopeFactory,
+        [FromServices] Api.Data.AppDbContext db)
+    {
+        // Validar master switch
+        var master = await db.AppSettings.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Key == "meli.stock_push.master_enabled");
+        if (master == null || !string.Equals(master.Value?.Trim(), "true", StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { error = "master_enabled está en false. Activalo primero." });
+
+        // Obtener todas las MLAs con SyncStock=ON, status active/paused, NO Full
+        var ids = await (
+            from sc in db.MeliItemSyncConfigs
+            join mi in db.MeliItems on sc.MeliItemId equals mi.MeliItemId
+            where sc.SyncStock
+                && (mi.Status == "active" || mi.Status == "paused")
+                && (mi.LogisticType == null || mi.LogisticType != "fulfillment")
+            select mi.MeliItemId
+        ).Distinct().ToListAsync();
+
+        if (ids.Count == 0) return Ok(new { ok = true, encolados = 0, message = "No hay publicaciones con SyncStock=ON" });
+
+        // Background fire-and-forget: usar scope nuevo para evitar DbContext disposed
+        _ = Task.Run(async () =>
+        {
+            using var scope = scopeFactory.CreateScope();
+            var pushSvc = scope.ServiceProvider.GetRequiredService<MeliStockPushService>();
+            var logger = scope.ServiceProvider.GetRequiredService<ILogger<MeliController>>();
+            try
+            {
+                logger.LogWarning("[PushMasivoAgresivo] Arrancando con {Count} publicaciones", ids.Count);
+                // Procesar en chunks de 100 para no saturar memoria/tokens
+                int chunkSize = 100;
+                int totalOk = 0, totalSkip = 0, totalErr = 0;
+                for (int i = 0; i < ids.Count; i += chunkSize)
+                {
+                    var chunk = ids.Skip(i).Take(chunkSize).ToList();
+                    var r = await pushSvc.PushStockForMeliItemsAsync(chunk, CancellationToken.None,
+                        conservativeMode: false, safeBulkMode: false);
+                    totalOk += r.Ok; totalSkip += r.Skipped; totalErr += r.Errores;
+                    logger.LogInformation("[PushMasivoAgresivo] Chunk {From}/{Total}: ok={Ok} skip={Skip} err={Err}",
+                        i + chunk.Count, ids.Count, r.Ok, r.Skipped, r.Errores);
+                }
+                logger.LogWarning("[PushMasivoAgresivo] COMPLETADO. Total ok={Ok} skip={Skip} err={Err}", totalOk, totalSkip, totalErr);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "[PushMasivoAgresivo] Falla general");
+            }
+        });
+
+        return Ok(new { ok = true, encolados = ids.Count, message = "Push lanzado en background. Mirar logs para progreso." });
+    }
+
     /// <summary>Lista publicaciones MeLi que probablemente fueron pausadas por nuestro push automático
     /// erróneo (stock=0 en productos OTROS pusheados hoy). No reactiva nada — solo lista.</summary>
     [HttpGet("items/reactivar-pausadas/candidatos")]

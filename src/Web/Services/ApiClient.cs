@@ -2508,6 +2508,15 @@ public class ApiClient
         return await GetAsync<List<ItemPromotionDto>>($"/api/meli/items/{meliItemId}/promotions");
     }
 
+    // 2026-06-01: costo del producto/combo en sistema (para calcular margen)
+    public record ProductCostComp(string Sku, string Nombre, decimal CostoUnit, decimal Cantidad, decimal CostoTotal);
+    public record ProductCostResp(decimal TotalCost, List<ProductCostComp> Components, string Source);
+    public async Task<ProductCostResp?> GetProductCostAsync(string meliItemId)
+    {
+        try { return await _http.GetFromJsonAsync<ProductCostResp>($"api/meli/items/{meliItemId}/product-cost"); }
+        catch { return null; }
+    }
+
     public async Task<ListingCostDto?> GetItemCostsAsync(string meliItemId)
     {
         try
@@ -3040,6 +3049,9 @@ public class ApiClient
     public async Task<CafePushPreviewResponse?> GetCafePushPreviewAsync()
         => await GetAsync<CafePushPreviewResponse>("/api/meli/cafe/push-preview");
     public async Task<object?> RunCafePushAsync() => await PostAsync<object>("/api/meli/cafe/push", new { });
+    // 2026-06-01: push masivo agresivo de stock a TODAS las publicaciones MeLi con SyncStock=ON
+    public async Task<Dictionary<string, object>?> DispararPushMasivoAgresivoAsync()
+        => await PostAsync<Dictionary<string, object>>("/api/meli/items/push-stock-masivo-agresivo", new { });
     public record CafePushOneResult(int Procesadas, int Ok, int Errores, List<string> Mensajes);
     public async Task<CafePushOneResult?> RunCafePushOneAsync(string meliItemId)
         => await PostAsync<CafePushOneResult>($"/api/meli/cafe/push-one/{meliItemId}", new { });

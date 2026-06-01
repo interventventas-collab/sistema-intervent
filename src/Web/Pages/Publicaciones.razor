@@ -14,6 +14,13 @@
         <button class="btn btn-secondary" @onclick='() => Nav.NavigateTo("/publicaciones/auditoria")' title="Comparar lista de MLAs entre MeLi y el sistema">
             <i class="fa-solid fa-magnifying-glass"></i> Auditar vs MeLi
         </button>
+        @* 2026-06-01: Boton de push masivo agresivo. Pushea stock a TODAS las publicaciones con SyncStock=ON.
+           Confirma 2 veces antes de ejecutar. Resultado vuelve a las tablas MeliPushSnapshot_*_pre/post para cotejo. *@
+        <button class="btn" style="background:#dc2626; color:white; font-weight:700; border:2px solid #991b1b;"
+                @onclick="DispararPushMasivoAgresivo" disabled="@pushMasivoEnCurso"
+                title="Pushea stock a TODAS las publicaciones MeLi. MeLi pausa las de stock 0 y activa las con stock. Despues hay que revisar el cotejo.">
+            @if (pushMasivoEnCurso) { <span>⏳ Pusheando...</span> } else { <span>🚀 PUSHEAR STOCK DE TODO A MELI</span> }
+        </button>
         <div class="sync-dropdown-wrapper">
             <button class="btn btn-primary" @onclick="() => SyncItems(null, null)" disabled="@isSyncing" style="border-radius: 6px 0 0 6px;">
                 @(isSyncing ? syncingLabel : "Sincronizar")
@@ -989,6 +996,57 @@
                         </div>
                     </div>
                 </div>
+                @* 2026-06-01: VISOR DE MARGEN — abajo del simulador de costos. NO TOCA NADA EXISTENTE. *@
+                @if (itemCosts is not null)
+                {
+                    <div style="margin-top: 0.75rem; padding: 0.75rem 1rem; background: linear-gradient(135deg, #f0fdf4 0%, #fefce8 100%); border: 2px solid #d1d5db; border-radius: 8px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+                            <span style="font-weight: 700; font-size: 0.9rem; color: #374151;">💰 Análisis de Ganancia (sistema)</span>
+                            @if (isLoadingProductCost)
+                            {
+                                <span style="font-size: 0.75rem; color: #6b7280;">Calculando...</span>
+                            }
+                            else if (itemProductCost is null || itemProductCost.TotalCost == 0)
+                            {
+                                <span style="font-size: 0.75rem; color: #dc2626;">⚠ No hay costo cargado en sistema</span>
+                            }
+                            else
+                            {
+                                <span style="font-size: 0.75rem; padding: 0.15rem 0.5rem; background:@MarginColor(); color:white; border-radius:10px; font-weight:700;">@MarginLabel()</span>
+                            }
+                        </div>
+                        @if (itemProductCost is not null && itemProductCost.TotalCost > 0)
+                        {
+                            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; font-size: 0.85rem;">
+                                <div>
+                                    <div style="color: #6b7280; font-size: 0.7rem; text-transform: uppercase;">Costo producto</div>
+                                    <div style="font-weight: 700; color: #374151;">$ @itemProductCost.TotalCost.ToString("N2", argCulture)</div>
+                                </div>
+                                <div>
+                                    <div style="color: #6b7280; font-size: 0.7rem; text-transform: uppercase;">Recibís neto</div>
+                                    <div style="font-weight: 700; color: #374151;">$ @CalculateNetAmount().ToString("N2", argCulture)</div>
+                                </div>
+                                <div>
+                                    <div style="color: #6b7280; font-size: 0.7rem; text-transform: uppercase;">Ganancia $</div>
+                                    <div style="font-weight: 700; color:@MarginColor();">$ @MarginGanancia().ToString("N2", argCulture)</div>
+                                </div>
+                                <div>
+                                    <div style="color: #6b7280; font-size: 0.7rem; text-transform: uppercase;">Margen %</div>
+                                    <div style="font-weight: 700; color:@MarginColor();">
+                                        @MarginPctSobreCosto().ToString("0.0", argCulture)% s/costo
+                                        <span style="font-size: 0.65rem; color: #9ca3af; font-weight: 500; display: block;">@MarginPctSobreVenta().ToString("0.0", argCulture)% s/venta</span>
+                                    </div>
+                                </div>
+                            </div>
+                            @if (itemProductCost.Components.Count > 1)
+                            {
+                                <div style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dashed #d1d5db; font-size: 0.7rem; color: #6b7280;">
+                                    📦 Costo = @string.Join(" + ", itemProductCost.Components.Select(c => $"{c.Cantidad}×{c.Sku} (${c.CostoTotal.ToString("N0", argCulture)})"))
+                                </div>
+                            }
+                        }
+                    </div>
+                }
 
                 <!-- Editable fields -->
                 <div class="detail-section">
@@ -2450,6 +2508,8 @@
     private List<MeliItemDto>? items;
     private bool isLoading = true;
     private bool isSyncing;
+    // 2026-06-01: estado del push masivo agresivo (boton rojo)
+    private bool pushMasivoEnCurso;
     private int totalItems;
     private List<MeliItemDto>? _cachedFiltered;
     private bool _filterDirty = true;
@@ -2733,6 +2793,48 @@
     private void ToggleSyncMenu()
     {
         showSyncMenu = !showSyncMenu;
+    }
+
+    /// <summary>2026-06-01: dispara el push masivo agresivo a TODAS las publicaciones con SyncStock=ON.
+    /// Confirma 2 veces antes de ejecutar. El backend lo procesa en background (~30 min).
+    /// Despues se revisa el cotejo de ACTIVADAS vs PAUSADAS en las tablas MeliPushSnapshot_*.</summary>
+    private async Task DispararPushMasivoAgresivo()
+    {
+        var confirma1 = await JS.InvokeAsync<bool>("confirm",
+            "🚀 ¿Pushear stock de TODAS las publicaciones a MeLi?\n\n" +
+            "MeLi va a:\n" +
+            "  • PAUSAR publicaciones con stock 0 en el sistema\n" +
+            "  • ACTIVAR publicaciones con stock>0 que estaban pausadas\n\n" +
+            "Tarda ~30 minutos en segundo plano. Despues revisamos juntos.");
+        if (!confirma1) return;
+
+        var confirma2 = await JS.InvokeAsync<bool>("confirm",
+            "Confirmación final: ¿Estás 100% seguro?\nEsta acción modifica MeLi en vivo.");
+        if (!confirma2) return;
+
+        pushMasivoEnCurso = true;
+        StateHasChanged();
+        try
+        {
+            var resp = await Api.DispararPushMasivoAgresivoAsync();
+            if (resp is not null && resp.TryGetValue("encolados", out var enc))
+            {
+                ToastService.Success($"🚀 Push lanzado: {enc} publicaciones en segundo plano. Tarda ~30 min. Avisame en el chat.");
+            }
+            else
+            {
+                ToastService.Error("Respuesta inesperada. Revisar logs.");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error al lanzar push: " + ex.Message);
+        }
+        finally
+        {
+            // No volvemos a false: el background corre 30 min, el boton queda deshabilitado hasta que reload de pantalla
+            // (es a proposito — evitar doble click).
+        }
     }
 
     private async Task SyncItems(string? status, int? accountId)
@@ -3426,6 +3528,10 @@
     private static readonly System.Globalization.CultureInfo argCulture = new("es-AR");
     private decimal taxPercentage;
 
+    // 2026-06-01: visor de margen — costo del producto/combo desde sistema
+    private ApiClient.ProductCostResp? itemProductCost;
+    private bool isLoadingProductCost;
+
     private async void OpenItemModal(MeliItemDto item)
     {
         selectedItem = item;
@@ -3440,6 +3546,8 @@
         showOtherCampaigns = false;
         itemCosts = null;
         isLoadingCosts = false;
+        itemProductCost = null;
+        isLoadingProductCost = false;
         showItemModal = true;
         StateHasChanged();
 
@@ -3488,6 +3596,47 @@
         }
         isLoadingCosts = false;
         StateHasChanged();
+
+        // 2026-06-01: Cargar costo del producto en sistema (para visor de margen)
+        isLoadingProductCost = true;
+        StateHasChanged();
+        try { itemProductCost = await Api.GetProductCostAsync(item.MeliItemId); }
+        catch { itemProductCost = null; }
+        isLoadingProductCost = false;
+        StateHasChanged();
+    }
+
+    // 2026-06-01: helpers visor de margen
+    private decimal MarginGanancia()
+    {
+        if (itemProductCost is null || itemCosts is null) return 0;
+        return CalculateNetAmount() - itemProductCost.TotalCost;
+    }
+    private decimal MarginPctSobreCosto()
+    {
+        if (itemProductCost is null || itemProductCost.TotalCost <= 0) return 0;
+        return MarginGanancia() / itemProductCost.TotalCost * 100m;
+    }
+    private decimal MarginPctSobreVenta()
+    {
+        if (itemCosts is null || itemCosts.Price <= 0) return 0;
+        return MarginGanancia() / itemCosts.Price * 100m;
+    }
+    private string MarginColor()
+    {
+        var p = MarginPctSobreCosto();
+        if (p >= 30) return "#16a34a";    // verde
+        if (p >= 15) return "#eab308";    // amarillo
+        if (p > 0)   return "#f97316";    // naranja
+        return "#dc2626";                  // rojo
+    }
+    private string MarginLabel()
+    {
+        var p = MarginPctSobreCosto();
+        if (p >= 30) return "🟢 Buenísimo";
+        if (p >= 15) return "🟡 Aceptable";
+        if (p > 0)   return "🟠 Bajo";
+        return "🔴 Pérdida";
     }
 
     private string FormatTaxPct() => taxPercentage == 0 ? "0" : taxPercentage.ToString("0.##", CultureInfo.InvariantCulture);
