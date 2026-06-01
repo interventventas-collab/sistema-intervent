@@ -1943,10 +1943,12 @@ public class CafeVentasController : ControllerBase
         var prodIdsList = productIds.Distinct().ToList();
         if (prodIdsList.Count == 0) return dict;
 
+        // 2026-06-01: NO filtramos por Status (antes era active/paused). Si la publicacion
+        // esta cerrada (closed) pero tiene componentes en MeliItemComponentes, el producto
+        // sigue siendo "shell" y al venderlo hay que descontar de los componentes.
         var meliItems = await _db.MeliItems.AsNoTracking()
             .Where(mi => mi.CafeProductoId != null
-                && prodIdsList.Contains(mi.CafeProductoId.Value)
-                && (mi.Status == "active" || mi.Status == "paused"))
+                && prodIdsList.Contains(mi.CafeProductoId.Value))
             .Select(mi => new { mi.MeliItemId, ProdId = mi.CafeProductoId!.Value })
             .ToListAsync();
         if (meliItems.Count == 0) return dict;
