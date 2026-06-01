@@ -113,6 +113,21 @@ public class CafeCombosController : ControllerBase
         return Ok(new { deleted = true });
     }
 
+    /// <summary>2026-06-01: toggle dedicado para EsCompuesto. Permite editarlo sin tener
+    /// que reenviar todos los items del combo (Update completo).</summary>
+    public record SetEsCompuestoRequest(bool EsCompuesto);
+
+    [HttpPatch("{id:int}/es-compuesto")]
+    public async Task<IActionResult> SetEsCompuesto(int id, [FromBody] SetEsCompuestoRequest req)
+    {
+        var combo = await _db.CafeCombos.FirstOrDefaultAsync(c => c.Id == id);
+        if (combo is null) return NotFound(new { error = "Combo no encontrado" });
+        combo.EsCompuesto = req.EsCompuesto;
+        combo.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { id, esCompuesto = combo.EsCompuesto });
+    }
+
     // ============================================================
     // Helpers
     // ============================================================
@@ -191,7 +206,8 @@ public class CafeCombosController : ControllerBase
                 x.Molienda, x.EsDoyPack,
                 x.SortOrder,
                 x.EsEnvasePlateado)).ToList(),
-            Sku: c.Sku
+            Sku: c.Sku,
+            EsCompuesto: c.EsCompuesto
         );
     }
 }

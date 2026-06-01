@@ -4267,3 +4267,22 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='IX_CafeVentaItems_KitId' AND object_id=OBJECT_ID('Cafe_VentaItems'))
     CREATE INDEX IX_CafeVentaItems_KitId ON Cafe_VentaItems(KitId);
 GO
+
+-- 2026-06-01: marcar combos como "Producto Compuesto" (ej: C9172NEG = cesto = recipiente+tapa)
+-- para que aparezcan también en la pestaña "Producto" del buscador de venta. Hace la venta
+-- mucho más rápida porque no hay que cambiar de pestaña para los items individuales.
+-- Pre-marcamos como compuestos los SKUs que NO contienen X[0-9]+ ni '+' ni '-'.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='EsCompuesto' AND Object_ID=OBJECT_ID('Cafe_Combos'))
+BEGIN
+    ALTER TABLE Cafe_Combos ADD EsCompuesto BIT NOT NULL CONSTRAINT DF_CafeCombos_EsCompuesto DEFAULT 0;
+END
+GO
+-- Pre-marcar combos individuales (heuristica: no termina en X<numero> y no tiene + ni -)
+UPDATE Cafe_Combos
+   SET EsCompuesto = 1
+ WHERE EsCompuesto = 0
+   AND Sku IS NOT NULL
+   AND Sku NOT LIKE '%X[0-9]%'
+   AND Sku NOT LIKE '%+%'
+   AND Sku NOT LIKE '%-%';
+GO
