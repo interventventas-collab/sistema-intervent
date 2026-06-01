@@ -190,7 +190,8 @@ public class CafeCombosController : ControllerBase
                 x.Formato, x.Cantidad,
                 x.Molienda, x.EsDoyPack,
                 x.SortOrder,
-                x.EsEnvasePlateado)).ToList()
+                x.EsEnvasePlateado)).ToList(),
+            Sku: c.Sku
         );
     }
 }
