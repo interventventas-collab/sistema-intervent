@@ -264,6 +264,14 @@
                                     {
                                         <span>@FormatGramos(p.StockGramos)</span>
                                     }
+                                    else if (p.StockArmable.HasValue)
+                                    {
+                                        @* 2026-06-01: producto "shell" linkeado via componentes — mostrar armable *@
+                                        <span style="color:#16a34a;" title="Stock armable desde los componentes (recipiente + tapa, etc)">
+                                            @p.StockArmable u.
+                                        </span>
+                                        <div style="font-size:0.65rem; color:#6b7280; font-weight:normal; margin-top:1px;">🧩 armable</div>
+                                    }
                                     else
                                     {
                                         <span>@p.StockUnidades u.</span>
