@@ -61,6 +61,18 @@
         }
     </div>
 
+    @* 2026-06-01 — Barra de acciones masivas (aparece cuando hay tildados) *@
+    @if (seleccionados.Count > 0)
+    {
+        <div style="background:#fef3c7; border-top:1px solid #fcd34d; border-bottom:1px solid #fcd34d; padding:0.7rem 1.25rem; display:flex; align-items:center; gap:0.8rem; flex-wrap:wrap;">
+            <span style="font-weight:700; color:#92400e;">@seleccionados.Count tildado@(seleccionados.Count == 1 ? "" : "s")</span>
+            <button class="btn btn-primary" style="background:#1d4ed8;" @onclick="AbrirBulkModal">
+                ➕ Crear @seleccionados.Count producto@(seleccionados.Count == 1 ? "" : "s")
+            </button>
+            <button class="btn btn-secondary" @onclick="LimpiarSeleccion">Limpiar selección</button>
+        </div>
+    }
+
     <div class="card-body" style="padding:0; max-height:75vh; overflow-y:auto;">
         @if (cargando && response is null)
         {
@@ -84,6 +96,20 @@
                          @onclick="() => ToggleExpand(skuLocal.sku)"
                          onmouseover="this.style.background='#f9fafb'"
                          onmouseout="this.style.background='@(expandido ? "#fefce8" : "white")'">
+                        @* 2026-06-01 — Checkbox para selección múltiple (solo en filas elegibles para crear producto) *@
+                        @if (EsElegibleParaCrear(skuLocal))
+                        {
+                            var marcado = seleccionados.Contains(skuLocal.sku);
+                            <input type="checkbox" checked="@marcado"
+                                   @onchange="@((ChangeEventArgs e) => ToggleSeleccion(skuLocal.sku, (bool)(e.Value ?? false)))"
+                                   @onclick:stopPropagation="true"
+                                   style="width:18px; height:18px; cursor:pointer; flex-shrink:0;"
+                                   title="Tildar para crear producto en lote" />
+                        }
+                        else
+                        {
+                            <span style="width:18px; flex-shrink:0;" title="Ya tiene producto creado"></span>
+                        }
                         @* Caret + icono estado *@
                         <span style="font-size:1rem; width:18px; color:#9ca3af;">@(expandido ? "▼" : "▶")</span>
                         <span style="font-size:1.6rem;">@icono</span>
@@ -359,6 +385,109 @@
     </div>
 </div>
 
+@* 2026-06-01 — Modal MASIVO: crear varios productos shell de un saque *@
+@if (showBulkModal)
+{
+    <div class="modal-overlay" @onclick="CerrarBulkModal"
+         style="position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; display:flex; align-items:center; justify-content:center; padding:1rem;">
+        <div class="modal" style="max-width:1100px; width:100%; background:white; border-radius:8px; box-shadow:0 10px 40px rgba(0,0,0,0.3); overflow:hidden; display:flex; flex-direction:column; max-height:90vh;"
+             @onclick:stopPropagation="true">
+            <div class="modal-header" style="padding:1rem 1.25rem; border-bottom:1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center;">
+                <h3 style="margin:0; font-size:1.1rem;">➕ Crear @bulkFilas.Count productos en lote</h3>
+                <button class="btn-close" @onclick="CerrarBulkModal" disabled="@bulkGuardando"
+                        style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:#6b7280; line-height:1; padding:0 0.4rem;">×</button>
+            </div>
+            <div class="modal-body" style="padding:1rem 1.25rem; overflow-y:auto; flex:1;">
+                <p style="font-size:0.82rem; color:#6b7280; margin:0 0 0.8rem;">
+                    Cada fila va a crear un producto en el sistema con su SKU y auto-linkear sus publicaciones MeLi.
+                    El OEM ya viene auto-sugerido por patrón. Si no querés OEM, dejá "— Sin OEM —".
+                </p>
+                <table style="width:100%; font-size:0.85rem; border-collapse:collapse;">
+                    <thead>
+                        <tr style="border-bottom:2px solid #e5e7eb; background:#f9fafb;">
+                            <th style="padding:0.5rem; text-align:left; width:110px;">SKU</th>
+                            <th style="padding:0.5rem; text-align:left;">Nombre</th>
+                            <th style="padding:0.5rem; text-align:left; width:280px;">OEM</th>
+                            <th style="padding:0.5rem; text-align:right; width:90px;">Mult.</th>
+                            <th style="padding:0.5rem; text-align:center; width:120px;">Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @for (int i = 0; i < bulkFilas.Count; i++)
+                        {
+                            var idx = i;
+                            var f = bulkFilas[idx];
+                            var rowBg = f.Estado == "ok" ? "#dcfce7"
+                                      : (f.Estado != null && f.Estado.StartsWith("error:") ? "#fee2e2" : "white");
+                            <tr style="border-bottom:1px solid #f3f4f6; background:@rowBg;">
+                                <td style="padding:0.5rem; font-family:monospace; font-weight:700; color:#1d4ed8;">@f.Sku</td>
+                                <td style="padding:0.4rem;">
+                                    <input class="form-input" style="font-size:0.85rem;" @bind="f.Nombre" maxlength="200"
+                                           disabled="@bulkGuardando" />
+                                </td>
+                                <td style="padding:0.4rem;">
+                                    <select class="form-input" style="font-size:0.85rem;" @bind="f.OemId" disabled="@bulkGuardando">
+                                        <option value="0">— Sin OEM —</option>
+                                        @if (oemsLista != null)
+                                        {
+                                            @foreach (var oem in oemsLista)
+                                            {
+                                                <option value="@oem.id">@oem.codigo · @oem.descripcion · @(oem.pvpConIva.HasValue ? $"${oem.pvpConIva.Value:N0}" : "(s/p)")</option>
+                                            }
+                                        }
+                                    </select>
+                                </td>
+                                <td style="padding:0.4rem; text-align:right;">
+                                    <input class="form-input" type="number" step="0.01" min="0.0001"
+                                           style="text-align:right; font-size:0.85rem;"
+                                           @bind="f.Multiplicador" disabled="@(bulkGuardando || f.OemId == 0)" />
+                                </td>
+                                <td style="padding:0.5rem; text-align:center; font-size:0.78rem;">
+                                    @if (f.Estado == "ok")
+                                    {
+                                        <span style="color:#16a34a; font-weight:700;">✅ OK</span>
+                                    }
+                                    else if (f.Estado != null && f.Estado.StartsWith("error:"))
+                                    {
+                                        <span style="color:#b91c1c;" title="@f.Estado.Substring(6)">⚠ Error</span>
+                                    }
+                                    else if (bulkGuardando && bulkProgresoIdx == idx)
+                                    {
+                                        <span style="color:#1d4ed8;">⏳ guardando…</span>
+                                    }
+                                    else
+                                    {
+                                        <span style="color:#6b7280;">—</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="modal-footer" style="padding:0.85rem 1.25rem; border-top:1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center; gap:0.5rem; background:#f9fafb;">
+                <div style="font-size:0.8rem; color:#6b7280;">
+                    @if (bulkGuardando)
+                    {
+                        <span>Guardando @(bulkProgresoIdx + 1) / @bulkFilas.Count …</span>
+                    }
+                    else
+                    {
+                        <span>@bulkFilas.Count fila@(bulkFilas.Count == 1 ? "" : "s") — el precio se hereda del OEM (Mult. × OEM.PvpConIva)</span>
+                    }
+                </div>
+                <div style="display:flex; gap:0.5rem;">
+                    <button class="btn btn-secondary" @onclick="CerrarBulkModal" disabled="@bulkGuardando">Cerrar</button>
+                    <button class="btn btn-primary" @onclick="ConfirmarBulkCrear"
+                            disabled="@(bulkGuardando || bulkFilas.Count == 0)">
+                        @(bulkGuardando ? "Guardando..." : $"✅ Crear todos ({bulkFilas.Count})")
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @* 2026-05-30 — Pieza 2: modal para crear producto del sistema desde un SKU MeLi *@
 @if (showCrearModal && crearSkuRow != null)
 {
@@ -461,6 +590,126 @@
     private List<OemLite>? oemsLista;
     public record OemLite(int id, string codigo, string? descripcion, decimal? pvpConIva);
     public record CrearProductoResult(int productoId, string sku, string nombre, int pubsLinkeadas);
+
+    // 2026-06-01 — Crear varios productos a la vez (tildá filas, abrí modal masivo)
+    private HashSet<string> seleccionados = new();
+    private bool showBulkModal;
+    private List<BulkRow> bulkFilas = new();
+    private bool bulkGuardando;
+    private int bulkProgresoIdx;     // índice actual al guardar (para mostrar "guardando 2/5")
+    public class BulkRow
+    {
+        public string Sku { get; set; } = "";
+        public string Nombre { get; set; } = "";
+        public int OemId { get; set; }      // 0 = sin OEM
+        public decimal Multiplicador { get; set; } = 1m;
+        public string? Estado { get; set; } // null=pendiente, "ok", "error:<msg>"
+    }
+
+    private bool EsElegibleParaCrear(SkuRow sku) => !sku.productoSueltoId.HasValue;
+
+    private void ToggleSeleccion(string sku, bool valor)
+    {
+        if (valor) seleccionados.Add(sku);
+        else seleccionados.Remove(sku);
+    }
+
+    private void LimpiarSeleccion()
+    {
+        seleccionados.Clear();
+    }
+
+    private void AbrirBulkModal()
+    {
+        if (response == null) return;
+        var rows = response.items.Where(s => seleccionados.Contains(s.sku) && EsElegibleParaCrear(s)).ToList();
+        if (rows.Count == 0)
+        {
+            ToastService.Info("No hay SKUs tildados elegibles para crear.");
+            return;
+        }
+        bulkFilas = rows.Select(s => new BulkRow
+        {
+            Sku = s.sku,
+            Nombre = !string.IsNullOrEmpty(s.comboNombre) ? s.comboNombre!
+                    : !string.IsNullOrEmpty(s.productoSueltoNombre) ? s.productoSueltoNombre!
+                    : s.sku,
+            OemId = SugerirOemPorSku(s.sku),
+            Multiplicador = 1m,
+            Estado = null
+        }).ToList();
+        bulkProgresoIdx = 0;
+        showBulkModal = true;
+    }
+
+    private void CerrarBulkModal()
+    {
+        if (bulkGuardando) return;
+        showBulkModal = false;
+        bulkFilas.Clear();
+    }
+
+    private async Task ConfirmarBulkCrear()
+    {
+        if (bulkFilas.Count == 0) return;
+        // Validación: todas las filas tienen que tener nombre
+        if (bulkFilas.Any(f => string.IsNullOrWhiteSpace(f.Nombre)))
+        {
+            ToastService.Error("Hay filas sin nombre. Completalas antes de crear.");
+            return;
+        }
+        bulkGuardando = true;
+        var okCount = 0;
+        var errCount = 0;
+        for (int i = 0; i < bulkFilas.Count; i++)
+        {
+            bulkProgresoIdx = i;
+            StateHasChanged();
+            var f = bulkFilas[i];
+            try
+            {
+                var body = new
+                {
+                    Nombre = f.Nombre.Trim(),
+                    OemId = f.OemId > 0 ? (int?)f.OemId : null,
+                    MultiplicadorOem = f.OemId > 0 ? (decimal?)f.Multiplicador : null
+                };
+                var skuEsc = Uri.EscapeDataString(f.Sku);
+                var resp = await Http.PostAsJsonAsync($"/api/meli/skus-meli/{skuEsc}/crear-producto", body);
+                if (resp.IsSuccessStatusCode)
+                {
+                    f.Estado = "ok";
+                    okCount++;
+                    seleccionados.Remove(f.Sku); // ya quedo creado
+                }
+                else
+                {
+                    var err = await resp.Content.ReadAsStringAsync();
+                    f.Estado = "error:" + (err.Length > 120 ? err.Substring(0, 120) + "…" : err);
+                    errCount++;
+                }
+            }
+            catch (Exception ex)
+            {
+                f.Estado = "error:" + ex.Message;
+                errCount++;
+            }
+        }
+        bulkGuardando = false;
+        bulkProgresoIdx = bulkFilas.Count;
+        if (errCount == 0)
+        {
+            ToastService.Success($"✅ Creados {okCount} productos. Refrescando…");
+            showBulkModal = false;
+            bulkFilas.Clear();
+            await Recargar();
+        }
+        else
+        {
+            ToastService.Info($"Creados {okCount}, con error {errCount}. Revisá las filas en rojo y reintentá las que fallaron.");
+            await Recargar();
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
