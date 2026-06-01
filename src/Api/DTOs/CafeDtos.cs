@@ -95,7 +95,11 @@ public record CafeProductoDto(
     // 2026-05-22: Packs prearmados (Pack x 100, etc.). Solo OTROS.
     List<CafeProductoPackDto>? Packs = null,
     // 2026-05-25: stock mínimo de reserva al pushear a MeLi (override por producto, null = global)
-    int? StockMinimoMeLi = null);
+    int? StockMinimoMeLi = null,
+    // 2026-06-01: para productos "shell" linkeados a publicaciones MeLi via componentes,
+    // cantidad de cestos/combos armables a partir del stock real de los componentes (min).
+    // Null si no aplica (productos físicos normales con stock propio).
+    int? StockArmable = null);
 
 public record CafeProductoPackDto(
     int Id, int Cantidad, string Nombre, decimal? PrecioOverride,

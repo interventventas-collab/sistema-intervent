@@ -101,6 +101,9 @@ public class CafeProductoDto
     /// <summary>Override por producto: reserva interna que se descuenta del stock al pushear a MeLi.
     /// null = usa el global. 0 = sin reserva. N = reservar N unidades.</summary>
     public int? StockMinimoMeLi { get; set; }
+    /// <summary>2026-06-01 — Stock armable (cuantos productos "shell" se pueden armar desde
+    /// los componentes linkeados via MeLi). Null si no aplica (productos físicos normales).</summary>
+    public int? StockArmable { get; set; }
     public string? Notas { get; set; }
     public bool IsActive { get; set; }
     public decimal IvaPct { get; set; } = 21m;

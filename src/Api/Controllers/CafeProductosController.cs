@@ -117,7 +117,81 @@ public class CafeProductosController : ControllerBase
             .ThenBy(p => p.Sku)
             .ThenBy(p => p.Nombre)
             .ToList();
-        return Ok(list.Select(Map).ToList());
+
+        // 2026-06-01: calcular StockArmable para productos "shell" (con OemId + linkeados a MeliItems
+        // via CafeProductoId). Stock armable = min(stock componente - reserva componente) / cantidad.
+        // Para productos físicos normales (sin OemId o sin linkeo a MeLi) queda null y la UI muestra StockUnidades.
+        var armableMap = await CalcularStockArmableBulkAsync(list.Select(p => p.Id).ToList());
+
+        return Ok(list.Select(p => {
+            var dto = Map(p);
+            return armableMap.TryGetValue(p.Id, out var armable)
+                ? dto with { StockArmable = armable }
+                : dto;
+        }).ToList());
+    }
+
+    /// <summary>2026-06-01 — Calcula el stock armable (en lote) para una lista de productos.
+    /// Solo aplica a los que están linkeados a MeliItems via CafeProductoId Y esas publicaciones
+    /// tienen componentes (MeliItemComponentes). Para otros productos no devuelve nada.</summary>
+    private async Task<Dictionary<int, int>> CalcularStockArmableBulkAsync(List<int> productoIds)
+    {
+        var result = new Dictionary<int, int>();
+        if (productoIds.Count == 0) return result;
+
+        // 1) MeliItems linkeados a alguno de estos productos (activos o paused)
+        var meliItems = await _db.MeliItems.AsNoTracking()
+            .Where(mi => mi.CafeProductoId != null
+                && productoIds.Contains(mi.CafeProductoId.Value)
+                && (mi.Status == "active" || mi.Status == "paused"))
+            .Select(mi => new { mi.Id, mi.MeliItemId, ProdId = mi.CafeProductoId!.Value })
+            .ToListAsync();
+        if (meliItems.Count == 0) return result;
+
+        var meliIds = meliItems.Select(x => x.MeliItemId).Distinct().ToList();
+
+        // 2) Componentes de esas publicaciones
+        var comps = await _db.MeliItemComponentes.AsNoTracking()
+            .Where(c => meliIds.Contains(c.MeliItemId))
+            .Select(c => new { c.MeliItemId, c.CafeProductoId, c.Cantidad })
+            .ToListAsync();
+        if (comps.Count == 0) return result;
+
+        // 3) Stock + reserva de los componentes
+        var compProdIds = comps.Select(c => c.CafeProductoId).Distinct().ToList();
+        var compStocks = await _db.CafeProductos.AsNoTracking()
+            .Where(p => compProdIds.Contains(p.Id))
+            .Select(p => new { p.Id, p.StockUnidades, p.StockMinimoMeLi })
+            .ToDictionaryAsync(p => p.Id);
+
+        // 4) Calcular armable por producto = max(armable por publicacion linkeada)
+        // Agrupar comps por MeliItemId y, para cada producto, recorrer sus MeliItems linkeadas.
+        var compsByMeliId = comps.GroupBy(c => c.MeliItemId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        foreach (var prodGroup in meliItems.GroupBy(x => x.ProdId))
+        {
+            int armableMax = 0;
+            foreach (var mi in prodGroup)
+            {
+                if (!compsByMeliId.TryGetValue(mi.MeliItemId, out var compsList)) continue;
+                int armableThis = int.MaxValue;
+                foreach (var c in compsList)
+                {
+                    if (!compStocks.TryGetValue(c.CafeProductoId, out var ps)) { armableThis = 0; break; }
+                    int reservaComp = ps.StockMinimoMeLi ?? 0;
+                    int disponible = Math.Max(0, ps.StockUnidades - reservaComp);
+                    int armableCalc = c.Cantidad > 0 ? (int)(disponible / c.Cantidad) : 0;
+                    if (armableCalc < armableThis) armableThis = armableCalc;
+                }
+                if (armableThis != int.MaxValue && armableThis > armableMax) armableMax = armableThis;
+            }
+            // Solo guardamos si tiene componentes (caso shell). Si armableMax queda en 0 por
+            // componentes vacíos vs falta de stock real, igual lo guardamos para que la UI sepa
+            // que es un shell (no muestra "0u" sino "0 (armable)").
+            result[prodGroup.Key] = armableMax;
+        }
+        return result;
     }
 
     // "F1" → "F", "C8733NEG" → "C", "PAL50COLOR" → "PAL"
