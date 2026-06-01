@@ -367,6 +367,10 @@ public record CafeVentaDto(
 public class CafeCotizarItemRequest
 {
     public int ProductoId { get; set; }
+    /// <summary>2026-06-01: si está seteado, el item es un Kit (producto compuesto). En ese caso
+    /// ProductoId puede ser 0/ignorado. Formato y Cantidad se interpretan a nivel Kit (no del componente).
+    /// Al guardar la venta, se descuentan los componentes del Kit (Cafe_KitItems).</summary>
+    public int? KitId { get; set; }
     public string Formato { get; set; } = "1KG";  // 1KG | MEDIO | CUARTO | UNIT
     public int Cantidad { get; set; } = 1;
     public string? Molienda { get; set; }   // EN GRANOS | MOLIDO FILTRO | MOLIDO ESPRESS | null
@@ -407,7 +411,9 @@ public record CafeCotizadoItemDto(
     bool StockOk, string? Aviso,
     string? Molienda, bool EsDoyPack,
     decimal DescuentoPct,
-    bool EsEnvasePlateado = false);
+    bool EsEnvasePlateado = false,
+    int? KitId = null,           // 2026-06-01: si != null, este item es un Kit (producto compuesto)
+    string? KitSku = null);       // SKU del kit para mostrar en la grilla
 
 public record CafeCotizadoDto(
     string ClienteTipoUsado,  // BAR | OTRO
@@ -606,7 +612,8 @@ public record CafeComboDto(
     decimal PreviewPrecioBar,    // suma de PVP1*cantidad (con costo de fraccionamiento si aplica)
     decimal PreviewPrecioOtro,   // suma de PVP2*cantidad
     List<CafeComboItemDto> Items,
-    string? Sku = null);          // 2026-06-01: para que el buscador de venta pueda matchear por SKU
+    string? Sku = null,           // 2026-06-01: para que el buscador de venta pueda matchear por SKU
+    bool EsCompuesto = false);    // 2026-06-01: si true, aparece tambien en pestana "Producto" del buscador
 
 public class CafeComboItemRequest
 {

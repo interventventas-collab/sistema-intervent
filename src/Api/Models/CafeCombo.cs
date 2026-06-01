@@ -43,6 +43,12 @@ public class CafeCombo
 
     public string? Notas { get; set; }
 
+    /// <summary>2026-06-01: si es true, este "combo" se vende como un Producto Compuesto.
+    /// Aparece también en la pestaña "Producto" del buscador de venta (no solo en "Combo"),
+    /// para acelerar la venta de items individuales armados (cesto C9172NEG = recipiente + tapa).
+    /// Internamente el comportamiento es el mismo que combo: se expande en sus items al agregar.</summary>
+    public bool EsCompuesto { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 

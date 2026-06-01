@@ -763,6 +763,7 @@ public class CafeComboDto
     public decimal PreviewPrecioOtro { get; set; }
     public List<CafeComboItemDto> Items { get; set; } = new();
     public string? Sku { get; set; }   // 2026-06-01: para que el buscador matchee por SKU
+    public bool EsCompuesto { get; set; }  // 2026-06-01: si true, aparece en pestaña Producto del buscador
 }
 
 public class CafeComboItemRequest
