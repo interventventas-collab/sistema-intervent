@@ -168,7 +168,11 @@ public record MeliItemDto(
     // PrecioOtroConIvaCalc: precio base del sistema con IVA (suma de componentes si es combo).
     // Usado como base para calcular el preview del ajuste en /publicaciones,
     // y para el push push-precio-ajustado (que NO usa item.Price = MeLi cache).
-    decimal? PrecioOtroConIvaCalc = null
+    decimal? PrecioOtroConIvaCalc = null,
+    // 2026-06-01: Costo del producto/combo desde el sistema (Cafe_Productos.Costo).
+    // Sumatoria si es combo. Usado para mostrar margen en la lista y permitir filtrar
+    // publicaciones con bajo margen / pérdida. Null si no hay linkeo o costo cargado.
+    decimal? ProductCost = null
 );
 
 public record MeliItemsResponse(List<MeliItemDto> Items, int Total);

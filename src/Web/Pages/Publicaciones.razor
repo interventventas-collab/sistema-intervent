@@ -438,6 +438,7 @@
                                             <span>@item.CurrencyId @item.Price.ToString("N2")</span>
                                         }
                                         @AjusteChipPrecio(item)
+                                        @MargenChipPrecio(item)
                                     </td>
                                     <td style="text-align: center; font-weight: 700;">
                                         @{ var stockShow = grp.HasMultiple ? grp.TotalStock : item.AvailableQuantity; }
@@ -641,6 +642,7 @@
                                             <span>@item.CurrencyId @item.Price.ToString("N2")</span>
                                         }
                                         @AjusteChipPrecio(item)
+                                        @MargenChipPrecio(item)
                                     </td>
                                         <td style="text-align: center; font-weight: 700;">
                                         @if (item.ProductCriticalStock.HasValue && item.ProductCriticalStock.Value > 0 && item.AvailableQuantity <= item.ProductCriticalStock.Value)
@@ -759,6 +761,7 @@
                                             <span>@item.CurrencyId @item.Price.ToString("N2")</span>
                                         }
                                         @AjusteChipPrecio(item)
+                                        @MargenChipPrecio(item)
                                     </td>
                                             <td style="text-align: center; font-weight: 700;">
                                         @if (item.ProductCriticalStock.HasValue && item.ProductCriticalStock.Value > 0 && item.AvailableQuantity <= item.ProductCriticalStock.Value)
@@ -821,6 +824,7 @@
                                             <span>@item.CurrencyId @item.Price.ToString("N2")</span>
                                         }
                                         @AjusteChipPrecio(item)
+                                        @MargenChipPrecio(item)
                                     </td>
                                         <td style="text-align: center; font-weight: 700;">
                                         @if (item.ProductCriticalStock.HasValue && item.ProductCriticalStock.Value > 0 && item.AvailableQuantity <= item.ProductCriticalStock.Value)
@@ -4420,6 +4424,46 @@
         __builder.AddAttribute(1, "class", "ajuste-chip-precio");
         __builder.AddAttribute(2, "title", titulo);
         __builder.AddContent(3, "💵 con ajuste");
+        __builder.CloseElement();
+    };
+
+    // 2026-06-01: Calcula margen aproximado (s/costo) usando 30% de fees MeLi estimados.
+    // El cálculo EXACTO está en el modal individual con los fees reales de MeLi.
+    // Este es para visualización rápida en lista — sirve para detectar publicaciones con bajo/sin margen.
+    private decimal? CalcMargenPct(MeliItemDto item)
+    {
+        if (!item.ProductCost.HasValue || item.ProductCost.Value <= 0) return null;
+        var precio = item.Price;
+        if (precio <= 0) return null;
+        var fees = 0.30m;  // 25% comisión + 5% aprox envío/cuotas
+        var netoEstimado = precio * (1m - fees);
+        var ganancia = netoEstimado - item.ProductCost.Value;
+        return ganancia / item.ProductCost.Value * 100m;
+    }
+
+    private (string color, string label, string textColor) MargenChipStyle(decimal pct)
+    {
+        if (pct >= 30m)  return ("#16a34a", $"+{pct.ToString("0", argCulture)}%", "white");
+        if (pct >= 15m)  return ("#eab308", $"+{pct.ToString("0", argCulture)}%", "white");
+        if (pct > 0m)    return ("#f97316", $"+{pct.ToString("0", argCulture)}%", "white");
+        return ("#dc2626", $"{pct.ToString("0", argCulture)}%", "white");
+    }
+
+    /// <summary>2026-06-01: chip de margen estimado (sobre costo) debajo del precio.
+    /// Solo se muestra si el item tiene producto linkeado con costo cargado.</summary>
+    private RenderFragment MargenChipPrecio(MeliItemDto item) => __builder =>
+    {
+        var pct = CalcMargenPct(item);
+        if (pct == null) return;
+        var (bg, label, fg) = MargenChipStyle(pct.Value);
+        var tooltip = $"Margen aprox sobre costo: {label}\n" +
+                      $"Costo: $ {item.ProductCost!.Value.ToString("N0", argCulture)}\n" +
+                      $"Precio: $ {item.Price.ToString("N0", argCulture)}\n" +
+                      $"(neto aprox MeLi: $ {(item.Price * 0.70m).ToString("N0", argCulture)} — abrir detalle para exacto)";
+        __builder.OpenElement(0, "div");
+        __builder.AddAttribute(1, "style", $"display: inline-block; background:{bg}; color:{fg}; padding:0.1rem 0.45rem; border-radius:10px; font-size:0.7rem; font-weight:700; margin-top:0.15rem;");
+        __builder.AddAttribute(2, "title", tooltip);
+        __builder.AddContent(3, $"📊 {label}");
         __builder.CloseElement();
     };
 

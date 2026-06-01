@@ -69,6 +69,10 @@ public class MeliItemDto
     /// Calculado como MAX(LastPushedToMeli) entre el CafeProducto linkeado + componentes.
     /// Null = nunca pusheado.</summary>
     public DateTime? LastStockPushedToMeli { get; set; }
+
+    /// <summary>2026-06-01: Costo del producto/combo desde el sistema. Null si no se pudo calcular
+    /// (no hay linkeo o el producto no tiene costo). Usado para mostrar margen en la lista.</summary>
+    public decimal? ProductCost { get; set; }
 }
 
 public class MeliItemsResponse
