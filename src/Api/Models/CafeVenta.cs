@@ -228,6 +228,15 @@ public class CafeVentaItem
     /// a mano, sin producto del catálogo). En ese caso ProductoId es null y no descuenta stock.</summary>
     public bool EsConceptoLibre { get; set; }
 
+    /// <summary>2026-06-01: FK a Cafe_Kits. Si tiene valor, este item es un "producto compuesto"
+    /// (kit): se vende como 1 línea con el nombre del kit, pero al descontar stock se mueven
+    /// los componentes del kit (Cafe_KitItems × Cantidad). Mutuamente exclusivo con ProductoId
+    /// (los kits no tienen un ProductoId propio).</summary>
+    public int? KitId { get; set; }
+
+    [ForeignKey(nameof(KitId))]
+    public CafeKit? KitNav { get; set; }
+
     [Required, MaxLength(200)]
     public string ProductoNombreSnapshot { get; set; } = string.Empty;
 
