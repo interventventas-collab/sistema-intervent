@@ -1183,14 +1183,15 @@ public class MeliController : ControllerBase
             : req!.Nombre!.Trim();
         if (nombre.Length > 200) nombre = nombre.Substring(0, 200);
 
-        // 3) Validar OEM si vino
+        // 3) Validar OEM si vino + traer datos para heredar (Marca, IvaPct)
+        Api.Models.CafeOem? oem = null;
         if (req?.OemId.HasValue == true)
         {
-            var oemExiste = await db.CafeOems.AnyAsync(o => o.Id == req.OemId.Value);
-            if (!oemExiste) return BadRequest(new { error = $"OEM Id {req.OemId.Value} no existe" });
+            oem = await db.CafeOems.FirstOrDefaultAsync(o => o.Id == req.OemId.Value);
+            if (oem is null) return BadRequest(new { error = $"OEM Id {req.OemId.Value} no existe" });
         }
 
-        // 4) Crear producto
+        // 4) Crear producto — si tiene OEM, heredar Marca + IvaPct del OEM
         var producto = new Api.Models.CafeProducto
         {
             Sku = sku,
@@ -1198,7 +1199,10 @@ public class MeliController : ControllerBase
             Categoria = "OTROS",
             IsActive = true,
             IsVisibleEnVentas = true,
-            IvaPct = 21m,
+            IvaPct = oem?.IvaPct ?? 21m,
+            // 2026-06-01: heredar marca del OEM si está cargada
+            MarcaId = oem?.MarcaId,
+            Marca = oem?.Marca,
             OemId = req?.OemId,
             MultiplicadorOem = req?.MultiplicadorOem,
             CreatedAt = DateTime.UtcNow,
@@ -1232,7 +1236,9 @@ public class MeliController : ControllerBase
     }
 
     /// <summary>Detalle completo de stock de UN producto para el panel de la ficha:
-    /// stock propio (9 de Abril), Full MeLi, total real, reserva aplicada y publicado en MeLi.</summary>
+    /// stock propio (9 de Abril), Full MeLi, total real, reserva aplicada y publicado en MeLi.
+    /// 2026-06-01: extendido para productos "shell" linkeados a publicaciones por componentes
+    /// (caso Pieza 2 + 3: el producto tiene OEM/precio pero el stock vive en sus componentes).</summary>
     [HttpGet("producto-stock-detail/{cafeProductoId:int}")]
     public async Task<IActionResult> GetProductoStockDetail(int cafeProductoId, [FromServices] Api.Data.AppDbContext db)
     {
@@ -1256,7 +1262,62 @@ public class MeliController : ControllerBase
         int reservaAplicada = prod.StockMinimoMeLi ?? 0;
         string reservaSource = reservaAplicada > 0 ? "producto" : "sin_reserva";
 
-        int publicadoSimple = Math.Max(0, stockSistema - reservaAplicada);
+        // 2026-06-01: detectar si es producto "shell" (linkeado a MeliItems via CafeProductoId).
+        // Si esa publicación tiene componentes (combo), el stock REAL armable viene de los componentes.
+        // Calculamos "stockArmable" (cuántos cestos armables hay) + "publicadoMeLi" (lo que MeLi muestra).
+        int? stockArmable = null;
+        string? armableSource = null;
+        int publicadoMeLi;
+
+        var linkedMeliItems = await db.MeliItems.AsNoTracking()
+            .Where(mi => mi.CafeProductoId == cafeProductoId && (mi.Status == "active" || mi.Status == "paused"))
+            .Select(mi => new { mi.MeliItemId, mi.AvailableQuantity })
+            .ToListAsync();
+
+        if (linkedMeliItems.Count > 0)
+        {
+            // "Publicado en MeLi" = lo que MeLi realmente muestra (max entre publicaciones linkeadas).
+            publicadoMeLi = linkedMeliItems.Max(mi => mi.AvailableQuantity);
+
+            // Calcular "stock armable" desde componentes de las publicaciones linkeadas
+            var meliIds = linkedMeliItems.Select(mi => mi.MeliItemId).ToList();
+            var comps = await db.MeliItemComponentes.AsNoTracking()
+                .Where(c => meliIds.Contains(c.MeliItemId))
+                .Select(c => new { c.MeliItemId, c.CafeProductoId, c.Cantidad })
+                .ToListAsync();
+            if (comps.Count > 0)
+            {
+                var compProductoIds = comps.Select(c => c.CafeProductoId).Distinct().ToList();
+                var compStocks = await db.CafeProductos.AsNoTracking()
+                    .Where(p => compProductoIds.Contains(p.Id))
+                    .Select(p => new { p.Id, p.StockUnidades, p.StockMinimoMeLi })
+                    .ToDictionaryAsync(p => p.Id);
+                int armableMax = 0;
+                foreach (var mid in meliIds)
+                {
+                    var compsThis = comps.Where(c => c.MeliItemId == mid).ToList();
+                    if (compsThis.Count == 0) continue;
+                    int armableThis = int.MaxValue;
+                    foreach (var c in compsThis)
+                    {
+                        if (!compStocks.TryGetValue(c.CafeProductoId, out var ps)) { armableThis = 0; break; }
+                        int reservaComp = ps.StockMinimoMeLi ?? 0;
+                        int disponible = Math.Max(0, ps.StockUnidades - reservaComp);
+                        int armableCalc = c.Cantidad > 0 ? (int)(disponible / c.Cantidad) : 0;
+                        if (armableCalc < armableThis) armableThis = armableCalc;
+                    }
+                    if (armableThis != int.MaxValue && armableThis > armableMax) armableMax = armableThis;
+                }
+                stockArmable = armableMax;
+                armableSource = "componentes";
+            }
+        }
+        else
+        {
+            // Sin publicaciones linkeadas → cálculo viejo (producto físico normal)
+            publicadoMeLi = Math.Max(0, stockSistema - reservaAplicada);
+        }
+
         int stockReal = stockSistema + stockFull;
 
         return Ok(new {
@@ -1265,7 +1326,10 @@ public class MeliController : ControllerBase
             stockReal,
             reservaAplicada,
             reservaSource,
-            publicadoMeLi = publicadoSimple
+            publicadoMeLi,
+            // 2026-06-01: nuevos campos para shells
+            stockArmable,
+            armableSource
         });
     }
 
