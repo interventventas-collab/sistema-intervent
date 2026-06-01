@@ -139,14 +139,16 @@ public class CafeProductosController : ControllerBase
         var result = new Dictionary<int, int>();
         if (productoIds.Count == 0) return result;
 
-        // 1) MeliItems linkeados a alguno de estos productos.
-        // 2026-06-01: NO filtramos por Status (antes era active/paused). Si la publicacion
-        // esta cerrada (closed) pero tiene componentes conocidos, el producto sigue siendo
-        // un "shell" armable desde esos componentes. Productos de la misma familia
-        // (C186BL/GR/ROJ) deben comportarse igual aunque MeLi haya cerrado la publicacion vieja.
+        // 1) MeliItems linkeados a alguno de estos productos (activos o paused).
+        // 2026-06-01 (revertido): volvemos a filtrar por Status active/paused. La hipotesis
+        // de "ignorar status" producia falsos positivos: productos individuales (C186BL/GR/ROJ)
+        // que NO son combos tenian MeliItemComponentes fantasma de una MLA vieja closed
+        // (mapping erroneo de Contabilium) y se mostraban como shell. La composicion mal
+        // cargada en MeliItemComponentes hay que limpiarla por separado, no compensarla aca.
         var meliItems = await _db.MeliItems.AsNoTracking()
             .Where(mi => mi.CafeProductoId != null
-                && productoIds.Contains(mi.CafeProductoId.Value))
+                && productoIds.Contains(mi.CafeProductoId.Value)
+                && (mi.Status == "active" || mi.Status == "paused"))
             .Select(mi => new { mi.Id, mi.MeliItemId, ProdId = mi.CafeProductoId!.Value })
             .ToListAsync();
         if (meliItems.Count == 0) return result;
