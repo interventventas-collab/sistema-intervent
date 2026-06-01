@@ -1494,7 +1494,7 @@
                                 </div>
                                 @if (formEnRadar)
                                 {
-                                    <div style="font-size: 0.68rem; color: #1e3a8a; margin-top: 0.3rem;">📍 Uso interno · El cliente verá <strong>"a coordinar"</strong> en el comprobante.</div>
+                                    <div style="font-size: 0.68rem; color: #1e3a8a; margin-top: 0.3rem;">🛰 El cliente verá <strong>"EN RADAR"</strong> en el comprobante.</div>
                                 }
                                 @if (formRetira)
                                 {
@@ -3559,30 +3559,16 @@
 
     private void ToggleFormDay(string d)
     {
+        // 2026-06-01: ya NO hay relacion entre los dias y EN RADAR.
+        // El usuario tilda dias y EN RADAR de forma totalmente independiente.
         if (!formWeekDays.Add(d)) formWeekDays.Remove(d);
-        // Lógica auto-radar:
-        //  - Si destildaste un día LUN-SAB y EN RADAR estaba activo → se apaga (ya no es "cualquier día")
-        //  - Si tildando manualmente quedaron los 6 LUN-SAB tildados → EN RADAR se enciende solo
-        bool todosRadarOn = RadarDays.All(x => formWeekDays.Contains(x));
-        if (formEnRadar && !todosRadarOn) formEnRadar = false;
-        else if (!formEnRadar && todosRadarOn) formEnRadar = true;
     }
 
-    /// <summary>Botón EN RADAR: tildea los 6 días LUN-SAB y prende el flag.
-    /// Si ya estaba activo, destildea todos los días LUN-SAB y apaga el flag.
-    /// DOM queda intocado (es independiente).</summary>
+    /// <summary>2026-06-01: EN RADAR es un flag independiente — no toca los dias.
+    /// Si esta activo, el PDF muestra "🛰 EN RADAR" literal en lugar de los pills de dias.</summary>
     private void ToggleEnRadar()
     {
-        if (formEnRadar)
-        {
-            foreach (var d in RadarDays) formWeekDays.Remove(d);
-            formEnRadar = false;
-        }
-        else
-        {
-            foreach (var d in RadarDays) formWeekDays.Add(d);
-            formEnRadar = true;
-        }
+        formEnRadar = !formEnRadar;
     }
 
     /// <summary>2026-06-01: Toggle de "RETIRA" — el cliente retira la mercaderia en el local.

@@ -371,7 +371,7 @@ public class ArcaInvoicePdfService
                                         daysRow.AutoItem().AlignMiddle().PaddingRight(4)
                                             .Text("Días de entrega:").FontSize(7).FontColor(Colors.Grey.Darken1);
                                         daysRow.AutoItem().AlignMiddle().Padding(2)
-                                            .Text("a coordinar").Bold().FontSize(9).FontColor(Colors.Blue.Darken3);
+                                            .Text("🛰 EN RADAR").Bold().FontSize(9).FontColor(Colors.Blue.Darken3);
                                     });
                                 }
                                 else if (diasActivos.Count > 0)
