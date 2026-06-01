@@ -1943,12 +1943,13 @@ public class CafeVentasController : ControllerBase
         var prodIdsList = productIds.Distinct().ToList();
         if (prodIdsList.Count == 0) return dict;
 
-        // 2026-06-01: NO filtramos por Status (antes era active/paused). Si la publicacion
-        // esta cerrada (closed) pero tiene componentes en MeliItemComponentes, el producto
-        // sigue siendo "shell" y al venderlo hay que descontar de los componentes.
+        // 2026-06-01 (revertido): volvemos a filtrar por Status active/paused. Las MLAs
+        // closed pueden tener composicion fantasma cargada erroneamente desde Contabilium
+        // (producto individual mapeado como combo), y aplicarla generaria falsos shells.
         var meliItems = await _db.MeliItems.AsNoTracking()
             .Where(mi => mi.CafeProductoId != null
-                && prodIdsList.Contains(mi.CafeProductoId.Value))
+                && prodIdsList.Contains(mi.CafeProductoId.Value)
+                && (mi.Status == "active" || mi.Status == "paused"))
             .Select(mi => new { mi.MeliItemId, ProdId = mi.CafeProductoId!.Value })
             .ToListAsync();
         if (meliItems.Count == 0) return dict;
