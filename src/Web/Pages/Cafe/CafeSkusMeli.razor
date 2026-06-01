@@ -362,13 +362,15 @@
 @* 2026-05-30 — Pieza 2: modal para crear producto del sistema desde un SKU MeLi *@
 @if (showCrearModal && crearSkuRow != null)
 {
-    <div class="modal-overlay" @onclick="CerrarModalCrearProducto">
-        <div class="modal" style="max-width:520px;" @onclick:stopPropagation="true">
-            <div class="modal-header">
-                <h3>➕ Crear producto desde MeLi</h3>
-                <button class="btn-close" @onclick="CerrarModalCrearProducto">×</button>
+    <div class="modal-overlay" @onclick="CerrarModalCrearProducto"
+         style="position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; display:flex; align-items:center; justify-content:center; padding:1rem;">
+        <div class="modal" style="max-width:520px; width:100%; background:white; border-radius:8px; box-shadow:0 10px 40px rgba(0,0,0,0.3); overflow:hidden;" @onclick:stopPropagation="true">
+            <div class="modal-header" style="padding:1rem 1.25rem; border-bottom:1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center;">
+                <h3 style="margin:0; font-size:1.1rem;">➕ Crear producto desde MeLi</h3>
+                <button class="btn-close" @onclick="CerrarModalCrearProducto"
+                        style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:#6b7280; line-height:1; padding:0 0.4rem;">×</button>
             </div>
-            <div class="modal-body">
+            <div class="modal-body" style="padding:1rem 1.25rem; max-height:70vh; overflow-y:auto;">
                 <p style="font-size:0.82rem; color:#6b7280; margin-bottom:0.8rem;">
                     Vas a crear un producto en el sistema con el SKU <strong>@crearSkuRow.sku</strong>
                     y auto-linkear todas sus publicaciones MeLi.
@@ -407,7 +409,7 @@
                     </div>
                 }
             </div>
-            <div class="modal-footer">
+            <div class="modal-footer" style="padding:0.85rem 1.25rem; border-top:1px solid #e5e7eb; display:flex; justify-content:flex-end; gap:0.5rem; background:#f9fafb;">
                 <button class="btn btn-secondary" @onclick="CerrarModalCrearProducto" disabled="@crearGuardando">Cancelar</button>
                 <button class="btn btn-primary" @onclick="ConfirmarCrearProducto"
                         disabled="@(crearGuardando || string.IsNullOrWhiteSpace(crearNombre))">
