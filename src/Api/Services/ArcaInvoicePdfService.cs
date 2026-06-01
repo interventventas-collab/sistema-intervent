@@ -351,9 +351,20 @@ public class ArcaInvoicePdfService
                                         t.Span(comp.EntregaPor!).Bold().FontSize(9).FontColor(Colors.Grey.Darken4);
                                     });
                                 }
+                                // 2026-06-01: RETIRA — el cliente retira la mercaderia en el local.
+                                if (comp.Retira)
+                                {
+                                    cc.Item().PaddingTop(3).Row(daysRow =>
+                                    {
+                                        daysRow.AutoItem().AlignMiddle().PaddingRight(4)
+                                            .Text("Entrega:").FontSize(7).FontColor(Colors.Grey.Darken1);
+                                        daysRow.AutoItem().AlignMiddle().Padding(2)
+                                            .Text("🚗 RETIRA EN LOCAL").Bold().FontSize(9).FontColor(Colors.Green.Darken3);
+                                    });
+                                }
                                 // Si "EN RADAR" está activo, el cliente ve "a coordinar" en lugar de los pills.
                                 // "EN RADAR" es jerga interna (cuando estemos por la zona) — NUNCA se imprime literal.
-                                if (comp.EnRadar)
+                                else if (comp.EnRadar)
                                 {
                                     cc.Item().PaddingTop(3).Row(daysRow =>
                                     {
@@ -604,6 +615,10 @@ public class PdfComprobante
     /// <summary>"EN RADAR" — uso interno: cuando estemos por la zona. Si está en true,
     /// el footer reemplaza los pills de días por "a coordinar". El cliente NUNCA ve "EN RADAR" textual.</summary>
     public bool EnRadar { get; set; }
+
+    /// <summary>2026-06-01: RETIRA — el cliente retira la mercaderia en el local. Si true, en el
+    /// footer del PDF se muestra "🚗 RETIRA EN LOCAL" en lugar de los pills de días.</summary>
+    public bool Retira { get; set; }
     /// <summary>Quien entrega la venta (Gabriel, Nacho, Maxi, Alexis, Miguel, Rodrigo, o
     /// 'Logistica tercerizada'). Si esta seteado se muestra en el bloque DOMICILIO DE ENTREGA.</summary>
     public string? EntregaPor { get; set; }

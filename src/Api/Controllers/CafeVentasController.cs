@@ -192,7 +192,7 @@ public class CafeVentasController : ControllerBase
         v.ClienteId, v.ClienteNombreSnapshot, v.ClienteTipoSnapshot, v.ClienteTelefonoSnapshot,
         v.Subtotal, v.Descuento, v.Total, v.CostoTotal, v.Margen,
         v.Observaciones, v.Estado,
-        v.WeekDays, v.EnRadar, v.IsPaid,
+        v.WeekDays, v.EnRadar, v.IsPaid, v.Retira,
         v.TipoComprobante, v.CondicionIva, v.CondicionPago,
         v.CreatedAt,
         v.Items.Select(i => new CafeVentaItemDto(
@@ -695,6 +695,7 @@ public class CafeVentasController : ControllerBase
             TipoClienteTag = v.ClienteTipoSnapshot,
             DiasVisita = v.WeekDays,
             EnRadar = v.EnRadar,
+            Retira = v.Retira,
             ComentariosCliente = v.ClienteComentariosComprobante,
             Observaciones = v.Observaciones,
             CondicionPago = v.CondicionPago,
@@ -890,6 +891,7 @@ public class CafeVentasController : ControllerBase
             Estado = "emitido",
             WeekDays = NormWeekDays(req.WeekDays),
             EnRadar = req.EnRadar,
+            Retira = req.Retira,
             IsPaid = req.IsPaid,
             TipoComprobante = NormTipoComprobante(req.TipoComprobante),
             CondicionIva = NormCondicionIva(req.CondicionIva),
@@ -1013,6 +1015,7 @@ public class CafeVentasController : ControllerBase
             Estado = "emitido",
             WeekDays = NormWeekDays(req.WeekDays),
             EnRadar = req.EnRadar,
+            Retira = req.Retira,
             IsPaid = req.IsPaid,
             TipoComprobante = NormTipoComprobante(req.TipoComprobante),
             CondicionIva = NormCondicionIva(req.CondicionIva),
@@ -1466,6 +1469,7 @@ public class CafeVentasController : ControllerBase
             CondicionPago: v.CondicionPago,
             WeekDays: v.WeekDays,
             EnRadar: v.EnRadar,
+            Retira: v.Retira,
             Observaciones: v.Observaciones,
             Items: items,
             OrigenNumero: v.Numero);
@@ -1481,6 +1485,7 @@ public class CafeVentasController : ControllerBase
         if (v is null) return NotFound(new { error = "Venta no encontrada" });
         if (req.WeekDays is not null) v.WeekDays = NormWeekDays(req.WeekDays);
         if (req.EnRadar.HasValue) v.EnRadar = req.EnRadar.Value;
+        if (req.Retira.HasValue) v.Retira = req.Retira.Value;
         if (req.IsPaid.HasValue) v.IsPaid = req.IsPaid.Value;
         v.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
@@ -1662,6 +1667,7 @@ public class CafeVentasController : ControllerBase
         if (req.CondicionPago is not null) v.CondicionPago = NormCondicionPago(req.CondicionPago);
         if (req.WeekDays is not null) v.WeekDays = NormWeekDays(req.WeekDays);
         if (req.EnRadar.HasValue) v.EnRadar = req.EnRadar.Value;
+        if (req.Retira.HasValue) v.Retira = req.Retira.Value;
         if (req.IsPaid.HasValue) v.IsPaid = req.IsPaid.Value;
         if (req.EntregaPor is not null) v.EntregaPor = string.IsNullOrWhiteSpace(req.EntregaPor) ? null : req.EntregaPor.Trim();
 

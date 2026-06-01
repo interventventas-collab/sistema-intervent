@@ -12,6 +12,7 @@ public class DuplicarVentaPayloadDto
     public string CondicionPago { get; set; } = "EFECTIVO";
     public string? WeekDays { get; set; }
     public bool EnRadar { get; set; }
+    public bool Retira { get; set; }
     public string? Observaciones { get; set; }
     public List<CafeCotizarItemRequest> Items { get; set; } = new();
     public string? OrigenNumero { get; set; }
