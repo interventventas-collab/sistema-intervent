@@ -395,7 +395,30 @@
                                             }
                                         </div>
                                     </td>
-                                    <td>@SkuConPrecioSistema(item)</td>
+                                    <td>
+                                        @if (grp.HasMultiple)
+                                        {
+                                            @* 2026-06-01: en familia/grupo multi-publicacion mostrar conteo en lugar del SKU
+                                               de una variante puntual — antes mostraba "C9172BEI" en el padre y confundia. *@
+                                            var multiCount = grp.IsFamily ? grp.DistinctMLAs : grp.Variants.Count;
+                                            var multiLabel = grp.IsFamily
+                                                ? (multiCount == 1 ? "publicación" : "publicaciones")
+                                                : (multiCount == 1 ? "variante" : "variantes");
+                                            <div style="color:#6b7280; font-style:italic; font-size:0.85rem;">— @multiCount @multiLabel</div>
+                                            @if (item.PrecioOtroConIvaCalc.HasValue && item.PrecioOtroConIvaCalc.Value > 0)
+                                            {
+                                                var fmt = item.PrecioOtroConIvaCalc.Value.ToString("N0", new System.Globalization.CultureInfo("es-AR"));
+                                                <div style="font-size:0.7rem; color:#6b7280; font-weight:600; margin-top:2px;"
+                                                     title="Precio sistema de una variante (las otras pueden tener otro)">
+                                                    $ @fmt
+                                                </div>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            @SkuConPrecioSistema(item)
+                                        }
+                                    </td>
                                     <td>
                                         @if (item.OriginalPrice.HasValue && item.OriginalPrice.Value > 0 && item.OriginalPrice.Value != item.Price)
                                         {
