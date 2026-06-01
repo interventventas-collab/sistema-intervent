@@ -1068,7 +1068,10 @@
                                     {
                                         var cmatches = string.IsNullOrWhiteSpace(comboSearch)
                                             ? combos.Where(c => c.IsActive).Take(20).ToList()
-                                            : combos.Where(c => c.IsActive && (c.Nombre.MatchesSearch(comboSearch) || c.Descripcion.MatchesSearch(comboSearch))).Take(20).ToList();
+                                            : combos.Where(c => c.IsActive && (
+                                                c.Nombre.MatchesSearch(comboSearch)
+                                                || c.Descripcion.MatchesSearch(comboSearch)
+                                                || (c.Sku ?? "").MatchesSearch(comboSearch))).Take(20).ToList();
                                         <div style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #d1d5db; border-radius: 6px; max-height: 280px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 14px rgba(0,0,0,0.12); margin-top: 0.2rem;">
                                             @if (cmatches.Count == 0)
                                             {
@@ -1082,6 +1085,10 @@
                                                     <div class="cli-pick-row" @onclick="() => SelectCombo(cId)"
                                                          style="padding: 0.4rem 0.6rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem;">
                                                         <span style="margin-right: 0.4rem;">🎁</span>
+                                                        @if (!string.IsNullOrEmpty(c.Sku))
+                                                        {
+                                                            <span style="font-family: monospace; color: #1d4ed8; font-weight: 700; margin-right: 0.5rem;">@c.Sku</span>
+                                                        }
                                                         <strong>@c.Nombre</strong>
                                                         <span style="color: #6b7280; font-size: 0.78rem;"> · @c.ItemsCount item@(c.ItemsCount == 1 ? "" : "s")</span>
                                                         <span style="color: #1d4ed8; font-size: 0.78rem;"> · BAR $@FormatMoney(c.PreviewPrecioBar)</span>

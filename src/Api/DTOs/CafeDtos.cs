@@ -605,7 +605,8 @@ public record CafeComboDto(
     int ItemsCount,
     decimal PreviewPrecioBar,    // suma de PVP1*cantidad (con costo de fraccionamiento si aplica)
     decimal PreviewPrecioOtro,   // suma de PVP2*cantidad
-    List<CafeComboItemDto> Items);
+    List<CafeComboItemDto> Items,
+    string? Sku = null);          // 2026-06-01: para que el buscador de venta pueda matchear por SKU
 
 public class CafeComboItemRequest
 {
