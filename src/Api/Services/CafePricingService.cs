@@ -117,6 +117,22 @@ public static class CafePricingService
         decimal? precioBultoOtroEf = usaFuturos && producto.PrecioBultoOtroFuturo.HasValue ? producto.PrecioBultoOtroFuturo : producto.PrecioBultoOtro;
         decimal? precioPorKgEf = usaFuturos && producto.PrecioPorKgFuturo.HasValue ? producto.PrecioPorKgFuturo : producto.PrecioPorKg;
 
+        // 2026-06-01: modelo OEM autoritativo (igual que MeliItemService.PrecioCIvaProducto y MeliPricePushService).
+        // Si el producto tiene OemId y el OEM tiene PvpConIva > 0, el precio unitario (CON IVA) viene del OEM:
+        //   precio = OEM.PvpConIva × MultiplicadorOem (default 1)
+        // Esto cubre productos "shell" (C9172NEG, C9172ROJ, etc.) que NO tienen PrecioBar/PrecioOtro propios:
+        // su precio se hereda del OEM padre. Si en el futuro el usuario quiere pisar el precio del OEM en un
+        // producto puntual, vamos a tener que sumar un flag, pero hoy el contrato es: OEM manda.
+        if (producto.OemId.HasValue && producto.OemNav?.PvpConIva is decimal pvpOem && pvpOem > 0m)
+        {
+            var mult = producto.MultiplicadorOem ?? 1m;
+            if (mult <= 0m) mult = 1m;
+            var precioDesdeOem = pvpOem * mult;
+            precioBarEf = precioDesdeOem;
+            precioOtroEf = precioDesdeOem;
+            // PrecioBulto NO se pisa: el bulto requiere configuración propia explicita.
+        }
+
         // Elegir el precio directo segun el tipo de cliente.
         // Si el formato es BULTO (solo OTROS), usamos PrecioBulto* como precio del bulto.
         // Si el formato es PACK_N, usamos pack.PrecioOverride si esta cargado, sino N x precio_unitario.
