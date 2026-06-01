@@ -1023,6 +1023,12 @@ public class CafeVentasController : ControllerBase
             EntregaPor = string.IsNullOrWhiteSpace(req.EntregaPor) ? null : req.EntregaPor.Trim()
         };
 
+        // 2026-06-01 — Cargar info de productos "shell" para decremento correcto
+        // (productos linkeados a MeLi via componentes: decrementar componentes en lugar del shell vacío).
+        var prodIdsCrear = cot.Items.Where(i => i.Categoria != "LIBRE" && i.ProductoId > 0)
+            .Select(i => i.ProductoId).Distinct().ToList();
+        var shellCompsCrear = await LoadShellComponentsAsync(prodIdsCrear);
+
         // Mapear items + descontar stock fisico
         for (int idx = 0; idx < cot.Items.Count; idx++)
         {
@@ -1084,26 +1090,56 @@ public class CafeVentasController : ControllerBase
                 await _stockLogger.LogAsync(prod.Id, "VENTA_NUESTRA", antesG, (int)Math.Round(prod.StockGramos),
                     comentario: $"Venta #{venta.Numero} · {it.Cantidad}x{it.Formato} · -{(int)Math.Round(it.GramosNecesarios)}g",
                     saveChanges: false);
+                prod.UpdatedAt = DateTime.UtcNow;
+                prod.StockChangedAt = DateTime.UtcNow;
+                await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
+            }
+            else if (shellCompsCrear.TryGetValue(prod.Id, out var compsAct))
+            {
+                // 2026-06-01 — SHELL: el prod no tiene stock propio. Decrementar componentes.
+                // El stock del shell queda en 0; el push a MeLi se dispara por cada componente
+                // (CafeProductosController FireAndForgetPushMeli al cambiar su stock).
+                var unidadesADescontar = UnidadesRealesStock(prod, it.Formato, it.Cantidad);
+                foreach (var (compId, cantPorUnidadShell) in compsAct)
+                {
+                    var compProd = await _db.CafeProductos.FindAsync(compId);
+                    if (compProd is null) continue;
+                    var totalDescontar = (int)Math.Ceiling(cantPorUnidadShell * unidadesADescontar);
+                    var antes = compProd.StockUnidades;
+                    compProd.StockUnidades = Math.Max(0, compProd.StockUnidades - totalDescontar);
+                    compProd.UpdatedAt = DateTime.UtcNow;
+                    compProd.StockChangedAt = DateTime.UtcNow;
+                    await _stockLogger.LogAsync(compId, "VENTA_NUESTRA_COMP", antes, compProd.StockUnidades,
+                        comentario: $"Venta #{venta.Numero} · shell {prod.Sku} {it.Cantidad}x{it.Formato} → comp -{totalDescontar}u",
+                        saveChanges: false);
+                    await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, compProd);
+                }
+                // Marca el shell como tocado (no decrementa stock, pero queda timestamp).
+                prod.UpdatedAt = DateTime.UtcNow;
             }
             else
             {
+                // Producto físico normal — decrementa stock propio.
                 var unidadesADescontar = UnidadesRealesStock(prod, it.Formato, it.Cantidad);
                 var antes = prod.StockUnidades;
                 prod.StockUnidades = Math.Max(0, prod.StockUnidades - unidadesADescontar);
                 await _stockLogger.LogAsync(prod.Id, "VENTA_NUESTRA", antes, prod.StockUnidades,
                     comentario: $"Venta #{venta.Numero} · {it.Cantidad}x{it.Formato} · -{unidadesADescontar}u",
                     saveChanges: false);
+                prod.UpdatedAt = DateTime.UtcNow;
+                prod.StockChangedAt = DateTime.UtcNow;
+                await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
             }
-            prod.UpdatedAt = DateTime.UtcNow;
-            prod.StockChangedAt = DateTime.UtcNow; // dispara push a MeLi (event-driven + job de respaldo)
-            // Sincronizar Cafe_StockPorDeposito (parche 2026-05-25).
-            await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
         }
 
         // Capturar los productos afectados ANTES del SaveChanges para pushear despues.
         var productosAfectados = venta.Items
             .Where(i => i.ProductoId.HasValue)
-            .Select(i => i.ProductoId!.Value).Distinct().ToList();
+            .Select(i => i.ProductoId!.Value)
+            // 2026-06-01: incluir componentes de productos shell (porque ellos fueron los que cambiaron
+            // de stock, y pueden estar linkeados a otras publicaciones MeLi también).
+            .Concat(shellCompsCrear.Values.SelectMany(l => l.Select(c => c.compProductoId)))
+            .Distinct().ToList();
 
         _db.CafeVentas.Add(venta);
         await _db.SaveChangesAsync();
@@ -1896,11 +1932,66 @@ public class CafeVentasController : ControllerBase
         return CafePricingService.ResolverTipo(tipoOverride);
     }
 
+    /// <summary>2026-06-01 — Carga los componentes de productos "shell" (con OEM/precio pero sin
+    /// stock propio, linkeados a publicaciones MeLi via MeliItemComponentes). Devuelve un dict
+    /// productoId → lista de (componenteId, cantidadPorUnidadShell). Usado en venta para validar
+    /// stock contra el armable y para decrementar componentes en lugar del producto vacío.</summary>
+    private async Task<Dictionary<int, List<(int compProductoId, decimal cantidad)>>> LoadShellComponentsAsync(IEnumerable<int> productIds)
+    {
+        var dict = new Dictionary<int, List<(int, decimal)>>();
+        var prodIdsList = productIds.Distinct().ToList();
+        if (prodIdsList.Count == 0) return dict;
+
+        var meliItems = await _db.MeliItems.AsNoTracking()
+            .Where(mi => mi.CafeProductoId != null
+                && prodIdsList.Contains(mi.CafeProductoId.Value)
+                && (mi.Status == "active" || mi.Status == "paused"))
+            .Select(mi => new { mi.MeliItemId, ProdId = mi.CafeProductoId!.Value })
+            .ToListAsync();
+        if (meliItems.Count == 0) return dict;
+
+        var meliIds = meliItems.Select(x => x.MeliItemId).Distinct().ToList();
+        var comps = await _db.MeliItemComponentes.AsNoTracking()
+            .Where(c => meliIds.Contains(c.MeliItemId))
+            .Select(c => new { c.MeliItemId, c.CafeProductoId, c.Cantidad })
+            .ToListAsync();
+        if (comps.Count == 0) return dict;
+
+        var compsByMeliId = comps.GroupBy(c => c.MeliItemId).ToDictionary(g => g.Key, g => g.ToList());
+        foreach (var prodGroup in meliItems.GroupBy(x => x.ProdId))
+        {
+            // Tomar componentes del primer MLA linkeado (asumimos consistencia entre los MLAs de un mismo producto)
+            var firstMeliId = prodGroup.Select(x => x.MeliItemId).FirstOrDefault();
+            if (firstMeliId == null) continue;
+            if (compsByMeliId.TryGetValue(firstMeliId, out var compsList) && compsList.Count > 0)
+            {
+                dict[prodGroup.Key] = compsList.Select(c => (c.CafeProductoId, c.Cantidad)).ToList();
+            }
+        }
+        return dict;
+    }
+
     private async Task<CafeCotizadoDto> CotizarInternoAsync(List<CafeCotizarItemRequest> items, string tipo, decimal descuento, CafeSetting settings)
     {
         var cotizadoItems = new List<CafeCotizadoItemDto>();
         decimal subtotal = 0m, costoTotal = 0m;
         bool todoOk = true;
+
+        // 2026-06-01 — Cargar info de productos "shell" (linkeados a MeLi via componentes).
+        // Para esos productos, la validación de stock se hace contra el armable de componentes,
+        // no contra StockUnidades del shell (que siempre es 0).
+        var prodIdsCotizar = items.Where(i => !i.EsConceptoLibre && i.ProductoId > 0)
+            .Select(i => i.ProductoId).Distinct().ToList();
+        var shellComps = await LoadShellComponentsAsync(prodIdsCotizar);
+        Dictionary<int, (int stockUnidades, int reserva)> compStocksCotizar = new();
+        if (shellComps.Count > 0)
+        {
+            var allCompProdIds = shellComps.Values.SelectMany(l => l.Select(c => c.compProductoId)).Distinct().ToList();
+            compStocksCotizar = await _db.CafeProductos.AsNoTracking()
+                .Where(p => allCompProdIds.Contains(p.Id))
+                .Select(p => new { p.Id, p.StockUnidades, Reserva = p.StockMinimoMeLi ?? 0 })
+                .ToDictionaryAsync(p => p.Id, p => (p.StockUnidades, p.Reserva));
+        }
 
         // NOTA: la matriz Cafe_ReglasPrecios fue deprecada el 2026-05-12.
         // Los descuentos automaticos se eliminaron — ahora cada producto tiene PrecioBar/PrecioOtro directos.
@@ -2024,7 +2115,26 @@ public class CafeVentasController : ControllerBase
             var gramosNecesarios = esCafe ? CafePricingService.GramosPorUnidad(it.Formato) * it.Cantidad : 0m;
             // BULTO → cantidad × UxB, PACK_N → cantidad × N, sino 1 a 1.
             var unidadesNecesarias = UnidadesRealesStock(prod, it.Formato, it.Cantidad);
-            var stockOk = esCafe ? gramosNecesarios <= prod.StockGramos + 0.001m : unidadesNecesarias <= prod.StockUnidades;
+
+            // 2026-06-01 — Stock disponible efectivo. Si es "shell" (producto sin stock propio
+            // linkeado a publicación MeLi via componentes), calcular armable desde los componentes.
+            // Si es producto físico normal, usar StockUnidades directo.
+            bool esShell = shellComps.ContainsKey(prod.Id);
+            int stockUnidadesDisponibleEfectivo = prod.StockUnidades;
+            if (esShell)
+            {
+                int armable = int.MaxValue;
+                foreach (var (compId, cantPorUnidad) in shellComps[prod.Id])
+                {
+                    if (!compStocksCotizar.TryGetValue(compId, out var cs)) { armable = 0; break; }
+                    int dispComp = Math.Max(0, cs.stockUnidades - cs.reserva);
+                    int armableEsteComp = cantPorUnidad > 0 ? (int)(dispComp / cantPorUnidad) : 0;
+                    if (armableEsteComp < armable) armable = armableEsteComp;
+                }
+                stockUnidadesDisponibleEfectivo = armable == int.MaxValue ? 0 : armable;
+            }
+
+            var stockOk = esCafe ? gramosNecesarios <= prod.StockGramos + 0.001m : unidadesNecesarias <= stockUnidadesDisponibleEfectivo;
             string? aviso = null;
             if (!stockOk)
             {
@@ -2033,14 +2143,16 @@ public class CafeVentasController : ControllerBase
                     : $"{it.Cantidad}";
                 aviso = esCafe
                     ? $"Stock insuficiente. Disponible: {prod.StockGramos:0} g, necesitás {gramosNecesarios:0} g."
-                    : $"Stock insuficiente. Disponible: {prod.StockUnidades} u, necesitás {unidadesNecesarias} u ({detalleCantidad}).";
+                    : esShell
+                        ? $"Stock insuficiente. Disponible: {stockUnidadesDisponibleEfectivo} u. 🧩 armable, necesitás {unidadesNecesarias} u ({detalleCantidad})."
+                        : $"Stock insuficiente. Disponible: {prod.StockUnidades} u, necesitás {unidadesNecesarias} u ({detalleCantidad}).";
                 todoOk = false;
             }
 
             cotizadoItems.Add(new CafeCotizadoItemDto(
                 prod.Id, prod.Nombre, prod.Categoria, it.Formato, it.Cantidad,
                 precioUnit, costoUnit, subtotalLinea,
-                gramosNecesarios, prod.StockGramos, prod.StockUnidades,
+                gramosNecesarios, prod.StockGramos, stockUnidadesDisponibleEfectivo,
                 stockOk, aviso,
                 NormMolienda(it.Molienda), it.EsDoyPack && esCafe,
                 descPct,
