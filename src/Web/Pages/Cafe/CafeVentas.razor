@@ -1122,7 +1122,10 @@
                                             {
                                                 <span style="font-size: 0.72rem; color: #6b7280;">· @pSel.Marca</span>
                                             }
-                                            <span style="font-size: 0.72rem; color: #6b7280;">· stock: @(pSel.Categoria == "CAFE" ? FormatGramos(pSel.StockGramos) : pSel.StockUnidades + " u.")</span>
+                                            @* 2026-06-01: shells muestran armable *@
+                                            <span style="font-size: 0.72rem; color: #6b7280;">· stock: @(pSel.Categoria == "CAFE"
+                                                ? FormatGramos(pSel.StockGramos)
+                                                : (pSel.StockArmable.HasValue ? $"{pSel.StockArmable.Value} u. 🧩" : pSel.StockUnidades + " u."))</span>
                                         }
                                     </div>
                                     <button class="btn btn-secondary" type="button" @onclick="ClearProducto" title="Quitar producto">×</button>
@@ -1147,7 +1150,12 @@
                                             @foreach (var p in pmatches)
                                             {
                                                 var pId = p.Id;
-                                                var stockTxt = p.Categoria == "CAFE" ? FormatGramos(p.StockGramos) : $"{p.StockUnidades} u.";
+                                                // 2026-06-01: para productos "shell" (con StockArmable) mostrar el armable en lugar del 0 propio.
+                                                var stockTxt = p.Categoria == "CAFE"
+                                                    ? FormatGramos(p.StockGramos)
+                                                    : (p.StockArmable.HasValue
+                                                        ? $"{p.StockArmable.Value} u. 🧩"
+                                                        : $"{p.StockUnidades} u.");
                                                 <div class="cli-pick-row" @onclick="() => SelectProducto(pId)"
                                                      style="padding: 0.4rem 0.6rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem;">
                                                     <span style="font-family: monospace; color: #1d4ed8; font-weight: 700; margin-right: 0.5rem;">@(p.Sku ?? "—")</span>
