@@ -4249,3 +4249,21 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='AjusteRedondeo' AND Object_ID=OBJECT_ID('MeliItem_SyncConfig'))
     ALTER TABLE MeliItem_SyncConfig ADD AjusteRedondeo NVARCHAR(8) NULL;
 GO
+
+-- 2026-06-01: KitId en Cafe_VentaItems para vender productos compuestos (Kits)
+-- como UNA línea de venta (sin expandir en componentes). Al guardar la venta, el
+-- stock se descuenta de los componentes del Kit (Cafe_KitItems), no del Kit en sí.
+-- Distinto del Combo (Cafe_Combos): el Combo se expande en N líneas; el Kit queda
+-- como 1 sola línea con su nombre, pero descuenta componentes igual.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='KitId' AND Object_ID=OBJECT_ID('Cafe_VentaItems'))
+BEGIN
+    ALTER TABLE Cafe_VentaItems ADD KitId INT NULL;
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name='FK_CafeVentaItems_Kit')
+   AND EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_Kits' AND xtype='U')
+    ALTER TABLE Cafe_VentaItems ADD CONSTRAINT FK_CafeVentaItems_Kit FOREIGN KEY (KitId) REFERENCES Cafe_Kits(Id);
+GO
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='IX_CafeVentaItems_KitId' AND object_id=OBJECT_ID('Cafe_VentaItems'))
+    CREATE INDEX IX_CafeVentaItems_KitId ON Cafe_VentaItems(KitId);
+GO
