@@ -720,6 +720,16 @@
                                     <span>ℹ️ MeLi recibe <b>@stockDetail.publicadoMeLi</b> = @stockDetail.stockSistema − <b>@stockDetail.reservaAplicada</b> @fuente.</span>
                                 }
                             </div>
+                            @* 2026-06-01: Stock armable desde componentes (caso producto "shell" linkeado a combo MeLi) *@
+                            @if (stockDetail.stockArmable.HasValue && stockDetail.armableSource == "componentes")
+                            {
+                                <div style="margin-top:0.4rem; padding:0.5rem 0.7rem; background:#dcfce7; border:1px solid #16a34a; border-radius:6px; font-size:0.82rem; color:#14532d;">
+                                    🧩 <strong>Stock armable desde componentes: @stockDetail.stockArmable unidades</strong>
+                                    <div style="font-size:0.72rem; color:#166534; margin-top:0.15rem;">
+                                        Este producto se arma de otros (recipiente + tapa, etc.). Al venderse desde MeLi se descuentan los componentes, no este producto en sí.
+                                    </div>
+                                </div>
+                            }
                         </div>
                     }
                     <div class="form-group">
@@ -1679,7 +1689,8 @@
     // 2026-05-25: detalle de stock por producto para el panel visual (ficha)
     private StockDetailDto? stockDetail;
     private record StockDetailDto(int stockSistema, int stockFull, int stockReal,
-        int reservaAplicada, string reservaSource, int publicadoMeLi);
+        int reservaAplicada, string reservaSource, int publicadoMeLi,
+        int? stockArmable = null, string? armableSource = null);
 
     private async Task LoadStockDetail(int productoId)
     {
