@@ -441,9 +441,9 @@ public class CafeCotizacionPdfService
                         }
                         else if (v.EnRadar)
                         {
-                            // Cliente ve "a coordinar" — EN RADAR es interno (jerga: "cuando estemos por la zona")
+                            // 2026-06-01: por pedido del usuario, ahora el cliente ve literal "🛰 EN RADAR".
                             row.AutoItem().AlignMiddle().Padding(3)
-                                .Text("a coordinar").Bold().FontSize(10).FontColor(Colors.Blue.Darken3);
+                                .Text("🛰 EN RADAR").Bold().FontSize(10).FontColor(Colors.Blue.Darken3);
                         }
                         else
                         {
