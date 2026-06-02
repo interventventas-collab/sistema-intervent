@@ -4,7 +4,7 @@
 @inject IJSRuntime JS
 @inject ToastService ToastService
 
-<PageTitle>Horas Extras</PageTitle>
+<PageTitle>Horario</PageTitle>
 
 <style>
     .he-admin-wrap { padding: 1rem; }
@@ -26,7 +26,7 @@
 
 <div class="he-admin-wrap">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem;">
-        <h2 style="margin:0;">🕐 Horas Extras</h2>
+        <h2 style="margin:0;">🕐 Horario</h2>
         <button class="btn btn-primary" @onclick="ShowCreateEmpleado">+ Nuevo empleado</button>
     </div>
 
@@ -51,6 +51,46 @@
                         </label>
                     </div>
                 }
+            </div>
+            @* 2026-06-02: Jornada laboral por dia de la semana *@
+            <div style="margin-top:0.8rem; padding:0.6rem; background:#f9fafb; border-radius:8px; border:1px solid #e5e7eb;">
+                <label style="font-size:0.78rem; font-weight:700; color:#374151; text-transform:uppercase; letter-spacing:0.04em;">⏰ Jornada laboral por día (horas)</label>
+                <div style="display:grid; grid-template-columns:repeat(7, 1fr); gap:0.4rem; margin-top:0.5rem;">
+                    <div style="text-align:center;">
+                        <div style="font-size:0.72rem; color:#6b7280; font-weight:600;">LUN</div>
+                        <input type="number" step="0.5" min="0" max="24" class="form-input" style="text-align:center; padding:0.35rem; font-size:0.9rem;" @bind="formHLun" />
+                    </div>
+                    <div style="text-align:center;">
+                        <div style="font-size:0.72rem; color:#6b7280; font-weight:600;">MAR</div>
+                        <input type="number" step="0.5" min="0" max="24" class="form-input" style="text-align:center; padding:0.35rem; font-size:0.9rem;" @bind="formHMar" />
+                    </div>
+                    <div style="text-align:center;">
+                        <div style="font-size:0.72rem; color:#6b7280; font-weight:600;">MIE</div>
+                        <input type="number" step="0.5" min="0" max="24" class="form-input" style="text-align:center; padding:0.35rem; font-size:0.9rem;" @bind="formHMie" />
+                    </div>
+                    <div style="text-align:center;">
+                        <div style="font-size:0.72rem; color:#6b7280; font-weight:600;">JUE</div>
+                        <input type="number" step="0.5" min="0" max="24" class="form-input" style="text-align:center; padding:0.35rem; font-size:0.9rem;" @bind="formHJue" />
+                    </div>
+                    <div style="text-align:center;">
+                        <div style="font-size:0.72rem; color:#6b7280; font-weight:600;">VIE</div>
+                        <input type="number" step="0.5" min="0" max="24" class="form-input" style="text-align:center; padding:0.35rem; font-size:0.9rem;" @bind="formHVie" />
+                    </div>
+                    <div style="text-align:center;">
+                        <div style="font-size:0.72rem; color:#6b7280; font-weight:600;">SAB</div>
+                        <input type="number" step="0.5" min="0" max="24" class="form-input" style="text-align:center; padding:0.35rem; font-size:0.9rem;" @bind="formHSab" />
+                    </div>
+                    <div style="text-align:center;">
+                        <div style="font-size:0.72rem; color:#6b7280; font-weight:600;">DOM</div>
+                        <input type="number" step="0.5" min="0" max="24" class="form-input" style="text-align:center; padding:0.35rem; font-size:0.9rem;" @bind="formHDom" />
+                    </div>
+                </div>
+                <div style="margin-top:0.4rem; font-size:0.78rem; color:#1d4ed8; font-weight:700;">
+                    Total semanal: @((formHLun + formHMar + formHMie + formHJue + formHVie + formHSab + formHDom).ToString("0.##")) h
+                </div>
+                <div style="font-size:0.7rem; color:#6b7280; margin-top:0.2rem;">0 = no trabaja ese día. El sistema lo usa para calcular extras/faltantes según entrada y salida marcadas.</div>
+            </div>
+            <div style="margin-top:0.6rem; display:flex; gap:0.5rem;">
                 <button class="btn btn-primary" @onclick="GuardarEmpleado" disabled="@savingEmp">@(savingEmp ? "..." : "Guardar")</button>
                 <button class="btn btn-secondary" @onclick="@(() => showFormEmp = false)">Cancelar</button>
             </div>
@@ -74,19 +114,30 @@
             @foreach (var e in empleados)
             {
                 <div class="he-emp-row @(e.IsActive ? "" : "he-inactive")">
-                    <div class="he-emp-nombre">@e.Nombre @(e.IsActive ? "" : " (inactivo)")</div>
+                    <div class="he-emp-nombre">
+                        @e.Nombre @(e.IsActive ? "" : " (inactivo)")
+                        <div style="font-size:0.7rem; color:#6b7280; font-weight:500; margin-top:2px;">
+                            ⏰ Jornada: @e.JornadaSemanal.ToString("0.##")h/semana
+                        </div>
+                    </div>
                     <div class="he-emp-totals">
-                        <div class="he-emp-box">
-                            <div>Hoy</div>
-                            <div class="he-emp-box-num">@e.TotalHoy.ToString("0.#")h</div>
-                        </div>
-                        <div class="he-emp-box">
+                        @{
+                            string ColorDiff(decimal d) => d > 0.05m ? "#16a34a" : d < -0.05m ? "#b91c1c" : "#6b7280";
+                            string SignoDiff(decimal d) => d > 0 ? "+" : "";
+                        }
+                        <div class="he-emp-box" title="Horas marcadas (entrada→salida) esta semana vs jornada esperada">
                             <div>Semana</div>
-                            <div class="he-emp-box-num">@e.TotalSemana.ToString("0.#")h</div>
+                            <div class="he-emp-box-num">@e.TrabajadoSemana.ToString("0.#") / @e.EsperadoSemana.ToString("0.#")h</div>
+                            <div style="font-size:0.75rem; font-weight:700; color:@ColorDiff(e.DiferenciaSemana);">
+                                @SignoDiff(e.DiferenciaSemana)@e.DiferenciaSemana.ToString("0.##")h
+                            </div>
                         </div>
-                        <div class="he-emp-box">
+                        <div class="he-emp-box" title="Horas marcadas (entrada→salida) este mes vs jornada esperada">
                             <div>Mes</div>
-                            <div class="he-emp-box-num">@e.TotalMes.ToString("0.#")h</div>
+                            <div class="he-emp-box-num">@e.TrabajadoMes.ToString("0.#") / @e.EsperadoMes.ToString("0.#")h</div>
+                            <div style="font-size:0.75rem; font-weight:700; color:@ColorDiff(e.DiferenciaMes);">
+                                @SignoDiff(e.DiferenciaMes)@e.DiferenciaMes.ToString("0.##")h
+                            </div>
                         </div>
                     </div>
                     <div style="flex:1; font-size:0.78rem; color:#6b7280;">
@@ -131,15 +182,18 @@
                         <th>Fecha</th>
                         <th>Empleado</th>
                         <th>Horario</th>
-                        <th style="text-align:right;">Horas</th>
+                        <th style="text-align:right;">Trabajadas</th>
+                        <th style="text-align:right;">Esperadas</th>
+                        <th style="text-align:right;">Diferencia</th>
                         <th>Observación</th>
-                        <th>Cargado</th>
                         <th></th>
                     </tr>
                 </thead>
                 <tbody>
                     @foreach (var r in registros)
                     {
+                        var diffColor = r.Diferencia > 0.05m ? "#16a34a" : r.Diferencia < -0.05m ? "#b91c1c" : "#6b7280";
+                        var diffBg = r.Diferencia > 0.05m ? "#dcfce7" : r.Diferencia < -0.05m ? "#fee2e2" : "#f3f4f6";
                         <tr>
                             <td>@r.Fecha.ToString("ddd dd/MM", new System.Globalization.CultureInfo("es-AR"))</td>
                             <td><strong>@r.EmpleadoNombre</strong></td>
@@ -150,9 +204,18 @@
                                 }
                                 else { <span style="color:#9ca3af;">—</span> }
                             </td>
-                            <td style="text-align:right; font-weight:700; color:#1d4ed8;">@r.Cantidad.ToString("0.#") h</td>
+                            <td style="text-align:right; font-weight:700; color:#1d4ed8;">@r.HorasTrabajadas.ToString("0.##") h</td>
+                            <td style="text-align:right; color:#6b7280;">@r.HorasEsperadas.ToString("0.##") h</td>
+                            <td style="text-align:right;">
+                                @if (r.HorasTrabajadas > 0)
+                                {
+                                    <span style="background:@diffBg; color:@diffColor; padding:0.15rem 0.4rem; border-radius:4px; font-weight:700; font-size:0.8rem;">
+                                        @(r.Diferencia > 0 ? "+" : "")@r.Diferencia.ToString("0.##") h
+                                    </span>
+                                }
+                                else { <span style="color:#9ca3af;">—</span> }
+                            </td>
                             <td style="color:#4b5563; font-size:0.82rem;">@(r.Observaciones ?? "")</td>
-                            <td style="color:#6b7280; font-size:0.78rem;">@((r.UpdatedAt ?? r.CreatedAt).ToLocalTime().ToString("dd/MM HH:mm"))</td>
                             <td><button class="he-link-btn" style="background:#fee2e2; color:#b91c1c; border-color:#fca5a5;" @onclick="@(() => BorrarRegistro(r.Id))">🗑</button></td>
                         </tr>
                     }
@@ -198,10 +261,17 @@
     public record AdminEmpleadoDto(int Id, string Nombre, string Token, bool IsActive,
         decimal TotalHoy, decimal TotalSemana, decimal TotalMes, DateTime? UltimaCargaAt, DateTime CreatedAt,
         string? UltimaHoraEntrada = null, string? UltimaHoraSalida = null,
-        string? DniUltimos3 = null, string Slug = "");
+        string? DniUltimos3 = null, string Slug = "",
+        // 2026-06-02: jornada laboral configurable + acumulados de horario marcado vs esperado
+        decimal HorasLunes = 8m, decimal HorasMartes = 8m, decimal HorasMiercoles = 8m, decimal HorasJueves = 8m,
+        decimal HorasViernes = 8m, decimal HorasSabado = 5m, decimal HorasDomingo = 0m,
+        decimal JornadaSemanal = 45m,
+        decimal TrabajadoSemana = 0m, decimal EsperadoSemana = 0m, decimal DiferenciaSemana = 0m,
+        decimal TrabajadoMes = 0m, decimal EsperadoMes = 0m, decimal DiferenciaMes = 0m);
     public record AdminRegistroDto(int Id, int EmpleadoId, string EmpleadoNombre, DateTime Fecha,
         decimal Cantidad, string? Observaciones, string? HoraEntrada, string? HoraSalida,
-        DateTime CreatedAt, DateTime? UpdatedAt);
+        DateTime CreatedAt, DateTime? UpdatedAt,
+        decimal HorasTrabajadas = 0m, decimal HorasEsperadas = 0m, decimal Diferencia = 0m, string DiaNombre = "");
 
     private List<AdminEmpleadoDto>? empleados;
     private List<AdminRegistroDto>? registros;
@@ -211,6 +281,8 @@
     private string formNombre = "";
     private string formDniUltimos3 = "";
     private bool formActive = true, formRegenToken;
+    // 2026-06-02: jornada por dia de la semana (default LUN-VIE 8h, SAB 5h, DOM 0h)
+    private decimal formHLun = 8m, formHMar = 8m, formHMie = 8m, formHJue = 8m, formHVie = 8m, formHSab = 5m, formHDom = 0m;
 
     // Carga manual (para acumulados)
     private bool showCargarManual, savingManual;
@@ -275,12 +347,17 @@
     private void ShowCreateEmpleado()
     {
         editingId = null; formNombre = ""; formDniUltimos3 = ""; formActive = true; formRegenToken = false; showFormEmp = true;
+        // Defaults jornada: LUN-VIE 8h, SAB 5h, DOM 0h
+        formHLun = 8m; formHMar = 8m; formHMie = 8m; formHJue = 8m; formHVie = 8m; formHSab = 5m; formHDom = 0m;
     }
 
     private void ShowEditEmpleado(AdminEmpleadoDto e)
     {
         editingId = e.Id; formNombre = e.Nombre; formDniUltimos3 = e.DniUltimos3 ?? "";
         formActive = e.IsActive; formRegenToken = false; showFormEmp = true;
+        // Jornada actual del empleado
+        formHLun = e.HorasLunes; formHMar = e.HorasMartes; formHMie = e.HorasMiercoles;
+        formHJue = e.HorasJueves; formHVie = e.HorasViernes; formHSab = e.HorasSabado; formHDom = e.HorasDomingo;
     }
 
     private async Task GuardarEmpleado()
@@ -300,15 +377,34 @@
             {
                 var resp = await Http.PutAsJsonAsync($"api/horas-extras/admin/empleados/{editingId.Value}",
                     new { Nombre = formNombre, IsActive = formActive, DniUltimos3 = dni3,
-                          ClearDniUltimos3 = string.IsNullOrEmpty(dni3), RegenerarToken = formRegenToken });
+                          ClearDniUltimos3 = string.IsNullOrEmpty(dni3), RegenerarToken = formRegenToken,
+                          HorasLunes = formHLun, HorasMartes = formHMar, HorasMiercoles = formHMie,
+                          HorasJueves = formHJue, HorasViernes = formHVie, HorasSabado = formHSab, HorasDomingo = formHDom });
                 if (resp.IsSuccessStatusCode) ToastService.Success("Empleado actualizado");
                 else { ToastService.Error("Error actualizando"); return; }
             }
             else
             {
+                // Crear primero, despues update con la jornada (el endpoint create todavia
+                // no acepta jornada en el body, pero el update si — patron mas seguro).
                 var resp = await Http.PostAsJsonAsync("api/horas-extras/admin/empleados",
                     new { Nombre = formNombre, DniUltimos3 = dni3 });
-                if (resp.IsSuccessStatusCode) ToastService.Success("Empleado creado");
+                if (resp.IsSuccessStatusCode)
+                {
+                    ToastService.Success("Empleado creado");
+                    // Si el create devuelve el empleado nuevo con su Id, le aplicamos la jornada
+                    try
+                    {
+                        var nuevo = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+                        if (nuevo.TryGetProperty("id", out var idEl) && idEl.TryGetInt32(out var newId))
+                        {
+                            await Http.PutAsJsonAsync($"api/horas-extras/admin/empleados/{newId}",
+                                new { HorasLunes = formHLun, HorasMartes = formHMar, HorasMiercoles = formHMie,
+                                      HorasJueves = formHJue, HorasViernes = formHVie, HorasSabado = formHSab, HorasDomingo = formHDom });
+                        }
+                    }
+                    catch { /* no es critico — si fallo, queda con los defaults del backend */ }
+                }
                 else
                 {
                     var err = await resp.Content.ReadAsStringAsync();
