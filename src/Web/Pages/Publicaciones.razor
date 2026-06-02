@@ -14,6 +14,13 @@
         <button class="btn btn-secondary" @onclick='() => Nav.NavigateTo("/publicaciones/auditoria")' title="Comparar lista de MLAs entre MeLi y el sistema">
             <i class="fa-solid fa-magnifying-glass"></i> Auditar vs MeLi
         </button>
+        @* 2026-06-01: Boton de push masivo agresivo. Pushea stock a TODAS las publicaciones con SyncStock=ON.
+           Confirma 2 veces antes de ejecutar. Resultado vuelve a las tablas MeliPushSnapshot_*_pre/post para cotejo. *@
+        <button class="btn" style="background:#dc2626; color:white; font-weight:700; border:2px solid #991b1b;"
+                @onclick="DispararPushMasivoAgresivo" disabled="@pushMasivoEnCurso"
+                title="Pushea stock a TODAS las publicaciones MeLi. MeLi pausa las de stock 0 y activa las con stock. Despues hay que revisar el cotejo.">
+            @if (pushMasivoEnCurso) { <span>⏳ Pusheando...</span> } else { <span>🚀 PUSHEAR STOCK DE TODO A MELI</span> }
+        </button>
         <div class="sync-dropdown-wrapper">
             <button class="btn btn-primary" @onclick="() => SyncItems(null, null)" disabled="@isSyncing" style="border-radius: 6px 0 0 6px;">
                 @(isSyncing ? syncingLabel : "Sincronizar")
@@ -132,6 +139,16 @@
                             <button class="more-filters-item @(filterStockPushViejo ? "active" : "")" @onclick="() => { filterStockPushViejo = !filterStockPushViejo; if (filterStockPushViejo) { filterStockPushNunca = false; filterStockPushOk = false; } InvalidateFilterCache(); showMoreFilters = false; }">
                                 🟡 Stock pusheado viejo (+7 días)
                             </button>
+                            @* 2026-06-01: filtros por margen — para detectar publicaciones perdiendo plata *@
+                            <div style="border-top: 1px solid #e5e7eb; margin: 0.25rem 0;"></div>
+                            <button class="more-filters-item @(filterMargenPerdida ? "active" : "")" @onclick="() => { filterMargenPerdida = !filterMargenPerdida; if (filterMargenPerdida) filterMargenBajo = false; InvalidateFilterCache(); showMoreFilters = false; }"
+                                    style="background:@(filterMargenPerdida ? "#fee2e2" : "transparent"); color:@(filterMargenPerdida ? "#991b1b" : "inherit"); font-weight:700;">
+                                🔴 PÉRDIDA: margen ≤ 0% (vendés bajo costo)
+                            </button>
+                            <button class="more-filters-item @(filterMargenBajo ? "active" : "")" @onclick="() => { filterMargenBajo = !filterMargenBajo; if (filterMargenBajo) filterMargenPerdida = false; InvalidateFilterCache(); showMoreFilters = false; }"
+                                    style="background:@(filterMargenBajo ? "#fed7aa" : "transparent"); color:@(filterMargenBajo ? "#9a3412" : "inherit"); font-weight:700;">
+                                🟠 BAJO: margen menor a 15% (revisar)
+                            </button>
                         </div>
                     }
                 </div>
@@ -161,6 +178,35 @@
             }
             else
             {
+                @* 2026-06-02: Controles de paginación arriba (solo vista "flat") *@
+                @if (viewMode == "flat")
+                {
+                    var totalRows = GetGroupedRows().Count;
+                    var totalPages = GetTotalPages();
+                    var rangoDesde = totalRows == 0 ? 0 : (currentPage - 1) * pageSize + 1;
+                    var rangoHasta = Math.Min(currentPage * pageSize, totalRows);
+                    <div class="pagination-bar" style="display:flex; align-items:center; gap:0.75rem; padding:0.5rem 0.75rem; background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; margin:0.5rem 0; flex-wrap:wrap; font-size:0.875rem;">
+                        <span style="font-weight:500; color:#374151;">
+                            Mostrando <strong>@rangoDesde – @rangoHasta</strong> de <strong>@totalRows</strong> publicaciones
+                        </span>
+                        <div style="display:flex; align-items:center; gap:0.25rem; margin-left:auto;">
+                            <button class="btn btn-sm btn-secondary" @onclick="() => GoToPage(1)" disabled="@(currentPage == 1)" title="Primera">⏮</button>
+                            <button class="btn btn-sm btn-secondary" @onclick="() => GoToPage(currentPage - 1)" disabled="@(currentPage == 1)" title="Anterior">◀</button>
+                            <span style="padding:0 0.5rem;">Página <strong>@currentPage</strong> de <strong>@totalPages</strong></span>
+                            <button class="btn btn-sm btn-secondary" @onclick="() => GoToPage(currentPage + 1)" disabled="@(currentPage >= totalPages)" title="Siguiente">▶</button>
+                            <button class="btn btn-sm btn-secondary" @onclick="() => GoToPage(totalPages)" disabled="@(currentPage >= totalPages)" title="Última">⏭</button>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:0.25rem;">
+                            <label style="font-size:0.8125rem; color:#6b7280;">Por página:</label>
+                            <select @onchange="@((ChangeEventArgs e) => ChangePageSize(int.Parse(e.Value?.ToString() ?? "100")))" style="padding:0.25rem 0.5rem; border:1px solid #d1d5db; border-radius:4px;">
+                                <option value="50" selected="@(pageSize == 50)">50</option>
+                                <option value="100" selected="@(pageSize == 100)">100</option>
+                                <option value="200" selected="@(pageSize == 200)">200</option>
+                                <option value="500" selected="@(pageSize == 500)">500</option>
+                            </select>
+                        </div>
+                    </div>
+                }
                         <div class="table-responsive">
                 <table class="data-table">
                     <thead>
@@ -334,8 +380,9 @@
                         {
                             @* Agrupamos por MeliItemId: 1 fila por publicacion. Si tiene variantes,
                                la fila representante muestra stock+sold totales y un boton ▼ para
-                               expandir las variantes individuales. *@
-                            @foreach (var grp in GetGroupedRows())
+                               expandir las variantes individuales.
+                               2026-06-02: paginación client-side (GetPagedGroupedRows) para no renderizar 9k filas. *@
+                            @foreach (var grp in GetPagedGroupedRows())
                             {
                                 var item = grp.Item;
                                 var isExpanded = expandedGroups.Contains(grp.Key);
@@ -431,6 +478,7 @@
                                             <span>@item.CurrencyId @item.Price.ToString("N2")</span>
                                         }
                                         @AjusteChipPrecio(item)
+                                        @MargenChipPrecio(item)
                                     </td>
                                     <td style="text-align: center; font-weight: 700;">
                                         @{ var stockShow = grp.HasMultiple ? grp.TotalStock : item.AvailableQuantity; }
@@ -634,6 +682,7 @@
                                             <span>@item.CurrencyId @item.Price.ToString("N2")</span>
                                         }
                                         @AjusteChipPrecio(item)
+                                        @MargenChipPrecio(item)
                                     </td>
                                         <td style="text-align: center; font-weight: 700;">
                                         @if (item.ProductCriticalStock.HasValue && item.ProductCriticalStock.Value > 0 && item.AvailableQuantity <= item.ProductCriticalStock.Value)
@@ -752,6 +801,7 @@
                                             <span>@item.CurrencyId @item.Price.ToString("N2")</span>
                                         }
                                         @AjusteChipPrecio(item)
+                                        @MargenChipPrecio(item)
                                     </td>
                                             <td style="text-align: center; font-weight: 700;">
                                         @if (item.ProductCriticalStock.HasValue && item.ProductCriticalStock.Value > 0 && item.AvailableQuantity <= item.ProductCriticalStock.Value)
@@ -814,6 +864,7 @@
                                             <span>@item.CurrencyId @item.Price.ToString("N2")</span>
                                         }
                                         @AjusteChipPrecio(item)
+                                        @MargenChipPrecio(item)
                                     </td>
                                         <td style="text-align: center; font-weight: 700;">
                                         @if (item.ProductCriticalStock.HasValue && item.ProductCriticalStock.Value > 0 && item.AvailableQuantity <= item.ProductCriticalStock.Value)
@@ -839,6 +890,19 @@
                     </tbody>
                 </table>
             </div>
+            @* 2026-06-02: Controles de paginación abajo (espejo del de arriba, solo vista "flat") *@
+            @if (viewMode == "flat")
+            {
+                var totalRowsBot = GetGroupedRows().Count;
+                var totalPagesBot = GetTotalPages();
+                <div class="pagination-bar" style="display:flex; align-items:center; gap:0.5rem; padding:0.5rem 0.75rem; background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; margin:0.5rem 0; flex-wrap:wrap; font-size:0.875rem; justify-content:center;">
+                    <button class="btn btn-sm btn-secondary" @onclick="() => GoToPage(1)" disabled="@(currentPage == 1)" title="Primera">⏮</button>
+                    <button class="btn btn-sm btn-secondary" @onclick="() => GoToPage(currentPage - 1)" disabled="@(currentPage == 1)" title="Anterior">◀</button>
+                    <span style="padding:0 0.5rem;">Página <strong>@currentPage</strong> de <strong>@totalPagesBot</strong> (@totalRowsBot publicaciones)</span>
+                    <button class="btn btn-sm btn-secondary" @onclick="() => GoToPage(currentPage + 1)" disabled="@(currentPage >= totalPagesBot)" title="Siguiente">▶</button>
+                    <button class="btn btn-sm btn-secondary" @onclick="() => GoToPage(totalPagesBot)" disabled="@(currentPage >= totalPagesBot)" title="Última">⏭</button>
+                </div>
+            }
             }
         }
     </div>
@@ -989,6 +1053,57 @@
                         </div>
                     </div>
                 </div>
+                @* 2026-06-01: VISOR DE MARGEN — abajo del simulador de costos. NO TOCA NADA EXISTENTE. *@
+                @if (itemCosts is not null)
+                {
+                    <div style="margin-top: 0.75rem; padding: 0.75rem 1rem; background: linear-gradient(135deg, #f0fdf4 0%, #fefce8 100%); border: 2px solid #d1d5db; border-radius: 8px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+                            <span style="font-weight: 700; font-size: 0.9rem; color: #374151;">💰 Análisis de Ganancia (sistema)</span>
+                            @if (isLoadingProductCost)
+                            {
+                                <span style="font-size: 0.75rem; color: #6b7280;">Calculando...</span>
+                            }
+                            else if (itemProductCost is null || itemProductCost.TotalCost == 0)
+                            {
+                                <span style="font-size: 0.75rem; color: #dc2626;">⚠ No hay costo cargado en sistema</span>
+                            }
+                            else
+                            {
+                                <span style="font-size: 0.75rem; padding: 0.15rem 0.5rem; background:@MarginColor(); color:white; border-radius:10px; font-weight:700;">@MarginLabel()</span>
+                            }
+                        </div>
+                        @if (itemProductCost is not null && itemProductCost.TotalCost > 0)
+                        {
+                            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; font-size: 0.85rem;">
+                                <div>
+                                    <div style="color: #6b7280; font-size: 0.7rem; text-transform: uppercase;">Costo producto</div>
+                                    <div style="font-weight: 700; color: #374151;">$ @itemProductCost.TotalCost.ToString("N2", argCulture)</div>
+                                </div>
+                                <div>
+                                    <div style="color: #6b7280; font-size: 0.7rem; text-transform: uppercase;">Recibís neto</div>
+                                    <div style="font-weight: 700; color: #374151;">$ @CalculateNetAmount().ToString("N2", argCulture)</div>
+                                </div>
+                                <div>
+                                    <div style="color: #6b7280; font-size: 0.7rem; text-transform: uppercase;">Ganancia $</div>
+                                    <div style="font-weight: 700; color:@MarginColor();">$ @MarginGanancia().ToString("N2", argCulture)</div>
+                                </div>
+                                <div>
+                                    <div style="color: #6b7280; font-size: 0.7rem; text-transform: uppercase;">Margen %</div>
+                                    <div style="font-weight: 700; color:@MarginColor();">
+                                        @MarginPctSobreCosto().ToString("0.0", argCulture)% s/costo
+                                        <span style="font-size: 0.65rem; color: #9ca3af; font-weight: 500; display: block;">@MarginPctSobreVenta().ToString("0.0", argCulture)% s/venta</span>
+                                    </div>
+                                </div>
+                            </div>
+                            @if (itemProductCost.Components.Count > 1)
+                            {
+                                <div style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dashed #d1d5db; font-size: 0.7rem; color: #6b7280;">
+                                    📦 Costo = @string.Join(" + ", itemProductCost.Components.Select(c => $"{c.Cantidad}×{c.Sku} (${c.CostoTotal.ToString("N0", argCulture)})"))
+                                </div>
+                            }
+                        }
+                    </div>
+                }
 
                 <!-- Editable fields -->
                 <div class="detail-section">
@@ -2450,6 +2565,8 @@
     private List<MeliItemDto>? items;
     private bool isLoading = true;
     private bool isSyncing;
+    // 2026-06-01: estado del push masivo agresivo (boton rojo)
+    private bool pushMasivoEnCurso;
     private int totalItems;
     private List<MeliItemDto>? _cachedFiltered;
     private bool _filterDirty = true;
@@ -2468,6 +2585,9 @@
 
     // View mode
     private string viewMode = "flat";
+    // 2026-06-02: Paginación client-side para vista "flat". Reduce 9k filas → 100 visibles a la vez.
+    private int currentPage = 1;
+    private int pageSize = 100;
     // Toggle de la vista "Lista": agrupar familias (mismos FamilyId con N MLAs en 1 fila) vs verlas sueltas (cada MLA = 1 fila).
     // ON por defecto = matchea la vista catálogo de MeLi. OFF = matchea el conteo de MLAs sueltos de MeLi web (~3.5k).
     private bool agruparFamilias = true;
@@ -2484,6 +2604,9 @@
     private bool filterStockPushOk = false;            // 🟢 pusheado reciente (<=7 dias)
     private bool filterStockPushViejo = false;         // 🟡 pusheado viejo (>7 dias)
     private bool filterUrgente = false;                // 🚨 stock=0 OR status=paused (urgente reponer)
+    // 2026-06-01: filtros de margen (peor primero, para arreglarlas)
+    private bool filterMargenPerdida = false;          // 🔴 margen ≤ 0% (pérdida)
+    private bool filterMargenBajo = false;             // 🟠 margen 0-15% (bajo)
     private bool showMoreFilters = false;
 
     // Selection & bulk actions
@@ -2628,6 +2751,8 @@
         if (filterStockPushNunca) count++;
         if (filterStockPushOk) count++;
         if (filterStockPushViejo) count++;
+        if (filterMargenPerdida) count++;
+        if (filterMargenBajo) count++;
         if (filterUrgente) count++;
         return count;
     }
@@ -2733,6 +2858,48 @@
     private void ToggleSyncMenu()
     {
         showSyncMenu = !showSyncMenu;
+    }
+
+    /// <summary>2026-06-01: dispara el push masivo agresivo a TODAS las publicaciones con SyncStock=ON.
+    /// Confirma 2 veces antes de ejecutar. El backend lo procesa en background (~30 min).
+    /// Despues se revisa el cotejo de ACTIVADAS vs PAUSADAS en las tablas MeliPushSnapshot_*.</summary>
+    private async Task DispararPushMasivoAgresivo()
+    {
+        var confirma1 = await JS.InvokeAsync<bool>("confirm",
+            "🚀 ¿Pushear stock de TODAS las publicaciones a MeLi?\n\n" +
+            "MeLi va a:\n" +
+            "  • PAUSAR publicaciones con stock 0 en el sistema\n" +
+            "  • ACTIVAR publicaciones con stock>0 que estaban pausadas\n\n" +
+            "Tarda ~30 minutos en segundo plano. Despues revisamos juntos.");
+        if (!confirma1) return;
+
+        var confirma2 = await JS.InvokeAsync<bool>("confirm",
+            "Confirmación final: ¿Estás 100% seguro?\nEsta acción modifica MeLi en vivo.");
+        if (!confirma2) return;
+
+        pushMasivoEnCurso = true;
+        StateHasChanged();
+        try
+        {
+            var resp = await Api.DispararPushMasivoAgresivoAsync();
+            if (resp is not null && resp.TryGetValue("encolados", out var enc))
+            {
+                ToastService.Success($"🚀 Push lanzado: {enc} publicaciones en segundo plano. Tarda ~30 min. Avisame en el chat.");
+            }
+            else
+            {
+                ToastService.Error("Respuesta inesperada. Revisar logs.");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error al lanzar push: " + ex.Message);
+        }
+        finally
+        {
+            // No volvemos a false: el background corre 30 min, el boton queda deshabilitado hasta que reload de pantalla
+            // (es a proposito — evitar doble click).
+        }
     }
 
     private async Task SyncItems(string? status, int? accountId)
@@ -2980,6 +3147,20 @@
                 i.AvailableQuantity <= 0 ||
                 string.Equals(i.Status, "paused", StringComparison.OrdinalIgnoreCase));
 
+        // 2026-06-01: Filtros por margen — para detectar publicaciones perdiendo plata
+        if (filterMargenPerdida)
+            filtered = filtered.Where(i =>
+            {
+                var m = CalcMargenPct(i);
+                return m.HasValue && m.Value <= 0m;
+            });
+        if (filterMargenBajo)
+            filtered = filtered.Where(i =>
+            {
+                var m = CalcMargenPct(i);
+                return m.HasValue && m.Value < 15m;
+            });
+
         // Text filters
         foreach (var kv in textFilters.Where(f => !string.IsNullOrEmpty(f.Value)))
         {
@@ -3114,6 +3295,42 @@
     private void InvalidateFilterCache()
     {
         _filterDirty = true;
+        // 2026-06-02: Al cambiar filtros, volver a la primera página (sino quedás "perdido" en página 8 de 2).
+        currentPage = 1;
+    }
+
+    /// <summary>2026-06-02: Aplica paginación client-side sobre GetGroupedRows().
+    /// Solo afecta el render, no el conteo total. Permite navegar 9k publicaciones sin matar el browser.</summary>
+    private List<GroupedRow> GetPagedGroupedRows()
+    {
+        var all = GetGroupedRows();
+        var total = all.Count;
+        var totalPages = Math.Max(1, (int)Math.Ceiling((double)total / pageSize));
+        if (currentPage > totalPages) currentPage = totalPages;
+        if (currentPage < 1) currentPage = 1;
+        return all.Skip((currentPage - 1) * pageSize).Take(pageSize).ToList();
+    }
+
+    private int GetTotalPages()
+    {
+        var total = GetGroupedRows().Count;
+        return Math.Max(1, (int)Math.Ceiling((double)total / pageSize));
+    }
+
+    private void GoToPage(int page)
+    {
+        var totalPages = GetTotalPages();
+        if (page < 1) page = 1;
+        if (page > totalPages) page = totalPages;
+        currentPage = page;
+        StateHasChanged();
+    }
+
+    private void ChangePageSize(int newSize)
+    {
+        pageSize = newSize;
+        currentPage = 1;
+        StateHasChanged();
     }
 
     // --- Grouping ---
@@ -3426,6 +3643,10 @@
     private static readonly System.Globalization.CultureInfo argCulture = new("es-AR");
     private decimal taxPercentage;
 
+    // 2026-06-01: visor de margen — costo del producto/combo desde sistema
+    private ApiClient.ProductCostResp? itemProductCost;
+    private bool isLoadingProductCost;
+
     private async void OpenItemModal(MeliItemDto item)
     {
         selectedItem = item;
@@ -3440,6 +3661,8 @@
         showOtherCampaigns = false;
         itemCosts = null;
         isLoadingCosts = false;
+        itemProductCost = null;
+        isLoadingProductCost = false;
         showItemModal = true;
         StateHasChanged();
 
@@ -3488,6 +3711,47 @@
         }
         isLoadingCosts = false;
         StateHasChanged();
+
+        // 2026-06-01: Cargar costo del producto en sistema (para visor de margen)
+        isLoadingProductCost = true;
+        StateHasChanged();
+        try { itemProductCost = await Api.GetProductCostAsync(item.MeliItemId); }
+        catch { itemProductCost = null; }
+        isLoadingProductCost = false;
+        StateHasChanged();
+    }
+
+    // 2026-06-01: helpers visor de margen
+    private decimal MarginGanancia()
+    {
+        if (itemProductCost is null || itemCosts is null) return 0;
+        return CalculateNetAmount() - itemProductCost.TotalCost;
+    }
+    private decimal MarginPctSobreCosto()
+    {
+        if (itemProductCost is null || itemProductCost.TotalCost <= 0) return 0;
+        return MarginGanancia() / itemProductCost.TotalCost * 100m;
+    }
+    private decimal MarginPctSobreVenta()
+    {
+        if (itemCosts is null || itemCosts.Price <= 0) return 0;
+        return MarginGanancia() / itemCosts.Price * 100m;
+    }
+    private string MarginColor()
+    {
+        var p = MarginPctSobreCosto();
+        if (p >= 30) return "#16a34a";    // verde
+        if (p >= 15) return "#eab308";    // amarillo
+        if (p > 0)   return "#f97316";    // naranja
+        return "#dc2626";                  // rojo
+    }
+    private string MarginLabel()
+    {
+        var p = MarginPctSobreCosto();
+        if (p >= 30) return "🟢 Buenísimo";
+        if (p >= 15) return "🟡 Aceptable";
+        if (p > 0)   return "🟠 Bajo";
+        return "🔴 Pérdida";
     }
 
     private string FormatTaxPct() => taxPercentage == 0 ? "0" : taxPercentage.ToString("0.##", CultureInfo.InvariantCulture);
@@ -4271,6 +4535,46 @@
         __builder.AddAttribute(1, "class", "ajuste-chip-precio");
         __builder.AddAttribute(2, "title", titulo);
         __builder.AddContent(3, "💵 con ajuste");
+        __builder.CloseElement();
+    };
+
+    // 2026-06-01: Calcula margen aproximado (s/costo) usando 30% de fees MeLi estimados.
+    // El cálculo EXACTO está en el modal individual con los fees reales de MeLi.
+    // Este es para visualización rápida en lista — sirve para detectar publicaciones con bajo/sin margen.
+    private decimal? CalcMargenPct(MeliItemDto item)
+    {
+        if (!item.ProductCost.HasValue || item.ProductCost.Value <= 0) return null;
+        var precio = item.Price;
+        if (precio <= 0) return null;
+        var fees = 0.30m;  // 25% comisión + 5% aprox envío/cuotas
+        var netoEstimado = precio * (1m - fees);
+        var ganancia = netoEstimado - item.ProductCost.Value;
+        return ganancia / item.ProductCost.Value * 100m;
+    }
+
+    private (string color, string label, string textColor) MargenChipStyle(decimal pct)
+    {
+        if (pct >= 30m)  return ("#16a34a", $"+{pct.ToString("0", argCulture)}%", "white");
+        if (pct >= 15m)  return ("#eab308", $"+{pct.ToString("0", argCulture)}%", "white");
+        if (pct > 0m)    return ("#f97316", $"+{pct.ToString("0", argCulture)}%", "white");
+        return ("#dc2626", $"{pct.ToString("0", argCulture)}%", "white");
+    }
+
+    /// <summary>2026-06-01: chip de margen estimado (sobre costo) debajo del precio.
+    /// Solo se muestra si el item tiene producto linkeado con costo cargado.</summary>
+    private RenderFragment MargenChipPrecio(MeliItemDto item) => __builder =>
+    {
+        var pct = CalcMargenPct(item);
+        if (pct == null) return;
+        var (bg, label, fg) = MargenChipStyle(pct.Value);
+        var tooltip = $"Margen aprox sobre costo: {label}\n" +
+                      $"Costo: $ {item.ProductCost!.Value.ToString("N0", argCulture)}\n" +
+                      $"Precio: $ {item.Price.ToString("N0", argCulture)}\n" +
+                      $"(neto aprox MeLi: $ {(item.Price * 0.70m).ToString("N0", argCulture)} — abrir detalle para exacto)";
+        __builder.OpenElement(0, "div");
+        __builder.AddAttribute(1, "style", $"display: inline-block; background:{bg}; color:{fg}; padding:0.1rem 0.45rem; border-radius:10px; font-size:0.7rem; font-weight:700; margin-top:0.15rem;");
+        __builder.AddAttribute(2, "title", tooltip);
+        __builder.AddContent(3, $"📊 {label}");
         __builder.CloseElement();
     };
 

@@ -41,7 +41,17 @@ public class MeliItemService
             query = query.Where(i => i.MeliAccountId == meliAccountId.Value);
 
         if (!string.IsNullOrEmpty(status))
-            query = query.Where(i => i.Status == status);
+        {
+            // 2026-06-02: status especial "all" = traer todo (incluyendo closed). Para ese caso, no filtramos.
+            if (!string.Equals(status, "all", StringComparison.OrdinalIgnoreCase))
+                query = query.Where(i => i.Status == status);
+        }
+        else
+        {
+            // 2026-06-02: Por default excluir 'closed' (son ~3.193 publicaciones cerradas inútiles que solo
+            // hacen lento el listado). Si querés traerlas, pasar status="all" explicitamente.
+            query = query.Where(i => i.Status != "closed");
+        }
 
         var total = await query.CountAsync();
         var items = await query
@@ -66,7 +76,8 @@ public class MeliItemService
                 i.VariationAttributes,
                 null,  // LastStockPushedToMeli — se completa abajo en memoria
                 true, false, 0m, 0m, null,  // SyncStock/SyncPrecio/AjustePct/AjusteFijo/AjusteRedondeo — se completan abajo desde MeliItemSyncConfigs
-                null  // PrecioOtroConIvaCalc — se completa abajo en memoria
+                null,  // PrecioOtroConIvaCalc — se completa abajo en memoria
+                null   // 2026-06-01: ProductCost — se completa abajo en memoria
                 ))
             .ToListAsync();
 
@@ -181,8 +192,31 @@ public class MeliItemService
             .Concat(componentesForPrecio.Select(c => c.CafeProductoId)).Distinct().ToList();
         var prodsPrecio = await _db.CafeProductos
             .Where(p => prodIdsParaPrecio.Contains(p.Id))
-            .Select(p => new { p.Id, p.PrecioOtro, p.IvaPct, p.OemId, p.MultiplicadorOem })
+            .Select(p => new { p.Id, p.PrecioOtro, p.IvaPct, p.OemId, p.MultiplicadorOem, p.Costo })
             .ToDictionaryAsync(p => p.Id);
+
+        // 2026-06-01: dict de costo (sistema). Soporta combos legacy via CafeComboId.
+        var comboIdsLegacy = items.Where(it => it.ComboId.HasValue).Select(it => it.ComboId!.Value).Distinct().ToList();
+        List<(int ComboId, int ProductoId, decimal Cantidad)> comboItemsLegacy;
+        if (comboIdsLegacy.Count == 0)
+        {
+            comboItemsLegacy = new();
+        }
+        else
+        {
+            var rawComboItems = await _db.CafeComboItems
+                .Where(ci => comboIdsLegacy.Contains(ci.ComboId))
+                .Select(ci => new { ci.ComboId, ci.ProductoId, ci.Cantidad })
+                .ToListAsync();
+            comboItemsLegacy = rawComboItems.Select(x => (ComboId: x.ComboId, ProductoId: x.ProductoId, Cantidad: (decimal)x.Cantidad)).ToList();
+        }
+        var prodIdsCombos = comboItemsLegacy.Select(c => c.ProductoId).Distinct().ToList();
+        var prodCostosCombo = prodIdsCombos.Count == 0
+            ? new Dictionary<int, decimal>()
+            : await _db.CafeProductos
+                .Where(p => prodIdsCombos.Contains(p.Id) && !prodIdsParaPrecio.Contains(p.Id))
+                .Select(p => new { p.Id, p.Costo })
+                .ToDictionaryAsync(p => p.Id, p => p.Costo);
         // OEMs referenciados por los productos
         var oemIdsRef = prodsPrecio.Values.Where(p => p.OemId.HasValue).Select(p => p.OemId!.Value).Distinct().ToList();
         var oemsPvp = oemIdsRef.Count == 0
@@ -239,7 +273,51 @@ public class MeliItemService
                 }
                 if (hasData) precioBase = Math.Round(sum, 2);
             }
-            if (precioBase.HasValue) items[k] = it with { PrecioOtroConIvaCalc = precioBase };
+            // 2026-06-01: calcular ProductCost (costo del producto/combo desde sistema)
+            decimal? costoBase = null;
+            // 1) Modelo nuevo: componentes
+            if (componentesByItemId.TryGetValue(it.MeliItemId, out var compsCost))
+            {
+                var compsForItem = compsCost.Where(c =>
+                {
+                    if (!string.IsNullOrEmpty(it.VariationId))
+                        return c.MeliVariationId == it.VariationId || string.IsNullOrEmpty(c.MeliVariationId);
+                    return string.IsNullOrEmpty(c.MeliVariationId);
+                }).ToList();
+                if (compsForItem.Count == 0) compsForItem = compsCost;
+                decimal sumC = 0m; bool anyCost = false;
+                foreach (var c in compsForItem)
+                {
+                    if (prodsPrecio.TryGetValue(c.CafeProductoId, out var pp))
+                    { sumC += pp.Costo * c.Cantidad; anyCost = true; }
+                }
+                if (anyCost) costoBase = Math.Round(sumC, 2);
+            }
+            // 2) Legacy: combo directo
+            if (!costoBase.HasValue && it.ComboId.HasValue)
+            {
+                var citems = comboItemsLegacy.Where(x => x.ComboId == it.ComboId!.Value).ToList();
+                if (citems.Count > 0)
+                {
+                    decimal sumC = 0m;
+                    foreach (var ci in citems)
+                    {
+                        decimal cost = 0m;
+                        if (prodsPrecio.TryGetValue(ci.ProductoId, out var pp)) cost = pp.Costo;
+                        else if (prodCostosCombo.TryGetValue(ci.ProductoId, out var c2)) cost = c2;
+                        sumC += cost * ci.Cantidad;
+                    }
+                    costoBase = Math.Round(sumC, 2);
+                }
+            }
+            // 3) Legacy: producto directo
+            if (!costoBase.HasValue && it.CafeProductoId.HasValue
+                && prodsPrecio.TryGetValue(it.CafeProductoId.Value, out var ppDir))
+            {
+                costoBase = ppDir.Costo;
+            }
+            if (precioBase.HasValue || costoBase.HasValue)
+                items[k] = it with { PrecioOtroConIvaCalc = precioBase ?? it.PrecioOtroConIvaCalc, ProductCost = costoBase };
         }
 
         return new MeliItemsResponse(items, total);
