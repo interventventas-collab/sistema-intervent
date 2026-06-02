@@ -187,7 +187,14 @@ public class HorasExtrasController : ControllerBase
     public record AdminEmpleadoDto(int Id, string Nombre, string Token, bool IsActive,
         decimal TotalHoy, decimal TotalSemana, decimal TotalMes, DateTime? UltimaCargaAt, DateTime CreatedAt,
         string? UltimaHoraEntrada, string? UltimaHoraSalida,
-        string? DniUltimos3, string Slug);
+        string? DniUltimos3, string Slug,
+        // 2026-06-02: jornada configurable por dia de la semana + total semanal
+        decimal HorasLunes, decimal HorasMartes, decimal HorasMiercoles, decimal HorasJueves,
+        decimal HorasViernes, decimal HorasSabado, decimal HorasDomingo,
+        decimal JornadaSemanal,
+        // Acumulado real (horario marcado en los registros) vs esperado segun jornada
+        decimal TrabajadoSemana, decimal EsperadoSemana, decimal DiferenciaSemana,
+        decimal TrabajadoMes, decimal EsperadoMes, decimal DiferenciaMes);
 
     /// <summary>Lista de empleados con totales (hoy / semana / mes) y la última vez que cargaron.</summary>
     [HttpGet("admin/empleados")]
@@ -219,6 +226,19 @@ public class HorasExtrasController : ControllerBase
 
         var result = emps.Select(e => {
             ultRegDic.TryGetValue(e.Id, out var ultReg);
+            // 2026-06-02: Calcular acumulados de horario marcado vs jornada esperada
+            var regsDelEmp = regs.Where(r => r.EmpleadoId == e.Id).ToList();
+            var regsSemana = regsDelEmp.Where(r => r.Fecha >= inicioSemana).ToList();
+            var regsMes = regsDelEmp.ToList();
+            decimal trabSemana = regsSemana.Sum(r => HorasTrabajadas(r));
+            decimal trabMes = regsMes.Sum(r => HorasTrabajadas(r));
+            // Esperado = sumar HorasParaDia para cada dia del rango (independiente de si cargo o no)
+            decimal espSemana = 0m;
+            for (var d = inicioSemana; d <= hoy; d = d.AddDays(1)) espSemana += e.HorasParaDia(d.DayOfWeek);
+            decimal espMes = 0m;
+            for (var d = inicioMes; d <= hoy; d = d.AddDays(1)) espMes += e.HorasParaDia(d.DayOfWeek);
+            decimal jornadaSem = e.HorasLunes + e.HorasMartes + e.HorasMiercoles + e.HorasJueves
+                               + e.HorasViernes + e.HorasSabado + e.HorasDomingo;
             return new AdminEmpleadoDto(
                 e.Id, e.Nombre, e.Token, e.IsActive,
                 regs.Where(r => r.EmpleadoId == e.Id && r.Fecha == hoy).Sum(r => r.Cantidad),
@@ -229,10 +249,25 @@ public class HorasExtrasController : ControllerBase
                 FormatHora(ultReg?.HoraEntrada),
                 FormatHora(ultReg?.HoraSalida),
                 e.DniUltimos3,
-                Slugify(e.Nombre)
+                Slugify(e.Nombre),
+                e.HorasLunes, e.HorasMartes, e.HorasMiercoles, e.HorasJueves,
+                e.HorasViernes, e.HorasSabado, e.HorasDomingo,
+                jornadaSem,
+                trabSemana, espSemana, trabSemana - espSemana,
+                trabMes, espMes, trabMes - espMes
             );
         }).ToList();
         return Ok(result);
+    }
+
+    /// <summary>2026-06-02: calcula cuantas horas trabajo el empleado segun entrada/salida marcadas.
+    /// Si falta alguna, devuelve 0. Si la salida es antes que la entrada (cruzo medianoche), suma 24.</summary>
+    private static decimal HorasTrabajadas(HorasExtrasRegistro r)
+    {
+        if (!r.HoraEntrada.HasValue || !r.HoraSalida.HasValue) return 0m;
+        var dur = r.HoraSalida.Value - r.HoraEntrada.Value;
+        if (dur.TotalHours < 0) dur += TimeSpan.FromHours(24);
+        return Math.Round((decimal)dur.TotalHours, 2, MidpointRounding.AwayFromZero);
     }
 
     public class CreateEmpleadoRequest
@@ -288,6 +323,14 @@ public class HorasExtrasController : ControllerBase
         public bool ClearDniUltimos3 { get; set; }
         /// <summary>Si true, regenera el token (legacy — ya no se usa en el URL).</summary>
         public bool RegenerarToken { get; set; }
+        // 2026-06-02: jornada laboral por dia de la semana (opcional — si no se manda, no se toca)
+        public decimal? HorasLunes { get; set; }
+        public decimal? HorasMartes { get; set; }
+        public decimal? HorasMiercoles { get; set; }
+        public decimal? HorasJueves { get; set; }
+        public decimal? HorasViernes { get; set; }
+        public decimal? HorasSabado { get; set; }
+        public decimal? HorasDomingo { get; set; }
     }
 
     [HttpPut("admin/empleados/{id:int}")]
@@ -305,6 +348,15 @@ public class HorasExtrasController : ControllerBase
         if (req.DniUltimos3 is not null) emp.DniUltimos3 = NormDni3(req.DniUltimos3);
         else if (req.ClearDniUltimos3) emp.DniUltimos3 = null;
         if (req.RegenerarToken) emp.Token = Guid.NewGuid().ToString("N");
+        // 2026-06-02: jornada por dia. Si vino el valor, lo aplico (clampeado 0-24).
+        decimal Clamp(decimal v) => Math.Max(0m, Math.Min(24m, v));
+        if (req.HorasLunes.HasValue) emp.HorasLunes = Clamp(req.HorasLunes.Value);
+        if (req.HorasMartes.HasValue) emp.HorasMartes = Clamp(req.HorasMartes.Value);
+        if (req.HorasMiercoles.HasValue) emp.HorasMiercoles = Clamp(req.HorasMiercoles.Value);
+        if (req.HorasJueves.HasValue) emp.HorasJueves = Clamp(req.HorasJueves.Value);
+        if (req.HorasViernes.HasValue) emp.HorasViernes = Clamp(req.HorasViernes.Value);
+        if (req.HorasSabado.HasValue) emp.HorasSabado = Clamp(req.HorasSabado.Value);
+        if (req.HorasDomingo.HasValue) emp.HorasDomingo = Clamp(req.HorasDomingo.Value);
         emp.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return Ok(emp);
@@ -323,7 +375,9 @@ public class HorasExtrasController : ControllerBase
 
     public record AdminRegistroDto(int Id, int EmpleadoId, string EmpleadoNombre, DateTime Fecha,
         decimal Cantidad, string? Observaciones, string? HoraEntrada, string? HoraSalida,
-        DateTime CreatedAt, DateTime? UpdatedAt);
+        DateTime CreatedAt, DateTime? UpdatedAt,
+        // 2026-06-02: calculado en backend para el reporte
+        decimal HorasTrabajadas, decimal HorasEsperadas, decimal Diferencia, string DiaNombre);
 
     /// <summary>Lista todos los registros, opcionalmente filtrando por rango y/o empleado.
     /// Por default devuelve los últimos 30 días.</summary>
@@ -340,9 +394,15 @@ public class HorasExtrasController : ControllerBase
         q = q.Where(r => r.Fecha >= d && r.Fecha <= h);
         if (empleadoId.HasValue) q = q.Where(r => r.EmpleadoId == empleadoId.Value);
         var regs = await q.OrderByDescending(r => r.Fecha).ThenBy(r => r.Empleado!.Nombre).ToListAsync();
-        var result = regs.Select(r => new AdminRegistroDto(r.Id, r.EmpleadoId, r.Empleado?.Nombre ?? "?",
-            r.Fecha, r.Cantidad, r.Observaciones, FormatHora(r.HoraEntrada), FormatHora(r.HoraSalida),
-            r.CreatedAt, r.UpdatedAt)).ToList();
+        string[] diasNom = { "Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado" };
+        var result = regs.Select(r => {
+            decimal trab = HorasTrabajadas(r);
+            decimal esp = r.Empleado is null ? 0m : r.Empleado.HorasParaDia(r.Fecha.DayOfWeek);
+            return new AdminRegistroDto(r.Id, r.EmpleadoId, r.Empleado?.Nombre ?? "?",
+                r.Fecha, r.Cantidad, r.Observaciones, FormatHora(r.HoraEntrada), FormatHora(r.HoraSalida),
+                r.CreatedAt, r.UpdatedAt,
+                trab, esp, trab - esp, diasNom[(int)r.Fecha.DayOfWeek]);
+        }).ToList();
         return Ok(result);
     }
 

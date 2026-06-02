@@ -26,10 +26,35 @@ public class HorasExtrasEmpleado
 
     public bool IsActive { get; set; } = true;
 
+    // ─── 2026-06-02: Jornada laboral configurable por día de la semana ───
+    // Cuántas horas trabaja el empleado en cada día. 0 = no trabaja ese día.
+    // El admin la ve en la ficha del empleado y la edita.
+    // Se usa para calcular extras (trabajadas - jornada) y acumulados semanal/mensual.
+    [Column(TypeName = "decimal(4,2)")] public decimal HorasLunes { get; set; } = 8m;
+    [Column(TypeName = "decimal(4,2)")] public decimal HorasMartes { get; set; } = 8m;
+    [Column(TypeName = "decimal(4,2)")] public decimal HorasMiercoles { get; set; } = 8m;
+    [Column(TypeName = "decimal(4,2)")] public decimal HorasJueves { get; set; } = 8m;
+    [Column(TypeName = "decimal(4,2)")] public decimal HorasViernes { get; set; } = 8m;
+    [Column(TypeName = "decimal(4,2)")] public decimal HorasSabado { get; set; } = 5m;
+    [Column(TypeName = "decimal(4,2)")] public decimal HorasDomingo { get; set; } = 0m;
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 
     public List<HorasExtrasRegistro> Registros { get; set; } = new();
+
+    /// <summary>Devuelve las horas configuradas para un dia de la semana. Helper para reportes.</summary>
+    public decimal HorasParaDia(DayOfWeek d) => d switch
+    {
+        DayOfWeek.Monday => HorasLunes,
+        DayOfWeek.Tuesday => HorasMartes,
+        DayOfWeek.Wednesday => HorasMiercoles,
+        DayOfWeek.Thursday => HorasJueves,
+        DayOfWeek.Friday => HorasViernes,
+        DayOfWeek.Saturday => HorasSabado,
+        DayOfWeek.Sunday => HorasDomingo,
+        _ => 0m
+    };
 }
 
 [Table("HorasExtras_Registros")]

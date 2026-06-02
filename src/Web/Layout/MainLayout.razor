@@ -369,7 +369,7 @@
                 @* ───────── 6. PERSONAL ───────── *@
                 <NavGroup Label="👷 Personal" Icon="@SvgIcons.Users"
                           HasActiveChild="@(IsActive("/horas-extras") || IsActive("/viajes"))">
-                    <NavItem Href="/horas-extras" Label="🕐 Horas Extras" Icon="@SvgIcons.Tag"
+                    <NavItem Href="/horas-extras" Label="🕐 Horario" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/horas-extras")" OnClick="@(() => NavigateTo("/horas-extras"))" />
                     <NavItem Href="/viajes" Label="🚚 Viajes" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/viajes")" OnClick="@(() => NavigateTo("/viajes"))" />
@@ -1058,7 +1058,7 @@
         { "cafe/consultas", ("🔍", "Consultas", "/cafe/consultas") },
         { "cafe/configuracion", ("⚙", "Configuración", "/cafe/configuracion") },
         { "documentacion", ("📑", "Documentación", "/documentacion") },
-        { "horas-extras", ("🕐", "Horas Extras", "/horas-extras") },
+        { "horas-extras", ("🕐", "Horario", "/horas-extras") },
         { "viajes", ("🚚", "Viajes", "/viajes") },
         // Dashboard
         { "", ("🏠", "Inicio", "/") },

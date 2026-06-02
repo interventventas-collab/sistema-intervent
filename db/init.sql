@@ -3491,6 +3491,20 @@ BEGIN
 END
 GO
 
+-- 2026-06-02: Jornada laboral configurable por dia de la semana para cada empleado.
+-- Defaults: LUN-VIE 8h, SAB 5h, DOM 0h. El admin la edita en /horas-extras → ficha empleado.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'HorasLunes' AND Object_ID = Object_ID('HorasExtras_Empleados'))
+BEGIN
+    ALTER TABLE HorasExtras_Empleados ADD HorasLunes DECIMAL(4,2) NOT NULL CONSTRAINT DF_HorasExtras_Empleados_HorasLunes DEFAULT 8;
+    ALTER TABLE HorasExtras_Empleados ADD HorasMartes DECIMAL(4,2) NOT NULL CONSTRAINT DF_HorasExtras_Empleados_HorasMartes DEFAULT 8;
+    ALTER TABLE HorasExtras_Empleados ADD HorasMiercoles DECIMAL(4,2) NOT NULL CONSTRAINT DF_HorasExtras_Empleados_HorasMiercoles DEFAULT 8;
+    ALTER TABLE HorasExtras_Empleados ADD HorasJueves DECIMAL(4,2) NOT NULL CONSTRAINT DF_HorasExtras_Empleados_HorasJueves DEFAULT 8;
+    ALTER TABLE HorasExtras_Empleados ADD HorasViernes DECIMAL(4,2) NOT NULL CONSTRAINT DF_HorasExtras_Empleados_HorasViernes DEFAULT 8;
+    ALTER TABLE HorasExtras_Empleados ADD HorasSabado DECIMAL(4,2) NOT NULL CONSTRAINT DF_HorasExtras_Empleados_HorasSabado DEFAULT 5;
+    ALTER TABLE HorasExtras_Empleados ADD HorasDomingo DECIMAL(4,2) NOT NULL CONSTRAINT DF_HorasExtras_Empleados_HorasDomingo DEFAULT 0;
+END
+GO
+
 -- ===== Viajes de empleados (carga diaria + pagos + saldo) =====
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Viajes_Empleados')
 BEGIN
