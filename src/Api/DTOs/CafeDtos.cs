@@ -99,7 +99,12 @@ public record CafeProductoDto(
     // 2026-06-01: para productos "shell" linkeados a publicaciones MeLi via componentes,
     // cantidad de cestos/combos armables a partir del stock real de los componentes (min).
     // Null si no aplica (productos físicos normales con stock propio).
-    int? StockArmable = null);
+    int? StockArmable = null,
+    // 2026-06-02: desglose de stock por deposito (para mostrar 'X propio + Y Full' en la UI)
+    // StockPropio = stock en deposito principal '9 de Abril'.
+    // StockFull = stock en deposito 'Full MeLi'. Null si no esta en ese deposito.
+    int? StockPropio = null,
+    int? StockFull = null);
 
 public record CafeProductoPackDto(
     int Id, int Cantidad, string Nombre, decimal? PrecioOverride,

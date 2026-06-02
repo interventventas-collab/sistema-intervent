@@ -274,7 +274,17 @@
                                     }
                                     else
                                     {
-                                        <span>@p.StockUnidades u.</span>
+                                        @* 2026-06-02: si hay desglose por deposito, mostrar Propio como principal
+                                           y Full como chip secundario abajo. Si no hay desglose, fallback al total. *@
+                                        var stockMostrar = p.StockPropio ?? p.StockUnidades;
+                                        <span title="Stock en depósito 9 de Abril">@stockMostrar u.</span>
+                                        @if (p.StockFull.HasValue && p.StockFull.Value > 0)
+                                        {
+                                            <div style="font-size:0.7rem; color:#7c3aed; font-weight:600; margin-top:2px;"
+                                                 title="Stock en depósito Full MeLi (lo administra MeLi, no tocar)">
+                                                📦 Full: @p.StockFull u.
+                                            </div>
+                                        }
                                     }
                                 </td>
                                 <td>
