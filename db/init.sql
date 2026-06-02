@@ -2067,6 +2067,16 @@ IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'EnRadar' AND Object_ID = 
     ALTER TABLE Cafe_Ventas ADD EnRadar BIT NOT NULL CONSTRAINT DF_CafeVentas_EnRadar DEFAULT 0;
 GO
 
+-- 2026-06-01: Cafe_Ventas: agregar Retira (el cliente retira la mercaderia en el local)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'Retira' AND Object_ID = Object_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD Retira BIT NOT NULL CONSTRAINT DF_CafeVentas_Retira DEFAULT 0;
+GO
+
+-- 2026-06-02: Cafe_Ventas: agregar ComentarioArmado (nota interna para preparacion, se muestra en /cafe/preparacion)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'ComentarioArmado' AND Object_ID = Object_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD ComentarioArmado NVARCHAR(MAX) NULL;
+GO
+
 -- Cafe_VentaItems: agregar Molienda y EsDoyPack
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = 'Molienda' AND Object_ID = Object_ID('Cafe_VentaItems'))
     ALTER TABLE Cafe_VentaItems ADD Molienda NVARCHAR(30) NULL;

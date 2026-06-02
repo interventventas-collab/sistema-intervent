@@ -394,6 +394,9 @@ public class CafeVentaDto
     public DateTime? DriveSubidoAt { get; set; }
     /// <summary>Cuántas veces se subió. 0 = nunca, 1 = subida normal, 2+ = re-subido (UI marca diferente).</summary>
     public int DriveSubidasCount { get; set; }
+    /// <summary>2026-06-02: Comentario INTERNO para armado (post-it amarillo en /cafe/preparacion).
+    /// Independiente de Observaciones. NO sale en el PDF al cliente.</summary>
+    public string? ComentarioArmado { get; set; }
 }
 
 /// <summary>Tarjeta de venta en el tablero /cafe/preparacion. Trae solo lo que el
@@ -430,6 +433,9 @@ public class CafePreparacionVentaDto
     public int ImpresaCount { get; set; }
     /// <summary>Para sección "Ya armados": cantidad de items (sin traer el listado completo).</summary>
     public int? ItemsCount { get; set; }
+    /// <summary>2026-06-02: Comentario INTERNO para armado (post-it amarillo). Cargado desde Nueva Venta.
+    /// Si está vacío, no se muestra el chip. NO sale en el PDF al cliente.</summary>
+    public string? ComentarioArmado { get; set; }
     public List<CafePreparacionItemDto> Items { get; set; } = new();
 }
 
@@ -548,6 +554,7 @@ public class CreateCafeVentaRequest
     public string? CondicionIva { get; set; }
     public string? CondicionPago { get; set; }
     public string? EntregaPor { get; set; }
+    public string? ComentarioArmado { get; set; }
 }
 
 public class UpdateCafeVentaFlagsRequest
@@ -584,6 +591,7 @@ public class UpdateCafeVentaRequest
     public List<CafeCotizarItemRequest>? Items { get; set; }
     public decimal? Descuento { get; set; }
     public string? EntregaPor { get; set; }
+    public string? ComentarioArmado { get; set; }
 }
 
 public class DeleteCafeVentaRequest

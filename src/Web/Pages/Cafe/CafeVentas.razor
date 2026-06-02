@@ -1619,6 +1619,24 @@
                                 </div>
                             </div>
                         }
+                        @* 2026-06-02: COMENTARIO INTERNO PARA ARMADO (mitad izquierda del hueco libre).
+                           Mitad derecha queda vacia — reservada para futuro pedido del usuario. *@
+                        <div style="display: flex; gap: 0.6rem; margin-top: 0.75rem; align-items: stretch;">
+                            <div style="flex: 1; background: #fefce8; border: 2px dashed #facc15; border-radius: 8px; padding: 0.75rem;">
+                                <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.4rem;">
+                                    <span style="font-size: 1rem;">📌</span>
+                                    <strong style="font-size: 0.78rem; color: #92400e; text-transform: uppercase; letter-spacing: 0.04em;">Comentario interno para armado</strong>
+                                </div>
+                                <textarea class="form-input" rows="4" @bind="formComentarioArmado"
+                                          placeholder="EJEMPLO: SOBRES CORTESIA"
+                                          style="background: white; font-size: 0.85rem; resize: vertical; width: 100%;"></textarea>
+                                <div style="font-size: 0.68rem; color: #78716c; margin-top: 0.3rem; font-style: italic;">
+                                    Solo lo ve quien arma el pedido en <strong>"IMPRIMIR PEDIDOS DE OSMAR"</strong>. No sale en el comprobante al cliente.
+                                </div>
+                            </div>
+                            @* Mitad derecha reservada — futuro feature *@
+                            <div style="flex: 1;"></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -2746,6 +2764,8 @@
     private bool formRetira = false;
     private bool formIsPaid;
     private string formEntregaPor = "";
+    // 2026-06-02: Comentario INTERNO para el armado. Se muestra como post-it en /cafe/preparacion. No sale en PDF.
+    private string formComentarioArmado = "";
 
     /// <summary>Lista de personas que entregan, en el orden pedido por el usuario. La opcion
     /// 'Logística tercerizada' se agrega aparte en el dropdown como ultima opcion.</summary>
@@ -3352,6 +3372,7 @@
         addComboId = 0; addComboCantidad = 1;
         comboSearch = ""; comboSearchOpen = false;
         formWeekDays = new(); formEnRadar = false; formRetira = false; formIsPaid = false; formEntregaPor = "";
+        formComentarioArmado = "";
         // Reset del panel "Enviar al cliente" — todos los checkboxes empiezan apagados
         // para que nunca mandes algo sin querer. El operador tilda lo que necesite por venta.
         envioEmail = false; envioWhatsappWeb = false; envioWhatsappInterno = false;
@@ -3411,6 +3432,7 @@
         public bool FormRetira { get; set; }
         public bool FormIsPaid { get; set; }
         public string FormEntregaPor { get; set; } = "";
+        public string FormComentarioArmado { get; set; } = "";
         // Modo venta rápida
         public bool ModoVentaRapida { get; set; }
         public string VrNombre { get; set; } = "";
@@ -3450,6 +3472,7 @@
             FormRetira = formRetira,
             FormIsPaid = formIsPaid,
             FormEntregaPor = formEntregaPor ?? "",
+            FormComentarioArmado = formComentarioArmado ?? "",
             ModoVentaRapida = modoVentaRapida,
             VrNombre = vrNombre ?? "",
             VrRazonSocial = vrRazonSocial ?? "",
@@ -3524,6 +3547,7 @@
         formWeekDays = b.FormWeekDays?.ToHashSet() ?? new();
         formEnRadar = b.FormEnRadar;
         formRetira = b.FormRetira;
+        formComentarioArmado = b.FormComentarioArmado ?? "";
         formIsPaid = b.FormIsPaid;
         formEntregaPor = b.FormEntregaPor;
         modoVentaRapida = b.ModoVentaRapida;
@@ -4448,7 +4472,8 @@
                 IsPaid = formIsPaid,
                 TipoComprobante = formTipoComprobante,
                 CondicionIva = formCondicionIva,
-                CondicionPago = formCondicionPago
+                CondicionPago = formCondicionPago,
+                ComentarioArmado = formComentarioArmado
             });
             if (bytes is null)
             {
@@ -4543,7 +4568,8 @@
                     TipoComprobante = formTipoComprobante,
                     CondicionIva = formCondicionIva,
                     CondicionPago = formCondicionPago,
-                    EntregaPor = formEntregaPor
+                    EntregaPor = formEntregaPor,
+                    ComentarioArmado = formComentarioArmado
                 });
                 if (v is null) { formError = "No se pudo actualizar"; return; }
                 ToastService.Success($"Comprobante {v.Numero} actualizado");
@@ -4595,7 +4621,8 @@
                     TipoComprobante = formTipoComprobante,
                     CondicionIva = formCondicionIva,
                     CondicionPago = formCondicionPago,
-                    EntregaPor = formEntregaPor
+                    EntregaPor = formEntregaPor,
+                    ComentarioArmado = formComentarioArmado
                 });
                 if (v is null) { formError = "No se pudo crear"; return; }
                 ToastService.Success($"Venta {v.Numero} emitida — Total ${v.Total:N2}");
@@ -5092,8 +5119,10 @@
             ? new HashSet<string>()
             : v.WeekDays.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(s => s.Trim().ToUpperInvariant()).ToHashSet();
         formEnRadar = v.EnRadar;
+        formRetira = v.Retira;
         formIsPaid = v.IsPaid;
         formEntregaPor = v.EntregaPor ?? "";
+        formComentarioArmado = v.ComentarioArmado ?? "";
         // Items: convertir a CafeCotizarItemRequest para que el form los muestre y los pueda editar.
         formItems = v.Items.Select(i => new CafeCotizarItemRequest
         {

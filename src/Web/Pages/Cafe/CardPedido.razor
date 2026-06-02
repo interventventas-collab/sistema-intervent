@@ -85,6 +85,34 @@
         </div>
     </div>
 
+    @* 2026-06-02: Chip "Ver comentario interno" — solo aparece si la venta tiene comentario cargado.
+       Al hacer click despliega un post-it amarillo con el texto. *@
+    @if (!string.IsNullOrWhiteSpace(Venta.ComentarioArmado))
+    {
+        <button @onclick="() => mostrarComentario = !mostrarComentario"
+                style="display: flex; align-items: center; gap: 0.4rem; margin: 0.4rem 0 0 0; padding: 0.35rem 0.6rem;
+                       background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+                       border: 1px solid #f59e0b; border-radius: 6px; cursor: pointer;
+                       font-size: 0.8rem; color: #92400e; font-weight: 700; width: 100%; justify-content: center;">
+            <span>📌</span>
+            <span>@(mostrarComentario ? "Ocultar comentario interno" : "Ver comentario interno")</span>
+        </button>
+        @if (mostrarComentario)
+        {
+            <div style="background: #fefce8; border: 2px dashed #facc15; border-radius: 6px; padding: 0.6rem 0.8rem;
+                        margin: 0.4rem 0 0 0; font-size: 0.85rem; color: #713f12; line-height: 1.4;
+                        white-space: pre-wrap; word-break: break-word; box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                        position: relative;">
+                <button @onclick="() => mostrarComentario = false"
+                        style="position: absolute; top: 0.2rem; right: 0.4rem; background: transparent; border: none;
+                               font-size: 1rem; cursor: pointer; color: #92400e; padding: 0;"
+                        title="Cerrar">✕</button>
+                <div style="font-size: 0.7rem; color: #92400e; font-weight: 700; text-transform: uppercase; margin-bottom: 0.3rem; letter-spacing: 0.04em;">📌 Nota para el armado</div>
+                @Venta.ComentarioArmado
+            </div>
+        }
+    }
+
     @* Boton para desplegar la composicion del pedido. Por default cerrado. *@
     <button class="prep-btn-ver-comp" @onclick="() => mostrarComposicion = !mostrarComposicion">
         @if (mostrarComposicion)
@@ -178,6 +206,8 @@
 
     // Por default la composicion esta colapsada (el armador la despliega cuando va a armar ese pedido).
     private bool mostrarComposicion = false;
+    // 2026-06-02: Post-it amarillo con comentario interno para armado. Por default cerrado.
+    private bool mostrarComentario = false;
 
     // IDs de items tildados (solo visual, no se persiste).
     private HashSet<int> tildados = new();

@@ -362,7 +362,8 @@ public record CafeVentaDto(
     DateTime? EntregadoAt = null,
     string? DriveFileId = null,
     DateTime? DriveSubidoAt = null,
-    int DriveSubidasCount = 0);
+    int DriveSubidasCount = 0,
+    string? ComentarioArmado = null);
 
 public class CafeCotizarItemRequest
 {
@@ -451,6 +452,8 @@ public class CreateCafeVentaRequest
     public string? CondicionIva { get; set; }
     public string? CondicionPago { get; set; }
     public string? EntregaPor { get; set; }
+    /// <summary>2026-06-02: Nota interna para armado (post-it en /cafe/preparacion). NO sale en PDF.</summary>
+    public string? ComentarioArmado { get; set; }
 }
 
 public class UpdateCafeVentaFlagsRequest
@@ -492,6 +495,8 @@ public class UpdateCafeVentaRequest
     public List<CafeCotizarItemRequest>? Items { get; set; }
     public decimal? Descuento { get; set; }
     public string? EntregaPor { get; set; }
+    /// <summary>2026-06-02: Nota interna para armado (post-it en /cafe/preparacion). NO sale en PDF.</summary>
+    public string? ComentarioArmado { get; set; }
 }
 
 public class DeleteCafeVentaRequest
@@ -853,7 +858,8 @@ public record DuplicarVentaPayloadDto(
     bool Retira,
     string? Observaciones,
     List<CafeCotizarItemRequest> Items,
-    string? OrigenNumero);   // ej "CAFE-2026-0001" — solo para mostrar en el modal "Duplicado de X"
+    string? OrigenNumero,    // ej "CAFE-2026-0001" — solo para mostrar en el modal "Duplicado de X"
+    string? ComentarioArmado = null);
 
 // ===== Convertir Proforma → Factura =====
 public class ConvertirAFacturaRequest
