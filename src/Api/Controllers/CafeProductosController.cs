@@ -181,9 +181,15 @@ public class CafeProductosController : ControllerBase
             foreach (var mi in prodGroup)
             {
                 if (!compsByMeliId.TryGetValue(mi.MeliItemId, out var compsList)) continue;
-                tieneAlgunaCompReal = true;  // esta MLA SI tiene componentes — el producto es un shell real
+                // 2026-06-02 FIX BUG: ignorar componentes RECURSIVOS (el producto es componente de
+                // si mismo). Eso es basura — la mayoria viene de Contabilium con mappings autoreferentes.
+                // Caso real: C949BL (cesto) aparece como componente de su propia MLA, y eso le
+                // marcaba "0 armable" tapando su stock real. 5394 entradas asi en la DB.
+                var compsValidas = compsList.Where(c => c.CafeProductoId != mi.ProdId).ToList();
+                if (compsValidas.Count == 0) continue;  // todas las componentes eran recursivas → no es shell
+                tieneAlgunaCompReal = true;  // esta MLA SI tiene componentes reales — el producto es un shell real
                 int armableThis = int.MaxValue;
-                foreach (var c in compsList)
+                foreach (var c in compsValidas)
                 {
                     if (!compStocks.TryGetValue(c.CafeProductoId, out var ps)) { armableThis = 0; break; }
                     int reservaComp = ps.StockMinimoMeLi ?? 0;
