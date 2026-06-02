@@ -123,11 +123,26 @@ public class CafeProductosController : ControllerBase
         // Para productos físicos normales (sin OemId o sin linkeo a MeLi) queda null y la UI muestra StockUnidades.
         var armableMap = await CalcularStockArmableBulkAsync(list.Select(p => p.Id).ToList());
 
+        // 2026-06-02: desglose de stock por depósito para que la UI muestre '280 propio + 50 Full'
+        // en lugar del total 330. Bulk query por todos los productos a la vez.
+        var productoIds = list.Select(p => p.Id).ToList();
+        var stockPorDep = await _db.CafeStockPorDeposito.AsNoTracking()
+            .Where(s => productoIds.Contains(s.ProductoId))
+            .Join(_db.CafeDepositos.AsNoTracking(), s => s.DepositoId, d => d.Id, (s, d) => new { s.ProductoId, DepNombre = d.Nombre, s.StockUnidades })
+            .ToListAsync();
+        var stockMap = stockPorDep.GroupBy(x => x.ProductoId)
+            .ToDictionary(g => g.Key, g => new {
+                Propio = g.Where(x => x.DepNombre == "9 de Abril").Sum(x => (int?)x.StockUnidades),
+                Full = g.Where(x => x.DepNombre == "Full MeLi").Sum(x => (int?)x.StockUnidades)
+            });
+
         return Ok(list.Select(p => {
             var dto = Map(p);
-            return armableMap.TryGetValue(p.Id, out var armable)
-                ? dto with { StockArmable = armable }
-                : dto;
+            if (armableMap.TryGetValue(p.Id, out var armable))
+                dto = dto with { StockArmable = armable };
+            if (stockMap.TryGetValue(p.Id, out var s))
+                dto = dto with { StockPropio = s.Propio, StockFull = s.Full };
+            return dto;
         }).ToList());
     }
 

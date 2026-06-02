@@ -104,6 +104,10 @@ public class CafeProductoDto
     /// <summary>2026-06-01 — Stock armable (cuantos productos "shell" se pueden armar desde
     /// los componentes linkeados via MeLi). Null si no aplica (productos físicos normales).</summary>
     public int? StockArmable { get; set; }
+    /// <summary>2026-06-02 — Desglose por depósito. StockPropio = lo que hay en '9 de Abril'.
+    /// StockFull = lo que hay en 'Full MeLi'. Si son null, ese depósito no aplica.</summary>
+    public int? StockPropio { get; set; }
+    public int? StockFull { get; set; }
     public string? Notas { get; set; }
     public bool IsActive { get; set; }
     public decimal IvaPct { get; set; } = 21m;
