@@ -4,6 +4,8 @@
 @inject HttpClient Http
 @inject IJSRuntime JS
 @inject NavigationManager Nav
+@inject Web.Services.Mobile.CatalogIndex Catalog
+@using Web.Models.Mobile
 
 @* Carga de stock mobile-first. Dos modos:
    1) NORMAL (default): operador busca producto, lo edita uno por uno (suma/resta/setear).
@@ -437,6 +439,13 @@
     {
         await CargarInitAsync();
         loading = false;
+        // 2026-06-02: Cargar catalogo en memoria para autocomplete predictivo (instantaneo).
+        // Background, no bloquea el render. Si falla, el buscador cae al modo viejo (server).
+        _ = Task.Run(async () =>
+        {
+            try { await Catalog.EnsureLoadedAsync(onlyProductos: true); await InvokeAsync(StateHasChanged); }
+            catch { /* fallback al modo server, no es bloqueante */ }
+        });
     }
 
     private async Task CargarInitAsync()
@@ -484,13 +493,46 @@
     private void OnSearchInput(ChangeEventArgs e)
     {
         queryBusqueda = e.Value?.ToString() ?? "";
-        debounceTimer?.Dispose();
-        debounceTimer = new System.Threading.Timer(async _ => await InvokeAsync(BuscarAsync), null, 250, System.Threading.Timeout.Infinite);
+        // 2026-06-02: busqueda INSTANTANEA en catalogo local (sin debounce). Si el catalogo no esta cargado
+        // todavia (recien entro), cae al server con debounce viejo de 250ms como fallback.
+        if (Catalog.Count > 0)
+        {
+            BuscarLocalInstantaneo();
+        }
+        else
+        {
+            debounceTimer?.Dispose();
+            debounceTimer = new System.Threading.Timer(async _ => await InvokeAsync(BuscarAsync), null, 250, System.Threading.Timeout.Infinite);
+        }
     }
 
     private async Task OnSearchKeyDown(KeyboardEventArgs e)
     {
         if (e.Key == "Enter") await BuscarAsync();
+    }
+
+    /// <summary>2026-06-02: Busqueda instantanea en el catalogo cargado en memoria (sin ida-vuelta al server).
+    /// Mapea los CatalogItem a StockProductoPubDto parcial (sin info de UltimaModif/auditoria) — esa info
+    /// se carga al seleccionar via BuscarPorSkuYSeleccionarAsync.</summary>
+    private void BuscarLocalInstantaneo()
+    {
+        if (string.IsNullOrWhiteSpace(queryBusqueda)) { productosBuscados = null; StateHasChanged(); return; }
+        var t = queryBusqueda.Trim();
+        var hits = Catalog.Search(t, limit: 20);
+        productosBuscados = hits.Select(h => new StockProductoPubDto(
+            h.Item.Id,
+            h.Item.Sku,
+            null,
+            h.Item.Nombre,
+            h.Item.Categoria ?? "OTROS",
+            h.Item.Marca,
+            (int)h.Item.Stock,
+            null,
+            null,
+            false
+        )).ToList();
+        buscando = false;
+        StateHasChanged();
     }
 
     private async Task BuscarAsync()
