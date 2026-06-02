@@ -85,6 +85,27 @@
         </label>
     </div>
 
+    @* 2026-06-02: filtros adicionales client-side. Buscan sobre los movimientos ya cargados. *@
+    <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; margin:0.6rem 0; padding:0.6rem 0.8rem; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
+        <input class="form-input" style="flex:1; min-width:240px;"
+               placeholder="🔍 Buscar por cliente, CUIT, descripción, número..."
+               @bind="busquedaTexto" @bind:event="oninput" />
+        <label style="font-size:0.8rem; color:#374151;">Desde:</label>
+        <input type="date" class="form-input" style="width:auto;" @bind="filtroFechaDesde" />
+        <label style="font-size:0.8rem; color:#374151;">Hasta:</label>
+        <input type="date" class="form-input" style="width:auto;" @bind="filtroFechaHasta" />
+        @if (!string.IsNullOrWhiteSpace(busquedaTexto) || filtroFechaDesde.HasValue || filtroFechaHasta.HasValue)
+        {
+            <button class="btn btn-secondary" @onclick="LimpiarFiltrosAdic" style="font-size:0.8rem;">✕ Limpiar</button>
+        }
+        @{
+            var totalFiltrados = MovsFiltrados().Count();
+        }
+        <span style="margin-left:auto; font-size:0.8rem; color:#6b7280;">
+            <strong>@totalFiltrados</strong> @(totalFiltrados == 1 ? "movimiento" : "movimientos") de @movs.Count
+        </span>
+    </div>
+
     @if (loading)
     {
         <p style="text-align: center; padding: 2rem;">Cargando...</p>
@@ -112,7 +133,7 @@
                 </tr>
             </thead>
             <tbody>
-                @foreach (var m in movs)
+                @foreach (var m in MovsFiltrados())
                 {
                     var esIngreso = m.Creditos > 0.01m;
                     <tr class="@(esIngreso ? "ingreso" : "egreso")">
@@ -319,6 +340,40 @@
     private bool loading = true;
     private bool importing;
     private string filtro = "todos";
+
+    // 2026-06-02: Filtros adicionales client-side (buscan sobre lo ya cargado).
+    private string busquedaTexto = "";
+    private DateTime? filtroFechaDesde;
+    private DateTime? filtroFechaHasta;
+
+    /// <summary>Filtra los movimientos por texto libre y rango de fechas.
+    /// Busca en: Descripción, LeyendaAdicional1 (origen/cliente), LeyendaAdicional2 (CUIT),
+    /// ClienteSugeridoNombre, ObservacionesCliente, VentaNumeroAsociada.</summary>
+    private IEnumerable<ExtractoMovimientoDto> MovsFiltrados()
+    {
+        IEnumerable<ExtractoMovimientoDto> q = movs;
+        if (filtroFechaDesde.HasValue) q = q.Where(m => m.Fecha.Date >= filtroFechaDesde.Value.Date);
+        if (filtroFechaHasta.HasValue) q = q.Where(m => m.Fecha.Date <= filtroFechaHasta.Value.Date);
+        if (!string.IsNullOrWhiteSpace(busquedaTexto))
+        {
+            var t = busquedaTexto.Trim();
+            q = q.Where(m =>
+                (m.Descripcion?.Contains(t, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (m.LeyendaAdicional1?.Contains(t, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (m.LeyendaAdicional2?.Contains(t, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (m.ClienteSugeridoNombre?.Contains(t, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (m.ObservacionesCliente?.Contains(t, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (m.VentaNumeroAsociada?.Contains(t, StringComparison.OrdinalIgnoreCase) ?? false));
+        }
+        return q;
+    }
+
+    private void LimpiarFiltrosAdic()
+    {
+        busquedaTexto = "";
+        filtroFechaDesde = null;
+        filtroFechaHasta = null;
+    }
 
     // Asociacion
     private ExtractoMovimientoDto? movAsociar;
