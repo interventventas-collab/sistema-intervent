@@ -1460,7 +1460,11 @@ public class CafeVentasController : ControllerBase
             EsEnvasePlateado = i.EsEnvasePlateado,
             DescuentoPct = i.DescuentoPct,
             EsConceptoLibre = i.EsConceptoLibre,
-            DescripcionLibre = i.EsConceptoLibre ? i.ProductoNombreSnapshot : null
+            DescripcionLibre = i.EsConceptoLibre ? i.ProductoNombreSnapshot : null,
+            // 2026-06-02 FIX: traer el precio del comprobante original. Sino el sistema recotiza
+            // con el precio actual del catalogo y se pierde la info historica (ej: si subieron
+            // los precios desde la venta original, la duplicada saldria mas cara).
+            PrecioUnitarioOverride = i.PrecioUnitario
         }).ToList();
 
         var payload = new DuplicarVentaPayloadDto(
