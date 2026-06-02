@@ -178,6 +178,35 @@
             }
             else
             {
+                @* 2026-06-02: Controles de paginación arriba (solo vista "flat") *@
+                @if (viewMode == "flat")
+                {
+                    var totalRows = GetGroupedRows().Count;
+                    var totalPages = GetTotalPages();
+                    var rangoDesde = totalRows == 0 ? 0 : (currentPage - 1) * pageSize + 1;
+                    var rangoHasta = Math.Min(currentPage * pageSize, totalRows);
+                    <div class="pagination-bar" style="display:flex; align-items:center; gap:0.75rem; padding:0.5rem 0.75rem; background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; margin:0.5rem 0; flex-wrap:wrap; font-size:0.875rem;">
+                        <span style="font-weight:500; color:#374151;">
+                            Mostrando <strong>@rangoDesde – @rangoHasta</strong> de <strong>@totalRows</strong> publicaciones
+                        </span>
+                        <div style="display:flex; align-items:center; gap:0.25rem; margin-left:auto;">
+                            <button class="btn btn-sm btn-secondary" @onclick="() => GoToPage(1)" disabled="@(currentPage == 1)" title="Primera">⏮</button>
+                            <button class="btn btn-sm btn-secondary" @onclick="() => GoToPage(currentPage - 1)" disabled="@(currentPage == 1)" title="Anterior">◀</button>
+                            <span style="padding:0 0.5rem;">Página <strong>@currentPage</strong> de <strong>@totalPages</strong></span>
+                            <button class="btn btn-sm btn-secondary" @onclick="() => GoToPage(currentPage + 1)" disabled="@(currentPage >= totalPages)" title="Siguiente">▶</button>
+                            <button class="btn btn-sm btn-secondary" @onclick="() => GoToPage(totalPages)" disabled="@(currentPage >= totalPages)" title="Última">⏭</button>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:0.25rem;">
+                            <label style="font-size:0.8125rem; color:#6b7280;">Por página:</label>
+                            <select @onchange="@((ChangeEventArgs e) => ChangePageSize(int.Parse(e.Value?.ToString() ?? "100")))" style="padding:0.25rem 0.5rem; border:1px solid #d1d5db; border-radius:4px;">
+                                <option value="50" selected="@(pageSize == 50)">50</option>
+                                <option value="100" selected="@(pageSize == 100)">100</option>
+                                <option value="200" selected="@(pageSize == 200)">200</option>
+                                <option value="500" selected="@(pageSize == 500)">500</option>
+                            </select>
+                        </div>
+                    </div>
+                }
                         <div class="table-responsive">
                 <table class="data-table">
                     <thead>
@@ -351,8 +380,9 @@
                         {
                             @* Agrupamos por MeliItemId: 1 fila por publicacion. Si tiene variantes,
                                la fila representante muestra stock+sold totales y un boton ▼ para
-                               expandir las variantes individuales. *@
-                            @foreach (var grp in GetGroupedRows())
+                               expandir las variantes individuales.
+                               2026-06-02: paginación client-side (GetPagedGroupedRows) para no renderizar 9k filas. *@
+                            @foreach (var grp in GetPagedGroupedRows())
                             {
                                 var item = grp.Item;
                                 var isExpanded = expandedGroups.Contains(grp.Key);
@@ -860,6 +890,19 @@
                     </tbody>
                 </table>
             </div>
+            @* 2026-06-02: Controles de paginación abajo (espejo del de arriba, solo vista "flat") *@
+            @if (viewMode == "flat")
+            {
+                var totalRowsBot = GetGroupedRows().Count;
+                var totalPagesBot = GetTotalPages();
+                <div class="pagination-bar" style="display:flex; align-items:center; gap:0.5rem; padding:0.5rem 0.75rem; background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; margin:0.5rem 0; flex-wrap:wrap; font-size:0.875rem; justify-content:center;">
+                    <button class="btn btn-sm btn-secondary" @onclick="() => GoToPage(1)" disabled="@(currentPage == 1)" title="Primera">⏮</button>
+                    <button class="btn btn-sm btn-secondary" @onclick="() => GoToPage(currentPage - 1)" disabled="@(currentPage == 1)" title="Anterior">◀</button>
+                    <span style="padding:0 0.5rem;">Página <strong>@currentPage</strong> de <strong>@totalPagesBot</strong> (@totalRowsBot publicaciones)</span>
+                    <button class="btn btn-sm btn-secondary" @onclick="() => GoToPage(currentPage + 1)" disabled="@(currentPage >= totalPagesBot)" title="Siguiente">▶</button>
+                    <button class="btn btn-sm btn-secondary" @onclick="() => GoToPage(totalPagesBot)" disabled="@(currentPage >= totalPagesBot)" title="Última">⏭</button>
+                </div>
+            }
             }
         }
     </div>
@@ -2542,6 +2585,9 @@
 
     // View mode
     private string viewMode = "flat";
+    // 2026-06-02: Paginación client-side para vista "flat". Reduce 9k filas → 100 visibles a la vez.
+    private int currentPage = 1;
+    private int pageSize = 100;
     // Toggle de la vista "Lista": agrupar familias (mismos FamilyId con N MLAs en 1 fila) vs verlas sueltas (cada MLA = 1 fila).
     // ON por defecto = matchea la vista catálogo de MeLi. OFF = matchea el conteo de MLAs sueltos de MeLi web (~3.5k).
     private bool agruparFamilias = true;
@@ -3249,6 +3295,42 @@
     private void InvalidateFilterCache()
     {
         _filterDirty = true;
+        // 2026-06-02: Al cambiar filtros, volver a la primera página (sino quedás "perdido" en página 8 de 2).
+        currentPage = 1;
+    }
+
+    /// <summary>2026-06-02: Aplica paginación client-side sobre GetGroupedRows().
+    /// Solo afecta el render, no el conteo total. Permite navegar 9k publicaciones sin matar el browser.</summary>
+    private List<GroupedRow> GetPagedGroupedRows()
+    {
+        var all = GetGroupedRows();
+        var total = all.Count;
+        var totalPages = Math.Max(1, (int)Math.Ceiling((double)total / pageSize));
+        if (currentPage > totalPages) currentPage = totalPages;
+        if (currentPage < 1) currentPage = 1;
+        return all.Skip((currentPage - 1) * pageSize).Take(pageSize).ToList();
+    }
+
+    private int GetTotalPages()
+    {
+        var total = GetGroupedRows().Count;
+        return Math.Max(1, (int)Math.Ceiling((double)total / pageSize));
+    }
+
+    private void GoToPage(int page)
+    {
+        var totalPages = GetTotalPages();
+        if (page < 1) page = 1;
+        if (page > totalPages) page = totalPages;
+        currentPage = page;
+        StateHasChanged();
+    }
+
+    private void ChangePageSize(int newSize)
+    {
+        pageSize = newSize;
+        currentPage = 1;
+        StateHasChanged();
     }
 
     // --- Grouping ---

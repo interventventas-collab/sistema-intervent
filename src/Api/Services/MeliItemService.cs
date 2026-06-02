@@ -41,7 +41,17 @@ public class MeliItemService
             query = query.Where(i => i.MeliAccountId == meliAccountId.Value);
 
         if (!string.IsNullOrEmpty(status))
-            query = query.Where(i => i.Status == status);
+        {
+            // 2026-06-02: status especial "all" = traer todo (incluyendo closed). Para ese caso, no filtramos.
+            if (!string.Equals(status, "all", StringComparison.OrdinalIgnoreCase))
+                query = query.Where(i => i.Status == status);
+        }
+        else
+        {
+            // 2026-06-02: Por default excluir 'closed' (son ~3.193 publicaciones cerradas inútiles que solo
+            // hacen lento el listado). Si querés traerlas, pasar status="all" explicitamente.
+            query = query.Where(i => i.Status != "closed");
+        }
 
         var total = await query.CountAsync();
         var items = await query
