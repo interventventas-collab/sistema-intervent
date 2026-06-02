@@ -139,6 +139,16 @@
                             <button class="more-filters-item @(filterStockPushViejo ? "active" : "")" @onclick="() => { filterStockPushViejo = !filterStockPushViejo; if (filterStockPushViejo) { filterStockPushNunca = false; filterStockPushOk = false; } InvalidateFilterCache(); showMoreFilters = false; }">
                                 🟡 Stock pusheado viejo (+7 días)
                             </button>
+                            @* 2026-06-01: filtros por margen — para detectar publicaciones perdiendo plata *@
+                            <div style="border-top: 1px solid #e5e7eb; margin: 0.25rem 0;"></div>
+                            <button class="more-filters-item @(filterMargenPerdida ? "active" : "")" @onclick="() => { filterMargenPerdida = !filterMargenPerdida; if (filterMargenPerdida) filterMargenBajo = false; InvalidateFilterCache(); showMoreFilters = false; }"
+                                    style="background:@(filterMargenPerdida ? "#fee2e2" : "transparent"); color:@(filterMargenPerdida ? "#991b1b" : "inherit"); font-weight:700;">
+                                🔴 PÉRDIDA: margen ≤ 0% (vendés bajo costo)
+                            </button>
+                            <button class="more-filters-item @(filterMargenBajo ? "active" : "")" @onclick="() => { filterMargenBajo = !filterMargenBajo; if (filterMargenBajo) filterMargenPerdida = false; InvalidateFilterCache(); showMoreFilters = false; }"
+                                    style="background:@(filterMargenBajo ? "#fed7aa" : "transparent"); color:@(filterMargenBajo ? "#9a3412" : "inherit"); font-weight:700;">
+                                🟠 BAJO: margen menor a 15% (revisar)
+                            </button>
                         </div>
                     }
                 </div>
@@ -2548,6 +2558,9 @@
     private bool filterStockPushOk = false;            // 🟢 pusheado reciente (<=7 dias)
     private bool filterStockPushViejo = false;         // 🟡 pusheado viejo (>7 dias)
     private bool filterUrgente = false;                // 🚨 stock=0 OR status=paused (urgente reponer)
+    // 2026-06-01: filtros de margen (peor primero, para arreglarlas)
+    private bool filterMargenPerdida = false;          // 🔴 margen ≤ 0% (pérdida)
+    private bool filterMargenBajo = false;             // 🟠 margen 0-15% (bajo)
     private bool showMoreFilters = false;
 
     // Selection & bulk actions
@@ -2692,6 +2705,8 @@
         if (filterStockPushNunca) count++;
         if (filterStockPushOk) count++;
         if (filterStockPushViejo) count++;
+        if (filterMargenPerdida) count++;
+        if (filterMargenBajo) count++;
         if (filterUrgente) count++;
         return count;
     }
@@ -3085,6 +3100,20 @@
             filtered = filtered.Where(i =>
                 i.AvailableQuantity <= 0 ||
                 string.Equals(i.Status, "paused", StringComparison.OrdinalIgnoreCase));
+
+        // 2026-06-01: Filtros por margen — para detectar publicaciones perdiendo plata
+        if (filterMargenPerdida)
+            filtered = filtered.Where(i =>
+            {
+                var m = CalcMargenPct(i);
+                return m.HasValue && m.Value <= 0m;
+            });
+        if (filterMargenBajo)
+            filtered = filtered.Where(i =>
+            {
+                var m = CalcMargenPct(i);
+                return m.HasValue && m.Value < 15m;
+            });
 
         // Text filters
         foreach (var kv in textFilters.Where(f => !string.IsNullOrEmpty(f.Value)))
