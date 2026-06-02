@@ -134,13 +134,13 @@ public class HorasExtrasController : ControllerBase
         if (req.Cantidad < 0 || req.Cantidad > 999)
             return BadRequest(new { error = "Cantidad inválida (0–999)" });
 
-        // Default = hoy. Si vino fecha, validamos que NO sea futura. El empleado puede
-        // cargar cualquier fecha pasada (modo "carga atrasada"); si se equivoca, el admin
-        // lo corrige desde el panel.
+        // 2026-06-02: el empleado SOLO puede cargar el dia de hoy. Sin cargas atrasadas.
+        // Si vino fecha, debe ser exactamente la de hoy (Argentina). Si quieren corregir
+        // un dia viejo, lo hace el admin desde el panel.
         var hoy = FechaArgentinaHoy();
         var fechaCarga = req.Fecha?.Date ?? hoy;
-        if (fechaCarga > hoy)
-            return BadRequest(new { error = "No podés cargar fechas futuras" });
+        if (fechaCarga != hoy)
+            return BadRequest(new { error = "Solo podés cargar el día de hoy. Pedile al admin que corrija otros días." });
 
         // Parsea "HH:mm" → TimeSpan?. Strings vacios o invalidos → null (campo opcional).
         var horaEnt = ParseHora(req.HoraEntrada);

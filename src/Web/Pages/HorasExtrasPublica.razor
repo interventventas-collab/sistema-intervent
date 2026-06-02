@@ -78,17 +78,13 @@
             <h1 class="he-hello">Hola @datos.Nombre 👋</h1>
             <p class="he-fecha">Hoy es @FechaLabel(datos.HoyFecha)</p>
 
-            <label class="he-label">📅 Día que querés cargar</label>
-            <input type="date" class="he-input" style="font-size: 1.1rem; padding: 0.7rem;"
-                   value="@datos.FechaSeleccionada.ToString("yyyy-MM-dd")"
-                   max="@datos.HoyFecha.ToString("yyyy-MM-dd")"
-                   @onchange="OnFechaChanged" />
-            @if (datos.FechaSeleccionada.Date != datos.HoyFecha.Date)
-            {
-                <p style="font-size:0.78rem; color:#92400e; margin: 0.3rem 0 0; padding:0.3rem 0.5rem; background:#fef3c7; border-radius:6px;">
-                    ✏ Cargando <strong>@FechaLabel(datos.FechaSeleccionada)</strong> (carga atrasada)
-                </p>
-            }
+            @* 2026-06-02: ya no se permite cargar dias anteriores. Solo el dia de hoy.
+               Antes habia un input type=date para elegir fecha; lo sacamos para evitar
+               cargas atrasadas / retroactivas. Si el empleado se olvido un dia, el admin
+               lo carga manualmente desde el panel. *@
+            <div style="padding: 0.6rem 0.8rem; background: #eff6ff; border: 1px solid #93c5fd; border-radius: 8px; text-align: center; font-weight: 700; color: #1e40af; text-transform: capitalize;">
+                📅 @FechaLabel(datos.HoyFecha)
+            </div>
 
             <label class="he-label" style="margin-top:0.7rem;">🕒 Horario</label>
             @{
