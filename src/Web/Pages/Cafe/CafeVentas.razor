@@ -851,33 +851,18 @@
                                     </div>
                                     <button class="btn btn-secondary" type="button" @onclick="ClearCliente" title="Quitar cliente">×</button>
                                 </div>
-                                @* 2026-06-02: chip + post-it con las "Notas internas" del cliente. Solo aparece
-                                   si el cliente tiene algo cargado en ese campo. NO sale en el PDF. *@
+                                @* 2026-06-02: Post-it amarillo SIEMPRE VISIBLE con las "Notas internas" del cliente.
+                                   Solo aparece si el cliente tiene algo cargado en ese campo. NO sale en el PDF.
+                                   Pedido del usuario: que se vea mientras carga la venta sin tener que tocar nada. *@
                                 @if (ciSel is not null && !string.IsNullOrWhiteSpace(ciSel.Notas))
                                 {
-                                    <button type="button" @onclick="() => mostrarNotasCliente = !mostrarNotasCliente"
-                                            style="display: inline-flex; align-items: center; gap: 0.4rem; margin-top: 0.4rem; padding: 0.3rem 0.6rem;
-                                                   background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-                                                   border: 1px solid #f59e0b; border-radius: 6px; cursor: pointer;
-                                                   font-size: 0.78rem; color: #92400e; font-weight: 700;">
-                                        <span>📌</span>
-                                        <span>@(mostrarNotasCliente ? "Ocultar notas del cliente" : "Ver notas del cliente")</span>
-                                    </button>
-                                    @if (mostrarNotasCliente)
-                                    {
-                                        <div style="background: #fefce8; border: 2px dashed #facc15; border-radius: 6px; padding: 0.6rem 0.8rem;
-                                                    margin-top: 0.4rem; font-size: 0.85rem; color: #713f12; line-height: 1.4;
-                                                    white-space: pre-wrap; word-break: break-word; box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                                                    position: relative;">
-                                            <button type="button" @onclick="() => mostrarNotasCliente = false"
-                                                    style="position: absolute; top: 0.2rem; right: 0.4rem; background: transparent; border: none;
-                                                           font-size: 1rem; cursor: pointer; color: #92400e; padding: 0;"
-                                                    title="Cerrar">✕</button>
-                                            <div style="font-size: 0.7rem; color: #92400e; font-weight: 700; text-transform: uppercase; margin-bottom: 0.3rem; letter-spacing: 0.04em;">📌 Notas internas del cliente</div>
-                                            @ciSel.Notas
-                                            <div style="font-size: 0.65rem; color: #92400e; opacity: 0.7; margin-top: 0.4rem; font-style: italic;">Solo lo ves vos. No sale en el comprobante.</div>
-                                        </div>
-                                    }
+                                    <div style="background: #fefce8; border: 2px dashed #facc15; border-radius: 6px; padding: 0.6rem 0.8rem;
+                                                margin-top: 0.5rem; font-size: 0.88rem; color: #713f12; line-height: 1.4;
+                                                white-space: pre-wrap; word-break: break-word; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                                        <div style="font-size: 0.72rem; color: #92400e; font-weight: 700; text-transform: uppercase; margin-bottom: 0.3rem; letter-spacing: 0.04em;">📌 Notas internas del cliente</div>
+                                        @ciSel.Notas
+                                        <div style="font-size: 0.66rem; color: #92400e; opacity: 0.7; margin-top: 0.4rem; font-style: italic;">Solo lo ves vos. No sale en el comprobante.</div>
+                                    </div>
                                 }
                             }
                             else
