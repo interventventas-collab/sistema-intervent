@@ -98,8 +98,9 @@
                                @onkeydown="OnKeyDownBuscadorCarga" />
                         @if (cargaSearchOpen && !string.IsNullOrWhiteSpace(cargaSearch))
                         {
-                            var matches = ProductosMatchingCarga(cargaSearch).Take(15).ToList();
-                            <div style="position:absolute; top:100%; left:0; right:0; background:white; border:1px solid #d1d5db; border-radius:6px; max-height:300px; overflow-y:auto; z-index:100; box-shadow:0 4px 14px rgba(0,0,0,0.12); margin-top:0.2rem;">
+                            var todos = ProductosMatchingCarga(cargaSearch).ToList();
+                            var matches = todos.Take(50).ToList();
+                            <div style="position:absolute; top:100%; left:0; right:0; background:white; border:1px solid #d1d5db; border-radius:6px; max-height:60vh; overflow-y:auto; z-index:1000; box-shadow:0 8px 24px rgba(0,0,0,0.18); margin-top:0.2rem;">
                                 @if (matches.Count == 0)
                                 {
                                     <div style="padding:0.6rem; color:#6b7280; font-size:0.85rem;">Sin resultados.</div>
@@ -115,6 +116,12 @@
                                             <span style="font-family:monospace; color:#1d4ed8; font-weight:700; font-size:0.85rem;">@p.Codigo</span>
                                             <strong style="margin-left:0.4rem;">@p.Nombre</strong>
                                             <span style="color:#6b7280; font-size:0.78rem; margin-left:0.4rem;">· Stock actual: @stockTxt</span>
+                                        </div>
+                                    }
+                                    @if (todos.Count > matches.Count)
+                                    {
+                                        <div style="padding:0.5rem 0.7rem; color:#6b7280; font-size:0.78rem; background:#f9fafb; text-align:center; font-style:italic;">
+                                            +@(todos.Count - matches.Count) resultados más. Refiná la búsqueda para verlos.
                                         </div>
                                     }
                                 }
