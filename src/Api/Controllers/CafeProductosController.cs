@@ -177,9 +177,11 @@ public class CafeProductosController : ControllerBase
         foreach (var prodGroup in meliItems.GroupBy(x => x.ProdId))
         {
             int armableMax = 0;
+            bool tieneAlgunaCompReal = false;  // 2026-06-02: track si al menos una MLA tiene componentes cargados
             foreach (var mi in prodGroup)
             {
                 if (!compsByMeliId.TryGetValue(mi.MeliItemId, out var compsList)) continue;
+                tieneAlgunaCompReal = true;  // esta MLA SI tiene componentes — el producto es un shell real
                 int armableThis = int.MaxValue;
                 foreach (var c in compsList)
                 {
@@ -191,10 +193,15 @@ public class CafeProductosController : ControllerBase
                 }
                 if (armableThis != int.MaxValue && armableThis > armableMax) armableMax = armableThis;
             }
-            // Solo guardamos si tiene componentes (caso shell). Si armableMax queda en 0 por
-            // componentes vacíos vs falta de stock real, igual lo guardamos para que la UI sepa
-            // que es un shell (no muestra "0u" sino "0 (armable)").
-            result[prodGroup.Key] = armableMax;
+            // 2026-06-02 BUG FIX: solo marcar como shell/armable si AL MENOS UNA MLA active/paused
+            // tiene componentes cargados realmente. Si ninguna los tiene, NO guardamos nada — la UI
+            // muestra el StockUnidades normal del producto en lugar de "0 (armable)".
+            // Antes este metodo guardaba result[prodId] = 0 siempre, tapando el stock real del
+            // producto fisico (caso D400/D401: tenian 730/543 unidades pero la UI decia "0 armable").
+            if (tieneAlgunaCompReal)
+            {
+                result[prodGroup.Key] = armableMax;
+            }
         }
         return result;
     }
