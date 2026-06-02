@@ -20,10 +20,11 @@ public class CafeStockMasivoController : ControllerBase
     private readonly AppDbContext _db;
     private readonly AuditLogService _audit;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly CafeStockLogger _stockLogger;
 
-    public CafeStockMasivoController(AppDbContext db, AuditLogService audit, IServiceScopeFactory scopeFactory)
+    public CafeStockMasivoController(AppDbContext db, AuditLogService audit, IServiceScopeFactory scopeFactory, CafeStockLogger stockLogger)
     {
-        _db = db; _audit = audit; _scopeFactory = scopeFactory;
+        _db = db; _audit = audit; _scopeFactory = scopeFactory; _stockLogger = stockLogger;
     }
 
     /// <summary>Dispara push de stock a MeLi en background para los productos cambiados (respeta kill switches).</summary>
@@ -120,12 +121,20 @@ public class CafeStockMasivoController : ControllerBase
             .Where(p => productoIds.Contains(p.Id))
             .ToDictionaryAsync(p => p.Id);
 
+        // 2026-06-02: capturamos el operador del usuario logueado para que quede en el historial.
+        // El JWT trae el username en el claim "name" o "unique_name".
+        var operadorNombre = User?.Identity?.Name ?? User?.FindFirst("name")?.Value ?? "admin";
+
+        // Tracking de stock antes/después por producto para loguear en Stock_Movimientos al final.
+        var changesParaHistorial = new List<(int ProdId, int AntesU, int DespuesU)>();
+
         int cambios = 0;
         foreach (var item in req.Items)
         {
             if (!productosMap.TryGetValue(item.ProductoId, out var prod)) continue;
 
             // 1) Actualizar / crear el registro StockPorDeposito
+            int antesU = prod.StockUnidades;  // capturamos el TOTAL antes (sera el "antes" del historial)
             if (existingMap.TryGetValue(item.ProductoId, out var spd))
             {
                 if (spd.StockGramos == item.StockGramos && spd.StockUnidades == item.StockUnidades) continue;
@@ -160,6 +169,7 @@ public class CafeStockMasivoController : ControllerBase
             {
                 if (productosMap.TryGetValue(t.ProductoId, out var prod))
                 {
+                    var antesU = prod.StockUnidades;  // total ANTES del re-cálculo (lo que tenía sumando todos los depósitos)
                     var changed = (prod.StockGramos != t.TotalG) || (prod.StockUnidades != t.TotalU);
                     prod.StockGramos = t.TotalG;
                     prod.StockUnidades = t.TotalU;
@@ -168,10 +178,27 @@ public class CafeStockMasivoController : ControllerBase
                     {
                         prod.StockChangedAt = DateTime.UtcNow;  // ← dispara que el push event-driven y el background lo procesen
                         productosModificados.Add(prod.Id);
+                        changesParaHistorial.Add((prod.Id, antesU, t.TotalU));
                     }
                 }
             }
             await _db.SaveChangesAsync();
+
+            // 2026-06-02: registrar cada cambio en Stock_Movimientos para que aparezca en
+            // /cafe/historial-stock. Tipo "SUMA" o "RESTA" segun el delta. Antes este endpoint
+            // actualizaba el stock pero no logueaba nada -> el historial quedaba ciego para los
+            // cambios masivos desde la pantalla web (solo aparecian los cambios desde mobile).
+            foreach (var (prodId, antesU, despuesU) in changesParaHistorial)
+            {
+                if (antesU == despuesU) continue;
+                var tipoMov = despuesU > antesU ? "SUMA" : "RESTA";
+                await _stockLogger.LogAsync(prodId, tipoMov, antesU, despuesU,
+                    operadorId: null,
+                    operadorNombre: operadorNombre,
+                    comentario: $"Stock masivo · {dep.Nombre}",
+                    saveChanges: false);
+            }
+            if (changesParaHistorial.Count > 0) await _db.SaveChangesAsync();
         }
 
         // 3) Push event-driven a MeLi para los productos que cambiaron
