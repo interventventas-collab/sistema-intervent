@@ -89,6 +89,11 @@ public class CafeVenta
     /// Si es true, en el PDF se imprime "🚗 RETIRA EN LOCAL" en lugar de dias de visita.</summary>
     public bool Retira { get; set; } = false;
 
+    /// <summary>2026-06-02: Comentario INTERNO para el armado del pedido. Independiente de Observaciones.
+    /// Se muestra como post-it amarillo desplegable en /cafe/preparacion. NO sale en el PDF al cliente.
+    /// Ej: "no llevar 3 capsulas, ese cliente las rechaza", "sumar 1 sobre cortesia".</summary>
+    public string? ComentarioArmado { get; set; }
+
     /// <summary>Si esta marcado como pagado (estampa el sello en el PDF).</summary>
     public bool IsPaid { get; set; }
 

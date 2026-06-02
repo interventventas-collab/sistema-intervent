@@ -233,7 +233,8 @@ public class CafeVentasController : ControllerBase
         v.EntregadoAt,
         v.DriveFileId,
         v.DriveSubidoAt,
-        v.DriveSubidasCount);
+        v.DriveSubidasCount,
+        v.ComentarioArmado);
 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null)
@@ -897,6 +898,7 @@ public class CafeVentasController : ControllerBase
             CondicionIva = NormCondicionIva(req.CondicionIva),
             CondicionPago = NormCondicionPago(req.CondicionPago),
             CreatedAt = DateTime.UtcNow,
+            ComentarioArmado = string.IsNullOrWhiteSpace(req.ComentarioArmado) ? null : req.ComentarioArmado.Trim(),
         };
         // Pre-cargo los productos referenciados (con su UxB) para que el PDF tenga el ProductoNav.
         // Sin esto, los items BULTO en el preview pierden la informacion del UxB y no muestran
@@ -1024,7 +1026,8 @@ public class CafeVentasController : ControllerBase
             // Token aleatorio para el link publico /comprobante/{token}. 22 chars
             // base64-url-safe (~131 bits de entropia) — imposible de adivinar.
             PublicToken = GeneratePublicToken(),
-            EntregaPor = string.IsNullOrWhiteSpace(req.EntregaPor) ? null : req.EntregaPor.Trim()
+            EntregaPor = string.IsNullOrWhiteSpace(req.EntregaPor) ? null : req.EntregaPor.Trim(),
+            ComentarioArmado = string.IsNullOrWhiteSpace(req.ComentarioArmado) ? null : req.ComentarioArmado.Trim()
         };
 
         // 2026-06-01 — Cargar info de productos "shell" para decremento correcto
@@ -1670,6 +1673,7 @@ public class CafeVentasController : ControllerBase
         if (req.Retira.HasValue) v.Retira = req.Retira.Value;
         if (req.IsPaid.HasValue) v.IsPaid = req.IsPaid.Value;
         if (req.EntregaPor is not null) v.EntregaPor = string.IsNullOrWhiteSpace(req.EntregaPor) ? null : req.EntregaPor.Trim();
+        if (req.ComentarioArmado is not null) v.ComentarioArmado = string.IsNullOrWhiteSpace(req.ComentarioArmado) ? null : req.ComentarioArmado.Trim();
 
         // Cliente: si mandaron ClienteId valido > 0, vinculo al cliente y refresco snapshot.
         // Si mandaron 0 o null + override, dejo como manual (consumidor final / nombre libre).
@@ -2489,6 +2493,8 @@ public class CafeVentasController : ControllerBase
                 tieneMiniImpresora = v.ClienteId != null && _db.CafeClientes.Where(c => c.Id == v.ClienteId).Select(c => c.TieneMiniImpresora).FirstOrDefault(),
                 impresaAt = v.ImpresaAt,
                 impresaCount = v.ImpresaCount,
+                // 2026-06-02: nota interna del armado (post-it amarillo en la card)
+                comentarioArmado = v.ComentarioArmado,
                 items = v.Items.Select(i => new
                 {
                     id = i.Id,
