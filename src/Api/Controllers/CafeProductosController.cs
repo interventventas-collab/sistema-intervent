@@ -655,8 +655,19 @@ public class CafeProductosController : ControllerBase
         }
         if (stockCambio) p.StockChangedAt = DateTime.UtcNow;
         // 2026-05-25: stock mínimo MeLi por producto. Si vino el flag clear → null. Si no, asignar el valor.
+        // 2026-06-02 FIX: detectar cambio para disparar push event-driven. El stock efectivo
+        // que MeLi recibe es (StockUnidades - StockMinimoMeLi), entonces si cambia StockMinimoMeLi
+        // tambien hay que avisarle a MeLi. Antes no se hacia → C949NEG (entre otros) quedo paused
+        // despues de bajar la reserva porque el push nunca se disparo.
+        var oldStockMinimoMeLi = p.StockMinimoMeLi;
         if (req.ClearStockMinimoMeLi) p.StockMinimoMeLi = null;
         else if (req.StockMinimoMeLi.HasValue && req.StockMinimoMeLi.Value >= 0) p.StockMinimoMeLi = req.StockMinimoMeLi.Value;
+        bool stockMinimoCambio = oldStockMinimoMeLi != p.StockMinimoMeLi;
+        if (stockMinimoCambio)
+        {
+            stockCambio = true;
+            p.StockChangedAt = DateTime.UtcNow;
+        }
         // Si cambió el stock, sincronizar Cafe_StockPorDeposito (deposito principal)
         // para que la pantalla stock-masivo no quede desfasada.
         if (stockCambio)
