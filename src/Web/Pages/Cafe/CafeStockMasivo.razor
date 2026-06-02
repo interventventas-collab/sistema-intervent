@@ -50,7 +50,7 @@
     <div class="card-body" style="padding:0.6rem 1rem; display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
         <strong style="font-size:0.85rem; color:#374151;">Modo:</strong>
         <button class="@(modoCarga == "pedido" ? "btn btn-primary" : "btn btn-secondary")" style="font-size:0.85rem;"
-                @onclick='() => modoCarga = "pedido"'>🛒 Cargar pedido (rápido)</button>
+                @onclick='() => modoCarga = "pedido"'>🛒 Cargar stock (rápido)</button>
         <button class="@(modoCarga == "lista" ? "btn btn-primary" : "btn btn-secondary")" style="font-size:0.85rem;"
                 @onclick='() => modoCarga = "lista"'>📋 Lista completa</button>
         <span style="font-size:0.78rem; color:#6b7280; margin-left:0.5rem;">
@@ -66,7 +66,7 @@
     @* === Vista: Cargar pedido (estilo Contabilium) === *@
     <div class="card" style="margin-bottom:0.8rem;">
         <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
-            <h3 style="margin:0;">🛒 Cargar pedido — agregá productos uno por uno</h3>
+            <h3 style="margin:0;">🛒 Cargar stock — agregá productos uno por uno</h3>
             <div style="display:flex; align-items:center; gap:0.5rem;">
                 <label style="font-size:0.85rem;">Depósito:</label>
                 <select class="form-input" style="width:auto;" @bind="depositoIdSeleccionado" @bind:after="CambiarDepositoCarrito">
@@ -84,7 +84,7 @@
             @if (EsDepositoFull)
             {
                 <div style="background:#fef3c7; border-left:4px solid #d97706; padding:0.7rem; border-radius:6px;">
-                    ⚠ El depósito <b>Full MeLi</b> es solo lectura — se sincroniza desde MeLi. Cambiá de depósito para cargar pedido.
+                    ⚠ El depósito <b>Full MeLi</b> es solo lectura — se sincroniza desde MeLi. Cambiá de depósito para cargar stock.
                 </div>
             }
             else
