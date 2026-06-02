@@ -100,47 +100,13 @@
                     </button>
                     @if (showMoreFilters)
                     {
+                        @* 2026-06-02: dropdown limpiado — 13 filtros → 5 botones + 2 selectores agrupados. *@
                         <div class="more-filters-dropdown">
+                            @* === Los 5 filtros que de verdad usás === *@
                             <button class="more-filters-item @(filterUrgente ? "active" : "")" @onclick="() => { filterUrgente = !filterUrgente; InvalidateFilterCache(); showMoreFilters = false; }"
                                     style="background:@(filterUrgente ? "#fee2e2" : "transparent"); color:@(filterUrgente ? "#991b1b" : "inherit"); font-weight:700;">
                                 🚨 URGENTE: agotadas (stock 0) o pausadas
                             </button>
-                            <div style="border-top: 1px solid #e5e7eb; margin: 0.25rem 0;"></div>
-                            <button class="more-filters-item @(filterPromo ? "active" : "")" @onclick="() => { TogglePromoFilter(); showMoreFilters = false; }">
-                                <i class="fa-solid fa-tag"></i> En promoción
-                            </button>
-                            <button class="more-filters-item @(filterNoProduct ? "active" : "")" @onclick="() => { ToggleNoProductFilter(); showMoreFilters = false; }">
-                                <i class="fa-solid fa-link"></i> Sin producto vinculado (legacy)
-                            </button>
-                            <div style="border-top: 1px solid #e5e7eb; margin: 0.25rem 0;"></div>
-                            <button class="more-filters-item @(filterLinkeadoCafe ? "active" : "")" @onclick="() => { filterLinkeadoCafe = !filterLinkeadoCafe; InvalidateFilterCache(); showMoreFilters = false; }">
-                                ☕ Solo cafés linkeados
-                            </button>
-                            <button class="more-filters-item @(filterLinkeadoComponentes ? "active" : "")" @onclick="() => { filterLinkeadoComponentes = !filterLinkeadoComponentes; InvalidateFilterCache(); showMoreFilters = false; }">
-                                ✅ Solo combos linkeados (componentes)
-                            </button>
-                            <button class="more-filters-item @(filterSinLinkear ? "active" : "")" @onclick="() => { filterSinLinkear = !filterSinLinkear; InvalidateFilterCache(); showMoreFilters = false; }">
-                                ⚠ Sin linkear (ningún tipo)
-                            </button>
-                            <div style="border-top: 1px solid #e5e7eb; margin: 0.25rem 0;"></div>
-                            <button class="more-filters-item @(filterFull ? "active" : "")" @onclick="() => { filterFull = !filterFull; if (filterFull) filterNoFull = false; InvalidateFilterCache(); showMoreFilters = false; }">
-                                📦 Solo Full
-                            </button>
-                            <button class="more-filters-item @(filterNoFull ? "active" : "")" @onclick="() => { filterNoFull = !filterNoFull; if (filterNoFull) filterFull = false; InvalidateFilterCache(); showMoreFilters = false; }">
-                                🚚 Solo NO Full (stock pushable)
-                            </button>
-                            <div style="border-top: 1px solid #e5e7eb; margin: 0.25rem 0;"></div>
-                            <button class="more-filters-item @(filterStockPushNunca ? "active" : "")" @onclick="() => { filterStockPushNunca = !filterStockPushNunca; if (filterStockPushNunca) { filterStockPushOk = false; filterStockPushViejo = false; } InvalidateFilterCache(); showMoreFilters = false; }">
-                                🔴 Stock NUNCA pusheado
-                            </button>
-                            <button class="more-filters-item @(filterStockPushOk ? "active" : "")" @onclick="() => { filterStockPushOk = !filterStockPushOk; if (filterStockPushOk) { filterStockPushNunca = false; filterStockPushViejo = false; } InvalidateFilterCache(); showMoreFilters = false; }">
-                                🟢 Stock pusheado reciente (≤7 días)
-                            </button>
-                            <button class="more-filters-item @(filterStockPushViejo ? "active" : "")" @onclick="() => { filterStockPushViejo = !filterStockPushViejo; if (filterStockPushViejo) { filterStockPushNunca = false; filterStockPushOk = false; } InvalidateFilterCache(); showMoreFilters = false; }">
-                                🟡 Stock pusheado viejo (+7 días)
-                            </button>
-                            @* 2026-06-01: filtros por margen — para detectar publicaciones perdiendo plata *@
-                            <div style="border-top: 1px solid #e5e7eb; margin: 0.25rem 0;"></div>
                             <button class="more-filters-item @(filterMargenPerdida ? "active" : "")" @onclick="() => { filterMargenPerdida = !filterMargenPerdida; if (filterMargenPerdida) filterMargenBajo = false; InvalidateFilterCache(); showMoreFilters = false; }"
                                     style="background:@(filterMargenPerdida ? "#fee2e2" : "transparent"); color:@(filterMargenPerdida ? "#991b1b" : "inherit"); font-weight:700;">
                                 🔴 PÉRDIDA: margen ≤ 0% (vendés bajo costo)
@@ -149,6 +115,36 @@
                                     style="background:@(filterMargenBajo ? "#fed7aa" : "transparent"); color:@(filterMargenBajo ? "#9a3412" : "inherit"); font-weight:700;">
                                 🟠 BAJO: margen menor a 15% (revisar)
                             </button>
+                            <button class="more-filters-item @(filterSinLinkear ? "active" : "")" @onclick="() => { filterSinLinkear = !filterSinLinkear; InvalidateFilterCache(); showMoreFilters = false; }">
+                                ⚠ Sin linkear (ningún tipo)
+                            </button>
+                            <button class="more-filters-item @(filterPromo ? "active" : "")" @onclick="() => { TogglePromoFilter(); showMoreFilters = false; }">
+                                <i class="fa-solid fa-tag"></i> En promoción
+                            </button>
+
+                            @* === Selector: Tipo de envío === *@
+                            <div style="border-top: 1px solid #e5e7eb; margin: 0.5rem 0 0.25rem 0; padding: 0.5rem 0.75rem 0.25rem 0.75rem; font-size: 0.75rem; color: #6b7280; font-weight: 600; text-transform: uppercase;">📦 Tipo de envío</div>
+                            <div style="display:flex; gap:0.25rem; padding: 0 0.5rem 0.5rem 0.5rem;">
+                                <button class="@(!filterFull && !filterNoFull ? "active" : "")" @onclick="() => { filterFull = false; filterNoFull = false; InvalidateFilterCache(); }"
+                                        style="flex:1; padding:0.35rem; border:1px solid #d1d5db; border-radius:4px; background:@(!filterFull && !filterNoFull ? "#dbeafe" : "white"); color:@(!filterFull && !filterNoFull ? "#1e40af" : "#374151"); font-size:0.8125rem; cursor:pointer;">Todo</button>
+                                <button class="@(filterFull ? "active" : "")" @onclick="() => { filterFull = true; filterNoFull = false; InvalidateFilterCache(); }"
+                                        style="flex:1; padding:0.35rem; border:1px solid #d1d5db; border-radius:4px; background:@(filterFull ? "#dbeafe" : "white"); color:@(filterFull ? "#1e40af" : "#374151"); font-size:0.8125rem; cursor:pointer;">Solo Full</button>
+                                <button class="@(filterNoFull ? "active" : "")" @onclick="() => { filterNoFull = true; filterFull = false; InvalidateFilterCache(); }"
+                                        style="flex:1; padding:0.35rem; border:1px solid #d1d5db; border-radius:4px; background:@(filterNoFull ? "#dbeafe" : "white"); color:@(filterNoFull ? "#1e40af" : "#374151"); font-size:0.8125rem; cursor:pointer;">Solo NO Full</button>
+                            </div>
+
+                            @* === Selector: Estado de push de stock === *@
+                            <div style="border-top: 1px solid #e5e7eb; margin: 0.25rem 0 0.25rem 0; padding: 0.5rem 0.75rem 0.25rem 0.75rem; font-size: 0.75rem; color: #6b7280; font-weight: 600; text-transform: uppercase;">🔄 Estado de push de stock</div>
+                            <div style="display:flex; gap:0.25rem; padding: 0 0.5rem 0.5rem 0.5rem; flex-wrap:wrap;">
+                                <button @onclick="() => { filterStockPushNunca = false; filterStockPushOk = false; filterStockPushViejo = false; InvalidateFilterCache(); }"
+                                        style="flex:1 1 45%; padding:0.35rem; border:1px solid #d1d5db; border-radius:4px; background:@(!filterStockPushNunca && !filterStockPushOk && !filterStockPushViejo ? "#dbeafe" : "white"); color:@(!filterStockPushNunca && !filterStockPushOk && !filterStockPushViejo ? "#1e40af" : "#374151"); font-size:0.8125rem; cursor:pointer;">Todo</button>
+                                <button @onclick="() => { filterStockPushNunca = true; filterStockPushOk = false; filterStockPushViejo = false; InvalidateFilterCache(); }"
+                                        style="flex:1 1 45%; padding:0.35rem; border:1px solid #d1d5db; border-radius:4px; background:@(filterStockPushNunca ? "#fee2e2" : "white"); color:@(filterStockPushNunca ? "#991b1b" : "#374151"); font-size:0.8125rem; cursor:pointer;">🔴 Nunca</button>
+                                <button @onclick="() => { filterStockPushOk = true; filterStockPushNunca = false; filterStockPushViejo = false; InvalidateFilterCache(); }"
+                                        style="flex:1 1 45%; padding:0.35rem; border:1px solid #d1d5db; border-radius:4px; background:@(filterStockPushOk ? "#d1fae5" : "white"); color:@(filterStockPushOk ? "#065f46" : "#374151"); font-size:0.8125rem; cursor:pointer;">🟢 Reciente (≤7d)</button>
+                                <button @onclick="() => { filterStockPushViejo = true; filterStockPushNunca = false; filterStockPushOk = false; InvalidateFilterCache(); }"
+                                        style="flex:1 1 45%; padding:0.35rem; border:1px solid #d1d5db; border-radius:4px; background:@(filterStockPushViejo ? "#fef3c7" : "white"); color:@(filterStockPushViejo ? "#92400e" : "#374151"); font-size:0.8125rem; cursor:pointer;">🟡 Viejo (+7d)</button>
+                            </div>
                         </div>
                     }
                 </div>
