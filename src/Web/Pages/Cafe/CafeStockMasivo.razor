@@ -92,7 +92,16 @@
                 @* Formulario: buscar + modo + cantidad + agregar *@
                 <div style="display:flex; gap:0.6rem; align-items:flex-end; flex-wrap:wrap; margin-bottom:0.8rem;">
                     <div style="flex:2; min-width:280px; position:relative;">
-                        <label class="form-label" style="font-size:0.78rem; font-weight:600;">🔍 Producto (código o nombre)</label>
+                        <label class="form-label" style="font-size:0.78rem; font-weight:600;">
+                            🔍 Producto (código o nombre)
+                            <span style="font-weight:400; color:#6b7280; font-size:0.72rem;">
+                                · @(rows?.Count ?? 0) productos en este depósito
+                                @if (!string.IsNullOrWhiteSpace(cargaSearch))
+                                {
+                                    <span> · @ProductosMatchingCarga(cargaSearch).Count() coincidencias</span>
+                                }
+                            </span>
+                        </label>
                         <input class="form-input" placeholder="Ej: C949NEG o cesto negro..." @bind="cargaSearch" @bind:event="oninput"
                                @onfocus="() => cargaSearchOpen = true"
                                @onkeydown="OnKeyDownBuscadorCarga" />
