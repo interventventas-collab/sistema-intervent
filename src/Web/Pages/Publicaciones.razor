@@ -529,6 +529,20 @@
                                                     title="Copiar este ajuste a las @(grp.Variants.Count - 1) publicaciones hermanas de la familia (no las pushea)">
                                                 ⚡ Propagar a familia (@(grp.Variants.Count - 1))
                                             </button>
+                                            @{ var selCount = grp.Variants.Count(v => selectedFamilyPush.Contains(v.Id)); }
+                                            @* 2026-06-03: tildar/destildar todas + push masivo de las tildadas *@
+                                            <div style="margin-top:0.3rem; display:flex; gap:0.3rem; align-items:center; flex-wrap:wrap;">
+                                                <label style="display:inline-flex; align-items:center; gap:0.2rem; font-size:0.7rem; color:#6b7280; cursor:pointer;">
+                                                    <input type="checkbox" checked="@(selCount == grp.Variants.Count && selCount > 0)"
+                                                           @onchange="@(e => ToggleSelectAllFamilyChildren(grp, (bool)e.Value!))" />
+                                                    Todas
+                                                </label>
+                                                <button class="ajuste-push-sel-btn" @onclick="() => PushPrecioSeleccionadas(grp)"
+                                                        disabled="@(selCount == 0 || pushingSeleccionadas)"
+                                                        title="@(selCount == 0 ? "Tildá al menos una variante para pushear" : $"Pushear precio de {selCount} publicaciones a MeLi")">
+                                                    @(pushingSeleccionadas ? "Pusheando..." : $"📤 Pushear ({selCount})")
+                                                </button>
+                                            </div>
                                         }
                                     </td>
                                     <td class="td-product" @onclick:stopPropagation="true">
@@ -588,7 +602,11 @@
                                     @foreach (var v in grp.Variants)
                                     {
                                         <tr style="background:#f9fafb; font-size:0.85rem;" @onclick="() => OpenItemModal(v)">
-                                            <td></td>
+                                            @* 2026-06-03: checkbox para multi-seleccion + push de precio en lote *@
+                                            <td class="td-checkbox" @onclick:stopPropagation="true">
+                                                <input type="checkbox" checked="@selectedFamilyPush.Contains(v.Id)"
+                                                       @onchange="() => ToggleSelectFamilyChild(v.Id)" />
+                                            </td>
                                             <td style="text-align:right; color:#6b7280;">↳</td>
                                             <td style="padding-left:1.2rem;">
                                                 @if (grp.IsFamily)
@@ -2617,6 +2635,9 @@
 
     // Selection & bulk actions
     private HashSet<int> selectedItems = new();
+    // 2026-06-03: selection de variantes hijas para push masivo de precio (botón "📤 Pushear (N)" en fila padre)
+    private HashSet<int> selectedFamilyPush = new();
+    private bool pushingSeleccionadas;
     private bool showDeleteModal;
     private bool isDeleting;
 
@@ -4635,6 +4656,60 @@
         if (string.IsNullOrWhiteSpace(value)) return null;
         var clean = value.Replace(",", ".");
         return decimal.TryParse(clean, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : null;
+    }
+
+    /// <summary>2026-06-03: toggle del checkbox de una variante hija para el push masivo.</summary>
+    private void ToggleSelectFamilyChild(int itemId)
+    {
+        if (selectedFamilyPush.Contains(itemId)) selectedFamilyPush.Remove(itemId);
+        else selectedFamilyPush.Add(itemId);
+        StateHasChanged();
+    }
+
+    /// <summary>2026-06-03: tildar/destildar todas las variantes de una familia de una vez.</summary>
+    private void ToggleSelectAllFamilyChildren(GroupedRow grp, bool all)
+    {
+        if (all)
+        {
+            foreach (var v in grp.Variants) selectedFamilyPush.Add(v.Id);
+        }
+        else
+        {
+            foreach (var v in grp.Variants) selectedFamilyPush.Remove(v.Id);
+        }
+        StateHasChanged();
+    }
+
+    /// <summary>2026-06-03: pushea precio a MeLi de todas las variantes tildadas de la familia.
+    /// Las hace en serie (no paralelo) para no saturar la API de MeLi. Toast con el resumen al final.</summary>
+    private async Task PushPrecioSeleccionadas(GroupedRow grp)
+    {
+        var ids = grp.Variants.Where(v => selectedFamilyPush.Contains(v.Id)).Select(v => v.Id).ToList();
+        if (ids.Count == 0) return;
+        pushingSeleccionadas = true;
+        StateHasChanged();
+        int ok = 0, err = 0;
+        var errores = new List<string>();
+        foreach (var id in ids)
+        {
+            try
+            {
+                var r = await Api.PushPrecioAjustadoAsync(id);
+                if (r?.Success == true) ok++;
+                else { err++; errores.Add(r?.Message ?? "Error"); }
+            }
+            catch (Exception ex) { err++; errores.Add(ex.Message); }
+        }
+        pushingSeleccionadas = false;
+        // Sacar las que se pushearon con exito del set de seleccionadas (para que el contador baje)
+        if (ok > 0)
+        {
+            foreach (var v in grp.Variants.Where(v => selectedFamilyPush.Contains(v.Id)).ToList())
+                selectedFamilyPush.Remove(v.Id);
+        }
+        if (err == 0) ToastService.Success($"✅ {ok} publicaciones pusheadas a MeLi");
+        else ToastService.Error($"{ok} OK, {err} fallaron. Primer error: {errores.FirstOrDefault()}");
+        StateHasChanged();
     }
 
     /// <summary>2026-06-03: copia el ajuste actual de la publicacion padre (% / $ / redondeo) a TODAS
