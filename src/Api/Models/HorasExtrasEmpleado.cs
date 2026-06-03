@@ -38,10 +38,18 @@ public class HorasExtrasEmpleado
     [Column(TypeName = "decimal(4,2)")] public decimal HorasSabado { get; set; } = 5m;
     [Column(TypeName = "decimal(4,2)")] public decimal HorasDomingo { get; set; } = 0m;
 
-    // ─── 2026-06-03: Ciclo de liquidacion + flag para mostrar extras al empleado ───
+    // ─── 2026-06-03: Ciclo de liquidacion + flags granulares de visibilidad en el celular ───
     /// <summary>Si esta en true, el celular del empleado muestra las horas extras (+/- al lado del dia
-    /// y total del ciclo). Si esta en false, el empleado solo ve horas trabajadas.</summary>
+    /// y total extras del ciclo).</summary>
     public bool MostrarExtrasAlEmpleado { get; set; } = false;
+
+    /// <summary>2026-06-03 v2: si true, muestra el cuadro grande del mes/ciclo en el celular.
+    /// Si false, ese cuadro no se muestra.</summary>
+    public bool MostrarCuadroCiclo { get; set; } = false;
+
+    /// <summary>2026-06-03 v2: si true, en "Ultimos 7 dias" muestra "11,5 h" en azul a la derecha de cada dia.
+    /// Si false, solo se ve la fecha y el horario "08:00 → 19:30".</summary>
+    public bool MostrarHorasTrabajadasDia { get; set; } = false;
 
     /// <summary>Dia del mes (1-31) en que arranca el ciclo de liquidacion. NULL = mes calendario (1 al fin del mes).
     /// Ej: 16 -> el ciclo va del 16 de un mes al 15 del siguiente (o al CicloDiaFin si se configuro).</summary>

@@ -91,15 +91,32 @@
                 <div style="font-size:0.7rem; color:#6b7280; margin-top:0.2rem;">0 = no trabaja ese día. El sistema lo usa para calcular extras/faltantes según entrada y salida marcadas.</div>
             </div>
 
-            @* 2026-06-03: checkbox para mostrar extras al empleado *@
+            @* 2026-06-03 v2: 3 checkboxes granulares de visibilidad en el celular del empleado *@
             <div style="margin-top:0.7rem; padding:0.6rem 0.8rem; background:#f0fdf4; border:1px solid #86efac; border-radius:8px;">
-                <label style="display:flex; gap:0.5rem; align-items:flex-start; cursor:pointer; font-size:0.88rem;">
-                    <input type="checkbox" @bind="formMostrarExtras" style="margin-top:0.15rem;" />
-                    <span>
-                        <strong>Mostrar horas extras al empleado en su celular</strong>
-                        <div style="font-size:0.72rem; color:#6b7280; margin-top:0.1rem;">Si está tildado, el empleado ve al lado de cada día su saldo en verde (+ extras) o rojo (− horas faltantes).</div>
-                    </span>
-                </label>
+                <label style="font-size:0.78rem; font-weight:700; color:#15803d; text-transform:uppercase; letter-spacing:0.04em;">👁 Visibilidad en el celular del empleado</label>
+                <div style="margin-top:0.4rem; display:flex; flex-direction:column; gap:0.5rem;">
+                    <label style="display:flex; gap:0.5rem; align-items:flex-start; cursor:pointer; font-size:0.88rem;">
+                        <input type="checkbox" @bind="formMostrarCuadroCiclo" style="margin-top:0.15rem;" />
+                        <span>
+                            <strong>Mostrar cuadro grande del mes/ciclo</strong>
+                            <div style="font-size:0.72rem; color:#6b7280; margin-top:0.1rem;">Cuadro con "ESTE MES (junio)" o "CICLO 16/05 → 15/06" y el total.</div>
+                        </span>
+                    </label>
+                    <label style="display:flex; gap:0.5rem; align-items:flex-start; cursor:pointer; font-size:0.88rem;">
+                        <input type="checkbox" @bind="formMostrarHorasTrabajadasDia" style="margin-top:0.15rem;" />
+                        <span>
+                            <strong>Mostrar horas trabajadas a la derecha de cada día</strong>
+                            <div style="font-size:0.72rem; color:#6b7280; margin-top:0.1rem;">En azul: "11,5 h" al lado de cada fecha en Últimos 7 días.</div>
+                        </span>
+                    </label>
+                    <label style="display:flex; gap:0.5rem; align-items:flex-start; cursor:pointer; font-size:0.88rem;">
+                        <input type="checkbox" @bind="formMostrarExtras" style="margin-top:0.15rem;" />
+                        <span>
+                            <strong>Mostrar horas extras al empleado</strong>
+                            <div style="font-size:0.72rem; color:#6b7280; margin-top:0.1rem;">En verde (+ extras) / rojo (− horas faltantes) al lado de cada día.</div>
+                        </span>
+                    </label>
+                </div>
             </div>
 
             @* 2026-06-03: período de liquidación (mes calendario o personalizado) *@
@@ -334,7 +351,9 @@
         // 2026-06-03: flag mostrar extras al empleado + ciclo de liquidacion
         bool MostrarExtrasAlEmpleado = false, int? CicloDiaInicio = null, int? CicloDiaFin = null,
         DateTime CicloDesde = default, DateTime CicloHasta = default, string CicloLabel = "",
-        decimal TrabajadoCiclo = 0m, decimal EsperadoCiclo = 0m, decimal DiferenciaCiclo = 0m);
+        decimal TrabajadoCiclo = 0m, decimal EsperadoCiclo = 0m, decimal DiferenciaCiclo = 0m,
+        // 2026-06-03 v2: flags granulares de visibilidad
+        bool MostrarCuadroCiclo = false, bool MostrarHorasTrabajadasDia = false);
     public record AdminRegistroDto(int Id, int EmpleadoId, string EmpleadoNombre, DateTime Fecha,
         decimal Cantidad, string? Observaciones, string? HoraEntrada, string? HoraSalida,
         DateTime CreatedAt, DateTime? UpdatedAt,
@@ -357,6 +376,9 @@
     private bool formCicloPersonalizado = false;  // false = mes calendario
     private int formCicloDiaInicio = 16;          // default 16 cuando elegis personalizado
     private int formCicloDiaFin = 15;             // default 15
+    // 2026-06-03 v2: flags granulares de visibilidad
+    private bool formMostrarCuadroCiclo = false;
+    private bool formMostrarHorasTrabajadasDia = false;
 
     // Carga manual (para acumulados)
     private bool showCargarManual, savingManual;
@@ -428,6 +450,9 @@
         formCicloPersonalizado = false;
         formCicloDiaInicio = 16;
         formCicloDiaFin = 15;
+        // 2026-06-03 v2: nuevos defaults OFF
+        formMostrarCuadroCiclo = false;
+        formMostrarHorasTrabajadasDia = false;
     }
 
     private void ShowEditEmpleado(AdminEmpleadoDto e)
@@ -442,6 +467,9 @@
         formCicloPersonalizado = e.CicloDiaInicio.HasValue && e.CicloDiaFin.HasValue;
         formCicloDiaInicio = e.CicloDiaInicio ?? 16;
         formCicloDiaFin = e.CicloDiaFin ?? 15;
+        // 2026-06-03 v2: flags granulares
+        formMostrarCuadroCiclo = e.MostrarCuadroCiclo;
+        formMostrarHorasTrabajadasDia = e.MostrarHorasTrabajadasDia;
     }
 
     private async Task GuardarEmpleado()
@@ -469,7 +497,9 @@
                           MostrarExtrasAlEmpleado = formMostrarExtras,
                           CicloDiaInicio = formCicloPersonalizado ? (int?)formCicloDiaInicio : null,
                           CicloDiaFin = formCicloPersonalizado ? (int?)formCicloDiaFin : null,
-                          ClearCiclo = !formCicloPersonalizado });
+                          ClearCiclo = !formCicloPersonalizado,
+                          MostrarCuadroCiclo = formMostrarCuadroCiclo,
+                          MostrarHorasTrabajadasDia = formMostrarHorasTrabajadasDia });
                 if (resp.IsSuccessStatusCode) ToastService.Success("Empleado actualizado");
                 else { ToastService.Error("Error actualizando"); return; }
             }

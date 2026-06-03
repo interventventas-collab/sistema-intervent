@@ -3652,6 +3652,21 @@ BEGIN
 END
 GO
 
+-- 2026-06-03 v2: flags granulares de visibilidad en el celular del empleado.
+-- MostrarCuadroCiclo: muestra el cuadro grande con label del ciclo + total. Default 0.
+-- MostrarHorasTrabajadasDia: muestra "11,5 h" azul a la derecha de cada dia en Ultimos 7 dias. Default 0.
+-- (El flag MostrarExtrasAlEmpleado ya existe y controla las extras verdes/rojas al lado del dia)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='MostrarCuadroCiclo' AND Object_ID=OBJECT_ID('HorasExtras_Empleados'))
+BEGIN
+    ALTER TABLE HorasExtras_Empleados ADD MostrarCuadroCiclo BIT NOT NULL CONSTRAINT DF_HorasExtras_Empleados_MostrarCuadro DEFAULT 0;
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='MostrarHorasTrabajadasDia' AND Object_ID=OBJECT_ID('HorasExtras_Empleados'))
+BEGIN
+    ALTER TABLE HorasExtras_Empleados ADD MostrarHorasTrabajadasDia BIT NOT NULL CONSTRAINT DF_HorasExtras_Empleados_MostrarHTrabDia DEFAULT 0;
+END
+GO
+
 -- Cafe_Ventas: nota tipo post-it pegada por el admin a cada venta (interna).
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='PinNota' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
 BEGIN
