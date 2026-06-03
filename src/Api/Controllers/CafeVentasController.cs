@@ -2557,20 +2557,58 @@ public class CafeVentasController : ControllerBase
 
     /// <summary>Lista las ventas ya MARCADAS COMO LISTO (historial) — para la seccion colapsable
     /// "Ya armados" del tablero. Mismo filtro que /preparacion pero invertido en estado.
-    /// Pedido 2026-05-28.</summary>
+    /// Pedido 2026-05-28. Rango actualizado 2026-06-03: hoy/ayer/7d/30d/todos.</summary>
     [HttpGet("preparacion/armados")]
-    public async Task<IActionResult> ListarArmados([FromQuery] int dias = 7)
+    public async Task<IActionResult> ListarArmados([FromQuery] string rango = "7d", [FromQuery] int? dias = null)
     {
-        var desde = DateTime.UtcNow.Date.AddDays(-Math.Max(1, dias));
-        var ventas = await _db.CafeVentas
+        // Calcular fecha "hoy" en hora Argentina (UTC-3) y volver a UTC para la query
+        var argHoy = DateTime.UtcNow.AddHours(-3).Date;
+        DateTime? desdeUtc = null;
+        DateTime? hastaUtc = null;
+
+        // Compat: si llega ?dias=N (uso viejo) lo respetamos
+        if (dias.HasValue)
+        {
+            desdeUtc = DateTime.UtcNow.Date.AddDays(-Math.Max(1, dias.Value));
+        }
+        else
+        {
+            switch ((rango ?? "7d").ToLowerInvariant())
+            {
+                case "hoy":
+                    desdeUtc = argHoy.AddHours(3);                 // 00:00 ART → UTC
+                    hastaUtc = argHoy.AddDays(1).AddHours(3);      // mañana 00:00 ART → UTC
+                    break;
+                case "ayer":
+                    desdeUtc = argHoy.AddDays(-1).AddHours(3);
+                    hastaUtc = argHoy.AddHours(3);
+                    break;
+                case "30d":
+                    desdeUtc = argHoy.AddDays(-30).AddHours(3);
+                    break;
+                case "todos":
+                    desdeUtc = null;
+                    break;
+                case "7d":
+                default:
+                    desdeUtc = argHoy.AddDays(-7).AddHours(3);
+                    break;
+            }
+        }
+
+        var query = _db.CafeVentas
             .Include(v => v.Items)
             .Where(v => v.DriveSubidoAt != null
                 && v.PreparacionOcultoAt == null
                 && (v.EstadoPreparacion == "LISTO"
                     || v.EstadoPreparacion == "EN_CAMINO"
                     || v.EstadoPreparacion == "ENTREGADO")
-                && v.CreatedAt >= desde
-                && v.Estado != "anulado")
+                && v.Estado != "anulado");
+
+        if (desdeUtc.HasValue) query = query.Where(v => v.CreatedAt >= desdeUtc.Value);
+        if (hastaUtc.HasValue) query = query.Where(v => v.CreatedAt < hastaUtc.Value);
+
+        var ventas = await query
             .OrderByDescending(v => v.PreparacionUpdatedAt ?? v.DriveSubidoAt)
             .Select(v => new
             {

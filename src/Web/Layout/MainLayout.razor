@@ -366,13 +366,24 @@
                     }
                 </NavGroup>
 
-                @* ───────── 6. PERSONAL ───────── *@
-                <NavGroup Label="👷 Personal" Icon="@SvgIcons.Users"
-                          HasActiveChild="@(IsActive("/horas-extras") || IsActive("/viajes"))">
+                @* ───────── 6. EMPLEADOS (unificado Personal + Nóminas 2026-06-03) ───────── *@
+                <NavGroup Label="👥 Empleados" Icon="@SvgIcons.Users"
+                          HasActiveChild="@(IsActive("/horas-extras") || IsActive("/viajes") || IsActive("/nominas") || IsActive("/nominas/empleados") || IsActive("/nominas/liquidaciones") || IsActive("/nominas/panel"))">
                     <NavItem Href="/horas-extras" Label="🕐 Horario" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/horas-extras")" OnClick="@(() => NavigateTo("/horas-extras"))" />
                     <NavItem Href="/viajes" Label="🚚 Viajes" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/viajes")" OnClick="@(() => NavigateTo("/viajes"))" />
+                    @if (HasPerm("nominas"))
+                    {
+                        <NavItem Href="/nominas/empleados" Label="👤 Ficha empleados" Icon="@SvgIcons.Users"
+                                 IsActive="@IsActive("/nominas/empleados")" OnClick="@(() => NavigateTo("/nominas/empleados"))" />
+                        <NavItem Href="/nominas/panel" Label="💰 ¿Cuánto debo pagar?" Icon="@SvgIcons.Dashboard"
+                                 IsActive="@IsActive("/nominas/panel")" OnClick="@(() => NavigateTo("/nominas/panel"))" />
+                        <NavItem Href="/nominas/liquidaciones" Label="📑 Liquidaciones" Icon="@SvgIcons.Tag"
+                                 IsActive="@IsActive("/nominas/liquidaciones")" OnClick="@(() => NavigateTo("/nominas/liquidaciones"))" />
+                        <NavItem Href="/nominas" Label="📊 Inicio nóminas" Icon="@SvgIcons.Dashboard"
+                                 IsActive="@IsActive("/nominas")" OnClick="@(() => NavigateTo("/nominas"))" />
+                    }
                 </NavGroup>
 
                 @* ───────── 7. CONFIG / TEMPORAL ───────── *@
@@ -518,23 +529,9 @@
             </NavGroup>
         }
 
-        @* ═════════════ 8. NOMINAS (modulo independiente) ═════════════
-           Modulo aparte para liquidacion de sueldos.
-           No comparte datos con Empleados/Sueldos del ERP principal. *@
-        @if (HasPerm("nominas"))
-        {
-            <NavGroup Label="Nóminas" Icon="@SvgIcons.Users"
-                      HasActiveChild="@(IsActive("/nominas") || IsActive("/nominas/empleados") || IsActive("/nominas/liquidaciones") || IsActive("/nominas/panel"))">
-                <NavItem Href="/nominas" Label="Inicio" Icon="@SvgIcons.Dashboard"
-                         IsActive="@IsActive("/nominas")" OnClick="@(() => NavigateTo("/nominas"))" />
-                <NavItem Href="/nominas/panel" Label="💰 ¿Cuánto debo pagar?" Icon="@SvgIcons.Dashboard"
-                         IsActive="@IsActive("/nominas/panel")" OnClick="@(() => NavigateTo("/nominas/panel"))" />
-                <NavItem Href="/nominas/empleados" Label="Empleados" Icon="@SvgIcons.Users"
-                         IsActive="@IsActive("/nominas/empleados")" OnClick="@(() => NavigateTo("/nominas/empleados"))" />
-                <NavItem Href="/nominas/liquidaciones" Label="Liquidaciones" Icon="@SvgIcons.Tag"
-                         IsActive="@IsActive("/nominas/liquidaciones")" OnClick="@(() => NavigateTo("/nominas/liquidaciones"))" />
-            </NavGroup>
-        }
+        @* 2026-06-03: seccion "Nóminas" standalone eliminada — sus items se unificaron dentro
+           del grupo "Empleados" (arriba), junto con Horario y Viajes. Ya no hay dos secciones
+           separadas para empleados. *@
 
         @* 2026-05-28: seccion "Comunicaciones" eliminada (Gmail, Calendar, Drive, WhatsApp Web).
            Eran bookmarks externos sin integracion real con el sistema. Drive ya tiene boton
