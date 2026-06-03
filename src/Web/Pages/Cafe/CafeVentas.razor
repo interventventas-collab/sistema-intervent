@@ -1707,6 +1707,24 @@
                     }
                 </div>
             }
+            @* 2026-06-03: en modo EDIT solo mostramos el checkbox de Drive. Sin los otros canales
+               (mail/whatsapp) — esos no se re-envian al editar. Permite re-subir el PDF actualizado
+               a IMPRIMIR PEDIDOS DE OSMAR cuando se modifico un pedido ya cargado. *@
+            @if (editingVentaId.HasValue)
+            {
+                <div style="border-top: 1px solid #e5e7eb; padding: 0.8rem 1.2rem; background: #f0f9ff;">
+                    <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.88rem;">
+                        <input type="checkbox" @bind="envioDriveEdit" />
+                        <span>📁 <strong>@(editingVentaTieneDrive ? "Re-subir a IMPRIMIR PEDIDOS DE OSMAR" : "Enviar a IMPRIMIR PEDIDOS DE OSMAR")</strong>
+                            <span style="display:block; font-size: 0.72rem; color: #6b7280; margin-top:0.1rem;">
+                                @(editingVentaTieneDrive
+                                    ? "Sube el PDF actualizado a Drive y avisa al armador con un chip \"⚠ PEDIDO MODIFICADO\" en /cafe/preparacion."
+                                    : "Sube el PDF a Drive y aparece en /cafe/preparacion para armar.")
+                            </span>
+                        </span>
+                    </label>
+                </div>
+            }
             <div class="modal-footer">
                 @if (!editingVentaId.HasValue && lastBorradorSavedAt.HasValue)
                 {
@@ -2799,6 +2817,9 @@
     // 2026-05-30: default depende del operador actual. Solo OSMAR arranca tildado.
     // Se setea en cada apertura del modal (ShowCreate / duplicar / editar).
     private bool envioDrive;
+    // 2026-06-03: checkbox para re-subir desde modo EDIT. Default depende de si ya estaba subida.
+    private bool envioDriveEdit;
+    private bool editingVentaTieneDrive;  // true si la venta editada ya tenia DriveSubidoAt
     // Destinatarios: se autocompletan desde el cliente si tiene email/telefono.
     // Si no tiene, el operador puede tipear el numero/mail a mano.
     private string envioEmailTo = "";
@@ -4591,6 +4612,33 @@
                 if (v is null) { formError = "No se pudo actualizar"; return; }
                 ToastService.Success($"Comprobante {v.Numero} actualizado");
 
+                // 2026-06-03: si el checkbox de re-subir Drive esta tildado, disparamos la subida en background.
+                // Si la venta ya estaba en LISTO/EN_CAMINO/ENTREGADO, el backend la revive con flag "MODIFICADO".
+                if (envioDriveEdit)
+                {
+                    var ventaIdParaDrive = v.Id;
+                    var numeroParaToast = v.Numero;
+                    var eraResubida = editingVentaTieneDrive;
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            var (fileId, _, _) = await Api.SubirVentaADriveAsync(ventaIdParaDrive);
+                            if (!string.IsNullOrEmpty(fileId))
+                            {
+                                var msg = eraResubida
+                                    ? $"{numeroParaToast} re-subido a IMPRIMIR PEDIDOS DE OSMAR ✅ (con chip MODIFICADO)"
+                                    : $"{numeroParaToast} enviado a IMPRIMIR PEDIDOS DE OSMAR ✅";
+                                await InvokeAsync(() => ToastService.Success(msg));
+                            }
+                        }
+                        catch (Exception driveEx)
+                        {
+                            await InvokeAsync(() => ToastService.Error("No se pudo subir a Drive: " + driveEx.Message));
+                        }
+                    });
+                }
+
                 // Auto-reintentar ARCA si la edicion venia del boton "Editar y reintentar"
                 // del cartel naranja de Factura PENDIENTE. Asi en un solo paso el operador
                 // edita los datos que hicieron rebotar la factura + se reintenta solo.
@@ -5168,6 +5216,10 @@
         includePrevBalanceInNotes = false;  // al editar no quiero injerir saldo retroactivamente
         // 2026-05-30: solo OSMAR arranca con "Enviar a IMPRIMIR PEDIDOS" tildado.
         envioDrive = string.Equals(Operator.Current ?? "", "OSMAR", StringComparison.OrdinalIgnoreCase);
+        // 2026-06-03: el checkbox de re-subir desde EDIT arranca tildado si ya estaba en Drive,
+        // o si el operador es OSMAR. Si la venta nunca se subio + el operador no es OSMAR, queda OFF.
+        editingVentaTieneDrive = v.DriveSubidoAt.HasValue;
+        envioDriveEdit = editingVentaTieneDrive || string.Equals(Operator.Current ?? "", "OSMAR", StringComparison.OrdinalIgnoreCase);
         showForm = true;
         // Refrescar saldo anterior + sugerencias del cliente y cotizar precios.
         RecomputeUnpaidPrevSales();

@@ -38,6 +38,12 @@
         <div style="flex:1; min-width:0;">
             <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">
                 <span class="prep-card-numero" style="font-family:monospace;">@Venta.Numero</span>
+                @* 2026-06-03: chip "MODIFICADO" — el pedido se edito despues de armado y se re-subio.
+                   El armador necesita re-verificar contra el PDF actualizado en Drive. *@
+                @if (Venta.ModificadoDespuesDeArmar)
+                {
+                    <span class="prep-card-pill" style="background:#fed7aa; color:#9a3412; border:1px solid #fb923c; font-weight:700;" title="Este pedido se editó después de armarlo. Revisar el PDF actualizado en Drive y rearmar.">⚠ PEDIDO MODIFICADO</span>
+                }
                 @if (!string.IsNullOrEmpty(Venta.WeekDays))
                 {
                     <span class="prep-card-pill">📅 @DiasPretty(Venta.WeekDays)</span>

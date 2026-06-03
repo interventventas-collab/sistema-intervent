@@ -377,9 +377,17 @@ public class CafeVentasController : ControllerBase
             v.DriveSubidoAt = DateTime.UtcNow;
             v.DriveSubidasCount = v.DriveSubidasCount + 1;
             // 2026-05-28: subir a Drive equivale a "mandar al tablero IMPRIMIR PEDIDOS DE OSMAR".
-            // Si la venta no tiene EstadoPreparacion seteado, la marcamos como PARA_PREPARAR para
-            // que aparezca en /cafe/preparacion. Si ya fue armada/entregada NO la revivimos.
-            if (string.IsNullOrEmpty(v.EstadoPreparacion))
+            // 2026-06-03 fix: si la venta ya estaba armada (LISTO/EN_CAMINO/ENTREGADO) y el usuario
+            // la edita + re-sube, la revivimos al tablero con flag "MODIFICADO". El armador va a ver
+            // un chip naranja en la card avisando que el pedido cambio.
+            var yaArmada = v.EstadoPreparacion == "LISTO" || v.EstadoPreparacion == "EN_CAMINO" || v.EstadoPreparacion == "ENTREGADO";
+            if (yaArmada)
+            {
+                v.EstadoPreparacion = "PARA_PREPARAR";
+                v.PreparacionUpdatedAt = DateTime.UtcNow;
+                v.ModificadoDespuesDeArmar = true;
+            }
+            else if (string.IsNullOrEmpty(v.EstadoPreparacion))
             {
                 v.EstadoPreparacion = "PARA_PREPARAR";
                 v.PreparacionUpdatedAt = DateTime.UtcNow;
@@ -2436,6 +2444,12 @@ public class CafeVentasController : ControllerBase
         var anterior = v.EstadoPreparacion;
         v.EstadoPreparacion = salirDelFlujo ? null : nuevo;
         v.PreparacionUpdatedAt = DateTime.UtcNow;
+        // 2026-06-03: si el pedido tenia flag "MODIFICADO" y ahora se marca LISTO -> limpiamos el flag.
+        // El armador ya re-armo con los cambios y no necesita seguir viendo el chip naranja.
+        if (nuevo == "LISTO" && v.ModificadoDespuesDeArmar)
+        {
+            v.ModificadoDespuesDeArmar = false;
+        }
         _db.CafeVentaPreparacionLogs.Add(new CafeVentaPreparacionLog
         {
             VentaId = v.Id,
@@ -2499,6 +2513,8 @@ public class CafeVentasController : ControllerBase
                 impresaCount = v.ImpresaCount,
                 // 2026-06-02: nota interna del armado (post-it amarillo en la card)
                 comentarioArmado = v.ComentarioArmado,
+                // 2026-06-03: flag MODIFICADO — el pedido se edito despues de armado y se re-subio
+                modificadoDespuesDeArmar = v.ModificadoDespuesDeArmar,
                 items = v.Items.Select(i => new
                 {
                     id = i.Id,

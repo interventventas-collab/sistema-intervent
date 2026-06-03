@@ -210,6 +210,11 @@ public class CafeVenta
     /// 0 = nunca subido, 1 = normal, 2+ = re-subido (atención).</summary>
     public int DriveSubidasCount { get; set; }
 
+    /// <summary>2026-06-03: marca que esta venta se EDITO despues de que ya estaba armada (LISTO/EN_CAMINO/ENTREGADO).
+    /// Cuando se re-sube a Drive con este flag, la card en /cafe/preparacion muestra un chip "PEDIDO MODIFICADO"
+    /// para avisar al armador. Se resetea a false cuando se marca como LISTO de nuevo (rearmado).</summary>
+    public bool ModificadoDespuesDeArmar { get; set; }
+
     public ICollection<CafeVentaItem> Items { get; set; } = new List<CafeVentaItem>();
 }
 
