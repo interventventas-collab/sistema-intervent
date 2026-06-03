@@ -3667,6 +3667,15 @@ BEGIN
 END
 GO
 
+-- 2026-06-03: Cafe_Ventas — flag para marcar que se edito un comprobante despues de armado.
+-- Sirve para mostrar chip "PEDIDO MODIFICADO" en /cafe/preparacion al re-subir un comprobante
+-- que ya habia sido marcado como LISTO/EN_CAMINO/ENTREGADO.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ModificadoDespuesDeArmar' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+BEGIN
+    ALTER TABLE Cafe_Ventas ADD ModificadoDespuesDeArmar BIT NOT NULL CONSTRAINT DF_Cafe_Ventas_ModifDespArmar DEFAULT 0;
+END
+GO
+
 -- Cafe_Ventas: nota tipo post-it pegada por el admin a cada venta (interna).
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='PinNota' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
 BEGIN

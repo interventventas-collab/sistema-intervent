@@ -440,6 +440,9 @@ public class CafePreparacionVentaDto
     /// <summary>2026-06-02: Comentario INTERNO para armado (post-it amarillo). Cargado desde Nueva Venta.
     /// Si está vacío, no se muestra el chip. NO sale en el PDF al cliente.</summary>
     public string? ComentarioArmado { get; set; }
+    /// <summary>2026-06-03: si true, el pedido se editó después de armado y se re-subió.
+    /// La card muestra chip naranja "⚠ PEDIDO MODIFICADO" para avisar al armador.</summary>
+    public bool ModificadoDespuesDeArmar { get; set; }
     public List<CafePreparacionItemDto> Items { get; set; } = new();
 }
 
