@@ -918,9 +918,9 @@ public class ApiClient
     private record LimpiarTableroResponse(int ocultas);
 
     /// <summary>Lista las ventas ya MARCADAS COMO LISTO/EN_CAMINO/ENTREGADO — para la sección
-    /// colapsable "Ya armados" del tablero.</summary>
-    public async Task<List<CafePreparacionVentaDto>?> GetCafePreparacionArmadosAsync(int dias = 7)
-        => await GetAsync<List<CafePreparacionVentaDto>>($"/api/cafe/ventas/preparacion/armados?dias={dias}");
+    /// colapsable "Ya armados" del tablero. Rango: hoy / ayer / 7d / 30d / todos.</summary>
+    public async Task<List<CafePreparacionVentaDto>?> GetCafePreparacionArmadosAsync(string rango = "7d")
+        => await GetAsync<List<CafePreparacionVentaDto>>($"/api/cafe/ventas/preparacion/armados?rango={rango}");
 
     /// <summary>Marca una venta como impresa (chip "Impreso hace X min" en la card).</summary>
     public async Task<bool> MarcarImpresaAsync(int id)

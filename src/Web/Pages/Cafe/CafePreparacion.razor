@@ -489,10 +489,22 @@
             </div>
         }
 
-        @* ── SECCION COLAPSABLE: YA ARMADOS (historial últimos 7 días) ── *@
-        <div class="prep-armados-header" @onclick="ToggleArmados">
-            <span>@(armadosExpanded ? "▼" : "▶")</span>
-            <span>📦 Ya armados (últimos 7 días)</span>
+        @* ── SECCION COLAPSABLE: YA ARMADOS (historial con rango configurable) ── *@
+        <div class="prep-armados-header">
+            <span @onclick="ToggleArmados" style="cursor:pointer;">@(armadosExpanded ? "▼" : "▶")</span>
+            <span @onclick="ToggleArmados" style="cursor:pointer;">📦 Ya armados (@RangoLabel(rangoArmados))</span>
+            @if (armadosExpanded)
+            {
+                <select value="@rangoArmados" @onchange="OnRangoArmadosChange"
+                        @onclick:stopPropagation="true"
+                        style="margin-left:0.75rem; padding:0.25rem 0.5rem; border-radius:6px; border:1px solid #d1d5db; font-size:0.85rem; background:white;">
+                    <option value="hoy">Hoy</option>
+                    <option value="ayer">Ayer</option>
+                    <option value="7d">Últimos 7 días</option>
+                    <option value="30d">Último mes</option>
+                    <option value="todos">Todos</option>
+                </select>
+            }
             <span style="margin-left:auto; font-weight:600;">@(armados?.Count ?? 0)</span>
         </div>
         @if (armadosExpanded)
@@ -503,7 +515,7 @@
             }
             else if (armados.Count == 0)
             {
-                <div class="prep-empty">Todavía no hay pedidos marcados como LISTO en los últimos 7 días.</div>
+                <div class="prep-empty">Todavía no hay pedidos marcados como LISTO en este rango.</div>
             }
             else
             {
@@ -543,6 +555,16 @@
     private List<CafePreparacionVentaDto>? lista;
     private List<CafePreparacionVentaDto>? armados;
     private bool armadosExpanded = false;
+    private string rangoArmados = "7d";  // hoy / ayer / 7d / 30d / todos
+
+    private static string RangoLabel(string r) => r switch
+    {
+        "hoy" => "hoy",
+        "ayer" => "ayer",
+        "30d" => "último mes",
+        "todos" => "todos",
+        _ => "últimos 7 días"
+    };
     private bool loading = true;
     private DateTime ultimaActualizacion = DateTime.Now;
     private System.Threading.Timer? refreshTimer;
@@ -584,8 +606,17 @@
         armadosExpanded = !armadosExpanded;
         if (armadosExpanded && armados is null)
         {
-            armados = await Api.GetCafePreparacionArmadosAsync(7) ?? new();
+            armados = await Api.GetCafePreparacionArmadosAsync(rangoArmados) ?? new();
         }
+        StateHasChanged();
+    }
+
+    private async Task OnRangoArmadosChange(ChangeEventArgs e)
+    {
+        rangoArmados = e.Value?.ToString() ?? "7d";
+        armados = null;  // fuerza loading mientras llega
+        StateHasChanged();
+        armados = await Api.GetCafePreparacionArmadosAsync(rangoArmados) ?? new();
         StateHasChanged();
     }
 
