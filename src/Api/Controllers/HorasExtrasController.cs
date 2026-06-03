@@ -1,8 +1,11 @@
 using Api.Data;
 using Api.Models;
+using Fido2NetLib;
+using Fido2NetLib.Objects;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace Api.Controllers;
 
@@ -19,7 +22,14 @@ namespace Api.Controllers;
 public class HorasExtrasController : ControllerBase
 {
     private readonly AppDbContext _db;
-    public HorasExtrasController(AppDbContext db) { _db = db; }
+    private readonly IFido2 _fido2;
+    private readonly IMemoryCache _cache;
+    public HorasExtrasController(AppDbContext db, IFido2 fido2, IMemoryCache cache)
+    {
+        _db = db;
+        _fido2 = fido2;
+        _cache = cache;
+    }
 
     // ============================================================
     // ENDPOINTS PUBLICOS (sin auth, por token)
@@ -911,5 +921,276 @@ public class HorasExtrasController : ControllerBase
         var horaTxt = $"{horaActual.Hours:D2}:{horaActual.Minutes:D2}";
         var saludo = tipo == "ENTRADA" ? $"¡Buen día {emp.Nombre}!" : $"¡Hasta luego {emp.Nombre}!";
         return Ok(new FichadorMarcarResult(true, saludo, tipo, horaTxt, emp.Nombre));
+    }
+
+    // ============================================================
+    // 2026-06-03: WebAuthn (huella biometrica) para el fichador
+    // ============================================================
+    // Flujo:
+    // 1) Registro:  begin → browser muestra prompt huella → complete → guardamos credencial.
+    //    Requiere PIN + empleadoId para asociar la huella al empleado correcto.
+    // 2) Login:     begin (sin user) → browser pregunta cual huella → complete → identificamos
+    //    empleado por la credencial y marcamos entrada/salida automaticamente.
+
+    public class HuellaRegistroBeginRequest
+    {
+        public int EmpleadoId { get; set; }
+        public string Pin { get; set; } = "";
+        public string? DeviceName { get; set; }
+    }
+
+    public record HuellaRegistroBeginResult(bool Ok, string? Mensaje, CredentialCreateOptions? Options, string? SessionId);
+
+    [HttpPost("fichador/huella/registro/begin")]
+    [AllowAnonymous]
+    public async Task<IActionResult> HuellaRegistroBegin([FromBody] HuellaRegistroBeginRequest req)
+    {
+        var emp = await _db.HorasExtrasEmpleados.FirstOrDefaultAsync(e => e.Id == req.EmpleadoId && e.IsActive);
+        if (emp is null) return Ok(new HuellaRegistroBeginResult(false, "Empleado no encontrado", null, null));
+        if (string.IsNullOrEmpty(req.Pin) || req.Pin.Trim() != (emp.DniUltimos3 ?? ""))
+            return Ok(new HuellaRegistroBeginResult(false, "PIN incorrecto. No se puede registrar huella sin validar identidad.", null, null));
+
+        // UserHandle determinista por empleado (UTF8 del Id). Asi el browser sabe que es el mismo "user"
+        // si se intenta registrar de nuevo y puede pisar credenciales viejas si se quiere.
+        var userHandle = System.Text.Encoding.UTF8.GetBytes($"emp-{emp.Id}");
+        var user = new Fido2User
+        {
+            Id = userHandle,
+            Name = $"empleado-{emp.Id}",
+            DisplayName = emp.Nombre
+        };
+
+        // Credenciales que ya tenemos para este empleado (para que el browser no las re-registre).
+        var existentes = await _db.HorasExtrasWebAuthnCredentials.Where(c => c.EmpleadoId == emp.Id).ToListAsync();
+        var excludeList = existentes.Select(c => new PublicKeyCredentialDescriptor(Convert.FromBase64String(c.CredentialId))).ToList();
+
+        var authSelection = new AuthenticatorSelection
+        {
+            UserVerification = UserVerificationRequirement.Required, // exige huella o PIN del dispositivo
+            AuthenticatorAttachment = AuthenticatorAttachment.Platform // huella del celu, no llavero externo
+        };
+
+        var options = _fido2.RequestNewCredential(user, excludeList, authSelection, AttestationConveyancePreference.None);
+
+        // Guardamos las options en cache (ID = guid corto) para validar en el complete.
+        var sessionId = Guid.NewGuid().ToString("N").Substring(0, 16);
+        _cache.Set($"webauthn:reg:{sessionId}", options.ToJson(), TimeSpan.FromMinutes(5));
+        _cache.Set($"webauthn:reg:{sessionId}:empId", emp.Id, TimeSpan.FromMinutes(5));
+        _cache.Set($"webauthn:reg:{sessionId}:device", req.DeviceName ?? "Dispositivo sin nombre", TimeSpan.FromMinutes(5));
+
+        return Ok(new HuellaRegistroBeginResult(true, null, options, sessionId));
+    }
+
+    public class HuellaRegistroCompleteRequest
+    {
+        public string SessionId { get; set; } = "";
+        public AuthenticatorAttestationRawResponse AttestationResponse { get; set; } = null!;
+    }
+
+    public record HuellaRegistroCompleteResult(bool Ok, string? Mensaje, string? DeviceName);
+
+    [HttpPost("fichador/huella/registro/complete")]
+    [AllowAnonymous]
+    public async Task<IActionResult> HuellaRegistroComplete([FromBody] HuellaRegistroCompleteRequest req)
+    {
+        if (!_cache.TryGetValue<string>($"webauthn:reg:{req.SessionId}", out var optionsJson) || optionsJson is null)
+            return Ok(new HuellaRegistroCompleteResult(false, "Sesion expirada. Volve a intentar.", null));
+        if (!_cache.TryGetValue<int>($"webauthn:reg:{req.SessionId}:empId", out var empId))
+            return Ok(new HuellaRegistroCompleteResult(false, "Sesion expirada (sin empleado).", null));
+        var deviceName = _cache.Get<string>($"webauthn:reg:{req.SessionId}:device") ?? "Dispositivo";
+
+        var options = CredentialCreateOptions.FromJson(optionsJson);
+
+        // Callback: chequear que el CredentialId no este ya registrado.
+        IsCredentialIdUniqueToUserAsyncDelegate callback = async (args, ct) =>
+        {
+            var b64 = Convert.ToBase64String(args.CredentialId);
+            return !await _db.HorasExtrasWebAuthnCredentials.AnyAsync(c => c.CredentialId == b64, ct);
+        };
+
+        try
+        {
+            var success = await _fido2.MakeNewCredentialAsync(req.AttestationResponse, options, callback);
+            if (success.Result is null)
+                return Ok(new HuellaRegistroCompleteResult(false, "No se pudo registrar la huella.", null));
+
+            var cred = new HorasExtrasWebAuthnCredential
+            {
+                EmpleadoId = empId,
+                CredentialId = Convert.ToBase64String(success.Result.CredentialId),
+                PublicKey = Convert.ToBase64String(success.Result.PublicKey),
+                UserHandle = Convert.ToBase64String(success.Result.User.Id),
+                AaGuid = success.Result.Aaguid.ToString(),
+                SignatureCounter = success.Result.Counter,
+                DeviceName = deviceName,
+                CreatedAt = DateTime.UtcNow
+            };
+            _db.HorasExtrasWebAuthnCredentials.Add(cred);
+            await _db.SaveChangesAsync();
+
+            // Limpio cache
+            _cache.Remove($"webauthn:reg:{req.SessionId}");
+            _cache.Remove($"webauthn:reg:{req.SessionId}:empId");
+            _cache.Remove($"webauthn:reg:{req.SessionId}:device");
+
+            return Ok(new HuellaRegistroCompleteResult(true, "Huella registrada!", deviceName));
+        }
+        catch (Fido2VerificationException ex)
+        {
+            return Ok(new HuellaRegistroCompleteResult(false, $"Error de verificacion: {ex.Message}", null));
+        }
+    }
+
+    public record HuellaLoginBeginResult(bool Ok, string? Mensaje, AssertionOptions? Options, string? SessionId);
+
+    [HttpPost("fichador/huella/login/begin")]
+    [AllowAnonymous]
+    public async Task<IActionResult> HuellaLoginBegin()
+    {
+        // Sin specific user — usuario va a elegir su huella del dispositivo (discoverable credential).
+        var allCreds = await _db.HorasExtrasWebAuthnCredentials.ToListAsync();
+        var allowed = allCreds.Select(c => new PublicKeyCredentialDescriptor(Convert.FromBase64String(c.CredentialId))).ToList();
+
+        if (allowed.Count == 0)
+            return Ok(new HuellaLoginBeginResult(false, "Todavia no hay huellas registradas en este sistema.", null, null));
+
+        var options = _fido2.GetAssertionOptions(allowed, UserVerificationRequirement.Required);
+
+        var sessionId = Guid.NewGuid().ToString("N").Substring(0, 16);
+        _cache.Set($"webauthn:auth:{sessionId}", options.ToJson(), TimeSpan.FromMinutes(5));
+
+        return Ok(new HuellaLoginBeginResult(true, null, options, sessionId));
+    }
+
+    public class HuellaLoginCompleteRequest
+    {
+        public string SessionId { get; set; } = "";
+        public AuthenticatorAssertionRawResponse AssertionResponse { get; set; } = null!;
+        // GPS opcional, igual que en el endpoint con PIN
+        public decimal? GpsLat { get; set; }
+        public decimal? GpsLon { get; set; }
+        public decimal? GpsAccuracy { get; set; }
+    }
+
+    [HttpPost("fichador/huella/login/complete")]
+    [AllowAnonymous]
+    public async Task<IActionResult> HuellaLoginComplete([FromBody] HuellaLoginCompleteRequest req)
+    {
+        if (!_cache.TryGetValue<string>($"webauthn:auth:{req.SessionId}", out var optionsJson) || optionsJson is null)
+            return Ok(new FichadorMarcarResult(false, "Sesion expirada. Volve a intentar.", null, null, null));
+        var options = AssertionOptions.FromJson(optionsJson);
+
+        // Ubicar la credencial por su CredentialId
+        var credIdB64 = Convert.ToBase64String(req.AssertionResponse.Id);
+        var cred = await _db.HorasExtrasWebAuthnCredentials
+            .Include(c => c.Empleado)
+            .FirstOrDefaultAsync(c => c.CredentialId == credIdB64);
+        if (cred is null || cred.Empleado is null || !cred.Empleado.IsActive)
+            return Ok(new FichadorMarcarResult(false, "Huella no reconocida.", null, null, null));
+
+        IsUserHandleOwnerOfCredentialIdAsync callback = async (args, ct) =>
+        {
+            var b64 = Convert.ToBase64String(args.CredentialId);
+            return await _db.HorasExtrasWebAuthnCredentials.AnyAsync(c => c.CredentialId == b64
+                && c.UserHandle == Convert.ToBase64String(args.UserHandle), ct);
+        };
+
+        AssertionVerificationResult verifyResult;
+        try
+        {
+            verifyResult = await _fido2.MakeAssertionAsync(
+                req.AssertionResponse,
+                options,
+                Convert.FromBase64String(cred.PublicKey),
+                cred.SignatureCounter,
+                callback);
+        }
+        catch (Fido2VerificationException ex)
+        {
+            return Ok(new FichadorMarcarResult(false, $"Error verificando huella: {ex.Message}", null, null, cred.Empleado.Nombre));
+        }
+
+        // Actualizar contador para detectar clones
+        cred.SignatureCounter = verifyResult.Counter;
+        cred.LastUsedAt = DateTime.UtcNow;
+
+        var emp = cred.Empleado;
+        _cache.Remove($"webauthn:auth:{req.SessionId}");
+
+        // Validacion WiFi (misma que en el endpoint PIN)
+        var cfg = await _db.HorasExtrasConfigFichadas.FindAsync(1);
+        bool modoNuevoActivo = (cfg?.ActivarModoNuevo ?? false) || emp.ProbarModoNuevoFichada;
+        string? ipCliente = ResolverIpCliente();
+        bool ipAutorizada = false;
+        if (modoNuevoActivo)
+        {
+            var ipsPermitidas = new[] { cfg?.Wifi1Ip, cfg?.Wifi2Ip }
+                .Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!.Trim()).ToList();
+            ipAutorizada = !string.IsNullOrEmpty(ipCliente) && ipsPermitidas.Any(p => p == ipCliente);
+            if (ipsPermitidas.Count > 0 && !ipAutorizada)
+                return Ok(new FichadorMarcarResult(false,
+                    $"Tenés que estar conectado al WiFi del negocio para fichar. (IP: {ipCliente ?? "?"})",
+                    null, null, emp.Nombre));
+        }
+
+        // Marcar entrada/salida igual que FichadorMarcar
+        var hoy = FechaArgentinaHoy();
+        var ahora = DateTime.UtcNow.AddHours(-3);
+        var horaActual = new TimeSpan(ahora.Hour, ahora.Minute, 0);
+        var existente = await _db.HorasExtrasRegistros.FirstOrDefaultAsync(r => r.EmpleadoId == emp.Id && r.Fecha == hoy);
+
+        string tipo;
+        if (existente is null)
+        {
+            existente = new HorasExtrasRegistro { EmpleadoId = emp.Id, Fecha = hoy, Cantidad = 0m, HoraEntrada = horaActual, CreatedAt = DateTime.UtcNow };
+            _db.HorasExtrasRegistros.Add(existente);
+            tipo = "ENTRADA";
+        }
+        else if (!existente.HoraEntrada.HasValue) { existente.HoraEntrada = horaActual; existente.UpdatedAt = DateTime.UtcNow; tipo = "ENTRADA"; }
+        else if (!existente.HoraSalida.HasValue) { existente.HoraSalida = horaActual; existente.UpdatedAt = DateTime.UtcNow; tipo = "SALIDA"; }
+        else { existente.HoraSalida = horaActual; existente.UpdatedAt = DateTime.UtcNow; tipo = "SALIDA"; }
+        await _db.SaveChangesAsync();
+
+        if (modoNuevoActivo)
+        {
+            _db.HorasExtrasFichadaMetas.Add(new HorasExtrasFichadaMeta
+            {
+                RegistroId = existente.Id, Tipo = tipo,
+                Ip = ipCliente, IpAutorizada = ipAutorizada,
+                Lat = req.GpsLat, Lon = req.GpsLon, GpsAccuracyMeters = (int?)req.GpsAccuracy,
+                HuellaVerificada = true, UsoFallbackPin = false
+            });
+            await _db.SaveChangesAsync();
+        }
+
+        var horaTxt = $"{horaActual.Hours:D2}:{horaActual.Minutes:D2}";
+        var saludo = tipo == "ENTRADA" ? $"¡Buen día {emp.Nombre}!" : $"¡Hasta luego {emp.Nombre}!";
+        return Ok(new FichadorMarcarResult(true, saludo, tipo, horaTxt, emp.Nombre));
+    }
+
+    // Endpoint auxiliar: lista las huellas registradas (admin)
+    public record HuellaRegistradaDto(int Id, int EmpleadoId, string EmpleadoNombre, string? DeviceName, DateTime CreatedAt, DateTime? LastUsedAt);
+
+    [HttpGet("huellas")]
+    [Authorize(Roles = "admin")]
+    public async Task<IActionResult> ListHuellas()
+    {
+        var creds = await _db.HorasExtrasWebAuthnCredentials
+            .Include(c => c.Empleado)
+            .OrderByDescending(c => c.CreatedAt)
+            .Select(c => new HuellaRegistradaDto(c.Id, c.EmpleadoId, c.Empleado!.Nombre, c.DeviceName, c.CreatedAt, c.LastUsedAt))
+            .ToListAsync();
+        return Ok(creds);
+    }
+
+    [HttpDelete("huellas/{id}")]
+    [Authorize(Roles = "admin")]
+    public async Task<IActionResult> DeleteHuella(int id)
+    {
+        var cred = await _db.HorasExtrasWebAuthnCredentials.FindAsync(id);
+        if (cred is null) return NotFound();
+        _db.HorasExtrasWebAuthnCredentials.Remove(cred);
+        await _db.SaveChangesAsync();
+        return Ok();
     }
 }

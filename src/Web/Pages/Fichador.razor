@@ -46,6 +46,23 @@
     .kio-modal-btn-cancel { background: #e5e7eb; color: #1f2937; }
     .kio-modal-err { color: #b91c1c; text-align: center; margin-top: 0.5rem; font-size: 0.9rem; font-weight: 600; }
 
+    .kio-huella-btn {
+        width: 100%; padding: 1.1rem; font-size: 1.15rem; font-weight: 800;
+        border: none; border-radius: 14px; cursor: pointer; margin-bottom: 1rem;
+        background: linear-gradient(135deg, #16a34a, #047857); color: white;
+        box-shadow: 0 4px 14px rgba(22,163,74,0.4); text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .kio-huella-btn:active { transform: scale(0.98); }
+    .kio-huella-btn:disabled { background: #6b7280; cursor: not-allowed; box-shadow: none; }
+    .kio-huella-chk {
+        display: flex; align-items: center; gap: 0.5rem;
+        background: #f0fdf4; border: 1px solid #16a34a; border-radius: 8px;
+        padding: 0.6rem 0.8rem; margin-top: 0.7rem; cursor: pointer;
+        font-size: 0.9rem; color: #15803d;
+    }
+    .kio-huella-chk input { width: 1.1rem; height: 1.1rem; cursor: pointer; }
+
     .kio-toast { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #16a34a; color: white; padding: 1.5rem 2.5rem; border-radius: 16px; font-weight: 700; font-size: 1.4rem; box-shadow: 0 20px 60px rgba(0,0,0,0.4); z-index: 2000; text-align: center; }
     .kio-toast.error { background: #dc2626; }
     .kio-toast-tipo { font-size: 0.8rem; opacity: 0.85; font-weight: 600; }
@@ -68,8 +85,16 @@
         <div class="kio-reloj">@HoraActual</div>
     </div>
 
+    @if (huellaDisponible)
+    {
+        <button class="kio-huella-btn" @onclick="FicharConHuella" disabled="@huellaProcessing">
+            @(huellaProcessing ? "Esperando huella..." : "👆 FICHAR CON HUELLA")
+        </button>
+    }
+
     <div class="kio-instruccion">
         👉 Tocá tu nombre, ingresá tu PIN (3 últimos del DNI) y listo.
+        @if (huellaDisponible) { <span> O tocá <strong>FICHAR CON HUELLA</strong> arriba si ya la registraste.</span> }
     </div>
 
     @if (cargando)
@@ -128,8 +153,15 @@
                 <div class="kio-modal-err">⚠ @errorPin</div>
             }
             <button class="kio-modal-btn kio-modal-btn-primary" @onclick="MarcarAsync" disabled="@(marcando || pinInput.Length != 3)">
-                @(marcando ? "Marcando..." : "✅ FICHAR")
+                @(marcando ? "Marcando..." : (registrarHuella ? "👆 REGISTRAR HUELLA" : "✅ FICHAR"))
             </button>
+            @if (huellaDisponible)
+            {
+                <label class="kio-huella-chk">
+                    <input type="checkbox" @bind="registrarHuella" />
+                    👆 Registrar mi huella en este celular (validá el PIN y arriba toca "REGISTRAR HUELLA")
+                </label>
+            }
             <button class="kio-modal-btn kio-modal-btn-cancel" @onclick="CerrarPin">Cancelar</button>
         </div>
     </div>
@@ -181,9 +213,17 @@
     private string? toastMsg;
     private string? toastHora;
 
+    // 2026-06-03: WebAuthn (huella)
+    private bool huellaDisponible;       // browser+device soporta huella
+    private bool huellaProcessing;       // botón "FICHAR CON HUELLA" en progreso
+    private bool registrarHuella;        // checkbox del modal: en vez de fichar, registra huella
+
     protected override async Task OnInitializedAsync()
     {
         await CargarEmpleados();
+        // Detectar si este dispositivo+browser tiene huella biometrica (WebAuthn)
+        try { huellaDisponible = await JS.InvokeAsync<bool>("webAuthnAvailable"); }
+        catch { huellaDisponible = false; }
         // Auto-refresh cada 30s para que la lista se actualice (ej: alguien fichó desde otro lugar)
         refreshTimer = new System.Threading.Timer(async _ => await InvokeAsync(CargarEmpleados), null, 30000, 30000);
         // Reloj actualizado cada segundo
@@ -231,6 +271,8 @@
     private async Task MarcarAsync()
     {
         if (empleadoElegido is null || pinInput.Length != 3) return;
+        // Caso especial: el usuario tildo "registrar huella" -> en vez de fichar, registramos huella
+        if (registrarHuella) { await RegistrarHuellaAsync(); return; }
         marcando = true;
         errorPin = null;
         try
@@ -278,4 +320,124 @@
     }
 
     public record GpsPos(decimal? Lat, decimal? Lon, int? Accuracy);
+
+    // ─── 2026-06-03: Flujos de huella biometrica ───
+
+    /// <summary>Registra una nueva credencial WebAuthn para el empleado del modal abierto.
+    /// Requiere PIN correcto (lo manda el endpoint del backend para validar).</summary>
+    private async Task RegistrarHuellaAsync()
+    {
+        if (empleadoElegido is null) return;
+        marcando = true;
+        errorPin = null;
+        try
+        {
+            var beginResp = await Http.PostAsJsonAsync("api/horas-extras/fichador/huella/registro/begin",
+                new { EmpleadoId = empleadoElegido.Id, Pin = pinInput, DeviceName = "Celular del fichador" });
+            var begin = await beginResp.Content.ReadFromJsonAsync<HuellaRegistroBeginResp>();
+            if (begin is null || !begin.Ok)
+            {
+                errorPin = begin?.Mensaje ?? "Error al iniciar registro";
+                return;
+            }
+
+            // Llamar al browser para pedir la huella
+            var credJs = await JS.InvokeAsync<System.Text.Json.JsonElement>("webAuthnCreate", begin.Options!);
+            if (credJs.TryGetProperty("_error", out var errEl))
+            {
+                errorPin = "Tu celular cancelo o no pudo leer la huella: " + errEl.GetString();
+                return;
+            }
+
+            // Mandar al backend para guardar la credencial
+            var completeBody = new { SessionId = begin.SessionId, AttestationResponse = credJs };
+            var completeResp = await Http.PostAsJsonAsync("api/horas-extras/fichador/huella/registro/complete", completeBody);
+            var complete = await completeResp.Content.ReadFromJsonAsync<HuellaRegistroCompleteResp>();
+            if (complete is null || !complete.Ok)
+            {
+                errorPin = complete?.Mensaje ?? "Error guardando huella";
+                return;
+            }
+
+            CerrarPin();
+            toastTipo = "👆 HUELLA REGISTRADA";
+            toastMsg = $"Listo. Desde ahora podes tocar 'FICHAR CON HUELLA'.";
+            toastHora = null;
+            toastError = false;
+            toastVisible = true;
+            StateHasChanged();
+            await Task.Delay(3500);
+            toastVisible = false;
+            StateHasChanged();
+        }
+        catch (Exception ex) { errorPin = "Error: " + ex.Message; }
+        finally { marcando = false; }
+    }
+
+    /// <summary>Login con huella: pide al browser elegir credencial, manda firma al backend,
+    /// y el backend identifica al empleado y marca entrada/salida.</summary>
+    private async Task FicharConHuella()
+    {
+        huellaProcessing = true;
+        try
+        {
+            var beginResp = await Http.PostAsync("api/horas-extras/fichador/huella/login/begin", null);
+            var begin = await beginResp.Content.ReadFromJsonAsync<HuellaLoginBeginResp>();
+            if (begin is null || !begin.Ok)
+            {
+                MostrarToastError(begin?.Mensaje ?? "No se pudo iniciar el login con huella");
+                return;
+            }
+
+            var credJs = await JS.InvokeAsync<System.Text.Json.JsonElement>("webAuthnGet", begin.Options!);
+            if (credJs.TryGetProperty("_error", out var errEl))
+            {
+                MostrarToastError("Cancelaste o tu celular no pudo leer la huella: " + errEl.GetString());
+                return;
+            }
+
+            // GPS opcional
+            decimal? lat = null, lon = null; int? acc = null;
+            try
+            {
+                var pos = await JS.InvokeAsync<GpsPos?>("heTryGetPosition", 3000);
+                if (pos is not null) { lat = pos.Lat; lon = pos.Lon; acc = pos.Accuracy; }
+            }
+            catch { }
+
+            var body = new { SessionId = begin.SessionId, AssertionResponse = credJs, GpsLat = lat, GpsLon = lon, GpsAccuracy = acc };
+            var resp = await Http.PostAsJsonAsync("api/horas-extras/fichador/huella/login/complete", body);
+            var r = await resp.Content.ReadFromJsonAsync<FichadorMarcarResult>();
+            if (r is null) { MostrarToastError("Error de conexión"); return; }
+            if (!r.Ok) { MostrarToastError(r.Mensaje ?? "Error fichando"); return; }
+
+            toastTipo = r.Tipo == "ENTRADA" ? "🌅 ENTRADA REGISTRADA" : "🌆 SALIDA REGISTRADA";
+            toastMsg = r.Mensaje;
+            toastHora = r.Hora;
+            toastError = false;
+            toastVisible = true;
+            StateHasChanged();
+            await Task.Delay(3000);
+            toastVisible = false;
+            await CargarEmpleados();
+            StateHasChanged();
+        }
+        catch (Exception ex) { MostrarToastError("Error: " + ex.Message); }
+        finally { huellaProcessing = false; StateHasChanged(); }
+    }
+
+    private void MostrarToastError(string msg)
+    {
+        toastTipo = "⚠ ERROR";
+        toastMsg = msg;
+        toastHora = null;
+        toastError = true;
+        toastVisible = true;
+        StateHasChanged();
+        _ = Task.Run(async () => { await Task.Delay(4000); toastVisible = false; await InvokeAsync(StateHasChanged); });
+    }
+
+    public record HuellaRegistroBeginResp(bool Ok, string? Mensaje, object? Options, string? SessionId);
+    public record HuellaRegistroCompleteResp(bool Ok, string? Mensaje, string? DeviceName);
+    public record HuellaLoginBeginResp(bool Ok, string? Mensaje, object? Options, string? SessionId);
 }
