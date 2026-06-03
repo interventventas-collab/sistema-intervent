@@ -24,13 +24,17 @@
         justify-content: center; align-items: center; box-shadow: 0 4px 10px rgba(0,0,0,0.15);
     }
     .kio-card:active { transform: scale(0.96); }
+    /* 2026-06-03 Semaforo: ROJO sin fichar / VERDE trabajando / AZUL salio */
+    .kio-card.sin-fichar { background: #fee2e2; border-color: #dc2626; }
     .kio-card.trabajando { background: #dcfce7; border-color: #16a34a; }
-    .kio-card.salio { background: #dbeafe; border-color: #3b82f6; opacity: 0.75; }
+    .kio-card.salio { background: #dbeafe; border-color: #3b82f6; }
     .kio-card-avatar { width: 48px; height: 48px; border-radius: 50%; background: #1d4ed8; color: white; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; font-weight: 800; margin-bottom: 0.5rem; }
+    .kio-card.sin-fichar .kio-card-avatar { background: #dc2626; }
     .kio-card.trabajando .kio-card-avatar { background: #16a34a; }
     .kio-card.salio .kio-card-avatar { background: #3b82f6; }
     .kio-card-nombre { font-weight: 700; font-size: 0.95rem; margin-bottom: 0.3rem; }
-    .kio-card-estado { font-size: 0.7rem; color: #6b7280; font-weight: 600; }
+    .kio-card-estado { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+    .kio-card.sin-fichar .kio-card-estado { color: #991b1b; }
     .kio-card.trabajando .kio-card-estado { color: #15803d; }
     .kio-card.salio .kio-card-estado { color: #1e40af; }
 
@@ -110,23 +114,13 @@
         <div class="kio-grid">
             @foreach (var e in empleados)
             {
-                var cls = e.TrabajandoAhora ? "trabajando" : (!string.IsNullOrEmpty(e.UltimaHoraSalida) ? "salio" : "");
-                <div class="kio-card @cls" @onclick="() => AbrirPin(e)">
+                <div class="kio-card @e.Estado" @onclick="() => OnCardTap(e)">
                     <div class="kio-card-avatar">@(e.Nombre.Length > 0 ? e.Nombre[0].ToString() : "?")</div>
                     <div class="kio-card-nombre">@e.Nombre</div>
                     <div class="kio-card-estado">
-                        @if (e.TrabajandoAhora)
-                        {
-                            <span>🟢 Entró @e.TrabajandoDesde</span>
-                        }
-                        else if (!string.IsNullOrEmpty(e.UltimaHoraSalida))
-                        {
-                            <span>✅ Salió @e.UltimaHoraSalida</span>
-                        }
-                        else
-                        {
-                            <span>⏳ Sin fichar</span>
-                        }
+                        @if (e.Estado == "trabajando") { <span>🟢 TRABAJANDO</span> }
+                        else if (e.Estado == "salio") { <span>🔵 SALIÓ</span> }
+                        else { <span>🔴 SIN FICHAR</span> }
                     </div>
                 </div>
             }
@@ -140,28 +134,72 @@
         <div class="kio-modal" @onclick:stopPropagation="true">
             <h2 class="kio-modal-titulo">Hola @empleadoElegido.Nombre 👋</h2>
             <div class="kio-modal-tipo">
-                @if (empleadoElegido.TrabajandoAhora) { <span>🌆 Vas a marcar <strong>SALIDA</strong></span> }
+                @if (empleadoElegido.Estado == "trabajando") { <span>🌆 Vas a marcar <strong>SALIDA</strong></span> }
                 else { <span>🌅 Vas a marcar <strong>ENTRADA</strong></span> }
             </div>
-            <input type="tel" inputmode="numeric" maxlength="3" class="kio-pin-input"
-                   value="@pinInput"
-                   @oninput="OnPinInput"
-                   @onkeydown="OnPinKeyDown"
-                   placeholder="•••" autofocus />
-            @if (!string.IsNullOrEmpty(errorPin))
+
+            @if (modoModal == "huella-esperando")
             {
-                <div class="kio-modal-err">⚠ @errorPin</div>
+                <div style="text-align:center; padding:1.5rem 0;">
+                    <div style="font-size:5rem;">👆</div>
+                    <div style="font-size:1.1rem; font-weight:600; color:#15803d; margin-top:0.5rem;">
+                        Poné tu dedo en el lector
+                    </div>
+                    @if (intentosHuella > 0)
+                    {
+                        <div style="font-size:0.85rem; color:#b91c1c; margin-top:0.6rem;">
+                            ⚠ Intento @(intentosHuella) de 3 fallado. @(intentosHuella >= 3 ? "Usá tu PIN abajo." : "Volvé a intentar.")
+                        </div>
+                    }
+                </div>
+                @if (intentosHuella >= 3)
+                {
+                    <input type="tel" inputmode="numeric" maxlength="3" class="kio-pin-input"
+                           value="@pinInput" @oninput="OnPinInput" @onkeydown="OnPinKeyDown"
+                           placeholder="PIN" autofocus />
+                    @if (!string.IsNullOrEmpty(errorPin)) { <div class="kio-modal-err">⚠ @errorPin</div> }
+                    <button class="kio-modal-btn kio-modal-btn-primary" @onclick="MarcarConPinAsync" disabled="@(marcando || pinInput.Length != 3)">
+                        @(marcando ? "Marcando..." : "✅ FICHAR CON PIN")
+                    </button>
+                }
+                else
+                {
+                    <button class="kio-modal-btn kio-modal-btn-cancel" @onclick="@(async () => await IntentarHuellaParaEmpleado())">
+                        🔄 Reintentar huella
+                    </button>
+                }
             }
-            <button class="kio-modal-btn kio-modal-btn-primary" @onclick="MarcarAsync" disabled="@(marcando || pinInput.Length != 3)">
-                @(marcando ? "Marcando..." : (registrarHuella ? "👆 REGISTRAR HUELLA" : "✅ FICHAR"))
-            </button>
-            @if (huellaDisponible)
+            else if (modoModal == "registrar-huella")
             {
-                <label class="kio-huella-chk">
-                    <input type="checkbox" @bind="registrarHuella" />
-                    👆 Registrar mi huella en este celular (validá el PIN y arriba toca "REGISTRAR HUELLA")
-                </label>
+                <input type="tel" inputmode="numeric" maxlength="3" class="kio-pin-input"
+                       value="@pinInput" @oninput="OnPinInput" @onkeydown="OnPinKeyDown"
+                       placeholder="PIN" autofocus />
+                @if (!string.IsNullOrEmpty(errorPin)) { <div class="kio-modal-err">⚠ @errorPin</div> }
+                <div style="font-size:0.85rem; color:#15803d; background:#f0fdf4; padding:0.6rem; border-radius:8px; margin-top:0.6rem;">
+                    Ingresá tu PIN y tocá "REGISTRAR HUELLA". El celular te va a pedir el dedo.
+                </div>
+                <button class="kio-modal-btn kio-modal-btn-primary" @onclick="RegistrarHuellaAsync" disabled="@(marcando || pinInput.Length != 3)">
+                    @(marcando ? "Procesando..." : "👆 REGISTRAR HUELLA")
+                </button>
             }
+            else  // modo "pin" (clásico, sin huella registrada en este empleado)
+            {
+                <input type="tel" inputmode="numeric" maxlength="3" class="kio-pin-input"
+                       value="@pinInput" @oninput="OnPinInput" @onkeydown="OnPinKeyDown"
+                       placeholder="•••" autofocus />
+                @if (!string.IsNullOrEmpty(errorPin)) { <div class="kio-modal-err">⚠ @errorPin</div> }
+                <button class="kio-modal-btn kio-modal-btn-primary" @onclick="MarcarConPinAsync" disabled="@(marcando || pinInput.Length != 3)">
+                    @(marcando ? "Marcando..." : "✅ FICHAR")
+                </button>
+                @if (huellaDisponible)
+                {
+                    <button class="kio-modal-btn kio-modal-btn-cancel" style="background:#16a34a; color:white;"
+                            @onclick="@(() => { modoModal = "registrar-huella"; pinInput = ""; errorPin = null; })">
+                        👆 Registrar mi huella ahora
+                    </button>
+                }
+            }
+
             <button class="kio-modal-btn kio-modal-btn-cancel" @onclick="CerrarPin">Cancelar</button>
         </div>
     </div>
@@ -183,8 +221,7 @@
 }
 
 @code {
-    public record FichadorEmpleadoDto(int Id, string Nombre, string Slug, string? UltimaHoraEntrada,
-        string? UltimaHoraSalida, bool TrabajandoAhora, string? TrabajandoDesde);
+    public record FichadorEmpleadoDto(int Id, string Nombre, string Slug, string Estado, bool TieneHuella);
     public record FichadorMarcarResult(bool Ok, string? Mensaje, string? Tipo, string? Hora, string? NombreEmpleado);
 
     private List<FichadorEmpleadoDto> empleados = new();
@@ -195,6 +232,10 @@
     private bool marcando;
     private System.Threading.Timer? refreshTimer;
     private System.Threading.Timer? clockTimer;
+
+    // Modos del modal: "pin" (solo PIN), "huella-esperando" (esperando dedo, max 3 reintentos), "registrar-huella"
+    private string modoModal = "pin";
+    private int intentosHuella = 0;
 
     private string FechaLabel
     {
@@ -216,7 +257,6 @@
     // 2026-06-03: WebAuthn (huella)
     private bool huellaDisponible;       // browser+device soporta huella
     private bool huellaProcessing;       // botón "FICHAR CON HUELLA" en progreso
-    private bool registrarHuella;        // checkbox del modal: en vez de fichar, registra huella
 
     protected override async Task OnInitializedAsync()
     {
@@ -243,11 +283,25 @@
         finally { cargando = false; StateHasChanged(); }
     }
 
-    private void AbrirPin(FichadorEmpleadoDto e)
+    /// <summary>Tap en card: si tiene huella registrada y el dispositivo la soporta, va directo a huella.
+    /// Si no, abre el modal de PIN clásico.</summary>
+    private async Task OnCardTap(FichadorEmpleadoDto e)
     {
         empleadoElegido = e;
         pinInput = "";
         errorPin = null;
+        intentosHuella = 0;
+        if (e.TieneHuella && huellaDisponible)
+        {
+            modoModal = "huella-esperando";
+            StateHasChanged();
+            await IntentarHuellaParaEmpleado();
+        }
+        else
+        {
+            modoModal = "pin";
+            StateHasChanged();
+        }
     }
 
     private void OnPinInput(ChangeEventArgs e)
@@ -258,7 +312,11 @@
 
     private async Task OnPinKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Enter" && pinInput.Length == 3) await MarcarAsync();
+        if (e.Key == "Enter" && pinInput.Length == 3)
+        {
+            if (modoModal == "registrar-huella") await RegistrarHuellaAsync();
+            else await MarcarConPinAsync();
+        }
     }
 
     private void CerrarPin()
@@ -266,13 +324,13 @@
         empleadoElegido = null;
         pinInput = "";
         errorPin = null;
+        modoModal = "pin";
+        intentosHuella = 0;
     }
 
-    private async Task MarcarAsync()
+    private async Task MarcarConPinAsync()
     {
         if (empleadoElegido is null || pinInput.Length != 3) return;
-        // Caso especial: el usuario tildo "registrar huella" -> en vez de fichar, registramos huella
-        if (registrarHuella) { await RegistrarHuellaAsync(); return; }
         marcando = true;
         errorPin = null;
         try
@@ -374,8 +432,71 @@
         finally { marcando = false; }
     }
 
-    /// <summary>Login con huella: pide al browser elegir credencial, manda firma al backend,
-    /// y el backend identifica al empleado y marca entrada/salida.</summary>
+    /// <summary>Login con huella PARA UN EMPLEADO PUNTUAL (tocó su card). Llama al begin con
+    /// empleadoId, le pide al browser el dedo, y completa. Si falla, incrementa intentosHuella.
+    /// A los 3 fallos el UI cae al PIN automáticamente.</summary>
+    private async Task IntentarHuellaParaEmpleado()
+    {
+        if (empleadoElegido is null) return;
+        try
+        {
+            var beginResp = await Http.PostAsync($"api/horas-extras/fichador/huella/login/begin?empleadoId={empleadoElegido.Id}", null);
+            var begin = await beginResp.Content.ReadFromJsonAsync<HuellaLoginBeginResp>();
+            if (begin is null || !begin.Ok)
+            {
+                // Sin huella registrada para este empleado → caemos al PIN
+                modoModal = "pin"; StateHasChanged(); return;
+            }
+
+            var credJs = await JS.InvokeAsync<System.Text.Json.JsonElement>("webAuthnGet", begin.Options!);
+            if (credJs.TryGetProperty("_error", out var _))
+            {
+                intentosHuella++;
+                StateHasChanged();
+                return; // el UI muestra el reintento o cae a PIN al llegar a 3
+            }
+
+            // GPS opcional
+            decimal? lat = null, lon = null; int? acc = null;
+            try
+            {
+                var pos = await JS.InvokeAsync<GpsPos?>("heTryGetPosition", 3000);
+                if (pos is not null) { lat = pos.Lat; lon = pos.Lon; acc = pos.Accuracy; }
+            }
+            catch { }
+
+            var body = new { SessionId = begin.SessionId, AssertionResponse = credJs, GpsLat = lat, GpsLon = lon, GpsAccuracy = acc };
+            var resp = await Http.PostAsJsonAsync("api/horas-extras/fichador/huella/login/complete", body);
+            var r = await resp.Content.ReadFromJsonAsync<FichadorMarcarResult>();
+            if (r is null || !r.Ok)
+            {
+                intentosHuella++;
+                errorPin = r?.Mensaje;
+                StateHasChanged();
+                return;
+            }
+
+            CerrarPin();
+            toastTipo = r.Tipo == "ENTRADA" ? "🌅 ENTRADA REGISTRADA" : "🌆 SALIDA REGISTRADA";
+            toastMsg = r.Mensaje;
+            toastHora = r.Hora;
+            toastError = false;
+            toastVisible = true;
+            StateHasChanged();
+            await Task.Delay(3000);
+            toastVisible = false;
+            await CargarEmpleados();
+            StateHasChanged();
+        }
+        catch
+        {
+            intentosHuella++;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>Login con huella SIN saber empleado (boton global "FICHAR CON HUELLA"). El backend
+    /// busca a quién pertenece la firma entre todas las credenciales registradas.</summary>
     private async Task FicharConHuella()
     {
         huellaProcessing = true;
