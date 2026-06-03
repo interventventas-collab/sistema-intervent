@@ -157,6 +157,13 @@ public class HorasExtrasController : ControllerBase
         public DateTime? Fecha { get; set; }
         /// <summary>Opcionales. Formato "HH:mm" (lo que manda el input type=time). Null = no se carga.</summary>
         public string? HoraEntrada { get; set; }
+        // 2026-06-03: piloto modo nuevo. Datos opcionales que el frontend puede mandar.
+        // Solo se usan si el modo nuevo esta activo. El tipo indica si esta marcacion es de
+        // ENTRADA o SALIDA (lo nuevo que se marco en esta llamada), para saber qué metadata loguear.
+        public string? TipoMarcacionNueva { get; set; } // "ENTRADA" | "SALIDA" | null (si nada nuevo)
+        public decimal? GpsLat { get; set; }
+        public decimal? GpsLon { get; set; }
+        public int? GpsAccuracy { get; set; }
         public string? HoraSalida { get; set; }
     }
 
@@ -175,18 +182,40 @@ public class HorasExtrasController : ControllerBase
             return BadRequest(new { error = "Cantidad inválida (0–999)" });
 
         // 2026-06-02: el empleado SOLO puede cargar el dia de hoy. Sin cargas atrasadas.
-        // Si vino fecha, debe ser exactamente la de hoy (Argentina). Si quieren corregir
-        // un dia viejo, lo hace el admin desde el panel.
         var hoy = FechaArgentinaHoy();
         var fechaCarga = req.Fecha?.Date ?? hoy;
         if (fechaCarga != hoy)
             return BadRequest(new { error = "Solo podés cargar el día de hoy. Pedile al admin que corrija otros días." });
 
-        // Parsea "HH:mm" → TimeSpan?. Strings vacios o invalidos → null (campo opcional).
+        // 2026-06-03: piloto modo nuevo de fichada. Si esta ACTIVADO en la config singleton,
+        // validamos que la IP publica del cliente este en la whitelist (Wifi1Ip o Wifi2Ip).
+        // Si esta DESACTIVADO -> comportamiento exacto de antes (no validamos nada).
+        var cfg = await _db.HorasExtrasConfigFichadas.FindAsync(1);
+        bool modoNuevoActivo = cfg?.ActivarModoNuevo ?? false;
+        string? ipCliente = ResolverIpCliente();
+        bool ipAutorizada = false;
+        if (modoNuevoActivo)
+        {
+            var ipsPermitidas = new[] { cfg?.Wifi1Ip, cfg?.Wifi2Ip }
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x!.Trim())
+                .ToList();
+            ipAutorizada = !string.IsNullOrEmpty(ipCliente) && ipsPermitidas.Any(p => p == ipCliente);
+            if (ipsPermitidas.Count > 0 && !ipAutorizada)
+            {
+                return BadRequest(new {
+                    error = $"Tenés que estar conectado al WiFi del negocio para fichar. (Tu IP: {ipCliente ?? "desconocida"})"
+                });
+            }
+        }
+
         var horaEnt = ParseHora(req.HoraEntrada);
         var horaSal = ParseHora(req.HoraSalida);
 
         var existente = await _db.HorasExtrasRegistros.FirstOrDefaultAsync(r => r.EmpleadoId == emp.Id && r.Fecha == fechaCarga);
+        // Detectar qué cambio (entrada/salida nuevos) para loguear meta solo de eso.
+        var entradaAnterior = existente?.HoraEntrada;
+        var salidaAnterior = existente?.HoraSalida;
         if (existente is null)
         {
             existente = new HorasExtrasRegistro
@@ -210,7 +239,56 @@ public class HorasExtrasController : ControllerBase
             existente.UpdatedAt = DateTime.UtcNow;
         }
         await _db.SaveChangesAsync();
+
+        // 2026-06-03: log de metadata para auditoria (IP + GPS) — solo si modo nuevo activo.
+        // Loguea solo si esta marcacion (entrada o salida) es realmente nueva (no se repite).
+        if (modoNuevoActivo)
+        {
+            bool entradaCambio = entradaAnterior != horaEnt && horaEnt.HasValue;
+            bool salidaCambio = salidaAnterior != horaSal && horaSal.HasValue;
+            if (entradaCambio)
+            {
+                _db.HorasExtrasFichadaMetas.Add(new HorasExtrasFichadaMeta
+                {
+                    RegistroId = existente.Id,
+                    Tipo = "ENTRADA",
+                    Ip = ipCliente,
+                    IpAutorizada = ipAutorizada,
+                    Lat = req.GpsLat,
+                    Lon = req.GpsLon,
+                    GpsAccuracyMeters = req.GpsAccuracy,
+                    HuellaVerificada = false,  // Fase 2
+                    UsoFallbackPin = true       // por ahora siempre fallback PIN
+                });
+            }
+            if (salidaCambio)
+            {
+                _db.HorasExtrasFichadaMetas.Add(new HorasExtrasFichadaMeta
+                {
+                    RegistroId = existente.Id,
+                    Tipo = "SALIDA",
+                    Ip = ipCliente,
+                    IpAutorizada = ipAutorizada,
+                    Lat = req.GpsLat,
+                    Lon = req.GpsLon,
+                    GpsAccuracyMeters = req.GpsAccuracy,
+                    HuellaVerificada = false,
+                    UsoFallbackPin = true
+                });
+            }
+            if (entradaCambio || salidaCambio) await _db.SaveChangesAsync();
+        }
+
         return Ok(new { ok = true, fecha = fechaCarga, cantidad = req.Cantidad });
+    }
+
+    /// <summary>Resuelve la IP publica del cliente de la request. Cuando esta detras de Caddy/Nginx
+    /// (prod), llega en X-Forwarded-For. Si no, toma la IP remota directa.</summary>
+    private string? ResolverIpCliente()
+    {
+        var xff = Request.Headers["X-Forwarded-For"].FirstOrDefault();
+        if (!string.IsNullOrEmpty(xff)) return xff.Split(',')[0].Trim();
+        return Request.HttpContext.Connection.RemoteIpAddress?.ToString();
     }
 
     /// <summary>Parsea "HH:mm" o "HH:mm:ss" a TimeSpan. Strings vacios/invalidos → null.</summary>
@@ -600,5 +678,83 @@ public class HorasExtrasController : ControllerBase
     private static DateTime FechaArgentinaHoy()
     {
         return DateTime.UtcNow.AddHours(-3).Date;
+    }
+
+    // ============================================================
+    // 2026-06-03: Endpoints de configuracion del modo nuevo de fichada
+    // ============================================================
+
+    public record ConfigFichadaDto(bool ActivarModoNuevo, string? Wifi1Ip, string? Wifi1Label,
+        string? Wifi2Ip, string? Wifi2Label, bool RequiereHuella, bool LoguearGps,
+        DateTime? UpdatedAt, string? UpdatedBy);
+
+    [HttpGet("admin/config-fichada")]
+    [Authorize]
+    public async Task<IActionResult> GetConfigFichada()
+    {
+        var cfg = await _db.HorasExtrasConfigFichadas.FindAsync(1);
+        if (cfg is null)
+        {
+            cfg = new HorasExtrasConfigFichada { Id = 1 };
+            _db.HorasExtrasConfigFichadas.Add(cfg);
+            await _db.SaveChangesAsync();
+        }
+        return Ok(new ConfigFichadaDto(cfg.ActivarModoNuevo, cfg.Wifi1Ip, cfg.Wifi1Label,
+            cfg.Wifi2Ip, cfg.Wifi2Label, cfg.RequiereHuella, cfg.LoguearGps, cfg.UpdatedAt, cfg.UpdatedBy));
+    }
+
+    public class UpdateConfigFichadaRequest
+    {
+        public bool? ActivarModoNuevo { get; set; }
+        public string? Wifi1Ip { get; set; }
+        public string? Wifi1Label { get; set; }
+        public string? Wifi2Ip { get; set; }
+        public string? Wifi2Label { get; set; }
+        public bool? RequiereHuella { get; set; }
+        public bool? LoguearGps { get; set; }
+        public string? UpdatedBy { get; set; }
+    }
+
+    [HttpPut("admin/config-fichada")]
+    [Authorize]
+    public async Task<IActionResult> UpdateConfigFichada([FromBody] UpdateConfigFichadaRequest req)
+    {
+        var cfg = await _db.HorasExtrasConfigFichadas.FindAsync(1);
+        if (cfg is null) { cfg = new HorasExtrasConfigFichada { Id = 1 }; _db.HorasExtrasConfigFichadas.Add(cfg); }
+
+        if (req.Wifi1Ip is not null) cfg.Wifi1Ip = string.IsNullOrWhiteSpace(req.Wifi1Ip) ? null : req.Wifi1Ip.Trim();
+        if (req.Wifi1Label is not null) cfg.Wifi1Label = string.IsNullOrWhiteSpace(req.Wifi1Label) ? null : req.Wifi1Label.Trim();
+        if (req.Wifi2Ip is not null) cfg.Wifi2Ip = string.IsNullOrWhiteSpace(req.Wifi2Ip) ? null : req.Wifi2Ip.Trim();
+        if (req.Wifi2Label is not null) cfg.Wifi2Label = string.IsNullOrWhiteSpace(req.Wifi2Label) ? null : req.Wifi2Label.Trim();
+        if (req.RequiereHuella.HasValue) cfg.RequiereHuella = req.RequiereHuella.Value;
+        if (req.LoguearGps.HasValue) cfg.LoguearGps = req.LoguearGps.Value;
+
+        // VALIDACION: no se puede activar el modo nuevo si no hay al menos UNA IP configurada.
+        // Asi evitamos que se prenda sin querer y bloquee a todos.
+        if (req.ActivarModoNuevo == true)
+        {
+            if (string.IsNullOrWhiteSpace(cfg.Wifi1Ip) && string.IsNullOrWhiteSpace(cfg.Wifi2Ip))
+                return BadRequest(new { error = "No podés activar el modo nuevo sin al menos una IP de WiFi configurada. Capturá la IP del WiFi del negocio primero." });
+            cfg.ActivarModoNuevo = true;
+        }
+        else if (req.ActivarModoNuevo == false)
+        {
+            cfg.ActivarModoNuevo = false;
+        }
+
+        cfg.UpdatedAt = DateTime.UtcNow;
+        cfg.UpdatedBy = req.UpdatedBy?.Trim();
+        await _db.SaveChangesAsync();
+        return Ok(new ConfigFichadaDto(cfg.ActivarModoNuevo, cfg.Wifi1Ip, cfg.Wifi1Label,
+            cfg.Wifi2Ip, cfg.Wifi2Label, cfg.RequiereHuella, cfg.LoguearGps, cfg.UpdatedAt, cfg.UpdatedBy));
+    }
+
+    /// <summary>Devuelve la IP publica del admin que esta llamando este endpoint. Sirve para
+    /// que el admin (conectado al WiFi del negocio) capture la IP autorizada con un click.</summary>
+    [HttpGet("admin/config-fichada/mi-ip")]
+    [Authorize]
+    public IActionResult MiIpActual()
+    {
+        return Ok(new { ip = ResolverIpCliente() });
     }
 }

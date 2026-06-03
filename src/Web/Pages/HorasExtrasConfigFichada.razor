@@ -1,0 +1,229 @@
+@page "/horas-extras/configuracion-fichada"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject OperatorService Operator
+
+<PageTitle>Configuración Fichada — Modo Nuevo</PageTitle>
+
+<div class="container-fluid" style="max-width: 800px; padding: 1rem;">
+    <h2 style="margin: 0 0 0.5rem;">🔒 Configuración de Fichada</h2>
+    <p style="color: #6b7280; font-size: 0.9rem; margin-bottom: 1.5rem;">
+        Piloto del modo nuevo de fichada: bloqueo por WiFi del negocio + log de GPS.
+        Mientras el toggle maestro esté <strong>OFF</strong>, los empleados siguen fichando
+        como hasta ahora (PIN de 3 dígitos del DNI). Cuando lo prendas, se aplican las reglas.
+    </p>
+
+    @if (cargando)
+    {
+        <p>Cargando configuración...</p>
+    }
+    else if (cfg is null)
+    {
+        <p style="color: #b91c1c;">No se pudo cargar la configuración. Recargá la página.</p>
+    }
+    else
+    {
+        @* ── TOGGLE MAESTRO ───────────────────────────────────────── *@
+        <div style="padding: 1rem 1.2rem; background: @(cfg.ActivarModoNuevo ? "#dcfce7" : "#fef3c7"); border: 2px solid @(cfg.ActivarModoNuevo ? "#16a34a" : "#f59e0b"); border-radius: 10px; margin-bottom: 1.5rem;">
+            <div style="display: flex; align-items: center; gap: 0.8rem; cursor: pointer;" @onclick="ToggleMaestro">
+                <input type="checkbox" checked="@cfg.ActivarModoNuevo" style="width: 22px; height: 22px;" />
+                <div style="flex: 1;">
+                    <div style="font-weight: 800; font-size: 1.05rem; color: @(cfg.ActivarModoNuevo ? "#14532d" : "#92400e");">
+                        @(cfg.ActivarModoNuevo ? "✅ Modo nuevo ACTIVO" : "🔒 Modo nuevo DESACTIVADO (DORMIDO)")
+                    </div>
+                    <div style="font-size: 0.82rem; color: #4b5563; margin-top: 0.2rem;">
+                        @(cfg.ActivarModoNuevo
+                            ? "Los empleados solo pueden fichar conectados al WiFi del negocio."
+                            : "Los empleados fichan como siempre, sin restricciones de WiFi.")
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @* ── CONFIG WIFI ───────────────────────────────────────────── *@
+        <div style="background: #eff6ff; border: 1px solid #93c5fd; border-radius: 10px; padding: 1rem 1.2rem; margin-bottom: 1.2rem;">
+            <h3 style="margin: 0 0 0.5rem; color: #1e3a8a;">📡 WiFi autorizadas</h3>
+            <p style="font-size: 0.8rem; color: #1e40af; margin: 0 0 0.8rem;">
+                Cargá hasta 2 IPs (1 por WiFi). Conectate al WiFi del negocio y tocá "📍 Capturar mi IP" para tomarla automáticamente.
+            </p>
+
+            @* WiFi 1 *@
+            <div style="margin-bottom: 0.8rem;">
+                <label style="font-size: 0.85rem; font-weight: 700; color: #1f2937;">WiFi #1</label>
+                <div style="display: flex; gap: 0.4rem; align-items: center; margin-top: 0.2rem;">
+                    <input type="text" class="form-input" placeholder="Nombre/etiqueta (ej: Depósito)" style="flex: 1; max-width: 200px;"
+                           value="@cfg.Wifi1Label" @onchange="@(e => OnChange(c => c.Wifi1Label = e.Value?.ToString()))" />
+                    <input type="text" class="form-input" placeholder="IP pública (ej: 200.123.45.67)" style="flex: 1; font-family: monospace;"
+                           value="@cfg.Wifi1Ip" @onchange="@(e => OnChange(c => c.Wifi1Ip = e.Value?.ToString()))" />
+                    <button class="btn btn-secondary" @onclick="() => CapturarMiIp(1)" disabled="@guardando" title="Tomar la IP pública desde la que estás conectándote ahora">
+                        📍 Capturar mi IP
+                    </button>
+                </div>
+            </div>
+
+            @* WiFi 2 *@
+            <div>
+                <label style="font-size: 0.85rem; font-weight: 700; color: #1f2937;">WiFi #2 (opcional)</label>
+                <div style="display: flex; gap: 0.4rem; align-items: center; margin-top: 0.2rem;">
+                    <input type="text" class="form-input" placeholder="Nombre/etiqueta (ej: Oficina)" style="flex: 1; max-width: 200px;"
+                           value="@cfg.Wifi2Label" @onchange="@(e => OnChange(c => c.Wifi2Label = e.Value?.ToString()))" />
+                    <input type="text" class="form-input" placeholder="IP pública" style="flex: 1; font-family: monospace;"
+                           value="@cfg.Wifi2Ip" @onchange="@(e => OnChange(c => c.Wifi2Ip = e.Value?.ToString()))" />
+                    <button class="btn btn-secondary" @onclick="() => CapturarMiIp(2)" disabled="@guardando">
+                        📍 Capturar mi IP
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        @* ── OPCIONES ADICIONALES ───────────────────────────────────── *@
+        <div style="background: #f9fafb; border: 1px solid #d1d5db; border-radius: 10px; padding: 1rem 1.2rem; margin-bottom: 1.2rem;">
+            <h3 style="margin: 0 0 0.6rem; color: #1f2937;">⚙ Opciones</h3>
+
+            <label style="display: flex; gap: 0.6rem; align-items: flex-start; cursor: pointer; padding: 0.5rem; border-radius: 6px; margin-bottom: 0.3rem;">
+                <input type="checkbox" checked="@cfg.LoguearGps" @onchange="@(e => OnChange(c => c.LoguearGps = (bool)e.Value!))" style="margin-top: 0.2rem;" />
+                <div>
+                    <strong>📍 Loguear ubicación GPS al fichar</strong>
+                    <div style="font-size: 0.78rem; color: #6b7280;">
+                        Guarda lat/long de cada fichada para auditoría. NO bloquea — solo registra.
+                    </div>
+                </div>
+            </label>
+
+            <label style="display: flex; gap: 0.6rem; align-items: flex-start; cursor: pointer; padding: 0.5rem; border-radius: 6px; opacity: 0.5;">
+                <input type="checkbox" checked="@cfg.RequiereHuella" disabled="true" style="margin-top: 0.2rem;" />
+                <div>
+                    <strong>👆 Requerir huella biométrica</strong>
+                    <div style="font-size: 0.78rem; color: #6b7280;">
+                        🚧 <strong>Fase 2 — Próximamente.</strong> Requiere registrar la huella de cada empleado en su celular (WebAuthn).
+                    </div>
+                </div>
+            </label>
+        </div>
+
+        @* ── ACCIONES ───────────────────────────────────────────────── *@
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <button class="btn btn-primary" @onclick="Guardar" disabled="@guardando">
+                @(guardando ? "Guardando..." : "💾 Guardar cambios")
+            </button>
+            @if (cfg.UpdatedAt.HasValue)
+            {
+                <small style="color: #6b7280; margin-left: auto;">
+                    Última modificación: @cfg.UpdatedAt.Value.ToLocalTime().ToString("dd/MM HH:mm")
+                    @if (!string.IsNullOrEmpty(cfg.UpdatedBy)) { <span> por @cfg.UpdatedBy</span> }
+                </small>
+            }
+        </div>
+
+        @* ── INSTRUCCIONES DE PRIMER USO ─────────────────────────────── *@
+        <div style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 0.9rem 1rem; margin-top: 2rem;">
+            <strong style="color: #92400e;">💡 Cómo activarlo (primera vez)</strong>
+            <ol style="margin: 0.5rem 0 0; padding-left: 1.4rem; font-size: 0.88rem; line-height: 1.5;">
+                <li><strong>Conectate al WiFi del depósito</strong> con tu compu o celular.</li>
+                <li>Tocá <strong>📍 Capturar mi IP</strong> en WiFi #1. La IP se completa sola.</li>
+                <li>Ponele un nombre (ej. "Depósito").</li>
+                <li>Si tenés un 2do WiFi (oficina, etc), conectate a ese y repetí en WiFi #2.</li>
+                <li>Tocá el toggle <strong>"Modo nuevo ACTIVO"</strong> arriba.</li>
+                <li>Probá fichar desde un celu en el WiFi → debería funcionar.</li>
+                <li>Probá fichar desde un celu con datos móviles (NO WiFi) → debería bloquearse.</li>
+            </ol>
+        </div>
+    }
+</div>
+
+@code {
+    private ApiClient.ConfigFichadaDto? cfg;
+    private bool cargando = true;
+    private bool guardando;
+    // Estado mutable local (para los inputs). Se sincroniza con cfg al cargar y al guardar.
+    private Dictionary<string, object?> changes = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Operator.LoadAsync();
+        await CargarConfig();
+    }
+
+    private async Task CargarConfig()
+    {
+        cargando = true;
+        try
+        {
+            cfg = await Api.GetConfigFichadaAsync();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { cargando = false; }
+    }
+
+    /// <summary>Aplica el cambio al cfg local (cliente) sin guardar todavia. Para que la UI
+    /// muestre el valor al toque sin que pierda foco. Guarda recién en el botón.</summary>
+    private void OnChange(Action<MutableCfg> apply)
+    {
+        if (cfg is null) return;
+        var m = new MutableCfg
+        {
+            Wifi1Ip = cfg.Wifi1Ip, Wifi1Label = cfg.Wifi1Label,
+            Wifi2Ip = cfg.Wifi2Ip, Wifi2Label = cfg.Wifi2Label,
+            RequiereHuella = cfg.RequiereHuella, LoguearGps = cfg.LoguearGps,
+            ActivarModoNuevo = cfg.ActivarModoNuevo
+        };
+        apply(m);
+        cfg = new ApiClient.ConfigFichadaDto(m.ActivarModoNuevo, m.Wifi1Ip, m.Wifi1Label,
+            m.Wifi2Ip, m.Wifi2Label, m.RequiereHuella, m.LoguearGps,
+            cfg.UpdatedAt, cfg.UpdatedBy);
+    }
+
+    private async Task ToggleMaestro()
+    {
+        if (cfg is null) return;
+        OnChange(c => c.ActivarModoNuevo = !cfg.ActivarModoNuevo);
+        await Guardar();
+    }
+
+    private async Task CapturarMiIp(int slot)
+    {
+        try
+        {
+            var ip = await Api.GetMiIpFichadaAsync();
+            if (string.IsNullOrEmpty(ip)) { ToastService.Error("No se pudo detectar tu IP"); return; }
+            if (slot == 1) OnChange(c => c.Wifi1Ip = ip);
+            else OnChange(c => c.Wifi2Ip = ip);
+            ToastService.Success($"IP capturada: {ip}. Acordate de tocar 💾 Guardar.");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task Guardar()
+    {
+        if (cfg is null) return;
+        guardando = true;
+        try
+        {
+            var (nuevo, err) = await Api.UpdateConfigFichadaAsync(new ApiClient.UpdateConfigFichadaRequest
+            {
+                ActivarModoNuevo = cfg.ActivarModoNuevo,
+                Wifi1Ip = cfg.Wifi1Ip ?? "", Wifi1Label = cfg.Wifi1Label ?? "",
+                Wifi2Ip = cfg.Wifi2Ip ?? "", Wifi2Label = cfg.Wifi2Label ?? "",
+                RequiereHuella = cfg.RequiereHuella, LoguearGps = cfg.LoguearGps,
+                UpdatedBy = Operator.Current
+            });
+            if (nuevo is null) { ToastService.Error(err ?? "Error guardando"); return; }
+            cfg = nuevo;
+            ToastService.Success("Configuración guardada ✅");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { guardando = false; }
+    }
+
+    private class MutableCfg
+    {
+        public bool ActivarModoNuevo { get; set; }
+        public string? Wifi1Ip { get; set; }
+        public string? Wifi1Label { get; set; }
+        public string? Wifi2Ip { get; set; }
+        public string? Wifi2Label { get; set; }
+        public bool RequiereHuella { get; set; }
+        public bool LoguearGps { get; set; }
+    }
+}
