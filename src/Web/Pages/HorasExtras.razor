@@ -90,6 +90,38 @@
                 </div>
                 <div style="font-size:0.7rem; color:#6b7280; margin-top:0.2rem;">0 = no trabaja ese día. El sistema lo usa para calcular extras/faltantes según entrada y salida marcadas.</div>
             </div>
+
+            @* 2026-06-03: checkbox para mostrar extras al empleado *@
+            <div style="margin-top:0.7rem; padding:0.6rem 0.8rem; background:#f0fdf4; border:1px solid #86efac; border-radius:8px;">
+                <label style="display:flex; gap:0.5rem; align-items:flex-start; cursor:pointer; font-size:0.88rem;">
+                    <input type="checkbox" @bind="formMostrarExtras" style="margin-top:0.15rem;" />
+                    <span>
+                        <strong>Mostrar horas extras al empleado en su celular</strong>
+                        <div style="font-size:0.72rem; color:#6b7280; margin-top:0.1rem;">Si está tildado, el empleado ve al lado de cada día su saldo en verde (+ extras) o rojo (− horas faltantes).</div>
+                    </span>
+                </label>
+            </div>
+
+            @* 2026-06-03: período de liquidación (mes calendario o personalizado) *@
+            <div style="margin-top:0.7rem; padding:0.6rem 0.8rem; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px;">
+                <label style="font-size:0.78rem; font-weight:700; color:#1e3a8a; text-transform:uppercase; letter-spacing:0.04em;">📅 Período de liquidación</label>
+                <div style="margin-top:0.4rem; display:flex; flex-direction:column; gap:0.3rem;">
+                    <label style="display:flex; gap:0.4rem; align-items:center; cursor:pointer; font-size:0.88rem;">
+                        <input type="radio" name="cicloTipo" checked="@(!formCicloPersonalizado)" @onchange="@(() => formCicloPersonalizado = false)" />
+                        <span>Mes calendario (del 1 al fin de mes)</span>
+                    </label>
+                    <label style="display:flex; gap:0.4rem; align-items:center; cursor:pointer; font-size:0.88rem;">
+                        <input type="radio" name="cicloTipo" checked="@formCicloPersonalizado" @onchange="@(() => formCicloPersonalizado = true)" />
+                        <span>Personalizado: del día
+                            <input type="number" min="1" max="31" class="form-input" style="display:inline-block; width:60px; padding:0.2rem 0.4rem; text-align:center; margin:0 0.3rem;" disabled="@(!formCicloPersonalizado)" @bind="formCicloDiaInicio" />
+                            al día
+                            <input type="number" min="1" max="31" class="form-input" style="display:inline-block; width:60px; padding:0.2rem 0.4rem; text-align:center; margin:0 0.3rem;" disabled="@(!formCicloPersonalizado)" @bind="formCicloDiaFin" />
+                        </span>
+                    </label>
+                </div>
+                <div style="font-size:0.7rem; color:#6b7280; margin-top:0.3rem;">Ej: Alexis es 16 → 15 (del 16 de un mes al 15 del siguiente). Si el día no existe en el mes (ej. 31 en febrero), se ajusta al último día disponible.</div>
+            </div>
+
             <div style="margin-top:0.6rem; display:flex; gap:0.5rem;">
                 <button class="btn btn-primary" @onclick="GuardarEmpleado" disabled="@savingEmp">@(savingEmp ? "..." : "Guardar")</button>
                 <button class="btn btn-secondary" @onclick="@(() => showFormEmp = false)">Cancelar</button>
@@ -298,7 +330,11 @@
         decimal HorasViernes = 8m, decimal HorasSabado = 5m, decimal HorasDomingo = 0m,
         decimal JornadaSemanal = 45m,
         decimal TrabajadoSemana = 0m, decimal EsperadoSemana = 0m, decimal DiferenciaSemana = 0m,
-        decimal TrabajadoMes = 0m, decimal EsperadoMes = 0m, decimal DiferenciaMes = 0m);
+        decimal TrabajadoMes = 0m, decimal EsperadoMes = 0m, decimal DiferenciaMes = 0m,
+        // 2026-06-03: flag mostrar extras al empleado + ciclo de liquidacion
+        bool MostrarExtrasAlEmpleado = false, int? CicloDiaInicio = null, int? CicloDiaFin = null,
+        DateTime CicloDesde = default, DateTime CicloHasta = default, string CicloLabel = "",
+        decimal TrabajadoCiclo = 0m, decimal EsperadoCiclo = 0m, decimal DiferenciaCiclo = 0m);
     public record AdminRegistroDto(int Id, int EmpleadoId, string EmpleadoNombre, DateTime Fecha,
         decimal Cantidad, string? Observaciones, string? HoraEntrada, string? HoraSalida,
         DateTime CreatedAt, DateTime? UpdatedAt,
@@ -316,6 +352,11 @@
     private bool formActive = true, formRegenToken;
     // 2026-06-02: jornada por dia de la semana (default LUN-VIE 8h, SAB 5h, DOM 0h)
     private decimal formHLun = 8m, formHMar = 8m, formHMie = 8m, formHJue = 8m, formHVie = 8m, formHSab = 5m, formHDom = 0m;
+    // 2026-06-03: flag para mostrar extras al empleado + ciclo de liquidacion
+    private bool formMostrarExtras = false;
+    private bool formCicloPersonalizado = false;  // false = mes calendario
+    private int formCicloDiaInicio = 16;          // default 16 cuando elegis personalizado
+    private int formCicloDiaFin = 15;             // default 15
 
     // Carga manual (para acumulados)
     private bool showCargarManual, savingManual;
@@ -382,6 +423,11 @@
         editingId = null; formNombre = ""; formDniUltimos3 = ""; formActive = true; formRegenToken = false; showFormEmp = true;
         // Defaults jornada: LUN-VIE 8h, SAB 5h, DOM 0h
         formHLun = 8m; formHMar = 8m; formHMie = 8m; formHJue = 8m; formHVie = 8m; formHSab = 5m; formHDom = 0m;
+        // 2026-06-03: defaults nuevo empleado
+        formMostrarExtras = false;
+        formCicloPersonalizado = false;
+        formCicloDiaInicio = 16;
+        formCicloDiaFin = 15;
     }
 
     private void ShowEditEmpleado(AdminEmpleadoDto e)
@@ -391,6 +437,11 @@
         // Jornada actual del empleado
         formHLun = e.HorasLunes; formHMar = e.HorasMartes; formHMie = e.HorasMiercoles;
         formHJue = e.HorasJueves; formHVie = e.HorasViernes; formHSab = e.HorasSabado; formHDom = e.HorasDomingo;
+        // 2026-06-03: flag + ciclo
+        formMostrarExtras = e.MostrarExtrasAlEmpleado;
+        formCicloPersonalizado = e.CicloDiaInicio.HasValue && e.CicloDiaFin.HasValue;
+        formCicloDiaInicio = e.CicloDiaInicio ?? 16;
+        formCicloDiaFin = e.CicloDiaFin ?? 15;
     }
 
     private async Task GuardarEmpleado()
@@ -408,11 +459,17 @@
         {
             if (editingId.HasValue)
             {
+                // 2026-06-03: si NO es personalizado -> ClearCiclo=true (vuelve a mes calendario).
+                //              si SI es personalizado -> mandamos los dias para que el backend los persista.
                 var resp = await Http.PutAsJsonAsync($"api/horas-extras/admin/empleados/{editingId.Value}",
                     new { Nombre = formNombre, IsActive = formActive, DniUltimos3 = dni3,
                           ClearDniUltimos3 = string.IsNullOrEmpty(dni3), RegenerarToken = formRegenToken,
                           HorasLunes = formHLun, HorasMartes = formHMar, HorasMiercoles = formHMie,
-                          HorasJueves = formHJue, HorasViernes = formHVie, HorasSabado = formHSab, HorasDomingo = formHDom });
+                          HorasJueves = formHJue, HorasViernes = formHVie, HorasSabado = formHSab, HorasDomingo = formHDom,
+                          MostrarExtrasAlEmpleado = formMostrarExtras,
+                          CicloDiaInicio = formCicloPersonalizado ? (int?)formCicloDiaInicio : null,
+                          CicloDiaFin = formCicloPersonalizado ? (int?)formCicloDiaFin : null,
+                          ClearCiclo = !formCicloPersonalizado });
                 if (resp.IsSuccessStatusCode) ToastService.Success("Empleado actualizado");
                 else { ToastService.Error("Error actualizando"); return; }
             }
@@ -433,7 +490,11 @@
                         {
                             await Http.PutAsJsonAsync($"api/horas-extras/admin/empleados/{newId}",
                                 new { HorasLunes = formHLun, HorasMartes = formHMar, HorasMiercoles = formHMie,
-                                      HorasJueves = formHJue, HorasViernes = formHVie, HorasSabado = formHSab, HorasDomingo = formHDom });
+                                      HorasJueves = formHJue, HorasViernes = formHVie, HorasSabado = formHSab, HorasDomingo = formHDom,
+                                      MostrarExtrasAlEmpleado = formMostrarExtras,
+                                      CicloDiaInicio = formCicloPersonalizado ? (int?)formCicloDiaInicio : null,
+                                      CicloDiaFin = formCicloPersonalizado ? (int?)formCicloDiaFin : null,
+                                      ClearCiclo = !formCicloPersonalizado });
                         }
                     }
                     catch { /* no es critico — si fallo, queda con los defaults del backend */ }

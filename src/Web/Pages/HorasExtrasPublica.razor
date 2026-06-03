@@ -185,18 +185,20 @@
         </div>
 
         <div class="he-card">
-            <div class="he-resumen">
-                <div class="he-resumen-box">
-                    <div class="he-resumen-label">Esta semana</div>
-                    <div class="he-resumen-value">@datos.TotalSemana.ToString("0.#") h</div>
+            @* 2026-06-03: un solo cuadro grande con el ciclo de liquidacion (puede ser mes calendario o personalizado).
+               Antes habia "Esta semana / Este mes" — se sacaron porque mareaban. *@
+            <div style="background:#f0f9ff; border:1px solid #93c5fd; border-radius:10px; padding:0.9rem; text-align:center;">
+                <div style="font-size:0.72rem; color:#1e40af; text-transform:uppercase; letter-spacing:0.05em; font-weight:700;">
+                    @(string.IsNullOrEmpty(datos.CicloLabel) ? "ESTE MES" : datos.CicloLabel)
                 </div>
-                <div class="he-resumen-box">
-                    <div class="he-resumen-label">Este mes</div>
-                    <div class="he-resumen-value">@datos.TotalMes.ToString("0.#") h</div>
-                </div>
+                <div style="font-size:2rem; font-weight:800; color:#1d4ed8; margin-top:0.2rem;">@datos.TotalCiclo.ToString("0.#") h</div>
+                @if (datos.MostrarExtras && datos.ExtrasCiclo > 0)
+                {
+                    <div style="font-size:1rem; font-weight:700; color:#16a34a; margin-top:0.1rem;">+@datos.ExtrasCiclo.ToString("0.#") h extras</div>
+                }
             </div>
             <div class="he-history">
-                <div style="font-weight:700; color:#1f2937; margin: 0.5rem 0 0.3rem;">Últimos 7 días</div>
+                <div style="font-weight:700; color:#1f2937; margin: 0.8rem 0 0.3rem;">Últimos 7 días</div>
                 @if (datos.Ultimos7Dias.Count == 0)
                 {
                     <p style="color:#6b7280; font-size:0.85rem; margin:0;">Sin cargas todavía esta semana.</p>
@@ -216,6 +218,15 @@
                                 }
                             </span>
                             <span class="he-row-hs">@r.Cantidad.ToString("0.#") h</span>
+                            @* 2026-06-03: extras del dia al lado, solo si el admin tildo "Mostrar extras al empleado".
+                               Verde si >0 (extras), rojo si <0 (falto horas), nada si =0 (justo). *@
+                            @if (datos.MostrarExtras && r.ExtrasDia.HasValue && r.ExtrasDia.Value != 0m)
+                            {
+                                var ex = r.ExtrasDia.Value;
+                                var signo = ex > 0 ? "+" : "−";
+                                var color = ex > 0 ? "#16a34a" : "#dc2626";
+                                <span style="font-weight:700; color:@color; margin-left:0.6rem; min-width:55px; text-align:right;">@signo@(Math.Abs(ex).ToString("0.#")) h</span>
+                            }
                         </div>
                     }
                 }
@@ -248,11 +259,16 @@
     private string fechaSeleccionadaIso = ""; // YYYY-MM-DD
 
     public record PublicRegistroDto(int Id, DateTime Fecha, decimal Cantidad, string? Observaciones,
-        string? HoraEntrada, string? HoraSalida);
+        string? HoraEntrada, string? HoraSalida,
+        // 2026-06-03: extras del dia. +X = extras (verde). -X = falto (rojo). null = no aplica.
+        decimal? ExtrasDia = null);
     public record PublicEmpleadoDto(string Nombre, DateTime HoyFecha, DateTime FechaSeleccionada,
         decimal? HorasSeleccionada, string? ObservacionesSeleccionada,
         string? HoraEntradaSeleccionada, string? HoraSalidaSeleccionada,
-        List<PublicRegistroDto> Ultimos7Dias, decimal TotalSemana, decimal TotalMes);
+        List<PublicRegistroDto> Ultimos7Dias, decimal TotalSemana, decimal TotalMes,
+        // 2026-06-03: ciclo de liquidacion (puede ser personalizado o mes calendario).
+        DateTime CicloDesde = default, DateTime CicloHasta = default, string CicloLabel = "",
+        decimal TotalCiclo = 0m, decimal ExtrasCiclo = 0m, bool MostrarExtras = false);
 
     protected override async Task OnInitializedAsync()
     {
