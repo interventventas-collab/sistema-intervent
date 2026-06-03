@@ -187,14 +187,20 @@
         <div class="he-card">
             @* 2026-06-03: un solo cuadro grande con el ciclo de liquidacion (puede ser mes calendario o personalizado).
                Antes habia "Esta semana / Este mes" — se sacaron porque mareaban. *@
+            @* 2026-06-03 v2: si el flag MostrarExtras esta ON, se muestra SOLO el numero verde grande
+               (sin el 'X h' azul de las trabajadas, sin la palabra 'extras'). Si esta OFF, mostramos
+               las horas trabajadas del ciclo en azul como referencia. *@
             <div style="background:#f0f9ff; border:1px solid #93c5fd; border-radius:10px; padding:0.9rem; text-align:center;">
                 <div style="font-size:0.72rem; color:#1e40af; text-transform:uppercase; letter-spacing:0.05em; font-weight:700;">
                     @(string.IsNullOrEmpty(datos.CicloLabel) ? "ESTE MES" : datos.CicloLabel)
                 </div>
-                <div style="font-size:2rem; font-weight:800; color:#1d4ed8; margin-top:0.2rem;">@datos.TotalCiclo.ToString("0.#") h</div>
-                @if (datos.MostrarExtras && datos.ExtrasCiclo > 0)
+                @if (datos.MostrarExtras)
                 {
-                    <div style="font-size:1rem; font-weight:700; color:#16a34a; margin-top:0.1rem;">+@datos.ExtrasCiclo.ToString("0.#") h extras</div>
+                    <div style="font-size:2.2rem; font-weight:800; color:#16a34a; margin-top:0.3rem;">@datos.ExtrasCiclo.ToString("0.#") h</div>
+                }
+                else
+                {
+                    <div style="font-size:2rem; font-weight:800; color:#1d4ed8; margin-top:0.2rem;">@datos.TotalCiclo.ToString("0.#") h</div>
                 }
             </div>
             <div class="he-history">
