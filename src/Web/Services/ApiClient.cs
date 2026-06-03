@@ -763,6 +763,20 @@ public class ApiClient
         return resp.IsSuccessStatusCode;
     }
 
+    // ─── 2026-06-03: Descartar/restaurar movimiento bancario por cliente ──────
+    public async Task<bool> DescartarMovimientoParaClienteAsync(int movId, int clienteId, string? operador = null)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/cafe/extracto-banco/{movId}/descartar-cliente/{clienteId}", new { Operador = operador });
+        return resp.IsSuccessStatusCode;
+    }
+    public async Task<bool> RestaurarMovimientoParaClienteAsync(int movId, int clienteId)
+        => await DeleteAsync($"/api/cafe/extracto-banco/{movId}/descartar-cliente/{clienteId}");
+
+    public record MovDescartadoDto(int MovimientoId, DateTime Fecha, string? Descripcion, decimal Importe, DateTime DescartadoAt, string? DescartadoPor);
+    public async Task<List<MovDescartadoDto>?> GetMovimientosDescartadosParaClienteAsync(int clienteId)
+        => await GetAsync<List<MovDescartadoDto>>($"/api/cafe/extracto-banco/descartados/{clienteId}");
+
     // === Repartidores (admin) ===
     public async Task<List<RepartidorDto>?> GetRepartidoresAsync()
         => await GetAsync<List<RepartidorDto>>("/api/cafe/repartidores");

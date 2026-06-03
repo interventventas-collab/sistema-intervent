@@ -82,6 +82,8 @@ public class AppDbContext : DbContext
     public DbSet<CafeChequeBanco> CafeChequesBanco => Set<CafeChequeBanco>();
     public DbSet<CafeCalendarioNota> CafeCalendarioNotas => Set<CafeCalendarioNota>();
     public DbSet<CafeExtractoMovimiento> CafeExtractoMovimientos => Set<CafeExtractoMovimiento>();
+    // 2026-06-03: movimientos del extracto descartados por cliente puntual (no aparecen mas en su modal de cobranzas).
+    public DbSet<CafeExtractoMovDescartadoPorCliente> CafeExtractoMovDescartadosPorCliente => Set<CafeExtractoMovDescartadoPorCliente>();
     public DbSet<CafeRepartidor> CafeRepartidores => Set<CafeRepartidor>();
     public DbSet<CafeCobranzaPendiente> CafeCobranzasPendientes => Set<CafeCobranzaPendiente>();
     public DbSet<CafeSaldoMigracion> CafeSaldosMigracion => Set<CafeSaldoMigracion>();

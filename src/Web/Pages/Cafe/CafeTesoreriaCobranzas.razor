@@ -307,25 +307,62 @@
                     </div>
 
                     @* --- Movimientos del banco asociados disponibles (Etapa B) --- *@
-                    @if (movsBancoDisponibles.Count > 0)
+                    @if (movsBancoDisponibles.Count > 0 || movsBancoDescartados.Count > 0)
                     {
                         <div style="margin: 1rem 0; padding: 0.7rem 0.8rem; background: #dbeafe; border: 1px solid #93c5fd; border-radius: 8px;">
                             <h5 style="margin:0 0 0.5rem; color:#1e40af;">💰 Movimientos del banco asociados a este cliente</h5>
-                            <p style="margin: 0 0 0.5rem; font-size: 0.78rem; color: #1e40af;">Tildá los que querés usar como forma de cobro:</p>
-                            @foreach (var mov in movsBancoDisponibles)
+                            @if (movsBancoDisponibles.Count > 0)
                             {
-                                var ya = movsBancoUsados.Contains(mov.Id);
-                                <label style="display:flex; gap:0.5rem; align-items:center; padding:0.3rem 0.5rem; background:white; border-radius:5px; margin-bottom:0.3rem; cursor:pointer;">
-                                    <input type="checkbox" checked="@ya" @onchange="@(e => ToggleMovimientoBanco(mov.Id, (bool)e.Value!))" />
-                                    <span style="flex:1;">
-                                        <b>@mov.Fecha.ToString("dd/MM/yyyy")</b> · @(mov.Descripcion ?? "Transferencia")
-                                        @if (!string.IsNullOrEmpty(mov.VentaNumeroAsociada))
-                                        {
-                                            <span style="font-size:0.72rem; color:#16a34a; margin-left:0.3rem;">→ @mov.VentaNumeroAsociada</span>
-                                        }
-                                    </span>
-                                    <span style="font-weight:700; color:#16a34a;">$@mov.Importe.ToString("N2")</span>
-                                </label>
+                                <p style="margin: 0 0 0.5rem; font-size: 0.78rem; color: #1e40af;">Tildá los que querés usar como forma de cobro. Si alguno NO es de este cliente, tocá 🚫 para descartarlo.</p>
+                                @foreach (var mov in movsBancoDisponibles)
+                                {
+                                    var ya = movsBancoUsados.Contains(mov.Id);
+                                    var movId = mov.Id;
+                                    <div style="display:flex; gap:0.5rem; align-items:center; padding:0.3rem 0.5rem; background:white; border-radius:5px; margin-bottom:0.3rem;">
+                                        <label style="display:flex; gap:0.5rem; align-items:center; flex:1; cursor:pointer; min-width:0;">
+                                            <input type="checkbox" checked="@ya" @onchange="@(e => ToggleMovimientoBanco(movId, (bool)e.Value!))" />
+                                            <span style="flex:1; min-width:0;">
+                                                <b>@mov.Fecha.ToString("dd/MM/yyyy")</b> · @(mov.Descripcion ?? "Transferencia")
+                                                @if (!string.IsNullOrEmpty(mov.VentaNumeroAsociada))
+                                                {
+                                                    <span style="font-size:0.72rem; color:#16a34a; margin-left:0.3rem;">→ @mov.VentaNumeroAsociada</span>
+                                                }
+                                            </span>
+                                            <span style="font-weight:700; color:#16a34a;">$@mov.Importe.ToString("N2")</span>
+                                        </label>
+                                        <button type="button" class="btn-icon" title="Descartar — este movimiento NO es de este cliente"
+                                                style="padding:0.15rem 0.4rem; background:transparent; border:1px solid #fca5a5; color:#b91c1c; border-radius:5px; font-size:0.85rem; cursor:pointer;"
+                                                @onclick="@(() => DescartarMovimientoBanco(movId))">🚫</button>
+                                    </div>
+                                }
+                            }
+                            @* 2026-06-03: toggle para ver/restaurar movimientos descartados *@
+                            @if (movsBancoDescartados.Count > 0)
+                            {
+                                <div style="margin-top:0.6rem; padding-top:0.5rem; border-top:1px dashed #93c5fd;">
+                                    <button type="button" style="background:transparent; border:none; color:#7c2d12; font-size:0.78rem; cursor:pointer; font-weight:600;"
+                                            @onclick="@(() => verDescartados = !verDescartados)">
+                                        @(verDescartados ? "▼" : "▶") 🚫 Ver descartados (@movsBancoDescartados.Count)
+                                    </button>
+                                    @if (verDescartados)
+                                    {
+                                        <div style="margin-top:0.4rem;">
+                                            @foreach (var d in movsBancoDescartados)
+                                            {
+                                                var movId = d.MovimientoId;
+                                                <div style="display:flex; gap:0.5rem; align-items:center; padding:0.3rem 0.5rem; background:#fef2f2; border-radius:5px; margin-bottom:0.3rem; opacity:0.85;">
+                                                    <span style="flex:1; min-width:0; text-decoration:line-through; color:#7c2d12;">
+                                                        <b>@d.Fecha.ToString("dd/MM/yyyy")</b> · @(d.Descripcion ?? "Transferencia")
+                                                    </span>
+                                                    <span style="font-weight:700; color:#7c2d12; text-decoration:line-through;">$@d.Importe.ToString("N2")</span>
+                                                    <button type="button" class="btn-icon" title="Restaurar — volver a mostrar este movimiento"
+                                                            style="padding:0.15rem 0.4rem; background:transparent; border:1px solid #16a34a; color:#15803d; border-radius:5px; font-size:0.78rem; cursor:pointer;"
+                                                            @onclick="@(() => RestaurarMovimientoBanco(movId))">↩ Restaurar</button>
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                </div>
                             }
                         </div>
                     }
@@ -569,6 +606,9 @@
     private List<MovimientoDisponibleDto> movsBancoDisponibles = new();
     // Ids de movimientos elegidos para esta cobranza (para marcarlos como usados al guardar)
     private HashSet<int> movsBancoUsados = new();
+    // 2026-06-03: movimientos que el usuario descarto para este cliente (no es de el)
+    private List<ApiClient.MovDescartadoDto> movsBancoDescartados = new();
+    private bool verDescartados = false;
     private Dictionary<int, ImputData> imputaciones = new();
     private bool aCuentaActivo;
     private decimal aCuentaImporte;
@@ -728,6 +768,8 @@
         sucursalesMismoCuit = new();
         movsBancoDisponibles = new();
         movsBancoUsados = new();
+        movsBancoDescartados = new();
+        verDescartados = false;
         if (selClienteId <= 0) { pendientes = new(); return; }
         try
         {
@@ -741,6 +783,9 @@
             // Cargar movimientos del extracto bancario asociados a este cliente que aun no se usaron
             try { movsBancoDisponibles = await Api.GetMovimientosAsociadosSinCobrarAsync(selClienteId) ?? new(); }
             catch { movsBancoDisponibles = new(); }
+            // 2026-06-03: cargar tambien los movimientos descartados para este cliente
+            try { movsBancoDescartados = await Api.GetMovimientosDescartadosParaClienteAsync(selClienteId) ?? new(); }
+            catch { movsBancoDescartados = new(); }
 
             await RecargarPendientesAsync();
 
@@ -846,6 +891,47 @@
             RecalcularTotal();
         }
     }
+
+    /// <summary>2026-06-03: descarta un movimiento bancario para este cliente. Llama al backend
+    /// que inserta una fila en Cafe_ExtractoMov_DescartadoPorCliente. Despues lo saca de la lista
+    /// visible y lo agrega a la lista de descartados (sin recargar todo).</summary>
+    private async Task DescartarMovimientoBanco(int movId)
+    {
+        var mov = movsBancoDisponibles.FirstOrDefault(m => m.Id == movId);
+        if (mov is null) return;
+        // Si estaba seleccionado como medio, sacarlo primero
+        if (movsBancoUsados.Contains(movId)) ToggleMovimientoBanco(movId, false);
+        try
+        {
+            var ok = await Api.DescartarMovimientoParaClienteAsync(movId, selClienteId, Operator.Current);
+            if (!ok) { ToastService.Error("No se pudo descartar"); return; }
+            movsBancoDisponibles.RemoveAll(m => m.Id == movId);
+            movsBancoDescartados.Insert(0, new ApiClient.MovDescartadoDto(mov.Id, mov.Fecha, mov.Descripcion, mov.Importe, DateTime.UtcNow, Operator.Current));
+            ToastService.Success("Movimiento descartado para este cliente");
+            StateHasChanged();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    /// <summary>2026-06-03: deshace el descarte. El movimiento vuelve a la lista visible.</summary>
+    private async Task RestaurarMovimientoBanco(int movId)
+    {
+        var d = movsBancoDescartados.FirstOrDefault(x => x.MovimientoId == movId);
+        if (d is null) return;
+        try
+        {
+            var ok = await Api.RestaurarMovimientoParaClienteAsync(movId, selClienteId);
+            if (!ok) { ToastService.Error("No se pudo restaurar"); return; }
+            movsBancoDescartados.RemoveAll(x => x.MovimientoId == movId);
+            // Recargar la lista visible para que aparezca de vuelta (la fuente de verdad la tiene el backend).
+            try { movsBancoDisponibles = await Api.GetMovimientosAsociadosSinCobrarAsync(selClienteId) ?? new(); }
+            catch { /* ignore */ }
+            ToastService.Success("Movimiento restaurado");
+            StateHasChanged();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
     private void RecalcularTotal() => StateHasChanged();
 
     private async Task GuardarCobranza()
