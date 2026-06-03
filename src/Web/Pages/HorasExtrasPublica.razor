@@ -276,6 +276,9 @@
         string? HoraEntrada, string? HoraSalida,
         // 2026-06-03: extras del dia. +X = extras (verde). -X = falto (rojo). null = no aplica.
         decimal? ExtrasDia = null);
+    /// <summary>2026-06-03: respuesta del helper JS heTryGetPosition (GPS opcional).</summary>
+    public record GpsPos(decimal? Lat, decimal? Lon, int? Accuracy);
+
     public record PublicEmpleadoDto(string Nombre, DateTime HoyFecha, DateTime FechaSeleccionada,
         decimal? HorasSeleccionada, string? ObservacionesSeleccionada,
         string? HoraEntradaSeleccionada, string? HoraSalidaSeleccionada,
@@ -387,6 +390,20 @@
         guardando = true;
         try
         {
+            // 2026-06-03: si el modo nuevo de fichada esta activo + permite GPS, intentamos
+            // capturar la ubicacion del navegador (no bloqueante — si el usuario rechaza, se manda null)
+            decimal? lat = null, lon = null;
+            int? accuracy = null;
+            try
+            {
+                var pos = await JS.InvokeAsync<GpsPos?>("heTryGetPosition", 5000);
+                if (pos is not null && pos.Lat.HasValue && pos.Lon.HasValue)
+                {
+                    lat = pos.Lat; lon = pos.Lon; accuracy = pos.Accuracy;
+                }
+            }
+            catch { /* GPS opcional, si falla seguimos */ }
+
             var body = new
             {
                 // 2026-06-02: Cantidad SIEMPRE 0. Ya no se carga "horas extras" desde el publico.
@@ -395,12 +412,21 @@
                 Observaciones = formObservaciones,
                 Fecha = datos.FechaSeleccionada,
                 HoraEntrada = formHoraEntrada,
-                HoraSalida = formHoraSalida
+                HoraSalida = formHoraSalida,
+                // 2026-06-03: GPS opcional. El backend solo lo loguea si la config esta activa.
+                GpsLat = lat,
+                GpsLon = lon,
+                GpsAccuracy = accuracy
             };
             var resp = await Http.PostAsJsonAsync($"api/horas-extras/publica/{Uri.EscapeDataString(Slug)}/{Uri.EscapeDataString(Clave)}", body);
             if (!resp.IsSuccessStatusCode)
             {
-                errorMsg = "No se pudo guardar. Intentá de nuevo.";
+                // 2026-06-03: el backend puede rechazar por IP no autorizada (modo nuevo). Mensaje claro.
+                var errBody = await resp.Content.ReadAsStringAsync();
+                if (errBody.Contains("WiFi del negocio"))
+                    errorMsg = "🚫 Tenés que estar conectado al WiFi del negocio para fichar. Si esto es un error, hablá con el admin.";
+                else
+                    errorMsg = "No se pudo guardar. Intentá de nuevo.";
                 return;
             }
             await CargarAsync();

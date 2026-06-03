@@ -103,6 +103,10 @@ public class AppDbContext : DbContext
     // Horas Extras de empleados (link publico tipo mapeo)
     public DbSet<HorasExtrasEmpleado> HorasExtrasEmpleados => Set<HorasExtrasEmpleado>();
     public DbSet<HorasExtrasRegistro> HorasExtrasRegistros => Set<HorasExtrasRegistro>();
+    // 2026-06-03: piloto del modo nuevo de fichada (WiFi + huella + GPS). Dormido por default.
+    public DbSet<HorasExtrasConfigFichada> HorasExtrasConfigFichadas => Set<HorasExtrasConfigFichada>();
+    public DbSet<HorasExtrasWebAuthnCredential> HorasExtrasWebAuthnCredentials => Set<HorasExtrasWebAuthnCredential>();
+    public DbSet<HorasExtrasFichadaMeta> HorasExtrasFichadaMetas => Set<HorasExtrasFichadaMeta>();
 
     // Viajes de empleados (carga diaria + pagos + saldo, similar a horas extras)
     public DbSet<ViajesEmpleado> ViajesEmpleados => Set<ViajesEmpleado>();

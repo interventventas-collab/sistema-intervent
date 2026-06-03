@@ -818,6 +818,36 @@
             catch (e) { /* noop */ }
         };
 
+        // 2026-06-03: pide al browser la ubicacion GPS con timeout. Si el usuario rechaza
+        // o no hay GPS, devuelve null (no tira excepcion). Lo usa la pantalla publica de
+        // fichada para mandar lat/long al backend (no bloqueante).
+        window.heTryGetPosition = function(timeoutMs) {
+            return new Promise(function(resolve) {
+                if (!navigator.geolocation) { resolve(null); return; }
+                var resolved = false;
+                var t = setTimeout(function() {
+                    if (!resolved) { resolved = true; resolve(null); }
+                }, timeoutMs || 5000);
+                navigator.geolocation.getCurrentPosition(
+                    function(pos) {
+                        if (resolved) return;
+                        resolved = true; clearTimeout(t);
+                        resolve({
+                            lat: pos.coords.latitude,
+                            lon: pos.coords.longitude,
+                            accuracy: Math.round(pos.coords.accuracy)
+                        });
+                    },
+                    function() {
+                        if (resolved) return;
+                        resolved = true; clearTimeout(t);
+                        resolve(null);
+                    },
+                    { enableHighAccuracy: false, timeout: timeoutMs || 5000, maximumAge: 60000 }
+                );
+            });
+        };
+
         // Hace que un modal sea arrastrable por su header. Se llama desde Blazor pasando el
         // selector del modal-card. Idempotente: si ya esta enganchado, no engancha de nuevo.
         // Pensado para modales secundarios que tapan algo de la pantalla — el usuario lo agarra

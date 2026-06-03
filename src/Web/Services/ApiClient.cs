@@ -936,6 +936,43 @@ public class ApiClient
     public async Task<List<CafePreparacionVentaDto>?> GetCafePreparacionArmadosAsync(string rango = "7d")
         => await GetAsync<List<CafePreparacionVentaDto>>($"/api/cafe/ventas/preparacion/armados?rango={rango}");
 
+    // ─── 2026-06-03: Config del modo nuevo de fichada (piloto WiFi + GPS) ───
+    public record ConfigFichadaDto(bool ActivarModoNuevo, string? Wifi1Ip, string? Wifi1Label,
+        string? Wifi2Ip, string? Wifi2Label, bool RequiereHuella, bool LoguearGps,
+        DateTime? UpdatedAt, string? UpdatedBy);
+
+    public async Task<ConfigFichadaDto?> GetConfigFichadaAsync()
+        => await GetAsync<ConfigFichadaDto>("/api/horas-extras/admin/config-fichada");
+
+    public class UpdateConfigFichadaRequest
+    {
+        public bool? ActivarModoNuevo { get; set; }
+        public string? Wifi1Ip { get; set; }
+        public string? Wifi1Label { get; set; }
+        public string? Wifi2Ip { get; set; }
+        public string? Wifi2Label { get; set; }
+        public bool? RequiereHuella { get; set; }
+        public bool? LoguearGps { get; set; }
+        public string? UpdatedBy { get; set; }
+    }
+    public async Task<(ConfigFichadaDto? cfg, string? error)> UpdateConfigFichadaAsync(UpdateConfigFichadaRequest req)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PutAsJsonAsync("/api/horas-extras/admin/config-fichada", req);
+        if (!resp.IsSuccessStatusCode)
+        {
+            var body = await resp.Content.ReadAsStringAsync();
+            return (null, body);
+        }
+        return (await resp.Content.ReadFromJsonAsync<ConfigFichadaDto>(), null);
+    }
+    public async Task<string?> GetMiIpFichadaAsync()
+    {
+        var d = await GetAsync<MiIpResponse>("/api/horas-extras/admin/config-fichada/mi-ip");
+        return d?.Ip;
+    }
+    private record MiIpResponse(string? Ip);
+
     /// <summary>Marca una venta como impresa (chip "Impreso hace X min" en la card).</summary>
     public async Task<bool> MarcarImpresaAsync(int id)
     {

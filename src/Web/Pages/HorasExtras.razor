@@ -27,7 +27,10 @@
 <div class="he-admin-wrap">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem;">
         <h2 style="margin:0;">🕐 Horario</h2>
-        <button class="btn btn-primary" @onclick="ShowCreateEmpleado">+ Nuevo empleado</button>
+        <div style="display:flex; gap:0.5rem;">
+            <a href="/horas-extras/configuracion-fichada" class="btn btn-secondary" title="Configurar modo nuevo de fichada (WiFi + GPS)">🔒 Config fichada</a>
+            <button class="btn btn-primary" @onclick="ShowCreateEmpleado">+ Nuevo empleado</button>
+        </div>
     </div>
 
     @if (showFormEmp)

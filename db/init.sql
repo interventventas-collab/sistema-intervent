@@ -4374,3 +4374,65 @@ UPDATE Cafe_Combos
    AND Sku NOT LIKE '%+%'
    AND Sku NOT LIKE '%-%';
 GO
+
+-- 2026-06-03: piloto modo nuevo de fichada (WiFi + huella + GPS).
+-- Toggle maestro queda dormido (false) hasta que el admin lo prenda desde la UI.
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='HorasExtras_ConfigFichada')
+BEGIN
+    CREATE TABLE HorasExtras_ConfigFichada (
+        Id INT NOT NULL PRIMARY KEY,
+        ActivarModoNuevo BIT NOT NULL DEFAULT 0,
+        Wifi1Ip NVARCHAR(64) NULL,
+        Wifi1Label NVARCHAR(80) NULL,
+        Wifi2Ip NVARCHAR(64) NULL,
+        Wifi2Label NVARCHAR(80) NULL,
+        RequiereHuella BIT NOT NULL DEFAULT 0,
+        LoguearGps BIT NOT NULL DEFAULT 0,
+        UpdatedAt DATETIME2 NULL,
+        UpdatedBy NVARCHAR(120) NULL
+    );
+    -- Insertar la fila singleton (Id=1)
+    INSERT INTO HorasExtras_ConfigFichada (Id, ActivarModoNuevo, RequiereHuella, LoguearGps) VALUES (1, 0, 0, 0);
+END
+GO
+
+-- Credenciales WebAuthn por empleado (Fase 2 - huella). Tabla armada por adelantado.
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='HorasExtras_WebAuthnCredentials')
+BEGIN
+    CREATE TABLE HorasExtras_WebAuthnCredentials (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        EmpleadoId INT NOT NULL,
+        CredentialId NVARCHAR(MAX) NOT NULL,
+        PublicKey NVARCHAR(MAX) NOT NULL,
+        UserHandle NVARCHAR(200) NOT NULL,
+        AaGuid NVARCHAR(64) NULL,
+        SignatureCounter BIGINT NOT NULL DEFAULT 0,
+        DeviceName NVARCHAR(120) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        LastUsedAt DATETIME2 NULL,
+        CONSTRAINT FK_WebAuthnCred_Empleado FOREIGN KEY (EmpleadoId) REFERENCES HorasExtras_Empleados(Id) ON DELETE CASCADE
+    );
+    CREATE INDEX IX_WebAuthnCred_EmpleadoId ON HorasExtras_WebAuthnCredentials(EmpleadoId);
+END
+GO
+
+-- Metadata por evento de fichada (IP / GPS / huella verificada).
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='HorasExtras_FichadaMeta')
+BEGIN
+    CREATE TABLE HorasExtras_FichadaMeta (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        RegistroId INT NOT NULL,
+        Tipo NVARCHAR(10) NOT NULL,
+        Ip NVARCHAR(64) NULL,
+        IpAutorizada BIT NOT NULL DEFAULT 0,
+        Lat DECIMAL(10,7) NULL,
+        Lon DECIMAL(10,7) NULL,
+        GpsAccuracyMeters INT NULL,
+        HuellaVerificada BIT NOT NULL DEFAULT 0,
+        UsoFallbackPin BIT NOT NULL DEFAULT 0,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT FK_FichadaMeta_Registro FOREIGN KEY (RegistroId) REFERENCES HorasExtras_Registros(Id) ON DELETE CASCADE
+    );
+    CREATE INDEX IX_FichadaMeta_Registro ON HorasExtras_FichadaMeta(RegistroId);
+END
+GO
