@@ -767,4 +767,149 @@ public class HorasExtrasController : ControllerBase
     {
         return Ok(new { ip = ResolverIpCliente() });
     }
+
+    // ============================================================
+    // 2026-06-03: Endpoints del KIOSCO de fichada (/fichador)
+    // El kiosco es una pantalla PUBLICA (sin login) pensada para correr en un celular
+    // o tablet pegada a la pared del negocio. Los empleados tocan su nombre + PIN
+    // (futuro: huella) para fichar. Misma logica de validacion de IP/GPS que el link individual.
+    // ============================================================
+
+    public record FichadorEmpleadoDto(int Id, string Nombre, string Slug, string? UltimaHoraEntrada,
+        string? UltimaHoraSalida, bool TrabajandoAhora, string? TrabajandoDesde);
+
+    /// <summary>Lista de empleados activos para mostrar en la pantalla del kiosco. Sin auth porque
+    /// el kiosco no tiene sesion. Devuelve nombre, slug, y el estado de fichada de HOY.</summary>
+    [HttpGet("fichador/empleados")]
+    [AllowAnonymous]
+    public async Task<IActionResult> FichadorEmpleados()
+    {
+        var hoy = FechaArgentinaHoy();
+        var emps = await _db.HorasExtrasEmpleados.Where(e => e.IsActive).OrderBy(e => e.Nombre).ToListAsync();
+        var regsHoy = await _db.HorasExtrasRegistros
+            .Where(r => r.Fecha == hoy)
+            .ToListAsync();
+        var regDic = regsHoy.ToDictionary(r => r.EmpleadoId);
+
+        var result = emps.Select(e =>
+        {
+            regDic.TryGetValue(e.Id, out var r);
+            bool trabajandoAhora = r != null && r.HoraEntrada.HasValue && !r.HoraSalida.HasValue;
+            return new FichadorEmpleadoDto(
+                e.Id, e.Nombre, Slugify(e.Nombre),
+                FormatHora(r?.HoraEntrada), FormatHora(r?.HoraSalida),
+                trabajandoAhora,
+                trabajandoAhora ? FormatHora(r!.HoraEntrada) : null
+            );
+        }).ToList();
+        return Ok(result);
+    }
+
+    public class FichadorMarcarRequest
+    {
+        public int EmpleadoId { get; set; }
+        public string Pin { get; set; } = "";
+        // 2026-06-03: GPS opcional (se guarda en HorasExtras_FichadaMeta para auditoria)
+        public decimal? GpsLat { get; set; }
+        public decimal? GpsLon { get; set; }
+        public int? GpsAccuracy { get; set; }
+    }
+
+    public record FichadorMarcarResult(bool Ok, string? Mensaje, string? Tipo, string? Hora, string? NombreEmpleado);
+
+    /// <summary>Marca entrada o salida desde el kiosco. Detecta automaticamente cual segun
+    /// si ya hay entrada cargada hoy. Valida PIN (3 ultimos del DNI). Respeta config de WiFi
+    /// si el modo nuevo esta activo.</summary>
+    [HttpPost("fichador/marcar")]
+    [AllowAnonymous]
+    public async Task<IActionResult> FichadorMarcar([FromBody] FichadorMarcarRequest req)
+    {
+        var emp = await _db.HorasExtrasEmpleados.FirstOrDefaultAsync(e => e.Id == req.EmpleadoId && e.IsActive);
+        if (emp is null) return Ok(new FichadorMarcarResult(false, "Empleado no encontrado", null, null, null));
+        if (string.IsNullOrEmpty(req.Pin) || req.Pin.Trim() != (emp.DniUltimos3 ?? ""))
+            return Ok(new FichadorMarcarResult(false, "PIN incorrecto", null, null, emp.Nombre));
+
+        // Validacion WiFi (mismo flujo que el endpoint del link individual)
+        var cfg = await _db.HorasExtrasConfigFichadas.FindAsync(1);
+        bool globalActivo = cfg?.ActivarModoNuevo ?? false;
+        bool flagEmpleado = emp.ProbarModoNuevoFichada;
+        bool modoNuevoActivo = globalActivo || flagEmpleado;
+        string? ipCliente = ResolverIpCliente();
+        bool ipAutorizada = false;
+        if (modoNuevoActivo)
+        {
+            var ipsPermitidas = new[] { cfg?.Wifi1Ip, cfg?.Wifi2Ip }
+                .Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!.Trim()).ToList();
+            ipAutorizada = !string.IsNullOrEmpty(ipCliente) && ipsPermitidas.Any(p => p == ipCliente);
+            if (ipsPermitidas.Count > 0 && !ipAutorizada)
+                return Ok(new FichadorMarcarResult(false,
+                    $"Tenés que estar conectado al WiFi del negocio para fichar. (IP: {ipCliente ?? "?"})",
+                    null, null, emp.Nombre));
+        }
+
+        var hoy = FechaArgentinaHoy();
+        var ahora = DateTime.UtcNow.AddHours(-3); // ART
+        var horaActual = new TimeSpan(ahora.Hour, ahora.Minute, 0);
+
+        var existente = await _db.HorasExtrasRegistros
+            .FirstOrDefaultAsync(r => r.EmpleadoId == emp.Id && r.Fecha == hoy);
+
+        string tipo;
+        if (existente is null)
+        {
+            // Primera marcacion del dia = ENTRADA
+            existente = new HorasExtrasRegistro
+            {
+                EmpleadoId = emp.Id,
+                Fecha = hoy,
+                Cantidad = 0m,
+                HoraEntrada = horaActual,
+                CreatedAt = DateTime.UtcNow
+            };
+            _db.HorasExtrasRegistros.Add(existente);
+            tipo = "ENTRADA";
+        }
+        else if (!existente.HoraEntrada.HasValue)
+        {
+            existente.HoraEntrada = horaActual;
+            existente.UpdatedAt = DateTime.UtcNow;
+            tipo = "ENTRADA";
+        }
+        else if (!existente.HoraSalida.HasValue)
+        {
+            existente.HoraSalida = horaActual;
+            existente.UpdatedAt = DateTime.UtcNow;
+            tipo = "SALIDA";
+        }
+        else
+        {
+            // Ya tiene entrada y salida del dia. Sobreescribimos la salida (probablemente se fue, volvio, se va de nuevo).
+            existente.HoraSalida = horaActual;
+            existente.UpdatedAt = DateTime.UtcNow;
+            tipo = "SALIDA";
+        }
+        await _db.SaveChangesAsync();
+
+        // Loguear meta (IP + GPS) si el modo nuevo esta activo
+        if (modoNuevoActivo)
+        {
+            _db.HorasExtrasFichadaMetas.Add(new HorasExtrasFichadaMeta
+            {
+                RegistroId = existente.Id,
+                Tipo = tipo,
+                Ip = ipCliente,
+                IpAutorizada = ipAutorizada,
+                Lat = req.GpsLat,
+                Lon = req.GpsLon,
+                GpsAccuracyMeters = req.GpsAccuracy,
+                HuellaVerificada = false,
+                UsoFallbackPin = true   // todavia no implementamos huella en el kiosco; siempre PIN
+            });
+            await _db.SaveChangesAsync();
+        }
+
+        var horaTxt = $"{horaActual.Hours:D2}:{horaActual.Minutes:D2}";
+        var saludo = tipo == "ENTRADA" ? $"¡Buen día {emp.Nombre}!" : $"¡Hasta luego {emp.Nombre}!";
+        return Ok(new FichadorMarcarResult(true, saludo, tipo, horaTxt, emp.Nombre));
+    }
 }

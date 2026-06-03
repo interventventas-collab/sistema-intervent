@@ -1,0 +1,281 @@
+@page "/fichador"
+@attribute [AllowAnonymous]
+@layout Web.Layout.LoginLayout
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+@* 2026-06-03: Kiosco de fichada. Pantalla pensada para correr SIEMPRE ABIERTA en un celular
+   o tablet del negocio. Empleados tocan su nombre + PIN -> ficha entrada o salida (auto).
+   Fase 2 (proximamente): huella biometrica via WebAuthn. *@
+
+<style>
+    body { background: linear-gradient(135deg, #0f172a, #1e3a8a); min-height: 100vh; color: white; margin:0; }
+    .kio-wrap { max-width: 900px; margin: 0 auto; padding: 1rem; }
+    .kio-header { display:flex; justify-content:space-between; align-items:center; margin-bottom: 1.2rem; }
+    .kio-titulo { font-size: 1.6rem; font-weight: 800; margin: 0; }
+    .kio-fecha { font-size: 0.95rem; opacity: 0.85; }
+    .kio-reloj { font-family: monospace; font-size: 2rem; font-weight: 700; color: #fbbf24; }
+    .kio-instruccion { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); border-radius: 12px; padding: 0.9rem 1.1rem; margin-bottom: 1.2rem; font-size: 1rem; }
+    .kio-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.7rem; }
+    .kio-card {
+        background: white; color: #1f2937; border-radius: 14px; padding: 1rem 0.8rem;
+        text-align: center; cursor: pointer; transition: transform 0.1s, box-shadow 0.2s;
+        border: 3px solid transparent; min-height: 130px; display: flex; flex-direction: column;
+        justify-content: center; align-items: center; box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+    }
+    .kio-card:active { transform: scale(0.96); }
+    .kio-card.trabajando { background: #dcfce7; border-color: #16a34a; }
+    .kio-card.salio { background: #dbeafe; border-color: #3b82f6; opacity: 0.75; }
+    .kio-card-avatar { width: 48px; height: 48px; border-radius: 50%; background: #1d4ed8; color: white; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; font-weight: 800; margin-bottom: 0.5rem; }
+    .kio-card.trabajando .kio-card-avatar { background: #16a34a; }
+    .kio-card.salio .kio-card-avatar { background: #3b82f6; }
+    .kio-card-nombre { font-weight: 700; font-size: 0.95rem; margin-bottom: 0.3rem; }
+    .kio-card-estado { font-size: 0.7rem; color: #6b7280; font-weight: 600; }
+    .kio-card.trabajando .kio-card-estado { color: #15803d; }
+    .kio-card.salio .kio-card-estado { color: #1e40af; }
+
+    .kio-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 1rem; }
+    .kio-modal { background: white; color: #1f2937; border-radius: 16px; padding: 1.4rem; max-width: 380px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+    .kio-modal-titulo { font-size: 1.3rem; font-weight: 800; margin: 0 0 0.4rem; text-align: center; }
+    .kio-modal-tipo { text-align: center; font-size: 1rem; color: #6b7280; margin-bottom: 1rem; }
+    .kio-pin-input { width: 100%; padding: 1rem; font-size: 2.5rem; text-align: center; letter-spacing: 0.7rem; border: 2px solid #d1d5db; border-radius: 10px; font-weight: 700; color: #1d4ed8; font-family: monospace; }
+    .kio-pin-input:focus { outline: none; border-color: #1d4ed8; box-shadow: 0 0 0 4px rgba(29,78,216,0.15); }
+    .kio-modal-btn { width: 100%; padding: 1rem; font-size: 1.1rem; font-weight: 700; border: none; border-radius: 10px; cursor: pointer; margin-top: 0.8rem; }
+    .kio-modal-btn-primary { background: #1d4ed8; color: white; }
+    .kio-modal-btn-primary:disabled { background: #9ca3af; cursor: not-allowed; }
+    .kio-modal-btn-cancel { background: #e5e7eb; color: #1f2937; }
+    .kio-modal-err { color: #b91c1c; text-align: center; margin-top: 0.5rem; font-size: 0.9rem; font-weight: 600; }
+
+    .kio-toast { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #16a34a; color: white; padding: 1.5rem 2.5rem; border-radius: 16px; font-weight: 700; font-size: 1.4rem; box-shadow: 0 20px 60px rgba(0,0,0,0.4); z-index: 2000; text-align: center; }
+    .kio-toast.error { background: #dc2626; }
+    .kio-toast-tipo { font-size: 0.8rem; opacity: 0.85; font-weight: 600; }
+    .kio-toast-msg { margin: 0.3rem 0; }
+    .kio-toast-hora { font-family: monospace; font-size: 1.8rem; }
+
+    @@media (max-width: 600px) {
+        .kio-grid { grid-template-columns: repeat(2, 1fr); }
+        .kio-titulo { font-size: 1.3rem; }
+        .kio-reloj { font-size: 1.6rem; }
+    }
+</style>
+
+<div class="kio-wrap">
+    <div class="kio-header">
+        <div>
+            <h1 class="kio-titulo">🕐 Fichar Entrada / Salida</h1>
+            <div class="kio-fecha">@FechaLabel</div>
+        </div>
+        <div class="kio-reloj">@HoraActual</div>
+    </div>
+
+    <div class="kio-instruccion">
+        👉 Tocá tu nombre, ingresá tu PIN (3 últimos del DNI) y listo.
+    </div>
+
+    @if (cargando)
+    {
+        <p style="text-align:center; padding:2rem;">Cargando empleados...</p>
+    }
+    else if (empleados.Count == 0)
+    {
+        <p style="text-align:center; padding:2rem; opacity:0.8;">No hay empleados activos. Pedile al admin que cargue empleados.</p>
+    }
+    else
+    {
+        <div class="kio-grid">
+            @foreach (var e in empleados)
+            {
+                var cls = e.TrabajandoAhora ? "trabajando" : (!string.IsNullOrEmpty(e.UltimaHoraSalida) ? "salio" : "");
+                <div class="kio-card @cls" @onclick="() => AbrirPin(e)">
+                    <div class="kio-card-avatar">@(e.Nombre.Length > 0 ? e.Nombre[0].ToString() : "?")</div>
+                    <div class="kio-card-nombre">@e.Nombre</div>
+                    <div class="kio-card-estado">
+                        @if (e.TrabajandoAhora)
+                        {
+                            <span>🟢 Entró @e.TrabajandoDesde</span>
+                        }
+                        else if (!string.IsNullOrEmpty(e.UltimaHoraSalida))
+                        {
+                            <span>✅ Salió @e.UltimaHoraSalida</span>
+                        }
+                        else
+                        {
+                            <span>⏳ Sin fichar</span>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@if (empleadoElegido is not null)
+{
+    <div class="kio-modal-overlay" @onclick="CerrarPin">
+        <div class="kio-modal" @onclick:stopPropagation="true">
+            <h2 class="kio-modal-titulo">Hola @empleadoElegido.Nombre 👋</h2>
+            <div class="kio-modal-tipo">
+                @if (empleadoElegido.TrabajandoAhora) { <span>🌆 Vas a marcar <strong>SALIDA</strong></span> }
+                else { <span>🌅 Vas a marcar <strong>ENTRADA</strong></span> }
+            </div>
+            <input type="tel" inputmode="numeric" maxlength="3" class="kio-pin-input"
+                   value="@pinInput"
+                   @oninput="OnPinInput"
+                   @onkeydown="OnPinKeyDown"
+                   placeholder="•••" autofocus />
+            @if (!string.IsNullOrEmpty(errorPin))
+            {
+                <div class="kio-modal-err">⚠ @errorPin</div>
+            }
+            <button class="kio-modal-btn kio-modal-btn-primary" @onclick="MarcarAsync" disabled="@(marcando || pinInput.Length != 3)">
+                @(marcando ? "Marcando..." : "✅ FICHAR")
+            </button>
+            <button class="kio-modal-btn kio-modal-btn-cancel" @onclick="CerrarPin">Cancelar</button>
+        </div>
+    </div>
+}
+
+@if (toastVisible)
+{
+    <div class="kio-toast @(toastError ? "error" : "")">
+        @if (!string.IsNullOrEmpty(toastTipo))
+        {
+            <div class="kio-toast-tipo">@toastTipo</div>
+        }
+        <div class="kio-toast-msg">@toastMsg</div>
+        @if (!string.IsNullOrEmpty(toastHora))
+        {
+            <div class="kio-toast-hora">@toastHora</div>
+        }
+    </div>
+}
+
+@code {
+    public record FichadorEmpleadoDto(int Id, string Nombre, string Slug, string? UltimaHoraEntrada,
+        string? UltimaHoraSalida, bool TrabajandoAhora, string? TrabajandoDesde);
+    public record FichadorMarcarResult(bool Ok, string? Mensaje, string? Tipo, string? Hora, string? NombreEmpleado);
+
+    private List<FichadorEmpleadoDto> empleados = new();
+    private bool cargando = true;
+    private FichadorEmpleadoDto? empleadoElegido;
+    private string pinInput = "";
+    private string? errorPin;
+    private bool marcando;
+    private System.Threading.Timer? refreshTimer;
+    private System.Threading.Timer? clockTimer;
+
+    private string FechaLabel
+    {
+        get
+        {
+            var es = new System.Globalization.CultureInfo("es-AR");
+            var ahora = DateTime.UtcNow.AddHours(-3);
+            return ahora.ToString("dddd dd 'de' MMMM yyyy", es);
+        }
+    }
+    private string HoraActual => DateTime.UtcNow.AddHours(-3).ToString("HH:mm:ss");
+
+    private bool toastVisible;
+    private bool toastError;
+    private string? toastTipo;
+    private string? toastMsg;
+    private string? toastHora;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarEmpleados();
+        // Auto-refresh cada 30s para que la lista se actualice (ej: alguien fichó desde otro lugar)
+        refreshTimer = new System.Threading.Timer(async _ => await InvokeAsync(CargarEmpleados), null, 30000, 30000);
+        // Reloj actualizado cada segundo
+        clockTimer = new System.Threading.Timer(async _ => await InvokeAsync(StateHasChanged), null, 1000, 1000);
+    }
+
+    public void Dispose() { refreshTimer?.Dispose(); clockTimer?.Dispose(); }
+
+    private async Task CargarEmpleados()
+    {
+        try
+        {
+            var data = await Http.GetFromJsonAsync<List<FichadorEmpleadoDto>>("api/horas-extras/fichador/empleados");
+            empleados = data ?? new();
+        }
+        catch { /* ignore */ }
+        finally { cargando = false; StateHasChanged(); }
+    }
+
+    private void AbrirPin(FichadorEmpleadoDto e)
+    {
+        empleadoElegido = e;
+        pinInput = "";
+        errorPin = null;
+    }
+
+    private void OnPinInput(ChangeEventArgs e)
+    {
+        pinInput = e.Value?.ToString() ?? "";
+        errorPin = null;
+    }
+
+    private async Task OnPinKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && pinInput.Length == 3) await MarcarAsync();
+    }
+
+    private void CerrarPin()
+    {
+        empleadoElegido = null;
+        pinInput = "";
+        errorPin = null;
+    }
+
+    private async Task MarcarAsync()
+    {
+        if (empleadoElegido is null || pinInput.Length != 3) return;
+        marcando = true;
+        errorPin = null;
+        try
+        {
+            // GPS opcional (no bloqueante)
+            decimal? lat = null, lon = null; int? acc = null;
+            try
+            {
+                var pos = await JS.InvokeAsync<GpsPos?>("heTryGetPosition", 3000);
+                if (pos is not null) { lat = pos.Lat; lon = pos.Lon; acc = pos.Accuracy; }
+            }
+            catch { }
+
+            var body = new
+            {
+                EmpleadoId = empleadoElegido.Id,
+                Pin = pinInput,
+                GpsLat = lat,
+                GpsLon = lon,
+                GpsAccuracy = acc
+            };
+            var resp = await Http.PostAsJsonAsync("api/horas-extras/fichador/marcar", body);
+            var r = await resp.Content.ReadFromJsonAsync<FichadorMarcarResult>();
+            if (r is null) { errorPin = "Error de conexión"; return; }
+            if (!r.Ok)
+            {
+                errorPin = r.Mensaje ?? "Error";
+                return;
+            }
+            // Exito: mostrar toast + cerrar modal + recargar lista
+            CerrarPin();
+            toastTipo = r.Tipo == "ENTRADA" ? "🌅 ENTRADA REGISTRADA" : "🌆 SALIDA REGISTRADA";
+            toastMsg = r.Mensaje;
+            toastHora = r.Hora;
+            toastError = false;
+            toastVisible = true;
+            StateHasChanged();
+            await Task.Delay(3000);
+            toastVisible = false;
+            await CargarEmpleados();
+            StateHasChanged();
+        }
+        catch (Exception ex) { errorPin = "Error: " + ex.Message; }
+        finally { marcando = false; }
+    }
+
+    public record GpsPos(decimal? Lat, decimal? Lon, int? Accuracy);
+}
