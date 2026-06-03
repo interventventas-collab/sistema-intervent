@@ -525,11 +525,11 @@
                                            guarda. El usuario despues pushea cada una individualmente con 💵. *@
                                         @if (grp.IsFamily && grp.Variants.Count > 1)
                                         {
+                                            var selCount = grp.Variants.Count(v => selectedFamilyPush.Contains(v.Id));
                                             <button class="ajuste-propagar-btn" @onclick="() => PropagarAjusteAFamilia(item, grp)"
                                                     title="Copiar este ajuste a las @(grp.Variants.Count - 1) publicaciones hermanas de la familia (no las pushea)">
                                                 ⚡ Propagar a familia (@(grp.Variants.Count - 1))
                                             </button>
-                                            @{ var selCount = grp.Variants.Count(v => selectedFamilyPush.Contains(v.Id)); }
                                             @* 2026-06-03: tildar/destildar todas + push masivo de las tildadas *@
                                             <div style="margin-top:0.3rem; display:flex; gap:0.3rem; align-items:center; flex-wrap:wrap;">
                                                 <label style="display:inline-flex; align-items:center; gap:0.2rem; font-size:0.7rem; color:#6b7280; cursor:pointer;">
