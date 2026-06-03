@@ -785,32 +785,35 @@ public class HorasExtrasController : ControllerBase
     // (futuro: huella) para fichar. Misma logica de validacion de IP/GPS que el link individual.
     // ============================================================
 
-    public record FichadorEmpleadoDto(int Id, string Nombre, string Slug, string? UltimaHoraEntrada,
-        string? UltimaHoraSalida, bool TrabajandoAhora, string? TrabajandoDesde);
+    // 2026-06-03: el kiosco YA NO expone horarios (privacidad).
+    // Solo color/estado: rojo (sin fichar), verde (trabajando), azul (salio).
+    // Hora exacta solo se ve desde el admin /horas-extras.
+    public record FichadorEmpleadoDto(int Id, string Nombre, string Slug,
+        string Estado /* "sin-fichar" | "trabajando" | "salio" */,
+        bool TieneHuella);
 
     /// <summary>Lista de empleados activos para mostrar en la pantalla del kiosco. Sin auth porque
-    /// el kiosco no tiene sesion. Devuelve nombre, slug, y el estado de fichada de HOY.</summary>
+    /// el kiosco no tiene sesion. Devuelve nombre, slug y estado de hoy (sin horas exactas).</summary>
     [HttpGet("fichador/empleados")]
     [AllowAnonymous]
     public async Task<IActionResult> FichadorEmpleados()
     {
         var hoy = FechaArgentinaHoy();
         var emps = await _db.HorasExtrasEmpleados.Where(e => e.IsActive).OrderBy(e => e.Nombre).ToListAsync();
-        var regsHoy = await _db.HorasExtrasRegistros
-            .Where(r => r.Fecha == hoy)
-            .ToListAsync();
+        var regsHoy = await _db.HorasExtrasRegistros.Where(r => r.Fecha == hoy).ToListAsync();
         var regDic = regsHoy.ToDictionary(r => r.EmpleadoId);
+        // Set de empleadoIds con al menos una huella registrada
+        var conHuella = await _db.HorasExtrasWebAuthnCredentials.Select(c => c.EmpleadoId).Distinct().ToListAsync();
+        var conHuellaSet = conHuella.ToHashSet();
 
         var result = emps.Select(e =>
         {
             regDic.TryGetValue(e.Id, out var r);
-            bool trabajandoAhora = r != null && r.HoraEntrada.HasValue && !r.HoraSalida.HasValue;
-            return new FichadorEmpleadoDto(
-                e.Id, e.Nombre, Slugify(e.Nombre),
-                FormatHora(r?.HoraEntrada), FormatHora(r?.HoraSalida),
-                trabajandoAhora,
-                trabajandoAhora ? FormatHora(r!.HoraEntrada) : null
-            );
+            string estado;
+            if (r is null || !r.HoraEntrada.HasValue) estado = "sin-fichar";
+            else if (r.HoraSalida.HasValue) estado = "salio";
+            else estado = "trabajando";
+            return new FichadorEmpleadoDto(e.Id, e.Nombre, Slugify(e.Nombre), estado, conHuellaSet.Contains(e.Id));
         }).ToList();
         return Ok(result);
     }
@@ -1045,14 +1048,22 @@ public class HorasExtrasController : ControllerBase
 
     [HttpPost("fichador/huella/login/begin")]
     [AllowAnonymous]
-    public async Task<IActionResult> HuellaLoginBegin()
+    public async Task<IActionResult> HuellaLoginBegin([FromQuery] int? empleadoId = null)
     {
-        // Sin specific user — usuario va a elegir su huella del dispositivo (discoverable credential).
-        var allCreds = await _db.HorasExtrasWebAuthnCredentials.ToListAsync();
-        var allowed = allCreds.Select(c => new PublicKeyCredentialDescriptor(Convert.FromBase64String(c.CredentialId))).ToList();
+        // Si llega empleadoId, filtramos a las credenciales de ese empleado (UX: toco mi nombre y solo
+        // me pide MI huella). Si no, devolvemos todas las credenciales del sistema (modo "boton global").
+        var query = _db.HorasExtrasWebAuthnCredentials.AsQueryable();
+        if (empleadoId.HasValue) query = query.Where(c => c.EmpleadoId == empleadoId.Value);
+        var creds = await query.ToListAsync();
+        var allowed = creds.Select(c => new PublicKeyCredentialDescriptor(Convert.FromBase64String(c.CredentialId))).ToList();
 
         if (allowed.Count == 0)
-            return Ok(new HuellaLoginBeginResult(false, "Todavia no hay huellas registradas en este sistema.", null, null));
+        {
+            var msg = empleadoId.HasValue
+                ? "Ese empleado todavia no registro su huella en este sistema."
+                : "Todavia no hay huellas registradas en este sistema.";
+            return Ok(new HuellaLoginBeginResult(false, msg, null, null));
+        }
 
         var options = _fido2.GetAssertionOptions(allowed, UserVerificationRequirement.Required);
 
