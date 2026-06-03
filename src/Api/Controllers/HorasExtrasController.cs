@@ -37,9 +37,12 @@ public class HorasExtrasController : ControllerBase
         // 2026-06-03: ciclo de liquidacion del empleado (puede ser mes calendario o personalizado).
         // CicloLabel: "ESTE MES (junio)" o "CICLO 16/05 → 15/06".
         // TotalCiclo: suma de horas trabajadas dentro del ciclo. ExtrasCiclo: suma de extras (>=0).
-        // MostrarExtras: si el admin tildo el checkbox para que el empleado vea sus extras.
+        // MostrarExtras: si el admin tildo el checkbox para que el empleado vea sus extras (verde/rojo al lado del dia).
+        // MostrarCuadroCiclo (v2): si el admin tildo el checkbox para que el empleado vea el cuadro grande del ciclo.
+        // MostrarHorasTrabajadasDia (v2): si true, muestra "11,5 h" azul al lado de cada dia.
         DateTime CicloDesde, DateTime CicloHasta, string CicloLabel,
-        decimal TotalCiclo, decimal ExtrasCiclo, bool MostrarExtras);
+        decimal TotalCiclo, decimal ExtrasCiclo, bool MostrarExtras,
+        bool MostrarCuadroCiclo, bool MostrarHorasTrabajadasDia);
 
     /// <summary>Busca un empleado por slug del nombre + clave (últimos 3 del DNI). Helper
     /// usado por todos los endpoints públicos. Devuelve null si no coincide nada activo.</summary>
@@ -137,7 +140,8 @@ public class HorasExtrasController : ControllerBase
             FormatHora(registroSel?.HoraEntrada), FormatHora(registroSel?.HoraSalida),
             ultimos7, totalSemana, totalCiclo,
             ciclo.Desde, ciclo.Hasta, ciclo.Label,
-            totalCiclo, extrasCiclo, emp.MostrarExtrasAlEmpleado));
+            totalCiclo, extrasCiclo, emp.MostrarExtrasAlEmpleado,
+            emp.MostrarCuadroCiclo, emp.MostrarHorasTrabajadasDia));
     }
 
     /// <summary>Devuelve "HH:mm" o null. Lo usamos en el JSON para que el input type=time del browser
@@ -235,7 +239,9 @@ public class HorasExtrasController : ControllerBase
         bool MostrarExtrasAlEmpleado, int? CicloDiaInicio, int? CicloDiaFin,
         // Calculado: rango del ciclo actual + totales del ciclo
         DateTime CicloDesde, DateTime CicloHasta, string CicloLabel,
-        decimal TrabajadoCiclo, decimal EsperadoCiclo, decimal DiferenciaCiclo);
+        decimal TrabajadoCiclo, decimal EsperadoCiclo, decimal DiferenciaCiclo,
+        // 2026-06-03 v2: flags granulares de visibilidad
+        bool MostrarCuadroCiclo, bool MostrarHorasTrabajadasDia);
 
     /// <summary>Lista de empleados con totales (hoy / semana / mes) y la última vez que cargaron.</summary>
     [HttpGet("admin/empleados")]
@@ -326,7 +332,8 @@ public class HorasExtrasController : ControllerBase
                 trabMes, espMes, trabMes - espMes,
                 e.MostrarExtrasAlEmpleado, e.CicloDiaInicio, e.CicloDiaFin,
                 ciclo.Desde, ciclo.Hasta, ciclo.Label,
-                trabCiclo, espCiclo, trabCiclo - espCiclo
+                trabCiclo, espCiclo, trabCiclo - espCiclo,
+                e.MostrarCuadroCiclo, e.MostrarHorasTrabajadasDia
             );
         }).ToList();
         return Ok(result);
@@ -410,6 +417,9 @@ public class HorasExtrasController : ControllerBase
         public int? CicloDiaInicio { get; set; }
         public int? CicloDiaFin { get; set; }
         public bool ClearCiclo { get; set; }
+        // 2026-06-03 v2: flags granulares de visibilidad
+        public bool? MostrarCuadroCiclo { get; set; }
+        public bool? MostrarHorasTrabajadasDia { get; set; }
     }
 
     [HttpPut("admin/empleados/{id:int}")]
@@ -438,6 +448,9 @@ public class HorasExtrasController : ControllerBase
         if (req.HorasDomingo.HasValue) emp.HorasDomingo = Clamp(req.HorasDomingo.Value);
         // 2026-06-03: flag mostrar extras + ciclo de liquidacion
         if (req.MostrarExtrasAlEmpleado.HasValue) emp.MostrarExtrasAlEmpleado = req.MostrarExtrasAlEmpleado.Value;
+        // 2026-06-03 v2: flags granulares de visibilidad
+        if (req.MostrarCuadroCiclo.HasValue) emp.MostrarCuadroCiclo = req.MostrarCuadroCiclo.Value;
+        if (req.MostrarHorasTrabajadasDia.HasValue) emp.MostrarHorasTrabajadasDia = req.MostrarHorasTrabajadasDia.Value;
         if (req.ClearCiclo)
         {
             emp.CicloDiaInicio = null;

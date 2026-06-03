@@ -187,22 +187,26 @@
         <div class="he-card">
             @* 2026-06-03: un solo cuadro grande con el ciclo de liquidacion (puede ser mes calendario o personalizado).
                Antes habia "Esta semana / Este mes" — se sacaron porque mareaban. *@
-            @* 2026-06-03 v2: si el flag MostrarExtras esta ON, se muestra SOLO el numero verde grande
-               (sin el 'X h' azul de las trabajadas, sin la palabra 'extras'). Si esta OFF, mostramos
-               las horas trabajadas del ciclo en azul como referencia. *@
-            <div style="background:#f0f9ff; border:1px solid #93c5fd; border-radius:10px; padding:0.9rem; text-align:center;">
-                <div style="font-size:0.72rem; color:#1e40af; text-transform:uppercase; letter-spacing:0.05em; font-weight:700;">
-                    @(string.IsNullOrEmpty(datos.CicloLabel) ? "ESTE MES" : datos.CicloLabel)
+            @* 2026-06-03 v2: el cuadro grande SOLO se muestra si el admin tildo "Mostrar cuadro del mes/ciclo".
+               Dentro del cuadro: si tambien tildo "Mostrar extras", el numero es VERDE con las extras del ciclo.
+               Si solo tildo "cuadro" (sin extras), muestra las horas trabajadas en AZUL.
+               Si NO tildo "cuadro", no se muestra absolutamente nada de este bloque. *@
+            @if (datos.MostrarCuadroCiclo)
+            {
+                <div style="background:#f0f9ff; border:1px solid #93c5fd; border-radius:10px; padding:0.9rem; text-align:center;">
+                    <div style="font-size:0.72rem; color:#1e40af; text-transform:uppercase; letter-spacing:0.05em; font-weight:700;">
+                        @(string.IsNullOrEmpty(datos.CicloLabel) ? "ESTE MES" : datos.CicloLabel)
+                    </div>
+                    @if (datos.MostrarExtras)
+                    {
+                        <div style="font-size:2.2rem; font-weight:800; color:#16a34a; margin-top:0.3rem;">@datos.ExtrasCiclo.ToString("0.#") h</div>
+                    }
+                    else
+                    {
+                        <div style="font-size:2rem; font-weight:800; color:#1d4ed8; margin-top:0.2rem;">@datos.TotalCiclo.ToString("0.#") h</div>
+                    }
                 </div>
-                @if (datos.MostrarExtras)
-                {
-                    <div style="font-size:2.2rem; font-weight:800; color:#16a34a; margin-top:0.3rem;">@datos.ExtrasCiclo.ToString("0.#") h</div>
-                }
-                else
-                {
-                    <div style="font-size:2rem; font-weight:800; color:#1d4ed8; margin-top:0.2rem;">@datos.TotalCiclo.ToString("0.#") h</div>
-                }
-            </div>
+            }
             <div class="he-history">
                 <div style="font-weight:700; color:#1f2937; margin: 0.8rem 0 0.3rem;">Últimos 7 días</div>
                 @if (datos.Ultimos7Dias.Count == 0)
@@ -223,7 +227,11 @@
                                     <span style="display:block; font-size:0.72rem; color:#6b7280;">🕒 @(r.HoraEntrada ?? "—") → @(r.HoraSalida ?? "—")</span>
                                 }
                             </span>
-                            <span class="he-row-hs">@r.Cantidad.ToString("0.#") h</span>
+                            @* 2026-06-03 v2: "X h" azul al lado solo si el admin tildo "Mostrar horas trabajadas a la derecha de cada dia" *@
+                            @if (datos.MostrarHorasTrabajadasDia)
+                            {
+                                <span class="he-row-hs">@r.Cantidad.ToString("0.#") h</span>
+                            }
                             @* 2026-06-03: extras del dia al lado, solo si el admin tildo "Mostrar extras al empleado".
                                Verde si >0 (extras), rojo si <0 (falto horas), nada si =0 (justo). *@
                             @if (datos.MostrarExtras && r.ExtrasDia.HasValue && r.ExtrasDia.Value != 0m)
@@ -274,7 +282,9 @@
         List<PublicRegistroDto> Ultimos7Dias, decimal TotalSemana, decimal TotalMes,
         // 2026-06-03: ciclo de liquidacion (puede ser personalizado o mes calendario).
         DateTime CicloDesde = default, DateTime CicloHasta = default, string CicloLabel = "",
-        decimal TotalCiclo = 0m, decimal ExtrasCiclo = 0m, bool MostrarExtras = false);
+        decimal TotalCiclo = 0m, decimal ExtrasCiclo = 0m, bool MostrarExtras = false,
+        // 2026-06-03 v2: flags granulares de visibilidad
+        bool MostrarCuadroCiclo = false, bool MostrarHorasTrabajadasDia = false);
 
     protected override async Task OnInitializedAsync()
     {
