@@ -91,12 +91,22 @@ public class HorasExtrasController : ControllerBase
             .ToListAsync();
 
         var registroSel = registros.FirstOrDefault(r => r.Fecha == fechaSel);
+        // 2026-06-03 FIX: desde 02/06 el publico guarda Cantidad=0 y el calculo lo hace el admin.
+        // Antes el mobile mostraba r.Cantidad → siempre 0 para registros nuevos. Ahora mostramos
+        // las HORAS TRABAJADAS (Salida − Entrada) que es lo util para el empleado.
+        decimal HorasTrabajadas(HorasExtrasRegistro r)
+        {
+            if (!r.HoraEntrada.HasValue || !r.HoraSalida.HasValue) return r.Cantidad; // fallback al campo viejo
+            var dur = r.HoraSalida.Value - r.HoraEntrada.Value;
+            if (dur.TotalMinutes <= 0) dur = dur.Add(TimeSpan.FromDays(1));            // cruza medianoche
+            return Math.Round((decimal)dur.TotalHours, 2, MidpointRounding.AwayFromZero);
+        }
         var ultimos7 = registros.Where(r => r.Fecha >= hace7 && r.Fecha <= hoy).OrderByDescending(r => r.Fecha)
-            .Select(r => new PublicRegistroDto(r.Id, r.Fecha, r.Cantidad, r.Observaciones,
+            .Select(r => new PublicRegistroDto(r.Id, r.Fecha, HorasTrabajadas(r), r.Observaciones,
                 FormatHora(r.HoraEntrada), FormatHora(r.HoraSalida)))
             .ToList();
         var totalSemana = ultimos7.Sum(r => r.Cantidad);
-        var totalMes = registros.Where(r => r.Fecha >= inicioMes).Sum(r => r.Cantidad);
+        var totalMes = registros.Where(r => r.Fecha >= inicioMes).Sum(r => HorasTrabajadas(r));
 
         return Ok(new PublicEmpleadoDto(emp.Nombre, hoy, fechaSel,
             registroSel?.Cantidad, registroSel?.Observaciones,
