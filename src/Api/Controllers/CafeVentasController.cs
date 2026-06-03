@@ -2641,7 +2641,20 @@ public class CafeVentasController : ControllerBase
                 tieneMiniImpresora = v.ClienteId != null && _db.CafeClientes.Where(c => c.Id == v.ClienteId).Select(c => c.TieneMiniImpresora).FirstOrDefault(),
                 impresaAt = v.ImpresaAt,
                 impresaCount = v.ImpresaCount,
-                itemsCount = v.Items.Count
+                itemsCount = v.Items.Count,
+                // 2026-06-03: traer items para tooltip al hacer hover en /cafe/preparacion seccion "Ya armados"
+                items = v.Items.Select(i => new
+                {
+                    id = i.Id,
+                    productoNombre = i.ProductoNombreSnapshot,
+                    formato = i.Formato,
+                    cantidad = i.Cantidad,
+                    molienda = i.Molienda,
+                    esDoyPack = i.EsDoyPack,
+                    esEnvasePlateado = i.EsEnvasePlateado,
+                    categoria = i.Categoria,
+                    esConceptoLibre = i.EsConceptoLibre
+                }).ToList()
             })
             .ToListAsync();
         return Ok(ventas);
