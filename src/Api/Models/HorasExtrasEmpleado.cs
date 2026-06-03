@@ -38,6 +38,19 @@ public class HorasExtrasEmpleado
     [Column(TypeName = "decimal(4,2)")] public decimal HorasSabado { get; set; } = 5m;
     [Column(TypeName = "decimal(4,2)")] public decimal HorasDomingo { get; set; } = 0m;
 
+    // ─── 2026-06-03: Ciclo de liquidacion + flag para mostrar extras al empleado ───
+    /// <summary>Si esta en true, el celular del empleado muestra las horas extras (+/- al lado del dia
+    /// y total del ciclo). Si esta en false, el empleado solo ve horas trabajadas.</summary>
+    public bool MostrarExtrasAlEmpleado { get; set; } = false;
+
+    /// <summary>Dia del mes (1-31) en que arranca el ciclo de liquidacion. NULL = mes calendario (1 al fin del mes).
+    /// Ej: 16 -> el ciclo va del 16 de un mes al 15 del siguiente (o al CicloDiaFin si se configuro).</summary>
+    public int? CicloDiaInicio { get; set; }
+
+    /// <summary>Dia del mes (1-31) en que termina el ciclo. NULL = fin de mes calendario.
+    /// Si el dia no existe en el mes (ej. 31 en febrero), se usa el ultimo dia disponible del mes.</summary>
+    public int? CicloDiaFin { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 
@@ -55,6 +68,59 @@ public class HorasExtrasEmpleado
         DayOfWeek.Sunday => HorasDomingo,
         _ => 0m
     };
+
+    /// <summary>Calcula el ciclo de liquidacion ACTUAL para este empleado dado el dia de hoy.
+    /// Devuelve (desde, hasta) inclusive, y un label corto para mostrar ("CICLO 16/05 → 15/06" o "ESTE MES (junio)").
+    ///
+    /// Reglas:
+    /// - Si CicloDiaInicio o CicloDiaFin estan en null -> ciclo = mes calendario (1 al fin del mes).
+    /// - Si CicloDiaInicio tiene valor (ej. 16) -> el ciclo arranca el dia 16. El "hasta" se calcula con CicloDiaFin
+    ///   (o el dia anterior a Inicio si Fin es null). Ej: Inicio=16, Fin=15 -> 16 → 15 del mes siguiente.
+    /// - Si el dia configurado no existe en el mes (ej. 31 en febrero), se usa el ULTIMO DIA disponible del mes.
+    /// - "Hoy" determina en que ciclo estamos parados: si hoy >= dia inicio, ciclo arranca este mes; si no, arranca mes pasado.
+    /// </summary>
+    public (DateTime Desde, DateTime Hasta, string Label) CicloActual(DateTime hoy)
+    {
+        var hoyDate = hoy.Date;
+        // ─── Caso simple: mes calendario ───
+        if (!CicloDiaInicio.HasValue || !CicloDiaFin.HasValue)
+        {
+            var desde = new DateTime(hoyDate.Year, hoyDate.Month, 1);
+            var hasta = desde.AddMonths(1).AddDays(-1);
+            var mesNombre = desde.ToString("MMMM", new System.Globalization.CultureInfo("es-AR"));
+            return (desde, hasta, $"ESTE MES ({mesNombre})");
+        }
+        // ─── Ciclo personalizado ───
+        int diaIni = Math.Clamp(CicloDiaInicio.Value, 1, 31);
+        int diaFin = Math.Clamp(CicloDiaFin.Value, 1, 31);
+        // Determinar de que mes arranca el ciclo actual.
+        // Si hoy.Day >= diaIni -> arranca este mes. Si no -> arranca mes pasado.
+        // Excepcion: si diaIni > dias del mes de hoy (ej. diaIni=31 y mes tiene 28), tambien arranca este mes.
+        DateTime desdeReal;
+        var diasMesActual = DateTime.DaysInMonth(hoyDate.Year, hoyDate.Month);
+        var diaIniEnMesActual = Math.Min(diaIni, diasMesActual);
+        if (hoyDate.Day >= diaIniEnMesActual)
+        {
+            desdeReal = new DateTime(hoyDate.Year, hoyDate.Month, diaIniEnMesActual);
+        }
+        else
+        {
+            var mesAnt = hoyDate.AddMonths(-1);
+            var diasMesAnt = DateTime.DaysInMonth(mesAnt.Year, mesAnt.Month);
+            desdeReal = new DateTime(mesAnt.Year, mesAnt.Month, Math.Min(diaIni, diasMesAnt));
+        }
+        // Calculo "hasta": mes siguiente al de desdeReal, dia = diaFin (cap al ultimo dia del mes).
+        var mesHasta = desdeReal.AddMonths(1);
+        var diasMesHasta = DateTime.DaysInMonth(mesHasta.Year, mesHasta.Month);
+        var hastaReal = new DateTime(mesHasta.Year, mesHasta.Month, Math.Min(diaFin, diasMesHasta));
+        // Si diaFin >= diaIni (ej. 1 al 28 -> ciclo dentro del mismo mes), el "hasta" es del mismo mes que desdeReal.
+        if (diaFin >= diaIni)
+        {
+            hastaReal = new DateTime(desdeReal.Year, desdeReal.Month, Math.Min(diaFin, DateTime.DaysInMonth(desdeReal.Year, desdeReal.Month)));
+        }
+        var label = $"CICLO {desdeReal:dd/MM} → {hastaReal:dd/MM}";
+        return (desdeReal, hastaReal, label);
+    }
 }
 
 [Table("HorasExtras_Registros")]

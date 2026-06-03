@@ -3631,6 +3631,27 @@ BEGIN
 END
 GO
 
+-- 2026-06-03: HorasExtras_Empleados — ciclo de liquidacion + flag de mostrar extras al empleado.
+-- MostrarExtrasAlEmpleado: bool, default 0. Si es 1, en el celular del empleado se muestran las extras al lado.
+-- CicloDiaInicio / CicloDiaFin: dias del mes (1-31). NULL = mes calendario (1 al fin del mes).
+-- Ej: Alexis tiene 16/15 -> ciclo del 16 de cada mes al 15 del siguiente.
+-- Si el dia configurado no existe en un mes (ej. 31 en febrero), se usa el ultimo dia del mes.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='MostrarExtrasAlEmpleado' AND Object_ID=OBJECT_ID('HorasExtras_Empleados'))
+BEGIN
+    ALTER TABLE HorasExtras_Empleados ADD MostrarExtrasAlEmpleado BIT NOT NULL CONSTRAINT DF_HorasExtras_Empleados_MostrarExtras DEFAULT 0;
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='CicloDiaInicio' AND Object_ID=OBJECT_ID('HorasExtras_Empleados'))
+BEGIN
+    ALTER TABLE HorasExtras_Empleados ADD CicloDiaInicio INT NULL;
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='CicloDiaFin' AND Object_ID=OBJECT_ID('HorasExtras_Empleados'))
+BEGIN
+    ALTER TABLE HorasExtras_Empleados ADD CicloDiaFin INT NULL;
+END
+GO
+
 -- Cafe_Ventas: nota tipo post-it pegada por el admin a cada venta (interna).
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='PinNota' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
 BEGIN

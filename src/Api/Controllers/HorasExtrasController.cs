@@ -26,11 +26,20 @@ public class HorasExtrasController : ControllerBase
     // ============================================================
 
     public record PublicRegistroDto(int Id, DateTime Fecha, decimal Cantidad, string? Observaciones,
-        string? HoraEntrada, string? HoraSalida);
+        string? HoraEntrada, string? HoraSalida,
+        // 2026-06-03: extras del dia (trabajadas - jornada del dia de la semana).
+        // Positivo = extras (verde en UI). Negativo = falta de horas (rojo). null = no aplica (sin horario).
+        decimal? ExtrasDia);
     public record PublicEmpleadoDto(string Nombre, DateTime HoyFecha, DateTime FechaSeleccionada,
         decimal? HorasSeleccionada, string? ObservacionesSeleccionada,
         string? HoraEntradaSeleccionada, string? HoraSalidaSeleccionada,
-        List<PublicRegistroDto> Ultimos7Dias, decimal TotalSemana, decimal TotalMes);
+        List<PublicRegistroDto> Ultimos7Dias, decimal TotalSemana, decimal TotalMes,
+        // 2026-06-03: ciclo de liquidacion del empleado (puede ser mes calendario o personalizado).
+        // CicloLabel: "ESTE MES (junio)" o "CICLO 16/05 → 15/06".
+        // TotalCiclo: suma de horas trabajadas dentro del ciclo. ExtrasCiclo: suma de extras (>=0).
+        // MostrarExtras: si el admin tildo el checkbox para que el empleado vea sus extras.
+        DateTime CicloDesde, DateTime CicloHasta, string CicloLabel,
+        decimal TotalCiclo, decimal ExtrasCiclo, bool MostrarExtras);
 
     /// <summary>Busca un empleado por slug del nombre + clave (últimos 3 del DNI). Helper
     /// usado por todos los endpoints públicos. Devuelve null si no coincide nada activo.</summary>
@@ -80,11 +89,13 @@ public class HorasExtrasController : ControllerBase
             if (fechaSel > hoy) fechaSel = hoy;
         }
         var hace7 = hoy.AddDays(-6);
-        var inicioMes = new DateTime(hoy.Year, hoy.Month, 1);
+        // 2026-06-03: el ciclo de liquidacion ahora puede ser personalizado (Alexis 16→15).
+        var ciclo = emp.CicloActual(hoy);
 
-        // Traemos los registros del empleado desde el inicio del mes o desde hace 7 días
-        // o desde la fecha seleccionada — lo que sea más viejo.
-        var desde = new[] { inicioMes, hace7, fechaSel }.Min();
+        // Traemos los registros del empleado desde el comienzo del ciclo o desde hace 7 dias
+        // o desde la fecha seleccionada — lo que sea mas viejo (para cubrir todos los casos
+        // que el frontend pueda necesitar mostrar).
+        var desde = new[] { ciclo.Desde, hace7, fechaSel }.Min();
         var registros = await _db.HorasExtrasRegistros
             .Where(r => r.EmpleadoId == emp.Id && r.Fecha >= desde)
             .OrderByDescending(r => r.Fecha)
@@ -101,17 +112,32 @@ public class HorasExtrasController : ControllerBase
             if (dur.TotalMinutes <= 0) dur = dur.Add(TimeSpan.FromDays(1));            // cruza medianoche
             return Math.Round((decimal)dur.TotalHours, 2, MidpointRounding.AwayFromZero);
         }
+        // Calcula extras del dia (trabajadas - jornada del dia de la semana). null si no hay horario cargado.
+        // Positivo = extras (verde). Negativo = falto horas (rojo). 0 = justo (la UI lo oculta).
+        decimal? ExtrasDelDia(HorasExtrasRegistro r)
+        {
+            if (!r.HoraEntrada.HasValue || !r.HoraSalida.HasValue) return null;
+            var trab = HorasTrabajadas(r);
+            var jornada = emp.HorasParaDia(r.Fecha.DayOfWeek);
+            return Math.Round(trab - jornada, 2, MidpointRounding.AwayFromZero);
+        }
         var ultimos7 = registros.Where(r => r.Fecha >= hace7 && r.Fecha <= hoy).OrderByDescending(r => r.Fecha)
             .Select(r => new PublicRegistroDto(r.Id, r.Fecha, HorasTrabajadas(r), r.Observaciones,
-                FormatHora(r.HoraEntrada), FormatHora(r.HoraSalida)))
+                FormatHora(r.HoraEntrada), FormatHora(r.HoraSalida), ExtrasDelDia(r)))
             .ToList();
-        var totalSemana = ultimos7.Sum(r => r.Cantidad);
-        var totalMes = registros.Where(r => r.Fecha >= inicioMes).Sum(r => HorasTrabajadas(r));
+        var totalSemana = ultimos7.Sum(r => r.Cantidad); // legacy, no se muestra (se saco el cuadro "Esta semana")
+        // Totales del CICLO (no del mes calendario, salvo que el empleado este en ciclo "mes calendario").
+        var registrosCiclo = registros.Where(r => r.Fecha >= ciclo.Desde && r.Fecha <= ciclo.Hasta).ToList();
+        var totalCiclo = registrosCiclo.Sum(r => HorasTrabajadas(r));
+        // Extras del ciclo = SOLO POSITIVOS (no se compensan horas faltadas con extras).
+        var extrasCiclo = registrosCiclo.Sum(r => Math.Max(0m, ExtrasDelDia(r) ?? 0m));
 
         return Ok(new PublicEmpleadoDto(emp.Nombre, hoy, fechaSel,
             registroSel?.Cantidad, registroSel?.Observaciones,
             FormatHora(registroSel?.HoraEntrada), FormatHora(registroSel?.HoraSalida),
-            ultimos7, totalSemana, totalMes));
+            ultimos7, totalSemana, totalCiclo,
+            ciclo.Desde, ciclo.Hasta, ciclo.Label,
+            totalCiclo, extrasCiclo, emp.MostrarExtrasAlEmpleado));
     }
 
     /// <summary>Devuelve "HH:mm" o null. Lo usamos en el JSON para que el input type=time del browser
@@ -204,7 +230,12 @@ public class HorasExtrasController : ControllerBase
         decimal JornadaSemanal,
         // Acumulado real (horario marcado en los registros) vs esperado segun jornada
         decimal TrabajadoSemana, decimal EsperadoSemana, decimal DiferenciaSemana,
-        decimal TrabajadoMes, decimal EsperadoMes, decimal DiferenciaMes);
+        decimal TrabajadoMes, decimal EsperadoMes, decimal DiferenciaMes,
+        // 2026-06-03: flag para mostrar extras al empleado + ciclo de liquidacion personalizado
+        bool MostrarExtrasAlEmpleado, int? CicloDiaInicio, int? CicloDiaFin,
+        // Calculado: rango del ciclo actual + totales del ciclo
+        DateTime CicloDesde, DateTime CicloHasta, string CicloLabel,
+        decimal TrabajadoCiclo, decimal EsperadoCiclo, decimal DiferenciaCiclo);
 
     /// <summary>Lista de empleados con totales (hoy / semana / mes) y la última vez que cargaron.</summary>
     [HttpGet("admin/empleados")]
@@ -249,6 +280,34 @@ public class HorasExtrasController : ControllerBase
             for (var d = inicioMes; d <= hoy; d = d.AddDays(1)) espMes += e.HorasParaDia(d.DayOfWeek);
             decimal jornadaSem = e.HorasLunes + e.HorasMartes + e.HorasMiercoles + e.HorasJueves
                                + e.HorasViernes + e.HorasSabado + e.HorasDomingo;
+            // 2026-06-03: ciclo de liquidacion del empleado (puede ser personalizado o mes calendario).
+            // Para el panel admin, mostramos totales del CICLO para que coincidan con lo que el empleado ve.
+            var ciclo = e.CicloActual(hoy);
+            // Necesitamos registros del ciclo, que puede arrancar mas atras que inicioMes (ej. ciclo 16/05→15/06).
+            // En la query 'regs' arriba solo trajimos desde inicioMes, asi que para el ciclo recalculamos a partir
+            // de regsDelEmp acotado por las fechas del ciclo. Si el ciclo arranca antes del 1ro del mes, las que
+            // falten se filtraran con "false" (no estan en la lista) — el ciclo entonces puede subestimar el inicio.
+            // Para ser exactos, la query principal arriba trae 'desde inicioMes'. Para ciclos personalizados que
+            // arrancan en el mes anterior, traemos extra:
+            decimal trabCiclo, espCiclo;
+            if (ciclo.Desde < inicioMes)
+            {
+                // Caso ciclo personalizado que arranca el mes anterior. No esta cubierto por 'regs'.
+                // Calculamos directamente con un sum scoped a ese empleado y rango (se hace fuera del Select por
+                // perf — pero como pasa solo para empleados con ciclo personalizado, lo dejamos).
+                var regsCiclo = _db.HorasExtrasRegistros
+                    .Where(r => r.EmpleadoId == e.Id && r.Fecha >= ciclo.Desde && r.Fecha <= ciclo.Hasta)
+                    .ToList();
+                trabCiclo = regsCiclo.Sum(r => HorasTrabajadas(r));
+            }
+            else
+            {
+                trabCiclo = regsDelEmp.Where(r => r.Fecha >= ciclo.Desde && r.Fecha <= ciclo.Hasta).Sum(r => HorasTrabajadas(r));
+            }
+            espCiclo = 0m;
+            var hastaCiclo = ciclo.Hasta < hoy ? ciclo.Hasta : hoy;  // no contar dias futuros del ciclo
+            for (var d = ciclo.Desde; d <= hastaCiclo; d = d.AddDays(1)) espCiclo += e.HorasParaDia(d.DayOfWeek);
+
             return new AdminEmpleadoDto(
                 e.Id, e.Nombre, e.Token, e.IsActive,
                 regs.Where(r => r.EmpleadoId == e.Id && r.Fecha == hoy).Sum(r => r.Cantidad),
@@ -264,7 +323,10 @@ public class HorasExtrasController : ControllerBase
                 e.HorasViernes, e.HorasSabado, e.HorasDomingo,
                 jornadaSem,
                 trabSemana, espSemana, trabSemana - espSemana,
-                trabMes, espMes, trabMes - espMes
+                trabMes, espMes, trabMes - espMes,
+                e.MostrarExtrasAlEmpleado, e.CicloDiaInicio, e.CicloDiaFin,
+                ciclo.Desde, ciclo.Hasta, ciclo.Label,
+                trabCiclo, espCiclo, trabCiclo - espCiclo
             );
         }).ToList();
         return Ok(result);
@@ -341,6 +403,13 @@ public class HorasExtrasController : ControllerBase
         public decimal? HorasViernes { get; set; }
         public decimal? HorasSabado { get; set; }
         public decimal? HorasDomingo { get; set; }
+        // 2026-06-03: flag para mostrar extras al empleado + ciclo de liquidacion
+        public bool? MostrarExtrasAlEmpleado { get; set; }
+        /// <summary>Si vienen ambos > 0 -> ciclo personalizado. Si vienen 0 o null -> mes calendario.
+        /// Si solo viene ClearCiclo=true, se borran los dos (vuelve a mes calendario).</summary>
+        public int? CicloDiaInicio { get; set; }
+        public int? CicloDiaFin { get; set; }
+        public bool ClearCiclo { get; set; }
     }
 
     [HttpPut("admin/empleados/{id:int}")]
@@ -367,6 +436,27 @@ public class HorasExtrasController : ControllerBase
         if (req.HorasViernes.HasValue) emp.HorasViernes = Clamp(req.HorasViernes.Value);
         if (req.HorasSabado.HasValue) emp.HorasSabado = Clamp(req.HorasSabado.Value);
         if (req.HorasDomingo.HasValue) emp.HorasDomingo = Clamp(req.HorasDomingo.Value);
+        // 2026-06-03: flag mostrar extras + ciclo de liquidacion
+        if (req.MostrarExtrasAlEmpleado.HasValue) emp.MostrarExtrasAlEmpleado = req.MostrarExtrasAlEmpleado.Value;
+        if (req.ClearCiclo)
+        {
+            emp.CicloDiaInicio = null;
+            emp.CicloDiaFin = null;
+        }
+        else
+        {
+            // Solo se actualizan si vienen los DOS valores (uno solo no tiene sentido).
+            // Validamos que esten en 1-31.
+            if (req.CicloDiaInicio.HasValue && req.CicloDiaFin.HasValue)
+            {
+                if (req.CicloDiaInicio.Value < 1 || req.CicloDiaInicio.Value > 31)
+                    return BadRequest(new { error = "CicloDiaInicio debe estar entre 1 y 31" });
+                if (req.CicloDiaFin.Value < 1 || req.CicloDiaFin.Value > 31)
+                    return BadRequest(new { error = "CicloDiaFin debe estar entre 1 y 31" });
+                emp.CicloDiaInicio = req.CicloDiaInicio.Value;
+                emp.CicloDiaFin = req.CicloDiaFin.Value;
+            }
+        }
         emp.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return Ok(emp);
@@ -390,15 +480,33 @@ public class HorasExtrasController : ControllerBase
         decimal HorasTrabajadas, decimal HorasEsperadas, decimal Diferencia, string DiaNombre);
 
     /// <summary>Lista todos los registros, opcionalmente filtrando por rango y/o empleado.
-    /// Por default devuelve los últimos 30 días.</summary>
+    /// Por default devuelve los últimos 30 días. Si se filtra por empleado SIN pasar desde/hasta,
+    /// usa el CICLO DE LIQUIDACION del empleado (2026-06-03), asi los totales del panel coinciden
+    /// con lo que el empleado ve en su celular.</summary>
     [HttpGet("admin/registros")]
     [Authorize]
     public async Task<IActionResult> ListRegistros([FromQuery] DateTime? desde = null,
         [FromQuery] DateTime? hasta = null, [FromQuery] int? empleadoId = null)
     {
         var hoy = FechaArgentinaHoy();
-        var d = (desde ?? hoy.AddDays(-30)).Date;
-        var h = (hasta ?? hoy).Date;
+        DateTime d, h;
+        if (empleadoId.HasValue && !desde.HasValue && !hasta.HasValue)
+        {
+            // 2026-06-03: filtro por empleado sin rango -> usar SU ciclo
+            var empCiclo = await _db.HorasExtrasEmpleados.FindAsync(empleadoId.Value);
+            if (empCiclo is not null)
+            {
+                var ciclo = empCiclo.CicloActual(hoy);
+                d = ciclo.Desde;
+                h = ciclo.Hasta < hoy ? hoy : ciclo.Hasta; // no contar dias futuros del ciclo
+            }
+            else { d = hoy.AddDays(-30).Date; h = hoy.Date; }
+        }
+        else
+        {
+            d = (desde ?? hoy.AddDays(-30)).Date;
+            h = (hasta ?? hoy).Date;
+        }
 
         var q = _db.HorasExtrasRegistros.Include(r => r.Empleado).AsQueryable();
         q = q.Where(r => r.Fecha >= d && r.Fecha <= h);
