@@ -3071,6 +3071,26 @@ textarea.form-input {
 .ajuste-propagar-btn:hover {
     background: linear-gradient(135deg, #bfdbfe 0%, #93c5fd 100%);
 }
+/* 2026-06-03: boton "Pushear (N) seleccionadas" — verde */
+.ajuste-push-sel-btn {
+    padding: 0.2rem 0.55rem;
+    background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+    color: #064e3b;
+    border: 1px solid #34d399;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    line-height: 1;
+}
+.ajuste-push-sel-btn:hover:not(:disabled) {
+    background: linear-gradient(135deg, #a7f3d0 0%, #6ee7b7 100%);
+}
+.ajuste-push-sel-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
 
 .ajuste-prefix {
     display: inline-flex;
