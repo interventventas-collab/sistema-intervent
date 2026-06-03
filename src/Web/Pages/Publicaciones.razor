@@ -520,6 +520,16 @@
                                         {
                                             <div class="ajuste-preview-box" title="Precio final a pushear">→ $@prev1</div>
                                         }
+                                        @* 2026-06-03: si esta fila es una familia con N MLAs, mostrar boton para
+                                           copiar este ajuste a todas las publicaciones hermanas. NO hace push — solo
+                                           guarda. El usuario despues pushea cada una individualmente con 💵. *@
+                                        @if (grp.IsFamily && grp.Variants.Count > 1)
+                                        {
+                                            <button class="ajuste-propagar-btn" @onclick="() => PropagarAjusteAFamilia(item, grp)"
+                                                    title="Copiar este ajuste a las @(grp.Variants.Count - 1) publicaciones hermanas de la familia (no las pushea)">
+                                                ⚡ Propagar a familia (@(grp.Variants.Count - 1))
+                                            </button>
+                                        }
                                     </td>
                                     <td class="td-product" @onclick:stopPropagation="true">
                                         @if (item.ProductId.HasValue)
@@ -4625,6 +4635,34 @@
         if (string.IsNullOrWhiteSpace(value)) return null;
         var clean = value.Replace(",", ".");
         return decimal.TryParse(clean, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : null;
+    }
+
+    /// <summary>2026-06-03: copia el ajuste actual de la publicacion padre (% / $ / redondeo) a TODAS
+    /// las MLAs hermanas que comparten el mismo FamilyId. No hace push — solo guarda en DB.
+    /// El usuario despues pushea cada una individualmente con el boton 💵.</summary>
+    private async Task PropagarAjusteAFamilia(MeliItemDto item, GroupedRow grp)
+    {
+        try
+        {
+            var cantidad = await Api.PropagarAjusteAFamiliaAsync(item.Id);
+            ToastService.Success($"Ajuste copiado a {cantidad} publicaciones hermanas de la familia. Pusheá cada una con 💵 cuando quieras.");
+            // Actualizar el DTO local de las variantes para que reflejen el nuevo ajuste (sin recargar todo)
+            var aj = GetAjuste(item);
+            foreach (var v in grp.Variants)
+            {
+                if (v.Id == item.Id) continue;
+                v.AjustePct = aj.DeltaPct ?? 0m;
+                v.AjusteFijo = aj.DeltaPesos ?? 0m;
+                v.AjusteRedondeo = string.IsNullOrEmpty(aj.Redondeo) ? null : aj.Redondeo;
+                // Refrescar el cache de ajustes para que la UI muestre el nuevo valor cuando se expanda la fila
+                if (ajustesPrecio.ContainsKey(v.Id)) ajustesPrecio.Remove(v.Id);
+            }
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("No se pudo propagar: " + ex.Message);
+        }
     }
 
     private async Task DoQuickPush(MeliItemDto item, bool pushPrice, bool pushStock, string what, decimal? overridePrice = null)

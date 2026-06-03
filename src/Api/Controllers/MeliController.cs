@@ -1932,6 +1932,65 @@ public class MeliController : ControllerBase
         return NoContent();
     }
 
+    /// <summary>2026-06-03: copia el ajuste de precio del item id a TODAS las MLAs que comparten
+    /// el mismo FamilyId. Pisa lo que tenian antes. Pensado para el boton "Propagar a la familia"
+    /// de /publicaciones cuando hay multiples MLAs bajo una sola familia (catalogo MeLi).
+    /// NO hace push a MeLi — solo guarda. El usuario despues puede pushear cada MLA con el boton normal.
+    /// Lee/escribe en MeliItem_SyncConfig (la fuente de verdad del ajuste post-refactor 2026-05-29).</summary>
+    [HttpPost("items/{id}/propagar-ajuste-a-familia")]
+    public async Task<IActionResult> PropagarAjusteAFamilia(int id, [FromServices] Api.Data.AppDbContext db)
+    {
+        var src = await db.MeliItems.FindAsync(id);
+        if (src is null) return NotFound();
+        if (string.IsNullOrEmpty(src.FamilyId))
+            return BadRequest(new { error = "Este item no pertenece a ninguna familia (FamilyId vacio)." });
+
+        // Leer ajuste del source desde MeliItem_SyncConfig (fuente de verdad).
+        var srcCfg = await db.MeliItemSyncConfigs.FindAsync(src.MeliItemId);
+        // Si no hay config aun, tomamos defaults (sin ajuste).
+        decimal pct = srcCfg?.AjustePct ?? 0m;
+        decimal fijo = srcCfg?.AjusteFijo ?? 0m;
+        string? redondeo = srcCfg?.AjusteRedondeo;
+
+        // Encontrar los hermanos de la familia (mismo FamilyId, excluyendo el source).
+        var hermanos = await db.MeliItems
+            .Where(m => m.FamilyId == src.FamilyId && m.Id != src.Id)
+            .Select(m => m.MeliItemId)
+            .ToListAsync();
+        if (hermanos.Count == 0)
+            return Ok(new { ok = true, familyId = src.FamilyId, propagados = 0 });
+
+        // Cargar configs existentes y crear las que falten. Pisar los 3 valores con los del source.
+        var existingCfgs = await db.MeliItemSyncConfigs
+            .Where(c => hermanos.Contains(c.MeliItemId))
+            .ToListAsync();
+        var existingDict = existingCfgs.ToDictionary(c => c.MeliItemId);
+
+        foreach (var hMli in hermanos)
+        {
+            if (existingDict.TryGetValue(hMli, out var cfg))
+            {
+                cfg.AjustePct = pct;
+                cfg.AjusteFijo = fijo;
+                cfg.AjusteRedondeo = redondeo;
+                cfg.UpdatedAt = DateTime.UtcNow;
+            }
+            else
+            {
+                db.MeliItemSyncConfigs.Add(new Models.MeliItemSyncConfig
+                {
+                    MeliItemId = hMli,
+                    AjustePct = pct,
+                    AjusteFijo = fijo,
+                    AjusteRedondeo = redondeo,
+                    UpdatedAt = DateTime.UtcNow
+                });
+            }
+        }
+        await db.SaveChangesAsync();
+        return Ok(new { ok = true, familyId = src.FamilyId, propagados = hermanos.Count });
+    }
+
     [HttpPost("items/{id}/push-from-product")]
     public async Task<IActionResult> PushFromProduct(int id, [FromBody] PushFromProductRequest? request)
     {

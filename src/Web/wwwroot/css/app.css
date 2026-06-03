@@ -3051,6 +3051,26 @@ textarea.form-input {
     background: #fef3c7;
     color: #92400e;
 }
+/* 2026-06-03: boton 'Propagar a familia' (solo en fila padre de una familia con N MLAs) */
+.ajuste-propagar-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-top: 0.35rem;
+    padding: 0.2rem 0.55rem;
+    background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+    color: #1e3a8a;
+    border: 1px solid #60a5fa;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    line-height: 1;
+}
+.ajuste-propagar-btn:hover {
+    background: linear-gradient(135deg, #bfdbfe 0%, #93c5fd 100%);
+}
 
 .ajuste-prefix {
     display: inline-flex;
