@@ -555,7 +555,7 @@
     private List<CafePreparacionVentaDto>? lista;
     private List<CafePreparacionVentaDto>? armados;
     private bool armadosExpanded = false;
-    private string rangoArmados = "7d";  // hoy / ayer / 7d / 30d / todos
+    private string rangoArmados = "hoy";  // hoy / ayer / 7d / 30d / todos — default 2026-06-03: arranca en HOY
 
     private static string RangoLabel(string r) => r switch
     {
