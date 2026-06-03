@@ -324,6 +324,43 @@
     .prep-print-bar button:hover { background: #dbeafe; }
     .prep-print-bar button.ghost { background: transparent; color: white; border: 1px solid rgba(255,255,255,0.5); }
     .prep-print-bar button.ghost:hover { background: rgba(255,255,255,0.15); }
+    /* 2026-06-03: hover tooltip + boton "Volver a armar" en cards de Ya armados */
+    .prep-armado-mini-hoverable { position: relative; cursor: default; }
+    .prep-armado-mini-hoverable:hover { background: #f0fdf4; border-color: #86efac; }
+    .prep-armado-tooltip {
+        position: absolute;
+        top: 100%; left: 0;
+        background: white;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        padding: 0.7rem 0.9rem;
+        margin-top: 0.3rem;
+        min-width: 280px;
+        max-width: 400px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+        z-index: 100;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.15s, visibility 0.15s;
+        pointer-events: none;
+    }
+    .prep-armado-mini-hoverable:hover .prep-armado-tooltip {
+        opacity: 1;
+        visibility: visible;
+    }
+    .prep-btn-volver-armar {
+        padding: 0.25rem 0.55rem;
+        font-size: 0.72rem;
+        font-weight: 700;
+        background: #fef3c7;
+        color: #92400e;
+        border: 1px solid #f59e0b;
+        border-radius: 6px;
+        cursor: pointer;
+        margin-right: 0.4rem;
+    }
+    .prep-btn-volver-armar:hover { background: #fde68a; }
+
     /* Seccion "Ya armados" — header colapsable + grid mini */
     .prep-armados-header {
         display: flex;
@@ -522,7 +559,8 @@
                 <div class="drive-pedidos-grid" style="margin-top:0.5rem;">
                     @foreach (var v in armados)
                     {
-                        <div class="prep-armado-mini">
+                        @* 2026-06-03: tooltip al hover muestra composicion del pedido + boton "Volver a armar" *@
+                        <div class="prep-armado-mini prep-armado-mini-hoverable">
                             @if (v.DriveSubidoAt.HasValue && !string.IsNullOrEmpty(v.DriveFileId))
                             {
                                 <a href="https://drive.google.com/file/d/@v.DriveFileId/view" target="_blank" title="Abrir PDF en Drive" style="text-decoration:none;">
@@ -540,7 +578,35 @@
                                     <div style="font-size:0.72rem; color:#16a34a;">✅ Armado @HaceCuanto(v.PreparacionUpdatedAt)</div>
                                 }
                             </div>
+                            <button class="prep-btn-volver-armar" @onclick="() => VolverAArmar(v)" title="Volver este pedido a 'Para armar'">↩ Volver</button>
                             <span class="check-armado">@v.EstadoPreparacion</span>
+
+                            @* TOOLTIP: aparece al pasar el mouse — muestra composicion del pedido *@
+                            @if (v.Items is not null && v.Items.Count > 0)
+                            {
+                                <div class="prep-armado-tooltip">
+                                    <div style="font-weight:700; color:#1f2937; margin-bottom:0.4rem; padding-bottom:0.3rem; border-bottom:1px solid #e5e7eb;">
+                                        📋 Composición de @v.Numero
+                                    </div>
+                                    @foreach (var item in v.Items)
+                                    {
+                                        <div style="display:flex; gap:0.5rem; padding:0.25rem 0; font-size:0.85rem;">
+                                            <span style="font-weight:700; color:#1d4ed8; min-width:24px;">×@item.Cantidad</span>
+                                            <span style="flex:1;">
+                                                @item.ProductoNombre
+                                                @if (!string.IsNullOrEmpty(item.Formato) && item.Formato != "Unidad")
+                                                {
+                                                    <span style="color:#6b7280; font-size:0.78rem;"> · @item.Formato</span>
+                                                }
+                                                @if (!string.IsNullOrEmpty(item.Molienda) && item.Categoria == "CAFE")
+                                                {
+                                                    <span style="color:#92400e; font-size:0.78rem;"> · @item.Molienda</span>
+                                                }
+                                            </span>
+                                        </div>
+                                    }
+                                </div>
+                            }
                         </div>
                     }
                 </div>
@@ -598,6 +664,37 @@
         {
             loading = false;
             StateHasChanged();
+        }
+    }
+
+    /// <summary>2026-06-03: vuelve una venta ya armada a "Para armar" (resetea EstadoPreparacion a PARA_PREPARAR).</summary>
+    private async Task VolverAArmar(CafePreparacionVentaDto v)
+    {
+        try
+        {
+            var req = new CafeCambiarEstadoPreparacionRequest
+            {
+                EstadoNuevo = "PARA_PREPARAR",
+                OperadorNombre = Operator.Current,
+                Notas = "Volver a 'Para armar' desde tablero"
+            };
+            var ok = await Api.CambiarEstadoPreparacionAsync(v.Id, req);
+            if (ok)
+            {
+                ToastService.Success($"{v.Numero} vuelto a 'Para armar'");
+                // Recargar ambas listas
+                await Cargar();
+                armados = await Api.GetCafePreparacionArmadosAsync(rangoArmados) ?? new();
+                StateHasChanged();
+            }
+            else
+            {
+                ToastService.Error("No se pudo cambiar el estado");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error: " + ex.Message);
         }
     }
 
