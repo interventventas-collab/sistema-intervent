@@ -3667,6 +3667,25 @@ BEGIN
 END
 GO
 
+-- 2026-06-03: tabla de movimientos del extracto descartados por cliente puntual.
+-- Cuando el usuario marca "este movimiento no es de Bree", se inserta una fila aca.
+-- El endpoint AsociadosSinCobrar/{clienteId} filtra esos movimientos.
+-- Es reversible: borrar la fila restaura el movimiento.
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_ExtractoMov_DescartadoPorCliente')
+BEGIN
+    CREATE TABLE Cafe_ExtractoMov_DescartadoPorCliente (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        MovimientoId INT NOT NULL,
+        ClienteId INT NOT NULL,
+        DescartadoAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        DescartadoPor NVARCHAR(120) NULL,
+        CONSTRAINT FK_ExtractoMovDescartadoCliente_Mov FOREIGN KEY (MovimientoId) REFERENCES Cafe_ExtractoMovimientos(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_ExtractoMovDescartadoCliente_Cli FOREIGN KEY (ClienteId) REFERENCES Cafe_Clientes(Id) ON DELETE CASCADE
+    );
+    CREATE UNIQUE INDEX UX_ExtractoMovDescartadoCliente ON Cafe_ExtractoMov_DescartadoPorCliente(MovimientoId, ClienteId);
+END
+GO
+
 -- 2026-06-03: Cafe_Ventas — flag para marcar que se edito un comprobante despues de armado.
 -- Sirve para mostrar chip "PEDIDO MODIFICADO" en /cafe/preparacion al re-subir un comprobante
 -- que ya habia sido marcado como LISTO/EN_CAMINO/ENTREGADO.

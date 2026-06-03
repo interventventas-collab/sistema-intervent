@@ -114,8 +114,15 @@ public class CafeExtractoBancoController : ControllerBase
         var cliente = await _db.CafeClientes.FirstOrDefaultAsync(c => c.Id == clienteId);
         if (cliente is null) return Ok(new List<MovimientoDisponibleDto>());
 
+        // 2026-06-03: traer ids de movimientos que el usuario marco como "no es de este cliente"
+        var descartadosIds = await _db.CafeExtractoMovDescartadosPorCliente
+            .Where(d => d.ClienteId == clienteId)
+            .Select(d => d.MovimientoId)
+            .ToListAsync();
+
         var q = _db.CafeExtractoMovimientos
             .Where(m => m.Creditos > 0 && m.CobranzaUsadaId == null
+                && !descartadosIds.Contains(m.Id)  // 2026-06-03: filtrar descartados
                 && (m.VentaIdAsociada != null
                     || (cliente.Cuit != null && m.LeyendaAdicional2 == cliente.Cuit)));
         // Filtramos por venta asociada al cliente O por CUIT del cliente
@@ -157,6 +164,57 @@ public class CafeExtractoBancoController : ControllerBase
         foreach (var m in movs) m.CobranzaUsadaId = req.CobranzaId;
         await _db.SaveChangesAsync();
         return Ok(new { actualizados = movs.Count });
+    }
+
+    // ─── 2026-06-03: Descartar/restaurar movimiento bancario para un cliente puntual ──────
+    public record DescartarRequest(string? Operador);
+
+    /// <summary>Marca un movimiento del extracto como "no es de este cliente". A partir de ahora
+    /// no se sugiere mas en la pantalla de cobranzas de ese cliente. Es reversible.</summary>
+    [HttpPost("{movId:int}/descartar-cliente/{clienteId:int}")]
+    public async Task<IActionResult> DescartarParaCliente(int movId, int clienteId, [FromBody] DescartarRequest? req = null)
+    {
+        var existe = await _db.CafeExtractoMovDescartadosPorCliente
+            .FirstOrDefaultAsync(d => d.MovimientoId == movId && d.ClienteId == clienteId);
+        if (existe != null) return Ok(new { ok = true, yaEstaba = true });
+        _db.CafeExtractoMovDescartadosPorCliente.Add(new CafeExtractoMovDescartadoPorCliente
+        {
+            MovimientoId = movId,
+            ClienteId = clienteId,
+            DescartadoAt = DateTime.UtcNow,
+            DescartadoPor = string.IsNullOrWhiteSpace(req?.Operador) ? null : req.Operador.Trim()
+        });
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, yaEstaba = false });
+    }
+
+    /// <summary>Restaura un movimiento descartado: vuelve a aparecer en el modal de cobranzas
+    /// de ese cliente.</summary>
+    [HttpDelete("{movId:int}/descartar-cliente/{clienteId:int}")]
+    public async Task<IActionResult> RestaurarParaCliente(int movId, int clienteId)
+    {
+        var row = await _db.CafeExtractoMovDescartadosPorCliente
+            .FirstOrDefaultAsync(d => d.MovimientoId == movId && d.ClienteId == clienteId);
+        if (row == null) return Ok(new { ok = true, noEstaba = true });
+        _db.CafeExtractoMovDescartadosPorCliente.Remove(row);
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, noEstaba = false });
+    }
+
+    public record DescartadoDto(int MovimientoId, DateTime Fecha, string? Descripcion, decimal Importe, DateTime DescartadoAt, string? DescartadoPor);
+
+    /// <summary>Lista los movimientos que fueron descartados para un cliente (para mostrarlos
+    /// en el toggle "Ver descartados" del modal de cobranzas y permitir restaurar).</summary>
+    [HttpGet("descartados/{clienteId:int}")]
+    public async Task<IActionResult> ListarDescartados(int clienteId)
+    {
+        var rows = await _db.CafeExtractoMovDescartadosPorCliente
+            .Where(d => d.ClienteId == clienteId)
+            .Join(_db.CafeExtractoMovimientos, d => d.MovimientoId, m => m.Id,
+                (d, m) => new DescartadoDto(m.Id, m.Fecha, m.Descripcion, m.Creditos, d.DescartadoAt, d.DescartadoPor))
+            .OrderByDescending(d => d.DescartadoAt)
+            .ToListAsync();
+        return Ok(rows);
     }
 
     [HttpPost("{id:int}/asociar")]
