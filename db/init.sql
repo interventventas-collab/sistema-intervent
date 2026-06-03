@@ -4436,3 +4436,10 @@ BEGIN
     CREATE INDEX IX_FichadaMeta_Registro ON HorasExtras_FichadaMeta(RegistroId);
 END
 GO
+
+-- 2026-06-03 v3: piloto modo nuevo fichada - flag por empleado para testear sin afectar a otros
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ProbarModoNuevoFichada' AND Object_ID=OBJECT_ID('HorasExtras_Empleados'))
+BEGIN
+    ALTER TABLE HorasExtras_Empleados ADD ProbarModoNuevoFichada BIT NOT NULL CONSTRAINT DF_HorasExtras_Empleados_ProbarModoNuevo DEFAULT 0;
+END
+GO
