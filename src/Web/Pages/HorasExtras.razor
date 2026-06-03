@@ -162,9 +162,23 @@
 
     @* Registros recientes *@
     <div class="he-card">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem; flex-wrap:wrap; gap:0.5rem;">
             <h3 style="margin: 0;">Registros recientes (últimos 30 días)</h3>
-            <button class="btn btn-secondary" @onclick="RecargarTodo">🔄 Refrescar</button>
+            <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                @* 2026-06-03: filtro por empleado client-side. Muestra solo registros del empleado seleccionado. *@
+                <label style="font-size:0.85rem; color:#374151;">Empleado:</label>
+                <select class="form-input" style="width:auto; font-size:0.85rem; padding:0.3rem 0.5rem;" @bind="filtroEmpleadoId">
+                    <option value="0">Todos</option>
+                    @if (empleados is not null)
+                    {
+                        @foreach (var e in empleados.Where(x => x.IsActive).OrderBy(x => x.Nombre))
+                        {
+                            <option value="@e.Id">@e.Nombre</option>
+                        }
+                    }
+                </select>
+                <button class="btn btn-secondary" @onclick="RecargarTodo">🔄 Refrescar</button>
+            </div>
         </div>
         @if (registros is null)
         {
@@ -176,6 +190,23 @@
         }
         else
         {
+            var registrosFiltrados = filtroEmpleadoId > 0
+                ? registros.Where(r => r.EmpleadoId == filtroEmpleadoId).ToList()
+                : registros;
+            @if (registrosFiltrados.Count == 0)
+            {
+                <p style="color:#6b7280;">No hay registros para este empleado en los últimos 30 días.</p>
+            }
+            else
+            {
+                <p style="font-size:0.78rem; color:#6b7280; margin: 0 0 0.5rem;">
+                    Mostrando <strong>@registrosFiltrados.Count</strong> de @registros.Count registros
+                    @if (filtroEmpleadoId > 0)
+                    {
+                        <span> · Trabajadas total: <strong>@registrosFiltrados.Sum(r => r.HorasTrabajadas).ToString("0.##")h</strong> · Diferencia total: <strong style="color:@(registrosFiltrados.Sum(r => r.Diferencia) >= 0 ? "#16a34a" : "#b91c1c");">@(registrosFiltrados.Sum(r => r.Diferencia) > 0 ? "+" : "")@registrosFiltrados.Sum(r => r.Diferencia).ToString("0.##")h</strong></span>
+                    }
+                </p>
+            }
             <table class="he-tabla-regs">
                 <thead>
                     <tr>
@@ -190,7 +221,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var r in registros)
+                    @foreach (var r in registrosFiltrados)
                     {
                         var diffColor = r.Diferencia > 0.05m ? "#16a34a" : r.Diferencia < -0.05m ? "#b91c1c" : "#6b7280";
                         var diffBg = r.Diferencia > 0.05m ? "#dcfce7" : r.Diferencia < -0.05m ? "#fee2e2" : "#f3f4f6";
@@ -275,6 +306,8 @@
 
     private List<AdminEmpleadoDto>? empleados;
     private List<AdminRegistroDto>? registros;
+    // 2026-06-03: filtro client-side por empleado en la tabla de registros recientes. 0 = todos.
+    private int filtroEmpleadoId = 0;
 
     private bool showFormEmp, savingEmp;
     private int? editingId;
