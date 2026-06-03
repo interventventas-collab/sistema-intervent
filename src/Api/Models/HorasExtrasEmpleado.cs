@@ -51,6 +51,11 @@ public class HorasExtrasEmpleado
     /// Si false, solo se ve la fecha y el horario "08:00 → 19:30".</summary>
     public bool MostrarHorasTrabajadasDia { get; set; } = false;
 
+    /// <summary>2026-06-03 v3: piloto - flag por empleado para probar el modo nuevo de fichada.
+    /// Si el toggle GLOBAL esta OFF pero este flag esta ON, solo ESTE empleado pasa por validacion
+    /// de WiFi. Permite testear con un empleado de prueba sin afectar a los demas.</summary>
+    public bool ProbarModoNuevoFichada { get; set; } = false;
+
     /// <summary>Dia del mes (1-31) en que arranca el ciclo de liquidacion. NULL = mes calendario (1 al fin del mes).
     /// Ej: 16 -> el ciclo va del 16 de un mes al 15 del siguiente (o al CicloDiaFin si se configuro).</summary>
     public int? CicloDiaInicio { get; set; }

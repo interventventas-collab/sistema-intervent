@@ -187,11 +187,15 @@ public class HorasExtrasController : ControllerBase
         if (fechaCarga != hoy)
             return BadRequest(new { error = "Solo podés cargar el día de hoy. Pedile al admin que corrija otros días." });
 
-        // 2026-06-03: piloto modo nuevo de fichada. Si esta ACTIVADO en la config singleton,
-        // validamos que la IP publica del cliente este en la whitelist (Wifi1Ip o Wifi2Ip).
-        // Si esta DESACTIVADO -> comportamiento exacto de antes (no validamos nada).
+        // 2026-06-03: piloto modo nuevo de fichada. Activacion en 2 niveles:
+        //   - GLOBAL (cfg.ActivarModoNuevo): aplica a todos los empleados
+        //   - POR EMPLEADO (emp.ProbarModoNuevoFichada): solo este empleado pasa por validacion
+        //                                                 (sirve para testear sin afectar a otros)
+        // Si ninguno esta ON -> comportamiento exacto de antes (no validamos nada).
         var cfg = await _db.HorasExtrasConfigFichadas.FindAsync(1);
-        bool modoNuevoActivo = cfg?.ActivarModoNuevo ?? false;
+        bool globalActivo = cfg?.ActivarModoNuevo ?? false;
+        bool flagEmpleado = emp.ProbarModoNuevoFichada;
+        bool modoNuevoActivo = globalActivo || flagEmpleado;
         string? ipCliente = ResolverIpCliente();
         bool ipAutorizada = false;
         if (modoNuevoActivo)
@@ -319,7 +323,9 @@ public class HorasExtrasController : ControllerBase
         DateTime CicloDesde, DateTime CicloHasta, string CicloLabel,
         decimal TrabajadoCiclo, decimal EsperadoCiclo, decimal DiferenciaCiclo,
         // 2026-06-03 v2: flags granulares de visibilidad
-        bool MostrarCuadroCiclo, bool MostrarHorasTrabajadasDia);
+        bool MostrarCuadroCiclo, bool MostrarHorasTrabajadasDia,
+        // 2026-06-03 v3: flag para probar el modo nuevo de fichada solo en este empleado
+        bool ProbarModoNuevoFichada);
 
     /// <summary>Lista de empleados con totales (hoy / semana / mes) y la última vez que cargaron.</summary>
     [HttpGet("admin/empleados")]
@@ -411,7 +417,8 @@ public class HorasExtrasController : ControllerBase
                 e.MostrarExtrasAlEmpleado, e.CicloDiaInicio, e.CicloDiaFin,
                 ciclo.Desde, ciclo.Hasta, ciclo.Label,
                 trabCiclo, espCiclo, trabCiclo - espCiclo,
-                e.MostrarCuadroCiclo, e.MostrarHorasTrabajadasDia
+                e.MostrarCuadroCiclo, e.MostrarHorasTrabajadasDia,
+                e.ProbarModoNuevoFichada
             );
         }).ToList();
         return Ok(result);
@@ -498,6 +505,8 @@ public class HorasExtrasController : ControllerBase
         // 2026-06-03 v2: flags granulares de visibilidad
         public bool? MostrarCuadroCiclo { get; set; }
         public bool? MostrarHorasTrabajadasDia { get; set; }
+        // 2026-06-03 v3: piloto - flag por empleado para probar el modo nuevo
+        public bool? ProbarModoNuevoFichada { get; set; }
     }
 
     [HttpPut("admin/empleados/{id:int}")]
@@ -529,6 +538,7 @@ public class HorasExtrasController : ControllerBase
         // 2026-06-03 v2: flags granulares de visibilidad
         if (req.MostrarCuadroCiclo.HasValue) emp.MostrarCuadroCiclo = req.MostrarCuadroCiclo.Value;
         if (req.MostrarHorasTrabajadasDia.HasValue) emp.MostrarHorasTrabajadasDia = req.MostrarHorasTrabajadasDia.Value;
+        if (req.ProbarModoNuevoFichada.HasValue) emp.ProbarModoNuevoFichada = req.ProbarModoNuevoFichada.Value;
         if (req.ClearCiclo)
         {
             emp.CicloDiaInicio = null;

@@ -122,6 +122,19 @@
                 </div>
             </div>
 
+            @* 2026-06-03 v3: piloto modo nuevo de fichada - flag por empleado para testear *@
+            <div style="margin-top:0.7rem; padding:0.6rem 0.8rem; background:#fef3c7; border:1px solid #f59e0b; border-radius:8px;">
+                <label style="display:flex; gap:0.5rem; align-items:flex-start; cursor:pointer; font-size:0.88rem;">
+                    <input type="checkbox" @bind="formProbarModoNuevoFichada" style="margin-top:0.15rem;" />
+                    <span>
+                        <strong>🔒 Probar modo nuevo de fichada (WiFi + GPS)</strong>
+                        <div style="font-size:0.72rem; color:#6b7280; margin-top:0.1rem;">
+                            <strong>Solo este empleado</strong> va a pasar por la validación de WiFi al fichar (los demás siguen sin restricciones). Útil para testear antes de activar el modo global. Configurá las IPs autorizadas en <a href="/horas-extras/configuracion-fichada" target="_blank">🔒 Config fichada</a>.
+                        </div>
+                    </span>
+                </label>
+            </div>
+
             @* 2026-06-03: período de liquidación (mes calendario o personalizado) *@
             <div style="margin-top:0.7rem; padding:0.6rem 0.8rem; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px;">
                 <label style="font-size:0.78rem; font-weight:700; color:#1e3a8a; text-transform:uppercase; letter-spacing:0.04em;">📅 Período de liquidación</label>
@@ -354,7 +367,9 @@
         DateTime CicloDesde = default, DateTime CicloHasta = default, string CicloLabel = "",
         decimal TrabajadoCiclo = 0m, decimal EsperadoCiclo = 0m, decimal DiferenciaCiclo = 0m,
         // 2026-06-03 v2: flags granulares de visibilidad
-        bool MostrarCuadroCiclo = false, bool MostrarHorasTrabajadasDia = false);
+        bool MostrarCuadroCiclo = false, bool MostrarHorasTrabajadasDia = false,
+        // 2026-06-03 v3: flag para probar el modo nuevo de fichada (WiFi + GPS) solo en este empleado
+        bool ProbarModoNuevoFichada = false);
     public record AdminRegistroDto(int Id, int EmpleadoId, string EmpleadoNombre, DateTime Fecha,
         decimal Cantidad, string? Observaciones, string? HoraEntrada, string? HoraSalida,
         DateTime CreatedAt, DateTime? UpdatedAt,
@@ -380,6 +395,8 @@
     // 2026-06-03 v2: flags granulares de visibilidad
     private bool formMostrarCuadroCiclo = false;
     private bool formMostrarHorasTrabajadasDia = false;
+    // 2026-06-03 v3: flag para probar el modo nuevo de fichada SOLO en este empleado
+    private bool formProbarModoNuevoFichada = false;
 
     // Carga manual (para acumulados)
     private bool showCargarManual, savingManual;
@@ -454,6 +471,7 @@
         // 2026-06-03 v2: nuevos defaults OFF
         formMostrarCuadroCiclo = false;
         formMostrarHorasTrabajadasDia = false;
+        formProbarModoNuevoFichada = false;
     }
 
     private void ShowEditEmpleado(AdminEmpleadoDto e)
@@ -471,6 +489,7 @@
         // 2026-06-03 v2: flags granulares
         formMostrarCuadroCiclo = e.MostrarCuadroCiclo;
         formMostrarHorasTrabajadasDia = e.MostrarHorasTrabajadasDia;
+        formProbarModoNuevoFichada = e.ProbarModoNuevoFichada;
     }
 
     private async Task GuardarEmpleado()
@@ -500,7 +519,8 @@
                           CicloDiaFin = formCicloPersonalizado ? (int?)formCicloDiaFin : null,
                           ClearCiclo = !formCicloPersonalizado,
                           MostrarCuadroCiclo = formMostrarCuadroCiclo,
-                          MostrarHorasTrabajadasDia = formMostrarHorasTrabajadasDia });
+                          MostrarHorasTrabajadasDia = formMostrarHorasTrabajadasDia,
+                          ProbarModoNuevoFichada = formProbarModoNuevoFichada });
                 if (resp.IsSuccessStatusCode) ToastService.Success("Empleado actualizado");
                 else { ToastService.Error("Error actualizando"); return; }
             }
