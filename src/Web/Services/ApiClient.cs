@@ -2667,6 +2667,18 @@ public class ApiClient
         if (!response.IsSuccessStatusCode) await ThrowIfErrorAsync(response);
     }
 
+    /// <summary>2026-06-03: copia el ajuste del item id a todas las MLAs con el mismo FamilyId.
+    /// Devuelve la cantidad de items hermanos a los que se propago.</summary>
+    public async Task<int> PropagarAjusteAFamiliaAsync(int itemId)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsync($"/api/meli/items/{itemId}/propagar-ajuste-a-familia", null);
+        if (!resp.IsSuccessStatusCode) { await ThrowIfErrorAsync(resp); return 0; }
+        var body = await resp.Content.ReadFromJsonAsync<PropagarResp>();
+        return body?.Propagados ?? 0;
+    }
+    private record PropagarResp(bool Ok, string FamilyId, int Propagados);
+
     public record PushPrecioAjustadoResultDto(bool Success, string Message, decimal? PushedPrice, decimal? PrecioBaseSistema);
 
     /// <summary>2026-05-29: pushea precio a MeLi calculado desde PrecioOtro del sistema + ajuste
