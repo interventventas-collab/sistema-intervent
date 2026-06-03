@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Fido2NetLib;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -92,6 +93,17 @@ builder.Services.AddRateLimiter(options =>
                 QueueLimit = 0
             }));
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+});
+
+// 2026-06-03: Fido2 (WebAuthn) - huella biometrica para fichador
+builder.Services.AddMemoryCache();
+builder.Services.AddFido2(options =>
+{
+    options.ServerDomain = builder.Configuration["WebAuthn:ServerDomain"] ?? "app.palanica.com.ar";
+    options.ServerName = builder.Configuration["WebAuthn:ServerName"] ?? "Inter Vent Fichador";
+    options.Origins = (builder.Configuration["WebAuthn:Origins"] ?? "https://app.palanica.com.ar,http://localhost:3000")
+        .Split(',').Select(s => s.Trim()).ToHashSet();
+    options.TimestampDriftTolerance = 300000;
 });
 
 // Services
