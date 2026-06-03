@@ -4,13 +4,9 @@ namespace Web.Services;
 
 /// <summary>
 /// Singleton: cachea el dict de visibilidad del menú por rol.
-///
-/// 2026-06-03 — MODELO INVERTIDO (blacklist):
-/// Antes: una fila en la tabla MenuVisibility = "este item SE VE para este rol" (whitelist).
-/// Ahora: una fila en la tabla MenuVisibility = "este item ESTÁ OCULTO para este rol" (blacklist).
-/// Por default todos los items del MenuCatalog se ven; el admin va al panel y oculta lo que no quiere.
-///
-/// El cache sigue conteniendo lo mismo (set de keys por rol). Solo cambia la interpretación.
+/// Lo consume el sidebar para saber qué mostrar a DEPOSITO/OFICINA, y el modo edición
+/// del admin lo modifica con SetAsync (persiste al backend y refresca el cache).
+/// Pedido del usuario 2026-05-28.
 /// </summary>
 public class MenuVisibilityService
 {
@@ -45,35 +41,30 @@ public class MenuVisibilityService
         finally { _loading = false; }
     }
 
-    /// <summary>2026-06-03: ahora indica si un item ESTÁ OCULTO para un rol (true = oculto).</summary>
-    public bool IsHidden(string role, string key)
+    public bool IsEnabled(string role, string key)
     {
         if (_cache is null || string.IsNullOrEmpty(role) || string.IsNullOrEmpty(key)) return false;
         return _cache.TryGetValue(role, out var keys) && keys.Contains(key);
     }
 
-    /// <summary>Devuelve la lista de keys VISIBLES para un rol (todas las del catálogo MENOS las ocultas).
-    /// Recibe el catálogo completo de keys disponibles.</summary>
-    public IReadOnlyList<string> GetVisibleKeys(string role, IEnumerable<string> allCatalogKeys)
+    /// <summary>Devuelve la lista de keys habilitadas para un rol (en el orden de inserción).</summary>
+    public IReadOnlyList<string> GetEnabledKeys(string role)
     {
-        if (_cache is null || string.IsNullOrEmpty(role)) return allCatalogKeys.ToList();
-        if (!_cache.TryGetValue(role, out var hidden)) return allCatalogKeys.ToList();
-        return allCatalogKeys.Where(k => !hidden.Contains(k)).ToList();
+        if (_cache is null || string.IsNullOrEmpty(role)) return Array.Empty<string>();
+        return _cache.TryGetValue(role, out var keys) ? keys.ToList() : Array.Empty<string>();
     }
 
-    /// <summary>Set/unset oculto. Si hidden=true, agrega la fila (= ocultar). Si hidden=false, la borra (= mostrar).</summary>
-    public async Task SetHiddenAsync(string role, string key, bool hidden)
+    public async Task SetAsync(string role, string key, bool enabled)
     {
-        // El endpoint del backend sigue siendo el mismo: "agregar fila" o "borrar fila".
-        // Como invertimos la semántica, "hidden=true" -> agregar fila (=enabled true en el viejo API).
-        await _api.SetMenuVisibilityAsync(role, key, hidden);
+        await _api.SetMenuVisibilityAsync(role, key, enabled);
+        // Actualizar cache local sin re-fetchear
         if (_cache is null) _cache = new(StringComparer.OrdinalIgnoreCase);
         if (!_cache.TryGetValue(role, out var keys))
         {
             keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             _cache[role] = keys;
         }
-        if (hidden) keys.Add(key);
+        if (enabled) keys.Add(key);
         else keys.Remove(key);
         OnChange?.Invoke();
     }

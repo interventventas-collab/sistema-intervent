@@ -91,21 +91,6 @@
         color: white;
         border-color: #15803d;
     }
-    /* 2026-06-03 modelo invertido: 'visible' es el estado default (chip apagado/gris).
-       'hidden-on' = item oculto para ese rol (chip rojo con 🙈). */
-    .menu-edit-row .nav-chip.visible {
-        background: rgba(255,255,255,0.08);
-        color: rgba(255,255,255,0.55);
-        border-color: rgba(255,255,255,0.25);
-    }
-    .menu-edit-row .nav-chip.visible:hover { background: #fee2e2; color: #991b1b; border-color: #f87171; }
-    .menu-edit-row .nav-chip.hidden-on {
-        background: #dc2626;
-        color: white;
-        border-color: #991b1b;
-        width: auto; padding: 0 0.4rem;
-    }
-    .menu-edit-row .nav-chip.hidden-on:hover { background: #b91c1c; }
     .menu-edit-row .nav-chip.off:hover { background: rgba(255,255,255,0.15); color: white; }
     .menu-edit-row .nav-chip:active { transform: scale(0.9); }
 </style>
@@ -175,8 +160,8 @@
                 <div class="menu-edit-panel-header">
                     🛠 Editar visibilidad por rol
                     <div style="font-size:0.72rem; font-weight:400; margin-top: 0.2rem; color: #fed7aa;">
-                        Por default todos ven todo. Tachá <strong>D</strong> (DEPOSITO) u <strong>O</strong> (OFICINA)
-                        para <strong>OCULTAR</strong> ese item a ese rol. Guarda al toque.
+                        Tildá <strong>D</strong> (DEPOSITO) u <strong>O</strong> (OFICINA) según querés
+                        que vean cada item. Guarda al toque.
                     </div>
                 </div>
                 <div class="menu-edit-panel-body">
@@ -185,17 +170,16 @@
                         var key = entry.Key;
                         var label = entry.Value.Label;
                         var emoji = entry.Value.Emoji;
-                        // 2026-06-03: invertido. depoHidden=true significa "oculto para depósito".
-                        var depoHidden = MenuVisibility.IsHidden("deposito", key);
-                        var ofiHidden = MenuVisibility.IsHidden("oficina", key);
+                        var depo = MenuVisibility.IsEnabled("deposito", key);
+                        var ofi = MenuVisibility.IsEnabled("oficina", key);
                         <div class="menu-edit-row">
                             <span class="menu-edit-row-label">@emoji @label</span>
-                            <button class="nav-chip @(depoHidden ? "hidden-on" : "visible")"
-                                    title="@(depoHidden ? "OCULTO para DEPOSITO — click para mostrar" : "Visible para DEPOSITO — click para ocultar")"
-                                    @onclick="@(() => OnMenuToggleHidden(key, "deposito", !depoHidden))">@(depoHidden ? "🙈D" : "D")</button>
-                            <button class="nav-chip @(ofiHidden ? "hidden-on" : "visible")"
-                                    title="@(ofiHidden ? "OCULTO para OFICINA — click para mostrar" : "Visible para OFICINA — click para ocultar")"
-                                    @onclick="@(() => OnMenuToggleHidden(key, "oficina", !ofiHidden))">@(ofiHidden ? "🙈O" : "O")</button>
+                            <button class="nav-chip @(depo ? "on" : "off")"
+                                    title="Mostrar a DEPOSITO"
+                                    @onclick="@(() => OnMenuToggleVisibility(key, "deposito", !depo))">D</button>
+                            <button class="nav-chip @(ofi ? "on" : "off")"
+                                    title="Mostrar a OFICINA"
+                                    @onclick="@(() => OnMenuToggleVisibility(key, "oficina", !ofi))">O</button>
                         </div>
                     }
                 </div>
@@ -216,12 +200,11 @@
         @if (IsRoleWithCustomSidebar())
         {
             var role = GetEffectiveRoleForVisibility();
-            // 2026-06-03: invertido. Antes "los habilitados". Ahora "todos los del catalogo MENOS los ocultos".
-            var visibleKeys = MenuVisibility.GetVisibleKeys(role, MenuCatalog.Keys);
+            var enabledKeys = MenuVisibility.GetEnabledKeys(role);
             <NavGroup Label="@(role == "oficina" ? "🏢 Oficina" : "🏭 Depósito")" Icon="@SvgIcons.Store"
                       Highlight="true" DefaultExpanded="true"
-                      HasActiveChild="@(visibleKeys.Any(k => IsActive("/" + k)))">
-                @foreach (var k in visibleKeys)
+                      HasActiveChild="@(enabledKeys.Any(k => IsActive("/" + k)))">
+                @foreach (var k in enabledKeys)
                 {
                     if (MenuCatalog.TryGetValue(k, out var entry))
                     {
@@ -231,10 +214,10 @@
                                  IsActive="@IsActive(href)" OnClick="@(() => NavigateTo(href))" />
                     }
                 }
-                @if (visibleKeys.Count == 0)
+                @if (enabledKeys.Count == 0)
                 {
                     <div style="padding: 0.5rem 0.8rem; font-size: 0.78rem; color: #9ca3af; font-style: italic;">
-                        El admin ocultó todos los items.
+                        El admin todavía no te asignó pantallas.
                     </div>
                 }
             </NavGroup>
@@ -1018,12 +1001,11 @@
         StateHasChanged();
     }
 
-    // 2026-06-03: invertido. Ahora hidden=true significa "ocultar este item para ese rol".
-    private async Task OnMenuToggleHidden(string menuKey, string role, bool hidden)
+    private async Task OnMenuToggleVisibility(string menuKey, string role, bool enabled)
     {
         try
         {
-            await MenuVisibility.SetHiddenAsync(role, menuKey, hidden);
+            await MenuVisibility.SetAsync(role, menuKey, enabled);
             StateHasChanged();
         }
         catch (Exception ex)
@@ -1072,31 +1054,9 @@
         // Otros
         { "cafe/consultas", ("🔍", "Consultas", "/cafe/consultas") },
         { "cafe/configuracion", ("⚙", "Configuración", "/cafe/configuracion") },
-        { "cafe/configuracion/bancos", ("🏦", "Bancos", "/cafe/configuracion/bancos") },
-        { "cafe/cotejo", ("🔗", "Cotejo MeLi", "/cafe/cotejo") },
-        { "cafe/saldos", ("💰", "Saldos migración", "/cafe/saldos") },
-        { "cafe/maquinas", ("☕", "Máquinas (comodato)", "/cafe/maquinas") },
-        { "cafe/arca/errores", ("⚠", "Errores ARCA", "/cafe/arca/errores") },
-        { "cafe/clientes/panel-deudas", ("📊", "Panel deudas clientes", "/cafe/clientes/panel-deudas") },
-        { "cafe/tesoreria/cheques-banco", ("📄", "Cheques en banco", "/cafe/tesoreria/cheques-banco") },
-        { "cafe/tesoreria/extracto-banco", ("📄", "Extracto banco", "/cafe/tesoreria/extracto-banco") },
         { "documentacion", ("📑", "Documentación", "/documentacion") },
         { "horas-extras", ("🕐", "Horario", "/horas-extras") },
         { "viajes", ("🚚", "Viajes", "/viajes") },
-        // 2026-06-03: agregados Nóminas, MercadoLibre, Alquileres, Mapeo (para que admin los pueda ocultar)
-        { "nominas", ("📊", "Inicio nóminas", "/nominas") },
-        { "nominas/panel", ("💰", "¿Cuánto debo pagar?", "/nominas/panel") },
-        { "nominas/empleados", ("👤", "Ficha empleados", "/nominas/empleados") },
-        { "nominas/liquidaciones", ("📑", "Liquidaciones", "/nominas/liquidaciones") },
-        { "alquileres", ("🏠", "Alquileres", "/alquileres") },
-        { "alquileres/calendario", ("📅", "Calendario alquileres", "/alquileres/calendario") },
-        { "alquileres/clientes", ("👤", "Clientes alquileres", "/alquileres/clientes") },
-        { "alquileres/equipos", ("⚙", "Equipos alquileres", "/alquileres/equipos") },
-        { "alquileres/reservas", ("📋", "Reservas alquileres", "/alquileres/reservas") },
-        { "publicaciones", ("🛒", "Publicaciones MeLi", "/publicaciones") },
-        { "ordenes", ("📋", "Órdenes MeLi", "/ordenes") },
-        { "mapeo", ("🗺", "Mapa de clientes", "/mapeo") },
-        { "meli/me1/entregas", ("🚚", "ME1 / Entregas", "/meli/me1/entregas") },
         // Dashboard
         { "", ("🏠", "Inicio", "/") },
     };
