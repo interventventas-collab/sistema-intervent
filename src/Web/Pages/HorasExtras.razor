@@ -174,18 +174,16 @@
                             string ColorDiff(decimal d) => d > 0.05m ? "#16a34a" : d < -0.05m ? "#b91c1c" : "#6b7280";
                             string SignoDiff(decimal d) => d > 0 ? "+" : "";
                         }
-                        <div class="he-emp-box" title="Horas marcadas (entrada→salida) esta semana vs jornada esperada">
-                            <div>Semana</div>
-                            <div class="he-emp-box-num">@e.TrabajadoSemana.ToString("0.#") / @e.EsperadoSemana.ToString("0.#")h</div>
-                            <div style="font-size:0.75rem; font-weight:700; color:@ColorDiff(e.DiferenciaSemana);">
-                                @SignoDiff(e.DiferenciaSemana)@e.DiferenciaSemana.ToString("0.##")h
+                        @* 2026-06-03 v3: se reemplazo "Semana / Mes" por una sola cajita del CICLO DEL EMPLEADO.
+                           Asi vos ves directamente lo que le tenes que pagar segun su ciclo (mes calendario o personalizado). *@
+                        <div class="he-emp-box" title="Horas marcadas (entrada→salida) en el ciclo de liquidacion vs jornada esperada"
+                             style="min-width:130px;">
+                            <div style="text-transform:uppercase; font-weight:700; color:#1e40af; font-size:0.68rem; letter-spacing:0.03em;">
+                                @(string.IsNullOrEmpty(e.CicloLabel) ? "ESTE MES" : e.CicloLabel)
                             </div>
-                        </div>
-                        <div class="he-emp-box" title="Horas marcadas (entrada→salida) este mes vs jornada esperada">
-                            <div>Mes</div>
-                            <div class="he-emp-box-num">@e.TrabajadoMes.ToString("0.#") / @e.EsperadoMes.ToString("0.#")h</div>
-                            <div style="font-size:0.75rem; font-weight:700; color:@ColorDiff(e.DiferenciaMes);">
-                                @SignoDiff(e.DiferenciaMes)@e.DiferenciaMes.ToString("0.##")h
+                            <div class="he-emp-box-num">@e.TrabajadoCiclo.ToString("0.#") / @e.EsperadoCiclo.ToString("0.#")h</div>
+                            <div style="font-size:0.75rem; font-weight:700; color:@ColorDiff(e.DiferenciaCiclo);">
+                                @SignoDiff(e.DiferenciaCiclo)@e.DiferenciaCiclo.ToString("0.##")h
                             </div>
                         </div>
                     </div>
