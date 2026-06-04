@@ -822,8 +822,9 @@ public class MeliController : ControllerBase
             .Where(mi => mi.Sku != null && mi.Sku != "" && (mi.Status == "active" || mi.Status == "paused"));
         if (!string.IsNullOrWhiteSpace(buscar))
         {
+            // 2026-06-03: busca por SKU O por NOMBRE (Title de la publicacion MeLi).
             var t = buscar.Trim().ToUpper();
-            skusBaseQ = skusBaseQ.Where(mi => mi.Sku!.ToUpper().Contains(t));
+            skusBaseQ = skusBaseQ.Where(mi => mi.Sku!.ToUpper().Contains(t) || (mi.Title != null && mi.Title.ToUpper().Contains(t)));
         }
 
         var skusAgg = await skusBaseQ
@@ -949,7 +950,7 @@ public class MeliController : ControllerBase
         if (!string.IsNullOrWhiteSpace(buscar))
         {
             var t = buscar.Trim().ToUpper();
-            statsBaseQ = statsBaseQ.Where(mi => mi.Sku!.ToUpper().Contains(t));
+            statsBaseQ = statsBaseQ.Where(mi => mi.Sku!.ToUpper().Contains(t) || (mi.Title != null && mi.Title.ToUpper().Contains(t)));
         }
         var statsRaw = await statsBaseQ
             .GroupBy(mi => mi.Sku)
