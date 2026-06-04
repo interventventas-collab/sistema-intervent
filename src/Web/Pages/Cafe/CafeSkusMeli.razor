@@ -16,7 +16,7 @@
             </p>
         </div>
         <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
-            <input class="form-input" style="width:200px;" placeholder="🔍 Buscar SKU…"
+            <input class="form-input" style="width:240px;" placeholder="🔍 Buscar por SKU o nombre…"
                    @bind="buscar" @bind:event="oninput" @onkeyup="OnSearchKey" />
             <select class="form-input" style="width:auto;" @bind="estadoFiltro" @bind:after="Recargar"
                     title="Estado del linkeo">
