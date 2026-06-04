@@ -135,6 +135,19 @@
                 </label>
             </div>
 
+            @* 2026-06-03 v4: mostrar/ocultar empleado en el kiosco /fichador *@
+            <div style="margin-top:0.7rem; padding:0.6rem 0.8rem; background:#ecfdf5; border:1px solid #10b981; border-radius:8px;">
+                <label style="display:flex; gap:0.5rem; align-items:flex-start; cursor:pointer; font-size:0.88rem;">
+                    <input type="checkbox" @bind="formMostrarEnFichador" style="margin-top:0.15rem;" />
+                    <span>
+                        <strong>👆 Mostrar en el kiosco de fichada (/fichador)</strong>
+                        <div style="font-size:0.72rem; color:#6b7280; margin-top:0.1rem;">
+                            Si está tildado, este empleado aparece como card en la pantalla del kiosco. Destildalo para empleados de prueba o que no usan el kiosco.
+                        </div>
+                    </span>
+                </label>
+            </div>
+
             @* 2026-06-03: período de liquidación (mes calendario o personalizado) *@
             <div style="margin-top:0.7rem; padding:0.6rem 0.8rem; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px;">
                 <label style="font-size:0.78rem; font-weight:700; color:#1e3a8a; text-transform:uppercase; letter-spacing:0.04em;">📅 Período de liquidación</label>
@@ -369,7 +382,9 @@
         // 2026-06-03 v2: flags granulares de visibilidad
         bool MostrarCuadroCiclo = false, bool MostrarHorasTrabajadasDia = false,
         // 2026-06-03 v3: flag para probar el modo nuevo de fichada (WiFi + GPS) solo en este empleado
-        bool ProbarModoNuevoFichada = false);
+        bool ProbarModoNuevoFichada = false,
+        // 2026-06-03 v4: mostrar este empleado en el kiosco /fichador
+        bool MostrarEnFichador = true);
     public record AdminRegistroDto(int Id, int EmpleadoId, string EmpleadoNombre, DateTime Fecha,
         decimal Cantidad, string? Observaciones, string? HoraEntrada, string? HoraSalida,
         DateTime CreatedAt, DateTime? UpdatedAt,
@@ -397,6 +412,8 @@
     private bool formMostrarHorasTrabajadasDia = false;
     // 2026-06-03 v3: flag para probar el modo nuevo de fichada SOLO en este empleado
     private bool formProbarModoNuevoFichada = false;
+    // 2026-06-03 v4: mostrar este empleado en el kiosco /fichador (default true)
+    private bool formMostrarEnFichador = true;
 
     // Carga manual (para acumulados)
     private bool showCargarManual, savingManual;
@@ -472,6 +489,7 @@
         formMostrarCuadroCiclo = false;
         formMostrarHorasTrabajadasDia = false;
         formProbarModoNuevoFichada = false;
+        formMostrarEnFichador = true;
     }
 
     private void ShowEditEmpleado(AdminEmpleadoDto e)
@@ -490,6 +508,7 @@
         formMostrarCuadroCiclo = e.MostrarCuadroCiclo;
         formMostrarHorasTrabajadasDia = e.MostrarHorasTrabajadasDia;
         formProbarModoNuevoFichada = e.ProbarModoNuevoFichada;
+        formMostrarEnFichador = e.MostrarEnFichador;
     }
 
     private async Task GuardarEmpleado()
@@ -520,7 +539,8 @@
                           ClearCiclo = !formCicloPersonalizado,
                           MostrarCuadroCiclo = formMostrarCuadroCiclo,
                           MostrarHorasTrabajadasDia = formMostrarHorasTrabajadasDia,
-                          ProbarModoNuevoFichada = formProbarModoNuevoFichada });
+                          ProbarModoNuevoFichada = formProbarModoNuevoFichada,
+                          MostrarEnFichador = formMostrarEnFichador });
                 if (resp.IsSuccessStatusCode) ToastService.Success("Empleado actualizado");
                 else { ToastService.Error("Error actualizando"); return; }
             }

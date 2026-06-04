@@ -4443,3 +4443,10 @@ BEGIN
     ALTER TABLE HorasExtras_Empleados ADD ProbarModoNuevoFichada BIT NOT NULL CONSTRAINT DF_HorasExtras_Empleados_ProbarModoNuevo DEFAULT 0;
 END
 GO
+
+-- 2026-06-03 v4: flag para mostrar/ocultar empleados en el kiosco /fichador
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='MostrarEnFichador' AND Object_ID=OBJECT_ID('HorasExtras_Empleados'))
+BEGIN
+    ALTER TABLE HorasExtras_Empleados ADD MostrarEnFichador BIT NOT NULL CONSTRAINT DF_HorasExtras_Empleados_MostrarFichador DEFAULT 1;
+END
+GO
