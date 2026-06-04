@@ -323,7 +323,7 @@
                                 else { <span style="color:#9ca3af;">—</span> }
                             </td>
                             <td style="color:#4b5563; font-size:0.82rem;">@(r.Observaciones ?? "")</td>
-                            <td><button class="he-link-btn" style="background:#fee2e2; color:#b91c1c; border-color:#fca5a5;" @onclick="@(() => BorrarRegistro(r.Id))">🗑</button></td>
+                            <td><button class="he-link-btn" style="background:#fee2e2; color:#b91c1c; border-color:#fca5a5;" @onclick="@(() => PedirBorrarRegistro(r))">🗑</button></td>
                         </tr>
                     }
                 </tbody>
@@ -359,6 +359,56 @@
             <div class="modal-footer">
                 <button class="btn btn-secondary" @onclick="@(() => showCargarManual = false)" disabled="@savingManual">Cancelar</button>
                 <button class="btn btn-primary" @onclick="GuardarManualAsync" disabled="@savingManual">@(savingManual ? "Guardando..." : "Guardar")</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* 2026-06-03: modal grande de confirmacion para borrar un registro de horas extras.
+   Reemplaza al confirm() del browser para que se vea claramente QUE registro se va a borrar. *@
+@if (registroParaBorrar is not null)
+{
+    <div style="position:fixed; inset:0; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; z-index:2000; padding:1rem;" @onclick="CancelarBorrarRegistro">
+        <div style="background:white; border-radius:14px; max-width:520px; width:100%; box-shadow:0 20px 60px rgba(0,0,0,0.4); overflow:hidden;" @onclick:stopPropagation="true">
+            <div style="background:#fee2e2; border-bottom:3px solid #dc2626; padding:1.1rem 1.4rem;">
+                <h2 style="margin:0; color:#991b1b; font-size:1.4rem; font-weight:800;">🗑 ¿Borrar este registro?</h2>
+                <div style="color:#7f1d1d; font-size:0.85rem; margin-top:0.2rem;">Esta acción no se puede deshacer.</div>
+            </div>
+
+            <div style="padding:1.4rem;">
+                <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px; padding:1rem 1.2rem;">
+                    <table style="width:100%; font-size:1rem;">
+                        <tr><td style="padding:0.4rem 0.6rem 0.4rem 0; color:#6b7280; font-weight:600;">Empleado:</td>
+                            <td style="padding:0.4rem 0; font-weight:800; color:#1f2937; font-size:1.15rem;">@registroParaBorrar.EmpleadoNombre</td></tr>
+                        <tr><td style="padding:0.4rem 0.6rem 0.4rem 0; color:#6b7280; font-weight:600;">Fecha:</td>
+                            <td style="padding:0.4rem 0; font-weight:700; color:#1f2937;">@registroParaBorrar.DiaNombre @registroParaBorrar.Fecha.ToString("dd/MM/yyyy")</td></tr>
+                        <tr><td style="padding:0.4rem 0.6rem 0.4rem 0; color:#6b7280; font-weight:600;">Horario:</td>
+                            <td style="padding:0.4rem 0; font-weight:700; color:#1f2937; font-family:monospace; font-size:1.1rem;">
+                                @if (!string.IsNullOrEmpty(registroParaBorrar.HoraEntrada) || !string.IsNullOrEmpty(registroParaBorrar.HoraSalida))
+                                { @(registroParaBorrar.HoraEntrada ?? "??") <span>→</span> @(registroParaBorrar.HoraSalida ?? "??") }
+                                else { <span style="color:#9ca3af;">— sin horario marcado —</span> }
+                            </td></tr>
+                        <tr><td style="padding:0.4rem 0.6rem 0.4rem 0; color:#6b7280; font-weight:600;">Trabajadas:</td>
+                            <td style="padding:0.4rem 0; font-weight:700; color:#1d4ed8;">@registroParaBorrar.HorasTrabajadas.ToString("0.##") h</td></tr>
+                        @if (registroParaBorrar.Cantidad > 0)
+                        {
+                            <tr><td style="padding:0.4rem 0.6rem 0.4rem 0; color:#6b7280; font-weight:600;">Extras cargadas:</td>
+                                <td style="padding:0.4rem 0; font-weight:700; color:#16a34a;">+@registroParaBorrar.Cantidad.ToString("0.##") h</td></tr>
+                        }
+                        @if (!string.IsNullOrEmpty(registroParaBorrar.Observaciones))
+                        {
+                            <tr><td style="padding:0.4rem 0.6rem 0.4rem 0; color:#6b7280; font-weight:600; vertical-align:top;">Observación:</td>
+                                <td style="padding:0.4rem 0; color:#4b5563; font-style:italic;">@registroParaBorrar.Observaciones</td></tr>
+                        }
+                    </table>
+                </div>
+            </div>
+
+            <div style="background:#f9fafb; border-top:1px solid #e5e7eb; padding:1rem 1.4rem; display:flex; gap:0.7rem; justify-content:flex-end;">
+                <button class="btn btn-secondary" style="padding:0.7rem 1.4rem; font-size:1rem;" @onclick="CancelarBorrarRegistro" disabled="@borrandoRegistro">Cancelar</button>
+                <button style="background:#dc2626; color:white; border:none; padding:0.7rem 1.6rem; border-radius:8px; font-weight:800; font-size:1rem; cursor:pointer;" @onclick="ConfirmarBorrarRegistro" disabled="@borrandoRegistro">
+                    @(borrandoRegistro ? "Borrando..." : "🗑 SÍ, BORRAR")
+                </button>
             </div>
         </div>
     </div>
@@ -583,15 +633,33 @@
         finally { savingEmp = false; }
     }
 
-    private async Task BorrarRegistro(int id)
+    // 2026-06-03: confirmacion de borrado con modal grande que muestra los datos del registro
+    // (antes era confirm() del browser y no se veia que se estaba borrando).
+    private AdminRegistroDto? registroParaBorrar;
+    private bool borrandoRegistro;
+
+    private void PedirBorrarRegistro(AdminRegistroDto r) { registroParaBorrar = r; }
+    private void CancelarBorrarRegistro() { registroParaBorrar = null; }
+
+    private async Task ConfirmarBorrarRegistro()
     {
-        if (!await JS.InvokeAsync<bool>("confirm", "¿Borrar este registro?")) return;
-        var resp = await Http.DeleteAsync($"api/horas-extras/admin/registros/{id}");
-        if (resp.IsSuccessStatusCode)
+        if (registroParaBorrar is null) return;
+        borrandoRegistro = true;
+        try
         {
-            ToastService.Success("Borrado");
-            await RecargarTodo();
+            var resp = await Http.DeleteAsync($"api/horas-extras/admin/registros/{registroParaBorrar.Id}");
+            if (resp.IsSuccessStatusCode)
+            {
+                ToastService.Success($"Registro de {registroParaBorrar.EmpleadoNombre} del {registroParaBorrar.Fecha:dd/MM} borrado");
+                registroParaBorrar = null;
+                await RecargarTodo();
+            }
+            else
+            {
+                ToastService.Error("No se pudo borrar el registro");
+            }
         }
+        finally { borrandoRegistro = false; }
     }
 
     /// <summary>Genera el URL público del empleado. La clave NO va en el URL — se la pide
