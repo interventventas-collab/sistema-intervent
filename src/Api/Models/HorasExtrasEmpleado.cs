@@ -56,6 +56,11 @@ public class HorasExtrasEmpleado
     /// de WiFi. Permite testear con un empleado de prueba sin afectar a los demas.</summary>
     public bool ProbarModoNuevoFichada { get; set; } = false;
 
+    /// <summary>2026-06-03 v4: controla si el empleado aparece en la pantalla /fichador (kiosco).
+    /// Default true (compatibilidad). Si false, no se ve en el grid del kiosco aunque este activo.
+    /// Util para sacar a empleados de prueba, ex-empleados que siguen activos en el sistema, etc.</summary>
+    public bool MostrarEnFichador { get; set; } = true;
+
     /// <summary>Dia del mes (1-31) en que arranca el ciclo de liquidacion. NULL = mes calendario (1 al fin del mes).
     /// Ej: 16 -> el ciclo va del 16 de un mes al 15 del siguiente (o al CicloDiaFin si se configuro).</summary>
     public int? CicloDiaInicio { get; set; }

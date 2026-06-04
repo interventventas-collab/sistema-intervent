@@ -335,7 +335,9 @@ public class HorasExtrasController : ControllerBase
         // 2026-06-03 v2: flags granulares de visibilidad
         bool MostrarCuadroCiclo, bool MostrarHorasTrabajadasDia,
         // 2026-06-03 v3: flag para probar el modo nuevo de fichada solo en este empleado
-        bool ProbarModoNuevoFichada);
+        bool ProbarModoNuevoFichada,
+        // 2026-06-03 v4: flag para mostrar/ocultar este empleado en el kiosco /fichador
+        bool MostrarEnFichador);
 
     /// <summary>Lista de empleados con totales (hoy / semana / mes) y la última vez que cargaron.</summary>
     [HttpGet("admin/empleados")]
@@ -428,7 +430,8 @@ public class HorasExtrasController : ControllerBase
                 ciclo.Desde, ciclo.Hasta, ciclo.Label,
                 trabCiclo, espCiclo, trabCiclo - espCiclo,
                 e.MostrarCuadroCiclo, e.MostrarHorasTrabajadasDia,
-                e.ProbarModoNuevoFichada
+                e.ProbarModoNuevoFichada,
+                e.MostrarEnFichador
             );
         }).ToList();
         return Ok(result);
@@ -517,6 +520,8 @@ public class HorasExtrasController : ControllerBase
         public bool? MostrarHorasTrabajadasDia { get; set; }
         // 2026-06-03 v3: piloto - flag por empleado para probar el modo nuevo
         public bool? ProbarModoNuevoFichada { get; set; }
+        // 2026-06-03 v4: mostrar este empleado en el kiosco /fichador
+        public bool? MostrarEnFichador { get; set; }
     }
 
     [HttpPut("admin/empleados/{id:int}")]
@@ -549,6 +554,7 @@ public class HorasExtrasController : ControllerBase
         if (req.MostrarCuadroCiclo.HasValue) emp.MostrarCuadroCiclo = req.MostrarCuadroCiclo.Value;
         if (req.MostrarHorasTrabajadasDia.HasValue) emp.MostrarHorasTrabajadasDia = req.MostrarHorasTrabajadasDia.Value;
         if (req.ProbarModoNuevoFichada.HasValue) emp.ProbarModoNuevoFichada = req.ProbarModoNuevoFichada.Value;
+        if (req.MostrarEnFichador.HasValue) emp.MostrarEnFichador = req.MostrarEnFichador.Value;
         if (req.ClearCiclo)
         {
             emp.CicloDiaInicio = null;
@@ -799,7 +805,8 @@ public class HorasExtrasController : ControllerBase
     public async Task<IActionResult> FichadorEmpleados()
     {
         var hoy = FechaArgentinaHoy();
-        var emps = await _db.HorasExtrasEmpleados.Where(e => e.IsActive).OrderBy(e => e.Nombre).ToListAsync();
+        // 2026-06-03 v4: solo empleados con MostrarEnFichador=true (el admin elige cuales)
+        var emps = await _db.HorasExtrasEmpleados.Where(e => e.IsActive && e.MostrarEnFichador).OrderBy(e => e.Nombre).ToListAsync();
         var regsHoy = await _db.HorasExtrasRegistros.Where(r => r.Fecha == hoy).ToListAsync();
         var regDic = regsHoy.ToDictionary(r => r.EmpleadoId);
         // Set de empleadoIds con al menos una huella registrada
