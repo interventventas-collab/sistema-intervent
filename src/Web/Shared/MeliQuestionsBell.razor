@@ -3,9 +3,18 @@
 @inject IJSRuntime JS
 @implements IDisposable
 
+@*
+   2026-06-04: cartel grande auto-show.
+   - Polling cada 30s a /api/meli/questions/unread-count
+   - Si hay preguntas pendientes Y no esta en snooze (localStorage) → abre solo el modal grande + suena
+   - Boton "Cerrar (recordar en 5 min)" → snooze 5 min
+   - Tras 5 min, si sigue habiendo preguntas → vuelve a abrir + suena
+   - El cartel se ve igual a todos los usuarios (admin/oficina/deposito) porque MainLayout lo monta para todos
+*@
+
 @if (canShow)
 {
-    <button class="topbar-bell" @onclick="OpenModal" title="@(unread.Total) preguntas sin responder en MercadoLibre">
+    <button class="topbar-bell" @onclick="OpenModalManual" title="@(unread.Total) preguntas sin responder en MercadoLibre">
         <i class="fa-solid fa-bell"></i>
         @if (unread.NotSeen > 0)
         {
@@ -20,81 +29,82 @@
 
 @if (showModal)
 {
-    <div class="modal-overlay" @onclick="CloseModal">
-        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 760px; max-height: 88vh; display: flex; flex-direction: column;">
-            <div class="modal-header" style="background: #fff7e6;">
-                <h3 style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
-                    <i class="fa-solid fa-bell" style="color: #d97706;"></i>
-                    Preguntas de MercadoLibre
-                    @if (unread.Total > 0)
-                    {
-                        <span style="background: #dc2626; color: white; font-size: 0.75rem; padding: 0.1rem 0.5rem; border-radius: 999px;">@unread.Total sin responder</span>
-                    }
-                </h3>
-                <div style="display: flex; gap: 0.4rem; align-items: center;">
-                    <button class="btn btn-secondary" style="font-size: 0.78rem; padding: 0.3rem 0.6rem;" @onclick="RefreshNow" disabled="@refreshing">
+    <div class="meli-q-overlay">
+        <div class="meli-q-card" @onclick:stopPropagation="true">
+            <div class="meli-q-header">
+                <div style="display:flex; align-items:center; gap:0.7rem;">
+                    <div class="meli-q-bell-anim"><i class="fa-solid fa-bell"></i></div>
+                    <div>
+                        <h2 class="meli-q-title">📩 Nueva pregunta de MercadoLibre</h2>
+                        <div class="meli-q-subtitle">
+                            @if (unread.Total == 1) { <span>1 pregunta esperando respuesta</span> }
+                            else if (unread.Total > 1) { <span>@unread.Total preguntas esperando respuesta</span> }
+                            else { <span>—</span> }
+                        </div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <button class="btn btn-secondary" style="font-size: 0.85rem;" @onclick="RefreshNow" disabled="@refreshing">
                         @(refreshing ? "Buscando..." : "🔄 Refrescar")
                     </button>
-                    <button class="btn-close" @onclick="CloseModal">&times;</button>
                 </div>
             </div>
-            <div class="modal-body" style="overflow-y: auto;">
+
+            <div class="meli-q-body">
                 @if (loadingList)
                 {
-                    <p class="text-muted">Cargando preguntas...</p>
+                    <p class="text-muted" style="padding:2rem; text-align:center;">Cargando preguntas...</p>
                 }
                 else if (questions is null || questions.Count == 0)
                 {
-                    <div style="text-align: center; padding: 2rem; color: #6b7280;">
-                        <div style="font-size: 3rem; margin-bottom: 0.5rem;">✅</div>
-                        <strong>No hay preguntas sin responder</strong>
-                        <p style="font-size: 0.85rem; margin-top: 0.4rem;">Cuando algún cliente pregunte por una publicación de MercadoLibre, vas a verla acá.</p>
+                    <div style="text-align: center; padding: 3rem 2rem; color: #6b7280;">
+                        <div style="font-size: 4rem; margin-bottom: 0.5rem;">✅</div>
+                        <strong style="font-size:1.1rem;">No hay preguntas sin responder</strong>
+                        <p style="font-size: 0.95rem; margin-top: 0.4rem;">Cuando algún cliente pregunte por una publicación de MercadoLibre, vas a verla acá.</p>
                     </div>
                 }
                 else
                 {
                     @foreach (var q in questions)
                     {
-                        <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.7rem; margin-bottom: 0.7rem; background: @(q.IsNew ? "#fef3c7" : "white");">
-                            @* Header: cuenta + item *@
-                            <div style="display: flex; gap: 0.6rem; align-items: flex-start; margin-bottom: 0.5rem;">
+                        <div class="meli-q-item @(q.IsNew ? "meli-q-item-new" : "")">
+                            <div style="display: flex; gap: 0.9rem; align-items: flex-start; margin-bottom: 0.7rem;">
                                 @if (!string.IsNullOrEmpty(q.ItemThumbnail))
                                 {
-                                    <img src="@q.ItemThumbnail" alt="" style="width: 48px; height: 48px; object-fit: cover; border-radius: 4px; flex: 0 0 auto;" onerror="this.style.display='none'" />
+                                    <img src="@q.ItemThumbnail" alt="" style="width: 72px; height: 72px; object-fit: cover; border-radius: 6px; flex: 0 0 auto; border: 1px solid #e5e7eb;" onerror="this.style.display='none'" />
                                 }
                                 <div style="flex: 1; min-width: 0;">
-                                    <a href="@q.MeliUrl" target="_blank" style="font-weight: 700; color: #1d4ed8; text-decoration: none; font-size: 0.88rem;" title="Abrir publicación en MeLi">
+                                    <a href="@q.MeliUrl" target="_blank" style="font-weight: 700; color: #1d4ed8; text-decoration: none; font-size: 1.05rem; line-height:1.25; display:block; margin-bottom:0.25rem;" title="Abrir publicación en MeLi">
                                         @(string.IsNullOrEmpty(q.ItemTitle) ? q.ItemId : q.ItemTitle)
                                     </a>
-                                    <div style="font-size: 0.72rem; color: #6b7280;">
-                                        @(q.AccountNickname ?? "—") · de <strong>@(q.FromNickname ?? "Usuario")</strong> · @FormatRelative(q.DateCreated)
+                                    <div style="font-size: 0.85rem; color: #6b7280;">
+                                        Cuenta: <strong>@(q.AccountNickname ?? "—")</strong>
+                                        · Cliente: <strong style="color:#1f2937;">@(q.FromNickname ?? "Usuario")</strong>
+                                        · @FormatRelative(q.DateCreated)
                                         @if (q.IsNew)
                                         {
-                                            <span style="background: #dc2626; color: white; padding: 0.05rem 0.35rem; border-radius: 4px; margin-left: 0.4rem; font-size: 0.65rem; font-weight: 700;">NUEVA</span>
+                                            <span style="background: #dc2626; color: white; padding: 0.1rem 0.5rem; border-radius: 4px; margin-left: 0.5rem; font-size: 0.7rem; font-weight: 700;">NUEVA</span>
                                         }
                                     </div>
                                 </div>
                             </div>
 
-                            @* Pregunta *@
-                            <div style="background: #f9fafb; border-left: 3px solid #6b7280; padding: 0.5rem 0.7rem; font-size: 0.92rem; margin-bottom: 0.5rem;">
-                                <strong>P:</strong> @q.Text
+                            <div class="meli-q-question">
+                                <strong>Pregunta:</strong> @q.Text
                             </div>
 
-                            @* Respuesta inline *@
                             @if (answeredIds.Contains(q.Id))
                             {
-                                <div style="background: #ecfdf5; border-left: 3px solid #10b981; padding: 0.5rem 0.7rem; font-size: 0.9rem; color: #065f46;">
-                                    ✅ <strong>Respondida</strong>
+                                <div class="meli-q-answered">
+                                    ✅ <strong>Respuesta enviada</strong>
                                 </div>
                             }
                             else
                             {
-                                <textarea class="form-input" rows="2" placeholder="Escribí tu respuesta..."
-                                          @bind="answerDrafts[q.Id]" @bind:event="oninput"
-                                          style="font-size: 0.9rem;"></textarea>
-                                <div style="display: flex; gap: 0.4rem; justify-content: flex-end; margin-top: 0.3rem;">
-                                    <button class="btn btn-primary" style="font-size: 0.85rem; padding: 0.35rem 0.8rem;"
+                                <textarea class="form-input meli-q-answer-input" rows="3" placeholder="Escribí tu respuesta acá..."
+                                          @bind="answerDrafts[q.Id]" @bind:event="oninput"></textarea>
+                                <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.4rem;">
+                                    <button class="btn btn-primary meli-q-send-btn"
                                             @onclick="() => Answer(q)" disabled="@(sendingId == q.Id || string.IsNullOrWhiteSpace(GetDraft(q.Id)))">
                                         @(sendingId == q.Id ? "Enviando..." : "📤 Responder")
                                     </button>
@@ -103,6 +113,15 @@
                         </div>
                     }
                 }
+            </div>
+
+            <div class="meli-q-footer">
+                <span style="color:#6b7280; font-size:0.85rem;">
+                    💡 Si lo cerrás, te recuerdo en 5 minutos.
+                </span>
+                <button class="btn btn-secondary meli-q-close-btn" @onclick="CloseAndSnooze">
+                    ⏰ Cerrar (recordar en 5 min)
+                </button>
             </div>
         </div>
     </div>
@@ -143,6 +162,112 @@
         0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220,38,38,0.6); }
         50% { transform: scale(1.1); box-shadow: 0 0 0 6px rgba(220,38,38,0); }
     }
+
+    /* === 2026-06-04: Cartel grande auto-show === */
+    .meli-q-overlay {
+        position: fixed; inset: 0;
+        background: rgba(0,0,0,0.65);
+        display: flex; align-items: center; justify-content: center;
+        z-index: 5000; padding: 1rem;
+        animation: meli-q-fadein 0.18s ease-out;
+    }
+    @@keyframes meli-q-fadein {
+        from { opacity: 0; }
+        to   { opacity: 1; }
+    }
+    .meli-q-card {
+        background: white;
+        border-radius: 16px;
+        max-width: 720px; width: 100%;
+        max-height: 88vh;
+        display: flex; flex-direction: column;
+        box-shadow: 0 30px 80px rgba(0,0,0,0.55), 0 0 0 6px rgba(217,119,6,0.25);
+        overflow: hidden;
+        animation: meli-q-pop 0.25s cubic-bezier(.18,1.25,.4,1);
+    }
+    @@keyframes meli-q-pop {
+        from { transform: scale(0.85); opacity: 0; }
+        to   { transform: scale(1); opacity: 1; }
+    }
+    .meli-q-header {
+        background: linear-gradient(135deg, #fef3c7, #fde68a);
+        border-bottom: 3px solid #d97706;
+        padding: 1.1rem 1.4rem;
+        display: flex; justify-content: space-between; align-items: center;
+        gap: 1rem;
+    }
+    .meli-q-bell-anim {
+        font-size: 2rem; color: #d97706;
+        animation: meli-q-shake 0.7s ease-in-out infinite;
+        transform-origin: top center;
+    }
+    @@keyframes meli-q-shake {
+        0%, 100% { transform: rotate(0); }
+        20% { transform: rotate(-15deg); }
+        40% { transform: rotate(12deg); }
+        60% { transform: rotate(-8deg); }
+        80% { transform: rotate(5deg); }
+    }
+    .meli-q-title { margin: 0; font-size: 1.35rem; font-weight: 800; color: #78350f; }
+    .meli-q-subtitle { font-size: 0.9rem; color: #92400e; font-weight: 600; }
+    .meli-q-body { overflow-y: auto; padding: 1.2rem 1.4rem; flex: 1 1 auto; background: #fafafa; }
+    .meli-q-item {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        padding: 1rem;
+        margin-bottom: 0.9rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .meli-q-item-new {
+        background: #fffbeb;
+        border-color: #fcd34d;
+    }
+    .meli-q-question {
+        background: #f3f4f6;
+        border-left: 4px solid #6b7280;
+        padding: 0.7rem 0.9rem;
+        font-size: 1rem;
+        margin-bottom: 0.6rem;
+        border-radius: 0 6px 6px 0;
+        color: #1f2937;
+        line-height: 1.45;
+    }
+    .meli-q-answered {
+        background: #ecfdf5;
+        border-left: 4px solid #10b981;
+        padding: 0.7rem 0.9rem;
+        font-size: 0.95rem;
+        color: #065f46;
+        border-radius: 0 6px 6px 0;
+    }
+    .meli-q-answer-input {
+        font-size: 0.95rem;
+        padding: 0.6rem 0.75rem;
+        border-radius: 8px;
+        border: 1px solid #d1d5db;
+    }
+    .meli-q-answer-input:focus {
+        outline: none;
+        border-color: #d97706;
+        box-shadow: 0 0 0 3px rgba(217,119,6,0.18);
+    }
+    .meli-q-send-btn {
+        background: #16a34a;
+        border-color: #16a34a;
+        font-weight: 700;
+        font-size: 0.95rem;
+        padding: 0.5rem 1.1rem;
+    }
+    .meli-q-send-btn:disabled { background: #9ca3af; border-color: #9ca3af; }
+    .meli-q-footer {
+        background: #f9fafb;
+        border-top: 1px solid #e5e7eb;
+        padding: 0.9rem 1.4rem;
+        display: flex; justify-content: space-between; align-items: center;
+        gap: 0.8rem;
+    }
+    .meli-q-close-btn { font-weight: 700; }
 </style>
 
 @code {
@@ -158,18 +283,21 @@
     private HashSet<int> answeredIds = new();
     private int? sendingId;
     private System.Threading.Timer? timer;
+    // 2026-06-04: control de auto-show. Si ya intentamos abrir y el usuario lo cerro (snooze),
+    // no volvemos a abrir hasta que pase la ventana O hasta que cambie el count (nueva pregunta).
+    private int lastTotalSeenForAutoShow = 0;
 
     protected override async Task OnInitializedAsync()
     {
-        await PollOnceAsync();
+        await PollOnceAsync(initial: true);
         // Polling cada 30s
         timer = new System.Threading.Timer(async _ =>
         {
-            await InvokeAsync(PollOnceAsync);
+            await InvokeAsync(() => PollOnceAsync(initial: false));
         }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
     }
 
-    private async Task PollOnceAsync()
+    private async Task PollOnceAsync(bool initial)
     {
         try
         {
@@ -178,12 +306,36 @@
             if (r is null) return;
             var prevTotal = unread.Total;
             // Detectar nuevas preguntas: count creció vs polling anterior → ding
-            if (r.NotSeen > lastCount && lastCount >= 0)
+            // (esto sigue funcionando ademas del auto-show, por si el modal ya estaba abierto)
+            if (r.NotSeen > lastCount && lastCount >= 0 && !initial)
             {
                 await PlayDing();
             }
             lastCount = r.NotSeen;
             unread = r;
+
+            // === Auto-show del cartel grande ===
+            // Mostrar si: hay preguntas, no esta ya abierto, y no estamos en snooze.
+            // Excepcion: si llego una pregunta NUEVA (Total > lastTotalSeenForAutoShow), forzar
+            // mostrar aunque estuviera en snooze — el usuario querra verla.
+            if (!showModal && r.Total > 0)
+            {
+                bool hayNueva = r.Total > lastTotalSeenForAutoShow;
+                bool snoozed = false;
+                if (!hayNueva)
+                {
+                    try { snoozed = await JS.InvokeAsync<bool>("meliQ_isSnoozed"); } catch { }
+                }
+                if (!snoozed || hayNueva)
+                {
+                    if (hayNueva)
+                    {
+                        try { await JS.InvokeVoidAsync("meliQ_clearSnooze"); } catch { }
+                    }
+                    await AutoShowAsync();
+                }
+            }
+            lastTotalSeenForAutoShow = r.Total;
 
             // Si el modal esta abierto y el total cambio (subio o bajo), refrescar la lista
             // para que el usuario vea preguntas que se respondieron por fuera o nuevas que llegaron.
@@ -209,26 +361,46 @@
 
     private string GetDraft(int id) => answerDrafts.TryGetValue(id, out var v) ? v : "";
 
-    private async Task OpenModal()
+    /// <summary>Abre el modal manualmente desde el click en la campanita.</summary>
+    private async Task OpenModalManual()
+    {
+        // Click manual → si estabamos en snooze, limpiarlo (el usuario lo abrio a proposito)
+        try { await JS.InvokeVoidAsync("meliQ_clearSnooze"); } catch { }
+        await OpenInternal(playSound: false);
+    }
+
+    /// <summary>Auto-abre el modal porque detectamos preguntas pendientes.</summary>
+    private async Task AutoShowAsync()
+    {
+        await OpenInternal(playSound: true);
+    }
+
+    private async Task OpenInternal(bool playSound)
     {
         showModal = true;
         loadingList = true;
+        StateHasChanged();
+        if (playSound) await PlayDing();
         try
         {
             questions = await Api.GetMeliQuestionsAsync("UNANSWERED") ?? new();
-            // Pre-popular drafts: @bind sobre un Dictionary[key] lanza KeyNotFoundException si la key no existe
             foreach (var q in questions)
                 if (!answerDrafts.ContainsKey(q.Id)) answerDrafts[q.Id] = "";
-            // Marcar como vistas: la campanita deja de pulsar pero el count total sigue
             await Api.MarkMeliQuestionsSeenAsync();
             unread.NotSeen = 0;
             lastCount = 0;
         }
         catch (Exception ex) { ToastService.Error("Error al cargar preguntas: " + ex.Message); }
-        finally { loadingList = false; }
+        finally { loadingList = false; StateHasChanged(); }
     }
 
-    private void CloseModal() { showModal = false; }
+    /// <summary>Cerrar = snooze por 5 minutos.</summary>
+    private async Task CloseAndSnooze()
+    {
+        showModal = false;
+        try { await JS.InvokeVoidAsync("meliQ_snooze", 5); } catch { }
+        StateHasChanged();
+    }
 
     private async Task RefreshNow()
     {
@@ -260,6 +432,12 @@
                 answeredIds.Add(q.Id);
                 unread.Total = Math.Max(0, unread.Total - 1);
                 ToastService.Success("Respuesta enviada");
+                // Si ya no quedan preguntas, cerrar el cartel automaticamente
+                if (unread.Total <= 0)
+                {
+                    showModal = false;
+                    try { await JS.InvokeVoidAsync("meliQ_clearSnooze"); } catch { }
+                }
             }
         }
         catch (Exception ex) { ToastService.Error("No se pudo enviar: " + ex.Message); }
