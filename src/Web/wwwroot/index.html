@@ -762,30 +762,49 @@
             document.title = brandName + ' - ' + pageName;
         };
 
-        // Ding cortito para notificacion de preguntas MeLi (sin necesidad de archivo .mp3 — Web Audio API)
+        // Notificacion MeLi: 2026-06-04 reforzado — mas fuerte y notorio para que se escuche desde lejos.
+        // Secuencia "alarma" tipo timbre: 5 tonos altos consecutivos con gain alto.
         window.playMeliDing = function () {
             try {
                 var Ctx = window.AudioContext || window.webkitAudioContext;
                 if (!Ctx) return;
                 var ctx = new Ctx();
                 var t = ctx.currentTime;
-                // Dos tonos cortos: do agudo + sol agudo
-                [880, 1175].forEach(function (freq, i) {
+                // 5 tonos: do-sol-do-sol-do, agudos y bien marcados
+                var seq = [880, 1320, 880, 1320, 1760];
+                seq.forEach(function (freq, i) {
                     var osc = ctx.createOscillator();
                     var gain = ctx.createGain();
                     osc.connect(gain); gain.connect(ctx.destination);
-                    osc.type = 'sine';
+                    osc.type = 'square'; // mas perceptible que sine
                     osc.frequency.value = freq;
-                    var start = t + i * 0.18;
-                    var dur = 0.16;
+                    var start = t + i * 0.16;
+                    var dur = 0.14;
                     gain.gain.setValueAtTime(0, start);
-                    gain.gain.linearRampToValueAtTime(0.22, start + 0.02);
+                    gain.gain.linearRampToValueAtTime(0.65, start + 0.015); // ~3x mas fuerte que antes
                     gain.gain.exponentialRampToValueAtTime(0.001, start + dur);
                     osc.start(start);
                     osc.stop(start + dur + 0.02);
                 });
-                setTimeout(function () { ctx.close(); }, 800);
+                setTimeout(function () { ctx.close(); }, 1500);
             } catch (e) { /* noop */ }
+        };
+
+        // 2026-06-04: helpers para el modal auto-show del cartel de preguntas MeLi.
+        // Snooze por 5 minutos en localStorage. Si dentro de la ventana, no mostrar.
+        window.meliQ_isSnoozed = function () {
+            try {
+                var until = parseInt(localStorage.getItem('meli-q-snooze-until') || '0', 10);
+                return until > Date.now();
+            } catch (e) { return false; }
+        };
+        window.meliQ_snooze = function (minutes) {
+            try {
+                localStorage.setItem('meli-q-snooze-until', String(Date.now() + minutes * 60 * 1000));
+            } catch (e) { /* noop */ }
+        };
+        window.meliQ_clearSnooze = function () {
+            try { localStorage.removeItem('meli-q-snooze-until'); } catch (e) { }
         };
 
         // Wheel picker — scrollea el wheel hasta el item con value=value.
