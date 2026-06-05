@@ -398,9 +398,10 @@
                                     }
                                     @if (!string.IsNullOrEmpty(v.EntregadoPorRepartidorNombre))
                                     {
-                                        <span style="display:inline-block; padding:0.15rem 0.5rem; background:#dcfce7; color:#166534; border-radius:999px; font-size:0.7rem; font-weight:700; margin-left:0.2rem;"
-                                              title="Marcado como entregado por el repartidor @(v.EntregadoAt?.ToLocalTime().ToString("dd/MM HH:mm"))">
-                                            ✅ Entregó @v.EntregadoPorRepartidorNombre
+                                        <span style="display:inline-block; padding:0.15rem 0.5rem; background:#dcfce7; color:#166534; border-radius:999px; font-size:0.7rem; font-weight:700; margin-left:0.2rem; cursor:pointer;"
+                                              title="Entregado el @(v.EntregadoAt?.ToLocalTime().ToString("dd/MM HH:mm")). Tocá para desmarcar (admin)."
+                                              @onclick="@(() => PedirDesmarcarEntrega(v))">
+                                            ✅ Entregó @v.EntregadoPorRepartidorNombre ▼
                                         </span>
                                     }
                                     else if (!string.IsNullOrEmpty(v.EscaneadoPorRepartidorNombre))
@@ -2644,6 +2645,24 @@
             try { repartidoresLista = await Api.GetRepartidoresAsync() ?? new(); } catch { }
         }
         mostrarReasignar = true;
+    }
+
+    // 2026-06-05: desmarcar entrega (admin) — para pruebas o correcciones
+    private async Task PedirDesmarcarEntrega(CafeVentaDto v)
+    {
+        var msg = $"¿Desmarcar la entrega de {v.Numero} ({v.EntregadoPorRepartidorNombre})?\n\nLa venta vuelve a estado 'pendiente de armar' y se borra el registro de entrega.";
+        if (!await JS.InvokeAsync<bool>("confirm", msg)) return;
+        try
+        {
+            var ok = await Api.DesmarcarEntregaAsync(v.Id);
+            if (ok)
+            {
+                ToastService.Success("✓ Entrega desmarcada");
+                await Load();
+            }
+            else { ToastService.Error("No se pudo desmarcar"); }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
     }
 
     private async Task ConfirmarReasignar()

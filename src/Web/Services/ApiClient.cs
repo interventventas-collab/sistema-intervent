@@ -811,6 +811,13 @@ public class ApiClient
         return resp.IsSuccessStatusCode;
     }
 
+    public async Task<bool> DesmarcarEntregaAsync(int ventaId)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsync($"/api/cafe/repartidores/ventas/{ventaId}/desmarcar-entrega", null);
+        return resp.IsSuccessStatusCode;
+    }
+
     // === Cobranzas pendientes (admin) ===
     public async Task<List<CobranzaPendienteDto>?> GetCobranzasPendientesAsync(string estado = "PENDIENTE")
         => await GetAsync<List<CobranzaPendienteDto>>($"/api/cafe/cobranzas-pendientes?estado={Uri.EscapeDataString(estado)}");

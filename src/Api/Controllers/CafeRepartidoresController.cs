@@ -104,6 +104,35 @@ public class CafeRepartidoresController : ControllerBase
         public int? NuevoRepartidorId { get; set; }
     }
 
+    /// <summary>2026-06-05: Desmarcar una entrega (admin). Limpia EntregadoPorRepartidorId,
+    /// EntregadoAt, vuelve EstadoPreparacion a PARA_PREPARAR, y borra el escaneo "entregado".
+    /// Deja el "cargado" intacto si lo tenia (sigue en la lista del repartidor).</summary>
+    [HttpPost("ventas/{ventaId:int}/desmarcar-entrega")]
+    public async Task<IActionResult> DesmarcarEntrega(int ventaId)
+    {
+        var v = await _db.CafeVentas.FirstOrDefaultAsync(x => x.Id == ventaId);
+        if (v is null) return NotFound(new { error = "Venta no encontrada" });
+        if (!v.EntregadoPorRepartidorId.HasValue)
+            return BadRequest(new { error = "Esta venta no esta marcada como entregada" });
+
+        // Limpiar campos de entrega
+        v.EntregadoPorRepartidorId = null;
+        v.EntregadoAt = null;
+        if (v.EstadoPreparacion == "ENTREGADO")
+        {
+            v.EstadoPreparacion = "PARA_PREPARAR";
+            v.PreparacionUpdatedAt = DateTime.UtcNow;
+        }
+
+        // Borrar escaneos "entregado" del log
+        var entregados = await _db.CafeQrEscaneos
+            .Where(e => e.VentaId == ventaId && e.Accion == "entregado")
+            .ToListAsync();
+        _db.CafeQrEscaneos.RemoveRange(entregados);
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, escaneosBorrados = entregados.Count });
+    }
+
     [HttpPost("qr-escaneos/reasignar")]
     public async Task<IActionResult> ReasignarEscaneo([FromBody] ReasignarVentaRequest req)
     {

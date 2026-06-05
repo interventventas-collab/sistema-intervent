@@ -293,7 +293,21 @@
         }
     }
 
-    protected override async Task OnInitializedAsync() => await Recargar();
+    private System.Threading.Timer? refreshTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Recargar();
+        // 2026-06-05: auto-refresh cada 30s. Si el admin asigna una venta nueva,
+        // el repartidor la ve aparecer sola sin tener que tocar 🔄.
+        refreshTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                if (modal is null && !escaneando) await Recargar();
+            });
+        }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+    }
 
     private async Task Recargar()
     {
@@ -440,7 +454,11 @@
     public record EscanearResp(bool Ok, string? Mensaje, int? VentaId, string? Numero,
         string? ClienteNombre, decimal? Total, bool YaEntregada);
 
-    public void Dispose() { try { dotNetRef?.Dispose(); } catch { } }
+    public void Dispose()
+    {
+        try { dotNetRef?.Dispose(); } catch { }
+        try { refreshTimer?.Dispose(); } catch { }
+    }
 
     private void MostrarToast(string msg, bool error)
     {
