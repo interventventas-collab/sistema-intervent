@@ -177,6 +177,26 @@
             <div class="rp-card">
                 <div class="rp-saludo">Logueado como <b>@repartidorElegido?.Nombre</b> · <span class="rp-link-cambiar" @onclick="Cerrar">cambiar</span></div>
 
+                @* 2026-06-05: enlace personal "Mis Pedidos" — el repartidor lo guarda como acceso directo *@
+                @if (!string.IsNullOrEmpty(publicTokenRepartidor))
+                {
+                    <div style="background:linear-gradient(135deg,#0e7490,#0891b2); color:white; padding:0.8rem 1rem; border-radius:12px; margin:0.8rem 0; box-shadow:0 3px 10px rgba(14,116,144,0.25);">
+                        <div style="display:flex; align-items:center; gap:0.7rem;">
+                            <div style="font-size:2.2rem;">🚚</div>
+                            <div style="flex:1;">
+                                <div style="font-weight:800; font-size:1rem;">📋 Mi panel de pedidos</div>
+                                <div style="font-size:0.75rem; opacity:0.9; line-height:1.3;">
+                                    Tu enlace personal — guardalo en el celu como acceso directo
+                                </div>
+                            </div>
+                        </div>
+                        <a href="/mis-pedidos/@publicTokenRepartidor"
+                           style="display:block; margin-top:0.7rem; background:white; color:#0e7490; text-align:center; padding:0.7rem; border-radius:8px; font-weight:800; text-decoration:none;">
+                            Ir a Mis Pedidos →
+                        </a>
+                    </div>
+                }
+
                 @if (resultadoMensaje is not null)
                 {
                     <div class="rp-ok">@resultadoMensaje</div>
@@ -255,6 +275,9 @@
     private string? sesionPin;
     private DateTime sesionUltimaAct = DateTime.MinValue;
     private RepartidorPublicItemDto? repartidorElegido;
+    // 2026-06-05: sesion v2 (token largo, 8 hs) + publicToken para enlace fijo /mis-pedidos
+    private string? sesionTokenV2;
+    private string? publicTokenRepartidor;
 
     // Flujo
     private int pasoActual = 1; // 1=elegir nombre, 2=pedir pin
@@ -324,16 +347,43 @@
         try
         {
             var data = await JS.InvokeAsync<string?>("sessionStorage.getItem", "repartidor_session");
-            if (string.IsNullOrEmpty(data)) return;
-            var parts = data.Split('|');
-            if (parts.Length != 3) return;
-            if (!int.TryParse(parts[0], out var id)) return;
-            if (!DateTime.TryParse(parts[2], out var ult)) return;
-            if ((DateTime.UtcNow - ult).TotalMinutes > 15) return; // sesion expirada
-            sesionRepartidorId = id;
-            sesionPin = parts[1];
-            sesionUltimaAct = ult;
-            repartidorElegido = repartidoresList?.FirstOrDefault(r => r.Id == id);
+            if (!string.IsNullOrEmpty(data))
+            {
+                var parts = data.Split('|');
+                if (parts.Length == 3 && int.TryParse(parts[0], out var id) && DateTime.TryParse(parts[2], out var ult))
+                {
+                    if ((DateTime.UtcNow - ult).TotalMinutes <= 15)
+                    {
+                        sesionRepartidorId = id;
+                        sesionPin = parts[1];
+                        sesionUltimaAct = ult;
+                        repartidorElegido = repartidoresList?.FirstOrDefault(r => r.Id == id);
+                    }
+                }
+            }
+
+            // 2026-06-05: sesion v2 (8 hs) — token + publicToken para enlace fijo /mis-pedidos
+            try
+            {
+                var t = await JS.InvokeAsync<string?>("localStorage.getItem", "rep_session_v2");
+                var pt = await JS.InvokeAsync<string?>("localStorage.getItem", "rep_public_token");
+                var expS = await JS.InvokeAsync<string?>("localStorage.getItem", "rep_session_expires");
+                if (!string.IsNullOrEmpty(t) && !string.IsNullOrEmpty(expS) && DateTime.TryParse(expS, out var exp) && exp > DateTime.UtcNow)
+                {
+                    sesionTokenV2 = t;
+                    publicTokenRepartidor = pt;
+                    // Si tengo sesion v2 valida + esta venta no la escanee aun, agregarla a la lista
+                    try
+                    {
+                        await Http.SendAsync(new HttpRequestMessage(HttpMethod.Post, $"api/cafe/repartidor-public/escanear/{Token}")
+                        {
+                            Headers = { { "X-Repartidor-Session", t } }
+                        });
+                    }
+                    catch { }
+                }
+            }
+            catch { }
         }
         catch { }
     }
@@ -380,10 +430,42 @@
             sesionPin = pinIngresado;
             sesionUltimaAct = DateTime.UtcNow;
             await GuardarSesion();
+
+            // 2026-06-05: ADEMAS, crear sesion v2 (8 hs) + obtener publicToken para enlace fijo
+            try
+            {
+                var resp2 = await Http.PostAsJsonAsync("api/cafe/repartidor-public/sesion/login",
+                    new { RepartidorId = repartidorElegido.Id, Pin = pinIngresado });
+                if (resp2.IsSuccessStatusCode)
+                {
+                    var sj = await resp2.Content.ReadFromJsonAsync<SesionLoginRespDto>();
+                    if (sj is not null)
+                    {
+                        sesionTokenV2 = sj.SessionToken;
+                        publicTokenRepartidor = sj.PublicToken;
+                        try { await JS.InvokeVoidAsync("localStorage.setItem", "rep_session_v2", sj.SessionToken ?? ""); } catch { }
+                        try { await JS.InvokeVoidAsync("localStorage.setItem", "rep_public_token", sj.PublicToken ?? ""); } catch { }
+                        try { await JS.InvokeVoidAsync("localStorage.setItem", "rep_session_expires", sj.ExpiresAt.ToString("O")); } catch { }
+                        try { await JS.InvokeVoidAsync("localStorage.setItem", "rep_nombre", sj.Nombre ?? ""); } catch { }
+                        // Registrar el escaneo de ESTA venta en su lista
+                        try
+                        {
+                            await Http.SendAsync(new HttpRequestMessage(HttpMethod.Post, $"api/cafe/repartidor-public/escanear/{Token}")
+                            {
+                                Headers = { { "X-Repartidor-Session", sj.SessionToken ?? "" } }
+                            });
+                        }
+                        catch { }
+                    }
+                }
+            }
+            catch { /* sesion v2 es opcional, no rompe el flujo viejo */ }
         }
         catch (Exception ex) { errorPin = "Error: " + ex.Message; }
         finally { loginEnCurso = false; }
     }
+
+    public record SesionLoginRespDto(string? SessionToken, DateTime ExpiresAt, int RepartidorId, string? Nombre, string? PublicToken);
 
     private async Task Cerrar()
     {
@@ -394,6 +476,29 @@
         pinIngresado = "";
         ReiniciarFormulario();
         try { await JS.InvokeVoidAsync("sessionStorage.removeItem", "repartidor_session"); } catch { }
+        // 2026-06-05: limpiar tambien sesion v2 + publicToken
+        try
+        {
+            // Avisar al backend que revoque el token (si tenia uno)
+            if (!string.IsNullOrEmpty(sesionTokenV2))
+            {
+                try
+                {
+                    await Http.SendAsync(new HttpRequestMessage(HttpMethod.Post, "api/cafe/repartidor-public/sesion/logout")
+                    {
+                        Headers = { { "X-Repartidor-Session", sesionTokenV2 } }
+                    });
+                }
+                catch { }
+            }
+            await JS.InvokeVoidAsync("localStorage.removeItem", "rep_session_v2");
+            await JS.InvokeVoidAsync("localStorage.removeItem", "rep_public_token");
+            await JS.InvokeVoidAsync("localStorage.removeItem", "rep_session_expires");
+            await JS.InvokeVoidAsync("localStorage.removeItem", "rep_nombre");
+        }
+        catch { }
+        sesionTokenV2 = null;
+        publicTokenRepartidor = null;
     }
 
     private void ReiniciarFormulario()

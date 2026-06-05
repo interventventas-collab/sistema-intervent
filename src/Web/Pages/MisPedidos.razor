@@ -1,0 +1,367 @@
+@page "/mis-pedidos/{Token}"
+@layout EmptyLayout
+@attribute [AllowAnonymous]
+@inject HttpClient Http
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+@*
+   2026-06-05: Pantalla mobile-first del repartidor. URL fija con PublicToken.
+   Si la guarda como acceso directo en su celu (Add to Home Screen), entra siempre
+   acá y ve la lista actualizada de sus pedidos. El PIN solo se pide al confirmar
+   entrega/cobro — para VER la lista no hace falta.
+*@
+
+<PageTitle>Mis Pedidos</PageTitle>
+
+<HeadContent>
+    <link rel="manifest" href="/manifest-repartidor.json" />
+    <meta name="theme-color" content="#0e7490" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Mis Pedidos" />
+</HeadContent>
+
+<style>
+    body { background: #f3f4f6; margin: 0; }
+    .mp-wrap { max-width: 720px; margin: 0 auto; padding: 0.8rem; }
+    .mp-header { background: linear-gradient(135deg, #0e7490, #0891b2); color: white; padding: 1rem 1.1rem; border-radius: 14px; margin-bottom: 0.8rem; box-shadow: 0 4px 14px rgba(14,116,144,0.25); }
+    .mp-header-row { display: flex; justify-content: space-between; align-items: center; gap: 0.8rem; }
+    .mp-saludo { font-size: 1.2rem; font-weight: 800; }
+    .mp-name { font-size: 1.6rem; font-weight: 900; }
+    .mp-fecha { font-size: 0.85rem; opacity: 0.9; margin-top: 0.2rem; }
+
+    .mp-actions { display: flex; gap: 0.6rem; margin-bottom: 0.9rem; }
+    .mp-btn-scan {
+        flex: 1; padding: 1rem; background: white; color: #0e7490;
+        border: 2px solid #0e7490; border-radius: 12px; font-weight: 800;
+        font-size: 1rem; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+        display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+    }
+    .mp-btn-scan:active { transform: scale(0.97); }
+    .mp-btn-refresh {
+        background: white; color: #6b7280; border: 1px solid #d1d5db;
+        padding: 1rem; border-radius: 12px; cursor: pointer;
+    }
+
+    .mp-section-title { font-size: 0.78rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; margin: 1.1rem 0 0.45rem; padding-left: 0.2rem; }
+    .mp-section-title .badge { background: #dbeafe; color: #1e40af; padding: 0.1rem 0.5rem; border-radius: 999px; margin-left: 0.4rem; font-size: 0.75rem; }
+
+    .mp-card {
+        background: white; border-radius: 12px; padding: 0.85rem 0.95rem;
+        margin-bottom: 0.6rem; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        border-left: 4px solid #d1d5db;
+    }
+    .mp-card.pendiente { border-left-color: #f59e0b; }
+    .mp-card.entregada { border-left-color: #10b981; background: #f0fdf4; opacity: 0.9; }
+    .mp-card-numero { font-family: monospace; font-weight: 700; font-size: 0.85rem; color: #6b7280; }
+    .mp-card-cliente { font-weight: 700; font-size: 1rem; color: #111827; margin: 0.15rem 0 0.2rem; }
+    .mp-card-dir { font-size: 0.8rem; color: #6b7280; margin-bottom: 0.35rem; }
+    .mp-card-total { font-weight: 800; font-size: 1.1rem; color: #047857; }
+    .mp-card-saldo-aviso { font-size: 0.75rem; color: #b91c1c; font-weight: 700; margin-top: 0.15rem; }
+    .mp-card-chips { display: flex; gap: 0.35rem; margin-top: 0.5rem; flex-wrap: wrap; }
+    .mp-chip { font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 999px; font-weight: 700; }
+    .mp-chip-ok { background: #ecfdf5; color: #065f46; }
+    .mp-chip-pend { background: #fef3c7; color: #92400e; }
+    .mp-card-row-acciones { display: flex; gap: 0.4rem; margin-top: 0.6rem; }
+    .mp-card-btn {
+        flex: 1; padding: 0.65rem 0.4rem; font-size: 0.88rem; font-weight: 700;
+        border-radius: 8px; border: none; cursor: pointer;
+    }
+    .mp-card-btn-entregar { background: #10b981; color: white; }
+    .mp-card-btn-cobrar { background: #1d4ed8; color: white; }
+    .mp-card-btn:active { transform: scale(0.97); }
+
+    .mp-empty { text-align: center; padding: 2.5rem 1rem; color: #6b7280; }
+    .mp-empty-icon { font-size: 3.5rem; }
+    .mp-empty-text { margin-top: 0.5rem; }
+
+    .mp-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 1rem; }
+    .mp-modal { background: white; border-radius: 14px; max-width: 380px; width: 100%; padding: 1.3rem; box-shadow: 0 20px 60px rgba(0,0,0,0.4); }
+    .mp-modal-titulo { font-weight: 800; font-size: 1.1rem; margin: 0 0 0.4rem; }
+    .mp-modal-sub { font-size: 0.85rem; color: #6b7280; margin-bottom: 0.8rem; }
+    .mp-input { width: 100%; padding: 0.7rem; font-size: 1.2rem; border: 2px solid #d1d5db; border-radius: 8px; box-sizing: border-box; }
+    .mp-input-pin { text-align: center; letter-spacing: 0.5rem; font-family: monospace; font-weight: 800; color: #1d4ed8; font-size: 2rem; padding: 1rem; }
+    .mp-modal-err { color: #b91c1c; font-size: 0.85rem; margin-top: 0.3rem; font-weight: 600; }
+    .mp-modal-btns { display: flex; gap: 0.5rem; margin-top: 1rem; }
+    .mp-modal-btn { flex: 1; padding: 0.8rem; font-weight: 700; border-radius: 8px; border: none; cursor: pointer; font-size: 1rem; }
+    .mp-modal-btn-cancel { background: #e5e7eb; color: #1f2937; }
+    .mp-modal-btn-ok { background: #16a34a; color: white; }
+    .mp-modal-btn-ok:disabled { background: #9ca3af; cursor: not-allowed; }
+
+    .mp-toast {
+        position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+        background: #16a34a; color: white; padding: 1.2rem 2rem; border-radius: 14px;
+        font-weight: 700; font-size: 1.1rem; z-index: 2000; max-width: 90vw; text-align: center;
+        box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+    }
+    .mp-toast.error { background: #dc2626; }
+</style>
+
+<div class="mp-wrap">
+    @if (loading)
+    {
+        <p style="text-align:center; padding:2rem; color:#6b7280;">Cargando...</p>
+    }
+    else if (cargaError)
+    {
+        <div class="mp-empty">
+            <div class="mp-empty-icon">⚠</div>
+            <div class="mp-empty-text">No pudimos cargar tus pedidos.</div>
+            <button class="mp-btn-scan" style="margin-top:1rem;" @onclick="Recargar">🔄 Reintentar</button>
+        </div>
+    }
+    else
+    {
+        @* HEADER *@
+        <div class="mp-header">
+            <div class="mp-header-row">
+                <div>
+                    <div class="mp-saludo">👋 Hola</div>
+                    <div class="mp-name">@nombre</div>
+                    <div class="mp-fecha">@FechaLabel</div>
+                </div>
+                <div style="font-size: 3rem;">🚚</div>
+            </div>
+        </div>
+
+        @* ACCIONES *@
+        <div class="mp-actions">
+            <button class="mp-btn-scan" @onclick="EscanearQR">
+                📷 <span>Escanear QR</span>
+            </button>
+            <button class="mp-btn-refresh" @onclick="Recargar" title="Refrescar">🔄</button>
+        </div>
+
+        @* PENDIENTES *@
+        var pendientes = pedidos.Where(p => !p.YaEntregada).ToList();
+        var entregadas = pedidos.Where(p => p.YaEntregada).ToList();
+        <div class="mp-section-title">📦 Pendientes <span class="badge">@pendientes.Count</span></div>
+        @if (pendientes.Count == 0)
+        {
+            <div class="mp-empty" style="background:white; border-radius:12px;">
+                <div style="font-size:2.2rem;">✅</div>
+                <div class="mp-empty-text">No tenés pedidos pendientes.</div>
+                <div style="font-size:0.8rem; color:#9ca3af; margin-top:0.3rem;">Tocá "Escanear QR" para cargar uno.</div>
+            </div>
+        }
+        else
+        {
+            foreach (var p in pendientes)
+            {
+                <div class="mp-card pendiente">
+                    <div class="mp-card-numero">@p.Numero · @p.Fecha.ToLocalTime().ToString("dd/MM HH:mm")</div>
+                    <div class="mp-card-cliente">@(p.ClienteNombre ?? "Cliente sin nombre")</div>
+                    @if (!string.IsNullOrEmpty(p.ClienteDireccion))
+                    {
+                        <div class="mp-card-dir">📍 @p.ClienteDireccion @(string.IsNullOrEmpty(p.ClienteLocalidad) ? "" : "- " + p.ClienteLocalidad)</div>
+                    }
+                    <div class="mp-card-total">$ @p.Total.ToString("N2")</div>
+                    @if (p.Saldo > 0 && p.Saldo < p.Total)
+                    {
+                        <div class="mp-card-saldo-aviso">Saldo pendiente: $ @p.Saldo.ToString("N2")</div>
+                    }
+                    <div class="mp-card-row-acciones">
+                        <button class="mp-card-btn mp-card-btn-entregar" @onclick="() => AbrirEntregar(p)">✅ Entregué</button>
+                        <button class="mp-card-btn mp-card-btn-cobrar" @onclick="() => AbrirCobrar(p)">💰 Cobré</button>
+                    </div>
+                </div>
+            }
+        }
+
+        @* ENTREGADAS *@
+        @if (entregadas.Count > 0)
+        {
+            <div class="mp-section-title">✅ Entregadas <span class="badge">@entregadas.Count</span></div>
+            foreach (var p in entregadas)
+            {
+                <div class="mp-card entregada">
+                    <div class="mp-card-numero">@p.Numero</div>
+                    <div class="mp-card-cliente">@(p.ClienteNombre ?? "—")</div>
+                    <div class="mp-card-total">$ @p.Total.ToString("N2")</div>
+                    <div class="mp-card-chips">
+                        <span class="mp-chip mp-chip-ok">✅ Entregada @(p.EntregadoAt?.ToLocalTime().ToString("dd/MM HH:mm"))</span>
+                    </div>
+                </div>
+            }
+        }
+    }
+</div>
+
+@* MODAL ENTREGAR / COBRAR *@
+@if (modal != null)
+{
+    <div class="mp-modal-overlay" @onclick="CerrarModal">
+        <div class="mp-modal" @onclick:stopPropagation="true">
+            <div class="mp-modal-titulo">
+                @if (modal.Tipo == "entregar") { <span>✅ Marcar entregado</span> }
+                else { <span>💰 Registrar cobro</span> }
+            </div>
+            <div class="mp-modal-sub">@modal.Pedido.Numero · @(modal.Pedido.ClienteNombre ?? "Cliente")</div>
+
+            @if (modal.Tipo == "cobrar")
+            {
+                <label style="font-size:0.8rem; font-weight:600; color:#374151;">Importe cobrado</label>
+                <input type="number" step="0.01" class="mp-input" @bind="importeCobrado" placeholder="0,00" />
+                <label style="font-size:0.8rem; font-weight:600; color:#374151; margin-top:0.5rem; display:block;">Observaciones (opcional)</label>
+                <input type="text" class="mp-input" @bind="notasCobro" placeholder="Ej: parcial, efectivo, etc." style="font-size:0.95rem;" />
+                <div style="margin-top:0.8rem;">
+                    <label style="font-size:0.8rem; font-weight:600; color:#374151;">Tu PIN (3 últimos del DNI)</label>
+                    <input type="tel" maxlength="3" inputmode="numeric" class="mp-input mp-input-pin"
+                           @bind="pin" placeholder="•••" autofocus />
+                </div>
+            }
+            else
+            {
+                <label style="font-size:0.8rem; font-weight:600; color:#374151;">Tu PIN (3 últimos del DNI)</label>
+                <input type="tel" maxlength="3" inputmode="numeric" class="mp-input mp-input-pin"
+                       @bind="pin" placeholder="•••" autofocus />
+            }
+
+            @if (!string.IsNullOrEmpty(errorModal))
+            {
+                <div class="mp-modal-err">⚠ @errorModal</div>
+            }
+
+            <div class="mp-modal-btns">
+                <button class="mp-modal-btn mp-modal-btn-cancel" @onclick="CerrarModal" disabled="@procesando">Cancelar</button>
+                <button class="mp-modal-btn mp-modal-btn-ok" @onclick="ConfirmarModal" disabled="@(procesando || pin.Length != 3)">
+                    @(procesando ? "..." : "✓ Confirmar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (toastVisible)
+{
+    <div class="mp-toast @(toastError ? "error" : "")">@toastMsg</div>
+}
+
+@code {
+    [Parameter] public string Token { get; set; } = "";
+
+    public record PedidoDto(int Id, string Numero, DateTime Fecha, string? ClienteNombre,
+        string? ClienteDireccion, string? ClienteLocalidad,
+        decimal Total, decimal Saldo, bool YaEntregada, DateTime? EntregadoAt,
+        string? EstadoPreparacion, DateTime CargadoAt);
+    public record MisPedidosResp(int RepartidorId, string Nombre, List<PedidoDto> Pedidos);
+
+    private bool loading = true, cargaError = false;
+    private string nombre = "";
+    private int repartidorId;
+    private List<PedidoDto> pedidos = new();
+
+    private record ModalState(string Tipo, PedidoDto Pedido);
+    private ModalState? modal;
+    private string pin = "";
+    private decimal importeCobrado = 0m;
+    private string notasCobro = "";
+    private string? errorModal;
+    private bool procesando;
+
+    private bool toastVisible;
+    private bool toastError;
+    private string toastMsg = "";
+
+    private string FechaLabel
+    {
+        get
+        {
+            var es = new System.Globalization.CultureInfo("es-AR");
+            return DateTime.UtcNow.AddHours(-3).ToString("dddd dd 'de' MMMM", es);
+        }
+    }
+
+    protected override async Task OnInitializedAsync() => await Recargar();
+
+    private async Task Recargar()
+    {
+        loading = true; cargaError = false; StateHasChanged();
+        try
+        {
+            var r = await Http.GetFromJsonAsync<MisPedidosResp>($"api/cafe/repartidor-public/mis-pedidos/{Token}");
+            if (r is null) { cargaError = true; return; }
+            nombre = r.Nombre;
+            repartidorId = r.RepartidorId;
+            pedidos = r.Pedidos ?? new();
+        }
+        catch { cargaError = true; }
+        finally { loading = false; StateHasChanged(); }
+    }
+
+    private void AbrirEntregar(PedidoDto p)
+    {
+        modal = new ModalState("entregar", p);
+        pin = ""; errorModal = null;
+    }
+    private void AbrirCobrar(PedidoDto p)
+    {
+        modal = new ModalState("cobrar", p);
+        pin = ""; errorModal = null;
+        importeCobrado = p.Saldo > 0 ? p.Saldo : p.Total;
+        notasCobro = "";
+    }
+    private void CerrarModal() { modal = null; pin = ""; errorModal = null; }
+
+    private async Task ConfirmarModal()
+    {
+        if (modal is null || pin.Length != 3) return;
+        procesando = true; errorModal = null;
+        try
+        {
+            HttpResponseMessage resp;
+            if (modal.Tipo == "entregar")
+            {
+                resp = await Http.PostAsJsonAsync(
+                    $"api/cafe/repartidor-public/mis-pedidos/{Token}/entregar/{modal.Pedido.Id}",
+                    new { Pin = pin });
+            }
+            else
+            {
+                resp = await Http.PostAsJsonAsync(
+                    $"api/cafe/repartidor-public/mis-pedidos/{Token}/cobrar/{modal.Pedido.Id}",
+                    new { Pin = pin, Importe = importeCobrado, Notas = notasCobro });
+            }
+            if (!resp.IsSuccessStatusCode)
+            {
+                var err = await resp.Content.ReadAsStringAsync();
+                errorModal = err.Contains("PIN") ? "PIN incorrecto" : "Error al guardar";
+                return;
+            }
+            MostrarToast(modal.Tipo == "entregar" ? "✅ Marcado como entregado" : "💰 Cobro registrado", false);
+            CerrarModal();
+            await Recargar();
+        }
+        catch (Exception ex) { errorModal = "Error: " + ex.Message; }
+        finally { procesando = false; }
+    }
+
+    /// <summary>Abre el flujo de escaneo QR: redirige a /repartidor/{tokenVenta} cuando se escanea uno.</summary>
+    private async Task EscanearQR()
+    {
+        try
+        {
+            // Reusa el QR scanner que ya existe en la pantalla del repartidor: ahí se hace
+            // el flujo de escanear + agregar a lista (con sesión). Simple: navegamos a la pantalla
+            // de escaneo y el usuario escanea ahí.
+            // Como atajo, navegamos directo a la URL de escaneo (le pedirá login si no tiene sesión).
+            await JS.InvokeVoidAsync("alert", "Tocá el QR del comprobante con la cámara. Si te pide ingresar PIN, es porque pasaron 8 hs desde el último login.");
+            // El usuario maneja el flujo desde el otro lado (/repartidor/{token}). Acá solo le mostramos
+            // un mensaje. El QR del comprobante apunta a /repartidor/{tokenVenta} directamente.
+        }
+        catch { }
+    }
+
+    private void MostrarToast(string msg, bool error)
+    {
+        toastMsg = msg; toastError = error; toastVisible = true;
+        StateHasChanged();
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(2500);
+            toastVisible = false;
+            await InvokeAsync(StateHasChanged);
+        });
+    }
+}
