@@ -271,6 +271,17 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // 2026-06-05: registrar service worker para que Chrome muestre "Instalar app".
+        try
+        {
+            await JS.InvokeVoidAsync("eval", @"
+                if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.register('/sw.js', { scope: '/fichador' })
+                        .catch(err => console.log('SW register failed:', err));
+                }
+            ");
+        }
+        catch { /* navegador viejo o JS bloqueado, ignorar */ }
         await CargarEmpleados();
         // Detectar si este dispositivo+browser tiene huella biometrica (WebAuthn)
         try { huellaDisponible = await JS.InvokeAsync<bool>("webAuthnAvailable"); }
