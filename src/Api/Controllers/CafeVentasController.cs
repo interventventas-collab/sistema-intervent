@@ -242,7 +242,8 @@ public class CafeVentasController : ControllerBase
         escaneadoAt,
         v.PorTransporte,
         v.TransporteEmpresa,
-        v.TransporteDestino);
+        v.TransporteDestino,
+        v.CreadoPorOperador);
 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null)
@@ -1063,6 +1064,9 @@ public class CafeVentasController : ControllerBase
             CondicionIva = NormCondicionIva(req.CondicionIva),
             CondicionPago = NormCondicionPago(req.CondicionPago),
             CreatedAt = DateTime.UtcNow,
+            // 2026-06-05: Quien la cargo (header X-Operator-Name del frontend). Sirve para
+            // mostrar iniciales OS/GE/GA/etc en el listado + auditoria.
+            CreadoPorOperador = NormOperatorName(HttpContext.Request.Headers["X-Operator-Name"].ToString()),
             // Token aleatorio para el link publico /comprobante/{token}. 22 chars
             // base64-url-safe (~131 bits de entropia) — imposible de adivinar.
             PublicToken = GeneratePublicToken(),
@@ -1985,6 +1989,15 @@ public class CafeVentasController : ControllerBase
         return Ok(Map(v));
     }
 
+    /// <summary>2026-06-05: Normaliza el header X-Operator-Name. Recorta, vacios -> null,
+    /// uppercase para que en el listado se vea homogeneo (OSMAR, GERMAN, etc).</summary>
+    private static string? NormOperatorName(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var s = raw.Trim().ToUpperInvariant();
+        return s.Length > 20 ? s[..20] : s;
+    }
+
     private async Task ValidateDeletePermissionAsync(string operatorName, string password)
     {
         var allowedOp = (await _db.AppSettings.FindAsync("sales.delete_allowed_operator"))?.Value ?? "OSMAR";
@@ -1994,6 +2007,22 @@ public class CafeVentasController : ControllerBase
             throw new UnauthorizedAccessException($"Solo {allowedOp} puede eliminar comprobantes.");
         if (string.IsNullOrEmpty(expectedPassword) || password != expectedPassword)
             throw new UnauthorizedAccessException("Clave incorrecta.");
+    }
+
+    /// <summary>2026-06-05: Endpoint para validar la clave al activar un operador protegido
+    /// (OSMAR). Reusa la misma password que la de eliminar comprobantes (sales.delete_password)
+    /// para que sea una sola clave de admin para todo. Devuelve 200 si OK, 401 si incorrecta.</summary>
+    public class ValidateProtectedOperatorRequest { public string Password { get; set; } = ""; }
+
+    [HttpPost("operador-protegido/validar")]
+    public async Task<IActionResult> ValidateProtectedOperator([FromBody] ValidateProtectedOperatorRequest req)
+    {
+        var expectedPassword = (await _db.AppSettings.FindAsync("sales.delete_password"))?.Value ?? "";
+        if (string.IsNullOrEmpty(expectedPassword))
+            return StatusCode(401, new { error = "No hay clave configurada en el sistema." });
+        if (req?.Password != expectedPassword)
+            return StatusCode(401, new { error = "Clave incorrecta." });
+        return Ok(new { ok = true });
     }
 
     private async Task<List<int>> DeleteVentaInternalAsync(CafeVenta v)

@@ -3604,6 +3604,20 @@ public class ApiClient
         catch (Exception ex) { return (false, ex.Message); }
     }
 
+    // ===== 2026-06-05: Validar clave para operador protegido (OSMAR) =====
+    /// <summary>Devuelve true si la clave coincide con la de eliminar ventas (la misma se usa
+    /// para activar OSMAR como operador). Si la clave es invalida o no esta configurada, false.</summary>
+    public async Task<bool> ValidateProtectedOperatorAsync(string password)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/api/cafe/ventas/operador-protegido/validar",
+                new { Password = password });
+            return resp.IsSuccessStatusCode;
+        }
+        catch { return false; }
+    }
+
     // ===== 2026-06-05: Catalogo de Servicios (envio, mano de obra, etc) =====
     public async Task<List<CafeServicioDto>?> GetCafeServiciosAsync(bool incluirInactivos = false)
         => await GetAsync<List<CafeServicioDto>>($"/api/cafe/servicios?incluirInactivos={(incluirInactivos ? "true" : "false")}");

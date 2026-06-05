@@ -273,6 +273,17 @@
                                         📌
                                     </span>
                                     @v.Numero
+                                    @* 2026-06-05: chip con inicial del operador que cargo la venta *@
+                                    @if (!string.IsNullOrWhiteSpace(v.CreadoPorOperador))
+                                    {
+                                        var op = v.CreadoPorOperador!;
+                                        var bg = OperatorService.ShortBgColor(op);
+                                        var ini = OperatorService.ShortLabel(op);
+                                        <span title="@($"Cargada por {op}")"
+                                              style="display:inline-block; margin-left:0.35rem; padding:0.05rem 0.32rem; background:@bg; color:white; border-radius:4px; font-size:0.62rem; font-weight:800; letter-spacing:0.5px; vertical-align:middle;">
+                                            @ini
+                                        </span>
+                                    }
                                     @if (tienePin)
                                     {
                                         <div class="pin-postit">@v.PinNota</div>

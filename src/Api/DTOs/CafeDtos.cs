@@ -374,7 +374,9 @@ public record CafeVentaDto(
     // 2026-06-05: Transporte
     bool PorTransporte = false,
     string? TransporteEmpresa = null,
-    string? TransporteDestino = null);
+    string? TransporteDestino = null,
+    // 2026-06-05: Quien cargo la venta (OSMAR/GERMAN/GABRIEL/etc). Null para ventas previas a la migracion.
+    string? CreadoPorOperador = null);
 
 public class CafeCotizarItemRequest
 {

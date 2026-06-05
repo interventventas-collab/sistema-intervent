@@ -4547,3 +4547,10 @@ BEGIN
     ALTER TABLE Cafe_Ventas ADD TransporteDestino NVARCHAR(200) NULL;
 END
 GO
+
+-- ─── 2026-06-05: Operador que cargó la venta (para iniciales OS/GE/GA en listado) ───
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='CreadoPorOperador' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+BEGIN
+    ALTER TABLE Cafe_Ventas ADD CreadoPorOperador NVARCHAR(20) NULL;
+END
+GO

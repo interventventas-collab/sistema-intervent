@@ -347,6 +347,9 @@ public class CafeVentaDto
     public bool PorTransporte { get; set; }
     public string? TransporteEmpresa { get; set; }
     public string? TransporteDestino { get; set; }
+    /// <summary>2026-06-05: Operador que cargo la venta (OSMAR/GERMAN/GABRIEL/etc). Null para
+    /// ventas previas al feature.</summary>
+    public string? CreadoPorOperador { get; set; }
     public bool IsPaid { get; set; }
     public string TipoComprobante { get; set; } = "X";
     public string CondicionIva { get; set; } = "CF";
