@@ -1876,14 +1876,16 @@
                     PrecioBultoOtroFuturo = formPrecioBultoOtroFuturo,
                     ClearPrecioBultoOtroFuturo = !formPrecioBultoOtroFuturo.HasValue,
                     // Packs prearmados: solo enviamos si es OTROS. CAFE → null (no tocar).
+                    // 2026-06-04: si Cantidad esta cargada pero Nombre vacio, auto-generar "Pack x N"
+                    // (antes se descartaba silenciosamente y el usuario no sabia por que no se guardaba).
                     Packs = formCategoria == "OTROS"
                         ? formPacks
-                            .Where(pk => pk.Cantidad.HasValue && pk.Cantidad.Value > 0 && !string.IsNullOrWhiteSpace(pk.Nombre))
+                            .Where(pk => pk.Cantidad.HasValue && pk.Cantidad.Value > 0)
                             .Select((pk, idx) => new CafeProductoPackRequest
                             {
                                 Id = pk.Id,
                                 Cantidad = pk.Cantidad!.Value,
-                                Nombre = pk.Nombre.Trim(),
+                                Nombre = string.IsNullOrWhiteSpace(pk.Nombre) ? $"Pack x {pk.Cantidad.Value}" : pk.Nombre.Trim(),
                                 PrecioOverride = pk.PrecioOverride,
                                 SortOrder = idx
                             })
@@ -1918,13 +1920,15 @@
                     PrecioBulto = formCategoria == "OTROS" ? formPrecioBulto : null,
                     PrecioBultoOtro = formCategoria == "OTROS" ? formPrecioBultoOtro : null,
                     // Packs prearmados (solo OTROS).
+                    // 2026-06-04: si Cantidad esta cargada pero Nombre vacio, auto-generar "Pack x N"
+                    // (antes se descartaba silenciosamente y el usuario no sabia por que no se guardaba).
                     Packs = formCategoria == "OTROS"
                         ? formPacks
-                            .Where(pk => pk.Cantidad.HasValue && pk.Cantidad.Value > 0 && !string.IsNullOrWhiteSpace(pk.Nombre))
+                            .Where(pk => pk.Cantidad.HasValue && pk.Cantidad.Value > 0)
                             .Select((pk, idx) => new CafeProductoPackRequest
                             {
                                 Cantidad = pk.Cantidad!.Value,
-                                Nombre = pk.Nombre.Trim(),
+                                Nombre = string.IsNullOrWhiteSpace(pk.Nombre) ? $"Pack x {pk.Cantidad.Value}" : pk.Nombre.Trim(),
                                 PrecioOverride = pk.PrecioOverride,
                                 SortOrder = idx
                             })
