@@ -1710,6 +1710,10 @@ public class ApiClient
     public async Task<CoffeeMonthlyKgDto?> GetCoffeeMonthlyKgAsync()
         => await GetAsync<CoffeeMonthlyKgDto>("/api/dashboard/coffee-monthly-kg");
 
+    public record CoffeeMonthlyHistoricoRow(int Year, int Month, DateTime PeriodStart, decimal KgTotal, int Items);
+    public async Task<List<CoffeeMonthlyHistoricoRow>?> GetCoffeeMonthlyKgHistoricoAsync(int meses = 12)
+        => await GetAsync<List<CoffeeMonthlyHistoricoRow>>($"/api/dashboard/coffee-monthly-kg-historico?meses={meses}");
+
     public async Task<CoffeeStockKgDto?> GetCoffeeStockKgAsync()
         => await GetAsync<CoffeeStockKgDto>("/api/dashboard/coffee-stock-kg");
 

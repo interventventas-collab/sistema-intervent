@@ -92,6 +92,59 @@ public class DashboardController : ControllerBase
     }
 
     /// <summary>
+    /// 2026-06-05: Histórico de kg de café por mes (últimos N meses, default 12).
+    /// Para mostrar tooltip al hover sobre la balanza del dashboard.
+    /// </summary>
+    [HttpGet("coffee-monthly-kg-historico")]
+    public async Task<IActionResult> GetCoffeeMonthlyKgHistorico([FromQuery] int meses = 12)
+    {
+        meses = Math.Clamp(meses, 1, 24);
+        var now = DateTime.UtcNow;
+        var hasta = new DateTime(now.Year, now.Month, 1).AddMonths(1);
+        var desde = hasta.AddMonths(-meses);
+
+        // Agregar por mes
+        var rows = await _db.CafeVentaItems
+            .Where(i => i.VentaNav != null
+                        && i.VentaNav.Estado != "anulado"
+                        && i.VentaNav.Fecha >= desde
+                        && i.VentaNav.Fecha < hasta
+                        && i.Categoria == "CAFE")
+            .Select(i => new { i.GramosDescontados, i.VentaNav!.Fecha })
+            .ToListAsync();
+
+        var grouped = rows
+            .GroupBy(r => new { r.Fecha.Year, r.Fecha.Month })
+            .Select(g => new
+            {
+                year = g.Key.Year,
+                month = g.Key.Month,
+                kgTotal = Math.Round(g.Sum(x => x.GramosDescontados) / 1000m, 2),
+                items = g.Count()
+            })
+            .OrderByDescending(x => x.year).ThenByDescending(x => x.month)
+            .ToList();
+
+        // Rellenar meses sin ventas con 0 (para que aparezcan en el tooltip)
+        var resultado = new List<object>();
+        for (int i = 0; i < meses; i++)
+        {
+            var d = hasta.AddMonths(-i - 1);
+            var found = grouped.FirstOrDefault(g => g.year == d.Year && g.month == d.Month);
+            resultado.Add(new
+            {
+                year = d.Year,
+                month = d.Month,
+                periodStart = d,
+                kgTotal = found?.kgTotal ?? 0m,
+                items = found?.items ?? 0
+            });
+        }
+
+        return Ok(resultado);
+    }
+
+    /// <summary>
     /// Stock total de café disponible (en kg) desde el módulo Café (Cafe_Productos).
     /// Suma StockGramos de todos los productos con Categoria='CAFE' y activos, y lo
     /// convierte a kg. Cuenta variedades totales y cuántas tienen stock > 0.

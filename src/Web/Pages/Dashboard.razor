@@ -95,7 +95,7 @@
     <PostitsWidget Scope="dashboard" Title="Postits del equipo" CardStyle="max-height: 220px;" />
 
     @* Balanza de café FRIKAF — circulo con imagen + labels abajo (estilo "balanza") *@
-    <div class="cafe-frikaf-balanza">
+    <div class="cafe-frikaf-balanza" @onmouseenter="MostrarHistoricoBalanza" @onmouseleave="OcultarHistoricoBalanza" style="position:relative;">
         <div class="cafe-frikaf-circle"
              style="background-image: linear-gradient(rgba(255,255,255,0.10), rgba(255,255,255,0.25)), url('/api/branding/cafe-frikaf-bg?v=@bgVersion');">
             @* Boton para subir / cambiar la imagen de fondo *@
@@ -130,6 +130,29 @@
                 @coffeeKg.PeriodStart.ToString("MMMM yyyy", new System.Globalization.CultureInfo("es-AR")).ToUpper()
             }
         </div>
+
+        @* 2026-06-05: Tooltip de meses anteriores al pasar el cursor *@
+        @if (mostrandoHistorico && historicoMeses is not null && historicoMeses.Count > 0)
+        {
+            <div style="position:absolute; top:50%; left:calc(100% + 12px); transform:translateY(-50%);
+                        background:white; border:1px solid #d1d5db; border-radius:12px; padding:0.8rem 1rem;
+                        box-shadow:0 12px 40px rgba(0,0,0,0.15); z-index:1000; min-width:240px;">
+                <div style="font-weight:800; font-size:0.78rem; color:#92400e; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.4rem; border-bottom:1px solid #fde68a; padding-bottom:0.3rem;">
+                    📊 Histórico balanza
+                </div>
+                @foreach (var m in historicoMeses)
+                {
+                    var esActual = m.Year == DateTime.UtcNow.Year && m.Month == DateTime.UtcNow.Month;
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding:0.25rem 0; font-size:0.88rem; @(esActual ? "background:#fef3c7; border-radius:4px; padding-left:0.3rem; padding-right:0.3rem;" : "")">
+                        <span style="color:@(esActual ? "#92400e" : "#6b7280"); font-weight:@(esActual ? "700" : "500"); text-transform:capitalize;">
+                            @m.PeriodStart.ToString("MMMM yyyy", new System.Globalization.CultureInfo("es-AR"))
+                            @if (esActual) { <span style="font-size:0.7rem; color:#d97706;">(actual)</span> }
+                        </span>
+                        <span style="font-family:monospace; font-weight:700; color:@(esActual ? "#92400e" : "#1f2937");">@m.KgTotal.ToString("N1") kg</span>
+                    </div>
+                }
+            </div>
+        }
     </div>
 
     @* Stock total de cafe disponible — mismo estilo circular que la balanza *@
@@ -564,6 +587,24 @@
     private System.Threading.Timer? quoteTimer;
     private System.Threading.Timer? coffeeTimer;
     private CoffeeMonthlyKgDto? coffeeKg;
+    // 2026-06-05: histórico balanza (tooltip al hover)
+    private List<ApiClient.CoffeeMonthlyHistoricoRow>? historicoMeses;
+    private bool mostrandoHistorico;
+
+    private async Task MostrarHistoricoBalanza()
+    {
+        mostrandoHistorico = true;
+        if (historicoMeses is null)
+        {
+            try { historicoMeses = await Api.GetCoffeeMonthlyKgHistoricoAsync(12); } catch { historicoMeses = new(); }
+        }
+        StateHasChanged();
+    }
+    private void OcultarHistoricoBalanza()
+    {
+        mostrandoHistorico = false;
+        StateHasChanged();
+    }
     private CoffeeStockKgDto? coffeeStock;
     private System.Threading.Timer? salesSummaryTimer;
     private SalesSummaryDto? salesSummary;
