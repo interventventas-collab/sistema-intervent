@@ -422,6 +422,17 @@
                                             🚚 Asignar ▼
                                         </span>
                                     }
+                                    @* 2026-06-05: chip TRANSPORTE *@
+                                    @if (v.PorTransporte)
+                                    {
+                                        var trTitle = string.IsNullOrWhiteSpace(v.TransporteEmpresa) && string.IsNullOrWhiteSpace(v.TransporteDestino)
+                                            ? "Despacho por transporte"
+                                            : $"Transporte: {v.TransporteEmpresa} · {v.TransporteDestino}".Trim().TrimEnd('·').Trim();
+                                        <span style="display:inline-block; padding:0.15rem 0.5rem; background:#fed7aa; color:#9a3412; border-radius:999px; font-size:0.7rem; font-weight:800; margin-left:0.2rem;"
+                                              title="@trTitle">
+                                            🚛 TRANSPORTE
+                                        </span>
+                                    }
                                 </td>
                                 <td class="actions-cell">
                                     @{
@@ -1035,12 +1046,69 @@
                         </button>
                         <button type="button"
                                 class="btn"
+                                style="border: none; border-radius: 0; padding: 0.35rem 0.8rem; font-size: 0.82rem; @(addMode == "SERVICIO" ? "background:#7c3aed;color:white;" : "background:white;color:#374151;")"
+                                @onclick="@(async () => { addMode = "SERVICIO"; await CargarServiciosSiHaceFalta(); })"
+                                title="Servicio del catálogo (envío, mano de obra, instalación, etc). No descuenta stock.">
+                            🛠 Servicio
+                        </button>
+                        <button type="button"
+                                class="btn"
                                 style="border: none; border-radius: 0; padding: 0.35rem 0.8rem; font-size: 0.82rem; @(addMode == "LIBRE" ? "background:#1d4ed8;color:white;" : "background:white;color:#374151;")"
                                 @onclick="@(() => addMode = "LIBRE")"
-                                title="Item con descripción y precio cargados a mano, sin producto del catálogo (servicios, otros conceptos)">
+                                title="Item con descripción y precio cargados a mano, sin producto del catálogo">
                             ✏️ Concepto libre
                         </button>
                     </div>
+
+                    @if (addMode == "SERVICIO")
+                    {
+                        <div class="form-row" style="align-items: end;">
+                            <div class="form-group" style="flex: 3;">
+                                <label class="form-label" style="font-size: 0.75rem;">Servicio *</label>
+                                @if (catalogoServicios is null)
+                                {
+                                    <input class="form-input" disabled placeholder="Cargando catálogo..." />
+                                }
+                                else if (catalogoServicios.Count == 0)
+                                {
+                                    <div style="padding:0.4rem; border:1px dashed #d1d5db; border-radius:4px; font-size:0.78rem; color:#6b7280;">
+                                        No hay servicios cargados.
+                                        <a href="/cafe/servicios" target="_blank" style="color:#7c3aed; font-weight:600;">Crear ahora →</a>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <select class="form-input" @bind="addServicioId">
+                                        <option value="0">-- Elegir servicio --</option>
+                                        @foreach (var s in catalogoServicios.OrderBy(x => x.Nombre))
+                                        {
+                                            <option value="@s.Id">@s.Nombre — $@s.Precio.ToString("N2")</option>
+                                        }
+                                    </select>
+                                }
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label" style="font-size: 0.75rem;">Precio U. sin IVA</label>
+                                <input class="form-input" type="number" step="0.01" min="0" @bind="addServicioPrecio"
+                                       placeholder="(usa precio del catálogo)" title="Dejar vacío usa el precio del catálogo. Cargar acá lo pisa." />
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label" style="font-size: 0.75rem;">Cant.</label>
+                                <input class="form-input" type="number" min="1" @bind="addServicioCantidad" placeholder="1" />
+                            </div>
+                            <div class="form-group" style="flex: 0 0 auto;">
+                                <button type="button" class="btn btn-primary" style="background:#7c3aed; border-color:#7c3aed;"
+                                        @onclick="AddItemServicio"
+                                        disabled="@(addServicioId <= 0 || addServicioCantidad < 1)">
+                                    + Agregar
+                                </button>
+                            </div>
+                        </div>
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.25rem 0 0;">
+                            💡 No descuenta stock. Se cobra como item adicional. Si dejás el precio vacío, usa el del catálogo.
+                            <a href="/cafe/servicios" target="_blank" style="color:#7c3aed;">Administrar servicios →</a>
+                        </p>
+                    }
 
                     @if (addMode == "LIBRE")
                     {
@@ -1523,6 +1591,18 @@
                                             style="display: inline-flex; align-items: center; gap: 0.2rem; padding: 0.25rem 0.6rem; border: 2px solid @retiraBd; background: @retiraBg; color: @retiraFg; border-radius: 5px; font-weight: 800; font-size: 0.72rem; cursor: pointer; user-select: none; margin-left: 0.4rem;">
                                         @(formRetira ? "✓ " : "")🚗 RETIRA
                                     </button>
+                                    @* 2026-06-05: boton TRANSPORTE — se despacha por empresa de transporte *@
+                                    @{
+                                        var trBg = formPorTransporte ? "#ea580c" : "white";
+                                        var trFg = formPorTransporte ? "white" : "#374151";
+                                        var trBd = formPorTransporte ? "#c2410c" : "#d1d5db";
+                                    }
+                                    <button type="button"
+                                            @onclick="ToggleTransporte"
+                                            title="La mercaderia se despacha por empresa de transporte (Andreani, Cruz del Sur, etc)"
+                                            style="display: inline-flex; align-items: center; gap: 0.2rem; padding: 0.25rem 0.6rem; border: 2px solid @trBd; background: @trBg; color: @trFg; border-radius: 5px; font-weight: 800; font-size: 0.72rem; cursor: pointer; user-select: none; margin-left: 0.4rem;">
+                                        @(formPorTransporte ? "✓ " : "")🚛 TRANSPORTE
+                                    </button>
                                 </div>
                                 @if (formEnRadar)
                                 {
@@ -1531,6 +1611,25 @@
                                 @if (formRetira)
                                 {
                                     <div style="font-size: 0.68rem; color: #15803d; margin-top: 0.3rem;">🚗 El cliente <strong>retira en el local</strong> — el comprobante muestra "RETIRA EN LOCAL".</div>
+                                }
+                                @if (formPorTransporte)
+                                {
+                                    <div style="background:#fff7ed; border:1px solid #fdba74; border-radius:6px; padding:0.5rem; margin-top:0.4rem;">
+                                        <div style="font-size: 0.72rem; color: #c2410c; font-weight:700; margin-bottom:0.3rem;">🚛 Despacho por transporte</div>
+                                        <div class="form-row" style="margin:0;">
+                                            <div class="form-group" style="flex:1; margin:0;">
+                                                <label class="form-label" style="font-size:0.7rem;">Empresa de transporte</label>
+                                                <input class="form-input" @bind="formTransporteEmpresa" placeholder="Ej: Andreani / Cruz del Sur / Vía Cargo..." />
+                                            </div>
+                                            <div class="form-group" style="flex:1; margin:0;">
+                                                <label class="form-label" style="font-size:0.7rem;">Destino</label>
+                                                <input class="form-input" @bind="formTransporteDestino" placeholder="Ciudad / sucursal" />
+                                            </div>
+                                        </div>
+                                        <p style="font-size:0.65rem; color:#9a3412; margin:0.3rem 0 0;">
+                                            A futuro: el sistema va a generar un volante y remito especiales para pegar al paquete.
+                                        </p>
+                                    </div>
                                 }
                             </div>
 
@@ -2907,6 +3006,10 @@
     private bool formEnRadar = false;
     // 2026-06-01: "RETIRA" — el cliente retira la mercaderia en el local (no se reparte).
     private bool formRetira = false;
+    // 2026-06-05: "TRANSPORTE" — la venta se despacha por empresa de transporte. Excluyente con RADAR/RETIRA.
+    private bool formPorTransporte = false;
+    private string formTransporteEmpresa = "";
+    private string formTransporteDestino = "";
     private bool formIsPaid;
     private string formEntregaPor = "";
     // 2026-06-02: Comentario INTERNO para el armado. Se muestra como post-it en /cafe/preparacion. No sale en PDF.
@@ -2978,11 +3081,58 @@
     private bool productoSearchOpen;
 
     // Combo picker
-    private string addMode = "PRODUCTO";  // "PRODUCTO" | "COMBO" | "LIBRE"
+    private string addMode = "PRODUCTO";  // "PRODUCTO" | "COMBO" | "LIBRE" | "SERVICIO"
     // Inputs del tab "Concepto libre"
     private string addLibreDescripcion = "";
     private decimal addLibrePrecio = 0m;
     private int addLibreCantidad = 1;
+
+    // 2026-06-05: Catalogo de servicios + inputs del tab "Servicio"
+    private List<CafeServicioDto>? catalogoServicios;
+    private int addServicioId = 0;
+    private decimal? addServicioPrecio = null;
+    private int addServicioCantidad = 1;
+
+    private async Task CargarServiciosSiHaceFalta()
+    {
+        if (catalogoServicios is not null) return;
+        try
+        {
+            catalogoServicios = await Api.GetCafeServiciosAsync(incluirInactivos: false) ?? new();
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error($"Error al cargar servicios: {ex.Message}");
+            catalogoServicios = new();
+        }
+    }
+
+    /// <summary>Agrega un item Servicio del catalogo. No descuenta stock. Si el operador no carga
+    /// precio override, se usa el del catalogo automaticamente (lo resuelve el backend).</summary>
+    private async Task AddItemServicio()
+    {
+        if (addServicioId <= 0) { ToastService.Error("Elegí un servicio del catálogo"); return; }
+        if (addServicioCantidad < 1) { ToastService.Error("La cantidad debe ser >= 1"); return; }
+        var serv = catalogoServicios?.FirstOrDefault(s => s.Id == addServicioId);
+        if (serv is null) { ToastService.Error("Servicio no encontrado"); return; }
+
+        formItems.Add(new CafeCotizarItemRequest
+        {
+            ProductoId = 0,
+            ServicioId = addServicioId,
+            EsConceptoLibre = false,
+            Formato = "UNIT",
+            Cantidad = addServicioCantidad,
+            PrecioUnitarioOverride = addServicioPrecio.HasValue && addServicioPrecio.Value >= 0m ? addServicioPrecio : null,
+            DescuentoPct = 0m,
+            EsDoyPack = false,
+            Molienda = null
+        });
+        addServicioId = 0;
+        addServicioPrecio = null;
+        addServicioCantidad = 1;
+        await Cotizar();
+    }
 
     /// <summary>Agrega un item "concepto libre" (sin producto del catálogo) a formItems
     /// con la descripción + precio + cantidad cargados a mano. No descuenta stock.</summary>
@@ -3522,6 +3672,7 @@
         addComboId = 0; addComboCantidad = 1;
         comboSearch = ""; comboSearchOpen = false;
         formWeekDays = new(); formEnRadar = false; formRetira = false; formIsPaid = false; formEntregaPor = "";
+        formPorTransporte = false; formTransporteEmpresa = ""; formTransporteDestino = "";
         formComentarioArmado = "";
         // Reset del panel "Enviar al cliente" — todos los checkboxes empiezan apagados
         // para que nunca mandes algo sin querer. El operador tilda lo que necesite por venta.
@@ -3742,6 +3893,7 @@
     /// Si esta activo, el PDF muestra "🛰 EN RADAR" literal en lugar de los pills de dias.</summary>
     private void ToggleEnRadar()
     {
+        if (!formEnRadar) formPorTransporte = false; // 2026-06-05: excluyente con TRANSPORTE
         formEnRadar = !formEnRadar;
     }
 
@@ -3759,6 +3911,23 @@
             formRetira = true;
             formWeekDays.Clear();
             formEnRadar = false;
+            formPorTransporte = false; // 2026-06-05: excluyente con TRANSPORTE
+        }
+    }
+
+    /// <summary>2026-06-05: Toggle de "TRANSPORTE" — la venta se despacha por empresa de transporte.
+    /// Excluyente con EN RADAR y RETIRA.</summary>
+    private void ToggleTransporte()
+    {
+        if (formPorTransporte)
+        {
+            formPorTransporte = false;
+        }
+        else
+        {
+            formPorTransporte = true;
+            formEnRadar = false;
+            formRetira = false;
         }
     }
 
@@ -4621,6 +4790,9 @@
                 WeekDays = weekCsv,
                 EnRadar = formEnRadar,
                 Retira = formRetira,
+                PorTransporte = formPorTransporte,
+                TransporteEmpresa = formPorTransporte ? formTransporteEmpresa : null,
+                TransporteDestino = formPorTransporte ? formTransporteDestino : null,
                 IsPaid = formIsPaid,
                 TipoComprobante = formTipoComprobante,
                 CondicionIva = formCondicionIva,
@@ -4716,6 +4888,9 @@
                     WeekDays = weekCsv ?? "",
                     EnRadar = formEnRadar,
                 Retira = formRetira,
+                PorTransporte = formPorTransporte,
+                TransporteEmpresa = formPorTransporte ? formTransporteEmpresa : null,
+                TransporteDestino = formPorTransporte ? formTransporteDestino : null,
                     IsPaid = formIsPaid,
                     TipoComprobante = formTipoComprobante,
                     CondicionIva = formCondicionIva,
@@ -4796,6 +4971,9 @@
                     WeekDays = weekCsv,
                     EnRadar = formEnRadar,
                 Retira = formRetira,
+                PorTransporte = formPorTransporte,
+                TransporteEmpresa = formPorTransporte ? formTransporteEmpresa : null,
+                TransporteDestino = formPorTransporte ? formTransporteDestino : null,
                     IsPaid = false,  // NUNCA marcar pagado al crear — el flag se sincroniza por la cobranza
                     TipoComprobante = formTipoComprobante,
                     CondicionIva = formCondicionIva,
@@ -5299,6 +5477,9 @@
             : v.WeekDays.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(s => s.Trim().ToUpperInvariant()).ToHashSet();
         formEnRadar = v.EnRadar;
         formRetira = v.Retira;
+        formPorTransporte = v.PorTransporte;
+        formTransporteEmpresa = v.TransporteEmpresa ?? "";
+        formTransporteDestino = v.TransporteDestino ?? "";
         formIsPaid = v.IsPaid;
         formEntregaPor = v.EntregaPor ?? "";
         formComentarioArmado = v.ComentarioArmado ?? "";

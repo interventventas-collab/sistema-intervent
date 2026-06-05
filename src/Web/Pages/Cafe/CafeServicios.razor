@@ -1,0 +1,234 @@
+@page "/cafe/servicios"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+
+<div class="card">
+    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+        <div>
+            <h3 style="margin:0;">🛠 Catálogo de Servicios (@(servicios?.Count(s => s.IsActive) ?? 0))</h3>
+            <p style="font-size:0.78rem; color:#6b7280; margin:0.25rem 0 0;">
+                Servicios cobrables: envíos, mano de obra, instalación, etc. Aparecen en el botón
+                <b>🟪 Servicio</b> al cargar una venta. No descuentan stock.
+            </p>
+        </div>
+        <div style="display:flex; gap:0.4rem; align-items:center;">
+            <label style="font-size:0.78rem; color:#6b7280; display:flex; align-items:center; gap:0.3rem;">
+                <input type="checkbox" @bind="mostrarInactivos" @bind:after="Load" /> Ver inactivos
+            </label>
+            <button class="btn btn-success" style="font-size:0.8rem;" @onclick="AbrirNuevo">➕ Nuevo servicio</button>
+        </div>
+    </div>
+    <div class="card-body" style="padding:0;">
+        @if (loading)
+        {
+            <p class="text-muted" style="padding:1rem;">Cargando...</p>
+        }
+        else if (servicios is null || servicios.Count == 0)
+        {
+            <p class="text-muted" style="padding:1rem;">Sin servicios cargados. Tocá "Nuevo servicio" para crear el primero (ej: "Envío zona norte" con su precio).</p>
+        }
+        else
+        {
+            <table class="table table-compact">
+                <thead>
+                    <tr>
+                        <th>Nombre</th>
+                        <th>Descripción</th>
+                        <th style="text-align:right;">Precio</th>
+                        <th style="text-align:right;">IVA %</th>
+                        <th>Estado</th>
+                        <th style="width:140px;">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var s in servicios.OrderBy(x => x.Nombre))
+                    {
+                        <tr style="@(s.IsActive ? "" : "opacity:0.55;")">
+                            <td><b>@s.Nombre</b></td>
+                            <td style="color:#6b7280;">@(string.IsNullOrWhiteSpace(s.Descripcion) ? "—" : s.Descripcion)</td>
+                            <td style="text-align:right; font-family:monospace;">$@s.Precio.ToString("N2")</td>
+                            <td style="text-align:right; font-family:monospace;">@s.IvaPct.ToString("N0")%</td>
+                            <td>
+                                @if (s.IsActive) { <span class="badge badge-success">Activo</span> }
+                                else { <span class="badge badge-secondary">Inactivo</span> }
+                            </td>
+                            <td>
+                                <button class="btn-icon" title="Editar" @onclick="() => AbrirEditar(s)">✏</button>
+                                @if (s.IsActive)
+                                {
+                                    <button class="btn-icon" title="Desactivar" @onclick="() => ToggleActivo(s, false)">⏸</button>
+                                }
+                                else
+                                {
+                                    <button class="btn-icon" title="Activar" @onclick="() => ToggleActivo(s, true)">▶</button>
+                                }
+                                <button class="btn-icon" title="Eliminar" @onclick="() => Eliminar(s)">🗑</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@if (showForm)
+{
+    <div class="modal-overlay">
+        <div class="modal-card" style="max-width: 540px;">
+            <div class="modal-header">
+                <h3 style="margin:0;">@(editingId.HasValue ? "✏ Editar servicio" : "➕ Nuevo servicio")</h3>
+                <button class="btn-close" @onclick="CerrarForm">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Nombre *</label>
+                    <input class="form-input" @bind="fNombre" placeholder="Ej: Envío zona norte" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Descripción (opcional)</label>
+                    <textarea class="form-input" rows="2" @bind="fDescripcion" placeholder="Aclaraciones internas"></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group" style="flex:1;">
+                        <label class="form-label">Precio *</label>
+                        <input type="number" step="0.01" class="form-input" @bind="fPrecio" placeholder="0.00" />
+                    </div>
+                    <div class="form-group" style="flex:1;">
+                        <label class="form-label">IVA %</label>
+                        <input type="number" step="0.01" class="form-input" @bind="fIvaPct" placeholder="21" />
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label style="display:flex; align-items:center; gap:0.4rem; font-size:0.85rem;">
+                        <input type="checkbox" @bind="fIsActive" /> Activo
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CerrarForm">Cancelar</button>
+                <button class="btn btn-primary" @onclick="Guardar" disabled="@guardando">
+                    @(guardando ? "Guardando..." : "💾 Guardar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<CafeServicioDto>? servicios;
+    private bool loading = true;
+    private bool mostrarInactivos = false;
+
+    private bool showForm = false;
+    private int? editingId = null;
+    private string fNombre = "";
+    private string? fDescripcion = "";
+    private decimal fPrecio = 0m;
+    private decimal fIvaPct = 21m;
+    private bool fIsActive = true;
+    private bool guardando = false;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        loading = true;
+        try
+        {
+            servicios = await Api.GetCafeServiciosAsync(mostrarInactivos) ?? new();
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error($"Error al cargar servicios: {ex.Message}");
+            servicios = new();
+        }
+        loading = false;
+    }
+
+    private void AbrirNuevo()
+    {
+        editingId = null;
+        fNombre = "";
+        fDescripcion = "";
+        fPrecio = 0m;
+        fIvaPct = 21m;
+        fIsActive = true;
+        showForm = true;
+    }
+
+    private void AbrirEditar(CafeServicioDto s)
+    {
+        editingId = s.Id;
+        fNombre = s.Nombre;
+        fDescripcion = s.Descripcion ?? "";
+        fPrecio = s.Precio;
+        fIvaPct = s.IvaPct;
+        fIsActive = s.IsActive;
+        showForm = true;
+    }
+
+    private void CerrarForm() { showForm = false; }
+
+    private async Task Guardar()
+    {
+        if (string.IsNullOrWhiteSpace(fNombre)) { ToastService.Error("El nombre es obligatorio"); return; }
+        if (fPrecio < 0) { ToastService.Error("Precio inválido"); return; }
+        guardando = true;
+        try
+        {
+            var req = new CafeServicioUpsertRequest
+            {
+                Nombre = fNombre.Trim(),
+                Descripcion = string.IsNullOrWhiteSpace(fDescripcion) ? null : fDescripcion!.Trim(),
+                Precio = fPrecio,
+                IvaPct = fIvaPct,
+                IsActive = fIsActive
+            };
+            if (editingId.HasValue)
+            {
+                var (_, err) = await Api.UpdateCafeServicioAsync(editingId.Value, req);
+                if (err is null) { ToastService.Success("Servicio actualizado"); showForm = false; await Load(); }
+                else ToastService.Error(err);
+            }
+            else
+            {
+                var (_, err) = await Api.CrearCafeServicioAsync(req);
+                if (err is null) { ToastService.Success("Servicio creado"); showForm = false; await Load(); }
+                else ToastService.Error(err);
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error($"Error al guardar: {ex.Message}");
+        }
+        guardando = false;
+    }
+
+    private async Task ToggleActivo(CafeServicioDto s, bool activo)
+    {
+        var req = new CafeServicioUpsertRequest
+        {
+            Nombre = s.Nombre,
+            Descripcion = s.Descripcion,
+            Precio = s.Precio,
+            IvaPct = s.IvaPct,
+            IsActive = activo
+        };
+        var (_, err) = await Api.UpdateCafeServicioAsync(s.Id, req);
+        if (err is null) { ToastService.Success(activo ? "Servicio activado" : "Servicio desactivado"); await Load(); }
+        else ToastService.Error(err);
+    }
+
+    private async Task Eliminar(CafeServicioDto s)
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            $"¿Eliminar el servicio \"{s.Nombre}\"? Si tiene ventas asociadas, se desactiva automáticamente en lugar de borrarse.");
+        if (!ok) return;
+        var (success, err) = await Api.EliminarCafeServicioAsync(s.Id);
+        if (success) { ToastService.Success("Servicio eliminado"); await Load(); }
+        else ToastService.Error(err ?? "Error al eliminar");
+    }
+}

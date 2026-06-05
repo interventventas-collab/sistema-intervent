@@ -298,7 +298,7 @@
 
                 @* ───────── 2. CATÁLOGO ───────── *@
                 <NavGroup Label="🏬 Catálogo" Icon="@SvgIcons.Package"
-                          HasActiveChild="@(IsActive("/cafe/productos") || IsActive("/cafe/skus-meli") || IsActive("/cafe/combos") || IsActive("/cafe/kits") || IsActive("/cafe/oems") || IsActive("/cafe/marcas") || IsActive("/cafe/listas-precios"))">
+                          HasActiveChild="@(IsActive("/cafe/productos") || IsActive("/cafe/skus-meli") || IsActive("/cafe/combos") || IsActive("/cafe/kits") || IsActive("/cafe/servicios") || IsActive("/cafe/oems") || IsActive("/cafe/marcas") || IsActive("/cafe/listas-precios"))">
                     <NavItem Href="/cafe/productos" Label="Productos" Icon="@SvgIcons.Package"
                              IsActive="@IsActive("/cafe/productos")" OnClick="@(() => NavigateTo("/cafe/productos"))" />
                     <NavItem Href="/cafe/skus-meli" Label="🛒 SKUs MeLi" Icon="@SvgIcons.Tag"
@@ -307,6 +307,8 @@
                              IsActive="@IsActive("/cafe/combos")" OnClick="@(() => NavigateTo("/cafe/combos"))" />
                     <NavItem Href="/cafe/kits" Label="Kits" Icon="@SvgIcons.Package"
                              IsActive="@IsActive("/cafe/kits")" OnClick="@(() => NavigateTo("/cafe/kits"))" />
+                    <NavItem Href="/cafe/servicios" Label="🛠 Servicios" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive("/cafe/servicios")" OnClick="@(() => NavigateTo("/cafe/servicios"))" />
                     <NavItem Href="/cafe/oems" Label="OEMs" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/cafe/oems")" OnClick="@(() => NavigateTo("/cafe/oems"))" />
                     <NavItem Href="/cafe/marcas" Label="Marcas" Icon="@SvgIcons.Tag"

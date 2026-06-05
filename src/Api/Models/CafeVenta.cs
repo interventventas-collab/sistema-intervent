@@ -89,6 +89,18 @@ public class CafeVenta
     /// Si es true, en el PDF se imprime "🚗 RETIRA EN LOCAL" en lugar de dias de visita.</summary>
     public bool Retira { get; set; } = false;
 
+    /// <summary>2026-06-05: "TRANSPORTE" — la venta se despacha por empresa de transporte.
+    /// Excluyente con EnRadar / Retira. A futuro genera volante + remito especial.</summary>
+    public bool PorTransporte { get; set; } = false;
+
+    /// <summary>2026-06-05: Empresa de transporte (texto libre, ej "Andreani", "Cruz del Sur").</summary>
+    [MaxLength(120)]
+    public string? TransporteEmpresa { get; set; }
+
+    /// <summary>2026-06-05: Destino del envio por transporte (ciudad/sucursal).</summary>
+    [MaxLength(200)]
+    public string? TransporteDestino { get; set; }
+
     /// <summary>2026-06-02: Comentario INTERNO para el armado del pedido. Independiente de Observaciones.
     /// Se muestra como post-it amarillo desplegable en /cafe/preparacion. NO sale en el PDF al cliente.
     /// Ej: "no llevar 3 capsulas, ese cliente las rechaza", "sumar 1 sobre cortesia".</summary>
@@ -250,6 +262,14 @@ public class CafeVentaItem
 
     [ForeignKey(nameof(KitId))]
     public CafeKit? KitNav { get; set; }
+
+    /// <summary>2026-06-05: FK a Cafe_Servicios. Si tiene valor, este item es un servicio
+    /// (envio, mano de obra, instalacion, etc). No descuenta stock. Mutuamente exclusivo
+    /// con ProductoId y KitId. La categoria se setea a "SERVICIO".</summary>
+    public int? ServicioId { get; set; }
+
+    [ForeignKey(nameof(ServicioId))]
+    public CafeServicio? ServicioNav { get; set; }
 
     [Required, MaxLength(200)]
     public string ProductoNombreSnapshot { get; set; } = string.Empty;
