@@ -239,7 +239,10 @@ public class CafeVentasController : ControllerBase
         v.DriveSubidasCount,
         v.ComentarioArmado,
         escaneadoPorRepartidorNombre,
-        escaneadoAt);
+        escaneadoAt,
+        v.PorTransporte,
+        v.TransporteEmpresa,
+        v.TransporteDestino);
 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null)
@@ -924,6 +927,9 @@ public class CafeVentasController : ControllerBase
             WeekDays = NormWeekDays(req.WeekDays),
             EnRadar = req.EnRadar,
             Retira = req.Retira,
+            PorTransporte = req.PorTransporte,
+            TransporteEmpresa = string.IsNullOrWhiteSpace(req.TransporteEmpresa) ? null : req.TransporteEmpresa.Trim(),
+            TransporteDestino = string.IsNullOrWhiteSpace(req.TransporteDestino) ? null : req.TransporteDestino.Trim(),
             IsPaid = req.IsPaid,
             TipoComprobante = NormTipoComprobante(req.TipoComprobante),
             CondicionIva = NormCondicionIva(req.CondicionIva),
@@ -1049,6 +1055,9 @@ public class CafeVentasController : ControllerBase
             WeekDays = NormWeekDays(req.WeekDays),
             EnRadar = req.EnRadar,
             Retira = req.Retira,
+            PorTransporte = req.PorTransporte,
+            TransporteEmpresa = string.IsNullOrWhiteSpace(req.TransporteEmpresa) ? null : req.TransporteEmpresa.Trim(),
+            TransporteDestino = string.IsNullOrWhiteSpace(req.TransporteDestino) ? null : req.TransporteDestino.Trim(),
             IsPaid = req.IsPaid,
             TipoComprobante = NormTipoComprobante(req.TipoComprobante),
             CondicionIva = NormCondicionIva(req.CondicionIva),
@@ -1076,6 +1085,29 @@ public class CafeVentasController : ControllerBase
             var nombreOverride = reqItem is not null && !string.IsNullOrWhiteSpace(reqItem.DescripcionOverride)
                 ? reqItem.DescripcionOverride.Trim()
                 : null;
+
+            // 2026-06-05: Servicio del catalogo (no descuenta stock).
+            if (it.Categoria == "SERVICIO")
+            {
+                venta.Items.Add(new CafeVentaItem
+                {
+                    ProductoId = null,
+                    ServicioId = reqItem?.ServicioId,
+                    EsConceptoLibre = false,
+                    ProductoNombreSnapshot = nombreOverride ?? it.ProductoNombre,
+                    Categoria = "SERVICIO",
+                    Formato = "UNIT",
+                    Cantidad = it.Cantidad,
+                    PrecioUnitario = it.PrecioUnitario,
+                    CostoUnitario = 0m,
+                    Subtotal = it.Subtotal,
+                    GramosDescontados = 0m,
+                    Molienda = null,
+                    EsDoyPack = false,
+                    DescuentoPct = it.DescuentoPct
+                });
+                continue;
+            }
 
             // Concepto libre: item sin producto del catálogo (no descuenta stock).
             if (it.Categoria == "LIBRE")
@@ -1710,6 +1742,9 @@ public class CafeVentasController : ControllerBase
         if (req.WeekDays is not null) v.WeekDays = NormWeekDays(req.WeekDays);
         if (req.EnRadar.HasValue) v.EnRadar = req.EnRadar.Value;
         if (req.Retira.HasValue) v.Retira = req.Retira.Value;
+        if (req.PorTransporte.HasValue) v.PorTransporte = req.PorTransporte.Value;
+        if (req.TransporteEmpresa is not null) v.TransporteEmpresa = string.IsNullOrWhiteSpace(req.TransporteEmpresa) ? null : req.TransporteEmpresa.Trim();
+        if (req.TransporteDestino is not null) v.TransporteDestino = string.IsNullOrWhiteSpace(req.TransporteDestino) ? null : req.TransporteDestino.Trim();
         if (req.IsPaid.HasValue) v.IsPaid = req.IsPaid.Value;
         if (req.EntregaPor is not null) v.EntregaPor = string.IsNullOrWhiteSpace(req.EntregaPor) ? null : req.EntregaPor.Trim();
         if (req.ComentarioArmado is not null) v.ComentarioArmado = string.IsNullOrWhiteSpace(req.ComentarioArmado) ? null : req.ComentarioArmado.Trim();
@@ -1824,6 +1859,29 @@ public class CafeVentasController : ControllerBase
                     var nombreOverride = reqItem is not null && !string.IsNullOrWhiteSpace(reqItem.DescripcionOverride)
                         ? reqItem.DescripcionOverride.Trim()
                         : null;
+
+                    // 2026-06-05: Servicio del catalogo (no descuenta stock).
+                    if (ci.Categoria == "SERVICIO")
+                    {
+                        v.Items.Add(new CafeVentaItem
+                        {
+                            ProductoId = null,
+                            ServicioId = reqItem?.ServicioId,
+                            EsConceptoLibre = false,
+                            ProductoNombreSnapshot = nombreOverride ?? ci.ProductoNombre,
+                            Categoria = "SERVICIO",
+                            Formato = "UNIT",
+                            Cantidad = ci.Cantidad,
+                            PrecioUnitario = ci.PrecioUnitario,
+                            CostoUnitario = 0m,
+                            Subtotal = ci.Subtotal,
+                            GramosDescontados = 0m,
+                            Molienda = null,
+                            EsDoyPack = false,
+                            DescuentoPct = ci.DescuentoPct
+                        });
+                        continue;
+                    }
 
                     // Concepto libre: item sin producto del catálogo (no descuenta stock).
                     if (ci.Categoria == "LIBRE")
@@ -2060,6 +2118,50 @@ public class CafeVentasController : ControllerBase
             // Descuento manual override. Si viene 0 desde el request, se calcula automaticamente
             // de la matriz por tipo cliente x marca del producto.
             var descPctManual = Math.Clamp(it.DescuentoPct, 0m, 100m);
+
+            // ---- 2026-06-05: Servicio del catálogo (envio, mano de obra, etc) ----
+            // Se cargan desde /cafe/servicios. No descuenta stock. Toma el precio del catálogo
+            // salvo que el operador haya puesto override.
+            if (it.ServicioId.HasValue && it.ServicioId.Value > 0)
+            {
+                var serv = await _db.CafeServicios.AsNoTracking().FirstOrDefaultAsync(s => s.Id == it.ServicioId.Value);
+                if (serv is null)
+                {
+                    cotizadoItems.Add(new CafeCotizadoItemDto(
+                        ProductoId: 0, ProductoNombre: $"Servicio #{it.ServicioId} no encontrado",
+                        Categoria: "SERVICIO", Formato: "UNIT", Cantidad: it.Cantidad,
+                        PrecioUnitario: 0m, CostoUnitario: 0m, Subtotal: 0m,
+                        GramosNecesarios: 0m, StockGramosDisponible: 0m, StockUnidadesDisponible: 0,
+                        StockOk: false, Aviso: "Servicio no encontrado", Molienda: null,
+                        EsDoyPack: false, DescuentoPct: descPctManual));
+                    todoOk = false;
+                    continue;
+                }
+                var pcuServ = it.PrecioUnitarioOverride.HasValue && it.PrecioUnitarioOverride.Value >= 0m
+                    ? Math.Round(it.PrecioUnitarioOverride.Value, 2, MidpointRounding.AwayFromZero)
+                    : Math.Round(serv.Precio, 2, MidpointRounding.AwayFromZero);
+                var finalServ = Math.Round(pcuServ * (1m - descPctManual / 100m), 2, MidpointRounding.AwayFromZero);
+                var subServ = Math.Round(finalServ * it.Cantidad, 2, MidpointRounding.AwayFromZero);
+                cotizadoItems.Add(new CafeCotizadoItemDto(
+                    ProductoId: 0,
+                    ProductoNombre: serv.Nombre,
+                    Categoria: "SERVICIO",
+                    Formato: "UNIT",
+                    Cantidad: it.Cantidad,
+                    PrecioUnitario: pcuServ,
+                    CostoUnitario: 0m,
+                    Subtotal: subServ,
+                    GramosNecesarios: 0m,
+                    StockGramosDisponible: 0m,
+                    StockUnidadesDisponible: 0,
+                    StockOk: true,
+                    Aviso: null,
+                    Molienda: null,
+                    EsDoyPack: false,
+                    DescuentoPct: descPctManual));
+                subtotal += subServ;
+                continue;
+            }
 
             // ---- Concepto libre: item manual sin producto del catálogo ----
             // Usa DescripcionLibre + PrecioUnitarioOverride. No toca stock ni reglas.
@@ -2497,13 +2599,10 @@ public class CafeVentasController : ControllerBase
     public async Task<IActionResult> ListarPreparacion([FromQuery] int dias = 7)
     {
         var desde = DateTime.UtcNow.Date.AddDays(-Math.Max(1, dias));
-        // 2026-06-05 v2: criterio dual segun si tiene Drive.
-        //  - CON Drive: rango "dias" completo (7 default) — flujo armado clasico.
-        //  - SIN Drive: solo si es de las ultimas 36 hs, para que la venta del dia
-        //    no se pierda si Drive falla, pero las viejas que nunca subieron NO inundan
-        //    el tablero. Una vez que se reconecte Drive y se re-suba con ☁️, vuelven al
-        //    flujo normal "con Drive".
-        var hace36hs = DateTime.UtcNow.AddHours(-36);
+        // 2026-06-05 v3: SOLO ventas con Drive subido aparecen en el tablero. Las que se
+        // cargaron desde oficina (sin tildar "Enviar a IMPRIMIR PEDIDOS DE OSMAR") no van
+        // a aparecer porque su DriveSubidoAt queda en null. Si una venta de armado falla
+        // al subir, el operador puede re-subirla a mano desde el listado de ventas (boton ☁️).
         var ventas = await _db.CafeVentas
             .Include(v => v.Items)
             .Where(v => v.PreparacionOcultoAt == null
@@ -2511,10 +2610,8 @@ public class CafeVentasController : ControllerBase
                     || v.EstadoPreparacion == "PARA_PREPARAR"
                     || v.EstadoPreparacion == "EN_PREPARACION")
                 && v.Estado != "anulado"
-                && (
-                    (v.DriveSubidoAt != null && v.CreatedAt >= desde)
-                    || (v.DriveSubidoAt == null && v.CreatedAt >= hace36hs)
-                ))
+                && v.DriveSubidoAt != null
+                && v.CreatedAt >= desde)
             // Orden: las que tienen Drive primero por DriveSubidoAt desc, las sin Drive al final por CreatedAt desc
             .OrderByDescending(v => v.DriveSubidoAt ?? v.CreatedAt)
             .Select(v => new

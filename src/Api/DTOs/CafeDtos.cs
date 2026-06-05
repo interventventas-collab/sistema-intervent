@@ -370,7 +370,11 @@ public record CafeVentaDto(
     int DriveSubidasCount = 0,
     string? ComentarioArmado = null,
     string? EscaneadoPorRepartidorNombre = null,
-    DateTime? EscaneadoAt = null);
+    DateTime? EscaneadoAt = null,
+    // 2026-06-05: Transporte
+    bool PorTransporte = false,
+    string? TransporteEmpresa = null,
+    string? TransporteDestino = null);
 
 public class CafeCotizarItemRequest
 {
@@ -379,6 +383,9 @@ public class CafeCotizarItemRequest
     /// ProductoId puede ser 0/ignorado. Formato y Cantidad se interpretan a nivel Kit (no del componente).
     /// Al guardar la venta, se descuentan los componentes del Kit (Cafe_KitItems).</summary>
     public int? KitId { get; set; }
+    /// <summary>2026-06-05: si está seteado, el item es un Servicio del catalogo Cafe_Servicios
+    /// (envio, mano de obra, etc). No descuenta stock. ProductoId queda en 0/null.</summary>
+    public int? ServicioId { get; set; }
     public string Formato { get; set; } = "1KG";  // 1KG | MEDIO | CUARTO | UNIT
     public int Cantidad { get; set; } = 1;
     public string? Molienda { get; set; }   // EN GRANOS | MOLIDO FILTRO | MOLIDO ESPRESS | null
@@ -454,6 +461,10 @@ public class CreateCafeVentaRequest
     public string? WeekDays { get; set; }
     public bool EnRadar { get; set; }
     public bool Retira { get; set; }
+    /// <summary>2026-06-05: si true, la venta se despacha por empresa de transporte.</summary>
+    public bool PorTransporte { get; set; }
+    public string? TransporteEmpresa { get; set; }
+    public string? TransporteDestino { get; set; }
     public bool IsPaid { get; set; }
     public string? TipoComprobante { get; set; }
     public string? CondicionIva { get; set; }
@@ -498,6 +509,9 @@ public class UpdateCafeVentaRequest
     public string? WeekDays { get; set; }
     public bool? EnRadar { get; set; }
     public bool? Retira { get; set; }
+    public bool? PorTransporte { get; set; }
+    public string? TransporteEmpresa { get; set; }
+    public string? TransporteDestino { get; set; }
     public bool? IsPaid { get; set; }
     public List<CafeCotizarItemRequest>? Items { get; set; }
     public decimal? Descuento { get; set; }

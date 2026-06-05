@@ -343,6 +343,10 @@ public class CafeVentaDto
     public string? WeekDays { get; set; }
     public bool EnRadar { get; set; }
     public bool Retira { get; set; }
+    /// <summary>2026-06-05: TRANSPORTE — la venta se despacha por empresa de transporte.</summary>
+    public bool PorTransporte { get; set; }
+    public string? TransporteEmpresa { get; set; }
+    public string? TransporteDestino { get; set; }
     public bool IsPaid { get; set; }
     public string TipoComprobante { get; set; } = "X";
     public string CondicionIva { get; set; } = "CF";
@@ -500,6 +504,8 @@ public class CafeCotizarItemRequest
     public string? DescripcionLibre { get; set; }
     /// <summary>Si viene seteado, pisa el nombre del producto en el snapshot de la línea (no afecta el catálogo).</summary>
     public string? DescripcionOverride { get; set; }
+    /// <summary>2026-06-05: Si > 0, el item es un Servicio del catalogo Cafe_Servicios (envio, mano de obra, etc).</summary>
+    public int? ServicioId { get; set; }
 }
 
 public class CafeCotizarRequest
@@ -564,6 +570,10 @@ public class CreateCafeVentaRequest
     public string? WeekDays { get; set; }
     public bool EnRadar { get; set; }
     public bool Retira { get; set; }
+    /// <summary>2026-06-05: la venta se despacha por empresa de transporte. Excluyente con EnRadar/Retira.</summary>
+    public bool PorTransporte { get; set; }
+    public string? TransporteEmpresa { get; set; }
+    public string? TransporteDestino { get; set; }
     public bool IsPaid { get; set; }
     public string? TipoComprobante { get; set; }
     public string? CondicionIva { get; set; }
@@ -602,6 +612,10 @@ public class UpdateCafeVentaRequest
     public string? WeekDays { get; set; }
     public bool? EnRadar { get; set; }
     public bool? Retira { get; set; }
+    /// <summary>2026-06-05: la venta se despacha por empresa de transporte. Excluyente con EnRadar/Retira.</summary>
+    public bool? PorTransporte { get; set; }
+    public string? TransporteEmpresa { get; set; }
+    public string? TransporteDestino { get; set; }
     public bool? IsPaid { get; set; }
     public List<CafeCotizarItemRequest>? Items { get; set; }
     public decimal? Descuento { get; set; }

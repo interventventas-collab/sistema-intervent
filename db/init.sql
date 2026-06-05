@@ -4501,3 +4501,49 @@ UPDATE Cafe_Repartidores
 SET PublicToken = LOWER(REPLACE(CONVERT(NVARCHAR(36), NEWID()), '-', ''))
 WHERE PublicToken IS NULL;
 GO
+
+-- ─── 2026-06-05: Catálogo de Servicios + Transporte ───
+-- 1) Tabla Cafe_Servicios (catálogo de servicios cobrables: envío, mano de obra, etc)
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_Servicios')
+BEGIN
+    CREATE TABLE Cafe_Servicios (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Nombre NVARCHAR(120) NOT NULL,
+        Descripcion NVARCHAR(400) NULL,
+        Precio DECIMAL(14,2) NOT NULL DEFAULT 0,
+        IvaPct DECIMAL(5,2) NOT NULL DEFAULT 21,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NULL
+    );
+    CREATE INDEX IX_Cafe_Servicios_IsActive_Nombre ON Cafe_Servicios(IsActive, Nombre);
+END
+GO
+
+-- 2) ServicioId en Cafe_VentaItems (FK opcional, análogo a KitId)
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ServicioId' AND Object_ID=OBJECT_ID('Cafe_VentaItems'))
+BEGIN
+    ALTER TABLE Cafe_VentaItems ADD ServicioId INT NULL
+        CONSTRAINT FK_Cafe_VentaItems_Servicio FOREIGN KEY (ServicioId) REFERENCES Cafe_Servicios(Id);
+    CREATE INDEX IX_Cafe_VentaItems_ServicioId ON Cafe_VentaItems(ServicioId) WHERE ServicioId IS NOT NULL;
+END
+GO
+
+-- 3) Transporte: PorTransporte + TransporteEmpresa + TransporteDestino en Cafe_Ventas
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='PorTransporte' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+BEGIN
+    ALTER TABLE Cafe_Ventas ADD PorTransporte BIT NOT NULL CONSTRAINT DF_Cafe_Ventas_PorTransporte DEFAULT 0;
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='TransporteEmpresa' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+BEGIN
+    ALTER TABLE Cafe_Ventas ADD TransporteEmpresa NVARCHAR(120) NULL;
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='TransporteDestino' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+BEGIN
+    ALTER TABLE Cafe_Ventas ADD TransporteDestino NVARCHAR(200) NULL;
+END
+GO
