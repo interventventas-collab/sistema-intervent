@@ -52,6 +52,12 @@
                     <span class="rep-pin">PIN: @r.DniUltimos3</span>
                 }
                 <div class="rep-actions">
+                    @if (!string.IsNullOrEmpty(r.PublicToken))
+                    {
+                        <a class="rep-btn" style="background:#ecfdf5; color:#065f46; border-color:#86efac; text-decoration:none;"
+                           href="/mis-pedidos/@r.PublicToken" target="_blank"
+                           title="Abrir el panel 'Mis Pedidos' de @r.Nombre en una nueva pestaña (como si fueras él)">👁 Ver como @r.Nombre.Split(' ')[0]</a>
+                    }
                     <button class="rep-btn" style="background:#dbeafe; color:#1e40af; border-color:#93c5fd;" @onclick="() => AbrirEnlace(r)" title="Ver/copiar enlace personal del repartidor (Mis Pedidos)">📋 Enlace</button>
                     <button class="rep-btn" @onclick="() => AbrirEditar(r)">✏️ Editar</button>
                     <button class="rep-btn borrar" @onclick="() => BorrarConfirmado(r)">🗑</button>
