@@ -412,6 +412,15 @@
                                             🚚 Lo tiene @v.EscaneadoPorRepartidorNombre ▼
                                         </span>
                                     }
+                                    else if (!anulada)
+                                    {
+                                        @* 2026-06-05: chip "Asignar" gris cuando no hay nadie — click abre el mismo modal *@
+                                        <span style="display:inline-block; padding:0.15rem 0.5rem; background:#f3f4f6; color:#6b7280; border-radius:999px; font-size:0.7rem; font-weight:700; margin-left:0.2rem; cursor:pointer; border:1px dashed #9ca3af;"
+                                              title="Tocá para asignar a un repartidor"
+                                              @onclick="@(() => AbrirReasignar(v))">
+                                            🚚 Asignar ▼
+                                        </span>
+                                    }
                                 </td>
                                 <td class="actions-cell">
                                     @{
@@ -2584,9 +2593,19 @@
 {
     <div class="modal-overlay" style="position:fixed; inset:0; background:rgba(0,0,0,0.55); display:flex; align-items:center; justify-content:center; z-index:9200; padding:1rem;" @onclick="@(() => mostrarReasignar = false)">
         <div class="modal-card" @onclick:stopPropagation="true" style="background:white; border-radius:14px; max-width:440px; width:100%; padding:1.4rem; box-shadow:0 20px 60px rgba(0,0,0,0.4);">
-            <h3 style="margin:0 0 0.3rem; color:#1e40af;">🚚 Reasignar reparto</h3>
+            <h3 style="margin:0 0 0.3rem; color:#1e40af;">
+                @(string.IsNullOrEmpty(ventaReasignar.EscaneadoPorRepartidorNombre) ? "🚚 Asignar reparto" : "🚚 Reasignar reparto")
+            </h3>
             <p style="color:#6b7280; font-size:0.85rem; margin:0 0 1rem;">
-                Venta <strong>@ventaReasignar.Numero</strong> — actualmente la tiene <strong>@(ventaReasignar.EscaneadoPorRepartidorNombre)</strong>
+                Venta <strong>@ventaReasignar.Numero</strong> —
+                @if (!string.IsNullOrEmpty(ventaReasignar.EscaneadoPorRepartidorNombre))
+                {
+                    <span>actualmente la tiene <strong>@(ventaReasignar.EscaneadoPorRepartidorNombre)</strong></span>
+                }
+                else
+                {
+                    <span>todavía no tiene repartidor asignado</span>
+                }
             </p>
 
             <label style="font-size:0.8rem; font-weight:700; color:#374151;">¿Qué querés hacer?</label>
