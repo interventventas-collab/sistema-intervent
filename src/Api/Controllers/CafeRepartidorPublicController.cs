@@ -341,6 +341,42 @@ public class CafeRepartidorPublicController : ControllerBase
         return Ok(new MisPedidosResult(r.Id, r.Nombre, pedidos));
     }
 
+    /// <summary>2026-06-05: Escaneo de QR desde la pantalla Mis Pedidos del repartidor.
+    /// Usa el publicToken del repartidor (la URL fija) como autorizacion — no requiere PIN
+    /// porque solo "carga" el pedido a la lista, no confirma entrega.</summary>
+    [HttpPost("mis-pedidos/{tokenRepartidor}/escanear/{tokenVenta}")]
+    public async Task<IActionResult> MisPedidosEscanear(string tokenRepartidor, string tokenVenta)
+    {
+        var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null) return NotFound(new EscanearResult(false, "Enlace invalido o repartidor inactivo", null, null, null, null, false));
+
+        var v = await _db.CafeVentas.FirstOrDefaultAsync(x => x.PublicToken == tokenVenta);
+        if (v is null) return NotFound(new EscanearResult(false, "Venta no encontrada (QR invalido)", null, null, null, null, false));
+
+        // Idempotente: no agregar duplicado
+        var yaCargada = await _db.CafeQrEscaneos.AnyAsync(e =>
+            e.VentaId == v.Id && e.RepartidorId == r.Id && e.Accion == "cargado");
+        if (!yaCargada)
+        {
+            _db.CafeQrEscaneos.Add(new CafeQrEscaneo
+            {
+                VentaId = v.Id,
+                RepartidorId = r.Id,
+                Accion = "cargado",
+                CreatedAt = DateTime.UtcNow,
+                Ip = Request.HttpContext.Connection.RemoteIpAddress?.ToString()
+            });
+            await _db.SaveChangesAsync();
+        }
+
+        var totalCobrable = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
+        var msg = yaCargada
+            ? $"Ya estaba en tu lista: {v.Numero}"
+            : $"✅ Cargado: {v.Numero}";
+        return Ok(new EscanearResult(true, msg, v.Id, v.Numero,
+            v.ClienteNombreSnapshot, totalCobrable, v.EntregadoPorRepartidorId.HasValue));
+    }
+
     public record EntregarRequest(string Pin);
 
     /// <summary>Marca como entregada una venta de la lista del repartidor.

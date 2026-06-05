@@ -1,6 +1,7 @@
 @page "/mis-pedidos/{Token}"
 @layout EmptyLayout
 @attribute [AllowAnonymous]
+@implements IDisposable
 @inject HttpClient Http
 @inject IJSRuntime JS
 @inject NavigationManager Nav
@@ -127,11 +128,24 @@
 
         @* ACCIONES *@
         <div class="mp-actions">
-            <button class="mp-btn-scan" @onclick="EscanearQR">
-                📷 <span>Escanear QR</span>
+            <button class="mp-btn-scan" @onclick="EscanearQR" disabled="@escaneando">
+                @if (escaneando) { <span>⏹ Detener escaneo</span> }
+                else { <span>📷 Escanear QR</span> }
             </button>
             <button class="mp-btn-refresh" @onclick="Recargar" title="Refrescar">🔄</button>
         </div>
+
+        @if (escaneando)
+        {
+            <div style="background:white; padding:0.8rem; border-radius:12px; margin-bottom:0.8rem;">
+                <div id="@QrScannerId" style="width:100%; max-width:380px; margin:0 auto;"></div>
+                <p style="font-size:0.78rem; color:#6b7280; text-align:center; margin-top:0.5rem;">📷 Apuntá la cámara al QR del comprobante</p>
+            </div>
+        }
+        @if (!string.IsNullOrEmpty(scanError))
+        {
+            <div style="background:#fee2e2; color:#991b1b; padding:0.6rem 0.8rem; border-radius:8px; margin-bottom:0.8rem; font-size:0.88rem;">⚠ @scanError</div>
+        }
 
         @* PENDIENTES *@
         var pendientes = pedidos.Where(p => !p.YaEntregada).ToList();
@@ -264,6 +278,12 @@
     private bool toastError;
     private string toastMsg = "";
 
+    // QR scanner
+    private const string QrScannerId = "mp-qr-scanner";
+    private bool escaneando;
+    private string? scanError;
+    private DotNetObjectReference<MisPedidos>? dotNetRef;
+
     private string FechaLabel
     {
         get
@@ -337,21 +357,90 @@
         finally { procesando = false; }
     }
 
-    /// <summary>Abre el flujo de escaneo QR: redirige a /repartidor/{tokenVenta} cuando se escanea uno.</summary>
+    /// <summary>Abre la cámara y escanea un QR del comprobante. Cuando detecta uno valido,
+    /// llama al endpoint que agrega la venta a la lista del repartidor. No pide PIN — el
+    /// publicToken (URL fija) ya identifica al repartidor.</summary>
     private async Task EscanearQR()
     {
+        if (escaneando)
+        {
+            // Toggle: detener escaneo
+            try { await JS.InvokeVoidAsync("stopQrScanner"); } catch { }
+            escaneando = false;
+            StateHasChanged();
+            return;
+        }
+        escaneando = true;
+        scanError = null;
+        StateHasChanged();
+        await Task.Delay(100); // esperar render del div
         try
         {
-            // Reusa el QR scanner que ya existe en la pantalla del repartidor: ahí se hace
-            // el flujo de escanear + agregar a lista (con sesión). Simple: navegamos a la pantalla
-            // de escaneo y el usuario escanea ahí.
-            // Como atajo, navegamos directo a la URL de escaneo (le pedirá login si no tiene sesión).
-            await JS.InvokeVoidAsync("alert", "Tocá el QR del comprobante con la cámara. Si te pide ingresar PIN, es porque pasaron 8 hs desde el último login.");
-            // El usuario maneja el flujo desde el otro lado (/repartidor/{token}). Acá solo le mostramos
-            // un mensaje. El QR del comprobante apunta a /repartidor/{tokenVenta} directamente.
+            dotNetRef ??= DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("startQrScanner", QrScannerId, dotNetRef);
+        }
+        catch (Exception ex)
+        {
+            escaneando = false;
+            scanError = "No se pudo abrir la cámara: " + ex.Message;
+            StateHasChanged();
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnScanned(string decodedText)
+    {
+        try { await JS.InvokeVoidAsync("stopQrScanner"); } catch { }
+        escaneando = false;
+        scanError = null;
+
+        // El QR del comprobante apunta a /repartidor/{tokenVenta}
+        string? tokenVenta = null;
+        try
+        {
+            if (Uri.TryCreate(decodedText, UriKind.Absolute, out var uri))
+            {
+                var parts = uri.AbsolutePath.Trim('/').Split('/');
+                if (parts.Length >= 2 && string.Equals(parts[0], "repartidor", StringComparison.OrdinalIgnoreCase))
+                    tokenVenta = parts[1];
+            }
+            else if (decodedText.Contains("/repartidor/"))
+            {
+                var idx = decodedText.IndexOf("/repartidor/", StringComparison.OrdinalIgnoreCase);
+                tokenVenta = decodedText.Substring(idx + "/repartidor/".Length).Split('?', '#', '/')[0];
+            }
         }
         catch { }
+
+        if (string.IsNullOrWhiteSpace(tokenVenta))
+        {
+            scanError = "El QR escaneado no es válido (no es de una venta).";
+            StateHasChanged();
+            return;
+        }
+
+        try
+        {
+            var resp = await Http.PostAsync($"api/cafe/repartidor-public/mis-pedidos/{Token}/escanear/{tokenVenta}", null);
+            var r = await resp.Content.ReadFromJsonAsync<EscanearResp>();
+            if (r is null || !r.Ok)
+            {
+                MostrarToast(r?.Mensaje ?? "No se pudo agregar a tu lista", true);
+                return;
+            }
+            MostrarToast(r.Mensaje ?? "Cargado", false);
+            await Recargar();
+        }
+        catch (Exception ex)
+        {
+            MostrarToast("Error: " + ex.Message, true);
+        }
     }
+
+    public record EscanearResp(bool Ok, string? Mensaje, int? VentaId, string? Numero,
+        string? ClienteNombre, decimal? Total, bool YaEntregada);
+
+    public void Dispose() { try { dotNetRef?.Dispose(); } catch { } }
 
     private void MostrarToast(string msg, bool error)
     {
