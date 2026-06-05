@@ -187,7 +187,10 @@ public class CafeVentasController : ControllerBase
         return utc.AddHours(-3).Date;
     }
 
-    private static CafeVentaDto Map(CafeVenta v, bool esSaldoMigracion = false, string? entregadoPorRepartidorNombre = null) => new(
+    private class EscaneoRow { public int VentaId { get; set; } public DateTime CreatedAt { get; set; } public string Nombre { get; set; } = ""; }
+
+    private static CafeVentaDto Map(CafeVenta v, bool esSaldoMigracion = false, string? entregadoPorRepartidorNombre = null,
+        string? escaneadoPorRepartidorNombre = null, DateTime? escaneadoAt = null) => new(
         v.Id, v.Numero, v.Fecha,
         v.ClienteId, v.ClienteNombreSnapshot, v.ClienteTipoSnapshot, v.ClienteTelefonoSnapshot,
         v.Subtotal, v.Descuento, v.Total, v.CostoTotal, v.Margen,
@@ -234,7 +237,9 @@ public class CafeVentasController : ControllerBase
         v.DriveFileId,
         v.DriveSubidoAt,
         v.DriveSubidasCount,
-        v.ComentarioArmado);
+        v.ComentarioArmado,
+        escaneadoPorRepartidorNombre,
+        escaneadoAt);
 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null)
@@ -258,8 +263,26 @@ public class CafeVentasController : ControllerBase
         var repsDict = repIds.Count == 0
             ? new Dictionary<int, string>()
             : await _db.CafeRepartidores.Where(r => repIds.Contains(r.Id)).ToDictionaryAsync(r => r.Id, r => r.Nombre);
+
+        // 2026-06-05: precargar el repartidor que ESCANEO cada venta (lo cargo a su lista
+        // pero todavia no necesariamente la entrego). Tomamos el escaneo "cargado" mas
+        // reciente por venta.
+        var ventaIds = list.Select(v => v.Id).ToList();
+        var escaneosRaw = ventaIds.Count == 0
+            ? new List<EscaneoRow>()
+            : await _db.CafeQrEscaneos
+                .Where(e => ventaIds.Contains(e.VentaId) && e.Accion == "cargado")
+                .Join(_db.CafeRepartidores, e => e.RepartidorId, r => r.Id,
+                    (e, r) => new EscaneoRow { VentaId = e.VentaId, CreatedAt = e.CreatedAt, Nombre = r.Nombre })
+                .ToListAsync();
+        var escDic = escaneosRaw
+            .GroupBy(x => x.VentaId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.CreatedAt).First());
+
         return Ok(list.Select(v => Map(v, migrSet.Contains(v.Id),
-            v.EntregadoPorRepartidorId.HasValue && repsDict.TryGetValue(v.EntregadoPorRepartidorId.Value, out var nm) ? nm : null
+            v.EntregadoPorRepartidorId.HasValue && repsDict.TryGetValue(v.EntregadoPorRepartidorId.Value, out var nm) ? nm : null,
+            escDic.TryGetValue(v.Id, out var esc) ? esc.Nombre : null,
+            escDic.TryGetValue(v.Id, out var esc2) ? esc2.CreatedAt : (DateTime?)null
         )).ToList());
     }
 

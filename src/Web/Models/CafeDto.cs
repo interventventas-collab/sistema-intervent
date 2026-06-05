@@ -401,6 +401,12 @@ public class CafeVentaDto
     /// <summary>2026-06-02: Comentario INTERNO para armado (post-it amarillo en /cafe/preparacion).
     /// Independiente de Observaciones. NO sale en el PDF al cliente.</summary>
     public string? ComentarioArmado { get; set; }
+    /// <summary>2026-06-05: nombre del repartidor que escaneó el QR de esta venta y la tiene
+    /// cargada en su lista "Mis Pedidos". Null si nadie la escaneó todavía. Se muestra como chip
+    /// "🚚 Lo tiene X" en el listado de ventas.</summary>
+    public string? EscaneadoPorRepartidorNombre { get; set; }
+    /// <summary>Cuándo fue escaneada. Para mostrar "hace X min" en el tooltip.</summary>
+    public DateTime? EscaneadoAt { get; set; }
 }
 
 /// <summary>Tarjeta de venta en el tablero /cafe/preparacion. Trae solo lo que el

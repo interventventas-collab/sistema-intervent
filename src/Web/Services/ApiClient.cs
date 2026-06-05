@@ -794,6 +794,15 @@ public class ApiClient
     public async Task<RegenerarTokenResp?> RegenerarRepartidorTokenAsync(int id)
         => await PostAsync<RegenerarTokenResp>($"/api/cafe/repartidores/{id}/regenerar-public-token", new {});
 
+    public record QrEscaneoDto(int Id, int VentaId, string? VentaNumero, int RepartidorId,
+        string RepartidorNombre, string Accion, DateTime CreatedAt, string? Ip);
+    public async Task<List<QrEscaneoDto>?> GetQrEscaneosAsync(int? repartidorId = null, int dias = 30)
+    {
+        var qs = new List<string> { $"dias={dias}" };
+        if (repartidorId.HasValue) qs.Add($"repartidorId={repartidorId.Value}");
+        return await GetAsync<List<QrEscaneoDto>>($"/api/cafe/repartidores/qr-escaneos?{string.Join("&", qs)}");
+    }
+
     // === Cobranzas pendientes (admin) ===
     public async Task<List<CobranzaPendienteDto>?> GetCobranzasPendientesAsync(string estado = "PENDIENTE")
         => await GetAsync<List<CobranzaPendienteDto>>($"/api/cafe/cobranzas-pendientes?estado={Uri.EscapeDataString(estado)}");

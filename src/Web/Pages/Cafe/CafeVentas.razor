@@ -403,6 +403,15 @@
                                             ✅ Entregó @v.EntregadoPorRepartidorNombre
                                         </span>
                                     }
+                                    else if (!string.IsNullOrEmpty(v.EscaneadoPorRepartidorNombre))
+                                    {
+                                        @* 2026-06-05: chip "Lo tiene X" — el repartidor escaneo el QR y lo cargo a su lista,
+                                           pero todavia no marco entregado. *@
+                                        <span style="display:inline-block; padding:0.15rem 0.5rem; background:#dbeafe; color:#1e40af; border-radius:999px; font-size:0.7rem; font-weight:700; margin-left:0.2rem;"
+                                              title="@(v.EscaneadoPorRepartidorNombre) escaneó este pedido @(v.EscaneadoAt?.ToLocalTime().ToString("dd/MM HH:mm")) y lo tiene en su lista de Mis Pedidos. Aún no marcó como entregado.">
+                                            🚚 Lo tiene @v.EscaneadoPorRepartidorNombre
+                                        </span>
+                                    }
                                 </td>
                                 <td class="actions-cell">
                                     @{
