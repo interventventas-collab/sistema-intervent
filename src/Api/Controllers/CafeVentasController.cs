@@ -2467,22 +2467,23 @@ public class CafeVentasController : ControllerBase
     public async Task<IActionResult> ListarPreparacion([FromQuery] int dias = 7)
     {
         var desde = DateTime.UtcNow.Date.AddDays(-Math.Max(1, dias));
-        // 2026-05-28: ahora el tablero muestra ventas con PDF SUBIDO A DRIVE que aun no
-        // estan armadas. Reemplaza la logica vieja de "EstadoPreparacion != null".
+        // 2026-06-05: ahora aparecen TODAS las ventas pendientes de armar, incluso las
+        // que NO se subieron a Drive (antes quedaban invisibles si Drive fallaba).
+        // El front muestra un chip distinto para las que no tienen Drive (campo SinDrive).
         // Criterio:
-        //   1) DriveSubidoAt != null (= ya esta en la carpeta de Drive del armador)
-        //   2) NO marcada como LISTO/EN_CAMINO/ENTREGADO (sigue pendiente de armar)
-        //   3) Creada en los ultimos N dias y no anulada
+        //   1) NO marcada como LISTO/EN_CAMINO/ENTREGADO (sigue pendiente de armar)
+        //   2) Creada en los ultimos N dias y no anulada
+        //   3) No oculta manualmente
         var ventas = await _db.CafeVentas
             .Include(v => v.Items)
-            .Where(v => v.DriveSubidoAt != null
-                && v.PreparacionOcultoAt == null
+            .Where(v => v.PreparacionOcultoAt == null
                 && (v.EstadoPreparacion == null
                     || v.EstadoPreparacion == "PARA_PREPARAR"
                     || v.EstadoPreparacion == "EN_PREPARACION")
                 && v.CreatedAt >= desde
                 && v.Estado != "anulado")
-            .OrderByDescending(v => v.DriveSubidoAt)
+            // Orden: las que tienen Drive primero por DriveSubidoAt desc, las sin Drive al final por CreatedAt desc
+            .OrderByDescending(v => v.DriveSubidoAt ?? v.CreatedAt)
             .Select(v => new
             {
                 id = v.Id,
@@ -2507,6 +2508,9 @@ public class CafeVentasController : ControllerBase
                 // Drive: para mostrar boton "Ver PDF" / "Subir a Drive" en la tarjeta de preparacion.
                 driveFileId = v.DriveFileId,
                 driveSubidoAt = v.DriveSubidoAt,
+                // 2026-06-05: chip rojo "SIN DRIVE" cuando la venta entro a preparacion pero el PDF
+                // no se pudo subir (token expirado, error transitorio, etc).
+                sinDrive = v.DriveSubidoAt == null,
                 // Mini impresora: flag por cliente + tracking de impresion (2026-05-28)
                 tieneMiniImpresora = v.ClienteId != null && _db.CafeClientes.Where(c => c.Id == v.ClienteId).Select(c => c.TieneMiniImpresora).FirstOrDefault(),
                 impresaAt = v.ImpresaAt,
