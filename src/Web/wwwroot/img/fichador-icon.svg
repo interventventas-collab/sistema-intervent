@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Fondo con gradiente azul oscuro a violeta -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="60%" stop-color="#1e3a8a" />
+      <stop offset="100%" stop-color="#4338ca" />
+    </linearGradient>
+    <linearGradient id="huellaGold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fcd34d" />
+      <stop offset="100%" stop-color="#f59e0b" />
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Fondo redondeado tipo icono iOS -->
+  <rect x="0" y="0" width="512" height="512" rx="110" ry="110" fill="url(#bg)" />
+
+  <!-- Onda biométrica suave en el fondo -->
+  <path d="M 0 380 Q 128 320, 256 380 T 512 380 L 512 512 L 0 512 Z" fill="rgba(255,255,255,0.04)" />
+  <path d="M 0 410 Q 128 350, 256 410 T 512 410 L 512 512 L 0 512 Z" fill="rgba(255,255,255,0.04)" />
+
+  <!-- Huella dactilar central — líneas concéntricas estilizadas -->
+  <g transform="translate(256, 215)" filter="url(#glow)" fill="none" stroke="url(#huellaGold)" stroke-linecap="round" stroke-width="14">
+    <!-- arco mas externo -->
+    <path d="M -110 30 Q -110 -90, 0 -110 Q 110 -90, 110 30" />
+    <!-- segundo arco -->
+    <path d="M -85 35 Q -85 -65, 0 -85 Q 85 -65, 85 35" />
+    <!-- tercer arco -->
+    <path d="M -60 40 Q -60 -45, 0 -65 Q 60 -45, 60 40" />
+    <!-- cuarto arco -->
+    <path d="M -35 45 Q -35 -25, 0 -45 Q 35 -25, 35 45" />
+    <!-- arco central -->
+    <path d="M -15 50 Q -15 -5, 0 -25 Q 15 -5, 15 50" />
+    <!-- detalle bifurcación a la izquierda -->
+    <path d="M -85 35 L -100 60" />
+    <!-- detalle a la derecha -->
+    <path d="M 60 40 L 75 65" />
+  </g>
+
+  <!-- Mini check verde abajo-derecha del dedo (sugiere "OK fichado") -->
+  <g transform="translate(330, 260)">
+    <circle cx="0" cy="0" r="32" fill="#16a34a" stroke="white" stroke-width="6" />
+    <path d="M -14 0 L -4 11 L 14 -10" fill="none" stroke="white" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" />
+  </g>
+
+  <!-- Texto FICHADO -->
+  <text x="256" y="395" font-family="Arial Black, Impact, sans-serif" font-size="58" font-weight="900" text-anchor="middle" fill="white" letter-spacing="6">FICHADO</text>
+
+  <!-- Subtitulo HUELLA -->
+  <text x="256" y="445" font-family="Arial, sans-serif" font-size="22" font-weight="700" text-anchor="middle" fill="#fcd34d" letter-spacing="8" opacity="0.95">CON HUELLA</text>
+
+  <!-- Pequeño tag FRIKAF abajo -->
+  <text x="256" y="478" font-family="Arial, sans-serif" font-size="16" font-weight="600" text-anchor="middle" fill="rgba(255,255,255,0.55)" letter-spacing="4">FRIKAF · PALANICA</text>
+</svg>

@@ -21,6 +21,8 @@
                             || relPath.StartsWith("saldos-clientes/", StringComparison.OrdinalIgnoreCase)
                             || relPath.StartsWith("repartidor/", StringComparison.OrdinalIgnoreCase)
                             || relPath.StartsWith("mis-pedidos/", StringComparison.OrdinalIgnoreCase)
+                            || relPath.Equals("fichador", StringComparison.OrdinalIgnoreCase)
+                            || relPath.StartsWith("fichador/", StringComparison.OrdinalIgnoreCase)
                             || relPath.StartsWith("login", StringComparison.OrdinalIgnoreCase);
             }
             @if (isPublic)
