@@ -1,0 +1,21 @@
+{
+  "name": "Fichador con Huella · FRIKAF",
+  "short_name": "Fichador",
+  "description": "Kiosco de fichada con huella biométrica. Marcá entrada y salida tocando tu nombre + huella.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#1e3a8a",
+  "background_color": "#0f172a",
+  "icons": [
+    {
+      "src": "/img/fichador-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "productivity", "utilities"],
+  "lang": "es-AR"
+}

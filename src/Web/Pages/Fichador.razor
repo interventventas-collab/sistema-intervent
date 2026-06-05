@@ -6,7 +6,18 @@
 
 @* 2026-06-03: Kiosco de fichada. Pantalla pensada para correr SIEMPRE ABIERTA en un celular
    o tablet del negocio. Empleados tocan su nombre + PIN -> ficha entrada o salida (auto).
-   Fase 2 (proximamente): huella biometrica via WebAuthn. *@
+   Fase 2 (proximamente): huella biometrica via WebAuthn.
+   2026-06-05: PWA — desde el celu se puede agregar a pantalla principal con icono propio. *@
+
+<HeadContent>
+    <link rel="manifest" href="/manifest-fichador.json" />
+    <meta name="theme-color" content="#1e3a8a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Fichador" />
+    <link rel="apple-touch-icon" href="/img/fichador-icon.svg" />
+    <title>Fichador · FRIKAF</title>
+</HeadContent>
 
 <style>
     body { background: linear-gradient(135deg, #0f172a, #1e3a8a); min-height: 100vh; color: white; margin:0; }
