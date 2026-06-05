@@ -95,6 +95,51 @@ public class CafeRepartidoresController : ControllerBase
     public record QrEscaneoDto(int Id, int VentaId, string? VentaNumero, int RepartidorId, string RepartidorNombre,
         string Accion, DateTime CreatedAt, string? Ip);
 
+    /// <summary>2026-06-05: Reasigna una venta a otro repartidor. Borra el escaneo
+    /// "cargado" actual (si existe) y crea uno nuevo para el repartidor destino.
+    /// Si nuevoRepartidorId es null, solo desvincula (la venta queda sin nadie asignado).</summary>
+    public class ReasignarVentaRequest
+    {
+        public int VentaId { get; set; }
+        public int? NuevoRepartidorId { get; set; }
+    }
+
+    [HttpPost("qr-escaneos/reasignar")]
+    public async Task<IActionResult> ReasignarEscaneo([FromBody] ReasignarVentaRequest req)
+    {
+        var v = await _db.CafeVentas.FirstOrDefaultAsync(x => x.Id == req.VentaId);
+        if (v is null) return NotFound(new { error = "Venta no encontrada" });
+
+        // Borrar los escaneos "cargado" existentes para esta venta (cualquier repartidor)
+        var existentes = await _db.CafeQrEscaneos
+            .Where(e => e.VentaId == req.VentaId && e.Accion == "cargado")
+            .ToListAsync();
+        _db.CafeQrEscaneos.RemoveRange(existentes);
+
+        // Si hay nuevoRepartidorId, crear escaneo "cargado" a ese repartidor
+        string mensaje;
+        if (req.NuevoRepartidorId.HasValue)
+        {
+            var nuevoRep = await _db.CafeRepartidores.FirstOrDefaultAsync(r => r.Id == req.NuevoRepartidorId.Value && r.IsActive);
+            if (nuevoRep is null) return NotFound(new { error = "Repartidor destino no encontrado" });
+            _db.CafeQrEscaneos.Add(new CafeQrEscaneo
+            {
+                VentaId = v.Id,
+                RepartidorId = nuevoRep.Id,
+                Accion = "cargado",
+                CreatedAt = DateTime.UtcNow,
+                Ip = "admin-reasignar"
+            });
+            mensaje = $"Venta reasignada a {nuevoRep.Nombre}";
+        }
+        else
+        {
+            mensaje = "Venta desvinculada (sin repartidor asignado)";
+        }
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, mensaje, escaneosBorrados = existentes.Count });
+    }
+
     [HttpGet("qr-escaneos")]
     public async Task<IActionResult> ListarQrEscaneos([FromQuery] int? ventaId = null,
         [FromQuery] int? repartidorId = null, [FromQuery] int dias = 30)

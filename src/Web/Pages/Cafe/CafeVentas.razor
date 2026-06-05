@@ -405,11 +405,11 @@
                                     }
                                     else if (!string.IsNullOrEmpty(v.EscaneadoPorRepartidorNombre))
                                     {
-                                        @* 2026-06-05: chip "Lo tiene X" — el repartidor escaneo el QR y lo cargo a su lista,
-                                           pero todavia no marco entregado. *@
-                                        <span style="display:inline-block; padding:0.15rem 0.5rem; background:#dbeafe; color:#1e40af; border-radius:999px; font-size:0.7rem; font-weight:700; margin-left:0.2rem;"
-                                              title="@(v.EscaneadoPorRepartidorNombre) escaneó este pedido @(v.EscaneadoAt?.ToLocalTime().ToString("dd/MM HH:mm")) y lo tiene en su lista de Mis Pedidos. Aún no marcó como entregado.">
-                                            🚚 Lo tiene @v.EscaneadoPorRepartidorNombre
+                                        @* 2026-06-05: chip "Lo tiene X" clickeable — click abre modal para reasignar o desvincular *@
+                                        <span style="display:inline-block; padding:0.15rem 0.5rem; background:#dbeafe; color:#1e40af; border-radius:999px; font-size:0.7rem; font-weight:700; margin-left:0.2rem; cursor:pointer;"
+                                              title="Tocá para cambiar de repartidor o desvincular"
+                                              @onclick="@(() => AbrirReasignar(v))">
+                                            🚚 Lo tiene @v.EscaneadoPorRepartidorNombre ▼
                                         </span>
                                     }
                                 </td>
@@ -2579,7 +2579,74 @@
     </div>
 }
 
+@* 2026-06-05: Modal para reasignar/desvincular el repartidor que tiene una venta *@
+@if (mostrarReasignar && ventaReasignar is not null)
+{
+    <div class="modal-overlay" style="position:fixed; inset:0; background:rgba(0,0,0,0.55); display:flex; align-items:center; justify-content:center; z-index:9200; padding:1rem;" @onclick="@(() => mostrarReasignar = false)">
+        <div class="modal-card" @onclick:stopPropagation="true" style="background:white; border-radius:14px; max-width:440px; width:100%; padding:1.4rem; box-shadow:0 20px 60px rgba(0,0,0,0.4);">
+            <h3 style="margin:0 0 0.3rem; color:#1e40af;">🚚 Reasignar reparto</h3>
+            <p style="color:#6b7280; font-size:0.85rem; margin:0 0 1rem;">
+                Venta <strong>@ventaReasignar.Numero</strong> — actualmente la tiene <strong>@(ventaReasignar.EscaneadoPorRepartidorNombre)</strong>
+            </p>
+
+            <label style="font-size:0.8rem; font-weight:700; color:#374151;">¿Qué querés hacer?</label>
+            <select @bind="nuevoRepartidorId" class="form-input" style="width:100%; margin-top:0.4rem; padding:0.6rem; border-radius:8px;">
+                <option value="0">— Desvincular (que nadie la tenga) —</option>
+                @foreach (var r in repartidoresLista.Where(x => x.IsActive))
+                {
+                    <option value="@r.Id">🚚 Pasarla a @r.Nombre</option>
+                }
+            </select>
+
+            <div style="display:flex; gap:0.5rem; margin-top:1.2rem; justify-content:flex-end;">
+                <button class="btn btn-secondary" @onclick="@(() => mostrarReasignar = false)" disabled="@guardandoReasignar">Cancelar</button>
+                <button class="btn btn-primary" @onclick="ConfirmarReasignar" disabled="@guardandoReasignar">
+                    @(guardandoReasignar ? "Guardando..." : "✓ Confirmar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
+    // 2026-06-05: estado del modal de reasignar repartidor
+    private bool mostrarReasignar;
+    private bool guardandoReasignar;
+    private CafeVentaDto? ventaReasignar;
+    private int nuevoRepartidorId = 0;
+    private List<RepartidorDto> repartidoresLista = new();
+
+    private async Task AbrirReasignar(CafeVentaDto v)
+    {
+        ventaReasignar = v;
+        nuevoRepartidorId = 0;
+        if (repartidoresLista.Count == 0)
+        {
+            try { repartidoresLista = await Api.GetRepartidoresAsync() ?? new(); } catch { }
+        }
+        mostrarReasignar = true;
+    }
+
+    private async Task ConfirmarReasignar()
+    {
+        if (ventaReasignar is null) return;
+        guardandoReasignar = true;
+        try
+        {
+            int? destinoId = nuevoRepartidorId > 0 ? nuevoRepartidorId : (int?)null;
+            var ok = await Api.ReasignarEscaneoAsync(ventaReasignar.Id, destinoId);
+            if (ok)
+            {
+                ToastService.Success(destinoId.HasValue ? "✓ Reasignado" : "✓ Desvinculado");
+                mostrarReasignar = false;
+                await Load();
+            }
+            else { ToastService.Error("No se pudo reasignar"); }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { guardandoReasignar = false; }
+    }
+
     private List<CafeVentaDto>? ventas;
     private Dictionary<int, decimal> saldosPorVenta = new();
 
