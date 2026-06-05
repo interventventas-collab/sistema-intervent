@@ -11,10 +11,16 @@
   "background_color": "#0e7490",
   "icons": [
     {
-      "src": "/img/mis-pedidos-icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "src": "/img/mis-pedidos-icon.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/img/mis-pedidos-icon.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ],
   "categories": ["business", "productivity"],
