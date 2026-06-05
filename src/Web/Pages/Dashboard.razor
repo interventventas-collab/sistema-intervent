@@ -23,13 +23,25 @@
 <div class="dashboard-top-grid">
     <div class="dashboard-detail-card" style="padding: 1rem; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.5rem;">
         <span style="font-size: 1.2rem; font-weight: 700;">👋 HOLA EQUIPO:</span>
-        <select class="form-input" style="font-size: 1rem; font-weight: 700; max-width: 220px;"
+        <select class="form-input" style="font-size: 1rem; font-weight: 700; max-width: 240px;"
                 value="@(Operator.Current ?? "")"
                 @onchange="OnSelectOperator">
             <option value="">— Elegi tu nombre —</option>
-            @foreach (var op in OperatorService.Operators)
+            @foreach (var op in OperatorService.ForPermissions(userPermissions))
             {
                 <option value="@op">@op</option>
+            }
+            @* 2026-06-05: operadores con candado (OSMAR). Al seleccionarlos abre modal de clave. *@
+            @foreach (var op in OperatorService.ProtectedForPermissions(userPermissions))
+            {
+                <option value="@($"__PROTECTED__{op}")">🔒 @op (clave)</option>
+            }
+            @* Si el operador actual es protegido (OSMAR ya activado), mantenerlo seleccionado *@
+            @if (!string.IsNullOrEmpty(Operator.Current)
+                && OperatorService.ProtectedOperators.Contains(Operator.Current)
+                && !OperatorService.ForPermissions(userPermissions).Contains(Operator.Current))
+            {
+                <option value="@Operator.Current" selected>@Operator.Current ✓</option>
             }
         </select>
         @if (Operator.HasOperator)
@@ -565,6 +577,38 @@
 </div>
 } @* fin @if (!isDepositoOnly) *@
 
+@* 2026-06-05: modal de clave para activar operador protegido (OSMAR) desde el dropdown. *@
+@if (showProtectedOperatorModal)
+{
+    <div class="modal-overlay" style="z-index: 9100;" @onclick="CancelProtectedOperator">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background:#fef3c7;">
+                <h3 style="margin:0;">🔒 Confirmar clave de @pendingProtectedOperator</h3>
+                <button class="btn-close" @onclick="CancelProtectedOperator">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.85rem; color:#6b7280; margin: 0 0 0.7rem;">
+                    Para trabajar como <strong>@pendingProtectedOperator</strong> ingresá la clave (la misma que usás para eliminar comprobantes).
+                </p>
+                @if (!string.IsNullOrEmpty(protectedOperatorError))
+                {
+                    <div class="form-error" style="margin-bottom:0.5rem;">@protectedOperatorError</div>
+                }
+                <input class="form-input" type="password" @bind="protectedOperatorPassword"
+                       @bind:event="oninput" @onkeydown="OnProtectedOperatorKeyDown"
+                       placeholder="••••••••" autofocus />
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CancelProtectedOperator">Cancelar</button>
+                <button class="btn btn-primary" @onclick="ConfirmProtectedOperator"
+                        disabled="@(string.IsNullOrEmpty(protectedOperatorPassword) || validatingProtectedOperator)">
+                    @(validatingProtectedOperator ? "Validando..." : "Activar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private string username = "usuario";
     // 2026-05-30: hide widgets dashboard para usuarios SOLO depósito.
@@ -801,9 +845,66 @@
     private async Task OnSelectOperator(ChangeEventArgs e)
     {
         var name = e.Value?.ToString();
+        // 2026-06-05: si eligio un operador protegido (formato __PROTECTED__OSMAR),
+        // abrir modal para pedir clave antes de activarlo.
+        if (!string.IsNullOrWhiteSpace(name) && name.StartsWith("__PROTECTED__"))
+        {
+            var realName = name["__PROTECTED__".Length..];
+            pendingProtectedOperator = realName;
+            protectedOperatorPassword = "";
+            protectedOperatorError = "";
+            showProtectedOperatorModal = true;
+            StateHasChanged();
+            return;
+        }
         await Operator.SetAsync(string.IsNullOrWhiteSpace(name) ? null : name);
         if (!string.IsNullOrWhiteSpace(name))
             ToastService.Success($"Trabajando como {name}");
+    }
+
+    // 2026-06-05: modal de clave para activar OSMAR desde el dropdown del dashboard.
+    private bool showProtectedOperatorModal = false;
+    private string pendingProtectedOperator = "";
+    private string protectedOperatorPassword = "";
+    private string protectedOperatorError = "";
+    private bool validatingProtectedOperator = false;
+
+    private void CancelProtectedOperator()
+    {
+        showProtectedOperatorModal = false;
+        pendingProtectedOperator = "";
+        protectedOperatorPassword = "";
+        protectedOperatorError = "";
+    }
+
+    private async Task OnProtectedOperatorKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrEmpty(protectedOperatorPassword))
+            await ConfirmProtectedOperator();
+    }
+
+    private async Task ConfirmProtectedOperator()
+    {
+        if (string.IsNullOrEmpty(protectedOperatorPassword)) return;
+        validatingProtectedOperator = true;
+        protectedOperatorError = "";
+        try
+        {
+            var ok = await Api.ValidateProtectedOperatorAsync(protectedOperatorPassword);
+            if (!ok)
+            {
+                protectedOperatorError = "Clave incorrecta.";
+                validatingProtectedOperator = false;
+                return;
+            }
+            await Operator.SetAsync(pendingProtectedOperator);
+            ToastService.Success($"Trabajando como {pendingProtectedOperator}");
+            showProtectedOperatorModal = false;
+            pendingProtectedOperator = "";
+            protectedOperatorPassword = "";
+        }
+        catch (Exception ex) { protectedOperatorError = ex.Message; }
+        finally { validatingProtectedOperator = false; }
     }
 
     private static string FormatMoney(decimal value)
