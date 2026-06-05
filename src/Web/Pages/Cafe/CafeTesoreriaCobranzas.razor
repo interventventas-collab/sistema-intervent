@@ -426,9 +426,39 @@
                         <div style="display:flex; justify-content:space-between;"><span>Total medios de cobro:</span><b>$@TotalMedios.ToString("N2")</b></div>
                         <div style="display:flex; justify-content:space-between;"><span>+ Retenciones:</span><b>$@formRetenciones.ToString("N2")</b></div>
                         <div style="display:flex; justify-content:space-between;"><span>= Debe igualar el imputado a comprobantes:</span><b style="color:@(CuadraTotal ? "#059669" : "#dc2626");">$@TotalImputado.ToString("N2")</b></div>
+                        @* 2026-06-05: cartel grande de diferencia cuando no cuadra *@
                         @if (!CuadraTotal)
                         {
-                            <div style="color:#dc2626; font-size:0.78rem; margin-top:0.3rem;">⚠ Los medios + retenciones tienen que sumar exactamente lo imputado a comprobantes.</div>
+                            var dif = TotalImputado - (TotalMedios + formRetenciones);
+                            var falta = dif > 0;
+                            <div style="margin-top:0.6rem; padding:0.7rem 0.9rem; border-radius:8px;
+                                        background:@(falta ? "#fee2e2" : "#fef3c7");
+                                        border:2px solid @(falta ? "#dc2626" : "#d97706");
+                                        display:flex; justify-content:space-between; align-items:center;">
+                                <div style="font-weight:700; color:@(falta ? "#991b1b" : "#92400e"); font-size:0.95rem;">
+                                    @if (falta)
+                                    {
+                                        <span>⚠ Falta cobrar:</span>
+                                    }
+                                    else
+                                    {
+                                        <span>⚠ Sobra (cobraste de más):</span>
+                                    }
+                                </div>
+                                <div style="font-weight:800; font-size:1.35rem; color:@(falta ? "#dc2626" : "#d97706"); font-family:monospace;">
+                                    $@Math.Abs(dif).ToString("N2")
+                                </div>
+                            </div>
+                            <div style="color:#6b7280; font-size:0.78rem; margin-top:0.4rem; line-height:1.35;">
+                                @if (falta)
+                                {
+                                    <span>💡 Agregá una forma de cobro por <b>$@Math.Abs(dif).ToString("N2")</b>, o bajá el importe a imputar a ese mismo valor.</span>
+                                }
+                                else
+                                {
+                                    <span>💡 Subí lo imputado a comprobantes por <b>$@Math.Abs(dif).ToString("N2")</b>, o bajá los medios de cobro.</span>
+                                }
+                            </div>
                         }
                     </div>
                 }
