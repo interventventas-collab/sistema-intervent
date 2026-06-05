@@ -32,21 +32,24 @@ public class OperatorService
     public static readonly string[] ProtectedOperators = { "OSMAR" };
 
     /// <summary>Devuelve la lista de operadores que el usuario logueado puede elegir, en base
-    /// a sus permisos. Admin (con "cafe") ve todos. OFICINA ve los de su equipo. DEPOSITO ve los suyos.</summary>
+    /// a sus permisos. 2026-06-05: admin (con "cafe") trabaja como oficina (GERMAN/GABRIEL) y
+    /// puede activar OSMAR via clave (ProtectedForPermissions). DEPOSITO ve los suyos.</summary>
     public static string[] ForPermissions(List<string> perms)
     {
-        if (perms.Contains("cafe")) return Operators;       // admin / interno: ve todos
-        if (perms.Contains("oficina")) return OperatorsOficina;
+        // 2026-06-05: admin/oficina ven solo GERMAN+GABRIEL como normales.
+        // OSMAR aparece via ProtectedForPermissions (con candado).
+        if (perms.Contains("cafe") || perms.Contains("oficina")) return OperatorsOficina;
         if (perms.Contains("deposito")) return OperatorsDeposito;
-        return Operators;                                    // fallback
+        return OperatorsOficina;                              // fallback minimo
     }
 
     /// <summary>2026-06-05: Devuelve los operadores PROTEGIDOS (con candado) que el usuario
-    /// puede elegir si tipea la clave. Admin no necesita la lista (ya los ve todos como normales).</summary>
+    /// puede elegir si tipea la clave. Para admin/oficina/deposito: OSMAR siempre disponible
+    /// con clave (la misma de eliminar comprobantes).</summary>
     public static string[] ProtectedForPermissions(List<string> perms)
     {
-        if (perms.Contains("cafe")) return Array.Empty<string>();   // admin no necesita candado
-        if (perms.Contains("oficina") || perms.Contains("deposito")) return ProtectedOperators;
+        if (perms.Contains("cafe") || perms.Contains("oficina") || perms.Contains("deposito"))
+            return ProtectedOperators;
         return Array.Empty<string>();
     }
 
