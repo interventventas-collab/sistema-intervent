@@ -44,6 +44,12 @@
                 {
                     <span class="prep-card-pill" style="background:#fed7aa; color:#9a3412; border:1px solid #fb923c; font-weight:700;" title="Este pedido se editó después de armarlo. Revisar el PDF actualizado en Drive y rearmar.">⚠ PEDIDO MODIFICADO</span>
                 }
+                @* 2026-06-05: chip "SIN DRIVE" — el PDF no se pudo subir a Drive (token expirado u otro error).
+                   Aparece igual en preparacion para que se pueda armar; el admin debe reconectar Drive y re-subir. *@
+                @if (Venta.SinDrive)
+                {
+                    <span class="prep-card-pill" style="background:#fee2e2; color:#991b1b; border:1px solid #dc2626; font-weight:700;" title="El PDF de esta venta no se subió a Google Drive. Probablemente el token expiró. Andá a Integraciones para reconectar y luego tocá ☁️ en la venta para re-subir.">📁 SIN DRIVE</span>
+                }
                 @if (!string.IsNullOrEmpty(Venta.WeekDays))
                 {
                     <span class="prep-card-pill">📅 @DiasPretty(Venta.WeekDays)</span>

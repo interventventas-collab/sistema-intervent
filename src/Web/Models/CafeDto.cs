@@ -443,6 +443,8 @@ public class CafePreparacionVentaDto
     /// <summary>2026-06-03: si true, el pedido se editó después de armado y se re-subió.
     /// La card muestra chip naranja "⚠ PEDIDO MODIFICADO" para avisar al armador.</summary>
     public bool ModificadoDespuesDeArmar { get; set; }
+    /// <summary>2026-06-05: true cuando la venta no se pudo subir a Drive. La card muestra chip rojo "SIN DRIVE".</summary>
+    public bool SinDrive { get; set; }
     public List<CafePreparacionItemDto> Items { get; set; } = new();
 }
 
