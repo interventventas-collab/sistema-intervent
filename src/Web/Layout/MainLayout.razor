@@ -880,6 +880,63 @@
                         </button>
                     }
                 </div>
+
+                @* 2026-06-05: operadores PROTEGIDOS (OSMAR). Aparecen abajo con candado.
+                   Al tocarlos, se abre modal de clave. La clave es la misma de eliminar ventas. *@
+                @{
+                    var protectedOps = OperatorService.ProtectedForPermissions(permissions);
+                }
+                @if (protectedOps.Length > 0)
+                {
+                    <div style="margin-top: 1rem; padding-top: 0.75rem; border-top: 1px dashed #d1d5db;">
+                        <p style="font-size: 0.72rem; color: #9ca3af; margin: 0 0 0.4rem; text-align: center;">
+                            🔒 Requiere clave
+                        </p>
+                        <div style="display: grid; grid-template-columns: repeat(@protectedOps.Length, 1fr); gap: 0.5rem;">
+                            @foreach (var op in protectedOps)
+                            {
+                                var name = op;
+                                <button class="btn @(Operator.Current == name ? "btn-primary" : "btn-secondary")"
+                                        @onclick="() => OpenProtectedOperatorModal(name)"
+                                        style="padding: 0.7rem; font-weight: 700; font-size: 0.95rem; opacity: 0.9; border: 2px dashed #9ca3af;">
+                                    🔒 @name
+                                </button>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@* 2026-06-05: modal de clave para activar operador protegido (OSMAR). *@
+@if (showProtectedOperatorModal)
+{
+    <div class="modal-overlay" style="z-index: 9100;" @onclick="CancelProtectedOperator">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true">
+            <div class="modal-header" style="background:#fef3c7;">
+                <h3 style="margin:0;">🔒 Confirmar clave de @pendingProtectedOperator</h3>
+                <button class="btn-close" @onclick="CancelProtectedOperator">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.85rem; color:#6b7280; margin: 0 0 0.7rem;">
+                    Para trabajar como <strong>@pendingProtectedOperator</strong> ingresá la clave (la misma que usás para eliminar comprobantes).
+                </p>
+                @if (!string.IsNullOrEmpty(protectedOperatorError))
+                {
+                    <div class="form-error" style="margin-bottom:0.5rem;">@protectedOperatorError</div>
+                }
+                <input class="form-input" type="password" @bind="protectedOperatorPassword"
+                       @bind:event="oninput" @onkeydown="OnProtectedOperatorKeyDown"
+                       placeholder="••••••••" autofocus />
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CancelProtectedOperator">Cancelar</button>
+                <button class="btn btn-primary" @onclick="ConfirmProtectedOperator"
+                        disabled="@(string.IsNullOrEmpty(protectedOperatorPassword) || validatingProtectedOperator)">
+                    @(validatingProtectedOperator ? "Validando..." : "Activar")
+                </button>
             </div>
         </div>
     </div>
@@ -1476,6 +1533,64 @@
         await Operator.SetAsync(name);
         showOperatorModal = false;
         ToastService.Success($"Trabajando como {name}");
+    }
+
+    // 2026-06-05: Operador protegido (OSMAR) — pide clave antes de activarlo.
+    private bool showProtectedOperatorModal = false;
+    private string pendingProtectedOperator = "";
+    private string protectedOperatorPassword = "";
+    private string protectedOperatorError = "";
+    private bool validatingProtectedOperator = false;
+
+    private void OpenProtectedOperatorModal(string name)
+    {
+        pendingProtectedOperator = name;
+        protectedOperatorPassword = "";
+        protectedOperatorError = "";
+        showProtectedOperatorModal = true;
+    }
+
+    private void CancelProtectedOperator()
+    {
+        showProtectedOperatorModal = false;
+        pendingProtectedOperator = "";
+        protectedOperatorPassword = "";
+        protectedOperatorError = "";
+    }
+
+    private async Task OnProtectedOperatorKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrEmpty(protectedOperatorPassword))
+            await ConfirmProtectedOperator();
+    }
+
+    private async Task ConfirmProtectedOperator()
+    {
+        if (string.IsNullOrEmpty(protectedOperatorPassword)) return;
+        validatingProtectedOperator = true;
+        protectedOperatorError = "";
+        try
+        {
+            var ok = await Api.ValidateProtectedOperatorAsync(protectedOperatorPassword);
+            if (!ok)
+            {
+                protectedOperatorError = "Clave incorrecta.";
+                validatingProtectedOperator = false;
+                return;
+            }
+            // Clave OK -> activar el operador protegido
+            await Operator.SetAsync(pendingProtectedOperator);
+            ToastService.Success($"Trabajando como {pendingProtectedOperator}");
+            showProtectedOperatorModal = false;
+            showOperatorModal = false;
+            pendingProtectedOperator = "";
+            protectedOperatorPassword = "";
+        }
+        catch (Exception ex)
+        {
+            protectedOperatorError = ex.Message;
+        }
+        finally { validatingProtectedOperator = false; }
     }
 
     private async Task CancelUpload()

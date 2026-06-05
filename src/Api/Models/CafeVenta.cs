@@ -101,6 +101,11 @@ public class CafeVenta
     [MaxLength(200)]
     public string? TransporteDestino { get; set; }
 
+    /// <summary>2026-06-05: Operador (persona) que cargó la venta. Toma el valor del header
+    /// X-Operator-Name al crear. Sirve para mostrar iniciales en el listado y auditoria.</summary>
+    [MaxLength(20)]
+    public string? CreadoPorOperador { get; set; }
+
     /// <summary>2026-06-02: Comentario INTERNO para el armado del pedido. Independiente de Observaciones.
     /// Se muestra como post-it amarillo desplegable en /cafe/preparacion. NO sale en el PDF al cliente.
     /// Ej: "no llevar 3 capsulas, ese cliente las rechaza", "sumar 1 sobre cortesia".</summary>
