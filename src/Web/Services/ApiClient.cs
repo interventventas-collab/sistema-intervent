@@ -803,6 +803,14 @@ public class ApiClient
         return await GetAsync<List<QrEscaneoDto>>($"/api/cafe/repartidores/qr-escaneos?{string.Join("&", qs)}");
     }
 
+    public async Task<bool> ReasignarEscaneoAsync(int ventaId, int? nuevoRepartidorId)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync("/api/cafe/repartidores/qr-escaneos/reasignar",
+            new { VentaId = ventaId, NuevoRepartidorId = nuevoRepartidorId });
+        return resp.IsSuccessStatusCode;
+    }
+
     // === Cobranzas pendientes (admin) ===
     public async Task<List<CobranzaPendienteDto>?> GetCobranzasPendientesAsync(string estado = "PENDIENTE")
         => await GetAsync<List<CobranzaPendienteDto>>($"/api/cafe/cobranzas-pendientes?estado={Uri.EscapeDataString(estado)}");
