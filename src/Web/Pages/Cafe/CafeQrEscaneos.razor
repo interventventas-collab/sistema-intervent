@@ -1,0 +1,125 @@
+@page "/cafe/qr-escaneos"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject NavigationManager Nav
+@using Web.Models
+
+<style>
+    .qre-wrap { max-width: 1100px; margin: 0 auto; padding: 0.5rem; }
+    .qre-header { text-align: center; margin-bottom: 1rem; }
+    .qre-filtros { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; margin-bottom: 0.8rem; background: white; padding: 0.7rem 0.9rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .qre-filtros label { font-size: 0.78rem; font-weight: 700; color: #4b5563; text-transform: uppercase; }
+    .qre-tabla { background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+    .qre-tabla table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    .qre-tabla th { background: #f3f4f6; text-align: left; padding: 0.55rem 0.8rem; font-weight: 700; color: #374151; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid #e5e7eb; }
+    .qre-tabla td { padding: 0.55rem 0.8rem; border-bottom: 1px solid #f3f4f6; }
+    .qre-chip { display: inline-block; padding: 0.12rem 0.55rem; border-radius: 999px; font-size: 0.72rem; font-weight: 700; }
+    .qre-chip-cargado { background: #dbeafe; color: #1e40af; }
+    .qre-chip-entregado { background: #ecfdf5; color: #065f46; }
+    .qre-chip-cobrado { background: #fef3c7; color: #92400e; }
+    .qre-tabla tr:hover td { background: #f9fafb; }
+</style>
+
+<div class="qre-wrap">
+    <div class="qre-header">
+        <h1 style="margin:0;">🔍 Log de escaneos de QR</h1>
+        <p style="color:#6b7280; margin:0.3rem 0 0; font-size:0.9rem;">Quién escaneó cada comprobante, cuándo y qué hizo (cargar a su lista, entregar o cobrar).</p>
+    </div>
+
+    <div class="qre-filtros">
+        <div>
+            <label>Repartidor</label>
+            <select @bind="filtroRepartidorId" @bind:after="Recargar" style="margin-left:0.4rem; padding:0.3rem 0.5rem; border-radius:6px; border:1px solid #d1d5db; font-size:0.88rem;">
+                <option value="0">Todos</option>
+                @foreach (var r in repartidores)
+                {
+                    <option value="@r.Id">@r.Nombre</option>
+                }
+            </select>
+        </div>
+        <div>
+            <label>Período</label>
+            <select @bind="filtroDias" @bind:after="Recargar" style="margin-left:0.4rem; padding:0.3rem 0.5rem; border-radius:6px; border:1px solid #d1d5db; font-size:0.88rem;">
+                <option value="1">Hoy</option>
+                <option value="7">Últimos 7 días</option>
+                <option value="30">Últimos 30 días</option>
+                <option value="90">Últimos 90 días</option>
+            </select>
+        </div>
+        <button class="btn btn-secondary" style="font-size:0.85rem; margin-left:auto;" @onclick="Recargar" disabled="@cargando">
+            @(cargando ? "..." : "🔄 Refrescar")
+        </button>
+    </div>
+
+    <div class="qre-tabla">
+        @if (cargando)
+        {
+            <p style="padding:1.5rem; text-align:center;">Cargando...</p>
+        }
+        else if (escaneos.Count == 0)
+        {
+            <p style="padding:2rem; text-align:center; color:#6b7280;">No hay escaneos registrados en el período seleccionado.</p>
+        }
+        else
+        {
+            <table>
+                <thead>
+                    <tr>
+                        <th>FECHA / HORA</th>
+                        <th>REPARTIDOR</th>
+                        <th>VENTA</th>
+                        <th>ACCIÓN</th>
+                        <th>IP</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var e in escaneos)
+                    {
+                        <tr>
+                            <td style="font-family: monospace; font-size:0.85rem;">@e.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</td>
+                            <td style="font-weight:700;">@e.RepartidorNombre</td>
+                            <td><a href="@($"/cafe/ventas?buscar={e.VentaNumero}")" style="color:#1d4ed8; text-decoration:none; font-family:monospace;">@e.VentaNumero</a></td>
+                            <td>
+                                @switch (e.Accion)
+                                {
+                                    case "cargado": <span class="qre-chip qre-chip-cargado">📥 Cargado</span> break;
+                                    case "entregado": <span class="qre-chip qre-chip-entregado">✅ Entregado</span> break;
+                                    case "cobrado": <span class="qre-chip qre-chip-cobrado">💰 Cobrado</span> break;
+                                    default: <span class="qre-chip">@e.Accion</span> break;
+                                }
+                            </td>
+                            <td style="font-family: monospace; font-size:0.75rem; color:#9ca3af;">@(e.Ip ?? "—")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@code {
+    private List<ApiClient.QrEscaneoDto> escaneos = new();
+    private List<RepartidorDto> repartidores = new();
+    private bool cargando = true;
+    private int filtroRepartidorId = 0;
+    private int filtroDias = 7;
+
+    protected override async Task OnInitializedAsync()
+    {
+        repartidores = await Api.GetRepartidoresAsync() ?? new();
+        await Recargar();
+    }
+
+    private async Task Recargar()
+    {
+        cargando = true;
+        try
+        {
+            int? rid = filtroRepartidorId > 0 ? filtroRepartidorId : null;
+            escaneos = await Api.GetQrEscaneosAsync(rid, filtroDias) ?? new();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { cargando = false; }
+    }
+}
