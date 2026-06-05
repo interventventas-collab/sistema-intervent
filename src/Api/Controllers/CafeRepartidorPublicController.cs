@@ -155,4 +155,287 @@ public class CafeRepartidorPublicController : ControllerBase
         await _db.SaveChangesAsync();
         return Ok(new { id = pend.Id, mensaje = $"✓ Cobranza precargada — el admin la va a aprobar despues" });
     }
+
+    // ============================================================
+    // 2026-06-05: Flujo nuevo "Mis Pedidos" del repartidor
+    // ============================================================
+    //  /sesion/login          → genera SessionToken (8 hs) tras validar PIN
+    //  /sesion/me             → devuelve nombre del repartidor logueado (valida token)
+    //  /sesion/logout         → revoca el token actual
+    //  /escanear/{tokenVenta} → agrega la venta a la lista del repartidor logueado
+    //  /mis-pedidos/{tokenRepartidor}                       → GET lista (publico, no auth)
+    //  /mis-pedidos/{tokenRepartidor}/entregar/{ventaId}    → POST con PIN
+    //  /mis-pedidos/{tokenRepartidor}/cobrar/{ventaId}      → POST con PIN + importe
+
+    private const string SessionHeader = "X-Repartidor-Session";
+    private static readonly TimeSpan SessionDuration = TimeSpan.FromHours(8);
+
+    private string? ReadSessionToken() =>
+        Request.Headers.TryGetValue(SessionHeader, out var v) ? v.ToString() : null;
+
+    private async Task<CafeRepartidorSesion?> ResolverSesion(CancellationToken ct = default)
+    {
+        var token = ReadSessionToken();
+        if (string.IsNullOrWhiteSpace(token)) return null;
+        var s = await _db.CafeRepartidorSesiones
+            .Include(x => x.Repartidor)
+            .FirstOrDefaultAsync(x => x.SessionToken == token && !x.Revoked, ct);
+        if (s is null || s.ExpiresAt <= DateTime.UtcNow) return null;
+        // Touch last-used (no critical, no esperamos al save)
+        s.LastUsedAt = DateTime.UtcNow;
+        try { await _db.SaveChangesAsync(ct); } catch { }
+        return s;
+    }
+
+    public record SesionLoginResult(string SessionToken, DateTime ExpiresAt, int RepartidorId, string Nombre, string? PublicToken);
+
+    [HttpPost("sesion/login")]
+    public async Task<IActionResult> SesionLogin([FromBody] LoginRequest req)
+    {
+        var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.Id == req.RepartidorId && x.IsActive);
+        if (r is null) return BadRequest(new { error = "Repartidor no encontrado" });
+        if (string.IsNullOrEmpty(r.DniUltimos3))
+            return BadRequest(new { error = "Este repartidor no tiene PIN configurado. Avisale al admin." });
+        if ((req.Pin ?? "").Trim() != r.DniUltimos3)
+            return Unauthorized(new { error = "PIN incorrecto" });
+
+        var sessionToken = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N").Substring(0, 16);
+        var now = DateTime.UtcNow;
+        var ua = Request.Headers["User-Agent"].ToString();
+        var device = string.IsNullOrEmpty(ua) ? null : (ua.Length > 180 ? ua.Substring(0, 180) : ua);
+
+        var sesion = new CafeRepartidorSesion
+        {
+            RepartidorId = r.Id,
+            SessionToken = sessionToken,
+            DeviceInfo = device,
+            CreatedAt = now,
+            ExpiresAt = now.Add(SessionDuration),
+            LastUsedAt = now,
+            Revoked = false
+        };
+        _db.CafeRepartidorSesiones.Add(sesion);
+        await _db.SaveChangesAsync();
+
+        // Si no tiene PublicToken, generarlo ya (para el enlace fijo /mis-pedidos)
+        if (string.IsNullOrEmpty(r.PublicToken))
+        {
+            r.PublicToken = Guid.NewGuid().ToString("N");
+            r.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+        }
+
+        return Ok(new SesionLoginResult(sessionToken, sesion.ExpiresAt, r.Id, r.Nombre, r.PublicToken));
+    }
+
+    [HttpGet("sesion/me")]
+    public async Task<IActionResult> SesionMe()
+    {
+        var s = await ResolverSesion();
+        if (s is null) return Unauthorized(new { error = "Sesion expirada o invalida" });
+        return Ok(new { repartidorId = s.RepartidorId, nombre = s.Repartidor?.Nombre, expiresAt = s.ExpiresAt });
+    }
+
+    [HttpPost("sesion/logout")]
+    public async Task<IActionResult> SesionLogout()
+    {
+        var s = await ResolverSesion();
+        if (s is null) return Ok(); // ya no esta
+        s.Revoked = true;
+        await _db.SaveChangesAsync();
+        return Ok();
+    }
+
+    public record EscanearResult(bool Ok, string? Mensaje, int? VentaId, string? Numero,
+        string? ClienteNombre, decimal? Total, bool YaEntregada);
+
+    /// <summary>Escaneo de un QR de venta cuando ya hay sesion activa. Agrega la venta a la
+    /// lista del repartidor (insert en QrEscaneos con accion=cargado). NO marca entregado —
+    /// eso lo hace el repartidor despues en /mis-pedidos confirmando con PIN.</summary>
+    [HttpPost("escanear/{tokenVenta}")]
+    public async Task<IActionResult> Escanear(string tokenVenta)
+    {
+        var s = await ResolverSesion();
+        if (s is null) return Unauthorized(new { error = "Necesitas loguearte primero (sesion vencida)" });
+
+        var v = await _db.CafeVentas.FirstOrDefaultAsync(x => x.PublicToken == tokenVenta);
+        if (v is null) return NotFound(new EscanearResult(false, "Venta no encontrada (QR invalido)", null, null, null, null, false));
+
+        // Verificar si ya esta cargada en su lista (idempotente — no agregar duplicado)
+        var yaCargada = await _db.CafeQrEscaneos.AnyAsync(e =>
+            e.VentaId == v.Id && e.RepartidorId == s.RepartidorId && e.Accion == "cargado");
+        if (!yaCargada)
+        {
+            _db.CafeQrEscaneos.Add(new CafeQrEscaneo
+            {
+                VentaId = v.Id,
+                RepartidorId = s.RepartidorId,
+                Accion = "cargado",
+                CreatedAt = DateTime.UtcNow,
+                Ip = Request.HttpContext.Connection.RemoteIpAddress?.ToString()
+            });
+            await _db.SaveChangesAsync();
+        }
+
+        var totalCobrable = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
+        var msg = yaCargada
+            ? $"Ya estaba en tu lista: {v.Numero}"
+            : $"✅ Cargado: {v.Numero}";
+        return Ok(new EscanearResult(true, msg, v.Id, v.Numero,
+            v.ClienteNombreSnapshot, totalCobrable, v.EntregadoPorRepartidorId.HasValue));
+    }
+
+    public record MisPedidosVentaDto(int Id, string Numero, DateTime Fecha,
+        string? ClienteNombre, string? ClienteDireccion, string? ClienteLocalidad,
+        decimal Total, decimal Saldo,
+        bool YaEntregada, DateTime? EntregadoAt, string? EstadoPreparacion,
+        DateTime CargadoAt);
+
+    public record MisPedidosResult(int RepartidorId, string Nombre, List<MisPedidosVentaDto> Pedidos);
+
+    /// <summary>Devuelve la lista de pedidos cargados por el repartidor. URL publica con
+    /// token fijo del repartidor — sin PIN. El PIN solo se pide al CONFIRMAR entrega/cobro.</summary>
+    [HttpGet("mis-pedidos/{tokenRepartidor}")]
+    public async Task<IActionResult> MisPedidos(string tokenRepartidor, [FromQuery] int dias = 14)
+    {
+        var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null) return NotFound(new { error = "Enlace invalido o repartidor inactivo" });
+
+        var desde = DateTime.UtcNow.AddDays(-Math.Max(1, dias));
+        // Traer todos los QrEscaneos "cargados" recientes del repartidor + datos de la venta
+        var rows = await _db.CafeQrEscaneos
+            .Where(e => e.RepartidorId == r.Id && e.Accion == "cargado" && e.CreatedAt >= desde)
+            .OrderByDescending(e => e.CreatedAt)
+            .Join(_db.CafeVentas, e => e.VentaId, v => v.Id, (e, v) => new { e, v })
+            .Select(x => new {
+                x.v.Id, x.v.Numero, x.v.Fecha,
+                ClienteNombre = x.v.ClienteNombreSnapshot,
+                ClienteDireccion = x.v.ClienteDireccionSnapshot,
+                ClienteLocalidad = x.v.ClienteLocalidadSnapshot,
+                Total = (x.v.ArcaImpTotal.HasValue && x.v.ArcaImpTotal.Value > 0m) ? x.v.ArcaImpTotal.Value : x.v.Total,
+                x.v.EntregadoAt,
+                YaEntregada = x.v.EntregadoPorRepartidorId.HasValue,
+                x.v.EstadoPreparacion,
+                CargadoAt = x.e.CreatedAt
+            })
+            .ToListAsync();
+
+        // Saldos: sumar cobranzas vigentes por venta
+        var ventaIds = rows.Select(x => x.Id).Distinct().ToList();
+        var pagosDic = ventaIds.Count == 0
+            ? new Dictionary<int, decimal>()
+            : await _db.CafeCobranzasComprobantes
+                .Where(c => c.VentaId.HasValue && ventaIds.Contains(c.VentaId.Value) && c.Cobranza!.Estado == "VIGENTE")
+                .GroupBy(c => c.VentaId!.Value)
+                .Select(g => new { g.Key, S = g.Sum(x => x.Importe) })
+                .ToDictionaryAsync(x => x.Key, x => x.S);
+
+        var pedidos = rows.Select(x => new MisPedidosVentaDto(
+            x.Id, x.Numero, x.Fecha,
+            x.ClienteNombre, x.ClienteDireccion, x.ClienteLocalidad,
+            x.Total, x.Total - (pagosDic.TryGetValue(x.Id, out var pg) ? pg : 0m),
+            x.YaEntregada, x.EntregadoAt, x.EstadoPreparacion,
+            x.CargadoAt
+        )).ToList();
+
+        return Ok(new MisPedidosResult(r.Id, r.Nombre, pedidos));
+    }
+
+    public record EntregarRequest(string Pin);
+
+    /// <summary>Marca como entregada una venta de la lista del repartidor.
+    /// Valida PIN. Registra en QrEscaneos accion=entregado.</summary>
+    [HttpPost("mis-pedidos/{tokenRepartidor}/entregar/{ventaId:int}")]
+    public async Task<IActionResult> MisPedidosEntregar(string tokenRepartidor, int ventaId, [FromBody] EntregarRequest req)
+    {
+        var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null) return NotFound(new { error = "Enlace invalido" });
+        if (string.IsNullOrEmpty(r.DniUltimos3) || (req.Pin ?? "").Trim() != r.DniUltimos3)
+            return Unauthorized(new { error = "PIN incorrecto" });
+
+        var v = await _db.CafeVentas.FirstOrDefaultAsync(x => x.Id == ventaId);
+        if (v is null) return NotFound(new { error = "Venta no encontrada" });
+
+        // Verificar que sea de su lista
+        var enSuLista = await _db.CafeQrEscaneos.AnyAsync(e =>
+            e.VentaId == v.Id && e.RepartidorId == r.Id && e.Accion == "cargado");
+        if (!enSuLista) return BadRequest(new { error = "Esta venta no esta en tu lista" });
+
+        v.EntregadoPorRepartidorId = r.Id;
+        v.EntregadoAt = DateTime.UtcNow;
+        if (v.EstadoPreparacion != null)
+        {
+            v.EstadoPreparacion = "ENTREGADO";
+            v.PreparacionUpdatedAt = DateTime.UtcNow;
+        }
+        _db.CafeQrEscaneos.Add(new CafeQrEscaneo
+        {
+            VentaId = v.Id,
+            RepartidorId = r.Id,
+            Accion = "entregado",
+            CreatedAt = DateTime.UtcNow,
+            Ip = Request.HttpContext.Connection.RemoteIpAddress?.ToString()
+        });
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, mensaje = $"✓ Marcado como entregado" });
+    }
+
+    public record CobrarRequestV2(string Pin, decimal Importe, string? Notas);
+
+    /// <summary>Carga un cobro pendiente para esta venta. Valida PIN.
+    /// Registra en QrEscaneos accion=cobrado. Marca entregado tambien.</summary>
+    [HttpPost("mis-pedidos/{tokenRepartidor}/cobrar/{ventaId:int}")]
+    public async Task<IActionResult> MisPedidosCobrar(string tokenRepartidor, int ventaId, [FromBody] CobrarRequestV2 req)
+    {
+        var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null) return NotFound(new { error = "Enlace invalido" });
+        if (string.IsNullOrEmpty(r.DniUltimos3) || (req.Pin ?? "").Trim() != r.DniUltimos3)
+            return Unauthorized(new { error = "PIN incorrecto" });
+
+        var v = await _db.CafeVentas.FirstOrDefaultAsync(x => x.Id == ventaId);
+        if (v is null) return NotFound(new { error = "Venta no encontrada" });
+
+        var importe = Math.Max(0m, req.Importe);
+        if (importe <= 0m) return BadRequest(new { error = "Ingresá un importe mayor a 0" });
+
+        // Verificar que sea de su lista
+        var enSuLista = await _db.CafeQrEscaneos.AnyAsync(e =>
+            e.VentaId == v.Id && e.RepartidorId == r.Id && e.Accion == "cargado");
+        if (!enSuLista) return BadRequest(new { error = "Esta venta no esta en tu lista" });
+
+        // Crear cobranza pendiente (admin aprueba despues)
+        var pend = new CafeCobranzaPendiente
+        {
+            VentaId = v.Id,
+            RepartidorId = r.Id,
+            Importe = importe,
+            MarcadoEntregado = true,
+            Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas!.Trim(),
+            Estado = "PENDIENTE",
+            CreatedAt = DateTime.UtcNow
+        };
+        _db.CafeCobranzasPendientes.Add(pend);
+
+        // Marcar entregado en la venta
+        v.EntregadoPorRepartidorId = r.Id;
+        v.EntregadoAt = DateTime.UtcNow;
+        if (v.EstadoPreparacion != null)
+        {
+            v.EstadoPreparacion = "ENTREGADO";
+            v.PreparacionUpdatedAt = DateTime.UtcNow;
+        }
+
+        // Log de escaneo: accion cobrado
+        _db.CafeQrEscaneos.Add(new CafeQrEscaneo
+        {
+            VentaId = v.Id,
+            RepartidorId = r.Id,
+            Accion = "cobrado",
+            CreatedAt = DateTime.UtcNow,
+            Ip = Request.HttpContext.Connection.RemoteIpAddress?.ToString()
+        });
+
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, pendienteId = pend.Id, mensaje = $"✓ Cobro $ {importe:N2} cargado (pendiente de aprobar)" });
+    }
 }

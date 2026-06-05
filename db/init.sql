@@ -4450,3 +4450,54 @@ BEGIN
     ALTER TABLE HorasExtras_Empleados ADD MostrarEnFichador BIT NOT NULL CONSTRAINT DF_HorasExtras_Empleados_MostrarFichador DEFAULT 1;
 END
 GO
+
+-- ─── 2026-06-05: Proyecto "Mis Pedidos" del repartidor ───
+-- 1) PublicToken para el enlace fijo /mis-pedidos/{token}
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='PublicToken' AND Object_ID=OBJECT_ID('Cafe_Repartidores'))
+BEGIN
+    ALTER TABLE Cafe_Repartidores ADD PublicToken NVARCHAR(64) NULL;
+    CREATE UNIQUE INDEX IX_Cafe_Repartidores_PublicToken ON Cafe_Repartidores(PublicToken) WHERE PublicToken IS NOT NULL;
+END
+GO
+
+-- 2) Sesiones del repartidor en el celu (token para escanear sin re-tipear PIN)
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_RepartidorSesiones')
+BEGIN
+    CREATE TABLE Cafe_RepartidorSesiones (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        RepartidorId INT NOT NULL,
+        SessionToken NVARCHAR(80) NOT NULL,
+        DeviceInfo NVARCHAR(200) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        ExpiresAt DATETIME2 NOT NULL,
+        LastUsedAt DATETIME2 NULL,
+        Revoked BIT NOT NULL DEFAULT 0,
+        CONSTRAINT FK_RepartidorSesion_Repartidor FOREIGN KEY (RepartidorId) REFERENCES Cafe_Repartidores(Id)
+    );
+    CREATE UNIQUE INDEX IX_Cafe_RepartidorSesiones_Token ON Cafe_RepartidorSesiones(SessionToken);
+    CREATE INDEX IX_Cafe_RepartidorSesiones_RepartidorId ON Cafe_RepartidorSesiones(RepartidorId);
+END
+GO
+
+-- 3) Log de escaneos de QR (auditoria + ficha de venta muestra quien escaneo)
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Cafe_QrEscaneos')
+BEGIN
+    CREATE TABLE Cafe_QrEscaneos (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        VentaId INT NOT NULL,
+        RepartidorId INT NOT NULL,
+        Accion NVARCHAR(20) NOT NULL DEFAULT N'cargado',
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        Ip NVARCHAR(64) NULL,
+        CONSTRAINT FK_QrEscaneo_Repartidor FOREIGN KEY (RepartidorId) REFERENCES Cafe_Repartidores(Id)
+    );
+    CREATE INDEX IX_Cafe_QrEscaneos_VentaId ON Cafe_QrEscaneos(VentaId);
+    CREATE INDEX IX_Cafe_QrEscaneos_RepartidorId_CreatedAt ON Cafe_QrEscaneos(RepartidorId, CreatedAt DESC);
+END
+GO
+
+-- 4) Generar PublicToken para repartidores existentes (32 chars random hex)
+UPDATE Cafe_Repartidores
+SET PublicToken = LOWER(REPLACE(CONVERT(NVARCHAR(36), NEWID()), '-', ''))
+WHERE PublicToken IS NULL;
+GO

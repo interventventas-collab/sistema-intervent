@@ -52,6 +52,7 @@
                     <span class="rep-pin">PIN: @r.DniUltimos3</span>
                 }
                 <div class="rep-actions">
+                    <button class="rep-btn" style="background:#dbeafe; color:#1e40af; border-color:#93c5fd;" @onclick="() => AbrirEnlace(r)" title="Ver/copiar enlace personal del repartidor (Mis Pedidos)">📋 Enlace</button>
                     <button class="rep-btn" @onclick="() => AbrirEditar(r)">✏️ Editar</button>
                     <button class="rep-btn borrar" @onclick="() => BorrarConfirmado(r)">🗑</button>
                 </div>
@@ -86,7 +87,57 @@
     </div>
 }
 
+@* 2026-06-05: Modal con el enlace personal del repartidor (Mis Pedidos) *@
+@if (mostrarEnlace && repartidorEnlace is not null)
+{
+    <div class="modal-overlay" style="position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; z-index: 9100; padding:1rem;" @onclick="@(() => mostrarEnlace = false)">
+        <div class="modal-card" @onclick:stopPropagation="true" style="background:white; border-radius:14px; max-width:520px; width:100%; padding:1.4rem; box-shadow:0 20px 60px rgba(0,0,0,0.4);">
+            <h3 style="margin:0 0 0.3rem; color:#0e7490;">📋 Enlace personal de @repartidorEnlace.Nombre</h3>
+            <p style="color:#6b7280; font-size:0.85rem; margin:0 0 0.9rem;">El repartidor abre este enlace en su celu UNA vez y lo guarda como acceso directo. Después entra siempre desde ahí.</p>
+
+            @if (string.IsNullOrEmpty(repartidorEnlace.PublicToken))
+            {
+                <div style="background:#fef3c7; padding:0.7rem; border-radius:8px; margin-bottom:0.8rem; font-size:0.9rem;">
+                    ⚠ Este repartidor todavía no tiene enlace generado. Tocá "Generar enlace" abajo.
+                </div>
+                <button class="btn btn-primary" @onclick="GenerarEnlace" disabled="@regenerando" style="width:100%;">
+                    @(regenerando ? "Generando..." : "🔑 Generar enlace")
+                </button>
+            }
+            else
+            {
+                <div style="background:#f9fafb; padding:0.7rem 0.9rem; border-radius:8px; margin-bottom:0.9rem; word-break: break-all; font-family:monospace; font-size:0.85rem; color:#1f2937; border:1px solid #e5e7eb;">
+                    @EnlaceCompleto
+                </div>
+
+                <div style="display:flex; gap:0.5rem; margin-bottom:1rem;">
+                    <button class="btn btn-primary" @onclick="CopiarEnlace" style="flex:1;">📋 Copiar enlace</button>
+                    <a class="btn btn-secondary" href="https://wa.me/?text=@Uri.EscapeDataString("Hola " + repartidorEnlace.Nombre + "! Este es tu panel de pedidos: " + EnlaceCompleto)" target="_blank" style="flex:1; text-decoration:none; text-align:center;">📱 Enviar por WhatsApp</a>
+                </div>
+
+                <div style="text-align:center; padding:1rem; background:white; border:2px dashed #d1d5db; border-radius:10px; margin-bottom:1rem;">
+                    <div style="font-size:0.8rem; color:#6b7280; margin-bottom:0.5rem;">📷 Escaneá este QR con el celu del repartidor</div>
+                    <img src="@QrUrl" alt="QR" style="max-width:200px; width:100%;" />
+                </div>
+
+                <div style="background:#fef3c7; padding:0.6rem 0.8rem; border-radius:8px; font-size:0.78rem; color:#92400e; margin-bottom:0.9rem; line-height:1.4;">
+                    <strong>⚠ Si el repartidor pierde el celu</strong> o quieren invalidar el enlace, tocá "🔄 Regenerar".
+                    Eso crea un enlace nuevo (el viejo deja de funcionar) y cierra todas sus sesiones activas.
+                </div>
+                <button class="btn btn-secondary" @onclick="RegenerarEnlace" disabled="@regenerando" style="width:100%; background:#fee2e2; color:#991b1b; border-color:#fca5a5;">
+                    @(regenerando ? "Regenerando..." : "🔄 Regenerar (invalida el actual)")
+                </button>
+            }
+
+            <div style="text-align:right; margin-top:1rem;">
+                <button class="btn btn-secondary" @onclick="@(() => mostrarEnlace = false)">Cerrar</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
+    [Inject] private NavigationManager Nav { get; set; } = null!;
     private List<RepartidorDto> lista = new();
     private bool loading = true;
     private bool mostrarModal;
@@ -94,6 +145,13 @@
     private string formNombre = "";
     private string formPin = "";
     private bool formIsActive = true;
+
+    // Modal "enlace personal"
+    private bool mostrarEnlace;
+    private RepartidorDto? repartidorEnlace;
+    private bool regenerando;
+    private string EnlaceCompleto => $"{Nav.BaseUri.TrimEnd('/')}/mis-pedidos/{repartidorEnlace?.PublicToken}";
+    private string QrUrl => $"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={Uri.EscapeDataString(EnlaceCompleto)}";
 
     protected override async Task OnInitializedAsync() => await Cargar();
 
@@ -157,4 +215,48 @@
 
     [Inject] private IJSRuntime JS { get; set; } = null!;
     private async Task<bool> JsConfirm(string msg) => await JS.InvokeAsync<bool>("confirm", msg);
+
+    // 2026-06-05: enlace personal del repartidor
+    private void AbrirEnlace(RepartidorDto r)
+    {
+        repartidorEnlace = r;
+        mostrarEnlace = true;
+    }
+
+    private async Task GenerarEnlace()
+    {
+        if (repartidorEnlace is null) return;
+        regenerando = true;
+        try
+        {
+            var resp = await Api.RegenerarRepartidorTokenAsync(repartidorEnlace.Id);
+            if (resp is null) { ToastService.Error("No se pudo generar"); return; }
+            repartidorEnlace.PublicToken = resp.PublicToken;
+            await Cargar();
+            ToastService.Success("✓ Enlace generado");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { regenerando = false; }
+    }
+
+    private async Task RegenerarEnlace()
+    {
+        if (repartidorEnlace is null) return;
+        if (!await JsConfirm($"Esto invalida el enlace actual de {repartidorEnlace.Nombre} y cierra todas sus sesiones. ¿Seguro?")) return;
+        await GenerarEnlace();
+    }
+
+    private async Task CopiarEnlace()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", EnlaceCompleto);
+            ToastService.Success("✓ Enlace copiado al portapapeles");
+        }
+        catch
+        {
+            // Fallback: usar el viejo método si navigator.clipboard no está disponible
+            try { await JS.InvokeVoidAsync("prompt", "Copiá el enlace:", EnlaceCompleto); } catch { }
+        }
+    }
 }

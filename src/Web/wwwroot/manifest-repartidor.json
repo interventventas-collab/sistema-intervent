@@ -1,0 +1,21 @@
+{
+  "name": "Mis Pedidos · FRIKAF",
+  "short_name": "Mis Pedidos",
+  "description": "Panel del repartidor: lista de pedidos a entregar, escanear QR y confirmar entregas",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#0e7490",
+  "background_color": "#0e7490",
+  "icons": [
+    {
+      "src": "/img/mis-pedidos-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "productivity"],
+  "lang": "es-AR"
+}

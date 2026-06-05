@@ -15,7 +15,7 @@ public class CafeRepartidoresController : ControllerBase
     private readonly AppDbContext _db;
     public CafeRepartidoresController(AppDbContext db) { _db = db; }
 
-    public record RepartidorDto(int Id, string Nombre, string? DniUltimos3, bool IsActive);
+    public record RepartidorDto(int Id, string Nombre, string? DniUltimos3, bool IsActive, string? PublicToken);
     public record CrearRequest(string Nombre, string? DniUltimos3);
     public record EditarRequest(string Nombre, string? DniUltimos3, bool IsActive);
 
@@ -23,9 +23,25 @@ public class CafeRepartidoresController : ControllerBase
     public async Task<IActionResult> List()
     {
         var l = await _db.CafeRepartidores.OrderBy(r => r.Nombre)
-            .Select(r => new RepartidorDto(r.Id, r.Nombre, r.DniUltimos3, r.IsActive))
+            .Select(r => new RepartidorDto(r.Id, r.Nombre, r.DniUltimos3, r.IsActive, r.PublicToken))
             .ToListAsync();
         return Ok(l);
+    }
+
+    /// <summary>2026-06-05: Generar o regenerar el PublicToken (URL fija /mis-pedidos/{token}).
+    /// Si el repartidor perdio el celu, usamos este endpoint para invalidar el anterior y darle uno nuevo.</summary>
+    [HttpPost("{id:int}/regenerar-public-token")]
+    public async Task<IActionResult> RegenerarPublicToken(int id)
+    {
+        var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.Id == id);
+        if (r is null) return NotFound();
+        r.PublicToken = Guid.NewGuid().ToString("N");
+        r.UpdatedAt = DateTime.UtcNow;
+        // Tambien revocar todas las sesiones activas del repartidor (por si perdio el celu)
+        var sesiones = await _db.CafeRepartidorSesiones.Where(s => s.RepartidorId == id && !s.Revoked).ToListAsync();
+        foreach (var s in sesiones) s.Revoked = true;
+        await _db.SaveChangesAsync();
+        return Ok(new { publicToken = r.PublicToken, sesionesRevocadas = sesiones.Count });
     }
 
     [HttpPost]
@@ -41,7 +57,7 @@ public class CafeRepartidoresController : ControllerBase
         };
         _db.CafeRepartidores.Add(r);
         await _db.SaveChangesAsync();
-        return Ok(new RepartidorDto(r.Id, r.Nombre, r.DniUltimos3, r.IsActive));
+        return Ok(new RepartidorDto(r.Id, r.Nombre, r.DniUltimos3, r.IsActive, r.PublicToken));
     }
 
     [HttpPut("{id:int}")]
@@ -54,7 +70,7 @@ public class CafeRepartidoresController : ControllerBase
         r.IsActive = req.IsActive;
         r.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
-        return Ok(new RepartidorDto(r.Id, r.Nombre, r.DniUltimos3, r.IsActive));
+        return Ok(new RepartidorDto(r.Id, r.Nombre, r.DniUltimos3, r.IsActive, r.PublicToken));
     }
 
     [HttpDelete("{id:int}")]
@@ -73,6 +89,28 @@ public class CafeRepartidoresController : ControllerBase
         _db.CafeRepartidores.Remove(r);
         await _db.SaveChangesAsync();
         return Ok(new { soft = false });
+    }
+
+    // 2026-06-05: log de QR escaneos (auditoria)
+    public record QrEscaneoDto(int Id, int VentaId, string? VentaNumero, int RepartidorId, string RepartidorNombre,
+        string Accion, DateTime CreatedAt, string? Ip);
+
+    [HttpGet("qr-escaneos")]
+    public async Task<IActionResult> ListarQrEscaneos([FromQuery] int? ventaId = null,
+        [FromQuery] int? repartidorId = null, [FromQuery] int dias = 30)
+    {
+        var desde = DateTime.UtcNow.AddDays(-Math.Max(1, dias));
+        var q = _db.CafeQrEscaneos.AsQueryable().Where(e => e.CreatedAt >= desde);
+        if (ventaId.HasValue) q = q.Where(e => e.VentaId == ventaId.Value);
+        if (repartidorId.HasValue) q = q.Where(e => e.RepartidorId == repartidorId.Value);
+        var rows = await q
+            .OrderByDescending(e => e.CreatedAt)
+            .Take(500)
+            .Join(_db.CafeRepartidores, e => e.RepartidorId, r => r.Id, (e, r) => new { e, r })
+            .Join(_db.CafeVentas, x => x.e.VentaId, v => v.Id, (x, v) => new QrEscaneoDto(
+                x.e.Id, x.e.VentaId, v.Numero, x.r.Id, x.r.Nombre, x.e.Accion, x.e.CreatedAt, x.e.Ip))
+            .ToListAsync();
+        return Ok(rows);
     }
 
     private static string? LimpiarPin(string? p)

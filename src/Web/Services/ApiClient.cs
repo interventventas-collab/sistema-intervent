@@ -790,6 +790,9 @@ public class ApiClient
     }
     public async Task<bool> BorrarRepartidorAsync(int id)
         => await DeleteAsync($"/api/cafe/repartidores/{id}");
+    public record RegenerarTokenResp(string PublicToken, int SesionesRevocadas);
+    public async Task<RegenerarTokenResp?> RegenerarRepartidorTokenAsync(int id)
+        => await PostAsync<RegenerarTokenResp>($"/api/cafe/repartidores/{id}/regenerar-public-token", new {});
 
     // === Cobranzas pendientes (admin) ===
     public async Task<List<CobranzaPendienteDto>?> GetCobranzasPendientesAsync(string estado = "PENDIENTE")
