@@ -2467,21 +2467,24 @@ public class CafeVentasController : ControllerBase
     public async Task<IActionResult> ListarPreparacion([FromQuery] int dias = 7)
     {
         var desde = DateTime.UtcNow.Date.AddDays(-Math.Max(1, dias));
-        // 2026-06-05: ahora aparecen TODAS las ventas pendientes de armar, incluso las
-        // que NO se subieron a Drive (antes quedaban invisibles si Drive fallaba).
-        // El front muestra un chip distinto para las que no tienen Drive (campo SinDrive).
-        // Criterio:
-        //   1) NO marcada como LISTO/EN_CAMINO/ENTREGADO (sigue pendiente de armar)
-        //   2) Creada en los ultimos N dias y no anulada
-        //   3) No oculta manualmente
+        // 2026-06-05 v2: criterio dual segun si tiene Drive.
+        //  - CON Drive: rango "dias" completo (7 default) — flujo armado clasico.
+        //  - SIN Drive: solo si es de las ultimas 36 hs, para que la venta del dia
+        //    no se pierda si Drive falla, pero las viejas que nunca subieron NO inundan
+        //    el tablero. Una vez que se reconecte Drive y se re-suba con ☁️, vuelven al
+        //    flujo normal "con Drive".
+        var hace36hs = DateTime.UtcNow.AddHours(-36);
         var ventas = await _db.CafeVentas
             .Include(v => v.Items)
             .Where(v => v.PreparacionOcultoAt == null
                 && (v.EstadoPreparacion == null
                     || v.EstadoPreparacion == "PARA_PREPARAR"
                     || v.EstadoPreparacion == "EN_PREPARACION")
-                && v.CreatedAt >= desde
-                && v.Estado != "anulado")
+                && v.Estado != "anulado"
+                && (
+                    (v.DriveSubidoAt != null && v.CreatedAt >= desde)
+                    || (v.DriveSubidoAt == null && v.CreatedAt >= hace36hs)
+                ))
             // Orden: las que tienen Drive primero por DriveSubidoAt desc, las sin Drive al final por CreatedAt desc
             .OrderByDescending(v => v.DriveSubidoAt ?? v.CreatedAt)
             .Select(v => new
