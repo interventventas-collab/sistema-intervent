@@ -1182,6 +1182,10 @@ public class CafeVentasController : ControllerBase
         _db.CafeVentas.Add(venta);
         await _db.SaveChangesAsync();
 
+        // 2026-06-05: si tiene EntregaPor matcheable con un repartidor activo, lo asignamos
+        // automaticamente a Mis Pedidos (sin necesidad de escanear QR).
+        try { await SincronizarRepartidorDeEntregaAsync(venta); } catch { }
+
         // Push event-driven a MeLi: fire-and-forget. Si MeLi esta caido o falla, queda
         // marcado con StockChangedAt y el job de respaldo (15 min) lo recupera.
         FireAndForgetPushMeli(productosAfectados);
@@ -1916,6 +1920,9 @@ public class CafeVentasController : ControllerBase
             v.UpdatedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync();
         }
+
+        // 2026-06-05: si cambio EntregaPor, sincronizar Mis Pedidos
+        try { await SincronizarRepartidorDeEntregaAsync(v); } catch { }
 
         return Ok(Map(v));
     }
@@ -2752,5 +2759,56 @@ public class CafeVentasController : ControllerBase
             ? BuildPdfFilename(ventas[0])
             : $"imprimir-{ventas.Count}-comprobantes-{DateTime.Now:yyyyMMddHHmm}.pdf";
         return File(pdfBytes, "application/pdf", fileName);
+    }
+
+    /// <summary>
+    /// 2026-06-05: Sincroniza el escaneo "cargado" de Cafe_QrEscaneos con el valor
+    /// actual de EntregaPor. Si EntregaPor matchea un repartidor activo por nombre
+    /// (case-insensitive), crea/actualiza el escaneo. Si es null/empty/Logistica
+    /// tercerizada, borra los escaneos "cargado" de esa venta.
+    /// Llamar despues de SaveChangesAsync al crear o editar venta.
+    /// </summary>
+    private async Task SincronizarRepartidorDeEntregaAsync(CafeVenta v)
+    {
+        var nombre = v.EntregaPor?.Trim();
+        // Borrar escaneos "cargado" existentes (vamos a reemplazar)
+        var existentes = await _db.CafeQrEscaneos
+            .Where(e => e.VentaId == v.Id && e.Accion == "cargado")
+            .ToListAsync();
+
+        // Buscar repartidor que matchea con EntregaPor (case-insensitive, ignorar "Logistica tercerizada")
+        CafeRepartidor? repMatch = null;
+        if (!string.IsNullOrWhiteSpace(nombre) && !nombre.Contains("tercerizada", StringComparison.OrdinalIgnoreCase))
+        {
+            repMatch = await _db.CafeRepartidores
+                .FirstOrDefaultAsync(r => r.IsActive && r.Nombre.ToLower() == nombre.ToLower());
+        }
+
+        // Si el repartidor actual ya esta en la lista, no tocar nada
+        if (repMatch is not null && existentes.Any(e => e.RepartidorId == repMatch.Id))
+        {
+            // Borrar SOLO los de OTROS repartidores (si hay)
+            var otros = existentes.Where(e => e.RepartidorId != repMatch.Id).ToList();
+            if (otros.Count > 0) _db.CafeQrEscaneos.RemoveRange(otros);
+            if (otros.Count > 0) await _db.SaveChangesAsync();
+            return;
+        }
+
+        // Borrar todos los escaneos "cargado" actuales
+        if (existentes.Count > 0) _db.CafeQrEscaneos.RemoveRange(existentes);
+
+        // Si hay match con repartidor del sistema, crear escaneo nuevo
+        if (repMatch is not null)
+        {
+            _db.CafeQrEscaneos.Add(new CafeQrEscaneo
+            {
+                VentaId = v.Id,
+                RepartidorId = repMatch.Id,
+                Accion = "cargado",
+                CreatedAt = DateTime.UtcNow,
+                Ip = "admin-entrega-por"
+            });
+        }
+        if (existentes.Count > 0 || repMatch is not null) await _db.SaveChangesAsync();
     }
 }
