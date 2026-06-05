@@ -180,10 +180,39 @@ public class GoogleDriveService
         using var stream = new MemoryStream(content);
         var req = service.Files.Create(meta, stream, mimeType);
         req.Fields = "id, webViewLink";
-        await req.UploadAsync();
+        var progress = await req.UploadAsync();
 
-        var file = req.ResponseBody
-            ?? throw new InvalidOperationException("Drive no devolvió metadata del archivo subido.");
+        // Si el upload no se completo, fallar fuerte (asi se ve en el toast)
+        if (progress.Status != Google.Apis.Upload.UploadStatus.Completed)
+        {
+            throw new InvalidOperationException(
+                $"Upload a Drive no completado (estado={progress.Status}): {progress.Exception?.Message}");
+        }
+
+        var file = req.ResponseBody;
+
+        // 2026-06-05: la libreria a veces se completa con ResponseBody=null aunque
+        // el archivo SI se subio. Fallback: buscarlo por nombre dentro de la carpeta.
+        if (file is null || string.IsNullOrEmpty(file.Id))
+        {
+            var safeName = fileName.Replace("'", "\\'");
+            var listReq = service.Files.List();
+            listReq.Q = $"name = '{safeName}' and '{rootFolderId}' in parents and trashed = false";
+            listReq.Fields = "files(id, webViewLink, createdTime)";
+            listReq.OrderBy = "createdTime desc";
+            listReq.PageSize = 1;
+            try
+            {
+                var list = await listReq.ExecuteAsync();
+                file = list.Files?.FirstOrDefault();
+            }
+            catch { /* fall-through, tirar excepcion abajo */ }
+
+            if (file is null || string.IsNullOrEmpty(file.Id))
+                throw new InvalidOperationException(
+                    "Drive completo el upload pero no devolvio metadata y no se encontro el archivo por nombre. " +
+                    "Reintenta — el archivo puede haberse subido igualmente.");
+        }
 
         return (file.Id, file.WebViewLink ?? $"https://drive.google.com/file/d/{file.Id}/view");
     }
