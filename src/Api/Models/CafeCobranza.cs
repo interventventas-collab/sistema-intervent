@@ -15,7 +15,10 @@ public class CafeCobranza
 
     public DateTime Fecha { get; set; } = DateTime.UtcNow;
 
-    public int ClienteId { get; set; }
+    /// <summary>2026-06-06: Nullable para permitir cobrar ventas "ocasionales" (sin cliente
+    /// del catálogo). Cuando es null, la cobranza esta asociada solo a la venta via
+    /// CafeCobranzaComprobante.VentaId, y el snapshot del nombre se lee desde la venta.</summary>
+    public int? ClienteId { get; set; }
     [ForeignKey(nameof(ClienteId))]
     public CafeCliente? Cliente { get; set; }
 

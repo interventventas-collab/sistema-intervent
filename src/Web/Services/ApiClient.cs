@@ -3478,8 +3478,10 @@ public class ApiClient
     public record CrearMedioItemRequest(int CajaId, decimal Importe, string? Referencia, CrearChequeItemRequest? Cheque);
     public record CrearCobranzaResultDto(int Id, string Numero);
 
+    // 2026-06-06: clienteId nullable para permitir cobrar "ventas ocasionales" (sin cliente
+    // del catálogo). En ese caso el backend exige al menos un comprobante con VentaId.
     public async Task<CrearCobranzaResultDto?> CrearCafeCobranzaAsync(
-        int clienteId, decimal retenciones, string? operador, string? observaciones,
+        int? clienteId, decimal retenciones, string? operador, string? observaciones,
         List<CrearComprobanteItemRequest> comprobantes, List<CrearMedioItemRequest> medios)
         => await PostAsync<CrearCobranzaResultDto>("/api/cafe/cobranzas",
             new { clienteId, retenciones, operador, observaciones, comprobantes, medios });

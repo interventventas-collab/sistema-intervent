@@ -448,13 +448,23 @@
                                 <td class="actions-cell">
                                     @{
                                         var saldoVenta = saldosPorVenta.TryGetValue(v.Id, out var sV) ? sV : v.Total;
-                                        var puedeCobrar = !anulada && saldoVenta > 0.01m && v.ClienteId.HasValue;
+                                        // 2026-06-06: ahora se puede cobrar venta sin cliente (ocasional). El backend acepta cobranza con
+                                        // ClienteId null si la venta apuntada tampoco tiene cliente. Si la venta SI tiene cliente, va al
+                                        // flujo normal de cobranzas; si NO, abre modal rápido inline.
+                                        var puedeCobrar = !anulada && saldoVenta > 0.01m;
                                     }
                                     @* 3 botones siempre visibles: imprimir, cobrar, editar *@
                                     <button class="btn-icon" style="color: #1d4ed8;" @onclick="() => ShowPrint(v)" title="Ver / imprimir / PDF">🖨</button>
                                     @if (puedeCobrar)
                                     {
-                                        <button class="btn-icon" style="color: #059669;" @onclick='() => Navigation.NavigateTo($"/cafe/tesoreria/cobranzas?cliente={v.ClienteId!.Value}&venta={v.Id}")' title="Cobrar esta venta">💰</button>
+                                        @if (v.ClienteId.HasValue)
+                                        {
+                                            <button class="btn-icon" style="color: #059669;" @onclick='() => Navigation.NavigateTo($"/cafe/tesoreria/cobranzas?cliente={v.ClienteId!.Value}&venta={v.Id}")' title="Cobrar esta venta">💰</button>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn-icon" style="color: #059669;" @onclick="() => AbrirCobroOcasional(v, saldoVenta)" title="Cobrar venta ocasional (sin cliente)">💰</button>
+                                        }
                                     }
                                     else
                                     {
@@ -2738,7 +2748,138 @@
     </div>
 }
 
+@* ====== COBRAR VENTA OCASIONAL (sin cliente del catálogo) — 2026-06-06 ====== *@
+@if (cobroOcasionalVenta is not null)
+{
+    <div class="modal-overlay" style="z-index: 9300;" @onclick="CerrarCobroOcasional">
+        <div class="modal-card modal-small" @onclick:stopPropagation="true" style="max-width: 480px;">
+            <div class="modal-header" style="background: #059669; color: white;">
+                <h4 style="margin: 0;">💰 Cobrar @cobroOcasionalVenta.Numero</h4>
+                <button class="btn-close" @onclick="CerrarCobroOcasional" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:0.6rem 0.8rem; margin-bottom:0.8rem; font-size:0.92rem;">
+                    <strong>Cliente ocasional:</strong> @(string.IsNullOrWhiteSpace(cobroOcasionalVenta.ClienteNombre) ? "(sin nombre)" : cobroOcasionalVenta.ClienteNombre)<br />
+                    <strong>Total venta:</strong> $@FormatMoney(cobroOcasionalVenta.Total)<br />
+                    <strong>Saldo:</strong> <span style="color:#dc2626; font-weight:700;">$@FormatMoney(cobroOcasionalSaldo)</span>
+                </div>
+
+                <div class="form-group">
+                    <label>Monto que cobrás <span style="color:#dc2626;">*</span></label>
+                    <input type="number" step="0.01" class="form-input" @bind="cobroOcasionalMonto" @bind:event="oninput" />
+                    <small style="color:#6b7280;">Por default cargamos el saldo total. Podés cobrar parcial.</small>
+                </div>
+
+                <div class="form-group">
+                    <label>Forma de cobro <span style="color:#dc2626;">*</span></label>
+                    <select class="form-input" @bind="cobroOcasionalCajaId">
+                        <option value="0">— Elegir —</option>
+                        @if (cobroOcasionalCajas is not null)
+                        {
+                            @foreach (var c in cobroOcasionalCajas.Where(x => x.IsActive && x.Tipo != "CHEQUES_CARTERA"))
+                            {
+                                <option value="@c.Id">@c.Nombre (@c.Tipo)</option>
+                            }
+                        }
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Fecha</label>
+                    <input type="date" class="form-input" @bind="cobroOcasionalFecha" />
+                </div>
+
+                <div class="form-group">
+                    <label>Nota (opcional)</label>
+                    <input type="text" class="form-input" @bind="cobroOcasionalNota" placeholder="Referencia / observación" maxlength="200" />
+                </div>
+
+                <div style="color:#92400e; background:#fef3c7; padding:0.5rem 0.7rem; border-radius:6px; font-size:0.85rem;">
+                    ℹ La cobranza queda asociada solo a esta venta (no a un cliente del catálogo).
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CerrarCobroOcasional" disabled="@cobroOcasionalGuardando">Cancelar</button>
+                <button class="btn btn-primary" @onclick="ConfirmarCobroOcasional" disabled="@cobroOcasionalGuardando" style="background:#059669; border-color:#059669;">
+                    @(cobroOcasionalGuardando ? "Guardando..." : "✓ Cobrar")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
+    // 2026-06-06: estado del modal de cobro ocasional (venta sin cliente del catálogo)
+    private CafeVentaDto? cobroOcasionalVenta;
+    private decimal cobroOcasionalSaldo;
+    private decimal cobroOcasionalMonto;
+    private int cobroOcasionalCajaId;
+    private DateTime cobroOcasionalFecha = DateTime.Today;
+    private string cobroOcasionalNota = "";
+    private bool cobroOcasionalGuardando;
+    private List<CafeCajaDto>? cobroOcasionalCajas;
+
+    private async Task AbrirCobroOcasional(CafeVentaDto v, decimal saldo)
+    {
+        cobroOcasionalVenta = v;
+        cobroOcasionalSaldo = saldo;
+        cobroOcasionalMonto = saldo;
+        cobroOcasionalCajaId = 0;
+        cobroOcasionalFecha = DateTime.Today;
+        cobroOcasionalNota = "";
+        cobroOcasionalGuardando = false;
+        if (cobroOcasionalCajas is null)
+        {
+            try { cobroOcasionalCajas = await Api.GetCafeCajasAsync() ?? new(); } catch { cobroOcasionalCajas = new(); }
+        }
+        // Preseleccionar Efectivo si existe
+        var ef = cobroOcasionalCajas?.FirstOrDefault(c => c.IsActive && c.Tipo == "EFECTIVO");
+        if (ef is not null) cobroOcasionalCajaId = ef.Id;
+        StateHasChanged();
+    }
+
+    private void CerrarCobroOcasional()
+    {
+        cobroOcasionalVenta = null;
+    }
+
+    private async Task ConfirmarCobroOcasional()
+    {
+        if (cobroOcasionalVenta is null) return;
+        if (cobroOcasionalMonto <= 0) { ToastService.Error("El monto debe ser mayor a 0"); return; }
+        if (cobroOcasionalMonto > cobroOcasionalSaldo + 0.01m) { ToastService.Error($"El monto supera el saldo de la venta ($ {FormatMoney(cobroOcasionalSaldo)})"); return; }
+        if (cobroOcasionalCajaId <= 0) { ToastService.Error("Elegí forma de cobro"); return; }
+
+        cobroOcasionalGuardando = true;
+        try
+        {
+            var comps = new List<ApiClient.CrearComprobanteItemRequest>
+            {
+                new ApiClient.CrearComprobanteItemRequest(cobroOcasionalVenta.Id, cobroOcasionalMonto)
+            };
+            var medios = new List<ApiClient.CrearMedioItemRequest>
+            {
+                new ApiClient.CrearMedioItemRequest(cobroOcasionalCajaId, cobroOcasionalMonto,
+                    string.IsNullOrWhiteSpace(cobroOcasionalNota) ? null : cobroOcasionalNota, null)
+            };
+            // 2026-06-06: ClienteId null = cobranza de venta ocasional
+            var r = await Api.CrearCafeCobranzaAsync(null, 0m, Operator.Current, cobroOcasionalNota, comps, medios);
+            if (r is null) { ToastService.Error("Error al crear cobranza"); return; }
+            ToastService.Success($"Cobranza {r.Numero} creada ✓");
+            cobroOcasionalVenta = null;
+            // Recargar lista para reflejar el cambio en saldos / chip
+            await Load();
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error("Error: " + ex.Message);
+        }
+        finally
+        {
+            cobroOcasionalGuardando = false;
+        }
+    }
+
     // 2026-06-05: estado del modal de reasignar repartidor
     private bool mostrarReasignar;
     private bool guardandoReasignar;

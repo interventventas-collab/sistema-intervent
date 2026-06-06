@@ -4554,3 +4554,19 @@ BEGIN
     ALTER TABLE Cafe_Ventas ADD CreadoPorOperador NVARCHAR(20) NULL;
 END
 GO
+
+-- ─── 2026-06-06: ClienteId nullable en Cafe_Cobranzas (cobrar ventas ocasionales) ───
+IF EXISTS (SELECT * FROM sys.columns WHERE Name='ClienteId' AND Object_ID=OBJECT_ID('Cafe_Cobranzas')
+           AND is_nullable = 0)
+BEGIN
+    -- Drop FK temporalmente para poder alterar
+    DECLARE @fkName NVARCHAR(200) = (SELECT name FROM sys.foreign_keys
+        WHERE parent_object_id = OBJECT_ID('Cafe_Cobranzas')
+        AND name LIKE '%ClienteId%');
+    IF @fkName IS NOT NULL
+        EXEC('ALTER TABLE Cafe_Cobranzas DROP CONSTRAINT ' + @fkName);
+    ALTER TABLE Cafe_Cobranzas ALTER COLUMN ClienteId INT NULL;
+    ALTER TABLE Cafe_Cobranzas ADD CONSTRAINT FK_Cafe_Cobranzas_Cliente
+        FOREIGN KEY (ClienteId) REFERENCES Cafe_Clientes(Id);
+END
+GO

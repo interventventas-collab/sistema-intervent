@@ -64,12 +64,14 @@ public class CafeCobranzasController : ControllerBase
 
     public record SucursalMismoCuitDto(int Id, string Nombre, string? Cuit);
 
+    // 2026-06-06: ClienteId nullable + ClienteNombre puede venir del snapshot de la venta
+    // cuando la cobranza es de una venta "ocasional" (sin cliente del catalogo).
     public record CobranzaListDto(
-        int Id, string Numero, DateTime Fecha, int ClienteId, string ClienteNombre,
+        int Id, string Numero, DateTime Fecha, int? ClienteId, string ClienteNombre,
         decimal Total, decimal Retenciones, string Estado);
 
     public record CobranzaDetalleDto(
-        int Id, string Numero, DateTime Fecha, int ClienteId, string ClienteNombre,
+        int Id, string Numero, DateTime Fecha, int? ClienteId, string ClienteNombre,
         decimal Total, decimal Retenciones, string Estado, string? Operador, string? Observaciones,
         List<CobranzaComprobanteDto> Comprobantes, List<CobranzaMedioDto> Medios);
 
@@ -77,7 +79,10 @@ public class CafeCobranzasController : ControllerBase
     public record CobranzaMedioDto(int Id, int CajaId, string CajaNombre, decimal Importe, string? Referencia, int? ChequeId);
 
     public record CrearCobranzaRequest(
-        int ClienteId,
+        // 2026-06-06: ClienteId nullable para permitir cobrar "ventas ocasionales" (sin
+        // cliente del catálogo). En ese caso debe venir al menos un comprobante con VentaId
+        // y la venta apuntada tampoco debe tener ClienteId.
+        int? ClienteId,
         decimal Retenciones,
         string? Operador,
         string? Observaciones,
@@ -195,17 +200,32 @@ public class CafeCobranzasController : ControllerBase
         [FromQuery] DateTime? hasta,
         [FromQuery] int take = 200)
     {
-        var q = _db.CafeCobranzas.Include(c => c.Cliente).AsQueryable();
+        var q = _db.CafeCobranzas
+            .Include(c => c.Cliente)
+            .Include(c => c.Comprobantes).ThenInclude(cc => cc.Venta)
+            .AsQueryable();
         if (clienteId.HasValue) q = q.Where(c => c.ClienteId == clienteId.Value);
         if (desde.HasValue) q = q.Where(c => c.Fecha >= desde.Value);
         if (hasta.HasValue) q = q.Where(c => c.Fecha <= hasta.Value);
 
-        var list = await q.OrderByDescending(c => c.Fecha).Take(take)
-            .Select(c => new CobranzaListDto(
+        var rows = await q.OrderByDescending(c => c.Fecha).Take(take)
+            .Select(c => new
+            {
                 c.Id, c.Numero, c.Fecha, c.ClienteId,
-                c.Cliente != null ? c.Cliente.Nombre : "—",
-                c.Total, c.Retenciones, c.Estado))
+                ClienteNombreReal = c.Cliente != null ? c.Cliente.Nombre : null,
+                // 2026-06-06: si no hay cliente, tomamos el snapshot de la venta del primer comprobante.
+                VentaSnapshot = c.Comprobantes
+                    .Where(cc => cc.Venta != null)
+                    .Select(cc => cc.Venta!.ClienteNombreSnapshot)
+                    .FirstOrDefault(),
+                c.Total, c.Retenciones, c.Estado
+            })
             .ToListAsync();
+
+        var list = rows.Select(r => new CobranzaListDto(
+            r.Id, r.Numero, r.Fecha, r.ClienteId,
+            r.ClienteNombreReal ?? (!string.IsNullOrWhiteSpace(r.VentaSnapshot) ? r.VentaSnapshot + " (ocasional)" : "—"),
+            r.Total, r.Retenciones, r.Estado)).ToList();
         return Ok(list);
     }
 
@@ -230,13 +250,33 @@ public class CafeCobranzasController : ControllerBase
         return Ok(dto);
     }
 
-    /// <summary>Crea una cobranza nueva. Valida coherencia: suma de medios + retenciones = suma de comprobantes.</summary>
+    /// <summary>Crea una cobranza nueva. Valida coherencia: suma de medios + retenciones = suma de comprobantes.
+    /// 2026-06-06: ClienteId puede ser null si la cobranza es de una venta ocasional (sin cliente del catalogo).</summary>
     [HttpPost]
     public async Task<IActionResult> Crear([FromBody] CrearCobranzaRequest req)
     {
         // Validaciones basicas
-        var cliente = await _db.CafeClientes.FindAsync(req.ClienteId);
-        if (cliente is null) return BadRequest(new { error = "Cliente no encontrado" });
+        CafeCliente? cliente = null;
+        if (req.ClienteId.HasValue && req.ClienteId.Value > 0)
+        {
+            cliente = await _db.CafeClientes.FindAsync(req.ClienteId.Value);
+            if (cliente is null) return BadRequest(new { error = "Cliente no encontrado" });
+        }
+        else
+        {
+            // Sin cliente: tiene que haber al menos un comprobante con VentaId, y esa venta
+            // tampoco debe tener cliente (es decir, una venta "ocasional"). No permitimos
+            // cobranzas "a cuenta" sin cliente porque no habria a quien acreditar el saldo.
+            var ventaIdsRef = (req.Comprobantes ?? new()).Where(c => c.VentaId.HasValue).Select(c => c.VentaId!.Value).Distinct().ToList();
+            if (ventaIdsRef.Count == 0)
+                return BadRequest(new { error = "Una cobranza sin cliente debe estar asociada a una venta puntual." });
+            var ventasRef = await _db.CafeVentas.Where(v => ventaIdsRef.Contains(v.Id))
+                .Select(v => new { v.Id, v.ClienteId, v.ClienteNombreSnapshot })
+                .ToListAsync();
+            var alguna = ventasRef.FirstOrDefault(v => v.ClienteId.HasValue);
+            if (alguna is not null)
+                return BadRequest(new { error = $"La venta #{alguna.Id} ya tiene cliente asignado — usá ese cliente para cobrar." });
+        }
         if (req.Comprobantes == null || req.Comprobantes.Count == 0)
             return BadRequest(new { error = "Hay que cobrar al menos un comprobante (o agregar como 'a cuenta')" });
         if (req.Medios == null || req.Medios.Count == 0)
@@ -266,7 +306,8 @@ public class CafeCobranzasController : ControllerBase
         {
             Numero = numero,
             Fecha = DateTime.UtcNow,
-            ClienteId = req.ClienteId,
+            // 2026-06-06: ClienteId puede quedar null para cobranzas ocasionales (venta sin cliente)
+            ClienteId = (req.ClienteId.HasValue && req.ClienteId.Value > 0) ? req.ClienteId.Value : null,
             Total = sumMedios,         // lo que efectivamente entro a las cajas
             Retenciones = retenciones,
             Operador = req.Operador,
