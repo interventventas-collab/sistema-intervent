@@ -223,7 +223,8 @@
             </NavGroup>
         }
 
-        @if (HasPerm("cafe"))
+        @* 2026-06-06: oficina ve EXACTAMENTE el mismo sidebar que admin *@
+        @if (HasPerm("cafe") || HasPerm("oficina"))
         {
             <NavGroup Label="Ventas por fuera" Icon="@SvgIcons.Brand"
                       HasActiveChild="@(IsActive("/cafe") || IsActive("/cafe/ventas") || IsActive("/cafe/productos") || IsActive("/cafe/skus-meli") || IsActive("/cafe/combos") || IsActive("/cafe/oems") || IsActive("/cafe/clientes") || IsActive("/cafe/clientes-mapeados") || IsActive("/cafe/configuracion") || IsActive("/cafe/compras") || IsActive("/cafe/proveedores") || IsActive("/cafe/marcas") || IsActive("/cafe/listas-precios") || IsActive("/cafe/consultas") || IsActive("/cafe/cotejo") || IsActive("/cafe/descuentos") || IsActive("/cafe/kits") || IsActive("/cafe/reglas-precios") || IsActive("/cafe/saldos") || IsActive("/cafe/saldos-pendientes") || IsActive("/cafe/maquinas") || IsActive("/cafe/tesoreria/cajas") || IsActive("/cafe/tesoreria/resumen") || IsActive("/cafe/tesoreria/cobranzas") || IsActive("/cafe/tesoreria/pagos") || IsActive("/cafe/tesoreria/cheques") || IsActive("/cafe/depositos") || IsActive("/cafe/stock-masivo") || IsActive("/cafe/preventas") || IsActive("/cafe/arca/errores") || IsActive("/cafe/clientes/panel-deudas") || IsActive("/cafe/preparacion") || IsActive("/cafe/tesoreria/cheques-banco") || IsActive("/cafe/tesoreria/extracto-banco") || IsActive("/cafe/cobranzas-pendientes") || IsActive("/cafe/arqueo-repartidor") || IsActive("/cafe/repartidores") || IsActive("/horas-extras") || IsActive("/viajes") || IsActive("/stock"))">
@@ -1029,8 +1030,10 @@
         return "";
     }
 
+    // 2026-06-06: Oficina ahora ve el MISMO sidebar que admin (los grupos Ventas/Favoritos/etc).
+    // Solo deposito tiene el "custom sidebar reducido" controlado por el admin.
     private bool IsRoleWithCustomSidebar() => !permissions.Contains("cafe")
-        && (permissions.Contains("deposito") || permissions.Contains("oficina"));
+        && permissions.Contains("deposito") && !permissions.Contains("oficina");
 
     private async Task ToggleMenuEditMode()
     {
