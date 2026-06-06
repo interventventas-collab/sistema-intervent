@@ -220,6 +220,22 @@
             url.searchParams.set('_r', Date.now().toString());
             window.location.replace(url.toString());
         };
+
+        // 2026-06-05: Registra el atajo Ctrl+K (o Cmd+K en Mac) que abre el CommandPalette.
+        // MainLayout.razor llama a esta funcion al primer render, pasandole un DotNetObjectReference.
+        window.registerCommandPaletteShortcut = function (dotnetRef) {
+            window.__cmdPalRef = dotnetRef;
+            if (window.__cmdPalKeyBound) return;
+            window.__cmdPalKeyBound = true;
+            document.addEventListener('keydown', function (e) {
+                if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+                    e.preventDefault();
+                    if (window.__cmdPalRef) {
+                        window.__cmdPalRef.invokeMethodAsync('TriggerCommandPalette');
+                    }
+                }
+            });
+        };
     </script>
     <script>
         // Focusea un elemento por ID. Usado por la pantalla de Nueva Venta para

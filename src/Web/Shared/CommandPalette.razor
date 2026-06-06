@@ -1,0 +1,177 @@
+@*
+   2026-06-05: Buscador rapido global tipo "Command Palette" (Ctrl+K).
+   Modal flotante con busqueda en vivo de TODOS los items del menu.
+   Atajos: Ctrl+K abre. Esc cierra. Flechas y Enter navegan.
+   MainLayout llama Open() via @ref al recibir el atajo.
+*@
+
+@inject NavigationManager Navigation
+
+@if (isOpen)
+{
+    <div class="cmdpal-overlay" @onclick="Close">
+        <div class="cmdpal-panel" @onclick:stopPropagation="true">
+            <div class="cmdpal-input-wrap">
+                <span class="cmdpal-icon">🔍</span>
+                <input @ref="inputRef" class="cmdpal-input" @bind="query" @bind:event="oninput"
+                       @onkeydown="OnInputKey" placeholder="Buscar pantalla... (ej: cobranzas, productos, clientes)" />
+                <span class="cmdpal-hint">ESC cerrar</span>
+            </div>
+            <div class="cmdpal-results">
+                @{
+                    var resultados = Resultados;
+                }
+                @if (resultados.Count == 0 && !string.IsNullOrWhiteSpace(query))
+                {
+                    <div class="cmdpal-empty">No hay coincidencias para "<b>@query</b>"</div>
+                }
+                else if (resultados.Count == 0)
+                {
+                    <div class="cmdpal-empty">Empezá a tipear el nombre de la pantalla que querés abrir.</div>
+                }
+                else
+                {
+                    @for (int i = 0; i < resultados.Count; i++)
+                    {
+                        var idx = i;
+                        var r = resultados[i];
+                        var isSel = idx == selectedIdx;
+                        <div class="cmdpal-item @(isSel ? "cmdpal-item-sel" : "")"
+                             @onclick="@(() => Navigate(r.Href))"
+                             @onmouseenter="@(() => { selectedIdx = idx; })">
+                            <span class="cmdpal-item-icon">@r.Emoji</span>
+                            <span class="cmdpal-item-label">@r.Label</span>
+                            <span class="cmdpal-item-path">@r.Href</span>
+                            @if (isSel) { <span class="cmdpal-item-enter">↵</span> }
+                        </div>
+                    }
+                }
+            </div>
+            <div class="cmdpal-footer">
+                <span>↑ ↓ navegar</span>
+                <span>↵ ir</span>
+                <span>ESC cerrar</span>
+                <span class="cmdpal-footer-tip">💡 atajo: <b>Ctrl + K</b></span>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .cmdpal-overlay {
+        position: fixed; inset: 0; background: rgba(15, 23, 42, 0.65);
+        z-index: 9500; display: flex; align-items: flex-start; justify-content: center;
+        padding-top: 12vh; backdrop-filter: blur(4px);
+    }
+    .cmdpal-panel {
+        width: min(640px, 92vw); max-height: 70vh;
+        background: white; border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        display: flex; flex-direction: column; overflow: hidden;
+    }
+    .cmdpal-input-wrap {
+        display: flex; align-items: center; padding: 0.85rem 1rem;
+        border-bottom: 1px solid #e5e7eb; gap: 0.5rem;
+    }
+    .cmdpal-icon { font-size: 1.1rem; }
+    .cmdpal-input {
+        flex: 1; border: none; outline: none; font-size: 1.05rem;
+        background: transparent; color: #1f2937;
+    }
+    .cmdpal-hint { font-size: 0.7rem; color: #9ca3af; padding: 0.15rem 0.5rem; border: 1px solid #e5e7eb; border-radius: 4px; }
+    .cmdpal-results { overflow-y: auto; max-height: 50vh; padding: 0.35rem 0; }
+    .cmdpal-empty { padding: 1.2rem; text-align: center; color: #6b7280; font-size: 0.9rem; }
+    .cmdpal-item {
+        display: grid; grid-template-columns: 32px 1fr auto auto; align-items: center; gap: 0.55rem;
+        padding: 0.55rem 1rem; cursor: pointer; transition: background 0.05s;
+    }
+    .cmdpal-item-sel { background: #eff6ff; }
+    .cmdpal-item-icon { font-size: 1.2rem; text-align: center; }
+    .cmdpal-item-label { font-weight: 600; color: #1f2937; }
+    .cmdpal-item-path { font-size: 0.72rem; color: #9ca3af; font-family: monospace; margin-right: 0.5rem; }
+    .cmdpal-item-enter { color: #2563eb; font-weight: 800; font-size: 1.1rem; }
+    .cmdpal-footer {
+        display: flex; gap: 1rem; padding: 0.5rem 1rem; background: #f9fafb;
+        border-top: 1px solid #e5e7eb; font-size: 0.72rem; color: #6b7280;
+    }
+    .cmdpal-footer-tip { margin-left: auto; }
+    @@media (max-width: 600px) {
+        .cmdpal-overlay { padding-top: 4vh; }
+        .cmdpal-item-path { display: none; }
+        .cmdpal-footer { gap: 0.5rem; font-size: 0.65rem; }
+    }
+</style>
+
+@code {
+    [Parameter] public Dictionary<string, (string Emoji, string Label, string Href)> Catalog { get; set; } = new();
+
+    private bool isOpen = false;
+    private string query = "";
+    private int selectedIdx = 0;
+    private ElementReference inputRef;
+
+    private List<(string Emoji, string Label, string Href)> Resultados
+    {
+        get
+        {
+            if (Catalog.Count == 0) return new();
+            var q = (query ?? "").Trim().ToLowerInvariant();
+            var all = Catalog.Values
+                .Where(v => !string.IsNullOrWhiteSpace(v.Label))
+                .ToList();
+            if (string.IsNullOrEmpty(q))
+            {
+                return all.Take(10).ToList();
+            }
+            string norm(string s) => s.ToLowerInvariant()
+                .Replace("á","a").Replace("é","e").Replace("í","i").Replace("ó","o").Replace("ú","u").Replace("ñ","n");
+            var nq = norm(q);
+            return all
+                .Where(v => norm(v.Label).Contains(nq) || norm(v.Href).Contains(nq))
+                .OrderBy(v => {
+                    var idx = norm(v.Label).IndexOf(nq);
+                    return idx < 0 ? 100 : idx;
+                })
+                .ThenBy(v => v.Label.Length)
+                .Take(20)
+                .ToList();
+        }
+    }
+
+    public async Task OpenAsync()
+    {
+        isOpen = true;
+        query = "";
+        selectedIdx = 0;
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(50);
+        try { await inputRef.FocusAsync(); } catch { }
+    }
+
+    public void Close()
+    {
+        isOpen = false;
+        StateHasChanged();
+    }
+
+    public bool IsOpen => isOpen;
+
+    private void Navigate(string href)
+    {
+        isOpen = false;
+        Navigation.NavigateTo(href);
+    }
+
+    private void OnInputKey(KeyboardEventArgs e)
+    {
+        var n = Resultados.Count;
+        if (e.Key == "Escape") { Close(); }
+        else if (e.Key == "ArrowDown") { selectedIdx = (selectedIdx + 1) % Math.Max(1, n); }
+        else if (e.Key == "ArrowUp") { selectedIdx = (selectedIdx - 1 + n) % Math.Max(1, n); }
+        else if (e.Key == "Enter" && n > 0)
+        {
+            var i = Math.Clamp(selectedIdx, 0, n - 1);
+            var sel = Resultados[i];
+            if (!string.IsNullOrEmpty(sel.Href)) Navigate(sel.Href);
+        }
+    }
+}

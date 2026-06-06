@@ -678,6 +678,11 @@
             <button class="topbar-tool-btn" @onclick="TogglePostits"
                     title="Mis post-its (solo los tuyos)"
                     aria-label="Post-its">📝</button>
+            @* 2026-06-05: Buscador rapido Ctrl+K *@
+            <button class="topbar-tool-btn" @onclick="OpenCommandPalette"
+                    title="Buscar pantalla rápido (Ctrl + K)"
+                    aria-label="Buscar pantalla"
+                    style="font-size: 1rem;">🔍</button>
             <button class="topbar-hard-reload" @onclick="DoHardReload"
                     title="Forzar recarga (limpia el cache del navegador). Usalo si un cambio nuevo no aparece."
                     aria-label="Forzar recarga">
@@ -942,6 +947,9 @@
     </div>
 }
 
+@* 2026-06-05: Buscador rapido global (Ctrl+K) *@
+<CommandPalette @ref="commandPalette" Catalog="@MenuCatalog" />
+
 <ToastContainer />
 
 @* Asistente flotante en todas las pantallas (sin permiso especial: cualquier usuario logueado lo ve). *@
@@ -1131,6 +1139,21 @@
     {
         try { await JS.InvokeVoidAsync("hardReload"); }
         catch { /* si falla, no hay mucho que hacer — el usuario puede tirar F5 a mano */ }
+    }
+
+    // 2026-06-05: Command Palette (Ctrl+K)
+    private CommandPalette? commandPalette;
+    private DotNetObjectReference<MainLayout>? cmdPalRef;
+
+    private async Task OpenCommandPalette()
+    {
+        if (commandPalette is not null) await commandPalette.OpenAsync();
+    }
+
+    [JSInvokable]
+    public async Task TriggerCommandPalette()
+    {
+        await OpenCommandPalette();
     }
 
     /// <summary>Atajo del FAB "Nueva Venta": si ya estamos en /cafe/ventas, emitimos
@@ -1402,8 +1425,25 @@
         });
     }
 
+    private bool cmdPalHandlerRegistered = false;
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // 2026-06-05: registrar atajo Ctrl+K (o Cmd+K en Mac) para abrir el CommandPalette.
+        if (firstRender && !cmdPalHandlerRegistered)
+        {
+            cmdPalHandlerRegistered = true;
+            cmdPalRef ??= DotNetObjectReference.Create(this);
+            try
+            {
+                await JS.InvokeVoidAsync("registerCommandPaletteShortcut", cmdPalRef);
+            }
+            catch { /* navegador viejo o JS bloqueado */ }
+        }
+    }
+
     public void Dispose()
     {
+        try { cmdPalRef?.Dispose(); } catch { }
         SyncProgress.OnChange -= OnSyncProgressChanged;
         UploadProgress.OnChanged -= OnUploadProgressChanged;
         Operator.OnChange -= OnOperatorChanged;
