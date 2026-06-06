@@ -192,12 +192,16 @@ public class CafeCobranzasController : ControllerBase
         return Ok(otras);
     }
 
-    /// <summary>Lista cobranzas con filtros opcionales por cliente y rango de fechas.</summary>
+    /// <summary>Lista cobranzas con filtros opcionales por cliente y rango de fechas.
+    /// 2026-06-06: agregado parámetro `search` que filtra por nombre de cliente, snapshot
+    /// de la venta o número de recibo. Cuando viene search, el take se eleva para evitar
+    /// que cobranzas viejas queden fuera del corte de 200.</summary>
     [HttpGet]
     public async Task<IActionResult> List(
         [FromQuery] int? clienteId,
         [FromQuery] DateTime? desde,
         [FromQuery] DateTime? hasta,
+        [FromQuery] string? search = null,
         [FromQuery] int take = 200)
     {
         var q = _db.CafeCobranzas
@@ -207,6 +211,18 @@ public class CafeCobranzasController : ControllerBase
         if (clienteId.HasValue) q = q.Where(c => c.ClienteId == clienteId.Value);
         if (desde.HasValue) q = q.Where(c => c.Fecha >= desde.Value);
         if (hasta.HasValue) q = q.Where(c => c.Fecha <= hasta.Value);
+        // 2026-06-06: búsqueda libre por texto — busca en nombre cliente del catálogo,
+        // snapshot del nombre en la venta del primer comprobante, o número de recibo.
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim();
+            q = q.Where(c =>
+                (c.Cliente != null && c.Cliente.Nombre.Contains(s))
+                || c.Numero.Contains(s)
+                || c.Comprobantes.Any(cc => cc.Venta != null && cc.Venta.ClienteNombreSnapshot != null && cc.Venta.ClienteNombreSnapshot.Contains(s)));
+            // Cuando hay búsqueda, abrimos el corte para que cobranzas viejas no se pierdan.
+            if (take < 2000) take = 2000;
+        }
 
         var rows = await q.OrderByDescending(c => c.Fecha).Take(take)
             .Select(c => new

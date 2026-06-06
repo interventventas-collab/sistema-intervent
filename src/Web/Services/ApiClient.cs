@@ -3465,12 +3465,15 @@ public class ApiClient
     /// <summary>Lista de otras sucursales que comparten el mismo CUIT con el cliente dado.</summary>
     public async Task<List<SucursalMismoCuitDto>?> GetSucursalesMismoCuitAsync(int clienteId)
         => await GetAsync<List<SucursalMismoCuitDto>>($"/api/cafe/cobranzas/sucursales-mismo-cuit/{clienteId}");
-    public async Task<List<CobranzaListDto>?> GetCafeCobranzasAsync(int? clienteId = null, DateTime? desde = null, DateTime? hasta = null)
+    // 2026-06-06: agregado parámetro `search` para que el buscador de la pantalla pegue al servidor
+    // y encuentre cobranzas viejas que quedaron afuera del corte de 200.
+    public async Task<List<CobranzaListDto>?> GetCafeCobranzasAsync(int? clienteId = null, DateTime? desde = null, DateTime? hasta = null, string? search = null)
     {
         var qs = new List<string>();
         if (clienteId.HasValue) qs.Add($"clienteId={clienteId.Value}");
         if (desde.HasValue) qs.Add($"desde={desde.Value:o}");
         if (hasta.HasValue) qs.Add($"hasta={hasta.Value:o}");
+        if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
         var url = "/api/cafe/cobranzas" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
         return await GetAsync<List<CobranzaListDto>>(url);
     }

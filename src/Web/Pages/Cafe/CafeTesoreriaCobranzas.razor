@@ -35,8 +35,9 @@
             <div style="display: flex; flex-direction: column; gap: 0.15rem; flex: 1; min-width: 200px;">
                 <label style="font-size: 0.7rem; color: #6b7280; font-weight: 600;">Buscar</label>
                 <input class="form-input" style="padding: 0.3rem 0.5rem; font-size: 0.85rem;"
-                       @bind="filtroBuscar" @bind:event="oninput"
-                       placeholder="🔍 N° de recibo, cliente..." />
+                       value="@filtroBuscar"
+                       @oninput="OnFiltroBuscarInput"
+                       placeholder="🔍 N° de recibo, cliente (busca en TODA la base)..." />
             </div>
             <div style="display: flex; flex-direction: column; gap: 0.15rem; min-width: 130px;">
                 <label style="font-size: 0.7rem; color: #6b7280; font-weight: 600;">Estado</label>
@@ -744,9 +745,33 @@
     private async Task Load()
     {
         loading = true;
-        try { cobranzas = await Api.GetCafeCobranzasAsync() ?? new(); }
+        try
+        {
+            // 2026-06-06: si hay texto de búsqueda, lo mandamos al server (busca en TODA la base, no solo
+            // entre las últimas 200). Sin texto, trae las últimas 200 como siempre.
+            var search = string.IsNullOrWhiteSpace(filtroBuscar) ? null : filtroBuscar.Trim();
+            cobranzas = await Api.GetCafeCobranzasAsync(search: search) ?? new();
+        }
         catch { ToastService.Error("Error al cargar"); cobranzas = new(); }
         loading = false;
+    }
+
+    // 2026-06-06: debounce del buscador — espera 400ms tras la última tecla y dispara Load() al server.
+    private System.Threading.CancellationTokenSource? _debounceCts;
+    private async Task OnFiltroBuscarInput(ChangeEventArgs e)
+    {
+        filtroBuscar = e.Value?.ToString() ?? "";
+        _debounceCts?.Cancel();
+        _debounceCts = new System.Threading.CancellationTokenSource();
+        var token = _debounceCts.Token;
+        try
+        {
+            await Task.Delay(400, token);
+            if (token.IsCancellationRequested) return;
+            await Load();
+            StateHasChanged();
+        }
+        catch (TaskCanceledException) { /* el usuario sigue tipeando */ }
     }
 
     private void ShowNueva()
