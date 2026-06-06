@@ -268,6 +268,85 @@ button {
 }
 .topbar-cafe-grid > button { width: 100%; }
 
+/* 2026-06-06: boton + dropdown 'Empleados' en topbar (a la izquierda del grid cafe) */
+.topbar-empleados-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+}
+.topbar-empleados-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 0.8rem;
+  border-radius: 8px;
+  border: 1px solid #6d28d9;
+  background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+  color: white;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(109, 40, 217, 0.3);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.topbar-empleados-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(109, 40, 217, 0.4);
+}
+.topbar-empleados-btn.abierto {
+  background: linear-gradient(135deg, #6d28d9 0%, #5b21b6 100%);
+}
+.topbar-empleados-arrow {
+  font-size: 0.7rem;
+  margin-left: 0.1rem;
+  transition: transform 0.2s;
+}
+.topbar-empleados-btn.abierto .topbar-empleados-arrow { transform: rotate(180deg); }
+
+.topbar-empleados-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 220px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+  padding: 0.3rem;
+  z-index: 9500;
+  animation: empleadosDropdownIn 0.15s ease-out;
+}
+@keyframes empleadosDropdownIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.topbar-empleados-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: #1f2937;
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.topbar-empleados-item:hover {
+  background: #f3f4f6;
+  color: #6d28d9;
+}
+.topbar-empleados-item .ico { font-size: 1.05rem; flex: 0 0 1.5rem; text-align: center; }
+
+@media (max-width: 640px) {
+  .topbar-empleados-label { display: none; }
+  .topbar-empleados-btn { padding: 0.5rem 0.55rem; }
+}
+
 /* Boton primario "Nueva Venta" — destacado en verde con sombra */
 .fab-nueva-venta {
   display: inline-flex;

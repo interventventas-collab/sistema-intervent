@@ -659,6 +659,39 @@
             @* 2026-05-30: oficina también puede cargar ventas (igual que admin con permiso cafe). *@
             @if (HasPerm("cafe") || HasPerm("oficina"))
             {
+                @* 2026-06-06: boton EMPLEADOS con dropdown a la izquierda del grid de atajos cafe *@
+                <div class="topbar-empleados-wrap">
+                    <button class="topbar-empleados-btn @(showEmpleadosDropdown ? "abierto" : "")"
+                            @onclick="ToggleEmpleadosDropdown"
+                            title="Accesos rápidos a Empleados">
+                        <span style="font-size: 1.2rem;">👥</span>
+                        <span class="topbar-empleados-label">Empleados</span>
+                        <span class="topbar-empleados-arrow">▾</span>
+                    </button>
+                    @if (showEmpleadosDropdown)
+                    {
+                        <div class="topbar-empleados-menu" @onclick:stopPropagation="true">
+                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseEmpleados("/horas-extras"))">
+                                <span class="ico">🕐</span> Horario
+                            </button>
+                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseEmpleados("/viajes"))">
+                                <span class="ico">🚚</span> Viajes
+                            </button>
+                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseEmpleados("/nominas/empleados"))">
+                                <span class="ico">👤</span> Ficha empleados
+                            </button>
+                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseEmpleados("/nominas/panel"))">
+                                <span class="ico">💰</span> ¿Cuánto debo pagar?
+                            </button>
+                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseEmpleados("/nominas/liquidaciones"))">
+                                <span class="ico">📑</span> Liquidaciones
+                            </button>
+                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseEmpleados("/nominas"))">
+                                <span class="ico">📊</span> Inicio nóminas
+                            </button>
+                        </div>
+                    }
+                </div>
                 @* 2026-06-06: layout en GRID 2x2 — arriba "ver" (Ventas / Saldos), abajo "agregar" (+Nueva Venta / +Nueva Cobranza) *@
                 <div class="topbar-cafe-grid">
                     <button class="fab-cafe-link" @onclick="@(() => NavigateTo("/cafe/ventas"))"
@@ -1192,6 +1225,10 @@
     private bool showCompanyModal;
     private bool showCompanyAdminPasswordModal;
     private bool showCompanyNamesEditModal;
+    // 2026-06-06: dropdown atajos Empleados en topbar
+    private bool showEmpleadosDropdown;
+    private void ToggleEmpleadosDropdown() { showEmpleadosDropdown = !showEmpleadosDropdown; }
+    private void NavigateAndCloseEmpleados(string url) { showEmpleadosDropdown = false; NavigateTo(url); }
     private string companyAdminPassword = "";
     private string? companyAdminError;
     private Dictionary<string, string> companyNameEdits = new(StringComparer.OrdinalIgnoreCase);
