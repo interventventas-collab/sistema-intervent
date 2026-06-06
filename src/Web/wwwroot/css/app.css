@@ -4668,23 +4668,30 @@ textarea.form-input {
   padding: 0.4rem 0;
 }
 
-/* Items dentro del flyout — heredan estilos del nav-item pero con dark text */
+/* Items dentro del flyout — heredan estilos del nav-item pero con dark text.
+   Uso .sidebar-nav prefix para ganarle en especificidad a modern-overlay.css
+   que tiene reglas con color:white para hover del sidebar oscuro. */
+.sidebar-nav .nav-group-flyout-content .nav-item,
 .nav-group-flyout-content .nav-item {
   color: #1f2937 !important;
   padding: 0.55rem 1rem;
   font-size: 0.92rem;
 }
+.sidebar-nav .nav-group-flyout-content .nav-item:hover,
 .nav-group-flyout-content .nav-item:hover {
   background: #f3f4f6 !important;
   color: #1f2937 !important;
+  transform: none !important;
 }
+.sidebar-nav .nav-group-flyout-content .nav-item.active,
 .nav-group-flyout-content .nav-item.active {
   background: #dbeafe !important;
   color: #1e3a8a !important;
   font-weight: 700;
 }
+.sidebar-nav .nav-group-flyout-content .nav-icon,
 .nav-group-flyout-content .nav-icon {
-  color: #6b7280;
+  color: #6b7280 !important;
 }
 
 /* Sub-grupos dentro del flyout — siguen siendo acordeon vertical */
