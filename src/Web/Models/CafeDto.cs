@@ -1411,3 +1411,17 @@ public class ClienteSaldoPendienteDto
     /// <summary>Saldo de comprobantes tipo FA, FB, FC (con CAE, fiscales). Default 0.</summary>
     public decimal SaldoFactura { get; set; }
 }
+
+// 2026-06-06: ventas "ocasionales" (sin cliente del catálogo) con saldo pendiente.
+public class VentaOcasionalSaldoDto
+{
+    public int VentaId { get; set; }
+    public string Numero { get; set; } = "";
+    public DateTime Fecha { get; set; }
+    public string ClienteNombreSnapshot { get; set; } = "";
+    public string? TipoComprobante { get; set; }
+    public decimal Total { get; set; }
+    public decimal Pagado { get; set; }
+    public decimal Saldo { get; set; }
+    public int DiasMora { get; set; }
+}

@@ -153,6 +153,16 @@
                     <p class="sub">@vencidos60.Count cliente@(vencidos60.Count == 1 ? "" : "s") muy atrasado@(vencidos60.Count == 1 ? "" : "s")</p>
                 </div>
             }
+            @* 2026-06-06: tarjeta de ventas ocasionales (sin cliente del catalogo) *@
+            @if (ocasionales is not null && ocasionales.Count > 0)
+            {
+                var totalOca = ocasionales.Sum(o => o.Saldo);
+                <div class="panel-resumen-card" style="background: linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%); border-color: #7c3aed;">
+                    <div class="label" style="color: #5b21b6;">🎫 Ocasionales</div>
+                    <p class="valor" style="color: #5b21b6;">$@FormatMoney(totalOca)</p>
+                    <p class="sub" style="color: #6d28d9;">@ocasionales.Count venta@(ocasionales.Count == 1 ? "" : "s") sin cliente del catálogo</p>
+                </div>
+            }
         </div>
 
         <div class="filtros">
@@ -253,6 +263,61 @@
             </div>
         }
     }
+
+    @* ════════ 2026-06-06: Sección Ventas Ocasionales (sin cliente del catálogo) ════════ *@
+    @if (ocasionales is not null && ocasionales.Count > 0)
+    {
+        var totalOcasionales = ocasionales.Sum(o => o.Saldo);
+        <div style="margin-top: 2rem; padding-top: 1.2rem; border-top: 2px dashed #d1d5db;">
+            <div style="background: linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%); border-radius: 8px; padding: 0.8rem 1rem; margin-bottom: 0.7rem;">
+                <h2 style="margin: 0; color: #5b21b6; font-size: 1.1rem;">🎫 Ventas ocasionales (sin cliente del catálogo)</h2>
+                <p style="margin: 0.2rem 0 0; font-size: 0.85rem; color: #6d28d9;">
+                    @ocasionales.Count venta@(ocasionales.Count == 1 ? "" : "s") — Total $@FormatMoney(totalOcasionales)
+                </p>
+            </div>
+            @foreach (var o in ocasionales)
+            {
+                var (colorClsO, badgeTxtO, badgeClsO) = o.DiasMora >= 60
+                    ? ("rojo", $"🔴 {o.DiasMora} días", "rojo")
+                    : o.DiasMora >= 30
+                        ? ("naranja", $"🟠 {o.DiasMora} días", "naranja")
+                        : ("amarillo", $"🟡 {o.DiasMora} días", "amarillo");
+                <div class="cliente-card @colorClsO">
+                    <div class="cliente-header">
+                        <div style="flex: 1; min-width: 0;">
+                            <p class="cliente-nombre">🎫 @o.ClienteNombreSnapshot</p>
+                            <div class="cliente-tipo">
+                                <span>📄 @o.Numero</span>
+                                @if (!string.IsNullOrEmpty(o.TipoComprobante))
+                                {
+                                    <span> · @o.TipoComprobante</span>
+                                }
+                                <span style="margin-left: 0.4rem; background: #ede9fe; color: #5b21b6; padding: 0.05rem 0.4rem; border-radius: 4px; font-weight: 700;">OCASIONAL</span>
+                            </div>
+                        </div>
+                        <span class="cliente-badge @badgeClsO">@badgeTxtO</span>
+                    </div>
+                    <div class="cliente-body">
+                        <div class="cliente-total">
+                            <span class="label">SALDO</span>
+                            <span class="monto">$@FormatMoney(o.Saldo)</span>
+                        </div>
+                        <div class="cliente-meta">
+                            <span>📅 @o.Fecha.ToString("dd/MM/yyyy")</span>
+                            <span>· 💵 Total $@FormatMoney(o.Total)</span>
+                            @if (o.Pagado > 0)
+                            {
+                                <span>· ✓ Pagado $@FormatMoney(o.Pagado)</span>
+                            }
+                        </div>
+                        <div class="cliente-actions">
+                            <a href="/cafe/ventas?_r=@o.VentaId" class="btn-cobrar" style="background: #7c3aed;">💰 Cobrar</a>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
 </div>
 
 @* ════════ Modal compartir link público ════════ *@
@@ -294,6 +359,8 @@
 
 @code {
     private List<ClienteSaldoPendienteDto>? saldos;
+    // 2026-06-06: ventas ocasionales (sin cliente del catálogo) con saldo
+    private List<VentaOcasionalSaldoDto>? ocasionales;
     private string busqueda = "";
     private string orden = "saldo";
     private string filtroTipo = "todos";
@@ -362,7 +429,12 @@
 
     private async Task Cargar()
     {
-        try { saldos = await Api.GetCafeClientesSaldosPendientesAsync() ?? new(); }
+        try
+        {
+            saldos = await Api.GetCafeClientesSaldosPendientesAsync() ?? new();
+            // 2026-06-06: cargar también las ventas ocasionales con saldo (sin cliente del catálogo)
+            ocasionales = await Api.GetCafeVentasOcasionalesSaldosAsync() ?? new();
+        }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
     }
 

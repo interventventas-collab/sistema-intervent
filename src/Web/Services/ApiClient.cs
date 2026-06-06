@@ -1062,6 +1062,10 @@ public class ApiClient
     public async Task<List<ClienteSaldoPendienteDto>?> GetCafeClientesSaldosPendientesAsync()
         => await GetAsync<List<ClienteSaldoPendienteDto>>("/api/cafe/clientes/saldos-pendientes");
 
+    /// <summary>2026-06-06: ventas ocasionales (sin cliente del catálogo) con saldo pendiente.</summary>
+    public async Task<List<VentaOcasionalSaldoDto>?> GetCafeVentasOcasionalesSaldosAsync()
+        => await GetAsync<List<VentaOcasionalSaldoDto>>("/api/cafe/clientes/saldos-ocasionales");
+
     /// <summary>Token publico del panel de saldos de clientes — para compartir link sin login.</summary>
     public async Task<string?> GetCafeClientesPanelPublicTokenAsync()
     {

@@ -315,6 +315,18 @@ public class CafeClientesController : ControllerBase
         /// <summary>Saldo de comprobantes tipo FA, FB, FC (con CAE de ARCA, fiscales). Default 0 si no hay.</summary>
         decimal SaldoFactura = 0m);
 
+    // 2026-06-06: ventas ocasionales (sin cliente del catálogo) con saldo pendiente.
+    public record VentaOcasionalSaldoDto(
+        int VentaId,
+        string Numero,
+        DateTime Fecha,
+        string ClienteNombreSnapshot,
+        string? TipoComprobante,
+        decimal Total,
+        decimal Pagado,
+        decimal Saldo,
+        int DiasMora);
+
     /// <summary>Lista TODOS los clientes con saldo pendiente (deudores), agrupados.
     /// Saldo pendiente = SUM(ventas emitidas).Total - SUM(cobranzas vigentes asignadas a esas ventas).
     /// Las ventas creadas como "saldo de migración" del sistema viejo se incluyen igual (son ventas tipo X).
@@ -440,6 +452,60 @@ public class CafeClientesController : ControllerBase
                 );
             })
             .OrderBy(c => c.FechaMasAntigua) // más antigua primero (mayor urgencia)
+            .ToList();
+        return Ok(result);
+    }
+
+    /// <summary>2026-06-06: Lista las ventas "ocasionales" (sin cliente del catálogo) con saldo pendiente.
+    /// Estas ventas se cargan sin cliente para no llenar el catálogo con clientes de una sola compra,
+    /// pero igual hay que poder cobrarlas y verlas como deuda.
+    /// Saldo = Total venta - cobranzas vigentes imputadas a esa venta.</summary>
+    [HttpGet("saldos-ocasionales")]
+    public async Task<IActionResult> GetSaldosOcasionales()
+    {
+        // Ventas sin cliente del catálogo, no anuladas, con total > 0
+        var ventas = await _db.CafeVentas
+            .Where(v => v.Estado != "anulado"
+                     && v.ClienteId == null
+                     && v.Total > 0)
+            .Select(v => new
+            {
+                v.Id, v.Numero, v.Fecha, v.ClienteNombreSnapshot,
+                v.TipoComprobante, v.Total, v.ArcaImpTotal
+            })
+            .ToListAsync();
+        if (ventas.Count == 0) return Ok(new List<VentaOcasionalSaldoDto>());
+
+        var ventaIds = ventas.Select(v => v.Id).ToList();
+        var pagados = await _db.CafeCobranzasComprobantes
+            .Where(c => c.VentaId != null && ventaIds.Contains(c.VentaId!.Value)
+                     && c.Cobranza!.Estado == "VIGENTE")
+            .GroupBy(c => c.VentaId!.Value)
+            .Select(g => new { VentaId = g.Key, Pagado = g.Sum(x => x.Importe) })
+            .ToListAsync();
+        var pagadosDict = pagados.ToDictionary(p => p.VentaId, p => p.Pagado);
+
+        var hoy = DateTime.UtcNow.AddHours(-3).Date;
+        var result = ventas
+            .Select(v =>
+            {
+                // Monto real cobrable: ArcaImpTotal si la venta tiene CAE, sino Total.
+                var totalCobrar = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
+                var pagado = pagadosDict.TryGetValue(v.Id, out var p) ? p : 0m;
+                var saldo = totalCobrar - pagado;
+                return new VentaOcasionalSaldoDto(
+                    v.Id,
+                    v.Numero ?? $"#{v.Id}",
+                    v.Fecha,
+                    string.IsNullOrWhiteSpace(v.ClienteNombreSnapshot) ? "(sin nombre)" : v.ClienteNombreSnapshot,
+                    v.TipoComprobante,
+                    totalCobrar,
+                    pagado,
+                    saldo,
+                    (int)(hoy - v.Fecha.Date).TotalDays);
+            })
+            .Where(x => x.Saldo > 0.50m) // mismo umbral que el panel normal
+            .OrderBy(x => x.Fecha) // más antigua primero (mayor urgencia)
             .ToList();
         return Ok(result);
     }
