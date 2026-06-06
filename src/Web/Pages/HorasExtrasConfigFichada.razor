@@ -3,10 +3,15 @@
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject OperatorService Operator
+@inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <PageTitle>Configuración Fichada — Modo Nuevo</PageTitle>
 
-<div class="container-fluid" style="max-width: 800px; padding: 1rem;">
+@* 2026-06-06: layout 2 columnas — config a la izquierda, QR grande a la derecha *@
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 1.5rem; padding: 1rem; max-width: 1300px; margin: 0 auto;">
+
+<div style="min-width: 0;">
     <h2 style="margin: 0 0 0.5rem;">🔒 Configuración de Fichada</h2>
     <p style="color: #6b7280; font-size: 0.9rem; margin-bottom: 1.5rem;">
         Piloto del modo nuevo de fichada: bloqueo por WiFi del negocio + log de GPS.
@@ -132,10 +137,56 @@
     }
 </div>
 
+@* ════════ 2026-06-06: Panel QR a la derecha — para que los empleados escaneen y abran la app de fichaje ════════ *@
+<aside style="position: sticky; top: 1rem; align-self: start; background: white; border: 2px solid #3b82f6; border-radius: 12px; padding: 1.2rem 1rem; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15); text-align: center;">
+    <div style="font-size: 1.05rem; font-weight: 700; color: #1d4ed8; margin-bottom: 0.4rem;">
+        📱 App de Fichaje
+    </div>
+    <div style="font-size: 0.78rem; color: #6b7280; margin-bottom: 0.8rem; line-height: 1.3;">
+        Escanealo con la cámara del celu para abrir el fichador
+    </div>
+    <div style="background: white; padding: 0.5rem; border: 1px solid #e5e7eb; border-radius: 8px; display: inline-block;">
+        <img src="@QrFichadorUrl" alt="QR Fichador" style="width: 280px; height: 280px; display: block;" />
+    </div>
+    <div style="margin-top: 0.7rem; font-size: 0.72rem; color: #9ca3af; word-break: break-all; padding: 0 0.3rem;">
+        @FichadorUrl
+    </div>
+    <div style="margin-top: 0.7rem; display: flex; gap: 0.4rem; justify-content: center; flex-wrap: wrap;">
+        <button class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.4rem 0.7rem;"
+                @onclick="CopiarLink">
+            📋 Copiar link
+        </button>
+        <a href="@FichadorUrl" target="_blank" class="btn btn-primary" style="font-size: 0.75rem; padding: 0.4rem 0.7rem; text-decoration: none;">
+            🔗 Abrir
+        </a>
+    </div>
+    <div style="margin-top: 0.9rem; padding: 0.6rem; background: #eff6ff; border-radius: 6px; font-size: 0.72rem; color: #1e40af; text-align: left; line-height: 1.4;">
+        <strong>💡 Cómo instalar como app:</strong><br/>
+        <strong>iPhone (Safari)</strong>: Compartir → "Agregar a inicio"<br/>
+        <strong>Android (Chrome)</strong>: ⋮ → "Instalar app" o "Agregar a inicio"
+    </div>
+</aside>
+
+</div>
+
 @code {
     private ApiClient.ConfigFichadaDto? cfg;
     private bool cargando = true;
     private bool guardando;
+    // 2026-06-06: URL del fichador + QR (qrserver.com) para que los empleados escaneen
+    private string FichadorUrl => $"{Nav.BaseUri.TrimEnd('/')}/fichador";
+    private string QrFichadorUrl => $"https://api.qrserver.com/v1/create-qr-code/?size=400x400&margin=10&data={Uri.EscapeDataString(FichadorUrl)}";
+
+    private async Task CopiarLink()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", FichadorUrl);
+            ToastService.Success("Link copiado ✓");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
     // Estado mutable local (para los inputs). Se sincroniza con cfg al cargar y al guardar.
     private Dictionary<string, object?> changes = new();
 
