@@ -659,6 +659,13 @@
             @* 2026-05-30: oficina también puede cargar ventas (igual que admin con permiso cafe). *@
             @if (HasPerm("cafe") || HasPerm("oficina"))
             {
+                @* 2026-06-06: boton PREPARACION DE PEDIDOS — atajo directo a la pantalla *@
+                <button class="topbar-preparacion-btn"
+                        @onclick="@(() => NavigateTo("/cafe/preparacion"))"
+                        title="Imprimir pedidos / preparación de pedidos">
+                    <span style="font-size: 1.2rem;">📦</span>
+                    <span class="topbar-preparacion-label">Preparación<br/>de pedidos</span>
+                </button>
                 @* 2026-06-06: boton EMPLEADOS con dropdown a la izquierda del grid de atajos cafe *@
                 <div class="topbar-empleados-wrap">
                     <button class="topbar-empleados-btn @(showEmpleadosDropdown ? "abierto" : "")"

@@ -268,6 +268,33 @@ button {
 }
 .topbar-cafe-grid > button { width: 100%; }
 
+/* 2026-06-06: boton 'Preparacion de pedidos' en topbar (a la izquierda de Empleados) */
+.topbar-preparacion-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid #1d4ed8;
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  color: white;
+  font-weight: 600;
+  font-size: 0.8rem;
+  line-height: 1.05;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(29, 78, 216, 0.3);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.topbar-preparacion-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(29, 78, 216, 0.4);
+}
+.topbar-preparacion-label { text-align: left; }
+@media (max-width: 640px) {
+  .topbar-preparacion-label { display: none; }
+  .topbar-preparacion-btn { padding: 0.5rem 0.55rem; }
+}
+
 /* 2026-06-06: boton + dropdown 'Empleados' en topbar (a la izquierda del grid cafe) */
 .topbar-empleados-wrap {
   position: relative;
