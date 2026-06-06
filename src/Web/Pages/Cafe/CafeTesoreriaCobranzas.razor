@@ -631,6 +631,8 @@
     /// <summary>Si vino desde Cobranzas pendientes (repartidor cargo desde QR), precargamos
     /// la cobranza con efectivo + importe. Al guardar vinculamos la pendiente.</summary>
     [Parameter, SupplyParameterFromQuery(Name = "pendienteId")] public int? PrePendienteId { get; set; }
+    // 2026-06-06: abre el modal de Nueva Cobranza vacío (atajo desde topbar)
+    [Parameter, SupplyParameterFromQuery(Name = "nueva")] public int? PreNueva { get; set; }
     private CobranzaPendienteDto? pendienteOrigen;
     // Movimientos del banco asociados al cliente actual que aun no se usaron en cobranza.
     private List<MovimientoDisponibleDto> movsBancoDisponibles = new();
@@ -669,6 +671,12 @@
         clientes = await Api.GetCafeClientesAsync() ?? new();
         cajas = await Api.GetCafeCajasAsync() ?? new();
         await Load();
+        // 2026-06-06: atajo desde topbar — ?nueva=1 abre el modal vacío para elegir cliente
+        if (PreNueva.HasValue && PreNueva.Value == 1 && (!PreClienteId.HasValue || PreClienteId.Value <= 0))
+        {
+            ShowNueva();
+            return;
+        }
         // Atajo desde otra pantalla: si vino con ?cliente=X o ?cliente=X&venta=Y, abre el modal precargado
         if (PreClienteId.HasValue && PreClienteId.Value > 0)
         {
