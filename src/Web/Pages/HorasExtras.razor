@@ -390,7 +390,8 @@
                             </td></tr>
                         <tr><td style="padding:0.4rem 0.6rem 0.4rem 0; color:#6b7280; font-weight:600;">Trabajadas:</td>
                             <td style="padding:0.4rem 0; font-weight:700; color:#1d4ed8;">@registroParaBorrar.HorasTrabajadas.ToString("0.##") h</td></tr>
-                        @if (registroParaBorrar.Cantidad > 0)
+                        @* 2026-06-06: solo mostrar "Extras cargadas" si hay horario marcado (sino HorasTrabajadas ya viene de Cantidad y duplicaría) *@
+                        @if (registroParaBorrar.Cantidad > 0 && !string.IsNullOrEmpty(registroParaBorrar.HoraEntrada) && !string.IsNullOrEmpty(registroParaBorrar.HoraSalida))
                         {
                             <tr><td style="padding:0.4rem 0.6rem 0.4rem 0; color:#6b7280; font-weight:600;">Extras cargadas:</td>
                                 <td style="padding:0.4rem 0; font-weight:700; color:#16a34a;">+@registroParaBorrar.Cantidad.ToString("0.##") h</td></tr>

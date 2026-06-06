@@ -441,7 +441,11 @@ public class HorasExtrasController : ControllerBase
     /// Si falta alguna, devuelve 0. Si la salida es antes que la entrada (cruzo medianoche), suma 24.</summary>
     private static decimal HorasTrabajadas(HorasExtrasRegistro r)
     {
-        if (!r.HoraEntrada.HasValue || !r.HoraSalida.HasValue) return 0m;
+        // 2026-06-06: si no hay horario marcado pero hay carga manual (Cantidad > 0),
+        // tratamos Cantidad como horas trabajadas del día. La "Carga manual" desde la UI
+        // guarda en este campo cuando el empleado no fichó (ej: lunes que no fichó pero
+        // el admin le pone 12.5h manualmente).
+        if (!r.HoraEntrada.HasValue || !r.HoraSalida.HasValue) return r.Cantidad;
         var dur = r.HoraSalida.Value - r.HoraEntrada.Value;
         if (dur.TotalHours < 0) dur += TimeSpan.FromHours(24);
         return Math.Round((decimal)dur.TotalHours, 2, MidpointRounding.AwayFromZero);
