@@ -366,8 +366,21 @@ public class CafeCobranzasController : ControllerBase
         }
         await _db.SaveChangesAsync();
 
+        // 2026-06-06: cliente puede ser null (venta ocasional). Usamos el snapshot de la venta para el audit log.
+        var clienteAudit = cliente?.Nombre;
+        if (clienteAudit is null)
+        {
+            var ventaIdRef = req.Comprobantes.FirstOrDefault(c => c.VentaId.HasValue)?.VentaId;
+            if (ventaIdRef.HasValue)
+            {
+                var snap = await _db.CafeVentas.Where(v => v.Id == ventaIdRef.Value)
+                    .Select(v => v.ClienteNombreSnapshot).FirstOrDefaultAsync();
+                clienteAudit = string.IsNullOrWhiteSpace(snap) ? "(ocasional sin nombre)" : $"{snap} (ocasional)";
+            }
+            else clienteAudit = "(ocasional)";
+        }
         await _audit.LogAsync("CafeCobranza", cobranza.Id.ToString(), "CREATE",
-            $"Cobranza {numero} para cliente {cliente.Nombre}, total ${sumMedios:N2}");
+            $"Cobranza {numero} para cliente {clienteAudit}, total ${sumMedios:N2}");
 
         // Sincronizar flag IsPaid de las ventas imputadas (TRUE si saldo <= 0)
         await SincronizarIsPaidAsync(req.Comprobantes.Where(c => c.VentaId.HasValue).Select(c => c.VentaId!.Value).ToList());
