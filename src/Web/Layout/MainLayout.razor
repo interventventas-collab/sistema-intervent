@@ -350,8 +350,7 @@
                                  IsActive="@IsActive("/cafe/cobranzas-pendientes")" OnClick="@(() => NavigateTo("/cafe/cobranzas-pendientes"))" />
                         <NavItem Href="/cafe/arqueo-repartidor" Label="🧾 Arqueo repartidor" Icon="@SvgIcons.Database"
                                  IsActive="@IsActive("/cafe/arqueo-repartidor")" OnClick="@(() => NavigateTo("/cafe/arqueo-repartidor"))" />
-                        <NavItem Href="/cafe/repartidores" Label="🚚 Repartidores" Icon="@SvgIcons.Users"
-                                 IsActive="@IsActive("/cafe/repartidores")" OnClick="@(() => NavigateTo("/cafe/repartidores"))" />
+                        @* 2026-06-06: Repartidores movido a grupo Empleados (mas abajo) *@
                     </NavGroup>
                 }
 
@@ -369,13 +368,16 @@
                     }
                 </NavGroup>
 
-                @* ───────── 6. EMPLEADOS (unificado Personal + Nóminas 2026-06-03) ───────── *@
+                @* ───────── 6. EMPLEADOS (unificado Personal + Nóminas 2026-06-03) ─────────
+                   2026-06-06: Repartidores movido aca desde el grupo Tesoreria *@
                 <NavGroup Label="👥 Empleados" Icon="@SvgIcons.Users" FlyoutMode="true"
-                          HasActiveChild="@(IsActive("/horas-extras") || IsActive("/viajes") || IsActive("/nominas") || IsActive("/nominas/empleados") || IsActive("/nominas/liquidaciones") || IsActive("/nominas/panel"))">
+                          HasActiveChild="@(IsActive("/horas-extras") || IsActive("/viajes") || IsActive("/cafe/repartidores") || IsActive("/nominas") || IsActive("/nominas/empleados") || IsActive("/nominas/liquidaciones") || IsActive("/nominas/panel"))">
                     <NavItem Href="/horas-extras" Label="🕐 Horario" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/horas-extras")" OnClick="@(() => NavigateTo("/horas-extras"))" />
                     <NavItem Href="/viajes" Label="🚚 Viajes" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/viajes")" OnClick="@(() => NavigateTo("/viajes"))" />
+                    <NavItem Href="/cafe/repartidores" Label="🚚 Repartidores" Icon="@SvgIcons.Users"
+                             IsActive="@IsActive("/cafe/repartidores")" OnClick="@(() => NavigateTo("/cafe/repartidores"))" />
                     @if (HasPerm("nominas"))
                     {
                         <NavItem Href="/nominas/empleados" Label="👤 Ficha empleados" Icon="@SvgIcons.Users"
@@ -683,6 +685,9 @@
                             </button>
                             <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseEmpleados("/viajes"))">
                                 <span class="ico">🚚</span> Viajes
+                            </button>
+                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseEmpleados("/cafe/repartidores"))">
+                                <span class="ico">🚚</span> Repartidores
                             </button>
                             <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseEmpleados("/nominas/empleados"))">
                                 <span class="ico">👤</span> Ficha empleados
