@@ -659,27 +659,29 @@
             @* 2026-05-30: oficina también puede cargar ventas (igual que admin con permiso cafe). *@
             @if (HasPerm("cafe") || HasPerm("oficina"))
             {
-                <div class="topbar-cafe-stack">
+                @* 2026-06-06: layout en GRID 2x2 — arriba "ver" (Ventas / Saldos), abajo "agregar" (+Nueva Venta / +Nueva Cobranza) *@
+                <div class="topbar-cafe-grid">
+                    <button class="fab-cafe-link" @onclick="@(() => NavigateTo("/cafe/ventas"))"
+                            title="Ver listado de ventas">
+                        📋 Ventas
+                    </button>
+                    <button class="fab-cafe-link" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; border-color: #b45309;"
+                            @onclick="@(() => NavigateTo("/cafe/clientes/panel-deudas"))"
+                            title="Ver saldos pendientes — ¿Quién me debe?">
+                        💰 Saldos
+                    </button>
                     <button class="fab-nueva-venta" @onclick="OpenNuevaVentaShortcut"
                             title="Cargar una venta nueva (atajo)"
                             aria-label="Nueva venta">
                         <span class="fab-nueva-venta-plus">+</span>
                         <span class="fab-nueva-venta-label">Nueva Venta</span>
                     </button>
-                    <button class="fab-cafe-link" @onclick="@(() => NavigateTo("/cafe/ventas"))"
-                            title="Ver listado de ventas">
-                        📋 Ventas
-                    </button>
-                    @* 2026-06-06: 2 atajos nuevos pedidos por Osmar — Quien me debe + Nueva Cobranza *@
-                    <button class="fab-cafe-link" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; border-color: #b45309;"
-                            @onclick="@(() => NavigateTo("/cafe/clientes/panel-deudas"))"
-                            title="Ver el panel de saldos pendientes de los clientes">
-                        💰 Quién me debe
-                    </button>
-                    <button class="fab-cafe-link" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border-color: #047857;"
+                    <button class="fab-nueva-venta" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);"
                             @onclick="@(() => NavigateTo("/cafe/tesoreria/cobranzas?nueva=1"))"
-                            title="Cargar una cobranza nueva (atajo)">
-                        + Nueva Cobranza
+                            title="Cargar una cobranza nueva (atajo)"
+                            aria-label="Nueva cobranza">
+                        <span class="fab-nueva-venta-plus">+</span>
+                        <span class="fab-nueva-venta-label">Nueva Cobranza</span>
                     </button>
                 </div>
             }

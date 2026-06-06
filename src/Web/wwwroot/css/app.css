@@ -259,6 +259,15 @@ button {
 }
 .topbar-cafe-stack > button { width: 100%; }
 
+/* 2026-06-06: grid 2x2 para 4 atajos rapidos del cafe — Ventas/Saldos arriba, +NuevaVenta/+NuevaCobranza abajo */
+.topbar-cafe-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.25rem;
+  align-items: stretch;
+}
+.topbar-cafe-grid > button { width: 100%; }
+
 /* Boton primario "Nueva Venta" — destacado en verde con sombra */
 .fab-nueva-venta {
   display: inline-flex;
