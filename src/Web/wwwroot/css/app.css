@@ -4588,3 +4588,141 @@ textarea.form-input {
 .venta-totals-row strong {
     font-weight: 700;
 }
+
+/* ─── 2026-06-05: Modo Flyout para NavGroup (expansion a la derecha) ─── */
+/* Cuando un grupo top-level del sidebar tiene FlyoutMode=true, sus hijos
+   se muestran en un panel absoluto a la derecha del sidebar en lugar
+   de expandirse hacia abajo (acordeon). Patron Contabilium / Holded / SAP. */
+
+.nav-group-flyout {
+  position: relative;
+}
+
+/* Overlay semi-transparente que cubre toda la pantalla detras del panel,
+   para que al hacer click afuera se cierre. */
+.nav-group-flyout-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.18);
+  z-index: 1100;
+}
+
+/* El panel propiamente dicho — aparece a la derecha del sidebar */
+.nav-group-flyout-panel {
+  position: fixed;
+  top: 0;
+  left: var(--sidebar-width, 260px);
+  bottom: 0;
+  width: 320px;
+  max-width: calc(100vw - var(--sidebar-width, 260px));
+  background: white;
+  color: #1f2937;
+  box-shadow: 4px 0 20px rgba(0, 0, 0, 0.18);
+  z-index: 1110;
+  display: flex;
+  flex-direction: column;
+  animation: navFlyoutIn 0.18s ease-out;
+}
+
+@keyframes navFlyoutIn {
+  from { transform: translateX(-10px); opacity: 0; }
+  to   { transform: translateX(0);     opacity: 1; }
+}
+
+.nav-group-flyout-header {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.85rem 1rem;
+  background: linear-gradient(135deg, #0f172a, #1e3a8a);
+  color: white;
+  font-weight: 700;
+  font-size: 0.95rem;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.nav-group-flyout-header .nav-icon {
+  width: 22px;
+  height: 22px;
+  color: #fbbf24;
+}
+
+.nav-group-flyout-close {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: white;
+  font-size: 1.6rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.25rem;
+  border-radius: 4px;
+}
+.nav-group-flyout-close:hover {
+  background: rgba(255,255,255,0.12);
+}
+
+.nav-group-flyout-content {
+  overflow-y: auto;
+  flex: 1;
+  padding: 0.4rem 0;
+}
+
+/* Items dentro del flyout — heredan estilos del nav-item pero con dark text */
+.nav-group-flyout-content .nav-item {
+  color: #1f2937 !important;
+  padding: 0.55rem 1rem;
+  font-size: 0.92rem;
+}
+.nav-group-flyout-content .nav-item:hover {
+  background: #f3f4f6 !important;
+  color: #1f2937 !important;
+}
+.nav-group-flyout-content .nav-item.active {
+  background: #dbeafe !important;
+  color: #1e3a8a !important;
+  font-weight: 700;
+}
+.nav-group-flyout-content .nav-icon {
+  color: #6b7280;
+}
+
+/* Sub-grupos dentro del flyout — siguen siendo acordeon vertical */
+.nav-group-flyout-content .nav-group .nav-group-header {
+  color: #1f2937 !important;
+  padding: 0.5rem 1rem;
+  font-weight: 700;
+  background: #f9fafb;
+  border-bottom: 1px solid #f3f4f6;
+}
+.nav-group-flyout-content .nav-group .nav-group-header:hover {
+  background: #f3f4f6 !important;
+}
+.nav-group-flyout-content .nav-group-children .nav-item {
+  padding-left: 2rem;
+}
+
+/* Indicador "abierto" del header en el sidebar */
+.nav-group-flyout.expanded > .nav-group-header {
+  background: rgba(251, 191, 36, 0.12) !important;
+  color: #fbbf24 !important;
+}
+.nav-group-flyout.expanded > .nav-group-header .nav-icon {
+  color: #fbbf24 !important;
+}
+.nav-group-flyout.expanded > .nav-group-header .nav-group-arrow svg {
+  transform: rotate(0deg);
+}
+
+/* En mobile el panel ocupa casi toda la pantalla */
+@media (max-width: 768px) {
+  .nav-group-flyout-panel {
+    left: 0;
+    width: 100vw;
+    max-width: 100vw;
+    z-index: 9999;
+  }
+  .nav-group-flyout-overlay {
+    z-index: 9998;
+  }
+}

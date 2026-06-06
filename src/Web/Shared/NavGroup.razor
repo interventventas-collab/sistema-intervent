@@ -1,15 +1,50 @@
-<div class="nav-group @(IsExpanded ? "expanded" : "") @(HasActiveChild ? "has-active" : "") @(Highlight ? "nav-group-highlight" : "")">
-    <button class="nav-group-header" @onclick="Toggle">
-        <span class="nav-icon">@Icon</span>
-        <span class="nav-label">@Label</span>
-        <span class="nav-group-arrow">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-        </span>
-    </button>
-    <div class="nav-group-children" style="@(IsExpanded ? "" : "display:none")">
-        @ChildContent
+@implements IDisposable
+
+@if (FlyoutMode)
+{
+    @* 2026-06-05: modo flyout — los hijos se abren en un panel absoluto a la derecha
+       del sidebar en lugar de expandirse hacia abajo. Solo UN grupo flyout puede estar
+       abierto a la vez. *@
+    <div class="nav-group nav-group-flyout @(IsExpanded ? "expanded" : "") @(HasActiveChild ? "has-active" : "") @(Highlight ? "nav-group-highlight" : "")">
+        <button class="nav-group-header" @onclick="ToggleFlyout">
+            <span class="nav-icon">@Icon</span>
+            <span class="nav-label">@Label</span>
+            <span class="nav-group-arrow">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </span>
+        </button>
+        @if (IsExpanded)
+        {
+            <div class="nav-group-flyout-overlay" @onclick="CloseFlyout" @onclick:stopPropagation="true"></div>
+            <div class="nav-group-flyout-panel" @onclick:stopPropagation="true">
+                <div class="nav-group-flyout-header">
+                    <span class="nav-icon">@Icon</span>
+                    <span>@Label</span>
+                    <button class="nav-group-flyout-close" @onclick="CloseFlyout" title="Cerrar">×</button>
+                </div>
+                <div class="nav-group-flyout-content" @onclick="OnContentClick">
+                    @ChildContent
+                </div>
+            </div>
+        }
     </div>
-</div>
+}
+else
+{
+    @* Modo clasico — acordeon vertical (hijos debajo del header) *@
+    <div class="nav-group @(IsExpanded ? "expanded" : "") @(HasActiveChild ? "has-active" : "") @(Highlight ? "nav-group-highlight" : "")">
+        <button class="nav-group-header" @onclick="Toggle">
+            <span class="nav-icon">@Icon</span>
+            <span class="nav-label">@Label</span>
+            <span class="nav-group-arrow">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </span>
+        </button>
+        <div class="nav-group-children" style="@(IsExpanded ? "" : "display:none")">
+            @ChildContent
+        </div>
+    </div>
+}
 
 @code {
     [Parameter] public string Label { get; set; } = "";
@@ -17,21 +52,32 @@
     [Parameter] public bool HasActiveChild { get; set; }
     [Parameter] public bool Highlight { get; set; }
     [Parameter] public bool DefaultExpanded { get; set; }
+    /// <summary>2026-06-05: si true, abre los hijos en un panel a la DERECHA del sidebar
+    /// en lugar de expandir hacia abajo. Solo un grupo flyout puede estar abierto a la vez.</summary>
+    [Parameter] public bool FlyoutMode { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
     private bool IsExpanded { get; set; }
 
     private bool _firstRender = true;
 
+    // 2026-06-05: coordinación global — solo UN flyout abierto a la vez
+    private static event Action<NavGroup>? OnAnyFlyoutOpened;
+
+    protected override void OnInitialized()
+    {
+        OnAnyFlyoutOpened += HandleAnyFlyoutOpened;
+    }
+
     protected override void OnParametersSet()
     {
-        // Auto-expand when a child page is active
-        if (HasActiveChild)
+        // Auto-expand when a child page is active (solo modo clasico, en flyout no auto-abrimos)
+        if (HasActiveChild && !FlyoutMode)
         {
             IsExpanded = true;
         }
         // Auto-expand on first render if DefaultExpanded is set
-        else if (_firstRender && DefaultExpanded)
+        else if (_firstRender && DefaultExpanded && !FlyoutMode)
         {
             IsExpanded = true;
         }
@@ -41,5 +87,48 @@
     private void Toggle()
     {
         IsExpanded = !IsExpanded;
+    }
+
+    private void ToggleFlyout()
+    {
+        if (IsExpanded)
+        {
+            IsExpanded = false;
+        }
+        else
+        {
+            IsExpanded = true;
+            OnAnyFlyoutOpened?.Invoke(this);
+        }
+    }
+
+    private void CloseFlyout()
+    {
+        IsExpanded = false;
+        StateHasChanged();
+    }
+
+    /// <summary>Cuando el usuario hace click en cualquier item del panel, lo cerramos.
+    /// El item maneja su propia navegacion por NavItem; nosotros solo nos cerramos.</summary>
+    private void OnContentClick()
+    {
+        if (FlyoutMode && IsExpanded)
+        {
+            IsExpanded = false;
+        }
+    }
+
+    private void HandleAnyFlyoutOpened(NavGroup opener)
+    {
+        if (opener != this && FlyoutMode && IsExpanded)
+        {
+            IsExpanded = false;
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public void Dispose()
+    {
+        OnAnyFlyoutOpened -= HandleAnyFlyoutOpened;
     }
 }
