@@ -255,11 +255,12 @@ public class CafeListasPreciosController : ControllerBase
                 row++;
             }
 
+            // 2026-06-08: SKU primero (columna 1), Producto en columna 2.
             if (g.ItemsCafe.Count > 0)
             {
                 // Header tabla CAFE
-                ws.Cell(row, 1).Value = "Producto";
-                ws.Cell(row, 2).Value = "SKU";
+                ws.Cell(row, 1).Value = "SKU";
+                ws.Cell(row, 2).Value = "Producto";
                 ws.Cell(row, 3).Value = "1 kg";
                 ws.Cell(row, 4).Value = "1/2 kg";
                 ws.Cell(row, 5).Value = "1/4 kg";
@@ -268,8 +269,8 @@ public class CafeListasPreciosController : ControllerBase
                 row++;
                 foreach (var i in g.ItemsCafe)
                 {
-                    ws.Cell(row, 1).Value = i.Nombre;
-                    ws.Cell(row, 2).Value = i.Sku ?? "";
+                    ws.Cell(row, 1).Value = i.Sku ?? "";
+                    ws.Cell(row, 2).Value = i.Nombre;
                     ws.Cell(row, 3).Value = i.Precio1Kg;
                     ws.Cell(row, 3).Style.NumberFormat.Format = "$#,##0.00";
                     ws.Cell(row, 4).Value = i.PrecioMedio;
@@ -281,16 +282,16 @@ public class CafeListasPreciosController : ControllerBase
             }
             if (g.ItemsOtros.Count > 0)
             {
-                ws.Cell(row, 1).Value = "Producto";
-                ws.Cell(row, 2).Value = "SKU";
+                ws.Cell(row, 1).Value = "SKU";
+                ws.Cell(row, 2).Value = "Producto";
                 ws.Cell(row, 3).Value = "Precio";
                 ws.Range(row, 1, row, 3).Style.Font.Bold = true;
                 ws.Range(row, 1, row, 3).Style.Fill.BackgroundColor = XLColor.FromHtml("#f3f4f6");
                 row++;
                 foreach (var i in g.ItemsOtros)
                 {
-                    ws.Cell(row, 1).Value = i.Nombre;
-                    ws.Cell(row, 2).Value = i.Sku ?? "";
+                    ws.Cell(row, 1).Value = i.Sku ?? "";
+                    ws.Cell(row, 2).Value = i.Nombre;
                     ws.Cell(row, 3).Value = i.Precio;
                     ws.Cell(row, 3).Style.NumberFormat.Format = "$#,##0.00";
                     row++;

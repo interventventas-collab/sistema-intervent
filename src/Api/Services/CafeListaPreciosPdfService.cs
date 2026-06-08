@@ -181,15 +181,16 @@ public class CafeListaPreciosPdfService
                     {
                         // Franja de marca/proveedor sacada por pedido del usuario 2026-05-20.
 
-                        // Tabla CAFE (Producto · SKU · 1kg · 1/2 · 1/4)
+                        // 2026-06-08: SKU primero (columna angosta), después Producto, después precios.
+                        // Tabla CAFE (SKU · Producto · 1kg · 1/2 · 1/4)
                         if (g.ItemsCafe.Count > 0)
                         {
                             col.Item().PaddingTop(4).Table(t =>
                             {
                                 t.ColumnsDefinition(cd =>
                                 {
-                                    cd.RelativeColumn(4);          // Producto
-                                    cd.ConstantColumn(45);          // SKU
+                                    cd.ConstantColumn(35);          // SKU (más angosto)
+                                    cd.RelativeColumn(4);           // Producto
                                     cd.ConstantColumn(70);          // 1 kg
                                     cd.ConstantColumn(70);          // 1/2 kg
                                     cd.ConstantColumn(70);          // 1/4 kg
@@ -197,8 +198,8 @@ public class CafeListaPreciosPdfService
 
                                 t.Header(h =>
                                 {
+                                    h.Cell().BorderBottom(1).BorderColor(Colors.Grey.Medium).PaddingVertical(4).Text("SKU").Bold().FontSize(8.5f);
                                     h.Cell().BorderBottom(1).BorderColor(Colors.Grey.Medium).PaddingVertical(4).Text("☕ Producto").Bold().FontSize(8.5f);
-                                    h.Cell().BorderBottom(1).BorderColor(Colors.Grey.Medium).PaddingVertical(4).AlignCenter().Text("SKU").Bold().FontSize(8.5f);
                                     h.Cell().BorderBottom(1).BorderColor(Colors.Grey.Medium).PaddingVertical(4).AlignRight().Text("1 kg").Bold().FontSize(8.5f);
                                     h.Cell().BorderBottom(1).BorderColor(Colors.Grey.Medium).PaddingVertical(4).AlignRight().Text("1/2 kg").Bold().FontSize(8.5f);
                                     h.Cell().BorderBottom(1).BorderColor(Colors.Grey.Medium).PaddingVertical(4).AlignRight().Text("1/4 kg").Bold().FontSize(8.5f);
@@ -209,8 +210,8 @@ public class CafeListaPreciosPdfService
                                 {
                                     var bg = alt ? Colors.Grey.Lighten4 : Colors.White;
                                     alt = !alt;
-                                    t.Cell().Background(bg).PaddingVertical(3).PaddingLeft(2).Text(i.Nombre).FontSize(9);
-                                    t.Cell().Background(bg).PaddingVertical(3).AlignCenter().Text(i.Sku ?? "—").FontSize(8).FontFamily("Courier");
+                                    t.Cell().Background(bg).PaddingVertical(3).PaddingLeft(2).Text(i.Sku ?? "—").FontSize(8).FontFamily("Courier").Bold();
+                                    t.Cell().Background(bg).PaddingVertical(3).PaddingLeft(4).Text(i.Nombre).FontSize(9);
                                     t.Cell().Background(bg).PaddingVertical(3).AlignRight().PaddingRight(2).Text($"$ {i.Precio1Kg.ToString("N0", Es)}").FontSize(9).Bold();
                                     t.Cell().Background(bg).PaddingVertical(3).AlignRight().PaddingRight(2).Text($"$ {i.PrecioMedio.ToString("N0", Es)}").FontSize(9).Bold();
                                     t.Cell().Background(bg).PaddingVertical(3).AlignRight().PaddingRight(2).Text($"$ {i.PrecioCuarto.ToString("N0", Es)}").FontSize(9).Bold();
@@ -218,21 +219,21 @@ public class CafeListaPreciosPdfService
                             });
                         }
 
-                        // Tabla OTROS (Producto · SKU · Precio)
+                        // Tabla OTROS (SKU · Producto · Precio)
                         if (g.ItemsOtros.Count > 0)
                         {
                             col.Item().PaddingTop(4).Table(t =>
                             {
                                 t.ColumnsDefinition(cd =>
                                 {
-                                    cd.RelativeColumn(5);
-                                    cd.ConstantColumn(55);
-                                    cd.ConstantColumn(85);
+                                    cd.ConstantColumn(45);          // SKU (más angosto)
+                                    cd.RelativeColumn(5);           // Producto
+                                    cd.ConstantColumn(85);          // Precio
                                 });
                                 t.Header(h =>
                                 {
+                                    h.Cell().BorderBottom(1).BorderColor(Colors.Grey.Medium).PaddingVertical(4).Text("SKU").Bold().FontSize(8.5f);
                                     h.Cell().BorderBottom(1).BorderColor(Colors.Grey.Medium).PaddingVertical(4).Text("📦 Producto").Bold().FontSize(8.5f);
-                                    h.Cell().BorderBottom(1).BorderColor(Colors.Grey.Medium).PaddingVertical(4).AlignCenter().Text("SKU").Bold().FontSize(8.5f);
                                     h.Cell().BorderBottom(1).BorderColor(Colors.Grey.Medium).PaddingVertical(4).AlignRight().Text("Precio").Bold().FontSize(8.5f);
                                 });
                                 bool alt = false;
@@ -240,8 +241,8 @@ public class CafeListaPreciosPdfService
                                 {
                                     var bg = alt ? Colors.Grey.Lighten4 : Colors.White;
                                     alt = !alt;
-                                    t.Cell().Background(bg).PaddingVertical(3).PaddingLeft(2).Text(i.Nombre).FontSize(9);
-                                    t.Cell().Background(bg).PaddingVertical(3).AlignCenter().Text(i.Sku ?? "—").FontSize(8).FontFamily("Courier");
+                                    t.Cell().Background(bg).PaddingVertical(3).PaddingLeft(2).Text(i.Sku ?? "—").FontSize(8).FontFamily("Courier").Bold();
+                                    t.Cell().Background(bg).PaddingVertical(3).PaddingLeft(4).Text(i.Nombre).FontSize(9);
                                     t.Cell().Background(bg).PaddingVertical(3).AlignRight().PaddingRight(2).Text($"$ {i.Precio.ToString("N0", Es)}").FontSize(9).Bold();
                                 }
                             });
