@@ -942,25 +942,29 @@
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <script>
         // Escaner de QR para la pantalla mobile del repartidor.
-        // Usa html5-qrcode (carga la camara del celu).
-        // 2026-06-08: modo CONTINUO — el escaner NO se detiene tras leer un QR. Sigue
-        // capturando y dispara OnScanned por cada nuevo QR distinto. Anti-rebote: ignora
-        // el mismo QR si lo vuelve a leer dentro de 1.5 segundos (frames consecutivos).
+        // 2026-06-08: modo CONTINUO con anti-rebote PERMANENTE — cada QR se procesa
+        // UNA SOLA VEZ por sesión de escaneo. Si la cámara sigue apuntando al mismo
+        // QR, no dispara nada (ni beep ni request). Solo procesa cuando detecta un
+        // QR DISTINTO al anterior. Se resetea al cerrar el escáner.
         window.startQrScanner = function(targetElementId, onScanned) {
             const html5QrCode = new Html5Qrcode(targetElementId);
             const config = { fps: 10, qrbox: { width: 250, height: 250 } };
-            let ultimoQr = null;
-            let ultimoQrAt = 0;
+            const yaEscaneados = new Set();   // QRs ya procesados en esta sesión
+            let procesando = false;             // lock anti-doble-llamada
             html5QrCode.start(
                 { facingMode: "environment" },
                 config,
                 (decodedText) => {
-                    const ahora = Date.now();
-                    // Anti-rebote: si es el mismo QR que el anterior y pasaron menos de 1.5s, ignorar
-                    if (decodedText === ultimoQr && (ahora - ultimoQrAt) < 1500) return;
-                    ultimoQr = decodedText;
-                    ultimoQrAt = ahora;
+                    // 1) Si ya lo escaneamos antes en esta sesión, ignorar silenciosamente
+                    if (yaEscaneados.has(decodedText)) return;
+                    // 2) Si hay otro QR siendo procesado, ignorar (lock)
+                    if (procesando) return;
+                    // 3) Marcamos como escaneado ANTES de procesar (evita doble disparo)
+                    yaEscaneados.add(decodedText);
+                    procesando = true;
                     try { onScanned.invokeMethodAsync('OnScanned', decodedText); } catch (e) {}
+                    // Liberar el lock después de 800ms para que pueda procesarse el próximo QR distinto
+                    setTimeout(() => { procesando = false; }, 800);
                 },
                 (err) => { /* errores de cada frame son normales, ignorar */ }
             ).catch(err => {
@@ -969,11 +973,13 @@
             });
             // Guardar referencia para poder detenerlo desde el codigo de Blazor
             window.__qrScannerRef = html5QrCode;
+            window.__qrYaEscaneados = yaEscaneados; // expuesto para debug
         };
         window.stopQrScanner = function() {
             if (window.__qrScannerRef) {
                 try { window.__qrScannerRef.stop().then(() => window.__qrScannerRef.clear()); } catch (e) {}
                 window.__qrScannerRef = null;
+                window.__qrYaEscaneados = null;
             }
         };
 

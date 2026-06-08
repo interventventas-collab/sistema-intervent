@@ -137,9 +137,18 @@
 
         @if (escaneando)
         {
-            <div style="background:white; padding:0.8rem; border-radius:12px; margin-bottom:0.8rem;">
-                <div id="@QrScannerId" style="width:100%; max-width:380px; margin:0 auto;"></div>
-                <p style="font-size:0.78rem; color:#6b7280; text-align:center; margin-top:0.5rem;">📷 Apuntá la cámara al QR del comprobante</p>
+            <div @key="@QrScannerId" style="background:white; padding:0.8rem; border-radius:12px; margin-bottom:0.8rem;">
+                @* @key impide que Blazor recree el div con el video cuando la lista se refresca *@
+                <div id="@QrScannerId" @key="@($"{QrScannerId}-inner")" style="width:100%; max-width:380px; margin:0 auto;"></div>
+                <p style="font-size:0.78rem; color:#6b7280; text-align:center; margin-top:0.5rem;">
+                    📷 Apuntá al QR. Escaneás varios seguidos sin tocar nada.
+                </p>
+                @if (cantEscaneadosEnSesion > 0)
+                {
+                    <div style="margin-top:0.5rem; text-align:center; font-size:0.85rem; color:#059669; font-weight:700;">
+                        ✓ @cantEscaneadosEnSesion escaneado@(cantEscaneadosEnSesion == 1 ? "" : "s") en esta sesión
+                    </div>
+                }
             </div>
         }
         @if (!string.IsNullOrEmpty(scanError))
@@ -389,13 +398,16 @@
     {
         if (escaneando)
         {
-            // Toggle: detener escaneo
+            // Toggle: detener escaneo + refrescar la lista (los pedidos cargados durante el escaneo aparecen)
             try { await JS.InvokeVoidAsync("stopQrScanner"); } catch { }
             escaneando = false;
+            cantEscaneadosEnSesion = 0;
             StateHasChanged();
+            await Recargar();
             return;
         }
         escaneando = true;
+        cantEscaneadosEnSesion = 0;
         scanError = null;
         StateHasChanged();
         await Task.Delay(100); // esperar render del div
@@ -465,8 +477,12 @@
             }
             // beep "OK" — tono agudo corto tipo lector de supermercado
             try { await JS.InvokeVoidAsync("mpBeepOk"); } catch { }
+            cantEscaneadosEnSesion++;
             MostrarToast(r.Mensaje ?? "✓ Cargado", false);
-            await Recargar();
+            // 2026-06-08: NO refrescamos la lista mientras escanea — eso re-renderiza el DOM
+            // y rompe el video de la cámara. La lista se refresca al cerrar el escáner.
+            // Solo notificamos el StateHasChanged para que el contador se actualice.
+            StateHasChanged();
         }
         catch (Exception ex)
         {
@@ -478,6 +494,8 @@
     // 2026-06-08: tracking anti-duplicado en escaneo continuo
     private string? ultimoTokenEscaneado;
     private DateTime ultimoTokenAt;
+    // Contador visible de QRs distintos cargados sin cerrar el escáner
+    private int cantEscaneadosEnSesion;
 
     public record EscanearResp(bool Ok, string? Mensaje, int? VentaId, string? Numero,
         string? ClienteNombre, decimal? Total, bool YaEntregada);
