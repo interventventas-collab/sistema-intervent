@@ -163,6 +163,18 @@
                     <option value="SIN_SALDO">✅ Sin saldo (pagadas)</option>
                 </select>
             </div>
+            @* 2026-06-08: filtro por repartidor (quien la tiene o quien la entregó) *@
+            <div style="display: flex; flex-direction: column; gap: 0.15rem; min-width: 160px;">
+                <label style="font-size: 0.7rem; color: #6b7280; font-weight: 600;">Repartidor</label>
+                <select class="form-input" style="padding: 0.3rem 0.5rem; font-size: 0.85rem;" @bind="filtroRepartidor">
+                    <option value="TODOS">Todos</option>
+                    <option value="__SIN_ASIGNAR__">— Sin asignar —</option>
+                    @foreach (var r in RepartidoresEnVentas)
+                    {
+                        <option value="@r">🚚 @r</option>
+                    }
+                </select>
+            </div>
             @if (HayFiltrosActivos)
             {
                 <button class="btn btn-secondary" @onclick="LimpiarFiltros"
@@ -416,10 +428,12 @@
                                     }
                                     @if (!string.IsNullOrEmpty(v.EntregadoPorRepartidorNombre))
                                     {
+                                        @* 2026-06-08: mostrar hora exacta de entrega al lado del nombre *@
+                                        var horaEntrega = v.EntregadoAt?.ToLocalTime().ToString("HH:mm");
                                         <span style="display:inline-block; padding:0.15rem 0.5rem; background:#dcfce7; color:#166534; border-radius:999px; font-size:0.7rem; font-weight:700; margin-left:0.2rem; cursor:pointer;"
-                                              title="Entregado el @(v.EntregadoAt?.ToLocalTime().ToString("dd/MM HH:mm")). Tocá para desmarcar (admin)."
+                                              title="Entregado el @(v.EntregadoAt?.ToLocalTime().ToString("dd/MM/yyyy HH:mm")). Tocá para desmarcar (admin)."
                                               @onclick="@(() => PedirDesmarcarEntrega(v))">
-                                            ✅ Entregó @v.EntregadoPorRepartidorNombre ▼
+                                            ✅ Entregó @v.EntregadoPorRepartidorNombre@(horaEntrega is null ? "" : $" a las {horaEntrega} hs") ▼
                                         </span>
                                     }
                                     else if (!string.IsNullOrEmpty(v.EscaneadoPorRepartidorNombre))
@@ -3178,6 +3192,20 @@
     private string filtroEstado = "TODOS";     // TODOS | emitido | anulado
     private string filtroCae = "TODOS";        // TODOS | CON_CAE | SIN_CAE | PENDIENTE
     private string filtroSaldo = "TODOS";      // TODOS | CON_SALDO | SIN_SALDO
+    // 2026-06-08: filtro por repartidor (matchea EscaneadoPorRepartidorNombre o EntregadoPorRepartidorNombre).
+    // TODOS = sin filtro. "__SIN_ASIGNAR__" = ventas sin escaneo ni entrega. Otro valor = nombre exacto.
+    private string filtroRepartidor = "TODOS";
+
+    /// <summary>2026-06-08: nombres únicos de repartidores que aparecen en las ventas cargadas,
+    /// combinando los que la tienen escaneada y los que la entregaron. Se usa para llenar el dropdown.</summary>
+    private List<string> RepartidoresEnVentas =>
+        (ventas ?? new())
+            .SelectMany(v => new[] { v.EscaneadoPorRepartidorNombre, v.EntregadoPorRepartidorNombre })
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .Select(n => n!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(n => n)
+            .ToList();
 
     /// <summary>Ventas pasadas por los filtros del listado. Si todos los filtros están vacíos/TODOS,
     /// devuelve la lista completa. Aplica AND entre filtros activos.</summary>
@@ -3229,6 +3257,23 @@
                     return filtroSaldo == "CON_SALDO" ? s > 0.01m : s <= 0.01m;
                 });
             }
+            // 2026-06-08: filtro por repartidor — matchea "lo tiene" o "lo entregó".
+            // "__SIN_ASIGNAR__" = ventas sin escaneo ni entrega registrada.
+            if (filtroRepartidor != "TODOS")
+            {
+                if (filtroRepartidor == "__SIN_ASIGNAR__")
+                {
+                    q = q.Where(v => string.IsNullOrWhiteSpace(v.EscaneadoPorRepartidorNombre)
+                                  && string.IsNullOrWhiteSpace(v.EntregadoPorRepartidorNombre));
+                }
+                else
+                {
+                    var nombre = filtroRepartidor;
+                    q = q.Where(v =>
+                        string.Equals(v.EscaneadoPorRepartidorNombre, nombre, StringComparison.OrdinalIgnoreCase)
+                     || string.Equals(v.EntregadoPorRepartidorNombre, nombre, StringComparison.OrdinalIgnoreCase));
+                }
+            }
             return q.ToList();
         }
     }
@@ -3237,13 +3282,15 @@
         filtroFechaDesde.HasValue || filtroFechaHasta.HasValue
         || !string.IsNullOrWhiteSpace(filtroCliente)
         || filtroTipo != "TODOS" || filtroEstado != "TODOS" || filtroCae != "TODOS"
-        || filtroSaldo != "TODOS";
+        || filtroSaldo != "TODOS"
+        || filtroRepartidor != "TODOS";   // 2026-06-08
 
     private void LimpiarFiltros()
     {
         filtroFechaDesde = null; filtroFechaHasta = null;
         filtroCliente = ""; filtroTipo = "TODOS"; filtroEstado = "TODOS"; filtroCae = "TODOS";
         filtroSaldo = "TODOS";
+        filtroRepartidor = "TODOS";   // 2026-06-08
     }
     private List<CafeClienteDto>? clientes;
     private List<CafeProductoDto>? productos;
