@@ -1605,6 +1605,44 @@ public class MeliItemService
                     .Where(p => p.Sku == sku).Select(p => (int?)p.Id).FirstOrDefaultAsync();
                 if (prod.HasValue) autoProductoId = prod;
             }
+
+            // 2026-06-08: además del CafeComboId/CafeProductoId, poblar MeliItemComponentes
+            // (lo que mira /publicaciones para el chip "Linkeado" y MeliStockPushService para el push de stock).
+            // Sin esto, el item aparece "sin vincular" aunque CafeComboId esté seteado.
+            var yaTieneComp = await _db.Set<MeliItemComponente>().AsNoTracking()
+                .AnyAsync(c => c.MeliItemId == meliItemId);
+            if (!yaTieneComp)
+            {
+                if (autoComboId.HasValue)
+                {
+                    var comps = await _db.Set<CafeComboItem>().AsNoTracking()
+                        .Where(ci => ci.ComboId == autoComboId.Value)
+                        .Select(ci => new { ci.ProductoId, ci.Cantidad })
+                        .ToListAsync();
+                    foreach (var ci in comps)
+                    {
+                        _db.Set<MeliItemComponente>().Add(new MeliItemComponente
+                        {
+                            MeliItemId = meliItemId,
+                            CafeProductoId = ci.ProductoId,
+                            Cantidad = ci.Cantidad,
+                            Source = "auto-link-sync",
+                            CreatedAt = DateTime.UtcNow
+                        });
+                    }
+                }
+                else if (autoProductoId.HasValue)
+                {
+                    _db.Set<MeliItemComponente>().Add(new MeliItemComponente
+                    {
+                        MeliItemId = meliItemId,
+                        CafeProductoId = autoProductoId.Value,
+                        Cantidad = 1m,
+                        Source = "auto-link-sync",
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
+            }
         }
 
         if (existing is not null)
