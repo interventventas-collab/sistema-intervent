@@ -779,10 +779,15 @@
                     <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
                 </svg>
             </button>
-            <CobranzasPendientesBell />
-            <MeliQuestionsBell />
-            <MeliCambiosBell />
-            <WhatsAppPedidosBell />
+            @* 2026-06-08: ocultar la campana 💰 a usuarios con sidebar reducido (deposito) — no
+               deberian aprobar cobranzas ni navegar a /cafe/cobranzas-pendientes. *@
+            @if (!IsRoleWithCustomSidebar())
+            {
+                <CobranzasPendientesBell />
+                <MeliQuestionsBell />
+                <MeliCambiosBell />
+                <WhatsAppPedidosBell />
+            }
             @if (UploadProgress.IsUploading)
             {
                 <div class="topbar-upload-indicator" @onclick="() => UploadProgress.RequestReopen()" title="Ver detalle de subida">
