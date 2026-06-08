@@ -484,6 +484,20 @@
         </span>
     </div>
 
+    @* 2026-06-08: buscador en vivo que filtra cards por número de factura/comprobante o cliente.
+       Se aplica a "Para armar" y "Ya armados" simultaneamente. *@
+    <div style="display:flex; gap:0.5rem; align-items:center; margin:0.5rem 0 1rem; padding:0.4rem 0.7rem; background:white; border:1px solid #e5e7eb; border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+        <span style="font-size:1rem;">🔍</span>
+        <input type="text" @bind="filtroBusqueda" @bind:event="oninput"
+               placeholder="Buscar por cliente, número de comprobante (CAFE-2026-XXXX), dirección, localidad..."
+               style="flex:1; padding:0.5rem 0.7rem; border:1px solid #d1d5db; border-radius:6px; font-size:0.9rem;" />
+        @if (!string.IsNullOrEmpty(filtroBusqueda))
+        {
+            <button class="btn btn-secondary" style="padding:0.35rem 0.7rem; font-size:0.8rem;"
+                    @onclick="@(() => filtroBusqueda = "")" title="Limpiar búsqueda">✕</button>
+        }
+    </div>
+
     @if (loading && lista is null)
     {
         <p>Cargando...</p>
@@ -514,7 +528,7 @@
         else
         {
             <div class="drive-pedidos-grid">
-                @foreach (var v in ParaArmar)
+                @foreach (var v in ParaArmarFiltrados)
                 {
                     <CardPedido Venta="v"
                                 SelectedForPrint="seleccionadosParaImprimir.Contains(v.Id)"
@@ -554,10 +568,14 @@
             {
                 <div class="prep-empty">Todavía no hay pedidos marcados como LISTO en este rango.</div>
             }
+            else if (ArmadosFiltrados.Count == 0)
+            {
+                <div class="prep-empty">Ningún pedido coincide con "@filtroBusqueda" en este rango.</div>
+            }
             else
             {
                 <div class="drive-pedidos-grid" style="margin-top:0.5rem;">
-                    @foreach (var v in armados)
+                    @foreach (var v in ArmadosFiltrados)
                     {
                         @* 2026-06-03: tooltip al hover muestra composicion del pedido + boton "Volver a armar" *@
                         <div class="prep-armado-mini prep-armado-mini-hoverable">
@@ -622,6 +640,26 @@
     private List<CafePreparacionVentaDto>? armados;
     private bool armadosExpanded = false;
     private string rangoArmados = "hoy";  // hoy / ayer / 7d / 30d / todos — default 2026-06-03: arranca en HOY
+
+    // 2026-06-08: buscador en vivo. Filtra por Numero (CAFE-2026-XXXX), ClienteNombre,
+    // razón social, localidad, ciudad y dirección. Case-insensitive, substring match.
+    private string filtroBusqueda = "";
+
+    /// <summary>Aplica el filtro de búsqueda a una lista de ventas. Si el filtro está vacío,
+    /// devuelve la lista tal cual. Si no, hace match por substring contra varios campos.</summary>
+    private List<CafePreparacionVentaDto> AplicarFiltro(List<CafePreparacionVentaDto> source)
+    {
+        if (string.IsNullOrWhiteSpace(filtroBusqueda)) return source;
+        var t = filtroBusqueda.Trim().ToUpperInvariant();
+        bool h(string? s) => !string.IsNullOrEmpty(s) && s.ToUpperInvariant().Contains(t);
+        return source.Where(v =>
+            h(v.Numero) || h(v.ClienteNombre) || h(v.ClienteRazon)
+            || h(v.ClienteLocalidad) || h(v.ClienteCiudad)
+            || h(v.DomicilioEntrega) || h(v.Observaciones)
+        ).ToList();
+    }
+    private List<CafePreparacionVentaDto> ParaArmarFiltrados => AplicarFiltro(ParaArmar);
+    private List<CafePreparacionVentaDto> ArmadosFiltrados => AplicarFiltro(armados ?? new());
 
     private static string RangoLabel(string r) => r switch
     {
