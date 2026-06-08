@@ -1263,6 +1263,32 @@ public class ApiClient
     public async Task<List<CafeTopProductoClienteDto>?> GetCafeTopProductosByClienteAsync(int clienteId, int count = 10)
         => await GetAsync<List<CafeTopProductoClienteDto>>($"/api/cafe/ventas/top-productos-cliente/{clienteId}?count={count}");
 
+    /// <summary>2026-06-08: marca un producto como "descartado" en las sugerencias del cliente.
+    /// El producto deja de aparecer en "Más comprados" hasta que el cliente lo vuelva a comprar.</summary>
+    public async Task<bool> DescartarTopProductoClienteAsync(int clienteId, int productoId)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/cafe/ventas/top-productos-cliente/{clienteId}/descartar",
+            new { ProductoId = productoId });
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return false; }
+        return resp.IsSuccessStatusCode;
+    }
+
+    /// <summary>Restaura un producto descartado (vuelve a aparecer en sugerencias).
+    /// Si productoId &lt;= 0 → restaura TODOS los descartados del cliente.</summary>
+    public async Task<bool> RestaurarTopProductoClienteAsync(int clienteId, int productoId = 0)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/cafe/ventas/top-productos-cliente/{clienteId}/restaurar",
+            new { ProductoId = productoId });
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return false; }
+        return resp.IsSuccessStatusCode;
+    }
+
+    /// <summary>Devuelve los IDs de productos descartados de un cliente (para mostrar contador).</summary>
+    public async Task<List<int>?> GetCafeTopProductosDescartadosAsync(int clienteId)
+        => await GetAsync<List<int>>($"/api/cafe/ventas/top-productos-cliente/{clienteId}/descartados");
+
     // --- Cafe: Proveedores ---
     public async Task<List<CafeProveedorDto>?> GetCafeProveedoresAsync(bool? activos = null)
     {

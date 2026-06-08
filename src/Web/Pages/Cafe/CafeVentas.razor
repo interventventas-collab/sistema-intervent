@@ -1024,37 +1024,61 @@
                         <strong>Productos a vender</strong>
                     </div>
 
-                    @* Productos más comprados por este cliente *@
+                    @* 2026-06-08: Productos más comprados — Opción C (top 3 visible + "Ver más") *@
                     @if (formClienteId > 0 && topProductsForClient.Count > 0)
                     {
+                        var visibles = topProductsExpanded ? topProductsForClient : topProductsForClient.Take(3).ToList();
+                        var ocultos = Math.Max(0, topProductsForClient.Count - 3);
                         <div style="margin-bottom: 0.6rem; padding: 0.6rem 0.8rem; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 1px solid #f59e0b; border-radius: 8px;">
-                            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
                                 <span style="font-size: 1rem;">⭐</span>
                                 <strong style="font-size: 0.85rem; color: #78350f;">
-                                    Productos más comprados por @(clientes?.FirstOrDefault(c => c.Id == formClienteId)?.Nombre ?? "este cliente"):
+                                    Productos más comprados por @(clientes?.FirstOrDefault(c => c.Id == formClienteId)?.Nombre ?? "este cliente")
                                 </strong>
-                                <span style="font-size: 0.75rem; color: #92400e;">(tocá uno para agregarlo)</span>
+                                <span style="font-size: 0.72rem; color: #92400e;">— tocá <strong>+</strong> para agregar · <strong>×</strong> para descartar</span>
+                                @if (topProductosDescartadosCount > 0)
+                                {
+                                    <button type="button"
+                                            style="margin-left:auto; background:transparent; border:1px solid #f59e0b; color:#78350f; padding:0.2rem 0.5rem; border-radius:4px; font-size:0.72rem; cursor:pointer;"
+                                            @onclick="RestaurarTopProductosDescartados"
+                                            title="Volver a ver los productos descartados (sin esperar a que el cliente los vuelva a comprar)">
+                                        🔄 Restaurar @topProductosDescartadosCount descartado@(topProductosDescartadosCount == 1 ? "" : "s")
+                                    </button>
+                                }
                             </div>
-                            <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
-                                @foreach (var t in topProductsForClient)
+                            <div style="display:flex; flex-direction:column; gap:0.3rem;">
+                                @foreach (var t in visibles)
                                 {
                                     var stockTxt = t.Categoria == "CAFE" ? FormatGramos(t.StockGramos) : $"{t.StockUnidades} u.";
                                     var stockColor = (t.Categoria == "CAFE" ? t.StockGramos : t.StockUnidades) <= 0 ? "#dc2626" : "#15803d";
                                     var prodId = t.ProductoId;
                                     var fmt = t.Formato;
-                                    <button type="button" class="btn"
-                                            style="background: white; border: 1px solid #f59e0b; color: #78350f; padding: 0.35rem 0.6rem; border-radius: 6px; font-size: 0.78rem; display: inline-flex; align-items: center; gap: 0.4rem;"
-                                            @onclick="() => AddTopProduct(prodId, fmt)"
-                                            title="Comprado @t.TimesOrdered ve@(t.TimesOrdered == 1 ? "z" : "ces") · Cant. total: @t.TotalQuantity · Última: @t.LastPurchase.ToString("dd/MM/yyyy")">
-                                        <span style="background: #f59e0b; color: white; padding: 0.05rem 0.35rem; border-radius: 999px; font-size: 0.65rem; font-weight: 800;">@t.TimesOrdered×</span>
-                                        <span style="font-family: monospace; color: #6b7280; font-size: 0.72rem;">@(string.IsNullOrEmpty(t.Sku) ? "—" : t.Sku)</span>
-                                        <strong>@t.Nombre @FormatoLabel(t.Formato)</strong>
-                                        <span style="color: @stockColor; font-size: 0.7rem;">· @stockTxt</span>
-                                        <span style="color: #6b7280; font-size: 0.72rem;">· $@FormatMoney(t.PrecioReferencia)</span>
-                                        <span style="color: #f59e0b; font-weight: 700;">+</span>
-                                    </button>
+                                    <div style="display:flex; align-items:center; gap:0.5rem; background:white; border:1px solid #f59e0b; border-radius:6px; padding:0.35rem 0.5rem; font-size:0.82rem;"
+                                         title="Comprado @t.TimesOrdered ve@(t.TimesOrdered == 1 ? "z" : "ces") · Última: @t.LastPurchase.ToString("dd/MM/yyyy")">
+                                        <span style="background:#f59e0b; color:white; padding:0.1rem 0.4rem; border-radius:999px; font-size:0.7rem; font-weight:800; min-width:30px; text-align:center;">@t.TimesOrdered×</span>
+                                        <span style="font-family:monospace; color:#6b7280; font-size:0.72rem; min-width:60px;">@(string.IsNullOrEmpty(t.Sku) ? "—" : t.Sku)</span>
+                                        <strong style="flex:1; color:#78350f;">@t.Nombre <span style="font-weight:500; color:#92400e;">@FormatoLabel(t.Formato)</span></strong>
+                                        <span style="color:@stockColor; font-size:0.72rem; min-width:60px; text-align:right;">@stockTxt</span>
+                                        <span style="color:#6b7280; font-size:0.78rem; font-weight:600; min-width:75px; text-align:right;">$@FormatMoney(t.PrecioReferencia)</span>
+                                        <button type="button"
+                                                style="background:#16a34a; color:white; border:none; border-radius:4px; padding:0.25rem 0.5rem; font-weight:700; cursor:pointer; font-size:0.85rem;"
+                                                @onclick="() => AddTopProduct(prodId, fmt)"
+                                                title="Agregar a la venta">+</button>
+                                        <button type="button"
+                                                style="background:transparent; color:#dc2626; border:1px solid #fca5a5; border-radius:4px; padding:0.25rem 0.45rem; font-weight:700; cursor:pointer; font-size:0.82rem;"
+                                                @onclick="() => DescartarTopProduct(prodId)"
+                                                title="Descartar — no volverá a aparecer hasta que el cliente lo compre de nuevo">×</button>
+                                    </div>
                                 }
                             </div>
+                            @if (ocultos > 0)
+                            {
+                                <button type="button"
+                                        style="margin-top:0.4rem; background:transparent; border:none; color:#78350f; font-weight:600; font-size:0.78rem; cursor:pointer; padding:0.2rem; width:100%; text-align:center;"
+                                        @onclick="@(() => topProductsExpanded = !topProductsExpanded)">
+                                    @(topProductsExpanded ? "⌃ Ver menos" : $"⌄ Ver otros {ocultos} más comprado{(ocultos == 1 ? "" : "s")}")
+                                </button>
+                            }
                         </div>
                     }
 
@@ -3614,6 +3638,10 @@
 
     // Top productos comprados por el cliente actual del form
     private List<CafeTopProductoClienteDto> topProductsForClient = new();
+    // 2026-06-08: Opción C — mostrar top 3 + "Ver más"
+    private bool topProductsExpanded;
+    // Cantidad de productos descartados de este cliente (para mostrar el botón "🔄 Restaurar N")
+    private int topProductosDescartadosCount;
 
     // Estado del dropdown "+" en la columna Acciones. Solo una venta puede tener el menu abierto.
     private int? actionsMenuOpenForVentaId;
@@ -4620,9 +4648,48 @@
 
     private async Task LoadTopProductsForClient()
     {
-        if (formClienteId <= 0) { topProductsForClient = new(); return; }
+        if (formClienteId <= 0) { topProductsForClient = new(); topProductosDescartadosCount = 0; topProductsExpanded = false; return; }
         try { topProductsForClient = await Api.GetCafeTopProductosByClienteAsync(formClienteId, 10) ?? new(); }
         catch { topProductsForClient = new(); }
+        // 2026-06-08: traer contador de descartados para mostrar botón "🔄 Restaurar N"
+        try { topProductosDescartadosCount = (await Api.GetCafeTopProductosDescartadosAsync(formClienteId))?.Count ?? 0; }
+        catch { topProductosDescartadosCount = 0; }
+        topProductsExpanded = false;
+    }
+
+    /// <summary>2026-06-08: Descarta un producto de las sugerencias del cliente actual.
+    /// El producto deja de aparecer hasta que el cliente lo vuelva a comprar.</summary>
+    private async Task DescartarTopProduct(int productoId)
+    {
+        if (formClienteId <= 0 || productoId <= 0) return;
+        // Optimismo: sacamos de la lista local para feedback inmediato
+        var t = topProductsForClient.FirstOrDefault(x => x.ProductoId == productoId);
+        try
+        {
+            var ok = await Api.DescartarTopProductoClienteAsync(formClienteId, productoId);
+            if (!ok) { ToastService.Error("No se pudo descartar el producto."); return; }
+            if (t is not null) topProductsForClient.Remove(t);
+            topProductosDescartadosCount++;
+            ToastService.Info($"Producto descartado. Va a volver a aparecer cuando el cliente lo compre de nuevo.");
+            StateHasChanged();
+        }
+        catch (Exception ex) { ToastService.Error("Error al descartar: " + ex.Message); }
+    }
+
+    /// <summary>2026-06-08: Restaura TODOS los productos descartados del cliente actual.</summary>
+    private async Task RestaurarTopProductosDescartados()
+    {
+        if (formClienteId <= 0) return;
+        try
+        {
+            var ok = await Api.RestaurarTopProductoClienteAsync(formClienteId, 0);
+            if (!ok) { ToastService.Error("No se pudo restaurar."); return; }
+            topProductosDescartadosCount = 0;
+            await LoadTopProductsForClient();
+            ToastService.Success("Productos descartados restaurados. Vuelven a aparecer en sugerencias.");
+            StateHasChanged();
+        }
+        catch (Exception ex) { ToastService.Error("Error al restaurar: " + ex.Message); }
     }
 
     /// <summary>Default de molienda al agregar un item: 'EN GRANOS' para CAFE, null para OTROS.</summary>

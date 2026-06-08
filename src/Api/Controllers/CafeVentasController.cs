@@ -900,7 +900,9 @@ public class CafeVentasController : ControllerBase
     }
 
     /// <summary>Devuelve los productos que mas compro un cliente (combinacion ProductoId+Formato),
-    /// ordenados por cantidad de comprobantes en los que aparecio. Solo cuenta ventas no anuladas.</summary>
+    /// ordenados por cantidad de comprobantes en los que aparecio. Solo cuenta ventas no anuladas.
+    /// 2026-06-08: excluye productos descartados (Cafe_ClienteProductoDescartado), salvo que el
+    /// cliente haya comprado el producto DESPUÉS del descarte (en ese caso vuelve a aparecer).</summary>
     [HttpGet("top-productos-cliente/{clienteId:int}")]
     public async Task<IActionResult> GetTopProductosByCliente(int clienteId, [FromQuery] int count = 10)
     {
@@ -910,8 +912,9 @@ public class CafeVentasController : ControllerBase
         var grouped = await _db.CafeVentaItems
             .Where(i => i.VentaNav != null
                         && i.VentaNav.ClienteId == clienteId
-                        && i.VentaNav.Estado != "anulado")
-            .GroupBy(i => new { i.ProductoId, i.Formato })
+                        && i.VentaNav.Estado != "anulado"
+                        && i.ProductoId != null)
+            .GroupBy(i => new { ProductoId = i.ProductoId!.Value, i.Formato })
             .Select(g => new
             {
                 g.Key.ProductoId,
@@ -923,12 +926,30 @@ public class CafeVentasController : ControllerBase
             .OrderByDescending(x => x.TimesOrdered)
             .ThenByDescending(x => x.TotalQuantity)
             .ThenByDescending(x => x.LastPurchase)
-            .Take(count)
+            // 2026-06-08: pedimos más para tener margen después del filtro de descartados
+            .Take(Math.Max(count * 2, 30))
             .ToListAsync();
 
         if (grouped.Count == 0) return Ok(new List<CafeTopProductoClienteDto>());
 
-        var ids = grouped.Select(x => x.ProductoId).Distinct().ToList();
+        // 2026-06-08: traer los descartes vigentes del cliente para excluirlos.
+        // Si la última compra es POSTERIOR al descarte, ignoramos el descarte (el operador
+        // volvió a vendérselo, así que la sugerencia vuelve sola).
+        var descartes = await _db.CafeClienteProductosDescartados
+            .Where(d => d.ClienteId == clienteId)
+            .Select(d => new { d.ProductoId, d.DescartadoAt })
+            .ToListAsync();
+        var descartesDict = descartes.ToDictionary(d => d.ProductoId, d => d.DescartadoAt);
+
+        var filtered = grouped
+            .Where(g => !descartesDict.ContainsKey(g.ProductoId)
+                        || g.LastPurchase > descartesDict[g.ProductoId])
+            .Take(count)
+            .ToList();
+
+        if (filtered.Count == 0) return Ok(new List<CafeTopProductoClienteDto>());
+
+        var ids = filtered.Select(x => x.ProductoId).Distinct().ToList();
         var productos = await _db.CafeProductos
             .Include(p => p.OemNav)
             .Where(p => ids.Contains(p.Id) && p.IsActive)
@@ -939,7 +960,7 @@ public class CafeVentasController : ControllerBase
         var settings = await _db.CafeSettings.FindAsync(1) ?? new CafeSetting { Id = 1 };
 
         var result = new List<CafeTopProductoClienteDto>();
-        foreach (var g in grouped)
+        foreach (var g in filtered)
         {
             var p = productos.FirstOrDefault(x => x.Id == g.ProductoId);
             if (p is null) continue;
@@ -951,6 +972,74 @@ public class CafeVentasController : ControllerBase
                 p.StockGramos, p.StockUnidades, precio));
         }
         return Ok(result);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  2026-06-08: Descartar / restaurar productos de "Más comprados" por cliente
+    // ═══════════════════════════════════════════════════════════════════════
+
+    public record DescartarTopProductoRequest(int ProductoId);
+
+    /// <summary>Descarta un producto de la lista "Más comprados" para un cliente puntual.
+    /// El producto deja de aparecer hasta que el cliente lo vuelva a comprar.</summary>
+    [HttpPost("top-productos-cliente/{clienteId:int}/descartar")]
+    public async Task<IActionResult> DescartarTopProducto(int clienteId, [FromBody] DescartarTopProductoRequest req)
+    {
+        if (clienteId <= 0 || req?.ProductoId is null or <= 0)
+            return BadRequest(new { error = "ClienteId y ProductoId son requeridos." });
+        // Idempotente: si ya existe, no falla. Si no existe, lo crea.
+        var existente = await _db.CafeClienteProductosDescartados
+            .FirstOrDefaultAsync(d => d.ClienteId == clienteId && d.ProductoId == req.ProductoId);
+        var operador = HttpContext.User?.Identity?.Name;
+        if (existente is null)
+        {
+            _db.CafeClienteProductosDescartados.Add(new CafeClienteProductoDescartado
+            {
+                ClienteId = clienteId,
+                ProductoId = req.ProductoId,
+                DescartadoAt = DateTime.UtcNow,
+                DescartadoPor = operador
+            });
+            await _db.SaveChangesAsync();
+        }
+        else
+        {
+            // refrescar fecha — si ya estaba descartado, esto extiende el descarte
+            existente.DescartadoAt = DateTime.UtcNow;
+            existente.DescartadoPor = operador;
+            await _db.SaveChangesAsync();
+        }
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>Restaura un producto descartado (vuelve a aparecer en sugerencias).
+    /// Si ProductoId es null/0 → restaura TODOS los descartados del cliente.</summary>
+    [HttpPost("top-productos-cliente/{clienteId:int}/restaurar")]
+    public async Task<IActionResult> RestaurarTopProducto(int clienteId, [FromBody] DescartarTopProductoRequest? req)
+    {
+        if (clienteId <= 0) return BadRequest(new { error = "ClienteId requerido." });
+        var q = _db.CafeClienteProductosDescartados.Where(d => d.ClienteId == clienteId);
+        if (req?.ProductoId is int pid and > 0) q = q.Where(d => d.ProductoId == pid);
+        var rows = await q.ToListAsync();
+        if (rows.Count > 0)
+        {
+            _db.CafeClienteProductosDescartados.RemoveRange(rows);
+            await _db.SaveChangesAsync();
+        }
+        return Ok(new { ok = true, restaurados = rows.Count });
+    }
+
+    /// <summary>Devuelve los IDs de productos descartados de un cliente (para mostrar contador
+    /// "🔄 Restaurar N descartados" en el frontend).</summary>
+    [HttpGet("top-productos-cliente/{clienteId:int}/descartados")]
+    public async Task<IActionResult> GetTopProductosDescartados(int clienteId)
+    {
+        if (clienteId <= 0) return Ok(new List<int>());
+        var ids = await _db.CafeClienteProductosDescartados
+            .Where(d => d.ClienteId == clienteId)
+            .Select(d => d.ProductoId)
+            .ToListAsync();
+        return Ok(ids);
     }
 
     /// <summary>Cotización en vivo: NO crea la venta, solo calcula precios + verifica stock.</summary>

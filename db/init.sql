@@ -4605,3 +4605,25 @@ BEGIN
     CREATE INDEX IX_Cafe_VentaItems_ComboOrigenId ON Cafe_VentaItems(ComboOrigenId) WHERE ComboOrigenId IS NOT NULL;
 END
 GO
+
+-- ─── 2026-06-08: Cafe_ClienteProductoDescartado ───
+-- Cuando el operador aprieta "×" en un producto de "Más comprados" para un cliente,
+-- queda registrado acá. Mientras el descarte exista (y la última compra del producto
+-- haya sido ANTES del descarte), el producto NO aparece en sugerencias.
+-- Si el cliente vuelve a comprar el producto después del descarte → automáticamente
+-- vuelve a aparecer (se ignora el registro porque LastPurchase > DescartadoAt).
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_ClienteProductoDescartado' AND xtype='U')
+BEGIN
+    CREATE TABLE Cafe_ClienteProductoDescartado (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        ClienteId INT NOT NULL CONSTRAINT FK_CafeClienteProductoDescartado_Cliente FOREIGN KEY (ClienteId) REFERENCES Cafe_Clientes(Id),
+        ProductoId INT NOT NULL CONSTRAINT FK_CafeClienteProductoDescartado_Producto FOREIGN KEY (ProductoId) REFERENCES Cafe_Productos(Id),
+        DescartadoAt DATETIME NOT NULL DEFAULT GETUTCDATE(),
+        DescartadoPor NVARCHAR(50) NULL
+    );
+    CREATE UNIQUE INDEX UX_CafeClienteProductoDescartado_ClienteProducto
+        ON Cafe_ClienteProductoDescartado (ClienteId, ProductoId);
+    CREATE INDEX IX_CafeClienteProductoDescartado_Cliente
+        ON Cafe_ClienteProductoDescartado (ClienteId);
+END
+GO
