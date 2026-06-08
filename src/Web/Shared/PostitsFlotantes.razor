@@ -5,13 +5,17 @@
 
 @inject ApiClient Api
 @inject ToastService ToastService
+@inject IJSRuntime JS
 
 @if (visible)
 {
-    <div class="postit-flotante">
-        <div class="postit-flotante-header">
+    @* 2026-06-08: arrastrable por toda la pantalla. El JS escucha mousedown sobre la header
+       (clase 'postit-drag-handle') y va moviendo el panel. Guarda la posición en localStorage
+       para que la próxima vez aparezca donde quedó. *@
+    <div class="postit-flotante" id="postit-flotante-root">
+        <div class="postit-flotante-header postit-drag-handle" title="Arrastrá para mover">
             <span style="font-size: 1.1rem;">📝</span>
-            <strong style="flex: 1; font-size: 0.85rem;">Mis post-its</strong>
+            <strong style="flex: 1; font-size: 0.85rem; user-select:none;">Mis post-its</strong>
             <button class="postit-mini-btn add" @onclick="ShowNew" title="Nuevo">+</button>
             <button class="postit-mini-btn close" @onclick="Close" title="Cerrar">×</button>
         </div>
@@ -104,6 +108,8 @@
         padding: 0.55rem 0.7rem;
         display: flex; align-items: center; gap: 0.4rem;
     }
+    .postit-drag-handle { cursor: move; touch-action: none; }
+    .postit-drag-handle:active { cursor: grabbing; }
     .postit-flotante-body {
         flex: 1;
         overflow-y: auto;
@@ -168,6 +174,16 @@
         visible = !visible;
         if (visible) await LoadAsync();
         StateHasChanged();
+    }
+
+    // 2026-06-08: activar drag&drop cuando se renderiza el panel. El JS hookea sobre
+    // el .postit-drag-handle (header). Persiste la posición en localStorage.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (visible)
+        {
+            try { await JS.InvokeVoidAsync("postitFlotanteDrag.enable"); } catch { }
+        }
     }
 
     public bool IsVisible => visible;

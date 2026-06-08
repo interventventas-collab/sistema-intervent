@@ -1045,6 +1045,77 @@
         // Compat con versión anterior por si quedó cache
         window.mpScrollToPendientes = window.mpScrollToTop;
 
+        // ───── 2026-06-08: Drag&drop del widget Mis Post-its (PostitsFlotantes.razor) ─────
+        // Se invoca desde OnAfterRenderAsync del componente. Engancha mousedown sobre el
+        // .postit-drag-handle y arrastra el #postit-flotante-root por toda la pantalla.
+        // Persiste la posición en localStorage para que la próxima sesión arranque ahí.
+        window.postitFlotanteDrag = {
+            enable: function() {
+                const root = document.getElementById('postit-flotante-root');
+                if (!root || root.dataset.dragEnabled === '1') return;
+                root.dataset.dragEnabled = '1';
+
+                // Restaurar pos guardada
+                try {
+                    const saved = JSON.parse(localStorage.getItem('postitFlotantePos') || 'null');
+                    if (saved && typeof saved.left === 'number' && typeof saved.top === 'number') {
+                        root.style.left = saved.left + 'px';
+                        root.style.top = saved.top + 'px';
+                        root.style.right = 'auto';
+                        root.style.bottom = 'auto';
+                    }
+                } catch (e) {}
+
+                const handle = root.querySelector('.postit-drag-handle');
+                if (!handle) return;
+
+                let isDragging = false;
+                let startX = 0, startY = 0, startLeft = 0, startTop = 0;
+
+                handle.addEventListener('pointerdown', function(ev) {
+                    // No interceptar clicks sobre los botones (+ y ×)
+                    if (ev.target.closest('.postit-mini-btn')) return;
+                    isDragging = true;
+                    const rect = root.getBoundingClientRect();
+                    startX = ev.clientX; startY = ev.clientY;
+                    startLeft = rect.left; startTop = rect.top;
+                    // Pasar a posicionamiento por top/left
+                    root.style.left = startLeft + 'px';
+                    root.style.top = startTop + 'px';
+                    root.style.right = 'auto';
+                    root.style.bottom = 'auto';
+                    handle.setPointerCapture(ev.pointerId);
+                    ev.preventDefault();
+                });
+                handle.addEventListener('pointermove', function(ev) {
+                    if (!isDragging) return;
+                    const dx = ev.clientX - startX;
+                    const dy = ev.clientY - startY;
+                    let nl = startLeft + dx;
+                    let nt = startTop + dy;
+                    // Clamp dentro del viewport (deja un margen para que no se pierda)
+                    const w = root.offsetWidth, h = root.offsetHeight;
+                    const maxL = window.innerWidth - 40;
+                    const maxT = window.innerHeight - 40;
+                    if (nl < -w + 40) nl = -w + 40;
+                    if (nt < 0) nt = 0;
+                    if (nl > maxL) nl = maxL;
+                    if (nt > maxT) nt = maxT;
+                    root.style.left = nl + 'px';
+                    root.style.top = nt + 'px';
+                });
+                handle.addEventListener('pointerup', function(ev) {
+                    if (!isDragging) return;
+                    isDragging = false;
+                    try {
+                        const rect = root.getBoundingClientRect();
+                        localStorage.setItem('postitFlotantePos', JSON.stringify({ left: rect.left, top: rect.top }));
+                    } catch (e) {}
+                    try { handle.releasePointerCapture(ev.pointerId); } catch (e) {}
+                });
+            }
+        };
+
         // ───── Sub-ventana flotante de Pedido WhatsApp en Nueva Venta ─────
         // Engancha drag al header (clase .cafe-wa-floating-header) del div .cafe-wa-floating.
         // Idempotente: si ya está enganchado, no duplica listeners.

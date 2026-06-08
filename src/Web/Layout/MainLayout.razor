@@ -1035,7 +1035,7 @@
 }
 
 @* 2026-06-05: Buscador rapido global (Ctrl+K) *@
-<CommandPalette @ref="commandPalette" Catalog="@MenuCatalog" />
+<CommandPalette @ref="commandPalette" Catalog="@FilteredMenuCatalog" />
 
 <ToastContainer />
 
@@ -1173,6 +1173,33 @@
     /// <summary>Catálogo de items conocidos: key → (icon, label, href). Usado en el sidebar
     /// reducido de DEPOSITO/OFICINA para renderizar lo que el admin habilitó. La key es la ruta
     /// relativa sin slash inicial (ej: "cafe/ventas").</summary>
+    /// <summary>2026-06-08: para el rol DEPOSITO (sidebar reducido), solo las pantallas que
+    /// realmente puede ver. Para los demás roles, todo el catalogo. Evita que el Command
+    /// Palette (Ctrl+K) muestre pantallas a las que el usuario no debería acceder.</summary>
+    private static readonly HashSet<string> DepositoWhitelistKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "cafe/productos",
+        "cafe/stock-masivo",
+        "cafe/historial-stock",
+        "cafe/preparacion",
+        "cafe/depositos",
+        "",   // Dashboard
+    };
+
+    private Dictionary<string, (string Emoji, string Label, string Href)> FilteredMenuCatalog
+    {
+        get
+        {
+            if (IsRoleWithCustomSidebar())
+            {
+                return MenuCatalog
+                    .Where(kv => DepositoWhitelistKeys.Contains(kv.Key))
+                    .ToDictionary(kv => kv.Key, kv => kv.Value);
+            }
+            return MenuCatalog;
+        }
+    }
+
     private static readonly Dictionary<string, (string Emoji, string Label, string Href)> MenuCatalog = new()
     {
         // Ventas / cobranzas / clientes
