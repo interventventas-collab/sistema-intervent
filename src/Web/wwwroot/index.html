@@ -11,8 +11,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-    <link rel="stylesheet" href="css/app.css?v=20260608c" />
-    <link rel="stylesheet" href="css/modern-overlay.css?v=20260608c" />
+    <link rel="stylesheet" href="css/app.css?v=20260608d" />
+    <link rel="stylesheet" href="css/modern-overlay.css?v=20260608d" />
 </head>
 <body>
     <div id="app">
@@ -1026,13 +1026,17 @@
             setTimeout(() => mpPlayTone(220, 220, 'square', 0.25), 200);
         };
 
-        // 2026-06-08: scroll suave a la sección "Pendientes" del repartidor
-        window.mpScrollToPendientes = function() {
-            const el = document.getElementById('mp-pendientes');
-            if (el) {
-                el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }
+        // 2026-06-08: scroll al top de la página (al cerrar el escáner del repartidor)
+        // Se llama después de stopQrScanner para que el repartidor vea la lista de pendientes
+        // sin tener que arrastrar la pantalla a mano. Hace scroll del window + del body
+        // (algunos navegadores móviles necesitan los dos).
+        window.mpScrollToTop = function() {
+            try { window.scrollTo({ top: 0, left: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); }
+            try { document.documentElement.scrollTop = 0; } catch (e) {}
+            try { document.body.scrollTop = 0; } catch (e) {}
         };
+        // Compat con versión anterior por si quedó cache
+        window.mpScrollToPendientes = window.mpScrollToTop;
 
         // ───── Sub-ventana flotante de Pedido WhatsApp en Nueva Venta ─────
         // Engancha drag al header (clase .cafe-wa-floating-header) del div .cafe-wa-floating.

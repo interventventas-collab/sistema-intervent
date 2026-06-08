@@ -398,15 +398,14 @@
     {
         if (escaneando)
         {
-            // Toggle: detener escaneo + refrescar la lista (los pedidos cargados durante el escaneo aparecen)
-            try { await JS.InvokeVoidAsync("stopQrScanner"); } catch { }
+            // 2026-06-08 v2: cerrar el escáner ya — primero ocultamos el div, después detenemos la cámara
             escaneando = false;
             cantEscaneadosEnSesion = 0;
-            StateHasChanged();
-            await Recargar();
-            // 2026-06-08: scroll suave hacia la sección "Pendientes" para que el repartidor
-            // vea directamente lo que cargó (sin tener que arrastrar la pantalla a mano).
-            try { await JS.InvokeVoidAsync("mpScrollToPendientes"); } catch { }
+            StateHasChanged();             // fuerza re-render para que desaparezca el escáner YA
+            await Task.Delay(50);          // pequeña pausa para que Blazor procese el DOM
+            try { await JS.InvokeVoidAsync("stopQrScanner"); } catch { }
+            try { await JS.InvokeVoidAsync("mpScrollToTop"); } catch { }   // ⬆️ scroll al inicio de la página
+            await Recargar();              // refrescar lista al final
             return;
         }
         escaneando = true;
