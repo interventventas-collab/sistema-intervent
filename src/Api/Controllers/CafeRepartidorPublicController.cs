@@ -377,17 +377,17 @@ public class CafeRepartidorPublicController : ControllerBase
             v.ClienteNombreSnapshot, totalCobrable, v.EntregadoPorRepartidorId.HasValue));
     }
 
-    public record EntregarRequest(string Pin);
+    public record EntregarRequest(string? Pin);
 
     /// <summary>Marca como entregada una venta de la lista del repartidor.
-    /// Valida PIN. Registra en QrEscaneos accion=entregado.</summary>
+    /// 2026-06-08: ya NO valida PIN — el publicToken (URL única del repartidor) basta como auth.
+    /// El frontend muestra un botón "¿Confirmás?" para evitar tap accidental.
+    /// Registra en QrEscaneos accion=entregado.</summary>
     [HttpPost("mis-pedidos/{tokenRepartidor}/entregar/{ventaId:int}")]
-    public async Task<IActionResult> MisPedidosEntregar(string tokenRepartidor, int ventaId, [FromBody] EntregarRequest req)
+    public async Task<IActionResult> MisPedidosEntregar(string tokenRepartidor, int ventaId, [FromBody] EntregarRequest? req)
     {
         var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
         if (r is null) return NotFound(new { error = "Enlace invalido" });
-        if (string.IsNullOrEmpty(r.DniUltimos3) || (req.Pin ?? "").Trim() != r.DniUltimos3)
-            return Unauthorized(new { error = "PIN incorrecto" });
 
         var v = await _db.CafeVentas.FirstOrDefaultAsync(x => x.Id == ventaId);
         if (v is null) return NotFound(new { error = "Venta no encontrada" });
@@ -416,17 +416,18 @@ public class CafeRepartidorPublicController : ControllerBase
         return Ok(new { ok = true, mensaje = $"✓ Marcado como entregado" });
     }
 
-    public record CobrarRequestV2(string Pin, decimal Importe, string? Notas);
+    public record CobrarRequestV2(string? Pin, decimal Importe, string? Notas);
 
-    /// <summary>Carga un cobro pendiente para esta venta. Valida PIN.
+    /// <summary>Carga un cobro pendiente para esta venta.
+    /// 2026-06-08: ya NO valida PIN — el cobro queda como PRE-CARGA pendiente de aprobación del admin
+    /// (no toca plata real hasta que admin la aprueba en /cafe/cobranzas-pendientes). El frontend
+    /// muestra "¿Confirmás?" para evitar tap accidental.
     /// Registra en QrEscaneos accion=cobrado. Marca entregado tambien.</summary>
     [HttpPost("mis-pedidos/{tokenRepartidor}/cobrar/{ventaId:int}")]
     public async Task<IActionResult> MisPedidosCobrar(string tokenRepartidor, int ventaId, [FromBody] CobrarRequestV2 req)
     {
         var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
         if (r is null) return NotFound(new { error = "Enlace invalido" });
-        if (string.IsNullOrEmpty(r.DniUltimos3) || (req.Pin ?? "").Trim() != r.DniUltimos3)
-            return Unauthorized(new { error = "PIN incorrecto" });
 
         var v = await _db.CafeVentas.FirstOrDefaultAsync(x => x.Id == ventaId);
         if (v is null) return NotFound(new { error = "Venta no encontrada" });

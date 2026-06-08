@@ -11,8 +11,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-    <link rel="stylesheet" href="css/app.css?v=20260608b" />
-    <link rel="stylesheet" href="css/modern-overlay.css?v=20260608b" />
+    <link rel="stylesheet" href="css/app.css?v=20260608c" />
+    <link rel="stylesheet" href="css/modern-overlay.css?v=20260608c" />
 </head>
 <body>
     <div id="app">
@@ -942,20 +942,25 @@
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <script>
         // Escaner de QR para la pantalla mobile del repartidor.
-        // Usa html5-qrcode (carga la camara del celu). Al detectar un QR con la URL
-        // /repartidor/{token}, navega a esa ruta sin cerrar la sesion del PIN.
+        // Usa html5-qrcode (carga la camara del celu).
+        // 2026-06-08: modo CONTINUO — el escaner NO se detiene tras leer un QR. Sigue
+        // capturando y dispara OnScanned por cada nuevo QR distinto. Anti-rebote: ignora
+        // el mismo QR si lo vuelve a leer dentro de 1.5 segundos (frames consecutivos).
         window.startQrScanner = function(targetElementId, onScanned) {
             const html5QrCode = new Html5Qrcode(targetElementId);
             const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+            let ultimoQr = null;
+            let ultimoQrAt = 0;
             html5QrCode.start(
                 { facingMode: "environment" },
                 config,
                 (decodedText) => {
-                    // Detener el escaner y devolver el resultado
-                    html5QrCode.stop().then(() => {
-                        html5QrCode.clear();
-                        try { onScanned.invokeMethodAsync('OnScanned', decodedText); } catch (e) {}
-                    });
+                    const ahora = Date.now();
+                    // Anti-rebote: si es el mismo QR que el anterior y pasaron menos de 1.5s, ignorar
+                    if (decodedText === ultimoQr && (ahora - ultimoQrAt) < 1500) return;
+                    ultimoQr = decodedText;
+                    ultimoQrAt = ahora;
+                    try { onScanned.invokeMethodAsync('OnScanned', decodedText); } catch (e) {}
                 },
                 (err) => { /* errores de cada frame son normales, ignorar */ }
             ).catch(err => {
@@ -970,6 +975,49 @@
                 try { window.__qrScannerRef.stop().then(() => window.__qrScannerRef.clear()); } catch (e) {}
                 window.__qrScannerRef = null;
             }
+        };
+
+        // 2026-06-08: Beep estilo lector de código de barras de supermercado.
+        // mpBeepOk = pitido agudo corto (escaneo exitoso)
+        // mpBeepError = doble pitido grave (QR inválido o error)
+        // Usa Web Audio API — funciona sin descargar archivos.
+        window.__mpAudioCtx = null;
+        function mpEnsureAudioCtx() {
+            try {
+                if (!window.__mpAudioCtx) {
+                    const AC = window.AudioContext || window.webkitAudioContext;
+                    if (AC) window.__mpAudioCtx = new AC();
+                }
+                // Algunos navegadores requieren resume después de gesto del usuario
+                if (window.__mpAudioCtx && window.__mpAudioCtx.state === 'suspended') {
+                    window.__mpAudioCtx.resume();
+                }
+                return window.__mpAudioCtx;
+            } catch (e) { return null; }
+        }
+        function mpPlayTone(freq, durationMs, type, gainVal) {
+            const ctx = mpEnsureAudioCtx();
+            if (!ctx) return;
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = type || 'sine';
+            osc.frequency.value = freq;
+            gain.gain.value = gainVal || 0.25;
+            osc.connect(gain); gain.connect(ctx.destination);
+            osc.start();
+            // Fade out suave para que no clipee
+            gain.gain.setValueAtTime(gain.gain.value, ctx.currentTime + (durationMs / 1000) * 0.6);
+            gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + durationMs / 1000);
+            osc.stop(ctx.currentTime + durationMs / 1000);
+        }
+        // OK: pitido agudo único, tipo "beep!" de supermercado
+        window.mpBeepOk = function() {
+            mpPlayTone(2400, 120, 'square', 0.18);
+        };
+        // ERROR: doble pitido grave
+        window.mpBeepError = function() {
+            mpPlayTone(280, 180, 'square', 0.25);
+            setTimeout(() => mpPlayTone(220, 220, 'square', 0.25), 200);
         };
 
         // ───── Sub-ventana flotante de Pedido WhatsApp en Nueva Venta ─────

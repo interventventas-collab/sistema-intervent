@@ -216,20 +216,18 @@
             @if (modal.Tipo == "cobrar")
             {
                 <label style="font-size:0.8rem; font-weight:600; color:#374151;">Importe cobrado</label>
-                <input type="number" step="0.01" class="mp-input" @bind="importeCobrado" placeholder="0,00" />
+                <input type="number" step="0.01" class="mp-input" @bind="importeCobrado" placeholder="0,00" autofocus />
                 <label style="font-size:0.8rem; font-weight:600; color:#374151; margin-top:0.5rem; display:block;">Observaciones (opcional)</label>
                 <input type="text" class="mp-input" @bind="notasCobro" placeholder="Ej: parcial, efectivo, etc." style="font-size:0.95rem;" />
-                <div style="margin-top:0.8rem;">
-                    <label style="font-size:0.8rem; font-weight:600; color:#374151;">Tu PIN (3 últimos del DNI)</label>
-                    <input type="tel" maxlength="3" inputmode="numeric" class="mp-input mp-input-pin"
-                           @bind="pin" placeholder="•••" autofocus />
+                <div style="margin-top:0.6rem; padding:0.5rem 0.7rem; background:#fef3c7; border-left:3px solid #f59e0b; border-radius:4px; font-size:0.78rem; color:#78350f;">
+                    ℹ️ Esto queda como precarga. Osmar confirma el cobro real desde su panel.
                 </div>
             }
             else
             {
-                <label style="font-size:0.8rem; font-weight:600; color:#374151;">Tu PIN (3 últimos del DNI)</label>
-                <input type="tel" maxlength="3" inputmode="numeric" class="mp-input mp-input-pin"
-                       @bind="pin" placeholder="•••" autofocus />
+                <div style="padding:0.7rem; background:#dcfce7; border-left:3px solid #16a34a; border-radius:4px; font-size:0.9rem; color:#14532d; font-weight:500;">
+                    ¿Confirmás que entregaste este pedido?
+                </div>
             }
 
             @if (!string.IsNullOrEmpty(errorModal))
@@ -239,8 +237,8 @@
 
             <div class="mp-modal-btns">
                 <button class="mp-modal-btn mp-modal-btn-cancel" @onclick="CerrarModal" disabled="@procesando">Cancelar</button>
-                <button class="mp-modal-btn mp-modal-btn-ok" @onclick="ConfirmarModal" disabled="@(procesando || pin.Length != 3)">
-                    @(procesando ? "..." : "✓ Confirmar")
+                <button class="mp-modal-btn mp-modal-btn-ok" @onclick="ConfirmarModal" disabled="@procesando">
+                    @(procesando ? "..." : "✓ Confirmás")
                 </button>
             </div>
         </div>
@@ -351,30 +349,32 @@
 
     private async Task ConfirmarModal()
     {
-        if (modal is null || pin.Length != 3) return;
+        if (modal is null) return;
         procesando = true; errorModal = null;
         try
         {
             HttpResponseMessage resp;
             if (modal.Tipo == "entregar")
             {
+                // 2026-06-08: ya no manda PIN — el backend acepta sin PIN para entregar
                 resp = await Http.PostAsJsonAsync(
                     $"api/cafe/repartidor-public/mis-pedidos/{Token}/entregar/{modal.Pedido.Id}",
-                    new { Pin = pin });
+                    new { });
             }
             else
             {
+                // 2026-06-08: ya no manda PIN — el cobro queda precargado para admin
                 resp = await Http.PostAsJsonAsync(
                     $"api/cafe/repartidor-public/mis-pedidos/{Token}/cobrar/{modal.Pedido.Id}",
-                    new { Pin = pin, Importe = importeCobrado, Notas = notasCobro });
+                    new { Importe = importeCobrado, Notas = notasCobro });
             }
             if (!resp.IsSuccessStatusCode)
             {
                 var err = await resp.Content.ReadAsStringAsync();
-                errorModal = err.Contains("PIN") ? "PIN incorrecto" : "Error al guardar";
+                errorModal = "Error al guardar";
                 return;
             }
-            MostrarToast(modal.Tipo == "entregar" ? "✅ Marcado como entregado" : "💰 Cobro registrado", false);
+            MostrarToast(modal.Tipo == "entregar" ? "✅ Marcado como entregado" : "💰 Cobro precargado para confirmación", false);
             CerrarModal();
             await Recargar();
         }
@@ -415,8 +415,8 @@
     [JSInvokable]
     public async Task OnScanned(string decodedText)
     {
-        try { await JS.InvokeVoidAsync("stopQrScanner"); } catch { }
-        escaneando = false;
+        // 2026-06-08: escaneo CONTINUO — NO detenemos el escáner. Después de procesar el QR,
+        // dejamos la cámara abierta para que el repartidor escanee el siguiente sin tocar nada.
         scanError = null;
 
         // El QR del comprobante apunta a /repartidor/{tokenVenta}
@@ -439,10 +439,19 @@
 
         if (string.IsNullOrWhiteSpace(tokenVenta))
         {
-            scanError = "El QR escaneado no es válido (no es de una venta).";
-            StateHasChanged();
+            // beep "error" — tono grave + corto
+            try { await JS.InvokeVoidAsync("mpBeepError"); } catch { }
+            MostrarToast("⚠ QR no válido", true);
             return;
         }
+
+        // 2026-06-08: anti-duplicado — si el mismo QR se escanea 2 veces seguidas (la cámara
+        // detecta el mismo frame), no lo procesamos otra vez por 2 segundos.
+        var ahora = DateTime.UtcNow;
+        if (ultimoTokenEscaneado == tokenVenta && (ahora - ultimoTokenAt).TotalSeconds < 2)
+            return;
+        ultimoTokenEscaneado = tokenVenta;
+        ultimoTokenAt = ahora;
 
         try
         {
@@ -450,17 +459,25 @@
             var r = await resp.Content.ReadFromJsonAsync<EscanearResp>();
             if (r is null || !r.Ok)
             {
-                MostrarToast(r?.Mensaje ?? "No se pudo agregar a tu lista", true);
+                try { await JS.InvokeVoidAsync("mpBeepError"); } catch { }
+                MostrarToast(r?.Mensaje ?? "No se pudo agregar", true);
                 return;
             }
-            MostrarToast(r.Mensaje ?? "Cargado", false);
+            // beep "OK" — tono agudo corto tipo lector de supermercado
+            try { await JS.InvokeVoidAsync("mpBeepOk"); } catch { }
+            MostrarToast(r.Mensaje ?? "✓ Cargado", false);
             await Recargar();
         }
         catch (Exception ex)
         {
+            try { await JS.InvokeVoidAsync("mpBeepError"); } catch { }
             MostrarToast("Error: " + ex.Message, true);
         }
     }
+
+    // 2026-06-08: tracking anti-duplicado en escaneo continuo
+    private string? ultimoTokenEscaneado;
+    private DateTime ultimoTokenAt;
 
     public record EscanearResp(bool Ok, string? Mensaje, int? VentaId, string? Numero,
         string? ClienteNombre, decimal? Total, bool YaEntregada);
