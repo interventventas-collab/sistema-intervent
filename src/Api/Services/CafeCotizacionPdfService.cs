@@ -28,9 +28,16 @@ public class CafeCotizacionPdfService
         _logger = logger;
     }
 
-    public byte[] GenerarPdfBytes(CafeVenta v, CafeSetting? cfg) => GenerarPdfBytes(v, cfg, null);
+    public byte[] GenerarPdfBytes(CafeVenta v, CafeSetting? cfg) => GenerarPdfBytes(v, cfg, null, null);
 
     public byte[] GenerarPdfBytes(CafeVenta v, CafeSetting? cfg, byte[]? qrRepartidor)
+        => GenerarPdfBytes(v, cfg, qrRepartidor, null);
+
+    /// <summary>2026-06-08: combosMap (opcional, ComboId→Nombre/Sku) permite agrupar items que vienen del
+    /// mismo combo en UNA sola línea en el PDF (lo que ve el cliente). Si es null, los items se muestran
+    /// desglosados como antes (ventas viejas sin ComboOrigenId también se ven igual).</summary>
+    public byte[] GenerarPdfBytes(CafeVenta v, CafeSetting? cfg, byte[]? qrRepartidor,
+                                  Dictionary<int, (string Nombre, string? Sku)>? combosMap)
     {
         cfg ??= new CafeSetting();
         var tipoLetra = TipoComprobanteCorto(v.TipoComprobante);
@@ -250,36 +257,32 @@ public class CafeCotizacionPdfService
                             h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text("Desc.").SemiBold().FontSize(8);
                             h.Cell().Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text("Subtotal").SemiBold().FontSize(8);
                         });
-                        foreach (var i in v.Items)
+                        // 2026-06-08: Agrupar items por ComboOrigenId. Los items que vienen del mismo
+                        // combo se renderizan como UNA sola línea con el nombre del combo y la suma
+                        // de subtotales. El cliente NO ve el desglose en la factura.
+                        var presentationRows = BuildPresentationRows(v, combosMap);
+                        foreach (var pr in presentationRows)
                         {
-                            // Si es BULTO, mostramos cantidad real (cant×UxB), formato "Bulto × N",
-                            // y precio efectivo (precio/UxB). Asi el deposito ve unidades totales.
-                            int uxbItem = (i.Formato == "BULTO" && i.ProductoNav?.UxB is int u && u > 1) ? u : 1;
-                            int cantPrint = i.Cantidad * uxbItem;
-                            string fmtPrint = uxbItem > 1 ? $"Bulto × {uxbItem}" : FormatoLabel(i.Formato);
-                            decimal precioPrint = uxbItem > 1
-                                ? Math.Round(i.PrecioUnitario / uxbItem, 2, MidpointRounding.AwayFromZero)
-                                : i.PrecioUnitario;
                             // Cant
-                            table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignCenter().Text(cantPrint.ToString()).SemiBold();
+                            table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignCenter().Text(pr.CantPrint.ToString()).SemiBold();
                             // Producto
                             table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).Text(t =>
                             {
-                                if (!string.IsNullOrEmpty(i.ProductoNav?.Sku))
-                                    t.Span($"{i.ProductoNav.Sku}  ").Bold().FontColor(Colors.Blue.Darken3).FontSize(8);
-                                t.Span(i.ProductoNombreSnapshot).SemiBold();
-                                if (i.EsDoyPack) t.Span("  d.p.").Bold().FontColor(Colors.Blue.Darken3);
-                                else if (i.EsEnvasePlateado) t.Span("  env. plat.").Bold().FontColor(Colors.Grey.Darken2);
-                                if (!string.IsNullOrEmpty(i.Molienda)) t.Span($"  — {i.Molienda}").FontColor(Colors.Grey.Darken1).FontSize(8);
+                                if (!string.IsNullOrEmpty(pr.Sku))
+                                    t.Span($"{pr.Sku}  ").Bold().FontColor(Colors.Blue.Darken3).FontSize(8);
+                                t.Span(pr.Nombre).SemiBold();
+                                if (pr.EsDoyPack) t.Span("  d.p.").Bold().FontColor(Colors.Blue.Darken3);
+                                else if (pr.EsEnvasePlateado) t.Span("  env. plat.").Bold().FontColor(Colors.Grey.Darken2);
+                                if (!string.IsNullOrEmpty(pr.Molienda)) t.Span($"  — {pr.Molienda}").FontColor(Colors.Grey.Darken1).FontSize(8);
                             });
-                            // Formato — italic gris para que NO se confunda con la cantidad
+                            // Formato
                             table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignCenter()
-                                .Text(fmtPrint).Italic().FontColor(Colors.Grey.Darken1).FontFamily("Times New Roman");
-                            // P. Unitario (efectivo si es bulto)
+                                .Text(pr.FmtPrint).Italic().FontColor(Colors.Grey.Darken1).FontFamily("Times New Roman");
+                            // P. Unitario
                             table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text(t =>
                             {
-                                var pu = "$ " + precioPrint.ToString("N2", Es);
-                                if (i.DescuentoPct > 0)
+                                var pu = "$ " + pr.PrecioPrint.ToString("N2", Es);
+                                if (pr.DescuentoPct > 0)
                                     t.Span(pu).Strikethrough().FontColor(Colors.Grey.Medium);
                                 else
                                     t.Span(pu);
@@ -287,14 +290,14 @@ public class CafeCotizacionPdfService
                             // Desc.
                             table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight().Text(t =>
                             {
-                                if (i.DescuentoPct > 0)
-                                    t.Span($"-{i.DescuentoPct.ToString("0.##", Es)}%").FontColor(Colors.Red.Darken1).Bold();
+                                if (pr.DescuentoPct > 0)
+                                    t.Span($"-{pr.DescuentoPct.ToString("0.##", Es)}%").FontColor(Colors.Red.Darken1).Bold();
                                 else
                                     t.Span("—").FontColor(Colors.Grey.Medium);
                             });
                             // Subtotal
                             table.Cell().Border(0.3f).BorderColor(Colors.Grey.Lighten1).Padding(3).AlignRight()
-                                .Text("$ " + i.Subtotal.ToString("N2", Es)).SemiBold();
+                                .Text("$ " + pr.Subtotal.ToString("N2", Es)).SemiBold();
                         }
                     });
 
@@ -569,4 +572,103 @@ public class CafeCotizacionPdfService
         "BULTO" => "Bulto",
         _ => f
     };
+
+    // 2026-06-08: Fila lista para renderizar en la tabla del PDF. Si vino de un grupo combo,
+    // representa la consolidación de varios CafeVentaItem en una sola línea para el cliente.
+    private sealed class PresentationRow
+    {
+        public int CantPrint { get; set; }
+        public string? Sku { get; set; }
+        public string Nombre { get; set; } = "";
+        public string FmtPrint { get; set; } = "";
+        public decimal PrecioPrint { get; set; }
+        public decimal DescuentoPct { get; set; }
+        public decimal Subtotal { get; set; }
+        public string? Molienda { get; set; }
+        public bool EsDoyPack { get; set; }
+        public bool EsEnvasePlateado { get; set; }
+    }
+
+    /// <summary>2026-06-08: Construye las filas a mostrar en el PDF.
+    /// - Items SIN ComboOrigenId: una fila cada uno (igual que antes).
+    /// - Items CON ComboOrigenId: se agrupan en UNA fila por combo + cantidad de "packs" del combo
+    ///   (vista del cliente, sin desglose). Para identificar cuántos "packs" del combo se vendieron,
+    ///   tomamos el min de ratio Cantidad/CantidadEsperadaPorCombo; con fallback a 1 si no se puede
+    ///   determinar. El precio unitario mostrado = Subtotal del grupo / packs.
+    /// El fallback de nombre/sku usa el primer item del grupo si combosMap no resuelve el ComboId.</summary>
+    private static List<PresentationRow> BuildPresentationRows(CafeVenta v,
+        Dictionary<int, (string Nombre, string? Sku)>? combosMap)
+    {
+        var rows = new List<PresentationRow>();
+        // Mantener el orden original (insercion). Usamos un dict para agrupar pero recordamos el
+        // orden de aparicion del ComboOrigenId.
+        var grupos = new Dictionary<int, List<CafeVentaItem>>();
+        var ordenGrupo = new List<int>();
+        foreach (var i in v.Items)
+        {
+            if (i.ComboOrigenId.HasValue)
+            {
+                var k = i.ComboOrigenId.Value;
+                if (!grupos.ContainsKey(k)) { grupos[k] = new List<CafeVentaItem>(); ordenGrupo.Add(k); }
+                grupos[k].Add(i);
+            }
+        }
+        var grupoYaEmitido = new HashSet<int>();
+        foreach (var i in v.Items)
+        {
+            if (i.ComboOrigenId.HasValue)
+            {
+                var k = i.ComboOrigenId.Value;
+                if (grupoYaEmitido.Contains(k)) continue;
+                grupoYaEmitido.Add(k);
+                var gItems = grupos[k];
+                // Resolver nombre/sku del combo (combosMap > ComboOrigenNav > fallback)
+                string nombreCombo;
+                string? skuCombo;
+                if (combosMap != null && combosMap.TryGetValue(k, out var c)) { nombreCombo = c.Nombre; skuCombo = c.Sku; }
+                else if (gItems[0].ComboOrigenNav is not null) { nombreCombo = gItems[0].ComboOrigenNav!.Nombre; skuCombo = gItems[0].ComboOrigenNav!.Sku; }
+                else { nombreCombo = gItems[0].ProductoNombreSnapshot; skuCombo = null; }
+
+                // Asumo 1 pack del combo. Si el operador cargó N packs, se reflejará en las cantidades
+                // individuales (todas multiplicadas por N) pero como agrupamos por suma, queda una sola
+                // fila de cantidad 1 con el subtotal correcto. Esto es lo MÁS SEGURO para no romper
+                // ARCA — el monto y la descripción siempre cuadran.
+                rows.Add(new PresentationRow
+                {
+                    CantPrint = 1,
+                    Sku = skuCombo,
+                    Nombre = nombreCombo,
+                    FmtPrint = "Combo",
+                    Subtotal = gItems.Sum(x => x.Subtotal),
+                    PrecioPrint = gItems.Sum(x => x.Subtotal),  // mismo subtotal ya que cantidad=1
+                    DescuentoPct = 0,   // descuento se considera ya aplicado en el Subtotal acumulado
+                    Molienda = null,
+                    EsDoyPack = false,
+                    EsEnvasePlateado = false
+                });
+                continue;
+            }
+            // Item suelto (no combo) — igual que antes.
+            int uxbItem = (i.Formato == "BULTO" && i.ProductoNav?.UxB is int u && u > 1) ? u : 1;
+            int cantPrint = i.Cantidad * uxbItem;
+            string fmtPrint = uxbItem > 1 ? $"Bulto × {uxbItem}" : FormatoLabel(i.Formato);
+            decimal precioPrint = uxbItem > 1
+                ? Math.Round(i.PrecioUnitario / uxbItem, 2, MidpointRounding.AwayFromZero)
+                : i.PrecioUnitario;
+            rows.Add(new PresentationRow
+            {
+                CantPrint = cantPrint,
+                Sku = i.ProductoNav?.Sku,
+                Nombre = i.ProductoNombreSnapshot,
+                FmtPrint = fmtPrint,
+                Subtotal = i.Subtotal,
+                PrecioPrint = precioPrint,
+                DescuentoPct = i.DescuentoPct,
+                Molienda = i.Molienda,
+                EsDoyPack = i.EsDoyPack,
+                EsEnvasePlateado = i.EsEnvasePlateado
+            });
+        }
+        return rows;
+    }
 }

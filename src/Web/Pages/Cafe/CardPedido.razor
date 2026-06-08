@@ -161,10 +161,28 @@
             }
             else
             {
+                @* 2026-06-08: Mostrar header del combo arriba de sus componentes (desglose para el armador).
+                   La factura PDF muestra el combo agrupado (1 línea), pero acá el armador necesita ver
+                   exactamente qué piezas tiene que empacar.  *@
+                var combosYaMostrados = new HashSet<int>();
                 @foreach (var it in Venta.Items)
                 {
                     var tildado = tildados.Contains(it.Id);
-                    <div class="prep-item @(tildado ? "tildado" : "")">
+                    @if (it.ComboOrigenId.HasValue && !combosYaMostrados.Contains(it.ComboOrigenId.Value))
+                    {
+                        combosYaMostrados.Add(it.ComboOrigenId.Value);
+                        <div style="display:flex; align-items:center; gap:0.4rem; margin:0.5rem 0 0.2rem 0; padding:0.3rem 0.5rem; background:#fff7ed; border-left:3px solid #f97316; border-radius:4px; font-size:0.82rem; font-weight:700; color:#9a3412;">
+                            <span>📦 COMBO</span>
+                            @if (!string.IsNullOrEmpty(it.ComboOrigenSku))
+                            {
+                                <span style="font-family:monospace; background:#fed7aa; color:#7c2d12; padding:1px 6px; border-radius:3px; font-size:0.75rem;">@it.ComboOrigenSku</span>
+                            }
+                            <span style="font-weight:600;">@(it.ComboOrigenNombre ?? "Producto compuesto")</span>
+                            <span style="margin-left:auto; font-size:0.72rem; color:#9a3412; font-weight:500;">↓ Desglose para armar:</span>
+                        </div>
+                    }
+                    <div class="prep-item @(tildado ? "tildado" : "")"
+                         style="@(it.ComboOrigenId.HasValue ? "margin-left: 0.8rem; border-left: 2px dashed #fdba74;" : "")">
                         <input type="checkbox" class="prep-check" checked="@tildado" @onclick="() => ToggleTildado(it.Id)" />
                         <div class="prep-item-cant"><span class="x">×</span> @it.Cantidad</div>
                         <div>

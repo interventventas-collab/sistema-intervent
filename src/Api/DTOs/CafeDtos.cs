@@ -326,7 +326,14 @@ public record CafeVentaItemDto(
     string? Molienda, bool EsDoyPack,
     decimal DescuentoPct,
     bool EsConceptoLibre = false,
-    bool EsEnvasePlateado = false);
+    bool EsEnvasePlateado = false,
+    // 2026-06-08: items que vinieron del mismo combo (mismo ComboOrigenId)
+    // se agrupan en una sola línea en el PDF/factura. ComboOrigenNombre se completa
+    // sólo si Cafe_Combos tiene un registro vigente; si fue borrado queda null y
+    // el agrupado igual funciona (usa "Combo" como fallback).
+    int? ComboOrigenId = null,
+    string? ComboOrigenNombre = null,
+    string? ComboOrigenSku = null);
 
 public record CafeVentaDto(
     int Id, string Numero, DateTime Fecha,
@@ -412,6 +419,12 @@ public class CafeCotizarItemRequest
     /// de esa línea de venta. NO modifica el producto del catálogo. Aplica a items del catálogo
     /// (no a concepto libre, que ya usa DescripcionLibre).</summary>
     public string? DescripcionOverride { get; set; }
+
+    /// <summary>2026-06-08: Si este item proviene de un combo agregado a la venta (botón "Agregar combo"
+    /// o producto compuesto buscado por SKU), marca el ID del combo origen. Sólo presentación:
+    /// en el PDF/factura los items con mismo ComboOrigenId se agrupan en una sola línea con el
+    /// nombre del combo. En la pantalla de carga/edit y en /cafe/preparacion se siguen viendo desglosados.</summary>
+    public int? ComboOrigenId { get; set; }
 }
 
 public class CafeCotizarRequest

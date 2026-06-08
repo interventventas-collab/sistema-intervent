@@ -208,7 +208,12 @@ public class CafeVentasController : ControllerBase
             i.Molienda, i.EsDoyPack,
             i.DescuentoPct,
             i.EsConceptoLibre,
-            i.EsEnvasePlateado)).ToList(),
+            i.EsEnvasePlateado,
+            // 2026-06-08: marca de combo origen. El frontend resuelve nombre/sku desde su catálogo
+            // de combos en memoria; los PDFs hacen una query puntual al generar el documento.
+            i.ComboOrigenId,
+            i.ComboOrigenNav?.Nombre,
+            i.ComboOrigenNav?.Sku)).ToList(),
         v.ClienteRazonSocialSnapshot,
         v.ClienteDomicilioEntregaSnapshot,
         v.ClienteComentariosComprobante,
@@ -390,7 +395,12 @@ public class CafeVentasController : ControllerBase
         }
 
         var qr = await _qrRepartidorService.GenerarQrAsync(v.PublicToken);
-        var bytes = _pdfService.GenerarPdfBytes(v, cfg, qr);
+        // 2026-06-08: combosMap para agrupar items de combos en el PDF (visualización para el cliente)
+        var comboIds = v.Items.Where(x => x.ComboOrigenId.HasValue).Select(x => x.ComboOrigenId!.Value).Distinct().ToList();
+        var combosMap = comboIds.Count > 0
+            ? await _db.Set<CafeCombo>().Where(c => comboIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => (c.Nombre, c.Sku))
+            : null;
+        var bytes = _pdfService.GenerarPdfBytes(v, cfg, qr, combosMap);
         return File(bytes, "application/pdf", BuildPdfFilename(v));
     }
 
@@ -459,7 +469,12 @@ public class CafeVentasController : ControllerBase
             return BuildArcaPdf(v, cfg!);
         }
         var qr = await _qrRepartidorService.GenerarQrAsync(v.PublicToken);
-        return _pdfService.GenerarPdfBytes(v, cfg, qr);
+        // 2026-06-08: combosMap para agrupar items que vienen del mismo combo en una sola línea
+        var comboIds = v.Items.Where(x => x.ComboOrigenId.HasValue).Select(x => x.ComboOrigenId!.Value).Distinct().ToList();
+        var combosMap = comboIds.Count > 0
+            ? await _db.Set<CafeCombo>().Where(c => comboIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => (c.Nombre, c.Sku))
+            : null;
+        return _pdfService.GenerarPdfBytes(v, cfg, qr, combosMap);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -515,7 +530,16 @@ public class CafeVentasController : ControllerBase
         var autorizada = v.ArcaEstado == "autorizado" && !string.IsNullOrEmpty(v.ArcaCae)
                          && v.ArcaCbteNro.HasValue && v.ArcaPtoVta.HasValue && v.ArcaCbteTipoNum.HasValue;
         var qr = await _qrRepartidorService.GenerarQrAsync(v.PublicToken);
-        byte[] pdfBytes = (esFacturaArca && autorizada) ? BuildArcaPdf(v, cfg!) : _pdfService.GenerarPdfBytes(v, cfg, qr);
+        // 2026-06-08: combosMap para agrupar items que vienen del mismo combo en el PDF
+        Dictionary<int, (string Nombre, string? Sku)>? combosMapPub = null;
+        if (!(esFacturaArca && autorizada))
+        {
+            var comboIdsPub = v.Items.Where(x => x.ComboOrigenId.HasValue).Select(x => x.ComboOrigenId!.Value).Distinct().ToList();
+            combosMapPub = comboIdsPub.Count > 0
+                ? await _db.Set<CafeCombo>().Where(c => comboIdsPub.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => (c.Nombre, c.Sku))
+                : null;
+        }
+        byte[] pdfBytes = (esFacturaArca && autorizada) ? BuildArcaPdf(v, cfg!) : _pdfService.GenerarPdfBytes(v, cfg, qr, combosMapPub);
         return File(pdfBytes, "application/pdf", BuildPdfFilename(v));
     }
 
@@ -592,7 +616,12 @@ public class CafeVentasController : ControllerBase
         else
         {
             var qr = await _qrRepartidorService.GenerarQrAsync(v.PublicToken);
-            pdfBytes = _pdfService.GenerarPdfBytes(v, cfg, qr);
+            // 2026-06-08: combosMap para PDF
+            var comboIdsM = v.Items.Where(x => x.ComboOrigenId.HasValue).Select(x => x.ComboOrigenId!.Value).Distinct().ToList();
+            var combosMapM = comboIdsM.Count > 0
+                ? await _db.Set<CafeCombo>().Where(c => comboIdsM.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => (c.Nombre, c.Sku))
+                : null;
+            pdfBytes = _pdfService.GenerarPdfBytes(v, cfg, qr, combosMapM);
         }
 
         // 3) Armar y enviar el email
@@ -664,7 +693,12 @@ public class CafeVentasController : ControllerBase
         else
         {
             var qr = await _qrRepartidorService.GenerarQrAsync(v.PublicToken);
-            pdfBytes = _pdfService.GenerarPdfBytes(v, cfg, qr);
+            // 2026-06-08: combosMap para PDF
+            var comboIdsW = v.Items.Where(x => x.ComboOrigenId.HasValue).Select(x => x.ComboOrigenId!.Value).Distinct().ToList();
+            var combosMapW = comboIdsW.Count > 0
+                ? await _db.Set<CafeCombo>().Where(c => comboIdsW.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => (c.Nombre, c.Sku))
+                : null;
+            pdfBytes = _pdfService.GenerarPdfBytes(v, cfg, qr, combosMapW);
         }
 
         // Caption por default si no viene. Monto = total real con IVA si es factura ARCA.
@@ -752,8 +786,46 @@ public class CafeVentasController : ControllerBase
             EntregaPor = v.EntregaPor,
         };
 
+        // 2026-06-08: Pre-cargar mapping de combos {Id → (Nombre, Sku)} usado para agrupar
+        // items que vinieron de un combo en UNA sola línea en la factura ARCA.
+        var comboIdsEnVenta = v.Items.Where(x => x.ComboOrigenId.HasValue).Select(x => x.ComboOrigenId!.Value).Distinct().ToList();
+        var combosMapArca = comboIdsEnVenta.Count > 0
+            ? _db.Set<CafeCombo>().Where(c => comboIdsEnVenta.Contains(c.Id)).ToDictionary(c => c.Id, c => (c.Nombre, c.Sku))
+            : new Dictionary<int, (string Nombre, string? Sku)>();
+
+        // Pre-agrupar items por ComboOrigenId. Cada grupo se renderiza como UNA fila con
+        // nombre del combo y suma de subtotales (cantidad=1, precio = subtotal).
+        var emittedCombos = new HashSet<int>();
         foreach (var it in v.Items)
         {
+            // Item de combo: emitir UNA sola fila por grupo de combo, ignorar siguientes del mismo grupo.
+            if (it.ComboOrigenId.HasValue)
+            {
+                var cid = it.ComboOrigenId.Value;
+                if (emittedCombos.Contains(cid)) continue;
+                emittedCombos.Add(cid);
+                var grupo = v.Items.Where(x => x.ComboOrigenId == cid).ToList();
+                var subtotalGrupo = grupo.Sum(x => x.Subtotal);
+                string nombreCombo;
+                string? skuCombo;
+                if (combosMapArca.TryGetValue(cid, out var cInfo)) { nombreCombo = cInfo.Nombre; skuCombo = cInfo.Sku; }
+                else { nombreCombo = grupo[0].ProductoNombreSnapshot; skuCombo = null; }
+                comp.Items.Add(new PdfItem
+                {
+                    Descripcion = nombreCombo,
+                    Sku = skuCombo,
+                    Producto = nombreCombo,
+                    Formato = "Combo",
+                    Cantidad = 1,
+                    PrecioUnitario = subtotalGrupo,
+                    AlicPct = letra == "C" ? 0 : 21m,
+                    PrecioOriginal = null,
+                    DescuentoPct = null
+                });
+                continue;
+            }
+
+            // Item suelto (no combo) — lógica original
             var puConDesc = it.DescuentoPct > 0 && it.Cantidad > 0
                 ? Math.Round(it.Subtotal / it.Cantidad, 2, MidpointRounding.AwayFromZero)
                 : it.PrecioUnitario;
@@ -1126,7 +1198,8 @@ public class CafeVentasController : ControllerBase
                     GramosDescontados = 0m,
                     Molienda = null,
                     EsDoyPack = false,
-                    DescuentoPct = it.DescuentoPct
+                    DescuentoPct = it.DescuentoPct,
+                    ComboOrigenId = reqItem?.ComboOrigenId   // 2026-06-08
                 });
                 continue;
             }
@@ -1148,7 +1221,8 @@ public class CafeVentasController : ControllerBase
                     GramosDescontados = 0m,
                     Molienda = null,
                     EsDoyPack = false,
-                    DescuentoPct = it.DescuentoPct
+                    DescuentoPct = it.DescuentoPct,
+                    ComboOrigenId = reqItem?.ComboOrigenId   // 2026-06-08
                 });
                 continue;
             }
@@ -1171,7 +1245,8 @@ public class CafeVentasController : ControllerBase
                 Molienda = NormMolienda(it.Molienda),
                 EsDoyPack = it.EsDoyPack && prod.Categoria == "CAFE",  // doy pack solo aplica a cafe
                 EsEnvasePlateado = it.EsEnvasePlateado && prod.Categoria == "CAFE" && !it.EsDoyPack,
-                DescuentoPct = it.DescuentoPct
+                DescuentoPct = it.DescuentoPct,
+                ComboOrigenId = reqItem?.ComboOrigenId   // 2026-06-08
             });
 
             // 2026-06-08: Si es PRESUPUESTO (PRO), saltear el descuento de stock — el stock
@@ -1920,7 +1995,8 @@ public class CafeVentasController : ControllerBase
                             GramosDescontados = 0m,
                             Molienda = null,
                             EsDoyPack = false,
-                            DescuentoPct = ci.DescuentoPct
+                            DescuentoPct = ci.DescuentoPct,
+                            ComboOrigenId = reqItem?.ComboOrigenId   // 2026-06-08
                         });
                         continue;
                     }
@@ -1942,7 +2018,8 @@ public class CafeVentasController : ControllerBase
                             GramosDescontados = 0m,
                             Molienda = null,
                             EsDoyPack = false,
-                            DescuentoPct = ci.DescuentoPct
+                            DescuentoPct = ci.DescuentoPct,
+                            ComboOrigenId = reqItem?.ComboOrigenId   // 2026-06-08
                         });
                         continue;
                     }
@@ -1964,7 +2041,8 @@ public class CafeVentasController : ControllerBase
                         Molienda = NormMolienda(ci.Molienda),
                         EsDoyPack = ci.EsDoyPack && prod.Categoria == "CAFE",
                         EsEnvasePlateado = ci.EsEnvasePlateado && prod.Categoria == "CAFE" && !ci.EsDoyPack,
-                        DescuentoPct = ci.DescuentoPct
+                        DescuentoPct = ci.DescuentoPct,
+                        ComboOrigenId = reqItem?.ComboOrigenId   // 2026-06-08
                     });
                     if (prod.Categoria == "CAFE")
                     {
@@ -2731,7 +2809,12 @@ public class CafeVentasController : ControllerBase
                     esDoyPack = i.EsDoyPack,
                     esEnvasePlateado = i.EsEnvasePlateado,
                     categoria = i.Categoria,
-                    esConceptoLibre = i.EsConceptoLibre
+                    esConceptoLibre = i.EsConceptoLibre,
+                    // 2026-06-08: si el item viene de un combo, exponerlo para que el armador vea
+                    // el header "📦 COMBO XYZ" arriba de los componentes en /cafe/preparacion
+                    comboOrigenId = i.ComboOrigenId,
+                    comboOrigenNombre = i.ComboOrigenId != null ? _db.Set<CafeCombo>().Where(c => c.Id == i.ComboOrigenId).Select(c => c.Nombre).FirstOrDefault() : null,
+                    comboOrigenSku = i.ComboOrigenId != null ? _db.Set<CafeCombo>().Where(c => c.Id == i.ComboOrigenId).Select(c => c.Sku).FirstOrDefault() : null
                 }).ToList()
             })
             .ToListAsync();
@@ -2857,7 +2940,11 @@ public class CafeVentasController : ControllerBase
                     esDoyPack = i.EsDoyPack,
                     esEnvasePlateado = i.EsEnvasePlateado,
                     categoria = i.Categoria,
-                    esConceptoLibre = i.EsConceptoLibre
+                    esConceptoLibre = i.EsConceptoLibre,
+                    // 2026-06-08: idem que en /preparacion — desglose visible para el armador
+                    comboOrigenId = i.ComboOrigenId,
+                    comboOrigenNombre = i.ComboOrigenId != null ? _db.Set<CafeCombo>().Where(c => c.Id == i.ComboOrigenId).Select(c => c.Nombre).FirstOrDefault() : null,
+                    comboOrigenSku = i.ComboOrigenId != null ? _db.Set<CafeCombo>().Where(c => c.Id == i.ComboOrigenId).Select(c => c.Sku).FirstOrDefault() : null
                 }).ToList()
             })
             .ToListAsync();

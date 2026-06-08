@@ -322,6 +322,12 @@ public class CafeVentaItemDto
     public bool EsConceptoLibre { get; set; }
     /// <summary>Si va en envase plateado. Si EsDoyPack=false y EsEnvasePlateado=false → envase NEGRO (default).</summary>
     public bool EsEnvasePlateado { get; set; }
+    /// <summary>2026-06-08: si el item viene de un combo agregado a la venta, marca el id del combo.</summary>
+    public int? ComboOrigenId { get; set; }
+    /// <summary>Nombre del combo origen (resuelto desde Cafe_Combos al armar la venta).</summary>
+    public string? ComboOrigenNombre { get; set; }
+    /// <summary>SKU del combo origen (puede ser null si el combo no tiene SKU).</summary>
+    public string? ComboOrigenSku { get; set; }
 }
 
 public class CafeVentaDto
@@ -476,6 +482,11 @@ public class CafePreparacionItemDto
     public bool EsEnvasePlateado { get; set; }
     public string? Categoria { get; set; }
     public bool EsConceptoLibre { get; set; }
+    /// <summary>2026-06-08: si proviene de un combo, marca el id origen. Permite agrupar visualmente
+    /// en /cafe/preparacion para que el armador vea qué pieza es parte de qué combo.</summary>
+    public int? ComboOrigenId { get; set; }
+    public string? ComboOrigenNombre { get; set; }
+    public string? ComboOrigenSku { get; set; }
 }
 
 public class CafeCambiarEstadoPreparacionRequest
@@ -511,6 +522,10 @@ public class CafeCotizarItemRequest
     public string? DescripcionOverride { get; set; }
     /// <summary>2026-06-05: Si > 0, el item es un Servicio del catalogo Cafe_Servicios (envio, mano de obra, etc).</summary>
     public int? ServicioId { get; set; }
+    /// <summary>2026-06-08: Si el item proviene de un combo agregado a la venta, marca el id del combo origen.
+    /// Sólo presentación: en el PDF/factura los items con mismo ComboOrigenId se agrupan en UNA línea con
+    /// el nombre del combo (el cliente no ve el desglose).</summary>
+    public int? ComboOrigenId { get; set; }
 }
 
 public class CafeCotizarRequest

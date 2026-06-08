@@ -276,6 +276,17 @@ public class CafeVentaItem
     [ForeignKey(nameof(ServicioId))]
     public CafeServicio? ServicioNav { get; set; }
 
+    /// <summary>2026-06-08: FK a Cafe_Combos. Si este item proviene de un "combo" agregado en la venta
+    /// (botón "Agregar combo" o producto compuesto buscado por SKU), marca el origen.
+    /// Se usa SOLO para presentación: en el PDF/factura los items con mismo ComboOrigenId se
+    /// agrupan en UNA línea con el nombre del combo (el cliente no ve el desglose).
+    /// En la pantalla de carga y en /cafe/preparacion siguen viéndose desglosados.
+    /// Las ventas viejas (sin combo en este flujo) quedan en NULL y se muestran como siempre.</summary>
+    public int? ComboOrigenId { get; set; }
+
+    [ForeignKey(nameof(ComboOrigenId))]
+    public CafeCombo? ComboOrigenNav { get; set; }
+
     [Required, MaxLength(200)]
     public string ProductoNombreSnapshot { get; set; } = string.Empty;
 

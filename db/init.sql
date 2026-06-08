@@ -4592,3 +4592,16 @@ BEGIN
         FOREIGN KEY (ClienteId) REFERENCES Cafe_Clientes(Id);
 END
 GO
+
+-- ─── 2026-06-08: ComboOrigenId en Cafe_VentaItems ───
+-- Marca qué combo originó cada item cuando se agrega un combo en una venta.
+-- Permite que en el PDF/factura los items que vinieron del mismo combo se muestren
+-- agrupados como UNA sola línea con el nombre del combo (el cliente no ve el desglose).
+-- En la pantalla de carga y en /cafe/preparacion siguen viéndose desglosados.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ComboOrigenId' AND Object_ID=OBJECT_ID('Cafe_VentaItems'))
+BEGIN
+    ALTER TABLE Cafe_VentaItems ADD ComboOrigenId INT NULL
+        CONSTRAINT FK_Cafe_VentaItems_ComboOrigen FOREIGN KEY (ComboOrigenId) REFERENCES Cafe_Combos(Id);
+    CREATE INDEX IX_Cafe_VentaItems_ComboOrigenId ON Cafe_VentaItems(ComboOrigenId) WHERE ComboOrigenId IS NOT NULL;
+END
+GO

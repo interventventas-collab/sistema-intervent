@@ -4756,30 +4756,23 @@
         var combo = combos?.FirstOrDefault(c => c.Id == addComboId);
         if (combo is null || combo.Items.Count == 0) return;
 
+        // 2026-06-08: NO mergear con líneas existentes — siempre crear líneas nuevas con
+        // ComboOrigenId. Esto permite que en el PDF/factura las líneas se agrupen como
+        // UNA sola fila con el nombre del combo (sin desglose para el cliente).
+        // Si se mergeara con líneas sueltas pre-existentes, se perdería el agrupamiento.
         foreach (var ci in combo.Items)
         {
             var qty = ci.Cantidad * addComboCantidad;
-            var existing = formItems.FirstOrDefault(i =>
-                i.ProductoId == ci.ProductoId &&
-                i.Formato == ci.Formato &&
-                (i.Molienda ?? "") == (ci.Molienda ?? "") &&
-                i.EsDoyPack == ci.EsDoyPack);
-            if (existing is not null)
+            formItems.Add(new CafeCotizarItemRequest
             {
-                existing.Cantidad += qty;
-            }
-            else
-            {
-                formItems.Add(new CafeCotizarItemRequest
-                {
-                    ProductoId = ci.ProductoId,
-                    Formato = ci.Formato,
-                    Cantidad = qty,
-                    // Si el combo no especifica molienda, default a EN GRANOS para cafe.
-                    Molienda = !string.IsNullOrEmpty(ci.Molienda) ? ci.Molienda : DefaultMolienda(ci.ProductoId),
-                    EsDoyPack = ci.EsDoyPack
-                });
-            }
+                ProductoId = ci.ProductoId,
+                Formato = ci.Formato,
+                Cantidad = qty,
+                // Si el combo no especifica molienda, default a EN GRANOS para cafe.
+                Molienda = !string.IsNullOrEmpty(ci.Molienda) ? ci.Molienda : DefaultMolienda(ci.ProductoId),
+                EsDoyPack = ci.EsDoyPack,
+                ComboOrigenId = combo.Id   // ← marca origen del combo para el PDF
+            });
         }
 
         ToastService.Success($"Combo '{combo.Nombre}' agregado ({combo.Items.Count} producto{(combo.Items.Count == 1 ? "" : "s")})");
