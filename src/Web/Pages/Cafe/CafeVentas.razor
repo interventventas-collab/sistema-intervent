@@ -1430,6 +1430,22 @@
                                     </tr>
                                 </thead>
                                 <tbody>
+                                    @* 2026-06-08: pre-agrupar items por ComboOrigenId. El primer item del grupo se renderiza
+                                       como una sola fila "combo" que muestra nombre del combo + precio total. El resto del grupo se
+                                       skipea. Los items sueltos se siguen renderizando uno por uno como antes.  *@
+                                    @{
+                                        var comboGroups = new Dictionary<int, List<int>>();
+                                        for (int gi = 0; gi < formItems.Count; gi++)
+                                        {
+                                            if (formItems[gi].ComboOrigenId.HasValue)
+                                            {
+                                                var k = formItems[gi].ComboOrigenId.Value;
+                                                if (!comboGroups.ContainsKey(k)) comboGroups[k] = new List<int>();
+                                                comboGroups[k].Add(gi);
+                                            }
+                                        }
+                                        var firstIdxOfCombo = comboGroups.ToDictionary(kv => kv.Value[0], kv => kv.Key);
+                                    }
                                     @for (int idx = 0; idx < cotizacion.Items.Count; idx++)
                                     {
                                         var i = idx;
@@ -1437,6 +1453,94 @@
                                         var rojo = !ci.StockOk;
                                         var formItem = formItems[i];
                                         var esCafe = ci.Categoria == "CAFE";
+
+                                        // ── Fila combo agrupada ──
+                                        @if (formItem.ComboOrigenId.HasValue)
+                                        {
+                                            // ¿Este idx es el primer item del grupo? Si no, skip (ya se renderizó).
+                                            if (!firstIdxOfCombo.ContainsKey(i)) { continue; }
+                                            var cid = firstIdxOfCombo[i];
+                                            var idxsGrupo = comboGroups[cid];
+                                            var comboInfo = combos?.FirstOrDefault(c => c.Id == cid);
+                                            var comboNombre = comboInfo?.Nombre ?? "Producto compuesto";
+                                            var comboSku = comboInfo?.Sku;
+                                            // Subtotal + costo del grupo (suma de componentes)
+                                            var subtotalGrupo = idxsGrupo.Sum(ix => cotizacion.Items[ix].Subtotal);
+                                            var costoGrupo = idxsGrupo.Sum(ix => cotizacion.Items[ix].CostoUnitario * cotizacion.Items[ix].Cantidad);
+                                            // "Packs" del combo = cantidad del primer item / cantidad esperada del componente (asumimos 1)
+                                            // Para la mayoría de combos cada componente va 1×pack, así que tomamos la cantidad del primer item como packs
+                                            var cantPacks = cotizacion.Items[i].Cantidad;
+                                            var precioUnitCombo = cantPacks > 0 ? Math.Round(subtotalGrupo / cantPacks, 2, MidpointRounding.AwayFromZero) : 0m;
+                                            // SKUs que se descuentan en el cartel
+                                            var skusCartel = string.Join(" + ", idxsGrupo.Select(ix => {
+                                                var skuCmp = productos?.FirstOrDefault(p => p.Id == cotizacion.Items[ix].ProductoId)?.Sku ?? "?";
+                                                return $"{skuCmp} (×{cotizacion.Items[ix].Cantidad})";
+                                            }));
+                                            var hayPrecioOverride = idxsGrupo.Any(ix => formItems[ix].PrecioUnitarioOverride.HasValue);
+                                            var descPctCombo = formItems[i].DescuentoPct;
+                                            <tr style="background: #fff7ed;">
+                                                <td style="text-align: right;">
+                                                    <input class="form-input" type="number" step="1" min="1"
+                                                           style="width: 70px; text-align: right; padding: 0.25rem 0.4rem; font-size: 0.9rem; font-weight: 700;"
+                                                           value="@cantPacks" @onchange="@(e => OnComboCantidadChanged(cid, e.Value?.ToString()))" />
+                                                </td>
+                                                <td>
+                                                    <div style="display:flex; align-items:center; gap:0.3rem; flex-wrap:wrap;">
+                                                        @if (!string.IsNullOrEmpty(comboSku))
+                                                        {
+                                                            <span style="font-family:monospace; font-size:0.7rem; color:#9a3412; font-weight:700; background:#fed7aa; padding:1px 6px; border-radius:3px;">@comboSku</span>
+                                                        }
+                                                        <span style="background:#fed7aa; color:#7c2d12; font-size:0.65rem; font-weight:700; padding:1px 5px; border-radius:3px; letter-spacing:0.04em;">📦 COMBO</span>
+                                                        <span style="font-weight:700; font-size:0.9rem; color:#1f2937;">@comboNombre</span>
+                                                    </div>
+                                                    <div style="margin-top:0.25rem; font-size:0.72rem; color:#7c2d12; background:#ffedd5; border-left:3px solid #f97316; padding:0.2rem 0.5rem; border-radius:3px;">
+                                                        ↓ Descuenta stock: @skusCartel
+                                                    </div>
+                                                </td>
+                                                <td><span style="display:inline-block; padding:0.15rem 0.5rem; background:#fed7aa; border:1px dashed #f97316; border-radius:12px; font-family:Georgia,serif; font-style:italic; font-size:0.85rem; color:#7c2d12;">Combo</span></td>
+                                                <td style="text-align: right;">
+                                                    <input class="form-input" type="number" step="0.01" min="0"
+                                                           style="width: 110px; text-align: right; padding: 0.25rem 0.4rem; font-size: 0.85rem; font-weight: 700; @(hayPrecioOverride ? "background:#fef3c7; border-color:#d97706;" : "")"
+                                                           value="@precioUnitCombo.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)"
+                                                           @onchange="@(e => OnComboPrecioChanged(cid, e.Value?.ToString()))"
+                                                           title="Precio unitario del combo. Si lo modificás, se distribuye proporcionalmente entre los componentes." />
+                                                    @if (hayPrecioOverride)
+                                                    {
+                                                        <div style="display:flex; gap:0.2rem; justify-content:flex-end; align-items:center; margin-top:0.15rem;">
+                                                            <span style="font-size:0.65rem; color:#d97706; font-weight:600;">✏️ manual</span>
+                                                            <button type="button" class="btn-icon" style="color:#6b7280; font-size:0.7rem; padding:0 0.2rem;"
+                                                                    @onclick="() => ClearComboPrecioOverride(cid)"
+                                                                    title="Volver al precio del catálogo">✕</button>
+                                                        </div>
+                                                    }
+                                                </td>
+                                                <td style="text-align: right;">
+                                                    <input class="form-input" type="number" step="0.5" min="0" max="100"
+                                                           style="width: 80px; text-align: right; padding: 0.25rem 0.4rem; font-size: 0.85rem;"
+                                                           value="@descPctCombo" @onchange="@(e => OnComboDescuentoChanged(cid, e.Value?.ToString()))" />
+                                                </td>
+                                                <td style="text-align: right; font-weight: 700;">
+                                                    <div>$@FormatMoney(subtotalGrupo)</div>
+                                                    @{
+                                                        var margenComboPct = costoGrupo > 0
+                                                            ? Math.Round((subtotalGrupo / costoGrupo - 1m) * 100m, 1, MidpointRounding.AwayFromZero)
+                                                            : 0m;
+                                                        var colorMargenC = margenComboPct >= 50m ? "#16a34a" : (margenComboPct >= 20m ? "#d97706" : "#dc2626");
+                                                    }
+                                                    @if (costoGrupo > 0)
+                                                    {
+                                                        <div style="font-size: 0.7rem; font-weight: 500; color: @colorMargenC; margin-top: 0.15rem;"
+                                                             title="Margen sobre costo de los componentes">
+                                                            Margen: @margenComboPct%
+                                                        </div>
+                                                    }
+                                                </td>
+                                                <td><button class="btn-icon btn-delete" type="button" @onclick="() => RemoveCombo(cid)" title="Quitar combo (saca todos los componentes)">×</button></td>
+                                            </tr>
+                                            continue;
+                                        }
+
+                                        // ── Fila item normal (no combo) ──
                                         <tr style="@(rojo ? "background: #fef2f2;" : "")">
                                             <td style="text-align: right;">
                                                 <input class="form-input" type="number" step="1" min="1"
@@ -4867,6 +4971,128 @@
     {
         if (idx < 0 || idx >= formItems.Count) return;
         formItems[idx].PrecioUnitarioOverride = null;
+        await Cotizar();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  2026-06-08: Handlers para fila "combo agrupada" en la grilla
+    // ═══════════════════════════════════════════════════════════════════════
+    //  Cuando el operador toca un valor en la fila del combo (cantidad, precio,
+    //  descuento, eliminar), se propaga al grupo de items componentes de ese
+    //  combo en formItems. Los componentes siguen viviendo como items separados
+    //  (para que stock se descuente bien), pero el operador los ve como uno solo.
+
+    private List<int> GetIndicesGrupoCombo(int comboId)
+    {
+        var res = new List<int>();
+        for (int gi = 0; gi < formItems.Count; gi++)
+            if (formItems[gi].ComboOrigenId == comboId) res.Add(gi);
+        return res;
+    }
+
+    /// <summary>Cambia la cantidad del combo entero: escala la cantidad de cada componente
+    /// usando la relación original "1 componente por pack". Si un componente tenía cantidad>1
+    /// originalmente (combo con 2 unidades de algo), se respeta el ratio.</summary>
+    private async Task OnComboCantidadChanged(int comboId, string? value)
+    {
+        var idxs = GetIndicesGrupoCombo(comboId);
+        if (idxs.Count == 0) return;
+        int nuevaCantPacks = 1;
+        if (!string.IsNullOrWhiteSpace(value)) int.TryParse(value, out nuevaCantPacks);
+        nuevaCantPacks = Math.Max(1, nuevaCantPacks);
+        // El "primer item" del grupo representa 1 pack del combo. Sacamos el ratio de cada
+        // componente respecto al primer item para preservar la composición.
+        var basePacks = Math.Max(1, formItems[idxs[0]].Cantidad);
+        // Si la cantidad base ya es la deseada, no hacemos nada
+        if (basePacks == nuevaCantPacks) return;
+        foreach (var ix in idxs)
+        {
+            var ratio = formItems[ix].Cantidad / (decimal)basePacks;
+            formItems[ix].Cantidad = Math.Max(1, (int)Math.Round(ratio * nuevaCantPacks, MidpointRounding.AwayFromZero));
+        }
+        await Cotizar();
+    }
+
+    /// <summary>Pisa el precio unitario del combo. Lo distribuye proporcionalmente entre los
+    /// componentes según su subtotal actual (para preservar el peso relativo).
+    /// Si todos los subtotales son 0, reparte en partes iguales.</summary>
+    private async Task OnComboPrecioChanged(int comboId, string? value)
+    {
+        var idxs = GetIndicesGrupoCombo(comboId);
+        if (idxs.Count == 0 || cotizacion is null) return;
+        if (string.IsNullOrWhiteSpace(value)
+            || !decimal.TryParse(value.Replace(",", "."), System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out var nuevoPU) || nuevoPU < 0m)
+            return;
+        var cantPacks = Math.Max(1, formItems[idxs[0]].Cantidad);
+        var nuevoTotalCombo = Math.Round(nuevoPU * cantPacks, 2, MidpointRounding.AwayFromZero);
+        // Suma actual de subtotales del grupo (usando cotización para tener los valores actuales)
+        decimal subtotalActual = 0m;
+        foreach (var ix in idxs)
+            if (ix < cotizacion.Items.Count) subtotalActual += cotizacion.Items[ix].Subtotal;
+        if (subtotalActual <= 0m)
+        {
+            // Distribución equitativa entre componentes (cada uno recibe nuevoTotalCombo / N / cant)
+            var porComp = Math.Round(nuevoTotalCombo / idxs.Count, 2, MidpointRounding.AwayFromZero);
+            foreach (var ix in idxs)
+            {
+                var cant = Math.Max(1, formItems[ix].Cantidad);
+                formItems[ix].PrecioUnitarioOverride = Math.Round(porComp / cant, 2, MidpointRounding.AwayFromZero);
+            }
+        }
+        else
+        {
+            var ratio = nuevoTotalCombo / subtotalActual;
+            foreach (var ix in idxs)
+            {
+                if (ix >= cotizacion.Items.Count) continue;
+                var subAnt = cotizacion.Items[ix].Subtotal;
+                var subNuevo = subAnt * ratio;
+                var cant = Math.Max(1, formItems[ix].Cantidad);
+                var puNuevo = Math.Round(subNuevo / cant, 2, MidpointRounding.AwayFromZero);
+                // Si quedó igual al precio del catálogo, limpia override
+                var pCat = cotizacion.Items[ix].PrecioUnitario;
+                if (Math.Abs(puNuevo - pCat) < 0.005m && !formItems[ix].PrecioUnitarioOverride.HasValue)
+                    formItems[ix].PrecioUnitarioOverride = null;
+                else
+                    formItems[ix].PrecioUnitarioOverride = puNuevo;
+            }
+        }
+        await Cotizar();
+    }
+
+    /// <summary>Quita el override de precio en todos los componentes del combo.
+    /// Volvemos al precio del catálogo del componente (precio individual de cada pieza).</summary>
+    private async Task ClearComboPrecioOverride(int comboId)
+    {
+        var idxs = GetIndicesGrupoCombo(comboId);
+        if (idxs.Count == 0) return;
+        foreach (var ix in idxs) formItems[ix].PrecioUnitarioOverride = null;
+        await Cotizar();
+    }
+
+    /// <summary>Aplica el mismo descuento % a todos los componentes del combo.</summary>
+    private async Task OnComboDescuentoChanged(int comboId, string? value)
+    {
+        var idxs = GetIndicesGrupoCombo(comboId);
+        if (idxs.Count == 0) return;
+        decimal d = 0m;
+        if (!string.IsNullOrWhiteSpace(value))
+            decimal.TryParse(value.Replace(",", "."), System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out d);
+        d = Math.Clamp(d, 0m, 100m);
+        foreach (var ix in idxs) formItems[ix].DescuentoPct = d;
+        await Cotizar();
+    }
+
+    /// <summary>Elimina TODOS los componentes del combo en una sola acción.</summary>
+    private async Task RemoveCombo(int comboId)
+    {
+        var idxs = GetIndicesGrupoCombo(comboId);
+        if (idxs.Count == 0) return;
+        // Borrar de mayor a menor para no desfasar índices
+        foreach (var ix in idxs.OrderByDescending(x => x))
+            formItems.RemoveAt(ix);
         await Cotizar();
     }
 
