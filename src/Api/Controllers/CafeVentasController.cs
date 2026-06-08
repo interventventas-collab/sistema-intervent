@@ -1093,7 +1093,12 @@ public class CafeVentasController : ControllerBase
             .Select(i => i.ProductoId).Distinct().ToList();
         var shellCompsCrear = await LoadShellComponentsAsync(prodIdsCrear);
 
-        // Mapear items + descontar stock fisico
+        // 2026-06-08: Si es PRESUPUESTO (TipoComprobante=PRO), NO descontar stock — solo
+        // se reserva la cotización. Cuando el cliente confirme, se convierte a venta real
+        // y ahí sí se descuenta. Este flag controla el bloque de descuento más abajo.
+        var esPresupuesto = string.Equals(venta.TipoComprobante, "PRO", StringComparison.OrdinalIgnoreCase);
+
+        // Mapear items + descontar stock fisico (si NO es presupuesto)
         for (int idx = 0; idx < cot.Items.Count; idx++)
         {
             var it = cot.Items[idx];
@@ -1168,6 +1173,14 @@ public class CafeVentasController : ControllerBase
                 EsEnvasePlateado = it.EsEnvasePlateado && prod.Categoria == "CAFE" && !it.EsDoyPack,
                 DescuentoPct = it.DescuentoPct
             });
+
+            // 2026-06-08: Si es PRESUPUESTO (PRO), saltear el descuento de stock — el stock
+            // solo se descuenta cuando el presupuesto se confirma y se convierte a venta real.
+            if (esPresupuesto)
+            {
+                // No descontamos stock. El item ya quedó cargado arriba con su cantidad/precio.
+                continue;
+            }
 
             // Descontar stock. Si el formato es BULTO, 1 unidad cargada = UxB unidades reales.
             if (prod.Categoria == "CAFE")
@@ -1595,25 +1608,31 @@ public class CafeVentasController : ControllerBase
         if (v.ArcaEstado == "autorizado")
             return BadRequest(new { error = $"El comprobante tiene CAE de ARCA ({v.ArcaCae}). Para revertirlo hay que emitir una Nota de Crédito." });
 
+        // 2026-06-08: Si era PRESUPUESTO (PRO), no había stock descontado → no devolver.
+        var eraPresupuesto = string.Equals(v.TipoComprobante, "PRO", StringComparison.OrdinalIgnoreCase);
+
         // Restaurar stock (concepto libre se saltea, no descontó stock)
         var productosAnular = new List<int>();
-        foreach (var it in v.Items)
+        if (!eraPresupuesto)
         {
-            if (it.EsConceptoLibre || it.ProductoId is null) continue;
-            var prod = await _db.CafeProductos.FindAsync(it.ProductoId.Value);
-            if (prod is null) continue;
-            if (prod.Categoria == "CAFE")
-                prod.StockGramos += it.GramosDescontados;
-            else
+            foreach (var it in v.Items)
             {
-                // BULTO / PACK_N → expandir a unidades reales (UxB o N).
-                var unidadesADevolver = UnidadesRealesStock(prod, it.Formato, it.Cantidad);
-                prod.StockUnidades += unidadesADevolver;
+                if (it.EsConceptoLibre || it.ProductoId is null) continue;
+                var prod = await _db.CafeProductos.FindAsync(it.ProductoId.Value);
+                if (prod is null) continue;
+                if (prod.Categoria == "CAFE")
+                    prod.StockGramos += it.GramosDescontados;
+                else
+                {
+                    // BULTO / PACK_N → expandir a unidades reales (UxB o N).
+                    var unidadesADevolver = UnidadesRealesStock(prod, it.Formato, it.Cantidad);
+                    prod.StockUnidades += unidadesADevolver;
+                }
+                prod.UpdatedAt = DateTime.UtcNow;
+                prod.StockChangedAt = DateTime.UtcNow;
+                await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
+                productosAnular.Add(prod.Id);
             }
-            prod.UpdatedAt = DateTime.UtcNow;
-            prod.StockChangedAt = DateTime.UtcNow;
-            await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
-            productosAnular.Add(prod.Id);
         }
         v.Estado = "anulado";
         v.UpdatedAt = DateTime.UtcNow;
@@ -1638,24 +1657,30 @@ public class CafeVentasController : ControllerBase
         if (v is null) return NotFound(new { error = "Venta no encontrada" });
         if (v.Estado != "anulado") return BadRequest(new { error = $"La venta no esta anulada (estado actual: {v.Estado}). Solo se pueden recuperar ventas anuladas." });
 
+        // 2026-06-08: Si es PRESUPUESTO (PRO), no descontar stock al recuperar (nunca se descontó).
+        var esPresupuestoRecup = string.Equals(v.TipoComprobante, "PRO", StringComparison.OrdinalIgnoreCase);
+
         // Volver a descontar stock (inverso del Anular). Concepto libre se saltea.
         var productosRecuperar = new List<int>();
-        foreach (var it in v.Items)
+        if (!esPresupuestoRecup)
         {
-            if (it.EsConceptoLibre || it.ProductoId is null) continue;
-            var prod = await _db.CafeProductos.FindAsync(it.ProductoId.Value);
-            if (prod is null) continue;
-            if (prod.Categoria == "CAFE")
-                prod.StockGramos -= it.GramosDescontados;
-            else
+            foreach (var it in v.Items)
             {
-                var unidadesADescontar = UnidadesRealesStock(prod, it.Formato, it.Cantidad);
-                prod.StockUnidades -= unidadesADescontar;
+                if (it.EsConceptoLibre || it.ProductoId is null) continue;
+                var prod = await _db.CafeProductos.FindAsync(it.ProductoId.Value);
+                if (prod is null) continue;
+                if (prod.Categoria == "CAFE")
+                    prod.StockGramos -= it.GramosDescontados;
+                else
+                {
+                    var unidadesADescontar = UnidadesRealesStock(prod, it.Formato, it.Cantidad);
+                    prod.StockUnidades -= unidadesADescontar;
+                }
+                prod.UpdatedAt = DateTime.UtcNow;
+                prod.StockChangedAt = DateTime.UtcNow;
+                await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
+                productosRecuperar.Add(prod.Id);
             }
-            prod.UpdatedAt = DateTime.UtcNow;
-            prod.StockChangedAt = DateTime.UtcNow;
-            await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
-            productosRecuperar.Add(prod.Id);
         }
         v.Estado = "emitido";
         v.UpdatedAt = DateTime.UtcNow;

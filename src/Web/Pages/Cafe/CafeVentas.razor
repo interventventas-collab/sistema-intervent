@@ -754,7 +754,7 @@
                             <label class="form-label">Tipo de comprobante *</label>
                             <select class="form-input" @bind="formTipoComprobante" @bind:after="OnTipoComprobanteChanged" disabled="@modoVentaRapida">
                                 <option value="X">X — Cotización / Remito interno (sin IVA)</option>
-                                <option value="PRO">PRO — Proforma con IVA (preview)</option>
+                                <option value="PRO">📋 PRESUPUESTO — Proforma con IVA (NO descuenta stock)</option>
                                 <option value="FA">Factura A — emite por ARCA (con CAE)</option>
                                 <option value="FB">Factura B — emite por ARCA (con CAE)</option>
                                 @* Factura C es para monotributistas — PALANICA es Responsable Inscripto, no aplica.
@@ -3849,7 +3849,7 @@
     private static string EmitirLabelForTipo(string tipo) => tipo switch
     {
         "X" => "cotización",
-        "PRO" => "proforma",
+        "PRO" => "📋 PRESUPUESTO (no descuenta stock)",  // 2026-06-08
         "FA" => "Factura A",
         "FB" => "Factura B",
         "FC" => "Factura C",
