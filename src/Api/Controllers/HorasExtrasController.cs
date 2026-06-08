@@ -52,7 +52,10 @@ public class HorasExtrasController : ControllerBase
         // MostrarHorasTrabajadasDia (v2): si true, muestra "11,5 h" azul al lado de cada dia.
         DateTime CicloDesde, DateTime CicloHasta, string CicloLabel,
         decimal TotalCiclo, decimal ExtrasCiclo, bool MostrarExtras,
-        bool MostrarCuadroCiclo, bool MostrarHorasTrabajadasDia);
+        bool MostrarCuadroCiclo, bool MostrarHorasTrabajadasDia,
+        // 2026-06-08: si true, la pagina mobile oculta el form de carga (solo lectura).
+        // El empleado debe fichar desde el kiosco /fichador (huella o PIN).
+        bool SoloInformativo = false);
 
     /// <summary>Busca un empleado por slug del nombre + clave (últimos 3 del DNI). Helper
     /// usado por todos los endpoints públicos. Devuelve null si no coincide nada activo.</summary>
@@ -151,7 +154,8 @@ public class HorasExtrasController : ControllerBase
             ultimos7, totalSemana, totalCiclo,
             ciclo.Desde, ciclo.Hasta, ciclo.Label,
             totalCiclo, extrasCiclo, emp.MostrarExtrasAlEmpleado,
-            emp.MostrarCuadroCiclo, emp.MostrarHorasTrabajadasDia));
+            emp.MostrarCuadroCiclo, emp.MostrarHorasTrabajadasDia,
+            emp.SoloInformativo));   // 2026-06-08
     }
 
     /// <summary>Devuelve "HH:mm" o null. Lo usamos en el JSON para que el input type=time del browser
@@ -185,6 +189,11 @@ public class HorasExtrasController : ControllerBase
     {
         var emp = await FindEmpleadoAsync(slug, clave);
         if (emp is null) return NotFound(new { error = "Link inválido o empleado inactivo" });
+
+        // 2026-06-08: si el empleado está marcado como SoloInformativo, no puede fichar desde
+        // su pagina personal. Tiene que ir al kiosco /fichador (huella o PIN).
+        if (emp.SoloInformativo)
+            return BadRequest(new { error = "Tenés que fichar desde el kiosco con huella o PIN. Esta pantalla es solo informativa." });
 
         // El campo en DB es decimal(5,2) → hasta 999.99. Antes limitabamos a 24 pensando en
         // 1 dia, pero el usuario carga acumulados (ej. 90hs para cerrar periodo) → permitido.
@@ -337,7 +346,10 @@ public class HorasExtrasController : ControllerBase
         // 2026-06-03 v3: flag para probar el modo nuevo de fichada solo en este empleado
         bool ProbarModoNuevoFichada,
         // 2026-06-03 v4: flag para mostrar/ocultar este empleado en el kiosco /fichador
-        bool MostrarEnFichador);
+        bool MostrarEnFichador,
+        // 2026-06-08: SoloInformativo — la pagina personal del empleado oculta el form de
+        // marcar entrada/salida. Solo puede ver sus horas. Util para forzar fichaje por kiosko.
+        bool SoloInformativo = false);
 
     /// <summary>Lista de empleados con totales (hoy / semana / mes) y la última vez que cargaron.</summary>
     [HttpGet("admin/empleados")]
@@ -431,7 +443,8 @@ public class HorasExtrasController : ControllerBase
                 trabCiclo, espCiclo, trabCiclo - espCiclo,
                 e.MostrarCuadroCiclo, e.MostrarHorasTrabajadasDia,
                 e.ProbarModoNuevoFichada,
-                e.MostrarEnFichador
+                e.MostrarEnFichador,
+                e.SoloInformativo   // 2026-06-08
             );
         }).ToList();
         return Ok(result);
@@ -526,6 +539,8 @@ public class HorasExtrasController : ControllerBase
         public bool? ProbarModoNuevoFichada { get; set; }
         // 2026-06-03 v4: mostrar este empleado en el kiosco /fichador
         public bool? MostrarEnFichador { get; set; }
+        // 2026-06-08: si true, la pagina personal del empleado es solo informativa (no puede fichar)
+        public bool? SoloInformativo { get; set; }
     }
 
     [HttpPut("admin/empleados/{id:int}")]
@@ -559,6 +574,7 @@ public class HorasExtrasController : ControllerBase
         if (req.MostrarHorasTrabajadasDia.HasValue) emp.MostrarHorasTrabajadasDia = req.MostrarHorasTrabajadasDia.Value;
         if (req.ProbarModoNuevoFichada.HasValue) emp.ProbarModoNuevoFichada = req.ProbarModoNuevoFichada.Value;
         if (req.MostrarEnFichador.HasValue) emp.MostrarEnFichador = req.MostrarEnFichador.Value;
+        if (req.SoloInformativo.HasValue) emp.SoloInformativo = req.SoloInformativo.Value;  // 2026-06-08
         if (req.ClearCiclo)
         {
             emp.CicloDiaInicio = null;

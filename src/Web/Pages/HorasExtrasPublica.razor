@@ -86,13 +86,29 @@
                 📅 @FechaLabel(datos.HoyFecha)
             </div>
 
-            <label class="he-label" style="margin-top:0.7rem;">🕒 Horario</label>
+            @* 2026-06-08: variables del form. Calculadas siempre (no rompen aunque el form esté oculto). *@
             @{
                 var tieneEntrada = !string.IsNullOrEmpty(formHoraEntrada);
                 var tieneSalida = !string.IsNullOrEmpty(formHoraSalida);
                 var (eH, eM) = ParseHora(formHoraEntrada);
                 var (sH, sM) = ParseHora(formHoraSalida);
             }
+
+            @* 2026-06-08: si el admin marcó al empleado como "solo informativo",
+               escondemos TODO el bloque de carga (entrada/salida/observación/guardar).
+               Solo le mostramos un cartel claro de que tiene que fichar por el kiosco. *@
+            @if (datos.SoloInformativo)
+            {
+                <div style="margin-top:0.8rem; padding:1rem; background:#fef3c7; border:2px solid #f59e0b; border-radius:10px; text-align:center;">
+                    <div style="font-size:1.4rem; margin-bottom:0.3rem;">🖐️</div>
+                    <div style="font-weight:800; color:#78350f; font-size:1rem; margin-bottom:0.3rem;">Acordate de fichar con la huella o el PIN</div>
+                    <div style="font-size:0.85rem; color:#92400e;">Esta pantalla es solo para ver tus horas. Para marcar entrada y salida usá la app de huella en el local.</div>
+                </div>
+            }
+            @if (!datos.SoloInformativo)
+            {
+
+            <label class="he-label" style="margin-top:0.7rem;">🕒 Horario</label>
 
             @* ENTRADA *@
             @if (modoEdicion == "entrada")
@@ -182,6 +198,8 @@
             {
                 <p style="color:#b91c1c; font-size:0.85rem; margin-top:0.5rem; text-align:center;">⚠ @errorMsg</p>
             }
+
+            }   @* 2026-06-08: cierre del @if (!SoloInformativo) *@
         </div>
 
         <div class="he-card">
@@ -287,7 +305,9 @@
         DateTime CicloDesde = default, DateTime CicloHasta = default, string CicloLabel = "",
         decimal TotalCiclo = 0m, decimal ExtrasCiclo = 0m, bool MostrarExtras = false,
         // 2026-06-03 v2: flags granulares de visibilidad
-        bool MostrarCuadroCiclo = false, bool MostrarHorasTrabajadasDia = false);
+        bool MostrarCuadroCiclo = false, bool MostrarHorasTrabajadasDia = false,
+        // 2026-06-08: si true, oculta el form de carga (solo lectura). Empleado ficha por kiosco.
+        bool SoloInformativo = false);
 
     protected override async Task OnInitializedAsync()
     {

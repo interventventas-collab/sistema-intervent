@@ -148,6 +148,19 @@
                 </label>
             </div>
 
+            @* 2026-06-08: forzar fichaje por kiosco — el link personal se vuelve solo informativo *@
+            <div style="margin-top:0.5rem; padding:0.6rem 0.8rem; background:#fef3c7; border:1px solid #f59e0b; border-radius:8px;">
+                <label style="display:flex; gap:0.5rem; align-items:flex-start; cursor:pointer; font-size:0.88rem;">
+                    <input type="checkbox" @bind="formSoloInformativo" style="margin-top:0.15rem;" />
+                    <span>
+                        <strong>🖐️ Solo informativo en su link personal (debe fichar por kiosco)</strong>
+                        <div style="font-size:0.72rem; color:#6b7280; margin-top:0.1rem;">
+                            Si está tildado, en /he/{slug}/horario el empleado puede VER sus horas pero NO marcar entrada/salida. Tiene que fichar SÍ o SÍ desde el kiosco (huella o PIN). Sirve para evitar el "fichaje fantasma" desde el celular.
+                        </div>
+                    </span>
+                </label>
+            </div>
+
             @* 2026-06-03: período de liquidación (mes calendario o personalizado) *@
             <div style="margin-top:0.7rem; padding:0.6rem 0.8rem; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px;">
                 <label style="font-size:0.78rem; font-weight:700; color:#1e3a8a; text-transform:uppercase; letter-spacing:0.04em;">📅 Período de liquidación</label>
@@ -492,7 +505,9 @@
         // 2026-06-03 v3: flag para probar el modo nuevo de fichada (WiFi + GPS) solo en este empleado
         bool ProbarModoNuevoFichada = false,
         // 2026-06-03 v4: mostrar este empleado en el kiosco /fichador
-        bool MostrarEnFichador = true);
+        bool MostrarEnFichador = true,
+        // 2026-06-08: solo informativo (no puede fichar desde el link personal)
+        bool SoloInformativo = false);
     public record AdminRegistroDto(int Id, int EmpleadoId, string EmpleadoNombre, DateTime Fecha,
         decimal Cantidad, string? Observaciones, string? HoraEntrada, string? HoraSalida,
         DateTime CreatedAt, DateTime? UpdatedAt,
@@ -522,6 +537,7 @@
     private bool formProbarModoNuevoFichada = false;
     // 2026-06-03 v4: mostrar este empleado en el kiosco /fichador (default true)
     private bool formMostrarEnFichador = true;
+    private bool formSoloInformativo = false;   // 2026-06-08
 
     // Carga manual (para acumulados)
     private bool showCargarManual, savingManual;
@@ -598,6 +614,7 @@
         formMostrarHorasTrabajadasDia = false;
         formProbarModoNuevoFichada = false;
         formMostrarEnFichador = true;
+        formSoloInformativo = false;   // 2026-06-08
     }
 
     private void ShowEditEmpleado(AdminEmpleadoDto e)
@@ -617,6 +634,7 @@
         formMostrarHorasTrabajadasDia = e.MostrarHorasTrabajadasDia;
         formProbarModoNuevoFichada = e.ProbarModoNuevoFichada;
         formMostrarEnFichador = e.MostrarEnFichador;
+        formSoloInformativo = e.SoloInformativo;   // 2026-06-08
     }
 
     private async Task GuardarEmpleado()
@@ -648,7 +666,8 @@
                           MostrarCuadroCiclo = formMostrarCuadroCiclo,
                           MostrarHorasTrabajadasDia = formMostrarHorasTrabajadasDia,
                           ProbarModoNuevoFichada = formProbarModoNuevoFichada,
-                          MostrarEnFichador = formMostrarEnFichador });
+                          MostrarEnFichador = formMostrarEnFichador,
+                          SoloInformativo = formSoloInformativo });   // 2026-06-08
                 if (resp.IsSuccessStatusCode) ToastService.Success("Empleado actualizado");
                 else { ToastService.Error("Error actualizando"); return; }
             }
