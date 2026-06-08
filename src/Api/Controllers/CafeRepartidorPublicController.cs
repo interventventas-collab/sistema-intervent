@@ -292,7 +292,8 @@ public class CafeRepartidorPublicController : ControllerBase
         DateTime CargadoAt,
         // 2026-06-08: comentario que dejó el repartidor al marcar entregado (opcional)
         string? ComentarioEntrega,
-        // 2026-06-08: true si tiene PDF en Drive (para mostrar/ocultar botón "Ver comprobante")
+        // 2026-06-08 v2: true si la venta tiene PublicToken (el PDF se genera al toque).
+        // En la práctica es true para todas las ventas creadas con el sistema actual.
         bool TienePdf);
 
 
@@ -323,7 +324,8 @@ public class CafeRepartidorPublicController : ControllerBase
                 x.v.EstadoPreparacion,
                 CargadoAt = x.e.CreatedAt,
                 x.v.ComentarioEntrega,
-                TienePdf = !string.IsNullOrEmpty(x.v.DriveFileId)
+                // 2026-06-08 v2: con PublicToken alcanza — el PDF se genera al toque, no depende de Drive
+                TienePdf = !string.IsNullOrEmpty(x.v.PublicToken)
             })
             .ToListAsync();
 
@@ -447,14 +449,15 @@ public class CafeRepartidorPublicController : ControllerBase
 
         var v = await _db.CafeVentas
             .Where(x => x.Id == ventaId)
-            .Select(x => new { x.DriveFileId, x.Numero })
+            .Select(x => new { x.PublicToken, x.Numero })
             .FirstOrDefaultAsync();
         if (v is null) return NotFound(new { error = "Venta no encontrada" });
-        if (string.IsNullOrEmpty(v.DriveFileId))
-            return Ok(new { url = (string?)null, numero = v.Numero, mensaje = "Esta venta todavía no tiene PDF generado" });
+        if (string.IsNullOrEmpty(v.PublicToken))
+            return Ok(new { url = (string?)null, numero = v.Numero, mensaje = "Esta venta no tiene token público" });
 
-        // URL pública de preview en Drive (no requiere login si el archivo es público)
-        var url = $"https://drive.google.com/file/d/{v.DriveFileId}/view";
+        // 2026-06-08 v2: usar el endpoint público que GENERA el PDF al toque (no depende de Drive).
+        // Así siempre funciona, incluso si la venta es nueva y todavía no se subió a Drive.
+        var url = $"/api/cafe/ventas/publica/{v.PublicToken}/pdf";
         return Ok(new { url, numero = v.Numero });
     }
 
