@@ -1584,6 +1584,29 @@ public class MeliItemService
         var existing = await _db.MeliItems
             .FirstOrDefaultAsync(i => i.MeliItemId == meliItemId && i.VariationId == variationId);
 
+        // 2026-06-08: AUTO-LINKEO por SKU.
+        // Cuando MeLi trae una publicación con un SKU que YA existe en Cafe_Combos/Cafe_Productos,
+        // la asociamos automáticamente. Sin esto, las publicaciones nuevas (creadas en MeLi
+        // después del primer linkeo masivo) quedan "sin vincular" y necesitan linkeo manual.
+        // Solo busca cuando: hay SKU, y el item no tiene linkeo (CafeComboId+CafeProductoId nulos).
+        int? autoComboId = null;
+        int? autoProductoId = null;
+        var needsAutoLink = !string.IsNullOrWhiteSpace(sku)
+            && (existing is null || (existing.CafeComboId is null && existing.CafeProductoId is null));
+        if (needsAutoLink)
+        {
+            // Prioridad: combo > producto (el combo es más específico).
+            var combo = await _db.Set<CafeCombo>().AsNoTracking()
+                .Where(c => c.Sku == sku).Select(c => (int?)c.Id).FirstOrDefaultAsync();
+            if (combo.HasValue) autoComboId = combo;
+            else
+            {
+                var prod = await _db.CafeProductos.AsNoTracking()
+                    .Where(p => p.Sku == sku).Select(p => (int?)p.Id).FirstOrDefaultAsync();
+                if (prod.HasValue) autoProductoId = prod;
+            }
+        }
+
         if (existing is not null)
         {
             // DETECTOR DE CAMBIOS 2026-05-23: capturar valores anteriores ANTES de actualizar
@@ -1617,6 +1640,9 @@ public class MeliItemService
             // Solo overrideamos LogisticType si vino del API. Si vino null (no estaba en la response),
             // mantenemos el valor cacheado para no perder info.
             if (logisticType != null) existing.LogisticType = logisticType;
+            // 2026-06-08: aplicar auto-linkeo si se encontró match por SKU
+            if (autoComboId.HasValue) existing.CafeComboId = autoComboId;
+            else if (autoProductoId.HasValue) existing.CafeProductoId = autoProductoId;
             existing.UpdatedAt = DateTime.UtcNow;
         }
         else
@@ -1647,7 +1673,10 @@ public class MeliItemService
                 FreeShipping = freeShipping,
                 DateCreated = dateCreated,
                 LastUpdated = lastUpdated,
-                LogisticType = logisticType
+                LogisticType = logisticType,
+                // 2026-06-08: auto-linkeo al crear si el SKU ya existe en el sistema
+                CafeComboId = autoComboId,
+                CafeProductoId = autoProductoId
             });
         }
     }
