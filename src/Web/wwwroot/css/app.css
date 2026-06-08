@@ -268,6 +268,33 @@ button {
 }
 .topbar-cafe-grid > button { width: 100%; }
 
+/* 2026-06-08: boton 'Listas de precios' en topbar (a la izquierda de Preparacion) */
+.topbar-listas-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid #b45309;
+  background: linear-gradient(135deg, #fbbf24 0%, #d97706 100%);
+  color: white;
+  font-weight: 600;
+  font-size: 0.8rem;
+  line-height: 1.05;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(217, 119, 6, 0.3);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.topbar-listas-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(217, 119, 6, 0.4);
+}
+.topbar-listas-label { text-align: left; }
+@media (max-width: 640px) {
+  .topbar-listas-label { display: none; }
+  .topbar-listas-btn { padding: 0.5rem 0.55rem; }
+}
+
 /* 2026-06-06: boton 'Preparacion de pedidos' en topbar (a la izquierda de Empleados) */
 .topbar-preparacion-btn {
   display: inline-flex;

@@ -661,6 +661,13 @@
             @* 2026-05-30: oficina también puede cargar ventas (igual que admin con permiso cafe). *@
             @if (HasPerm("cafe") || HasPerm("oficina"))
             {
+                @* 2026-06-08: boton LISTAS DE PRECIOS — atajo a la izquierda de Preparacion *@
+                <button class="topbar-listas-btn"
+                        @onclick="@(() => NavigateTo("/cafe/listas-precios"))"
+                        title="Listas de precios">
+                    <span style="font-size: 1.2rem;">💲</span>
+                    <span class="topbar-listas-label">Listas<br/>de precios</span>
+                </button>
                 @* 2026-06-06: boton PREPARACION DE PEDIDOS — atajo directo a la pantalla *@
                 <button class="topbar-preparacion-btn"
                         @onclick="@(() => NavigateTo("/cafe/preparacion"))"
