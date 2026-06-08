@@ -1,4 +1,5 @@
 @page "/cafe/ventas"
+@page "/cafe/presupuestos"
 @attribute [Authorize]
 @implements IDisposable
 @inject ApiClient Api
@@ -90,10 +91,16 @@
    (que tiene overflow:hidden en el CSS global). *@
 <div class="card" style="overflow: visible;">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
-        <h3>🧾 Ventas
+        <h3>@(ModoPresupuestos ? "📋 Presupuestos" : "🧾 Ventas")
             <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;">
                 (@VentasFiltradas.Count@(HayFiltrosActivos ? $" de {ventas?.Count ?? 0}" : ""))
             </span>
+            @if (ModoPresupuestos)
+            {
+                <span style="margin-left: 0.6rem; font-size: 0.75rem; color: #6b7280; font-weight: 500;">
+                    — proforma con IVA, no descuenta stock
+                </span>
+            }
         </h3>
         @* El boton "+ Nueva Venta" vive en el topbar (siempre visible). El de esta pantalla
            se saco el 2026-05-19 porque era duplicado y solo funcionaba el del topbar. *@
@@ -3038,6 +3045,8 @@
     }
     private string filtroCliente = "";
     private string filtroTipo = "TODOS";       // TODOS | X | PRO | FA | FB | FC
+    // True cuando la URL es /cafe/presupuestos → fuerza vista filtrada a PRO y cambia textos
+    private bool ModoPresupuestos => Navigation.Uri.Contains("/cafe/presupuestos", StringComparison.OrdinalIgnoreCase);
     private string filtroEstado = "TODOS";     // TODOS | emitido | anulado
     private string filtroCae = "TODOS";        // TODOS | CON_CAE | SIN_CAE | PENDIENTE
     private string filtroSaldo = "TODOS";      // TODOS | CON_SALDO | SIN_SALDO
@@ -3548,6 +3557,8 @@
         NuevaVentaSignal.OnRequest += OnNuevaVentaSignal;
         try { deleteSettings = await Api.GetCafeDeleteSettingsAsync(); }
         catch { deleteSettings = new DeleteCafeVentaSettingsDto(); }
+        // Si la URL es /cafe/presupuestos, pre-filtrar por PRO
+        if (ModoPresupuestos) { filtroTipo = "PRO"; }
         await LoadCatalogos();
         await Load();
         // Si veníamos del FAB con ?nueva=..., abrir el modal automáticamente
@@ -3569,6 +3580,10 @@
     {
         InvokeAsync(async () =>
         {
+            // Si navegamos entre /cafe/ventas y /cafe/presupuestos, re-aplicar filtroTipo
+            if (ModoPresupuestos && filtroTipo != "PRO") { filtroTipo = "PRO"; StateHasChanged(); }
+            else if (!ModoPresupuestos && filtroTipo == "PRO" && e.Location.Contains("/cafe/ventas", StringComparison.OrdinalIgnoreCase))
+            { filtroTipo = "TODOS"; StateHasChanged(); }
             TryHandleNuevaVentaShortcut();
             await TryHandleConvertirPreventaAsync();
             await TryHandleConvertirPedidoWAAsync();

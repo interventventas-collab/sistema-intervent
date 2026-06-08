@@ -401,6 +401,67 @@ button {
   .topbar-empleados-btn { padding: 0.5rem 0.55rem; }
 }
 
+/* 2026-06-08: split-button "📋 Ventas ▾" con flechita para abrir Presupuestos */
+.fab-cafe-split {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+}
+.fab-cafe-split-main {
+  border-top-right-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+  border-right: none !important;
+  margin-right: 0 !important;
+}
+.fab-cafe-split-caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.5rem;
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  border-left: 1px solid rgba(0,0,0,0.08);
+  border-top-right-radius: 8px;
+  border-bottom-right-radius: 8px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 700;
+  transition: background 0.15s, color 0.15s;
+}
+.fab-cafe-split-caret:hover { background: #e5e7eb; color: #111827; }
+.fab-cafe-split.open .fab-cafe-split-caret { background: #d1d5db; color: #111827; }
+.fab-cafe-split-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 200px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+  padding: 0.3rem;
+  z-index: 9500;
+  animation: empleadosDropdownIn 0.15s ease-out;
+}
+.fab-cafe-split-menu button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: #1f2937;
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.fab-cafe-split-menu button:hover { background: #f3f4f6; color: #2563eb; }
+
 /* Boton primario "Nueva Venta" — destacado en verde con sombra */
 .fab-nueva-venta {
   display: inline-flex;

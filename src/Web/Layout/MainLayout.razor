@@ -713,10 +713,25 @@
                 </div>
                 @* 2026-06-06: layout en GRID 2x2 — arriba "ver" (Ventas / Saldos), abajo "agregar" (+Nueva Venta / +Nueva Cobranza) *@
                 <div class="topbar-cafe-grid">
-                    <button class="fab-cafe-link" @onclick="@(() => NavigateTo("/cafe/ventas"))"
-                            title="Ver listado de ventas">
-                        📋 Ventas
-                    </button>
+                    @* 2026-06-08: split button — Ventas + flechita que despliega Presupuestos *@
+                    <div class="fab-cafe-split @(menuPresupuestosAbierto ? "open" : "")">
+                        <button class="fab-cafe-link fab-cafe-split-main" @onclick="@(() => NavigateTo("/cafe/ventas"))"
+                                title="Ver listado de ventas">
+                            📋 Ventas
+                        </button>
+                        <button class="fab-cafe-split-caret" @onclick="ToggleMenuPresupuestos"
+                                title="Más opciones (Presupuestos)"
+                                aria-label="Más opciones">▾</button>
+                        @if (menuPresupuestosAbierto)
+                        {
+                            <div class="fab-cafe-split-menu" @onclick:stopPropagation="true">
+                                <button @onclick="@(() => { menuPresupuestosAbierto = false; NavigateTo("/cafe/presupuestos"); })"
+                                        title="Ver listado de presupuestos (proformas — sin descontar stock)">
+                                    📋 Presupuestos
+                                </button>
+                            </div>
+                        }
+                    </div>
                     <button class="fab-cafe-link" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; border-color: #b45309;"
                             @onclick="@(() => NavigateTo("/cafe/clientes/panel-deudas"))"
                             title="Ver saldos pendientes — ¿Quién me debe?">
@@ -1248,6 +1263,9 @@
     private bool showEmpleadosDropdown;
     private void ToggleEmpleadosDropdown() { showEmpleadosDropdown = !showEmpleadosDropdown; }
     private void NavigateAndCloseEmpleados(string url) { showEmpleadosDropdown = false; NavigateTo(url); }
+    // 2026-06-08: dropdown del split-button "Ventas ▾" para abrir Presupuestos
+    private bool menuPresupuestosAbierto;
+    private void ToggleMenuPresupuestos() { menuPresupuestosAbierto = !menuPresupuestosAbierto; }
     private string companyAdminPassword = "";
     private string? companyAdminError;
     private Dictionary<string, string> companyNameEdits = new(StringComparer.OrdinalIgnoreCase);
