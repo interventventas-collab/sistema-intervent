@@ -1026,6 +1026,14 @@
             setTimeout(() => mpPlayTone(220, 220, 'square', 0.25), 200);
         };
 
+        // 2026-06-08: scroll suave a la sección "Pendientes" del repartidor
+        window.mpScrollToPendientes = function() {
+            const el = document.getElementById('mp-pendientes');
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        };
+
         // ───── Sub-ventana flotante de Pedido WhatsApp en Nueva Venta ─────
         // Engancha drag al header (clase .cafe-wa-floating-header) del div .cafe-wa-floating.
         // Idempotente: si ya está enganchado, no duplica listeners.

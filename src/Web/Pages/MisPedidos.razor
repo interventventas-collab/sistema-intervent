@@ -159,7 +159,7 @@
         @* PENDIENTES *@
         var pendientes = pedidos.Where(p => !p.YaEntregada).ToList();
         var entregadas = pedidos.Where(p => p.YaEntregada).ToList();
-        <div class="mp-section-title">📦 Pendientes <span class="badge">@pendientes.Count</span></div>
+        <div id="mp-pendientes" class="mp-section-title">📦 Pendientes <span class="badge">@pendientes.Count</span></div>
         @if (pendientes.Count == 0)
         {
             <div class="mp-empty" style="background:white; border-radius:12px;">
@@ -404,6 +404,9 @@
             cantEscaneadosEnSesion = 0;
             StateHasChanged();
             await Recargar();
+            // 2026-06-08: scroll suave hacia la sección "Pendientes" para que el repartidor
+            // vea directamente lo que cargó (sin tener que arrastrar la pantalla a mano).
+            try { await JS.InvokeVoidAsync("mpScrollToPendientes"); } catch { }
             return;
         }
         escaneando = true;
