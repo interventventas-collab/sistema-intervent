@@ -333,6 +333,8 @@ public class CafeVentaDto
     public string? ClienteNombre { get; set; }
     public string? ClienteTipo { get; set; }
     public string? ClienteTelefono { get; set; }
+    // 2026-06-08: codigo interno del cliente para mostrar "(#123)" al lado del nombre
+    public int? ClienteCodigoInterno { get; set; }
     public decimal Subtotal { get; set; }
     public decimal Descuento { get; set; }
     public decimal Total { get; set; }

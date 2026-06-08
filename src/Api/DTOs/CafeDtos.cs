@@ -331,6 +331,8 @@ public record CafeVentaItemDto(
 public record CafeVentaDto(
     int Id, string Numero, DateTime Fecha,
     int? ClienteId, string? ClienteNombre, string? ClienteTipo, string? ClienteTelefono,
+    // 2026-06-08: codigo interno del cliente para mostrar (#123) al lado del nombre en el listado
+    int? ClienteCodigoInterno,
     decimal Subtotal, decimal Descuento, decimal Total,
     decimal CostoTotal, decimal Margen,
     string? Observaciones, string Estado,

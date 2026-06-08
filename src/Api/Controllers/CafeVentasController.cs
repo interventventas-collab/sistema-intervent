@@ -190,9 +190,11 @@ public class CafeVentasController : ControllerBase
     private class EscaneoRow { public int VentaId { get; set; } public DateTime CreatedAt { get; set; } public string Nombre { get; set; } = ""; }
 
     private static CafeVentaDto Map(CafeVenta v, bool esSaldoMigracion = false, string? entregadoPorRepartidorNombre = null,
-        string? escaneadoPorRepartidorNombre = null, DateTime? escaneadoAt = null) => new(
+        string? escaneadoPorRepartidorNombre = null, DateTime? escaneadoAt = null,
+        int? clienteCodigoInterno = null) => new(
         v.Id, v.Numero, v.Fecha,
         v.ClienteId, v.ClienteNombreSnapshot, v.ClienteTipoSnapshot, v.ClienteTelefonoSnapshot,
+        clienteCodigoInterno,  // 2026-06-08: codigo interno del cliente
         v.Subtotal, v.Descuento, v.Total, v.CostoTotal, v.Margen,
         v.Observaciones, v.Estado,
         v.WeekDays, v.EnRadar, v.IsPaid, v.Retira,
@@ -283,10 +285,21 @@ public class CafeVentasController : ControllerBase
             .GroupBy(x => x.VentaId)
             .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.CreatedAt).First());
 
+        // 2026-06-08: precargar el CodigoInterno del cliente (si existe) para mostrarlo
+        // como "(#123)" al lado del nombre en el listado de ventas.
+        var clienteIdsParaCodigo = list.Where(v => v.ClienteId.HasValue).Select(v => v.ClienteId!.Value).Distinct().ToList();
+        var codigosDict = clienteIdsParaCodigo.Count == 0
+            ? new Dictionary<int, int?>()
+            : await _db.CafeClientes
+                .Where(c => clienteIdsParaCodigo.Contains(c.Id))
+                .Select(c => new { c.Id, c.CodigoInterno })
+                .ToDictionaryAsync(c => c.Id, c => c.CodigoInterno);
+
         return Ok(list.Select(v => Map(v, migrSet.Contains(v.Id),
             v.EntregadoPorRepartidorId.HasValue && repsDict.TryGetValue(v.EntregadoPorRepartidorId.Value, out var nm) ? nm : null,
             escDic.TryGetValue(v.Id, out var esc) ? esc.Nombre : null,
-            escDic.TryGetValue(v.Id, out var esc2) ? esc2.CreatedAt : (DateTime?)null
+            escDic.TryGetValue(v.Id, out var esc2) ? esc2.CreatedAt : (DateTime?)null,
+            v.ClienteId.HasValue && codigosDict.TryGetValue(v.ClienteId.Value, out var ci) ? ci : null
         )).ToList());
     }
 
