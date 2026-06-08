@@ -1029,8 +1029,12 @@ public class CafeVentasController : ControllerBase
         var prodIds = cot.Items.Select(x => x.ProductoId).Where(id => id > 0).Distinct().ToList();
         var prodsCache = await _db.CafeProductos.Where(p => prodIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
 
-        foreach (var ci in cot.Items)
+        for (int idxPrev = 0; idxPrev < cot.Items.Count; idxPrev++)
         {
+            var ci = cot.Items[idxPrev];
+            // 2026-06-08: trasladar ComboOrigenId desde el request para que el PDF preview agrupe
+            // los items del mismo combo en una sola línea (igual que la emisión definitiva).
+            var reqItemPrev = idxPrev < req.Items.Count ? req.Items[idxPrev] : null;
             prodsCache.TryGetValue(ci.ProductoId, out var prodNav);
             ventaPreview.Items.Add(new CafeVentaItem
             {
@@ -1047,14 +1051,20 @@ public class CafeVentasController : ControllerBase
                 Molienda = NormMolienda(ci.Molienda),
                 EsDoyPack = ci.EsDoyPack && ci.Categoria == "CAFE",
                 EsEnvasePlateado = ci.EsEnvasePlateado && ci.Categoria == "CAFE" && !ci.EsDoyPack,
-                DescuentoPct = ci.DescuentoPct
+                DescuentoPct = ci.DescuentoPct,
+                ComboOrigenId = reqItemPrev?.ComboOrigenId   // 2026-06-08
             });
         }
 
         var cfg = await _db.CafeSettings.FindAsync(1);
         // Solo usamos el PDF de cotización (incluso si el tipo es FA/FB/FC) — es un PREVIEW,
         // no tiene CAE ni QR todavía. Si querés emitir real, usás el botón Emitir.
-        var bytes = _pdfService.GenerarPdfBytes(ventaPreview, cfg);
+        // 2026-06-08: combosMap para agrupar items de combos en el PDF (1 sola línea por combo)
+        var comboIdsPrev = ventaPreview.Items.Where(x => x.ComboOrigenId.HasValue).Select(x => x.ComboOrigenId!.Value).Distinct().ToList();
+        var combosMapPrev = comboIdsPrev.Count > 0
+            ? await _db.Set<CafeCombo>().Where(c => comboIdsPrev.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => (c.Nombre, c.Sku))
+            : null;
+        var bytes = _pdfService.GenerarPdfBytes(ventaPreview, cfg, null, combosMapPrev);
         return File(bytes, "application/pdf", "preview.pdf");
     }
 
