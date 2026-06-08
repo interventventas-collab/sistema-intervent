@@ -127,6 +127,34 @@
                         <p style="font-size: 0.75rem; color: #6b7280; margin: 0.2rem 0 0;">Se pre-carga en "Bonos" cada vez que crees una liquidación nueva del empleado. Podés sobrescribir el monto en la liquidación si un mes es distinto.</p>
                     </div>
                 </div>
+
+                @* 2026-06-08: modalidad de sueldo + jornal diario *@
+                <div style="background: #f3f4f6; border-radius: 8px; padding: 0.8rem 1rem; margin: 0.5rem 0;">
+                    <div style="font-size: 0.85rem; font-weight: 700; color: #1f2937; margin-bottom: 0.6rem;">💼 Modalidad de pago</div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Tipo</label>
+                            <select class="form-input" @bind="formModalidadSueldo">
+                                <option value="mensual">🗓 Mensual (sueldo fijo)</option>
+                                <option value="diario">📆 Por día (jornal diario)</option>
+                            </select>
+                        </div>
+                        @if (formModalidadSueldo == "diario")
+                        {
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label">💵 Jornal diario ($)</label>
+                                <input class="form-input" type="number" step="0.01" min="0" @bind="formJornalDiario" placeholder="Ej: 50000" />
+                                <p style="font-size: 0.75rem; color: #6b7280; margin: 0.2rem 0 0;">Lo que cobra por día trabajado. En la liquidación: días × jornal = sueldo.</p>
+                            </div>
+                        }
+                    </div>
+                    @if (formModalidadSueldo == "diario")
+                    {
+                        <p style="font-size: 0.78rem; color: #6d28d9; margin: 0.4rem 0 0; background: #ede9fe; padding: 0.4rem 0.6rem; border-radius: 5px;">
+                            💡 Al ser "Por día", el campo <strong>Sueldo base</strong> de arriba se ignora. El sueldo de cada liquidación se calcula con <strong>"Días trabajados × Jornal diario"</strong>.
+                        </p>
+                    }
+                </div>
                 @if (isEditing)
                 {
                     <div class="form-group">
@@ -185,6 +213,9 @@
     private decimal? formComisionPct;
     private decimal formComisionPorKg;
     private decimal formBonoFijo;
+    // 2026-06-08: modalidad de pago + jornal diario
+    private string formModalidadSueldo = "mensual";
+    private decimal formJornalDiario;
     private bool formIsActive = true;
     private bool showDeleteConfirm;
     private NomEmpleadoDto? empToDelete;
@@ -205,6 +236,7 @@
         formNombre = ""; formDocumento = ""; formPuesto = "";
         formFechaIngreso = DateTime.Today;
         formSueldoBase = 0m; formValorHora = 0m; formComisionPct = null; formComisionPorKg = 0m; formBonoFijo = 0m;
+        formModalidadSueldo = "mensual"; formJornalDiario = 0m;
         formIsActive = true;
         formError = null; showForm = true;
     }
@@ -217,6 +249,8 @@
         formSueldoBase = e.SueldoBase; formValorHora = e.ValorHora;
         formComisionPct = e.ComisionPorcentaje; formComisionPorKg = e.ComisionPorKg;
         formBonoFijo = e.BonoFijo;
+        formModalidadSueldo = string.IsNullOrEmpty(e.ModalidadSueldo) ? "mensual" : e.ModalidadSueldo;
+        formJornalDiario = e.JornalDiario;
         formIsActive = e.IsActive;
         formError = null; showForm = true;
     }
@@ -239,6 +273,8 @@
                     ValorHora = formValorHora, ComisionPorcentaje = formComisionPct,
                     ComisionPorKg = formComisionPorKg,
                     BonoFijo = formBonoFijo,
+                    ModalidadSueldo = formModalidadSueldo,
+                    JornalDiario = formJornalDiario,
                     IsActive = formIsActive
                 });
                 if (updated is null) { formError = "No se pudo actualizar"; return; }
@@ -252,7 +288,9 @@
                     FechaIngreso = formFechaIngreso, SueldoBase = formSueldoBase,
                     ValorHora = formValorHora, ComisionPorcentaje = formComisionPct,
                     ComisionPorKg = formComisionPorKg,
-                    BonoFijo = formBonoFijo
+                    BonoFijo = formBonoFijo,
+                    ModalidadSueldo = formModalidadSueldo,
+                    JornalDiario = formJornalDiario
                 });
                 if (created is null) { formError = "No se pudo crear"; return; }
                 ToastService.Success("Empleado creado");

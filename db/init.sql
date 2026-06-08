@@ -1748,6 +1748,28 @@ BEGIN
 END
 GO
 
+-- 2026-06-08: Modalidad de sueldo (mensual / diario) + JornalDiario en Nom_Empleados
+IF EXISTS (SELECT * FROM sysobjects WHERE name='Nom_Empleados' AND xtype='U')
+   AND NOT EXISTS (SELECT * FROM sys.columns WHERE Name='ModalidadSueldo' AND Object_ID=OBJECT_ID('Nom_Empleados'))
+BEGIN
+    ALTER TABLE Nom_Empleados ADD ModalidadSueldo NVARCHAR(20) NOT NULL DEFAULT 'mensual';
+END
+GO
+IF EXISTS (SELECT * FROM sysobjects WHERE name='Nom_Empleados' AND xtype='U')
+   AND NOT EXISTS (SELECT * FROM sys.columns WHERE Name='JornalDiario' AND Object_ID=OBJECT_ID('Nom_Empleados'))
+BEGIN
+    ALTER TABLE Nom_Empleados ADD JornalDiario DECIMAL(18,2) NOT NULL DEFAULT 0;
+END
+GO
+
+-- 2026-06-08: DiasTrabajados en Nom_Liquidaciones (solo se usa si empleado es modalidad diaria)
+IF EXISTS (SELECT * FROM sysobjects WHERE name='Nom_Liquidaciones' AND xtype='U')
+   AND NOT EXISTS (SELECT * FROM sys.columns WHERE Name='DiasTrabajados' AND Object_ID=OBJECT_ID('Nom_Liquidaciones'))
+BEGIN
+    ALTER TABLE Nom_Liquidaciones ADD DiasTrabajados DECIMAL(5,2) NOT NULL DEFAULT 0;
+END
+GO
+
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Nom_Liquidaciones' AND xtype='U')
 BEGIN
     CREATE TABLE Nom_Liquidaciones (

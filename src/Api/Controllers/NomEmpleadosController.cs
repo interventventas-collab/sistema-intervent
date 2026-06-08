@@ -20,7 +20,15 @@ public class NomEmpleadosController : ControllerBase
         e.Id, e.Nombre, e.Documento, e.Puesto, e.FechaIngreso,
         e.SueldoBase, e.ValorHora, e.ComisionPorcentaje,
         e.ComisionPorKg, e.BonoFijo,
+        e.ModalidadSueldo, e.JornalDiario,
         e.IsActive, e.CreatedAt, e.UpdatedAt);
+
+    // 2026-06-08: normaliza la modalidad — solo permite "mensual" o "diario"
+    private static string NormalizarModalidad(string? m)
+    {
+        var v = (m ?? "mensual").Trim().ToLowerInvariant();
+        return v == "diario" ? "diario" : "mensual";
+    }
 
     [HttpGet]
     public async Task<IActionResult> GetAll()
@@ -56,6 +64,9 @@ public class NomEmpleadosController : ControllerBase
             ComisionPorcentaje = req.ComisionPorcentaje,
             ComisionPorKg = Math.Max(0m, req.ComisionPorKg),
             BonoFijo = Math.Max(0m, req.BonoFijo),
+            // 2026-06-08: modalidad de pago (mensual / diario) + jornal
+            ModalidadSueldo = NormalizarModalidad(req.ModalidadSueldo),
+            JornalDiario = Math.Max(0m, req.JornalDiario),
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
@@ -91,6 +102,9 @@ public class NomEmpleadosController : ControllerBase
         if (req.ComisionPorcentaje.HasValue) e.ComisionPorcentaje = req.ComisionPorcentaje.Value;
         if (req.ComisionPorKg.HasValue) e.ComisionPorKg = Math.Max(0m, req.ComisionPorKg.Value);
         if (req.BonoFijo.HasValue) e.BonoFijo = Math.Max(0m, req.BonoFijo.Value);
+        // 2026-06-08: modalidad + jornal
+        if (req.ModalidadSueldo is not null) e.ModalidadSueldo = NormalizarModalidad(req.ModalidadSueldo);
+        if (req.JornalDiario.HasValue) e.JornalDiario = Math.Max(0m, req.JornalDiario.Value);
         if (req.IsActive.HasValue) e.IsActive = req.IsActive.Value;
         e.UpdatedAt = DateTime.UtcNow;
 

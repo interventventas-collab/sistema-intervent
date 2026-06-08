@@ -1,11 +1,13 @@
 namespace Api.DTOs;
 
 // ===== Empleados =====
+// 2026-06-08: agregado ModalidadSueldo ("mensual" | "diario") + JornalDiario.
 public record NomEmpleadoDto(
     int Id, string Nombre, string? Documento, string? Puesto,
     DateTime FechaIngreso,
     decimal SueldoBase, decimal ValorHora, decimal? ComisionPorcentaje,
     decimal ComisionPorKg, decimal BonoFijo,
+    string ModalidadSueldo, decimal JornalDiario,
     bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt);
 
 public class CreateNomEmpleadoRequest
@@ -19,6 +21,9 @@ public class CreateNomEmpleadoRequest
     public decimal? ComisionPorcentaje { get; set; }
     public decimal ComisionPorKg { get; set; }
     public decimal BonoFijo { get; set; }
+    // 2026-06-08: modalidad de pago ("mensual" o "diario") + jornal diario en $.
+    public string? ModalidadSueldo { get; set; }
+    public decimal JornalDiario { get; set; }
 }
 
 public class UpdateNomEmpleadoRequest
@@ -32,6 +37,8 @@ public class UpdateNomEmpleadoRequest
     public decimal? ComisionPorcentaje { get; set; }
     public decimal? ComisionPorKg { get; set; }
     public decimal? BonoFijo { get; set; }
+    public string? ModalidadSueldo { get; set; }
+    public decimal? JornalDiario { get; set; }
     public bool? IsActive { get; set; }
 }
 
@@ -41,18 +48,21 @@ public record NomPagoDto(
     string Concepto, string? Detalle,
     string? Notas, DateTime CreatedAt);
 
+// 2026-06-08: agregado DiasTrabajados + datos del empleado (ModalidadSueldo, JornalDiario)
+// para que el frontend sepa si tiene que mostrar "Sueldo base" o "Días trabajados".
 public record NomLiquidacionDto(
     int Id, int EmpleadoId, string EmpleadoNombre, string? EmpleadoPuesto,
     int Anio, int Mes,
     decimal HorasTrabajadas, decimal HorasExtra, decimal RecargoHsExtraPct,
     decimal DiasAusencia, decimal DiasVacaciones,
-    decimal KgCafe,
+    decimal KgCafe, decimal DiasTrabajados,
     decimal SueldoBase, decimal MontoHsExtra, decimal Comision, decimal Bonos,
     decimal Aguinaldo,
     decimal DescuentoFaltas, decimal Adelantos, decimal OtrosDescuentos,
     decimal TotalGanado, decimal TotalDescuentos, decimal NetoAPagar,
     string Estado, string? Notas,
     decimal TotalPagado, decimal Saldo,
+    string EmpleadoModalidadSueldo, decimal EmpleadoJornalDiario,
     DateTime CreatedAt, DateTime? UpdatedAt,
     List<NomPagoDto> Pagos);
 
@@ -67,6 +77,7 @@ public class CreateNomLiquidacionRequest
     public decimal DiasAusencia { get; set; }
     public decimal DiasVacaciones { get; set; }
     public decimal KgCafe { get; set; }
+    public decimal DiasTrabajados { get; set; }  // 2026-06-08: solo se usa si empleado es diario
     public decimal Bonos { get; set; }
     public decimal Aguinaldo { get; set; }
     public decimal Adelantos { get; set; }
@@ -82,6 +93,7 @@ public class UpdateNomLiquidacionRequest
     public decimal? DiasAusencia { get; set; }
     public decimal? DiasVacaciones { get; set; }
     public decimal? KgCafe { get; set; }
+    public decimal? DiasTrabajados { get; set; }  // 2026-06-08
     public decimal? Bonos { get; set; }
     public decimal? Aguinaldo { get; set; }
     public decimal? Adelantos { get; set; }

@@ -12,6 +12,9 @@ public class NomEmpleadoDto
     public decimal? ComisionPorcentaje { get; set; }
     public decimal ComisionPorKg { get; set; }
     public decimal BonoFijo { get; set; }
+    // 2026-06-08: modalidad de pago ("mensual" o "diario") + jornal diario
+    public string ModalidadSueldo { get; set; } = "mensual";
+    public decimal JornalDiario { get; set; }
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
@@ -28,6 +31,8 @@ public class CreateNomEmpleadoRequest
     public decimal? ComisionPorcentaje { get; set; }
     public decimal ComisionPorKg { get; set; }
     public decimal BonoFijo { get; set; }
+    public string? ModalidadSueldo { get; set; }
+    public decimal JornalDiario { get; set; }
 }
 
 public class UpdateNomEmpleadoRequest
@@ -41,6 +46,8 @@ public class UpdateNomEmpleadoRequest
     public decimal? ComisionPorcentaje { get; set; }
     public decimal? ComisionPorKg { get; set; }
     public decimal? BonoFijo { get; set; }
+    public string? ModalidadSueldo { get; set; }
+    public decimal? JornalDiario { get; set; }
     public bool? IsActive { get; set; }
 }
 
@@ -71,6 +78,7 @@ public class NomLiquidacionDto
     public decimal DiasAusencia { get; set; }
     public decimal DiasVacaciones { get; set; }
     public decimal KgCafe { get; set; }
+    public decimal DiasTrabajados { get; set; }  // 2026-06-08
     public decimal SueldoBase { get; set; }
     public decimal MontoHsExtra { get; set; }
     public decimal Comision { get; set; }
@@ -86,6 +94,9 @@ public class NomLiquidacionDto
     public string? Notas { get; set; }
     public decimal TotalPagado { get; set; }
     public decimal Saldo { get; set; }
+    // 2026-06-08: datos del empleado para que el frontend muestre la UI correcta
+    public string EmpleadoModalidadSueldo { get; set; } = "mensual";
+    public decimal EmpleadoJornalDiario { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
     public List<NomPagoDto> Pagos { get; set; } = new();
@@ -102,6 +113,7 @@ public class CreateNomLiquidacionRequest
     public decimal DiasAusencia { get; set; }
     public decimal DiasVacaciones { get; set; }
     public decimal KgCafe { get; set; }
+    public decimal DiasTrabajados { get; set; }  // 2026-06-08
     public decimal Bonos { get; set; }
     public decimal Aguinaldo { get; set; }
     public decimal Adelantos { get; set; }
@@ -117,6 +129,7 @@ public class UpdateNomLiquidacionRequest
     public decimal? DiasAusencia { get; set; }
     public decimal? DiasVacaciones { get; set; }
     public decimal? KgCafe { get; set; }
+    public decimal? DiasTrabajados { get; set; }  // 2026-06-08
     public decimal? Bonos { get; set; }
     public decimal? Aguinaldo { get; set; }
     public decimal? Adelantos { get; set; }

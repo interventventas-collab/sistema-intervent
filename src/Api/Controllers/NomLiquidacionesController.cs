@@ -70,6 +70,7 @@ public class NomLiquidacionesController : ControllerBase
             DiasAusencia = Math.Max(0m, req.DiasAusencia),
             DiasVacaciones = Math.Max(0m, req.DiasVacaciones),
             KgCafe = Math.Max(0m, req.KgCafe),
+            DiasTrabajados = Math.Max(0m, req.DiasTrabajados),  // 2026-06-08
             Bonos = Math.Max(0m, req.Bonos),
             Aguinaldo = Math.Max(0m, req.Aguinaldo),
             Adelantos = Math.Max(0m, req.Adelantos),
@@ -103,6 +104,7 @@ public class NomLiquidacionesController : ControllerBase
         if (req.DiasAusencia.HasValue) liq.DiasAusencia = Math.Max(0m, req.DiasAusencia.Value);
         if (req.DiasVacaciones.HasValue) liq.DiasVacaciones = Math.Max(0m, req.DiasVacaciones.Value);
         if (req.KgCafe.HasValue) liq.KgCafe = Math.Max(0m, req.KgCafe.Value);
+        if (req.DiasTrabajados.HasValue) liq.DiasTrabajados = Math.Max(0m, req.DiasTrabajados.Value);  // 2026-06-08
         if (req.Bonos.HasValue) liq.Bonos = Math.Max(0m, req.Bonos.Value);
         if (req.Aguinaldo.HasValue) liq.Aguinaldo = Math.Max(0m, req.Aguinaldo.Value);
         if (req.Adelantos.HasValue) liq.Adelantos = Math.Max(0m, req.Adelantos.Value);
@@ -310,12 +312,24 @@ public class NomLiquidacionesController : ControllerBase
     /// </summary>
     private static void Calcular(NomLiquidacion liq, NomEmpleado emp)
     {
-        liq.SueldoBase = emp.SueldoBase;
+        // 2026-06-08: si el empleado es modalidad "diario", el sueldo base se calcula
+        // como DiasTrabajados × JornalDiario (en vez de tomar el SueldoBase mensual fijo).
+        var esDiario = string.Equals(emp.ModalidadSueldo, "diario", StringComparison.OrdinalIgnoreCase);
+        if (esDiario)
+        {
+            liq.SueldoBase = Math.Round(liq.DiasTrabajados * emp.JornalDiario, 2, MidpointRounding.AwayFromZero);
+        }
+        else
+        {
+            liq.SueldoBase = emp.SueldoBase;
+        }
         var hsExtraConRecargo = emp.ValorHora * (1m + liq.RecargoHsExtraPct / 100m);
         liq.MontoHsExtra = Math.Round(liq.HorasExtra * hsExtraConRecargo, 2, MidpointRounding.AwayFromZero);
         // Comision auto-calc: kg de café del mes × tarifa por kg del empleado.
         liq.Comision = Math.Round(liq.KgCafe * emp.ComisionPorKg, 2, MidpointRounding.AwayFromZero);
-        var diaProporcional = emp.SueldoBase / 30m;
+        // Para empleados diarios, el descuento por ausencia ya está implícito (si faltó un día,
+        // no se cuenta en DiasTrabajados). Solo se aplica DescuentoFaltas a mensuales.
+        var diaProporcional = esDiario ? 0m : emp.SueldoBase / 30m;
         liq.DescuentoFaltas = Math.Round(liq.DiasAusencia * diaProporcional, 2, MidpointRounding.AwayFromZero);
         liq.TotalGanado = liq.SueldoBase + liq.MontoHsExtra + liq.Comision + liq.Bonos + liq.Aguinaldo;
         liq.TotalDescuentos = liq.DescuentoFaltas + liq.Adelantos + liq.OtrosDescuentos;
@@ -325,18 +339,21 @@ public class NomLiquidacionesController : ControllerBase
     private static NomLiquidacionDto Map(NomLiquidacion l)
     {
         var totalPagado = l.Pagos.Sum(p => p.Monto);
+        // 2026-06-08: incluir DiasTrabajados + datos del empleado (modalidad / jornal)
+        // para que el frontend muestre la UI correcta (Sueldo base vs Días trabajados).
         return new NomLiquidacionDto(
             l.Id, l.EmpleadoId, l.EmpleadoNav?.Nombre ?? "—", l.EmpleadoNav?.Puesto,
             l.Anio, l.Mes,
             l.HorasTrabajadas, l.HorasExtra, l.RecargoHsExtraPct,
             l.DiasAusencia, l.DiasVacaciones,
-            l.KgCafe,
+            l.KgCafe, l.DiasTrabajados,
             l.SueldoBase, l.MontoHsExtra, l.Comision, l.Bonos,
             l.Aguinaldo,
             l.DescuentoFaltas, l.Adelantos, l.OtrosDescuentos,
             l.TotalGanado, l.TotalDescuentos, l.NetoAPagar,
             l.Estado, l.Notas,
             totalPagado, l.NetoAPagar - totalPagado,
+            l.EmpleadoNav?.ModalidadSueldo ?? "mensual", l.EmpleadoNav?.JornalDiario ?? 0m,
             l.CreatedAt, l.UpdatedAt,
             l.Pagos.OrderByDescending(p => p.FechaPago).Select(p => new NomPagoDto(
                 p.Id, p.LiquidacionId, p.FechaPago, p.Metodo, p.Monto,

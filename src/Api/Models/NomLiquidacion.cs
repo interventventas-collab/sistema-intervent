@@ -39,6 +39,11 @@ public class NomLiquidacion
     [Column(TypeName = "decimal(18,2)")]
     public decimal KgCafe { get; set; }
 
+    // 2026-06-08: días trabajados en el mes. Solo aplica si el empleado tiene
+    // ModalidadSueldo == "diario". En ese caso, SueldoBase = DiasTrabajados * empleado.JornalDiario.
+    [Column(TypeName = "decimal(5,2)")]
+    public decimal DiasTrabajados { get; set; }
+
     // Conceptos calculados
     [Column(TypeName = "decimal(18,2)")]
     public decimal SueldoBase { get; set; }

@@ -40,6 +40,15 @@ public class NomEmpleado
     [Column(TypeName = "decimal(18,2)")]
     public decimal BonoFijo { get; set; }
 
+    // 2026-06-08: modalidad de pago. "mensual" (default) o "diario" (cobra por dia trabajado).
+    // Si es "diario", el SueldoBase de la liquidacion se calcula como DiasTrabajados * JornalDiario.
+    [Required, MaxLength(20)]
+    public string ModalidadSueldo { get; set; } = "mensual";
+
+    // 2026-06-08: jornal diario en pesos. Solo aplica si ModalidadSueldo == "diario".
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal JornalDiario { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
