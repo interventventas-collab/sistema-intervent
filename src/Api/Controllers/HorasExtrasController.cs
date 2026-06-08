@@ -656,6 +656,55 @@ public class HorasExtrasController : ControllerBase
         return Ok(new { ok = true });
     }
 
+    /// <summary>2026-06-08: request para editar manualmente entrada/salida/observación.
+    /// HoraEntrada y HoraSalida son strings "HH:mm" o null. Si HoraEntrada > HoraSalida,
+    /// asumimos que la jornada cruzó medianoche (no validamos eso, solo guardamos).
+    /// Cantidad se recalcula automáticamente desde el horario (hsEsperadas se calculan en GET).</summary>
+    public class EditarRegistroRequest
+    {
+        public string? HoraEntrada { get; set; }
+        public string? HoraSalida { get; set; }
+        public string? Observaciones { get; set; }
+        public decimal? Cantidad { get; set; }
+    }
+
+    [HttpPut("admin/registros/{id:int}")]
+    [Authorize]
+    public async Task<IActionResult> UpdateRegistro(int id, [FromBody] EditarRegistroRequest req)
+    {
+        var r = await _db.HorasExtrasRegistros.FindAsync(id);
+        if (r is null) return NotFound();
+
+        // Parsear horas (opcionales). Formato "HH:mm" o "HH:mm:ss".
+        TimeSpan? parseHora(string? s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return null;
+            if (TimeSpan.TryParse(s, out var t)) return t;
+            return null;
+        }
+        r.HoraEntrada = parseHora(req.HoraEntrada);
+        r.HoraSalida = parseHora(req.HoraSalida);
+
+        // Si vinieron las dos, recalculamos Cantidad = horas trabajadas (puede cruzar medianoche)
+        if (r.HoraEntrada.HasValue && r.HoraSalida.HasValue)
+        {
+            var diff = r.HoraSalida.Value - r.HoraEntrada.Value;
+            if (diff.TotalMinutes < 0) diff = diff.Add(TimeSpan.FromHours(24));  // pasó medianoche
+            r.Cantidad = (decimal)diff.TotalHours;
+        }
+        else if (req.Cantidad.HasValue)
+        {
+            r.Cantidad = req.Cantidad.Value;
+        }
+
+        // Observaciones (siempre se actualiza con lo que vino, aunque sea null)
+        r.Observaciones = string.IsNullOrWhiteSpace(req.Observaciones) ? null : req.Observaciones.Trim();
+
+        r.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, cantidad = r.Cantidad });
+    }
+
     public class CargarManualRequest
     {
         public int EmpleadoId { get; set; }

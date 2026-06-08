@@ -323,7 +323,15 @@
                                 else { <span style="color:#9ca3af;">—</span> }
                             </td>
                             <td style="color:#4b5563; font-size:0.82rem;">@(r.Observaciones ?? "")</td>
-                            <td><button class="he-link-btn" style="background:#fee2e2; color:#b91c1c; border-color:#fca5a5;" @onclick="@(() => PedirBorrarRegistro(r))">🗑</button></td>
+                            <td style="white-space:nowrap;">
+                                @* 2026-06-08: botón ✏️ para editar manualmente los horarios + observación *@
+                                <button class="he-link-btn" style="background:#dbeafe; color:#1d4ed8; border-color:#93c5fd; margin-right:0.2rem;"
+                                        title="Editar horario manualmente"
+                                        @onclick="@(() => AbrirEditarRegistro(r))">✏️</button>
+                                <button class="he-link-btn" style="background:#fee2e2; color:#b91c1c; border-color:#fca5a5;"
+                                        title="Borrar registro"
+                                        @onclick="@(() => PedirBorrarRegistro(r))">🗑</button>
+                            </td>
                         </tr>
                     }
                 </tbody>
@@ -409,6 +417,55 @@
                 <button class="btn btn-secondary" style="padding:0.7rem 1.4rem; font-size:1rem;" @onclick="CancelarBorrarRegistro" disabled="@borrandoRegistro">Cancelar</button>
                 <button style="background:#dc2626; color:white; border:none; padding:0.7rem 1.6rem; border-radius:8px; font-weight:800; font-size:1rem; cursor:pointer;" @onclick="ConfirmarBorrarRegistro" disabled="@borrandoRegistro">
                     @(borrandoRegistro ? "Borrando..." : "🗑 SÍ, BORRAR")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* 2026-06-08: modal para editar horario manualmente *@
+@if (registroParaEditar is not null)
+{
+    <div style="position:fixed; inset:0; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; z-index:2000; padding:1rem;" @onclick="CancelarEditar">
+        <div style="background:white; border-radius:12px; max-width:480px; width:100%; box-shadow:0 20px 60px rgba(0,0,0,0.3); overflow:hidden;" @onclick:stopPropagation="true">
+            <div style="padding:1.3rem 1.4rem; border-bottom:1px solid #e5e7eb;">
+                <h2 style="margin:0; color:#1e40af; font-size:1.3rem; font-weight:800;">✏️ Editar horario</h2>
+                <p style="margin:0.3rem 0 0; font-size:0.85rem; color:#6b7280;">
+                    @registroParaEditar.EmpleadoNombre · @registroParaEditar.DiaNombre @registroParaEditar.Fecha.ToString("dd/MM/yyyy")
+                </p>
+            </div>
+            <div style="padding:1.4rem;">
+                <div style="display:flex; gap:0.8rem; margin-bottom:1rem;">
+                    <div style="flex:1;">
+                        <label style="display:block; font-size:0.78rem; font-weight:700; color:#374151; margin-bottom:0.3rem;">Hora de entrada</label>
+                        <input type="time" class="form-input" style="width:100%; padding:0.6rem; font-size:1.05rem; font-family:monospace;"
+                               @bind="editHoraEntrada" />
+                    </div>
+                    <div style="flex:1;">
+                        <label style="display:block; font-size:0.78rem; font-weight:700; color:#374151; margin-bottom:0.3rem;">Hora de salida</label>
+                        <input type="time" class="form-input" style="width:100%; padding:0.6rem; font-size:1.05rem; font-family:monospace;"
+                               @bind="editHoraSalida" />
+                    </div>
+                </div>
+                <div style="margin-bottom:1rem;">
+                    <label style="display:block; font-size:0.78rem; font-weight:700; color:#374151; margin-bottom:0.3rem;">Observación (opcional)</label>
+                    <input type="text" class="form-input" style="width:100%; padding:0.6rem;"
+                           @bind="editObservaciones" placeholder="Ej: llegó tarde, salió antes, ajuste manual..." />
+                </div>
+                <div style="padding:0.7rem; background:#fef3c7; border-left:3px solid #f59e0b; border-radius:4px; font-size:0.8rem; color:#78350f;">
+                    💡 Si dejás las dos horas vacías, el registro queda solo con observación.
+                    Si la salida es antes que la entrada (cruzó medianoche), se calcula bien igual.
+                </div>
+                @if (!string.IsNullOrEmpty(editError))
+                {
+                    <div style="margin-top:0.7rem; padding:0.5rem 0.7rem; background:#fee2e2; color:#991b1b; border-radius:6px; font-size:0.85rem;">⚠ @editError</div>
+                }
+            </div>
+            <div style="background:#f9fafb; border-top:1px solid #e5e7eb; padding:1rem 1.4rem; display:flex; gap:0.7rem; justify-content:flex-end;">
+                <button class="btn btn-secondary" style="padding:0.6rem 1.2rem;" @onclick="CancelarEditar" disabled="@guardandoEdicion">Cancelar</button>
+                <button style="background:#1d4ed8; color:white; border:none; padding:0.6rem 1.4rem; border-radius:8px; font-weight:800; cursor:pointer;"
+                        @onclick="ConfirmarEditar" disabled="@guardandoEdicion">
+                    @(guardandoEdicion ? "Guardando..." : "💾 Guardar")
                 </button>
             </div>
         </div>
@@ -661,6 +718,56 @@
             }
         }
         finally { borrandoRegistro = false; }
+    }
+
+    // 2026-06-08: edición manual de horario (admin)
+    private AdminRegistroDto? registroParaEditar;
+    private TimeOnly? editHoraEntrada;
+    private TimeOnly? editHoraSalida;
+    private string editObservaciones = "";
+    private string? editError;
+    private bool guardandoEdicion;
+
+    private void AbrirEditarRegistro(AdminRegistroDto r)
+    {
+        registroParaEditar = r;
+        editHoraEntrada = TimeOnly.TryParse(r.HoraEntrada, out var he) ? he : (TimeOnly?)null;
+        editHoraSalida = TimeOnly.TryParse(r.HoraSalida, out var hs) ? hs : (TimeOnly?)null;
+        editObservaciones = r.Observaciones ?? "";
+        editError = null;
+    }
+    private void CancelarEditar() { registroParaEditar = null; editError = null; }
+
+    private async Task ConfirmarEditar()
+    {
+        if (registroParaEditar is null) return;
+        guardandoEdicion = true;
+        editError = null;
+        try
+        {
+            var body = new
+            {
+                HoraEntrada = editHoraEntrada?.ToString("HH:mm"),
+                HoraSalida = editHoraSalida?.ToString("HH:mm"),
+                Observaciones = string.IsNullOrWhiteSpace(editObservaciones) ? null : editObservaciones
+            };
+            var resp = await Http.PutAsJsonAsync($"api/horas-extras/admin/registros/{registroParaEditar.Id}", body);
+            if (resp.IsSuccessStatusCode)
+            {
+                ToastService.Success($"Horario de {registroParaEditar.EmpleadoNombre} actualizado");
+                registroParaEditar = null;
+                await RecargarTodo();
+            }
+            else
+            {
+                editError = "No se pudo guardar. Verificá los horarios (formato HH:mm).";
+            }
+        }
+        catch
+        {
+            editError = "Error de conexión.";
+        }
+        finally { guardandoEdicion = false; }
     }
 
     /// <summary>Genera el URL público del empleado. La clave NO va en el URL — se la pide
