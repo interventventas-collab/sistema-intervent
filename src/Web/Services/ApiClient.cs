@@ -3830,6 +3830,30 @@ public class ApiClient
     public async Task<MeliMe1SyncResultDto?> SyncMeliMe1ShipmentsAsync(int days = 30, int maxOrders = 300)
         => await PostAsync<MeliMe1SyncResultDto>("/api/meli/me1/sync", new { days, maxOrders });
 
+    /// <summary>2026-06-08: importa un envío puntual por número de ORDEN MeLi.
+    /// Útil cuando el sync masivo no la trae por filtros.</summary>
+    public async Task<(bool ok, string mensaje)> ImportMeliMe1ByOrderIdAsync(string orderId)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/api/meli/me1/import-by-order", new { orderId });
+            var bodyTxt = await resp.Content.ReadAsStringAsync();
+            using var doc = System.Text.Json.JsonDocument.Parse(bodyTxt);
+            var root = doc.RootElement;
+            if (resp.IsSuccessStatusCode)
+            {
+                var msg = root.TryGetProperty("mensaje", out var m) ? m.GetString() : "OK";
+                return (true, msg ?? "Importado");
+            }
+            else
+            {
+                var err = root.TryGetProperty("error", out var e) ? e.GetString() : "Error desconocido";
+                return (false, err ?? "Error");
+            }
+        }
+        catch (Exception ex) { return (false, $"Error de conexión: {ex.Message}"); }
+    }
+
     public async Task<(bool ok, string? error)> SetMeliMe1ShipmentStatusAsync(int id, string status, string? substatus, string? trackingNumber = null, string? trackingUrl = null, string? comment = null)
     {
         try

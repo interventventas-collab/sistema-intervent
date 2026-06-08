@@ -345,6 +345,71 @@ public class MeliShipmentService
         return true;
     }
 
+    /// <summary>2026-06-08: importar manualmente un envío me1 desde el número de ORDEN MeLi.
+    /// Recibe el MeliOrderId (string, ej "2000016778633314"), itera todas las cuentas MeLi
+    /// activas hasta encontrar la que tiene esa orden, extrae el shipping.id y llama a
+    /// SyncSingleShipmentAsync para traerla. Útil cuando el sync regular no la trae por filtros.
+    /// Devuelve (ok, mensaje) para mostrar al usuario.</summary>
+    public async Task<(bool ok, string mensaje, long? shipmentId)> ImportByOrderIdAsync(string orderIdStr)
+    {
+        if (string.IsNullOrWhiteSpace(orderIdStr)) return (false, "Ingresá un número de orden", null);
+        orderIdStr = orderIdStr.Trim();
+        if (!long.TryParse(orderIdStr, out var orderIdLong))
+            return (false, "El número de orden debe ser numérico", null);
+
+        // Primero: ¿está en MeliOrders? Si sí, ya sé qué cuenta usar y su ShippingId.
+        var localOrder = await _db.MeliOrders.FirstOrDefaultAsync(o => o.MeliOrderId == orderIdLong);
+        long? shippingIdToImport = localOrder?.ShippingId;
+        int? accountIdHint = localOrder?.MeliAccountId;
+
+        // Si no está local o no tiene ShippingId guardado, consulto la API MeLi
+        if (!shippingIdToImport.HasValue)
+        {
+            var accounts = await _accountService.GetAllAccountEntitiesAsync();
+            if (accounts.Count == 0) return (false, "No hay cuentas MeLi conectadas", null);
+
+            // Si hay un hint de cuenta (del MeliOrders), arranco por esa
+            if (accountIdHint.HasValue)
+            {
+                var hinted = accounts.FirstOrDefault(a => a.Id == accountIdHint.Value);
+                if (hinted is not null) accounts = new List<MeliAccount> { hinted }.Concat(accounts.Where(a => a.Id != hinted.Id)).ToList();
+            }
+
+            foreach (var acc in accounts)
+            {
+                var tok = await _accountService.GetValidTokenAsync(acc);
+                if (tok is null) continue;
+                var http = _httpFactory.CreateClient();
+                http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", tok);
+                var orderResp = await http.GetAsync($"https://api.mercadolibre.com/orders/{orderIdLong}");
+                if (orderResp.StatusCode == System.Net.HttpStatusCode.Unauthorized || orderResp.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                {
+                    var freshTok = await _accountService.GetValidTokenAsync(acc, forceRefresh: true);
+                    if (freshTok is null) continue;
+                    http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", freshTok);
+                    orderResp = await http.GetAsync($"https://api.mercadolibre.com/orders/{orderIdLong}");
+                }
+                if (!orderResp.IsSuccessStatusCode) continue;   // no es de esta cuenta, probar próxima
+                var orderDoc = JsonDocument.Parse(await orderResp.Content.ReadAsStringAsync()).RootElement;
+                if (orderDoc.TryGetProperty("shipping", out var shp) && shp.ValueKind == JsonValueKind.Object
+                    && shp.TryGetProperty("id", out var sid) && sid.ValueKind == JsonValueKind.Number)
+                {
+                    shippingIdToImport = sid.GetInt64();
+                    break;
+                }
+                return (false, $"La orden {orderIdStr} existe en MeLi pero no tiene shipping asociado (puede ser retiro en persona).", null);
+            }
+
+            if (!shippingIdToImport.HasValue)
+                return (false, $"No encontré la orden {orderIdStr} en ninguna de tus cuentas MeLi. Verificá el número.", null);
+        }
+
+        // Listo el shippingId — uso el sync de 1 que ya existe
+        var ok = await SyncSingleShipmentAsync(shippingIdToImport.Value);
+        if (!ok) return (false, $"Encontré la orden pero falló al traer el envío (shipping_id={shippingIdToImport}).", shippingIdToImport);
+        return (true, $"✅ Envío importado (shipping_id={shippingIdToImport}). Refrescá la lista.", shippingIdToImport);
+    }
+
     /// <summary>
     /// Service IDs por sitio para identificar el envio ME1 en MeLi al marcar el tracking.
     /// Tabla copiada de la doc oficial de developers.mercadolibre.com.ar.

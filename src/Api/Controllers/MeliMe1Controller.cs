@@ -97,6 +97,18 @@ public class MeliMe1Controller : ControllerBase
         return Ok(new { totalSynced = r.TotalSynced, totalMe1 = r.TotalFlex, totalErrors = r.TotalErrors, errores = r.Errors });
     }
 
+    public record ImportByOrderIdRequest(string OrderId);
+
+    /// <summary>2026-06-08: traer un envio puntual a partir del numero de ORDEN MeLi.
+    /// Útil cuando el sync masivo no la trajo por algún filtro. Itera las cuentas hasta encontrarla.</summary>
+    [HttpPost("import-by-order")]
+    public async Task<IActionResult> ImportByOrder([FromBody] ImportByOrderIdRequest req)
+    {
+        var (ok, mensaje, shipmentId) = await _service.ImportByOrderIdAsync(req?.OrderId ?? "");
+        if (!ok) return BadRequest(new { error = mensaje, shipmentId });
+        return Ok(new { mensaje, shipmentId });
+    }
+
     public record SetStatusRequest(string Status, string? Substatus, string? TrackingNumber, string? TrackingUrl, string? Comment);
 
     /// <summary>

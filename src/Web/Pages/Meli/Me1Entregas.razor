@@ -16,6 +16,24 @@
             </button>
         </div>
     </div>
+    @* 2026-06-08: importar un envío puntual por número de ORDEN MeLi cuando el sync masivo no la trae *@
+    <div style="padding: 0.6rem 1rem; background: #fef3c7; border-bottom: 1px solid #fde68a; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+        <span style="font-size: 0.85rem; color: #78350f; font-weight: 600;">🔍 ¿No aparece un envío?</span>
+        <input type="text" class="form-input" style="flex: 1; min-width: 220px; max-width: 320px; padding: 0.4rem 0.6rem; font-size: 0.9rem; font-family: monospace;"
+               @bind="importOrderId" @bind:event="oninput"
+               placeholder="Pegá el N° de venta MeLi (ej: 2000016778633314)" />
+        <button class="btn" style="background: #f59e0b; color: white; padding: 0.4rem 0.9rem; font-size: 0.85rem;"
+                @onclick="ImportByOrderId" disabled="@(isImporting || string.IsNullOrWhiteSpace(importOrderId))"
+                title="Va directo a MeLi, busca esa orden y trae el envío correspondiente">
+            @(isImporting ? "Buscando..." : "📥 Traer del MeLi")
+        </button>
+        @if (!string.IsNullOrEmpty(importMessage))
+        {
+            <span style="font-size: 0.82rem; color: @(importOk ? "#166534" : "#b91c1c"); padding: 0.3rem 0.5rem; background: @(importOk ? "#dcfce7" : "#fee2e2"); border-radius: 6px;">
+                @importMessage
+            </span>
+        }
+    </div>
     <div class="card-body" style="padding: 0;">
         @if (isLoading)
         {
@@ -213,6 +231,42 @@
         }
         catch (Exception ex) { ToastService.Error($"Error sincronizando: {ex.Message}"); }
         finally { isSyncing = false; }
+    }
+
+    // 2026-06-08: importar un envío puntual por número de orden MeLi
+    private string importOrderId = "";
+    private bool isImporting = false;
+    private string importMessage = "";
+    private bool importOk = false;
+
+    private async Task ImportByOrderId()
+    {
+        if (string.IsNullOrWhiteSpace(importOrderId)) return;
+        isImporting = true;
+        importMessage = "";
+        try
+        {
+            var (ok, mensaje) = await Api.ImportMeliMe1ByOrderIdAsync(importOrderId.Trim());
+            importOk = ok;
+            importMessage = mensaje;
+            if (ok)
+            {
+                ToastService.Success(mensaje);
+                importOrderId = "";
+                await LoadAsync();
+            }
+            else
+            {
+                ToastService.Error(mensaje);
+            }
+        }
+        catch (Exception ex)
+        {
+            importOk = false;
+            importMessage = $"Error: {ex.Message}";
+            ToastService.Error(importMessage);
+        }
+        finally { isImporting = false; }
     }
 
     private static string CurrentKey(MeliMe1ShipmentDto s)
