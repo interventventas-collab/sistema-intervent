@@ -348,9 +348,8 @@
                                  IsActive="@IsActive("/cafe/configuracion/bancos")" OnClick="@(() => NavigateTo("/cafe/configuracion/bancos"))" />
                         <NavItem Href="/cafe/cobranzas-pendientes" Label="💰 Cobranzas a aprobar" Icon="@SvgIcons.Tag"
                                  IsActive="@IsActive("/cafe/cobranzas-pendientes")" OnClick="@(() => NavigateTo("/cafe/cobranzas-pendientes"))" />
-                        <NavItem Href="/cafe/arqueo-repartidor" Label="🧾 Arqueo repartidor" Icon="@SvgIcons.Database"
-                                 IsActive="@IsActive("/cafe/arqueo-repartidor")" OnClick="@(() => NavigateTo("/cafe/arqueo-repartidor"))" />
                         @* 2026-06-06: Repartidores movido a grupo Empleados (mas abajo) *@
+                        @* 2026-06-08: Arqueo repartidor movido al grupo Empleados (al lado de Repartidores) *@
                     </NavGroup>
                 }
 
@@ -378,6 +377,9 @@
                              IsActive="@IsActive("/viajes")" OnClick="@(() => NavigateTo("/viajes"))" />
                     <NavItem Href="/cafe/repartidores" Label="🚚 Repartidores" Icon="@SvgIcons.Users"
                              IsActive="@IsActive("/cafe/repartidores")" OnClick="@(() => NavigateTo("/cafe/repartidores"))" />
+                    @* 2026-06-08: Arqueo repartidor movido aca desde Tesorería (mas relacionado con repartidores) *@
+                    <NavItem Href="/cafe/arqueo-repartidor" Label="🧾 Arqueo repartidor" Icon="@SvgIcons.Database"
+                             IsActive="@IsActive("/cafe/arqueo-repartidor")" OnClick="@(() => NavigateTo("/cafe/arqueo-repartidor"))" />
                     @if (HasPerm("nominas"))
                     {
                         <NavItem Href="/nominas/empleados" Label="👤 Ficha empleados" Icon="@SvgIcons.Users"
