@@ -331,8 +331,48 @@
                             <input class="form-input" type="number" step="0.01" style="width:140px;"
                                    @bind="aCuentaImporte" @bind:after="RecalcularTotal" disabled="@(!aCuentaActivo)" />
                         </div>
-                        <div style="margin-top:0.5rem; text-align:right; font-weight:700;">
-                            Total imputado: $@TotalImputado.ToString("N2")
+                        @* 2026-06-08: total imputado + saldo DISPONIBLE en vivo (pedido del usuario)
+                           Muestra cuánto le queda por imputar comparando con (medios de cobro + retenciones).
+                           Verde: queda disponible. Rojo: se pasó. Verde-check: cuadra perfecto. *@
+                        @{
+                            var totalCobrar = TotalMedios + formRetenciones;
+                            var disponible = totalCobrar - TotalImputado;
+                            var hayMedios = totalCobrar > 0.01m;
+                        }
+                        <div style="margin-top:0.5rem; padding:0.5rem 0.7rem; background:#f3f4f6; border-radius:6px; display:flex; flex-direction:column; gap:0.3rem;">
+                            <div style="display:flex; justify-content:space-between; font-size:0.85rem;">
+                                <span style="color:#6b7280;">Total a cobrar (medios + retenciones):</span>
+                                <span style="font-weight:600; color:#1f2937;">$@totalCobrar.ToString("N2")</span>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; font-size:0.85rem;">
+                                <span style="color:#6b7280;">Total imputado:</span>
+                                <span style="font-weight:600; color:#1f2937;">$@TotalImputado.ToString("N2")</span>
+                            </div>
+                            <hr style="margin:0.2rem 0; border:none; border-top:1px solid #d1d5db;" />
+                            @if (!hayMedios)
+                            {
+                                <div style="text-align:center; padding:0.4rem; background:#fef3c7; border-radius:5px; color:#78350f; font-size:0.85rem; font-weight:600;">
+                                    ⚠ Cargá una forma de cobro abajo para ver cuánto te queda por imputar
+                                </div>
+                            }
+                            else if (Math.Abs(disponible) < 0.01m)
+                            {
+                                <div style="text-align:center; padding:0.5rem; background:#d1fae5; border:2px solid #059669; border-radius:6px; color:#065f46; font-weight:700; font-size:1rem;">
+                                    ✅ Cuadra perfecto — listo para guardar
+                                </div>
+                            }
+                            else if (disponible > 0)
+                            {
+                                <div style="text-align:center; padding:0.5rem; background:#dcfce7; border:2px solid #16a34a; border-radius:6px; color:#15803d; font-weight:700; font-size:1rem;">
+                                    💚 Te quedan <span style="font-size:1.15rem;">$@disponible.ToString("N2")</span> disponibles para imputar
+                                </div>
+                            }
+                            else
+                            {
+                                <div style="text-align:center; padding:0.5rem; background:#fee2e2; border:2px solid #dc2626; border-radius:6px; color:#991b1b; font-weight:700; font-size:1rem;">
+                                    🔴 Te pasaste <span style="font-size:1.15rem;">$@Math.Abs(disponible).ToString("N2")</span> — sacale a algún comprobante
+                                </div>
+                            }
                         </div>
                     </div>
 
