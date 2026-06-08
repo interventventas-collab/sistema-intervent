@@ -145,10 +145,17 @@
                 </p>
                 @if (cantEscaneadosEnSesion > 0)
                 {
-                    <div style="margin-top:0.5rem; text-align:center; font-size:0.85rem; color:#059669; font-weight:700;">
+                    <div style="margin-top:0.5rem; text-align:center; font-size:0.95rem; color:#059669; font-weight:800;">
                         ✓ @cantEscaneadosEnSesion escaneado@(cantEscaneadosEnSesion == 1 ? "" : "s") en esta sesión
                     </div>
                 }
+                @* 2026-06-08 v3: botón explícito "Ver pedidos cargados" — más claro que "Detener escaneo".
+                   Hace lo mismo (cierra el escáner + scroll arriba) pero con texto que el repartidor entiende.  *@
+                <button type="button"
+                        style="margin-top:0.8rem; width:100%; padding:0.9rem 1rem; background:#1d4ed8; color:white; border:none; border-radius:10px; font-weight:800; font-size:1rem; cursor:pointer; box-shadow:0 4px 10px rgba(29,78,216,0.3);"
+                        @onclick="EscanearQR">
+                    ✅ Ver pedidos cargados (@cantEscaneadosEnSesion)
+                </button>
             </div>
         }
         @if (!string.IsNullOrEmpty(scanError))

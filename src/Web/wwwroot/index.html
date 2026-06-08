@@ -11,8 +11,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-    <link rel="stylesheet" href="css/app.css?v=20260608d" />
-    <link rel="stylesheet" href="css/modern-overlay.css?v=20260608d" />
+    <link rel="stylesheet" href="css/app.css?v=20260608e" />
+    <link rel="stylesheet" href="css/modern-overlay.css?v=20260608e" />
 </head>
 <body>
     <div id="app">
@@ -1026,14 +1026,21 @@
             setTimeout(() => mpPlayTone(220, 220, 'square', 0.25), 200);
         };
 
-        // 2026-06-08: scroll al top de la página (al cerrar el escáner del repartidor)
-        // Se llama después de stopQrScanner para que el repartidor vea la lista de pendientes
-        // sin tener que arrastrar la pantalla a mano. Hace scroll del window + del body
-        // (algunos navegadores móviles necesitan los dos).
+        // 2026-06-08: scroll al inicio + a la sección Pendientes (al cerrar el escáner)
+        // Se hace en dos pasos para máxima compatibilidad mobile:
+        //  1) scrollTo(0,0) instantáneo (no smooth — instantáneo es más confiable en mobile)
+        //  2) location.hash = '#mp-pendientes' como fallback (siempre funciona en mobile)
         window.mpScrollToTop = function() {
-            try { window.scrollTo({ top: 0, left: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); }
+            try { window.scrollTo(0, 0); } catch (e) {}
             try { document.documentElement.scrollTop = 0; } catch (e) {}
             try { document.body.scrollTop = 0; } catch (e) {}
+            // Fallback robusto: usar el ancla #mp-pendientes (navega y deja "Pendientes" arriba)
+            setTimeout(function() {
+                try {
+                    const el = document.getElementById('mp-pendientes');
+                    if (el) el.scrollIntoView({ behavior: 'auto', block: 'start' });
+                } catch (e) {}
+            }, 100);
         };
         // Compat con versión anterior por si quedó cache
         window.mpScrollToPendientes = window.mpScrollToTop;
