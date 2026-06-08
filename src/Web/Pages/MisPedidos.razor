@@ -73,6 +73,21 @@
     .mp-card-btn-cobrar { background: #1d4ed8; color: white; }
     .mp-card-btn:active { transform: scale(0.97); }
 
+    /* 2026-06-08: link de "Ver comprobante" - estilo discreto, debajo de los botones */
+    .mp-card-btn-link {
+        width: 100%; margin-top: 0.5rem; padding: 0.55rem 0.5rem;
+        background: transparent; color: #0369a1; border: 1px dashed #0284c7;
+        border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+    }
+    .mp-card-btn-link:active { background: #f0f9ff; }
+
+    /* 2026-06-08: comentario que dejó el repartidor al entregar */
+    .mp-card-comentario {
+        margin-top: 0.5rem; padding: 0.5rem 0.7rem;
+        background: #fef3c7; border-left: 3px solid #f59e0b; border-radius: 4px;
+        font-size: 0.82rem; color: #78350f; font-style: italic;
+    }
+
     .mp-empty { text-align: center; padding: 2.5rem 1rem; color: #6b7280; }
     .mp-empty-icon { font-size: 3.5rem; }
     .mp-empty-text { margin-top: 0.5rem; }
@@ -195,6 +210,14 @@
                         <button class="mp-card-btn mp-card-btn-entregar" @onclick="() => AbrirEntregar(p)">✅ Entregué</button>
                         <button class="mp-card-btn mp-card-btn-cobrar" @onclick="() => AbrirCobrar(p)">💰 Cobré</button>
                     </div>
+                    @* 2026-06-08: botón para ver el PDF del comprobante (mercadería + dirección + total) *@
+                    @if (p.TienePdf)
+                    {
+                        <button type="button" class="mp-card-btn-link"
+                                @onclick="() => VerComprobante(p)">
+                            📄 Ver comprobante
+                        </button>
+                    }
                 </div>
             }
         }
@@ -212,6 +235,17 @@
                     <div class="mp-card-chips">
                         <span class="mp-chip mp-chip-ok">✅ Entregada @(p.EntregadoAt?.ToLocalTime().ToString("dd/MM HH:mm"))</span>
                     </div>
+                    @if (!string.IsNullOrWhiteSpace(p.ComentarioEntrega))
+                    {
+                        <div class="mp-card-comentario">💬 @p.ComentarioEntrega</div>
+                    }
+                    @if (p.TienePdf)
+                    {
+                        <button type="button" class="mp-card-btn-link"
+                                @onclick="() => VerComprobante(p)">
+                            📄 Ver comprobante
+                        </button>
+                    }
                 </div>
             }
         }
@@ -244,6 +278,13 @@
                 <div style="padding:0.7rem; background:#dcfce7; border-left:3px solid #16a34a; border-radius:4px; font-size:0.9rem; color:#14532d; font-weight:500;">
                     ¿Confirmás que entregaste este pedido?
                 </div>
+                @* 2026-06-08: comentario OPCIONAL al entregar (ej: "lo dejé con el casero") *@
+                <label style="font-size:0.8rem; font-weight:600; color:#374151; margin-top:0.7rem; display:block;">
+                    Comentario (opcional)
+                </label>
+                <textarea class="mp-input" @bind="comentarioEntrega"
+                          placeholder="Ej: lo dejé con el casero, dejó pedido a Roberto, etc."
+                          rows="2" style="resize:vertical; font-size:0.95rem;"></textarea>
             }
 
             @if (!string.IsNullOrEmpty(errorModal))
@@ -272,7 +313,11 @@
     public record PedidoDto(int Id, string Numero, DateTime Fecha, string? ClienteNombre,
         string? ClienteDireccion, string? ClienteLocalidad,
         decimal Total, decimal Saldo, bool YaEntregada, DateTime? EntregadoAt,
-        string? EstadoPreparacion, DateTime CargadoAt);
+        string? EstadoPreparacion, DateTime CargadoAt,
+        // 2026-06-08: comentario que el repartidor escribió al entregar (opcional)
+        string? ComentarioEntrega,
+        // 2026-06-08: true si la venta tiene PDF en Drive (para mostrar el botón "Ver comprobante")
+        bool TienePdf);
     public record MisPedidosResp(int RepartidorId, string Nombre, List<PedidoDto> Pedidos);
 
     private bool loading = true, cargaError = false;
@@ -285,6 +330,8 @@
     private string pin = "";
     private decimal importeCobrado = 0m;
     private string notasCobro = "";
+    // 2026-06-08: comentario opcional al marcar entrega ("dejé con el casero")
+    private string comentarioEntrega = "";
     private string? errorModal;
     private bool procesando;
 
@@ -353,7 +400,31 @@
     {
         modal = new ModalState("entregar", p);
         pin = ""; errorModal = null;
+        comentarioEntrega = "";   // 2026-06-08: reset cada vez que se abre el modal
     }
+
+    /// <summary>2026-06-08: abre el PDF de la venta en una pestaña nueva (visor de Drive).
+    /// El backend valida que la venta esté en la lista del repartidor antes de devolver el link.</summary>
+    private async Task VerComprobante(PedidoDto p)
+    {
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<ComprobanteResp>(
+                $"api/cafe/repartidor-public/mis-pedidos/{Token}/comprobante/{p.Id}");
+            if (resp is null) return;
+            if (string.IsNullOrEmpty(resp.Url))
+            {
+                MostrarToast(resp.Mensaje ?? "Este pedido todavía no tiene comprobante", true);
+                return;
+            }
+            await JS.InvokeVoidAsync("open", resp.Url, "_blank");
+        }
+        catch
+        {
+            MostrarToast("Error abriendo comprobante", true);
+        }
+    }
+    private record ComprobanteResp(string? Url, string? Numero, string? Mensaje = null);
     private void AbrirCobrar(PedidoDto p)
     {
         modal = new ModalState("cobrar", p);
@@ -372,10 +443,11 @@
             HttpResponseMessage resp;
             if (modal.Tipo == "entregar")
             {
-                // 2026-06-08: ya no manda PIN — el backend acepta sin PIN para entregar
+                // 2026-06-08: ya no manda PIN — el backend acepta sin PIN para entregar.
+                // Manda comentario opcional ("dejé con el casero") si el repartidor escribió algo.
                 resp = await Http.PostAsJsonAsync(
                     $"api/cafe/repartidor-public/mis-pedidos/{Token}/entregar/{modal.Pedido.Id}",
-                    new { });
+                    new { Comentario = string.IsNullOrWhiteSpace(comentarioEntrega) ? null : comentarioEntrega.Trim() });
             }
             else
             {

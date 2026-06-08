@@ -289,7 +289,12 @@ public class CafeRepartidorPublicController : ControllerBase
         string? ClienteNombre, string? ClienteDireccion, string? ClienteLocalidad,
         decimal Total, decimal Saldo,
         bool YaEntregada, DateTime? EntregadoAt, string? EstadoPreparacion,
-        DateTime CargadoAt);
+        DateTime CargadoAt,
+        // 2026-06-08: comentario que dejó el repartidor al marcar entregado (opcional)
+        string? ComentarioEntrega,
+        // 2026-06-08: true si tiene PDF en Drive (para mostrar/ocultar botón "Ver comprobante")
+        bool TienePdf);
+
 
     public record MisPedidosResult(int RepartidorId, string Nombre, List<MisPedidosVentaDto> Pedidos);
 
@@ -316,7 +321,9 @@ public class CafeRepartidorPublicController : ControllerBase
                 x.v.EntregadoAt,
                 YaEntregada = x.v.EntregadoPorRepartidorId.HasValue,
                 x.v.EstadoPreparacion,
-                CargadoAt = x.e.CreatedAt
+                CargadoAt = x.e.CreatedAt,
+                x.v.ComentarioEntrega,
+                TienePdf = !string.IsNullOrEmpty(x.v.DriveFileId)
             })
             .ToListAsync();
 
@@ -335,7 +342,9 @@ public class CafeRepartidorPublicController : ControllerBase
             x.ClienteNombre, x.ClienteDireccion, x.ClienteLocalidad,
             x.Total, x.Total - (pagosDic.TryGetValue(x.Id, out var pg) ? pg : 0m),
             x.YaEntregada, x.EntregadoAt, x.EstadoPreparacion,
-            x.CargadoAt
+            x.CargadoAt,
+            x.ComentarioEntrega,
+            x.TienePdf
         )).ToList();
 
         return Ok(new MisPedidosResult(r.Id, r.Nombre, pedidos));
@@ -377,7 +386,8 @@ public class CafeRepartidorPublicController : ControllerBase
             v.ClienteNombreSnapshot, totalCobrable, v.EntregadoPorRepartidorId.HasValue));
     }
 
-    public record EntregarRequest(string? Pin);
+    /// <summary>2026-06-08: Comentario opcional al marcar entrega ("dejé con el casero").</summary>
+    public record EntregarRequest(string? Pin, string? Comentario = null);
 
     /// <summary>Marca como entregada una venta de la lista del repartidor.
     /// 2026-06-08: ya NO valida PIN — el publicToken (URL única del repartidor) basta como auth.
@@ -399,6 +409,12 @@ public class CafeRepartidorPublicController : ControllerBase
 
         v.EntregadoPorRepartidorId = r.Id;
         v.EntregadoAt = DateTime.UtcNow;
+        // 2026-06-08: comentario del repartidor (opcional)
+        var comentario = req?.Comentario?.Trim();
+        if (!string.IsNullOrWhiteSpace(comentario))
+        {
+            v.ComentarioEntrega = comentario.Length > 500 ? comentario.Substring(0, 500) : comentario;
+        }
         if (v.EstadoPreparacion != null)
         {
             v.EstadoPreparacion = "ENTREGADO";
@@ -414,6 +430,32 @@ public class CafeRepartidorPublicController : ControllerBase
         });
         await _db.SaveChangesAsync();
         return Ok(new { ok = true, mensaje = $"✓ Marcado como entregado" });
+    }
+
+    /// <summary>2026-06-08: Devuelve la URL del PDF de la venta en Google Drive (preview).
+    /// Lo usa el botón "📄 Ver comprobante" en /mis-pedidos para que el repartidor vea
+    /// la mercadería sin tener que armar UI nueva — reusa el PDF que ya existe.
+    /// Solo accesible si la venta está en su lista.</summary>
+    [HttpGet("mis-pedidos/{tokenRepartidor}/comprobante/{ventaId:int}")]
+    public async Task<IActionResult> MisPedidosComprobante(string tokenRepartidor, int ventaId)
+    {
+        var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null) return NotFound(new { error = "Enlace invalido" });
+        var enSuLista = await _db.CafeQrEscaneos.AnyAsync(e =>
+            e.VentaId == ventaId && e.RepartidorId == r.Id && e.Accion == "cargado");
+        if (!enSuLista) return BadRequest(new { error = "Esta venta no esta en tu lista" });
+
+        var v = await _db.CafeVentas
+            .Where(x => x.Id == ventaId)
+            .Select(x => new { x.DriveFileId, x.Numero })
+            .FirstOrDefaultAsync();
+        if (v is null) return NotFound(new { error = "Venta no encontrada" });
+        if (string.IsNullOrEmpty(v.DriveFileId))
+            return Ok(new { url = (string?)null, numero = v.Numero, mensaje = "Esta venta todavía no tiene PDF generado" });
+
+        // URL pública de preview en Drive (no requiere login si el archivo es público)
+        var url = $"https://drive.google.com/file/d/{v.DriveFileId}/view";
+        return Ok(new { url, numero = v.Numero });
     }
 
     public record CobrarRequestV2(string? Pin, decimal Importe, string? Notas);
