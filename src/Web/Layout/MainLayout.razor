@@ -698,6 +698,10 @@
                             <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseEmpleados("/cafe/repartidores"))">
                                 <span class="ico">🚚</span> Repartidores
                             </button>
+                            @* 2026-06-08: tambien aca abajo de Repartidores, como en el sidebar *@
+                            <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseEmpleados("/cafe/arqueo-repartidor"))">
+                                <span class="ico">🧾</span> Arqueo repartidor
+                            </button>
                             <button class="topbar-empleados-item" @onclick="@(() => NavigateAndCloseEmpleados("/nominas/empleados"))">
                                 <span class="ico">👤</span> Ficha empleados
                             </button>
