@@ -292,7 +292,7 @@ public class CafeVentaItem
     [Column(TypeName = "decimal(18,2)")] public decimal Subtotal { get; set; }
     [Column(TypeName = "decimal(18,3)")] public decimal GramosDescontados { get; set; }
 
-    /// <summary>Tipo de molienda (solo CAFE): "EN GRANOS" | "MOLIDO FILTRO" | "MOLIDO ESPRESS" | null = sin especificar.</summary>
+    /// <summary>Tipo de molienda (solo CAFE): "EN GRANOS" | "MOLIDO FILTRO" | "MOLIDO EXPRESS" | "MOLIDO CAFETERA ITALIANA" | etc. | null = sin especificar. 2026-06-08: corregido "ESPRESS"→"EXPRESS".</summary>
     [MaxLength(30)]
     public string? Molienda { get; set; }
 

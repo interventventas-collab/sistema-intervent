@@ -15,7 +15,8 @@ public class CafeCombosController : ControllerBase
 {
     private readonly AppDbContext _db;
     private static readonly string[] FormatosValidos = { "1KG", "MEDIO", "CUARTO", "UNIT" };
-    private static readonly string[] MoliendasValidas = { "EN GRANOS", "MOLIDO FILTRO", "MOLIDO ESPRESS", "MOLIDO MOKA", "MOLIDO BODUM", "MOLIDO PRENSA FRANCESA", "MOLIDO A LA TURCA", "MINI EXPRESS" };
+    // 2026-06-08: corregido "MOLIDO ESPRESS" → "MOLIDO EXPRESS" + agregado "MOLIDO CAFETERA ITALIANA"
+    private static readonly string[] MoliendasValidas = { "EN GRANOS", "MOLIDO FILTRO", "MOLIDO EXPRESS", "MOLIDO MOKA", "MOLIDO BODUM", "MOLIDO PRENSA FRANCESA", "MOLIDO CAFETERA ITALIANA", "MOLIDO A LA TURCA", "MINI EXPRESS" };
 
     public CafeCombosController(AppDbContext db) { _db = db; }
 

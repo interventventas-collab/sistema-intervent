@@ -2379,11 +2379,14 @@ public class CafeVentasController : ControllerBase
         return CondicionesPagoValidas.Contains(v) ? v : "EFECTIVO";
     }
 
-    private static readonly string[] MoliendasValidas = { "EN GRANOS", "MOLIDO FILTRO", "MOLIDO ESPRESS", "MOLIDO MOKA", "MOLIDO BODUM", "MOLIDO PRENSA FRANCESA", "MOLIDO A LA TURCA", "MINI EXPRESS" };
+    // 2026-06-08: corregido "MOLIDO ESPRESS" → "MOLIDO EXPRESS" + agregado "MOLIDO CAFETERA ITALIANA"
+    private static readonly string[] MoliendasValidas = { "EN GRANOS", "MOLIDO FILTRO", "MOLIDO EXPRESS", "MOLIDO MOKA", "MOLIDO BODUM", "MOLIDO PRENSA FRANCESA", "MOLIDO CAFETERA ITALIANA", "MOLIDO A LA TURCA", "MINI EXPRESS" };
     private static string? NormMolienda(string? m)
     {
         if (string.IsNullOrWhiteSpace(m)) return null;
         var v = m.Trim().ToUpperInvariant();
+        // 2026-06-08: alias retro-compatible — el viejo typo "ESPRESS" mapea al nuevo "EXPRESS"
+        if (v == "MOLIDO ESPRESS") v = "MOLIDO EXPRESS";
         return MoliendasValidas.Contains(v) ? v : null;
     }
 
