@@ -779,12 +779,17 @@
                     <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
                 </svg>
             </button>
-            @* 2026-06-08: ocultar la campana 💰 a usuarios con sidebar reducido (deposito) — no
-               deberian aprobar cobranzas ni navegar a /cafe/cobranzas-pendientes. *@
+            @* 2026-06-08: ocultar campanas a deposito EXCEPTO Preguntas MeLi — el usuario
+               quiere que deposito vea las preguntas para responderlas.
+               TODO mañana: revisar por qué MeliQuestionsBell no muestra preguntas que SÍ
+               entran a MeLi (el usuario reporta que entran preguntas pero acá no aparecen). *@
             @if (!IsRoleWithCustomSidebar())
             {
                 <CobranzasPendientesBell />
-                <MeliQuestionsBell />
+            }
+            <MeliQuestionsBell />
+            @if (!IsRoleWithCustomSidebar())
+            {
                 <MeliCambiosBell />
                 <WhatsAppPedidosBell />
             }
