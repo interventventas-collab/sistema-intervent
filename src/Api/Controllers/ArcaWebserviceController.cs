@@ -344,6 +344,43 @@ public class ArcaWebserviceController : ControllerBase
     }
 
     /// <summary>
+    /// Consulta a ARCA si un comprobante específico (PtoVta + CbteTipo + CbteNro) existe.
+    /// Devuelve JSON con los datos completos: CAE, importes, fecha, doc receptor, resultado.
+    /// Si ARCA no lo conoce → Success=false + Error con el motivo.
+    /// Útil para verificar comprobantes "sospechosos" sin descargar PDF.
+    /// </summary>
+    [HttpPost("accounts/{id:int}/consultar-comprobante")]
+    public async Task<IActionResult> ConsultarComprobante(int id, [FromBody] ComprobantePdfRequest req)
+    {
+        if (req is null) return BadRequest(new { error = "Falta el body" });
+        if (req.PtoVta <= 0 || req.CbteTipo <= 0 || req.CbteNro <= 0)
+            return BadRequest(new { error = "PtoVta / CbteTipo / CbteNro inválidos" });
+
+        var account = await _service.GetByIdAsync(id);
+        if (account is null) return NotFound(new { error = "Cuenta no encontrada" });
+
+        var data = await _ws.GetComprobanteForPdfAsync(id, req.PtoVta, req.CbteTipo, req.CbteNro);
+        return Ok(new
+        {
+            success = data.Success,
+            error = data.Error,
+            cbteTipo = req.CbteTipo,
+            cbteTipoNombre = ArcaWsService.NombreCbte(req.CbteTipo),
+            ptoVta = req.PtoVta,
+            cbteNro = req.CbteNro,
+            docTipo = data.DocTipo,
+            docNro = data.DocNro,
+            fechaYyyymmdd = data.FechaYyyymmdd,
+            cae = data.Cae,
+            caeVtoYyyymmdd = data.CaeVtoYyyymmdd,
+            impNeto = data.ImpNeto,
+            impIVA = data.ImpIVA,
+            impTotal = data.ImpTotal,
+            resultado = data.Resultado,
+        });
+    }
+
+    /// <summary>
     /// Paso 3: combina la clave privada del pedido con el .crt recibido de ARCA,
     /// genera el .pfx final, lo guarda en disco y crea el registro definitivo
     /// en ArcaWebserviceAccounts. Elimina el pedido temporal.

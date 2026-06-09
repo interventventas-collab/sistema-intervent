@@ -240,6 +240,29 @@ public class UltimosComprobantesResultDto
     public List<ComprobanteDetalleDto> Comprobantes { get; set; } = new();
 }
 
+/// <summary>
+/// Resultado de consultar un comprobante específico contra ARCA (FECompConsultar).
+/// Si Success=false → ARCA no lo conoce o hubo error.
+/// </summary>
+public class ConsultaComprobanteResultDto
+{
+    public bool Success { get; set; }
+    public string? Error { get; set; }
+    public int CbteTipo { get; set; }
+    public string CbteTipoNombre { get; set; } = "";
+    public int PtoVta { get; set; }
+    public int CbteNro { get; set; }
+    public int DocTipo { get; set; }
+    public string DocNro { get; set; } = "";
+    public string FechaYyyymmdd { get; set; } = "";
+    public string Cae { get; set; } = "";
+    public string CaeVtoYyyymmdd { get; set; } = "";
+    public decimal ImpNeto { get; set; }
+    public decimal ImpIVA { get; set; }
+    public decimal ImpTotal { get; set; }
+    public string Resultado { get; set; } = "";
+}
+
 public class ComprobanteDetalleDto
 {
     public int CbteTipoNro { get; set; }

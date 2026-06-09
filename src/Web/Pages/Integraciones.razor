@@ -624,6 +624,13 @@
                                                         title="Verifica certificado contra WSAA y trae puntos de venta">
                                                     🔐 Probar Certificado
                                                 </button>
+                                                <button class="btn btn-secondary btn-sm"
+                                                        style="font-size: 0.74rem; padding: 0.2rem 0.5rem;"
+                                                        @onclick="() => OpenArcaConsultaModal(c)"
+                                                        disabled="@arcaWsTestLoading"
+                                                        title="Verifica si un comprobante específico (PtoVta + Tipo + Nro) existe en ARCA">
+                                                    🔎 Verificar comprobante
+                                                </button>
                                                 <button class="btn-icon btn-edit" @onclick="() => OpenArcaWsEditCertModal(c)" title="Editar">
                                                     @SvgIcons.Edit
                                                 </button>
@@ -2587,6 +2594,89 @@
     </div>
 }
 
+<!-- Modal: Verificar comprobante en ARCA (FECompConsultar) -->
+@if (showArcaConsultaModal)
+{
+    <div class="modal-overlay" @onclick="CloseArcaConsultaModal">
+        <div class="modal-container" @onclick:stopPropagation style="max-width: 720px;">
+            <div class="modal-header">
+                <h3>🔎 Verificar comprobante en ARCA — @arcaConsultaCuit</h3>
+                <button class="modal-close" @onclick="CloseArcaConsultaModal" disabled="@arcaConsultaLoading">×</button>
+            </div>
+            <div class="modal-body">
+                <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 0.6rem 0.9rem; font-size: 0.85rem; color: #075985; margin-bottom: 1rem;">
+                    Consultá si un comprobante específico ya está autorizado en ARCA (FECompConsultar). Solo lectura — no modifica nada.
+                </div>
+
+                <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.6rem; margin-bottom: 0.8rem;">
+                    <div class="form-group">
+                        <label>Punto de venta</label>
+                        <input type="number" class="form-control" min="1" @bind="arcaConsultaPtoVta" disabled="@arcaConsultaLoading" />
+                    </div>
+                    <div class="form-group">
+                        <label>Tipo de comprobante</label>
+                        <select class="form-control" @bind="arcaConsultaCbteTipo" disabled="@arcaConsultaLoading">
+                            <option value="1">1 — Factura A</option>
+                            <option value="6">6 — Factura B</option>
+                            <option value="11">11 — Factura C</option>
+                            <option value="3">3 — Nota de Crédito A</option>
+                            <option value="8">8 — Nota de Crédito B</option>
+                            <option value="13">13 — Nota de Crédito C</option>
+                            <option value="2">2 — Nota de Débito A</option>
+                            <option value="7">7 — Nota de Débito B</option>
+                            <option value="12">12 — Nota de Débito C</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Número</label>
+                        <input type="number" class="form-control" min="1" @bind="arcaConsultaCbteNro" disabled="@arcaConsultaLoading" />
+                    </div>
+                </div>
+
+                <button class="btn btn-primary" @onclick="EjecutarArcaConsulta" disabled="@arcaConsultaLoading" style="width: 100%;">
+                    @(arcaConsultaLoading ? "Consultando ARCA..." : "🔎 Consultar")
+                </button>
+
+                @if (arcaConsultaError is not null)
+                {
+                    <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 0.8rem 1rem; margin-top: 1rem;">
+                        <div style="font-weight: 700; color: #b91c1c; margin-bottom: 0.3rem;">❌ ARCA respondió con error</div>
+                        <div style="font-size: 0.88rem; color: #7f1d1d; font-family: monospace;">@arcaConsultaError</div>
+                        <div style="font-size: 0.82rem; color: #7f1d1d; margin-top: 0.5rem;">
+                            Esto puede significar que <strong>el comprobante NO existe en ARCA</strong> (fantasma), o que los datos consultados son incorrectos.
+                        </div>
+                    </div>
+                }
+
+                @if (arcaConsultaResult is not null && arcaConsultaResult.Success)
+                {
+                    var resOk = string.Equals(arcaConsultaResult.Resultado, "A", StringComparison.OrdinalIgnoreCase);
+                    <div style="background: @(resOk ? "#ecfdf5" : "#fef2f2"); border: 1px solid @(resOk ? "#a7f3d0" : "#fecaca"); border-radius: 8px; padding: 0.9rem 1.1rem; margin-top: 1rem;">
+                        <div style="font-weight: 800; font-size: 1.05rem; color: @(resOk ? "#065f46" : "#7f1d1d"); margin-bottom: 0.6rem;">
+                            @(resOk ? "✅ Comprobante CONFIRMADO en ARCA" : "⚠ Comprobante existe pero NO está aprobado")
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem 1.2rem; font-size: 0.9rem;">
+                            <div><strong>Tipo:</strong> @arcaConsultaResult.CbteTipoNombre (cód. @arcaConsultaResult.CbteTipo)</div>
+                            <div><strong>PtoVta - Nro:</strong> @arcaConsultaResult.PtoVta - @arcaConsultaResult.CbteNro</div>
+                            <div><strong>Fecha:</strong> @FormatFechaArca(arcaConsultaResult.FechaYyyymmdd)</div>
+                            <div><strong>Doc receptor:</strong> @arcaConsultaResult.DocNro</div>
+                            <div><strong>Importe neto:</strong> @FormatMoneyOrEmpty(arcaConsultaResult.ImpNeto)</div>
+                            <div><strong>IVA:</strong> @FormatMoneyOrEmpty(arcaConsultaResult.ImpIVA)</div>
+                            <div style="grid-column: 1 / -1;"><strong>Importe total:</strong> <span style="font-size: 1.05rem; font-weight: 800;">@FormatMoneyOrEmpty(arcaConsultaResult.ImpTotal)</span></div>
+                            <div style="grid-column: 1 / -1; font-family: monospace; word-break: break-all;"><strong>CAE:</strong> @arcaConsultaResult.Cae</div>
+                            <div><strong>Vto CAE:</strong> @FormatFechaArca(arcaConsultaResult.CaeVtoYyyymmdd)</div>
+                            <div><strong>Resultado:</strong> @arcaConsultaResult.Resultado</div>
+                        </div>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseArcaConsultaModal" disabled="@arcaConsultaLoading">Cerrar</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     // MercadoLibre config fields
     private int mlId;
@@ -2697,6 +2787,17 @@
     private int arcaWsHomoCbteTipo = 1;
     // PDF loading
     private bool arcaWsPdfLoading;
+
+    // Verificar comprobante (FECompConsultar)
+    private bool showArcaConsultaModal;
+    private int arcaConsultaAccountId;
+    private string arcaConsultaCuit = "";
+    private int arcaConsultaPtoVta = 2;
+    private int arcaConsultaCbteTipo = 3; // NCA por default
+    private int arcaConsultaCbteNro;
+    private bool arcaConsultaLoading;
+    private string? arcaConsultaError;
+    private ConsultaComprobanteResultDto? arcaConsultaResult;
 
     // Generar comprobante de prueba
     private bool showArcaWsGenerarModal;
@@ -4783,6 +4884,71 @@
         catch
         {
             ToastService.Error("Error al eliminar el certificado");
+        }
+    }
+
+    // ============================================================
+    // Verificar comprobante en ARCA (FECompConsultar)
+    // ============================================================
+
+    private void OpenArcaConsultaModal(ArcaWebserviceAccountDto cert)
+    {
+        arcaConsultaAccountId = cert.Id;
+        arcaConsultaCuit = FormatCuit(cert.Cuit);
+        arcaConsultaPtoVta = 2;
+        arcaConsultaCbteTipo = 3;
+        arcaConsultaCbteNro = 0;
+        arcaConsultaResult = null;
+        arcaConsultaError = null;
+        showArcaConsultaModal = true;
+    }
+
+    private void CloseArcaConsultaModal()
+    {
+        if (arcaConsultaLoading) return;
+        showArcaConsultaModal = false;
+        arcaConsultaResult = null;
+        arcaConsultaError = null;
+    }
+
+    private async Task EjecutarArcaConsulta()
+    {
+        if (arcaConsultaLoading) return;
+        if (arcaConsultaPtoVta <= 0 || arcaConsultaCbteTipo <= 0 || arcaConsultaCbteNro <= 0)
+        {
+            arcaConsultaError = "Completá los 3 campos (PtoVta, Tipo, Nro) con números mayores a 0";
+            arcaConsultaResult = null;
+            return;
+        }
+        arcaConsultaLoading = true;
+        arcaConsultaResult = null;
+        arcaConsultaError = null;
+        StateHasChanged();
+        try
+        {
+            var resp = await Api.ConsultarArcaComprobanteAsync(
+                arcaConsultaAccountId, arcaConsultaPtoVta, arcaConsultaCbteTipo, arcaConsultaCbteNro);
+            if (resp is null)
+            {
+                arcaConsultaError = "No hubo respuesta del servidor.";
+            }
+            else if (!resp.Success)
+            {
+                arcaConsultaError = resp.Error ?? "ARCA no devolvió detalles.";
+            }
+            else
+            {
+                arcaConsultaResult = resp;
+            }
+        }
+        catch (Exception ex)
+        {
+            arcaConsultaError = ex.Message;
+        }
+        finally
+        {
+            arcaConsultaLoading = false;
+            StateHasChanged();
         }
     }
 
