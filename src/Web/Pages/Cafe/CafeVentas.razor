@@ -1622,13 +1622,18 @@
                                                                 value="@(formItem.Molienda ?? "")"
                                                                 @onchange="@(e => OnItemMoliendaChanged(i, e.Value?.ToString()))"
                                                                 title="Tipo de molienda del café">
+                                                            @* 2026-06-09 fix: alineo opciones con el dropdown de ARRIBA (form de agregar).
+                                                               Antes tenia 'MOLIDO ESPRESS' (typo sin X) y faltaba 'MOLIDO CAFETERA ITALIANA'.
+                                                               Eso causaba que items recien agregados con 'MOLIDO EXPRESS' o 'MOLIDO CAFETERA ITALIANA'
+                                                               apareciera el dropdown vacio y diera la sensacion de que la molienda se perdia. *@
                                                             <option value="">☕ (sin especificar)</option>
                                                             <option value="EN GRANOS">🫘 EN GRANOS</option>
                                                             <option value="MOLIDO FILTRO">☕ MOLIDO FILTRO</option>
-                                                            <option value="MOLIDO ESPRESS">⚡ MOLIDO ESPRESS</option>
+                                                            <option value="MOLIDO EXPRESS">⚡ MOLIDO EXPRESS</option>
                                                             <option value="MOLIDO MOKA">☕ MOLIDO MOKA</option>
                                                             <option value="MOLIDO BODUM">☕ MOLIDO BODUM</option>
                                                             <option value="MOLIDO PRENSA FRANCESA">☕ MOLIDO PRENSA FRANCESA</option>
+                                                            <option value="MOLIDO CAFETERA ITALIANA">☕ MOLIDO CAFETERA ITALIANA</option>
                                                             <option value="MOLIDO A LA TURCA">☕ MOLIDO A LA TURCA</option>
                                                             <option value="MINI EXPRESS">🔸 MINI EXPRESS</option>
                                                         </select>
@@ -4929,6 +4934,22 @@
         // Molienda + envase los toma de los selectores del form. Si el producto NO es
         // cafe, usamos los defaults seguros (sin molienda, sin envase especial).
         var esCafe = p.Categoria == "CAFE";
+
+        // 2026-06-09 fix defensivo: garantizar que addMolienda/addEnvase reflejen el
+        // valor REAL del DOM. Cuando el usuario navega con teclado (Enter), a veces
+        // el @bind del <select> no commitea su onchange antes de que se dispare AddItem.
+        if (esCafe)
+        {
+            try
+            {
+                var realMol = await JS.InvokeAsync<string>("eval", "document.getElementById('nv-molienda')?.value || ''");
+                if (!string.IsNullOrEmpty(realMol)) addMolienda = realMol;
+                var realEnv = await JS.InvokeAsync<string>("eval", "document.getElementById('nv-envase')?.value || ''");
+                if (!string.IsNullOrEmpty(realEnv)) addEnvase = realEnv;
+            }
+            catch { /* no-op: si JS falla, seguimos con lo que tiene Blazor */ }
+        }
+
         var molienda = esCafe ? (string.IsNullOrEmpty(addMolienda) ? null : addMolienda) : null;
         var esDoyPack = esCafe && addEnvase == "DOY_PACK";
         var esPlateado = esCafe && addEnvase == "PLATEADO";
