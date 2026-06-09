@@ -191,7 +191,7 @@ public class MeliMe1Controller : ControllerBase
     [HttpGet("publicaciones")]
     public async Task<IActionResult> ListPublicaciones([FromQuery] bool refrescar = false)
     {
-        const string cacheKey = "me1:publicaciones:listado";
+        const string cacheKey = "me1:publicaciones:listado:v2_conPeso";
         if (!refrescar && _cache.TryGetValue(cacheKey, out var cached))
             return Ok(cached);
 
@@ -377,7 +377,7 @@ public class MeliMe1Controller : ControllerBase
         List<string> mlas = req.Mlas ?? new List<string>();
         if (mlas.Count == 0)
         {
-            if (_cache.TryGetValue("me1:publicaciones:listado", out var cached) && cached is not null)
+            if (_cache.TryGetValue("me1:publicaciones:listado:v2_conPeso", out var cached) && cached is not null)
             {
                 // El cache es un { total, items }. Extraigo items.mla via reflection-light.
                 var json = JsonSerializer.Serialize(cached);
