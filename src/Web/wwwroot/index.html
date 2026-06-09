@@ -11,8 +11,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-    <link rel="stylesheet" href="css/app.css?v=20260609a" />
-    <link rel="stylesheet" href="css/modern-overlay.css?v=20260609a" />
+    <link rel="stylesheet" href="css/app.css?v=20260609b" />
+    <link rel="stylesheet" href="css/modern-overlay.css?v=20260609b" />
 </head>
 <body>
     <div id="app">
@@ -632,44 +632,44 @@
             try { window.open(url, '_blank'); } catch (e) { console.error('openInNewTab error', e); }
         };
 
-        // 2026-06-09: el teclado numerico siempre tira "." como decimal, pero el browser
-        // con locale es-AR muchas veces NO lo acepta en inputs type=number (espera ","
-        // o no lo ingresa). Solucion: escuchar keydown a nivel global y cuando viene
-        // tecla "." (Decimal del numpad o Period), interceptarla y meter la "," manualmente
-        // disparando un input event para que Blazor lo capte.
-        // Nota: solo aplica si el input tiene type=number o type=text con inputmode=decimal.
-        // Si por alguna razon no debe aplicar (campo nro de tel, etc), agregar data-no-decimal-fix.
+        // 2026-06-09 v2: con locale es-AR, los inputs type=number NO aceptan "." como decimal
+        // (esperan ","). Si el usuario tipea el "." del numpad, se ignora.
+        // Truco: forzar lang="en" en los inputs type=number con step decimal. Asi el browser
+        // los trata como en-US y SI acepta el "." del numpad. Internamente Blazor sigue
+        // parseando con culture invariant, asi que todo funciona.
         (function () {
-            document.addEventListener('keydown', function (e) {
-                if (e.key !== '.' && e.key !== ',') return;
-                var el = e.target;
-                if (!el || (el.tagName !== 'INPUT')) return;
-                if (el.dataset && el.dataset.noDecimalFix === 'true') return;
-                var t = (el.type || '').toLowerCase();
-                var im = (el.inputMode || el.getAttribute('inputmode') || '').toLowerCase();
-                var es = (el.step || '').toString();
-                // Solo aplicar a inputs que claramente esperan un decimal.
-                var aplica = (t === 'number' && es && es !== '1' && es !== '0')
-                          || (t === 'text' && (im === 'decimal' || im === 'numeric'));
-                if (!aplica) return;
-                // Evitar duplicar coma si ya hay una
-                var v = el.value || '';
-                if (v.indexOf(',') >= 0 || v.indexOf('.') >= 0) {
-                    e.preventDefault();
-                    return;
+            function fixInputs(root) {
+                if (!root || !root.querySelectorAll) return;
+                var nodes = root.querySelectorAll('input[type="number"]');
+                for (var i = 0; i < nodes.length; i++) {
+                    var el = nodes[i];
+                    if (el.dataset && el.dataset.langFixed === 'true') continue;
+                    var step = (el.step || '').toString();
+                    // Solo a los que tienen step decimal (0.01, 0.1, any). Los de step=1 se quedan.
+                    if (step === '' || step === '1' || step === '0') continue;
+                    el.setAttribute('lang', 'en');
+                    el.dataset.langFixed = 'true';
                 }
-                e.preventDefault();
-                // Insertar "." en la posicion del caret. Browser es-AR igual acepta "." en type=number
-                // como decimal — el problema era SOLO si el browser parseaba con "," el bind.
-                // Truco: cambiamos temporalmente el value y disparamos input event para que Blazor lo lea.
-                var start = el.selectionStart || el.value.length;
-                var end = el.selectionEnd || el.value.length;
-                var nv = (el.value.substring(0, start)) + '.' + (el.value.substring(end));
-                el.value = nv;
-                try { el.setSelectionRange(start + 1, start + 1); } catch (er) { /* type=number no soporta */ }
-                el.dispatchEvent(new Event('input', { bubbles: true }));
-                el.dispatchEvent(new Event('change', { bubbles: true }));
-            }, true);
+            }
+            // Aplicar al cargar
+            document.addEventListener('DOMContentLoaded', function () { fixInputs(document); });
+            // Y observar cambios del DOM (Blazor abre/cierra modales seguido)
+            var mo = new MutationObserver(function (muts) {
+                for (var i = 0; i < muts.length; i++) {
+                    var added = muts[i].addedNodes;
+                    for (var j = 0; j < added.length; j++) {
+                        var n = added[j];
+                        if (n.nodeType === 1) fixInputs(n);
+                    }
+                }
+            });
+            try { mo.observe(document.body, { childList: true, subtree: true }); }
+            catch (e) {
+                // Si el body no esta listo, esperar
+                document.addEventListener('DOMContentLoaded', function () {
+                    mo.observe(document.body, { childList: true, subtree: true });
+                });
+            }
         })();
 
         // 2026-05-28: drag de la calculadora flotante.
