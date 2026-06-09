@@ -119,8 +119,17 @@ public class CafeRepartidorPublicController : ControllerBase
             v.EntregadoAt = DateTime.UtcNow;
             if (v.EstadoPreparacion != null)
             {
+                var estadoAntE = v.EstadoPreparacion;
                 v.EstadoPreparacion = "ENTREGADO";
                 v.PreparacionUpdatedAt = DateTime.UtcNow;
+                // 2026-06-09 log
+                _db.CafeVentaPreparacionLogs.Add(new CafeVentaPreparacionLog
+                {
+                    VentaId = v.Id, EstadoAnterior = estadoAntE, EstadoNuevo = "ENTREGADO",
+                    OperadorNombre = $"repartidor: {rep.Nombre}",
+                    Notas = "Repartidor marco entregada (sin cobro)",
+                    CreatedAt = DateTime.UtcNow
+                });
             }
             await _db.SaveChangesAsync();
             return Ok(new { soloEntrega = true, mensaje = $"✓ Marcaste como entregada (sin cobro)" });
@@ -147,8 +156,17 @@ public class CafeRepartidorPublicController : ControllerBase
             v.EntregadoAt = DateTime.UtcNow;
             if (v.EstadoPreparacion != null)
             {
+                var estadoAntC = v.EstadoPreparacion;
                 v.EstadoPreparacion = "ENTREGADO";
                 v.PreparacionUpdatedAt = DateTime.UtcNow;
+                // 2026-06-09 log
+                _db.CafeVentaPreparacionLogs.Add(new CafeVentaPreparacionLog
+                {
+                    VentaId = v.Id, EstadoAnterior = estadoAntC, EstadoNuevo = "ENTREGADO",
+                    OperadorNombre = $"repartidor: {rep.Nombre}",
+                    Notas = "Repartidor marco entregada + cobranza precargada",
+                    CreatedAt = DateTime.UtcNow
+                });
             }
         }
 
@@ -419,8 +437,17 @@ public class CafeRepartidorPublicController : ControllerBase
         }
         if (v.EstadoPreparacion != null)
         {
+            var estadoAntE2 = v.EstadoPreparacion;
             v.EstadoPreparacion = "ENTREGADO";
             v.PreparacionUpdatedAt = DateTime.UtcNow;
+            // 2026-06-09 log
+            _db.CafeVentaPreparacionLogs.Add(new CafeVentaPreparacionLog
+            {
+                VentaId = v.Id, EstadoAnterior = estadoAntE2, EstadoNuevo = "ENTREGADO",
+                OperadorNombre = $"repartidor: {r.Nombre}",
+                Notas = "Repartidor marco entregado desde /mis-pedidos" + (string.IsNullOrWhiteSpace(comentario) ? "" : $" — comentario: {comentario}"),
+                CreatedAt = DateTime.UtcNow
+            });
         }
         _db.CafeQrEscaneos.Add(new CafeQrEscaneo
         {
@@ -503,8 +530,17 @@ public class CafeRepartidorPublicController : ControllerBase
         v.EntregadoAt = DateTime.UtcNow;
         if (v.EstadoPreparacion != null)
         {
+            var estadoAntCob = v.EstadoPreparacion;
             v.EstadoPreparacion = "ENTREGADO";
             v.PreparacionUpdatedAt = DateTime.UtcNow;
+            // 2026-06-09 log
+            _db.CafeVentaPreparacionLogs.Add(new CafeVentaPreparacionLog
+            {
+                VentaId = v.Id, EstadoAnterior = estadoAntCob, EstadoNuevo = "ENTREGADO",
+                OperadorNombre = $"repartidor: {r.Nombre}",
+                Notas = $"Cobro precargado desde /mis-pedidos — importe ${importe:N2}",
+                CreatedAt = DateTime.UtcNow
+            });
         }
 
         // Log de escaneo: accion cobrado

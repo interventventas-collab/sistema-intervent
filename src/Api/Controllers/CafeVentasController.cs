@@ -433,14 +433,36 @@ public class CafeVentasController : ControllerBase
             var yaArmada = v.EstadoPreparacion == "LISTO" || v.EstadoPreparacion == "EN_CAMINO" || v.EstadoPreparacion == "ENTREGADO";
             if (yaArmada)
             {
+                var estadoAnt = v.EstadoPreparacion;
                 v.EstadoPreparacion = "PARA_PREPARAR";
                 v.PreparacionUpdatedAt = DateTime.UtcNow;
                 v.ModificadoDespuesDeArmar = true;
+                // 2026-06-09: log obligatorio cuando un drive-upload revive una venta ya armada.
+                // Antes pasaba sin log y el armador no entendia por que reaparecia en el tablero.
+                _db.CafeVentaPreparacionLogs.Add(new CafeVentaPreparacionLog
+                {
+                    VentaId = v.Id,
+                    EstadoAnterior = estadoAnt,
+                    EstadoNuevo = "PARA_PREPARAR",
+                    OperadorNombre = NormOperatorName(Request.Headers["X-Operator-Name"].FirstOrDefault()),
+                    Notas = "Revivida por re-subida a Drive (probablemente edicion de la venta)",
+                    CreatedAt = DateTime.UtcNow
+                });
             }
             else if (string.IsNullOrEmpty(v.EstadoPreparacion))
             {
                 v.EstadoPreparacion = "PARA_PREPARAR";
                 v.PreparacionUpdatedAt = DateTime.UtcNow;
+                // 2026-06-09: log primera vez que entra al tablero
+                _db.CafeVentaPreparacionLogs.Add(new CafeVentaPreparacionLog
+                {
+                    VentaId = v.Id,
+                    EstadoAnterior = null,
+                    EstadoNuevo = "PARA_PREPARAR",
+                    OperadorNombre = NormOperatorName(Request.Headers["X-Operator-Name"].FirstOrDefault()),
+                    Notas = "Entro al tablero por primera subida a Drive",
+                    CreatedAt = DateTime.UtcNow
+                });
             }
             // Si la venta estaba "oculta" del tablero, al re-subir a Drive la volvemos a mostrar.
             v.PreparacionOcultoAt = null;

@@ -122,6 +122,17 @@ public class CafeRepartidoresController : ControllerBase
         {
             v.EstadoPreparacion = "PARA_PREPARAR";
             v.PreparacionUpdatedAt = DateTime.UtcNow;
+            // 2026-06-09: log obligatorio cuando admin desmarca una entrega y la venta vuelve al tablero.
+            // Antes pasaba silencioso y el armador no entendia por que reaparecia.
+            _db.CafeVentaPreparacionLogs.Add(new CafeVentaPreparacionLog
+            {
+                VentaId = v.Id,
+                EstadoAnterior = "ENTREGADO",
+                EstadoNuevo = "PARA_PREPARAR",
+                OperadorNombre = "admin (desmarcar entrega)",
+                Notas = "Admin uso Desmarcar Entrega — la venta vuelve a aparecer en Para Armar",
+                CreatedAt = DateTime.UtcNow
+            });
         }
 
         // Borrar escaneos "entregado" del log

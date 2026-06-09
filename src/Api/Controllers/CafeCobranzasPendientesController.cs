@@ -92,8 +92,17 @@ public class CafeCobranzasPendientesController : ControllerBase
             p.Venta.EntregadoAt = DateTime.UtcNow;
             if (p.Venta.EstadoPreparacion != null)
             {
+                var estadoAntApr1 = p.Venta.EstadoPreparacion;
                 p.Venta.EstadoPreparacion = "ENTREGADO";
                 p.Venta.PreparacionUpdatedAt = DateTime.UtcNow;
+                // 2026-06-09 log
+                _db.CafeVentaPreparacionLogs.Add(new Models.CafeVentaPreparacionLog
+                {
+                    VentaId = p.Venta.Id, EstadoAnterior = estadoAntApr1, EstadoNuevo = "ENTREGADO",
+                    OperadorNombre = req.Operador ?? "admin",
+                    Notas = "Admin asocio cobranza pendiente a venta — marca entregada",
+                    CreatedAt = DateTime.UtcNow
+                });
             }
         }
         await _db.SaveChangesAsync();
@@ -169,8 +178,17 @@ public class CafeCobranzasPendientesController : ControllerBase
             p.Venta.EntregadoAt = DateTime.UtcNow;
             if (p.Venta.EstadoPreparacion != null)
             {
+                var estadoAntApr2 = p.Venta.EstadoPreparacion;
                 p.Venta.EstadoPreparacion = "ENTREGADO";
                 p.Venta.PreparacionUpdatedAt = DateTime.UtcNow;
+                // 2026-06-09 log
+                _db.CafeVentaPreparacionLogs.Add(new Models.CafeVentaPreparacionLog
+                {
+                    VentaId = p.Venta.Id, EstadoAnterior = estadoAntApr2, EstadoNuevo = "ENTREGADO",
+                    OperadorNombre = req.Operador ?? "admin",
+                    Notas = "Admin aprobo cobranza pendiente — marca entregada",
+                    CreatedAt = DateTime.UtcNow
+                });
             }
         }
 
