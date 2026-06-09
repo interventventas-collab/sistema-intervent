@@ -1067,8 +1067,12 @@
                                     var stockColor = (t.Categoria == "CAFE" ? t.StockGramos : t.StockUnidades) <= 0 ? "#dc2626" : "#15803d";
                                     var prodId = t.ProductoId;
                                     var fmt = t.Formato;
-                                    <div style="display:flex; align-items:center; gap:0.5rem; background:white; border:1px solid #f59e0b; border-radius:6px; padding:0.35rem 0.5rem; font-size:0.82rem;"
-                                         title="Comprado @t.TimesOrdered ve@(t.TimesOrdered == 1 ? "z" : "ces") · Última: @t.LastPurchase.ToString("dd/MM/yyyy")">
+                                    @* 2026-06-09: toda la fila clickeable para agregar el producto.
+                                       El boton X (descartar) detiene propagacion para no agregarlo por error. *@
+                                    <div style="display:flex; align-items:center; gap:0.5rem; background:white; border:1px solid #f59e0b; border-radius:6px; padding:0.35rem 0.5rem; font-size:0.82rem; cursor:pointer; transition:background 0.12s, transform 0.08s;"
+                                         onmouseover="this.style.background='#fef3c7'" onmouseout="this.style.background='white'"
+                                         @onclick="() => AddTopProduct(prodId, fmt)"
+                                         title="Click para agregar a la venta — Comprado @t.TimesOrdered ve@(t.TimesOrdered == 1 ? "z" : "ces") · Última: @t.LastPurchase.ToString("dd/MM/yyyy")">
                                         <span style="background:#f59e0b; color:white; padding:0.1rem 0.4rem; border-radius:999px; font-size:0.7rem; font-weight:800; min-width:30px; text-align:center;">@t.TimesOrdered×</span>
                                         <span style="font-family:monospace; color:#6b7280; font-size:0.72rem; min-width:60px;">@(string.IsNullOrEmpty(t.Sku) ? "—" : t.Sku)</span>
                                         <strong style="flex:1; color:#78350f;">@t.Nombre <span style="font-weight:500; color:#92400e;">@FormatoLabel(t.Formato)</span></strong>
@@ -1077,10 +1081,12 @@
                                         <button type="button"
                                                 style="background:#16a34a; color:white; border:none; border-radius:4px; padding:0.25rem 0.5rem; font-weight:700; cursor:pointer; font-size:0.85rem;"
                                                 @onclick="() => AddTopProduct(prodId, fmt)"
+                                                @onclick:stopPropagation="true"
                                                 title="Agregar a la venta">+</button>
                                         <button type="button"
                                                 style="background:transparent; color:#dc2626; border:1px solid #fca5a5; border-radius:4px; padding:0.25rem 0.45rem; font-weight:700; cursor:pointer; font-size:0.82rem;"
                                                 @onclick="() => DescartarTopProduct(prodId)"
+                                                @onclick:stopPropagation="true"
                                                 title="Descartar — no volverá a aparecer hasta que el cliente lo compre de nuevo">×</button>
                                     </div>
                                 }
