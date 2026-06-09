@@ -669,6 +669,13 @@
             @* 2026-05-30: oficina también puede cargar ventas (igual que admin con permiso cafe). *@
             @if (HasPerm("cafe") || HasPerm("oficina"))
             {
+                @* 2026-06-09: boton STOCK — atajo a la izquierda de Listas de precios *@
+                <button class="topbar-stock-btn"
+                        @onclick="@(() => NavigateTo("/cafe/stock-masivo"))"
+                        title="Stock masivo (todos los productos)">
+                    <span style="font-size: 1.2rem;">📦</span>
+                    <span class="topbar-stock-label">Stock</span>
+                </button>
                 @* 2026-06-08: boton LISTAS DE PRECIOS — atajo a la izquierda de Preparacion *@
                 <button class="topbar-listas-btn"
                         @onclick="@(() => NavigateTo("/cafe/listas-precios"))"
