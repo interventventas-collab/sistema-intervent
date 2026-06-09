@@ -2598,12 +2598,12 @@
 @if (showArcaConsultaModal)
 {
     <div class="modal-overlay" @onclick="CloseArcaConsultaModal">
-        <div class="modal-container" @onclick:stopPropagation style="max-width: 720px;">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 720px; max-height: 92vh; display: flex; flex-direction: column;">
             <div class="modal-header">
                 <h3>🔎 Verificar comprobante en ARCA — @arcaConsultaCuit</h3>
-                <button class="modal-close" @onclick="CloseArcaConsultaModal" disabled="@arcaConsultaLoading">×</button>
+                <button class="btn-close" @onclick="CloseArcaConsultaModal" disabled="@arcaConsultaLoading">&times;</button>
             </div>
-            <div class="modal-body">
+            <div class="modal-body" style="overflow-y: auto;">
                 <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 0.6rem 0.9rem; font-size: 0.85rem; color: #075985; margin-bottom: 1rem;">
                     Consultá si un comprobante específico ya está autorizado en ARCA (FECompConsultar). Solo lectura — no modifica nada.
                 </div>
