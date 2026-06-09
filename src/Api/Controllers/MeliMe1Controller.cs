@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using Api.Data;
 using Api.Services;
+using ClosedXML.Excel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -485,6 +486,84 @@ public class MeliMe1Controller : ControllerBase
         await Task.WhenAll(tareas);
 
         return Ok(new { cp = req.Cp, total = resultados.Count, items = resultados });
+    }
+
+    /// <summary>
+    /// Genera el Excel para subir como "Tabla de Contingencia / Axado" en el panel
+    /// de MeLi. Una fila por CP cubriendo los rangos acordados con el usuario el 2026-06-09:
+    ///   1001-1499 CABA $10.000
+    ///   1500-1599 GBA cercano $12.000
+    ///   1600-1699 GBA medio $14.000
+    ///   1700-1838 GBA cercano $12.000
+    ///   1839 TU ZONA $8.000
+    ///   1840-1899 GBA cercano $12.000
+    ///   1900-2999 La Plata + extremos $18.000
+    /// Peso 0-999 kg sin recargo por kg extra => tarifa FIJA por zona, no importa el peso.
+    /// Plazo 1 dia habil.
+    /// </summary>
+    [HttpGet("tabla-axado.xlsx")]
+    public IActionResult DescargarTablaAxado()
+    {
+        // Definicion de zonas (rango_inicio, rango_fin, precio)
+        var rangos = new (int from, int to, decimal precio)[]
+        {
+            (1001, 1499, 10000m),  // CABA
+            (1500, 1599, 12000m),  // GBA cercano
+            (1600, 1699, 14000m),  // GBA medio (Tigre, San Isidro, V. Lopez, Pilar, Escobar...)
+            (1700, 1838, 12000m),  // GBA cercano (Moron, Ituzaingo, Merlo, Moreno, La Matanza...)
+            (1839, 1839,  8000m),  // TU ZONA: Esteban Echeverria
+            (1840, 1899, 12000m),  // GBA cercano (Lomas, Quilmes, Banfield, Burzaco...)
+            (1900, 2999, 18000m),  // La Plata + extremos (Berisso, Ensenada, Canuelas, Zarate, Campana, Lujan...)
+        };
+
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("MercadoLibre");
+
+        // Fila 1: titulo
+        ws.Cell(1, 1).Value = "MERCADO LIBRE";
+        ws.Cell(1, 1).Style.Font.Bold = true;
+        ws.Cell(1, 1).Style.Font.FontSize = 14;
+        ws.Range(1, 1, 1, 7).Merge();
+
+        // Fila 3: headers
+        int hdr = 3;
+        ws.Cell(hdr, 1).Value = "CP Inicio";
+        ws.Cell(hdr, 2).Value = "CP Fin";
+        ws.Cell(hdr, 3).Value = "Peso Mínimo (kg)";
+        ws.Cell(hdr, 4).Value = "Peso Máximo (kg)";
+        ws.Cell(hdr, 5).Value = "Valor Flete Peso ($)";
+        ws.Cell(hdr, 6).Value = "Valor p/ kg excedente ($)";
+        ws.Cell(hdr, 7).Value = "Plazo (días hábiles)";
+        var hdrRange = ws.Range(hdr, 1, hdr, 7);
+        hdrRange.Style.Font.Bold = true;
+        hdrRange.Style.Fill.BackgroundColor = XLColor.LightGray;
+
+        // Datos: una fila por CP. Total ~2000 filas para cubrir 1001-2999 (con rangos contiguos).
+        int row = 4;
+        foreach (var (from, to, precio) in rangos)
+        {
+            for (int cp = from; cp <= to; cp++)
+            {
+                ws.Cell(row, 1).Value = cp;
+                ws.Cell(row, 2).Value = cp;
+                ws.Cell(row, 3).Value = 0;
+                ws.Cell(row, 4).Value = 999;  // tope alto -> nunca aplica recargo por kg extra
+                ws.Cell(row, 5).Value = precio;
+                ws.Cell(row, 6).Value = 0;    // $0 por kg extra -> tarifa fija
+                ws.Cell(row, 7).Value = 1;    // 1 dia habil
+                row++;
+            }
+        }
+
+        ws.Columns().AdjustToContents();
+
+        using var stream = new MemoryStream();
+        wb.SaveAs(stream);
+        var bytes = stream.ToArray();
+        var fileName = $"tabla-axado-me1-{DateTime.Now:yyyyMMdd-HHmm}.xlsx";
+        return File(bytes,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            fileName);
     }
 
     /// <summary>

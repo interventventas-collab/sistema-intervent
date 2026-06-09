@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @inject HttpClient Http
 @inject ToastService ToastService
+@inject IJSRuntime JS
 @using System.Text.Json
 @using System.Text.Json.Serialization
 
@@ -92,7 +93,10 @@
     <div class="pubs-panel">
         <div class="pubs-header">
             <h3>📦 Publicaciones ME1 (@(filtradas?.Count ?? 0) / @(items?.Count ?? 0))</h3>
-            <div>
+            <div style="display: flex; gap: 0.4rem;">
+                <button class="btn-ver" style="background: #16a34a;" @onclick="DescargarExcelAxado" title="Descarga el .xlsx con las tarifas por zona acordadas — listo para subir al panel de MeLi (Tabla Axado)">
+                    📥 Descargar Excel Tabla Axado
+                </button>
                 <button class="btn-ver" @onclick="Refrescar" disabled="@cargando">@(cargando ? "Cargando..." : "🔄 Refrescar")</button>
             </div>
         </div>
@@ -330,6 +334,21 @@
     }
 
     private async Task Refrescar() => await CargarPublicaciones(true);
+
+    /// <summary>Descarga el Excel de la Tabla Axado para subir al panel de MeLi.</summary>
+    private async Task DescargarExcelAxado()
+    {
+        try
+        {
+            var bytes = await Http.GetByteArrayAsync("api/meli/me1/tabla-axado.xlsx");
+            var b64 = Convert.ToBase64String(bytes);
+            var fileName = $"tabla-axado-me1-{DateTime.Now:yyyyMMdd-HHmm}.xlsx";
+            await JS.InvokeVoidAsync("downloadBytesAsFile", fileName, b64,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            ToastService.Success($"✅ Excel descargado: {fileName}");
+        }
+        catch (Exception ex) { ToastService.Error($"Error descargando Excel: {ex.Message}"); }
+    }
 
     private void AbrirCotizador(string mla)
     {
