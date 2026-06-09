@@ -1,0 +1,334 @@
+@page "/meli/me1/publicaciones"
+@attribute [Authorize]
+@inject HttpClient Http
+@inject ToastService ToastService
+@using System.Text.Json
+@using System.Text.Json.Serialization
+
+@* ════════════════════════════════════════════════════════════════════════════
+   Pantalla "Publicaciones ME1" — pedido del usuario 2026-06-08 noche.
+   Objetivo: ver las 472 publicaciones ME1 + la tabla de zonas + un cotizador
+   rápido para probar cuánto cobra MeLi a cada CP. Por ahora SOLO VER, no editar.
+   Mañana sumamos los botones de cambio (peso, tarifa, modo).
+   ════════════════════════════════════════════════════════════════════════════ *@
+
+<style>
+    .me1pub-wrap { display: grid; grid-template-columns: 280px 1fr; gap: 1rem; max-width: 1500px; margin: 0 auto; padding: 0.5rem; }
+    @@media (max-width: 980px) { .me1pub-wrap { grid-template-columns: 1fr; } }
+
+    .zonas-panel { background: white; border-radius: 10px; padding: 0.8rem; box-shadow: 0 1px 4px rgba(0,0,0,0.06); position: sticky; top: 70px; align-self: start; }
+    .zonas-panel h4 { margin: 0 0 0.6rem; font-size: 0.95rem; color: #1f2937; }
+    .zonas-panel .nota { font-size: 0.72rem; color: #6b7280; margin-bottom: 0.6rem; line-height: 1.4; }
+    .zona-card { padding: 0.55rem 0.7rem; border-radius: 8px; margin-bottom: 0.4rem; color: white; font-weight: 600; font-size: 0.82rem; display: flex; justify-content: space-between; align-items: center; }
+    .zona-card .precio { font-size: 0.95rem; font-weight: 800; }
+    .zona-card .cps { font-size: 0.65rem; opacity: 0.9; display: block; margin-top: 0.15rem; font-weight: 400; }
+
+    .pubs-panel { background: white; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); overflow: hidden; }
+    .pubs-header { padding: 0.8rem 1rem; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
+    .pubs-header h3 { margin: 0; font-size: 1.05rem; color: #1f2937; }
+    .pubs-tools { padding: 0.6rem 1rem; background: #f9fafb; border-bottom: 1px solid #e5e7eb; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+    .pubs-tools input { flex: 1; min-width: 200px; padding: 0.45rem 0.7rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.9rem; }
+
+    table.pubs-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    table.pubs-table th { background: #f3f4f6; padding: 0.5rem 0.6rem; text-align: left; font-weight: 700; color: #4b5563; font-size: 0.75rem; text-transform: uppercase; border-bottom: 2px solid #e5e7eb; }
+    table.pubs-table td { padding: 0.5rem 0.6rem; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+    table.pubs-table tr:hover { background: #fffbeb; }
+    .thumb { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; border: 1px solid #e5e7eb; background: #f3f4f6; }
+    .mla-cell { font-family: monospace; font-size: 0.78rem; color: #1d4ed8; }
+    .sku-cell { font-family: monospace; font-size: 0.78rem; color: #4b5563; background: #f3f4f6; padding: 0.1rem 0.35rem; border-radius: 4px; }
+    .btn-cotizar { background: #f59e0b; color: white; border: none; padding: 0.3rem 0.6rem; border-radius: 6px; font-size: 0.78rem; font-weight: 600; cursor: pointer; }
+    .btn-cotizar:hover { background: #d97706; }
+    .btn-ver { background: #1d4ed8; color: white; border: none; padding: 0.3rem 0.6rem; border-radius: 6px; font-size: 0.78rem; font-weight: 600; cursor: pointer; text-decoration: none; }
+
+    /* Modal cotizador */
+    .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; z-index: 200; padding: 1rem; }
+    .modal-card { background: white; border-radius: 12px; padding: 1.4rem; max-width: 520px; width: 100%; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+    .modal-card h3 { margin: 0 0 0.8rem; font-size: 1.1rem; }
+    .modal-card .cp-input { width: 100%; padding: 0.6rem 0.8rem; font-size: 1.1rem; border: 2px solid #d1d5db; border-radius: 8px; font-family: monospace; }
+    .modal-card .quick-zonas { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.8rem 0; }
+    .modal-card .quick-zonas button { padding: 0.3rem 0.55rem; font-size: 0.72rem; border: 1px solid #d1d5db; border-radius: 5px; background: white; cursor: pointer; font-weight: 600; }
+    .modal-card .quick-zonas button:hover { background: #f3f4f6; }
+    .resultado-cotiz { background: #f3f4f6; border-radius: 8px; padding: 0.8rem; margin-top: 0.8rem; }
+    .resultado-cotiz .precio-grande { font-size: 1.8rem; font-weight: 800; color: #16a34a; }
+
+    .stat-pill { background: #eef2ff; color: #4338ca; padding: 0.15rem 0.5rem; border-radius: 999px; font-size: 0.72rem; font-weight: 700; }
+    .stock-low { color: #dc2626; font-weight: 700; }
+    .stock-ok { color: #16a34a; font-weight: 600; }
+</style>
+
+<div class="me1pub-wrap">
+    <!-- PANEL IZQUIERDO: TABLA DE ZONAS -->
+    <aside class="zonas-panel">
+        <h4>🗺 Tabla de zonas acordada</h4>
+        <p class="nota">Propuesta del 08/06/2026 — referencia para subir al panel de MeLi (Tabla Axado).</p>
+        @if (zonas != null)
+        {
+            @foreach (var z in zonas)
+            {
+                <div class="zona-card" style="background: @z.color;">
+                    <div style="flex: 1;">
+                        <div>@z.nombre</div>
+                        <span class="cps">CP @z.cpDesde-@z.cpHasta</span>
+                    </div>
+                    <div class="precio">$@z.precio.ToString("N0")</div>
+                </div>
+            }
+        }
+    </aside>
+
+    <!-- PANEL DERECHO: LISTADO -->
+    <div class="pubs-panel">
+        <div class="pubs-header">
+            <h3>📦 Publicaciones ME1 (@(filtradas?.Count ?? 0) / @(items?.Count ?? 0))</h3>
+            <div>
+                <button class="btn-ver" @onclick="Refrescar" disabled="@cargando">@(cargando ? "Cargando..." : "🔄 Refrescar")</button>
+            </div>
+        </div>
+        <div class="pubs-tools">
+            <input @bind="busqueda" @bind:event="oninput" placeholder="Buscar por título, SKU o MLA..." />
+            <span class="stat-pill">@(items?.Count ?? 0) total</span>
+        </div>
+
+        @if (cargando)
+        {
+            <div style="padding: 2rem; text-align: center; color: #6b7280;">⏳ Cargando publicaciones ME1 de MeLi (puede tardar 30 seg)...</div>
+        }
+        else if (filtradas == null || filtradas.Count == 0)
+        {
+            <div style="padding: 2rem; text-align: center; color: #6b7280;">Sin resultados.</div>
+        }
+        else
+        {
+            <div style="overflow-x: auto; max-height: 75vh;">
+            <table class="pubs-table">
+                <thead>
+                    <tr>
+                        <th></th>
+                        <th>MLA</th>
+                        <th>Título</th>
+                        <th>SKU</th>
+                        <th style="text-align: right;">Precio</th>
+                        <th style="text-align: center;">Stock</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in filtradas.Take(maxMostrar))
+                    {
+                        <tr>
+                            <td><img src="@(string.IsNullOrEmpty(p.thumbnail) ? "" : p.thumbnail)" class="thumb" alt="" onerror="this.style.visibility='hidden'" /></td>
+                            <td><a href="@p.permalink" target="_blank" class="mla-cell">@p.mla</a></td>
+                            <td style="max-width: 320px;">@(string.IsNullOrEmpty(p.title) ? "(sin título en base)" : p.title)</td>
+                            <td>@(string.IsNullOrEmpty(p.sku) ? "—" : (MarkupString)$"<span class='sku-cell'>{p.sku}</span>")</td>
+                            <td style="text-align: right; font-weight: 600;">@(p.price.HasValue ? $"${p.price.Value:N0}" : "—")</td>
+                            <td style="text-align: center;">
+                                @if (p.stock.HasValue)
+                                {
+                                    <span class="@(p.stock.Value <= 2 ? "stock-low" : "stock-ok")">@p.stock</span>
+                                }
+                                else { <span>—</span> }
+                            </td>
+                            <td style="white-space: nowrap;">
+                                <button class="btn-cotizar" @onclick="() => AbrirCotizador(p.mla)">📐 Cotizar</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            @if (filtradas.Count > maxMostrar)
+            {
+                <div style="padding: 0.8rem; text-align: center; background: #f9fafb;">
+                    Mostrando @maxMostrar de @filtradas.Count. <button class="btn-ver" @onclick="() => maxMostrar += 50">Mostrar 50 más</button>
+                </div>
+            }
+            </div>
+        }
+    </div>
+</div>
+
+@* MODAL COTIZADOR *@
+@if (cotizandoMla != null)
+{
+    <div class="modal-bg" @onclick="CerrarCotizador">
+        <div class="modal-card" @onclick:stopPropagation>
+            <h3>📐 Cotizar envío para @cotizandoMla</h3>
+            <label style="font-size: 0.85rem; color: #4b5563; font-weight: 600;">Código postal:</label>
+            <input class="cp-input" @bind="cpCotizar" @bind:event="oninput" placeholder="Ej: 1414, 1839, 1900..." maxlength="4" />
+
+            <div style="margin: 0.6rem 0;">
+                <div style="font-size: 0.75rem; color: #6b7280; margin-bottom: 0.3rem;">CPs típicos:</div>
+                <div class="quick-zonas">
+                    <button @onclick='() => SetCp("1839")'>1839 Tu zona</button>
+                    <button @onclick='() => SetCp("1414")'>1414 Palermo</button>
+                    <button @onclick='() => SetCp("1428")'>1428 Belgrano</button>
+                    <button @onclick='() => SetCp("1640")'>1640 Martínez</button>
+                    <button @onclick='() => SetCp("1708")'>1708 Morón</button>
+                    <button @onclick='() => SetCp("1878")'>1878 Quilmes</button>
+                    <button @onclick='() => SetCp("1900")'>1900 La Plata</button>
+                </div>
+            </div>
+
+            <button class="btn-cotizar" style="font-size: 0.95rem; padding: 0.6rem 1.2rem;" @onclick="EjecutarCotizacion" disabled="@(cotizando || string.IsNullOrWhiteSpace(cpCotizar))">
+                @(cotizando ? "Consultando..." : "📡 Cotizar contra MeLi")
+            </button>
+
+            @if (resultadoCotizacion != null)
+            {
+                <div class="resultado-cotiz">
+                    @if (resultadoCotizacion.ok)
+                    {
+                        <div>Costo del envío al CP <strong>@resultadoCotizacion.cp</strong>:</div>
+                        @if (resultadoCotizacion.options != null && resultadoCotizacion.options.Count > 0)
+                        {
+                            foreach (var o in resultadoCotizacion.options)
+                            {
+                                <div class="precio-grande">$@o.cost.ToString("N0")</div>
+                                <div style="font-size: 0.78rem; color: #6b7280;">Método: @o.name (id @o.shippingMethodId)</div>
+                            }
+                        }
+                        else
+                        {
+                            <div style="color: #dc2626;">Sin opciones de envío para ese CP.</div>
+                        }
+                    }
+                    else
+                    {
+                        <div style="color: #dc2626;">❌ Error al cotizar (HTTP @resultadoCotizacion.http). Probá otro CP.</div>
+                    }
+                </div>
+            }
+
+            <div style="margin-top: 0.8rem; text-align: right;">
+                <button class="btn-ver" style="background: #6b7280;" @onclick="CerrarCotizador">Cerrar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<ZonaDto>? zonas;
+    private List<PublicacionDto>? items;
+    private List<PublicacionDto>? filtradas => string.IsNullOrWhiteSpace(busqueda)
+        ? items
+        : items?.Where(p =>
+            (p.title ?? "").Contains(busqueda, StringComparison.OrdinalIgnoreCase) ||
+            (p.sku ?? "").Contains(busqueda, StringComparison.OrdinalIgnoreCase) ||
+            (p.mla ?? "").Contains(busqueda, StringComparison.OrdinalIgnoreCase)).ToList();
+    private string busqueda = "";
+    private int maxMostrar = 50;
+    private bool cargando = true;
+
+    // Cotizador
+    private string? cotizandoMla;
+    private string cpCotizar = "";
+    private bool cotizando;
+    private CotizacionResultadoDto? resultadoCotizacion;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarZonas();
+        await CargarPublicaciones(false);
+    }
+
+    private async Task CargarZonas()
+    {
+        try { zonas = await Http.GetFromJsonAsync<List<ZonaDto>>("api/meli/me1/zonas"); }
+        catch (Exception ex) { ToastService.Error($"Error zonas: {ex.Message}"); }
+    }
+
+    private async Task CargarPublicaciones(bool forzarRefrescar)
+    {
+        cargando = true; StateHasChanged();
+        try
+        {
+            var resp = await Http.GetFromJsonAsync<ListadoDto>($"api/meli/me1/publicaciones?refrescar={(forzarRefrescar ? "true" : "false")}");
+            items = resp?.items ?? new List<PublicacionDto>();
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error($"Error cargando publicaciones: {ex.Message}");
+            items = new List<PublicacionDto>();
+        }
+        finally { cargando = false; }
+    }
+
+    private async Task Refrescar() => await CargarPublicaciones(true);
+
+    private void AbrirCotizador(string mla)
+    {
+        cotizandoMla = mla;
+        cpCotizar = "";
+        resultadoCotizacion = null;
+    }
+
+    private void CerrarCotizador()
+    {
+        cotizandoMla = null;
+        cpCotizar = "";
+        resultadoCotizacion = null;
+    }
+
+    private void SetCp(string cp) => cpCotizar = cp;
+
+    private async Task EjecutarCotizacion()
+    {
+        if (cotizandoMla is null || string.IsNullOrWhiteSpace(cpCotizar)) return;
+        cotizando = true; resultadoCotizacion = null; StateHasChanged();
+        try
+        {
+            var resp = await Http.PostAsJsonAsync("api/meli/me1/cotizar", new { mla = cotizandoMla, cp = cpCotizar });
+            resultadoCotizacion = await resp.Content.ReadFromJsonAsync<CotizacionResultadoDto>();
+        }
+        catch (Exception ex) { ToastService.Error($"Error cotización: {ex.Message}"); }
+        finally { cotizando = false; }
+    }
+
+    public class ZonaDto
+    {
+        public string id { get; set; } = "";
+        public string nombre { get; set; } = "";
+        public int cpDesde { get; set; }
+        public int cpHasta { get; set; }
+        public decimal precio { get; set; }
+        public string color { get; set; } = "#666";
+    }
+
+    public class PublicacionDto
+    {
+        public string mla { get; set; } = "";
+        public string? cuenta { get; set; }
+        public string? title { get; set; }
+        public string? sku { get; set; }
+        public decimal? price { get; set; }
+        public int? stock { get; set; }
+        public int? sold { get; set; }
+        public string? thumbnail { get; set; }
+        public string? permalink { get; set; }
+        public string? status { get; set; }
+        public bool enBase { get; set; }
+    }
+
+    public class ListadoDto
+    {
+        public int total { get; set; }
+        public List<PublicacionDto> items { get; set; } = new();
+    }
+
+    public class CotizacionResultadoDto
+    {
+        public bool ok { get; set; }
+        public int? http { get; set; }
+        public string? mla { get; set; }
+        public string? cp { get; set; }
+        public string? cuenta { get; set; }
+        public List<OpcionEnvioDto>? options { get; set; }
+    }
+
+    public class OpcionEnvioDto
+    {
+        public string? name { get; set; }
+        public decimal cost { get; set; }
+        public long shippingMethodId { get; set; }
+        public string? shippingMethodType { get; set; }
+    }
+}
