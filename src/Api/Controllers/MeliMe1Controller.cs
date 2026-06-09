@@ -191,7 +191,7 @@ public class MeliMe1Controller : ControllerBase
     [HttpGet("publicaciones")]
     public async Task<IActionResult> ListPublicaciones([FromQuery] bool refrescar = false)
     {
-        const string cacheKey = "me1:publicaciones:listado:v2_conPeso";
+        const string cacheKey = "me1:publicaciones:listado:v3_pesoFix";
         if (!refrescar && _cache.TryGetValue(cacheKey, out var cached))
             return Ok(cached);
 
@@ -254,22 +254,41 @@ public class MeliMe1Controller : ControllerBase
                     {
                         foreach (var a in attrs.EnumerateArray())
                         {
-                            if (a.TryGetProperty("id", out var aid) && aid.GetString() == "SELLER_PACKAGE_WEIGHT")
+                            if (!a.TryGetProperty("id", out var aid) || aid.GetString() != "SELLER_PACKAGE_WEIGHT")
+                                continue;
+
+                            // El struct puede venir en value_struct (item viejo) o en values[0].struct (item nuevo)
+                            JsonElement structEl = default; bool tieneStruct = false;
+                            if (a.TryGetProperty("value_struct", out var vs1) && vs1.ValueKind == JsonValueKind.Object)
+                            { structEl = vs1; tieneStruct = true; }
+                            else if (a.TryGetProperty("values", out var vals) && vals.ValueKind == JsonValueKind.Array && vals.GetArrayLength() > 0)
                             {
-                                if (a.TryGetProperty("value_struct", out var vs) && vs.ValueKind == JsonValueKind.Object
-                                    && vs.TryGetProperty("number", out var n))
-                                {
-                                    var num = n.GetDouble();
-                                    var unit = vs.TryGetProperty("unit", out var u) ? (u.GetString() ?? "g") : "g";
-                                    // Convertir todo a gramos
-                                    peso = unit.ToLowerInvariant() switch {
-                                        "kg" => (int)(num * 1000),
-                                        "g" => (int)num,
-                                        _ => (int)num
-                                    };
-                                }
-                                break;
+                                var first = vals[0];
+                                if (first.TryGetProperty("struct", out var vs2) && vs2.ValueKind == JsonValueKind.Object)
+                                { structEl = vs2; tieneStruct = true; }
                             }
+                            if (tieneStruct && structEl.TryGetProperty("number", out var n))
+                            {
+                                var num = n.GetDouble();
+                                var unit = structEl.TryGetProperty("unit", out var u) ? (u.GetString() ?? "g") : "g";
+                                peso = unit.ToLowerInvariant() switch {
+                                    "kg" => (int)(num * 1000),
+                                    "g" => (int)num,
+                                    _ => (int)num
+                                };
+                            }
+                            else if (a.TryGetProperty("value_name", out var vn) && vn.ValueKind == JsonValueKind.String)
+                            {
+                                // Fallback: parsear "300000 g" o "10 kg"
+                                var txt = vn.GetString() ?? "";
+                                var m = System.Text.RegularExpressions.Regex.Match(txt, @"([\d.,]+)\s*(g|kg)?", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                                if (m.Success && double.TryParse(m.Groups[1].Value.Replace(",", "."), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var num))
+                                {
+                                    var unit = m.Groups[2].Success ? m.Groups[2].Value.ToLowerInvariant() : "g";
+                                    peso = unit == "kg" ? (int)(num * 1000) : (int)num;
+                                }
+                            }
+                            break;
                         }
                     }
                     pesos[mla] = peso;
@@ -377,7 +396,7 @@ public class MeliMe1Controller : ControllerBase
         List<string> mlas = req.Mlas ?? new List<string>();
         if (mlas.Count == 0)
         {
-            if (_cache.TryGetValue("me1:publicaciones:listado:v2_conPeso", out var cached) && cached is not null)
+            if (_cache.TryGetValue("me1:publicaciones:listado:v3_pesoFix", out var cached) && cached is not null)
             {
                 // El cache es un { total, items }. Extraigo items.mla via reflection-light.
                 var json = JsonSerializer.Serialize(cached);
