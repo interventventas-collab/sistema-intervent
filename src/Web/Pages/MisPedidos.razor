@@ -48,6 +48,32 @@
     .mp-section-title { font-size: 0.78rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; margin: 1.1rem 0 0.45rem; padding-left: 0.2rem; }
     .mp-section-title .badge { background: #dbeafe; color: #1e40af; padding: 0.1rem 0.5rem; border-radius: 999px; margin-left: 0.4rem; font-size: 0.75rem; }
 
+    /* 2026-06-09: filtros de fecha + tarjeta resumen/arqueo */
+    .mp-filtros { display: flex; gap: 0.4rem; margin-bottom: 0.6rem; flex-wrap: wrap; }
+    .mp-filtro-chip {
+        flex: 1; min-width: 60px; padding: 0.55rem 0.4rem; border-radius: 10px;
+        background: white; border: 1.5px solid #d1d5db; font-size: 0.82rem; font-weight: 700;
+        color: #6b7280; cursor: pointer; transition: all 0.12s;
+    }
+    .mp-filtro-chip:active { transform: scale(0.97); }
+    .mp-filtro-chip.activo { background: #0e7490; border-color: #0e7490; color: white; box-shadow: 0 2px 4px rgba(14,116,144,0.3); }
+
+    .mp-resumen {
+        background: linear-gradient(135deg, #ecfdf5, #d1fae5);
+        border: 1px solid #6ee7b7; border-radius: 14px;
+        padding: 0.85rem 1rem; margin-bottom: 0.7rem;
+    }
+    .mp-resumen-titulo { font-size: 0.74rem; font-weight: 800; color: #047857; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; }
+    .mp-resumen-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.3rem; font-size: 0.92rem; color: #064e3b; }
+    .mp-resumen-row strong { font-size: 1rem; font-weight: 800; }
+    .mp-arqueo-box {
+        background: white; border: 2px solid #f59e0b; border-radius: 10px;
+        padding: 0.65rem 0.8rem; margin-top: 0.6rem;
+    }
+    .mp-arqueo-label { font-size: 0.72rem; font-weight: 700; color: #92400e; text-transform: uppercase; letter-spacing: 0.04em; }
+    .mp-arqueo-monto { font-size: 1.45rem; font-weight: 900; color: #b45309; margin-top: 0.15rem; }
+    .mp-arqueo-info { font-size: 0.72rem; color: #6b7280; margin-top: 0.25rem; }
+
     .mp-card {
         background: white; border-radius: 12px; padding: 0.85rem 0.95rem;
         margin-bottom: 0.6rem; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
@@ -178,9 +204,8 @@
             <div style="background:#fee2e2; color:#991b1b; padding:0.6rem 0.8rem; border-radius:8px; margin-bottom:0.8rem; font-size:0.88rem;">⚠ @scanError</div>
         }
 
-        @* PENDIENTES *@
+        @* PENDIENTES — siempre completos, sin filtro de fecha (puede tener pendientes de varios días) *@
         var pendientes = pedidos.Where(p => !p.YaEntregada).ToList();
-        var entregadas = pedidos.Where(p => p.YaEntregada).ToList();
         <div id="mp-pendientes" class="mp-section-title">📦 Pendientes <span class="badge">@pendientes.Count</span></div>
         @if (pendientes.Count == 0)
         {
@@ -222,18 +247,68 @@
             }
         }
 
-        @* ENTREGADAS *@
-        @if (entregadas.Count > 0)
+        @* ENTREGADAS — con filtros + resumen + arqueo (2026-06-09) *@
+        <div class="mp-section-title">✅ Entregadas</div>
+
+        @* Chips de filtro de fecha *@
+        <div class="mp-filtros">
+            <button class="mp-filtro-chip @(filtroFecha == "hoy" ? "activo" : "")" @onclick='() => CambiarFiltro("hoy")'>📅 Hoy</button>
+            <button class="mp-filtro-chip @(filtroFecha == "ayer" ? "activo" : "")" @onclick='() => CambiarFiltro("ayer")'>🕐 Ayer</button>
+            <button class="mp-filtro-chip @(filtroFecha == "semana" ? "activo" : "")" @onclick='() => CambiarFiltro("semana")'>📆 Semana</button>
+            <button class="mp-filtro-chip @(filtroFecha == "todos" ? "activo" : "")" @onclick='() => CambiarFiltro("todos")'>📋 Todas</button>
+        </div>
+
+        var entregadasFiltro = EntregadasFiltradas();
+        var resumen = ResumenArqueo();
+        var (_, _, labelFiltro) = RangoFiltroActual();
+
+        @* Tarjeta resumen + arqueo *@
+        <div class="mp-resumen">
+            <div class="mp-resumen-titulo">Resumen @labelFiltro</div>
+            <div class="mp-resumen-row">
+                <span>📦 Entregas</span>
+                <strong>@resumen.cantidad</strong>
+            </div>
+            <div class="mp-resumen-row">
+                <span>💰 Facturado</span>
+                <strong>$ @resumen.facturado.ToString("N2")</strong>
+            </div>
+            <div class="mp-arqueo-box">
+                <div class="mp-arqueo-label">💵 Tenés que rendir</div>
+                <div class="mp-arqueo-monto">$ @resumen.aRendir.ToString("N2")</div>
+                <div class="mp-arqueo-info">Suma de tus cobros en efectivo @labelFiltro. Si Osmar todavía no aprobó alguno, igual cuenta acá.</div>
+            </div>
+        </div>
+
+        @if (entregadasFiltro.Count == 0)
         {
-            <div class="mp-section-title">✅ Entregadas <span class="badge">@entregadas.Count</span></div>
-            foreach (var p in entregadas)
+            <div class="mp-empty" style="background:white; border-radius:12px; padding:1.2rem;">
+                <div style="font-size:1.8rem;">📭</div>
+                <div class="mp-empty-text">No tenés entregas @labelFiltro.</div>
+            </div>
+        }
+        else
+        {
+            foreach (var p in entregadasFiltro)
             {
+                var cobroDe = cobros.FirstOrDefault(c => c.VentaId == p.Id);
                 <div class="mp-card entregada">
                     <div class="mp-card-numero">@p.Numero</div>
                     <div class="mp-card-cliente">@(p.ClienteNombre ?? "—")</div>
                     <div class="mp-card-total">$ @p.Total.ToString("N2")</div>
                     <div class="mp-card-chips">
                         <span class="mp-chip mp-chip-ok">✅ Entregada @(p.EntregadoAt?.ToLocalTime().ToString("dd/MM HH:mm"))</span>
+                        @if (cobroDe is not null)
+                        {
+                            if (cobroDe.Estado == "APROBADA")
+                            {
+                                <span class="mp-chip mp-chip-ok">💵 Cobrado $ @cobroDe.Importe.ToString("N2") ✓</span>
+                            }
+                            else
+                            {
+                                <span class="mp-chip mp-chip-pend">💵 Cobrado $ @cobroDe.Importe.ToString("N2") ⏳</span>
+                            }
+                        }
                     </div>
                     @if (!string.IsNullOrWhiteSpace(p.ComentarioEntrega))
                     {
@@ -318,12 +393,17 @@
         string? ComentarioEntrega,
         // 2026-06-08: true si la venta tiene PDF en Drive (para mostrar el botón "Ver comprobante")
         bool TienePdf);
-    public record MisPedidosResp(int RepartidorId, string Nombre, List<PedidoDto> Pedidos);
+    // 2026-06-09: cobros del repartidor (siempre efectivo) — para el arqueo
+    public record CobroDto(int VentaId, decimal Importe, string Estado, DateTime FechaCobro);
+    public record MisPedidosResp(int RepartidorId, string Nombre, List<PedidoDto> Pedidos, List<CobroDto>? Cobros);
 
     private bool loading = true, cargaError = false;
     private string nombre = "";
     private int repartidorId;
     private List<PedidoDto> pedidos = new();
+    private List<CobroDto> cobros = new();
+    // 2026-06-09: filtro de fecha para las entregas + arqueo
+    private string filtroFecha = "hoy"; // hoy / ayer / semana / todos
 
     private record ModalState(string Tipo, PedidoDto Pedido);
     private ModalState? modal;
@@ -391,6 +471,7 @@
             nombre = r.Nombre;
             repartidorId = r.RepartidorId;
             pedidos = r.Pedidos ?? new();
+            cobros = r.Cobros ?? new();
         }
         catch { cargaError = true; }
         finally { loading = false; StateHasChanged(); }
@@ -597,5 +678,71 @@
             toastVisible = false;
             await InvokeAsync(StateHasChanged);
         });
+    }
+
+    // 2026-06-09: helpers para filtro de fecha + arqueo del repartidor
+    private (DateTime desdeUtc, DateTime hastaUtc, string label) RangoFiltroActual()
+    {
+        // Trabajamos en hora local del repartidor (Argentina -03)
+        var nowAr = DateTime.UtcNow.AddHours(-3);
+        var hoy0 = new DateTime(nowAr.Year, nowAr.Month, nowAr.Day, 0, 0, 0, DateTimeKind.Unspecified);
+        // Convertir limites locales a UTC sumando 3 hs
+        DateTime desdeUtc, hastaUtc; string label;
+        switch (filtroFecha)
+        {
+            case "ayer":
+                desdeUtc = hoy0.AddDays(-1).AddHours(3);
+                hastaUtc = hoy0.AddHours(3);
+                label = "ayer";
+                break;
+            case "semana":
+                desdeUtc = hoy0.AddDays(-6).AddHours(3);
+                hastaUtc = hoy0.AddDays(1).AddHours(3);
+                label = "esta semana";
+                break;
+            case "todos":
+                desdeUtc = DateTime.MinValue;
+                hastaUtc = DateTime.MaxValue;
+                label = "en total";
+                break;
+            default: // "hoy"
+                desdeUtc = hoy0.AddHours(3);
+                hastaUtc = hoy0.AddDays(1).AddHours(3);
+                label = "hoy";
+                break;
+        }
+        return (desdeUtc, hastaUtc, label);
+    }
+
+    private List<PedidoDto> EntregadasFiltradas()
+    {
+        var (d, h, _) = RangoFiltroActual();
+        return pedidos
+            .Where(p => p.YaEntregada
+                     && p.EntregadoAt.HasValue
+                     && p.EntregadoAt.Value >= d
+                     && p.EntregadoAt.Value < h)
+            .OrderByDescending(p => p.EntregadoAt!.Value)
+            .ToList();
+    }
+
+    private (int cantidad, decimal facturado, decimal aRendir) ResumenArqueo()
+    {
+        var (d, h, _) = RangoFiltroActual();
+        var entregas = pedidos.Where(p => p.YaEntregada
+                                        && p.EntregadoAt.HasValue
+                                        && p.EntregadoAt.Value >= d
+                                        && p.EntregadoAt.Value < h).ToList();
+        // El arqueo = cobros del repartidor en el mismo rango (todo es efectivo)
+        // Solo cuentan los que NO fueron rechazados (PENDIENTE + APROBADA)
+        var efectivo = cobros.Where(c => c.FechaCobro >= d && c.FechaCobro < h)
+                              .Sum(c => c.Importe);
+        return (entregas.Count, entregas.Sum(p => p.Total), efectivo);
+    }
+
+    private void CambiarFiltro(string nuevo)
+    {
+        filtroFecha = nuevo;
+        StateHasChanged();
     }
 }

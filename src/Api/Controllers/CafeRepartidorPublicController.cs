@@ -314,8 +314,13 @@ public class CafeRepartidorPublicController : ControllerBase
         // En la práctica es true para todas las ventas creadas con el sistema actual.
         bool TienePdf);
 
+    /// <summary>2026-06-09: cobros hechos por el repartidor (siempre en efectivo) — para el arqueo.</summary>
+    public record MisPedidosCobroDto(int VentaId, decimal Importe, string Estado, DateTime FechaCobro);
 
-    public record MisPedidosResult(int RepartidorId, string Nombre, List<MisPedidosVentaDto> Pedidos);
+    public record MisPedidosResult(int RepartidorId, string Nombre,
+        List<MisPedidosVentaDto> Pedidos,
+        // 2026-06-09: cobros del repartidor (todos en efectivo) — el frontend filtra por fecha y arma arqueo
+        List<MisPedidosCobroDto> Cobros);
 
     /// <summary>Devuelve la lista de pedidos cargados por el repartidor. URL publica con
     /// token fijo del repartidor — sin PIN. El PIN solo se pide al CONFIRMAR entrega/cobro.</summary>
@@ -367,7 +372,17 @@ public class CafeRepartidorPublicController : ControllerBase
             x.TienePdf
         )).ToList();
 
-        return Ok(new MisPedidosResult(r.Id, r.Nombre, pedidos));
+        // 2026-06-09: cobros del repartidor (siempre en efectivo, viven en Cafe_CobranzasPendientes).
+        // Si el admin aprobo -> Estado='APROBADA'. Si rechazo -> 'RECHAZADA'. Sino 'PENDIENTE'.
+        // Para el arqueo del repartidor sumamos PENDIENTE + APROBADA (todo lo que cobro en mano).
+        var cobros = await _db.CafeCobranzasPendientes
+            .Where(p => p.RepartidorId == r.Id
+                     && p.Estado != "RECHAZADA"
+                     && p.CreatedAt >= desde)
+            .Select(p => new MisPedidosCobroDto(p.VentaId, p.Importe, p.Estado, p.CreatedAt))
+            .ToListAsync();
+
+        return Ok(new MisPedidosResult(r.Id, r.Nombre, pedidos, cobros));
     }
 
     /// <summary>2026-06-05: Escaneo de QR desde la pantalla Mis Pedidos del repartidor.
