@@ -224,6 +224,22 @@ public class EmitirComprobanteRequest
     /// ART el server UTC ya esta en el dia siguiente — la factura saldria con fecha del manana
     /// o de ayer segun el caso.</summary>
     public DateTime? Fecha { get; set; }
+    /// <summary>2026-06-09: comprobantes asociados (obligatorio para NC/ND). Apunta al comprobante
+    /// original que se esta acreditando. ARCA rechaza la NC si no viene este bloque.</summary>
+    public List<CbteAsocDto>? CbtesAsoc { get; set; }
+}
+
+/// <summary>2026-06-09: comprobante asociado (FA original al que apunta una NC).</summary>
+public class CbteAsocDto
+{
+    /// <summary>Tipo del comprobante original (1=FA, 6=FB, 11=FC, etc).</summary>
+    public int Tipo { get; set; }
+    public int PtoVta { get; set; }
+    public int Nro { get; set; }
+    /// <summary>CUIT del emisor (vendedor). Si vacio, ARCA usa el del seller.</summary>
+    public string? Cuit { get; set; }
+    /// <summary>Fecha del cbte asociado en formato YYYYMMDD. Opcional.</summary>
+    public string? FechaYyyymmdd { get; set; }
 }
 
 public class ComprobantePdfDataDto

@@ -578,6 +578,13 @@
                 <button class="actions-popup-item" disabled title="Tiene CAE de ARCA — generá una Nota de Crédito.">
                     <span class="ic">⊘</span><span>Anular (no se puede con CAE)</span>
                 </button>
+                @* 2026-06-09: Emitir NC total — solo para facturas con CAE *@
+                @if (vMenu.TipoComprobante is "FA" or "FB" or "FC")
+                {
+                    <button class="actions-popup-item" @onclick="() => { CloseActionsMenu(); EmitirNotaCredito(vMenu); }">
+                        <span class="ic" style="color:#dc2626;">➖</span><span>Emitir Nota de Crédito (total)</span>
+                    </button>
+                }
             }
             else if (anuladaM)
             {
@@ -6170,6 +6177,34 @@
         {
             ToastService.Error("No se pudo enviar a preparación");
         }
+    }
+
+    /// <summary>2026-06-09 — Emite una Nota de Crédito TOTAL sobre una factura con CAE.
+    /// Confirma con el usuario, pide motivo opcional, llama al endpoint, muestra resultado.
+    /// La NC se emite contra ARCA, devuelve stock, y queda asociada a la factura origen.</summary>
+    private async Task EmitirNotaCredito(CafeVentaDto v)
+    {
+        // Confirmar
+        var tipoNc = v.TipoComprobante switch { "FA" => "NCA", "FB" => "NCB", "FC" => "NCC", _ => "NC" };
+        var msg = $"¿Emitir {tipoNc} TOTAL por ${v.Total:N2} para ANULAR la factura {v.Numero}?\n\n" +
+                  $"Se va a:\n• Crear un comprobante {tipoNc} nuevo\n• Pedir CAE a ARCA\n• Devolver TODO el stock al inventario\n• Dejar saldo a favor del cliente\n\nNO se puede deshacer.";
+        if (!await JS.InvokeAsync<bool>("confirm", msg)) return;
+
+        // Motivo (opcional)
+        var motivo = await JS.InvokeAsync<string?>("prompt", $"Motivo de la NC (opcional):", "Anulación de comprobante");
+
+        // Llamar al endpoint
+        var (data, err) = await Api.EmitirNotaCreditoAsync(v.Id, motivo);
+        if (err is not null || data is null || !data.ok)
+        {
+            ToastService.Error($"❌ Error emitiendo NC: {err ?? data?.error ?? "desconocido"}");
+            return;
+        }
+
+        ToastService.Success(data.mensaje ?? $"✅ NC {data.ncTipo} emitida con CAE {data.cae}");
+        // Refrescar listado para que aparezca la nueva venta NC
+        await Load();
+        StateHasChanged();
     }
 
     /// <summary>Mapea un estado de preparacion a un chip visual (icono, color de fondo,

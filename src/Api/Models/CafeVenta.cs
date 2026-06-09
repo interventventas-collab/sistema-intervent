@@ -218,6 +218,14 @@ public class CafeVenta
     /// guardamos el Id de la factura resultante. Null = no se convirtió todavía.</summary>
     public int? FacturadaComoVentaId { get; set; }
 
+    /// <summary>2026-06-09: si esta venta es una NOTA DE CREDITO (NCA/NCB/NCC), guardamos el
+    /// Id de la factura original que estamos acreditando. Null = no es una NC.</summary>
+    public int? VentaOrigenNcId { get; set; }
+    /// <summary>2026-06-09: si esta venta es una FACTURA y ya se emitió una NC sobre ella,
+    /// guardamos el Id de esa NC. Null = factura sin NC emitida. Sirve para mostrar el chip
+    /// "ya tiene NC #X" en el listado y para evitar emitir NC duplicada.</summary>
+    public int? NotaCreditoVentaId { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 

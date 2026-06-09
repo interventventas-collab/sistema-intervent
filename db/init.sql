@@ -2052,6 +2052,13 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='FacturadaComoVentaId' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
     ALTER TABLE Cafe_Ventas ADD FacturadaComoVentaId INT NULL;
 GO
+-- 2026-06-09: Nota de Credito Fase 1
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='VentaOrigenNcId' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD VentaOrigenNcId INT NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='NotaCreditoVentaId' AND Object_ID=OBJECT_ID('Cafe_Ventas'))
+    ALTER TABLE Cafe_Ventas ADD NotaCreditoVentaId INT NULL;
+GO
 
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_VentaItems' AND xtype='U')
 BEGIN

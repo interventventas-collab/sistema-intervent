@@ -1716,6 +1716,220 @@ public class CafeVentasController : ControllerBase
         return Ok(creada);
     }
 
+    public record EmitirNotaCreditoRequest(string? Motivo);
+
+    /// <summary>
+    /// 2026-06-09 — Fase 1 Nota de Credito (NC TOTAL).
+    /// Crea una nueva Cafe_Venta tipo NCA/NCB/NCC clonando la factura original COMPLETA,
+    /// la emite contra ARCA con CbtesAsoc apuntando al cbte origen, devuelve stock,
+    /// y marca la factura original con NotaCreditoVentaId.
+    /// </summary>
+    [HttpPost("{id:int}/nota-credito")]
+    public async Task<IActionResult> EmitirNotaCredito(int id, [FromBody] EmitirNotaCreditoRequest? req)
+    {
+        var original = await _db.CafeVentas.Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == id);
+        if (original is null) return NotFound(new { error = "Venta no encontrada" });
+
+        // Validaciones
+        if (original.Estado != "emitido") return BadRequest(new { error = "Solo se puede emitir NC sobre ventas emitidas" });
+        if (string.IsNullOrEmpty(original.ArcaCae)) return BadRequest(new { error = "La factura no tiene CAE — no se puede emitir NC sin CAE" });
+        if (original.NotaCreditoVentaId.HasValue) return BadRequest(new { error = $"Esta factura ya tiene una NC emitida (venta #{original.NotaCreditoVentaId})" });
+        if (original.VentaOrigenNcId.HasValue) return BadRequest(new { error = "Esta venta YA ES una NC — no se puede emitir NC sobre una NC" });
+        if (original.TipoComprobante is not "FA" and not "FB" and not "FC")
+            return BadRequest(new { error = $"Tipo de comprobante origen no soportado para NC: {original.TipoComprobante}" });
+
+        // Mapear tipo NC según factura origen: FA(1)→NCA(3), FB(6)→NCB(8), FC(11)→NCC(13)
+        var (cbteTipoNc, tipoNcStr) = original.TipoComprobante switch
+        {
+            "FA" => (3, "NCA"),
+            "FB" => (8, "NCB"),
+            "FC" => (13, "NCC"),
+            _ => (0, "")
+        };
+
+        // Cargar cuenta ARCA activa
+        var arcaAccount = await _db.ArcaWebserviceAccounts
+            .FirstOrDefaultAsync(a => a.IsActive);
+        if (arcaAccount is null) return BadRequest(new { error = "No hay cuenta ARCA configurada" });
+
+        // ----- Generar numero de comprobante interno (independiente de ARCA) -----
+        var numero = await GenerarNumeroAsync();
+
+        // ----- Clonar la venta como NC -----
+        var nc = new CafeVenta
+        {
+            Numero = numero,
+            Fecha = DateTime.UtcNow.Date,
+            ClienteId = original.ClienteId,
+            ClienteNombreSnapshot = original.ClienteNombreSnapshot,
+            ClienteRazonSocialSnapshot = original.ClienteRazonSocialSnapshot,
+            ClienteTipoSnapshot = original.ClienteTipoSnapshot,
+            ClienteTelefonoSnapshot = original.ClienteTelefonoSnapshot,
+            ClienteCuitSnapshot = original.ClienteCuitSnapshot,
+            ClienteDireccionSnapshot = original.ClienteDireccionSnapshot,
+            ClienteLocalidadSnapshot = original.ClienteLocalidadSnapshot,
+            ClienteCiudadSnapshot = original.ClienteCiudadSnapshot,
+            ClienteCpSnapshot = original.ClienteCpSnapshot,
+            ClienteDomicilioEntregaSnapshot = original.ClienteDomicilioEntregaSnapshot,
+            CondicionIva = original.CondicionIva,
+            CondicionPago = original.CondicionPago,
+            TipoComprobante = tipoNcStr,
+            Total = original.Total,
+            Descuento = original.Descuento,
+            IsPaid = false,
+            Estado = "emitido",
+            Observaciones = string.IsNullOrWhiteSpace(req?.Motivo) ? null : req!.Motivo!.Trim(),
+            VentaOrigenNcId = original.Id,
+            CreatedAt = DateTime.UtcNow,
+        };
+        foreach (var it in original.Items)
+        {
+            nc.Items.Add(new CafeVentaItem
+            {
+                ProductoId = it.ProductoId,
+                ProductoNombreSnapshot = it.ProductoNombreSnapshot,
+                Categoria = it.Categoria,
+                Formato = it.Formato,
+                Cantidad = it.Cantidad,
+                PrecioUnitario = it.PrecioUnitario,
+                CostoUnitario = it.CostoUnitario,
+                Subtotal = it.Subtotal,
+                GramosDescontados = it.GramosDescontados,
+                Molienda = it.Molienda,
+                EsDoyPack = it.EsDoyPack,
+                EsEnvasePlateado = it.EsEnvasePlateado,
+                EsConceptoLibre = it.EsConceptoLibre,
+                DescuentoPct = it.DescuentoPct,
+                ComboOrigenId = it.ComboOrigenId,
+                ServicioId = it.ServicioId,
+            });
+        }
+        _db.CafeVentas.Add(nc);
+        await _db.SaveChangesAsync(); // nc.Id ya asignado
+
+        // ----- Construir items para ARCA -----
+        decimal sumaItems = nc.Items.Sum(i => i.Subtotal);
+        decimal factorDescGlobal = (nc.Descuento > 0m && sumaItems > 0m)
+            ? Math.Max(0m, 1m - (nc.Descuento / sumaItems)) : 1m;
+        var itemsArca = new List<EmitirComprobanteItemDto>();
+        foreach (var it in nc.Items)
+        {
+            var pu = it.DescuentoPct > 0 && it.Cantidad > 0
+                ? Math.Round(it.Subtotal / it.Cantidad, 2, MidpointRounding.AwayFromZero)
+                : it.PrecioUnitario;
+            var puFinal = factorDescGlobal < 1m
+                ? Math.Round(pu * factorDescGlobal, 2, MidpointRounding.AwayFromZero) : pu;
+            var desc = it.ProductoNombreSnapshot;
+            if (!string.IsNullOrEmpty(it.Molienda)) desc += $" — {it.Molienda}";
+            if (it.EsDoyPack) desc += " (d.p.)"; else if (it.EsEnvasePlateado) desc += " (env. plat.)";
+            if (!it.EsConceptoLibre) desc += $" · {it.Formato}";
+            itemsArca.Add(new EmitirComprobanteItemDto { Descripcion = desc, Cantidad = it.Cantidad, PrecioUnitario = puFinal, AlicIvaId = 5 });
+        }
+
+        // Receptor doc
+        int docTipo = !string.IsNullOrEmpty(nc.ClienteCuitSnapshot) ? 80 : 99;
+        string docNro = !string.IsNullOrEmpty(nc.ClienteCuitSnapshot) ? nc.ClienteCuitSnapshot! : "0";
+        int condIvaReceptor = (nc.CondicionIva ?? "CF") switch
+        {
+            "RI" => 1, "EX" => 4, "MO" => 6, _ => 5
+        };
+
+        // ----- Request ARCA con CbtesAsoc -----
+        var reqArca = new EmitirComprobanteRequest
+        {
+            PtoVta = original.ArcaPtoVta ?? 2,
+            CbteTipo = cbteTipoNc,
+            Concepto = 1,
+            DocTipo = docTipo,
+            DocNro = docNro,
+            ReceptorNombre = nc.ClienteRazonSocialSnapshot ?? nc.ClienteNombreSnapshot ?? "Consumidor Final",
+            ReceptorDomicilio = nc.ClienteDireccionSnapshot,
+            CondicionIVAReceptorId = condIvaReceptor,
+            Items = itemsArca,
+            Fecha = nc.Fecha,
+            CbtesAsoc = new List<CbteAsocDto>
+            {
+                new CbteAsocDto
+                {
+                    Tipo = original.ArcaCbteTipoNum ?? 0,
+                    PtoVta = original.ArcaPtoVta ?? 0,
+                    Nro = original.ArcaCbteNro ?? 0,
+                }
+            }
+        };
+
+        // ----- Emitir contra ARCA -----
+        ComprobanteEmitidoDto? resultado = null;
+        try
+        {
+            resultado = await _arcaInvoiceService.EmitirComprobanteAsync(arcaAccount.Id, reqArca);
+        }
+        catch (Exception ex)
+        {
+            nc.ArcaEstado = "pendiente";
+            nc.ArcaError = "Error inesperado: " + ex.Message;
+            await _db.SaveChangesAsync();
+            return BadRequest(new { error = "ARCA rechazó la NC: " + ex.Message, ncVentaId = nc.Id });
+        }
+        if (resultado is null || !resultado.Success)
+        {
+            nc.ArcaEstado = "pendiente";
+            nc.ArcaError = resultado?.Error ?? "ARCA rechazó la NC.";
+            await _db.SaveChangesAsync();
+            return BadRequest(new { error = nc.ArcaError, ncVentaId = nc.Id });
+        }
+
+        // ----- Persistir resultado ARCA en la NC -----
+        nc.ArcaEstado = "autorizado";
+        nc.ArcaCae = resultado.Cae;
+        if (DateTime.TryParseExact(resultado.CaeVto, "yyyyMMdd",
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None, out var caeVto))
+            nc.ArcaCaeVto = caeVto;
+        nc.ArcaPtoVta = resultado.PtoVta;
+        nc.ArcaCbteNro = resultado.CbteNro;
+        nc.ArcaCbteTipoNum = resultado.CbteTipo;
+        nc.ArcaImpNeto = resultado.ImpNeto;
+        nc.ArcaImpIVA = resultado.ImpIVA;
+        nc.ArcaImpTotal = resultado.ImpTotal;
+        nc.ArcaError = null;
+
+        // ----- Marca la factura original con NotaCreditoVentaId -----
+        original.NotaCreditoVentaId = nc.Id;
+        original.UpdatedAt = DateTime.UtcNow;
+
+        // ----- Devolver stock al inventario (Fase 1: devolucion COMPLETA) -----
+        foreach (var it in original.Items)
+        {
+            if (it.EsConceptoLibre || it.ServicioId.HasValue || it.ProductoId is null) continue;
+            var prod = await _db.CafeProductos.FindAsync(it.ProductoId.Value);
+            if (prod is null) continue;
+            if (prod.Categoria == "CAFE")
+            {
+                prod.StockGramos += it.GramosDescontados;
+            }
+            else
+            {
+                var unidadesADevolver = UnidadesRealesStock(prod, it.Formato, it.Cantidad);
+                prod.StockUnidades += unidadesADevolver;
+            }
+            prod.StockChangedAt = DateTime.UtcNow;
+            await Api.Services.CafeStockHelper.SyncStockPorDepositoAsync(_db, prod);
+        }
+
+        await _db.SaveChangesAsync();
+
+        return Ok(new
+        {
+            ok = true,
+            ncVentaId = nc.Id,
+            ncNumero = nc.Numero,
+            ncTipo = tipoNcStr,
+            cae = nc.ArcaCae,
+            mensaje = $"✅ NC {tipoNcStr} {nc.ArcaPtoVta:0000}-{nc.ArcaCbteNro:00000000} emitida con CAE {nc.ArcaCae}"
+        });
+    }
+
     /// <summary>Reintentar emisión ARCA para una venta que quedó pendiente.</summary>
     [HttpPost("{id:int}/retry-arca")]
     public async Task<IActionResult> RetryArca(int id)

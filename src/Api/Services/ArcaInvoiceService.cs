@@ -257,6 +257,29 @@ public class ArcaInvoiceService
 
         var docNro = req.DocTipo == 99 ? "0" : (req.DocNro ?? "0").Trim();
 
+        // 2026-06-09: bloque CbtesAsoc para NC/ND. ARCA obliga a indicar el comprobante origen.
+        // Va DESPUES del array Iva (orden importa en el XSD de ARCA).
+        var cbtesAsocXml = "";
+        if (req.CbtesAsoc != null && req.CbtesAsoc.Count > 0)
+        {
+            var sba = new StringBuilder();
+            sba.Append("        <ar:CbtesAsoc>\n");
+            foreach (var ca in req.CbtesAsoc)
+            {
+                sba.Append("          <ar:CbteAsoc>\n");
+                sba.Append($"            <ar:Tipo>{ca.Tipo}</ar:Tipo>\n");
+                sba.Append($"            <ar:PtoVta>{ca.PtoVta}</ar:PtoVta>\n");
+                sba.Append($"            <ar:Nro>{ca.Nro}</ar:Nro>\n");
+                if (!string.IsNullOrWhiteSpace(ca.Cuit))
+                    sba.Append($"            <ar:Cuit>{ca.Cuit}</ar:Cuit>\n");
+                if (!string.IsNullOrWhiteSpace(ca.FechaYyyymmdd))
+                    sba.Append($"            <ar:CbteFch>{ca.FechaYyyymmdd}</ar:CbteFch>\n");
+                sba.Append("          </ar:CbteAsoc>\n");
+            }
+            sba.Append("        </ar:CbtesAsoc>");
+            cbtesAsocXml = sba.ToString();
+        }
+
         return $@"<?xml version=""1.0"" encoding=""UTF-8""?>
 <soapenv:Envelope xmlns:soapenv=""http://schemas.xmlsoap.org/soap/envelope/"" xmlns:ar=""http://ar.gov.afip.dif.FEV1/"">
   <soapenv:Body>
@@ -289,6 +312,7 @@ public class ArcaInvoiceService
             <ar:MonId>PES</ar:MonId>
             <ar:MonCotiz>1</ar:MonCotiz>
             <ar:CondicionIVAReceptorId>{req.CondicionIVAReceptorId}</ar:CondicionIVAReceptorId>
+{cbtesAsocXml}
 {ivaXml}
           </ar:FECAEDetRequest>
         </ar:FeDetReq>

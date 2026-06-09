@@ -1232,6 +1232,40 @@ public class ApiClient
     public async Task<CafeVentaDto?> ConvertirCafeVentaAFacturaAsync(int id, ConvertirAFacturaRequest req)
         => await PostAsync<CafeVentaDto>($"/api/cafe/ventas/{id}/convertir-a-factura", req);
 
+    // 2026-06-09 Nota de Credito Fase 1 (TOTAL)
+    public record EmitirNcRequest(string? Motivo);
+    public class EmitirNcResponse
+    {
+        public bool ok { get; set; }
+        public int? ncVentaId { get; set; }
+        public string? ncNumero { get; set; }
+        public string? ncTipo { get; set; }
+        public string? cae { get; set; }
+        public string? mensaje { get; set; }
+        public string? error { get; set; }
+    }
+    public async Task<(EmitirNcResponse? data, string? errorMsg)> EmitirNotaCreditoAsync(int ventaId, string? motivo)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync($"/api/cafe/ventas/{ventaId}/nota-credito", new EmitirNcRequest(motivo));
+            if (resp.IsSuccessStatusCode)
+            {
+                var data = await resp.Content.ReadFromJsonAsync<EmitirNcResponse>();
+                return (data, null);
+            }
+            var errBody = await resp.Content.ReadAsStringAsync();
+            try
+            {
+                var errObj = System.Text.Json.JsonSerializer.Deserialize<EmitirNcResponse>(errBody,
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                return (null, errObj?.error ?? errBody);
+            }
+            catch { return (null, errBody); }
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
     /// <summary>Genera un PDF de PREVIEW del comprobante con los datos del modal sin guardar
     /// nada en la base. Devuelve los bytes para abrir en una pestaña nueva.</summary>
     public async Task<(byte[]? bytes, string? error)> PreviewCafeVentaPdfAsync(CreateCafeVentaRequest request)
