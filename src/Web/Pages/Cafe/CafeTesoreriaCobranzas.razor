@@ -1071,7 +1071,11 @@
         if (selClienteId <= 0) { ToastService.Error("Elegí un cliente"); return; }
         if (TotalImputado <= 0) { ToastService.Error("Imputá algo a un comprobante o A cuenta"); return; }
         if (!CuadraTotal) { ToastService.Error("No cuadra: medios + retenciones ≠ imputado"); return; }
-        if (formMedios.Any(m => m.CajaId == 0 || m.Importe <= 0)) { ToastService.Error("Hay formas de cobro sin caja o sin importe"); return; }
+        var medioSinCaja = formMedios.Any(m => m.CajaId == 0);
+        var medioSinImporte = formMedios.Any(m => m.CajaId > 0 && m.Importe <= 0);
+        if (medioSinCaja && medioSinImporte) { ToastService.Error("⚠️ Te falta elegir la CAJA y poner el IMPORTE en algún medio de cobro"); return; }
+        if (medioSinCaja) { ToastService.Error("⚠️ Elegí la CAJA (Efectivo / Banco / Mercado Pago / etc.) en cada forma de cobro"); return; }
+        if (medioSinImporte) { ToastService.Error("⚠️ Poné el IMPORTE en cada forma de cobro (no puede ser 0)"); return; }
 
         var comps = new List<ApiClient.CrearComprobanteItemRequest>();
         foreach (var kv in imputaciones)
