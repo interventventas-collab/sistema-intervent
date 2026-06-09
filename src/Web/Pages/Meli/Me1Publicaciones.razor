@@ -54,6 +54,18 @@
     .stat-pill { background: #eef2ff; color: #4338ca; padding: 0.15rem 0.5rem; border-radius: 999px; font-size: 0.72rem; font-weight: 700; }
     .stock-low { color: #dc2626; font-weight: 700; }
     .stock-ok { color: #16a34a; font-weight: 600; }
+    .peso-fake { background: #fee2e2; color: #991b1b; padding: 0.1rem 0.45rem; border-radius: 4px; font-weight: 700; font-size: 0.78rem; }
+    .peso-ok { background: #dcfce7; color: #166534; padding: 0.1rem 0.45rem; border-radius: 4px; font-weight: 600; font-size: 0.78rem; }
+    .peso-na { color: #9ca3af; font-style: italic; font-size: 0.75rem; }
+
+    /* Barra de cotización masiva */
+    .cotiz-masivo-bar { padding: 0.55rem 1rem; background: linear-gradient(90deg, #fef3c7 0%, #fde68a 100%); border-bottom: 1px solid #f59e0b; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+    .cotiz-masivo-bar input { padding: 0.4rem 0.6rem; border: 1px solid #d97706; border-radius: 6px; font-size: 0.9rem; font-family: monospace; width: 110px; }
+    .cotiz-masivo-bar button { background: #f59e0b; color: white; border: none; padding: 0.45rem 0.9rem; border-radius: 6px; font-size: 0.85rem; font-weight: 700; cursor: pointer; }
+    .cotiz-masivo-bar button:hover:not(:disabled) { background: #d97706; }
+    .cotiz-masivo-bar button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .envio-cell { font-weight: 700; color: #16a34a; }
+    .envio-cell-err { color: #dc2626; font-size: 0.72rem; }
 </style>
 
 <div class="me1pub-wrap">
@@ -87,6 +99,34 @@
         <div class="pubs-tools">
             <input @bind="busqueda" @bind:event="oninput" placeholder="Buscar por título, SKU o MLA..." />
             <span class="stat-pill">@(items?.Count ?? 0) total</span>
+            @if (items != null && items.Count > 0)
+            {
+                var conPeso = items.Count(p => p.pesoGr.HasValue);
+                var fakes = items.Count(p => p.pesoGr.HasValue && p.pesoGr.Value > 30000);
+                <span class="stat-pill" style="background: #fee2e2; color: #991b1b;">@fakes con peso fake (>30kg)</span>
+                <span class="stat-pill" style="background: #f3f4f6; color: #4b5563;">@conPeso/@items.Count con peso en MeLi</span>
+            }
+        </div>
+
+        @* Barra de cotización masiva *@
+        <div class="cotiz-masivo-bar">
+            <span style="font-size: 0.88rem; font-weight: 700; color: #78350f;">📡 Cotizar TODAS al CP:</span>
+            <input @bind="cpMasivo" @bind:event="oninput" placeholder="Ej: 1414" maxlength="4" />
+            <button @onclick="CotizarMasivo" disabled="@(cotizandoMasivo || string.IsNullOrWhiteSpace(cpMasivo) || items == null || items.Count == 0)">
+                @(cotizandoMasivo ? "⏳ Cotizando..." : "🚀 Cotizar las " + (items?.Count ?? 0))
+            </button>
+            @if (resultadosMasivos != null && resultadosMasivos.Count > 0)
+            {
+                var ok = resultadosMasivos.Count(r => r.cost.HasValue);
+                var err = resultadosMasivos.Count - ok;
+                var promedio = ok > 0 ? resultadosMasivos.Where(r => r.cost.HasValue).Average(r => (double)r.cost!.Value) : 0;
+                var min = ok > 0 ? resultadosMasivos.Where(r => r.cost.HasValue).Min(r => r.cost!.Value) : 0;
+                var max = ok > 0 ? resultadosMasivos.Where(r => r.cost.HasValue).Max(r => r.cost!.Value) : 0;
+                <span style="font-size: 0.78rem; color: #14532d; background: #dcfce7; padding: 0.25rem 0.6rem; border-radius: 6px;">
+                    ✅ Cotizadas: @ok | ❌ Error: @err | 💵 Min $@min.ToString("N0") | Promedio $@promedio.ToString("N0") | Max $@max.ToString("N0")
+                </span>
+                <button style="background: #6b7280;" @onclick="LimpiarCotizacionMasiva">✕ Limpiar</button>
+            }
         </div>
 
         @if (cargando)
@@ -109,6 +149,11 @@
                         <th>SKU</th>
                         <th style="text-align: right;">Precio</th>
                         <th style="text-align: center;">Stock</th>
+                        <th style="text-align: center;">Peso MeLi</th>
+                        @if (resultadosMasivos != null && resultadosMasivos.Count > 0)
+                        {
+                            <th style="text-align: right;" title="Envío al CP @cpMasivo">Envío CP @cpMasivo</th>
+                        }
                         <th></th>
                     </tr>
                 </thead>
@@ -119,7 +164,10 @@
                             <td><img src="@(string.IsNullOrEmpty(p.thumbnail) ? "" : p.thumbnail)" class="thumb" alt="" onerror="this.style.visibility='hidden'" /></td>
                             <td><a href="@p.permalink" target="_blank" class="mla-cell">@p.mla</a></td>
                             <td style="max-width: 320px;">@(string.IsNullOrEmpty(p.title) ? "(sin título en base)" : p.title)</td>
-                            <td>@(string.IsNullOrEmpty(p.sku) ? "—" : (MarkupString)$"<span class='sku-cell'>{p.sku}</span>")</td>
+                            <td>
+                                @if (string.IsNullOrEmpty(p.sku)) { <span>—</span> }
+                                else { <span class="sku-cell">@p.sku</span> }
+                            </td>
                             <td style="text-align: right; font-weight: 600;">@(p.price.HasValue ? $"${p.price.Value:N0}" : "—")</td>
                             <td style="text-align: center;">
                                 @if (p.stock.HasValue)
@@ -128,6 +176,30 @@
                                 }
                                 else { <span>—</span> }
                             </td>
+                            <td style="text-align: center;">
+                                @if (p.pesoGr.HasValue)
+                                {
+                                    var kg = p.pesoGr.Value / 1000.0;
+                                    if (p.pesoGr.Value > 30000) { <span class="peso-fake" title="Peso fake — inflado para cobrar más envío">@kg.ToString("N1") kg</span> }
+                                    else { <span class="peso-ok">@kg.ToString("N1") kg</span> }
+                                }
+                                else { <span class="peso-na">sin cargar</span> }
+                            </td>
+                            @if (resultadosMasivos != null && resultadosMasivos.Count > 0)
+                            {
+                                <td style="text-align: right;">
+                                    @{ var rm = resultadosMasivos.FirstOrDefault(r => r.mla == p.mla); }
+                                    @if (rm != null && rm.cost.HasValue)
+                                    {
+                                        <span class="envio-cell">$@rm.cost.Value.ToString("N0")</span>
+                                    }
+                                    else if (rm != null)
+                                    {
+                                        <span class="envio-cell-err">@rm.error</span>
+                                    }
+                                    else { <span class="peso-na">—</span> }
+                                </td>
+                            }
                             <td style="white-space: nowrap;">
                                 <button class="btn-cotizar" @onclick="() => AbrirCotizador(p.mla)">📐 Cotizar</button>
                             </td>
@@ -224,6 +296,11 @@
     private bool cotizando;
     private CotizacionResultadoDto? resultadoCotizacion;
 
+    // Cotización masiva
+    private string cpMasivo = "";
+    private bool cotizandoMasivo;
+    private List<CotizMasivoItem> resultadosMasivos = new();
+
     protected override async Task OnInitializedAsync()
     {
         await CargarZonas();
@@ -270,6 +347,27 @@
 
     private void SetCp(string cp) => cpCotizar = cp;
 
+    private async Task CotizarMasivo()
+    {
+        if (string.IsNullOrWhiteSpace(cpMasivo) || items == null || items.Count == 0) return;
+        cotizandoMasivo = true; resultadosMasivos = new(); StateHasChanged();
+        try
+        {
+            var body = new { cp = cpMasivo, mlas = items.Select(i => i.mla).ToList() };
+            var resp = await Http.PostAsJsonAsync("api/meli/me1/cotizar-masivo", body);
+            var data = await resp.Content.ReadFromJsonAsync<CotizMasivoResp>();
+            resultadosMasivos = data?.items ?? new();
+        }
+        catch (Exception ex) { ToastService.Error($"Error cotización masiva: {ex.Message}"); }
+        finally { cotizandoMasivo = false; }
+    }
+
+    private void LimpiarCotizacionMasiva()
+    {
+        resultadosMasivos = new();
+        cpMasivo = "";
+    }
+
     private async Task EjecutarCotizacion()
     {
         if (cotizandoMla is null || string.IsNullOrWhiteSpace(cpCotizar)) return;
@@ -305,7 +403,23 @@
         public string? thumbnail { get; set; }
         public string? permalink { get; set; }
         public string? status { get; set; }
+        public int? pesoGr { get; set; }
         public bool enBase { get; set; }
+    }
+
+    public class CotizMasivoItem
+    {
+        public string mla { get; set; } = "";
+        public decimal? cost { get; set; }
+        public string? metodo { get; set; }
+        public string? error { get; set; }
+    }
+
+    public class CotizMasivoResp
+    {
+        public string cp { get; set; } = "";
+        public int total { get; set; }
+        public List<CotizMasivoItem> items { get; set; } = new();
     }
 
     public class ListadoDto

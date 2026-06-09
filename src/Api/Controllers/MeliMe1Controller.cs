@@ -232,8 +232,53 @@ public class MeliMe1Controller : ControllerBase
                 .Select(mi => new { mi.MeliItemId, mi.Title, mi.Sku, mi.Price, mi.AvailableQuantity, mi.SoldQuantity, mi.Thumbnail, mi.Permalink, mi.Status })
                 .ToDictionaryAsync(x => x.MeliItemId);
 
+            // 3) Multi-get a MeLi para obtener el PESO (SELLER_PACKAGE_WEIGHT) en gramos
+            // Batches de 20. La base no tiene este dato, lo trae solo MeLi.
+            var pesos = new Dictionary<string, int?>(); // mla -> gramos
+            for (int i = 0; i < ids.Count; i += 20)
+            {
+                var batch = ids.Skip(i).Take(20).ToList();
+                var url = $"https://api.mercadolibre.com/items?ids={string.Join(",", batch)}&attributes=id,attributes";
+                using var req2 = new HttpRequestMessage(HttpMethod.Get, url);
+                req2.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                using var resp2 = await http.SendAsync(req2);
+                if (!resp2.IsSuccessStatusCode) continue;
+                using var doc2 = JsonDocument.Parse(await resp2.Content.ReadAsStringAsync());
+                foreach (var el in doc2.RootElement.EnumerateArray())
+                {
+                    if (!el.TryGetProperty("body", out var body)) continue;
+                    if (!body.TryGetProperty("id", out var idEl)) continue;
+                    var mla = idEl.GetString() ?? "";
+                    int? peso = null;
+                    if (body.TryGetProperty("attributes", out var attrs))
+                    {
+                        foreach (var a in attrs.EnumerateArray())
+                        {
+                            if (a.TryGetProperty("id", out var aid) && aid.GetString() == "SELLER_PACKAGE_WEIGHT")
+                            {
+                                if (a.TryGetProperty("value_struct", out var vs) && vs.ValueKind == JsonValueKind.Object
+                                    && vs.TryGetProperty("number", out var n))
+                                {
+                                    var num = n.GetDouble();
+                                    var unit = vs.TryGetProperty("unit", out var u) ? (u.GetString() ?? "g") : "g";
+                                    // Convertir todo a gramos
+                                    peso = unit.ToLowerInvariant() switch {
+                                        "kg" => (int)(num * 1000),
+                                        "g" => (int)num,
+                                        _ => (int)num
+                                    };
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    pesos[mla] = peso;
+                }
+            }
+
             foreach (var mla in ids)
             {
+                pesos.TryGetValue(mla, out var pesoGr);
                 if (locales.TryGetValue(mla, out var l))
                 {
                     resultado.Add(new {
@@ -247,12 +292,13 @@ public class MeliMe1Controller : ControllerBase
                         thumbnail = l.Thumbnail,
                         permalink = l.Permalink,
                         status = l.Status,
+                        pesoGr = pesoGr,
                         enBase = true
                     });
                 }
                 else
                 {
-                    resultado.Add(new { mla = mla, cuenta = account.Nickname, enBase = false });
+                    resultado.Add(new { mla = mla, cuenta = account.Nickname, pesoGr = pesoGr, enBase = false });
                 }
             }
         }
@@ -313,6 +359,113 @@ public class MeliMe1Controller : ControllerBase
             return Ok(new { ok = true, mla = req.Mla, cp = req.Cp, cuenta = account.Nickname, options });
         }
         return BadRequest(new { error = "No hay cuenta con token valido" });
+    }
+
+    public record CotizarMasivoRequest(string Cp, List<string>? Mlas);
+
+    /// <summary>
+    /// Cotiza envio a UN cp para MUCHOS MLAs en paralelo. Si Mlas viene vacio, cotiza
+    /// las 476 publicaciones ME1 activas (las saca del cache de /publicaciones si esta caliente).
+    /// Devuelve [{mla, cost, error}]. Paralelismo 10 para no saturar MeLi.
+    /// </summary>
+    [HttpPost("cotizar-masivo")]
+    public async Task<IActionResult> CotizarMasivo([FromBody] CotizarMasivoRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Cp)) return BadRequest(new { error = "Falta CP" });
+
+        // Si no me pasaron MLAs, los saco del cache (o los re-bajo)
+        List<string> mlas = req.Mlas ?? new List<string>();
+        if (mlas.Count == 0)
+        {
+            if (_cache.TryGetValue("me1:publicaciones:listado", out var cached) && cached is not null)
+            {
+                // El cache es un { total, items }. Extraigo items.mla via reflection-light.
+                var json = JsonSerializer.Serialize(cached);
+                using var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("items", out var items))
+                {
+                    foreach (var it in items.EnumerateArray())
+                    {
+                        if (it.TryGetProperty("mla", out var m)) mlas.Add(m.GetString() ?? "");
+                    }
+                }
+            }
+            // Si sigue vacio, bajo de MeLi en vivo (solo los IDs)
+            if (mlas.Count == 0)
+            {
+                var accounts0 = await _accountService.GetAllAccountEntitiesAsync();
+                var http0 = _httpFactory.CreateClient();
+                foreach (var acc0 in accounts0)
+                {
+                    var tok0 = await _accountService.GetValidTokenAsync(acc0);
+                    if (tok0 is null) continue;
+                    int offset0 = 0;
+                    while (offset0 < 5000)
+                    {
+                        using var rq0 = new HttpRequestMessage(HttpMethod.Get,
+                            $"https://api.mercadolibre.com/users/{acc0.MeliUserId}/items/search?status=active&shipping_mode=me1&limit=50&offset={offset0}");
+                        rq0.Headers.Authorization = new AuthenticationHeaderValue("Bearer", tok0);
+                        using var rp0 = await http0.SendAsync(rq0);
+                        if (!rp0.IsSuccessStatusCode) break;
+                        using var d0 = JsonDocument.Parse(await rp0.Content.ReadAsStringAsync());
+                        int total0 = -1;
+                        if (d0.RootElement.TryGetProperty("paging", out var pg) && pg.TryGetProperty("total", out var tot))
+                            total0 = tot.GetInt32();
+                        if (d0.RootElement.TryGetProperty("results", out var rs))
+                            foreach (var r in rs.EnumerateArray()) mlas.Add(r.GetString() ?? "");
+                        offset0 += 50;
+                        if (total0 > 0 && offset0 >= total0) break;
+                    }
+                }
+            }
+        }
+        mlas = mlas.Where(s => !string.IsNullOrEmpty(s)).Distinct().ToList();
+
+        // Necesito un token. Para cotizar sirve el de cualquier cuenta activa (los items son públicos).
+        var accounts = await _accountService.GetAllAccountEntitiesAsync();
+        string? token = null;
+        foreach (var a in accounts) { token = await _accountService.GetValidTokenAsync(a); if (token is not null) break; }
+        if (token is null) return BadRequest(new { error = "Sin token MeLi" });
+
+        var http = _httpFactory.CreateClient();
+        http.Timeout = TimeSpan.FromSeconds(15);
+        var resultados = new System.Collections.Concurrent.ConcurrentBag<object>();
+
+        // Paralelismo controlado con SemaphoreSlim
+        using var sem = new SemaphoreSlim(10);
+        var tareas = mlas.Select(async mla =>
+        {
+            await sem.WaitAsync();
+            try
+            {
+                using var rq = new HttpRequestMessage(HttpMethod.Get,
+                    $"https://api.mercadolibre.com/items/{mla}/shipping_options?zip_code={req.Cp}");
+                rq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                using var rp = await http.SendAsync(rq);
+                if (!rp.IsSuccessStatusCode)
+                {
+                    resultados.Add(new { mla, cost = (decimal?)null, error = $"HTTP {(int)rp.StatusCode}" });
+                    return;
+                }
+                using var d = JsonDocument.Parse(await rp.Content.ReadAsStringAsync());
+                decimal? cost = null; string? metodo = null;
+                if (d.RootElement.TryGetProperty("options", out var opts))
+                {
+                    foreach (var o in opts.EnumerateArray())
+                    {
+                        if (o.TryGetProperty("cost", out var c)) cost = c.GetDecimal();
+                        if (o.TryGetProperty("name", out var n)) metodo = n.GetString();
+                        break;
+                    }
+                }
+                resultados.Add(new { mla, cost, metodo, error = (string?)null });
+            }
+            catch (Exception ex) { resultados.Add(new { mla, cost = (decimal?)null, error = ex.Message }); }
+            finally { sem.Release(); }
+        });
+        await Task.WhenAll(tareas);
+
+        return Ok(new { cp = req.Cp, total = resultados.Count, items = resultados });
     }
 
     /// <summary>
