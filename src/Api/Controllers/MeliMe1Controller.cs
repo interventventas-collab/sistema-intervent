@@ -328,6 +328,87 @@ public class MeliMe1Controller : ControllerBase
         return Ok(payload);
     }
 
+    public record EditarPesoRequest(double Kg);
+
+    /// <summary>
+    /// 2026-06-09: cambia el peso (SELLER_PACKAGE_WEIGHT) de una publicación.
+    /// El formato funcional descubierto en pruebas: values[{name, struct{number,unit}}].
+    /// MeLi a veces ignora value_struct/value_name a nivel raíz — values[] es lo que
+    /// efectivamente persiste. Verificado con MLA3402774212.
+    /// </summary>
+    [HttpPut("publicaciones/{mla}/peso")]
+    public async Task<IActionResult> EditarPeso(string mla, [FromBody] EditarPesoRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(mla)) return BadRequest(new { error = "MLA vacío" });
+        if (req.Kg <= 0 || req.Kg > 9999) return BadRequest(new { error = "Peso fuera de rango (0-9999 kg)" });
+
+        // Convertir a gramos (MeLi guarda en g)
+        var gramos = (int)Math.Round(req.Kg * 1000);
+
+        // Buscar a qué cuenta pertenece para usar su token
+        var item = await _db.MeliItems.FirstOrDefaultAsync(mi => mi.MeliItemId == mla);
+        var accounts = item != null
+            ? (await _accountService.GetAllAccountEntitiesAsync()).Where(a => a.Id == item.MeliAccountId).ToList()
+            : await _accountService.GetAllAccountEntitiesAsync();
+
+        string? token = null;
+        foreach (var a in accounts) { token = await _accountService.GetValidTokenAsync(a); if (token is not null) break; }
+        if (token is null) return BadRequest(new { error = "Sin token MeLi" });
+
+        var http = _httpFactory.CreateClient();
+        var payload = $"{{\"attributes\":[{{\"id\":\"SELLER_PACKAGE_WEIGHT\",\"values\":[{{\"name\":\"{gramos} g\",\"struct\":{{\"number\":{gramos},\"unit\":\"g\"}}}}]}}]}}";
+
+        using var httpReq = new HttpRequestMessage(HttpMethod.Put, $"https://api.mercadolibre.com/items/{mla}")
+        {
+            Content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json")
+        };
+        httpReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        using var resp = await http.SendAsync(httpReq);
+        var body = await resp.Content.ReadAsStringAsync();
+
+        if (!resp.IsSuccessStatusCode)
+            return BadRequest(new { error = $"MeLi HTTP {(int)resp.StatusCode}", detalle = body.Substring(0, Math.Min(400, body.Length)) });
+
+        // Esperar un toque y verificar releyendo el peso
+        await Task.Delay(2000);
+        using var verReq = new HttpRequestMessage(HttpMethod.Get, $"https://api.mercadolibre.com/items/{mla}?attributes=attributes");
+        verReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using var verResp = await http.SendAsync(verReq);
+        int? pesoConfirmado = null;
+        if (verResp.IsSuccessStatusCode)
+        {
+            using var doc = JsonDocument.Parse(await verResp.Content.ReadAsStringAsync());
+            if (doc.RootElement.TryGetProperty("attributes", out var attrs))
+            {
+                foreach (var a in attrs.EnumerateArray())
+                {
+                    if (!a.TryGetProperty("id", out var aid) || aid.GetString() != "SELLER_PACKAGE_WEIGHT") continue;
+                    if (a.TryGetProperty("values", out var vals) && vals.ValueKind == JsonValueKind.Array && vals.GetArrayLength() > 0)
+                    {
+                        var first = vals[0];
+                        if (first.TryGetProperty("struct", out var st) && st.TryGetProperty("number", out var n))
+                            pesoConfirmado = (int)n.GetDouble();
+                    }
+                    break;
+                }
+            }
+        }
+
+        // Invalidar cache de /publicaciones para que el siguiente Refrescar muestre el nuevo peso
+        _cache.Remove("me1:publicaciones:listado:v3_pesoFix");
+
+        await _audit.LogAsync("MeliItem.ME1", mla, "set_peso", $"a {gramos} g (pedido: {req.Kg} kg) — confirmado: {pesoConfirmado ?? -1} g");
+
+        return Ok(new {
+            ok = true,
+            mla,
+            pesoSolicitadoGr = gramos,
+            pesoConfirmadoGr = pesoConfirmado,
+            persistido = pesoConfirmado == gramos
+        });
+    }
+
     public record CotizarRequest(string Mla, string Cp);
 
     /// <summary>

@@ -181,13 +181,15 @@
                                 else { <span>—</span> }
                             </td>
                             <td style="text-align: center;">
-                                @if (p.pesoGr.HasValue)
-                                {
-                                    var kg = p.pesoGr.Value / 1000.0;
-                                    if (p.pesoGr.Value > 30000) { <span class="peso-fake" title="Peso fake — inflado para cobrar más envío">@kg.ToString("N1") kg</span> }
-                                    else { <span class="peso-ok">@kg.ToString("N1") kg</span> }
-                                }
-                                else { <span class="peso-na">sin cargar</span> }
+                                <span style="cursor: pointer;" @onclick="() => AbrirEditarPeso(p)" title="Click para editar el peso">
+                                    @if (p.pesoGr.HasValue)
+                                    {
+                                        var kg = p.pesoGr.Value / 1000.0;
+                                        if (p.pesoGr.Value > 30000) { <span class="peso-fake">@kg.ToString("N1") kg ✏️</span> }
+                                        else { <span class="peso-ok">@kg.ToString("N1") kg ✏️</span> }
+                                    }
+                                    else { <span class="peso-na">sin cargar ✏️</span> }
+                                </span>
                             </td>
                             @if (resultadosMasivos != null && resultadosMasivos.Count > 0)
                             {
@@ -281,6 +283,73 @@
     </div>
 }
 
+@* MODAL EDITAR PESO *@
+@if (editandoPeso != null)
+{
+    <div class="modal-bg" @onclick="CerrarEditarPeso">
+        <div class="modal-card" @onclick:stopPropagation>
+            <h3>⚖️ Editar peso — @editandoPeso.mla</h3>
+            <p style="font-size: 0.85rem; color: #4b5563; margin: 0 0 0.8rem;">@(editandoPeso.title ?? "")</p>
+
+            <div style="background: #f3f4f6; padding: 0.6rem 0.8rem; border-radius: 6px; margin-bottom: 0.8rem; font-size: 0.85rem;">
+                <strong>Peso actual:</strong>
+                @if (editandoPeso.pesoGr.HasValue)
+                {
+                    var kgActual = editandoPeso.pesoGr.Value / 1000.0;
+                    <span> @kgActual.ToString("N1") kg (@editandoPeso.pesoGr g)</span>
+                }
+                else { <span> sin cargar</span> }
+            </div>
+
+            <label style="font-size: 0.85rem; color: #4b5563; font-weight: 600;">Nuevo peso (en kg):</label>
+            <input class="cp-input" @bind="pesoNuevoKg" @bind:event="oninput" type="number" step="0.1" min="0.1" max="9999" placeholder="Ej: 5.5" />
+
+            <div style="margin: 0.6rem 0;">
+                <div style="font-size: 0.75rem; color: #6b7280; margin-bottom: 0.3rem;">Pesos típicos:</div>
+                <div class="quick-zonas">
+                    <button @onclick='() => SetPeso(1)'>1 kg</button>
+                    <button @onclick='() => SetPeso(5)'>5 kg</button>
+                    <button @onclick='() => SetPeso(10)'>10 kg</button>
+                    <button @onclick='() => SetPeso(15)'>15 kg</button>
+                    <button @onclick='() => SetPeso(25)'>25 kg</button>
+                    <button @onclick='() => SetPeso(50)'>50 kg</button>
+                    <button @onclick='() => SetPeso(100)'>100 kg</button>
+                    <button @onclick='() => SetPeso(300)'>300 kg (fake)</button>
+                </div>
+            </div>
+
+            <button class="btn-cotizar" style="font-size: 0.95rem; padding: 0.6rem 1.2rem;" @onclick="GuardarPeso" disabled="@(guardandoPeso || pesoNuevoKg <= 0)">
+                @(guardandoPeso ? "Guardando..." : "💾 Guardar peso en MeLi")
+            </button>
+
+            @if (resultadoPeso != null)
+            {
+                <div class="resultado-cotiz">
+                    @if (resultadoPeso.ok && resultadoPeso.persistido)
+                    {
+                        <div style="color: #16a34a; font-weight: 700;">✅ Peso actualizado correctamente</div>
+                        <div style="font-size: 0.78rem; color: #6b7280;">Confirmado: @resultadoPeso.pesoConfirmadoGr g</div>
+                    }
+                    else if (resultadoPeso.ok)
+                    {
+                        <div style="color: #d97706; font-weight: 700;">⚠️ MeLi aceptó pero no persistió aún</div>
+                        <div style="font-size: 0.78rem;">Solicitado: @resultadoPeso.pesoSolicitadoGr g | Confirmado: @resultadoPeso.pesoConfirmadoGr g</div>
+                        <div style="font-size: 0.75rem; color: #6b7280; margin-top: 0.3rem;">Probá refrescar la página en 1-2 minutos.</div>
+                    }
+                    else
+                    {
+                        <div style="color: #dc2626; font-weight: 700;">❌ Error al guardar</div>
+                    }
+                </div>
+            }
+
+            <div style="margin-top: 0.8rem; text-align: right;">
+                <button class="btn-ver" style="background: #6b7280;" @onclick="CerrarEditarPeso">Cerrar</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private List<ZonaDto>? zonas;
     private List<PublicacionDto>? items;
@@ -304,6 +373,12 @@
     private string cpMasivo = "";
     private bool cotizandoMasivo;
     private List<CotizMasivoItem> resultadosMasivos = new();
+
+    // Editor peso
+    private PublicacionDto? editandoPeso;
+    private double pesoNuevoKg;
+    private bool guardandoPeso;
+    private EditarPesoResp? resultadoPeso;
 
     protected override async Task OnInitializedAsync()
     {
@@ -385,6 +460,57 @@
     {
         resultadosMasivos = new();
         cpMasivo = "";
+    }
+
+    private void AbrirEditarPeso(PublicacionDto p)
+    {
+        editandoPeso = p;
+        pesoNuevoKg = p.pesoGr.HasValue ? p.pesoGr.Value / 1000.0 : 0;
+        resultadoPeso = null;
+    }
+
+    private void CerrarEditarPeso()
+    {
+        editandoPeso = null;
+        resultadoPeso = null;
+    }
+
+    private void SetPeso(double kg) => pesoNuevoKg = kg;
+
+    private async Task GuardarPeso()
+    {
+        if (editandoPeso is null || pesoNuevoKg <= 0) return;
+        guardandoPeso = true; resultadoPeso = null; StateHasChanged();
+        try
+        {
+            var resp = await Http.PutAsJsonAsync($"api/meli/me1/publicaciones/{editandoPeso.mla}/peso", new { kg = pesoNuevoKg });
+            if (resp.IsSuccessStatusCode)
+            {
+                resultadoPeso = await resp.Content.ReadFromJsonAsync<EditarPesoResp>();
+                if (resultadoPeso?.persistido == true)
+                {
+                    // Actualizar el peso en la fila local (sin esperar refresh)
+                    editandoPeso.pesoGr = resultadoPeso.pesoConfirmadoGr;
+                    ToastService.Success($"✅ Peso de {editandoPeso.mla} actualizado a {pesoNuevoKg} kg");
+                }
+            }
+            else
+            {
+                var err = await resp.Content.ReadAsStringAsync();
+                ToastService.Error($"Error: {err}");
+            }
+        }
+        catch (Exception ex) { ToastService.Error($"Error guardando: {ex.Message}"); }
+        finally { guardandoPeso = false; }
+    }
+
+    public class EditarPesoResp
+    {
+        public bool ok { get; set; }
+        public string? mla { get; set; }
+        public int? pesoSolicitadoGr { get; set; }
+        public int? pesoConfirmadoGr { get; set; }
+        public bool persistido { get; set; }
     }
 
     private async Task EjecutarCotizacion()
