@@ -381,7 +381,7 @@ public class CafeVentasController : ControllerBase
 
         // Si la venta es Factura A/B/C y está autorizada en ARCA → PDF de factura ARCA con CAE+QR.
         // Si no → PDF de cotización interno (lo que ya tenías).
-        var esFacturaArca = v.TipoComprobante is "FA" or "FB" or "FC";
+        var esFacturaArca = v.TipoComprobante is "FA" or "FB" or "FC" or "NCA" or "NCB" or "NCC";
         var autorizada = v.ArcaEstado == "autorizado"
                          && !string.IsNullOrEmpty(v.ArcaCae)
                          && v.ArcaCbteNro.HasValue
@@ -480,7 +480,7 @@ public class CafeVentasController : ControllerBase
     /// Centralizado aca para poder reusarlo desde drive-upload Y desde imprimir-pdf-combinado.</summary>
     private async Task<byte[]> GenerarPdfBytesAsync(Models.CafeVenta v, Models.CafeSetting? cfg)
     {
-        var esFacturaArca = v.TipoComprobante is "FA" or "FB" or "FC";
+        var esFacturaArca = v.TipoComprobante is "FA" or "FB" or "FC" or "NCA" or "NCB" or "NCC";
         var autorizada = v.ArcaEstado == "autorizado"
                          && !string.IsNullOrEmpty(v.ArcaCae)
                          && v.ArcaCbteNro.HasValue
@@ -548,7 +548,7 @@ public class CafeVentasController : ControllerBase
             .FirstOrDefaultAsync(x => x.PublicToken == token);
         if (v is null) return NotFound(new { error = "Comprobante no encontrado" });
         var cfg = await _db.CafeSettings.FindAsync(1);
-        var esFacturaArca = v.TipoComprobante is "FA" or "FB" or "FC";
+        var esFacturaArca = v.TipoComprobante is "FA" or "FB" or "FC" or "NCA" or "NCB" or "NCC";
         var autorizada = v.ArcaEstado == "autorizado" && !string.IsNullOrEmpty(v.ArcaCae)
                          && v.ArcaCbteNro.HasValue && v.ArcaPtoVta.HasValue && v.ArcaCbteTipoNum.HasValue;
         var qr = await _qrRepartidorService.GenerarQrAsync(v.PublicToken);
@@ -630,7 +630,7 @@ public class CafeVentasController : ControllerBase
         // 2) Generar el PDF
         var cfg = await _db.CafeSettings.FindAsync(1);
         byte[] pdfBytes;
-        var esFacturaArca = v.TipoComprobante is "FA" or "FB" or "FC";
+        var esFacturaArca = v.TipoComprobante is "FA" or "FB" or "FC" or "NCA" or "NCB" or "NCC";
         var autorizada = v.ArcaEstado == "autorizado" && !string.IsNullOrEmpty(v.ArcaCae)
                          && v.ArcaCbteNro.HasValue && v.ArcaPtoVta.HasValue && v.ArcaCbteTipoNum.HasValue;
         if (esFacturaArca && autorizada)
@@ -707,7 +707,7 @@ public class CafeVentasController : ControllerBase
         // Generar el PDF (mismo criterio que en GetPdf)
         var cfg = await _db.CafeSettings.FindAsync(1);
         byte[] pdfBytes;
-        var esFacturaArca = v.TipoComprobante is "FA" or "FB" or "FC";
+        var esFacturaArca = v.TipoComprobante is "FA" or "FB" or "FC" or "NCA" or "NCB" or "NCC";
         var autorizada = v.ArcaEstado == "autorizado" && !string.IsNullOrEmpty(v.ArcaCae)
                          && v.ArcaCbteNro.HasValue && v.ArcaPtoVta.HasValue && v.ArcaCbteTipoNum.HasValue;
         if (esFacturaArca && autorizada)
