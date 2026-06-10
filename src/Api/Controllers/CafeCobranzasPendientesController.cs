@@ -1,8 +1,12 @@
 using Api.Data;
 using Api.Models;
+using ClosedXML.Excel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using QuestPDF.Infrastructure;
 
 namespace Api.Controllers;
 
@@ -28,7 +32,10 @@ public class CafeCobranzasPendientesController : ControllerBase
         decimal TotalPendiente, decimal TotalAprobado, int CantPendiente, int CantAprobado, List<ArqueoItemDto> Items);
 
     [HttpGet]
-    public async Task<IActionResult> List([FromQuery] string? estado = "PENDIENTE")
+    public async Task<IActionResult> List([FromQuery] string? estado = "PENDIENTE",
+        [FromQuery] int? repartidorId = null,
+        [FromQuery] DateTime? desde = null,
+        [FromQuery] DateTime? hasta = null)
     {
         var q = _db.CafeCobranzasPendientes
             .Include(p => p.Venta)
@@ -36,6 +43,18 @@ public class CafeCobranzasPendientesController : ControllerBase
             .AsQueryable();
         if (!string.IsNullOrWhiteSpace(estado) && estado != "todos")
             q = q.Where(p => p.Estado == estado.ToUpperInvariant());
+        if (repartidorId.HasValue && repartidorId.Value > 0)
+            q = q.Where(p => p.RepartidorId == repartidorId.Value);
+        if (desde.HasValue)
+        {
+            var d = desde.Value.Date;
+            q = q.Where(p => p.CreatedAt >= d);
+        }
+        if (hasta.HasValue)
+        {
+            var h = hasta.Value.Date.AddDays(1); // hasta inclusive
+            q = q.Where(p => p.CreatedAt < h);
+        }
         var l = await q.OrderByDescending(p => p.CreatedAt)
             .Select(p => new PendienteDto(p.Id, p.VentaId,
                 p.Venta!.Numero, p.Venta.ClienteId, p.Venta.ClienteNombreSnapshot,
@@ -43,6 +62,192 @@ public class CafeCobranzasPendientesController : ControllerBase
                 p.Importe, p.MarcadoEntregado, p.Notas, p.Estado, p.CreatedAt))
             .ToListAsync();
         return Ok(l);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // 2026-06-10: Descargas Excel + PDF de la planilla de control
+    // ─────────────────────────────────────────────────────────────────────
+    private async Task<List<PendienteDto>> GetFiltradoAsync(string? estado, int? repartidorId, DateTime? desde, DateTime? hasta)
+    {
+        var q = _db.CafeCobranzasPendientes
+            .Include(p => p.Venta)
+            .Include(p => p.Repartidor)
+            .AsQueryable();
+        if (!string.IsNullOrWhiteSpace(estado) && estado != "todos")
+            q = q.Where(p => p.Estado == estado.ToUpperInvariant());
+        if (repartidorId.HasValue && repartidorId.Value > 0)
+            q = q.Where(p => p.RepartidorId == repartidorId.Value);
+        if (desde.HasValue)
+        {
+            var d = desde.Value.Date;
+            q = q.Where(p => p.CreatedAt >= d);
+        }
+        if (hasta.HasValue)
+        {
+            var h = hasta.Value.Date.AddDays(1);
+            q = q.Where(p => p.CreatedAt < h);
+        }
+        return await q.OrderByDescending(p => p.CreatedAt)
+            .Select(p => new PendienteDto(p.Id, p.VentaId,
+                p.Venta!.Numero, p.Venta.ClienteId, p.Venta.ClienteNombreSnapshot,
+                p.Venta.Total, p.RepartidorId, p.Repartidor!.Nombre,
+                p.Importe, p.MarcadoEntregado, p.Notas, p.Estado, p.CreatedAt))
+            .ToListAsync();
+    }
+
+    [HttpGet("export-excel")]
+    public async Task<IActionResult> ExportExcel([FromQuery] string? estado = null,
+        [FromQuery] int? repartidorId = null,
+        [FromQuery] DateTime? desde = null,
+        [FromQuery] DateTime? hasta = null)
+    {
+        var items = await GetFiltradoAsync(estado, repartidorId, desde, hasta);
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("Cobranzas");
+        // Header
+        var headers = new[] { "Fecha", "Hora", "Repartidor", "Venta", "Cliente", "Importe", "Estado", "Entregado", "Observaciones" };
+        for (int i = 0; i < headers.Length; i++)
+        {
+            ws.Cell(1, i + 1).Value = headers[i];
+            ws.Cell(1, i + 1).Style.Font.Bold = true;
+            ws.Cell(1, i + 1).Style.Fill.BackgroundColor = XLColor.FromHtml("#1d4ed8");
+            ws.Cell(1, i + 1).Style.Font.FontColor = XLColor.White;
+        }
+        int row = 2;
+        foreach (var c in items)
+        {
+            var local = c.CreatedAt.ToLocalTime();
+            ws.Cell(row, 1).Value = local.ToString("dd/MM/yyyy");
+            ws.Cell(row, 2).Value = local.ToString("HH:mm");
+            ws.Cell(row, 3).Value = c.RepartidorNombre;
+            ws.Cell(row, 4).Value = c.VentaNumero;
+            ws.Cell(row, 5).Value = c.ClienteNombre ?? "(sin cliente)";
+            ws.Cell(row, 6).Value = c.Importe;
+            ws.Cell(row, 6).Style.NumberFormat.Format = "$#,##0.00";
+            ws.Cell(row, 7).Value = c.Estado;
+            ws.Cell(row, 8).Value = c.MarcadoEntregado ? "Si" : "No";
+            ws.Cell(row, 9).Value = c.Notas ?? "";
+            // Color por estado
+            if (c.Estado == "APROBADA")
+                ws.Cell(row, 7).Style.Fill.BackgroundColor = XLColor.FromHtml("#d1fae5");
+            else if (c.Estado == "PENDIENTE")
+                ws.Cell(row, 7).Style.Fill.BackgroundColor = XLColor.FromHtml("#fef3c7");
+            else if (c.Estado == "RECHAZADA")
+                ws.Cell(row, 7).Style.Fill.BackgroundColor = XLColor.FromHtml("#fee2e2");
+            row++;
+        }
+        // Total al final
+        if (items.Count > 0)
+        {
+            ws.Cell(row + 1, 5).Value = "TOTAL";
+            ws.Cell(row + 1, 5).Style.Font.Bold = true;
+            ws.Cell(row + 1, 6).Value = items.Sum(x => x.Importe);
+            ws.Cell(row + 1, 6).Style.Font.Bold = true;
+            ws.Cell(row + 1, 6).Style.NumberFormat.Format = "$#,##0.00";
+        }
+        ws.Columns().AdjustToContents();
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        var nombre = $"cobranzas-control-{DateTime.Now:yyyy-MM-dd-HHmm}.xlsx";
+        return File(ms.ToArray(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            nombre);
+    }
+
+    [HttpGet("export-pdf")]
+    public async Task<IActionResult> ExportPdf([FromQuery] string? estado = null,
+        [FromQuery] int? repartidorId = null,
+        [FromQuery] DateTime? desde = null,
+        [FromQuery] DateTime? hasta = null)
+    {
+        var items = await GetFiltradoAsync(estado, repartidorId, desde, hasta);
+        var total = items.Sum(x => x.Importe);
+        var filtroTexto = $"Estado: {estado ?? "Todos"}";
+        if (repartidorId.HasValue && repartidorId.Value > 0)
+        {
+            var rep = await _db.CafeRepartidores.FirstOrDefaultAsync(r => r.Id == repartidorId.Value);
+            filtroTexto += $" · Repartidor: {rep?.Nombre ?? "?"}";
+        }
+        else filtroTexto += " · Repartidor: Todos";
+        if (desde.HasValue) filtroTexto += $" · Desde: {desde.Value:dd/MM/yyyy}";
+        if (hasta.HasValue) filtroTexto += $" · Hasta: {hasta.Value:dd/MM/yyyy}";
+
+        var pdf = Document.Create(c =>
+        {
+            c.Page(p =>
+            {
+                p.Size(PageSizes.A4.Landscape());
+                p.Margin(20);
+                p.PageColor(Colors.White);
+                p.DefaultTextStyle(x => x.FontSize(9).FontFamily("Arial"));
+
+                p.Header().Column(col =>
+                {
+                    col.Item().Text("💰 Planilla de Cobranzas a Aprobar").Bold().FontSize(16);
+                    col.Item().Text(filtroTexto).FontSize(9).FontColor(Colors.Grey.Darken1);
+                    col.Item().Text($"Generada: {DateTime.Now:dd/MM/yyyy HH:mm}").FontSize(8).FontColor(Colors.Grey.Medium);
+                });
+
+                p.Content().PaddingVertical(10).Table(t =>
+                {
+                    t.ColumnsDefinition(cd =>
+                    {
+                        cd.RelativeColumn(1.2f); // Fecha
+                        cd.RelativeColumn(0.8f); // Hora
+                        cd.RelativeColumn(1.5f); // Repartidor
+                        cd.RelativeColumn(1.6f); // Venta
+                        cd.RelativeColumn(3f);   // Cliente
+                        cd.RelativeColumn(1.4f); // Importe
+                        cd.RelativeColumn(1.2f); // Estado
+                        cd.RelativeColumn(0.8f); // Entregado
+                    });
+                    // Header
+                    t.Header(h =>
+                    {
+                        void Th(string txt) => h.Cell().Background(Colors.Blue.Darken3)
+                            .PaddingVertical(4).PaddingHorizontal(3)
+                            .Text(txt).FontColor(Colors.White).Bold().FontSize(9);
+                        Th("Fecha"); Th("Hora"); Th("Repartidor"); Th("Venta"); Th("Cliente"); Th("Importe"); Th("Estado"); Th("Entreg.");
+                    });
+                    foreach (var c in items)
+                    {
+                        var local = c.CreatedAt.ToLocalTime();
+                        void Td(string txt) => t.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2)
+                            .PaddingVertical(3).PaddingHorizontal(3).Text(txt).FontSize(8);
+                        Td(local.ToString("dd/MM/yyyy"));
+                        Td(local.ToString("HH:mm"));
+                        Td(c.RepartidorNombre);
+                        Td(c.VentaNumero);
+                        Td(c.ClienteNombre ?? "(sin cliente)");
+                        t.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2)
+                            .PaddingVertical(3).PaddingHorizontal(3).AlignRight()
+                            .Text($"${c.Importe:N2}").Bold().FontSize(8);
+                        Td(c.Estado);
+                        Td(c.MarcadoEntregado ? "Si" : "-");
+                    }
+                    // Total
+                    if (items.Count > 0)
+                    {
+                        t.Cell().ColumnSpan(5).BorderTop(1).PaddingTop(5).AlignRight().Text("TOTAL").Bold().FontSize(10);
+                        t.Cell().BorderTop(1).PaddingTop(5).AlignRight().Text($"${total:N2}").Bold().FontSize(11);
+                        t.Cell().ColumnSpan(2).BorderTop(1);
+                    }
+                });
+
+                p.Footer().AlignCenter().Text(x =>
+                {
+                    x.Span("Página ");
+                    x.CurrentPageNumber();
+                    x.Span(" de ");
+                    x.TotalPages();
+                });
+            });
+        });
+
+        var bytes = pdf.GeneratePdf();
+        var nombre = $"cobranzas-control-{DateTime.Now:yyyy-MM-dd-HHmm}.pdf";
+        return File(bytes, "application/pdf", nombre);
     }
 
     /// <summary>Cantidad de cobranzas pendientes (para badge en topbar).</summary>

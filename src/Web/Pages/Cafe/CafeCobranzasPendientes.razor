@@ -27,6 +27,19 @@
     .cp-tabs { display: flex; gap: 0.3rem; margin-bottom: 0.8rem; justify-content: center; }
     .cp-tab { padding: 0.4rem 0.8rem; border: 1px solid #d1d5db; background: white; border-radius: 5px; cursor: pointer; font-weight: 600; font-size: 0.85rem; }
     .cp-tab.activo { background: #1d4ed8; color: white; border-color: #1d4ed8; }
+    /* 2026-06-10: Filtros + botones de descarga */
+    .cp-toolbar { background: white; padding: 0.8rem; border-radius: 8px; margin-bottom: 0.8rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: end; }
+    .cp-toolbar-group { display: flex; flex-direction: column; gap: 0.2rem; }
+    .cp-toolbar-group label { font-size: 0.72rem; font-weight: 700; color: #4b5563; text-transform: uppercase; letter-spacing: 0.03em; }
+    .cp-toolbar-group select, .cp-toolbar-group input { padding: 0.4rem 0.6rem; border: 1px solid #d1d5db; border-radius: 5px; font-size: 0.9rem; }
+    .cp-btn-export { padding: 0.5rem 0.9rem; font-weight: 700; border-radius: 6px; border: none; cursor: pointer; font-size: 0.85rem; }
+    .cp-btn-export.excel { background: #15803d; color: white; }
+    .cp-btn-export.excel:hover { background: #166534; }
+    .cp-btn-export.pdf { background: #b91c1c; color: white; }
+    .cp-btn-export.pdf:hover { background: #991b1b; }
+    .cp-btn-export:disabled { opacity: 0.5; cursor: wait; }
+    .cp-resumen { background: #eff6ff; border-left: 4px solid #1d4ed8; border-radius: 6px; padding: 0.5rem 0.8rem; margin-bottom: 0.7rem; font-size: 0.88rem; }
+    .cp-resumen strong { color: #1e40af; font-size: 1rem; }
 </style>
 
 <div class="cp-wrap">
@@ -42,6 +55,56 @@
         <button class="cp-tab @(tab == "APROBADA" ? "activo" : "")" @onclick='() => CambiarTab("APROBADA")'>✅ Aprobadas</button>
         <button class="cp-tab @(tab == "RECHAZADA" ? "activo" : "")" @onclick='() => CambiarTab("RECHAZADA")'>❌ Rechazadas</button>
     </div>
+
+    @* 2026-06-10: Filtros (repartidor + fechas) + botones de descarga *@
+    <div class="cp-toolbar">
+        <div class="cp-toolbar-group" style="min-width: 180px;">
+            <label>Repartidor</label>
+            <select @bind="filtroRepartidorId" @bind:after="Recargar">
+                <option value="0">— Todos —</option>
+                @if (repartidores is not null)
+                {
+                    @foreach (var r in repartidores.Where(x => x.IsActive))
+                    {
+                        <option value="@r.Id">@r.Nombre</option>
+                    }
+                }
+            </select>
+        </div>
+        <div class="cp-toolbar-group">
+            <label>Desde</label>
+            <input type="date" @bind="filtroDesde" @bind:after="Recargar" />
+        </div>
+        <div class="cp-toolbar-group">
+            <label>Hasta</label>
+            <input type="date" @bind="filtroHasta" @bind:after="Recargar" />
+        </div>
+        <div class="cp-toolbar-group">
+            <label>&nbsp;</label>
+            <button class="cp-btn-export" style="background: #6b7280; color: white;" @onclick="LimpiarFiltros" title="Limpiar filtros y volver al default">🧹 Limpiar</button>
+        </div>
+        <div style="flex: 1;"></div>
+        <div class="cp-toolbar-group">
+            <label>&nbsp;</label>
+            <button class="cp-btn-export excel" @onclick="DescargarExcel" disabled="@descargando" title="Descargar planilla en Excel">
+                @(descargando ? "Descargando..." : "📊 Excel")
+            </button>
+        </div>
+        <div class="cp-toolbar-group">
+            <label>&nbsp;</label>
+            <button class="cp-btn-export pdf" @onclick="DescargarPdf" disabled="@descargando" title="Descargar planilla en PDF">
+                @(descargando ? "Descargando..." : "📄 PDF")
+            </button>
+        </div>
+    </div>
+
+    @if (lista.Count > 0)
+    {
+        var totalLista = lista.Sum(c => c.Importe);
+        <div class="cp-resumen">
+            📋 <strong>@lista.Count</strong> cobranza(s) · 💰 Total: <strong>$@totalLista.ToString("N2")</strong>
+        </div>
+    }
 
     @if (loading)
     {
@@ -91,15 +154,27 @@
     private bool loading = true;
     private string tab = "PENDIENTE";
     private int countPendientes;
+    // 2026-06-10: filtros + descargas
+    private List<RepartidorDto>? repartidores;
+    private int filtroRepartidorId = 0;
+    private DateTime? filtroDesde;
+    private DateTime? filtroHasta;
+    private bool descargando;
 
-    protected override async Task OnInitializedAsync() => await Recargar();
+    protected override async Task OnInitializedAsync()
+    {
+        try { repartidores = await Api.GetRepartidoresAsync() ?? new(); }
+        catch { }
+        await Recargar();
+    }
 
     private async Task Recargar()
     {
         loading = true;
         try
         {
-            lista = await Api.GetCobranzasPendientesAsync(tab) ?? new();
+            var repId = filtroRepartidorId > 0 ? (int?)filtroRepartidorId : null;
+            lista = await Api.GetCobranzasPendientesAsync(tab, repId, filtroDesde, filtroHasta) ?? new();
             countPendientes = await Api.GetCountCobranzasPendientesAsync();
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
@@ -110,6 +185,49 @@
     {
         tab = t;
         await Recargar();
+    }
+
+    private async Task LimpiarFiltros()
+    {
+        filtroRepartidorId = 0;
+        filtroDesde = null;
+        filtroHasta = null;
+        await Recargar();
+    }
+
+    private async Task DescargarExcel()
+    {
+        if (descargando) return;
+        descargando = true;
+        try
+        {
+            var repId = filtroRepartidorId > 0 ? (int?)filtroRepartidorId : null;
+            var (bytes, error) = await Api.DownloadCobranzasPendientesAsync("excel", tab, repId, filtroDesde, filtroHasta);
+            if (bytes is null) { ToastService.Error(error ?? "Error descargando Excel"); return; }
+            var filename = $"cobranzas-control-{DateTime.Now:yyyy-MM-dd-HHmm}.xlsx";
+            await JS.InvokeVoidAsync("downloadBytesAsFile", filename, Convert.ToBase64String(bytes),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            ToastService.Success("Excel descargado");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { descargando = false; }
+    }
+
+    private async Task DescargarPdf()
+    {
+        if (descargando) return;
+        descargando = true;
+        try
+        {
+            var repId = filtroRepartidorId > 0 ? (int?)filtroRepartidorId : null;
+            var (bytes, error) = await Api.DownloadCobranzasPendientesAsync("pdf", tab, repId, filtroDesde, filtroHasta);
+            if (bytes is null) { ToastService.Error(error ?? "Error descargando PDF"); return; }
+            var filename = $"cobranzas-control-{DateTime.Now:yyyy-MM-dd-HHmm}.pdf";
+            await JS.InvokeVoidAsync("downloadBytesAsFile", filename, Convert.ToBase64String(bytes), "application/pdf");
+            ToastService.Success("PDF descargado");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { descargando = false; }
     }
 
     [Inject] private IJSRuntime JS { get; set; } = null!;

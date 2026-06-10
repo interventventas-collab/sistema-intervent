@@ -819,8 +819,36 @@ public class ApiClient
     }
 
     // === Cobranzas pendientes (admin) ===
-    public async Task<List<CobranzaPendienteDto>?> GetCobranzasPendientesAsync(string estado = "PENDIENTE")
-        => await GetAsync<List<CobranzaPendienteDto>>($"/api/cafe/cobranzas-pendientes?estado={Uri.EscapeDataString(estado)}");
+    public async Task<List<CobranzaPendienteDto>?> GetCobranzasPendientesAsync(string estado = "PENDIENTE",
+        int? repartidorId = null, DateTime? desde = null, DateTime? hasta = null)
+    {
+        var url = $"/api/cafe/cobranzas-pendientes?estado={Uri.EscapeDataString(estado)}";
+        if (repartidorId.HasValue && repartidorId.Value > 0) url += $"&repartidorId={repartidorId.Value}";
+        if (desde.HasValue) url += $"&desde={desde.Value:yyyy-MM-dd}";
+        if (hasta.HasValue) url += $"&hasta={hasta.Value:yyyy-MM-dd}";
+        return await GetAsync<List<CobranzaPendienteDto>>(url);
+    }
+
+    public string BuildCobranzasPendientesExportUrl(string formato, string estado,
+        int? repartidorId, DateTime? desde, DateTime? hasta)
+    {
+        var url = $"/api/cafe/cobranzas-pendientes/export-{formato}?estado={Uri.EscapeDataString(estado)}";
+        if (repartidorId.HasValue && repartidorId.Value > 0) url += $"&repartidorId={repartidorId.Value}";
+        if (desde.HasValue) url += $"&desde={desde.Value:yyyy-MM-dd}";
+        if (hasta.HasValue) url += $"&hasta={hasta.Value:yyyy-MM-dd}";
+        return url;
+    }
+
+    public async Task<(byte[]? bytes, string? error)> DownloadCobranzasPendientesAsync(string formato, string estado,
+        int? repartidorId, DateTime? desde, DateTime? hasta)
+    {
+        var url = BuildCobranzasPendientesExportUrl(formato, estado, repartidorId, desde, hasta);
+        await SetAuthHeaderAsync();
+        var resp = await _http.GetAsync(url);
+        if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return (null, "Sesión expirada"); }
+        if (!resp.IsSuccessStatusCode) return (null, $"Error {(int)resp.StatusCode}");
+        return (await resp.Content.ReadAsByteArrayAsync(), null);
+    }
     public async Task<int> GetCountCobranzasPendientesAsync()
     {
         var r = await GetAsync<CountResultDto>("/api/cafe/cobranzas-pendientes/count-pendientes");
