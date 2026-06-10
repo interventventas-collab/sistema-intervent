@@ -227,14 +227,32 @@
                         <div class="mp-card-dir">📍 @p.ClienteDireccion @(string.IsNullOrEmpty(p.ClienteLocalidad) ? "" : "- " + p.ClienteLocalidad)</div>
                     }
                     <div class="mp-card-total">$ @p.Total.ToString("N2")</div>
-                    @if (p.Saldo > 0 && p.Saldo < p.Total)
+                    @if (p.Saldo <= 0.01m)
                     {
-                        <div class="mp-card-saldo-aviso">Saldo pendiente: $ @p.Saldo.ToString("N2")</div>
+                        @* 2026-06-10: venta ya cobrada — solo Entregué + opción secundaria de cargar cobro igual *@
+                        <div style="margin: 0.4rem 0 0.2rem; padding: 0.35rem 0.55rem; background: #ecfdf5; border-left: 3px solid #10b981; border-radius: 4px; font-size: 0.8rem; color: #065f46; font-weight: 600;">
+                            ✅ Ya cobrada en oficina
+                        </div>
+                        <div class="mp-card-row-acciones">
+                            <button class="mp-card-btn mp-card-btn-entregar" @onclick="() => AbrirEntregar(p)" style="flex: 1;">✅ Entregué</button>
+                        </div>
+                        <button type="button"
+                                @onclick="() => AbrirCobrar(p)"
+                                style="width: 100%; margin-top: 0.45rem; padding: 0.55rem; background: transparent; color: #2563eb; border: 1px dashed #93c5fd; border-radius: 8px; font-size: 0.82rem; font-weight: 600; cursor: pointer;">
+                            💰 Cargar cobranza igual (Osmar la asigna)
+                        </button>
                     }
-                    <div class="mp-card-row-acciones">
-                        <button class="mp-card-btn mp-card-btn-entregar" @onclick="() => AbrirEntregar(p)">✅ Entregué</button>
-                        <button class="mp-card-btn mp-card-btn-cobrar" @onclick="() => AbrirCobrar(p)">💰 Cobré</button>
-                    </div>
+                    else
+                    {
+                        @if (p.Saldo > 0 && p.Saldo < p.Total)
+                        {
+                            <div class="mp-card-saldo-aviso">Saldo pendiente: $ @p.Saldo.ToString("N2")</div>
+                        }
+                        <div class="mp-card-row-acciones">
+                            <button class="mp-card-btn mp-card-btn-entregar" @onclick="() => AbrirEntregar(p)">✅ Entregué</button>
+                            <button class="mp-card-btn mp-card-btn-cobrar" @onclick="() => AbrirCobrar(p)">💰 Cobré</button>
+                        </div>
+                    }
                     @* 2026-06-08: botón para ver el PDF del comprobante (mercadería + dirección + total) *@
                     @if (p.TienePdf)
                     {
@@ -629,7 +647,9 @@
     {
         modal = new ModalState("cobrar", p);
         pin = ""; errorModal = null;
-        importeCobrado = p.Saldo > 0 ? p.Saldo : p.Total;
+        // 2026-06-10: si la venta YA está cobrada, no precargamos importe (es cobro extra,
+        // el repartidor pone el monto a mano y Osmar lo asigna donde corresponda)
+        importeCobrado = p.Saldo > 0.01m ? p.Saldo : 0m;
         notasCobro = "";
     }
     private void CerrarModal() { modal = null; pin = ""; errorModal = null; }

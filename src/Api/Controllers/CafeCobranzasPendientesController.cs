@@ -24,7 +24,10 @@ public class CafeCobranzasPendientesController : ControllerBase
 
     public record PendienteDto(int Id, int VentaId, string VentaNumero, int? ClienteId, string? ClienteNombre,
         decimal VentaTotal, int RepartidorId, string RepartidorNombre, decimal Importe,
-        bool MarcadoEntregado, string? Notas, string Estado, DateTime CreatedAt);
+        bool MarcadoEntregado, string? Notas, string Estado, DateTime CreatedAt,
+        // 2026-06-10: true si la venta ya estaba 100% cobrada al momento de listar
+        // (sirve para destacar en admin: hay que asignar a otra venta del mismo cliente)
+        bool VentaYaCobrada = false);
 
     public record ArqueoItemDto(int VentaId, string VentaNumero, string? ClienteNombre, decimal Importe,
         bool MarcadoEntregado, string Estado, DateTime CreatedAt);
@@ -55,12 +58,33 @@ public class CafeCobranzasPendientesController : ControllerBase
             var h = hasta.Value.Date.AddDays(1); // hasta inclusive
             q = q.Where(p => p.CreatedAt < h);
         }
-        var l = await q.OrderByDescending(p => p.CreatedAt)
-            .Select(p => new PendienteDto(p.Id, p.VentaId,
-                p.Venta!.Numero, p.Venta.ClienteId, p.Venta.ClienteNombreSnapshot,
-                p.Venta.Total, p.RepartidorId, p.Repartidor!.Nombre,
-                p.Importe, p.MarcadoEntregado, p.Notas, p.Estado, p.CreatedAt))
+        var raw = await q.OrderByDescending(p => p.CreatedAt)
+            .Select(p => new {
+                p.Id, p.VentaId, VentaNumero = p.Venta!.Numero,
+                ClienteId = p.Venta.ClienteId,
+                ClienteNombre = p.Venta.ClienteNombreSnapshot,
+                VentaTotal = p.Venta.Total,
+                p.RepartidorId, RepartidorNombre = p.Repartidor!.Nombre,
+                p.Importe, p.MarcadoEntregado, p.Notas, p.Estado, p.CreatedAt
+            })
             .ToListAsync();
+        // Calcular VentaYaCobrada por cada item (sumar cobranzas vigentes por venta)
+        var ventaIds = raw.Select(x => x.VentaId).Distinct().ToList();
+        var pagosDic = ventaIds.Count == 0
+            ? new Dictionary<int, decimal>()
+            : await _db.CafeCobranzasComprobantes
+                .Where(c => c.VentaId.HasValue && ventaIds.Contains(c.VentaId.Value) && c.Cobranza!.Estado == "VIGENTE")
+                .GroupBy(c => c.VentaId!.Value)
+                .Select(g => new { g.Key, S = g.Sum(x => x.Importe) })
+                .ToDictionaryAsync(x => x.Key, x => x.S);
+        var l = raw.Select(x =>
+        {
+            var pagado = pagosDic.TryGetValue(x.VentaId, out var pg) ? pg : 0m;
+            var yaCobrada = x.VentaTotal > 0m && pagado >= x.VentaTotal - 0.01m;
+            return new PendienteDto(x.Id, x.VentaId, x.VentaNumero, x.ClienteId, x.ClienteNombre,
+                x.VentaTotal, x.RepartidorId, x.RepartidorNombre,
+                x.Importe, x.MarcadoEntregado, x.Notas, x.Estado, x.CreatedAt, yaCobrada);
+        }).ToList();
         return Ok(l);
     }
 
@@ -91,7 +115,7 @@ public class CafeCobranzasPendientesController : ControllerBase
             .Select(p => new PendienteDto(p.Id, p.VentaId,
                 p.Venta!.Numero, p.Venta.ClienteId, p.Venta.ClienteNombreSnapshot,
                 p.Venta.Total, p.RepartidorId, p.Repartidor!.Nombre,
-                p.Importe, p.MarcadoEntregado, p.Notas, p.Estado, p.CreatedAt))
+                p.Importe, p.MarcadoEntregado, p.Notas, p.Estado, p.CreatedAt, false))
             .ToListAsync();
     }
 

@@ -373,6 +373,8 @@ public class CobranzaPendienteDto
     public string? Notas { get; set; }
     public string Estado { get; set; } = "";
     public DateTime CreatedAt { get; set; }
+    // 2026-06-10: true si la venta ya tenia 100% cobrado al momento (el repartidor cobro extra)
+    public bool VentaYaCobrada { get; set; }
 }
 
 public class AprobarCobranzaPendienteRequest
