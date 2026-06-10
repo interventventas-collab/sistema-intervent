@@ -373,6 +373,100 @@
     </div>
 }
 
+@* MODAL: Resumen del comprobante (sin descargar PDF) - 2026-06-10 *@
+@if (resumenLoading || resumenAbierto != null)
+{
+    <div class="mp-modal-overlay" @onclick="CerrarResumen">
+        <div class="mp-modal" @onclick:stopPropagation="true" style="max-width: 540px;">
+            @if (resumenLoading)
+            {
+                <div style="padding: 2.5rem 1rem; text-align: center; color: #6b7280;">⏳ Cargando detalle...</div>
+            }
+            else if (resumenAbierto is not null)
+            {
+                <div class="mp-modal-titulo" style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>📋 @resumenAbierto.Numero</span>
+                    <button type="button" @onclick="CerrarResumen"
+                            style="background: transparent; border: none; font-size: 1.5rem; color: #6b7280; cursor: pointer; padding: 0 0.3rem; line-height: 1;">×</button>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(resumenAbierto.ClienteNombre))
+                {
+                    <div style="font-weight: 700; font-size: 1.05rem; color: #1f2937; margin-bottom: 0.2rem;">
+                        @resumenAbierto.ClienteNombre
+                    </div>
+                }
+                @if (!string.IsNullOrWhiteSpace(resumenAbierto.ClienteDireccion))
+                {
+                    <div style="font-size: 0.85rem; color: #4b5563; margin-bottom: 0.7rem;">
+                        📍 @resumenAbierto.ClienteDireccion @(string.IsNullOrEmpty(resumenAbierto.ClienteLocalidad) ? "" : "- " + resumenAbierto.ClienteLocalidad)
+                    </div>
+                }
+
+                @if (resumenAbierto.Items.Count > 0)
+                {
+                    <div style="font-size: 0.72rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin: 0.6rem 0 0.3rem; font-weight: 700;">Productos</div>
+                    <table style="width: 100%; font-size: 0.92rem; border-collapse: collapse;">
+                        <thead>
+                            <tr style="border-bottom: 1px solid #e5e7eb;">
+                                <th style="text-align: left; padding: 0.35rem 0.2rem; font-weight: 700; color: #6b7280; font-size: 0.78rem;">Producto</th>
+                                <th style="text-align: center; padding: 0.35rem 0.2rem; font-weight: 700; color: #6b7280; font-size: 0.78rem; width: 50px;">Cant</th>
+                                <th style="text-align: right; padding: 0.35rem 0.2rem; font-weight: 700; color: #6b7280; font-size: 0.78rem; width: 100px;">Subtotal</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var it in resumenAbierto.Items)
+                            {
+                                <tr style="border-bottom: 1px solid #f3f4f6;">
+                                    <td style="padding: 0.4rem 0.2rem; line-height: 1.25;">
+                                        @it.ProductoNombre
+                                        @if (!string.IsNullOrEmpty(it.Formato))
+                                        {
+                                            <span style="color: #9ca3af; font-size: 0.78rem;"> · @FormatoLabel(it.Formato)</span>
+                                        }
+                                    </td>
+                                    <td style="text-align: center; padding: 0.4rem 0.2rem; font-family: monospace; font-weight: 700;">@it.Cantidad</td>
+                                    <td style="text-align: right; padding: 0.4rem 0.2rem; font-family: monospace;">$@it.Subtotal.ToString("N2")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 0.7rem 0.2rem 0; margin-top: 0.5rem; border-top: 2px solid #1f2937;">
+                        <strong style="font-size: 0.92rem;">TOTAL</strong>
+                        <strong style="font-size: 1.25rem; color: #047857;">$ @resumenAbierto.Total.ToString("N2")</strong>
+                    </div>
+                }
+                else
+                {
+                    <div style="color: #9ca3af; font-style: italic; padding: 1rem; text-align: center;">Sin items cargados</div>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(resumenAbierto.Observaciones))
+                {
+                    <div style="margin-top: 0.8rem; padding: 0.6rem 0.7rem; background: #fef3c7; border-left: 3px solid #f59e0b; border-radius: 4px;">
+                        <div style="font-size: 0.7rem; color: #92400e; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; margin-bottom: 0.2rem;">📝 Observaciones</div>
+                        <div style="font-size: 0.88rem; color: #78350f; white-space: pre-wrap;">@resumenAbierto.Observaciones</div>
+                    </div>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(resumenAbierto.ComentarioEntrega))
+                {
+                    <div style="margin-top: 0.5rem; padding: 0.5rem 0.7rem; background: #ecfdf5; border-left: 3px solid #10b981; border-radius: 4px;">
+                        <div style="font-size: 0.7rem; color: #065f46; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; margin-bottom: 0.2rem;">💬 Comentario de entrega</div>
+                        <div style="font-size: 0.88rem; color: #064e3b; white-space: pre-wrap;">@resumenAbierto.ComentarioEntrega</div>
+                    </div>
+                }
+
+                <button type="button" @onclick="CerrarResumen"
+                        style="width: 100%; padding: 0.7rem; margin-top: 1rem; background: #1f2937; color: white; border: none; border-radius: 8px; font-weight: 700; font-size: 0.95rem; cursor: pointer;">
+                    Cerrar
+                </button>
+            }
+        </div>
+    </div>
+}
+
 @if (toastVisible)
 {
     <div class="mp-toast @(toastError ? "error" : "")">@toastMsg</div>
@@ -482,26 +576,55 @@
 
     /// <summary>2026-06-08: abre el PDF de la venta en una pestaña nueva (visor de Drive).
     /// El backend valida que la venta esté en la lista del repartidor antes de devolver el link.</summary>
+    // 2026-06-10: Reemplazo el "abrir PDF en pestaña" por un modal con resumen.
+    // El repartidor solo necesita ver QUE LLEVAR + a DONDE, no necesita el PDF.
     private async Task VerComprobante(PedidoDto p)
     {
+        resumenAbierto = null;
+        resumenLoading = true;
+        resumenVentaNumero = p.Numero;
+        StateHasChanged();
         try
         {
-            var resp = await Http.GetFromJsonAsync<ComprobanteResp>(
-                $"api/cafe/repartidor-public/mis-pedidos/{Token}/comprobante/{p.Id}");
-            if (resp is null) return;
-            if (string.IsNullOrEmpty(resp.Url))
-            {
-                MostrarToast(resp.Mensaje ?? "Este pedido todavía no tiene comprobante", true);
-                return;
-            }
-            await JS.InvokeVoidAsync("open", resp.Url, "_blank");
+            var resp = await Http.GetFromJsonAsync<ResumenDto>(
+                $"api/cafe/repartidor-public/mis-pedidos/{Token}/venta/{p.Id}/resumen");
+            resumenAbierto = resp;
         }
         catch
         {
-            MostrarToast("Error abriendo comprobante", true);
+            MostrarToast("Error cargando el detalle", true);
+            resumenAbierto = null;
+        }
+        finally
+        {
+            resumenLoading = false;
+            StateHasChanged();
         }
     }
-    private record ComprobanteResp(string? Url, string? Numero, string? Mensaje = null);
+
+    private void CerrarResumen() { resumenAbierto = null; resumenLoading = false; }
+
+    public record ResumenItemDto(string ProductoNombre, string? Formato, decimal Cantidad, decimal Subtotal);
+    public record ResumenDto(int VentaId, string Numero, string? ClienteNombre, string? ClienteDireccion,
+        string? ClienteLocalidad, decimal Total, string? Observaciones, string? ComentarioEntrega,
+        List<ResumenItemDto> Items);
+
+    private ResumenDto? resumenAbierto;
+    private bool resumenLoading;
+    private string resumenVentaNumero = "";
+
+    private string FormatoLabel(string? f)
+    {
+        if (string.IsNullOrWhiteSpace(f)) return "";
+        return f switch
+        {
+            "1KG" => "1 kg",
+            "MEDIO" => "½ kg",
+            "CUARTO" => "¼ kg",
+            "UNIDAD" => "unidad",
+            _ => f.ToLower()
+        };
+    }
     private void AbrirCobrar(PedidoDto p)
     {
         modal = new ModalState("cobrar", p);

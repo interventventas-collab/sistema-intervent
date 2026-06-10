@@ -385,6 +385,57 @@ public class CafeRepartidorPublicController : ControllerBase
         return Ok(new MisPedidosResult(r.Id, r.Nombre, pedidos, cobros));
     }
 
+    public record MisPedidosResumenItemDto(string ProductoNombre, string? Formato, decimal Cantidad, decimal Subtotal);
+    public record MisPedidosResumenDto(int VentaId, string Numero, string? ClienteNombre, string? ClienteDireccion,
+        string? ClienteLocalidad, decimal Total, string? Observaciones, string? ComentarioEntrega,
+        List<MisPedidosResumenItemDto> Items);
+
+    /// <summary>2026-06-10: Devuelve el resumen de items + observaciones de una venta para
+    /// que el repartidor lo vea en un modal dentro de Mis Pedidos (sin descargar PDF).
+    /// Valida que la venta este en la lista del repartidor (QrEscaneos accion='cargado').</summary>
+    [HttpGet("mis-pedidos/{tokenRepartidor}/venta/{ventaId:int}/resumen")]
+    public async Task<IActionResult> MisPedidosResumen(string tokenRepartidor, int ventaId)
+    {
+        var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null) return NotFound(new { error = "Enlace invalido o repartidor inactivo" });
+
+        var enSuLista = await _db.CafeQrEscaneos.AnyAsync(e =>
+            e.VentaId == ventaId && e.RepartidorId == r.Id && e.Accion == "cargado");
+        if (!enSuLista) return Forbid();
+
+        var v = await _db.CafeVentas
+            .Include(x => x.Items!).ThenInclude(it => it.ProductoNav)
+            .FirstOrDefaultAsync(x => x.Id == ventaId);
+        if (v is null) return NotFound(new { error = "Venta no encontrada" });
+
+        // Items desglosados (el repartidor ve TODO lo que tiene que llevar, sin agrupar por combo)
+        var items = new List<MisPedidosResumenItemDto>();
+        if (v.Items is not null)
+        {
+            foreach (var it in v.Items.OrderBy(x => x.Id))
+            {
+                var nombre = !string.IsNullOrWhiteSpace(it.ProductoNombreSnapshot)
+                    ? it.ProductoNombreSnapshot
+                    : (it.ProductoNav?.Nombre ?? (it.ServicioId.HasValue ? "Servicio" : "(producto)"));
+                items.Add(new MisPedidosResumenItemDto(
+                    nombre!,
+                    it.Formato,
+                    it.Cantidad,
+                    it.Subtotal));
+            }
+        }
+
+        var totalCobrable = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
+
+        return Ok(new MisPedidosResumenDto(
+            v.Id, v.Numero,
+            v.ClienteNombreSnapshot, v.ClienteDireccionSnapshot, v.ClienteLocalidadSnapshot,
+            totalCobrable,
+            v.Observaciones,
+            v.ComentarioEntrega,
+            items));
+    }
+
     /// <summary>2026-06-05: Escaneo de QR desde la pantalla Mis Pedidos del repartidor.
     /// Usa el publicToken del repartidor (la URL fija) como autorizacion — no requiere PIN
     /// porque solo "carga" el pedido a la lista, no confirma entrega.</summary>
