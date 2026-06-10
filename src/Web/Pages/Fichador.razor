@@ -128,11 +128,7 @@
                 <div class="kio-card @e.Estado" @onclick="() => OnCardTap(e)">
                     <div class="kio-card-avatar">@(e.Nombre.Length > 0 ? e.Nombre[0].ToString() : "?")</div>
                     <div class="kio-card-nombre">@e.Nombre</div>
-                    <div class="kio-card-estado">
-                        @if (e.Estado == "trabajando") { <span>🟢 TRABAJANDO</span> }
-                        else if (e.Estado == "salio") { <span>🔵 SALIÓ</span> }
-                        else { <span>🔴 SIN FICHAR</span> }
-                    </div>
+                    @* 2026-06-10: texto de estado oculto, solo se muestra el color del borde *@
                 </div>
             }
         </div>
