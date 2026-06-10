@@ -127,9 +127,18 @@ public static class CafePricingService
         {
             var mult = producto.MultiplicadorOem ?? 1m;
             if (mult <= 0m) mult = 1m;
-            var precioDesdeOem = pvpOem * mult;
-            precioBarEf = precioDesdeOem;
-            precioOtroEf = precioDesdeOem;
+            // 2026-06-10 BUG FIX: el OEM guarda PvpConIva (CON IVA), pero precioBarEf/precioOtroEf
+            // son tratados como SIN IVA en el resto del pipeline (despues se les suma IVA en el
+            // frontend al mostrar el total). Si pegamos el precio CON IVA directo, se le suma IVA
+            // una segunda vez → la venta cobra 21% mas de lo que corresponde.
+            // Solucion: convertir CON IVA → SIN IVA usando el IVA% del OEM.
+            var ivaOem = producto.OemNav.IvaPct ?? 21m;
+            var precioConIva = pvpOem * mult;
+            var precioSinIva = ivaOem > 0m
+                ? Math.Round(precioConIva / (1m + ivaOem / 100m), 2)
+                : precioConIva;
+            precioBarEf = precioSinIva;
+            precioOtroEf = precioSinIva;
             // PrecioBulto NO se pisa: el bulto requiere configuración propia explicita.
         }
 
