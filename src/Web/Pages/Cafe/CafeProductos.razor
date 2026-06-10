@@ -212,9 +212,15 @@
                                 }
                                 else
                                 {
-                                    @* PVP BARES: prioridad al precio NUEVO (PrecioBar). Fallback a legacy costo × margen. *@
+                                    @* PVP BARES: prioridad al precio NUEVO (PrecioBar). Fallback a legacy costo × margen.
+                                       2026-06-10: si tilde "Sin precio BAR" — mostrar guion y nota. *@
                                     <td style="text-align: right; font-weight: 700; color: #1d4ed8;" class="precio-clickeable" title="Ver historial" @onclick="() => ShowHistorial(p)">
-                                        @if (p.PrecioBar.HasValue && p.PrecioBar.Value > 0)
+                                        @if (p.SinPrecioBar)
+                                        {
+                                            <div style="color:#9ca3af; font-weight: 500;">—</div>
+                                            <div style="font-size: 0.62rem; color:#92400e; font-weight: 600;" title="Este producto no tiene precio diferenciado para BAR. Los clientes BAR pagan el Precio OTRO.">solo OTRO</div>
+                                        }
+                                        else if (p.PrecioBar.HasValue && p.PrecioBar.Value > 0)
                                         {
                                             var pBar = p.PrecioBar.Value;
                                             var pBarConIva = Math.Round(pBar * (1 + p.IvaPct / 100m), 2);
@@ -549,12 +555,22 @@
                         </div>
                         <div class="form-row" style="margin-bottom: 0.3rem;">
                             <div class="form-group" style="flex: 1;">
-                                <label class="form-label" style="font-size: 0.75rem;">Precio BAR (mayorista)</label>
+                                <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;">
+                                    <label class="form-label" style="font-size: 0.75rem; margin: 0;">Precio BAR (mayorista)</label>
+                                    @* 2026-06-10: tilde "✗ Sin precio BAR" — si lo tildan, el sistema ignora PrecioBar
+                                       y los clientes BAR pagan el PrecioOtro (igual que los OTROS). *@
+                                    <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; color: #92400e; cursor: pointer; user-select: none;"
+                                           title="Si tildás, todos los clientes (BAR y OTRO) pagan el Precio OTRO. Útil cuando el producto no tiene precio mayorista diferenciado.">
+                                        <input type="checkbox" @bind="formSinPrecioBar" style="margin: 0;" />
+                                        <span>✗ Sin precio BAR</span>
+                                    </label>
+                                </div>
                                 <div style="display: flex; gap: 0.3rem; align-items: stretch;">
                                     <input class="form-input" type="number" step="0.01" min="0"
                                            @bind="formPrecioBar" @bind:event="oninput" @bind:after="RecalcMargenBarDesdePrecio"
-                                           placeholder="0,00" style="flex: 1 1 auto; min-width: 0;" />
-                                    @if (formCosto > 0)
+                                           placeholder="0,00" style="flex: 1 1 auto; min-width: 0; @(formSinPrecioBar ? "background:#f3f4f6;color:#9ca3af;" : "")"
+                                           disabled="@formSinPrecioBar" />
+                                    @if (formCosto > 0 && !formSinPrecioBar)
                                     {
                                         <button type="button" class="btn btn-secondary" @onclick="@(() => SetPrecioBar(Math.Round(formCosto * 2m, 2)))"
                                                 style="white-space: nowrap; font-size: 0.75rem; padding: 0.3rem 0.5rem;"
@@ -562,7 +578,7 @@
                                     }
                                 </div>
                                 @* Margen editable: si lo cambias, se recalcula el precio. *@
-                                @if (formCosto > 0)
+                                @if (formCosto > 0 && !formSinPrecioBar)
                                 {
                                     <div style="display: flex; gap: 0.3rem; align-items: center; margin-top: 0.25rem;">
                                         <label style="font-size: 0.7rem; color: #166534; font-weight: 600; white-space: nowrap;">Margen %:</label>
@@ -573,7 +589,11 @@
                                     </div>
                                 }
                                 <p style="font-size: 0.7rem; color: #166534; margin: 0.2rem 0 0;">
-                                    @if (formPrecioBar.HasValue && formPrecioBar.Value > 0)
+                                    @if (formSinPrecioBar)
+                                    {
+                                        <span style="color:#92400e; font-weight: 600;">↳ Sin diferenciación: los clientes BAR pagan el Precio OTRO.</span>
+                                    }
+                                    else if (formPrecioBar.HasValue && formPrecioBar.Value > 0)
                                     {
                                         var ivaBar = Math.Round(formPrecioBar.Value * (1 + formIvaPct / 100m), 2);
                                         <span>Con IVA: <b>$@FormatMoney(ivaBar)</b></span>
@@ -1259,6 +1279,7 @@
     // Modelo NUEVO de precios (solo OTROS) — 2 precios directos:
     private decimal? formPrecioOtro;
     private decimal? formPrecioBar;
+    private bool formSinPrecioBar; // 2026-06-10: tilde "sin precio diferenciado BAR"
     // Precios futuros (cambio programado)
     private bool mostrarPreciosFuturos;
     private DateTime? formFechaAplicaPreciosFuturos;
@@ -1733,6 +1754,7 @@
         formIvaPctStr = "21";
         formBarPct = 100m; formUxB = null;
         formPrecioOtro = null; formPrecioBar = null;
+        formSinPrecioBar = false; // 2026-06-10
         formPrecioBulto = null; formPrecioBultoOtro = null;
         formPacks = new();
         formMargenOtro = null; formMargenBar = null;
@@ -1782,6 +1804,8 @@
             ?? (p.BarPctSobreCosto.HasValue && p.Costo > 0
                 ? Math.Round(p.Costo * (1m + p.BarPctSobreCosto.Value / 100m), 2)
                 : (decimal?)null);
+        // 2026-06-10: flag "sin precio diferenciado BAR" — viene del backend
+        formSinPrecioBar = p.SinPrecioBar;
         // Default razonable si los precios quedan en null y hay costo: usar costo × 2 (margen 100%).
         // Solo aplica a productos OTROS — para CAFE estos campos no se usan.
         if (p.Categoria == "OTROS" && p.Costo > 0)
@@ -1905,6 +1929,8 @@
                     PrecioBar = formCategoria == "OTROS" ? formPrecioBar : null,
                     ClearPrecioOtro = formCategoria == "OTROS" && !formPrecioOtro.HasValue,
                     ClearPrecioBar = formCategoria == "OTROS" && !formPrecioBar.HasValue,
+                    // 2026-06-10: tilde "sin precio diferenciado BAR"
+                    SinPrecioBar = formCategoria == "OTROS" ? formSinPrecioBar : (bool?)false,
                     // Precio del bulto (descuento por volumen, SOLO OTROS):
                     PrecioBulto = formCategoria == "OTROS" ? formPrecioBulto : null,
                     PrecioBultoOtro = formCategoria == "OTROS" ? formPrecioBultoOtro : null,
@@ -1964,6 +1990,8 @@
                     // Modelo NUEVO de precios (solo OTROS):
                     PrecioOtro = formCategoria == "OTROS" ? formPrecioOtro : null,
                     PrecioBar = formCategoria == "OTROS" ? formPrecioBar : null,
+                    // 2026-06-10: tilde "sin precio diferenciado BAR"
+                    SinPrecioBar = formCategoria == "OTROS" && formSinPrecioBar,
                     // Precio del bulto (descuento por volumen, SOLO OTROS):
                     PrecioBulto = formCategoria == "OTROS" ? formPrecioBulto : null,
                     PrecioBultoOtro = formCategoria == "OTROS" ? formPrecioBultoOtro : null,

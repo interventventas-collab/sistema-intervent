@@ -133,6 +133,17 @@ public static class CafePricingService
             // PrecioBulto NO se pisa: el bulto requiere configuración propia explicita.
         }
 
+        // 2026-06-10: flag SinPrecioBar — el usuario tildo "este producto NO tiene precio
+        // diferenciado para BAR". Forzamos que PrecioBar = PrecioOtro, asi BAR y OTRO pagan
+        // lo mismo. Esto se aplica DESPUES del OEM (el OEM ya unifica BAR=OTRO=OEM), pero
+        // sigue siendo importante para productos sin OEM que tienen el flag tildado.
+        if (producto.SinPrecioBar)
+        {
+            precioBarEf = precioOtroEf;
+            // Igual con bultos (si el bulto no tiene precio diferenciado tampoco)
+            precioBultoEf = precioBultoOtroEf;
+        }
+
         // Elegir el precio directo segun el tipo de cliente.
         // Si el formato es BULTO (solo OTROS), usamos PrecioBulto* como precio del bulto.
         // Si el formato es PACK_N, usamos pack.PrecioOverride si esta cargado, sino N x precio_unitario.

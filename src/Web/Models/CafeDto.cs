@@ -114,6 +114,8 @@ public class CafeProductoDto
     /// <summary>Modelo NUEVO de precios (solo OTROS). null = usa modelo legacy.</summary>
     public decimal? PrecioOtro { get; set; }
     public decimal? PrecioBar { get; set; }
+    /// <summary>2026-06-10: si true, todos los clientes (BAR y OTRO) pagan PrecioOtro.</summary>
+    public bool SinPrecioBar { get; set; } = false;
     /// <summary>Precio del bulto completo (descuento por volumen, SOLO OTROS).</summary>
     public decimal? PrecioBulto { get; set; }
     public decimal? PrecioBultoOtro { get; set; }
@@ -224,6 +226,8 @@ public class CreateCafeProductoRequest
     // Modelo NUEVO de precios (solo OTROS):
     public decimal? PrecioOtro { get; set; }
     public decimal? PrecioBar { get; set; }
+    /// <summary>2026-06-10: todos los clientes pagan PrecioOtro (sin BAR diferenciado).</summary>
+    public bool SinPrecioBar { get; set; } = false;
     // Precio del bulto completo (descuento por volumen, SOLO OTROS):
     public decimal? PrecioBulto { get; set; }
     public decimal? PrecioBultoOtro { get; set; }
@@ -262,6 +266,8 @@ public class UpdateCafeProductoRequest
     public decimal? PrecioBar { get; set; }
     public bool ClearPrecioOtro { get; set; }
     public bool ClearPrecioBar { get; set; }
+    /// <summary>2026-06-10: si null no cambia, si true marca "todos pagan PrecioOtro".</summary>
+    public bool? SinPrecioBar { get; set; }
     // Precio del bulto completo (descuento por volumen, SOLO OTROS):
     public decimal? PrecioBulto { get; set; }
     public decimal? PrecioBultoOtro { get; set; }

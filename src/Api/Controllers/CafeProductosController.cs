@@ -79,7 +79,8 @@ public class CafeProductosController : ControllerBase
             .Select(pk => new CafeProductoPackDto(pk.Id, pk.Cantidad, pk.Nombre, pk.PrecioOverride, pk.IsActive, pk.SortOrder))
             .ToList() ?? new List<CafeProductoPackDto>(),
         StockMinimoMeLi: p.StockMinimoMeLi,
-        MultiplicadorOem: p.MultiplicadorOem);
+        MultiplicadorOem: p.MultiplicadorOem,
+        SinPrecioBar: p.SinPrecioBar);
 
     /// <summary>Búsqueda rápida (solo Id, Sku, Nombre, StockUnidades). Usado por la UI de
     /// edición de componentes MeLi en /cafe/skus-meli (selector de producto).</summary>
@@ -547,6 +548,7 @@ public class CafeProductosController : ControllerBase
             // Modelo NUEVO de precios (solo OTROS, en CAFE quedan null):
             PrecioOtro = cat == "OTROS" ? req.PrecioOtro : null,
             PrecioBar = cat == "OTROS" ? req.PrecioBar : null,
+            SinPrecioBar = cat == "OTROS" && req.SinPrecioBar,
             PrecioBulto = cat == "OTROS" ? req.PrecioBulto : null,
             PrecioBultoOtro = cat == "OTROS" ? req.PrecioBultoOtro : null,
             UxB = cat == "OTROS" ? req.UxB : null,
@@ -637,6 +639,8 @@ public class CafeProductosController : ControllerBase
         else if (req.ClearPrecioOtro) p.PrecioOtro = null;
         if (req.PrecioBar.HasValue) p.PrecioBar = req.PrecioBar.Value;
         else if (req.ClearPrecioBar) p.PrecioBar = null;
+        // 2026-06-10: flag explicito "sin precio diferenciado BAR" (todos pagan PrecioOtro)
+        if (req.SinPrecioBar.HasValue) p.SinPrecioBar = req.SinPrecioBar.Value;
         if (req.PrecioBulto.HasValue) p.PrecioBulto = req.PrecioBulto.Value;
         else if (req.ClearPrecioBulto) p.PrecioBulto = null;
         if (req.PrecioBultoOtro.HasValue) p.PrecioBultoOtro = req.PrecioBultoOtro.Value;

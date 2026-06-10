@@ -107,7 +107,10 @@ public record CafeProductoDto(
     int? StockFull = null,
     // 2026-06-10: multiplicador del OEM. Precio efectivo = OemPvpConIva × MultiplicadorOem.
     // Necesario para mostrar el precio real en el catálogo cuando hay OEM linkeado.
-    decimal? MultiplicadorOem = null);
+    decimal? MultiplicadorOem = null,
+    // 2026-06-10: si true, el producto NO tiene precio diferenciado para BAR — todos los
+    // clientes (BAR y OTRO) pagan el PrecioOtro. Default false (comportamiento legacy).
+    bool SinPrecioBar = false);
 
 public record CafeProductoPackDto(
     int Id, int Cantidad, string Nombre, decimal? PrecioOverride,
@@ -153,6 +156,8 @@ public class CreateCafeProductoRequest
     // Precio del bulto completo (descuento por volumen, SOLO OTROS).
     public decimal? PrecioBulto { get; set; }
     public decimal? PrecioBultoOtro { get; set; }
+    /// <summary>2026-06-10: si true, todos los clientes pagan PrecioOtro (sin diferenciar BAR).</summary>
+    public bool SinPrecioBar { get; set; } = false;
     /// <summary>Packs prearmados a crear junto con el producto. Opcional. Solo OTROS.</summary>
     public List<CafeProductoPackRequest>? Packs { get; set; }
 }
@@ -254,6 +259,8 @@ public class UpdateCafeProductoRequest
     public decimal? PrecioBar { get; set; }
     public bool ClearPrecioOtro { get; set; }
     public bool ClearPrecioBar { get; set; }
+    /// <summary>2026-06-10: flag "todos los clientes pagan PrecioOtro" — si null, no cambia.</summary>
+    public bool? SinPrecioBar { get; set; }
     // Precio del bulto completo (descuento por volumen, SOLO OTROS).
     public decimal? PrecioBulto { get; set; }
     public decimal? PrecioBultoOtro { get; set; }

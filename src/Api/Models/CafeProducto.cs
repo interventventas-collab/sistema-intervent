@@ -68,6 +68,13 @@ public class CafeProducto
     [Column(TypeName = "decimal(18,2)")]
     public decimal? PrecioBar { get; set; }
 
+    /// <summary>2026-06-10: Flag explicito "este producto NO tiene precio diferenciado para BAR".
+    /// Cuando es true, el motor de precios IGNORA PrecioBar (y la matriz BAR legacy) y le cobra
+    /// el PrecioOtro a TODOS los clientes (BAR y OTRO). Sirve para productos donde el OEM/proveedor
+    /// fija un unico precio sin distincion de tipo de cliente — tipico en linea blanca/rodados.
+    /// Default false (mantener comportamiento legacy: BAR usa PrecioBar, OTRO usa PrecioOtro).</summary>
+    public bool SinPrecioBar { get; set; } = false;
+
     /// <summary>Unidades por bulto (informativo, solo OTROS).</summary>
     public int? UxB { get; set; }
 

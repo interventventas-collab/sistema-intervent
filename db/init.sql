@@ -4634,3 +4634,65 @@ BEGIN
         ON Cafe_ClienteProductoDescartado (ClienteId);
 END
 GO
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Listas de Precios Personalizadas (Fase 1: 2026-06-09)
+-- El usuario arma listas con selección manual de productos/combos/packs
+-- organizadas en secciones con título. Cada lista guardada se "refresca" sola
+-- cuando cambian los precios de los productos (no congela snapshot).
+-- ═══════════════════════════════════════════════════════════════════════════
+
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_ListasPreciosCustom' AND xtype='U')
+BEGIN
+    CREATE TABLE Cafe_ListasPreciosCustom (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Nombre NVARCHAR(200) NOT NULL,
+        ClienteId INT NULL CONSTRAINT FK_CafeListasPreciosCustom_Cliente FOREIGN KEY (ClienteId) REFERENCES Cafe_Clientes(Id),
+        TipoCliente NVARCHAR(20) NULL, -- 'BAR' / 'OTRO' override manual (sino toma del cliente)
+        Observaciones NVARCHAR(1000) NULL,
+        NumeroLista NVARCHAR(50) NULL,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME NOT NULL DEFAULT GETUTCDATE(),
+        UpdatedAt DATETIME NOT NULL DEFAULT GETUTCDATE()
+    );
+    CREATE INDEX IX_CafeListasPreciosCustom_Nombre ON Cafe_ListasPreciosCustom (Nombre);
+    CREATE INDEX IX_CafeListasPreciosCustom_Cliente ON Cafe_ListasPreciosCustom (ClienteId);
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_ListasPreciosCustomSeccion' AND xtype='U')
+BEGIN
+    CREATE TABLE Cafe_ListasPreciosCustomSeccion (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        ListaId INT NOT NULL CONSTRAINT FK_CafeListasPreciosCustomSeccion_Lista FOREIGN KEY (ListaId) REFERENCES Cafe_ListasPreciosCustom(Id) ON DELETE CASCADE,
+        Titulo NVARCHAR(200) NOT NULL,
+        Orden INT NOT NULL DEFAULT 0,
+        CreatedAt DATETIME NOT NULL DEFAULT GETUTCDATE()
+    );
+    CREATE INDEX IX_CafeListasPreciosCustomSeccion_Lista ON Cafe_ListasPreciosCustomSeccion (ListaId, Orden);
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Cafe_ListasPreciosCustomItem' AND xtype='U')
+BEGIN
+    CREATE TABLE Cafe_ListasPreciosCustomItem (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        SeccionId INT NOT NULL CONSTRAINT FK_CafeListasPreciosCustomItem_Seccion FOREIGN KEY (SeccionId) REFERENCES Cafe_ListasPreciosCustomSeccion(Id) ON DELETE CASCADE,
+        TipoItem NVARCHAR(20) NOT NULL, -- 'PRODUCTO' / 'COMBO' / 'PACK'
+        RefId INT NOT NULL, -- Id de CafeProducto / CafeCombo / CafeProductoPack
+        Orden INT NOT NULL DEFAULT 0,
+        Notas NVARCHAR(500) NULL,
+        CreatedAt DATETIME NOT NULL DEFAULT GETUTCDATE()
+    );
+    CREATE INDEX IX_CafeListasPreciosCustomItem_Seccion ON Cafe_ListasPreciosCustomItem (SeccionId, Orden);
+    CREATE INDEX IX_CafeListasPreciosCustomItem_Ref ON Cafe_ListasPreciosCustomItem (TipoItem, RefId);
+END
+GO
+
+-- 2026-06-10: Flag "este producto NO tiene precio diferenciado para BAR" —
+-- cuando es true, el motor de precios usa PrecioOtro a TODOS los clientes
+-- (BAR y OTRO). Util para productos cuyo OEM define un unico precio sin
+-- distincion de tipo de cliente (linea blanca, rodados, etc).
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='SinPrecioBar' AND object_id=OBJECT_ID('Cafe_Productos'))
+    ALTER TABLE Cafe_Productos ADD SinPrecioBar BIT NOT NULL CONSTRAINT DF_CafeProductos_SinPrecioBar DEFAULT 0;
+GO
