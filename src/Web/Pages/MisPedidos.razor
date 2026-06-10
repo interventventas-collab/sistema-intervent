@@ -229,17 +229,18 @@
                     <div class="mp-card-total">$ @p.Total.ToString("N2")</div>
                     @if (p.Saldo <= 0.01m)
                     {
-                        @* 2026-06-10: venta ya cobrada — solo Entregué + opción secundaria de cargar cobro igual *@
+                        @* 2026-06-10: venta ya cobrada — 3 botones: Solo entregué, Entregar+Cobrar, Cargar cobranza *@
                         <div style="margin: 0.4rem 0 0.2rem; padding: 0.35rem 0.55rem; background: #ecfdf5; border-left: 3px solid #10b981; border-radius: 4px; font-size: 0.8rem; color: #065f46; font-weight: 600;">
-                            ✅ Ya cobrada en oficina
+                            ✅ Comprobante pagado
                         </div>
                         <div class="mp-card-row-acciones">
-                            <button class="mp-card-btn mp-card-btn-entregar" @onclick="() => AbrirEntregar(p)" style="flex: 1;">✅ Entregué</button>
+                            <button class="mp-card-btn mp-card-btn-entregar" @onclick="() => AbrirEntregar(p)">✅ Solo Entregué</button>
+                            <button class="mp-card-btn mp-card-btn-cobrar" @onclick="() => AbrirCobrar(p)">✅+💰 Entregar y Cobrar</button>
                         </div>
                         <button type="button"
-                                @onclick="() => AbrirCobrar(p)"
-                                style="width: 100%; margin-top: 0.45rem; padding: 0.55rem; background: transparent; color: #2563eb; border: 1px dashed #93c5fd; border-radius: 8px; font-size: 0.82rem; font-weight: 600; cursor: pointer;">
-                            💰 Cargar cobranza igual (Osmar la asigna)
+                                @onclick="() => AbrirCargarCobranzaSuelta(p)"
+                                style="width: 100%; margin-top: 0.5rem; padding: 0.7rem; background: #fde68a; color: #78350f; border: 1px solid #f59e0b; border-radius: 8px; font-size: 0.92rem; font-weight: 700; cursor: pointer;">
+                            💰 Cargar cobranza (suelto)
                         </button>
                     }
                     else
@@ -651,7 +652,19 @@
         // el repartidor pone el monto a mano y Osmar lo asigna donde corresponda)
         importeCobrado = p.Saldo > 0.01m ? p.Saldo : 0m;
         notasCobro = "";
+        cargarCobranzaSuelta = false;
     }
+
+    // 2026-06-10: Cargar cobranza SUELTA (no marca entrega de esta venta — Osmar la asigna)
+    private void AbrirCargarCobranzaSuelta(PedidoDto p)
+    {
+        modal = new ModalState("cobrar", p);
+        pin = ""; errorModal = null;
+        importeCobrado = 0m;
+        notasCobro = "";
+        cargarCobranzaSuelta = true;
+    }
+    private bool cargarCobranzaSuelta;
     private void CerrarModal() { modal = null; pin = ""; errorModal = null; }
 
     private async Task ConfirmarModal()
@@ -672,9 +685,10 @@
             else
             {
                 // 2026-06-08: ya no manda PIN — el cobro queda precargado para admin
+                // 2026-06-10: si SoloCobrar=true, no marca entrega (cobro suelto que Osmar asigna)
                 resp = await Http.PostAsJsonAsync(
                     $"api/cafe/repartidor-public/mis-pedidos/{Token}/cobrar/{modal.Pedido.Id}",
-                    new { Importe = importeCobrado, Notas = notasCobro });
+                    new { Importe = importeCobrado, Notas = notasCobro, SoloCobrar = cargarCobranzaSuelta });
             }
             if (!resp.IsSuccessStatusCode)
             {

@@ -554,7 +554,9 @@ public class CafeRepartidorPublicController : ControllerBase
         return Ok(new { url, numero = v.Numero });
     }
 
-    public record CobrarRequestV2(string? Pin, decimal Importe, string? Notas);
+    // 2026-06-10: SoloCobrar=true → carga la cobranza pero NO marca esta venta como entregada
+    // (sirve para "cobranza suelta" que el admin imputa a otra venta del cliente)
+    public record CobrarRequestV2(string? Pin, decimal Importe, string? Notas, bool SoloCobrar = false);
 
     /// <summary>Carga un cobro pendiente para esta venta.
     /// 2026-06-08: ya NO valida PIN — el cobro queda como PRE-CARGA pendiente de aprobación del admin
@@ -584,37 +586,41 @@ public class CafeRepartidorPublicController : ControllerBase
             VentaId = v.Id,
             RepartidorId = r.Id,
             Importe = importe,
-            MarcadoEntregado = true,
+            // 2026-06-10: SoloCobrar → no se marca como entregado (cobranza suelta)
+            MarcadoEntregado = !req.SoloCobrar,
             Notas = string.IsNullOrWhiteSpace(req.Notas) ? null : req.Notas!.Trim(),
             Estado = "PENDIENTE",
             CreatedAt = DateTime.UtcNow
         };
         _db.CafeCobranzasPendientes.Add(pend);
 
-        // Marcar entregado en la venta
-        v.EntregadoPorRepartidorId = r.Id;
-        v.EntregadoAt = DateTime.UtcNow;
-        if (v.EstadoPreparacion != null)
+        // Marcar entregado en la venta (solo si NO es "cobranza suelta")
+        if (!req.SoloCobrar)
         {
-            var estadoAntCob = v.EstadoPreparacion;
-            v.EstadoPreparacion = "ENTREGADO";
-            v.PreparacionUpdatedAt = DateTime.UtcNow;
-            // 2026-06-09 log
-            _db.CafeVentaPreparacionLogs.Add(new CafeVentaPreparacionLog
+            v.EntregadoPorRepartidorId = r.Id;
+            v.EntregadoAt = DateTime.UtcNow;
+            if (v.EstadoPreparacion != null)
             {
-                VentaId = v.Id, EstadoAnterior = estadoAntCob, EstadoNuevo = "ENTREGADO",
-                OperadorNombre = $"repartidor: {r.Nombre}",
-                Notas = $"Cobro precargado desde /mis-pedidos — importe ${importe:N2}",
-                CreatedAt = DateTime.UtcNow
-            });
+                var estadoAntCob = v.EstadoPreparacion;
+                v.EstadoPreparacion = "ENTREGADO";
+                v.PreparacionUpdatedAt = DateTime.UtcNow;
+                // 2026-06-09 log
+                _db.CafeVentaPreparacionLogs.Add(new CafeVentaPreparacionLog
+                {
+                    VentaId = v.Id, EstadoAnterior = estadoAntCob, EstadoNuevo = "ENTREGADO",
+                    OperadorNombre = $"repartidor: {r.Nombre}",
+                    Notas = $"Cobro precargado desde /mis-pedidos — importe ${importe:N2}",
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
         }
 
-        // Log de escaneo: accion cobrado
+        // Log de escaneo: accion cobrado (o cobrado_suelto si no se entrego)
         _db.CafeQrEscaneos.Add(new CafeQrEscaneo
         {
             VentaId = v.Id,
             RepartidorId = r.Id,
-            Accion = "cobrado",
+            Accion = req.SoloCobrar ? "cobrado_suelto" : "cobrado",
             CreatedAt = DateTime.UtcNow,
             Ip = Request.HttpContext.Connection.RemoteIpAddress?.ToString()
         });
