@@ -104,7 +104,10 @@ public record CafeProductoDto(
     // StockPropio = stock en deposito principal '9 de Abril'.
     // StockFull = stock en deposito 'Full MeLi'. Null si no esta en ese deposito.
     int? StockPropio = null,
-    int? StockFull = null);
+    int? StockFull = null,
+    // 2026-06-10: multiplicador del OEM. Precio efectivo = OemPvpConIva × MultiplicadorOem.
+    // Necesario para mostrar el precio real en el catálogo cuando hay OEM linkeado.
+    decimal? MultiplicadorOem = null);
 
 public record CafeProductoPackDto(
     int Id, int Cantidad, string Nombre, decimal? PrecioOverride,

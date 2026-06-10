@@ -136,6 +136,41 @@ public class CafeProductoDto
     // Datos del OEM (si esta vinculado). Permiten mostrar el sugerido del OEM en el listado.
     public decimal? OemPvpConIva { get; set; }
     public decimal? OemIvaPct { get; set; }
+    /// <summary>Multiplicador del OEM (default 1). Precio efectivo = OemPvpConIva × MultiplicadorOem.</summary>
+    public decimal? MultiplicadorOem { get; set; }
+
+    // 2026-06-10 — Precio efectivo (lo que el sistema realmente cobra).
+    // Si hay OEM → OEM.PvpConIva × MultiplicadorOem.
+    // Si no hay OEM → PrecioOtro × (1 + IvaPct/100).
+    // Esta es la MISMA lógica que usa CafePricingService.PrecioCIvaAsync y MeliPricePushService,
+    // así que el catálogo, Nueva Venta, listas de precios y MeLi muestran SIEMPRE el mismo número.
+    public decimal? PrecioEfectivoConIva
+    {
+        get
+        {
+            // Prioridad 1: OEM
+            if (OemPvpConIva.HasValue && OemPvpConIva.Value > 0m)
+            {
+                var mult = MultiplicadorOem ?? 1m;
+                if (mult <= 0m) mult = 1m;
+                return Math.Round(OemPvpConIva.Value * mult, 2);
+            }
+            // Prioridad 2: PrecioOtro (manual)
+            if (PrecioOtro.HasValue && PrecioOtro.Value > 0m)
+                return Math.Round(PrecioOtro.Value * (1 + IvaPct / 100m), 2);
+            return null;
+        }
+    }
+    /// <summary>"OEM", "MANUAL" o null. Identifica de dónde sale PrecioEfectivoConIva.</summary>
+    public string? PrecioEfectivoFuente
+    {
+        get
+        {
+            if (OemPvpConIva.HasValue && OemPvpConIva.Value > 0m) return "OEM";
+            if (PrecioOtro.HasValue && PrecioOtro.Value > 0m) return "MANUAL";
+            return null;
+        }
+    }
 
     // Calculados — Pvp1/Pvp2 se guardan SIN IVA. Multiplicar por (1 + IvaPct/100) da el con IVA.
     public decimal? Pvp1ConIva => Pvp1.HasValue ? Math.Round(Pvp1.Value * (1 + IvaPct / 100m), 2) : null;
@@ -1441,4 +1476,37 @@ public class VentaOcasionalSaldoDto
     public decimal Pagado { get; set; }
     public decimal Saldo { get; set; }
     public int DiasMora { get; set; }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Listas de precios personalizadas (Fase 1 - 2026-06-09)
+// ─────────────────────────────────────────────────────────────────────
+public class ListaCustomDto
+{
+    public int Id { get; set; }
+    public string Nombre { get; set; } = "";
+    public int? ClienteId { get; set; }
+    public string? ClienteNombre { get; set; }
+    public string? ClienteCodigo { get; set; }
+    public string? TipoCliente { get; set; }
+    public string? Observaciones { get; set; }
+    public string? NumeroLista { get; set; }
+    public int CantidadSecciones { get; set; }
+    public int CantidadItems { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+}
+
+public class CrearListaCustomRequest
+{
+    public string Nombre { get; set; } = "";
+    public int? ClienteId { get; set; }
+    public string? TipoCliente { get; set; }
+    public string? Observaciones { get; set; }
+    public string? NumeroLista { get; set; }
+}
+
+public class CrearListaCustomResponse
+{
+    public int Id { get; set; }
 }

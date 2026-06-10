@@ -78,7 +78,8 @@ public class CafeProductosController : ControllerBase
             .OrderBy(pk => pk.SortOrder).ThenBy(pk => pk.Cantidad)
             .Select(pk => new CafeProductoPackDto(pk.Id, pk.Cantidad, pk.Nombre, pk.PrecioOverride, pk.IsActive, pk.SortOrder))
             .ToList() ?? new List<CafeProductoPackDto>(),
-        StockMinimoMeLi: p.StockMinimoMeLi);
+        StockMinimoMeLi: p.StockMinimoMeLi,
+        MultiplicadorOem: p.MultiplicadorOem);
 
     /// <summary>Búsqueda rápida (solo Id, Sku, Nombre, StockUnidades). Usado por la UI de
     /// edición de componentes MeLi en /cafe/skus-meli (selector de producto).</summary>

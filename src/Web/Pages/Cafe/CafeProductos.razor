@@ -236,24 +236,42 @@
                                         }
                                         else { <span>—</span> }
                                     </td>
-                                    @* PVP SUGERIDO (OTRO): prioridad al precio NUEVO (PrecioOtro). Despues OEM. Fallback Pvp2 legacy. *@
+                                    @* PVP SUGERIDO (OTRO) — 2026-06-10 PRIORIDAD UNIFICADA con Nueva Venta + Listas + MeLi:
+                                       1) Si hay OEM linkeado → muestra OEM.PvpConIva × MultiplicadorOem (el "real" del sistema).
+                                       2) Si no hay OEM → muestra PrecioOtro (manual).
+                                       3) Fallback Pvp2 legacy. *@
                                     <td style="text-align: right; font-weight: 700; color: #15803d;" class="precio-clickeable" title="Ver historial" @onclick="() => ShowHistorial(p)">
-                                        @if (p.PrecioOtro.HasValue && p.PrecioOtro.Value > 0)
+                                        @if (p.OemPvpConIva.HasValue && p.OemPvpConIva.Value > 0m)
+                                        {
+                                            var mult = (p.MultiplicadorOem ?? 1m);
+                                            if (mult <= 0m) mult = 1m;
+                                            var oemConIva = Math.Round(p.OemPvpConIva.Value * mult, 2);
+                                            var oemSinIva = (p.OemIvaPct.HasValue && p.OemIvaPct.Value > 0)
+                                                ? Math.Round(oemConIva / (1 + p.OemIvaPct.Value / 100m), 2)
+                                                : oemConIva;
+                                            <div>$@FormatMoney(oemConIva)</div>
+                                            <div style="font-size: 0.68rem; color: #6b7280; font-weight: 500;">
+                                                del OEM @p.OemCodigo @(mult != 1m ? $"× {mult.ToString("0.##")}" : "") · s/IVA $@FormatMoney(oemSinIva)
+                                            </div>
+                                            @if (p.PrecioOtro.HasValue && p.PrecioOtro.Value > 0m)
+                                            {
+                                                @* Tiene PrecioOtro guardado pero el sistema usa el del OEM — avisar para evitar confusión *@
+                                                <div style="font-size: 0.62rem; color: #d97706; font-weight: 600; margin-top: 2px;" title="Hay un PrecioOtro guardado en este producto, pero el sistema cobra el del OEM. Para usar el manual, hay que desvincular el OEM.">
+                                                    ⚠ manual ignorado ($@FormatMoney(p.PrecioOtro.Value))
+                                                </div>
+                                            }
+                                        }
+                                        else if (p.PrecioOtro.HasValue && p.PrecioOtro.Value > 0)
                                         {
                                             var pOtro = p.PrecioOtro.Value;
                                             var pOtroConIva = Math.Round(pOtro * (1 + p.IvaPct / 100m), 2);
-                                            <div>$@FormatMoney(pOtro)</div>
-                                            <div style="font-size: 0.7rem; color: #6b7280; font-weight: 500;">manual · c/IVA $@FormatMoney(pOtroConIva)</div>
-                                        }
-                                        else if (p.OemPvpConIva.HasValue)
-                                        {
-                                            <div>$@FormatMoney(p.OemPvpSinIva!.Value)</div>
-                                            <div style="font-size: 0.7rem; color: #6b7280; font-weight: 500;">del OEM · c/IVA $@FormatMoney(p.OemPvpConIva.Value)</div>
+                                            <div>$@FormatMoney(pOtroConIva)</div>
+                                            <div style="font-size: 0.7rem; color: #6b7280; font-weight: 500;">manual · s/IVA $@FormatMoney(pOtro)</div>
                                         }
                                         else if (p.Pvp2.HasValue)
                                         {
-                                            <div>$@FormatMoney(p.Pvp2.Value)</div>
-                                            <div style="font-size: 0.7rem; color: #9ca3af; font-weight: 500;">sin OEM · c/IVA $@FormatMoney(p.Pvp2ConIva!.Value)</div>
+                                            <div>$@FormatMoney(p.Pvp2ConIva!.Value)</div>
+                                            <div style="font-size: 0.7rem; color: #9ca3af; font-weight: 500;">sin OEM · s/IVA $@FormatMoney(p.Pvp2.Value)</div>
                                         }
                                         else { <span>—</span> }
                                     </td>
