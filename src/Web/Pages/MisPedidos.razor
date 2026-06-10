@@ -238,16 +238,11 @@
                     {
                         <div class="mp-card-saldo-aviso">Saldo pendiente: $ @p.Saldo.ToString("N2")</div>
                     }
-                    @* 2026-06-10: SIEMPRE 3 botones (pantalla uniforme para que el repartidor se acostumbre) *@
+                    @* 2026-06-10: 2 botones uniformes para todos los pedidos *@
                     <div class="mp-card-row-acciones">
                         <button class="mp-card-btn mp-card-btn-entregar" @onclick="() => AbrirEntregar(p)">✅ Solo Entregué</button>
                         <button class="mp-card-btn mp-card-btn-cobrar" @onclick="() => AbrirCobrar(p)">✅+💰 Entregar y Cobrar</button>
                     </div>
-                    <button type="button"
-                            @onclick="() => AbrirCargarCobranzaSuelta(p)"
-                            style="width: 100%; margin-top: 0.5rem; padding: 0.7rem; background: #fde68a; color: #78350f; border: 1px solid #f59e0b; border-radius: 8px; font-size: 0.92rem; font-weight: 700; cursor: pointer;">
-                        💰 Cargar cobranza (suelto)
-                    </button>
                     @* 2026-06-08: botón para ver el PDF del comprobante (mercadería + dirección + total) *@
                     @if (p.TienePdf)
                     {
@@ -642,23 +637,10 @@
     {
         modal = new ModalState("cobrar", p);
         pin = ""; errorModal = null;
-        // 2026-06-10: si la venta YA está cobrada, no precargamos importe (es cobro extra,
-        // el repartidor pone el monto a mano y Osmar lo asigna donde corresponda)
+        // Si la venta YA está cobrada, no precargamos importe (el repartidor pone el monto a mano)
         importeCobrado = p.Saldo > 0.01m ? p.Saldo : 0m;
         notasCobro = "";
-        cargarCobranzaSuelta = false;
     }
-
-    // 2026-06-10: Cargar cobranza SUELTA (no marca entrega de esta venta — Osmar la asigna)
-    private void AbrirCargarCobranzaSuelta(PedidoDto p)
-    {
-        modal = new ModalState("cobrar", p);
-        pin = ""; errorModal = null;
-        importeCobrado = 0m;
-        notasCobro = "";
-        cargarCobranzaSuelta = true;
-    }
-    private bool cargarCobranzaSuelta;
     private void CerrarModal() { modal = null; pin = ""; errorModal = null; }
 
     private async Task ConfirmarModal()
@@ -679,10 +661,9 @@
             else
             {
                 // 2026-06-08: ya no manda PIN — el cobro queda precargado para admin
-                // 2026-06-10: si SoloCobrar=true, no marca entrega (cobro suelto que Osmar asigna)
                 resp = await Http.PostAsJsonAsync(
                     $"api/cafe/repartidor-public/mis-pedidos/{Token}/cobrar/{modal.Pedido.Id}",
-                    new { Importe = importeCobrado, Notas = notasCobro, SoloCobrar = cargarCobranzaSuelta });
+                    new { Importe = importeCobrado, Notas = notasCobro });
             }
             if (!resp.IsSuccessStatusCode)
             {
