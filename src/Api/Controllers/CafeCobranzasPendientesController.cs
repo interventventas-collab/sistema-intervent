@@ -242,4 +242,39 @@ public class CafeCobranzasPendientesController : ControllerBase
         var cantA = pendientes.Count(p => p.Estado == "APROBADA");
         return Ok(new ArqueoDto(rep.Id, rep.Nombre, dia, totalPendiente, totalAprobado, cantP, cantA, items));
     }
+
+    /// <summary>2026-06-10: Arqueo de TODOS los repartidores en un dia. Devuelve una lista
+    /// de ArqueoDto, una por cada repartidor que tenga al menos una cobranza ese dia.</summary>
+    [HttpGet("arqueo/todos")]
+    public async Task<IActionResult> ArqueoTodos([FromQuery] DateTime? fecha)
+    {
+        var dia = (fecha ?? DateTime.Today).Date;
+        var diaFin = dia.AddDays(1);
+        var pendientes = await _db.CafeCobranzasPendientes
+            .Include(p => p.Venta)
+            .Include(p => p.Repartidor)
+            .Where(p => p.CreatedAt >= dia && p.CreatedAt < diaFin
+                && p.Estado != "RECHAZADA")
+            .OrderBy(p => p.CreatedAt)
+            .ToListAsync();
+
+        var resultados = pendientes
+            .GroupBy(p => new { p.RepartidorId, RepartidorNombre = p.Repartidor?.Nombre ?? "?" })
+            .Select(g =>
+            {
+                var items = g.Select(p => new ArqueoItemDto(
+                    p.VentaId, p.Venta?.Numero ?? "?", p.Venta?.ClienteNombreSnapshot,
+                    p.Importe, p.MarcadoEntregado, p.Estado, p.CreatedAt)).ToList();
+                var totalP = g.Where(p => p.Estado == "PENDIENTE").Sum(p => p.Importe);
+                var totalA = g.Where(p => p.Estado == "APROBADA").Sum(p => p.Importe);
+                var cantP = g.Count(p => p.Estado == "PENDIENTE");
+                var cantA = g.Count(p => p.Estado == "APROBADA");
+                return new ArqueoDto(g.Key.RepartidorId, g.Key.RepartidorNombre, dia,
+                    totalP, totalA, cantP, cantA, items);
+            })
+            .OrderByDescending(a => a.TotalPendiente + a.TotalAprobado)
+            .ToList();
+
+        return Ok(resultados);
+    }
 }

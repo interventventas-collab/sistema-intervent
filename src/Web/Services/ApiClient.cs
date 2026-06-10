@@ -855,6 +855,13 @@ public class ApiClient
         return await GetAsync<ArqueoDto>(url);
     }
 
+    public async Task<List<ArqueoDto>?> GetArqueoTodosAsync(DateTime? fecha = null)
+    {
+        var url = "/api/cafe/cobranzas-pendientes/arqueo/todos"
+            + (fecha.HasValue ? $"?fecha={fecha.Value:yyyy-MM-dd}" : "");
+        return await GetAsync<List<ArqueoDto>>(url);
+    }
+
     // === Calendario Notas (2026-05-19) ===
     public async Task<List<CalendarioNotaDto>?> GetCalendarioNotasAsync(DateTime? desde = null, DateTime? hasta = null)
     {
@@ -1359,6 +1366,28 @@ public class ApiClient
     // --- Cafe: Listas de precios ---
     public async Task<CafeListaPreciosPreviewDto?> GetCafeListaPreciosPreviewAsync(CafeListaPreciosFiltroRequest req)
         => await PostAsync<CafeListaPreciosPreviewDto>("/api/cafe/listas-precios/preview", req);
+
+    // --- Cafe: Listas de precios personalizadas (Fase 1) ---
+    public async Task<List<ListaCustomDto>?> ListarListasCustomAsync()
+        => await GetAsync<List<ListaCustomDto>>("/api/cafe/listas-custom");
+
+    public async Task<ListaCustomDto?> GetListaCustomAsync(int id)
+        => await GetAsync<ListaCustomDto>($"/api/cafe/listas-custom/{id}");
+
+    public async Task<CrearListaCustomResponse?> CrearListaCustomAsync(CrearListaCustomRequest req)
+        => await PostAsync<CrearListaCustomResponse>("/api/cafe/listas-custom", req);
+
+    public async Task<bool> ActualizarListaCustomAsync(int id, CrearListaCustomRequest req)
+    {
+        var r = await PutAsync<object>($"/api/cafe/listas-custom/{id}", req);
+        return r is not null;
+    }
+
+    public async Task<bool> BorrarListaCustomAsync(int id)
+        => await DeleteAsync($"/api/cafe/listas-custom/{id}");
+
+    public async Task<CrearListaCustomResponse?> DuplicarListaCustomAsync(int id)
+        => await PostAsync<CrearListaCustomResponse>($"/api/cafe/listas-custom/{id}/duplicar", new { });
 
     public async Task<CafeConsultaResultDto?> ConsultarCafeAsync(string query)
         => await PostAsync<CafeConsultaResultDto>("/api/cafe/consultas", new CafeConsultaRequest { Query = query });

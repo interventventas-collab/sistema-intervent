@@ -24,6 +24,33 @@
     .arq-tabla td { padding: 0.5rem 0.7rem; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem; }
     .arq-estado-pend { background: #fef3c7; color: #92400e; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.7rem; font-weight: 700; }
     .arq-estado-aprob { background: #dcfce7; color: #166534; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.7rem; font-weight: 700; }
+
+    /* 2026-06-10: Vista "Todos los repartidores" — tarjetas con acordeón */
+    .arq-todos-header {
+        background: linear-gradient(135deg, #1e40af, #2563eb);
+        color: white; padding: 1.2rem 1.5rem; border-radius: 12px;
+        margin-bottom: 1rem; box-shadow: 0 4px 12px rgba(30,64,175,0.25);
+    }
+    .arq-todos-label { font-size: 0.78rem; font-weight: 700; opacity: 0.9; text-transform: uppercase; letter-spacing: 0.05em; }
+    .arq-todos-monto { font-size: 2rem; font-weight: 900; margin-top: 0.2rem; }
+    .arq-todos-meta { font-size: 0.85rem; opacity: 0.9; margin-top: 0.15rem; }
+
+    .arq-rep-card {
+        background: white; border-radius: 10px; margin-bottom: 0.7rem;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.07); overflow: hidden;
+        border-left: 4px solid #1d4ed8;
+    }
+    .arq-rep-head {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 0.85rem 1rem; cursor: pointer; transition: background 0.12s;
+    }
+    .arq-rep-head:hover { background: #f9fafb; }
+    .arq-rep-nombre { font-weight: 800; font-size: 1.05rem; color: #1f2937; }
+    .arq-rep-meta { font-size: 0.78rem; color: #6b7280; margin-top: 0.15rem; }
+    .arq-rep-monto { font-size: 1.3rem; font-weight: 800; color: #1d4ed8; }
+    .arq-rep-arrow { font-size: 1rem; color: #6b7280; margin-left: 0.5rem; transition: transform 0.2s; }
+    .arq-rep-arrow.open { transform: rotate(180deg); }
+    .arq-rep-detalle { border-top: 1px solid #e5e7eb; padding: 0.5rem 0.7rem; background: #f9fafb; }
 </style>
 
 <div class="arq-wrap">
@@ -35,8 +62,9 @@
     <div class="arq-toolbar">
         <div>
             <label>Repartidor</label>
-            <select @bind="repartidorId" @bind:after="Recargar">
+            <select @bind="repartidorIdStr" @bind:after="Recargar">
                 <option value="0">— Elegí —</option>
+                <option value="-1">👥 Todos los repartidores</option>
                 @if (repartidores is not null)
                 {
                     @foreach (var r in repartidores.Where(x => x.IsActive))
@@ -56,7 +84,97 @@
         </div>
     </div>
 
-    @if (arqueo is null || repartidorId == 0)
+    @* ═══════════════ MODO: TODOS LOS REPARTIDORES ═══════════════ *@
+    @if (repartidorIdStr == "-1")
+    {
+        @if (loadingTodos)
+        {
+            <p style="text-align: center; color: #9ca3af; padding: 2rem;">⏳ Cargando...</p>
+        }
+        else if (arqueosTodos is null || arqueosTodos.Count == 0)
+        {
+            <p style="text-align: center; color: #9ca3af; padding: 2rem;">No hay cobranzas de repartidores el @fecha.ToString("dd/MM/yyyy").</p>
+        }
+        else
+        {
+            var totalGeneral = arqueosTodos.Sum(a => a.TotalPendiente + a.TotalAprobado);
+            var cantTotal = arqueosTodos.Sum(a => a.CantPendiente + a.CantAprobado);
+            <div class="arq-todos-header">
+                <div class="arq-todos-label">💰 Total general a rendir — @fecha.ToString("dd/MM/yyyy")</div>
+                <div class="arq-todos-monto">$ @totalGeneral.ToString("N2")</div>
+                <div class="arq-todos-meta">@cantTotal cobranza(s) · @arqueosTodos.Count repartidor(es)</div>
+            </div>
+
+            @foreach (var arq in arqueosTodos)
+            {
+                var total = arq.TotalPendiente + arq.TotalAprobado;
+                var abierto = repartidoresAbiertos.Contains(arq.RepartidorId);
+                var arqLocal = arq;
+                <div class="arq-rep-card">
+                    <div class="arq-rep-head" @onclick="() => ToggleRepartidor(arqLocal.RepartidorId)">
+                        <div>
+                            <div class="arq-rep-nombre">🧑 @arq.RepartidorNombre</div>
+                            <div class="arq-rep-meta">
+                                @arq.CantPendiente pendiente(s) + @arq.CantAprobado aprobada(s)
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center;">
+                            <div style="text-align: right;">
+                                <div class="arq-rep-monto">$ @total.ToString("N2")</div>
+                            </div>
+                            <span class="arq-rep-arrow @(abierto ? "open" : "")">▾</span>
+                        </div>
+                    </div>
+                    @if (abierto)
+                    {
+                        <div class="arq-rep-detalle">
+                            <table class="arq-tabla" style="margin: 0;">
+                                <thead>
+                                    <tr>
+                                        <th>Hora</th>
+                                        <th>Venta</th>
+                                        <th>Cliente</th>
+                                        <th>Estado</th>
+                                        <th>Entregó</th>
+                                        <th style="text-align: right;">Importe</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var it in arq.Items)
+                                    {
+                                        <tr>
+                                            <td>@it.CreatedAt.ToLocalTime().ToString("HH:mm")</td>
+                                            <td style="font-family: monospace; font-weight: 700;">@it.VentaNumero</td>
+                                            <td>@(it.ClienteNombre ?? "—")</td>
+                                            <td>
+                                                @if (it.Estado == "PENDIENTE")
+                                                {
+                                                    <span class="arq-estado-pend">🟡 PENDIENTE</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="arq-estado-aprob">✅ APROBADA</span>
+                                                }
+                                            </td>
+                                            <td>@(it.MarcadoEntregado ? "✅" : "—")</td>
+                                            <td style="text-align: right; font-weight: 700; color: #16a34a;">$@it.Importe.ToString("N2")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            }
+
+            <p style="text-align: center; font-size: 0.78rem; color: #6b7280; margin-top: 0.8rem;">
+                💡 Tocá una tarjeta para ver el detalle. Las "pendientes" todavía no están confirmadas — aprobá en
+                <a href="/cafe/cobranzas-pendientes">Cobranzas a aprobar</a>.
+            </p>
+        }
+    }
+    @* ═══════════════ MODO: UN REPARTIDOR PUNTUAL ═══════════════ *@
+    else if (arqueo is null || repartidorIdStr == "0")
     {
         <p style="text-align: center; color: #9ca3af; padding: 2rem;">Elegí un repartidor para ver su arqueo.</p>
     }
@@ -128,10 +246,14 @@
 </div>
 
 @code {
-    private int repartidorId;
+    private string repartidorIdStr = "0";
     private DateTime fecha = DateTime.Today;
     private List<RepartidorDto>? repartidores;
     private ArqueoDto? arqueo;
+    // 2026-06-10: modo Todos
+    private List<ArqueoDto>? arqueosTodos;
+    private bool loadingTodos;
+    private HashSet<int> repartidoresAbiertos = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -141,8 +263,41 @@
 
     private async Task Recargar()
     {
-        if (repartidorId == 0) { arqueo = null; return; }
-        try { arqueo = await Api.GetArqueoRepartidorAsync(repartidorId, fecha); }
-        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        // Reset
+        arqueo = null;
+        arqueosTodos = null;
+        repartidoresAbiertos.Clear();
+
+        if (repartidorIdStr == "0") return;
+
+        if (repartidorIdStr == "-1")
+        {
+            // Modo Todos
+            loadingTodos = true;
+            StateHasChanged();
+            try
+            {
+                arqueosTodos = await Api.GetArqueoTodosAsync(fecha) ?? new();
+            }
+            catch (Exception ex)
+            {
+                ToastService.Error("Error: " + ex.Message);
+            }
+            finally
+            {
+                loadingTodos = false;
+            }
+        }
+        else if (int.TryParse(repartidorIdStr, out var id) && id > 0)
+        {
+            try { arqueo = await Api.GetArqueoRepartidorAsync(id, fecha); }
+            catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        }
+    }
+
+    private void ToggleRepartidor(int id)
+    {
+        if (repartidoresAbiertos.Contains(id)) repartidoresAbiertos.Remove(id);
+        else repartidoresAbiertos.Add(id);
     }
 }
