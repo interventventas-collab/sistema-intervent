@@ -1675,8 +1675,10 @@
         oemSearch = "";
     }
 
-    /// <summary>Pisa costo, PVP, UxB y barcode del producto con los del OEM origen.
-    /// Lo pueden tocar despues a mano.</summary>
+    /// <summary>Pisa costo, PVP, marca, UxB y barcode del producto con los del OEM origen.
+    /// 2026-06-10: extendido para pisar tambien el modelo nuevo (PrecioOtro + PrecioBar)
+    /// y la marca, asi cuando se linkea un OEM el producto queda listo sin retocar nada
+    /// a mano. Si el usuario quiere ajustarlo, lo puede tocar despues.</summary>
     private void AutocompletarDesdeOem()
     {
         if (formOemId <= 0) return;
@@ -1687,8 +1689,36 @@
         if (o.PvpConIva.HasValue)
         {
             var iva = o.IvaPct ?? 21m;
-            formPvp2 = iva > 0 ? Math.Round(o.PvpConIva.Value / (1 + iva / 100m), 2) : o.PvpConIva.Value;
+            var pvpSinIva = iva > 0 ? Math.Round(o.PvpConIva.Value / (1 + iva / 100m), 2) : o.PvpConIva.Value;
+            // Modelo legacy:
+            formPvp2 = pvpSinIva;
+            // Modelo nuevo (OTROS) — el que ve hoy el usuario en el formulario:
+            formPrecioOtro = pvpSinIva;
+            // PrecioBar (mayorista) — sugerido = mismo PvP del OEM. El usuario lo puede subir/bajar.
+            if (!formPrecioBar.HasValue || formPrecioBar.Value <= 0)
+                formPrecioBar = pvpSinIva;
             formIvaPctStr = iva == 10.5m ? "10.5" : "21";
+            // Recalcular margenes para que la UI muestre el % correcto
+            RecalcMargenBarDesdePrecio();
+            RecalcMargenOtroDesdePrecio();
+        }
+        // Marca: solo seteamos el nombre (string). El backend resuelve el MarcaId
+        // matcheando por nombre contra el catalogo Cafe_Marcas al guardar.
+        // Prioridad: MarcaId del catalogo -> MarcaNombre -> Marca (texto libre)
+        if (o.MarcaId.HasValue)
+        {
+            var m = marcasCatalog?.FirstOrDefault(x => x.Id == o.MarcaId.Value);
+            if (m is not null) formMarca = m.Nombre;
+            else if (!string.IsNullOrWhiteSpace(o.MarcaNombre)) formMarca = o.MarcaNombre;
+            else if (!string.IsNullOrWhiteSpace(o.Marca)) formMarca = o.Marca;
+        }
+        else if (!string.IsNullOrWhiteSpace(o.MarcaNombre))
+        {
+            formMarca = o.MarcaNombre;
+        }
+        else if (!string.IsNullOrWhiteSpace(o.Marca))
+        {
+            formMarca = o.Marca;
         }
         if (o.UxB.HasValue) formUxB = o.UxB.Value;
         if (!string.IsNullOrWhiteSpace(o.Barcode)) formBarcode = o.Barcode;
