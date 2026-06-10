@@ -227,33 +227,27 @@
                         <div class="mp-card-dir">📍 @p.ClienteDireccion @(string.IsNullOrEmpty(p.ClienteLocalidad) ? "" : "- " + p.ClienteLocalidad)</div>
                     }
                     <div class="mp-card-total">$ @p.Total.ToString("N2")</div>
+                    @* 2026-06-10: chips de estado — verde si pagado, amarillo si saldo parcial *@
                     @if (p.Saldo <= 0.01m)
                     {
-                        @* 2026-06-10: venta ya cobrada — 3 botones: Solo entregué, Entregar+Cobrar, Cargar cobranza *@
                         <div style="margin: 0.4rem 0 0.2rem; padding: 0.35rem 0.55rem; background: #ecfdf5; border-left: 3px solid #10b981; border-radius: 4px; font-size: 0.8rem; color: #065f46; font-weight: 600;">
                             ✅ Comprobante pagado
                         </div>
-                        <div class="mp-card-row-acciones">
-                            <button class="mp-card-btn mp-card-btn-entregar" @onclick="() => AbrirEntregar(p)">✅ Solo Entregué</button>
-                            <button class="mp-card-btn mp-card-btn-cobrar" @onclick="() => AbrirCobrar(p)">✅+💰 Entregar y Cobrar</button>
-                        </div>
-                        <button type="button"
-                                @onclick="() => AbrirCargarCobranzaSuelta(p)"
-                                style="width: 100%; margin-top: 0.5rem; padding: 0.7rem; background: #fde68a; color: #78350f; border: 1px solid #f59e0b; border-radius: 8px; font-size: 0.92rem; font-weight: 700; cursor: pointer;">
-                            💰 Cargar cobranza (suelto)
-                        </button>
                     }
-                    else
+                    else if (p.Saldo > 0 && p.Saldo < p.Total)
                     {
-                        @if (p.Saldo > 0 && p.Saldo < p.Total)
-                        {
-                            <div class="mp-card-saldo-aviso">Saldo pendiente: $ @p.Saldo.ToString("N2")</div>
-                        }
-                        <div class="mp-card-row-acciones">
-                            <button class="mp-card-btn mp-card-btn-entregar" @onclick="() => AbrirEntregar(p)">✅ Entregué</button>
-                            <button class="mp-card-btn mp-card-btn-cobrar" @onclick="() => AbrirCobrar(p)">💰 Cobré</button>
-                        </div>
+                        <div class="mp-card-saldo-aviso">Saldo pendiente: $ @p.Saldo.ToString("N2")</div>
                     }
+                    @* 2026-06-10: SIEMPRE 3 botones (pantalla uniforme para que el repartidor se acostumbre) *@
+                    <div class="mp-card-row-acciones">
+                        <button class="mp-card-btn mp-card-btn-entregar" @onclick="() => AbrirEntregar(p)">✅ Solo Entregué</button>
+                        <button class="mp-card-btn mp-card-btn-cobrar" @onclick="() => AbrirCobrar(p)">✅+💰 Entregar y Cobrar</button>
+                    </div>
+                    <button type="button"
+                            @onclick="() => AbrirCargarCobranzaSuelta(p)"
+                            style="width: 100%; margin-top: 0.5rem; padding: 0.7rem; background: #fde68a; color: #78350f; border: 1px solid #f59e0b; border-radius: 8px; font-size: 0.92rem; font-weight: 700; cursor: pointer;">
+                        💰 Cargar cobranza (suelto)
+                    </button>
                     @* 2026-06-08: botón para ver el PDF del comprobante (mercadería + dirección + total) *@
                     @if (p.TienePdf)
                     {
