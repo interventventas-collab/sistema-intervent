@@ -279,9 +279,11 @@ public class CafeOemsController : ControllerBase
 
                 var titulo = Get(cTitulo);
                 var marca = Get(cMarca);
-                var costo = GetNum(cCosto) ?? 0m;
-                var pvp = GetNum(cPvp);
-                var iva = GetNum(cIva);
+                // 2026-06-11 FIX: solo pisar costo/pvp/iva si la COLUMNA existe en el Excel.
+                // Antes pisaba con 0/null cuando faltaba la columna y borraba precios validos.
+                var costo = cCosto.HasValue ? GetNum(cCosto) : null;
+                var pvp = cPvp.HasValue ? GetNum(cPvp) : null;
+                var iva = cIva.HasValue ? GetNum(cIva) : null;
                 var barcode = Get(cBarcode);
                 var uxbDec = GetNum(cUxB);
                 int? uxb = uxbDec.HasValue ? (int)uxbDec.Value : null;
@@ -291,9 +293,10 @@ public class CafeOemsController : ControllerBase
                 {
                     existente.Descripcion = titulo ?? existente.Descripcion;
                     existente.Marca = marca ?? existente.Marca;
-                    existente.Costo = costo;
-                    existente.PvpConIva = pvp;
-                    existente.IvaPct = iva;
+                    // Solo actualizar si la columna esta presente en el Excel (cCosto/cPvp/cIva no null)
+                    if (cCosto.HasValue && costo.HasValue) existente.Costo = costo.Value;
+                    if (cPvp.HasValue && pvp.HasValue) existente.PvpConIva = pvp.Value;
+                    if (cIva.HasValue && iva.HasValue) existente.IvaPct = iva.Value;
                     existente.Barcode = barcode ?? existente.Barcode;
                     existente.UxB = uxb ?? existente.UxB;
                     existente.UrlWeb = urlWeb ?? existente.UrlWeb; // 2026-06-10
@@ -310,7 +313,7 @@ public class CafeOemsController : ControllerBase
                         Codigo = codigo,
                         Descripcion = titulo,
                         Marca = marca,
-                        Costo = costo,
+                        Costo = costo ?? 0m,
                         PvpConIva = pvp,
                         IvaPct = iva,
                         Barcode = barcode,
