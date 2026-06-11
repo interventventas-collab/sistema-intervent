@@ -64,7 +64,9 @@
 @if (modoCarga == "pedido")
 {
     @* === Vista: Cargar pedido (estilo Contabilium) === *@
-    <div class="card" style="margin-bottom:0.8rem;">
+    @* 2026-06-11: overflow:visible para que el dropdown del buscador no se corte por
+       el overflow:hidden default de .card. Antes solo se veian 4 de 7 coincidencias. *@
+    <div class="card" style="margin-bottom:0.8rem; overflow:visible;">
         <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
             <h3 style="margin:0;">🛒 Cargar stock — agregá productos uno por uno</h3>
             <div style="display:flex; align-items:center; gap:0.5rem;">
@@ -109,7 +111,8 @@
                         {
                             var todos = ProductosMatchingCarga(cargaSearch).ToList();
                             var matches = todos.Take(50).ToList();
-                            <div style="position:absolute; top:100%; left:0; right:0; background:white; border:1px solid #d1d5db; border-radius:6px; max-height:60vh; overflow-y:auto; z-index:1000; box-shadow:0 8px 24px rgba(0,0,0,0.18); margin-top:0.2rem;">
+                            @* 2026-06-11: max-height 80vh + min-height para que se vean todas las coincidencias sin cortes *@
+                            <div style="position:absolute; top:100%; left:0; right:0; background:white; border:1px solid #d1d5db; border-radius:6px; max-height:80vh; overflow-y:auto; z-index:1000; box-shadow:0 8px 24px rgba(0,0,0,0.18); margin-top:0.2rem;">
                                 @if (matches.Count == 0)
                                 {
                                     <div style="padding:0.6rem; color:#6b7280; font-size:0.85rem;">Sin resultados.</div>
