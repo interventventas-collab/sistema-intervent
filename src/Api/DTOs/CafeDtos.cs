@@ -706,7 +706,12 @@ public record CafeOemDto(
     bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt, DateTime? LastImportAt,
     int VariantesCount,
     // 2026-06-10: URL al producto en el sitio del proveedor (Colombraro, etc.)
-    string? UrlWeb = null);
+    string? UrlWeb = null,
+    // 2026-06-11: datos extraidos de la web del proveedor (scraping)
+    string? ImagenUrl = null,
+    string? DescripcionWeb = null,
+    string? EspecificacionesJson = null,
+    DateTime? ScrapedAt = null);
 
 public class CreateCafeOemRequest
 {

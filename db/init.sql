@@ -4701,3 +4701,17 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='UrlWeb' AND object_id=OBJECT_ID('Cafe_Oems'))
     ALTER TABLE Cafe_Oems ADD UrlWeb NVARCHAR(500) NULL;
 GO
+
+-- 2026-06-11: campos de scraping de la pagina del proveedor (imagen + descripcion + ficha tecnica)
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='ImagenUrl' AND object_id=OBJECT_ID('Cafe_Oems'))
+    ALTER TABLE Cafe_Oems ADD ImagenUrl NVARCHAR(500) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='DescripcionWeb' AND object_id=OBJECT_ID('Cafe_Oems'))
+    ALTER TABLE Cafe_Oems ADD DescripcionWeb NVARCHAR(2000) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='EspecificacionesJson' AND object_id=OBJECT_ID('Cafe_Oems'))
+    ALTER TABLE Cafe_Oems ADD EspecificacionesJson NVARCHAR(2000) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='ScrapedAt' AND object_id=OBJECT_ID('Cafe_Oems'))
+    ALTER TABLE Cafe_Oems ADD ScrapedAt DATETIME2 NULL;
+GO

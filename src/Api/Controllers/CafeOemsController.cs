@@ -1,6 +1,7 @@
 using Api.Data;
 using Api.DTOs;
 using Api.Models;
+using Api.Services;
 using ClosedXML.Excel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -15,7 +16,8 @@ namespace Api.Controllers;
 public class CafeOemsController : ControllerBase
 {
     private readonly AppDbContext _db;
-    public CafeOemsController(AppDbContext db) { _db = db; }
+    private readonly OemWebScrapingService _scraper;
+    public CafeOemsController(AppDbContext db, OemWebScrapingService scraper) { _db = db; _scraper = scraper; }
 
     private static CafeOemDto Map(CafeOem o, int variantesCount = 0) => new(
         o.Id, o.Codigo, o.Descripcion, o.Marca,
@@ -24,7 +26,11 @@ public class CafeOemsController : ControllerBase
         o.Barcode, o.Proveedor, o.UxB,
         o.IsActive, o.CreatedAt, o.UpdatedAt, o.LastImportAt,
         variantesCount,
-        UrlWeb: o.UrlWeb);
+        UrlWeb: o.UrlWeb,
+        ImagenUrl: o.ImagenUrl,
+        DescripcionWeb: o.DescripcionWeb,
+        EspecificacionesJson: o.EspecificacionesJson,
+        ScrapedAt: o.ScrapedAt);
 
     /// <summary>Copia los campos heredables del OEM (costo, PVP, UxB, barcode) a todas las variantes vinculadas.
     /// El % BAR sobre costo es per-variante y NO se toca aca. Devuelve cuantas variantes se actualizaron.</summary>
@@ -347,6 +353,41 @@ public class CafeOemsController : ControllerBase
             await _db.SaveChangesAsync();
 
         return Ok(new CafeOemImportResultDto(creados, actualizados, omitidos, prov, totalVariantesPropagadas, errores));
+    }
+
+    /// <summary>2026-06-11: scrapea la pagina del proveedor (URL del OEM) y guarda imagen, descripcion y ficha tecnica.</summary>
+    [HttpPost("{id:int}/scrape-web")]
+    public async Task<IActionResult> ScrapeWeb(int id)
+    {
+        var oem = await _db.CafeOems.FindAsync(id);
+        if (oem is null) return NotFound(new { error = "OEM no encontrado" });
+        if (string.IsNullOrWhiteSpace(oem.UrlWeb))
+            return BadRequest(new { error = "Este OEM no tiene URL cargada. Carga la URL primero y reintenta." });
+
+        var result = await _scraper.ScrapeAsync(oem.UrlWeb);
+        if (!string.IsNullOrEmpty(result.Error))
+            return StatusCode(502, new { error = result.Error });
+
+        oem.ImagenUrl = result.ImagenUrl ?? oem.ImagenUrl;
+        oem.DescripcionWeb = result.Descripcion ?? oem.DescripcionWeb;
+        var espJson = _scraper.SerializeEspecificaciones(result.Especificaciones);
+        if (!string.IsNullOrEmpty(espJson)) oem.EspecificacionesJson = espJson;
+        oem.ScrapedAt = DateTime.UtcNow;
+        oem.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        var n = await _db.CafeProductos.CountAsync(p => p.OemId == id);
+        return Ok(new
+        {
+            success = true,
+            oem = Map(oem, n),
+            scraped = new
+            {
+                imagen = result.ImagenUrl,
+                descripcion = result.Descripcion,
+                especificaciones = result.Especificaciones
+            }
+        });
     }
 
     /// <summary>Resuelve marca: si viene MarcaId valido la busca; si solo viene texto, busca o crea.</summary>

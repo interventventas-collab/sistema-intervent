@@ -1,0 +1,402 @@
+@page "/cafe/listas-precios-custom"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+
+<style>
+    .lc-card { background: white; border: 1px solid #e5e7eb; border-radius: 10px; padding: 0.9rem 1rem; margin-bottom: 0.7rem; transition: all 0.15s; }
+    .lc-card:hover { border-color: #1d4ed8; box-shadow: 0 2px 6px rgba(29,78,216,0.08); }
+    .lc-card-empty { background: #f9fafb; border: 2px dashed #d1d5db; border-radius: 10px; padding: 2.5rem 1rem; text-align: center; color: #6b7280; }
+    .lc-empty-row:hover { background: #f0f9ff; }
+</style>
+
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <div>
+            <h3 style="margin: 0;">📋 Listas de precios personalizadas</h3>
+            <p style="margin: 0.2rem 0 0; font-size: 0.82rem; color: #6b7280;">
+                Armá tus propias listas eligiendo productos, combos y packs. Las podés reusar cuando quieras — los precios se actualizan solos.
+            </p>
+        </div>
+        <button class="btn btn-primary" @onclick="OpenCrearModal">+ Nueva lista</button>
+    </div>
+    <div class="card-body">
+        @if (loading)
+        {
+            <div style="padding: 2rem; text-align: center; color: #6b7280;">⏳ Cargando...</div>
+        }
+        else if (listas is null || listas.Count == 0)
+        {
+            <div class="lc-card-empty">
+                <div style="font-size: 2rem; margin-bottom: 0.5rem;">📋</div>
+                <div style="font-weight: 700; color: #374151; margin-bottom: 0.3rem;">Todavía no creaste ninguna lista personalizada</div>
+                <div style="font-size: 0.88rem;">Tocá <strong>"+ Nueva lista"</strong> arriba a la derecha para crear la primera.</div>
+            </div>
+        }
+        else
+        {
+            @foreach (var l in listas)
+            {
+                <div class="lc-card">
+                    <div style="display: flex; justify-content: space-between; align-items: start; gap: 0.8rem; flex-wrap: wrap;">
+                        <div style="flex: 1; min-width: 250px;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.25rem;">
+                                <h4 style="margin: 0; font-size: 1.05rem; color: #1f2937;">@l.Nombre</h4>
+                                @if (!string.IsNullOrEmpty(l.NumeroLista))
+                                {
+                                    <span style="background: #eff6ff; color: #1d4ed8; padding: 0.1rem 0.45rem; border-radius: 4px; font-size: 0.72rem; font-weight: 700;">N° @l.NumeroLista</span>
+                                }
+                                @if (l.TipoCliente == "BAR")
+                                {
+                                    <span style="background: #fef3c7; color: #92400e; padding: 0.1rem 0.45rem; border-radius: 4px; font-size: 0.72rem; font-weight: 700;">🍺 BAR</span>
+                                }
+                                else if (l.TipoCliente == "OTRO")
+                                {
+                                    <span style="background: #e0e7ff; color: #4338ca; padding: 0.1rem 0.45rem; border-radius: 4px; font-size: 0.72rem; font-weight: 700;">🏢 Comercial</span>
+                                }
+                            </div>
+                            @if (l.ClienteId.HasValue)
+                            {
+                                <div style="font-size: 0.82rem; color: #4b5563;">
+                                    👤 <strong>@l.ClienteNombre</strong>
+                                    @if (!string.IsNullOrEmpty(l.ClienteCodigo))
+                                    {
+                                        <span style="font-family: monospace; color: #6b7280; margin-left: 0.3rem;">· @l.ClienteCodigo</span>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <div style="font-size: 0.82rem; color: #9ca3af;">Lista general (sin cliente específico)</div>
+                            }
+                            <div style="font-size: 0.78rem; color: #6b7280; margin-top: 0.3rem;">
+                                @if (l.CantidadItems == 0)
+                                {
+                                    <span style="color: #d97706; font-weight: 600;">📭 Vacía — todavía no tiene items</span>
+                                }
+                                else
+                                {
+                                    <span>📦 @l.CantidadItems item@(l.CantidadItems == 1 ? "" : "s") en @l.CantidadSecciones sección@(l.CantidadSecciones == 1 ? "" : "es")</span>
+                                }
+                                <span style="margin-left: 0.7rem;">· Actualizada @FormatFechaCorta(l.UpdatedAt)</span>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 0.3rem; flex-wrap: wrap;">
+                            <button class="btn btn-secondary btn-sm" style="font-size: 0.78rem;" @onclick="() => OpenEditarModal(l)">
+                                ✏ Editar datos
+                            </button>
+                            <button class="btn btn-secondary btn-sm" style="font-size: 0.78rem;" @onclick="() => Duplicar(l)" disabled="@duplicando">
+                                📋 Duplicar
+                            </button>
+                            <button class="btn-icon btn-delete" title="Borrar" @onclick="() => ConfirmarBorrar(l)">
+                                @SvgIcons.AlertCircle
+                            </button>
+                        </div>
+                    </div>
+                    <div style="margin-top: 0.6rem; padding-top: 0.6rem; border-top: 1px solid #f3f4f6;">
+                        <span style="font-size: 0.78rem; color: #6b7280; font-style: italic;">
+                            📝 Fase 2 (próximamente): vas a poder agregar productos, combos y packs + organizar las secciones de esta lista.
+                        </span>
+                    </div>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@* ═════════════ MODAL: Crear / Editar ═════════════ *@
+@if (showModal)
+{
+    <div class="modal-overlay" @onclick="CloseModal">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 640px;">
+            <div class="modal-header">
+                <h3>@(modalId.HasValue ? "✏ Editar lista" : "+ Nueva lista")</h3>
+                <button class="btn-close" @onclick="CloseModal" disabled="@saving">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Nombre de la lista *</label>
+                    <input class="form-input" @bind="formNombre" placeholder="Ej: Lista Bares Junio, Lista Mayoristas..." disabled="@saving" />
+                    <p style="font-size: 0.72rem; color: #6b7280; margin: 0.2rem 0 0;">Este nombre lo ves vos en el sistema. En el PDF se usa "LISTA DE PRECIOS".</p>
+                </div>
+
+                <div class="form-group" style="position: relative;">
+                    <label class="form-label">Cliente (opcional)</label>
+                    @if (formClienteId.HasValue && formClienteId > 0)
+                    {
+                        var sel = clientes?.FirstOrDefault(x => x.Id == formClienteId);
+                        <div style="display: flex; gap: 0.3rem; align-items: center;">
+                            <div class="form-input" style="flex: 1; background: #ecfdf5; border-color: #10b981; display: flex; align-items: center; gap: 0.5rem;">
+                                <span style="font-family: monospace; font-weight: 700; color: #1d4ed8;">@(sel?.Codigo ?? "—")</span>
+                                <strong>@(sel?.Nombre ?? "?")</strong>
+                                @if (sel is not null)
+                                {
+                                    <span style="font-size: 0.72rem; color: #6b7280;">· @sel.Tipo</span>
+                                }
+                            </div>
+                            <button class="btn btn-secondary" type="button" @onclick="ClearCliente">×</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <input class="form-input" @bind="clienteSearch" @bind:event="oninput"
+                               @onfocus="() => clienteSearchOpen = true"
+                               placeholder="🔍 Buscá cliente o dejá vacío para lista general" disabled="@saving" />
+                        @if (clienteSearchOpen && !string.IsNullOrWhiteSpace(clienteSearch))
+                        {
+                            var matches = ClientesMatching(clienteSearch).Take(15).ToList();
+                            <div style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #d1d5db; border-radius: 6px; max-height: 280px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 14px rgba(0,0,0,0.12); margin-top: 0.2rem;">
+                                @if (matches.Count == 0)
+                                {
+                                    <div style="padding: 0.6rem; color: #6b7280; font-size: 0.85rem;">Sin resultados.</div>
+                                }
+                                else
+                                {
+                                    @foreach (var c in matches)
+                                    {
+                                        var cId = c.Id;
+                                        <div class="lc-empty-row" @onclick="() => SelectCliente(cId)"
+                                             style="padding: 0.4rem 0.6rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem;">
+                                            <span style="font-family: monospace; color: #1d4ed8; font-weight: 700; margin-right: 0.5rem;">@c.Codigo</span>
+                                            <strong>@c.Nombre</strong>
+                                            <span style="color: #6b7280; font-size: 0.78rem;"> · @c.Tipo</span>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        }
+                    }
+                    <p style="font-size: 0.72rem; color: #6b7280; margin: 0.2rem 0 0;">Si la lista es para un cliente puntual, elegilo. Si es general, dejá vacío.</p>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Tipo de precio</label>
+                        <select class="form-input" @bind="formTipo" disabled="@saving">
+                            <option value="">(automático según cliente)</option>
+                            <option value="OTRO">🏢 Comercial</option>
+                            <option value="BAR">🍺 BAR</option>
+                        </select>
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Si elegiste cliente arriba, déjalo en automático.</p>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">N° de lista (opcional)</label>
+                        <input class="form-input" @bind="formNumero" placeholder="Ej: 5, 5/2026, Junio..." disabled="@saving" />
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Observaciones (opcional)</label>
+                    <textarea class="form-input" rows="2" @bind="formObservaciones"
+                              placeholder="Ej: Precios sujetos a disponibilidad..." disabled="@saving"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseModal" disabled="@saving">Cancelar</button>
+                <button class="btn btn-primary" @onclick="Guardar" disabled="@saving">
+                    @(saving ? "Guardando..." : (modalId.HasValue ? "Guardar cambios" : "Crear lista"))
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<ListaCustomDto>? listas;
+    private List<CafeClienteDto>? clientes;
+    private bool loading = true;
+    private bool duplicando = false;
+
+    // Modal state
+    private bool showModal = false;
+    private int? modalId;
+    private bool saving = false;
+    private string formNombre = "";
+    private int? formClienteId;
+    private string formTipo = "";
+    private string formNumero = "";
+    private string formObservaciones = "";
+
+    // Cliente search
+    private string clienteSearch = "";
+    private bool clienteSearchOpen = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarTodo();
+    }
+
+    private async Task CargarTodo()
+    {
+        loading = true;
+        try
+        {
+            var (lis, cls) = (
+                await Api.ListarListasCustomAsync(),
+                await Api.GetCafeClientesAsync()
+            );
+            listas = lis ?? new();
+            clientes = cls ?? new();
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error($"Error cargando listas: {ex.Message}");
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void OpenCrearModal()
+    {
+        modalId = null;
+        formNombre = "";
+        formClienteId = null;
+        formTipo = "";
+        formNumero = "";
+        formObservaciones = "";
+        clienteSearch = "";
+        clienteSearchOpen = false;
+        showModal = true;
+    }
+
+    private void OpenEditarModal(ListaCustomDto l)
+    {
+        modalId = l.Id;
+        formNombre = l.Nombre;
+        formClienteId = l.ClienteId;
+        formTipo = l.TipoCliente ?? "";
+        formNumero = l.NumeroLista ?? "";
+        formObservaciones = l.Observaciones ?? "";
+        clienteSearch = "";
+        clienteSearchOpen = false;
+        showModal = true;
+    }
+
+    private void CloseModal()
+    {
+        if (saving) return;
+        showModal = false;
+    }
+
+    private async Task Guardar()
+    {
+        if (string.IsNullOrWhiteSpace(formNombre))
+        {
+            ToastService.Error("Falta el nombre de la lista");
+            return;
+        }
+        saving = true;
+        try
+        {
+            var req = new CrearListaCustomRequest
+            {
+                Nombre = formNombre.Trim(),
+                ClienteId = formClienteId,
+                TipoCliente = string.IsNullOrWhiteSpace(formTipo) ? null : formTipo,
+                NumeroLista = string.IsNullOrWhiteSpace(formNumero) ? null : formNumero.Trim(),
+                Observaciones = string.IsNullOrWhiteSpace(formObservaciones) ? null : formObservaciones.Trim()
+            };
+            if (modalId.HasValue)
+            {
+                var ok = await Api.ActualizarListaCustomAsync(modalId.Value, req);
+                if (ok) ToastService.Success("Lista actualizada");
+                else ToastService.Error("No se pudo guardar");
+            }
+            else
+            {
+                var resp = await Api.CrearListaCustomAsync(req);
+                if (resp is not null) ToastService.Success($"Lista \"{formNombre}\" creada");
+                else ToastService.Error("No se pudo crear la lista");
+            }
+            showModal = false;
+            await CargarTodo();
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error($"Error: {ex.Message}");
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private async Task Duplicar(ListaCustomDto l)
+    {
+        duplicando = true;
+        try
+        {
+            var resp = await Api.DuplicarListaCustomAsync(l.Id);
+            if (resp is not null) ToastService.Success($"Duplicada como \"{l.Nombre} (copia)\"");
+            else ToastService.Error("No se pudo duplicar");
+            await CargarTodo();
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error($"Error: {ex.Message}");
+        }
+        finally
+        {
+            duplicando = false;
+        }
+    }
+
+    private async Task ConfirmarBorrar(ListaCustomDto l)
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm", $"¿Borrar la lista \"{l.Nombre}\"?");
+        if (!ok) return;
+        try
+        {
+            var done = await Api.BorrarListaCustomAsync(l.Id);
+            if (done)
+            {
+                ToastService.Success("Lista borrada");
+                await CargarTodo();
+            }
+            else ToastService.Error("No se pudo borrar");
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error($"Error: {ex.Message}");
+        }
+    }
+
+    private void SelectCliente(int id)
+    {
+        formClienteId = id;
+        clienteSearchOpen = false;
+        var cli = clientes?.FirstOrDefault(c => c.Id == id);
+        if (cli is not null && string.IsNullOrWhiteSpace(formTipo))
+        {
+            formTipo = cli.Tipo ?? "";
+        }
+    }
+
+    private void ClearCliente()
+    {
+        formClienteId = null;
+        clienteSearch = "";
+    }
+
+    private IEnumerable<CafeClienteDto> ClientesMatching(string q)
+    {
+        if (clientes is null || string.IsNullOrWhiteSpace(q)) return Enumerable.Empty<CafeClienteDto>();
+        var qq = q.Trim().ToLowerInvariant();
+        return clientes.Where(c =>
+            (c.Nombre ?? "").ToLowerInvariant().Contains(qq) ||
+            (c.Codigo ?? "").ToLowerInvariant().Contains(qq)
+        );
+    }
+
+    private static string FormatFechaCorta(DateTime d)
+    {
+        var local = d.ToLocalTime();
+        var hoy = DateTime.Now.Date;
+        if (local.Date == hoy) return $"hoy {local:HH:mm}";
+        if (local.Date == hoy.AddDays(-1)) return $"ayer {local:HH:mm}";
+        return local.ToString("dd/MM HH:mm");
+    }
+}

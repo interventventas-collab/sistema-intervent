@@ -47,6 +47,21 @@ public class CafeOem
     [MaxLength(500)]
     public string? UrlWeb { get; set; }
 
+    /// <summary>2026-06-11: URL de la imagen miniatura del producto (extraida de la web del proveedor).</summary>
+    [MaxLength(500)]
+    public string? ImagenUrl { get; set; }
+
+    /// <summary>2026-06-11: descripcion larga del producto en la web del proveedor.</summary>
+    [MaxLength(2000)]
+    public string? DescripcionWeb { get; set; }
+
+    /// <summary>2026-06-11: ficha tecnica como JSON {clave: valor} (Material, Medidas, Volumen, etc).</summary>
+    [MaxLength(2000)]
+    public string? EspecificacionesJson { get; set; }
+
+    /// <summary>2026-06-11: fecha del ultimo scraping exitoso.</summary>
+    public DateTime? ScrapedAt { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

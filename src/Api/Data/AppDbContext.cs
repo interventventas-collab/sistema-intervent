@@ -95,6 +95,9 @@ public class AppDbContext : DbContext
     public DbSet<CafeComboItem> CafeComboItems => Set<CafeComboItem>();
     public DbSet<CafeClienteProductoDescartado> CafeClienteProductosDescartados => Set<CafeClienteProductoDescartado>();
     public DbSet<CafeProductoPack> CafeProductoPacks => Set<CafeProductoPack>();
+    public DbSet<CafeListaPreciosCustom> CafeListasPreciosCustom => Set<CafeListaPreciosCustom>();
+    public DbSet<CafeListaPreciosCustomSeccion> CafeListasPreciosCustomSecciones => Set<CafeListaPreciosCustomSeccion>();
+    public DbSet<CafeListaPreciosCustomItem> CafeListasPreciosCustomItems => Set<CafeListaPreciosCustomItem>();
     public DbSet<CafeBanco> CafeBancos => Set<CafeBanco>();
     public DbSet<MeliItemSyncConfig> MeliItemSyncConfigs => Set<MeliItemSyncConfig>();
     public DbSet<MeliCommissionRate> MeliCommissionRates => Set<MeliCommissionRate>();

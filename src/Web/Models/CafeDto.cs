@@ -910,6 +910,11 @@ public class CafeOemDto
     public int? UxB { get; set; }
     /// <summary>2026-06-10: URL al producto en el sitio del proveedor.</summary>
     public string? UrlWeb { get; set; }
+    /// <summary>2026-06-11: campos extraidos de la web del proveedor.</summary>
+    public string? ImagenUrl { get; set; }
+    public string? DescripcionWeb { get; set; }
+    public string? EspecificacionesJson { get; set; }
+    public DateTime? ScrapedAt { get; set; }
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }

@@ -1629,6 +1629,13 @@ public class ApiClient
     public async Task<bool> DeleteCafeOemAsync(int id)
         => await DeleteAsync($"/api/cafe/oems/{id}");
 
+    /// <summary>2026-06-11: scrapea la web del proveedor del OEM y actualiza imagen/descripcion/ficha.</summary>
+    public async Task<HttpResponseMessage> ScrapeCafeOemWebAsync(int id)
+    {
+        await SetAuthHeaderAsync();
+        return await _http.PostAsJsonAsync($"/api/cafe/oems/{id}/scrape-web", new { });
+    }
+
     public async Task<CafeOemImportResultDto?> ImportCafeOemsAsync(Stream fileStream, string fileName, string proveedor)
     {
         await SetAuthHeaderAsync();

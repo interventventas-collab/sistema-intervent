@@ -195,6 +195,60 @@
                         </p>
                     </div>
                 </div>
+
+                @* 2026-06-11: scraping de info de la web del proveedor *@
+                @if (editing is not null && !string.IsNullOrWhiteSpace(formUrlWeb))
+                {
+                    <div style="margin-top: 0.8rem; padding: 0.8rem; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 0.5rem;">
+                        <div style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.6rem;">
+                            <button type="button" class="btn btn-secondary" @onclick="DoScrapeWeb" disabled="@scrapingNow"
+                                style="background: #2563eb; color: white; border: none;">
+                                @(scrapingNow ? "⏳ Trayendo datos..." : "🌐 Traer datos de la web")
+                            </button>
+                            @if (editing.ScrapedAt.HasValue)
+                            {
+                                <span style="font-size: 0.75rem; color: #6b7280;">
+                                    Última actualización: @editing.ScrapedAt.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                                </span>
+                            }
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(scrapeError))
+                        {
+                            <div style="padding: 0.5rem; background: #fee2e2; color: #991b1b; border-radius: 0.3rem; font-size: 0.8rem; margin-bottom: 0.5rem;">
+                                @scrapeError
+                            </div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(editing.ImagenUrl) || !string.IsNullOrWhiteSpace(editing.DescripcionWeb) || !string.IsNullOrWhiteSpace(editing.EspecificacionesJson))
+                        {
+                            <div style="display: grid; grid-template-columns: 140px 1fr; gap: 0.8rem; align-items: start;">
+                                @if (!string.IsNullOrWhiteSpace(editing.ImagenUrl))
+                                {
+                                    <img src="@editing.ImagenUrl" alt="@(editing.Descripcion ?? "")" style="width: 140px; height: 140px; object-fit: contain; background: white; border: 1px solid #e5e7eb; border-radius: 0.3rem;" />
+                                }
+                                else
+                                {
+                                    <div style="width: 140px; height: 140px; background: #e5e7eb; border-radius: 0.3rem; display: flex; align-items: center; justify-content: center; color: #9ca3af;">Sin imagen</div>
+                                }
+                                <div style="font-size: 0.8rem;">
+                                    @if (!string.IsNullOrWhiteSpace(editing.DescripcionWeb))
+                                    {
+                                        <div style="color: #374151; margin-bottom: 0.5rem;">@editing.DescripcionWeb</div>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(editing.EspecificacionesJson))
+                                    {
+                                        <div style="display: grid; grid-template-columns: auto 1fr; gap: 0.2rem 0.8rem; font-size: 0.75rem;">
+                                            @foreach (var kv in ParseEspecificaciones(editing.EspecificacionesJson))
+                                            {
+                                                <div style="color: #6b7280; font-weight: 500;">@kv.Key:</div>
+                                                <div style="color: #111827;">@kv.Value</div>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" @onclick="CloseForm" disabled="@saving">Cancelar</button>
@@ -377,6 +431,9 @@
     private decimal? formIvaPct = 21m;
     private int? formUxB;
     private string formUrlWeb = ""; // 2026-06-10
+    // 2026-06-11: scraping de la web del proveedor
+    private bool scrapingNow;
+    private string? scrapeError;
 
     // Import
     private bool showImport;
@@ -560,5 +617,72 @@
         if (b < 1024) return $"{b} B";
         if (b < 1024 * 1024) return $"{b / 1024.0:F1} KB";
         return $"{b / (1024.0 * 1024.0):F1} MB";
+    }
+
+    // 2026-06-11: traer datos de la web del proveedor (scraping)
+    private async Task DoScrapeWeb()
+    {
+        if (editing is null) return;
+        if (string.IsNullOrWhiteSpace(formUrlWeb))
+        {
+            scrapeError = "Cargá primero la URL del producto y guardá el OEM antes de traer datos.";
+            return;
+        }
+        // Si la URL del formulario es diferente a la del OEM en base, exigir guardar primero
+        if (!string.Equals(formUrlWeb.Trim(), editing.UrlWeb?.Trim() ?? "", StringComparison.OrdinalIgnoreCase))
+        {
+            scrapeError = "Guardá primero el OEM con la URL nueva, después tocá 'Traer datos'.";
+            return;
+        }
+        scrapingNow = true;
+        scrapeError = null;
+        try
+        {
+            var resp = await Api.ScrapeCafeOemWebAsync(editing.Id);
+            if (resp.IsSuccessStatusCode)
+            {
+                var data = await resp.Content.ReadFromJsonAsync<ScrapeResponseDto>();
+                if (data?.oem is not null)
+                {
+                    editing = data.oem;
+                    if (oems is not null)
+                    {
+                        var idx = oems.FindIndex(x => x.Id == editing.Id);
+                        if (idx >= 0) oems[idx] = editing;
+                    }
+                    ToastService.Success("Datos traídos de la web del proveedor");
+                }
+            }
+            else
+            {
+                var err = await resp.Content.ReadAsStringAsync();
+                scrapeError = $"No se pudieron traer los datos. {err}";
+            }
+        }
+        catch (Exception ex)
+        {
+            scrapeError = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            scrapingNow = false;
+        }
+    }
+
+    // 2026-06-11: parsear el JSON de especificaciones a un diccionario para mostrar en la UI
+    private static IEnumerable<KeyValuePair<string, string>> ParseEspecificaciones(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) yield break;
+        Dictionary<string, string>? dict = null;
+        try { dict = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(json); }
+        catch { yield break; }
+        if (dict is null) yield break;
+        foreach (var kv in dict) yield return kv;
+    }
+
+    private class ScrapeResponseDto
+    {
+        public bool success { get; set; }
+        public CafeOemDto? oem { get; set; }
     }
 }
