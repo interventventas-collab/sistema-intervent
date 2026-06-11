@@ -97,17 +97,18 @@
         }
         else
         {
-            var totalGeneral = arqueosTodos.Sum(a => a.TotalPendiente + a.TotalAprobado);
-            var cantTotal = arqueosTodos.Sum(a => a.CantPendiente + a.CantAprobado);
+            @* Total a rendir = solo PENDIENTES (las aprobadas ya las rindio Osmar). *@
+            var totalGeneral = arqueosTodos.Sum(a => a.TotalPendiente);
+            var cantTotal = arqueosTodos.Sum(a => a.CantPendiente);
             <div class="arq-todos-header">
                 <div class="arq-todos-label">💰 Total general a rendir — @fecha.ToString("dd/MM/yyyy")</div>
                 <div class="arq-todos-monto">$ @totalGeneral.ToString("N2")</div>
-                <div class="arq-todos-meta">@cantTotal cobranza(s) · @arqueosTodos.Count repartidor(es)</div>
+                <div class="arq-todos-meta">@cantTotal cobranza(s) pendiente(s) · @arqueosTodos.Count repartidor(es)</div>
             </div>
 
             @foreach (var arq in arqueosTodos)
             {
-                var total = arq.TotalPendiente + arq.TotalAprobado;
+                var total = arq.TotalPendiente;
                 var abierto = repartidoresAbiertos.Contains(arq.RepartidorId);
                 var arqLocal = arq;
                 <div class="arq-rep-card">
@@ -115,7 +116,7 @@
                         <div>
                             <div class="arq-rep-nombre">🧑 @arq.RepartidorNombre</div>
                             <div class="arq-rep-meta">
-                                @arq.CantPendiente pendiente(s) + @arq.CantAprobado aprobada(s)
+                                @arq.CantPendiente pendiente(s) de rendir · @arq.CantAprobado ya rendida(s)
                             </div>
                         </div>
                         <div style="display: flex; align-items: center;">
@@ -184,12 +185,13 @@
     }
     else
     {
-        var total = arqueo.TotalPendiente + arqueo.TotalAprobado;
+        @* Total a rendir = solo PENDIENTES. Las APROBADAS ya las rindio (Osmar las confirmo). *@
+        var total = arqueo.TotalPendiente;
         <div class="arq-totales">
             <div class="arq-card-total total">
                 <div class="arq-label">💰 TOTAL A RENDIR</div>
                 <div class="arq-monto" style="color: #1e40af;">$@total.ToString("N2")</div>
-                <div class="arq-meta">@(arqueo.CantPendiente + arqueo.CantAprobado) cobranzas en efectivo</div>
+                <div class="arq-meta">@arqueo.CantPendiente cobranza(s) pendiente(s) de rendir</div>
             </div>
             <div class="arq-card-total pendiente">
                 <div class="arq-label">🟡 Pendientes de aprobar</div>
