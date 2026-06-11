@@ -652,7 +652,35 @@
                                             <td>@v.CurrencyId @v.Price.ToString("N2")</td>
                                             <td style="text-align:center;">@v.AvailableQuantity</td>
                                             <td><span class="status-badge @GetStatusClass(v.Status)" style="font-size:0.7rem;">@GetStatusLabel(v.Status)</span></td>
-                                            <td colspan="3"></td>
+                                            @* 2026-06-11: en hijas de familia mostrar Tipo + Cuotas + NETO calculado en vivo *@
+                                            <td style="font-size:0.78rem;">
+                                                @if (grp.IsFamily)
+                                                {
+                                                    <strong style="color:@(GetListingTypeLabel(v.ListingTypeId) == "Premium" ? "#7c3aed" : "#1d4ed8");">@GetListingTypeLabel(v.ListingTypeId)</strong>
+                                                }
+                                            </td>
+                                            <td style="font-size:0.78rem;">
+                                                @if (grp.IsFamily)
+                                                {
+                                                    var label = GetCuotasLabel(v.InstallmentTag);
+                                                    <span style="background:#f3f4f6; padding:0.1rem 0.4rem; border-radius:3px;">@label</span>
+                                                    @if (v.FreeShipping)
+                                                    {
+                                                        <span title="Envío gratis" style="margin-left:0.2rem;">🚚</span>
+                                                    }
+                                                }
+                                            </td>
+                                            <td style="font-size:0.82rem; text-align:right;">
+                                                @if (grp.IsFamily)
+                                                {
+                                                    var neto = CalcularNetoMla(v);
+                                                    var pctText = $"{CalcularComisionTotalPct(v.InstallmentTag):F1}%";
+                                                    <div style="line-height:1.15;">
+                                                        <strong style="color:#16a34a;">$@neto.ToString("N0")</strong>
+                                                        <div style="font-size:0.7rem; color:#6b7280;">neto · @pctText comis.</div>
+                                                    </div>
+                                                }
+                                            </td>
                                             <td class="td-product" @onclick:stopPropagation="true">
                                                 @if (v.CafeProductoId.HasValue)
                                                 {
@@ -5044,6 +5072,46 @@
             }
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    // 2026-06-11: helpers de comisiones MeLi para mostrar tipo/cuotas/neto en filas hijas
+    // (mismos valores que usa el backend MeliComisionHelper.cs)
+    private const decimal COMISION_CATEGORIA_DEFAULT_PCT = 13m;
+    private const decimal COSTO_ENVIO_GRATIS_ESTIMADO = 7470m;
+
+    private static decimal GetFinanciacionPct(string? installmentTag)
+    {
+        if (string.IsNullOrWhiteSpace(installmentTag)) return 0m;
+        var l = installmentTag.ToLowerInvariant();
+        if (l.Contains("12x_campaign")) return 19.2m;
+        if (l.Contains("9x_campaign")) return 15.7m;
+        if (l.Contains("6x_campaign")) return 12.3m;
+        if (l.Contains("3x_campaign")) return 8.4m;
+        if (l.Contains("co-funded")) return 5m;
+        return 0m;
+    }
+
+    private static decimal CalcularComisionTotalPct(string? installmentTag)
+        => COMISION_CATEGORIA_DEFAULT_PCT + GetFinanciacionPct(installmentTag);
+
+    private static decimal CalcularNetoMla(MeliItemDto v)
+    {
+        var totalPct = CalcularComisionTotalPct(v.InstallmentTag);
+        var comision = Math.Round(v.Price * totalPct / 100m, 2);
+        var shipping = v.FreeShipping ? COSTO_ENVIO_GRATIS_ESTIMADO : 0m;
+        return Math.Round(v.Price - comision - shipping, 0);
+    }
+
+    private static string GetCuotasLabel(string? installmentTag)
+    {
+        if (string.IsNullOrWhiteSpace(installmentTag)) return "Sin cuotas";
+        var l = installmentTag.ToLowerInvariant();
+        if (l.Contains("12x_campaign")) return "12 cuotas";
+        if (l.Contains("9x_campaign")) return "9 cuotas";
+        if (l.Contains("6x_campaign")) return "6 cuotas";
+        if (l.Contains("3x_campaign")) return "3 cuotas";
+        if (l.Contains("co-funded")) return "3-12 c/int bajo";
+        return "Sin cuotas";
     }
 
     // ==================================================
