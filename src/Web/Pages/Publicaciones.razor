@@ -5078,6 +5078,11 @@
     // (mismos valores que usa el backend MeliComisionHelper.cs)
     private const decimal COMISION_CATEGORIA_DEFAULT_PCT = 13m;
     private const decimal COSTO_ENVIO_GRATIS_ESTIMADO = 7470m;
+    private const decimal CARGO_FIJO_UMBRAL = 30000m;
+    private const decimal CARGO_FIJO_MONTO = 2500m;
+
+    private static decimal GetCargoFijoMla(decimal precioMeLi)
+        => precioMeLi < CARGO_FIJO_UMBRAL ? CARGO_FIJO_MONTO : 0m;
 
     private static decimal GetFinanciacionPct(string? installmentTag)
     {
@@ -5098,8 +5103,9 @@
     {
         var totalPct = CalcularComisionTotalPct(v.InstallmentTag);
         var comision = Math.Round(v.Price * totalPct / 100m, 2);
+        var cargoFijo = GetCargoFijoMla(v.Price);
         var shipping = v.FreeShipping ? COSTO_ENVIO_GRATIS_ESTIMADO : 0m;
-        return Math.Round(v.Price - comision - shipping, 0);
+        return Math.Round(v.Price - comision - cargoFijo - shipping, 0);
     }
 
     private static string GetCuotasLabel(string? installmentTag)

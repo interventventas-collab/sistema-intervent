@@ -2251,6 +2251,7 @@ public class MeliController : ControllerBase
                 m.ComisionFinanciacionPct,
                 m.ComisionTotalPct,
                 m.ComisionMonto,
+                m.CargoFijo,
                 m.ShippingCostoEstimado,
                 m.Neto,
                 m.PrecioFactor,

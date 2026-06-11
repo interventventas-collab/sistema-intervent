@@ -2,15 +2,23 @@ namespace Api.Services;
 
 /// <summary>
 /// 2026-06-11: Tabla maestra de comisiones de financiación de MeLi (Opción C — tabla fija).
-/// Basada en datos relevados del Excel de Integraly (familia PAST1).
+/// Basada en datos relevados del Excel de Integraly + Simulador de costos de MeLi.
 /// Si MeLi cambia las tarifas, actualizar acá.
 ///
 /// La comisión TOTAL que cobra MeLi por venta = Comisión por Categoría (13% galletitas, varía)
 ///                                              + Comisión por Financiación (depende del tipo de cuotas)
-///                                              + Cargo Fijo (~$1.500 si precio menor a $30k)
+///                                              + Cargo Fijo (~$2.500 si precio menor a $30k)
 /// </summary>
 public static class MeliComisionHelper
 {
+    /// <summary>2026-06-11: Cargo fijo que MeLi cobra cuando el precio es menor al umbral.
+    /// Confirmado contra el simulador oficial: $22.525 → cargo fijo $2.505. Ajustar si MeLi cambia.</summary>
+    public static decimal GetCargoFijo(decimal precioMeLi)
+    {
+        // Umbral conocido: si precio < $30.000 ARS, cobra cargo fijo. Si >= $30.000, $0.
+        if (precioMeLi < 30000m) return 2500m;
+        return 0m;
+    }
     /// <summary>Porcentaje extra que MeLi cobra según el tipo de cuotas del InstallmentTag.</summary>
     public static decimal GetFinanciacionPct(string? installmentTag)
     {
@@ -74,6 +82,7 @@ public static class MeliComisionHelper
         decimal ComisionFinanciacionPct,
         decimal ComisionTotalPct,
         decimal ComisionMonto,
+        decimal CargoFijo,
         decimal ShippingCostoEstimado,
         decimal Neto,
         decimal? PrecioFactor,
@@ -94,11 +103,12 @@ public static class MeliComisionHelper
         var financiacionPct = GetFinanciacionPct(installmentTag);
         var totalPct = comisionCategoriaPct + financiacionPct;
         var comisionMonto = System.Math.Round(precioMeLi * totalPct / 100m, 2);
-
+        // 2026-06-11: cargo fijo de MeLi (cuando precio < $30k)
+        var cargoFijo = GetCargoFijo(precioMeLi);
         // Si tiene envío gratis y nos pasaron un costo estimado, lo restamos del neto
         var shipping = freeShipping ? envioGratisCostoEstimado : 0m;
 
-        var neto = System.Math.Round(precioMeLi - comisionMonto - shipping, 2);
+        var neto = System.Math.Round(precioMeLi - comisionMonto - cargoFijo - shipping, 2);
 
         return new AnalisisMargenMlaItem(
             MeliItemId: mlaId,
@@ -112,6 +122,7 @@ public static class MeliComisionHelper
             ComisionFinanciacionPct: financiacionPct,
             ComisionTotalPct: totalPct,
             ComisionMonto: comisionMonto,
+            CargoFijo: cargoFijo,
             ShippingCostoEstimado: shipping,
             Neto: neto,
             PrecioFactor: precioFactor,
