@@ -75,7 +75,8 @@ public class MeliItemService
                 i.VariationId,
                 i.VariationAttributes,
                 null,  // LastStockPushedToMeli — se completa abajo en memoria
-                true, false, 0m, 0m, null,  // SyncStock/SyncPrecio/AjustePct/AjusteFijo/AjusteRedondeo — se completan abajo desde MeliItemSyncConfigs
+                true, false, 0m, 0m, null,  // SyncStock/SyncPrecio/AjustePct/AjusteFijo/AjusteRedondeo
+                false, null, null,  // 2026-06-11: PrecioIndependiente, PrecioFactor, PrecioBaseRef
                 null,  // PrecioOtroConIvaCalc — se completa abajo en memoria
                 null   // 2026-06-01: ProductCost — se completa abajo en memoria
                 ))
@@ -176,7 +177,10 @@ public class MeliItemService
                     SyncPrecio = cfg.SyncPrecio,
                     AjustePct = cfg.AjustePct,
                     AjusteFijo = cfg.AjusteFijo,
-                    AjusteRedondeo = cfg.AjusteRedondeo
+                    AjusteRedondeo = cfg.AjusteRedondeo,
+                    PrecioIndependiente = cfg.PrecioIndependiente,
+                    PrecioFactor = cfg.PrecioFactor,
+                    PrecioBaseRef = cfg.PrecioBaseRef
                 };
             }
         }
@@ -493,8 +497,9 @@ public class MeliItemService
         0, null, item.LogisticType,
         item.VariationId, item.VariationAttributes,
         null, // LastStockPushedToMeli
-        true, false, 0m, 0m, null, // SyncConfig (no se carga en este path single-item, queda en default)
-        null); // PrecioOtroConIvaCalc (no se carga en este path)
+        true, false, 0m, 0m, null, // SyncConfig (queda en default)
+        false, null, null, // 2026-06-11: PrecioIndependiente, PrecioFactor, PrecioBaseRef
+        null); // PrecioOtroConIvaCalc
 
     public async Task<int> DeleteItemsAsync(List<int> ids)
     {

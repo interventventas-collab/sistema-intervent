@@ -165,6 +165,10 @@ public record MeliItemDto(
     decimal AjustePct = 0m,
     decimal AjusteFijo = 0m,
     string? AjusteRedondeo = null,
+    // 2026-06-11: precio independiente por MLA (factor sobre PrecioOtro, p/familias con cuotas)
+    bool PrecioIndependiente = false,
+    decimal? PrecioFactor = null,
+    decimal? PrecioBaseRef = null,
     // PrecioOtroConIvaCalc: precio base del sistema con IVA (suma de componentes si es combo).
     // Usado como base para calcular el preview del ajuste en /publicaciones,
     // y para el push push-precio-ajustado (que NO usa item.Price = MeLi cache).

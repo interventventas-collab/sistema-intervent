@@ -496,6 +496,25 @@
                                     <td>@item.AccountNickname</td>
                                     <td class="td-ajuste" @onclick:stopPropagation="true">
                                         @{ var aj1 = GetAjuste(item); var prev1 = PreviewPrecioAjustado(item); }
+                                        @* 2026-06-11: chip PrecioIndependiente arriba del ajuste *@
+                                        @if (item.PrecioIndependiente && item.PrecioFactor.HasValue)
+                                        {
+                                            <div style="display:flex; gap:0.3rem; align-items:center; flex-wrap:wrap; margin-bottom:0.3rem; padding:0.25rem 0.5rem; background:#dbeafe; color:#1d4ed8; border-radius:0.3rem; font-size:0.72rem; font-weight:600;">
+                                                <span>🔒 INDEP × @item.PrecioFactor.Value.ToString("F4")</span>
+                                                @if (item.PrecioBaseRef.HasValue)
+                                                {
+                                                    <span style="font-weight:400; opacity:0.85;">(base $@item.PrecioBaseRef.Value.ToString("N0"))</span>
+                                                }
+                                                <button style="font-size:0.65rem; padding:0.05rem 0.3rem; background:#fff; color:#1d4ed8; border:1px solid #93c5fd; border-radius:0.2rem; cursor:pointer;" @onclick="() => RecalcularFactorPub(item)" title="Recalcular factor con precio actual MeLi">↻</button>
+                                                <button style="font-size:0.65rem; padding:0.05rem 0.3rem; background:#fef3c7; color:#92400e; border:1px solid #fde68a; border-radius:0.2rem; cursor:pointer;" @onclick="() => DesmarcarIndepPub(item)" title="Quitar precio independiente">✕</button>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div style="margin-bottom:0.3rem;">
+                                                <button style="font-size:0.68rem; padding:0.1rem 0.4rem; background:#f3f4f6; color:#374151; border:1px solid #d1d5db; border-radius:0.25rem; cursor:pointer;" @onclick="() => MarcarIndepPub(item)" title="Activar precio independiente (factor sobre PrecioOtro)">🔒 Marcar indep.</button>
+                                            </div>
+                                        }
                                         <div class="ajuste-pill @(HasAjuste(item) ? "has-ajuste" : "")">
                                             <span class="ajuste-prefix">%</span>
                                             <input type="number" step="any" class="ajuste-input"
@@ -4838,5 +4857,68 @@
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
         finally { isPushing = false; }
+    }
+
+    // 2026-06-11: handlers PrecioIndependiente
+    private async Task MarcarIndepPub(MeliItemDto item)
+    {
+        try
+        {
+            var resp = await Api.MarcarPrecioIndependienteAsync(item.MeliItemId);
+            if (resp.IsSuccessStatusCode)
+            {
+                var json = await resp.Content.ReadAsStringAsync();
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                item.PrecioIndependiente = true;
+                if (doc.RootElement.TryGetProperty("factor", out var fE)) item.PrecioFactor = fE.GetDecimal();
+                if (doc.RootElement.TryGetProperty("precioBase", out var bE)) item.PrecioBaseRef = bE.GetDecimal();
+                ToastService.Success($"Marcada · Factor × {item.PrecioFactor:F4}");
+                _cachedFiltered = null;
+                StateHasChanged();
+            }
+            else
+            {
+                var err = await resp.Content.ReadAsStringAsync();
+                ToastService.Error("Error: " + err);
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task DesmarcarIndepPub(MeliItemDto item)
+    {
+        try
+        {
+            var resp = await Api.DesmarcarPrecioIndependienteAsync(item.MeliItemId);
+            if (resp.IsSuccessStatusCode)
+            {
+                item.PrecioIndependiente = false;
+                item.PrecioFactor = null;
+                item.PrecioBaseRef = null;
+                ToastService.Success("Desmarcada. Vuelve al modo normal de push.");
+                _cachedFiltered = null;
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task RecalcularFactorPub(MeliItemDto item)
+    {
+        try
+        {
+            var resp = await Api.RecalcularFactorAsync(item.MeliItemId);
+            if (resp.IsSuccessStatusCode)
+            {
+                var json = await resp.Content.ReadAsStringAsync();
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("factor", out var fE)) item.PrecioFactor = fE.GetDecimal();
+                if (doc.RootElement.TryGetProperty("precioBase", out var bE)) item.PrecioBaseRef = bE.GetDecimal();
+                ToastService.Success($"Factor recalculado: × {item.PrecioFactor:F4}");
+                _cachedFiltered = null;
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
     }
 }
