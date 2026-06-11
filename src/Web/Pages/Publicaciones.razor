@@ -674,10 +674,30 @@
                                                 @if (grp.IsFamily)
                                                 {
                                                     var neto = CalcularNetoMla(v);
+                                                    var ganancia = CalcularGananciaRealMla(v);
+                                                    var margenPct = CalcularMargenPctMla(v);
                                                     var pctText = $"{CalcularComisionTotalPct(v.InstallmentTag):F1}%";
                                                     <div style="line-height:1.15;">
-                                                        <strong style="color:#16a34a;">$@neto.ToString("N0")</strong>
-                                                        <div style="font-size:0.7rem; color:#6b7280;">neto · @pctText comis.</div>
+                                                        @if (ganancia.HasValue)
+                                                        {
+                                                            <strong style="color:#16a34a; font-size:0.95rem;" title="Ganancia real = lo que MeLi te deposita ($@neto.ToString("N0")) − costo del producto ($@v.ProductCost!.Value.ToString("N0"))">
+                                                                $@ganancia.Value.ToString("N0")
+                                                            </strong>
+                                                            <div style="font-size:0.7rem; color:#6b7280;">
+                                                                ganancia · @(margenPct?.ToString("F1"))% margen
+                                                            </div>
+                                                            <div style="font-size:0.65rem; color:#9ca3af;" title="MeLi te paga este monto antes de descontar costo">
+                                                                (neto $@neto.ToString("N0") · @pctText comis.)
+                                                            </div>
+                                                        }
+                                                        else
+                                                        {
+                                                            <strong style="color:#16a34a;">$@neto.ToString("N0")</strong>
+                                                            <div style="font-size:0.7rem; color:#6b7280;">neto · @pctText comis.</div>
+                                                            <div style="font-size:0.65rem; color:#dc2626;" title="No hay costo cargado en el producto del sistema">
+                                                                ⚠ sin costo en sistema
+                                                            </div>
+                                                        }
                                                     </div>
                                                 }
                                             </td>
@@ -5106,6 +5126,24 @@
         var cargoFijo = GetCargoFijoMla(v.Price);
         var shipping = v.FreeShipping ? COSTO_ENVIO_GRATIS_ESTIMADO : 0m;
         return Math.Round(v.Price - comision - cargoFijo - shipping, 0);
+    }
+
+    /// <summary>2026-06-11: ganancia real = neto MeLi (lo que te depositan) - costo del producto.
+    /// Si no hay costo cargado en el sistema, devuelve null.</summary>
+    private static decimal? CalcularGananciaRealMla(MeliItemDto v)
+    {
+        if (!v.ProductCost.HasValue || v.ProductCost.Value <= 0m) return null;
+        var neto = CalcularNetoMla(v);
+        return Math.Round(neto - v.ProductCost.Value, 0);
+    }
+
+    /// <summary>2026-06-11: margen % sobre el costo. Ej: gano $6.000 / costo $10.000 = 60%</summary>
+    private static decimal? CalcularMargenPctMla(MeliItemDto v)
+    {
+        if (!v.ProductCost.HasValue || v.ProductCost.Value <= 0m) return null;
+        var ganancia = CalcularGananciaRealMla(v);
+        if (!ganancia.HasValue) return null;
+        return Math.Round(ganancia.Value / v.ProductCost.Value * 100m, 1);
     }
 
     private static string GetCuotasLabel(string? installmentTag)
