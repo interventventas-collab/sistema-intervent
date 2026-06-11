@@ -117,6 +117,13 @@ public class HorasExtrasController : ControllerBase
             .OrderByDescending(r => r.Fecha)
             .ToListAsync();
 
+        // 2026-06-12: feriados del rango (los dias feriados NO suman al esperado — esos dias
+        // valen 0 horas. Si el empleado igual trabaja, todas sus horas son extras).
+        var feriados = await _db.HorasExtrasFeriados
+            .Where(f => f.Fecha >= desde && f.Fecha <= ciclo.Hasta)
+            .Select(f => f.Fecha.Date).ToListAsync();
+        var feriadosSet = new HashSet<DateTime>(feriados);
+
         var registroSel = registros.FirstOrDefault(r => r.Fecha == fechaSel);
         // 2026-06-03 FIX: desde 02/06 el publico guarda Cantidad=0 y el calculo lo hace el admin.
         // Antes el mobile mostraba r.Cantidad → siempre 0 para registros nuevos. Ahora mostramos
@@ -134,7 +141,8 @@ public class HorasExtrasController : ControllerBase
         {
             if (!r.HoraEntrada.HasValue || !r.HoraSalida.HasValue) return null;
             var trab = HorasTrabajadas(r);
-            var jornada = emp.HorasParaDia(r.Fecha.DayOfWeek);
+            // 2026-06-12: si es feriado, jornada esperada = 0 (todo es extra).
+            var jornada = feriadosSet.Contains(r.Fecha.Date) ? 0m : emp.HorasParaDia(r.Fecha.DayOfWeek);
             return Math.Round(trab - jornada, 2, MidpointRounding.AwayFromZero);
         }
         var ultimos7 = registros.Where(r => r.Fecha >= hace7 && r.Fecha <= hoy).OrderByDescending(r => r.Fecha)
@@ -365,6 +373,15 @@ public class HorasExtrasController : ControllerBase
             .Where(r => r.Fecha >= inicioMes)
             .ToListAsync();
 
+        // 2026-06-12: feriados — usados para descontar dias del "esperado" en todos los calculos
+        // de horas (semana / mes / ciclo). Traemos un rango amplio para cubrir ciclos personalizados
+        // que arrancan en el mes anterior.
+        var rangoFeriadosDesde = inicioMes.AddDays(-45);
+        var feriados = await _db.HorasExtrasFeriados
+            .Where(f => f.Fecha >= rangoFeriadosDesde && f.Fecha <= hoy.AddDays(60))
+            .Select(f => f.Fecha.Date).ToListAsync();
+        var feriadosSet = new HashSet<DateTime>(feriados);
+
         var ultimasCargas = await _db.HorasExtrasRegistros
             .GroupBy(r => r.EmpleadoId)
             .Select(g => new { EmpId = g.Key, Ult = g.Max(r => (DateTime?)(r.UpdatedAt ?? r.CreatedAt)) })
@@ -389,9 +406,11 @@ public class HorasExtrasController : ControllerBase
             decimal trabMes = regsMes.Sum(r => HorasTrabajadas(r));
             // Esperado = sumar HorasParaDia para cada dia del rango (independiente de si cargo o no)
             decimal espSemana = 0m;
-            for (var d = inicioSemana; d <= hoy; d = d.AddDays(1)) espSemana += e.HorasParaDia(d.DayOfWeek);
+            for (var d = inicioSemana; d <= hoy; d = d.AddDays(1))
+                if (!feriadosSet.Contains(d.Date)) espSemana += e.HorasParaDia(d.DayOfWeek);
             decimal espMes = 0m;
-            for (var d = inicioMes; d <= hoy; d = d.AddDays(1)) espMes += e.HorasParaDia(d.DayOfWeek);
+            for (var d = inicioMes; d <= hoy; d = d.AddDays(1))
+                if (!feriadosSet.Contains(d.Date)) espMes += e.HorasParaDia(d.DayOfWeek);
             decimal jornadaSem = e.HorasLunes + e.HorasMartes + e.HorasMiercoles + e.HorasJueves
                                + e.HorasViernes + e.HorasSabado + e.HorasDomingo;
             // 2026-06-03: ciclo de liquidacion del empleado (puede ser personalizado o mes calendario).
@@ -420,7 +439,8 @@ public class HorasExtrasController : ControllerBase
             }
             espCiclo = 0m;
             var hastaCiclo = ciclo.Hasta < hoy ? ciclo.Hasta : hoy;  // no contar dias futuros del ciclo
-            for (var d = ciclo.Desde; d <= hastaCiclo; d = d.AddDays(1)) espCiclo += e.HorasParaDia(d.DayOfWeek);
+            for (var d = ciclo.Desde; d <= hastaCiclo; d = d.AddDays(1))
+                if (!feriadosSet.Contains(d.Date)) espCiclo += e.HorasParaDia(d.DayOfWeek);
 
             return new AdminEmpleadoDto(
                 e.Id, e.Nombre, e.Token, e.IsActive,

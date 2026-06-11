@@ -113,6 +113,7 @@ public class AppDbContext : DbContext
     public DbSet<HorasExtrasConfigFichada> HorasExtrasConfigFichadas => Set<HorasExtrasConfigFichada>();
     public DbSet<HorasExtrasWebAuthnCredential> HorasExtrasWebAuthnCredentials => Set<HorasExtrasWebAuthnCredential>();
     public DbSet<HorasExtrasFichadaMeta> HorasExtrasFichadaMetas => Set<HorasExtrasFichadaMeta>();
+    public DbSet<HorasExtrasFeriado> HorasExtrasFeriados => Set<HorasExtrasFeriado>();
 
     // Viajes de empleados (carga diaria + pagos + saldo, similar a horas extras)
     public DbSet<ViajesEmpleado> ViajesEmpleados => Set<ViajesEmpleado>();
