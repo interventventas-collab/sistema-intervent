@@ -176,6 +176,25 @@
                         <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">u/bulto</p>
                     </div>
                 </div>
+                @* 2026-06-10: URL al producto en el sitio del proveedor (ej: colombraro.com.ar) *@
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">🔗 URL del producto en la web del proveedor</label>
+                        <input class="form-input" @bind="formUrlWeb" placeholder="https://www.colombraro.com.ar/producto/..." />
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">
+                            @if (!string.IsNullOrWhiteSpace(formUrlWeb))
+                            {
+                                <a href="@formUrlWeb" target="_blank" rel="noopener" style="color:#2563eb; text-decoration:underline;">
+                                    🌐 Abrir página del producto
+                                </a>
+                            }
+                            else
+                            {
+                                <span>Opcional. Lo usás para ver foto, dimensiones y descripción larga.</span>
+                            }
+                        </p>
+                    </div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" @onclick="CloseForm" disabled="@saving">Cancelar</button>
@@ -355,6 +374,7 @@
     private decimal? formPvpConIva;
     private decimal? formIvaPct = 21m;
     private int? formUxB;
+    private string formUrlWeb = ""; // 2026-06-10
 
     // Import
     private bool showImport;
@@ -394,6 +414,7 @@
         formCodigo = ""; formDescripcion = ""; formMarca = "";
         formProveedor = "COLOMBRARO"; formBarcode = "";
         formCosto = 0; formPvpConIva = null; formIvaPct = 21m; formUxB = null;
+        formUrlWeb = ""; // 2026-06-10
         formError = null;
         showForm = true;
     }
@@ -410,6 +431,7 @@
         formPvpConIva = o.PvpConIva;
         formIvaPct = o.IvaPct;
         formUxB = o.UxB;
+        formUrlWeb = o.UrlWeb ?? ""; // 2026-06-10
         formError = null;
         showForm = true;
     }
@@ -434,7 +456,8 @@
                     Costo = formCosto,
                     PvpConIva = formPvpConIva,
                     IvaPct = formIvaPct,
-                    UxB = formUxB
+                    UxB = formUxB,
+                    UrlWeb = string.IsNullOrWhiteSpace(formUrlWeb) ? null : formUrlWeb.Trim() // 2026-06-10
                 });
                 ToastService.Success("OEM creado");
             }
@@ -451,7 +474,10 @@
                     PvpConIva = formPvpConIva,
                     IvaPct = formIvaPct,
                     UxB = formUxB,
-                    ClearUxB = !formUxB.HasValue
+                    ClearUxB = !formUxB.HasValue,
+                    // 2026-06-10
+                    UrlWeb = string.IsNullOrWhiteSpace(formUrlWeb) ? null : formUrlWeb.Trim(),
+                    ClearUrlWeb = string.IsNullOrWhiteSpace(formUrlWeb)
                 });
                 if (updated is not null && updated.VariantesCount > 0)
                     ToastService.Success($"OEM actualizado · {updated.VariantesCount} variante{(updated.VariantesCount == 1 ? "" : "s")} propagada{(updated.VariantesCount == 1 ? "" : "s")}");

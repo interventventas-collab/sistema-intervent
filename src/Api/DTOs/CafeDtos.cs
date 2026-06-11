@@ -704,7 +704,9 @@ public record CafeOemDto(
     decimal Costo, decimal? PvpConIva, decimal? IvaPct,
     string? Barcode, string? Proveedor, int? UxB,
     bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt, DateTime? LastImportAt,
-    int VariantesCount);
+    int VariantesCount,
+    // 2026-06-10: URL al producto en el sitio del proveedor (Colombraro, etc.)
+    string? UrlWeb = null);
 
 public class CreateCafeOemRequest
 {
@@ -718,6 +720,7 @@ public class CreateCafeOemRequest
     public string? Barcode { get; set; }
     public string? Proveedor { get; set; }
     public int? UxB { get; set; }
+    public string? UrlWeb { get; set; }
 }
 
 public class UpdateCafeOemRequest
@@ -734,6 +737,8 @@ public class UpdateCafeOemRequest
     public string? Proveedor { get; set; }
     public int? UxB { get; set; }
     public bool ClearUxB { get; set; }
+    public string? UrlWeb { get; set; }
+    public bool ClearUrlWeb { get; set; }
     public bool? IsActive { get; set; }
 }
 

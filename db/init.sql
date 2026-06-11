@@ -4696,3 +4696,8 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='SinPrecioBar' AND object_id=OBJECT_ID('Cafe_Productos'))
     ALTER TABLE Cafe_Productos ADD SinPrecioBar BIT NOT NULL CONSTRAINT DF_CafeProductos_SinPrecioBar DEFAULT 0;
 GO
+
+-- 2026-06-10: URL web del producto Colombraro (de la lista oficial)
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='UrlWeb' AND object_id=OBJECT_ID('Cafe_Oems'))
+    ALTER TABLE Cafe_Oems ADD UrlWeb NVARCHAR(500) NULL;
+GO

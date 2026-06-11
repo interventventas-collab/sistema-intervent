@@ -908,6 +908,8 @@ public class CafeOemDto
     public string? Barcode { get; set; }
     public string? Proveedor { get; set; }
     public int? UxB { get; set; }
+    /// <summary>2026-06-10: URL al producto en el sitio del proveedor.</summary>
+    public string? UrlWeb { get; set; }
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
@@ -927,6 +929,7 @@ public class CreateCafeOemRequest
     public string? Barcode { get; set; }
     public string? Proveedor { get; set; }
     public int? UxB { get; set; }
+    public string? UrlWeb { get; set; }
 }
 
 public class UpdateCafeOemRequest
@@ -943,6 +946,8 @@ public class UpdateCafeOemRequest
     public string? Proveedor { get; set; }
     public int? UxB { get; set; }
     public bool ClearUxB { get; set; }
+    public string? UrlWeb { get; set; }
+    public bool ClearUrlWeb { get; set; }
     public bool? IsActive { get; set; }
 }
 

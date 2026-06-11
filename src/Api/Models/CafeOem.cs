@@ -43,6 +43,10 @@ public class CafeOem
     /// <summary>Unidades por bulto. Informativo; se autocompleta a la variante al vincular.</summary>
     public int? UxB { get; set; }
 
+    /// <summary>2026-06-10: URL al producto en el sitio web del proveedor (ej: colombraro.com.ar).</summary>
+    [MaxLength(500)]
+    public string? UrlWeb { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

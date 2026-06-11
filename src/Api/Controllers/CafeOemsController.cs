@@ -23,7 +23,8 @@ public class CafeOemsController : ControllerBase
         o.Costo, o.PvpConIva, o.IvaPct,
         o.Barcode, o.Proveedor, o.UxB,
         o.IsActive, o.CreatedAt, o.UpdatedAt, o.LastImportAt,
-        variantesCount);
+        variantesCount,
+        UrlWeb: o.UrlWeb);
 
     /// <summary>Copia los campos heredables del OEM (costo, PVP, UxB, barcode) a todas las variantes vinculadas.
     /// El % BAR sobre costo es per-variante y NO se toca aca. Devuelve cuantas variantes se actualizaron.</summary>
@@ -121,6 +122,7 @@ public class CafeOemsController : ControllerBase
             Barcode = string.IsNullOrWhiteSpace(req.Barcode) ? null : req.Barcode.Trim(),
             Proveedor = string.IsNullOrWhiteSpace(req.Proveedor) ? null : req.Proveedor.Trim().ToUpperInvariant(),
             UxB = req.UxB,
+            UrlWeb = string.IsNullOrWhiteSpace(req.UrlWeb) ? null : req.UrlWeb.Trim(),
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
@@ -166,6 +168,8 @@ public class CafeOemsController : ControllerBase
         if (req.Proveedor is not null) o.Proveedor = string.IsNullOrWhiteSpace(req.Proveedor) ? null : req.Proveedor.Trim().ToUpperInvariant();
         if (req.UxB.HasValue) o.UxB = req.UxB.Value;
         else if (req.ClearUxB) o.UxB = null;
+        if (req.UrlWeb is not null) o.UrlWeb = string.IsNullOrWhiteSpace(req.UrlWeb) ? null : req.UrlWeb.Trim();
+        else if (req.ClearUrlWeb) o.UrlWeb = null;
         if (req.IsActive.HasValue) o.IsActive = req.IsActive.Value;
         o.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
@@ -245,6 +249,8 @@ public class CafeOemsController : ControllerBase
             var cIva = Find("iva", "iva_pct");
             var cBarcode = Find("codigo_de_barras", "barcode", "codigo_barras", "ean");
             var cUxB = Find("uxb", "u_x_b", "unidades_por_bulto", "unidad_por_bulto", "ud_x_bulto", "u_bulto");
+            // 2026-06-10: detección de columna URL del producto en la web del proveedor
+            var cUrlWeb = Find("web", "url", "url_web", "enlace", "link", "url_producto", "pagina_web");
 
             if (cCodigo is null) return BadRequest(new { error = "Falta la columna 'codigo_oem' (o 'codigo'/'oem')" });
 
@@ -279,6 +285,7 @@ public class CafeOemsController : ControllerBase
                 var barcode = Get(cBarcode);
                 var uxbDec = GetNum(cUxB);
                 int? uxb = uxbDec.HasValue ? (int)uxbDec.Value : null;
+                var urlWeb = Get(cUrlWeb);  // 2026-06-10
 
                 if (existentes.TryGetValue(codigo, out var existente))
                 {
@@ -289,6 +296,7 @@ public class CafeOemsController : ControllerBase
                     existente.IvaPct = iva;
                     existente.Barcode = barcode ?? existente.Barcode;
                     existente.UxB = uxb ?? existente.UxB;
+                    existente.UrlWeb = urlWeb ?? existente.UrlWeb; // 2026-06-10
                     existente.Proveedor = prov;
                     existente.UpdatedAt = ahora;
                     existente.LastImportAt = ahora;
@@ -307,6 +315,7 @@ public class CafeOemsController : ControllerBase
                         IvaPct = iva,
                         Barcode = barcode,
                         UxB = uxb,
+                        UrlWeb = urlWeb,  // 2026-06-10
                         Proveedor = prov,
                         IsActive = true,
                         CreatedAt = ahora,
