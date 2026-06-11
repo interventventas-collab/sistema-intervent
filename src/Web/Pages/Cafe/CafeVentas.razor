@@ -4769,17 +4769,23 @@
     private async Task AddTopProduct(int productoId, string formato)
     {
         var def = DefaultMolienda(productoId);
+        // 2026-06-11: el "+1" del sugerido siempre es envase negro (default).
+        // Antes el filtro no chequeaba EsEnvasePlateado, asi que si ya habia un item
+        // con envase plateado del mismo SKU, el "+1" se sumaba a el por error.
         var existing = formItems.FirstOrDefault(i => i.ProductoId == productoId
             && i.Formato == formato
             && (i.Molienda ?? "") == (def ?? "")
-            && !i.EsDoyPack);
+            && !i.EsDoyPack
+            && !i.EsEnvasePlateado);
         if (existing is not null) existing.Cantidad += 1;
         else formItems.Add(new CafeCotizarItemRequest
         {
             ProductoId = productoId,
             Formato = formato,
             Cantidad = 1,
-            Molienda = def
+            Molienda = def,
+            EsDoyPack = false,
+            EsEnvasePlateado = false
         });
         await Cotizar();
     }
