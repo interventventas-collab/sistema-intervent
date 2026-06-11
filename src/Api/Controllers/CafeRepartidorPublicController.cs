@@ -679,4 +679,41 @@ public class CafeRepartidorPublicController : ControllerBase
         await _db.SaveChangesAsync();
         return Ok(new { ok = true, yaExistia = false, mensaje = "✓ Ubicacion guardada. La proxima entrega ya va a tener el enlace de Maps." });
     }
+
+    public record ReportarErrorUbicacionRequest(decimal? Lat, decimal? Lng);
+
+    /// <summary>2026-06-11: el repartidor avisa que la ubicacion guardada esta mal.
+    /// Si manda Lat/Lng nuevas, las REEMPLAZA. Si las manda null, simplemente BORRA las
+    /// existentes (queda sin ubicacion para que el admin la corrija manualmente).
+    /// A diferencia de capturar-ubicacion, este endpoint si pisa coords existentes.</summary>
+    [HttpPost("mis-pedidos/{tokenRepartidor}/cliente/{clienteId:int}/reportar-error-ubicacion")]
+    public async Task<IActionResult> ReportarErrorUbicacion(
+        string tokenRepartidor, int clienteId, [FromBody] ReportarErrorUbicacionRequest req)
+    {
+        var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null) return NotFound(new { error = "Enlace invalido" });
+
+        var c = await _db.CafeClientes.FirstOrDefaultAsync(x => x.Id == clienteId);
+        if (c is null) return NotFound(new { error = "Cliente no encontrado" });
+
+        if (req.Lat.HasValue && req.Lng.HasValue)
+        {
+            if (req.Lat.Value < -90 || req.Lat.Value > 90 || req.Lng.Value < -180 || req.Lng.Value > 180)
+                return BadRequest(new { error = "Coordenadas fuera de rango" });
+
+            c.MapeoLat = req.Lat.Value;
+            c.MapeoLng = req.Lng.Value;
+            c.MapeoLink = $"https://www.google.com/maps/search/?api=1&query={req.Lat.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)},{req.Lng.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+            await _db.SaveChangesAsync();
+            return Ok(new { ok = true, reemplazado = true, mensaje = "✓ Ubicacion reemplazada por tu GPS actual." });
+        }
+        else
+        {
+            c.MapeoLat = null;
+            c.MapeoLng = null;
+            c.MapeoLink = null;
+            await _db.SaveChangesAsync();
+            return Ok(new { ok = true, reemplazado = false, mensaje = "✓ Ubicacion borrada. Avisale al admin para que la corrija." });
+        }
+    }
 }
