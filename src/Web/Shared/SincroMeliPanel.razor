@@ -157,9 +157,26 @@
                             </div>
 
                             @* ─── Acciones ─── *@
-                            <div style="display:flex; gap:0.4rem; margin-top:0.5rem;">
+                            <div style="display:flex; gap:0.4rem; margin-top:0.5rem; align-items:center; flex-wrap:wrap;">
                                 <button class="btn btn-sm btn-primary" style="font-size:0.78rem;" @onclick="() => AbrirEditarPrecio(p)">✏ Editar precio</button>
                                 <button class="btn btn-sm btn-secondary" style="font-size:0.78rem;" @onclick="() => AbrirConfigurarAjuste(p)">⚙ Ajuste %/$</button>
+                                @* 2026-06-11: tilde precio independiente *@
+                                @if (p.Config.PrecioIndependiente)
+                                {
+                                    <span style="display:inline-flex; gap:0.3rem; align-items:center; padding:0.2rem 0.5rem; background:#dbeafe; color:#1d4ed8; border-radius:0.3rem; font-size:0.72rem; font-weight:600;">
+                                        🔒 Precio indep. · × @(p.Config.PrecioFactor?.ToString("F4"))
+                                        @if (p.Config.PrecioBaseRef.HasValue)
+                                        {
+                                            <span style="opacity:0.75; font-weight:400;">(base $@p.Config.PrecioBaseRef.Value.ToString("N0"))</span>
+                                        }
+                                    </span>
+                                    <button class="btn btn-sm" style="font-size:0.7rem; background:#fef3c7; color:#92400e; border:1px solid #fde68a;" @onclick="() => DesmarcarPrecioIndep(p)" title="Desactivar precio independiente">Quitar</button>
+                                    <button class="btn btn-sm" style="font-size:0.7rem; background:#e0f2fe; color:#075985; border:1px solid #bae6fd;" @onclick="() => RecalcularFactor(p)" title="Recalcular factor con precio MeLi actual">↻ Recalcular factor</button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-sm" style="font-size:0.7rem; background:#f3f4f6; color:#374151; border:1px solid #d1d5db;" @onclick="() => MarcarPrecioIndep(p)" title="Activar precio independiente (factor sobre PrecioOtro)">🔒 Marcar indep.</button>
+                                }
                             </div>
 
                             @* ─── Variantes expandibles ─── *@
@@ -499,5 +516,65 @@
             if (siguiente < valor) siguiente += step;
         }
         return siguiente;
+    }
+
+    // 2026-06-11: precio independiente por MLA
+    private async Task MarcarPrecioIndep(PublicacionExtendidaDto p)
+    {
+        try
+        {
+            var resp = await Api.MarcarPrecioIndependienteAsync(p.MeliItemId);
+            if (resp.IsSuccessStatusCode)
+            {
+                p.Config.PrecioIndependiente = true;
+                var json = await resp.Content.ReadAsStringAsync();
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("factor", out var fE)) p.Config.PrecioFactor = fE.GetDecimal();
+                if (doc.RootElement.TryGetProperty("precioBase", out var bE)) p.Config.PrecioBaseRef = bE.GetDecimal();
+                ToastService.Success($"Marcada como precio independiente. Factor × {p.Config.PrecioFactor:F4}");
+                StateHasChanged();
+            }
+            else
+            {
+                var err = await resp.Content.ReadAsStringAsync();
+                ToastService.Error("Error: " + err);
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task DesmarcarPrecioIndep(PublicacionExtendidaDto p)
+    {
+        try
+        {
+            var resp = await Api.DesmarcarPrecioIndependienteAsync(p.MeliItemId);
+            if (resp.IsSuccessStatusCode)
+            {
+                p.Config.PrecioIndependiente = false;
+                p.Config.PrecioFactor = null;
+                p.Config.PrecioBaseRef = null;
+                ToastService.Success("Desmarcada. Volvió al modo de push normal.");
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    private async Task RecalcularFactor(PublicacionExtendidaDto p)
+    {
+        try
+        {
+            var resp = await Api.RecalcularFactorAsync(p.MeliItemId);
+            if (resp.IsSuccessStatusCode)
+            {
+                var json = await resp.Content.ReadAsStringAsync();
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("factor", out var fE)) p.Config.PrecioFactor = fE.GetDecimal();
+                if (doc.RootElement.TryGetProperty("precioBase", out var bE)) p.Config.PrecioBaseRef = bE.GetDecimal();
+                ToastService.Success($"Factor recalculado: × {p.Config.PrecioFactor:F4}");
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
     }
 }

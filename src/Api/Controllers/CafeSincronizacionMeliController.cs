@@ -30,7 +30,10 @@ public class CafeSincronizacionMeliController : ControllerBase
         _logger = logger;
     }
 
-    public record SyncConfigDto(bool SyncStock, bool SyncPrecio, decimal AjustePct, decimal AjusteFijo, string? AjusteRedondeo, DateTime? LastSyncAt);
+    public record SyncConfigDto(bool SyncStock, bool SyncPrecio, decimal AjustePct, decimal AjusteFijo, string? AjusteRedondeo, DateTime? LastSyncAt,
+        // 2026-06-11: precio independiente
+        bool PrecioIndependiente = false, decimal? PrecioFactor = null, decimal? PrecioBaseRef = null,
+        string? ListingType = null, string? InstallmentConfig = null, bool? FreeShipping = null);
 
     public record PublicacionExtendidaDto(
         string MeliItemId, string Title, string Sku, string? Thumbnail, string Status, string? LogisticType,
@@ -221,7 +224,13 @@ public class CafeSincronizacionMeliController : ControllerBase
                 cfg?.AjustePct ?? 0m,
                 cfg?.AjusteFijo ?? 0m,
                 cfg?.AjusteRedondeo,
-                cfg?.LastSyncAt);
+                cfg?.LastSyncAt,
+                cfg?.PrecioIndependiente ?? false,
+                cfg?.PrecioFactor,
+                cfg?.PrecioBaseRef,
+                cfg?.ListingType,
+                cfg?.InstallmentConfig,
+                cfg?.FreeShipping);
 
             decimal? precioMeliCalc = null;
             if (precioOtroConIva.HasValue)

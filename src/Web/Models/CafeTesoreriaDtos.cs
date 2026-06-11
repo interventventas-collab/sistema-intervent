@@ -85,9 +85,15 @@ public class SyncConfigDto
     public bool SyncPrecio { get; set; }
     public decimal AjustePct { get; set; }
     public decimal AjusteFijo { get; set; }
-    /// <summary>2026-05-29: terminación al redondear hacia arriba ("" / "99" / "999" / "000").</summary>
     public string? AjusteRedondeo { get; set; }
     public DateTime? LastSyncAt { get; set; }
+    /// <summary>2026-06-11: precio independiente (factor sobre PrecioOtro)</summary>
+    public bool PrecioIndependiente { get; set; }
+    public decimal? PrecioFactor { get; set; }
+    public decimal? PrecioBaseRef { get; set; }
+    public string? ListingType { get; set; }
+    public string? InstallmentConfig { get; set; }
+    public bool? FreeShipping { get; set; }
 }
 
 public class PublicacionExtendidaDto

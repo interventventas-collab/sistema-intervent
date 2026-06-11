@@ -53,6 +53,10 @@ public class MeliItemDto
     public decimal AjustePct { get; set; }
     public decimal AjusteFijo { get; set; }
     public string? AjusteRedondeo { get; set; }
+    /// <summary>2026-06-11: PrecioIndependiente — la MLA usa Factor x PrecioOtro en vez de la formula AjustePct/Fijo</summary>
+    public bool PrecioIndependiente { get; set; }
+    public decimal? PrecioFactor { get; set; }
+    public decimal? PrecioBaseRef { get; set; }
     /// <summary>Precio del sistema (PrecioOtro c/IVA) — sumatoria si es combo. Base para el preview del ajuste.</summary>
     public decimal? PrecioOtroConIvaCalc { get; set; }
 

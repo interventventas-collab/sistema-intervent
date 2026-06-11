@@ -1640,22 +1640,22 @@ public class ApiClient
     // 2026-06-11: Precio independiente por MLA (familias con cuotas)
     // ==========================================
 
-    public async Task<HttpResponseMessage> MarcarPrecioIndependienteAsync(int meliItemId)
+    public async Task<HttpResponseMessage> MarcarPrecioIndependienteAsync(string mlaId)
     {
         await SetAuthHeaderAsync();
-        return await _http.PostAsJsonAsync($"/api/meli/items/{meliItemId}/marcar-precio-independiente", new { });
+        return await _http.PostAsJsonAsync($"/api/meli/items/mla/{mlaId}/marcar-precio-independiente", new { });
     }
 
-    public async Task<HttpResponseMessage> DesmarcarPrecioIndependienteAsync(int meliItemId)
+    public async Task<HttpResponseMessage> DesmarcarPrecioIndependienteAsync(string mlaId)
     {
         await SetAuthHeaderAsync();
-        return await _http.PostAsJsonAsync($"/api/meli/items/{meliItemId}/desmarcar-precio-independiente", new { });
+        return await _http.PostAsJsonAsync($"/api/meli/items/mla/{mlaId}/desmarcar-precio-independiente", new { });
     }
 
-    public async Task<HttpResponseMessage> RecalcularFactorAsync(int meliItemId)
+    public async Task<HttpResponseMessage> RecalcularFactorAsync(string mlaId)
     {
         await SetAuthHeaderAsync();
-        return await _http.PostAsJsonAsync($"/api/meli/items/{meliItemId}/recalcular-factor", new { });
+        return await _http.PostAsJsonAsync($"/api/meli/items/mla/{mlaId}/recalcular-factor", new { });
     }
 
     public async Task<HttpResponseMessage> MarcarFamiliaPrecioIndependienteAsync(string familyId, bool marcar = true)

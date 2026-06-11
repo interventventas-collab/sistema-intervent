@@ -2012,12 +2012,15 @@ public class MeliController : ControllerBase
     // 2026-06-11: Precio independiente por MLA (familias con cuotas distintas)
     // ==========================================
 
-    /// <summary>Marca la MLA como precio independiente y calcula el factor automaticamente:
-    /// Factor = PrecioActualMeLi / PrecioOtro_del_producto_base.</summary>
-    [HttpPost("items/{id}/marcar-precio-independiente")]
-    public async Task<IActionResult> MarcarPrecioIndependiente(int id, [FromServices] Api.Data.AppDbContext db)
+    /// <summary>Marca la MLA como precio independiente y calcula el factor automaticamente.
+    /// Recibe MeliItemId (string MLA) en route.</summary>
+    [HttpPost("items/mla/{mlaId}/marcar-precio-independiente")]
+    public async Task<IActionResult> MarcarPrecioIndependienteByMla(string mlaId, [FromServices] Api.Data.AppDbContext db)
+        => await MarcarPrecioIndependienteCore(mlaId, db);
+
+    private async Task<IActionResult> MarcarPrecioIndependienteCore(string mlaId, Api.Data.AppDbContext db)
     {
-        var item = await db.MeliItems.FirstOrDefaultAsync(i => i.Id == id);
+        var item = await db.MeliItems.FirstOrDefaultAsync(i => i.MeliItemId == mlaId);
         if (item is null) return NotFound(new { error = "Publicacion no encontrada" });
 
         decimal? precioBase = null;
@@ -2027,11 +2030,10 @@ public class MeliController : ControllerBase
             precioBase = cafe?.PrecioOtro ?? cafe?.Pvp2 ?? cafe?.PrecioPorKg;
         }
         if (!precioBase.HasValue || precioBase.Value <= 0)
-            return BadRequest(new { error = "El producto vinculado no tiene PrecioOtro cargado. Cargalo primero." });
+            return BadRequest(new { error = "El producto vinculado no tiene PrecioOtro cargado." });
 
         var precioMeLi = item.Price;
-        if (precioMeLi <= 0)
-            return BadRequest(new { error = "La publicacion no tiene precio cargado en MeLi." });
+        if (precioMeLi <= 0) return BadRequest(new { error = "La publicacion no tiene precio en MeLi." });
 
         var factor = Math.Round(precioMeLi / precioBase.Value, 4);
 
@@ -2047,22 +2049,13 @@ public class MeliController : ControllerBase
         cfg.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
 
-        return Ok(new
-        {
-            ok = true,
-            mlaId = item.MeliItemId,
-            precioBase = precioBase.Value,
-            precioMeLi = precioMeLi,
-            factor = factor,
-            mensaje = $"Marcada como independiente. Factor = {factor:F4} (Base ${precioBase.Value:N2} x {factor:F4} = ${precioMeLi:N2})"
-        });
+        return Ok(new { ok = true, mlaId = item.MeliItemId, precioBase = precioBase.Value, precioMeLi, factor });
     }
 
-    /// <summary>Desmarca: vuelve al modo normal.</summary>
-    [HttpPost("items/{id}/desmarcar-precio-independiente")]
-    public async Task<IActionResult> DesmarcarPrecioIndependiente(int id, [FromServices] Api.Data.AppDbContext db)
+    [HttpPost("items/mla/{mlaId}/desmarcar-precio-independiente")]
+    public async Task<IActionResult> DesmarcarPrecioIndependienteByMla(string mlaId, [FromServices] Api.Data.AppDbContext db)
     {
-        var item = await db.MeliItems.FirstOrDefaultAsync(i => i.Id == id);
+        var item = await db.MeliItems.FirstOrDefaultAsync(i => i.MeliItemId == mlaId);
         if (item is null) return NotFound(new { error = "Publicacion no encontrada" });
 
         var cfg = await db.MeliItemSyncConfigs.FindAsync(item.MeliItemId);
@@ -2074,14 +2067,38 @@ public class MeliController : ControllerBase
         cfg.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
 
-        return Ok(new { ok = true, mensaje = "Desmarcada. Vuelve al modo de push normal." });
+        return Ok(new { ok = true });
     }
 
-    /// <summary>Recalcula el factor con el precio actual de MeLi.</summary>
-    [HttpPost("items/{id}/recalcular-factor")]
-    public async Task<IActionResult> RecalcularFactor(int id, [FromServices] Api.Data.AppDbContext db) => await MarcarPrecioIndependiente(id, db);
+    [HttpPost("items/mla/{mlaId}/recalcular-factor")]
+    public async Task<IActionResult> RecalcularFactorByMla(string mlaId, [FromServices] Api.Data.AppDbContext db)
+        => await MarcarPrecioIndependienteCore(mlaId, db);
 
-    /// <summary>Marca/desmarca TODAS las MLAs de una familia (mismo FamilyId).</summary>
+    /// <summary>(Compat) Endpoint legacy por Id interno int.</summary>
+    [HttpPost("items/{id:int}/marcar-precio-independiente")]
+    public async Task<IActionResult> MarcarPrecioIndependiente(int id, [FromServices] Api.Data.AppDbContext db)
+    {
+        var item = await db.MeliItems.FirstOrDefaultAsync(i => i.Id == id);
+        if (item is null) return NotFound(new { error = "Publicacion no encontrada" });
+        return await MarcarPrecioIndependienteCore(item.MeliItemId, db);
+    }
+
+    [HttpPost("items/{id:int}/desmarcar-precio-independiente")]
+    public async Task<IActionResult> DesmarcarPrecioIndependiente(int id, [FromServices] Api.Data.AppDbContext db)
+    {
+        var item = await db.MeliItems.FirstOrDefaultAsync(i => i.Id == id);
+        if (item is null) return NotFound(new { error = "Publicacion no encontrada" });
+        return await DesmarcarPrecioIndependienteByMla(item.MeliItemId, db);
+    }
+
+    [HttpPost("items/{id:int}/recalcular-factor")]
+    public async Task<IActionResult> RecalcularFactor(int id, [FromServices] Api.Data.AppDbContext db)
+    {
+        var item = await db.MeliItems.FirstOrDefaultAsync(i => i.Id == id);
+        if (item is null) return NotFound(new { error = "Publicacion no encontrada" });
+        return await MarcarPrecioIndependienteCore(item.MeliItemId, db);
+    }
+
     [HttpPost("family/{familyId}/marcar-precio-independiente")]
     public async Task<IActionResult> MarcarFamiliaPrecioIndependiente(string familyId, [FromServices] Api.Data.AppDbContext db, [FromQuery] bool marcar = true)
     {
@@ -2094,7 +2111,7 @@ public class MeliController : ControllerBase
         {
             try
             {
-                IActionResult r = marcar ? await MarcarPrecioIndependiente(it.Id, db) : await DesmarcarPrecioIndependiente(it.Id, db);
+                IActionResult r = marcar ? await MarcarPrecioIndependienteCore(it.MeliItemId, db) : await DesmarcarPrecioIndependienteByMla(it.MeliItemId, db);
                 if (r is OkObjectResult) { ok++; detalle.Add(new { mla = it.MeliItemId, ok = true }); }
                 else { errores++; detalle.Add(new { mla = it.MeliItemId, ok = false }); }
             }
