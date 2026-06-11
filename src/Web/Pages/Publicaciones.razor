@@ -411,6 +411,15 @@
                                                 <span style="background:#fef3c7; color:#92400e; padding:0.05rem 0.3rem; border-radius:3px; font-size:0.7rem; font-weight:700;" title="Catálogo MeLi @item.FamilyId">📦 FAMILIA</span>
                                                 <span style="margin-left:0.3rem;">@(item.FamilyId ?? item.MeliItemId)</span>
                                                 <CopyButton Text="@(item.FamilyId ?? item.MeliItemId)" />
+                                                @* 2026-06-11: boton para abrir analisis de margen por familia *@
+                                                @if (!string.IsNullOrEmpty(item.FamilyId))
+                                                {
+                                                    <button @onclick:stopPropagation="true" @onclick="@(() => AbrirAnalisisMargen(item.FamilyId!))"
+                                                            style="margin-left:0.3rem; padding:0.05rem 0.4rem; background:#7c3aed; color:white; border:none; border-radius:3px; font-size:0.7rem; font-weight:700; cursor:pointer;"
+                                                            title="Análisis de margen: ver el neto que te queda por cada MLA y balancear">
+                                                        📊 Margen
+                                                    </button>
+                                                }
                                                 @StockPushChip(item)
                                                 @PrecioSyncChip(item)
                                             }
@@ -950,6 +959,119 @@
         }
     </div>
 </div>
+
+@* 2026-06-11: modal de Análisis de Margen por familia. Reutilizable: se abre con cualquier familyId. *@
+@if (showAnalisisMargen)
+{
+    <div class="modal-overlay" @onclick="CerrarAnalisisMargen" style="position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:2000; display:flex; align-items:center; justify-content:center;">
+        <div @onclick:stopPropagation="true" style="background:white; border-radius:8px; max-width:1100px; width:95vw; max-height:90vh; overflow:auto; padding:1.2rem; box-shadow:0 25px 50px rgba(0,0,0,0.3);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.8rem;">
+                <h3 style="margin:0;">📊 Análisis de margen — @(analisisMargenData?.sku ?? "")</h3>
+                <button @onclick="CerrarAnalisisMargen" style="background:transparent; border:none; font-size:1.5rem; cursor:pointer; color:#6b7280;">×</button>
+            </div>
+
+            @if (analisisMargenLoading)
+            {
+                <p>Calculando neto y comisiones...</p>
+            }
+            else if (analisisMargenError is not null)
+            {
+                <p style="color:#dc2626;">@analisisMargenError</p>
+            }
+            else if (analisisMargenData is not null)
+            {
+                <div style="display:flex; gap:0.8rem; flex-wrap:wrap; margin-bottom:0.8rem; font-size:0.85rem;">
+                    <div style="background:#f9fafb; padding:0.4rem 0.7rem; border-radius:6px;">
+                        <strong>Precio sistema (PrecioOtro):</strong> $@analisisMargenData.precioOtroBase.ToString("N0")
+                    </div>
+                    <div style="background:#f9fafb; padding:0.4rem 0.7rem; border-radius:6px;">
+                        <strong>Comisión categoría:</strong>
+                        <input type="number" step="0.1" value="@analisisMargenComisionCat"
+                               @onchange="OnCambioComision" style="width:60px; margin-left:0.3rem;" />%
+                    </div>
+                    <div style="background:#f9fafb; padding:0.4rem 0.7rem; border-radius:6px;">
+                        <strong>Costo envío gratis estimado:</strong>
+                        <input type="number" step="100" value="@analisisMargenEnvioCosto"
+                               @onchange="OnCambioEnvio" style="width:80px; margin-left:0.3rem;" />
+                    </div>
+                </div>
+
+                <table style="width:100%; border-collapse:collapse; font-size:0.82rem;">
+                    <thead style="background:#f3f4f6;">
+                        <tr>
+                            <th style="text-align:left; padding:0.5rem;">MLA</th>
+                            <th style="text-align:left; padding:0.5rem;">Tipo</th>
+                            <th style="text-align:left; padding:0.5rem;">Cuotas</th>
+                            <th style="text-align:center; padding:0.5rem;">Envío</th>
+                            <th style="text-align:right; padding:0.5rem;">Precio MeLi</th>
+                            <th style="text-align:right; padding:0.5rem;">Comis %</th>
+                            <th style="text-align:right; padding:0.5rem;">Comis $</th>
+                            <th style="text-align:right; padding:0.5rem;">NETO 💰</th>
+                            <th style="text-align:right; padding:0.5rem;">vs Promedio</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var mla in analisisMargenData.mlas)
+                        {
+                            var fila = mla;
+                            <tr style="border-bottom:1px solid #e5e7eb; @(fila.dentroDeRango ? "" : "background:#fef2f2;")">
+                                <td style="padding:0.5rem; font-family:monospace; font-size:0.75rem;">
+                                    @fila.MeliItemId
+                                </td>
+                                <td style="padding:0.5rem;">@fila.ListingTypeLabel</td>
+                                <td style="padding:0.5rem;">
+                                    <select value="@(fila.InstallmentTag ?? "")"
+                                            @onchange="@(e => CambiarOverrideCuotas(fila.MeliItemId, e.Value?.ToString()))"
+                                            style="font-size:0.8rem; padding:0.15rem 0.3rem; max-width:200px;">
+                                        <option value="">Sin cuotas (0%)</option>
+                                        <option value="co-funded">3 a 12 con interés bajo (+5%)</option>
+                                        <option value="3x_campaign">3 al mismo precio (+8.4%)</option>
+                                        <option value="6x_campaign">6 al mismo precio (+12.3%)</option>
+                                        <option value="9x_campaign">9 al mismo precio (+15.7%)</option>
+                                        <option value="12x_campaign">12 al mismo precio (+19.2%)</option>
+                                    </select>
+                                </td>
+                                <td style="text-align:center; padding:0.5rem;">
+                                    @if (fila.FreeShipping) { <span title="Envío gratis estimado">🚚</span> } else { <text>—</text> }
+                                </td>
+                                <td style="text-align:right; padding:0.5rem; font-weight:600;">$@fila.PrecioMeLi.ToString("N0")</td>
+                                <td style="text-align:right; padding:0.5rem;">@fila.ComisionTotalPct.ToString("F1")%</td>
+                                <td style="text-align:right; padding:0.5rem; color:#dc2626;">-$@fila.ComisionMonto.ToString("N0")</td>
+                                <td style="text-align:right; padding:0.5rem; font-weight:700; color:@(fila.dentroDeRango ? "#16a34a" : "#dc2626");">
+                                    $@fila.Neto.ToString("N0")
+                                </td>
+                                <td style="text-align:right; padding:0.5rem; color:@(fila.dentroDeRango ? "#6b7280" : "#dc2626"); font-weight:600;">
+                                    @(fila.diferenciaVsPromedio >= 0 ? "+" : "")$@fila.diferenciaVsPromedio.ToString("N0")
+                                    @if (fila.dentroDeRango) { <text> ✅</text> } else { <text> ⚠</text> }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot style="background:#f9fafb; font-weight:700;">
+                        <tr>
+                            <td colspan="7" style="text-align:right; padding:0.5rem;">Neto promedio:</td>
+                            <td style="text-align:right; padding:0.5rem; color:#1e40af;">$@analisisMargenData.stats.netoPromedio.ToString("N0")</td>
+                            <td style="padding:0.5rem; text-align:right; font-size:0.78rem;">
+                                Spread: $@analisisMargenData.stats.spread.ToString("N0") (@analisisMargenData.stats.spreadPct.ToString("F1")%)
+                            </td>
+                        </tr>
+                        <tr>
+                            <td colspan="9" style="text-align:right; padding:0.5rem; font-size:0.8rem;">
+                                <span style="color:#16a34a;">@analisisMargenData.stats.dentroDeRangoCount dentro del rango (±@analisisMargenData.toleranciaNetoPct%)</span> ·
+                                <span style="color:#dc2626;">@analisisMargenData.stats.fueraDeRangoCount fuera</span>
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+
+                <p style="font-size:0.78rem; color:#6b7280; margin-top:0.6rem;">
+                    💡 Si MeLi no nos pasó bien las cuotas de una MLA, cambialas en el dropdown — se guarda como <strong>override manual</strong> y los cálculos se recalculan al instante.
+                    Los precios marcados ⚠ son los que se desvían más de @(analisisMargenData.toleranciaNetoPct)% del neto promedio.
+                </p>
+            }
+        </div>
+    </div>
+}
 
 @if (showSyncMenu)
 {
@@ -4922,5 +5044,136 @@
             }
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    // ==================================================
+    // 2026-06-11: Análisis de margen por familia (modal reutilizable)
+    // ==================================================
+    private bool showAnalisisMargen;
+    private bool analisisMargenLoading;
+    private string? analisisMargenError;
+    private string? analisisMargenFamilyIdActivo;
+    private decimal analisisMargenComisionCat = 13m;
+    private decimal analisisMargenEnvioCosto = 7470m;
+    private AnalisisMargenFamiliaDto? analisisMargenData;
+
+    private async Task AbrirAnalisisMargen(string familyId)
+    {
+        analisisMargenFamilyIdActivo = familyId;
+        showAnalisisMargen = true;
+        await CargarAnalisisMargen();
+    }
+
+    private void CerrarAnalisisMargen()
+    {
+        showAnalisisMargen = false;
+        analisisMargenData = null;
+        analisisMargenError = null;
+        analisisMargenFamilyIdActivo = null;
+    }
+
+    private async Task CargarAnalisisMargen()
+    {
+        if (string.IsNullOrEmpty(analisisMargenFamilyIdActivo)) return;
+        analisisMargenLoading = true;
+        analisisMargenError = null;
+        StateHasChanged();
+        try
+        {
+            var resp = await Api.GetAnalisisMargenFamiliaAsync(
+                analisisMargenFamilyIdActivo,
+                comisionCategoriaPct: analisisMargenComisionCat,
+                envioGratisCostoEstimado: analisisMargenEnvioCosto);
+            if (resp.IsSuccessStatusCode)
+            {
+                analisisMargenData = await resp.Content.ReadFromJsonAsync<AnalisisMargenFamiliaDto>();
+            }
+            else
+            {
+                analisisMargenError = "No se pudo cargar el análisis: " + await resp.Content.ReadAsStringAsync();
+            }
+        }
+        catch (Exception ex) { analisisMargenError = ex.Message; }
+        finally { analisisMargenLoading = false; StateHasChanged(); }
+    }
+
+    private async Task OnCambioComision(ChangeEventArgs e)
+    {
+        if (decimal.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v))
+        {
+            analisisMargenComisionCat = v;
+            await CargarAnalisisMargen();
+        }
+    }
+
+    private async Task OnCambioEnvio(ChangeEventArgs e)
+    {
+        if (decimal.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v))
+        {
+            analisisMargenEnvioCosto = v;
+            await CargarAnalisisMargen();
+        }
+    }
+
+    private async Task CambiarOverrideCuotas(string mlaId, string? nuevoTag)
+    {
+        try
+        {
+            var resp = await Api.OverrideCuotasMlaAsync(mlaId, nuevoTag);
+            if (resp.IsSuccessStatusCode)
+            {
+                await CargarAnalisisMargen();
+                ToastService.Success("Cuotas actualizadas — neto recalculado.");
+            }
+            else
+            {
+                ToastService.Error("No se pudo guardar: " + await resp.Content.ReadAsStringAsync());
+            }
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+    }
+
+    public class AnalisisMargenFamiliaDto
+    {
+        public string familyId { get; set; } = "";
+        public string? sku { get; set; }
+        public decimal precioOtroBase { get; set; }
+        public decimal comisionCategoriaPct { get; set; }
+        public decimal envioGratisCostoEstimado { get; set; }
+        public decimal toleranciaNetoPct { get; set; }
+        public List<MlaAnalisisDto> mlas { get; set; } = new();
+        public StatsDto stats { get; set; } = new();
+
+        public class MlaAnalisisDto
+        {
+            public string MeliItemId { get; set; } = "";
+            public string ListingType { get; set; } = "";
+            public string ListingTypeLabel { get; set; } = "";
+            public string? InstallmentTag { get; set; }
+            public string InstallmentLabel { get; set; } = "";
+            public bool FreeShipping { get; set; }
+            public decimal PrecioMeLi { get; set; }
+            public decimal ComisionCategoriaPct { get; set; }
+            public decimal ComisionFinanciacionPct { get; set; }
+            public decimal ComisionTotalPct { get; set; }
+            public decimal ComisionMonto { get; set; }
+            public decimal ShippingCostoEstimado { get; set; }
+            public decimal Neto { get; set; }
+            public decimal? PrecioFactor { get; set; }
+            public bool PrecioIndependiente { get; set; }
+            public bool dentroDeRango { get; set; }
+            public decimal diferenciaVsPromedio { get; set; }
+        }
+
+        public class StatsDto
+        {
+            public decimal netoMin { get; set; }
+            public decimal netoMax { get; set; }
+            public decimal netoPromedio { get; set; }
+            public decimal spread { get; set; }
+            public decimal spreadPct { get; set; }
+            public int dentroDeRangoCount { get; set; }
+            public int fueraDeRangoCount { get; set; }
+        }
     }
 }

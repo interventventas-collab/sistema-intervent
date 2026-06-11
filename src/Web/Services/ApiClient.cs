@@ -1676,6 +1676,24 @@ public class ApiClient
         return await _http.PostAsJsonAsync($"/api/meli/family/{familyId}/push-masivo", new { });
     }
 
+    /// <summary>2026-06-11: análisis de margen por familia (neto que queda en cada MLA).</summary>
+    public async Task<HttpResponseMessage> GetAnalisisMargenFamiliaAsync(string familyId, decimal? comisionCategoriaPct = null, decimal? envioGratisCostoEstimado = null)
+    {
+        await SetAuthHeaderAsync();
+        var qs = new List<string>();
+        if (comisionCategoriaPct.HasValue) qs.Add($"comisionCategoriaPct={comisionCategoriaPct.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+        if (envioGratisCostoEstimado.HasValue) qs.Add($"envioGratisCostoEstimado={envioGratisCostoEstimado.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+        var query = qs.Count > 0 ? "?" + string.Join("&", qs) : "";
+        return await _http.GetAsync($"/api/meli/family/{familyId}/analisis-margen{query}");
+    }
+
+    /// <summary>2026-06-11: override del tag de cuotas para una MLA específica.</summary>
+    public async Task<HttpResponseMessage> OverrideCuotasMlaAsync(string mlaId, string? tag)
+    {
+        await SetAuthHeaderAsync();
+        return await _http.PostAsJsonAsync($"/api/meli/items/mla/{mlaId}/override-cuotas", new { tag });
+    }
+
     /// <summary>2026-06-11: arranca el job masivo de scraping para todos los OEMs.</summary>
     public async Task<HttpResponseMessage> StartCafeOemScrapeMasivoAsync(string? proveedor = null, bool soloFaltantes = true)
     {

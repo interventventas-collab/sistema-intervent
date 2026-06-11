@@ -2199,10 +2199,17 @@ public class MeliController : ControllerBase
         var mlas = items.Select(m =>
         {
             configByMla.TryGetValue(m.MeliItemId, out var cfg);
+            // 2026-06-11: si vos seteaste un override en SyncConfig.InstallmentConfig, lo usamos.
+            // Sino caemos al InstallmentTag que vino del sync de MeLi.
+            // El override sirve para casos donde MeLi nos perdió el tag (ej: MLA1681436129)
+            // y queres corregirlo a mano sin afectar el sync.
+            var tagEfectivo = !string.IsNullOrWhiteSpace(cfg?.InstallmentConfig)
+                ? cfg!.InstallmentConfig
+                : m.InstallmentTag;
             return Api.Services.MeliComisionHelper.CalcularMla(
                 mlaId: m.MeliItemId,
                 listingType: m.ListingTypeId,
-                installmentTag: m.InstallmentTag,
+                installmentTag: tagEfectivo,
                 freeShipping: m.FreeShipping,
                 precioMeLi: m.Price,
                 comisionCategoriaPct: comisionCategoriaPct,
@@ -2263,6 +2270,37 @@ public class MeliController : ControllerBase
             }
         });
     }
+
+    /// <summary>2026-06-11: Setear override del tag de cuotas para una MLA.
+    /// Útil cuando MeLi nos perdió el tag y querés corregirlo a mano.
+    /// Pasar null o "" para limpiar el override (vuelve a usar el de MeLi).
+    /// Valores válidos: "no_installments" | "co-funded" | "3x_campaign" | "6x_campaign" | "9x_campaign" | "12x_campaign"</summary>
+    [HttpPost("items/mla/{mlaId}/override-cuotas")]
+    public async Task<IActionResult> OverrideCuotas(string mlaId, [FromBody] OverrideCuotasRequest req, [FromServices] Api.Data.AppDbContext db)
+    {
+        var item = await db.MeliItems.FirstOrDefaultAsync(i => i.MeliItemId == mlaId);
+        if (item is null) return NotFound(new { error = "Publicacion no encontrada" });
+
+        var cfg = await db.MeliItemSyncConfigs.FindAsync(mlaId);
+        if (cfg is null)
+        {
+            cfg = new Api.Models.MeliItemSyncConfig { MeliItemId = mlaId, CreatedAt = DateTime.UtcNow };
+            db.MeliItemSyncConfigs.Add(cfg);
+        }
+        cfg.InstallmentConfig = string.IsNullOrWhiteSpace(req.Tag) ? null : req.Tag.Trim();
+        cfg.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        return Ok(new
+        {
+            ok = true,
+            mlaId,
+            tagAplicado = cfg.InstallmentConfig,
+            label = Api.Services.MeliComisionHelper.GetInstallmentLabel(cfg.InstallmentConfig ?? item.InstallmentTag)
+        });
+    }
+
+    public record OverrideCuotasRequest(string? Tag);
 
     /// <summary>Push masivo a una familia: dispara PushFromProductAsync para todas las MLAs.</summary>
     [HttpPost("family/{familyId}/push-masivo")]
