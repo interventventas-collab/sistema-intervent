@@ -217,9 +217,15 @@
         }
         else
         {
-            foreach (var p in pendientes)
+            <div style="font-size:0.72rem; color:#6b7280; margin:0 0 0.5rem; padding:0.3rem 0.5rem; background:#f9fafb; border-radius:6px;">
+                💡 Arrastrá el ☰ de la izquierda para acomodar los pedidos en tu orden de visita.
+            </div>
+            <div id="mp-lista-pendientes">
+            @foreach (var p in pendientes)
             {
-                <div class="mp-card pendiente">
+                <div class="mp-card pendiente" data-pid="@p.Id" style="display:flex; gap:0.3rem;">
+                    <div class="mp-drag-handle" title="Arrastrá para mover">☰</div>
+                    <div style="flex:1; min-width:0;">
                     <div class="mp-card-numero">@p.Numero · @p.Fecha.ToLocalTime().ToString("dd/MM HH:mm")</div>
                     <div class="mp-card-cliente">@(p.ClienteNombre ?? "Cliente sin nombre")</div>
                     @if (!string.IsNullOrEmpty(p.ClienteDireccion))
@@ -253,12 +259,24 @@
                             📄 Ver comprobante
                         </button>
                     }
+                    </div>
                 </div>
             }
+            </div>
         }
 
-        @* ENTREGADAS — con filtros + resumen + arqueo (2026-06-09) *@
-        <div class="mp-section-title">✅ Entregadas</div>
+        @* ENTREGADAS — con filtros + resumen + arqueo (2026-06-09)
+           2026-06-11: colapsable, cerrada por defecto si ya hay entregas *@
+        <div class="mp-section-title" style="cursor:pointer; user-select:none;" @onclick="ToggleEntregadasAbiertas">
+            <span style="margin-right:0.3rem; display:inline-block; transition:transform 0.15s; @(entregadasAbiertas ? "transform:rotate(0deg);" : "transform:rotate(-90deg);")">▾</span>
+            ✅ Entregadas <span class="badge">@pedidos.Count(p => p.YaEntregada)</span>
+        </div>
+        @if (!entregadasAbiertas)
+        {
+            <div style="font-size:0.72rem; color:#9ca3af; padding:0.4rem 0.6rem;">Tocá el título para ver las entregas de hoy / ayer / semana.</div>
+        }
+        @if (entregadasAbiertas)
+        {
 
         @* Chips de filtro de fecha *@
         <div class="mp-filtros">
@@ -330,6 +348,7 @@
                 </div>
             }
         }
+        } @* cierra if(entregadasAbiertas) *@
     }
 </div>
 
@@ -510,6 +529,14 @@
     // 2026-06-09: filtro de fecha para las entregas + arqueo
     private string filtroFecha = "hoy"; // hoy / ayer / semana / todos
 
+    // 2026-06-11: orden manual de los pendientes (drag&drop) + colapsable de entregadas
+    private bool entregadasAbiertas = false;
+    private bool ordenAplicado = false;
+    private bool sortableInicializado = false;
+    private DotNetObjectReference<MisPedidos>? sortableRef;
+
+    private void ToggleEntregadasAbiertas() => entregadasAbiertas = !entregadasAbiertas;
+
     private record ModalState(string Tipo, PedidoDto Pedido);
     private ModalState? modal;
     private string pin = "";
@@ -577,9 +604,69 @@
             repartidorId = r.RepartidorId;
             pedidos = r.Pedidos ?? new();
             cobros = r.Cobros ?? new();
+            // 2026-06-11: reaplicar orden manual guardado en este celu (si lo hay)
+            await AplicarOrdenGuardado();
+            // Forzar re-init de Sortable porque cambio el contenido del DOM
+            sortableInicializado = false;
         }
         catch { cargaError = true; }
         finally { loading = false; StateHasChanged(); }
+    }
+
+    private async Task AplicarOrdenGuardado()
+    {
+        try
+        {
+            var ids = await JS.InvokeAsync<int[]?>("mpLoadOrden", Token);
+            if (ids is null || ids.Length == 0) return;
+            var pendientes = pedidos.Where(p => !p.YaEntregada).ToList();
+            var entregadas = pedidos.Where(p => p.YaEntregada).ToList();
+            // Reordenar pendientes: primero los que estén en `ids` en ese orden, después los nuevos
+            var pos = ids.Select((id, i) => (id, i)).ToDictionary(x => x.id, x => x.i);
+            var reordenados = pendientes
+                .OrderBy(p => pos.TryGetValue(p.Id, out var i) ? i : int.MaxValue)
+                .ThenBy(p => p.CargadoAt)
+                .ToList();
+            pedidos = reordenados.Concat(entregadas).ToList();
+            ordenAplicado = true;
+        }
+        catch { /* localStorage no disponible — ignorar */ }
+    }
+
+    /// <summary>Llamado desde JS cuando el repartidor termina de arrastrar una tarjeta.
+    /// Reordena la lista local y guarda en localStorage para que sobreviva al refresh.</summary>
+    [JSInvokable]
+    public async Task OnPedidosReordenados(int[] idsEnOrden)
+    {
+        if (idsEnOrden is null || idsEnOrden.Length == 0) return;
+        var pendientes = pedidos.Where(p => !p.YaEntregada).ToList();
+        var entregadas = pedidos.Where(p => p.YaEntregada).ToList();
+        var dic = pendientes.ToDictionary(p => p.Id);
+        var nuevos = new List<PedidoDto>();
+        foreach (var id in idsEnOrden)
+        {
+            if (dic.TryGetValue(id, out var p)) { nuevos.Add(p); dic.Remove(id); }
+        }
+        // Cualquier pendiente que NO estuvo en idsEnOrden (race con auto-refresh) lo agregamos al final
+        nuevos.AddRange(dic.Values);
+        pedidos = nuevos.Concat(entregadas).ToList();
+        await JS.InvokeVoidAsync("mpSaveOrden", Token, idsEnOrden);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Inicializar Sortable cada vez que el contenedor existe pero todavía no se enganchó
+        if (!loading && !sortableInicializado && pedidos.Any(p => !p.YaEntregada))
+        {
+            try
+            {
+                sortableRef ??= DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("mpInitSortable", "mp-lista-pendientes", sortableRef);
+                sortableInicializado = true;
+            }
+            catch { /* JS aún no disponible o lib no cargada */ }
+        }
     }
 
     private void AbrirEntregar(PedidoDto p)
@@ -800,6 +887,7 @@
     public void Dispose()
     {
         try { dotNetRef?.Dispose(); } catch { }
+        try { sortableRef?.Dispose(); } catch { }
         try { refreshTimer?.Dispose(); } catch { }
     }
 

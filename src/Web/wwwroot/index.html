@@ -1007,6 +1007,76 @@
         };
     </script>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    <script>
+        // 2026-06-11: Sortable handler para Mis Pedidos repartidor.
+        // - El repartidor arrastra una tarjeta tocando el handle ≡ y la suelta donde quiere.
+        // - El orden queda guardado en localStorage por token de repartidor.
+        // - Al cargar la pantalla, mpAplicarOrdenGuardado() reordena el array .Pedidos
+        //   antes del render (lo hace C# llamando esta funcion).
+        window.mpInitSortable = function(containerId, dotNetRef) {
+            var el = document.getElementById(containerId);
+            if (!el) return;
+            // Si ya estaba inicializado, destruirlo (re-render de Blazor)
+            if (el._sortableInstance) {
+                try { el._sortableInstance.destroy(); } catch (e) {}
+            }
+            el._sortableInstance = Sortable.create(el, {
+                handle: '.mp-drag-handle',
+                animation: 150,
+                ghostClass: 'mp-drag-ghost',
+                chosenClass: 'mp-drag-chosen',
+                forceFallback: true,            // mejor soporte en celus
+                fallbackTolerance: 5,
+                touchStartThreshold: 5,
+                delay: 100,                     // pequeño delay para distinguir tap de drag
+                delayOnTouchOnly: true,
+                onEnd: function(evt) {
+                    // Recoger el orden actual de los IDs
+                    var ids = [];
+                    el.querySelectorAll('[data-pid]').forEach(function(card) {
+                        ids.push(parseInt(card.getAttribute('data-pid'), 10));
+                    });
+                    if (dotNetRef) {
+                        dotNetRef.invokeMethodAsync('OnPedidosReordenados', ids);
+                    }
+                }
+            });
+        };
+
+        window.mpSaveOrden = function(token, ids) {
+            try {
+                localStorage.setItem('mp-orden-' + token, JSON.stringify(ids));
+            } catch (e) {}
+        };
+
+        window.mpLoadOrden = function(token) {
+            try {
+                var raw = localStorage.getItem('mp-orden-' + token);
+                if (!raw) return null;
+                return JSON.parse(raw);
+            } catch (e) { return null; }
+        };
+    </script>
+    <style>
+        .mp-drag-handle {
+            cursor: grab;
+            touch-action: none;
+            padding: 0.5rem 0.4rem;
+            color: #9ca3af;
+            font-size: 1.1rem;
+            display: inline-block;
+            user-select: none;
+        }
+        .mp-drag-handle:active { cursor: grabbing; }
+        .mp-drag-ghost {
+            opacity: 0.4;
+            background: #fef3c7 !important;
+        }
+        .mp-drag-chosen {
+            box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+        }
+    </style>
     <script>
         // Escaner de QR para la pantalla mobile del repartidor.
         // 2026-06-08: modo CONTINUO con anti-rebote PERMANENTE — cada QR se procesa
