@@ -924,6 +924,33 @@
             });
         };
 
+        // 2026-06-11: Pide al browser la ubicacion GPS para Mis Pedidos (repartidor parado en
+        // la puerta del cliente). Devuelve [lat, lng] o null si el usuario rechazo / no hay GPS.
+        // Usa alta precision (enableHighAccuracy:true) porque queremos guardar la ubicacion
+        // exacta del local para la proxima entrega.
+        window.mpGetGeolocation = function() {
+            return new Promise(function(resolve) {
+                if (!navigator.geolocation) { resolve(null); return; }
+                var resolved = false;
+                var t = setTimeout(function() {
+                    if (!resolved) { resolved = true; resolve(null); }
+                }, 15000);
+                navigator.geolocation.getCurrentPosition(
+                    function(pos) {
+                        if (resolved) return;
+                        resolved = true; clearTimeout(t);
+                        resolve([pos.coords.latitude, pos.coords.longitude]);
+                    },
+                    function() {
+                        if (resolved) return;
+                        resolved = true; clearTimeout(t);
+                        resolve(null);
+                    },
+                    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+                );
+            });
+        };
+
         // Hace que un modal sea arrastrable por su header. Se llama desde Blazor pasando el
         // selector del modal-card. Idempotente: si ya esta enganchado, no engancha de nuevo.
         // Pensado para modales secundarios que tapan algo de la pantalla — el usuario lo agarra

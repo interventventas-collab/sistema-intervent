@@ -312,7 +312,16 @@ public class CafeRepartidorPublicController : ControllerBase
         string? ComentarioEntrega,
         // 2026-06-08 v2: true si la venta tiene PublicToken (el PDF se genera al toque).
         // En la práctica es true para todas las ventas creadas con el sistema actual.
-        bool TienePdf);
+        bool TienePdf,
+        // 2026-06-11: datos del cliente para mostrar accesos rápidos (teléfono, Maps/Waze)
+        // y para poder capturar la ubicación si todavía no la tiene.
+        int? ClienteId,
+        string? ClienteTelefono,
+        decimal? ClienteLat,
+        decimal? ClienteLng,
+        // 2026-06-11: link de Maps que vos pegaste manual en la ficha del cliente — si existe
+        // se prioriza sobre la búsqueda por dirección (más exacto). Lat/Lng siempre gana si están.
+        string? ClienteMapeoLink);
 
     /// <summary>2026-06-09: cobros hechos por el repartidor (siempre en efectivo) — para el arqueo.</summary>
     public record MisPedidosCobroDto(int VentaId, decimal Importe, string Estado, DateTime FechaCobro);
@@ -332,10 +341,13 @@ public class CafeRepartidorPublicController : ControllerBase
 
         var desde = DateTime.UtcNow.AddDays(-Math.Max(1, dias));
         // Traer todos los QrEscaneos "cargados" recientes del repartidor + datos de la venta
+        // + LEFT JOIN con CafeClientes para traer telefono y coordenadas (Mapeo) si las tiene.
         var rows = await _db.CafeQrEscaneos
             .Where(e => e.RepartidorId == r.Id && e.Accion == "cargado" && e.CreatedAt >= desde)
             .OrderByDescending(e => e.CreatedAt)
             .Join(_db.CafeVentas, e => e.VentaId, v => v.Id, (e, v) => new { e, v })
+            .GroupJoin(_db.CafeClientes, ev => ev.v.ClienteId, c => c.Id,
+                       (ev, cs) => new { ev.e, ev.v, c = cs.FirstOrDefault() })
             .Select(x => new {
                 x.v.Id, x.v.Numero, x.v.Fecha,
                 ClienteNombre = x.v.ClienteNombreSnapshot,
@@ -348,7 +360,13 @@ public class CafeRepartidorPublicController : ControllerBase
                 CargadoAt = x.e.CreatedAt,
                 x.v.ComentarioEntrega,
                 // 2026-06-08 v2: con PublicToken alcanza — el PDF se genera al toque, no depende de Drive
-                TienePdf = !string.IsNullOrEmpty(x.v.PublicToken)
+                TienePdf = !string.IsNullOrEmpty(x.v.PublicToken),
+                // 2026-06-11: campos para accesos rápidos del repartidor
+                ClienteId = x.v.ClienteId,
+                ClienteTelefono = (x.c != null ? x.c.Telefono : null) ?? x.v.ClienteTelefonoSnapshot,
+                ClienteLat = x.c != null ? x.c.MapeoLat : null,
+                ClienteLng = x.c != null ? x.c.MapeoLng : null,
+                ClienteMapeoLink = x.c != null ? x.c.MapeoLink : null
             })
             .ToListAsync();
 
@@ -369,7 +387,8 @@ public class CafeRepartidorPublicController : ControllerBase
             x.YaEntregada, x.EntregadoAt, x.EstadoPreparacion,
             x.CargadoAt,
             x.ComentarioEntrega,
-            x.TienePdf
+            x.TienePdf,
+            x.ClienteId, x.ClienteTelefono, x.ClienteLat, x.ClienteLng, x.ClienteMapeoLink
         )).ToList();
 
         // 2026-06-09: cobros del repartidor (siempre en efectivo, viven en Cafe_CobranzasPendientes).
@@ -627,5 +646,37 @@ public class CafeRepartidorPublicController : ControllerBase
 
         await _db.SaveChangesAsync();
         return Ok(new { ok = true, pendienteId = pend.Id, mensaje = $"✓ Cobro $ {importe:N2} cargado (pendiente de aprobar)" });
+    }
+
+    public record CapturarUbicacionRequest(decimal Lat, decimal Lng);
+
+    /// <summary>2026-06-11: el repartidor parado en la puerta del cliente captura su GPS actual
+    /// y lo guarda en CafeCliente.MapeoLat/Lng. Sólo guarda si el cliente AÚN no tiene coords —
+    /// no pisa nada. La próxima visita ya muestra los enlaces de Maps/Waze.</summary>
+    [HttpPost("mis-pedidos/{tokenRepartidor}/cliente/{clienteId:int}/capturar-ubicacion")]
+    public async Task<IActionResult> CapturarUbicacionCliente(
+        string tokenRepartidor, int clienteId, [FromBody] CapturarUbicacionRequest req)
+    {
+        var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null) return NotFound(new { error = "Enlace invalido" });
+
+        if (req.Lat == 0 && req.Lng == 0)
+            return BadRequest(new { error = "Coordenadas vacias" });
+        if (req.Lat < -90 || req.Lat > 90 || req.Lng < -180 || req.Lng > 180)
+            return BadRequest(new { error = "Coordenadas fuera de rango" });
+
+        var c = await _db.CafeClientes.FirstOrDefaultAsync(x => x.Id == clienteId);
+        if (c is null) return NotFound(new { error = "Cliente no encontrado" });
+
+        if (c.MapeoLat.HasValue && c.MapeoLng.HasValue)
+            return Ok(new { ok = true, yaExistia = true, mensaje = "Este cliente ya tenia ubicacion guardada" });
+
+        c.MapeoLat = req.Lat;
+        c.MapeoLng = req.Lng;
+        if (string.IsNullOrEmpty(c.MapeoLink))
+            c.MapeoLink = $"https://www.google.com/maps/search/?api=1&query={req.Lat.ToString(System.Globalization.CultureInfo.InvariantCulture)},{req.Lng.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, yaExistia = false, mensaje = "✓ Ubicacion guardada. La proxima entrega ya va a tener el enlace de Maps." });
     }
 }
