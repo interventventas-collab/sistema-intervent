@@ -2282,18 +2282,28 @@ public class MeliItemService
                 }
                 else
                 {
-                    var listaKg = cafe.PrecioOtro ?? cafe.Pvp2 ?? cafe.PrecioPorKg ?? 0m;
-                    decimal precioSinIva = formato switch
+                    // 2026-06-11: si la MLA tiene PrecioIndependiente con factor, usa Factor x PrecioOtro
+                    var cfgPI = await _db.MeliItemSyncConfigs.FindAsync(item.MeliItemId);
+                    if (cfgPI is not null && cfgPI.PrecioIndependiente && cfgPI.PrecioFactor.HasValue && cfgPI.PrecioFactor.Value > 0m)
                     {
-                        "1KG" => listaKg,
-                        "MEDIO" => Math.Round(listaKg / 2m + settings.CostoFraccionamiento, 2, MidpointRounding.AwayFromZero),
-                        "CUARTO" => Math.Round(listaKg / 4m + settings.CostoFraccionamiento, 2, MidpointRounding.AwayFromZero),
-                        _ => listaKg
-                    };
-                    var rate = cafe.IvaPct;
-                    priceWithVat = rate > 0m
-                        ? Math.Round(precioSinIva * (1m + rate / 100m), 2, MidpointRounding.AwayFromZero)
-                        : precioSinIva;
+                        var baseOtro = cafe.PrecioOtro ?? cafe.Pvp2 ?? cafe.PrecioPorKg ?? 0m;
+                        priceWithVat = Math.Round(baseOtro * cfgPI.PrecioFactor.Value, 2, MidpointRounding.AwayFromZero);
+                    }
+                    else
+                    {
+                        var listaKg = cafe.PrecioOtro ?? cafe.Pvp2 ?? cafe.PrecioPorKg ?? 0m;
+                        decimal precioSinIva = formato switch
+                        {
+                            "1KG" => listaKg,
+                            "MEDIO" => Math.Round(listaKg / 2m + settings.CostoFraccionamiento, 2, MidpointRounding.AwayFromZero),
+                            "CUARTO" => Math.Round(listaKg / 4m + settings.CostoFraccionamiento, 2, MidpointRounding.AwayFromZero),
+                            _ => listaKg
+                        };
+                        var rate = cafe.IvaPct;
+                        priceWithVat = rate > 0m
+                            ? Math.Round(precioSinIva * (1m + rate / 100m), 2, MidpointRounding.AwayFromZero)
+                            : precioSinIva;
+                    }
                 }
                 payloadDict["price"] = priceWithVat;
             }

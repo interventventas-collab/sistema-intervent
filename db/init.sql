@@ -4715,3 +4715,25 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='ScrapedAt' AND object_id=OBJECT_ID('Cafe_Oems'))
     ALTER TABLE Cafe_Oems ADD ScrapedAt DATETIME2 NULL;
 GO
+
+-- 2026-06-11: Manejo de "precio independiente" por MLA (estrategia familias con cuotas distintas)
+-- Cuando PrecioIndependiente=1, el push usa Factor x PrecioOtro en vez de la formula AjustePct/AjusteFijo.
+-- Ver MeliItemSyncConfig.cs para la documentacion completa.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='PrecioIndependiente' AND object_id=OBJECT_ID('MeliItem_SyncConfig'))
+    ALTER TABLE MeliItem_SyncConfig ADD PrecioIndependiente BIT NOT NULL CONSTRAINT DF_MeliItemSC_PrecioIndep DEFAULT 0;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='PrecioFactor' AND object_id=OBJECT_ID('MeliItem_SyncConfig'))
+    ALTER TABLE MeliItem_SyncConfig ADD PrecioFactor DECIMAL(10,4) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='PrecioBaseRef' AND object_id=OBJECT_ID('MeliItem_SyncConfig'))
+    ALTER TABLE MeliItem_SyncConfig ADD PrecioBaseRef DECIMAL(18,2) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='ListingType' AND object_id=OBJECT_ID('MeliItem_SyncConfig'))
+    ALTER TABLE MeliItem_SyncConfig ADD ListingType NVARCHAR(40) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='InstallmentConfig' AND object_id=OBJECT_ID('MeliItem_SyncConfig'))
+    ALTER TABLE MeliItem_SyncConfig ADD InstallmentConfig NVARCHAR(80) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='FreeShipping' AND object_id=OBJECT_ID('MeliItem_SyncConfig'))
+    ALTER TABLE MeliItem_SyncConfig ADD FreeShipping BIT NULL;
+GO

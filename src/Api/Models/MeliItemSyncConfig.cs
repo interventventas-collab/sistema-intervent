@@ -45,6 +45,44 @@ public class MeliItemSyncConfig
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
+
+    // ==========================================
+    // 2026-06-11: Manejo de "precio independiente" por MLA
+    // Para familias donde cada MLA tiene su propio precio (estrategia cuotas)
+    // ==========================================
+
+    /// <summary>2026-06-11: Si esta en true, el push de precio NO toca esta MLA por la formula
+    /// estandar (precio_sistema × ajuste). En cambio, usa PrecioFactor × Precio_actual_del_producto_base.
+    /// Esto es para familias donde cada MLA tiene su propio precio en MeLi (ej: 6 cuotas / 12 cuotas / envio gratis)
+    /// y no queres que el sistema iguale todo al mismo precio.</summary>
+    public bool PrecioIndependiente { get; set; } = false;
+
+    /// <summary>2026-06-11: Factor multiplicador sobre el precio base del producto.
+    /// Calculado como (Precio actual MeLi) / (Precio Otro del producto base).
+    /// Ej: si producto vale $22.000 y la MLA esta en $33.000, Factor = 1.5000.
+    /// Cuando el operador sube el costo y cambia el precio base, este factor se usa para sugerir
+    /// los nuevos precios de las MLAs marcadas como Independiente.</summary>
+    [Column(TypeName = "decimal(10,4)")]
+    public decimal? PrecioFactor { get; set; }
+
+    /// <summary>2026-06-11: Precio base del producto al momento de calcular el factor (snapshot).
+    /// Sirve para verificar que el factor sigue siendo valido cuando cambia el precio base.</summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? PrecioBaseRef { get; set; }
+
+    /// <summary>2026-06-11: Tipo de publicacion en MeLi: "gold_special" (Clásica), "gold_pro" (Premium), etc.
+    /// Se sincroniza desde MeLi para que el operador sepa que MLA es cual sin entrar a la pagina.</summary>
+    [MaxLength(40)]
+    public string? ListingType { get; set; }
+
+    /// <summary>2026-06-11: Texto descriptivo de la configuracion de cuotas.
+    /// Ej: "Sin cuotas", "3 al mismo precio", "12 al mismo precio", "3 a 12 con interes bajo".
+    /// Se sincroniza desde MeLi para tener visibilidad.</summary>
+    [MaxLength(80)]
+    public string? InstallmentConfig { get; set; }
+
+    /// <summary>2026-06-11: Si esta MLA tiene envio gratis configurado en MeLi.</summary>
+    public bool? FreeShipping { get; set; }
 }
 
 /// <summary>

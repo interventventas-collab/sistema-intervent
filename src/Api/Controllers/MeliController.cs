@@ -2008,6 +2008,168 @@ public class MeliController : ControllerBase
         }
     }
 
+    // ==========================================
+    // 2026-06-11: Precio independiente por MLA (familias con cuotas distintas)
+    // ==========================================
+
+    /// <summary>Marca la MLA como precio independiente y calcula el factor automaticamente:
+    /// Factor = PrecioActualMeLi / PrecioOtro_del_producto_base.</summary>
+    [HttpPost("items/{id}/marcar-precio-independiente")]
+    public async Task<IActionResult> MarcarPrecioIndependiente(int id, [FromServices] Api.Data.AppDbContext db)
+    {
+        var item = await db.MeliItems.FirstOrDefaultAsync(i => i.Id == id);
+        if (item is null) return NotFound(new { error = "Publicacion no encontrada" });
+
+        decimal? precioBase = null;
+        if (item.CafeProductoId.HasValue)
+        {
+            var cafe = await db.CafeProductos.FirstOrDefaultAsync(p => p.Id == item.CafeProductoId.Value);
+            precioBase = cafe?.PrecioOtro ?? cafe?.Pvp2 ?? cafe?.PrecioPorKg;
+        }
+        if (!precioBase.HasValue || precioBase.Value <= 0)
+            return BadRequest(new { error = "El producto vinculado no tiene PrecioOtro cargado. Cargalo primero." });
+
+        var precioMeLi = item.Price;
+        if (precioMeLi <= 0)
+            return BadRequest(new { error = "La publicacion no tiene precio cargado en MeLi." });
+
+        var factor = Math.Round(precioMeLi / precioBase.Value, 4);
+
+        var cfg = await db.MeliItemSyncConfigs.FindAsync(item.MeliItemId);
+        if (cfg is null)
+        {
+            cfg = new Api.Models.MeliItemSyncConfig { MeliItemId = item.MeliItemId, CreatedAt = DateTime.UtcNow };
+            db.MeliItemSyncConfigs.Add(cfg);
+        }
+        cfg.PrecioIndependiente = true;
+        cfg.PrecioFactor = factor;
+        cfg.PrecioBaseRef = precioBase.Value;
+        cfg.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        return Ok(new
+        {
+            ok = true,
+            mlaId = item.MeliItemId,
+            precioBase = precioBase.Value,
+            precioMeLi = precioMeLi,
+            factor = factor,
+            mensaje = $"Marcada como independiente. Factor = {factor:F4} (Base ${precioBase.Value:N2} x {factor:F4} = ${precioMeLi:N2})"
+        });
+    }
+
+    /// <summary>Desmarca: vuelve al modo normal.</summary>
+    [HttpPost("items/{id}/desmarcar-precio-independiente")]
+    public async Task<IActionResult> DesmarcarPrecioIndependiente(int id, [FromServices] Api.Data.AppDbContext db)
+    {
+        var item = await db.MeliItems.FirstOrDefaultAsync(i => i.Id == id);
+        if (item is null) return NotFound(new { error = "Publicacion no encontrada" });
+
+        var cfg = await db.MeliItemSyncConfigs.FindAsync(item.MeliItemId);
+        if (cfg is null) return Ok(new { ok = true, mensaje = "No estaba marcada" });
+
+        cfg.PrecioIndependiente = false;
+        cfg.PrecioFactor = null;
+        cfg.PrecioBaseRef = null;
+        cfg.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        return Ok(new { ok = true, mensaje = "Desmarcada. Vuelve al modo de push normal." });
+    }
+
+    /// <summary>Recalcula el factor con el precio actual de MeLi.</summary>
+    [HttpPost("items/{id}/recalcular-factor")]
+    public async Task<IActionResult> RecalcularFactor(int id, [FromServices] Api.Data.AppDbContext db) => await MarcarPrecioIndependiente(id, db);
+
+    /// <summary>Marca/desmarca TODAS las MLAs de una familia (mismo FamilyId).</summary>
+    [HttpPost("family/{familyId}/marcar-precio-independiente")]
+    public async Task<IActionResult> MarcarFamiliaPrecioIndependiente(string familyId, [FromServices] Api.Data.AppDbContext db, [FromQuery] bool marcar = true)
+    {
+        var items = await db.MeliItems.Where(i => i.FamilyId == familyId).ToListAsync();
+        if (items.Count == 0) return NotFound(new { error = "Familia no encontrada" });
+
+        int ok = 0, errores = 0;
+        var detalle = new List<object>();
+        foreach (var it in items)
+        {
+            try
+            {
+                IActionResult r = marcar ? await MarcarPrecioIndependiente(it.Id, db) : await DesmarcarPrecioIndependiente(it.Id, db);
+                if (r is OkObjectResult) { ok++; detalle.Add(new { mla = it.MeliItemId, ok = true }); }
+                else { errores++; detalle.Add(new { mla = it.MeliItemId, ok = false }); }
+            }
+            catch (Exception ex) { errores++; detalle.Add(new { mla = it.MeliItemId, ok = false, error = ex.Message }); }
+        }
+        return Ok(new { familyId, total = items.Count, ok, errores, detalle });
+    }
+
+    /// <summary>Preview de propagacion: dado un nuevo PrecioOtro, devuelve precios sugeridos
+    /// para todas las MLAs vinculadas a ese producto.</summary>
+    [HttpGet("preview-propagacion/{cafeProductoId:int}")]
+    public async Task<IActionResult> PreviewPropagacion(int cafeProductoId, [FromQuery] decimal nuevoPrecioBase, [FromServices] Api.Data.AppDbContext db)
+    {
+        if (nuevoPrecioBase <= 0) return BadRequest(new { error = "nuevoPrecioBase debe ser > 0" });
+
+        var cafe = await db.CafeProductos.FirstOrDefaultAsync(p => p.Id == cafeProductoId);
+        if (cafe is null) return NotFound(new { error = "Producto no encontrado" });
+
+        var precioBaseActual = cafe.PrecioOtro ?? cafe.Pvp2 ?? cafe.PrecioPorKg ?? 0m;
+
+        var mlasVinculadas = await db.MeliItems
+            .Where(i => i.CafeProductoId == cafeProductoId)
+            .ToListAsync();
+
+        var mlaIds = mlasVinculadas.Select(m => m.MeliItemId).ToList();
+        var configs = await db.MeliItemSyncConfigs.Where(c => mlaIds.Contains(c.MeliItemId)).ToListAsync();
+        var configByMla = configs.ToDictionary(c => c.MeliItemId);
+
+        var rows = mlasVinculadas.Select(m =>
+        {
+            configByMla.TryGetValue(m.MeliItemId, out var cfg);
+            var esIndependiente = cfg?.PrecioIndependiente ?? false;
+            decimal? precioSugerido = null;
+            if (esIndependiente && cfg!.PrecioFactor.HasValue)
+                precioSugerido = Math.Round(nuevoPrecioBase * cfg.PrecioFactor.Value, 2, MidpointRounding.AwayFromZero);
+            return new
+            {
+                mlaId = m.MeliItemId,
+                title = m.Title,
+                precioActualMeLi = m.Price,
+                esIndependiente,
+                factor = cfg?.PrecioFactor,
+                listingType = cfg?.ListingType,
+                installmentConfig = cfg?.InstallmentConfig,
+                freeShipping = cfg?.FreeShipping,
+                precioSugerido,
+                diferencia = precioSugerido.HasValue ? (precioSugerido.Value - m.Price) : (decimal?)null
+            };
+        }).ToList();
+
+        return Ok(new { cafeProductoId, sku = cafe.Sku, precioBaseActual, nuevoPrecioBase, mlas = rows });
+    }
+
+    /// <summary>Push masivo a una familia: dispara PushFromProductAsync para todas las MLAs.</summary>
+    [HttpPost("family/{familyId}/push-masivo")]
+    public async Task<IActionResult> PushMasivoFamilia(string familyId, [FromServices] Api.Data.AppDbContext db)
+    {
+        var items = await db.MeliItems.Where(i => i.FamilyId == familyId).ToListAsync();
+        if (items.Count == 0) return NotFound(new { error = "Familia no encontrada" });
+
+        int ok = 0, errores = 0;
+        var detalle = new List<object>();
+        foreach (var it in items)
+        {
+            try
+            {
+                var r = await _itemService.PushFromProductAsync(it.Id, pushPrice: true, pushStock: false);
+                if (r.Success) { ok++; detalle.Add(new { mla = it.MeliItemId, ok = true }); }
+                else { errores++; detalle.Add(new { mla = it.MeliItemId, ok = false, error = r.Message }); }
+            }
+            catch (Exception ex) { errores++; detalle.Add(new { mla = it.MeliItemId, ok = false, error = ex.Message }); }
+        }
+        return Ok(new { familyId, total = items.Count, ok, errores, detalle });
+    }
+
         [HttpPost("items/bulk-create-products")]
     public async Task<IActionResult> BulkCreateProducts([FromBody] BulkCreateProductsRequest request)
     {

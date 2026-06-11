@@ -1636,6 +1636,46 @@ public class ApiClient
         return await _http.PostAsJsonAsync($"/api/cafe/oems/{id}/scrape-web", new { });
     }
 
+    // ==========================================
+    // 2026-06-11: Precio independiente por MLA (familias con cuotas)
+    // ==========================================
+
+    public async Task<HttpResponseMessage> MarcarPrecioIndependienteAsync(int meliItemId)
+    {
+        await SetAuthHeaderAsync();
+        return await _http.PostAsJsonAsync($"/api/meli/items/{meliItemId}/marcar-precio-independiente", new { });
+    }
+
+    public async Task<HttpResponseMessage> DesmarcarPrecioIndependienteAsync(int meliItemId)
+    {
+        await SetAuthHeaderAsync();
+        return await _http.PostAsJsonAsync($"/api/meli/items/{meliItemId}/desmarcar-precio-independiente", new { });
+    }
+
+    public async Task<HttpResponseMessage> RecalcularFactorAsync(int meliItemId)
+    {
+        await SetAuthHeaderAsync();
+        return await _http.PostAsJsonAsync($"/api/meli/items/{meliItemId}/recalcular-factor", new { });
+    }
+
+    public async Task<HttpResponseMessage> MarcarFamiliaPrecioIndependienteAsync(string familyId, bool marcar = true)
+    {
+        await SetAuthHeaderAsync();
+        return await _http.PostAsJsonAsync($"/api/meli/family/{familyId}/marcar-precio-independiente?marcar={(marcar ? "true" : "false")}", new { });
+    }
+
+    public async Task<HttpResponseMessage> PreviewPropagacionAsync(int cafeProductoId, decimal nuevoPrecioBase)
+    {
+        await SetAuthHeaderAsync();
+        return await _http.GetAsync($"/api/meli/preview-propagacion/{cafeProductoId}?nuevoPrecioBase={nuevoPrecioBase}");
+    }
+
+    public async Task<HttpResponseMessage> PushMasivoFamiliaAsync(string familyId)
+    {
+        await SetAuthHeaderAsync();
+        return await _http.PostAsJsonAsync($"/api/meli/family/{familyId}/push-masivo", new { });
+    }
+
     /// <summary>2026-06-11: arranca el job masivo de scraping para todos los OEMs.</summary>
     public async Task<HttpResponseMessage> StartCafeOemScrapeMasivoAsync(string? proveedor = null, bool soloFaltantes = true)
     {
