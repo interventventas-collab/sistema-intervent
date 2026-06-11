@@ -265,20 +265,11 @@
             </div>
         }
 
-        @* ENTREGADAS — con filtros + resumen + arqueo (2026-06-09)
-           2026-06-11: colapsable, cerrada por defecto si ya hay entregas *@
-        <div class="mp-section-title" style="cursor:pointer; user-select:none;" @onclick="ToggleEntregadasAbiertas">
-            <span style="margin-right:0.3rem; display:inline-block; transition:transform 0.15s; @(entregadasAbiertas ? "transform:rotate(0deg);" : "transform:rotate(-90deg);")">▾</span>
-            ✅ Entregadas <span class="badge">@pedidos.Count(p => p.YaEntregada)</span>
-        </div>
-        @if (!entregadasAbiertas)
-        {
-            <div style="font-size:0.72rem; color:#9ca3af; padding:0.4rem 0.6rem;">Tocá el título para ver las entregas de hoy / ayer / semana.</div>
-        }
-        @if (entregadasAbiertas)
-        {
+        @* ENTREGADAS — 2026-06-11: el resumen + filtros + arqueo SIEMPRE se ven.
+           Solo la LISTA de cards se colapsa para no ocupar pantalla. *@
+        <div class="mp-section-title">✅ Entregadas <span class="badge">@pedidos.Count(p => p.YaEntregada)</span></div>
 
-        @* Chips de filtro de fecha *@
+        @* Chips de filtro de fecha — siempre visibles *@
         <div class="mp-filtros">
             <button class="mp-filtro-chip @(filtroFecha == "hoy" ? "activo" : "")" @onclick='() => CambiarFiltro("hoy")'>📅 Hoy</button>
             <button class="mp-filtro-chip @(filtroFecha == "ayer" ? "activo" : "")" @onclick='() => CambiarFiltro("ayer")'>🕐 Ayer</button>
@@ -304,6 +295,16 @@
             </div>
         </div>
 
+        @* 2026-06-11: toggle SOLO para la lista de cards (no oculta resumen) *@
+        @if (entregadasFiltro.Count > 0)
+        {
+            <div style="cursor:pointer; user-select:none; padding:0.5rem 0.6rem; font-size:0.85rem; color:#374151; font-weight:600; background:#f3f4f6; border-radius:8px; margin:0.5rem 0;"
+                 @onclick="ToggleEntregadasAbiertas">
+                <span style="margin-right:0.3rem; display:inline-block; transition:transform 0.15s; @(entregadasAbiertas ? "transform:rotate(0deg);" : "transform:rotate(-90deg);")">▾</span>
+                @(entregadasAbiertas ? "Ocultar" : "Ver") detalle de las @entregadasFiltro.Count entrega(s)
+            </div>
+        }
+
         @if (entregadasFiltro.Count == 0)
         {
             <div class="mp-empty" style="background:white; border-radius:12px; padding:1.2rem;">
@@ -311,7 +312,7 @@
                 <div class="mp-empty-text">No tenés entregas @labelFiltro.</div>
             </div>
         }
-        else
+        else if (entregadasAbiertas)
         {
             foreach (var p in entregadasFiltro)
             {
@@ -348,7 +349,6 @@
                 </div>
             }
         }
-        } @* cierra if(entregadasAbiertas) *@
     }
 </div>
 
