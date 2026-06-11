@@ -2165,6 +2165,105 @@ public class MeliController : ControllerBase
         return Ok(new { cafeProductoId, sku = cafe.Sku, precioBaseActual, nuevoPrecioBase, mlas = rows });
     }
 
+    /// <summary>2026-06-11: Análisis de margen por familia.
+    /// Para cada MLA devuelve: tipo publicación, cuotas, envío gratis, % comisión total, neto.
+    /// Permite ver si todas las MLAs de la familia dejan la misma ganancia neta.</summary>
+    [HttpGet("family/{familyId}/analisis-margen")]
+    public async Task<IActionResult> AnalisisMargenFamilia(
+        string familyId,
+        [FromServices] Api.Data.AppDbContext db,
+        [FromQuery] decimal comisionCategoriaPct = 13m,
+        [FromQuery] decimal envioGratisCostoEstimado = 7470m,
+        [FromQuery] decimal toleranciaNetoPct = 3m)
+    {
+        var items = await db.MeliItems.Where(i => i.FamilyId == familyId)
+            .OrderBy(i => i.Price)
+            .ToListAsync();
+        if (items.Count == 0) return NotFound(new { error = "Familia no encontrada" });
+
+        var mlaIds = items.Select(m => m.MeliItemId).ToList();
+        var configs = await db.MeliItemSyncConfigs.Where(c => mlaIds.Contains(c.MeliItemId)).ToListAsync();
+        var configByMla = configs.ToDictionary(c => c.MeliItemId);
+
+        // SKU del producto base (todos comparten producto)
+        var first = items[0];
+        string? sku = null;
+        decimal precioOtroBase = 0m;
+        if (first.CafeProductoId.HasValue)
+        {
+            var prod = await db.CafeProductos.FirstOrDefaultAsync(p => p.Id == first.CafeProductoId.Value);
+            sku = prod?.Sku;
+            precioOtroBase = prod?.PrecioOtro ?? prod?.Pvp2 ?? prod?.PrecioPorKg ?? 0m;
+        }
+
+        var mlas = items.Select(m =>
+        {
+            configByMla.TryGetValue(m.MeliItemId, out var cfg);
+            return Api.Services.MeliComisionHelper.CalcularMla(
+                mlaId: m.MeliItemId,
+                listingType: m.ListingTypeId,
+                installmentTag: m.InstallmentTag,
+                freeShipping: m.FreeShipping,
+                precioMeLi: m.Price,
+                comisionCategoriaPct: comisionCategoriaPct,
+                precioFactor: cfg?.PrecioFactor,
+                precioIndependiente: cfg?.PrecioIndependiente ?? false,
+                envioGratisCostoEstimado: envioGratisCostoEstimado);
+        }).ToList();
+
+        var netos = mlas.Select(m => m.Neto).Where(n => n > 0).ToList();
+        var netoMin = netos.Count > 0 ? netos.Min() : 0m;
+        var netoMax = netos.Count > 0 ? netos.Max() : 0m;
+        var netoPromedio = netos.Count > 0 ? Math.Round(netos.Average(), 2) : 0m;
+        var spread = netoMax - netoMin;
+        var spreadPct = netoPromedio > 0 ? Math.Round(spread / netoPromedio * 100m, 2) : 0m;
+
+        // Marcar dentroDeRango = neto está dentro de toleranciaNetoPct% del promedio
+        var tolerancia = netoPromedio * toleranciaNetoPct / 100m;
+        var dentroDeRangoCount = mlas.Count(m => Math.Abs(m.Neto - netoPromedio) <= tolerancia);
+        var fueraDeRangoCount = mlas.Count - dentroDeRangoCount;
+
+        return Ok(new
+        {
+            familyId,
+            sku,
+            precioOtroBase,
+            comisionCategoriaPct,
+            envioGratisCostoEstimado,
+            toleranciaNetoPct,
+            mlas = mlas.Select(m => new
+            {
+                m.MeliItemId,
+                m.ListingType,
+                m.ListingTypeLabel,
+                m.InstallmentTag,
+                m.InstallmentLabel,
+                m.FreeShipping,
+                m.PrecioMeLi,
+                m.ComisionCategoriaPct,
+                m.ComisionFinanciacionPct,
+                m.ComisionTotalPct,
+                m.ComisionMonto,
+                m.ShippingCostoEstimado,
+                m.Neto,
+                m.PrecioFactor,
+                m.PrecioIndependiente,
+                dentroDeRango = Math.Abs(m.Neto - netoPromedio) <= tolerancia,
+                diferenciaVsPromedio = Math.Round(m.Neto - netoPromedio, 2)
+            }),
+            stats = new
+            {
+                netoMin,
+                netoMax,
+                netoPromedio,
+                spread,
+                spreadPct,
+                dentroDeRangoCount,
+                fueraDeRangoCount
+            }
+        });
+    }
+
     /// <summary>Push masivo a una familia: dispara PushFromProductAsync para todas las MLAs.</summary>
     [HttpPost("family/{familyId}/push-masivo")]
     public async Task<IActionResult> PushMasivoFamilia(string familyId, [FromServices] Api.Data.AppDbContext db)
