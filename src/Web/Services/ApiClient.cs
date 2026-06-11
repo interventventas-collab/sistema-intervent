@@ -1636,6 +1636,21 @@ public class ApiClient
         return await _http.PostAsJsonAsync($"/api/cafe/oems/{id}/scrape-web", new { });
     }
 
+    /// <summary>2026-06-11: arranca el job masivo de scraping para todos los OEMs.</summary>
+    public async Task<HttpResponseMessage> StartCafeOemScrapeMasivoAsync(string? proveedor = null, bool soloFaltantes = true)
+    {
+        await SetAuthHeaderAsync();
+        var qs = new List<string>();
+        if (!string.IsNullOrWhiteSpace(proveedor)) qs.Add($"proveedor={Uri.EscapeDataString(proveedor)}");
+        qs.Add($"soloFaltantes={soloFaltantes.ToString().ToLower()}");
+        var url = "/api/cafe/oems/scrape-web/masivo?" + string.Join("&", qs);
+        return await _http.PostAsJsonAsync(url, new { });
+    }
+
+    /// <summary>2026-06-11: status del job masivo de scraping.</summary>
+    public async Task<CafeOemScrapeMasivoStatusDto?> GetCafeOemScrapeMasivoStatusAsync()
+        => await GetAsync<CafeOemScrapeMasivoStatusDto>("/api/cafe/oems/scrape-web/masivo/status");
+
     public async Task<CafeOemImportResultDto?> ImportCafeOemsAsync(Stream fileStream, string fileName, string proveedor)
     {
         await SetAuthHeaderAsync();

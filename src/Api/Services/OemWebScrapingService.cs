@@ -134,3 +134,79 @@ public class OemWebScrapingService
         });
     }
 }
+
+/// <summary>
+/// 2026-06-11: estado compartido del job masivo de scraping. Permite saber desde la UI cuanto falta.
+/// Solo permitimos UN job corriendo a la vez.
+/// </summary>
+public class OemMassiveScrapeState
+{
+    private readonly object _lock = new();
+    public bool Running { get; private set; }
+    public int Total { get; private set; }
+    public int Procesados { get; private set; }
+    public int Exitosos { get; private set; }
+    public int Errores { get; private set; }
+    public string? CurrentCodigo { get; private set; }
+    public DateTime? StartedAt { get; private set; }
+    public DateTime? FinishedAt { get; private set; }
+    public string? LastError { get; private set; }
+
+    public bool TryStart(int total)
+    {
+        lock (_lock)
+        {
+            if (Running) return false;
+            Running = true;
+            Total = total;
+            Procesados = 0;
+            Exitosos = 0;
+            Errores = 0;
+            CurrentCodigo = null;
+            StartedAt = DateTime.UtcNow;
+            FinishedAt = null;
+            LastError = null;
+            return true;
+        }
+    }
+
+    public void Tick(string codigo, bool ok, string? err = null)
+    {
+        lock (_lock)
+        {
+            Procesados++;
+            CurrentCodigo = codigo;
+            if (ok) Exitosos++; else { Errores++; LastError = err; }
+        }
+    }
+
+    public void Finish()
+    {
+        lock (_lock)
+        {
+            Running = false;
+            FinishedAt = DateTime.UtcNow;
+            CurrentCodigo = null;
+        }
+    }
+
+    public object Snapshot()
+    {
+        lock (_lock)
+        {
+            return new
+            {
+                running = Running,
+                total = Total,
+                procesados = Procesados,
+                exitosos = Exitosos,
+                errores = Errores,
+                currentCodigo = CurrentCodigo,
+                startedAt = StartedAt,
+                finishedAt = FinishedAt,
+                lastError = LastError,
+                porcentaje = Total > 0 ? Math.Round((decimal)Procesados / Total * 100m, 1) : 0m
+            };
+        }
+    }
+}

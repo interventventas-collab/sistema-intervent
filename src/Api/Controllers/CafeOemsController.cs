@@ -17,7 +17,12 @@ public class CafeOemsController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly OemWebScrapingService _scraper;
-    public CafeOemsController(AppDbContext db, OemWebScrapingService scraper) { _db = db; _scraper = scraper; }
+    private readonly OemMassiveScrapeState _massiveState;
+    private readonly IServiceScopeFactory _scopeFactory;
+    public CafeOemsController(AppDbContext db, OemWebScrapingService scraper, OemMassiveScrapeState massiveState, IServiceScopeFactory scopeFactory)
+    {
+        _db = db; _scraper = scraper; _massiveState = massiveState; _scopeFactory = scopeFactory;
+    }
 
     private static CafeOemDto Map(CafeOem o, int variantesCount = 0) => new(
         o.Id, o.Codigo, o.Descripcion, o.Marca,
@@ -388,6 +393,81 @@ public class CafeOemsController : ControllerBase
                 especificaciones = result.Especificaciones
             }
         });
+    }
+
+    /// <summary>2026-06-11: estado del job masivo (poll desde la UI).</summary>
+    [HttpGet("scrape-web/masivo/status")]
+    public IActionResult ScrapeMasivoStatus() => Ok(_massiveState.Snapshot());
+
+    /// <summary>2026-06-11: arranca el scraping masivo en background para todos los OEMs con URL.</summary>
+    [HttpPost("scrape-web/masivo")]
+    public async Task<IActionResult> ScrapeMasivoStart([FromQuery] string? proveedor = null, [FromQuery] bool soloFaltantes = true)
+    {
+        var ids = await _db.CafeOems
+            .Where(o => o.IsActive && o.UrlWeb != null && o.UrlWeb != "")
+            .Where(o => proveedor == null || o.Proveedor == proveedor)
+            .Where(o => !soloFaltantes || o.ScrapedAt == null)
+            .OrderBy(o => o.Id)
+            .Select(o => o.Id)
+            .ToListAsync();
+
+        if (ids.Count == 0)
+            return BadRequest(new { error = "No hay OEMs para procesar (filtros: tiene URL, " + (soloFaltantes ? "y aun no fueron scrapeados" : "todos") + ")" });
+
+        if (!_massiveState.TryStart(ids.Count))
+            return Conflict(new { error = "Ya hay un job de scraping masivo corriendo. Esperá que termine." });
+
+        var scopeFactory = _scopeFactory;
+        var state = _massiveState;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                foreach (var id in ids)
+                {
+                    try
+                    {
+                        using var scope = scopeFactory.CreateScope();
+                        var db2 = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                        var scraper2 = scope.ServiceProvider.GetRequiredService<OemWebScrapingService>();
+                        var oem = await db2.CafeOems.FindAsync(id);
+                        if (oem is null || string.IsNullOrWhiteSpace(oem.UrlWeb))
+                        {
+                            state.Tick(oem?.Codigo ?? id.ToString(), false, "OEM no encontrado o sin URL");
+                            continue;
+                        }
+                        var result = await scraper2.ScrapeAsync(oem.UrlWeb);
+                        if (!string.IsNullOrEmpty(result.Error))
+                        {
+                            state.Tick(oem.Codigo, false, result.Error);
+                        }
+                        else
+                        {
+                            oem.ImagenUrl = result.ImagenUrl ?? oem.ImagenUrl;
+                            oem.DescripcionWeb = result.Descripcion ?? oem.DescripcionWeb;
+                            var espJson = scraper2.SerializeEspecificaciones(result.Especificaciones);
+                            if (!string.IsNullOrEmpty(espJson)) oem.EspecificacionesJson = espJson;
+                            oem.ScrapedAt = DateTime.UtcNow;
+                            oem.UpdatedAt = DateTime.UtcNow;
+                            await db2.SaveChangesAsync();
+                            state.Tick(oem.Codigo, true);
+                        }
+                        // pausa para no sobrecargar al proveedor
+                        await Task.Delay(800);
+                    }
+                    catch (Exception ex)
+                    {
+                        state.Tick(id.ToString(), false, ex.Message);
+                    }
+                }
+            }
+            finally
+            {
+                state.Finish();
+            }
+        });
+
+        return Accepted(new { started = true, total = ids.Count });
     }
 
     /// <summary>Resuelve marca: si viene MarcaId valido la busca; si solo viene texto, busca o crea.</summary>

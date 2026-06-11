@@ -131,6 +131,7 @@ builder.Services.AddScoped<ContabiliumService>();
 builder.Services.AddScoped<ContabiliumImportService>();
 builder.Services.AddScoped<CloneContabiliumService>();
 builder.Services.AddScoped<OemWebScrapingService>();
+builder.Services.AddSingleton<OemMassiveScrapeState>();
 builder.Services.AddScoped<MeliStockSyncService>();
 builder.Services.AddScoped<MeliCafePricePushService>();
 builder.Services.AddScoped<MeliStockPushService>();

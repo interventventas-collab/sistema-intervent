@@ -1,5 +1,6 @@
 @page "/cafe/oems"
 @attribute [Authorize]
+@implements IAsyncDisposable
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject IJSRuntime JS
@@ -20,9 +21,42 @@
                 @foreach (var m in marcasExistentes) { <option value="@m">@m</option> }
             </select>
             <button class="btn" style="background: #16a34a; color: white; border: none;" @onclick="OpenImport">📥 Importar Excel</button>
+            <button class="btn" style="background: #2563eb; color: white; border: none;" @onclick="OpenScrapeMasivo" title="Trae imagen + descripción + ficha desde la web del proveedor">🌐 Traer info web masiva</button>
             <button class="btn btn-primary" @onclick="ShowCreate">+ Nuevo OEM</button>
         </div>
     </div>
+
+    @* 2026-06-11: progreso del scraping masivo *@
+    @if (masivoStatus is not null && (masivoStatus.running || (masivoStatus.finishedAt.HasValue && (DateTime.UtcNow - masivoStatus.finishedAt.Value).TotalMinutes < 5)))
+    {
+        <div style="padding: 0.8rem; background: @(masivoStatus.running ? "#eff6ff" : "#f0fdf4"); border-bottom: 1px solid #e5e7eb;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem; gap: 0.8rem; flex-wrap: wrap;">
+                <strong style="color: @(masivoStatus.running ? "#1d4ed8" : "#15803d");">
+                    @if (masivoStatus.running)
+                    {
+                        <span>⏳ Trayendo info de la web... OEM @masivoStatus.currentCodigo</span>
+                    }
+                    else
+                    {
+                        <span>✅ Sincronización masiva finalizada</span>
+                    }
+                </strong>
+                <span style="font-size: 0.85rem; color: #4b5563;">
+                    @masivoStatus.procesados / @masivoStatus.total
+                    (@(masivoStatus.porcentaje)%)
+                    · ✓ @masivoStatus.exitosos
+                    @if (masivoStatus.errores > 0) { <span style="color: #dc2626;"> · ✗ @masivoStatus.errores</span> }
+                </span>
+            </div>
+            <div style="height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden;">
+                <div style="height: 100%; background: @(masivoStatus.running ? "#3b82f6" : "#16a34a"); width: @(masivoStatus.porcentaje)%; transition: width 0.5s ease;"></div>
+            </div>
+            @if (!string.IsNullOrEmpty(masivoStatus.lastError))
+            {
+                <p style="font-size: 0.75rem; color: #dc2626; margin: 0.3rem 0 0;">Último error: @masivoStatus.lastError</p>
+            }
+        </div>
+    }
     <div class="card-body" style="padding: 0;">
         @if (loading)
         {
@@ -260,6 +294,50 @@
     </div>
 }
 
+@* 2026-06-11: modal de confirmacion para arrancar el scraping masivo *@
+@if (showScrapeMasivoConfirm)
+{
+    <div class="modal-overlay" @onclick="() => showScrapeMasivoConfirm = false">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 540px;">
+            <div class="modal-header" style="background: #2563eb; color: white;">
+                <h3 style="margin: 0;">🌐 Traer info de la web del proveedor</h3>
+                <button class="btn-close" @onclick="() => showScrapeMasivoConfirm = false" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.85rem; color: #374151; margin: 0 0 0.8rem;">
+                    Esto recorre <strong>todos los OEMs que tienen URL cargada</strong> y baja la imagen + descripción + ficha técnica de la web del proveedor.
+                </p>
+                <div class="form-group">
+                    <label class="form-label">¿Qué OEMs procesar?</label>
+                    <label style="display: flex; gap: 0.4rem; align-items: center; font-size: 0.85rem; padding: 0.4rem 0;">
+                        <input type="radio" name="rmas" checked="@masivoSoloFaltantes" @onchange="() => masivoSoloFaltantes = true" />
+                        <span>Solo los <strong>faltantes</strong> (todavía no tienen info de la web) — recomendado</span>
+                    </label>
+                    <label style="display: flex; gap: 0.4rem; align-items: center; font-size: 0.85rem; padding: 0.4rem 0;">
+                        <input type="radio" name="rmas" checked="@(!masivoSoloFaltantes)" @onchange="() => masivoSoloFaltantes = false" />
+                        <span><strong>TODOS</strong> los que tengan URL (refresca también los ya descargados)</span>
+                    </label>
+                </div>
+                <p style="font-size: 0.78rem; color: #6b7280; margin: 0.6rem 0 0;">
+                    El proceso corre en segundo plano. Vas a ver una barra de progreso arriba. Podés cerrar esta ventana, salir de la pantalla y volver más tarde — sigue corriendo.
+                </p>
+                @if (!string.IsNullOrEmpty(masivoStartError))
+                {
+                    <div style="padding: 0.5rem; background: #fee2e2; color: #991b1b; border-radius: 0.3rem; font-size: 0.8rem; margin-top: 0.6rem;">
+                        @masivoStartError
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => showScrapeMasivoConfirm = false">Cancelar</button>
+                <button class="btn" style="background: #2563eb; color: white; border: none;" @onclick="DoScrapeMasivoStart">
+                    🌐 Empezar
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @if (showImport)
 {
     <div class="modal-overlay" @onclick="CloseImport">
@@ -446,11 +524,99 @@
     // Delete
     private CafeOemDto? toDelete;
 
+    // 2026-06-11: scrape masivo
+    private bool showScrapeMasivoConfirm;
+    private bool masivoSoloFaltantes = true;
+    private string? masivoStartError;
+    private CafeOemScrapeMasivoStatusDto? masivoStatus;
+    private System.Threading.Timer? _masivoPollTimer;
+    private bool _masivoRefreshOnFinish;
+
     protected override async Task OnInitializedAsync()
     {
         var loadMarcas = LoadMarcasCatalog();
         await Load();
         await loadMarcas;
+        // Si hay un job corriendo cuando entro a la pantalla, prendo el poller
+        await RefreshMasivoStatusAsync();
+        if (masivoStatus is not null && masivoStatus.running) StartMasivoPoller();
+    }
+
+    private void StartMasivoPoller()
+    {
+        _masivoPollTimer?.Dispose();
+        _masivoPollTimer = new System.Threading.Timer(_ =>
+        {
+            _ = MasivoTickAsync();
+        }, null, dueTime: 1500, period: 2500);
+    }
+
+    private async Task MasivoTickAsync()
+    {
+        try
+        {
+            await RefreshMasivoStatusAsync();
+            await InvokeAsync(StateHasChanged);
+            if (masivoStatus is not null && !masivoStatus.running)
+            {
+                _masivoPollTimer?.Dispose();
+                _masivoPollTimer = null;
+                if (_masivoRefreshOnFinish)
+                {
+                    _masivoRefreshOnFinish = false;
+                    await Load();
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+        }
+        catch { }
+    }
+
+    private async Task RefreshMasivoStatusAsync()
+    {
+        try { masivoStatus = await Api.GetCafeOemScrapeMasivoStatusAsync(); }
+        catch { }
+    }
+
+    private async Task DoScrapeMasivoStart()
+    {
+        masivoStartError = null;
+        try
+        {
+            var proveedor = string.IsNullOrWhiteSpace(filtroProveedor) ? null : filtroProveedor;
+            var resp = await Api.StartCafeOemScrapeMasivoAsync(proveedor, masivoSoloFaltantes);
+            if (resp.IsSuccessStatusCode || (int)resp.StatusCode == 202)
+            {
+                showScrapeMasivoConfirm = false;
+                _masivoRefreshOnFinish = true;
+                await RefreshMasivoStatusAsync();
+                StartMasivoPoller();
+                ToastService.Success("Sincronización masiva iniciada. Mirá la barra de progreso arriba.");
+            }
+            else
+            {
+                var err = await resp.Content.ReadAsStringAsync();
+                masivoStartError = $"No se pudo iniciar. {err}";
+            }
+        }
+        catch (Exception ex)
+        {
+            masivoStartError = $"Error: {ex.Message}";
+        }
+    }
+
+    private void OpenScrapeMasivo()
+    {
+        masivoStartError = null;
+        masivoSoloFaltantes = true;
+        showScrapeMasivoConfirm = true;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _masivoPollTimer?.Dispose();
+        _masivoPollTimer = null;
+        await Task.CompletedTask;
     }
 
     private async Task LoadMarcasCatalog()

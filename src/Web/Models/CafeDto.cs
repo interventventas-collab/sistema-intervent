@@ -922,6 +922,21 @@ public class CafeOemDto
     public int VariantesCount { get; set; }
 }
 
+// 2026-06-11: status del job masivo de scraping
+public class CafeOemScrapeMasivoStatusDto
+{
+    public bool running { get; set; }
+    public int total { get; set; }
+    public int procesados { get; set; }
+    public int exitosos { get; set; }
+    public int errores { get; set; }
+    public string? currentCodigo { get; set; }
+    public DateTime? startedAt { get; set; }
+    public DateTime? finishedAt { get; set; }
+    public string? lastError { get; set; }
+    public decimal porcentaje { get; set; }
+}
+
 public class CreateCafeOemRequest
 {
     public string Codigo { get; set; } = "";
