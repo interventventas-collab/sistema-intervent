@@ -4156,6 +4156,13 @@
         try { itemProductCost = await Api.GetProductCostAsync(item.MeliItemId); }
         catch { itemProductCost = null; }
         isLoadingProductCost = false;
+        // 2026-06-12: "Quiero ganar" arranca con el margen ACTUAL → precio sugerido ≈ precio actual.
+        // Asi se ve la situacion real y de ahi se ajusta para arriba o abajo.
+        if (itemProductCost is not null && itemProductCost.TotalCost > 0 && itemCosts is not null)
+        {
+            calcGananciaModo = "%";
+            calcGananciaValor = Math.Max(0, Math.Round(MarginPctSobreCosto(), 1));
+        }
         StateHasChanged();
 
         // 2026-06-12: stock en bodega Full (informativo, solo se muestra si > 0)
