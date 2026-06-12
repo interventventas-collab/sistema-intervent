@@ -279,11 +279,24 @@ public class CafeRepartidorPublicController : ControllerBase
         var v = await _db.CafeVentas.FirstOrDefaultAsync(x => x.PublicToken == tokenVenta);
         if (v is null) return NotFound(new EscanearResult(false, "Venta no encontrada (QR invalido)", null, null, null, null, false));
 
-        // Verificar si ya esta cargada en su lista (idempotente — no agregar duplicado)
-        var yaCargada = await _db.CafeQrEscaneos.AnyAsync(e =>
-            e.VentaId == v.Id && e.RepartidorId == s.RepartidorId && e.Accion == "cargado");
-        if (!yaCargada)
+        // 2026-06-12: regla "el último que escanea se lo queda". El dueño del pedido es el
+        // repartidor del ÚLTIMO escaneo 'cargado'. Si otro lo tenía, al escanear pasa a mi
+        // lista y desaparece de la del anterior (la lista filtra por dueño actual).
+        // Si lo tenía yo mismo, no se agrega duplicado.
+        var ultimoCargado = await _db.CafeQrEscaneos
+            .Where(e => e.VentaId == v.Id && e.Accion == "cargado")
+            .OrderByDescending(e => e.CreatedAt).ThenByDescending(e => e.Id)
+            .FirstOrDefaultAsync();
+        var yaEsMia = ultimoCargado is not null && ultimoCargado.RepartidorId == s.RepartidorId;
+
+        string? transferidoDe = null;
+        if (!yaEsMia)
         {
+            if (ultimoCargado is not null && !v.EntregadoPorRepartidorId.HasValue)
+            {
+                var otro = await _db.CafeRepartidores.FindAsync(ultimoCargado.RepartidorId);
+                transferidoDe = otro?.Nombre;
+            }
             _db.CafeQrEscaneos.Add(new CafeQrEscaneo
             {
                 VentaId = v.Id,
@@ -296,9 +309,11 @@ public class CafeRepartidorPublicController : ControllerBase
         }
 
         var totalCobrable = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
-        var msg = yaCargada
+        var msg = yaEsMia
             ? $"Ya estaba en tu lista: {v.Numero}"
-            : $"✅ Cargado: {v.Numero}";
+            : transferidoDe is not null
+                ? $"⚠ Este pedido lo tenía {transferidoDe} — ahora pasó a TU lista: {v.Numero}"
+                : $"✅ Cargado: {v.Numero}";
         return Ok(new EscanearResult(true, msg, v.Id, v.Numero,
             v.ClienteNombreSnapshot, totalCobrable, v.EntregadoPorRepartidorId.HasValue));
     }
@@ -369,6 +384,25 @@ public class CafeRepartidorPublicController : ControllerBase
                 ClienteMapeoLink = x.c != null ? x.c.MapeoLink : null
             })
             .ToListAsync();
+
+        // 2026-06-12: regla "el último que escanea se lo queda" — un pedido PENDIENTE solo
+        // aparece en la lista de su dueño actual (el repartidor del último escaneo 'cargado').
+        // Las ya entregadas no se filtran: quedan en el historial del que las trabajó.
+        var idsParaDuenio = rows.Where(x => !x.YaEntregada).Select(x => x.Id).Distinct().ToList();
+        if (idsParaDuenio.Count > 0)
+        {
+            var duenios = await _db.CafeQrEscaneos
+                .Where(e => idsParaDuenio.Contains(e.VentaId) && e.Accion == "cargado")
+                .Select(e => new { e.VentaId, e.RepartidorId, e.CreatedAt, e.Id })
+                .ToListAsync();
+            var duenioActual = duenios
+                .GroupBy(e => e.VentaId)
+                .ToDictionary(g => g.Key, g => g.OrderByDescending(e => e.CreatedAt).ThenByDescending(e => e.Id).First().RepartidorId);
+            rows = rows.Where(x => x.YaEntregada
+                || !duenioActual.TryGetValue(x.Id, out var owner) || owner == r.Id).ToList();
+        }
+        // Dedupe: si el repartidor escaneó la misma venta varias veces, mostrarla una sola vez (el escaneo más reciente)
+        rows = rows.GroupBy(x => x.Id).Select(g => g.OrderByDescending(x => x.CargadoAt).First()).ToList();
 
         // Saldos: sumar cobranzas vigentes por venta
         var ventaIds = rows.Select(x => x.Id).Distinct().ToList();
