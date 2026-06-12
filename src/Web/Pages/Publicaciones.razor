@@ -1426,11 +1426,11 @@
                             <div style="font-size:0.7rem; color:#6b7280; text-transform:uppercase;">Stock en MeLi</div>
                             <div style="font-size:1.2rem; font-weight:800; color:#166534;">@selectedItem.AvailableQuantity u.</div>
                         </div>
-                        @if (fichaStockFull.HasValue && fichaStockFull.Value > 0)
+                        @if ((fichaStockFull.HasValue && fichaStockFull.Value > 0) || string.Equals(selectedItem.LogisticType, "fulfillment", StringComparison.OrdinalIgnoreCase))
                         {
                             <div>
                                 <div style="font-size:0.7rem; color:#6b7280; text-transform:uppercase;">Stock Full</div>
-                                <div style="font-size:1.2rem; font-weight:800; color:#9a3412;" title="Unidades en la bodega Full de MercadoLibre (informativo)">🏭 @fichaStockFull.Value u.</div>
+                                <div style="font-size:1.2rem; font-weight:800; color:#9a3412;" title="Unidades en la bodega Full de MercadoLibre (informativo, segun el ultimo sync de Full)">🏭 @(fichaStockFull ?? 0) u.</div>
                             </div>
                         }
                         <div>
