@@ -121,6 +121,10 @@
                             <button class="more-filters-item @(filterPromo ? "active" : "")" @onclick="() => { TogglePromoFilter(); showMoreFilters = false; }">
                                 <i class="fa-solid fa-tag"></i> En promoción
                             </button>
+                            <button class="more-filters-item @(IsCuentaMe1Filtered() ? "active" : "")" @onclick="() => { ToggleCuentaMe1Filter(); showMoreFilters = false; }"
+                                    style="background:@(IsCuentaMe1Filtered() ? "#dbeafe" : "transparent"); color:@(IsCuentaMe1Filtered() ? "#1e40af" : "inherit"); font-weight:700;">
+                                🛒 Solo cuenta me1
+                            </button>
 
                             @* === Selector: Tipo de envío === *@
                             <div style="border-top: 1px solid #e5e7eb; margin: 0.5rem 0 0.25rem 0; padding: 0.5rem 0.75rem 0.25rem 0.75rem; font-size: 0.75rem; color: #6b7280; font-weight: 600; text-transform: uppercase;">📦 Tipo de envío</div>
@@ -2898,6 +2902,30 @@
     private void TogglePromoFilter()
     {
         filterPromo = !filterPromo;
+        InvalidateFilterCache();
+    }
+
+    // 2026-06-12: filtro rápido "solo cuenta me1" (busca cuentas cuyo nickname contenga "me1", case-insensitive).
+    private bool IsCuentaMe1Filtered()
+        => checkboxFilters.TryGetValue("cuenta", out var set) && set.Count > 0
+           && items is not null
+           && set.All(v => v?.IndexOf("me1", StringComparison.OrdinalIgnoreCase) >= 0);
+
+    private void ToggleCuentaMe1Filter()
+    {
+        if (items is null) return;
+        if (IsCuentaMe1Filtered())
+        {
+            checkboxFilters.Remove("cuenta");
+        }
+        else
+        {
+            var me1Accounts = items.Select(i => i.AccountNickname)
+                .Where(n => !string.IsNullOrEmpty(n) && n!.IndexOf("me1", StringComparison.OrdinalIgnoreCase) >= 0)
+                .Distinct().ToList();
+            if (me1Accounts.Count == 0) return; // ninguna cuenta matchea — no hacer nada
+            checkboxFilters["cuenta"] = new HashSet<string>(me1Accounts!);
+        }
         InvalidateFilterCache();
     }
 
