@@ -536,8 +536,16 @@
                                             }
                                             @if (HasAjuste(item))
                                             {
-                                                <div style="display:inline-block; padding:0.15rem 0.45rem; background:#fef3c7; color:#92400e; border:1px solid #fde68a; border-radius:0.3rem; font-size:0.75rem; font-weight:700;">
-                                                    🏷 @(item.AjustePct != 0 ? $"+{item.AjustePct:0.##}% " : "")@(item.AjusteFijo != 0 ? $"+${item.AjusteFijo:N0} " : "")@(!string.IsNullOrEmpty(item.AjusteRedondeo) ? $"r{item.AjusteRedondeo}" : "")@(!string.IsNullOrEmpty(prev1) ? $" → ${prev1}" : "")
+                                                <div style="display:inline-block; padding:0.2rem 0.55rem 0.25rem; background:white; border:1px solid #e5e7eb; border-left:3px solid #f59e0b; border-radius:0.35rem;">
+                                                    @if (!string.IsNullOrEmpty(prev1))
+                                                    {
+                                                        <div style="font-size:0.8rem; font-weight:700; color:#92400e; white-space:nowrap;">$@prev1</div>
+                                                        <div style="font-size:0.6rem; color:#9ca3af; white-space:nowrap;">@AjusteResumen(item)</div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <div style="font-size:0.72rem; font-weight:600; color:#92400e; white-space:nowrap;">@AjusteResumen(item)</div>
+                                                    }
                                                 </div>
                                             }
                                             else
@@ -786,8 +794,16 @@
                                             <div style="cursor:pointer;" @onclick="() => OpenItemModal(item)" title="Click para editar el ajuste desde la ficha">
                                                 @if (HasAjuste(item))
                                                 {
-                                                    <div style="display:inline-block; padding:0.15rem 0.45rem; background:#fef3c7; color:#92400e; border:1px solid #fde68a; border-radius:0.3rem; font-size:0.75rem; font-weight:700;">
-                                                        🏷 @(item.AjustePct != 0 ? $"+{item.AjustePct:0.##}% " : "")@(item.AjusteFijo != 0 ? $"+${item.AjusteFijo:N0} " : "")@(!string.IsNullOrEmpty(item.AjusteRedondeo) ? $"r{item.AjusteRedondeo}" : "")@(!string.IsNullOrEmpty(prev2) ? $" → ${prev2}" : "")
+                                                    <div style="display:inline-block; padding:0.2rem 0.55rem 0.25rem; background:white; border:1px solid #e5e7eb; border-left:3px solid #f59e0b; border-radius:0.35rem;">
+                                                        @if (!string.IsNullOrEmpty(prev2))
+                                                        {
+                                                            <div style="font-size:0.8rem; font-weight:700; color:#92400e; white-space:nowrap;">$@prev2</div>
+                                                            <div style="font-size:0.6rem; color:#9ca3af; white-space:nowrap;">@AjusteResumen(item)</div>
+                                                        }
+                                                        else
+                                                        {
+                                                            <div style="font-size:0.72rem; font-weight:600; color:#92400e; white-space:nowrap;">@AjusteResumen(item)</div>
+                                                        }
                                                     </div>
                                                 }
                                                 else
@@ -4392,6 +4408,16 @@
             i.FamilyId == v.FamilyId &&
             i.Sku == v.Sku &&
             IsCatalogListing(i) != IsCatalogListing(v));
+    }
+
+    // Texto compacto de la receta del ajuste para el chip de la grilla: "+1% · +$100 · red.99"
+    private string AjusteResumen(MeliItemDto item)
+    {
+        var parts = new List<string>();
+        if (item.AjustePct != 0) parts.Add($"+{item.AjustePct:0.##}%");
+        if (item.AjusteFijo != 0) parts.Add($"+${item.AjusteFijo:N0}");
+        if (!string.IsNullOrEmpty(item.AjusteRedondeo)) parts.Add($"red.{item.AjusteRedondeo}");
+        return string.Join(" · ", parts);
     }
 
     // ── 2026-06-12: sección Mayorista y límites de la ficha ──
