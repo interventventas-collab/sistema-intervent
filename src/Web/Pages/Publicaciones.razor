@@ -1347,6 +1347,77 @@
                     </div>
                 }
 
+                @* 2026-06-12: CALCULAR PRECIO DESDE COSTO — el camino inverso del simulador.
+                   Costo + ganancia deseada → precio de publicación con todos los costos MeLi adentro. *@
+                @if (itemCosts is not null && itemProductCost is not null && itemProductCost.TotalCost > 0)
+                {
+                    <div style="margin-top: 0.75rem; padding: 0.75rem 1rem; background: #eff6ff; border: 2px solid #bfdbfe; border-radius: 8px;">
+                        <div style="font-weight: 700; font-size: 0.9rem; color: #1e40af; margin-bottom: 0.6rem;">🧮 Calcular precio desde costo</div>
+                        <div style="display:flex; gap:1rem; align-items:flex-end; flex-wrap:wrap;">
+                            <div>
+                                <div style="font-size:0.7rem; color:#6b7280; text-transform:uppercase; margin-bottom:0.2rem;">Quiero ganar</div>
+                                <div style="display:flex; gap:0.25rem;">
+                                    <input type="number" step="any" value="@calcGananciaValor"
+                                           @oninput="@(e => { if (decimal.TryParse(e.Value?.ToString()?.Replace(',', '.'), NumberStyles.Any, CultureInfo.InvariantCulture, out var v)) calcGananciaValor = v; })"
+                                           style="width:90px; padding:0.4rem; border:1px solid #93c5fd; border-radius:6px; font-weight:700; text-align:right;" />
+                                    <button @onclick='() => calcGananciaModo = "%"'
+                                            style="padding:0.4rem 0.6rem; border:1px solid #93c5fd; border-radius:6px; cursor:pointer; font-weight:700; background:@(calcGananciaModo == "%" ? "#2563eb" : "white"); color:@(calcGananciaModo == "%" ? "white" : "#1e40af");">%</button>
+                                    <button @onclick='() => calcGananciaModo = "$"'
+                                            style="padding:0.4rem 0.6rem; border:1px solid #93c5fd; border-radius:6px; cursor:pointer; font-weight:700; background:@(calcGananciaModo == "$" ? "#2563eb" : "white"); color:@(calcGananciaModo == "$" ? "white" : "#1e40af");">$</button>
+                                </div>
+                                <div style="font-size:0.65rem; color:#9ca3af; margin-top:0.15rem;">@(calcGananciaModo == "%" ? "% sobre el costo" : "$ por unidad") (costo $@itemProductCost.TotalCost.ToString("N0", argCulture))</div>
+                            </div>
+                            <div>
+                                <div style="font-size:0.7rem; color:#6b7280; text-transform:uppercase; margin-bottom:0.2rem;">Redondeo</div>
+                                <div style="display:flex; gap:0.25rem;">
+                                    @foreach (var r in new[] { "exacto", "99", "999" })
+                                    {
+                                        var rLocal = r;
+                                        <button @onclick="() => calcRedondeo = rLocal"
+                                                style="padding:0.4rem 0.6rem; border:1px solid #93c5fd; border-radius:6px; cursor:pointer; font-weight:700; background:@(calcRedondeo == rLocal ? "#2563eb" : "white"); color:@(calcRedondeo == rLocal ? "white" : "#1e40af");">@rLocal</button>
+                                    }
+                                </div>
+                            </div>
+                            <div style="flex:1; min-width:220px;">
+                                @{
+                                    var precioCalc = CalcPrecioFinal();
+                                }
+                                @if (precioCalc.HasValue)
+                                {
+                                    var netoCalc = CalcNetoAtPrecio(precioCalc.Value);
+                                    var gananciaCalc = netoCalc - itemProductCost.TotalCost;
+                                    var margenCalc = itemProductCost.TotalCost > 0 ? gananciaCalc / itemProductCost.TotalCost * 100m : 0m;
+                                    <div style="padding:0.5rem 0.75rem; background:white; border:1px solid #bfdbfe; border-radius:6px;">
+                                        <div style="font-size:0.7rem; color:#6b7280; text-transform:uppercase;">Precio sugerido</div>
+                                        <div style="font-size:1.3rem; font-weight:800; color:#1e40af;">$ @precioCalc.Value.ToString("N2", argCulture)</div>
+                                        <div style="font-size:0.72rem; color:#16a34a; font-weight:600;">→ te quedan $@netoCalc.ToString("N0", argCulture) · ganás $@gananciaCalc.ToString("N0", argCulture) (@margenCalc.ToString("0.0", argCulture)% s/costo)</div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div style="font-size:0.78rem; color:#9ca3af;">Ingresá la ganancia deseada para calcular.</div>
+                                }
+                            </div>
+                            <button @onclick="AplicarPrecioCalculado" disabled="@(isPushingCalcPrecio || CalcPrecioFinal() is null)"
+                                    style="padding:0.6rem 1rem; background:#16a34a; color:white; border:none; border-radius:6px; font-weight:700; cursor:pointer; white-space:nowrap;">
+                                @(isPushingCalcPrecio ? "Pusheando..." : "✔ Aplicar y pushear")
+                            </button>
+                        </div>
+                        @{
+                            var catSibling = GetCatalogSibling(selectedItem);
+                        }
+                        @if (selectedItem.CatalogListing || catSibling is not null)
+                        {
+                            <div style="margin-top:0.5rem; padding:0.4rem 0.6rem; background:#fef9c3; border-left:3px solid #f59e0b; border-radius:4px; font-size:0.75rem; color:#92400e;">
+                                📋 @(selectedItem.CatalogListing ? "Esta publicación es de CATÁLOGO" : "Esta publicación tiene una hermana de CATÁLOGO")@(catSibling is not null ? $" ({catSibling.MeliItemId})" : "") — el precio va hermanado: al cambiar una, MeLi actualiza la otra automáticamente.
+                            </div>
+                        }
+                        <div style="margin-top:0.4rem; font-size:0.65rem; color:#9ca3af;">
+                            El cálculo usa los costos actuales del simulador (comisión @itemCosts.PercentageFee.ToString("0.#")%, cargo fijo, envío, retenciones). Si el precio sugerido cruza los $30.000, el cargo fijo se elimina solo.
+                        </div>
+                    </div>
+                }
+
                 <!-- Editable fields -->
                 <div class="detail-section">
                     @if (isLoadingPromotions)
@@ -4053,6 +4124,114 @@
         if (itemCosts is null) return 0;
         var taxes = CalculateTaxAmount();
         return Math.Round(itemCosts.Price - itemCosts.SaleFeeAmount - itemCosts.ListingFeeAmount - itemCosts.ShippingCost - taxes, 2);
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // 2026-06-12: Calcular precio desde costo (camino inverso del simulador)
+    // ════════════════════════════════════════════════════════════════════════
+    private string calcGananciaModo = "%";   // "%" sobre costo | "$" fijos
+    private decimal calcGananciaValor = 50m;
+    private string calcRedondeo = "99";      // exacto | 99 | 999
+    private bool isPushingCalcPrecio;
+
+    /// <summary>Precio crudo que cubre costo + ganancia + todos los costos MeLi.
+    /// neto(P) = P − P·comis% − cargoFijo − envío − P·retenciones% ⇒ despejamos P.
+    /// El cargo fijo depende del precio (umbral $30.000): probamos las dos hipótesis.</summary>
+    private decimal? CalcPrecioCrudo()
+    {
+        if (itemCosts is null || itemProductCost is null || itemProductCost.TotalCost <= 0) return null;
+        if (calcGananciaValor <= 0) return null;
+        var costo = itemProductCost.TotalCost;
+        var ganancia = calcGananciaModo == "%" ? costo * calcGananciaValor / 100m : calcGananciaValor;
+        var netoNecesario = costo + ganancia;
+
+        var price = itemCosts.Price;
+        if (price <= 0) return null;
+        // % que escalan con el precio: comisión (sin el fijo) + financiación + retenciones del input
+        var pctEscalable = (itemCosts.SaleFeeAmount - itemCosts.FixedFee + itemCosts.FinancingFee) / price
+                           + taxPercentage / 100m;
+        var denom = 1m - pctEscalable;
+        if (denom <= 0.05m) return null; // los costos se comen todo — no hay precio posible
+
+        var envio = itemCosts.ShippingCost + itemCosts.ListingFeeAmount;
+        var fijoActual = itemCosts.FixedFee;
+
+        // Hipótesis B: precio >= $30.000 → sin cargo fijo
+        var pSinFijo = (netoNecesario + envio) / denom;
+        if (pSinFijo >= 30000m) return Math.Round(pSinFijo, 2);
+        // Hipótesis A: precio < $30.000 → usamos el cargo fijo actual como estimación
+        var pConFijo = (netoNecesario + envio + fijoActual) / denom;
+        return Math.Round(pConFijo, 2);
+    }
+
+    private decimal? CalcPrecioFinal()
+    {
+        var crudo = CalcPrecioCrudo();
+        if (crudo is null) return null;
+        return calcRedondeo switch
+        {
+            "99" => Math.Ceiling(crudo.Value / 100m) * 100m - 1m,
+            "999" => Math.Ceiling(crudo.Value / 1000m) * 1000m - 1m,
+            _ => crudo.Value
+        };
+    }
+
+    /// <summary>Neto estimado si publicamos al precio P (misma fórmula del simulador, escalada).</summary>
+    private decimal CalcNetoAtPrecio(decimal p)
+    {
+        if (itemCosts is null || itemCosts.Price <= 0) return 0;
+        var price = itemCosts.Price;
+        var pctEscalable = (itemCosts.SaleFeeAmount - itemCosts.FixedFee + itemCosts.FinancingFee) / price
+                           + taxPercentage / 100m;
+        var fijo = p >= 30000m ? 0m : itemCosts.FixedFee;
+        var envio = itemCosts.ShippingCost + itemCosts.ListingFeeAmount;
+        return Math.Round(p * (1m - pctEscalable) - fijo - envio, 2);
+    }
+
+    /// <summary>Par de catálogo: misma familia + mismo SKU + una es catálogo y la otra no.
+    /// MeLi hermana el precio de las dos — cambiar una cambia la otra.</summary>
+    private MeliItemDto? GetCatalogSibling(MeliItemDto? v)
+    {
+        if (v is null || items is null || string.IsNullOrEmpty(v.FamilyId) || string.IsNullOrEmpty(v.Sku)) return null;
+        return items.FirstOrDefault(i =>
+            i.MeliItemId != v.MeliItemId &&
+            i.FamilyId == v.FamilyId &&
+            i.Sku == v.Sku &&
+            IsCatalogListing(i) != IsCatalogListing(v));
+    }
+
+    private async Task AplicarPrecioCalculado()
+    {
+        var precio = CalcPrecioFinal();
+        if (precio is null || selectedItem is null || isPushingCalcPrecio) return;
+        isPushingCalcPrecio = true;
+        StateHasChanged();
+        try
+        {
+            var (res, err) = await Api.PushPrecioAMeliAsync(selectedItem.MeliItemId, precio.Value);
+            if (err is null)
+            {
+                ToastService.Success($"✔ Precio ${precio.Value.ToString("N2", argCulture)} pusheado a MeLi");
+                selectedItem.Price = precio.Value;
+                var sib = GetCatalogSibling(selectedItem);
+                if (sib is not null) sib.Price = precio.Value; // hermanada — MeLi la actualiza sola
+                // Refrescar el simulador con el precio nuevo
+                isLoadingCosts = true;
+                StateHasChanged();
+                try { itemCosts = await Api.GetItemCostsAsync(selectedItem.MeliItemId); }
+                catch { }
+                isLoadingCosts = false;
+            }
+            else
+            {
+                ToastService.Error("No se pudo pushear: " + err);
+            }
+        }
+        finally
+        {
+            isPushingCalcPrecio = false;
+            StateHasChanged();
+        }
     }
 
     private async Task OnTaxPercentageChanged(ChangeEventArgs e)
