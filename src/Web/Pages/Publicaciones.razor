@@ -1498,6 +1498,78 @@
                     </div>
                 </div>
 
+                @* 2026-06-12: SECCIÓN MAYORISTA Y LÍMITES — lee y escribe directo en MeLi *@
+                <div style="margin-top: 0.75rem; padding: 0.75rem 1rem; background: #faf5ff; border: 2px solid #e9d5ff; border-radius: 8px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem;">
+                        <span style="font-weight:700; font-size:0.9rem; color:#6b21a8;">🏪 Mayorista y límites de compra</span>
+                        @if (isLoadingMayorista)
+                        {
+                            <span style="font-size:0.75rem; color:#6b7280;">Consultando MeLi...</span>
+                        }
+                    </div>
+                    @if (fichaMayorista is null && !isLoadingMayorista)
+                    {
+                        <button @onclick="CargarMayoristaFicha"
+                                style="padding:0.4rem 0.8rem; background:white; color:#6b21a8; border:1px solid #c4b5fd; border-radius:6px; font-weight:600; cursor:pointer; font-size:0.8rem;">
+                            🔍 Cargar datos de MeLi
+                        </button>
+                    }
+                    else if (fichaMayorista is not null)
+                    {
+                        <div style="font-size:0.7rem; color:#6b7280; text-transform:uppercase; margin-bottom:0.3rem;">Precios por cantidad (mayorista — los ven compradores empresa)</div>
+                        @for (int ti = 0; ti < mayoristaTiersEdit.Count; ti++)
+                        {
+                            var tIdx = ti;
+                            var tier = mayoristaTiersEdit[tIdx];
+                            <div style="display:flex; gap:0.4rem; align-items:center; margin-bottom:0.3rem;">
+                                <span style="font-size:0.8rem; color:#374151;">Desde</span>
+                                <input type="number" min="2" value="@tier.MinQty"
+                                       @onchange="@(e => { if (int.TryParse(e.Value?.ToString(), out var v)) tier.MinQty = v; })"
+                                       style="width:70px; padding:0.35rem; border:1px solid #c4b5fd; border-radius:6px; text-align:right;" />
+                                <span style="font-size:0.8rem; color:#374151;">unidades →</span>
+                                <span style="font-size:0.8rem; color:#374151;">$</span>
+                                <input type="number" step="any" min="1" value="@tier.Amount"
+                                       @onchange="@(e => { if (decimal.TryParse(e.Value?.ToString()?.Replace(',', '.'), NumberStyles.Any, CultureInfo.InvariantCulture, out var v)) tier.Amount = v; })"
+                                       style="width:110px; padding:0.35rem; border:1px solid #c4b5fd; border-radius:6px; text-align:right; font-weight:700;" />
+                                @if (fichaMayorista.PrecioStandard > 0 && tier.Amount > 0)
+                                {
+                                    var descPct = (1 - tier.Amount / fichaMayorista.PrecioStandard) * 100;
+                                    <span style="font-size:0.72rem; color:@(descPct > 0 ? "#16a34a" : "#dc2626");">(@(descPct > 0 ? "-" : "+")@Math.Abs(descPct).ToString("0.0")% vs $@fichaMayorista.PrecioStandard.ToString("N0"))</span>
+                                }
+                                <button @onclick="() => mayoristaTiersEdit.RemoveAt(tIdx)"
+                                        style="padding:0.2rem 0.5rem; background:#fee2e2; color:#991b1b; border:none; border-radius:4px; cursor:pointer; font-weight:700;">✕</button>
+                            </div>
+                        }
+                        @if (mayoristaTiersEdit.Count < 5)
+                        {
+                            <button @onclick="@(() => mayoristaTiersEdit.Add(new MayoristaTierEdit { MinQty = mayoristaTiersEdit.Count > 0 ? mayoristaTiersEdit[^1].MinQty * 2 : 5, Amount = fichaMayorista.PrecioStandard }))"
+                                    style="padding:0.3rem 0.6rem; background:white; color:#6b21a8; border:1px dashed #c4b5fd; border-radius:6px; cursor:pointer; font-size:0.78rem;">
+                                + Agregar escalón (@mayoristaTiersEdit.Count/5)
+                            </button>
+                        }
+                        <div style="display:flex; gap:1rem; align-items:flex-end; margin-top:0.7rem; padding-top:0.6rem; border-top:1px dashed #e9d5ff; flex-wrap:wrap;">
+                            <div>
+                                <div style="font-size:0.7rem; color:#6b7280; text-transform:uppercase;">Mínimo por compra</div>
+                                <input type="number" min="0" value="@(mayoristaMinCompra?.ToString() ?? "")" placeholder="—"
+                                       @onchange="@(e => mayoristaMinCompra = int.TryParse(e.Value?.ToString(), out var v) && v > 0 ? v : null)"
+                                       style="width:90px; padding:0.35rem; border:1px solid #c4b5fd; border-radius:6px; text-align:right;" />
+                            </div>
+                            <div>
+                                <div style="font-size:0.7rem; color:#6b7280; text-transform:uppercase;">Máximo por compra</div>
+                                <input type="number" min="0" value="@(mayoristaMaxCompra?.ToString() ?? "")" placeholder="—"
+                                       @onchange="@(e => mayoristaMaxCompra = int.TryParse(e.Value?.ToString(), out var v) && v > 0 ? v : null)"
+                                       style="width:90px; padding:0.35rem; border:1px solid #c4b5fd; border-radius:6px; text-align:right;" />
+                            </div>
+                            <div style="font-size:0.65rem; color:#9ca3af; max-width:280px;">Vacío = sin límite. El máximo es cuántas unidades puede llevar un comprador en una misma compra.</div>
+                            <div style="flex:1;"></div>
+                            <button @onclick="GuardarMayoristaFicha" disabled="@isSavingMayorista"
+                                    style="padding:0.6rem 1rem; background:#6b21a8; color:white; border:none; border-radius:6px; font-weight:700; cursor:pointer; white-space:nowrap;">
+                                @(isSavingMayorista ? "Guardando en MeLi..." : "💾 Guardar en MeLi")
+                            </button>
+                        </div>
+                    }
+                </div>
+
                 <!-- Editable fields -->
                 <div class="detail-section">
                     @if (isLoadingPromotions)
@@ -4101,6 +4173,10 @@
         itemProductCost = null;
         isLoadingProductCost = false;
         fichaStockFull = null;
+        fichaMayorista = null;
+        mayoristaTiersEdit = new();
+        mayoristaMinCompra = null;
+        mayoristaMaxCompra = null;
         showItemModal = true;
         StateHasChanged();
 
@@ -4293,6 +4369,71 @@
             i.FamilyId == v.FamilyId &&
             i.Sku == v.Sku &&
             IsCatalogListing(i) != IsCatalogListing(v));
+    }
+
+    // ── 2026-06-12: sección Mayorista y límites de la ficha ──
+    private class MayoristaTierEdit { public int MinQty; public decimal Amount; }
+    private ApiClient.MayoristaInfoDto? fichaMayorista;
+    private List<MayoristaTierEdit> mayoristaTiersEdit = new();
+    private int? mayoristaMinCompra;
+    private int? mayoristaMaxCompra;
+    private bool isLoadingMayorista;
+    private bool isSavingMayorista;
+
+    private async Task CargarMayoristaFicha()
+    {
+        if (selectedItem is null || isLoadingMayorista) return;
+        isLoadingMayorista = true;
+        StateHasChanged();
+        try
+        {
+            var (info, err) = await Api.GetMayoristaAsync(selectedItem.MeliItemId);
+            if (info is not null)
+            {
+                fichaMayorista = info;
+                mayoristaTiersEdit = info.Tiers.Select(t => new MayoristaTierEdit { MinQty = t.MinQty, Amount = t.Amount }).ToList();
+                mayoristaMinCompra = info.MinPorCompra;
+                mayoristaMaxCompra = info.MaxPorCompra;
+            }
+            else ToastService.Error("No se pudo leer de MeLi: " + (err ?? ""));
+        }
+        finally
+        {
+            isLoadingMayorista = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task GuardarMayoristaFicha()
+    {
+        if (selectedItem is null || isSavingMayorista) return;
+        // Validación simple: escalones con cantidad >= 2, precios > 0, cantidades crecientes sin repetir
+        var tiers = mayoristaTiersEdit
+            .Where(t => t.MinQty >= 2 && t.Amount > 0)
+            .GroupBy(t => t.MinQty).Select(g => g.First())
+            .OrderBy(t => t.MinQty)
+            .Select(t => new ApiClient.MayoristaTierDto(t.MinQty, t.Amount))
+            .ToList();
+        isSavingMayorista = true;
+        StateHasChanged();
+        try
+        {
+            var (info, err) = await Api.SaveMayoristaAsync(selectedItem.MeliItemId, tiers, mayoristaMinCompra, mayoristaMaxCompra);
+            if (info is not null)
+            {
+                fichaMayorista = info;
+                mayoristaTiersEdit = info.Tiers.Select(t => new MayoristaTierEdit { MinQty = t.MinQty, Amount = t.Amount }).ToList();
+                mayoristaMinCompra = info.MinPorCompra;
+                mayoristaMaxCompra = info.MaxPorCompra;
+                ToastService.Success("💾 Guardado en MeLi");
+            }
+            else ToastService.Error("MeLi rechazó el cambio: " + (err ?? ""));
+        }
+        finally
+        {
+            isSavingMayorista = false;
+            StateHasChanged();
+        }
     }
 
     // ── 2026-06-12: sección Ajuste de la ficha ──

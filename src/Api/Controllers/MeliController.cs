@@ -498,6 +498,29 @@ public class MeliController : ControllerBase
         return Ok(new ProductCostDto(total, comps, source));
     }
 
+    /// <summary>2026-06-12: precios mayoristas (PxQ) + límites de unidades por compra. Lee en vivo de MeLi.</summary>
+    [HttpGet("items/{meliItemId}/mayorista")]
+    public async Task<IActionResult> GetMayorista(string meliItemId, [FromServices] MeliItemService svc)
+    {
+        try { return Ok(await svc.GetMayoristaAsync(meliItemId)); }
+        catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    public record SaveMayoristaRequest(List<MeliItemService.MayoristaTier>? Tiers, int? MinPorCompra, int? MaxPorCompra);
+
+    /// <summary>2026-06-12: guarda escalones PxQ + límites min/max por compra directo en MeLi.</summary>
+    [HttpPut("items/{meliItemId}/mayorista")]
+    public async Task<IActionResult> SaveMayorista(string meliItemId, [FromBody] SaveMayoristaRequest req,
+        [FromServices] MeliItemService svc)
+    {
+        try
+        {
+            var result = await svc.SaveMayoristaAsync(meliItemId, req.Tiers ?? new(), req.MinPorCompra, req.MaxPorCompra);
+            return Ok(result);
+        }
+        catch (Exception ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
     /// <summary>2026-06-12: stock en el depósito "Full MeLi" de los productos linkeados a esta MLA.
     /// Informativo para la ficha de publicación (cartelito "Stock Full: X u.").</summary>
     [HttpGet("items/{meliItemId}/stock-full")]

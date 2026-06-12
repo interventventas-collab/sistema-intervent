@@ -3077,4 +3077,156 @@ public class MeliItemService
         }
         return longest;
     }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // 2026-06-12: MAYORISTA Y LÍMITES
+    //  - Precio por cantidad (PxQ): hasta 5 escalones, solo visibles para compradores B2B.
+    //    API: GET /items/{id}/prices (los escalones tienen conditions.min_purchase_unit)
+    //         POST /items/{id}/prices/standard/quantity (reemplaza la tabla completa)
+    //  - Límite de unidades por compra: sale_terms PURCHASE_MIN_QUANTITY / PURCHASE_MAX_QUANTITY.
+    //    Para no pisar garantía/facturación, se manda la lista COMPLETA de sale_terms.
+    // ════════════════════════════════════════════════════════════════════════
+
+    public record MayoristaTier(int MinQty, decimal Amount);
+    public record MayoristaInfo(List<MayoristaTier> Tiers, int? MinPorCompra, int? MaxPorCompra,
+        decimal PrecioStandard, string? StandardPriceId);
+
+    private async Task<(HttpClient http, MeliItem item)> GetAuthorizedClientForItemAsync(string meliItemId)
+    {
+        var mi = await _db.MeliItems.Include(i => i.MeliAccount)
+            .FirstOrDefaultAsync(i => i.MeliItemId == meliItemId)
+            ?? throw new Exception($"La publicación {meliItemId} no está en el sistema.");
+        if (mi.MeliAccount is null) throw new Exception("La publicación no tiene cuenta asociada.");
+        var token = await _accountService.GetValidTokenAsync(mi.MeliAccount)
+            ?? throw new Exception($"Token expirado para {mi.MeliAccount.Nickname}. Reconectá la cuenta.");
+        var http = _httpFactory.CreateClient();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        return (http, mi);
+    }
+
+    public async Task<MayoristaInfo> GetMayoristaAsync(string meliItemId)
+    {
+        var (http, _) = await GetAuthorizedClientForItemAsync(meliItemId);
+
+        // 1) Escalones PxQ + precio estándar desde /prices
+        var tiers = new List<MayoristaTier>();
+        decimal precioStd = 0;
+        string? stdId = null;
+        var prResp = await http.GetAsync($"https://api.mercadolibre.com/items/{meliItemId}/prices");
+        if (prResp.IsSuccessStatusCode)
+        {
+            var doc = JsonDocument.Parse(await prResp.Content.ReadAsStringAsync()).RootElement;
+            if (doc.TryGetProperty("prices", out var prices) && prices.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var p in prices.EnumerateArray())
+                {
+                    var amount = p.TryGetProperty("amount", out var am) && am.ValueKind == JsonValueKind.Number ? am.GetDecimal() : 0m;
+                    int? minUnit = null;
+                    if (p.TryGetProperty("conditions", out var cond) && cond.ValueKind == JsonValueKind.Object
+                        && cond.TryGetProperty("min_purchase_unit", out var mpu) && mpu.ValueKind == JsonValueKind.Number)
+                        minUnit = mpu.GetInt32();
+                    var type = p.TryGetProperty("type", out var ty) ? ty.GetString() : null;
+                    if (minUnit.HasValue && minUnit.Value > 1)
+                        tiers.Add(new MayoristaTier(minUnit.Value, amount));
+                    else if (type == "standard")
+                    {
+                        precioStd = amount;
+                        stdId = p.TryGetProperty("id", out var pid) ? pid.GetString() : null;
+                    }
+                }
+            }
+        }
+
+        // 2) Límites por compra desde sale_terms del item
+        int? minQty = null, maxQty = null;
+        var itResp = await http.GetAsync($"https://api.mercadolibre.com/items/{meliItemId}?attributes=sale_terms");
+        if (itResp.IsSuccessStatusCode)
+        {
+            var doc = JsonDocument.Parse(await itResp.Content.ReadAsStringAsync()).RootElement;
+            if (doc.TryGetProperty("sale_terms", out var sts) && sts.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var st in sts.EnumerateArray())
+                {
+                    var id = st.TryGetProperty("id", out var sid) ? sid.GetString() : null;
+                    var valName = st.TryGetProperty("value_name", out var vn) && vn.ValueKind == JsonValueKind.String ? vn.GetString() : null;
+                    if (id == "PURCHASE_MIN_QUANTITY" && int.TryParse((valName ?? "").Split(' ')[0], out var mn)) minQty = mn;
+                    if (id == "PURCHASE_MAX_QUANTITY" && int.TryParse((valName ?? "").Split(' ')[0], out var mx)) maxQty = mx;
+                }
+            }
+        }
+
+        return new MayoristaInfo(tiers.OrderBy(t => t.MinQty).ToList(), minQty, maxQty, precioStd, stdId);
+    }
+
+    public async Task<MayoristaInfo> SaveMayoristaAsync(string meliItemId, List<MayoristaTier> tiers, int? minQty, int? maxQty)
+    {
+        var (http, _) = await GetAuthorizedClientForItemAsync(meliItemId);
+
+        // ── A) Guardar escalones PxQ ──
+        // El POST reemplaza la tabla completa: hay que reenviar el precio estándar por ID
+        // (solo el id lo conserva) + los escalones nuevos. Sin escalones = se borran todos.
+        var actual = await GetMayoristaAsync(meliItemId);
+        if (actual.StandardPriceId is not null)
+        {
+            var pricesPayload = new List<object> { new { id = actual.StandardPriceId } };
+            foreach (var t in tiers.Where(t => t.MinQty > 1 && t.Amount > 0).OrderBy(t => t.MinQty).Take(5))
+            {
+                pricesPayload.Add(new
+                {
+                    amount = t.Amount,
+                    currency_id = "ARS",
+                    conditions = new
+                    {
+                        context_restrictions = new[] { "channel_marketplace", "user_type_business" },
+                        min_purchase_unit = t.MinQty
+                    }
+                });
+            }
+            var pxqBody = new StringContent(
+                System.Text.Json.JsonSerializer.Serialize(new { prices = pricesPayload }),
+                System.Text.Encoding.UTF8, "application/json");
+            var pxqResp = await http.PostAsync($"https://api.mercadolibre.com/items/{meliItemId}/prices/standard/quantity", pxqBody);
+            if (!pxqResp.IsSuccessStatusCode)
+            {
+                var err = await pxqResp.Content.ReadAsStringAsync();
+                throw new Exception($"MeLi rechazó los precios por cantidad ({(int)pxqResp.StatusCode}): {err}");
+            }
+        }
+        else if (tiers.Count > 0)
+        {
+            throw new Exception("No se pudo identificar el precio estándar de la publicación — no se pueden cargar escalones.");
+        }
+
+        // ── B) Guardar límites por compra (PURCHASE_MIN/MAX_QUANTITY) ──
+        // Leemos los sale_terms actuales y reconstruimos la lista completa para no pisar
+        // garantía / facturación / etc.
+        var itResp = await http.GetAsync($"https://api.mercadolibre.com/items/{meliItemId}?attributes=sale_terms");
+        itResp.EnsureSuccessStatusCode();
+        var itDoc = JsonDocument.Parse(await itResp.Content.ReadAsStringAsync()).RootElement;
+        var saleTerms = new List<object>();
+        if (itDoc.TryGetProperty("sale_terms", out var sts) && sts.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var st in sts.EnumerateArray())
+            {
+                var id = st.TryGetProperty("id", out var sid) ? sid.GetString() : null;
+                if (id is null || id == "PURCHASE_MIN_QUANTITY" || id == "PURCHASE_MAX_QUANTITY") continue;
+                var valName = st.TryGetProperty("value_name", out var vn) && vn.ValueKind == JsonValueKind.String ? vn.GetString() : null;
+                if (valName is not null) saleTerms.Add(new { id, value_name = valName });
+            }
+        }
+        if (minQty.HasValue && minQty.Value > 0) saleTerms.Add(new { id = "PURCHASE_MIN_QUANTITY", value_name = minQty.Value.ToString() });
+        if (maxQty.HasValue && maxQty.Value > 0) saleTerms.Add(new { id = "PURCHASE_MAX_QUANTITY", value_name = maxQty.Value.ToString() });
+
+        var stBody = new StringContent(
+            System.Text.Json.JsonSerializer.Serialize(new { sale_terms = saleTerms }),
+            System.Text.Encoding.UTF8, "application/json");
+        var stResp = await http.PutAsync($"https://api.mercadolibre.com/items/{meliItemId}", stBody);
+        if (!stResp.IsSuccessStatusCode)
+        {
+            var err = await stResp.Content.ReadAsStringAsync();
+            throw new Exception($"MeLi rechazó los límites de compra ({(int)stResp.StatusCode}): {err}");
+        }
+
+        return await GetMayoristaAsync(meliItemId);
+    }
 }

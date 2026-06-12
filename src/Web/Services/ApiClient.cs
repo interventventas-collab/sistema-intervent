@@ -3748,6 +3748,46 @@ public class ApiClient
         catch (Exception ex) { return (null, ex.Message); }
     }
 
+    // ── 2026-06-12: precios mayoristas (PxQ) + límites por compra ──
+    public record MayoristaTierDto(int MinQty, decimal Amount);
+    public record MayoristaInfoDto(List<MayoristaTierDto> Tiers, int? MinPorCompra, int? MaxPorCompra,
+        decimal PrecioStandard, string? StandardPriceId);
+
+    public async Task<(MayoristaInfoDto? info, string? error)> GetMayoristaAsync(string meliItemId)
+    {
+        try
+        {
+            var resp = await _http.GetAsync($"/api/meli/items/{meliItemId}/mayorista");
+            if (resp.IsSuccessStatusCode) return (await resp.Content.ReadFromJsonAsync<MayoristaInfoDto>(), null);
+            return (null, await LeerErrorMayoristaAsync(resp));
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
+    public async Task<(MayoristaInfoDto? info, string? error)> SaveMayoristaAsync(string meliItemId,
+        List<MayoristaTierDto> tiers, int? minPorCompra, int? maxPorCompra)
+    {
+        try
+        {
+            var resp = await _http.PutAsJsonAsync($"/api/meli/items/{meliItemId}/mayorista",
+                new { Tiers = tiers, MinPorCompra = minPorCompra, MaxPorCompra = maxPorCompra });
+            if (resp.IsSuccessStatusCode) return (await resp.Content.ReadFromJsonAsync<MayoristaInfoDto>(), null);
+            return (null, await LeerErrorMayoristaAsync(resp));
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
+    private static async Task<string> LeerErrorMayoristaAsync(HttpResponseMessage resp)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            if (doc.RootElement.TryGetProperty("error", out var e)) return e.GetString() ?? "Error";
+        }
+        catch { }
+        return $"Error {(int)resp.StatusCode}";
+    }
+
     public record StockFullResp(int? StockFull);
 
     /// <summary>2026-06-12: stock en bodega Full MeLi de los productos linkeados a la MLA (informativo).</summary>
