@@ -4219,6 +4219,9 @@
         showItemModal = true;
         StateHasChanged();
 
+        // 2026-06-12: Mayorista carga solo al abrir (en paralelo, no bloquea la ficha)
+        _ = CargarMayoristaFicha();
+
         // Load promotion details if item is in promotion
         if (item.OriginalPrice.HasValue && item.OriginalPrice.Value > 0 && item.OriginalPrice.Value != item.Price)
         {
