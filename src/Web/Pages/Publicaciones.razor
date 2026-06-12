@@ -1418,6 +1418,64 @@
                     </div>
                 }
 
+                @* 2026-06-12: SECCIÓN STOCK Y SINCRONIZACIÓN — todo lo de stock de esta publicación en un lugar *@
+                <div style="margin-top: 0.75rem; padding: 0.75rem 1rem; background: #f0fdf4; border: 2px solid #bbf7d0; border-radius: 8px;">
+                    <div style="font-weight: 700; font-size: 0.9rem; color: #166534; margin-bottom: 0.6rem;">📦 Stock y sincronización</div>
+                    <div style="display:flex; gap:1.25rem; align-items:center; flex-wrap:wrap;">
+                        <div>
+                            <div style="font-size:0.7rem; color:#6b7280; text-transform:uppercase;">Stock en MeLi</div>
+                            <div style="font-size:1.2rem; font-weight:800; color:#166534;">@selectedItem.AvailableQuantity u.</div>
+                        </div>
+                        <div>
+                            <div style="font-size:0.7rem; color:#6b7280; text-transform:uppercase;">Linkeado a</div>
+                            <div style="font-size:0.8rem; font-weight:600; color:#374151;">
+                                @if (!string.IsNullOrEmpty(selectedItem.ComponentMappingsSummary))
+                                {
+                                    @selectedItem.ComponentMappingsSummary
+                                }
+                                else if (!string.IsNullOrEmpty(selectedItem.CafeProductoSku))
+                                {
+                                    @selectedItem.CafeProductoSku
+                                }
+                                else
+                                {
+                                    <span style="color:#dc2626;">⚠ Sin linkear — no se puede pushear stock</span>
+                                }
+                            </div>
+                        </div>
+                        <div>
+                            <div style="font-size:0.7rem; color:#6b7280; text-transform:uppercase;">Sincronización automática</div>
+                            <label style="display:flex; align-items:center; gap:0.35rem; cursor:pointer; margin-top:0.15rem;">
+                                <input type="checkbox" checked="@selectedItem.SyncStock" disabled="@isSavingSyncStock"
+                                       @onchange="ToggleSyncStockFicha" />
+                                <span style="font-size:0.85rem; font-weight:700; color:@(selectedItem.SyncStock ? "#166534" : "#dc2626");">
+                                    @(isSavingSyncStock ? "Guardando..." : selectedItem.SyncStock ? "✔ Activada" : "✖ Desactivada")
+                                </span>
+                            </label>
+                        </div>
+                        <div>
+                            <div style="font-size:0.7rem; color:#6b7280; text-transform:uppercase;">Último push de stock</div>
+                            @if (selectedItem.LastStockPushedToMeli.HasValue)
+                            {
+                                var dias = (DateTime.UtcNow - selectedItem.LastStockPushedToMeli.Value).TotalDays;
+                                <div style="font-size:0.85rem; font-weight:700; color:@(dias <= 7 ? "#166534" : "#b45309");">
+                                    @(dias <= 7 ? "🟢" : "🟡") @selectedItem.LastStockPushedToMeli.Value.ToLocalTime().ToString("dd/MM HH:mm")
+                                </div>
+                            }
+                            else
+                            {
+                                <div style="font-size:0.85rem; font-weight:700; color:#dc2626;">🔴 Nunca</div>
+                            }
+                        </div>
+                        <div style="flex:1;"></div>
+                        <button @onclick="PushStockDesdeFicha"
+                                disabled="@(isPushingStockFicha || (string.IsNullOrEmpty(selectedItem.ComponentMappingsSummary) && string.IsNullOrEmpty(selectedItem.CafeProductoSku)))"
+                                style="padding:0.6rem 1rem; background:#166534; color:white; border:none; border-radius:6px; font-weight:700; cursor:pointer; white-space:nowrap;">
+                            @(isPushingStockFicha ? "Pusheando..." : "📦 Pushear stock ahora")
+                        </button>
+                    </div>
+                </div>
+
                 <!-- Editable fields -->
                 <div class="detail-section">
                     @if (isLoadingPromotions)
@@ -4198,6 +4256,64 @@
             i.FamilyId == v.FamilyId &&
             i.Sku == v.Sku &&
             IsCatalogListing(i) != IsCatalogListing(v));
+    }
+
+    // ── 2026-06-12: sección Stock de la ficha ──
+    private bool isSavingSyncStock;
+    private bool isPushingStockFicha;
+
+    private async Task ToggleSyncStockFicha()
+    {
+        if (selectedItem is null || isSavingSyncStock) return;
+        isSavingSyncStock = true;
+        StateHasChanged();
+        try
+        {
+            var nuevo = !selectedItem.SyncStock;
+            // Mandamos la config completa actual para no pisar los otros campos
+            var (cfg, err) = await Api.ActualizarSyncConfigAsync(selectedItem.MeliItemId, new UpdateSyncConfigRequest
+            {
+                SyncStock = nuevo,
+                SyncPrecio = selectedItem.SyncPrecio,
+                AjustePct = selectedItem.AjustePct,
+                AjusteFijo = selectedItem.AjusteFijo,
+                AjusteRedondeo = selectedItem.AjusteRedondeo
+            });
+            if (err is null)
+            {
+                selectedItem.SyncStock = nuevo;
+                ToastService.Success(nuevo ? "✔ Sincronización de stock activada" : "Sincronización de stock desactivada");
+            }
+            else ToastService.Error("No se pudo guardar: " + err);
+        }
+        finally
+        {
+            isSavingSyncStock = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task PushStockDesdeFicha()
+    {
+        if (selectedItem is null || isPushingStockFicha) return;
+        isPushingStockFicha = true;
+        StateHasChanged();
+        try
+        {
+            var res = await Api.PushStockMeliItemAsync(selectedItem.Id);
+            if (res is not null && res.Success)
+            {
+                ToastService.Success(res.Message);
+                selectedItem.LastStockPushedToMeli = DateTime.UtcNow;
+            }
+            else ToastService.Error(res?.Message ?? "No se pudo pushear el stock");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally
+        {
+            isPushingStockFicha = false;
+            StateHasChanged();
+        }
     }
 
     private async Task AplicarPrecioCalculado()
