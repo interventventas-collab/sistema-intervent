@@ -1426,6 +1426,13 @@
                             <div style="font-size:0.7rem; color:#6b7280; text-transform:uppercase;">Stock en MeLi</div>
                             <div style="font-size:1.2rem; font-weight:800; color:#166534;">@selectedItem.AvailableQuantity u.</div>
                         </div>
+                        @if (fichaStockFull.HasValue && fichaStockFull.Value > 0)
+                        {
+                            <div>
+                                <div style="font-size:0.7rem; color:#6b7280; text-transform:uppercase;">Stock Full</div>
+                                <div style="font-size:1.2rem; font-weight:800; color:#9a3412;" title="Unidades en la bodega Full de MercadoLibre (informativo)">🏭 @fichaStockFull.Value u.</div>
+                            </div>
+                        }
                         <div>
                             <div style="font-size:0.7rem; color:#6b7280; text-transform:uppercase;">Linkeado a</div>
                             <div style="font-size:0.8rem; font-weight:600; color:#374151;">
@@ -4078,6 +4085,7 @@
         isLoadingCosts = false;
         itemProductCost = null;
         isLoadingProductCost = false;
+        fichaStockFull = null;
         showItemModal = true;
         StateHasChanged();
 
@@ -4134,7 +4142,14 @@
         catch { itemProductCost = null; }
         isLoadingProductCost = false;
         StateHasChanged();
+
+        // 2026-06-12: stock en bodega Full (informativo, solo se muestra si > 0)
+        try { fichaStockFull = await Api.GetStockFullAsync(item.MeliItemId); }
+        catch { fichaStockFull = null; }
+        StateHasChanged();
     }
+
+    private int? fichaStockFull;
 
     // 2026-06-01: helpers visor de margen
     private decimal MarginGanancia()

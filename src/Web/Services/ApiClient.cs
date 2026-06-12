@@ -3748,6 +3748,19 @@ public class ApiClient
         catch (Exception ex) { return (null, ex.Message); }
     }
 
+    public record StockFullResp(int? StockFull);
+
+    /// <summary>2026-06-12: stock en bodega Full MeLi de los productos linkeados a la MLA (informativo).</summary>
+    public async Task<int?> GetStockFullAsync(string meliItemId)
+    {
+        try
+        {
+            var r = await _http.GetFromJsonAsync<StockFullResp>($"/api/meli/items/{meliItemId}/stock-full");
+            return r?.StockFull;
+        }
+        catch { return null; }
+    }
+
     public async Task<(UpdatePrecioResultDto? result, string? error)> PushPrecioAMeliAsync(string meliItemId, decimal precio)
     {
         try

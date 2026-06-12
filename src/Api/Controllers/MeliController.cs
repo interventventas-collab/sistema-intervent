@@ -498,6 +498,35 @@ public class MeliController : ControllerBase
         return Ok(new ProductCostDto(total, comps, source));
     }
 
+    /// <summary>2026-06-12: stock en el depósito "Full MeLi" de los productos linkeados a esta MLA.
+    /// Informativo para la ficha de publicación (cartelito "Stock Full: X u.").</summary>
+    [HttpGet("items/{meliItemId}/stock-full")]
+    public async Task<IActionResult> GetStockFull(string meliItemId, [FromServices] Api.Data.AppDbContext db)
+    {
+        var mi = await db.MeliItems.AsNoTracking().FirstOrDefaultAsync(x => x.MeliItemId == meliItemId);
+        if (mi == null) return NotFound(new { error = "MLA no encontrada" });
+
+        // Resolver los productos linkeados (componentes > combo legacy > producto directo)
+        var productoIds = await db.MeliItemComponentes
+            .Where(c => c.MeliItemId == meliItemId)
+            .Select(c => c.CafeProductoId).Distinct().ToListAsync();
+        if (productoIds.Count == 0 && mi.CafeComboId.HasValue)
+            productoIds = await db.CafeComboItems.Where(ci => ci.ComboId == mi.CafeComboId.Value)
+                .Select(ci => ci.ProductoId).Distinct().ToListAsync();
+        if (productoIds.Count == 0 && mi.CafeProductoId.HasValue)
+            productoIds = new List<int> { mi.CafeProductoId.Value };
+        if (productoIds.Count == 0) return Ok(new { stockFull = (int?)null });
+
+        var stockFull = await (
+            from s in db.CafeStockPorDeposito
+            join d in db.CafeDepositos on s.DepositoId equals d.Id
+            where d.Nombre == "Full MeLi" && productoIds.Contains(s.ProductoId)
+            select (int?)s.StockUnidades
+        ).SumAsync() ?? 0;
+
+        return Ok(new { stockFull = (int?)stockFull });
+    }
+
     /// <summary>2026-06-01 PUSH MASIVO AGRESIVO: pushea stock a TODAS las publicaciones con SyncStock=ON,
     /// en modo agresivo (puede pausar/activar segun stock). Mantiene la reserva interna de 1 unidad.
     /// Lanza la ejecucion en background y devuelve inmediato con el conteo encolado. El usuario debe
