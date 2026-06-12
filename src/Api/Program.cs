@@ -140,9 +140,10 @@ builder.Services.AddScoped<MeliStockPushService>();
 builder.Services.AddScoped<MeliPricePushService>();
 builder.Services.AddScoped<MeliFullStockSyncService>();
 builder.Services.AddHostedService<MeliAutoSyncBackgroundService>();
-// 2026-05-29: regla "Full desenlazado". El sistema NO importa stock desde Full.
-// Full se administra 100% desde MeLi. Cuando se enlace en el futuro, reactivar.
-// builder.Services.AddHostedService<MeliFullStockSyncBackgroundService>();
+// 2026-06-12: reactivado. Solo LECTURA informativa: pobla Cafe_StockPorDeposito[Full MeLi]
+// con lo que MeLi reporta en su bodega. No toca stock propio (9 de Abril) ni pushes.
+// Lo usan /cafe/stock-comparado, /cafe/stock-masivo y el cartelito "Stock Full" de la ficha.
+builder.Services.AddHostedService<MeliFullStockSyncBackgroundService>();
 builder.Services.AddHostedService<MeliStockPushBackgroundService>();
 builder.Services.AddHostedService<MeliPricePushBackgroundService>();
 builder.Services.AddHostedService<ContabiliumNightlySnapshotService>();
