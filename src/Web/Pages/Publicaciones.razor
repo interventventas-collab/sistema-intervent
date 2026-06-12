@@ -1567,6 +1567,12 @@
                                 + Agregar escalón (@mayoristaTiersEdit.Count/5)
                             </button>
                         }
+                        @if (fichaMayorista.EsAlimentos)
+                        {
+                            <div style="margin-top:0.6rem; padding:0.4rem 0.6rem; background:#fef3c7; border:1px solid #fde68a; border-radius:6px; font-size:0.72rem; color:#92400e;">
+                                ⚠ Esta publicación es de categoría <b>Alimentos</b>: MercadoLibre administra el "Máximo por compra" y suele pisar el valor que pongas a los pocos minutos.
+                            </div>
+                        }
                         <div style="display:flex; gap:1rem; align-items:flex-end; margin-top:0.7rem; padding-top:0.6rem; border-top:1px dashed #e9d5ff; flex-wrap:wrap;">
                             <div>
                                 <div style="font-size:0.7rem; color:#6b7280; text-transform:uppercase;">Mínimo por compra</div>
@@ -4807,7 +4813,11 @@
         }
         catch (Exception ex)
         {
-            ToastService.Error("Error al guardar: " + ex.Message);
+            // 2026-06-12: MeLi no permite editar original_price directo en algunas publicaciones
+            if (ex.Message.Contains("original_price is not modifiable"))
+                ToastService.Error("MeLi no permite modificar el Precio de lista de esta publicación directamente. El tachado se maneja con descuentos: hay que subir el precio base y aplicarle un descuento.");
+            else
+                ToastService.Error("Error al guardar: " + ex.Message);
         }
 
         isSaving = false;

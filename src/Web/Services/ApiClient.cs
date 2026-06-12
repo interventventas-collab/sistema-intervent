@@ -3751,7 +3751,7 @@ public class ApiClient
     // ── 2026-06-12: precios mayoristas (PxQ) + límites por compra ──
     public record MayoristaTierDto(int MinQty, decimal Amount);
     public record MayoristaInfoDto(List<MayoristaTierDto> Tiers, int? MinPorCompra, int? MaxPorCompra,
-        decimal PrecioStandard, string? StandardPriceId);
+        decimal PrecioStandard, string? StandardPriceId, bool EsAlimentos = false);
 
     public async Task<(MayoristaInfoDto? info, string? error)> GetMayoristaAsync(string meliItemId)
     {

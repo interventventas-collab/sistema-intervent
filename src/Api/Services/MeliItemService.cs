@@ -3096,7 +3096,10 @@ public class MeliItemService
 
     public record MayoristaTier(int MinQty, decimal Amount);
     public record MayoristaInfo(List<MayoristaTier> Tiers, int? MinPorCompra, int? MaxPorCompra,
-        decimal PrecioStandard, string? StandardPriceId);
+        decimal PrecioStandard, string? StandardPriceId, bool EsAlimentos = false);
+
+    // Cache por categoría: ¿la raíz es "Alimentos y Bebidas"? (MeLi administra el límite de compra ahí)
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> _catAlimentosCache = new();
 
     private async Task<(HttpClient http, MeliItem item)> GetAuthorizedClientForItemAsync(string meliItemId)
     {
@@ -3144,12 +3147,15 @@ public class MeliItemService
             }
         }
 
-        // 2) Límites por compra desde sale_terms del item
+        // 2) Límites por compra desde sale_terms del item (+ categoría para detectar Alimentos)
         int? minQty = null, maxQty = null;
-        var itResp = await http.GetAsync($"https://api.mercadolibre.com/items/{meliItemId}?attributes=sale_terms");
+        string? categoryId = null;
+        var itResp = await http.GetAsync($"https://api.mercadolibre.com/items/{meliItemId}?attributes=sale_terms,category_id");
         if (itResp.IsSuccessStatusCode)
         {
             var doc = JsonDocument.Parse(await itResp.Content.ReadAsStringAsync()).RootElement;
+            if (doc.TryGetProperty("category_id", out var cid) && cid.ValueKind == JsonValueKind.String)
+                categoryId = cid.GetString();
             if (doc.TryGetProperty("sale_terms", out var sts) && sts.ValueKind == JsonValueKind.Array)
             {
                 foreach (var st in sts.EnumerateArray())
@@ -3162,7 +3168,31 @@ public class MeliItemService
             }
         }
 
-        return new MayoristaInfo(tiers.OrderBy(t => t.MinQty).ToList(), minQty, maxQty, precioStd, stdId);
+        // 3) ¿Categoría de Alimentos? En esas, MeLi administra el máximo por compra y pisa el valor del vendedor.
+        var esAlimentos = false;
+        if (!string.IsNullOrEmpty(categoryId))
+        {
+            if (!_catAlimentosCache.TryGetValue(categoryId, out esAlimentos))
+            {
+                try
+                {
+                    var catResp = await http.GetAsync($"https://api.mercadolibre.com/categories/{categoryId}");
+                    if (catResp.IsSuccessStatusCode)
+                    {
+                        var catDoc = JsonDocument.Parse(await catResp.Content.ReadAsStringAsync()).RootElement;
+                        if (catDoc.TryGetProperty("path_from_root", out var path) && path.ValueKind == JsonValueKind.Array && path.GetArrayLength() > 0)
+                        {
+                            var rootName = path[0].TryGetProperty("name", out var rn) ? rn.GetString() : null;
+                            esAlimentos = rootName == "Alimentos y Bebidas";
+                        }
+                        _catAlimentosCache[categoryId] = esAlimentos;
+                    }
+                }
+                catch { /* sin categoría no hay aviso, no es crítico */ }
+            }
+        }
+
+        return new MayoristaInfo(tiers.OrderBy(t => t.MinQty).ToList(), minQty, maxQty, precioStd, stdId, esAlimentos);
     }
 
     public async Task<MayoristaInfo> SaveMayoristaAsync(string meliItemId, List<MayoristaTier> tiers, int? minQty, int? maxQty)
