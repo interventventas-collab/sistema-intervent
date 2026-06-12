@@ -133,6 +133,21 @@
                                         style="flex:1; padding:0.35rem; border:1px solid #d1d5db; border-radius:4px; background:@(filterNoFull ? "#dbeafe" : "white"); color:@(filterNoFull ? "#1e40af" : "#374151"); font-size:0.8125rem; cursor:pointer;">Solo NO Full</button>
                             </div>
 
+                            @* === 2026-06-12: Ordenar por (precio / vendidos) === *@
+                            <div style="border-top: 1px solid #e5e7eb; margin: 0.25rem 0 0.25rem 0; padding: 0.5rem 0.75rem 0.25rem 0.75rem; font-size: 0.75rem; color: #6b7280; font-weight: 600; text-transform: uppercase;">↕ Ordenar por</div>
+                            <div style="display:flex; gap:0.25rem; padding: 0 0.5rem 0.5rem 0.5rem; flex-wrap:wrap;">
+                                <button @onclick="() => { sortColumn = null; InvalidateFilterCache(); showMoreFilters = false; }"
+                                        style="flex:1 1 45%; padding:0.35rem; border:1px solid #d1d5db; border-radius:4px; background:@(sortColumn is null ? "#dbeafe" : "white"); color:@(sortColumn is null ? "#1e40af" : "#374151"); font-size:0.8125rem; cursor:pointer;">Por defecto</button>
+                                <button @onclick='() => { sortColumn = "precio"; sortAsc = true; InvalidateFilterCache(); showMoreFilters = false; }'
+                                        style="flex:1 1 45%; padding:0.35rem; border:1px solid #d1d5db; border-radius:4px; background:@(sortColumn == "precio" && sortAsc ? "#dbeafe" : "white"); color:@(sortColumn == "precio" && sortAsc ? "#1e40af" : "#374151"); font-size:0.8125rem; cursor:pointer;">💲 Menor precio</button>
+                                <button @onclick='() => { sortColumn = "precio"; sortAsc = false; InvalidateFilterCache(); showMoreFilters = false; }'
+                                        style="flex:1 1 45%; padding:0.35rem; border:1px solid #d1d5db; border-radius:4px; background:@(sortColumn == "precio" && !sortAsc ? "#dbeafe" : "white"); color:@(sortColumn == "precio" && !sortAsc ? "#1e40af" : "#374151"); font-size:0.8125rem; cursor:pointer;">💲 Mayor precio</button>
+                                <button @onclick='() => { sortColumn = "vendidos"; sortAsc = false; InvalidateFilterCache(); showMoreFilters = false; }'
+                                        style="flex:1 1 45%; padding:0.35rem; border:1px solid #d1d5db; border-radius:4px; background:@(sortColumn == "vendidos" && !sortAsc ? "#dbeafe" : "white"); color:@(sortColumn == "vendidos" && !sortAsc ? "#1e40af" : "#374151"); font-size:0.8125rem; cursor:pointer;">🔥 Más vendido</button>
+                                <button @onclick='() => { sortColumn = "vendidos"; sortAsc = true; InvalidateFilterCache(); showMoreFilters = false; }'
+                                        style="flex:1 1 45%; padding:0.35rem; border:1px solid #d1d5db; border-radius:4px; background:@(sortColumn == "vendidos" && sortAsc ? "#dbeafe" : "white"); color:@(sortColumn == "vendidos" && sortAsc ? "#1e40af" : "#374151"); font-size:0.8125rem; cursor:pointer;">❄ Menos vendido</button>
+                            </div>
+
                             @* === Selector: Estado de push de stock === *@
                             <div style="border-top: 1px solid #e5e7eb; margin: 0.25rem 0 0.25rem 0; padding: 0.5rem 0.75rem 0.25rem 0.75rem; font-size: 0.75rem; color: #6b7280; font-weight: 600; text-transform: uppercase;">🔄 Estado de push de stock</div>
                             <div style="display:flex; gap:0.25rem; padding: 0 0.5rem 0.5rem 0.5rem; flex-wrap:wrap;">
