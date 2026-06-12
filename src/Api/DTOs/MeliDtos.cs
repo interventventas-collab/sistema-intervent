@@ -223,7 +223,7 @@ public record MeliItemSyncByIdResultItem(string MeliItemId, string? Action, stri
 
 public record MeliItemSyncByIdBatchResult(int TotalRequested, int TotalSynced, int TotalErrors, List<MeliItemSyncByIdResultItem> Results);
 
-public record UpdateMeliItemRequest(string? Title, decimal? Price, int? AvailableQuantity, string? Status);
+public record UpdateMeliItemRequest(string? Title, decimal? Price, int? AvailableQuantity, string? Status, decimal? OriginalPrice = null);
 
 public record LinkItemToProductRequest(int ProductId);
 

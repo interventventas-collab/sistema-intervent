@@ -1617,10 +1617,14 @@
                             <span>No se encontraron campañas asociadas</span>
                         </div>
                     }
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; margin-bottom: 0.75rem;">
+                    <div style="display: grid; grid-template-columns: 1fr 1.1fr 0.8fr 1fr; gap: 0.75rem; margin-bottom: 0.75rem;">
                         <div class="form-group" style="margin-bottom: 0;">
-                            <label class="form-label">Precio original (@selectedItem.CurrencyId)</label>
+                            <label class="form-label">Precio de venta (@selectedItem.CurrencyId)</label>
                             <div style="position: relative;"><span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 1.1rem; font-weight: 700; color: #333;">$</span><input type="text" class="form-input" style="font-size: 1.1rem; font-weight: 700; text-align: right; padding-left: 28px;" value="@editPriceFormatted" @oninput="OnPriceInput" inputmode="decimal" /></div>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label class="form-label" style="color:#d97706; font-weight:700;">Precio de lista <span style="text-decoration:line-through;">(tachado)</span></label>
+                            <div style="position: relative;"><span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 1.1rem; font-weight: 700; color: #d97706;">$</span><input type="text" class="form-input" placeholder="Sin precio de lista" style="font-size: 1.1rem; font-weight: 700; text-align: right; padding-left: 28px; border-color:#fbbf24; background:#fffbeb; color:#92400e;" value="@editListPriceFormatted" @oninput="OnListPriceInput" inputmode="decimal" /></div>
                         </div>
                         <div class="form-group" style="margin-bottom: 0;">
                             <label class="form-label">Stock</label>
@@ -4130,6 +4134,23 @@
         editPrice = ParseFormattedPrice(editPriceFormatted);
     }
 
+    // Precio de lista (tachado de MeLi) — campo separado del precio de venta
+    private decimal editListPrice;
+    private string editListPriceFormatted = "";
+
+    private void OnListPriceInput(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? "";
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            editListPriceFormatted = "";
+            editListPrice = 0;
+            return;
+        }
+        editListPriceFormatted = FormatPriceInput(raw);
+        editListPrice = ParseFormattedPrice(editListPriceFormatted);
+    }
+
     // --- Item detail modal ---
     private MeliItemDto? selectedItem;
     private bool showItemModal;
@@ -4161,8 +4182,10 @@
         selectedItem = item;
         editTitle = item.Title;
         editFamilyName = item.FamilyName ?? "";
-        editPrice = item.OriginalPrice.HasValue && item.OriginalPrice.Value > 0 ? item.OriginalPrice.Value : item.Price;
+        editPrice = item.Price;
         editPriceFormatted = FormatPrice(editPrice);
+        editListPrice = item.OriginalPrice ?? 0;
+        editListPriceFormatted = editListPrice > 0 ? FormatPrice(editListPrice) : "";
         editStock = item.AvailableQuantity;
         editStatus = item.Status;
         itemPromotions = null;
@@ -4700,6 +4723,11 @@
                 request.Price = editPrice;
                 hasChanges = true;
             }
+            if (editListPrice != (selectedItem.OriginalPrice ?? 0))
+            {
+                request.OriginalPrice = editListPrice; // 0 = quitar precio de lista
+                hasChanges = true;
+            }
             if (editStock != selectedItem.AvailableQuantity)
             {
                 request.AvailableQuantity = editStock;
@@ -4730,6 +4758,8 @@
                 editTitle = updated.Title;
                 editPrice = updated.Price;
                 editPriceFormatted = FormatPrice(editPrice);
+                editListPrice = updated.OriginalPrice ?? 0;
+                editListPriceFormatted = editListPrice > 0 ? FormatPrice(editListPrice) : "";
                 editStock = updated.AvailableQuantity;
                 editStatus = updated.Status;
 

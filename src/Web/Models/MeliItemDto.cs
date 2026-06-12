@@ -151,6 +151,7 @@ public class UpdateMeliItemRequest
     public decimal? Price { get; set; }
     public int? AvailableQuantity { get; set; }
     public string? Status { get; set; }
+    public decimal? OriginalPrice { get; set; }
 }
 
 public class ItemPromotionDto

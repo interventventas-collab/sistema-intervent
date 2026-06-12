@@ -348,15 +348,19 @@ public class MeliItemService
         // Capture old values for audit
         var oldTitle = item.Title;
         var oldPrice = item.Price;
+        var oldOriginalPrice = item.OriginalPrice;
         var oldStock = item.AvailableQuantity;
         var oldStatus = item.Status;
 
         // Build payload with only changed fields
-        var payload = new Dictionary<string, object>();
+        var payload = new Dictionary<string, object?>();
         if (request.Title is not null) payload["title"] = request.Title;
         if (request.Price.HasValue) payload["price"] = request.Price.Value;
         if (request.AvailableQuantity.HasValue) payload["available_quantity"] = request.AvailableQuantity.Value;
         if (request.Status is not null) payload["status"] = request.Status;
+        // Precio de lista (tachado): 0 = quitarlo (MeLi espera null)
+        if (request.OriginalPrice.HasValue)
+            payload["original_price"] = request.OriginalPrice.Value > 0 ? request.OriginalPrice.Value : null;
 
         if (payload.Count > 0)
         {
@@ -389,6 +393,7 @@ public class MeliItemService
             // Update local DB only after MeLi API success
             if (request.Title is not null) item.Title = request.Title;
             if (request.Price.HasValue) item.Price = request.Price.Value;
+            if (request.OriginalPrice.HasValue) item.OriginalPrice = request.OriginalPrice.Value > 0 ? request.OriginalPrice.Value : null;
             if (request.AvailableQuantity.HasValue) item.AvailableQuantity = request.AvailableQuantity.Value;
             if (request.Status is not null) item.Status = request.Status;
             item.UpdatedAt = DateTime.UtcNow;
@@ -402,6 +407,8 @@ public class MeliItemService
                 changes["Titulo"] = new { old = oldTitle, @new = request.Title };
             if (request.Price.HasValue && request.Price.Value != oldPrice)
                 changes["Precio"] = new { old = oldPrice, @new = request.Price.Value };
+            if (request.OriginalPrice.HasValue && request.OriginalPrice.Value != (oldOriginalPrice ?? 0))
+                changes["PrecioLista"] = new { old = oldOriginalPrice, @new = request.OriginalPrice.Value };
             if (request.AvailableQuantity.HasValue && request.AvailableQuantity.Value != oldStock)
                 changes["Stock"] = new { old = oldStock, @new = request.AvailableQuantity.Value };
             if (request.Status is not null && request.Status != oldStatus)
