@@ -125,6 +125,10 @@
                                     style="background:@(IsCuentaMe1Filtered() ? "#dbeafe" : "transparent"); color:@(IsCuentaMe1Filtered() ? "#1e40af" : "inherit"); font-weight:700;">
                                 🛒 Solo cuenta me1
                             </button>
+                            <button class="more-filters-item @(filterCatalogo ? "active" : "")" @onclick="() => { filterCatalogo = !filterCatalogo; InvalidateFilterCache(); showMoreFilters = false; }"
+                                    style="background:@(filterCatalogo ? "#fef9c3" : "transparent"); color:@(filterCatalogo ? "#854d0e" : "inherit"); font-weight:700;">
+                                📋 Solo catálogo (las amarillas)
+                            </button>
 
                             @* === Selector: Tipo de envío === *@
                             <div style="border-top: 1px solid #e5e7eb; margin: 0.5rem 0 0.25rem 0; padding: 0.5rem 0.75rem 0.25rem 0.75rem; font-size: 0.75rem; color: #6b7280; font-weight: 600; text-transform: uppercase;">📦 Tipo de envío</div>
@@ -3092,6 +3096,7 @@
     // 2026-06-01: filtros de margen (peor primero, para arreglarlas)
     private bool filterMargenPerdida = false;          // 🔴 margen ≤ 0% (pérdida)
     private bool filterMargenBajo = false;             // 🟠 margen 0-15% (bajo)
+    private bool filterCatalogo = false;               // 📋 solo publicaciones de catálogo (amarillas)
     private bool showMoreFilters = false;
 
     // Selection & bulk actions
@@ -3266,6 +3271,7 @@
         if (filterMargenPerdida) count++;
         if (filterMargenBajo) count++;
         if (filterUrgente) count++;
+        if (filterCatalogo) count++;
         return count;
     }
 
@@ -3628,6 +3634,10 @@
         // Promo filter
         if (filterPromo)
             filtered = filtered.Where(i => i.OriginalPrice.HasValue && i.OriginalPrice.Value > 0 && i.OriginalPrice.Value != i.Price);
+
+        // 2026-06-12: solo publicaciones de catálogo (las de fondo amarillo)
+        if (filterCatalogo)
+            filtered = filtered.Where(IsCatalogListing);
 
         // Sin producto vinculado
         if (filterNoProduct)
