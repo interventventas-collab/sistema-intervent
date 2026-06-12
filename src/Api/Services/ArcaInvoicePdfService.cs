@@ -437,6 +437,16 @@ public class ArcaInvoicePdfService
                             c.Item().AlignRight().Text($"CAE Nº: {comp.Cae}").FontSize(9).SemiBold();
                             c.Item().AlignRight().Text($"Fecha Vto. CAE: {FormatFecha(comp.CaeVto ?? "")}").FontSize(9);
                         });
+
+                        // 2026-06-12: QR de entrega del repartidor (igual que en cotizaciones).
+                        if (comp.QrRepartidorBytes is not null)
+                        {
+                            row.ConstantItem(80).PaddingLeft(8).Column(c =>
+                            {
+                                c.Item().AlignCenter().Width(62).Image(comp.QrRepartidorBytes);
+                                c.Item().AlignCenter().Text("QR ENTREGA").FontSize(6).FontColor(Colors.Grey.Darken1);
+                            });
+                        }
                     });
                 });
             });
@@ -605,6 +615,9 @@ public class PdfComprobante
     public decimal ImpTotal { get; set; }
     public string? Cae { get; set; }
     public string? CaeVto { get; set; } // yyyymmdd
+    /// <summary>2026-06-12: QR de entrega del repartidor (el mismo de las cotizaciones).
+    /// Si viene null no se muestra. NO confundir con el QR fiscal de ARCA.</summary>
+    public byte[]? QrRepartidorBytes { get; set; }
     // ---- Extras de UX (de la cotización portados al ARCA, manteniendo prolijidad fiscal) ----
     /// <summary>Si la venta está marcada como pagada, se muestra un sello "PAGADO" discreto.</summary>
     public bool IsPaid { get; set; }

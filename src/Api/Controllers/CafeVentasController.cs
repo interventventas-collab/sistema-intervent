@@ -814,6 +814,8 @@ public class CafeVentasController : ControllerBase
             CondicionPago = v.CondicionPago,
             DomicilioEntrega = v.ClienteDomicilioEntregaSnapshot,
             EntregaPor = v.EntregaPor,
+            // 2026-06-12: el QR de entrega del repartidor también va en las facturas con CAE
+            QrRepartidorBytes = _qrRepartidorService.GenerarQrAsync(v.PublicToken).GetAwaiter().GetResult(),
         };
 
         // 2026-06-08: Pre-cargar mapping de combos {Id → (Nombre, Sku)} usado para agrupar
