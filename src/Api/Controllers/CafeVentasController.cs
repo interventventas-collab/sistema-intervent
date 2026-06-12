@@ -416,64 +416,72 @@ public class CafeVentasController : ControllerBase
         if (v is null) return NotFound(new { error = "Venta no encontrada" });
         var cfg = await _db.CafeSettings.FindAsync(1);
 
+        // 2026-05-28: subir a Drive equivale a "mandar al tablero IMPRIMIR PEDIDOS DE OSMAR".
+        // 2026-06-12: el tablero YA NO depende de que Drive funcione. Si Google corta el permiso
+        // (token vencido/revocado), la venta entra igual a Preparacion de pedidos y solo se
+        // pierde (temporalmente) el PDF en Drive. Antes la venta quedaba invisible para el armador.
+        // 2026-06-03 fix: si la venta ya estaba armada (LISTO/EN_CAMINO/ENTREGADO) y el usuario
+        // la edita + re-sube, la revivimos al tablero con flag "MODIFICADO". El armador va a ver
+        // un chip naranja en la card avisando que el pedido cambio.
+        var yaArmada = v.EstadoPreparacion == "LISTO" || v.EstadoPreparacion == "EN_CAMINO" || v.EstadoPreparacion == "ENTREGADO";
+        if (yaArmada)
+        {
+            var estadoAnt = v.EstadoPreparacion;
+            v.EstadoPreparacion = "PARA_PREPARAR";
+            v.PreparacionUpdatedAt = DateTime.UtcNow;
+            v.ModificadoDespuesDeArmar = true;
+            // 2026-06-09: log obligatorio cuando un drive-upload revive una venta ya armada.
+            // Antes pasaba sin log y el armador no entendia por que reaparecia en el tablero.
+            _db.CafeVentaPreparacionLogs.Add(new CafeVentaPreparacionLog
+            {
+                VentaId = v.Id,
+                EstadoAnterior = estadoAnt,
+                EstadoNuevo = "PARA_PREPARAR",
+                OperadorNombre = NormOperatorName(Request.Headers["X-Operator-Name"].FirstOrDefault()),
+                Notas = "Revivida por re-subida a Drive (probablemente edicion de la venta)",
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+        else if (string.IsNullOrEmpty(v.EstadoPreparacion))
+        {
+            v.EstadoPreparacion = "PARA_PREPARAR";
+            v.PreparacionUpdatedAt = DateTime.UtcNow;
+            // 2026-06-09: log primera vez que entra al tablero
+            _db.CafeVentaPreparacionLogs.Add(new CafeVentaPreparacionLog
+            {
+                VentaId = v.Id,
+                EstadoAnterior = null,
+                EstadoNuevo = "PARA_PREPARAR",
+                OperadorNombre = NormOperatorName(Request.Headers["X-Operator-Name"].FirstOrDefault()),
+                Notas = "Entro al tablero por primera subida a Drive",
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+        // Si la venta estaba "oculta" del tablero, al re-subir a Drive la volvemos a mostrar.
+        v.PreparacionOcultoAt = null;
+
+        string? fileId = null, link = null, driveError = null;
         try
         {
             var pdfBytes = await GenerarPdfBytesAsync(v, cfg);
-
             var fileName = BuildPdfFilename(v);
-            var (fileId, link) = await driveSvc.UploadFileAsync(fileName, pdfBytes, "application/pdf");
+            (fileId, link) = await driveSvc.UploadFileAsync(fileName, pdfBytes, "application/pdf");
 
             v.DriveFileId = fileId;
             v.DriveSubidoAt = DateTime.UtcNow;
             v.DriveSubidasCount = v.DriveSubidasCount + 1;
-            // 2026-05-28: subir a Drive equivale a "mandar al tablero IMPRIMIR PEDIDOS DE OSMAR".
-            // 2026-06-03 fix: si la venta ya estaba armada (LISTO/EN_CAMINO/ENTREGADO) y el usuario
-            // la edita + re-sube, la revivimos al tablero con flag "MODIFICADO". El armador va a ver
-            // un chip naranja en la card avisando que el pedido cambio.
-            var yaArmada = v.EstadoPreparacion == "LISTO" || v.EstadoPreparacion == "EN_CAMINO" || v.EstadoPreparacion == "ENTREGADO";
-            if (yaArmada)
-            {
-                var estadoAnt = v.EstadoPreparacion;
-                v.EstadoPreparacion = "PARA_PREPARAR";
-                v.PreparacionUpdatedAt = DateTime.UtcNow;
-                v.ModificadoDespuesDeArmar = true;
-                // 2026-06-09: log obligatorio cuando un drive-upload revive una venta ya armada.
-                // Antes pasaba sin log y el armador no entendia por que reaparecia en el tablero.
-                _db.CafeVentaPreparacionLogs.Add(new CafeVentaPreparacionLog
-                {
-                    VentaId = v.Id,
-                    EstadoAnterior = estadoAnt,
-                    EstadoNuevo = "PARA_PREPARAR",
-                    OperadorNombre = NormOperatorName(Request.Headers["X-Operator-Name"].FirstOrDefault()),
-                    Notas = "Revivida por re-subida a Drive (probablemente edicion de la venta)",
-                    CreatedAt = DateTime.UtcNow
-                });
-            }
-            else if (string.IsNullOrEmpty(v.EstadoPreparacion))
-            {
-                v.EstadoPreparacion = "PARA_PREPARAR";
-                v.PreparacionUpdatedAt = DateTime.UtcNow;
-                // 2026-06-09: log primera vez que entra al tablero
-                _db.CafeVentaPreparacionLogs.Add(new CafeVentaPreparacionLog
-                {
-                    VentaId = v.Id,
-                    EstadoAnterior = null,
-                    EstadoNuevo = "PARA_PREPARAR",
-                    OperadorNombre = NormOperatorName(Request.Headers["X-Operator-Name"].FirstOrDefault()),
-                    Notas = "Entro al tablero por primera subida a Drive",
-                    CreatedAt = DateTime.UtcNow
-                });
-            }
-            // Si la venta estaba "oculta" del tablero, al re-subir a Drive la volvemos a mostrar.
-            v.PreparacionOcultoAt = null;
-            await _db.SaveChangesAsync();
-
-            return Ok(new { ok = true, fileId, link, subidoAt = v.DriveSubidoAt, subidasCount = v.DriveSubidasCount });
         }
         catch (Exception ex)
         {
-            return BadRequest(new { error = "Error al subir a Drive: " + ex.Message });
+            driveError = ex.Message;
         }
+
+        await _db.SaveChangesAsync();
+
+        if (driveError is not null)
+            return BadRequest(new { error = "La venta SI entro a Preparacion de pedidos, pero el PDF no se pudo subir a Drive: " + driveError });
+
+        return Ok(new { ok = true, fileId, link, subidoAt = v.DriveSubidoAt, subidasCount = v.DriveSubidasCount });
     }
 
     /// <summary>Genera los bytes del PDF de una venta (ARCA si esta autorizada, cotizacion sino).
