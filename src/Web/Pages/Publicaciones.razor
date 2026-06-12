@@ -527,74 +527,24 @@
                                     <td>@GetListingTypeLabel(item.ListingTypeId)</td>
                                     <td>@item.AccountNickname</td>
                                     <td class="td-ajuste" @onclick:stopPropagation="true">
-                                        @{ var aj1 = GetAjuste(item); var prev1 = PreviewPrecioAjustado(item); }
-                                        @* 2026-06-11: chip PrecioIndependiente arriba del ajuste *@
-                                        @if (item.PrecioIndependiente && item.PrecioFactor.HasValue)
-                                        {
-                                            <div style="display:flex; gap:0.3rem; align-items:center; flex-wrap:wrap; margin-bottom:0.3rem; padding:0.25rem 0.5rem; background:#dbeafe; color:#1d4ed8; border-radius:0.3rem; font-size:0.72rem; font-weight:600;">
-                                                <span>🔒 INDEP × @item.PrecioFactor.Value.ToString("F4")</span>
-                                                @if (item.PrecioBaseRef.HasValue)
-                                                {
-                                                    <span style="font-weight:400; opacity:0.85;">(base $@item.PrecioBaseRef.Value.ToString("N0"))</span>
-                                                }
-                                                <button style="font-size:0.65rem; padding:0.05rem 0.3rem; background:#fff; color:#1d4ed8; border:1px solid #93c5fd; border-radius:0.2rem; cursor:pointer;" @onclick="() => RecalcularFactorPub(item)" title="Recalcular factor con precio actual MeLi">↻</button>
-                                                <button style="font-size:0.65rem; padding:0.05rem 0.3rem; background:#fef3c7; color:#92400e; border:1px solid #fde68a; border-radius:0.2rem; cursor:pointer;" @onclick="() => DesmarcarIndepPub(item)" title="Quitar precio independiente">✕</button>
-                                            </div>
-                                        }
-                                        else
-                                        {
-                                            <div style="margin-bottom:0.3rem;">
-                                                <button style="font-size:0.68rem; padding:0.1rem 0.4rem; background:#f3f4f6; color:#374151; border:1px solid #d1d5db; border-radius:0.25rem; cursor:pointer;" @onclick="() => MarcarIndepPub(item)" title="Activar precio independiente (factor sobre PrecioOtro)">🔒 Marcar indep.</button>
-                                            </div>
-                                        }
-                                        <div class="ajuste-pill @(HasAjuste(item) ? "has-ajuste" : "")">
-                                            <span class="ajuste-prefix">%</span>
-                                            <input type="number" step="any" class="ajuste-input"
-                                                   value="@(aj1.DeltaPct?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")"
-                                                   @onchange="(e) => OnAjustePctChange(item, e.Value?.ToString())"
-                                                   placeholder="0" title="Porcentaje a sumar (10 = +10%)" />
-                                            <span class="ajuste-sep"></span>
-                                            <span class="ajuste-prefix">$</span>
-                                            <input type="number" step="any" class="ajuste-input"
-                                                   value="@(aj1.DeltaPesos?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")"
-                                                   @onchange="(e) => OnAjustePesosChange(item, e.Value?.ToString())"
-                                                   placeholder="0" title="Pesos adicionales (315 = +$315)" />
-                                            <span class="ajuste-sep"></span>
-                                            <select class="ajuste-redondeo" value="@aj1.Redondeo" @onchange="(e) => OnAjusteRedondeoChange(item, e)" title="Redondear hacia arriba">
-                                                <option value="">—</option>
-                                                <option value="99">99</option>
-                                                <option value="999">999</option>
-                                                <option value="000">000</option>
-                                            </select>
+                                        @* 2026-06-12: la celda AJUSTE pasó a chip de SOLO LECTURA — la edición vive en la ficha. *@
+                                        @{ var prev1 = PreviewPrecioAjustado(item); }
+                                        <div style="cursor:pointer; line-height:1.3;" @onclick="() => OpenItemModal(item)" title="Click para editar el ajuste desde la ficha">
+                                            @if (item.PrecioIndependiente && item.PrecioFactor.HasValue)
+                                            {
+                                                <span style="display:inline-block; padding:0.1rem 0.4rem; background:#dbeafe; color:#1d4ed8; border-radius:0.3rem; font-size:0.7rem; font-weight:600; margin-bottom:0.15rem;">🔒 INDEP × @item.PrecioFactor.Value.ToString("F2")</span>
+                                            }
+                                            @if (HasAjuste(item))
+                                            {
+                                                <div style="display:inline-block; padding:0.15rem 0.45rem; background:#fef3c7; color:#92400e; border:1px solid #fde68a; border-radius:0.3rem; font-size:0.75rem; font-weight:700;">
+                                                    🏷 @(item.AjustePct != 0 ? $"+{item.AjustePct:0.##}% " : "")@(item.AjusteFijo != 0 ? $"+${item.AjusteFijo:N0} " : "")@(!string.IsNullOrEmpty(item.AjusteRedondeo) ? $"r{item.AjusteRedondeo}" : "")@(!string.IsNullOrEmpty(prev1) ? $" → ${prev1}" : "")
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                <span style="color:#d1d5db; font-size:0.8rem;">—</span>
+                                            }
                                         </div>
-                                        @if (!string.IsNullOrEmpty(prev1))
-                                        {
-                                            <div class="ajuste-preview-box" title="Precio final a pushear">→ $@prev1</div>
-                                        }
-                                        @* 2026-06-03: si esta fila es una familia con N MLAs, mostrar boton para
-                                           copiar este ajuste a todas las publicaciones hermanas. NO hace push — solo
-                                           guarda. El usuario despues pushea cada una individualmente con 💵. *@
-                                        @if (grp.IsFamily && grp.Variants.Count > 1)
-                                        {
-                                            var selCount = grp.Variants.Count(v => selectedFamilyPush.Contains(v.Id));
-                                            <button class="ajuste-propagar-btn" @onclick="() => PropagarAjusteAFamilia(item, grp)"
-                                                    title="Copiar este ajuste a las @(grp.Variants.Count - 1) publicaciones hermanas de la familia (no las pushea)">
-                                                ⚡ Propagar a familia (@(grp.Variants.Count - 1))
-                                            </button>
-                                            @* 2026-06-03: tildar/destildar todas + push masivo de las tildadas *@
-                                            <div style="margin-top:0.3rem; display:flex; gap:0.3rem; align-items:center; flex-wrap:wrap;">
-                                                <label style="display:inline-flex; align-items:center; gap:0.2rem; font-size:0.7rem; color:#6b7280; cursor:pointer;">
-                                                    <input type="checkbox" checked="@(selCount == grp.Variants.Count && selCount > 0)"
-                                                           @onchange="@(e => ToggleSelectAllFamilyChildren(grp, (bool)e.Value!))" />
-                                                    Todas
-                                                </label>
-                                                <button class="ajuste-push-sel-btn" @onclick="() => PushPrecioSeleccionadas(grp)"
-                                                        disabled="@(selCount == 0 || pushingSeleccionadas)"
-                                                        title="@(selCount == 0 ? "Tildá al menos una variante para pushear" : $"Pushear precio de {selCount} publicaciones a MeLi")">
-                                                    @(pushingSeleccionadas ? "Pusheando..." : $"📤 Pushear ({selCount})")
-                                                </button>
-                                            </div>
-                                        }
                                     </td>
                                     <td class="td-product" @onclick:stopPropagation="true">
                                         @if (item.ProductId.HasValue)
@@ -604,7 +554,7 @@
                                                 <button class="product-badge-unlink" @onclick="() => UnlinkProduct(item)" title="Desvincular">&times;</button>
                                             </span>
                                             <button class="push-meli-btn push-stock" @onclick="() => QuickPushStock(item)" title="Pushear SOLO stock a MeLi (usa el del sistema)">📦</button>
-                                            <button class="push-meli-btn push-precio @(HasAjuste(item) ? "has-ajuste" : "")" @onclick="() => QuickPushPrecio(item)" title="@(HasAjuste(item) ? "Pushear precio con AJUSTE aplicado" : "Pushear SOLO precio a MeLi (usa el del sistema)")">💵</button>
+                                            
                                         }
                                         else if (item.ComboId.HasValue)
                                         {
@@ -613,7 +563,7 @@
                                                 <button class="product-badge-unlink" @onclick="() => UnlinkProduct(item)" title="Desvincular">&times;</button>
                                             </span>
                                             <button class="push-meli-btn push-stock" @onclick="() => QuickPushStock(item)" title="Pushear SOLO stock a MeLi (usa el del sistema)">📦</button>
-                                            <button class="push-meli-btn push-precio @(HasAjuste(item) ? "has-ajuste" : "")" @onclick="() => QuickPushPrecio(item)" title="@(HasAjuste(item) ? "Pushear precio con AJUSTE aplicado" : "Pushear SOLO precio a MeLi (usa el del sistema)")">💵</button>
+                                            
                                         }
                                         else if (item.CafeProductoId.HasValue)
                                         {
@@ -622,7 +572,7 @@
                                                 <span style="opacity:0.7; margin-left:0.2rem;">@item.CafeFormato</span>
                                             </span>
                                             <button class="push-meli-btn push-stock" @onclick="() => QuickPushStock(item)" title="Pushear SOLO stock a MeLi (usa el del sistema)">📦</button>
-                                            <button class="push-meli-btn push-precio @(HasAjuste(item) ? "has-ajuste" : "")" @onclick="() => QuickPushPrecio(item)" title="@(HasAjuste(item) ? "Pushear precio con AJUSTE aplicado" : "Pushear SOLO precio a MeLi (usa el del sistema)")">💵</button>
+                                            
                                         }
                                         else if (item.ComponentMappingsCount > 0)
                                         {
@@ -631,7 +581,7 @@
                                                 ✅ Linkeado (@item.ComponentMappingsCount)
                                             </span>
                                             <button class="push-meli-btn push-stock" @onclick="() => QuickPushStock(item)" title="Pushear SOLO stock a MeLi (usa el del sistema)">📦</button>
-                                            <button class="push-meli-btn push-precio @(HasAjuste(item) ? "has-ajuste" : "")" @onclick="() => QuickPushPrecio(item)" title="@(HasAjuste(item) ? "Pushear precio con AJUSTE aplicado" : "Pushear SOLO precio a MeLi (usa el del sistema)")">💵</button>
+                                            
                                         }
                                         else
                                         {
@@ -831,31 +781,20 @@
                                         <td>@GetListingTypeLabel(item.ListingTypeId)</td>
                                         <td>@item.AccountNickname</td>
                                         <td class="td-ajuste" @onclick:stopPropagation="true">
-                                            @{ var aj2 = GetAjuste(item); var prev2 = PreviewPrecioAjustado(item); }
-                                            <div class="ajuste-pill @(HasAjuste(item) ? "has-ajuste" : "")">
-                                                <span class="ajuste-prefix">%</span>
-                                                <input type="number" step="any" class="ajuste-input"
-                                                       value="@(aj2.DeltaPct?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")"
-                                                       @onchange="(e) => OnAjustePctChange(item, e.Value?.ToString())"
-                                                       placeholder="0" title="Porcentaje a sumar" />
-                                                <span class="ajuste-sep"></span>
-                                                <span class="ajuste-prefix">$</span>
-                                                <input type="number" step="any" class="ajuste-input"
-                                                       value="@(aj2.DeltaPesos?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")"
-                                                       @onchange="(e) => OnAjustePesosChange(item, e.Value?.ToString())"
-                                                       placeholder="0" title="Pesos adicionales" />
-                                                <span class="ajuste-sep"></span>
-                                                <select class="ajuste-redondeo" value="@aj2.Redondeo" @onchange="(e) => OnAjusteRedondeoChange(item, e)" title="Redondear hacia arriba">
-                                                    <option value="">—</option>
-                                                    <option value="99">99</option>
-                                                    <option value="999">999</option>
-                                                    <option value="000">000</option>
-                                                </select>
+                                            @* 2026-06-12: chip de solo lectura — la edición vive en la ficha *@
+                                            @{ var prev2 = PreviewPrecioAjustado(item); }
+                                            <div style="cursor:pointer;" @onclick="() => OpenItemModal(item)" title="Click para editar el ajuste desde la ficha">
+                                                @if (HasAjuste(item))
+                                                {
+                                                    <div style="display:inline-block; padding:0.15rem 0.45rem; background:#fef3c7; color:#92400e; border:1px solid #fde68a; border-radius:0.3rem; font-size:0.75rem; font-weight:700;">
+                                                        🏷 @(item.AjustePct != 0 ? $"+{item.AjustePct:0.##}% " : "")@(item.AjusteFijo != 0 ? $"+${item.AjusteFijo:N0} " : "")@(!string.IsNullOrEmpty(item.AjusteRedondeo) ? $"r{item.AjusteRedondeo}" : "")@(!string.IsNullOrEmpty(prev2) ? $" → ${prev2}" : "")
+                                                    </div>
+                                                }
+                                                else
+                                                {
+                                                    <span style="color:#d1d5db; font-size:0.8rem;">—</span>
+                                                }
                                             </div>
-                                            @if (!string.IsNullOrEmpty(prev2))
-                                            {
-                                                <div class="ajuste-preview-box" title="Precio final a pushear">→ $@prev2</div>
-                                            }
                                         </td>
                                         <td class="td-product" @onclick:stopPropagation="true">
                                             @if (item.ProductId.HasValue)
@@ -865,7 +804,7 @@
                                                     <button class="product-badge-unlink" @onclick="() => UnlinkProduct(item)" title="Desvincular">&times;</button>
                                                 </span>
                                                 <button class="push-meli-btn push-stock" @onclick="() => QuickPushStock(item)" title="Pushear SOLO stock a MeLi (usa el del sistema)">📦</button>
-                                            <button class="push-meli-btn push-precio @(HasAjuste(item) ? "has-ajuste" : "")" @onclick="() => QuickPushPrecio(item)" title="@(HasAjuste(item) ? "Pushear precio con AJUSTE aplicado" : "Pushear SOLO precio a MeLi (usa el del sistema)")">💵</button>
+                                            
                                             }
                                             else
                                             {
@@ -1417,6 +1356,82 @@
                         </div>
                     </div>
                 }
+
+                @* 2026-06-12: SECCIÓN AJUSTE DE PRECIO — movida desde la grilla (la celda AJUSTE pasó a chip). *@
+                <div style="margin-top: 0.75rem; padding: 0.75rem 1rem; background: #fffbeb; border: 2px solid #fde68a; border-radius: 8px;">
+                    <div style="font-weight: 700; font-size: 0.9rem; color: #92400e; margin-bottom: 0.6rem;">🏷 Ajuste de precio (para push)</div>
+                    @{
+                        var ajF = GetAjuste(selectedItem);
+                        var prevF = PreviewPrecioAjustado(selectedItem);
+                    }
+                    <div style="display:flex; gap:1rem; align-items:flex-end; flex-wrap:wrap;">
+                        <div>
+                            <div style="font-size:0.7rem; color:#6b7280; text-transform:uppercase; margin-bottom:0.2rem;">% extra</div>
+                            <input type="number" step="any" value="@(ajF.DeltaPct?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")"
+                                   @onchange="(e) => OnAjustePctChange(selectedItem, e.Value?.ToString())"
+                                   placeholder="0" style="width:80px; padding:0.4rem; border:1px solid #fcd34d; border-radius:6px; text-align:right;" />
+                        </div>
+                        <div>
+                            <div style="font-size:0.7rem; color:#6b7280; text-transform:uppercase; margin-bottom:0.2rem;">$ extra</div>
+                            <input type="number" step="any" value="@(ajF.DeltaPesos?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")"
+                                   @onchange="(e) => OnAjustePesosChange(selectedItem, e.Value?.ToString())"
+                                   placeholder="0" style="width:90px; padding:0.4rem; border:1px solid #fcd34d; border-radius:6px; text-align:right;" />
+                        </div>
+                        <div>
+                            <div style="font-size:0.7rem; color:#6b7280; text-transform:uppercase; margin-bottom:0.2rem;">Redondeo</div>
+                            <select value="@ajF.Redondeo" @onchange="(e) => OnAjusteRedondeoChange(selectedItem, e)"
+                                    style="padding:0.4rem; border:1px solid #fcd34d; border-radius:6px;">
+                                <option value="">—</option>
+                                <option value="99">99</option>
+                                <option value="999">999</option>
+                                <option value="000">000</option>
+                            </select>
+                        </div>
+                        @if (!string.IsNullOrEmpty(prevF))
+                        {
+                            <div style="padding:0.4rem 0.75rem; background:white; border:1px solid #fcd34d; border-radius:6px;">
+                                <div style="font-size:0.65rem; color:#6b7280; text-transform:uppercase;">Precio con ajuste</div>
+                                <div style="font-size:1.1rem; font-weight:800; color:#92400e;">→ $@prevF</div>
+                            </div>
+                        }
+                        <div style="flex:1;"></div>
+                        <button @onclick="() => QuickPushPrecio(selectedItem)"
+                                style="padding:0.6rem 1rem; background:#b45309; color:white; border:none; border-radius:6px; font-weight:700; cursor:pointer; white-space:nowrap;"
+                                title="Pushea el precio del sistema con este ajuste aplicado">
+                            💵 Pushear precio
+                        </button>
+                        @if (!string.IsNullOrEmpty(selectedItem.FamilyId))
+                        {
+                            <button @onclick="PropagarAjusteDesdeFicha" disabled="@isPropagandoFicha"
+                                    style="padding:0.6rem 1rem; background:white; color:#b45309; border:1px solid #b45309; border-radius:6px; font-weight:700; cursor:pointer; white-space:nowrap;"
+                                    title="Copia este ajuste a las publicaciones hermanas de la familia (no las pushea)">
+                                @(isPropagandoFicha ? "Propagando..." : "⚡ Propagar a familia")
+                            </button>
+                        }
+                    </div>
+                    @* Precio independiente (solo tiene sentido en familias) *@
+                    @if (!string.IsNullOrEmpty(selectedItem.FamilyId))
+                    {
+                        <div style="margin-top:0.6rem; padding-top:0.6rem; border-top:1px dashed #fcd34d; display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                            @if (selectedItem.PrecioIndependiente && selectedItem.PrecioFactor.HasValue)
+                            {
+                                <span style="padding:0.25rem 0.5rem; background:#dbeafe; color:#1d4ed8; border-radius:0.3rem; font-size:0.75rem; font-weight:600;">
+                                    🔒 Precio independiente × @selectedItem.PrecioFactor.Value.ToString("F4")
+                                    @if (selectedItem.PrecioBaseRef.HasValue)
+                                    {
+                                        <span style="font-weight:400; opacity:0.85;"> (base $@selectedItem.PrecioBaseRef.Value.ToString("N0"))</span>
+                                    }
+                                </span>
+                                <button style="font-size:0.7rem; padding:0.2rem 0.5rem; background:#fff; color:#1d4ed8; border:1px solid #93c5fd; border-radius:0.25rem; cursor:pointer;" @onclick="() => RecalcularFactorPub(selectedItem)" title="Recalcular factor con precio actual MeLi">↻ Recalcular</button>
+                                <button style="font-size:0.7rem; padding:0.2rem 0.5rem; background:#fef3c7; color:#92400e; border:1px solid #fde68a; border-radius:0.25rem; cursor:pointer;" @onclick="() => DesmarcarIndepPub(selectedItem)" title="Quitar precio independiente">✕ Quitar</button>
+                            }
+                            else
+                            {
+                                <button style="font-size:0.75rem; padding:0.3rem 0.6rem; background:#f3f4f6; color:#374151; border:1px solid #d1d5db; border-radius:0.25rem; cursor:pointer;" @onclick="() => MarcarIndepPub(selectedItem)" title="El precio de esta MLA deja de seguir a la familia y usa su propio factor">🔒 Marcar precio independiente</button>
+                            }
+                        </div>
+                    }
+                </div>
 
                 @* 2026-06-12: SECCIÓN STOCK Y SINCRONIZACIÓN — todo lo de stock de esta publicación en un lugar *@
                 <div style="margin-top: 0.75rem; padding: 0.75rem 1rem; background: #f0fdf4; border: 2px solid #bbf7d0; border-radius: 8px;">
@@ -4271,6 +4286,28 @@
             i.FamilyId == v.FamilyId &&
             i.Sku == v.Sku &&
             IsCatalogListing(i) != IsCatalogListing(v));
+    }
+
+    // ── 2026-06-12: sección Ajuste de la ficha ──
+    private bool isPropagandoFicha;
+
+    private async Task PropagarAjusteDesdeFicha()
+    {
+        if (selectedItem is null || isPropagandoFicha) return;
+        isPropagandoFicha = true;
+        StateHasChanged();
+        try
+        {
+            var cantidad = await Api.PropagarAjusteAFamiliaAsync(selectedItem.Id);
+            if (cantidad > 0) ToastService.Success($"⚡ Ajuste copiado a {cantidad} publicaciones hermanas (sin pushear)");
+            else ToastService.Error("No se pudo propagar el ajuste");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally
+        {
+            isPropagandoFicha = false;
+            StateHasChanged();
+        }
     }
 
     // ── 2026-06-12: sección Stock de la ficha ──
