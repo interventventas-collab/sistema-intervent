@@ -401,7 +401,7 @@
                             {
                                 var item = grp.Item;
                                 var isExpanded = expandedGroups.Contains(grp.Key);
-                                <tr class="clickable-row @(selectedItems.Contains(item.Id) ? "row-selected" : "")" @onclick="() => OpenItemModal(item)">
+                                <tr class="clickable-row @(selectedItems.Contains(item.Id) ? "row-selected" : "")" style="@CatalogRowStyle(item)" @onclick="() => OpenItemModal(item)">
                                     <td class="td-checkbox" @onclick:stopPropagation="true"><input type="checkbox" checked="@selectedItems.Contains(item.Id)" @onchange="() => ToggleSelectItem(item.Id)" /></td>
                                     <td style="text-align: center;">
                                         @if (!string.IsNullOrEmpty(item.Thumbnail))
@@ -423,6 +423,10 @@
                                         else
                                         {
                                             <span title="@item.MeliItemId">@Truncate(item.Title, 50)</span>
+                                        }
+                                        @if (IsCatalogListing(item))
+                                        {
+                                            <span style="margin-left:0.4rem; background:#f59e0b; color:white; padding:0.05rem 0.35rem; border-radius:4px; font-size:0.65rem; font-weight:700;" title="Publicación del catálogo de MeLi — el precio puede cambiar automáticamente según otros vendedores">📋 CATÁLOGO</span>
                                         }
                                         <div class="item-id">
                                             @if (grp.IsFamily)
@@ -648,7 +652,7 @@
                                 {
                                     @foreach (var v in grp.Variants)
                                     {
-                                        <tr style="background:#f9fafb; font-size:0.85rem;" @onclick="() => OpenItemModal(v)">
+                                        <tr style="background:#f9fafb; font-size:0.85rem;@CatalogRowStyle(v)" @onclick="() => OpenItemModal(v)">
                                             @* 2026-06-03: checkbox para multi-seleccion + push de precio en lote *@
                                             <td class="td-checkbox" @onclick:stopPropagation="true">
                                                 <input type="checkbox" checked="@selectedFamilyPush.Contains(v.Id)"
@@ -769,7 +773,7 @@
                                 </tr>
                                 @foreach (var item in family.Items)
                                 {
-                                    <tr class="group-item-row clickable-row @(selectedItems.Contains(item.Id) ? "row-selected" : "")" @onclick="() => OpenItemModal(item)">
+                                    <tr class="group-item-row clickable-row @(selectedItems.Contains(item.Id) ? "row-selected" : "")" style="@CatalogRowStyle(item)" @onclick="() => OpenItemModal(item)">
                                         <td class="td-checkbox" @onclick:stopPropagation="true"><input type="checkbox" checked="@selectedItems.Contains(item.Id)" @onchange="() => ToggleSelectItem(item.Id)" /></td>
                                         <td style="text-align: center;">
                                             @if (!string.IsNullOrEmpty(item.Thumbnail))
@@ -889,7 +893,7 @@
                                     </tr>
                                     @foreach (var item in product.Items)
                                     {
-                                        <tr class="group-item-row clickable-row" @onclick="() => OpenItemModal(item)">
+                                        <tr class="group-item-row clickable-row" style="@CatalogRowStyle(item)" @onclick="() => OpenItemModal(item)">
                                             <td style="text-align: center;">
                                                 @if (!string.IsNullOrEmpty(item.Thumbnail))
                                                 {
@@ -951,7 +955,7 @@
                                 else
                                 {
                                     var item = product.Items[0];
-                                    <tr class="clickable-row @(selectedItems.Contains(item.Id) ? "row-selected" : "")" @onclick="() => OpenItemModal(item)">
+                                    <tr class="clickable-row @(selectedItems.Contains(item.Id) ? "row-selected" : "")" style="@CatalogRowStyle(item)" @onclick="() => OpenItemModal(item)">
                                         <td class="td-checkbox" @onclick:stopPropagation="true"><input type="checkbox" checked="@selectedItems.Contains(item.Id)" @onchange="() => ToggleSelectItem(item.Id)" /></td>
                                         <td style="text-align: center;">
                                             @if (!string.IsNullOrEmpty(item.Thumbnail))
@@ -3804,6 +3808,18 @@
 
     private string Truncate(string text, int maxLength) =>
         text.Length <= maxLength ? text : text[..maxLength] + "...";
+
+    // 2026-06-12: detectar publicaciones de catálogo por el patrón del permalink.
+    // Las de catálogo tienen URL tipo "mercadolibre.com.ar/p/MLAXXXXXXX" — las propias NO.
+    private static bool IsCatalogListing(MeliItemDto? v)
+    {
+        if (v is null || string.IsNullOrEmpty(v.Permalink)) return false;
+        return v.Permalink.Contains("/p/MLA", StringComparison.OrdinalIgnoreCase);
+    }
+
+    // Estilo (fondo amarillo) para filas de catálogo. Se concatena al style existente del tr.
+    private static string CatalogRowStyle(MeliItemDto? v)
+        => IsCatalogListing(v) ? " background:#fef9c3 !important;" : "";
 
 
     private string FormatPrice(decimal value)
