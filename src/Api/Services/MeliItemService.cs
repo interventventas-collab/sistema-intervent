@@ -78,7 +78,8 @@ public class MeliItemService
                 true, false, 0m, 0m, null,  // SyncStock/SyncPrecio/AjustePct/AjusteFijo/AjusteRedondeo
                 false, null, null,  // 2026-06-11: PrecioIndependiente, PrecioFactor, PrecioBaseRef
                 null,  // PrecioOtroConIvaCalc — se completa abajo en memoria
-                null   // 2026-06-01: ProductCost — se completa abajo en memoria
+                null,  // 2026-06-01: ProductCost — se completa abajo en memoria
+                i.CatalogListing  // 2026-06-12: publicacion de catalogo
                 ))
             .ToListAsync();
 
@@ -499,7 +500,9 @@ public class MeliItemService
         null, // LastStockPushedToMeli
         true, false, 0m, 0m, null, // SyncConfig (queda en default)
         false, null, null, // 2026-06-11: PrecioIndependiente, PrecioFactor, PrecioBaseRef
-        null); // PrecioOtroConIvaCalc
+        null, // PrecioOtroConIvaCalc
+        null, // ProductCost
+        item.CatalogListing); // 2026-06-12
 
     public async Task<int> DeleteItemsAsync(List<int> ids)
     {
@@ -1478,6 +1481,10 @@ public class MeliItemService
             freeShipping = shipping.TryGetProperty("free_shipping", out var fs) && fs.ValueKind == JsonValueKind.True;
         }
 
+        // 2026-06-12: catalogo — MeLi marca catalog_listing=true cuando la publicacion compite
+        // en el catalogo (el precio puede cambiar solo). Lo mostramos en /publicaciones.
+        var catalogListing = item.TryGetProperty("catalog_listing", out var cl) && cl.ValueKind == JsonValueKind.True;
+
         // Detectar variantes. Si tiene variantes, grabamos una fila por variante (con su
         // VariationId y su SKU). Si no, grabamos una fila simple (VariationId NULL).
         var hasVariations = item.TryGetProperty("variations", out var variations)
@@ -1508,7 +1515,7 @@ public class MeliItemService
                 title, categoryId, price, originalPrice, currencyId,
                 availableQty, soldQty, status, condition, listingTypeId,
                 thumbnail, permalink, parentSku, userProductId, familyId, familyName,
-                installmentTag, freeShipping, dateCreated, lastUpdated);
+                installmentTag, freeShipping, dateCreated, lastUpdated, catalogListing: catalogListing);
             return 1;
         }
 
@@ -1558,7 +1565,7 @@ public class MeliItemService
                 title, categoryId, vPrice, vOriginal, currencyId,
                 vQty, vSold, status, condition, listingTypeId,
                 vThumb, permalink, vSku, userProductId, familyId, familyName,
-                installmentTag, freeShipping, dateCreated, lastUpdated, logisticType);
+                installmentTag, freeShipping, dateCreated, lastUpdated, logisticType, catalogListing);
             rowsUpserted++;
         }
 
@@ -1584,7 +1591,8 @@ public class MeliItemService
         int availableQty, int soldQty, string status, string? condition, string? listingTypeId,
         string? thumbnail, string? permalink, string? sku, string? userProductId,
         string? familyId, string? familyName, string? installmentTag, bool freeShipping,
-        DateTime? dateCreated, DateTime? lastUpdated, string? logisticType = null)
+        DateTime? dateCreated, DateTime? lastUpdated, string? logisticType = null,
+        bool catalogListing = false)
     {
         var existing = await _db.MeliItems
             .FirstOrDefaultAsync(i => i.MeliItemId == meliItemId && i.VariationId == variationId);
@@ -1678,6 +1686,7 @@ public class MeliItemService
             existing.FamilyName = familyName;
             existing.InstallmentTag = installmentTag;
             existing.FreeShipping = freeShipping;
+            existing.CatalogListing = catalogListing;
             existing.LastUpdated = lastUpdated;
             existing.VariationAttributes = variationAttributes;
             // Solo overrideamos LogisticType si vino del API. Si vino null (no estaba en la response),
@@ -1714,6 +1723,7 @@ public class MeliItemService
                 FamilyName = familyName,
                 InstallmentTag = installmentTag,
                 FreeShipping = freeShipping,
+                CatalogListing = catalogListing,
                 DateCreated = dateCreated,
                 LastUpdated = lastUpdated,
                 LogisticType = logisticType,

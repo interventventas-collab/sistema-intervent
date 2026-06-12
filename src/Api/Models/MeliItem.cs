@@ -18,6 +18,9 @@ public class MeliItem
     public string? ListingTypeId { get; set; }
     public string? InstallmentTag { get; set; }
     public bool FreeShipping { get; set; }
+    // 2026-06-12: true si la publicacion es de catalogo (catalog_listing en la API de MeLi).
+    // En catalogo el precio puede cambiar solo segun la competencia — importante visualizarlo.
+    public bool CatalogListing { get; set; }
     public string? Thumbnail { get; set; }
     public string? Permalink { get; set; }
     public string? Sku { get; set; }

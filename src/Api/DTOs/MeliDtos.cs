@@ -176,7 +176,9 @@ public record MeliItemDto(
     // 2026-06-01: Costo del producto/combo desde el sistema (Cafe_Productos.Costo).
     // Sumatoria si es combo. Usado para mostrar margen en la lista y permitir filtrar
     // publicaciones con bajo margen / pérdida. Null si no hay linkeo o costo cargado.
-    decimal? ProductCost = null
+    decimal? ProductCost = null,
+    // 2026-06-12: true si la publicacion es de catalogo (el precio puede cambiar solo).
+    bool CatalogListing = false
 );
 
 public record MeliItemsResponse(List<MeliItemDto> Items, int Total);

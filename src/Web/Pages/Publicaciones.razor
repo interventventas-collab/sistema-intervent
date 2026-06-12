@@ -3809,12 +3809,15 @@
     private string Truncate(string text, int maxLength) =>
         text.Length <= maxLength ? text : text[..maxLength] + "...";
 
-    // 2026-06-12: detectar publicaciones de catálogo por el patrón del permalink.
-    // Las de catálogo tienen URL tipo "mercadolibre.com.ar/p/MLAXXXXXXX" — las propias NO.
+    // 2026-06-12: detectar publicaciones de catálogo. Primero el dato real que viene del sync
+    // (catalog_listing de la API de MeLi); fallback al patrón del permalink para items
+    // que todavía no se re-sincronizaron.
     private static bool IsCatalogListing(MeliItemDto? v)
     {
-        if (v is null || string.IsNullOrEmpty(v.Permalink)) return false;
-        return v.Permalink.Contains("/p/MLA", StringComparison.OrdinalIgnoreCase);
+        if (v is null) return false;
+        if (v.CatalogListing) return true;
+        return !string.IsNullOrEmpty(v.Permalink)
+            && v.Permalink.Contains("/p/MLA", StringComparison.OrdinalIgnoreCase);
     }
 
     // Estilo (fondo amarillo) para filas de catálogo. Se concatena al style existente del tr.
