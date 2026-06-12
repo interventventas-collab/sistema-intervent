@@ -4295,7 +4295,9 @@
         if (itemProductCost is not null && itemProductCost.TotalCost > 0 && itemCosts is not null)
         {
             calcGananciaModo = "%";
-            calcGananciaValor = Math.Max(0, Math.Round(MarginPctSobreCosto(), 1));
+            // 2026-06-12: mostrar el margen REAL aunque sea negativo — antes lo topeaba en 0
+            // y el usuario veía "quiero ganar 0%" con margen -1,8%, lo cual confundía.
+            calcGananciaValor = Math.Round(MarginPctSobreCosto(), 1);
         }
         StateHasChanged();
 
