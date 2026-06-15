@@ -354,8 +354,10 @@
                 <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:0.5rem;">
                     <div style="flex:1; min-width:0;">
                         @if (!string.IsNullOrEmpty(productoSeleccionado.Sku))
-                        { <span class="sp-prod-sku">@productoSeleccionado.Sku</span> }
-                        <strong style="font-size:0.95rem;">@productoSeleccionado.Nombre</strong>
+                        { <span class="sp-prod-sku" style="cursor:pointer;" title="Tocá para copiar el SKU"
+                                @onclick="@(() => CopiarPortapapelesAsync(productoSeleccionado.Sku!, "SKU copiado"))">@productoSeleccionado.Sku</span> }
+                        <strong style="font-size:0.95rem; cursor:pointer;" title="Tocá para copiar el nombre"
+                                @onclick="@(() => CopiarPortapapelesAsync(productoSeleccionado.Nombre, "Nombre copiado"))">@productoSeleccionado.Nombre</strong>
                         @if (productoSeleccionado.UltimaModifAt.HasValue)
                         {
                             <div style="font-size:0.72rem; color:#6b7280; margin-top:0.3rem;">
@@ -718,6 +720,15 @@
     }
     private int reservadoActual = 0;
     public record ReservaProductoDto(int ProductoId, int Reservado);
+
+    private async Task CopiarPortapapelesAsync(string texto, string mensaje)
+    {
+        if (string.IsNullOrEmpty(texto)) return;
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", texto); } catch { }
+        toastMensaje = $"📋 {mensaje}: {texto}";
+        toastVisible = true;
+        _ = Task.Run(async () => { await Task.Delay(1500); toastVisible = false; await InvokeAsync(StateHasChanged); });
+    }
 
     private async Task CancelarSeleccion()
     {
