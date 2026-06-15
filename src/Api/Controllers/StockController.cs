@@ -201,6 +201,71 @@ public class StockController : ControllerBase
         return Ok(result);
     }
 
+    /// <summary>2026-06-15: Devuelve el SIGUIENTE producto a auditar ordenado por más vendido
+    /// (últimos 30 días, sumando todos los canales: ventas oficina + MeLi + MeLi Full),
+    /// saltando los que ya fueron contados en la auditoría activa.
+    /// Si auditoriaId viene null, no filtra por "ya contados".</summary>
+    [HttpGet("publica/{token}/top-vendidos-siguiente")]
+    [AllowAnonymous]
+    public async Task<IActionResult> SiguienteTopVendido(string token, [FromQuery] int? auditoriaId = null, [FromQuery] int dias = 30)
+    {
+        if (!await TokenValidoAsync(token)) return NotFound(new { error = "Token inválido" });
+
+        var desde = DateTime.UtcNow.AddDays(-Math.Max(1, dias));
+
+        // Top productos por unidades vendidas en el período (de cualquier canal).
+        // Suma absoluta de Cantidad — el sistema guarda valores positivos en VENTA_*.
+        var topVendidos = await _db.StockMovimientos
+            .Where(m => !m.Reverted
+                     && (m.TipoMov == "VENTA_NUESTRA" || m.TipoMov == "VENTA_MELI" || m.TipoMov == "VENTA_MELI_FULL")
+                     && m.CreatedAt >= desde)
+            .GroupBy(m => m.ProductoId)
+            .Select(g => new { ProductoId = g.Key, Unidades = g.Sum(m => m.Cantidad) })
+            .OrderByDescending(x => x.Unidades)
+            .Take(500) // tope alto, igual lo va a recorrer en orden y rara vez auditan 500 en un día
+            .ToListAsync();
+
+        // IDs ya contados en la auditoría activa (si la hay).
+        HashSet<int> yaContados = new();
+        if (auditoriaId.HasValue)
+        {
+            yaContados = (await _db.StockMovimientos
+                .Where(m => m.AuditoriaId == auditoriaId.Value && !m.Reverted)
+                .Select(m => m.ProductoId).Distinct().ToListAsync()).ToHashSet();
+        }
+
+        // Recorrer en orden de más vendido, encontrar el primero NO contado todavía y que siga activo.
+        foreach (var t in topVendidos)
+        {
+            if (yaContados.Contains(t.ProductoId)) continue;
+            var p = await _db.CafeProductos.FirstOrDefaultAsync(x => x.Id == t.ProductoId && x.IsActive);
+            if (p is null) continue;
+
+            // Buscar última modificación de stock (para mostrar quién y cuándo).
+            var ult = await _db.StockMovimientos
+                .Where(m => m.ProductoId == p.Id && !m.Reverted)
+                .OrderByDescending(m => m.CreatedAt)
+                .Select(m => new { m.CreatedAt, m.OperadorNombreSnap })
+                .FirstOrDefaultAsync();
+
+            return Ok(new SiguienteTopDto(
+                Posicion: topVendidos.IndexOf(t) + 1,
+                TotalTop: topVendidos.Count,
+                ContadosEnAuditoria: yaContados.Count,
+                Producto: new StockProductoPubDto(
+                    p.Id, p.Sku, p.Barcode, p.Nombre, p.Categoria, p.Marca, p.StockUnidades,
+                    ult?.CreatedAt, ult?.OperadorNombreSnap, false),
+                UnidadesVendidasPeriodo: (int)t.Unidades,
+                DiasPeriodo: dias));
+        }
+
+        // Si llegó hasta acá, terminaron todos los del top — devolvemos 200 con Producto=null.
+        return Ok(new SiguienteTopDto(0, topVendidos.Count, yaContados.Count, null, 0, dias));
+    }
+
+    public record SiguienteTopDto(int Posicion, int TotalTop, int ContadosEnAuditoria,
+        StockProductoPubDto? Producto, int UnidadesVendidasPeriodo, int DiasPeriodo);
+
     /// <summary>Lista TODOS los productos activos paginados (para modo auditoría que recorre el depósito).</summary>
     [HttpGet("publica/{token}/all")]
     [AllowAnonymous]

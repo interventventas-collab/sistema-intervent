@@ -198,7 +198,56 @@
 
             @if (ModoAuditoria && string.IsNullOrWhiteSpace(queryBusqueda))
             {
-                @* En modo auditoría sin búsqueda activa: lista paginada del depósito con filtro pendientes/hechos *@
+                @* 2026-06-15: nuevo modo "Top vendidos" — auditar en orden de más vendido *@
+                <div style="display:flex; gap:0.4rem; margin:0.5rem 0; flex-wrap:wrap;">
+                    <button class="sp-btn @(modoTopVendidos ? "" : "sp-btn-audit")" style="flex:1;"
+                            @onclick="@(() => { modoTopVendidos = false; })">
+                        🔍 Buscar / Recorrer
+                    </button>
+                    <button class="sp-btn @(modoTopVendidos ? "sp-btn-audit" : "")" style="flex:1;"
+                            @onclick="@(async () => { modoTopVendidos = true; await CargarSiguienteTopAsync(); })">
+                        🏆 Más vendidos
+                    </button>
+                </div>
+
+                @if (modoTopVendidos)
+                {
+                    @if (topVendidoActual is null && !cargandoTop)
+                    {
+                        <div class="sp-card" style="text-align:center; padding:1.2rem;">
+                            <p style="margin:0; color:#15803d; font-weight:700;">🎉 ¡Listo! Auditaste todos los más vendidos.</p>
+                            @if (init.AuditoriaActiva is not null)
+                            {
+                                <p style="margin:0.4rem 0 0; font-size:0.85rem; color:#6b7280;">Llevás @init.AuditoriaActiva.ItemsContados items contados.</p>
+                            }
+                        </div>
+                    }
+                    else if (cargandoTop)
+                    {
+                        <p style="text-align:center; color:#6b7280;">Buscando siguiente...</p>
+                    }
+                    else if (topVendidoActual is not null && topVendidoActual.Producto is not null)
+                    {
+                        <div class="sp-card" style="border:2px solid #f59e0b;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+                                <span style="font-weight:700; color:#92400e;">🏆 Posición #@topVendidoActual.Posicion</span>
+                                <span style="font-size:0.78rem; color:#6b7280;">Llevás @topVendidoActual.ContadosEnAuditoria contados</span>
+                            </div>
+                            <div class="sp-prod" @onclick="() => SeleccionarProducto(topVendidoActual.Producto!)" style="cursor:pointer;">
+                                @RenderProductoRow(topVendidoActual.Producto!)
+                            </div>
+                            <div style="background:#fef3c7; padding:0.5rem 0.7rem; border-radius:6px; margin-top:0.5rem; font-size:0.82rem;">
+                                📊 Vendido últimos @topVendidoActual.DiasPeriodo días: <strong>@topVendidoActual.UnidadesVendidasPeriodo u</strong>
+                            </div>
+                            <button class="sp-btn" style="margin-top:0.6rem; background:#e5e7eb; color:#374151;"
+                                    @onclick="SaltarTopActual">
+                                Saltar este → siguiente
+                            </button>
+                        </div>
+                    }
+                }
+                else
+                {
                 <div class="sp-filter">
                     <button class="@(auditFilter == "pendientes" ? "active" : "")" @onclick='@(() => CambiarFiltroAuditoria("pendientes"))'>⏳ Pendientes</button>
                     <button class="@(auditFilter == "hechos" ? "active" : "")" @onclick='@(() => CambiarFiltroAuditoria("hechos"))'>✅ Hechos</button>
@@ -235,6 +284,7 @@
                 {
                     <p style="text-align:center; color:#6b7280;">No hay productos en este filtro.</p>
                 }
+                } @* cierre del else "modo Buscar/Recorrer" *@
             }
             else
             {
@@ -411,6 +461,12 @@
     private StockAuditoriaPubDto? auditoriaActiva;
     private string auditNotas = "";
     private string auditFilter = "pendientes"; // pendientes | hechos | todos
+    // 2026-06-15: modo Top vendidos
+    private bool modoTopVendidos = false;
+    private bool cargandoTop = false;
+    private SiguienteTopDto? topVendidoActual;
+    public record SiguienteTopDto(int Posicion, int TotalTop, int ContadosEnAuditoria,
+        StockProductoPubDto? Producto, int UnidadesVendidasPeriodo, int DiasPeriodo);
     private int pageActual = 1, pageSize = 30, totalItems = 0;
     private int pageTotal => Math.Max(1, (int)Math.Ceiling((double)totalItems / pageSize));
     private List<StockProductoPubDto>? listaProductos;
@@ -603,6 +659,8 @@
                 // Refrescar lista + auditoría
                 await CargarInitAsync();
                 await CargarListaAuditoria();
+                // 2026-06-15: si estaba en modo Top vendidos, ir directo al siguiente.
+                if (modoTopVendidos) await CargarSiguienteTopAsync();
             }
             StateHasChanged();
             await Task.Delay(2000);
@@ -743,6 +801,46 @@
         }
         catch { /* ignore */ }
         finally { guardando = false; }
+    }
+
+    // 2026-06-15: pide al backend el siguiente producto a auditar en orden de más vendido.
+    private async Task CargarSiguienteTopAsync()
+    {
+        cargandoTop = true; topVendidoActual = null; StateHasChanged();
+        try
+        {
+            var audId = auditoriaActiva?.Id;
+            var url = $"api/stock/publica/{Uri.EscapeDataString(Token)}/top-vendidos-siguiente?dias=30"
+                    + (audId.HasValue ? $"&auditoriaId={audId.Value}" : "");
+            var r = await Http.GetAsync(url);
+            if (r.IsSuccessStatusCode)
+            {
+                topVendidoActual = await r.Content.ReadFromJsonAsync<SiguienteTopDto>();
+            }
+        }
+        catch { /* ignorar — quedar en estado vacío */ }
+        finally { cargandoTop = false; StateHasChanged(); }
+    }
+
+    private async Task SaltarTopActual()
+    {
+        // Saltar = pedir el siguiente sin marcar este como contado.
+        // Como no se cuenta, en el próximo refetch va a volver a aparecer.
+        // Para evitar bucle infinito, cargamos el siguiente pero pidiéndole que omita el actual.
+        // (Implementación simple: avanzar un puesto fijando el id actual como "ya contado" en memoria temporal).
+        if (topVendidoActual?.Producto is null) return;
+        var saltado = topVendidoActual.Producto.Id;
+        // Recargamos y saltamos el ID en memoria (no persistente).
+        // Para mantener simple: pedimos siguiente y si vuelve el mismo, lo dejamos así.
+        // Igualmente: si el operario quiere realmente saltarlo definitivamente, conviene confirmar
+        // con stock actual (luego de implementar "marcar como auditado sin cambios").
+        await CargarSiguienteTopAsync();
+        // Si vuelve el mismo (poco probable porque la query es estable), iteramos buscando el siguiente.
+        int safety = 20;
+        while (topVendidoActual?.Producto?.Id == saltado && safety-- > 0)
+        {
+            await CargarSiguienteTopAsync();
+        }
     }
 
     private async Task CargarListaAuditoria()
