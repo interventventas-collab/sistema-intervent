@@ -375,29 +375,33 @@
                 <div style="background:#f3f4f6; border-radius:8px; padding:0.6rem; margin-bottom:0.7rem;">
                     @if (reservadoActual > 0)
                     {
-                        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.4rem; text-align:center;">
+                        @* 2026-06-15: orden lógico → Físico (lo que contás) − Reservado (apartado) = Disponibles (a vender) *@
+                        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.4rem; text-align:center; align-items:center;">
                             <div>
-                                <div style="font-size:0.65rem; color:#6b7280; text-transform:uppercase;">Sistema</div>
-                                <div style="font-size:1.3rem; font-weight:700; color:#1d4ed8;">@productoSeleccionado.StockActual</div>
+                                <div style="font-size:0.62rem; color:#6b7280; text-transform:uppercase; line-height:1.1;">Físico depósito</div>
+                                <div style="font-size:0.55rem; color:#9ca3af; line-height:1;">(lo que ves)</div>
+                                <div style="font-size:1.4rem; font-weight:700; color:#1d4ed8;">@(productoSeleccionado.StockActual + reservadoActual)</div>
                             </div>
                             <div style="border-left:1px solid #d1d5db; border-right:1px solid #d1d5db;">
-                                <div style="font-size:0.65rem; color:#92400e; text-transform:uppercase;">📦 Reservado</div>
-                                <div style="font-size:1.3rem; font-weight:700; color:#d97706;">+@reservadoActual</div>
+                                <div style="font-size:0.62rem; color:#92400e; text-transform:uppercase; line-height:1.1;">📦 Reservado</div>
+                                <div style="font-size:0.55rem; color:#9ca3af; line-height:1;">(apartado)</div>
+                                <div style="font-size:1.4rem; font-weight:700; color:#d97706;">−@reservadoActual</div>
                             </div>
                             <div>
-                                <div style="font-size:0.65rem; color:#15803d; text-transform:uppercase;">Físico esperado</div>
-                                <div style="font-size:1.3rem; font-weight:700; color:#15803d;">@(productoSeleccionado.StockActual + reservadoActual)</div>
+                                <div style="font-size:0.62rem; color:#15803d; text-transform:uppercase; line-height:1.1;">= Disponibles</div>
+                                <div style="font-size:0.55rem; color:#9ca3af; line-height:1;">(a vender)</div>
+                                <div style="font-size:1.4rem; font-weight:700; color:#15803d;">@productoSeleccionado.StockActual</div>
                             </div>
                         </div>
-                        <p style="margin:0.4rem 0 0; font-size:0.7rem; color:#6b7280; text-align:center;">
-                            🏷️ Hay @reservadoActual u. de ventas MeLi pendientes de despacho (etiqueta no impresa). Físicamente deberías contar <strong>@(productoSeleccionado.StockActual + reservadoActual)</strong>.
+                        <p style="margin:0.4rem 0 0; font-size:0.72rem; color:#6b7280; text-align:center;">
+                            🏷️ Hay <strong>@reservadoActual</strong> u. apartadas (venta MeLi pendiente de despacho). Si físicamente contás <strong>@(productoSeleccionado.StockActual + reservadoActual)</strong>, ingresá <strong>@productoSeleccionado.StockActual</strong> como disponibles.
                         </p>
                     }
                     else
                     {
                         <div style="text-align:center;">
-                            <div style="font-size:0.72rem; color:#6b7280; text-transform:uppercase; letter-spacing:0.05em;">Stock actual</div>
-                            <div style="font-size:1.8rem; font-weight:700; color:#1d4ed8;">@productoSeleccionado.StockActual</div>
+                            <div style="font-size:0.72rem; color:#6b7280; text-transform:uppercase; letter-spacing:0.05em;">Disponibles</div>
+                            <div style="font-size:1.8rem; font-weight:700; color:#15803d;">@productoSeleccionado.StockActual</div>
                         </div>
                     }
                 </div>
@@ -408,7 +412,16 @@
                     <button class="set @(tipoMov == "SET" ? "active" : "")" @onclick="@(() => tipoMov = "SET")">= Setear</button>
                 </div>
 
-                <label style="font-size:0.78rem; color:#4b5563; font-weight:600;">Cantidad</label>
+                <label style="font-size:0.78rem; color:#4b5563; font-weight:600;">
+                    @if (reservadoActual > 0 && tipoMov == "SET")
+                    {
+                        <span>Disponibles (a vender)</span>
+                    }
+                    else
+                    {
+                        <span>Cantidad</span>
+                    }
+                </label>
                 <input class="sp-cant-input" type="number" min="0" @bind="cantidad" @bind:event="oninput" />
 
                 @if (tipoMov == "SUMA" || tipoMov == "RESTA" || tipoMov == "SET")
@@ -670,9 +683,9 @@
             {
                 var dto = await r.Content.ReadFromJsonAsync<ReservaProductoDto>();
                 if (dto is not null) reservadoActual = dto.Reservado;
-                // En modo auditoría con reserva > 0, sugerir físico esperado como conteo por defecto
-                if (ModoAuditoria && tipoMov == "SET" && reservadoActual > 0)
-                    cantidad = p.StockActual + reservadoActual;
+                // 2026-06-15 fix: NO pre-rellenar con físico esperado.
+                // El operario tiene que ingresar DISPONIBLES (no físico) para no pisar el reservado.
+                // El cartel arriba le indica claramente: "si contás X físicas, ingresá Y disponibles".
                 StateHasChanged();
             }
         }
