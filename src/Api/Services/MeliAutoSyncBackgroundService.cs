@@ -45,6 +45,20 @@ public class MeliAutoSyncBackgroundService : BackgroundService
                 _logger.LogInformation("[MeLi auto-sync] Sincronizadas {N} ordenes ({E} errores)",
                     syncResult.TotalSynced, syncResult.TotalErrors);
 
+                // 2026-06-15: re-chequear órdenes pendientes (ready_to_print, etc) para que el
+                // cálculo de stock reservado refleje la realidad. Sin esto las órdenes viejas
+                // quedan congeladas y la reserva aparece sobre-estimada.
+                try
+                {
+                    var refrescadas = await orderSvc.RefreshPendingOrdersAsync(dias: 7);
+                    if (refrescadas > 0)
+                        _logger.LogInformation("[MeLi auto-sync] Refrescadas {N} ordenes pendientes (estado pre-despacho)", refrescadas);
+                }
+                catch (Exception ex2)
+                {
+                    _logger.LogWarning(ex2, "[MeLi auto-sync] Error al refrescar ordenes pendientes (no critico)");
+                }
+
                 var stockResult = await stockSvc.ProcessPendingAsync(maxBatch: 500);
                 if (stockResult.Procesadas > 0)
                 {

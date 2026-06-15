@@ -172,6 +172,24 @@ public class MeliController : ControllerBase
         }
     }
 
+    /// <summary>2026-06-15: Refresca el estado de envío de las órdenes paid pendientes
+    /// (ready_to_print, etc) consultando una por una a MeLi. Sirve para destrabar
+    /// la sobre-estimación del stock reservado cuando hay órdenes ya despachadas
+    /// que quedaron congeladas en estado pre-despacho en nuestra base.</summary>
+    [HttpPost("orders/refresh-pending")]
+    public async Task<IActionResult> RefreshPendingOrders([FromQuery] int dias = 7)
+    {
+        try
+        {
+            var refrescadas = await _orderService.RefreshPendingOrdersAsync(dias);
+            return Ok(new { refrescadas, dias });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     /// <summary>Procesa ordenes MeLi con StockDiscounted=false: descuenta stock de cafes/otros
     /// segun el linkeo de MeliItems.CafeProductoId + CafeFormato. Util para correr a demanda
     /// si el auto-trigger no se disparo.</summary>

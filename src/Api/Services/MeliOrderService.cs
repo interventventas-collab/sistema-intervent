@@ -224,6 +224,59 @@ public class MeliOrderService
         return n;
     }
 
+    /// <summary>2026-06-15: Re-chequea contra MeLi todas las órdenes paid en estado pre-despacho
+    /// (etiqueta no impresa / no retiradas) de los últimos N días para refrescar el ShippingSubstatus.
+    /// Sin esto las órdenes quedan "congeladas" en ready_to_print aunque ya estén impresas en MeLi,
+    /// lo cual rompe el cálculo de stock reservado. Llamar después del sync regular cada 30 min.</summary>
+    public async Task<int> RefreshPendingOrdersAsync(int dias = 7)
+    {
+        var subEstadosPreDespacho = new[]
+        {
+            "ready_to_print", "ready_to_pack", "in_packing_list",
+            "ready_for_pickup", "buffered", "waiting_for_withdrawal",
+            "in_warehouse"
+        };
+        var desde = DateTime.UtcNow.AddDays(-Math.Max(1, dias));
+
+        // Cargar órdenes pendientes con sus cuentas (las que el cálculo de reserva considera "reservadas")
+        var pendientes = await _db.MeliOrders
+            .Where(o => o.Status == "paid"
+                     && o.DateCreated >= desde
+                     && o.LogisticType != "fulfillment"
+                     && o.ShippingSubstatus != null
+                     && subEstadosPreDespacho.Contains(o.ShippingSubstatus))
+            .Select(o => new { o.MeliOrderId, o.MeliAccountId })
+            .ToListAsync();
+
+        if (pendientes.Count == 0) return 0;
+
+        // Agrupar por cuenta para reusar token + http client
+        var porCuenta = pendientes.GroupBy(p => p.MeliAccountId);
+        int refrescadas = 0;
+
+        foreach (var grupo in porCuenta)
+        {
+            var account = await _db.MeliAccounts.FirstOrDefaultAsync(a => a.Id == grupo.Key);
+            if (account is null) continue;
+            foreach (var p in grupo)
+            {
+                try
+                {
+                    await SyncSingleOrderAsync(p.MeliOrderId, account);
+                    refrescadas++;
+                }
+                catch
+                {
+                    // si una orden falla (ej. 404), seguir con la siguiente
+                }
+            }
+        }
+
+        await _auditLog.LogAsync("Sync", "orders", "REFRESH_PENDING",
+            System.Text.Json.JsonSerializer.Serialize(new { dias, candidatas = pendientes.Count, refrescadas }));
+        return refrescadas;
+    }
+
     public async Task<MeliOrderDetailResponse> GetOrderDetailAsync(long meliOrderId)
     {
         // Find the order in our DB to get the account
