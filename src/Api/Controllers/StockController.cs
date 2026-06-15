@@ -432,11 +432,14 @@ public class StockController : ControllerBase
         if (!await TokenValidoAsync(token)) return NotFound(new { error = "Token inválido" });
         if (req.OperadorId <= 0) return BadRequest(new { error = "Tenés que indicar quién carga" });
         if (req.ProductoId <= 0) return BadRequest(new { error = "Producto inválido" });
-        if (req.Cantidad <= 0) return BadRequest(new { error = "Cantidad tiene que ser mayor a 0" });
+        if (req.Cantidad < 0) return BadRequest(new { error = "Cantidad inválida" });
 
         var tipo = (req.TipoMov ?? "SUMA").Trim().ToUpperInvariant();
         if (tipo != "SUMA" && tipo != "RESTA" && tipo != "SET")
             return BadRequest(new { error = "Tipo de movimiento inválido (SUMA / RESTA / SET)" });
+        // 2026-06-15: cantidad 0 solo permitida en SET (confirmar stock=0). En SUMA/RESTA no tiene sentido.
+        if (req.Cantidad == 0 && tipo != "SET")
+            return BadRequest(new { error = "Cantidad tiene que ser mayor a 0" });
 
         var op = await _db.StockOperadores.FindAsync(req.OperadorId);
         if (op is null || !op.IsActive) return BadRequest(new { error = "Operador no encontrado" });
