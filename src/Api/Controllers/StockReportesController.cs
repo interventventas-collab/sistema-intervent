@@ -95,8 +95,11 @@ public class StockReportesController : ControllerBase
             }
             decimal neto = entradas - salidas + ajustes;
 
-            int vendidoU = 0; decimal facturado = 0m;
-            if (vendidoDic.TryGetValue(p.Id, out var v)) { vendidoU = v.Unidades; facturado = v.Facturado; }
+            // 2026-06-15 (A): vendidoU lo cuento desde Stock_Movimientos (incluye MeLi),
+            // facturado sigue saliendo de Cafe_VentaItems (MeLi no guarda costo del sistema).
+            int vendidoU = (int)mList.Where(m => m.TipoMov == "VENTA_NUESTRA" || m.TipoMov == "VENTA_MELI" || m.TipoMov == "VENTA_MELI_FULL").Sum(m => m.Cantidad);
+            decimal facturado = 0m;
+            if (vendidoDic.TryGetValue(p.Id, out var v)) { facturado = v.Facturado; }
 
             // Sugerido reponer = max(0, salidas_periodo + StockMinimo - stockActual).
             // Si no hay stock mínimo configurado se usa solo las salidas - stock.
@@ -132,32 +135,55 @@ public class StockReportesController : ControllerBase
         [FromQuery] string? sku, [FromQuery] string? categoria, [FromQuery] int? clienteId,
         [FromQuery] string? orderBy = "unidades", [FromQuery] int top = 50)
     {
-        var (productosFiltrados, ventasQuery, _) = await ArmarBase(desde, hasta, marcaId, marcaTexto,
-            oemId, oemCodigo, sku, categoria, clienteId, null);
+        // 2026-06-15 (A): unidades vendidas vienen de Stock_Movimientos (canal-agnóstico:
+        // VENTA_NUESTRA + VENTA_MELI + VENTA_MELI_FULL). El facturado/margen/clientes únicos
+        // sigue saliendo de Cafe_VentaItems porque MeLi no guarda costo del sistema.
+        var (productosFiltrados, ventasQuery, movsQuery) = await ArmarBase(desde, hasta, marcaId, marcaTexto,
+            oemId, oemCodigo, sku, categoria, clienteId,
+            // restringir movimientos a las tres VENTA_* — entradas/ajustes no van al ranking
+            "VENTA_NUESTRA,VENTA_MELI,VENTA_MELI_FULL");
 
-        // Agrupar items por producto. Cantidad de clientes únicos: a través del ClienteId de la venta.
-        var raw = await ventasQuery
+        // Unidades por producto (todos los canales)
+        var unidadesPorProd = await movsQuery
+            .GroupBy(m => m.ProductoId)
+            .Select(g => new { ProductoId = g.Key, Unidades = g.Sum(m => m.Cantidad) })
+            .ToListAsync();
+        var unidadesDic = unidadesPorProd.ToDictionary(x => x.ProductoId, x => x.Unidades);
+
+        // Facturado/margen/clientes únicos solo de Cafe_VentaItems
+        var ventasInfo = await ventasQuery
             .GroupBy(it => it.ProductoId!.Value)
             .Select(g => new
             {
                 ProductoId = g.Key,
-                Unidades = g.Sum(x => x.Cantidad),
                 Facturado = g.Sum(x => x.Subtotal),
                 Margen = g.Sum(x => x.Subtotal - (x.CostoUnitario * x.Cantidad)),
                 ClientesUnicos = g.Select(x => x.VentaNav!.ClienteId).Distinct().Count(),
                 CantVentas = g.Select(x => x.VentaId).Distinct().Count()
             })
             .ToListAsync();
+        var ventasDic = ventasInfo.ToDictionary(x => x.ProductoId);
 
         var prods = await productosFiltrados.ToDictionaryAsync(p => p.Id);
 
-        var filas = raw
-            .Where(r => prods.ContainsKey(r.ProductoId))
-            .Select(r =>
+        // Productos a rankear: cualquiera que tenga al menos unidades vendidas O ventas con datos.
+        var idsConActividad = unidadesDic.Keys.Concat(ventasDic.Keys).Distinct();
+
+        var filas = idsConActividad
+            .Where(id => prods.ContainsKey(id))
+            .Select(id =>
             {
-                var p = prods[r.ProductoId];
+                var p = prods[id];
+                int unidades = unidadesDic.TryGetValue(id, out var u) ? (int)u : 0;
+                decimal facturado = 0m, margen = 0m;
+                int clientesU = 0, cantVentas = 0;
+                if (ventasDic.TryGetValue(id, out var vi))
+                {
+                    facturado = vi.Facturado; margen = vi.Margen;
+                    clientesU = vi.ClientesUnicos; cantVentas = vi.CantVentas;
+                }
                 return new RankingRow(p.Id, p.Sku, p.Nombre, p.Marca, p.OemNav?.Codigo, p.Categoria,
-                    p.StockUnidades, r.Unidades, r.Facturado, r.Margen, r.ClientesUnicos, r.CantVentas);
+                    p.StockUnidades, unidades, facturado, margen, clientesU, cantVentas);
             });
 
         filas = (orderBy?.ToLowerInvariant()) switch
