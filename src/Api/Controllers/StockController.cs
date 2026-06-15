@@ -1,5 +1,6 @@
 using Api.Data;
 using Api.Models;
+using Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -46,7 +47,8 @@ public class StockController : ControllerBase
     public record StockOperadorPubDto(int Id, string Nombre);
     public record StockProductoPubDto(int Id, string? Sku, string? Barcode, string Nombre,
         string Categoria, string? Marca, int StockActual,
-        DateTime? UltimaModifAt, string? UltimaModifOperador, bool YaEnAuditoriaActiva);
+        DateTime? UltimaModifAt, string? UltimaModifOperador, bool YaEnAuditoriaActiva,
+        int Reservado = 0);
     public record StockInitPubDto(string Token, List<StockOperadorPubDto> Operadores, string DepositoActual,
         StockAuditoriaPubDto? AuditoriaActiva);
     public record StockMovimientoPubDto(int Id, DateTime Fecha, string ProductoNombre, string? Sku,
@@ -330,6 +332,20 @@ public class StockController : ControllerBase
     }
 
     public record TopVendidosMarcaDto(string Marca, int UnidadesVendidas, int Productos);
+
+    /// <summary>2026-06-15: devuelve la reserva por etiqueta no impresa de un producto.
+    /// Reservado = unidades de ventas MeLi (excluyendo Full) cuyo stock ya se descontó pero
+    /// el paquete sigue físicamente en el depósito (etiqueta no impresa en Flex, no retirado en ME1).</summary>
+    [HttpGet("publica/{token}/reserva/{productoId:int}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetReservaProducto(string token, int productoId,
+        [FromServices] StockReservaService reservaService)
+    {
+        if (!await TokenValidoAsync(token)) return NotFound(new { error = "Token inválido" });
+        var unidades = await reservaService.GetReservaAsync(productoId);
+        return Ok(new { productoId, reservado = unidades });
+    }
+
 
     /// <summary>Lista TODOS los productos activos paginados (para modo auditoría que recorre el depósito).</summary>
     [HttpGet("publica/{token}/all")]

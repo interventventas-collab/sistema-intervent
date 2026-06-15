@@ -372,9 +372,34 @@
                         }
                     </div>
                 </div>
-                <div style="background:#f3f4f6; border-radius:8px; padding:0.6rem; margin-bottom:0.7rem; text-align:center;">
-                    <div style="font-size:0.72rem; color:#6b7280; text-transform:uppercase; letter-spacing:0.05em;">Stock actual</div>
-                    <div style="font-size:1.8rem; font-weight:700; color:#1d4ed8;">@productoSeleccionado.StockActual</div>
+                <div style="background:#f3f4f6; border-radius:8px; padding:0.6rem; margin-bottom:0.7rem;">
+                    @if (reservadoActual > 0)
+                    {
+                        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.4rem; text-align:center;">
+                            <div>
+                                <div style="font-size:0.65rem; color:#6b7280; text-transform:uppercase;">Sistema</div>
+                                <div style="font-size:1.3rem; font-weight:700; color:#1d4ed8;">@productoSeleccionado.StockActual</div>
+                            </div>
+                            <div style="border-left:1px solid #d1d5db; border-right:1px solid #d1d5db;">
+                                <div style="font-size:0.65rem; color:#92400e; text-transform:uppercase;">📦 Reservado</div>
+                                <div style="font-size:1.3rem; font-weight:700; color:#d97706;">+@reservadoActual</div>
+                            </div>
+                            <div>
+                                <div style="font-size:0.65rem; color:#15803d; text-transform:uppercase;">Físico esperado</div>
+                                <div style="font-size:1.3rem; font-weight:700; color:#15803d;">@(productoSeleccionado.StockActual + reservadoActual)</div>
+                            </div>
+                        </div>
+                        <p style="margin:0.4rem 0 0; font-size:0.7rem; color:#6b7280; text-align:center;">
+                            🏷️ Hay @reservadoActual u. de ventas MeLi pendientes de despacho (etiqueta no impresa). Físicamente deberías contar <strong>@(productoSeleccionado.StockActual + reservadoActual)</strong>.
+                        </p>
+                    }
+                    else
+                    {
+                        <div style="text-align:center;">
+                            <div style="font-size:0.72rem; color:#6b7280; text-transform:uppercase; letter-spacing:0.05em;">Stock actual</div>
+                            <div style="font-size:1.8rem; font-weight:700; color:#1d4ed8;">@productoSeleccionado.StockActual</div>
+                        </div>
+                    }
                 </div>
 
                 <div class="sp-action-tabs">
@@ -627,15 +652,34 @@
         finally { buscando = false; StateHasChanged(); }
     }
 
-    private void SeleccionarProducto(StockProductoPubDto p)
+    private async void SeleccionarProducto(StockProductoPubDto p)
     {
         productoSeleccionado = p;
+        reservadoActual = 0;
         // En auditoría default a SET (corregir conteo); en normal default a SUMA.
         tipoMov = ModoAuditoria ? "SET" : "SUMA";
         cantidad = ModoAuditoria ? p.StockActual : 1;
         comentario = "";
         errorMsg = null;
+        // 2026-06-15: cargar el reservado MeLi (ventas con etiqueta no impresa / no retiradas)
+        // para que el operario sepa cuál es el "físico esperado" antes de auditar.
+        try
+        {
+            var r = await Http.GetAsync($"api/stock/publica/{Uri.EscapeDataString(Token)}/reserva/{p.Id}");
+            if (r.IsSuccessStatusCode)
+            {
+                var dto = await r.Content.ReadFromJsonAsync<ReservaProductoDto>();
+                if (dto is not null) reservadoActual = dto.Reservado;
+                // En modo auditoría con reserva > 0, sugerir físico esperado como conteo por defecto
+                if (ModoAuditoria && tipoMov == "SET" && reservadoActual > 0)
+                    cantidad = p.StockActual + reservadoActual;
+                StateHasChanged();
+            }
+        }
+        catch { /* si falla, simplemente no se muestra el reservado */ }
     }
+    private int reservadoActual = 0;
+    public record ReservaProductoDto(int ProductoId, int Reservado);
 
     private void CancelarSeleccion()
     {

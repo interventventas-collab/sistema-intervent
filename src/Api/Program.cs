@@ -168,6 +168,7 @@ builder.Services.AddScoped<ComboService>();
 builder.Services.AddScoped<StockBatchService>();
 builder.Services.AddScoped<StockMovementService>();
 builder.Services.AddScoped<CafeStockLogger>();
+builder.Services.AddScoped<StockReservaService>();
 builder.Services.AddScoped<MeliReactivacionService>();
 builder.Services.AddScoped<MeliCambioDetectadoService>();
 builder.Services.AddScoped<WhatsAppPedidoService>();
