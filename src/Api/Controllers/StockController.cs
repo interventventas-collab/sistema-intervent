@@ -215,10 +215,14 @@ public class StockController : ControllerBase
 
         // Top productos por unidades vendidas en el período (de cualquier canal).
         // Suma absoluta de Cantidad — el sistema guarda valores positivos en VENTA_*.
+        // 2026-06-15: EXCLUIR categoría CAFE porque el café se mide en gramos (1 kg = 1000 "unidades")
+        // y eso ensucia el orden — los cafés siempre aparecerían arriba. Además no se cuentan físicamente.
+        var idsCafe = await _db.CafeProductos.Where(p => p.Categoria == "CAFE").Select(p => p.Id).ToListAsync();
         var topVendidos = await _db.StockMovimientos
             .Where(m => !m.Reverted
                      && (m.TipoMov == "VENTA_NUESTRA" || m.TipoMov == "VENTA_MELI" || m.TipoMov == "VENTA_MELI_FULL")
-                     && m.CreatedAt >= desde)
+                     && m.CreatedAt >= desde
+                     && !idsCafe.Contains(m.ProductoId))
             .GroupBy(m => m.ProductoId)
             .Select(g => new { ProductoId = g.Key, Unidades = g.Sum(m => m.Cantidad) })
             .OrderByDescending(x => x.Unidades)
