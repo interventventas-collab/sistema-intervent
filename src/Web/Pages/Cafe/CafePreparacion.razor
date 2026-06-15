@@ -128,12 +128,28 @@
     }
     .prep-item {
         display: grid;
-        grid-template-columns: 32px 60px 1fr;
+        grid-template-columns: 32px 60px 1fr auto;
         gap: 0.6rem;
         padding: 0.55rem 1rem;
         align-items: center;
         border-bottom: 1px dashed #f3f4f6;
     }
+    /* 2026-06-15: cuadradito "STOCK SISTEMA" a la derecha de cada item — verde si alcanza, rojo si no */
+    .prep-item-stock {
+        min-width: 72px;
+        text-align: center;
+        padding: 6px 10px;
+        border-radius: 6px;
+        border: 1px solid;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        line-height: 1;
+    }
+    .prep-item-stock.ok { background: #dcfce7; border-color: #86efac; color: #166534; }
+    .prep-item-stock.bajo { background: #fee2e2; border-color: #fca5a5; color: #b91c1c; }
+    .prep-item-stock-label { font-size: 0.6rem; font-weight: 600; letter-spacing: 0.5px; line-height: 1.1; }
+    .prep-item-stock-valor { font-size: 0.95rem; font-weight: 700; margin-top: 2px; }
     .prep-item:last-child { border-bottom: none; }
     .prep-item.tildado .prep-item-desc,
     .prep-item.tildado .prep-item-cant { text-decoration: line-through; opacity: 0.5; }

@@ -192,17 +192,6 @@
                                 {
                                     <span style="font-family:monospace; font-size:0.7rem; color:#6b7280; margin-left:0.4rem; background:#f3f4f6; padding:1px 5px; border-radius:3px;" title="SKU del producto">@it.Sku</span>
                                 }
-                                @{
-                                    var stockTexto = StockTextoSistema(it);
-                                }
-                                @if (stockTexto is not null)
-                                {
-                                    var alcanza = StockAlcanza(it);
-                                    <span style="font-size:0.7rem; margin-left:0.4rem; padding:1px 6px; border-radius:3px; font-weight:600; @(alcanza ? "background:#dcfce7; color:#166534;" : "background:#fee2e2; color:#b91c1c;")"
-                                          title="Stock que figura en el sistema. Compará con lo físico al armar.">
-                                        📦 Sistema: @stockTexto
-                                    </span>
-                                }
                             </div>
                             <div class="prep-item-tags">
                                 <span class="prep-tag prep-tag-formato">@FormatoLabel(it.Formato)</span>
@@ -224,6 +213,19 @@
                                 }
                             </div>
                         </div>
+                        @{
+                            var stockTexto = StockTextoSistema(it);
+                        }
+                        @if (stockTexto is not null)
+                        {
+                            var alcanza = StockAlcanza(it);
+                            <div class="prep-item-stock @(alcanza ? "ok" : "bajo")"
+                                 title="Stock que figura en el sistema. Compará con lo físico al armar.">
+                                <div class="prep-item-stock-label">STOCK</div>
+                                <div class="prep-item-stock-label">SISTEMA</div>
+                                <div class="prep-item-stock-valor">@stockTexto</div>
+                            </div>
+                        }
                     </div>
                 }
             }
