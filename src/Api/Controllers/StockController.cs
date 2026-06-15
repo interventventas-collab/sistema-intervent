@@ -204,10 +204,15 @@ public class StockController : ControllerBase
     /// <summary>2026-06-15: Devuelve el SIGUIENTE producto a auditar ordenado por más vendido
     /// (últimos 30 días, sumando todos los canales: ventas oficina + MeLi + MeLi Full),
     /// saltando los que ya fueron contados en la auditoría activa.
-    /// Si auditoriaId viene null, no filtra por "ya contados".</summary>
+    /// Si auditoriaId viene null, no filtra por "ya contados".
+    /// 2026-06-15 v2: parámetro opcional ?marca=... para filtrar por marca (case-insensitive).
+    /// "(sin marca)" filtra los que tienen Marca NULL/vacío.</summary>
     [HttpGet("publica/{token}/top-vendidos-siguiente")]
     [AllowAnonymous]
-    public async Task<IActionResult> SiguienteTopVendido(string token, [FromQuery] int? auditoriaId = null, [FromQuery] int dias = 30)
+    public async Task<IActionResult> SiguienteTopVendido(string token,
+        [FromQuery] int? auditoriaId = null,
+        [FromQuery] int dias = 30,
+        [FromQuery] string? marca = null)
     {
         if (!await TokenValidoAsync(token)) return NotFound(new { error = "Token inválido" });
 
@@ -217,12 +222,33 @@ public class StockController : ControllerBase
         // Suma absoluta de Cantidad — el sistema guarda valores positivos en VENTA_*.
         // 2026-06-15: EXCLUIR categoría CAFE porque el café se mide en gramos (1 kg = 1000 "unidades")
         // y eso ensucia el orden — los cafés siempre aparecerían arriba. Además no se cuentan físicamente.
+        // 2026-06-15 v2: si viene marca, también pre-filtramos ids por marca.
         var idsCafe = await _db.CafeProductos.Where(p => p.Categoria == "CAFE").Select(p => p.Id).ToListAsync();
+
+        HashSet<int>? idsMarca = null;
+        var marcaNorm = (marca ?? "").Trim();
+        if (!string.IsNullOrEmpty(marcaNorm))
+        {
+            if (marcaNorm.Equals("(sin marca)", StringComparison.OrdinalIgnoreCase))
+            {
+                idsMarca = (await _db.CafeProductos
+                    .Where(p => p.Marca == null || p.Marca == "")
+                    .Select(p => p.Id).ToListAsync()).ToHashSet();
+            }
+            else
+            {
+                idsMarca = (await _db.CafeProductos
+                    .Where(p => p.Marca != null && p.Marca.ToLower() == marcaNorm.ToLower())
+                    .Select(p => p.Id).ToListAsync()).ToHashSet();
+            }
+        }
+
         var topVendidos = await _db.StockMovimientos
             .Where(m => !m.Reverted
                      && (m.TipoMov == "VENTA_NUESTRA" || m.TipoMov == "VENTA_MELI" || m.TipoMov == "VENTA_MELI_FULL")
                      && m.CreatedAt >= desde
-                     && !idsCafe.Contains(m.ProductoId))
+                     && !idsCafe.Contains(m.ProductoId)
+                     && (idsMarca == null || idsMarca.Contains(m.ProductoId)))
             .GroupBy(m => m.ProductoId)
             .Select(g => new { ProductoId = g.Key, Unidades = g.Sum(m => m.Cantidad) })
             .OrderByDescending(x => x.Unidades)
@@ -269,6 +295,41 @@ public class StockController : ControllerBase
 
     public record SiguienteTopDto(int Posicion, int TotalTop, int ContadosEnAuditoria,
         StockProductoPubDto? Producto, int UnidadesVendidasPeriodo, int DiasPeriodo);
+
+    /// <summary>2026-06-15: Lista las marcas con ventas (excluyendo CAFE) en los últimos N días,
+    /// para poblar el dropdown del modo Top vendidos. Incluye conteo de unidades vendidas y productos distintos.</summary>
+    [HttpGet("publica/{token}/top-vendidos-marcas")]
+    [AllowAnonymous]
+    public async Task<IActionResult> TopVendidosMarcas(string token, [FromQuery] int dias = 30)
+    {
+        if (!await TokenValidoAsync(token)) return NotFound(new { error = "Token inválido" });
+
+        var desde = DateTime.UtcNow.AddDays(-Math.Max(1, dias));
+
+        // Productos no-café con ventas en el período
+        var ventas = await (
+            from m in _db.StockMovimientos
+            join p in _db.CafeProductos on m.ProductoId equals p.Id
+            where !m.Reverted
+               && (m.TipoMov == "VENTA_NUESTRA" || m.TipoMov == "VENTA_MELI" || m.TipoMov == "VENTA_MELI_FULL")
+               && m.CreatedAt >= desde
+               && (p.Categoria != "CAFE" || p.Categoria == null)
+            select new { m.ProductoId, m.Cantidad, Marca = p.Marca }
+        ).ToListAsync();
+
+        var grupos = ventas
+            .GroupBy(v => string.IsNullOrWhiteSpace(v.Marca) ? "(sin marca)" : v.Marca!.Trim())
+            .Select(g => new TopVendidosMarcaDto(
+                Marca: g.Key,
+                UnidadesVendidas: (int)g.Sum(x => x.Cantidad),
+                Productos: g.Select(x => x.ProductoId).Distinct().Count()))
+            .OrderByDescending(x => x.UnidadesVendidas)
+            .ToList();
+
+        return Ok(grupos);
+    }
+
+    public record TopVendidosMarcaDto(string Marca, int UnidadesVendidas, int Productos);
 
     /// <summary>Lista TODOS los productos activos paginados (para modo auditoría que recorre el depósito).</summary>
     [HttpGet("publica/{token}/all")]

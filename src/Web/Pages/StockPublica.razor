@@ -205,13 +205,32 @@
                         🔍 Buscar / Recorrer
                     </button>
                     <button class="sp-btn @(modoTopVendidos ? "sp-btn-audit" : "")" style="flex:1;"
-                            @onclick="@(async () => { modoTopVendidos = true; await CargarSiguienteTopAsync(); })">
+                            @onclick="@(async () => { modoTopVendidos = true; if (marcasDisponibles is null) await CargarMarcasAsync(); await CargarSiguienteTopAsync(); })">
                         🏆 Más vendidos
                     </button>
                 </div>
 
                 @if (modoTopVendidos)
                 {
+                    @* 2026-06-15 v2: dropdown opcional de marca *@
+                    <div style="margin:0.4rem 0 0.6rem;">
+                        <label style="display:block; font-size:0.78rem; color:#6b7280; margin-bottom:0.2rem;">
+                            🏷️ Filtrar por marca:
+                        </label>
+                        <select class="sp-input" style="width:100%;"
+                                value="@marcaSeleccionada"
+                                @onchange="OnCambioMarcaAsync">
+                            <option value="">Todas las marcas</option>
+                            @if (marcasDisponibles is not null)
+                            {
+                                @foreach (var m in marcasDisponibles)
+                                {
+                                    <option value="@m.Marca">@m.Marca · @m.UnidadesVendidas u (@m.Productos prod.)</option>
+                                }
+                            }
+                        </select>
+                    </div>
+
                     @if (topVendidoActual is null && !cargandoTop)
                     {
                         <div class="sp-card" style="text-align:center; padding:1.2rem;">
@@ -467,6 +486,10 @@
     private SiguienteTopDto? topVendidoActual;
     public record SiguienteTopDto(int Posicion, int TotalTop, int ContadosEnAuditoria,
         StockProductoPubDto? Producto, int UnidadesVendidasPeriodo, int DiasPeriodo);
+    // 2026-06-15 v2: filtrar Top vendidos por marca (opcional)
+    private string marcaSeleccionada = ""; // "" = todas las marcas
+    private List<TopVendidosMarcaDto>? marcasDisponibles;
+    public record TopVendidosMarcaDto(string Marca, int UnidadesVendidas, int Productos);
     private int pageActual = 1, pageSize = 30, totalItems = 0;
     private int pageTotal => Math.Max(1, (int)Math.Ceiling((double)totalItems / pageSize));
     private List<StockProductoPubDto>? listaProductos;
@@ -811,7 +834,8 @@
         {
             var audId = auditoriaActiva?.Id;
             var url = $"api/stock/publica/{Uri.EscapeDataString(Token)}/top-vendidos-siguiente?dias=30"
-                    + (audId.HasValue ? $"&auditoriaId={audId.Value}" : "");
+                    + (audId.HasValue ? $"&auditoriaId={audId.Value}" : "")
+                    + (!string.IsNullOrWhiteSpace(marcaSeleccionada) ? $"&marca={Uri.EscapeDataString(marcaSeleccionada)}" : "");
             var r = await Http.GetAsync(url);
             if (r.IsSuccessStatusCode)
             {
@@ -820,6 +844,27 @@
         }
         catch { /* ignorar — quedar en estado vacío */ }
         finally { cargandoTop = false; StateHasChanged(); }
+    }
+
+    // 2026-06-15 v2: cargar lista de marcas disponibles (con ventas últimos 30 días).
+    private async Task CargarMarcasAsync()
+    {
+        try
+        {
+            var r = await Http.GetAsync($"api/stock/publica/{Uri.EscapeDataString(Token)}/top-vendidos-marcas?dias=30");
+            if (r.IsSuccessStatusCode)
+            {
+                marcasDisponibles = await r.Content.ReadFromJsonAsync<List<TopVendidosMarcaDto>>();
+            }
+        }
+        catch { /* ignorar */ }
+    }
+
+    // 2026-06-15 v2: al cambiar de marca, recarga el siguiente producto.
+    private async Task OnCambioMarcaAsync(ChangeEventArgs e)
+    {
+        marcaSeleccionada = e.Value?.ToString() ?? "";
+        await CargarSiguienteTopAsync();
     }
 
     private async Task SaltarTopActual()
