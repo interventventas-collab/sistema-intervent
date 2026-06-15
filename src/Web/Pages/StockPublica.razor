@@ -182,6 +182,7 @@
 
             <div class="sp-card">
                 <input class="sp-search" type="text" autocomplete="off"
+                       @ref="searchInputRef"
                        placeholder="🔍 Buscá por código o nombre"
                        value="@queryBusqueda"
                        @oninput="OnSearchInput"
@@ -500,6 +501,7 @@
     private StockOperadorPubDto? operadorActivo;
     private string queryBusqueda = "";
     private List<StockProductoPubDto>? productosBuscados;
+    private ElementReference searchInputRef;
     private List<StockMovimientoPubDto>? ultimosMovs;
     private StockProductoPubDto? productoSeleccionado;
     private string tipoMov = "SUMA";
@@ -717,10 +719,15 @@
     private int reservadoActual = 0;
     public record ReservaProductoDto(int ProductoId, int Reservado);
 
-    private void CancelarSeleccion()
+    private async Task CancelarSeleccion()
     {
         productoSeleccionado = null;
         errorMsg = null;
+        // Limpiar query y resultados para volver a buscar de cero (más rápido que borrar a mano)
+        queryBusqueda = "";
+        productosBuscados = null;
+        StateHasChanged();
+        try { await searchInputRef.FocusAsync(); } catch { }
     }
 
     private async Task ConfirmarMovimientoAsync()
