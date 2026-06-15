@@ -566,6 +566,8 @@
                 {
                     <NavItem Href="/usuarios" Label="Usuarios" Icon="@SvgIcons.Users"
                              IsActive="@IsActive("/usuarios")" OnClick="@(() => NavigateTo("/usuarios"))" />
+                    <NavItem Href="/operadores-pin" Label="PINs operadores" Icon="@SvgIcons.User"
+                             IsActive="@IsActive("/operadores-pin")" OnClick="@(() => NavigateTo("/operadores-pin"))" />
                 }
                 @if (HasPerm("roles"))
                 {
@@ -662,7 +664,7 @@
             @if (Operator.HasOperator)
             {
                 <button class="btn btn-secondary" style="margin-left: 0.8rem; font-size: 0.78rem; padding: 0.25rem 0.6rem;"
-                        @onclick="() => showOperatorModal = true" title="Cambiar operador">
+                        @onclick="OnCambiarOperadorClick" title="Cambiar operador (pide PIN)">
                     👤 @Operator.Current
                 </button>
             }
@@ -850,6 +852,14 @@
         @Body
     </div>
 </main>
+
+@* 2026-06-15: Pantalla bloqueante de PIN por operador. Mientras Operator.IsValidated == false
+   (no hay PIN ingresado, o pasaron 30 min sin actividad), tapa todo. Solo aplica a roles que
+   cargan ventas (cafe/oficina/deposito). Para "deposito-only" usamos su lista propia. *@
+@if (mostrarPinLock)
+{
+    <OperatorLockScreen Disponibles="@operadoresParaPinLock" />
+}
 
 @if (sidebarOpen)
 {
@@ -1104,6 +1114,29 @@
 <PostitsFlotantes @ref="postitsRef" Username="@username" />
 
 @code {
+    // 2026-06-15: pantalla bloqueante de PIN
+    private System.Threading.Timer? _pinLockTimer;
+    private bool mostrarPinLock => requierePinLock && !Operator.IsValidated;
+    /// <summary>Solo aplica a roles que cargan ventas (cafe/oficina). Deposito-only
+    /// queda exento para no romper su flujo, igual que el modal viejo.</summary>
+    private bool requierePinLock => permissions.Contains("cafe") || permissions.Contains("oficina");
+    private List<string> operadoresParaPinLock => OperatorService.ForPermissions(permissions).ToList();
+    private void OnOperatorChange() { InvokeAsync(StateHasChanged); }
+
+    /// <summary>2026-06-15: el botón "Cambiar operador" del topbar ahora bloquea la sesión
+    /// (la pantalla del PIN aparece sola). Para depósito, sigue usando el modal viejo.</summary>
+    private async Task OnCambiarOperadorClick()
+    {
+        if (requierePinLock)
+        {
+            await Operator.LockAsync();
+        }
+        else
+        {
+            showOperatorModal = true;
+        }
+    }
+
     /// <summary>True si la app está corriendo en el entorno de DESARROLLO (puerto 3000 o
     /// el host es una IP en vez de un dominio). En ese caso se muestra un banner visible
     /// "DESARROLLO" y el sidebar tiene fondo distinto para evitar confundirlo con producción
@@ -1435,7 +1468,19 @@
         bool isDepositoOnly = permissions.Contains("deposito")
             && !permissions.Contains("cafe")
             && !permissions.Contains("oficina");
-        if (!Operator.HasOperator && !isDepositoOnly) showOperatorModal = true;
+        // 2026-06-15: con PIN bloqueante activo, NO abrimos el modal viejo automáticamente
+        // para los roles cafe/oficina — la OperatorLockScreen ya tapa todo y se encarga.
+        // Solo abrimos el modal viejo para depósito (que no tiene PIN bloqueante).
+        if (!Operator.HasOperator && !isDepositoOnly && !requierePinLock) showOperatorModal = true;
+
+        // 2026-06-15: timer que cada 30s evalúa si pasaron 30 min de inactividad para
+        // re-bloquear automáticamente. Como IsValidated mira el timestamp, basta con
+        // forzar un StateHasChanged periódico.
+        if (requierePinLock)
+        {
+            _pinLockTimer = new System.Threading.Timer(_ => InvokeAsync(StateHasChanged),
+                null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+        }
 
         // Selector de empresa DESACTIVADO: limpiamos la empresa al arrancar para que la app
         // funcione sin filtros (Company.HasCompany == false → todo se muestra sin restriccion).
@@ -1485,6 +1530,9 @@
     {
         CheckRoutePermission();
         _ = InvokeAsync(async () => await JS.InvokeVoidAsync("updatePageTitle", BrandSettings.BrandName));
+        // 2026-06-15: cada vez que navegas, refrescamos el timestamp de "última actividad"
+        // para que la sesión no se bloquee mientras estás trabajando.
+        _ = InvokeAsync(async () => await Operator.TouchAsync());
     }
 
     private void CheckRoutePermission()
@@ -1595,6 +1643,7 @@
     public void Dispose()
     {
         try { cmdPalRef?.Dispose(); } catch { }
+        try { _pinLockTimer?.Dispose(); } catch { }
         SyncProgress.OnChange -= OnSyncProgressChanged;
         UploadProgress.OnChanged -= OnUploadProgressChanged;
         Operator.OnChange -= OnOperatorChanged;

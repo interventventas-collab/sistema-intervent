@@ -1,0 +1,151 @@
+@page "/operadores-pin"
+@attribute [Authorize(Roles = "admin")]
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div class="card">
+    <div class="card-header">
+        <h3>🔑 PINs de operadores</h3>
+        <p class="text-muted" style="margin-top:0.3rem; font-size:0.85rem;">
+            Cada operador (GERMAN, GABRIEL, OSMAR, etc) tiene un PIN de 4 dígitos para iniciar su sesión de trabajo.
+            Desde acá podés crear o resetear el PIN de cualquiera (sin necesidad del PIN anterior).
+        </p>
+    </div>
+    <div class="card-body" style="padding:0;">
+        @if (lista is null)
+        {
+            <p class="text-muted" style="padding:1.5rem;">Cargando...</p>
+        }
+        else
+        {
+            <table class="table" style="margin:0;">
+                <thead>
+                    <tr>
+                        <th>Operador</th>
+                        <th>Estado</th>
+                        <th>Última modificación</th>
+                        <th style="text-align:right;">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var op in lista)
+                    {
+                        <tr>
+                            <td>
+                                <span style="display:inline-block; width:28px; height:28px; line-height:28px; text-align:center; border-radius:50%; background:@OperatorService.ShortBgColor(op.Nombre); color:white; font-weight:700; font-size:0.75rem; margin-right:0.5rem;">
+                                    @OperatorService.ShortLabel(op.Nombre)
+                                </span>
+                                <strong>@op.Nombre</strong>
+                            </td>
+                            <td>
+                                @if (op.TienePin)
+                                {
+                                    <span style="background:#dcfce7; color:#15803d; padding:0.15rem 0.5rem; border-radius:4px; font-size:0.75rem; font-weight:700;">✓ PIN configurado</span>
+                                }
+                                else
+                                {
+                                    <span style="background:#fee2e2; color:#991b1b; padding:0.15rem 0.5rem; border-radius:4px; font-size:0.75rem; font-weight:700;">⚠ Sin PIN</span>
+                                }
+                            </td>
+                            <td style="font-size:0.85rem; color:#6b7280;">
+                                @(op.UpdatedAt?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "—")
+                                @if (!string.IsNullOrEmpty(op.UpdatedBy))
+                                {
+                                    <span style="font-size:0.7rem; color:#9ca3af;"> · por @op.UpdatedBy</span>
+                                }
+                            </td>
+                            <td style="text-align:right;">
+                                <button class="btn btn-secondary" style="font-size:0.8rem;"
+                                        @onclick="() => AbrirResetear(op.Nombre)">
+                                    @(op.TienePin ? "Resetear PIN" : "Crear PIN")
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@if (mostrarReset)
+{
+    <div class="modal-overlay" style="position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:99000; display:flex; align-items:center; justify-content:center;">
+        <div class="card" style="max-width:400px; width:90%;">
+            <div class="card-header">
+                <h4>🔑 PIN nuevo para @resetNombre</h4>
+            </div>
+            <div class="card-body">
+                <p style="font-size:0.85rem; color:#6b7280; margin-bottom:0.8rem;">
+                    Poné el PIN nuevo (4 dígitos). Avísale a @resetNombre el PIN nuevo;
+                    desde su pantalla podrá cambiarlo a uno propio cuando quiera.
+                </p>
+                <input type="password" inputmode="numeric" maxlength="4" autocomplete="off"
+                       class="form-control" style="font-size:1.4rem; text-align:center; letter-spacing:0.5rem; font-family:monospace;"
+                       placeholder="• • • •" @bind="pinNuevo" @bind:event="oninput" />
+                @if (!string.IsNullOrEmpty(resetError))
+                {
+                    <div style="background:#fee2e2; color:#991b1b; padding:0.5rem 0.8rem; border-radius:6px; font-size:0.85rem; margin-top:0.6rem;">⚠ @resetError</div>
+                }
+            </div>
+            <div class="card-footer" style="display:flex; gap:0.5rem; justify-content:flex-end;">
+                <button class="btn btn-secondary" @onclick="() => mostrarReset = false">Cancelar</button>
+                <button class="btn btn-primary" disabled="@guardando" @onclick="GuardarReset">
+                    @(guardando ? "Guardando..." : "Guardar PIN")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<ApiClient.OperadorPinInfoDto>? lista;
+    private bool mostrarReset;
+    private string resetNombre = "";
+    private string pinNuevo = "";
+    private string? resetError;
+    private bool guardando;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Recargar();
+    }
+
+    private async Task Recargar()
+    {
+        lista = await Api.GetOperadoresPinListaAsync();
+    }
+
+    private void AbrirResetear(string nombre)
+    {
+        resetNombre = nombre;
+        pinNuevo = "";
+        resetError = null;
+        mostrarReset = true;
+    }
+
+    private async Task GuardarReset()
+    {
+        if (pinNuevo.Length != 4 || !pinNuevo.All(char.IsDigit))
+        {
+            resetError = "El PIN debe tener exactamente 4 dígitos";
+            return;
+        }
+        guardando = true;
+        try
+        {
+            var (ok, err) = await Api.ResetOperadorPinAsync(resetNombre, pinNuevo);
+            if (ok)
+            {
+                ToastService.Success($"PIN de {resetNombre} guardado");
+                mostrarReset = false;
+                await Recargar();
+            }
+            else
+            {
+                resetError = err ?? "No se pudo guardar";
+            }
+        }
+        finally { guardando = false; }
+    }
+}

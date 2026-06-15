@@ -1,0 +1,222 @@
+@* 2026-06-15: Pantalla bloqueante de PIN por operador. Cubre TODA la pantalla mientras
+   el operador no haya validado su PIN. Se monta desde MainLayout cuando
+   Operator.IsValidated == false. Permite también cambiar el PIN propio. *@
+@using System.Globalization
+@using AuthorizeView = Microsoft.AspNetCore.Components.Authorization.AuthorizeView
+@inject ApiClient Api
+@inject OperatorService Operator
+@inject ToastService ToastService
+
+<div class="op-lock-overlay">
+    <div class="op-lock-card">
+        <div class="op-lock-title">@(modoCambio ? "🔑 Cambiar mi PIN" : "👋 ¿Quién está trabajando?")</div>
+
+        @if (!modoCambio)
+        {
+            <div class="op-lock-subtitle">Elegí tu nombre y poné tu PIN de 4 dígitos para empezar.</div>
+
+            <div class="op-lock-grid">
+                @foreach (var name in operadoresDisponibles)
+                {
+                    <button class="op-lock-chip @(seleccionado == name ? "selected" : "")"
+                            style="@(seleccionado == name ? $"background:{OperatorService.ShortBgColor(name)};color:white;" : "")"
+                            @onclick="() => Seleccionar(name)">
+                        @name
+                    </button>
+                }
+            </div>
+
+            <div class="op-lock-pin-row">
+                <input type="password" inputmode="numeric" maxlength="4" autocomplete="off"
+                       placeholder="• • • •" class="op-lock-pin-input"
+                       @bind="pin" @bind:event="oninput"
+                       @onkeydown="OnKeyDown" disabled="@(seleccionado is null)" />
+                <button class="op-lock-btn" disabled="@(string.IsNullOrEmpty(seleccionado) || pin.Length != 4 || cargando)"
+                        @onclick="ValidarAsync">
+                    @(cargando ? "Validando..." : "Ingresar")
+                </button>
+            </div>
+
+            @if (!string.IsNullOrEmpty(errorMsg))
+            {
+                <div class="op-lock-error">⚠ @errorMsg</div>
+            }
+
+            <div class="op-lock-footer">
+                <button class="op-lock-link" @onclick="() => { modoCambio = true; LimpiarMensajes(); }">
+                    🔑 Cambiar mi PIN
+                </button>
+            </div>
+        }
+        else
+        {
+            <div class="op-lock-subtitle">Confirmá tu PIN actual y elegí uno nuevo.</div>
+
+            <div class="op-lock-grid">
+                @foreach (var name in operadoresDisponibles)
+                {
+                    <button class="op-lock-chip @(seleccionado == name ? "selected" : "")"
+                            style="@(seleccionado == name ? $"background:{OperatorService.ShortBgColor(name)};color:white;" : "")"
+                            @onclick="() => Seleccionar(name)">
+                        @name
+                    </button>
+                }
+            </div>
+
+            <div class="op-lock-field">
+                <label>PIN actual</label>
+                <input type="password" inputmode="numeric" maxlength="4" autocomplete="off"
+                       class="op-lock-pin-input" @bind="pinActual" @bind:event="oninput" disabled="@(seleccionado is null)" />
+            </div>
+            <div class="op-lock-field">
+                <label>PIN nuevo (4 dígitos)</label>
+                <input type="password" inputmode="numeric" maxlength="4" autocomplete="off"
+                       class="op-lock-pin-input" @bind="pinNuevo" @bind:event="oninput" disabled="@(seleccionado is null)" />
+            </div>
+            <div class="op-lock-field">
+                <label>Confirmar PIN nuevo</label>
+                <input type="password" inputmode="numeric" maxlength="4" autocomplete="off"
+                       class="op-lock-pin-input" @bind="pinNuevoConfirm" @bind:event="oninput" disabled="@(seleccionado is null)" />
+            </div>
+
+            @if (!string.IsNullOrEmpty(errorMsg))
+            {
+                <div class="op-lock-error">⚠ @errorMsg</div>
+            }
+
+            <div class="op-lock-pin-row" style="margin-top:0.6rem;">
+                <button class="op-lock-btn op-lock-btn-secondary" @onclick="() => { modoCambio = false; LimpiarMensajes(); }">
+                    ← Volver
+                </button>
+                <button class="op-lock-btn" disabled="@cargando" @onclick="CambiarPinAsync">
+                    @(cargando ? "Cambiando..." : "Guardar PIN nuevo")
+                </button>
+            </div>
+        }
+    </div>
+</div>
+
+<style>
+.op-lock-overlay {
+    position: fixed; inset: 0; background: rgba(15, 23, 42, 0.85); z-index: 99990;
+    display: flex; align-items: center; justify-content: center; padding: 1rem;
+    backdrop-filter: blur(4px);
+}
+.op-lock-card {
+    background: white; border-radius: 16px; padding: 1.6rem 1.8rem;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.4); width: 100%; max-width: 460px;
+}
+.op-lock-title { font-size: 1.35rem; font-weight: 700; text-align: center; color: #1e293b; }
+.op-lock-subtitle { font-size: 0.85rem; color: #64748b; text-align: center; margin: 0.4rem 0 1rem 0; }
+.op-lock-grid { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; margin-bottom: 1rem; }
+.op-lock-chip {
+    background: #f1f5f9; border: 2px solid transparent; color: #334155;
+    padding: 0.55rem 1.1rem; border-radius: 10px; font-weight: 700; cursor: pointer;
+    font-size: 0.95rem; transition: all 0.15s;
+}
+.op-lock-chip:hover { border-color: #cbd5e1; }
+.op-lock-chip.selected { color: white; }
+.op-lock-pin-row { display: flex; gap: 0.5rem; align-items: center; }
+.op-lock-pin-input {
+    flex: 1; padding: 0.75rem 1rem; font-size: 1.4rem; text-align: center;
+    letter-spacing: 0.5rem; border: 2px solid #cbd5e1; border-radius: 10px;
+    font-family: monospace;
+}
+.op-lock-pin-input:focus { outline: none; border-color: #3b82f6; }
+.op-lock-btn {
+    padding: 0.75rem 1.4rem; background: #3b82f6; color: white;
+    border: none; border-radius: 10px; font-weight: 700; cursor: pointer; font-size: 0.95rem;
+}
+.op-lock-btn:disabled { background: #cbd5e1; cursor: not-allowed; }
+.op-lock-btn-secondary { background: #e2e8f0; color: #475569; }
+.op-lock-field { margin-bottom: 0.6rem; }
+.op-lock-field label { display: block; font-size: 0.75rem; color: #64748b; text-transform: uppercase; font-weight: 600; margin-bottom: 0.25rem; }
+.op-lock-error { background: #fee2e2; color: #991b1b; padding: 0.55rem 0.8rem; border-radius: 8px; margin-top: 0.6rem; font-size: 0.85rem; }
+.op-lock-footer { margin-top: 1rem; text-align: center; }
+.op-lock-link { background: none; border: none; color: #3b82f6; cursor: pointer; font-size: 0.85rem; text-decoration: underline; }
+</style>
+
+@code {
+    [Parameter] public List<string> Disponibles { get; set; } = new();
+    private string? seleccionado;
+    private string pin = "";
+    private string pinActual = "";
+    private string pinNuevo = "";
+    private string pinNuevoConfirm = "";
+    private string? errorMsg;
+    private bool cargando;
+    private bool modoCambio;
+
+    private IEnumerable<string> operadoresDisponibles => Disponibles ?? new List<string>();
+
+    protected override void OnInitialized()
+    {
+        // si ya había uno elegido en localStorage, pre-seleccionarlo
+        if (!string.IsNullOrEmpty(Operator.Current))
+            seleccionado = Operator.Current;
+    }
+
+    private void Seleccionar(string nombre)
+    {
+        seleccionado = nombre;
+        pin = ""; pinActual = ""; pinNuevo = ""; pinNuevoConfirm = "";
+        errorMsg = null;
+    }
+
+    private void LimpiarMensajes()
+    {
+        pin = ""; pinActual = ""; pinNuevo = ""; pinNuevoConfirm = ""; errorMsg = null;
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrEmpty(seleccionado) && pin.Length == 4)
+            await ValidarAsync();
+    }
+
+    private async Task ValidarAsync()
+    {
+        if (string.IsNullOrEmpty(seleccionado) || pin.Length != 4) return;
+        cargando = true; errorMsg = null;
+        try
+        {
+            var (ok, err) = await Api.ValidarOperadorPinAsync(seleccionado, pin);
+            if (ok)
+            {
+                await Operator.SetValidatedAsync(seleccionado);
+                ToastService.Success($"Hola, {seleccionado} 👋");
+            }
+            else
+            {
+                errorMsg = err ?? "PIN incorrecto";
+                pin = "";
+            }
+        }
+        finally { cargando = false; }
+    }
+
+    private async Task CambiarPinAsync()
+    {
+        if (string.IsNullOrEmpty(seleccionado)) { errorMsg = "Elegí primero tu nombre"; return; }
+        if (pinNuevo.Length != 4 || !pinNuevo.All(char.IsDigit)) { errorMsg = "El PIN nuevo debe tener exactamente 4 dígitos"; return; }
+        if (pinNuevo != pinNuevoConfirm) { errorMsg = "El PIN nuevo y la confirmación no coinciden"; return; }
+        if (pinActual.Length != 4) { errorMsg = "Ingresá tu PIN actual"; return; }
+
+        cargando = true; errorMsg = null;
+        try
+        {
+            var (ok, err) = await Api.CambiarOperadorPinAsync(seleccionado, pinActual, pinNuevo);
+            if (ok)
+            {
+                ToastService.Success("PIN cambiado. Ingresá con el nuevo para empezar.");
+                modoCambio = false;
+                pin = ""; pinActual = ""; pinNuevo = ""; pinNuevoConfirm = "";
+            }
+            else
+            {
+                errorMsg = err ?? "No se pudo cambiar el PIN";
+            }
+        }
+        finally { cargando = false; }
+    }
+}

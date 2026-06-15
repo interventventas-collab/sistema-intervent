@@ -3867,6 +3867,76 @@ public class ApiClient
         catch (Exception ex) { return (false, ex.Message); }
     }
 
+    // ===== 2026-06-15: PIN por operador =====
+    /// <summary>Valida el PIN del operador. Devuelve (ok, mensajeError).</summary>
+    public async Task<(bool ok, string? error)> ValidarOperadorPinAsync(string nombre, string pin)
+    {
+        try
+        {
+            await SetAuthHeaderAsync();
+            var resp = await _http.PostAsJsonAsync("/api/operadores/pin/validar", new { Nombre = nombre, Pin = pin });
+            if (resp.IsSuccessStatusCode) return (true, null);
+            string msg = "PIN incorrecto";
+            try
+            {
+                var body = await resp.Content.ReadAsStringAsync();
+                using var doc = System.Text.Json.JsonDocument.Parse(body);
+                if (doc.RootElement.TryGetProperty("error", out var e)) msg = e.GetString() ?? msg;
+            }
+            catch { }
+            return (false, msg);
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
+    /// <summary>El operador cambia su propio PIN — pide el actual + el nuevo.</summary>
+    public async Task<(bool ok, string? error)> CambiarOperadorPinAsync(string nombre, string pinActual, string pinNuevo)
+    {
+        try
+        {
+            await SetAuthHeaderAsync();
+            var resp = await _http.PostAsJsonAsync("/api/operadores/pin/cambiar",
+                new { Nombre = nombre, PinActual = pinActual, PinNuevo = pinNuevo });
+            if (resp.IsSuccessStatusCode) return (true, null);
+            string msg = "No se pudo cambiar";
+            try
+            {
+                var body = await resp.Content.ReadAsStringAsync();
+                using var doc = System.Text.Json.JsonDocument.Parse(body);
+                if (doc.RootElement.TryGetProperty("error", out var e)) msg = e.GetString() ?? msg;
+            }
+            catch { }
+            return (false, msg);
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
+    public record OperadorPinInfoDto(string Nombre, bool TienePin, DateTime? UpdatedAt, string? UpdatedBy);
+
+    public async Task<List<OperadorPinInfoDto>?> GetOperadoresPinListaAsync()
+        => await GetAsync<List<OperadorPinInfoDto>>("/api/operadores/admin/lista");
+
+    public async Task<(bool ok, string? error)> ResetOperadorPinAsync(string nombre, string pinNuevo)
+    {
+        try
+        {
+            await SetAuthHeaderAsync();
+            var resp = await _http.PostAsJsonAsync("/api/operadores/admin/reset",
+                new { Nombre = nombre, PinNuevo = pinNuevo });
+            if (resp.IsSuccessStatusCode) return (true, null);
+            string msg = "No se pudo resetear";
+            try
+            {
+                var body = await resp.Content.ReadAsStringAsync();
+                using var doc = System.Text.Json.JsonDocument.Parse(body);
+                if (doc.RootElement.TryGetProperty("error", out var e)) msg = e.GetString() ?? msg;
+            }
+            catch { }
+            return (false, msg);
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
     // ===== 2026-06-05: Validar clave para operador protegido (OSMAR) =====
     /// <summary>Devuelve true si la clave coincide con la de eliminar ventas (la misma se usa
     /// para activar OSMAR como operador). Si la clave es invalida o no esta configurada, false.</summary>

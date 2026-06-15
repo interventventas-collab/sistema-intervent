@@ -6,12 +6,19 @@ namespace Web.Services;
 /// Mantiene quien es el operador (persona fisica) que esta trabajando ahora.
 /// Lo guarda en localStorage. El nombre se manda en cada request al backend
 /// como header X-Operator-Name para auditoria.
+///
+/// 2026-06-15: integrado con PIN por operador. Después del login admin, la app
+/// se muestra BLOQUEADA hasta que se valida un PIN. Se desbloquea por 30 min;
+/// pasada la inactividad se vuelve a bloquear. Persiste validatedAt en localStorage.
 /// </summary>
 public class OperatorService
 {
     private const string StorageKey = "current_operator";
+    private const string ValidatedAtKey = "operator_validated_at"; // 2026-06-15
+    private const int InactivityMinutes = 30; // 2026-06-15
     private readonly IJSRuntime _js;
     private string? _current;
+    private DateTime? _validatedAtUtc;
 
     // 2026-05-28: MAXI eliminado (ya no trabaja). Lista global = todos los que SÍ trabajan.
     public static readonly string[] Operators =
@@ -20,41 +27,29 @@ public class OperatorService
     };
 
     // Operadores por rol (para mostrar solo los del equipo correspondiente en el modal).
-    // 2026-06-05: OSMAR salio de OperatorsOficina y entro a Protected — desde oficina aparece
-    // al final con candado y pide clave (la misma de eliminar ventas). Asi evitamos que en
-    // oficina dejen OSMAR seleccionado por error y las ventas terminen en su tablero.
-    public static readonly string[] OperatorsOficina = { "GERMAN", "GABRIEL" };
+    // 2026-06-15: OSMAR vuelve a la lista normal — ya no usa "candado" especial: con el
+    // sistema de PIN unificado todos los operadores requieren PIN propio.
+    public static readonly string[] OperatorsOficina = { "GERMAN", "GABRIEL", "OSMAR" };
     public static readonly string[] OperatorsDeposito = { "ALEXIS", "WALTER", "RODRIGO" };
 
-    /// <summary>2026-06-05: Operadores que requieren clave (PIN) para activarlos.
-    /// Aparecen al final del modal con candado. Usa la misma clave de eliminar ventas
-    /// (sales.delete_password). Endpoint: POST /api/cafe/ventas/operador-protegido/validar</summary>
-    public static readonly string[] ProtectedOperators = { "OSMAR" };
+    /// <summary>2026-06-15: ya no se usa la lista de "Protected" — todos los operadores
+    /// se autentican con PIN individual. Se deja vacío por compat con pantallas viejas.</summary>
+    public static readonly string[] ProtectedOperators = Array.Empty<string>();
 
     /// <summary>Devuelve la lista de operadores que el usuario logueado puede elegir, en base
-    /// a sus permisos. 2026-06-05: admin (con "cafe") trabaja como oficina (GERMAN/GABRIEL) y
-    /// puede activar OSMAR via clave (ProtectedForPermissions). DEPOSITO ve los suyos.</summary>
+    /// a sus permisos. 2026-06-15: admin/oficina ven OSMAR + GERMAN + GABRIEL (todos con PIN).
+    /// DEPOSITO ve ALEXIS+WALTER+RODRIGO.</summary>
     public static string[] ForPermissions(List<string> perms)
     {
-        // 2026-06-05: admin/oficina ven solo GERMAN+GABRIEL como normales.
-        // OSMAR aparece via ProtectedForPermissions (con candado).
         if (perms.Contains("cafe") || perms.Contains("oficina")) return OperatorsOficina;
         if (perms.Contains("deposito")) return OperatorsDeposito;
-        return OperatorsOficina;                              // fallback minimo
+        return OperatorsOficina;
     }
 
-    /// <summary>2026-06-05: Devuelve los operadores PROTEGIDOS (con candado) que el usuario
-    /// puede elegir si tipea la clave. Para admin/oficina/deposito: OSMAR siempre disponible
-    /// con clave (la misma de eliminar comprobantes).</summary>
-    public static string[] ProtectedForPermissions(List<string> perms)
-    {
-        if (perms.Contains("cafe") || perms.Contains("oficina") || perms.Contains("deposito"))
-            return ProtectedOperators;
-        return Array.Empty<string>();
-    }
+    /// <summary>2026-06-15: queda vacío — todos requieren PIN, no hay "protegidos" aparte.</summary>
+    public static string[] ProtectedForPermissions(List<string> perms) => Array.Empty<string>();
 
-    /// <summary>2026-06-05: Inicial corta (2 chars uppercase) para mostrar en chips/listados.
-    /// OSMAR -> OS, GERMAN -> GE, GABRIEL -> GA, ALEXIS -> AL, WALTER -> WA, RODRIGO -> RO, MIGUEL -> MI.</summary>
+    /// <summary>2026-06-05: Inicial corta (2 chars uppercase) para mostrar en chips/listados.</summary>
     public static string ShortLabel(string? name)
     {
         if (string.IsNullOrWhiteSpace(name)) return "";
@@ -62,26 +57,37 @@ public class OperatorService
         return n.Length >= 2 ? n.Substring(0, 2) : n;
     }
 
-    /// <summary>2026-06-05: Color de fondo del chip de inicial, segun el operador. Cada uno
-    /// tiene su tono unico para distinguir de un vistazo en el listado de ventas.</summary>
     public static string ShortBgColor(string? name)
     {
         var n = (name ?? "").Trim().ToUpperInvariant();
         return n switch
         {
-            "OSMAR"   => "#2563eb",   // azul
-            "GERMAN"  => "#16a34a",   // verde
-            "GABRIEL" => "#f59e0b",   // ambar
-            "ALEXIS"  => "#dc2626",   // rojo
-            "WALTER"  => "#7c3aed",   // violeta
-            "RODRIGO" => "#0891b2",   // cyan
-            "MIGUEL"  => "#db2777",   // pink
-            _         => "#9ca3af"    // gris fallback
+            "OSMAR"   => "#2563eb",
+            "GERMAN"  => "#16a34a",
+            "GABRIEL" => "#f59e0b",
+            "ALEXIS"  => "#dc2626",
+            "WALTER"  => "#7c3aed",
+            "RODRIGO" => "#0891b2",
+            "MIGUEL"  => "#db2777",
+            _         => "#9ca3af"
         };
     }
 
     public string? Current => _current;
     public bool HasOperator => !string.IsNullOrWhiteSpace(_current);
+
+    /// <summary>2026-06-15: true si HAY operador Y el último PIN fue validado hace menos de 30 min.
+    /// Mientras esto sea false, la app debe mostrarse BLOQUEADA (pantalla del PIN).</summary>
+    public bool IsValidated
+    {
+        get
+        {
+            if (!HasOperator || _validatedAtUtc is null) return false;
+            return (DateTime.UtcNow - _validatedAtUtc.Value).TotalMinutes < InactivityMinutes;
+        }
+    }
+
+    public DateTime? ValidatedAtUtc => _validatedAtUtc;
 
     public event Action? OnChange;
 
@@ -97,10 +103,14 @@ public class OperatorService
             var stored = await _js.InvokeAsync<string?>("localStorage.getItem", StorageKey);
             if (!string.IsNullOrWhiteSpace(stored) && Operators.Contains(stored))
                 _current = stored;
+            var validatedStr = await _js.InvokeAsync<string?>("localStorage.getItem", ValidatedAtKey);
+            if (!string.IsNullOrWhiteSpace(validatedStr) && DateTime.TryParse(validatedStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
+                _validatedAtUtc = dt.ToUniversalTime();
         }
-        catch { /* primer arranque, sin nada */ }
+        catch { }
     }
 
+    /// <summary>2026-06-15: cambia operador (sin marcar validado — el PIN se valida aparte).</summary>
     public async Task SetAsync(string? name)
     {
         if (!string.IsNullOrWhiteSpace(name) && !Operators.Contains(name))
@@ -117,5 +127,51 @@ public class OperatorService
         OnChange?.Invoke();
     }
 
-    public async Task ClearAsync() => await SetAsync(null);
+    /// <summary>2026-06-15: marca al operador como validado en este momento (después de un PIN correcto).
+    /// Combina set del operador + timestamp para no tener carrera entre los dos pasos.</summary>
+    public async Task SetValidatedAsync(string nombre)
+    {
+        _current = nombre;
+        _validatedAtUtc = DateTime.UtcNow;
+        try
+        {
+            await _js.InvokeVoidAsync("localStorage.setItem", StorageKey, _current);
+            await _js.InvokeVoidAsync("localStorage.setItem", ValidatedAtKey, _validatedAtUtc.Value.ToString("o"));
+        }
+        catch { }
+        OnChange?.Invoke();
+    }
+
+    /// <summary>2026-06-15: marca actividad reciente — refresca el timestamp para que no se desloguee
+    /// por inactividad mientras el operador esté trabajando. Se llama en cada acción importante.</summary>
+    public async Task TouchAsync()
+    {
+        if (!HasOperator) return;
+        _validatedAtUtc = DateTime.UtcNow;
+        try { await _js.InvokeVoidAsync("localStorage.setItem", ValidatedAtKey, _validatedAtUtc.Value.ToString("o")); }
+        catch { }
+    }
+
+    /// <summary>2026-06-15: bloquea la sesión (deja el nombre pero quita el validado).
+    /// Se usa al pasar 30 min de inactividad o al cambiar de operador.</summary>
+    public async Task LockAsync()
+    {
+        _validatedAtUtc = null;
+        try { await _js.InvokeVoidAsync("localStorage.removeItem", ValidatedAtKey); }
+        catch { }
+        OnChange?.Invoke();
+    }
+
+    public async Task ClearAsync()
+    {
+        _current = null;
+        _validatedAtUtc = null;
+        try
+        {
+            await _js.InvokeVoidAsync("localStorage.removeItem", StorageKey);
+            await _js.InvokeVoidAsync("localStorage.removeItem", ValidatedAtKey);
+        }
+        catch { }
+        OnChange?.Invoke();
+    }
 }
