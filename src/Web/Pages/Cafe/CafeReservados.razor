@@ -79,7 +79,23 @@
                                 </td>
                                 <td style="font-family:monospace; font-size:0.8rem;">@r.MeliItemId</td>
                                 <td style="text-align:center;">@r.OrderQty × @r.CompQty.ToString("0.##")</td>
-                                <td>@(r.LogisticType == "self_service" ? "🟢 Flex" : r.LogisticType == "cross_docking" ? "🟡 ME1" : r.LogisticType)</td>
+                                <td>
+                                    @switch (r.LogisticType)
+                                    {
+                                        case "self_service":
+                                            <span title="Conductor MeLi pasa a buscar al depósito">🟢 Flex</span>; break;
+                                        case "cross_docking":
+                                            <span title="Mercado Envíos 1 — correo pasa a retirar">🟡 ME1</span>; break;
+                                        case "drop_off":
+                                            <span title="Vos llevás el paquete a sucursal MeLi">🟣 Drop-off</span>; break;
+                                        case "xd_drop_off":
+                                            <span title="Despacho desde punto/sucursal externa">🟣 XD Drop-off</span>; break;
+                                        case "custom":
+                                            <span title="Envío personalizado / acuerdo directo">⚪ Custom</span>; break;
+                                        default:
+                                            <span style="color:#9ca3af;">@r.LogisticType</span>; break;
+                                    }
+                                </td>
                                 <td>
                                     <span style="background:#fed7aa; color:#9a3412; padding:0.1rem 0.4rem; border-radius:4px; font-size:0.78rem; font-weight:600;">
                                         @r.ShippingSubstatus
