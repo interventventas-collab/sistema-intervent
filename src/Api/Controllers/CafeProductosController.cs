@@ -587,7 +587,8 @@ public class CafeProductosController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
-    public async Task<IActionResult> Update(int id, [FromBody] UpdateCafeProductoRequest req)
+    public async Task<IActionResult> Update(int id, [FromBody] UpdateCafeProductoRequest req,
+        [FromServices] Api.Services.CafeStockLogger stockLogger)
     {
         var p = await _db.CafeProductos.FindAsync(id);
         if (p is null) return NotFound(new { error = "Producto no encontrado" });
@@ -596,6 +597,11 @@ public class CafeProductosController : ControllerBase
         var oldPvp1 = p.Pvp1; var oldPvp2 = p.Pvp2; var oldCosto = p.Costo; var oldIva = p.IvaPct;
         // 2026-05-30: snapshot de precio (PrecioOtro) e IVA para detectar cambio y disparar push.
         var oldPrecioOtro = p.PrecioOtro;
+        // 2026-06-15: snapshot de stock para generar movimiento AJUSTE_ADMIN si cambia.
+        // Antes este endpoint editaba el stock SIN dejar huella en Stock_Movimientos,
+        // causando agujeros en el historial (ej: C2144ROJ — saltó de 66 a 90 sin movimiento).
+        var oldStockUnidades = p.StockUnidades;
+        var oldStockGramos = p.StockGramos;
         if (req.Nombre is not null)
         {
             if (string.IsNullOrWhiteSpace(req.Nombre)) return BadRequest(new { error = "El nombre no puede ser vacio" });
@@ -784,6 +790,23 @@ public class CafeProductosController : ControllerBase
         }
 
         await _db.SaveChangesAsync();
+
+        // 2026-06-15: si cambió el stock por edición manual desde la ficha,
+        // dejar movimiento AJUSTE_ADMIN para que el historial quede completo.
+        // (Antes este cambio se hacía sin loguear, causando saltos en el historial.)
+        if (p.StockUnidades != oldStockUnidades)
+        {
+            var op = HttpContext.Request.Headers["X-Operator-Name"].ToString();
+            await stockLogger.LogAsync(
+                productoId: p.Id,
+                tipoMov: "AJUSTE_ADMIN",
+                stockAntes: oldStockUnidades,
+                stockDespues: p.StockUnidades,
+                operadorNombre: string.IsNullOrWhiteSpace(op) ? (User?.Identity?.Name ?? "Sistema") : op,
+                comentario: "Edición manual desde ficha producto",
+                saveChanges: true);
+        }
+
         var saved = await _db.CafeProductos.Include(x => x.OemNav).Include(x => x.MarcaNav).Include(x => x.Packs).FirstAsync(x => x.Id == p.Id);
         // Si cambió el stock, disparar push a MeLi en background (respeta kill switches)
         if (dispararPush) FireAndForgetPushMeli(p.Id);
