@@ -1117,9 +1117,11 @@
     // 2026-06-15: pantalla bloqueante de PIN
     private System.Threading.Timer? _pinLockTimer;
     private bool mostrarPinLock => requierePinLock && !Operator.IsValidated;
-    /// <summary>Solo aplica a roles que cargan ventas (cafe/oficina). Deposito-only
-    /// queda exento para no romper su flujo, igual que el modal viejo.</summary>
-    private bool requierePinLock => permissions.Contains("cafe") || permissions.Contains("oficina");
+    /// <summary>2026-06-15: aplica a admin/oficina/cafe. Deposito-only queda exento
+    /// para no romper su flujo (cargan stock, no ventas con identidad).</summary>
+    private bool requierePinLock => permissions.Contains("cafe")
+        || permissions.Contains("oficina")
+        || string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase);
     private List<string> operadoresParaPinLock => OperatorService.ForPermissions(permissions).ToList();
     private void OnOperatorChange() { InvokeAsync(StateHasChanged); }
 
