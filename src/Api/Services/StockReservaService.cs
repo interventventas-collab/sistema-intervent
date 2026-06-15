@@ -14,18 +14,17 @@ public class StockReservaService
     private readonly AppDbContext _db;
     public StockReservaService(AppDbContext db) { _db = db; }
 
-    // Sub-estados que indican "producto sigue físicamente en mi depósito"
-    // Flex (self_service): solo ready_to_print → apenas se imprime la etiqueta, sale ese día con el conductor
+    // 2026-06-15: criterio simplificado — SOLO ready_to_print cuenta como reserva.
+    // Eso es lo que MeLi muestra como "imprimir etiqueta" en el panel del seller.
+    // Una vez impresa la etiqueta MeLi pasa a 'printed' (o sub-estados posteriores) y la saca de esa lista.
+    // Aplicamos lo mismo a Flex (self_service) y a ME1 (cross_docking) para que coincida con la operación real.
     private static readonly HashSet<string> SubEstadosFlexReservados = new(StringComparer.OrdinalIgnoreCase)
     {
         "ready_to_print"
     };
-    // ME1 (cross_docking): producto sigue acá hasta que el correo lo retire (picked_up).
-    // Todos los estados previos cuentan como reservado.
     private static readonly HashSet<string> SubEstadosCrossDockingReservados = new(StringComparer.OrdinalIgnoreCase)
     {
-        "ready_to_print", "ready_to_pack", "in_packing_list",
-        "ready_for_pickup", "buffered", "waiting_for_withdrawal"
+        "ready_to_print"
     };
 
     /// <summary>Devuelve dict { productoId -> unidades reservadas }. Solo incluye productos con reserva > 0.

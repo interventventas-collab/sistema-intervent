@@ -230,12 +230,8 @@ public class MeliOrderService
     /// lo cual rompe el cálculo de stock reservado. Llamar después del sync regular cada 30 min.</summary>
     public async Task<int> RefreshPendingOrdersAsync(int dias = 7)
     {
-        var subEstadosPreDespacho = new[]
-        {
-            "ready_to_print", "ready_to_pack", "in_packing_list",
-            "ready_for_pickup", "buffered", "waiting_for_withdrawal",
-            "in_warehouse"
-        };
+        // 2026-06-15: solo ready_to_print — lo único que MeLi considera "etiqueta a imprimir"
+        var subEstadosPreDespacho = new[] { "ready_to_print" };
         var desde = DateTime.UtcNow.AddDays(-Math.Max(1, dias));
 
         // Cargar órdenes pendientes con sus cuentas (las que el cálculo de reserva considera "reservadas")
