@@ -3937,6 +3937,58 @@ public class ApiClient
         catch (Exception ex) { return (false, ex.Message); }
     }
 
+    // ===== 2026-06-15: Reportes de stock para reposición y ranking =====
+    public record ReposicionRow(
+        int ProductoId, string? Sku, string Nombre, string? Marca, string? OemCodigo, string? Categoria,
+        int StockActual, int? StockMinimo,
+        decimal Entradas, decimal Salidas, decimal Ajustes, decimal Neto,
+        int VendidoUnidades, decimal FacturadoTotal,
+        int SugeridoReponer);
+    public record ReposicionResult(int Total, List<ReposicionRow> Filas);
+
+    public record RankingRow(
+        int ProductoId, string? Sku, string Nombre, string? Marca, string? OemCodigo, string? Categoria,
+        int StockActual,
+        int VendidoUnidades, decimal FacturadoTotal, decimal MargenTotal,
+        int ClientesUnicos, int CantidadVentas);
+    public record RankingResult(int Total, List<RankingRow> Filas);
+
+    private static string BuildReporteQuery(DateTime? desde, DateTime? hasta, int? marcaId, string? marcaTexto,
+        int? oemId, string? oemCodigo, string? sku, string? categoria, int? clienteId, string? tiposMov)
+    {
+        var qs = new List<string>();
+        if (desde.HasValue) qs.Add($"desde={Uri.EscapeDataString(desde.Value.ToString("o"))}");
+        if (hasta.HasValue) qs.Add($"hasta={Uri.EscapeDataString(hasta.Value.ToString("o"))}");
+        if (marcaId.HasValue) qs.Add($"marcaId={marcaId}");
+        if (!string.IsNullOrWhiteSpace(marcaTexto)) qs.Add($"marcaTexto={Uri.EscapeDataString(marcaTexto)}");
+        if (oemId.HasValue) qs.Add($"oemId={oemId}");
+        if (!string.IsNullOrWhiteSpace(oemCodigo)) qs.Add($"oemCodigo={Uri.EscapeDataString(oemCodigo)}");
+        if (!string.IsNullOrWhiteSpace(sku)) qs.Add($"sku={Uri.EscapeDataString(sku)}");
+        if (!string.IsNullOrWhiteSpace(categoria)) qs.Add($"categoria={Uri.EscapeDataString(categoria)}");
+        if (clienteId.HasValue) qs.Add($"clienteId={clienteId}");
+        if (!string.IsNullOrWhiteSpace(tiposMov)) qs.Add($"tiposMov={Uri.EscapeDataString(tiposMov)}");
+        return qs.Count > 0 ? "?" + string.Join("&", qs) : "";
+    }
+
+    public async Task<ReposicionResult?> GetReposicionAsync(DateTime? desde = null, DateTime? hasta = null,
+        int? marcaId = null, string? marcaTexto = null, int? oemId = null, string? oemCodigo = null,
+        string? sku = null, string? categoria = null, int? clienteId = null, string? tiposMov = null)
+    {
+        var qs = BuildReporteQuery(desde, hasta, marcaId, marcaTexto, oemId, oemCodigo, sku, categoria, clienteId, tiposMov);
+        return await GetAsync<ReposicionResult>("/api/stock/reportes/reposicion" + qs);
+    }
+
+    public async Task<RankingResult?> GetRankingAsync(DateTime? desde = null, DateTime? hasta = null,
+        int? marcaId = null, string? marcaTexto = null, int? oemId = null, string? oemCodigo = null,
+        string? sku = null, string? categoria = null, int? clienteId = null,
+        string? orderBy = "unidades", int top = 50)
+    {
+        var qs = BuildReporteQuery(desde, hasta, marcaId, marcaTexto, oemId, oemCodigo, sku, categoria, clienteId, null);
+        var sep = string.IsNullOrEmpty(qs) ? "?" : "&";
+        qs += $"{sep}orderBy={Uri.EscapeDataString(orderBy ?? "unidades")}&top={top}";
+        return await GetAsync<RankingResult>("/api/stock/reportes/ranking" + qs);
+    }
+
     // ===== 2026-06-05: Validar clave para operador protegido (OSMAR) =====
     /// <summary>Devuelve true si la clave coincide con la de eliminar ventas (la misma se usa
     /// para activar OSMAR como operador). Si la clave es invalida o no esta configurada, false.</summary>

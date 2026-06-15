@@ -26,6 +26,18 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
             integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script>
+        // 2026-06-15: helper genérico para descargar un archivo desde Blazor
+        // (lo usan los reportes de stock para exportar Excel/CSV).
+        window.downloadFile = function (fileName, mimeType, base64Content) {
+            const a = document.createElement('a');
+            a.href = 'data:' + mimeType + ';base64,' + base64Content;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        };
+    </script>
+    <script>
         // Helper para el modulo de Mapeo Flex
         window.mapeoFlex = (function () {
             let map = null;
