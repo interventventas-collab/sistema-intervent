@@ -516,6 +516,9 @@ public class CafePreparacionItemDto
     public string ProductoNombre { get; set; } = "";
     // 2026-05-30: SKU del producto (si está linkeado al catálogo) — pedido del depósito.
     public string? Sku { get; set; }
+    // 2026-06-15: stock del sistema al lado del SKU — el armador ve cuánto debería haber físico.
+    public int? StockUnidades { get; set; }
+    public decimal? StockGramos { get; set; }
     public string Formato { get; set; } = "";
     public int Cantidad { get; set; }
     public string? Molienda { get; set; }

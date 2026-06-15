@@ -3148,6 +3148,9 @@ public class CafeVentasController : ControllerBase
                     productoNombre = i.ProductoNombreSnapshot,
                     // 2026-05-30: SKU del producto (si está linkeado al catálogo) — pedido del depósito
                     sku = i.ProductoId != null ? _db.CafeProductos.Where(p => p.Id == i.ProductoId).Select(p => p.Sku).FirstOrDefault() : null,
+                    // 2026-06-15: stock del sistema al lado del SKU — el armador ve cuánto debería haber físico.
+                    stockUnidades = i.ProductoId != null ? _db.CafeProductos.Where(p => p.Id == i.ProductoId).Select(p => (int?)p.StockUnidades).FirstOrDefault() : null,
+                    stockGramos = i.ProductoId != null ? _db.CafeProductos.Where(p => p.Id == i.ProductoId).Select(p => (decimal?)p.StockGramos).FirstOrDefault() : null,
                     formato = i.Formato,
                     cantidad = i.Cantidad,
                     molienda = i.Molienda,

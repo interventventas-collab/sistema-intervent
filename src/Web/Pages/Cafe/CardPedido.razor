@@ -192,6 +192,17 @@
                                 {
                                     <span style="font-family:monospace; font-size:0.7rem; color:#6b7280; margin-left:0.4rem; background:#f3f4f6; padding:1px 5px; border-radius:3px;" title="SKU del producto">@it.Sku</span>
                                 }
+                                @{
+                                    var stockTexto = StockTextoSistema(it);
+                                }
+                                @if (stockTexto is not null)
+                                {
+                                    var alcanza = StockAlcanza(it);
+                                    <span style="font-size:0.7rem; margin-left:0.4rem; padding:1px 6px; border-radius:3px; font-weight:600; @(alcanza ? "background:#dcfce7; color:#166534;" : "background:#fee2e2; color:#b91c1c;")"
+                                          title="Stock que figura en el sistema. Compará con lo físico al armar.">
+                                        📦 Sistema: @stockTexto
+                                    </span>
+                                }
                             </div>
                             <div class="prep-item-tags">
                                 <span class="prep-tag prep-tag-formato">@FormatoLabel(it.Formato)</span>
@@ -251,6 +262,39 @@
     {
         var val = e.Value is bool b ? b : false;
         await OnToggleSelectForPrint.InvokeAsync(val);
+    }
+
+    // 2026-06-15: chip "Sistema: X" al lado del SKU. Muestra unidades para OTROS,
+    // kg para CAFE (convertir gramos→kg con 1 decimal). Concepto libre o producto sin link → no muestra nada.
+    private static string? StockTextoSistema(CafePreparacionItemDto it)
+    {
+        if (it.EsConceptoLibre) return null;
+        if (it.Categoria == "CAFE")
+        {
+            if (!it.StockGramos.HasValue) return null;
+            var kg = it.StockGramos.Value / 1000m;
+            return $"{kg.ToString("0.##")} kg";
+        }
+        if (it.StockUnidades.HasValue) return $"{it.StockUnidades.Value} u.";
+        return null;
+    }
+
+    // Verde si el stock alcanza para lo pedido, rojo si no. Para CAFE compara en kg según formato.
+    private static bool StockAlcanza(CafePreparacionItemDto it)
+    {
+        if (it.Categoria == "CAFE")
+        {
+            if (!it.StockGramos.HasValue) return false;
+            var gramosPedidos = it.Cantidad * (it.Formato switch
+            {
+                "1KG" => 1000m,
+                "MEDIO" => 500m,
+                "CUARTO" => 250m,
+                _ => 1000m
+            });
+            return it.StockGramos.Value >= gramosPedidos;
+        }
+        return (it.StockUnidades ?? 0) >= it.Cantidad;
     }
 
     private static string FormatoLabel(string f) => f switch
