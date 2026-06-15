@@ -26,6 +26,18 @@
                 <option value="__sin__">— Sin marca —</option>
                 @foreach (var m in marcasExistentes) { <option value="@m">@m</option> }
             </select>
+            @{
+                var totalReservados = reservasPorProducto.Count(kv => kv.Value > 0);
+            }
+            <label style="display:flex; align-items:center; gap:0.3rem; padding:0.35rem 0.7rem; border-radius:6px; border:1px solid @(soloConReserva ? "#d97706" : "#d1d5db"); background:@(soloConReserva ? "#fef3c7" : "white"); cursor:pointer; font-size:0.85rem; font-weight:600; color:@(soloConReserva ? "#9a3412" : "#374151");"
+                   title="Mostrar solo productos con ventas MeLi pendientes de despacho (etiqueta no impresa)">
+                <input type="checkbox" @bind="soloConReserva" />
+                📦 Solo con reserva
+                @if (totalReservados > 0)
+                {
+                    <span style="background:@(soloConReserva ? "#d97706" : "#9ca3af"); color:white; padding:0.05rem 0.4rem; border-radius:10px; font-size:0.72rem;">@totalReservados</span>
+                }
+            </label>
             <button class="btn @(modoEdicion ? "btn-warning" : "btn-secondary")"
                     @onclick="() => modoEdicion = !modoEdicion" title="Edicion rapida de marca y nombre">
                 @(modoEdicion ? "🔓 Edicion ON" : "🔒 Edicion OFF")
@@ -1267,6 +1279,8 @@
     private string filtroCategoria = "";
     private string filtroMarca = "";
     private string filtroTexto = "";
+    // 2026-06-15: filtro "solo con reserva" (ventas MeLi pendientes de despacho)
+    private bool soloConReserva = false;
     private bool showForm;
     private bool isEditing;
     private bool saving;
@@ -1426,6 +1440,9 @@
                 bool h(string? s) => s.MatchesSearch(t);
                 q = q.Where(p => h(p.Sku) || h(p.Barcode) || h(p.Nombre) || h(p.Marca));
             }
+            // 2026-06-15: filtro solo con reserva (ventas MeLi pendientes de despacho)
+            if (soloConReserva)
+                q = q.Where(p => reservasPorProducto.TryGetValue(p.Id, out var r) && r > 0);
             return q.ToList();
         }
     }
