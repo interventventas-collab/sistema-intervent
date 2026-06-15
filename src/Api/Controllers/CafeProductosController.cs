@@ -329,6 +329,16 @@ public class CafeProductosController : ControllerBase
         return Ok(new { productoId = id, reservado = unidades });
     }
 
+    /// <summary>2026-06-15: Batch — devuelve reservas para varios productos a la vez.
+    /// Usado en listados (tabla productos, carrito stock-masivo) para no hacer N requests.</summary>
+    [HttpPost("reservas-batch")]
+    public async Task<IActionResult> GetReservasBatch([FromBody] int[] ids, [FromServices] StockReservaService reservaService)
+    {
+        if (ids is null || ids.Length == 0) return Ok(new Dictionary<int, int>());
+        var d = await reservaService.GetReservasAsync(ids);
+        return Ok(d);
+    }
+
     /// <summary>
     /// Consulta a MeLi el tipo de logistica (Full, drop_off, etc.) de cada publicacion vinculada al cafe
     /// y actualiza la columna LogisticType. Necesario para no pushear stock a publicaciones Full.

@@ -123,11 +123,16 @@
                                     {
                                         var pid = p.ProductoId;
                                         var stockTxt = p.Categoria == "CAFE" ? $"{(p.StockGramos/1000m):N2} kg" : $"{p.StockUnidades} u.";
+                                        var rsv = reservasPorProducto.TryGetValue(pid, out var rv) ? rv : 0;
                                         <div @onclick="() => SeleccionarProductoCarga(pid)"
                                              style="padding:0.5rem 0.7rem; cursor:pointer; border-bottom:1px solid #f3f4f6;">
                                             <span style="font-family:monospace; color:#1d4ed8; font-weight:700; font-size:0.85rem;">@p.Codigo</span>
                                             <strong style="margin-left:0.4rem;">@p.Nombre</strong>
                                             <span style="color:#6b7280; font-size:0.78rem; margin-left:0.4rem;">· Stock actual: @stockTxt</span>
+                                            @if (rsv > 0)
+                                            {
+                                                <span style="background:#fed7aa; color:#9a3412; padding:0.1rem 0.4rem; border-radius:10px; font-size:0.72rem; font-weight:700; margin-left:0.4rem;" title="Ventas MeLi pendientes de despacho">📦 +@rsv reservado</span>
+                                            }
                                         </div>
                                     }
                                     @if (todos.Count > matches.Count)
@@ -225,7 +230,16 @@
                                         <td style="text-align:right; font-family:monospace; font-weight:700; color:@(c.Modo == "modificar" && c.ValorIngresado < 0 ? "#b91c1c" : "#1f2937");">
                                             @valorMostrar @unidad
                                         </td>
-                                        <td style="text-align:right; color:#6b7280;">@stockActualMostrar @unidad</td>
+                                        <td style="text-align:right; color:#6b7280;">
+                                            @stockActualMostrar @unidad
+                                            @{
+                                                var rsvCart = reservasPorProducto.TryGetValue(c.ProductoId, out var rvCart) ? rvCart : 0;
+                                            }
+                                            @if (rsvCart > 0)
+                                            {
+                                                <div style="font-size:0.7rem; color:#d97706; font-weight:600; margin-top:0.15rem;" title="Ventas MeLi pendientes de despacho">📦 +@rsvCart reservado</div>
+                                            }
+                                        </td>
                                         <td style="text-align:right; font-weight:700; color:#15803d;">@stockNuevoMostrar @unidad</td>
                                         <td>
                                             <button @onclick="() => carrito.Remove(c)" style="background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5; border-radius:4px; padding:0.2rem 0.5rem; cursor:pointer; font-size:0.85rem;" title="Quitar">🗑</button>
@@ -586,6 +600,28 @@ else
         try { rows = await Api.GetStockEnDepositoAsync(depositoIdSeleccionado) ?? new(); }
         catch { ToastService.Error("Error al cargar"); rows = new(); }
         loading = false;
+        // 2026-06-15: cargar reservas en batch para mostrar chip en dropdown + carrito
+        await CargarReservasBatch();
+    }
+
+    // 2026-06-15: batch de reservas (productos con ventas MeLi pendientes de despacho)
+    private Dictionary<int, int> reservasPorProducto = new();
+    private async Task CargarReservasBatch()
+    {
+        reservasPorProducto = new();
+        if (rows is null || rows.Count == 0) return;
+        try
+        {
+            var ids = rows.Select(r => r.ProductoId).ToArray();
+            var resp = await Http.PostAsJsonAsync("api/cafe/productos/reservas-batch", ids);
+            if (resp.IsSuccessStatusCode)
+            {
+                var d = await resp.Content.ReadFromJsonAsync<Dictionary<string, int>>();
+                if (d is not null)
+                    reservasPorProducto = d.ToDictionary(kv => int.Parse(kv.Key), kv => kv.Value);
+            }
+        }
+        catch { /* sin reservas si falla */ }
     }
 
     private IEnumerable<StockProductoDto> Filtrados()

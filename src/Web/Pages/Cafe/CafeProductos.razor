@@ -309,6 +309,15 @@
                                                 📦 Full: @p.StockFull u.
                                             </div>
                                         }
+                                        @* 2026-06-15: reservado por etiqueta no impresa en MeLi *@
+                                        var rsvP = reservasPorProducto.TryGetValue(p.Id, out var rvP) ? rvP : 0;
+                                        @if (rsvP > 0)
+                                        {
+                                            <div style="font-size:0.7rem; color:#d97706; font-weight:600; margin-top:2px;"
+                                                 title="Ventas MeLi pendientes de despacho (etiqueta no impresa). Esas unidades siguen en el depósito.">
+                                                📦 +@rsvP reservado
+                                            </div>
+                                        }
                                     }
                                 </td>
                                 <td>
@@ -1666,6 +1675,28 @@
         }
         catch { ToastService.Error("Error al cargar productos"); productos = new(); }
         loading = false;
+        // 2026-06-15: cargar reservas en batch (ventas MeLi con etiqueta no impresa)
+        await CargarReservasBatch();
+    }
+
+    // 2026-06-15: dict productoId -> unidades reservadas por etiqueta MeLi no impresa
+    private Dictionary<int, int> reservasPorProducto = new();
+    private async Task CargarReservasBatch()
+    {
+        reservasPorProducto = new();
+        if (productos is null || productos.Count == 0) return;
+        try
+        {
+            var ids = productos.Select(p => p.Id).ToArray();
+            var resp = await Http.PostAsJsonAsync("api/cafe/productos/reservas-batch", ids);
+            if (resp.IsSuccessStatusCode)
+            {
+                var d = await resp.Content.ReadFromJsonAsync<Dictionary<string, int>>();
+                if (d is not null)
+                    reservasPorProducto = d.ToDictionary(kv => int.Parse(kv.Key), kv => kv.Value);
+            }
+        }
+        catch { /* sin reservas si falla */ }
     }
 
     private async Task LoadOems()
