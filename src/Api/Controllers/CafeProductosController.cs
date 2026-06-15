@@ -319,6 +319,16 @@ public class CafeProductosController : ControllerBase
         });
     }
 
+    /// <summary>2026-06-15: Devuelve cuántas unidades del producto están "reservadas" por
+    /// ventas MeLi pendientes de despacho (etiqueta no impresa en Flex / no retiradas en ME1).
+    /// Usado por pantallas admin para mostrar el reservado al lado del stock actual.</summary>
+    [HttpGet("{id:int}/reserva")]
+    public async Task<IActionResult> GetReserva(int id, [FromServices] StockReservaService reservaService)
+    {
+        var unidades = await reservaService.GetReservaAsync(id);
+        return Ok(new { productoId = id, reservado = unidades });
+    }
+
     /// <summary>
     /// Consulta a MeLi el tipo de logistica (Full, drop_off, etc.) de cada publicacion vinculada al cafe
     /// y actualiza la columna LogisticType. Necesario para no pushear stock a publicaciones Full.

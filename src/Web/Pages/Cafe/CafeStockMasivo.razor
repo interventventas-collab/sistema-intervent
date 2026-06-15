@@ -159,6 +159,13 @@
                     <div>
                         <label class="form-label" style="font-size:0.78rem; font-weight:600;">Stock actual</label>
                         <input class="form-input" readonly value="@cargaStockActualTxt" style="width:100px; background:#f9fafb; text-align:right;" />
+                        @if (cargaReservadoActual > 0)
+                        {
+                            <div style="font-size:0.72rem; color:#d97706; margin-top:0.2rem; text-align:center; font-weight:600;"
+                                 title="Ventas MeLi pendientes de despacho (etiqueta no impresa). Esas unidades siguen en el depósito.">
+                                📦 + @cargaReservadoActual reservado
+                            </div>
+                        }
                     </div>
                     <div>
                         <label class="form-label" style="font-size:0.78rem; font-weight:600;">@(cargaModo == "modificar" ? "Cantidad (+/−)" : "Stock final")</label>
@@ -412,7 +419,7 @@ else
             || r.Nombre.Contains(t, StringComparison.OrdinalIgnoreCase));
     }
 
-    private void SeleccionarProductoCarga(int productoId)
+    private async void SeleccionarProductoCarga(int productoId)
     {
         var p = rows?.FirstOrDefault(r => r.ProductoId == productoId);
         if (p is null) return;
@@ -423,7 +430,22 @@ else
             ? $"{(p.StockGramos/1000m):N3} kg"
             : $"{p.StockUnidades} u.";
         cargaValor = 0;
+        cargaReservadoActual = 0;
+        // 2026-06-15: traer reserva MeLi (ventas con etiqueta no impresa) para mostrar contexto
+        try
+        {
+            var resp = await Http.GetAsync($"api/cafe/productos/{p.ProductoId}/reserva");
+            if (resp.IsSuccessStatusCode)
+            {
+                var dto = await resp.Content.ReadFromJsonAsync<ReservaProductoDto>();
+                if (dto is not null) cargaReservadoActual = dto.Reservado;
+                StateHasChanged();
+            }
+        }
+        catch { /* si falla, no se muestra el reservado */ }
     }
+    private int cargaReservadoActual = 0;
+    public record ReservaProductoDto(int ProductoId, int Reservado);
 
     private async Task CambiarDepositoCarrito()
     {
@@ -433,7 +455,7 @@ else
             ToastService.Info($"Lista de {carrito.Count} productos vaciada al cambiar de depósito");
             carrito.Clear();
         }
-        cargaProdSel = null; cargaSearch = ""; cargaStockActualTxt = "—"; cargaValor = 0;
+        cargaProdSel = null; cargaSearch = ""; cargaStockActualTxt = "—"; cargaValor = 0; cargaReservadoActual = 0;
         await CargarStock();
     }
 
