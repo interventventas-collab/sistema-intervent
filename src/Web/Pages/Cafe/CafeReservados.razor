@@ -1,0 +1,151 @@
+@page "/cafe/reservados"
+@attribute [Authorize]
+@inject HttpClient Http
+@inject ToastService ToastService
+@using System.Net.Http.Json
+
+<PageTitle>Reservas MeLi</PageTitle>
+
+<div class="card">
+    <div class="card-header">
+        <h3>📦 Reservas activas (etiqueta no impresa)</h3>
+        <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+            <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.85rem;">
+                Días atrás:
+                <input class="form-input" type="number" min="1" max="30" style="width:70px;"
+                       @bind="dias" @bind:event="oninput" />
+            </label>
+            <button class="btn btn-primary" @onclick="Cargar" disabled="@cargando">
+                @(cargando ? "Cargando…" : "🔄 Recargar")
+            </button>
+            <button class="btn btn-secondary" @onclick="RefrescarMeLi" disabled="@refrescando">
+                @(refrescando ? "Consultando MeLi…" : "🌐 Refrescar contra MeLi (lento)")
+            </button>
+        </div>
+    </div>
+    <div class="card-body" style="padding:0;">
+        @if (cargando)
+        {
+            <p class="text-muted" style="padding:1.5rem;">Cargando…</p>
+        }
+        else if (detalle is null || detalle.Count == 0)
+        {
+            <p class="text-muted" style="padding:1.5rem;">
+                ✨ No hay reservas activas en los últimos @dias días. Todas las etiquetas están impresas.
+            </p>
+        }
+        else
+        {
+            <div style="padding:0.7rem 1rem; background:#fef3c7; border-bottom:1px solid #fde68a; font-size:0.85rem;">
+                <strong>@detalle.Count órdenes</strong> generan reservas activas — total
+                <strong>@detalle.Sum(d => d.UnidadesReservadas)</strong> unidades reservadas en
+                <strong>@detalle.Select(d => d.Sku).Distinct().Count()</strong> productos distintos.
+                <span style="color:#9a3412; margin-left:0.5rem;">
+                    💡 Si ves órdenes acá que en MeLi ya están impresas, tocá <strong>"🌐 Refrescar contra MeLi"</strong>.
+                </span>
+            </div>
+            <div style="overflow-x:auto;">
+                <table class="table table-compact" style="width:100%; font-size:0.85rem;">
+                    <thead style="background:#f3f4f6; position:sticky; top:0;">
+                        <tr>
+                            <th style="text-align:left;">SKU</th>
+                            <th style="text-align:left;">Producto</th>
+                            <th style="text-align:right;">Disp.</th>
+                            <th style="text-align:right;">Reserv.</th>
+                            <th style="text-align:left;">Orden MeLi</th>
+                            <th style="text-align:left;">MLA</th>
+                            <th style="text-align:center;">Qty/Comp</th>
+                            <th style="text-align:left;">Logística</th>
+                            <th style="text-align:left;">Sub-status</th>
+                            <th style="text-align:left;">Fecha</th>
+                            <th style="text-align:left;">Última actualiz.</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in detalle)
+                        {
+                            var updatedRef = r.UpdatedAt ?? r.DateCreated;
+                            var antiguedad = (DateTime.UtcNow - updatedRef).TotalHours;
+                            var rojo = antiguedad > 24;
+                            <tr style="background:@(rojo ? "#fef2f2" : "white");">
+                                <td style="font-family:monospace; color:#1d4ed8; font-weight:700;">@r.Sku</td>
+                                <td>@r.Nombre</td>
+                                <td style="text-align:right;">@r.StockDisponibles</td>
+                                <td style="text-align:right; font-weight:700; color:#d97706;">@r.UnidadesReservadas</td>
+                                <td style="font-family:monospace;">
+                                    <a href="https://www.mercadolibre.com.ar/ventas/@r.MeliOrderId/detalle" target="_blank" style="color:#1d4ed8; text-decoration:none;">
+                                        #@r.MeliOrderId 🔗
+                                    </a>
+                                </td>
+                                <td style="font-family:monospace; font-size:0.8rem;">@r.MeliItemId</td>
+                                <td style="text-align:center;">@r.OrderQty × @r.CompQty.ToString("0.##")</td>
+                                <td>@(r.LogisticType == "self_service" ? "🟢 Flex" : r.LogisticType == "cross_docking" ? "🟡 ME1" : r.LogisticType)</td>
+                                <td>
+                                    <span style="background:#fed7aa; color:#9a3412; padding:0.1rem 0.4rem; border-radius:4px; font-size:0.78rem; font-weight:600;">
+                                        @r.ShippingSubstatus
+                                    </span>
+                                </td>
+                                <td style="white-space:nowrap;">@r.DateCreated.ToLocalTime().ToString("dd/MM HH:mm")</td>
+                                <td style="white-space:nowrap; color:@(rojo ? "#b91c1c" : "#6b7280");" title="Hace @($"{antiguedad:0.0}") hs">
+                                    @updatedRef.ToLocalTime().ToString("dd/MM HH:mm")
+                                    @if (rojo) { <span title="Más de 24 hs sin refrescar — capaz ya está impresa en MeLi"> ⚠</span> }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private List<ReservaDetalleDto>? detalle;
+    private bool cargando = false;
+    private bool refrescando = false;
+    private int dias = 14;
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    private async Task Cargar()
+    {
+        cargando = true; StateHasChanged();
+        try
+        {
+            detalle = await Http.GetFromJsonAsync<List<ReservaDetalleDto>>($"api/cafe/productos/reservas-detalle?dias={dias}");
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error($"Error: {ex.Message}");
+            detalle = new();
+        }
+        cargando = false; StateHasChanged();
+    }
+
+    private async Task RefrescarMeLi()
+    {
+        refrescando = true; StateHasChanged();
+        try
+        {
+            var resp = await Http.PostAsync($"api/meli/orders/refresh-pending?dias={dias}", null);
+            if (resp.IsSuccessStatusCode)
+            {
+                var r = await resp.Content.ReadFromJsonAsync<RefreshResult>();
+                ToastService.Success($"Refrescadas {r?.Refrescadas ?? 0} órdenes contra MeLi");
+                await Cargar();
+            }
+            else { ToastService.Error("No se pudo refrescar contra MeLi"); }
+        }
+        catch (Exception ex) { ToastService.Error($"Error: {ex.Message}"); }
+        refrescando = false; StateHasChanged();
+    }
+
+    public record ReservaDetalleDto(
+        int ProductoId, string Sku, string Nombre, int StockDisponibles,
+        long MeliOrderId, string MeliItemId,
+        int OrderQty, decimal CompQty, int UnidadesReservadas,
+        string ShippingSubstatus, string LogisticType,
+        DateTime DateCreated, DateTime? UpdatedAt);
+
+    public record RefreshResult(int Refrescadas, int Dias);
+}

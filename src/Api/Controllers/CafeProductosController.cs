@@ -339,6 +339,16 @@ public class CafeProductosController : ControllerBase
         return Ok(d);
     }
 
+    /// <summary>2026-06-15: Listado completo de reservas activas con detalle por orden MeLi.
+    /// Útil para auditar las reservas contra el panel MeLi (saber qué órdenes específicas las causan).</summary>
+    [HttpGet("reservas-detalle")]
+    public async Task<IActionResult> GetReservasDetalle([FromQuery] int dias = 14,
+        [FromServices] StockReservaService reservaService = null!)
+    {
+        var detalle = await reservaService.GetReservasDetalleAsync(dias);
+        return Ok(detalle);
+    }
+
     /// <summary>
     /// Consulta a MeLi el tipo de logistica (Full, drop_off, etc.) de cada publicacion vinculada al cafe
     /// y actualiza la columna LogisticType. Necesario para no pushear stock a publicaciones Full.

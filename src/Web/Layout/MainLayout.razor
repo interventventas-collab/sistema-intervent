@@ -366,6 +366,9 @@
                              IsActive="@(IsActive("/cafe/stock-masivo") || IsActive("/stock"))" OnClick="@(() => NavigateTo("/cafe/stock-masivo"))" />
                     <NavItem Href="/cafe/historial-stock" Label="📊 Historial stock" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/cafe/historial-stock")" OnClick="@(() => NavigateTo("/cafe/historial-stock"))" />
+                    @* 2026-06-15: pantalla nueva — listar reservas activas con detalle por orden MeLi *@
+                    <NavItem Href="/cafe/reservados" Label="📦 Reservados MeLi" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive("/cafe/reservados")" OnClick="@(() => NavigateTo("/cafe/reservados"))" />
                     @* 2026-06-15: reportes nuevos — reposición (pedidos a proveedor) y ranking *@
                     <NavItem Href="/stock/reposicion" Label="📦 Reposición / Pedidos" Icon="@SvgIcons.Package"
                              IsActive="@IsActive("/stock/reposicion")" OnClick="@(() => NavigateTo("/stock/reposicion"))" />

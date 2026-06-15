@@ -88,4 +88,66 @@ public class StockReservaService
         var d = await GetReservasAsync(new[] { productoId });
         return d.TryGetValue(productoId, out var v) ? v : 0;
     }
+
+    /// <summary>2026-06-15: Devuelve el detalle COMPLETO de cada orden MeLi pendiente,
+    /// con el producto que reserva, la fecha, sub-status, etc. Para auditar contra el panel MeLi.</summary>
+    public async Task<List<ReservaDetalleDto>> GetReservasDetalleAsync(int dias = 14)
+    {
+        var desde = DateTime.UtcNow.AddDays(-Math.Max(1, dias));
+        var rows = await (
+            from o in _db.MeliOrders
+            join c in _db.MeliItemComponentes on o.ItemId equals c.MeliItemId
+            join p in _db.CafeProductos on c.CafeProductoId equals p.Id
+            where o.Status == "paid"
+               && o.StockDiscounted
+               && o.LogisticType != "fulfillment"
+               && o.DateCreated >= desde
+               && o.ShippingSubstatus != null
+            select new
+            {
+                o.MeliOrderId,
+                o.ItemId,
+                o.Quantity,
+                o.ShippingSubstatus,
+                o.LogisticType,
+                o.DateCreated,
+                o.UpdatedAt,
+                CompCantidad = c.Cantidad,
+                ProductoId = p.Id,
+                p.Sku,
+                p.Nombre,
+                p.StockUnidades
+            }
+        ).ToListAsync();
+
+        var result = new List<ReservaDetalleDto>();
+        foreach (var r in rows)
+        {
+            bool reservada = false;
+            if (string.Equals(r.LogisticType, "self_service", StringComparison.OrdinalIgnoreCase))
+                reservada = SubEstadosFlexReservados.Contains(r.ShippingSubstatus!);
+            else if (string.Equals(r.LogisticType, "cross_docking", StringComparison.OrdinalIgnoreCase))
+                reservada = SubEstadosCrossDockingReservados.Contains(r.ShippingSubstatus!);
+            if (!reservada) continue;
+
+            var unidades = (int)Math.Ceiling((decimal)r.Quantity * r.CompCantidad);
+            result.Add(new ReservaDetalleDto(
+                r.ProductoId, r.Sku ?? "", r.Nombre, r.StockUnidades,
+                r.MeliOrderId, r.ItemId ?? "",
+                r.Quantity, r.CompCantidad, unidades,
+                r.ShippingSubstatus ?? "", r.LogisticType ?? "",
+                r.DateCreated, r.UpdatedAt));
+        }
+        return result
+            .OrderBy(x => x.Sku)
+            .ThenByDescending(x => x.DateCreated)
+            .ToList();
+    }
 }
+
+public record ReservaDetalleDto(
+    int ProductoId, string Sku, string Nombre, int StockDisponibles,
+    long MeliOrderId, string MeliItemId,
+    int OrderQty, decimal CompQty, int UnidadesReservadas,
+    string ShippingSubstatus, string LogisticType,
+    DateTime DateCreated, DateTime? UpdatedAt);
