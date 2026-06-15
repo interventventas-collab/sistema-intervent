@@ -19,8 +19,10 @@ public class OperadoresPinController : ControllerBase
     public OperadoresPinController(AppDbContext db) { _db = db; }
 
     // Operadores conocidos — los mismos del front (OperatorService.Operators)
+    // 2026-06-15: MIGUEL/MAXI eliminados, sumados BENJAMIN, FERMAN, GONZALO.
     private static readonly string[] OperadoresValidos =
-        { "OSMAR", "GERMAN", "GABRIEL", "MIGUEL", "ALEXIS", "WALTER", "RODRIGO" };
+        { "OSMAR", "GERMAN", "GABRIEL",
+          "ALEXIS", "WALTER", "RODRIGO", "BENJAMIN", "FERMAN", "GONZALO" };
 
     public record ValidarPinRequest(string Nombre, string Pin);
     public record CambiarPinRequest(string Nombre, string PinActual, string PinNuevo);

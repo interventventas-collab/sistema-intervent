@@ -20,17 +20,19 @@ public class OperatorService
     private string? _current;
     private DateTime? _validatedAtUtc;
 
-    // 2026-05-28: MAXI eliminado (ya no trabaja). Lista global = todos los que SÍ trabajan.
+    // 2026-06-15: MIGUEL/MAXI eliminados (ya no trabajan). Sumados BENJAMIN, FERMAN, GONZALO.
+    // Lista global = todos los que SÍ trabajan hoy.
     public static readonly string[] Operators =
     {
-        "OSMAR", "GERMAN", "GABRIEL", "MIGUEL", "ALEXIS", "WALTER", "RODRIGO"
+        "OSMAR", "GERMAN", "GABRIEL",
+        "ALEXIS", "WALTER", "RODRIGO", "BENJAMIN", "FERMAN", "GONZALO"
     };
 
     // Operadores por rol (para mostrar solo los del equipo correspondiente en el modal).
-    // 2026-06-15: OSMAR vuelve a la lista normal — ya no usa "candado" especial: con el
-    // sistema de PIN unificado todos los operadores requieren PIN propio.
+    // OSMAR vuelve a la lista normal — el sistema de PIN unificado lo cubre.
     public static readonly string[] OperatorsOficina = { "GERMAN", "GABRIEL", "OSMAR" };
-    public static readonly string[] OperatorsDeposito = { "ALEXIS", "WALTER", "RODRIGO" };
+    // 2026-06-15: depósito ahora son 6 personas (Alexis, Walter, Rodrigo, Benjamin, Ferman, Gonzalo)
+    public static readonly string[] OperatorsDeposito = { "ALEXIS", "WALTER", "RODRIGO", "BENJAMIN", "FERMAN", "GONZALO" };
 
     /// <summary>2026-06-15: ya no se usa la lista de "Protected" — todos los operadores
     /// se autentican con PIN individual. Se deja vacío por compat con pantallas viejas.</summary>
@@ -62,14 +64,16 @@ public class OperatorService
         var n = (name ?? "").Trim().ToUpperInvariant();
         return n switch
         {
-            "OSMAR"   => "#2563eb",
-            "GERMAN"  => "#16a34a",
-            "GABRIEL" => "#f59e0b",
-            "ALEXIS"  => "#dc2626",
-            "WALTER"  => "#7c3aed",
-            "RODRIGO" => "#0891b2",
-            "MIGUEL"  => "#db2777",
-            _         => "#9ca3af"
+            "OSMAR"   => "#2563eb",   // azul
+            "GERMAN"  => "#16a34a",   // verde
+            "GABRIEL" => "#f59e0b",   // ámbar
+            "ALEXIS"  => "#dc2626",   // rojo
+            "WALTER"  => "#7c3aed",   // violeta
+            "RODRIGO" => "#0891b2",   // cyan
+            "BENJAMIN" => "#65a30d",  // lima
+            "FERMAN"  => "#ea580c",   // naranja oscuro
+            "GONZALO" => "#0d9488",   // teal
+            _         => "#9ca3af"    // gris fallback
         };
     }
 
