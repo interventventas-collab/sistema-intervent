@@ -615,12 +615,35 @@
         if (Catalog.Count > 0)
         {
             BuscarLocalInstantaneo();
+            // En modo auditoría enriquecer con info del server (UltimaModifAt + YaEnAuditoriaActiva) para que
+            // los productos ya stockeados se muestren como ✅ Stockeado en vez de "Sin movimientos registrados".
+            if (ModoAuditoria && !string.IsNullOrWhiteSpace(queryBusqueda))
+            {
+                debounceTimer?.Dispose();
+                debounceTimer = new System.Threading.Timer(async _ => await InvokeAsync(EnriquecerBusquedaAuditoriaAsync), null, 250, System.Threading.Timeout.Infinite);
+            }
         }
         else
         {
             debounceTimer?.Dispose();
             debounceTimer = new System.Threading.Timer(async _ => await InvokeAsync(BuscarAsync), null, 250, System.Threading.Timeout.Infinite);
         }
+    }
+
+    private async Task EnriquecerBusquedaAuditoriaAsync()
+    {
+        var q = queryBusqueda;
+        if (string.IsNullOrWhiteSpace(q)) return;
+        try
+        {
+            var r = await Http.GetAsync($"api/stock/publica/{Uri.EscapeDataString(Token)}/search?q={Uri.EscapeDataString(q)}");
+            if (!r.IsSuccessStatusCode) return;
+            var serverList = await r.Content.ReadFromJsonAsync<List<StockProductoPubDto>>();
+            if (serverList is null || q != queryBusqueda) return;
+            productosBuscados = serverList;
+            StateHasChanged();
+        }
+        catch { }
     }
 
     private async Task OnSearchKeyDown(KeyboardEventArgs e)
