@@ -574,6 +574,29 @@ public class StockController : ControllerBase
         return Ok(new { ok = true, id = aud.Id, items, cerradaAt = aud.CerradaAt });
     }
 
+    /// <summary>2026-06-15: Endpoint admin (con auth) para cerrar la auditoría actualmente abierta
+    /// desde el dashboard. El operario ya no tiene botón cerrar en el celular — solo admin desde acá.</summary>
+    [HttpPost("auditoria-actual/cerrar")]
+    [Authorize]
+    public async Task<IActionResult> CerrarAuditoriaActual()
+    {
+        var aud = await _db.StockAuditorias
+            .Where(a => a.CerradaAt == null)
+            .OrderByDescending(a => a.IniciadaAt)
+            .FirstOrDefaultAsync();
+        if (aud is null) return Ok(new { ok = true, message = "No hay auditoría abierta" });
+
+        var nombre = User?.Identity?.Name ?? "Admin";
+        aud.CerradaAt = DateTime.UtcNow;
+        aud.CerradaPorNombre = nombre;
+        await _db.SaveChangesAsync();
+
+        var items = await _db.StockMovimientos
+            .Where(m => m.AuditoriaId == aud.Id && !m.Reverted)
+            .Select(m => m.ProductoId).Distinct().CountAsync();
+        return Ok(new { ok = true, id = aud.Id, items, cerradaAt = aud.CerradaAt });
+    }
+
     public class BatchMovimientoItem
     {
         public int ProductoId { get; set; }

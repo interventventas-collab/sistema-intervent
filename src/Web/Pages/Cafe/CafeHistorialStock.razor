@@ -2,6 +2,8 @@
 @attribute [Authorize]
 @inject ApiClient Api
 @inject ToastService ToastService
+@inject HttpClient Http
+@inject IJSRuntime JS
 
 @* Pantalla "Historial de movimientos de stock".
    Muestra TODOS los cambios de stock loguados en Stock_Movimientos:
@@ -15,6 +17,10 @@
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
         <h3 style="margin: 0;">📊 Historial de movimientos de stock</h3>
         <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <button class="btn btn-warning btn-sm" @onclick="CerrarInventarioActual" disabled="@cerrandoInv"
+                    title="Cierra la auditoría/inventario que está abierto en el celular. Después arranca uno nuevo al primer conteo.">
+                @(cerrandoInv ? "Cerrando…" : "📋 Cerrar inventario actual")
+            </button>
             <button class="btn btn-secondary btn-sm" @onclick="LoadStats" disabled="@isLoading">
                 <i class="fa-solid fa-arrows-rotate"></i> Refrescar
             </button>
@@ -176,6 +182,25 @@
     private List<StockHistorialItem>? movimientos;
     private StockHistorialStats? stats;
     private bool isLoading;
+    private bool cerrandoInv;
+
+    // 2026-06-15: cierra la auditoría abierta actualmente desde el dashboard.
+    // El operario del celular no ve botón Cerrar — solo el admin desde acá.
+    private async Task CerrarInventarioActual()
+    {
+        if (!await JS.InvokeAsync<bool>("confirm",
+            "¿Cerrar el inventario abierto?\n\nDespués no se le pueden agregar más conteos. Al primer conteo nuevo, se inicia un inventario distinto."))
+            return;
+        cerrandoInv = true;
+        try
+        {
+            var resp = await Http.PostAsync("api/stock/auditoria-actual/cerrar", null);
+            if (resp.IsSuccessStatusCode) { ToastService.Success("Inventario cerrado ✓"); await LoadStats(); }
+            else { ToastService.Error("No se pudo cerrar"); }
+        }
+        catch (Exception ex) { ToastService.Error($"Error: {ex.Message}"); }
+        cerrandoInv = false;
+    }
 
     private DateTime? filtroDesde = DateTime.Today.AddDays(-7);
     private DateTime? filtroHasta = DateTime.Today;

@@ -160,30 +160,23 @@
             <button class="sp-header-cambiar" @onclick="ResetOperador">Cambiar</button>
         </div>
 
-        @if (ModoAuditoria && auditoriaActiva is null)
+        @if (ModoAuditoria && auditoriaActiva is null && cargandoAuto)
         {
-            @* === Auditoría: NO hay sesión abierta, hay que iniciarla === *@
-            <div class="sp-card">
-                <h3 style="margin:0 0 0.3rem;">¿Empezamos la auditoría?</h3>
-                <p style="font-size:0.85rem; color:#6b7280; margin:0 0 0.7rem;">Esto abre una sesión de conteo. Los productos que vayas marcando quedan registrados como "stockeados en esta auditoría" para que vos y otros operadores no los repitan.</p>
-                <textarea class="sp-textarea" @bind="auditNotas" placeholder="Notas opcionales (ej: 'Conteo mensual mayo')"></textarea>
-                <button class="sp-btn sp-btn-audit" style="margin-top:0.5rem;" @onclick="IniciarAuditoriaAsync" disabled="@guardando">
-                    @(guardando ? "Iniciando..." : "📋 Iniciar auditoría")
-                </button>
+            <div class="sp-card" style="text-align:center;">
+                <p style="margin:0; color:#6b7280;">Abriendo inventario...</p>
             </div>
         }
         else if (productoSeleccionado is null && (!ModoAuditoria || auditoriaActiva is not null))
         {
             @if (ModoAuditoria && auditoriaActiva is not null)
             {
-                <div class="sp-card" style="padding:0.7rem; display:flex; justify-content:space-between; align-items:center;">
-                    <div style="font-size:0.85rem;">
-                        🟢 Auditoría #@auditoriaActiva.Id
-                        <span style="color:#6b7280; font-size:0.78rem; display:block;">@auditoriaActiva.ItemsContados ítems contados</span>
+                @* 2026-06-15 v3: inventario continuo — sin botón Cerrar (solo admin desde dashboard) *@
+                <div class="sp-card" style="padding:0.7rem;">
+                    <div style="font-size:0.9rem; font-weight:700;">📋 Inventario en curso</div>
+                    <div style="color:#6b7280; font-size:0.78rem; margin-top:0.2rem;">
+                        Desde <strong>@auditoriaActiva.IniciadaAt.ToLocalTime().ToString("dd/MM/yyyy")</strong>
+                        · <strong>@auditoriaActiva.ItemsContados</strong> productos stockeados
                     </div>
-                    <button class="sp-btn sp-btn-cancel" style="width:auto; margin:0; padding:0.5rem 0.8rem; font-size:0.85rem;" @onclick="CerrarAuditoriaAsync" disabled="@guardando">
-                        ✓ Cerrar
-                    </button>
                 </div>
             }
 
@@ -583,8 +576,15 @@
     {
         operadorActivo = op;
         if (!ModoAuditoria) await CargarUltimosMovs();
-        else if (auditoriaActiva is not null) await CargarListaAuditoria();
+        else
+        {
+            // 2026-06-15: inventario continuo — si no hay auditoría abierta, abrimos una sola.
+            // El operario NO toca ningún botón: la inicia automáticamente la app.
+            if (auditoriaActiva is null) await IniciarAuditoriaAsync();
+            if (auditoriaActiva is not null) await CargarListaAuditoria();
+        }
     }
+    private bool cargandoAuto = false;
 
     private void ResetOperador()
     {
@@ -1008,10 +1008,19 @@
             {
                 var local = p.UltimaModifAt.Value.ToLocalTime();
                 var reciente = (DateTime.Now - local).TotalHours < 6;
-                <span class="sp-prod-modif @(reciente ? "reciente" : "")">
-                    @(p.YaEnAuditoriaActiva && ModoAuditoria ? "✅ Contado en esta auditoría · " : "")
-                    Última modif: @FormatFecha(p.UltimaModifAt.Value)@(string.IsNullOrEmpty(p.UltimaModifOperador) ? "" : " · " + p.UltimaModifOperador)
-                </span>
+                var hace = FormatHace(p.UltimaModifAt.Value);
+                if (p.YaEnAuditoriaActiva && ModoAuditoria)
+                {
+                    <span class="sp-prod-modif reciente" style="color:#15803d; font-weight:600;">
+                        ✅ Stockeado@(string.IsNullOrEmpty(p.UltimaModifOperador) ? "" : " por " + p.UltimaModifOperador) · @hace
+                    </span>
+                }
+                else
+                {
+                    <span class="sp-prod-modif @(reciente ? "reciente" : "")">
+                        Última modif: @FormatFecha(p.UltimaModifAt.Value)@(string.IsNullOrEmpty(p.UltimaModifOperador) ? "" : " · " + p.UltimaModifOperador)
+                    </span>
+                }
             }
             else
             {
@@ -1020,6 +1029,17 @@
         </div>
         <span class="sp-prod-stock @(p.StockActual <= 0 ? "cero" : "")">@p.StockActual</span>
     };
+
+    // 2026-06-15: formato relativo "hace X" — para mostrar "Stockeado por Alexis · hace 2h"
+    private string FormatHace(DateTime utc)
+    {
+        var diff = DateTime.UtcNow - utc;
+        if (diff.TotalMinutes < 1) return "recién";
+        if (diff.TotalMinutes < 60) return $"hace {(int)diff.TotalMinutes} min";
+        if (diff.TotalHours < 24) return $"hace {(int)diff.TotalHours}h";
+        var d = (int)diff.TotalDays;
+        return d == 1 ? "ayer" : $"hace {d} días";
+    }
 
     private record MovimientoResp(bool ok, int stockAntes, int stockDespues, int movId);
     private record BatchResp(bool ok, int aplicados, int errores);
