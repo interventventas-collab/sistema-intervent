@@ -376,10 +376,28 @@ public class StockController : ControllerBase
         }
 
         var total = await baseQ.CountAsync();
-        var prods = await baseQ
-            .OrderBy(p => p.Sku)
-            .Skip((page - 1) * pageSize).Take(pageSize)
-            .ToListAsync();
+        List<Models.CafeProducto> prods;
+        if (filter == "hechos" && audActId.HasValue)
+        {
+            // Ordenar por fecha del último movimiento de la auditoría (lo recién stockeado arriba)
+            var ultimasAud = _db.StockMovimientos
+                .Where(m => m.AuditoriaId == audActId.Value && !m.Reverted)
+                .GroupBy(m => m.ProductoId)
+                .Select(g => new { ProductoId = g.Key, Ultima = g.Max(m => m.CreatedAt) });
+            prods = await (from p in baseQ
+                           join o in ultimasAud on p.Id equals o.ProductoId
+                           orderby o.Ultima descending
+                           select p)
+                .Skip((page - 1) * pageSize).Take(pageSize)
+                .ToListAsync();
+        }
+        else
+        {
+            prods = await baseQ
+                .OrderBy(p => p.Sku)
+                .Skip((page - 1) * pageSize).Take(pageSize)
+                .ToListAsync();
+        }
         var prodIds = prods.Select(p => p.Id).ToList();
 
         var ultimasModifs = await _db.StockMovimientos
