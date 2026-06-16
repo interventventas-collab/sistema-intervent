@@ -101,30 +101,38 @@ public class CafeCotizacionPdfService
                     // ─── Bloque emisor + tipo de comprobante ───
                     col.Item().Border(1).BorderColor(Colors.Grey.Lighten1).Padding(8).Row(row =>
                     {
+                        // 2026-06-16: en cotizaciones tipo "X" mostramos SOLO el logo (sin datos fiscales del emisor)
+                        // — el comprobante no es válido como factura, no necesita la info fiscal.
+                        // En tipos oficiales ARCA seguimos mostrando todo (logo + razón social + CUIT + IIBB + contacto).
+                        var esTipoX = v.TipoComprobante == "X";
                         row.RelativeItem(2).Row(r =>
                         {
                             if (logoBytes is not null)
-                                r.ConstantItem(120).Height(70).AlignLeft().AlignMiddle().Image(logoBytes).FitArea();
-
-                            r.RelativeItem().PaddingLeft(logoBytes is null ? 0 : 8).Column(c =>
                             {
-                                var razon = string.IsNullOrWhiteSpace(cfg.NegocioRazonSocial)
-                                    ? (cfg.NegocioNombre ?? "Café e insumos")
-                                    : cfg.NegocioRazonSocial!;
-                                c.Item().Text(razon).FontSize(13).Bold();
-                                if (!string.IsNullOrWhiteSpace(cfg.NegocioRazonSocial) && !string.IsNullOrEmpty(cfg.NegocioNombre))
-                                    c.Item().Text(cfg.NegocioNombre!).FontSize(8).Italic().FontColor(Colors.Grey.Darken1);
+                                if (esTipoX)
+                                    r.ConstantItem(160).Height(80).AlignLeft().AlignMiddle().Image(logoBytes).FitArea();
+                                else
+                                    r.ConstantItem(120).Height(70).AlignLeft().AlignMiddle().Image(logoBytes).FitArea();
+                            }
 
-                                if (!string.IsNullOrEmpty(cfg.NegocioDireccion))
+                            if (!esTipoX)
+                            {
+                                r.RelativeItem().PaddingLeft(logoBytes is null ? 0 : 8).Column(c =>
                                 {
-                                    var locCp = string.Join(" - ", new[] { cfg.NegocioLocalidad, cfg.NegocioCp }
-                                        .Where(x => !string.IsNullOrWhiteSpace(x)));
-                                    var line = cfg.NegocioDireccion + (string.IsNullOrEmpty(locCp) ? "" : " · " + locCp);
-                                    c.Item().Text(line).FontSize(8);
-                                }
-                                // Datos fiscales del emisor: solo en comprobantes oficiales ARCA (no en cotizaciones tipo "X").
-                                if (v.TipoComprobante != "X")
-                                {
+                                    var razon = string.IsNullOrWhiteSpace(cfg.NegocioRazonSocial)
+                                        ? (cfg.NegocioNombre ?? "Café e insumos")
+                                        : cfg.NegocioRazonSocial!;
+                                    c.Item().Text(razon).FontSize(13).Bold();
+                                    if (!string.IsNullOrWhiteSpace(cfg.NegocioRazonSocial) && !string.IsNullOrEmpty(cfg.NegocioNombre))
+                                        c.Item().Text(cfg.NegocioNombre!).FontSize(8).Italic().FontColor(Colors.Grey.Darken1);
+
+                                    if (!string.IsNullOrEmpty(cfg.NegocioDireccion))
+                                    {
+                                        var locCp = string.Join(" - ", new[] { cfg.NegocioLocalidad, cfg.NegocioCp }
+                                            .Where(x => !string.IsNullOrWhiteSpace(x)));
+                                        var line = cfg.NegocioDireccion + (string.IsNullOrEmpty(locCp) ? "" : " · " + locCp);
+                                        c.Item().Text(line).FontSize(8);
+                                    }
                                     if (!string.IsNullOrEmpty(cfg.NegocioCuit) || !string.IsNullOrEmpty(cfg.NegocioCondicionIva))
                                     {
                                         var parts = new List<string>();
@@ -139,16 +147,16 @@ public class CafeCotizacionPdfService
                                         if (cfg.NegocioInicioActividad.HasValue) parts.Add($"Inicio actividad: {cfg.NegocioInicioActividad.Value:dd/MM/yyyy}");
                                         c.Item().Text(string.Join(" · ", parts)).FontSize(8);
                                     }
-                                }
-                                if (!string.IsNullOrEmpty(cfg.NegocioTelefono) || !string.IsNullOrEmpty(cfg.NegocioEmail) || !string.IsNullOrEmpty(cfg.NegocioWeb))
-                                {
-                                    var parts = new List<string>();
-                                    if (!string.IsNullOrEmpty(cfg.NegocioTelefono)) parts.Add($"Tel: {cfg.NegocioTelefono}");
-                                    if (!string.IsNullOrEmpty(cfg.NegocioEmail)) parts.Add(cfg.NegocioEmail);
-                                    if (!string.IsNullOrEmpty(cfg.NegocioWeb)) parts.Add(cfg.NegocioWeb);
-                                    c.Item().Text(string.Join(" · ", parts)).FontSize(8).FontColor(Colors.Grey.Darken1);
-                                }
-                            });
+                                    if (!string.IsNullOrEmpty(cfg.NegocioTelefono) || !string.IsNullOrEmpty(cfg.NegocioEmail) || !string.IsNullOrEmpty(cfg.NegocioWeb))
+                                    {
+                                        var parts = new List<string>();
+                                        if (!string.IsNullOrEmpty(cfg.NegocioTelefono)) parts.Add($"Tel: {cfg.NegocioTelefono}");
+                                        if (!string.IsNullOrEmpty(cfg.NegocioEmail)) parts.Add(cfg.NegocioEmail);
+                                        if (!string.IsNullOrEmpty(cfg.NegocioWeb)) parts.Add(cfg.NegocioWeb);
+                                        c.Item().Text(string.Join(" · ", parts)).FontSize(8).FontColor(Colors.Grey.Darken1);
+                                    }
+                                });
+                            }
                         });
 
                         row.RelativeItem().Column(c =>
