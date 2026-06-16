@@ -19,6 +19,7 @@ public class CafeListaPreciosCustom
 
     /// <summary>Cliente opcional al que apunta esta lista (sino es lista "general").</summary>
     public int? ClienteId { get; set; }
+    [ForeignKey(nameof(ClienteId))]
     public CafeCliente? ClienteNav { get; set; }
 
     /// <summary>Override del tipo de cliente: BAR / OTRO. Si null, se toma del ClienteNav.</summary>
@@ -44,6 +45,7 @@ public class CafeListaPreciosCustomSeccion
     public int Id { get; set; }
 
     public int ListaId { get; set; }
+    [ForeignKey(nameof(ListaId))]
     public CafeListaPreciosCustom? ListaNav { get; set; }
 
     [Required, MaxLength(200)]
@@ -61,6 +63,7 @@ public class CafeListaPreciosCustomItem
     public int Id { get; set; }
 
     public int SeccionId { get; set; }
+    [ForeignKey(nameof(SeccionId))]
     public CafeListaPreciosCustomSeccion? SeccionNav { get; set; }
 
     /// <summary>"PRODUCTO" / "COMBO" / "PACK"</summary>
