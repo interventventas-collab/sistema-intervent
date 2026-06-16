@@ -497,10 +497,10 @@ public class CafeCotizacionPdfService
 
             if (tieneQr)
             {
-                r.ConstantItem(55).PaddingLeft(4).Column(qc =>
+                r.ConstantItem(150).PaddingLeft(6).Column(qc =>
                 {
-                    qc.Item().AlignCenter().Width(50).Image(qrRepartidor!);
-                    qc.Item().AlignCenter().Text("QR ENTREGA").FontSize(5).FontColor(Colors.Grey.Darken1);
+                    qc.Item().AlignCenter().Width(140).Image(qrRepartidor!);
+                    qc.Item().AlignCenter().PaddingTop(2).Text("QR ENTREGA").FontSize(8).Bold().FontColor(Colors.Grey.Darken3);
                 });
             }
         });

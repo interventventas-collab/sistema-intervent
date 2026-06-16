@@ -40,59 +40,66 @@ public class ArcaInvoicePdfService
                 page.DefaultTextStyle(t => t.FontSize(9));
 
                 // ───── HEADER ─────
+                // 2026-06-16 v2: layout de 2 columnas (1 : 1.2) como cotización — logo+datos fiscales juntos
+                // a la izquierda, cuadro A + numeración + bloque entrega + QR GRANDE a la derecha.
+                // El QR ENTREGA pasa a 140px para que el repartidor escanee fácil desde el celu.
                 page.Header().Column(col =>
                 {
                     col.Item().Row(row =>
                     {
-                        // Izquierda — emisor (con logo arriba si tiene)
-                        row.RelativeItem().Column(c =>
+                        // ─── IZQUIERDA: logo + datos fiscales del emisor ───
+                        row.RelativeItem(1).Column(c =>
                         {
                             if (emisor.LogoBytes is not null && emisor.LogoBytes.Length > 0)
                             {
-                                c.Item().Height(50).AlignLeft().Image(emisor.LogoBytes).FitHeight();
+                                c.Item().Height(45).AlignLeft().Image(emisor.LogoBytes).FitHeight();
                             }
                             c.Item().PaddingTop(4).Text("ORIGINAL").FontSize(8).SemiBold();
-                            c.Item().Text(emisor.RazonSocial).FontSize(13).Bold();
-                            c.Item().Text($"CUIT: {FormatCuit(emisor.Cuit)}").FontSize(9);
-                            c.Item().Text($"Condición IVA: {emisor.CondicionIva}").FontSize(9);
+                            c.Item().Text(emisor.RazonSocial).FontSize(12).Bold();
+                            c.Item().Text($"CUIT: {FormatCuit(emisor.Cuit)}").FontSize(8);
+                            c.Item().Text($"Condición IVA: {emisor.CondicionIva}").FontSize(8);
                             if (!string.IsNullOrEmpty(emisor.Domicilio))
-                                c.Item().Text(emisor.Domicilio!).FontSize(9);
+                                c.Item().Text(emisor.Domicilio!).FontSize(8);
                             if (!string.IsNullOrEmpty(emisor.IIBBNumero))
                             {
                                 var label = string.IsNullOrEmpty(emisor.IIBBTipo) ? "IIBB" : $"IIBB {emisor.IIBBTipo}";
-                                c.Item().Text($"{label}: {emisor.IIBBNumero}").FontSize(9);
+                                c.Item().Text($"{label}: {emisor.IIBBNumero}").FontSize(8);
                             }
                             if (emisor.InicioActividades.HasValue)
                             {
-                                c.Item().Text($"Inicio de actividades: {emisor.InicioActividades.Value:dd/MM/yyyy}").FontSize(9);
+                                c.Item().Text($"Inicio de actividades: {emisor.InicioActividades.Value:dd/MM/yyyy}").FontSize(8);
                             }
                         });
 
-                        // Centro — letra grande con borde
-                        row.ConstantItem(80).Border(2).Padding(4).Column(c =>
+                        // ─── DERECHA: cuadro A + tipo + numeración + bloque entrega + QR grande ───
+                        row.RelativeItem(1.2f).PaddingLeft(10).Column(c =>
                         {
-                            c.Item().AlignCenter().Text(letra).FontSize(40).Bold();
-                            c.Item().AlignCenter().Text($"COD. {comp.CbteTipoNro:00}").FontSize(8);
-                        });
+                            // Fila 1: cuadro A + numeración (cuadro chico 50px, queda al lado del texto)
+                            c.Item().Row(headerR =>
+                            {
+                                headerR.ConstantItem(50).Border(1).Padding(3).Column(cc =>
+                                {
+                                    cc.Item().AlignCenter().Text(letra).FontSize(28).Bold();
+                                    cc.Item().AlignCenter().Text($"COD. {comp.CbteTipoNro:00}").FontSize(7);
+                                });
+                                headerR.RelativeItem().PaddingLeft(6).Column(cc =>
+                                {
+                                    cc.Item().AlignRight().Text(nombreTipo).FontSize(13).Bold();
+                                    cc.Item().AlignRight().Text($"Punto de Venta: {comp.PtoVta:00000}").FontSize(9);
+                                    cc.Item().AlignRight().Text($"Comp. Nro: {comp.CbteNro:00000000}").FontSize(9);
+                                    cc.Item().AlignRight().Text($"Fecha de Emisión: {FormatFecha(comp.Fecha)}").FontSize(9);
+                                });
+                            });
 
-                        // Derecha — tipo + numeración + fecha + sello PAGADO + bloque entrega + QR.
-                        // 2026-06-16: el bloque DOMICILIO DE ENTREGA + QR ahora vive ACÁ (mitad derecha del header)
-                        // en lugar de abajo, para ganar espacio para items y agrupar la info de despacho.
-                        // PaddingLeft(10) en la columna derecha para que el bloque gris NO toque el cuadro "A · COD.01".
-                        row.RelativeItem().PaddingLeft(10).Column(c =>
-                        {
-                            c.Item().AlignRight().Text(nombreTipo).FontSize(13).Bold();
-                            c.Item().AlignRight().Text($"Punto de Venta: {comp.PtoVta:00000}   Comp. Nro: {comp.CbteNro:00000000}").FontSize(9);
-                            c.Item().AlignRight().Text($"Fecha de Emisión: {FormatFecha(comp.Fecha)}").FontSize(9);
                             if (comp.IsPaid)
                             {
                                 c.Item().PaddingTop(4).AlignRight().Row(r =>
                                 {
                                     r.AutoItem().Background(Colors.Green.Lighten4).Border(1).BorderColor(Colors.Green.Darken1)
-                                        .Padding(3).Text("✓ PAGADO").FontSize(9).Bold().FontColor(Colors.Green.Darken3);
+                                        .Padding(3).Text("PAGADO").FontSize(9).Bold().FontColor(Colors.Green.Darken3);
                                 });
                             }
-                            // Bloque entrega + QR debajo de "Fecha de Emisión".
+                            // Bloque entrega + QR grande debajo de la numeración.
                             RenderBloqueEntregaHeader(c, comp, receptor);
                         });
                     });
@@ -521,82 +528,49 @@ public class ArcaInvoicePdfService
 
         col.Item().PaddingTop(6).Background(Colors.Grey.Lighten4).Border(0.5f).BorderColor(Colors.Grey.Lighten1).Padding(5).Row(r =>
         {
-            // Izquierda: domicilio + repartidor + días + estado + comentarios
+            // Izquierda: domicilio + chips compactos (sin emojis ni chips de día — no entran con QR grande)
             r.RelativeItem().Column(cc =>
             {
                 cc.Item().Text("DOMICILIO DE ENTREGA").FontSize(6).Bold().FontColor(Colors.Grey.Darken2).LetterSpacing(0.05f);
-                if (tieneEntrega) cc.Item().Text(domicilio!).FontSize(9).Bold();
+                if (tieneEntrega) cc.Item().Text(domicilio!).FontSize(8).Bold();
 
-                // Línea horizontal: Repartidor + Días + estado
                 cc.Item().PaddingTop(3).Row(lineRow =>
                 {
-                    if (!string.IsNullOrWhiteSpace(comp.EntregaPor))
-                    {
-                        lineRow.AutoItem().AlignMiddle().PaddingRight(6).Text(t =>
-                        {
-                            t.Span("Repartidor: ").FontSize(7).FontColor(Colors.Grey.Darken1);
-                            t.Span(comp.EntregaPor!).Bold().FontSize(8).FontColor(Colors.Grey.Darken4);
-                        });
-                    }
-
                     if (comp.Retira)
                     {
-                        lineRow.AutoItem().AlignMiddle().Text("🚗 RETIRA").Bold().FontSize(7).FontColor(Colors.Green.Darken3);
+                        lineRow.AutoItem().AlignMiddle().PaddingRight(4).Background(Colors.Green.Lighten4)
+                            .Border(0.5f).BorderColor(Colors.Green.Lighten1).Padding(2)
+                            .Text("RETIRA").Bold().FontSize(6).FontColor(Colors.Green.Darken3);
                     }
                     else if (comp.EnRadar)
                     {
-                        lineRow.AutoItem().AlignMiddle().Text("🛰 EN RADAR").Bold().FontSize(7).FontColor(Colors.Blue.Darken3);
-                    }
-                    else if (diasActivos.Count > 0)
-                    {
-                        lineRow.AutoItem().AlignMiddle().PaddingRight(3).Text("Días:").FontSize(6).FontColor(Colors.Grey.Darken1);
-                        foreach (var d in diasDelComp)
-                        {
-                            var on = diasActivos.Contains(d);
-                            var bg = on ? Colors.Blue.Lighten5 : Colors.White;
-                            var fg = on ? Colors.Blue.Darken3 : Colors.Grey.Darken1;
-                            var bd = on ? Colors.Blue.Darken2 : Colors.Grey.Lighten1;
-                            var bw = on ? 1f : 0.5f;
-                            lineRow.ConstantItem(13).PaddingHorizontal(0.5f).Border(bw).BorderColor(bd)
-                                .Background(bg).AlignCenter().AlignMiddle()
-                                .Text(d.Substring(0, 1)).Bold().FontSize(6).FontColor(fg);
-                        }
+                        lineRow.AutoItem().AlignMiddle().PaddingRight(4).Background(Colors.Blue.Lighten4)
+                            .Border(0.5f).BorderColor(Colors.Blue.Lighten1).Padding(2)
+                            .Text("EN RADAR").Bold().FontSize(6).FontColor(Colors.Blue.Darken3);
                     }
 
-                    // Sello PAGADA/PENDIENTE compacto al final de la línea
                     if (comp.IsPaid)
                     {
-                        lineRow.AutoItem().PaddingLeft(6).AlignMiddle().Background(Colors.Green.Lighten4)
+                        lineRow.AutoItem().AlignMiddle().Background(Colors.Green.Lighten4)
                             .Border(0.5f).BorderColor(Colors.Green.Lighten1).Padding(2)
-                            .Text("✓ PAGADA").Bold().FontSize(6).FontColor(Colors.Green.Darken3);
+                            .Text("PAGADA").Bold().FontSize(6).FontColor(Colors.Green.Darken3);
                     }
                     else
                     {
-                        lineRow.AutoItem().PaddingLeft(6).AlignMiddle().Background(Colors.Yellow.Lighten4)
+                        lineRow.AutoItem().AlignMiddle().Background(Colors.Yellow.Lighten4)
                             .Border(0.5f).BorderColor(Colors.Yellow.Darken1).Padding(2)
-                            .Text("⧗ PENDIENTE").Bold().FontSize(6).FontColor(Colors.Orange.Darken3);
+                            .Text("PENDIENTE").Bold().FontSize(6).FontColor(Colors.Orange.Darken3);
                     }
                 });
-
-                // Comentarios (Observaciones de la venta) — debajo, separados por línea punteada
-                if (!string.IsNullOrWhiteSpace(comp.Observaciones))
-                {
-                    cc.Item().PaddingTop(4).BorderTop(0.5f).BorderColor(Colors.Grey.Lighten1).PaddingTop(3)
-                        .Text(t =>
-                        {
-                            t.Span("Comentarios: ").FontSize(6).Bold().FontColor(Colors.Grey.Darken2).LetterSpacing(0.05f);
-                            t.Span(comp.Observaciones!).FontSize(7).FontColor(Colors.Grey.Darken3);
-                        });
-                }
             });
 
-            // Derecha: QR ENTREGA
+            // Derecha: QR ENTREGA GRANDE (140px ≈ 3× del anterior 65px)
             if (tieneQr)
             {
-                r.ConstantItem(75).PaddingLeft(6).Column(qc =>
+                r.ConstantItem(150).PaddingLeft(6).Column(qc =>
                 {
-                    qc.Item().AlignCenter().Width(65).Image(comp.QrRepartidorBytes!);
-                    qc.Item().AlignCenter().Text("QR ENTREGA").FontSize(6).FontColor(Colors.Grey.Darken1);
+                    qc.Item().AlignCenter().Width(140).Image(comp.QrRepartidorBytes!);
+                    qc.Item().AlignCenter().PaddingTop(2).Text("QR ENTREGA").FontSize(8).Bold().FontColor(Colors.Grey.Darken3);
                 });
             }
         });
