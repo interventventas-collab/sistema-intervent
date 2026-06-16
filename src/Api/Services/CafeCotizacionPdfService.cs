@@ -173,10 +173,23 @@ public class CafeCotizacionPdfService
                             if (v.TipoComprobante == "X")
                                 c.Item().PaddingTop(2).AlignRight().Text("Documento no válido como factura")
                                     .FontSize(7).Italic().FontColor(Colors.Grey.Darken1);
-                            // 2026-06-16: bloque DOMICILIO DE ENTREGA + Repartidor + chips + QR ENTREGA — al lado del cuadro X.
-                            // Mismo lugar que en la factura ARCA para que el repartidor SIEMPRE encuentre el QR y los datos en
-                            // la misma posición, en cualquier comprobante. Reemplaza el QR suelto + bloques duplicados del footer.
-                            RenderBloqueEntregaHeaderCotiz(c, v, diasActivos, diasDelComp, qrRepartidor);
+                            if (v.IsPaid && v.Estado != "anulado")
+                            {
+                                c.Item().PaddingTop(3).AlignRight().Row(rr =>
+                                {
+                                    rr.AutoItem().Background(Colors.Red.Lighten4).Border(1).BorderColor(Colors.Red.Medium)
+                                        .Padding(3).Text("PAGADO").FontSize(11).Bold().FontColor(Colors.Red.Darken2);
+                                });
+                            }
+                            // QR para que el repartidor escanee y cargue la cobranza desde su celu
+                            if (qrRepartidor != null)
+                            {
+                                c.Item().PaddingTop(4).AlignRight().Column(qc =>
+                                {
+                                    qc.Item().Width(70).Height(70).Image(qrRepartidor).FitArea();
+                                    qc.Item().AlignCenter().Text("QR ENTREGA").FontSize(6).FontColor(Colors.Grey.Darken1);
+                                });
+                            }
                         });
                     });
 
@@ -391,10 +404,26 @@ public class CafeCotizacionPdfService
                         });
                     });
 
-                    // 2026-06-16: los bloques "Entrega en", "Repartidor" y "Días de visita / reparto"
-                    // ya están arriba en el bloque DOMICILIO DE ENTREGA del header — los saco de acá
-                    // para no duplicar. El repartidor SIEMPRE busca esa info en el mismo lugar
-                    // (al lado del cuadro X / A), igual en facturas y cotizaciones.
+                    if (!string.IsNullOrWhiteSpace(v.ClienteDomicilioEntregaSnapshot))
+                    {
+                        fc.Item().PaddingTop(5).Border(1).BorderColor(Colors.Grey.Lighten1)
+                            .Background(Colors.Grey.Lighten4).Padding(5).Text(t =>
+                            {
+                                t.Span("Entrega en: ").SemiBold();
+                                t.Span(v.ClienteDomicilioEntregaSnapshot!);
+                            });
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(v.EntregaPor))
+                    {
+                        fc.Item().PaddingTop(5).Border(1).BorderColor(Colors.Grey.Lighten1)
+                            .Background(Colors.Grey.Lighten4).Padding(5).Text(t =>
+                            {
+                                t.Span("Repartidor: ").SemiBold();
+                                t.Span(v.EntregaPor!);
+                            });
+                    }
+
                     if (!string.IsNullOrEmpty(v.ClienteComentariosComprobante))
                     {
                         fc.Item().PaddingTop(5).BorderLeft(3).BorderColor(Colors.Orange.Darken1)
@@ -413,6 +442,37 @@ public class CafeCotizacionPdfService
                             t.Span(v.Observaciones!);
                         });
                     }
+
+                    // Días de visita / reparto
+                    fc.Item().PaddingTop(5).Border(1).BorderColor(Colors.Grey.Lighten1).Padding(5).Row(row =>
+                    {
+                        row.AutoItem().AlignMiddle().PaddingRight(6).Text("Días de visita / reparto:")
+                            .FontSize(8).FontColor(Colors.Grey.Darken1);
+                        if (v.Retira)
+                        {
+                            row.AutoItem().AlignMiddle().Padding(3)
+                                .Text("RETIRA EN LOCAL").Bold().FontSize(10).FontColor(Colors.Green.Darken3);
+                        }
+                        else if (v.EnRadar)
+                        {
+                            row.AutoItem().AlignMiddle().Padding(3)
+                                .Text("EN RADAR").Bold().FontSize(10).FontColor(Colors.Blue.Darken3);
+                        }
+                        else
+                        {
+                            foreach (var d in diasDelComp)
+                            {
+                                var on = diasActivos.Contains(d);
+                                var bg = on ? Colors.Blue.Lighten5 : Colors.White;
+                                var fg = on ? Colors.Blue.Darken3 : Colors.Grey.Darken2;
+                                var bd = on ? Colors.Blue.Darken2 : Colors.Grey.Lighten1;
+                                var bw = on ? 1.5f : 1f;
+                                row.ConstantItem(40).PaddingHorizontal(2).Border(bw).BorderColor(bd)
+                                    .Background(bg).AlignCenter().AlignMiddle().Padding(2)
+                                    .Text(on ? d : d).Bold().FontSize(8).FontColor(fg);
+                            }
+                        }
+                    });
 
                     // Línea final con "Gracias por tu compra"
                     fc.Item().PaddingTop(8).BorderTop(1).BorderColor(Colors.Grey.Lighten2).PaddingTop(4).AlignCenter().Text(t =>
