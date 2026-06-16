@@ -1,5 +1,6 @@
 using Api.Data;
 using Api.Models;
+using Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -16,10 +17,12 @@ namespace Api.Controllers;
 public class CafeListasCustomController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly CafeListaCustomPdfService _pdfService;
 
-    public CafeListasCustomController(AppDbContext db)
+    public CafeListasCustomController(AppDbContext db, CafeListaCustomPdfService pdfService)
     {
         _db = db;
+        _pdfService = pdfService;
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -623,5 +626,81 @@ public class CafeListasCustomController : ControllerBase
             (todos[idx].Orden, todos[idx + 1].Orden) = (todos[idx + 1].Orden, todos[idx].Orden);
         await _db.SaveChangesAsync();
         return Ok(new { ok = true });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // FASE 3 — Descargar PDF (estilo TAKE AWAY)
+    // ═══════════════════════════════════════════════════════════════════════
+    [HttpGet("{listaId:int}/pdf")]
+    public async Task<IActionResult> DescargarPdf(int listaId)
+    {
+        var lista = await _db.CafeListasPreciosCustom
+            .Include(l => l.ClienteNav)
+            .FirstOrDefaultAsync(l => l.Id == listaId && l.IsActive);
+        if (lista is null) return NotFound();
+
+        var negocio = await _db.CafeSettings.FirstOrDefaultAsync() ?? new CafeSetting();
+
+        var secciones = await _db.CafeListasPreciosCustomSecciones
+            .Where(s => s.ListaId == listaId)
+            .OrderBy(s => s.Orden).ThenBy(s => s.Id)
+            .Include(s => s.Items)
+            .ToListAsync();
+
+        var productoIds = secciones.SelectMany(s => s.Items).Where(i => i.TipoItem == "PRODUCTO").Select(i => i.RefId).Distinct().ToList();
+        var comboIds = secciones.SelectMany(s => s.Items).Where(i => i.TipoItem == "COMBO").Select(i => i.RefId).Distinct().ToList();
+        var packIds = secciones.SelectMany(s => s.Items).Where(i => i.TipoItem == "PACK").Select(i => i.RefId).Distinct().ToList();
+
+        var productos = await _db.CafeProductos.Where(p => productoIds.Contains(p.Id))
+            .Select(p => new { p.Id, p.Nombre, p.Sku, p.PrecioBar, p.PrecioOtro }).ToListAsync();
+        var combos = await _db.CafeCombos.Where(c => comboIds.Contains(c.Id))
+            .Select(c => new { c.Id, c.Nombre, c.Sku, Precio = (decimal?)c.PrecioReferencia }).ToListAsync();
+        var packs = await _db.CafeProductoPacks.Include(p => p.Producto)
+            .Where(p => packIds.Contains(p.Id))
+            .Select(p => new { p.Id, p.Nombre, p.Cantidad, p.PrecioOverride, ProdNombre = p.Producto!.Nombre, p.Producto.PrecioBar, p.Producto.PrecioOtro, p.Producto.Sku }).ToListAsync();
+
+        var esBar = string.Equals(lista.TipoCliente, "BAR", StringComparison.OrdinalIgnoreCase);
+
+        var seccionesPdf = secciones.Select(s => new CafeListaCustomPdfService.SeccionInfo(
+            s.Titulo,
+            s.Items.OrderBy(i => i.Orden).ThenBy(i => i.Id).Select(i =>
+            {
+                string? sku = null; string? nombre = $"#{i.RefId}"; decimal? precio = null; string? detalle = null;
+                if (i.TipoItem == "PRODUCTO")
+                {
+                    var p = productos.FirstOrDefault(x => x.Id == i.RefId);
+                    if (p != null) { sku = p.Sku; nombre = p.Nombre; precio = esBar ? (p.PrecioBar ?? p.PrecioOtro) : (p.PrecioOtro ?? p.PrecioBar); }
+                }
+                else if (i.TipoItem == "COMBO")
+                {
+                    var c = combos.FirstOrDefault(x => x.Id == i.RefId);
+                    if (c != null) { sku = c.Sku; nombre = c.Nombre; precio = c.Precio; detalle = "Combo"; }
+                }
+                else if (i.TipoItem == "PACK")
+                {
+                    var p = packs.FirstOrDefault(x => x.Id == i.RefId);
+                    if (p != null)
+                    {
+                        sku = p.Sku;
+                        nombre = string.IsNullOrWhiteSpace(p.Nombre) ? p.ProdNombre : p.Nombre;
+                        var precioBase = esBar ? (p.PrecioBar ?? p.PrecioOtro) : (p.PrecioOtro ?? p.PrecioBar);
+                        precio = p.PrecioOverride ?? (precioBase * p.Cantidad);
+                        detalle = $"x {p.Cantidad}";
+                    }
+                }
+                return new CafeListaCustomPdfService.ItemInfo(sku, nombre ?? "", detalle, precio, i.EsNovedad);
+            }).ToList()
+        )).ToList();
+
+        var input = new CafeListaCustomPdfService.PdfInput(
+            negocio,
+            new CafeListaCustomPdfService.ListaInfo(lista.Nombre, lista.NumeroLista, lista.Observaciones, lista.TipoCliente, lista.ClienteNav?.Nombre),
+            seccionesPdf
+        );
+
+        var pdf = _pdfService.GenerarPdf(input);
+        var safeName = string.Concat((lista.Nombre ?? "lista").Where(c => char.IsLetterOrDigit(c) || c == ' ' || c == '-').ToArray()).Trim();
+        if (string.IsNullOrEmpty(safeName)) safeName = $"lista-{listaId}";
+        return File(pdf, "application/pdf", $"{safeName}.pdf");
     }
 }

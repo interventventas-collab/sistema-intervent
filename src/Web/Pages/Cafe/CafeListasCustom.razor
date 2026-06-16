@@ -87,6 +87,9 @@
                             <button class="btn btn-primary btn-sm" style="font-size: 0.78rem;" @onclick="() => EditarItems(l)">
                                 ✏ Editar items
                             </button>
+                            <button class="btn btn-sm" style="font-size: 0.78rem; background:#15803d; color:white;" @onclick="() => DescargarPdf(l)" disabled="@(l.CantidadItems == 0)" title="@(l.CantidadItems == 0 ? "Lista vacía — agregá items primero" : "Descargar PDF")">
+                                📥 PDF
+                            </button>
                             <button class="btn btn-secondary btn-sm" style="font-size: 0.78rem;" @onclick="() => OpenEditarModal(l)">
                                 📝 Datos
                             </button>
@@ -324,6 +327,12 @@
     }
 
     private void EditarItems(ListaCustomDto l) => Nav.NavigateTo($"/cafe/listas-precios-custom/{l.Id}/editar");
+
+    private async Task DescargarPdf(ListaCustomDto l)
+    {
+        try { await JS.InvokeVoidAsync("open", $"/api/cafe/listas-custom/{l.Id}/pdf", "_blank"); }
+        catch { ToastService.Error("No se pudo abrir el PDF"); }
+    }
 
     private async Task Duplicar(ListaCustomDto l)
     {
