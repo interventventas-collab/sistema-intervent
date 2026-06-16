@@ -367,9 +367,11 @@ public class CafeListasCustomController : ControllerBase
                     var p = packs.FirstOrDefault(x => x.Id == i.RefId);
                     if (p != null)
                     {
-                        nombre = string.IsNullOrWhiteSpace(p.Nombre) ? p.ProdNombre : p.Nombre;
+                        // 2026-06-16: usamos el nombre del PRODUCTO base como nombre principal,
+                        // y la cantidad como detalle ("Pack x 100"). El Nombre propio del pack era generico
+                        // y se perdia la info del producto en la lista.
+                        nombre = p.ProdNombre;
                         sku = p.Sku;
-                        // precio por unidad del producto base * cantidad del pack, salvo override
                         var precioBase = esBar ? (p.PrecioBar ?? p.PrecioOtro) : (p.PrecioOtro ?? p.PrecioBar);
                         precio = p.PrecioOverride ?? (precioBase * p.Cantidad);
                         detalle = $"Pack x {p.Cantidad}";
@@ -446,11 +448,12 @@ public class CafeListasCustomController : ControllerBase
                 .Select(p => new ItemDisponibleDto
                 {
                     Tipo = "PACK", Id = p.Id,
-                    Nombre = string.IsNullOrEmpty(p.Nombre) ? (p.Producto!.Nombre + " x " + p.Cantidad) : p.Nombre,
-                    Sku = p.Producto!.Sku,
+                    // 2026-06-16: usamos siempre el nombre del producto base + "Pack x N" como detalle.
+                    Nombre = p.Producto!.Nombre,
+                    Sku = p.Producto.Sku,
                     PrecioBar = p.PrecioOverride ?? (p.Producto.PrecioBar.HasValue ? p.Producto.PrecioBar.Value * p.Cantidad : (decimal?)null),
                     PrecioOtro = p.PrecioOverride ?? (p.Producto.PrecioOtro.HasValue ? p.Producto.PrecioOtro.Value * p.Cantidad : (decimal?)null),
-                    Detalle = $"x {p.Cantidad}"
+                    Detalle = $"Pack x {p.Cantidad}"
                 }).ToListAsync();
         }
         return Ok(result);
@@ -682,10 +685,10 @@ public class CafeListasCustomController : ControllerBase
                     if (p != null)
                     {
                         sku = p.Sku;
-                        nombre = string.IsNullOrWhiteSpace(p.Nombre) ? p.ProdNombre : p.Nombre;
+                        nombre = p.ProdNombre;   // 2026-06-16: usar nombre del producto base
                         var precioBase = esBar ? (p.PrecioBar ?? p.PrecioOtro) : (p.PrecioOtro ?? p.PrecioBar);
                         precio = p.PrecioOverride ?? (precioBase * p.Cantidad);
-                        detalle = $"x {p.Cantidad}";
+                        detalle = $"Pack x {p.Cantidad}";
                     }
                 }
                 return new CafeListaCustomPdfService.ItemInfo(sku, nombre ?? "", detalle, precio, i.EsNovedad);
