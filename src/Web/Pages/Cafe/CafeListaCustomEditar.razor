@@ -103,15 +103,17 @@
                                     {
                                         <span style="color: #1e40af; font-family: monospace; margin-right: 0.3rem; font-weight: 600;">@d.Sku</span>
                                     }
+                                    @* 2026-06-16: Detalle ("Pack x N", "Combo") como chip naranja BIEN VISIBLE al lado del SKU,
+                                       para distinguir packs del mismo producto sin que el nombre largo lo recorte. *@
+                                    @if (!string.IsNullOrEmpty(d.Detalle))
+                                    {
+                                        <span style="background: #fed7aa; color: #9a3412; font-size: 0.7rem; padding: 0.1rem 0.4rem; border-radius: 3px; margin-right: 0.35rem; font-weight: 700;">@d.Detalle</span>
+                                    }
                                     @if (!string.IsNullOrEmpty(d.Marca))
                                     {
                                         <span style="background: #f3f4f6; color: #4b5563; font-size: 0.65rem; padding: 0.05rem 0.3rem; border-radius: 3px; margin-right: 0.3rem; font-weight: 700; letter-spacing: 0.5px;">@d.Marca.ToUpperInvariant()</span>
                                     }
                                     @d.Nombre
-                                    @if (!string.IsNullOrEmpty(d.Detalle))
-                                    {
-                                        <span style="color: #6b7280; font-size: 0.75rem; margin-left: 0.3rem;">· @d.Detalle</span>
-                                    }
                                 </div>
                                 <span style="color: #15803d; font-weight: 700; white-space: nowrap;">$@((tipoActivo == "PRODUCTO" || tipoActivo == "PACK") && (lista.TipoCliente == "BAR" ? d.PrecioBar : d.PrecioOtro) is not null ? (lista.TipoCliente == "BAR" ? d.PrecioBar : d.PrecioOtro)?.ToString("N0") : (d.PrecioOtro ?? d.PrecioBar ?? 0).ToString("N0"))</span>
                             </div>
