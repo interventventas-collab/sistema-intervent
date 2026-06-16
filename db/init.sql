@@ -2988,6 +2988,22 @@ IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name='IX_MeliShipments_Mode')
     CREATE INDEX IX_MeliShipments_Mode ON MeliShipments(Mode);
 GO
 
+-- MeliShipments 2026-06-16: timestamp de cuando posteamos el link de Google Maps como nota interna en la orden de MeLi.
+-- Para envios Flex (self_service). Si esta seteado, no volvemos a postear (evita duplicar).
+-- Backfill: marcamos todos los shipments existentes como "ya enviado" para que NO se posteen notas en envios viejos al deployar.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='MapsNoteSentAt' AND Object_ID=Object_ID('MeliShipments'))
+BEGIN
+    ALTER TABLE MeliShipments ADD MapsNoteSentAt DATETIME2 NULL;
+END
+GO
+-- Backfill: solo la primera vez (cuando todos estan null). Marcamos como ya enviado para evitar el spam de notas en envios viejos.
+IF NOT EXISTS (SELECT TOP 1 1 FROM MeliShipments WHERE MapsNoteSentAt IS NOT NULL)
+   AND EXISTS (SELECT TOP 1 1 FROM MeliShipments)
+BEGIN
+    UPDATE MeliShipments SET MapsNoteSentAt = SYSUTCDATETIME();
+END
+GO
+
 -- Permiso de menu para el modulo me1 (envios manuales tipo ME1)
 IF NOT EXISTS (SELECT * FROM RolePermissions WHERE RoleId=1 AND MenuKey='me1')
     INSERT INTO RolePermissions (RoleId, MenuKey) VALUES (1, 'me1');

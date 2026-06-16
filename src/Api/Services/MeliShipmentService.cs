@@ -221,7 +221,76 @@ public class MeliShipmentService
             if (batchCount < limit) break;
             offset += limit;
         }
+
+        // 2026-06-16: Para envios Flex, postear el link de Google Maps como nota interna en cada
+        // orden de MeLi. Asi el repartidor abre la app de MeLi y tiene el link a Maps al toque.
+        // Solo procesa shipments del rango (daysBack) con MapsNoteSentAt=null.
+        if (modeFilter == "flex")
+        {
+            try { await PostPendingMapsNotesAsync(account, http, daysBack); }
+            catch (Exception ex) { Console.WriteLine($"[MapsNote] error general account {account.Nickname}: {ex.Message}"); }
+        }
+
         return (synced, flex);
+    }
+
+    /// <summary>2026-06-16: postea nota interna con link de Google Maps en cada orden Flex sincronizada.
+    /// Filtra por: cuenta, logistic_type=self_service, MapsNoteSentAt null, hay MeliOrderId, DateCreated dentro de daysBack.</summary>
+    private async Task PostPendingMapsNotesAsync(MeliAccount account, HttpClient http, int daysBack)
+    {
+        var cutoff = DateTime.UtcNow.AddDays(-daysBack);
+        var pendientes = await _db.MeliShipments
+            .Where(s => s.MeliAccountId == account.Id
+                        && s.LogisticType == "self_service"
+                        && s.MapsNoteSentAt == null
+                        && s.MeliOrderId != null
+                        && s.DateCreated >= cutoff)
+            .ToListAsync();
+
+        foreach (var sh in pendientes)
+        {
+            try
+            {
+                var link = BuildMapsLink(sh);
+                if (string.IsNullOrEmpty(link)) continue;
+                var noteText = $"Mapa de entrega: {link}";
+                var body = JsonSerializer.Serialize(new { note = noteText });
+                using var content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
+                var resp = await http.PostAsync($"https://api.mercadolibre.com/orders/{sh.MeliOrderId}/notes", content);
+                if (resp.IsSuccessStatusCode)
+                {
+                    sh.MapsNoteSentAt = DateTime.UtcNow;
+                }
+                else
+                {
+                    var errBody = await resp.Content.ReadAsStringAsync();
+                    Console.WriteLine($"[MapsNote] order {sh.MeliOrderId} {(int)resp.StatusCode}: {errBody[..Math.Min(errBody.Length, 200)]}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[MapsNote] order {sh.MeliOrderId} exception: {ex.Message}");
+            }
+        }
+        await _db.SaveChangesAsync();
+    }
+
+    /// <summary>Arma el link de Google Maps prefiriendo lat/lng (mas preciso). Si no hay, usa address_line + city.</summary>
+    private static string? BuildMapsLink(MeliShipment sh)
+    {
+        if (sh.Latitude.HasValue && sh.Longitude.HasValue
+            && sh.Latitude.Value != 0m && sh.Longitude.Value != 0m)
+        {
+            var lat = sh.Latitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var lng = sh.Longitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            return $"https://www.google.com/maps/search/?api=1&query={lat},{lng}";
+        }
+
+        var addr = sh.AddressLine;
+        if (string.IsNullOrWhiteSpace(addr)) return null;
+        var query = addr;
+        if (!string.IsNullOrWhiteSpace(sh.City)) query += " " + sh.City;
+        return "https://www.google.com/maps/search/?api=1&query=" + Uri.EscapeDataString(query);
     }
 
     private async Task UpsertShipmentAsync(int accountId, long orderId, decimal? orderTotal, string? itemsSummary, string? buyerNickname, JsonElement sh)

@@ -59,4 +59,8 @@ public class MeliShipment
     public string? Notes { get; set; }
 
     public DateTime LastSyncedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>2026-06-16: cuando posteamos el link de Google Maps como nota interna en la
+    /// orden de MeLi (para el repartidor). Si esta seteado no volvemos a postear (evita duplicar).</summary>
+    public DateTime? MapsNoteSentAt { get; set; }
 }
