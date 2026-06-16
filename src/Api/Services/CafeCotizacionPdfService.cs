@@ -181,17 +181,14 @@ public class CafeCotizacionPdfService
                                         .Padding(3).Text("PAGADO").FontSize(11).Bold().FontColor(Colors.Red.Darken2);
                                 });
                             }
-                            // QR para que el repartidor escanee y cargue la cobranza desde su celu
-                            if (qrRepartidor != null)
-                            {
-                                c.Item().PaddingTop(4).AlignRight().Column(qc =>
-                                {
-                                    qc.Item().Width(70).Height(70).Image(qrRepartidor).FitArea();
-                                    qc.Item().AlignCenter().Text("QR ENTREGA").FontSize(6).FontColor(Colors.Grey.Darken1);
-                                });
-                            }
                         });
                     });
+
+                    // 2026-06-16: bloque DOMICILIO DE ENTREGA + QR — RIGHT debajo del header, ancho completo.
+                    // Reemplaza los bloques duplicados del footer (Entrega en / Repartidor / Días).
+                    // Va FUERA del row del header (no en la mitad derecha) para que el ancho disponible sea
+                    // toda la página y no rompa el layout de QuestPDF.
+                    RenderBloqueEntregaCotiz(col, v, diasActivos, diasDelComp, qrRepartidor);
 
                     // 2026-06-16: franja gris a lo ancho con dos tel WhatsApp + email centrado.
                     // B/N friendly (sin colores fuertes). Si no hay datos, no se muestra.
@@ -404,26 +401,9 @@ public class CafeCotizacionPdfService
                         });
                     });
 
-                    if (!string.IsNullOrWhiteSpace(v.ClienteDomicilioEntregaSnapshot))
-                    {
-                        fc.Item().PaddingTop(5).Border(1).BorderColor(Colors.Grey.Lighten1)
-                            .Background(Colors.Grey.Lighten4).Padding(5).Text(t =>
-                            {
-                                t.Span("Entrega en: ").SemiBold();
-                                t.Span(v.ClienteDomicilioEntregaSnapshot!);
-                            });
-                    }
-
-                    if (!string.IsNullOrWhiteSpace(v.EntregaPor))
-                    {
-                        fc.Item().PaddingTop(5).Border(1).BorderColor(Colors.Grey.Lighten1)
-                            .Background(Colors.Grey.Lighten4).Padding(5).Text(t =>
-                            {
-                                t.Span("Repartidor: ").SemiBold();
-                                t.Span(v.EntregaPor!);
-                            });
-                    }
-
+                    // 2026-06-16 v2: los bloques "Entrega en", "Repartidor" y "Días de visita / reparto"
+                    // ya están arriba en el bloque DOMICILIO DE ENTREGA debajo del header (full-width).
+                    // El repartidor SIEMPRE busca esa info en el mismo lugar.
                     if (!string.IsNullOrEmpty(v.ClienteComentariosComprobante))
                     {
                         fc.Item().PaddingTop(5).BorderLeft(3).BorderColor(Colors.Orange.Darken1)
@@ -442,37 +422,6 @@ public class CafeCotizacionPdfService
                             t.Span(v.Observaciones!);
                         });
                     }
-
-                    // Días de visita / reparto
-                    fc.Item().PaddingTop(5).Border(1).BorderColor(Colors.Grey.Lighten1).Padding(5).Row(row =>
-                    {
-                        row.AutoItem().AlignMiddle().PaddingRight(6).Text("Días de visita / reparto:")
-                            .FontSize(8).FontColor(Colors.Grey.Darken1);
-                        if (v.Retira)
-                        {
-                            row.AutoItem().AlignMiddle().Padding(3)
-                                .Text("RETIRA EN LOCAL").Bold().FontSize(10).FontColor(Colors.Green.Darken3);
-                        }
-                        else if (v.EnRadar)
-                        {
-                            row.AutoItem().AlignMiddle().Padding(3)
-                                .Text("EN RADAR").Bold().FontSize(10).FontColor(Colors.Blue.Darken3);
-                        }
-                        else
-                        {
-                            foreach (var d in diasDelComp)
-                            {
-                                var on = diasActivos.Contains(d);
-                                var bg = on ? Colors.Blue.Lighten5 : Colors.White;
-                                var fg = on ? Colors.Blue.Darken3 : Colors.Grey.Darken2;
-                                var bd = on ? Colors.Blue.Darken2 : Colors.Grey.Lighten1;
-                                var bw = on ? 1.5f : 1f;
-                                row.ConstantItem(40).PaddingHorizontal(2).Border(bw).BorderColor(bd)
-                                    .Background(bg).AlignCenter().AlignMiddle().Padding(2)
-                                    .Text(on ? d : d).Bold().FontSize(8).FontColor(fg);
-                            }
-                        }
-                    });
 
                     // Línea final con "Gracias por tu compra"
                     fc.Item().PaddingTop(8).BorderTop(1).BorderColor(Colors.Grey.Lighten2).PaddingTop(4).AlignCenter().Text(t =>
@@ -494,10 +443,10 @@ public class CafeCotizacionPdfService
         return pdf;
     }
 
-    /// <summary>2026-06-16: bloque DOMICILIO DE ENTREGA + Repartidor + chips RETIRA/EN RADAR + Pendiente/Pagada + QR ENTREGA.
-    /// Va al lado del cuadro X (mitad derecha del header) — MISMO LUGAR que en facturas ARCA para que los repartidores
-    /// no se mareen. Reemplaza al QR suelto y a los bloques duplicados del footer (Entrega en/Repartidor/Días).</summary>
-    private static void RenderBloqueEntregaHeaderCotiz(QuestPDF.Fluent.ColumnDescriptor col, CafeVenta v,
+    /// <summary>2026-06-16 v2: bloque DOMICILIO DE ENTREGA + Repartidor + chips + QR — FULL WIDTH
+    /// debajo del header (no en la mitad derecha, que rompía el layout de QuestPDF por estrechez).
+    /// Reemplaza al QR suelto y a los bloques duplicados del footer (Entrega en/Repartidor/Días).</summary>
+    private static void RenderBloqueEntregaCotiz(QuestPDF.Fluent.ColumnDescriptor col, CafeVenta v,
         HashSet<string> diasActivos, List<string> diasDelComp, byte[]? qrRepartidor)
     {
         var domicilio = !string.IsNullOrWhiteSpace(v.ClienteDomicilioEntregaSnapshot)
