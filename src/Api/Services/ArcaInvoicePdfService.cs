@@ -75,7 +75,9 @@ public class ArcaInvoicePdfService
                             c.Item().AlignCenter().Text($"COD. {comp.CbteTipoNro:00}").FontSize(8);
                         });
 
-                        // Derecha — tipo + numeración + fecha + sello PAGADO si corresponde
+                        // Derecha — tipo + numeración + fecha + sello PAGADO + bloque entrega + QR.
+                        // 2026-06-16: el bloque DOMICILIO DE ENTREGA + QR ahora vive ACÁ (mitad derecha del header)
+                        // en lugar de abajo, para ganar espacio para items y agrupar la info de despacho.
                         row.RelativeItem().Column(c =>
                         {
                             c.Item().AlignRight().Text(nombreTipo).FontSize(13).Bold();
@@ -89,6 +91,8 @@ public class ArcaInvoicePdfService
                                         .Padding(3).Text("✓ PAGADO").FontSize(9).Bold().FontColor(Colors.Green.Darken3);
                                 });
                             }
+                            // Bloque entrega + QR debajo de "Fecha de Emisión".
+                            RenderBloqueEntregaHeader(c, comp, receptor);
                         });
                     });
 
@@ -314,104 +318,8 @@ public class ArcaInvoicePdfService
                         });
                     }
 
-                    // Pedido del usuario 2026-05-18: la forma de pago ahora aparece ARRIBA (en la
-                    // cabecera del receptor como "Forma de pago: ..."), y abajo destacamos el
-                    // DOMICILIO DE ENTREGA para que el chofer / repartidor lo vea al toque.
-                    // Si la venta no tiene domicilio de entrega cargado, usamos el fiscal como fallback.
-                    var domicilioMostrar = !string.IsNullOrWhiteSpace(comp.DomicilioEntrega)
-                        ? comp.DomicilioEntrega
-                        : receptor.Domicilio;
-                    if (!string.IsNullOrWhiteSpace(domicilioMostrar))
-                    {
-                        // Set de dias activos para los pills (mismo formato que la cotizacion).
-                        // Si DiasVisita esta vacio, los 7 pills aparecen sin marcar — pero solo
-                        // dibujamos la fila si hay AL MENOS uno marcado (sino confunde al chofer
-                        // y mete ruido visual).
-                        var diasActivos = (comp.DiasVisita ?? "")
-                            .Split(',', StringSplitOptions.RemoveEmptyEntries)
-                            .Select(s => s.Trim().ToUpperInvariant())
-                            .ToHashSet();
-                        // DOM solo se muestra si está tildado (caso particular). LUN-SAB siempre.
-                        var diasDelComp = new List<string> { "LUN", "MAR", "MIE", "JUE", "VIE", "SAB" };
-                        if (diasActivos.Contains("DOM")) diasDelComp.Add("DOM");
-
-                        col.Item().PaddingTop(4).Background(Colors.Grey.Lighten4).Border(0.5f).BorderColor(Colors.Grey.Lighten1)
-                            .Padding(5).Row(r =>
-                        {
-                            r.RelativeItem().Column(cc =>
-                            {
-                                cc.Item().Text("DOMICILIO DE ENTREGA").FontSize(7).Bold().FontColor(Colors.Grey.Darken2).LetterSpacing(0.05f);
-                                cc.Item().Text(domicilioMostrar!).FontSize(10).Bold();
-                                // Quien entrega — debajo del domicilio, en linea con icono camioncito.
-                                if (!string.IsNullOrWhiteSpace(comp.EntregaPor))
-                                {
-                                    cc.Item().PaddingTop(2).Text(t =>
-                                    {
-                                        t.Span("🚚 Repartidor: ").FontSize(8).FontColor(Colors.Grey.Darken1);
-                                        t.Span(comp.EntregaPor!).Bold().FontSize(9).FontColor(Colors.Grey.Darken4);
-                                    });
-                                }
-                                // 2026-06-01: RETIRA — el cliente retira la mercaderia en el local.
-                                if (comp.Retira)
-                                {
-                                    cc.Item().PaddingTop(3).Row(daysRow =>
-                                    {
-                                        daysRow.AutoItem().AlignMiddle().PaddingRight(4)
-                                            .Text("Entrega:").FontSize(7).FontColor(Colors.Grey.Darken1);
-                                        daysRow.AutoItem().AlignMiddle().Padding(2)
-                                            .Text("🚗 RETIRA EN LOCAL").Bold().FontSize(9).FontColor(Colors.Green.Darken3);
-                                    });
-                                }
-                                // Si "EN RADAR" está activo, el cliente ve "a coordinar" en lugar de los pills.
-                                // "EN RADAR" es jerga interna (cuando estemos por la zona) — NUNCA se imprime literal.
-                                else if (comp.EnRadar)
-                                {
-                                    cc.Item().PaddingTop(3).Row(daysRow =>
-                                    {
-                                        daysRow.AutoItem().AlignMiddle().PaddingRight(4)
-                                            .Text("Días de entrega:").FontSize(7).FontColor(Colors.Grey.Darken1);
-                                        daysRow.AutoItem().AlignMiddle().Padding(2)
-                                            .Text("🛰 EN RADAR").Bold().FontSize(9).FontColor(Colors.Blue.Darken3);
-                                    });
-                                }
-                                else if (diasActivos.Count > 0)
-                                {
-                                    // Pills LUN-SAB (+ DOM si está tildado): día marcado lleva ✓ con borde azul,
-                                    // día no marcado queda en blanco/gris. Cambio respecto al diseño anterior
-                                    // (que sombreaba): ahora se ve más claro qué está y qué no.
-                                    cc.Item().PaddingTop(3).Row(daysRow =>
-                                    {
-                                        daysRow.AutoItem().AlignMiddle().PaddingRight(4)
-                                            .Text("Días de entrega:").FontSize(7).FontColor(Colors.Grey.Darken1);
-                                        foreach (var d in diasDelComp)
-                                        {
-                                            var on = diasActivos.Contains(d);
-                                            var bg = on ? Colors.Blue.Lighten5 : Colors.White;
-                                            var fg = on ? Colors.Blue.Darken3 : Colors.Grey.Darken2;
-                                            var bd = on ? Colors.Blue.Darken2 : Colors.Grey.Lighten1;
-                                            var bw = on ? 1.5f : 0.5f;
-                                            daysRow.ConstantItem(30).PaddingHorizontal(1).Border(bw).BorderColor(bd)
-                                                .Background(bg).AlignCenter().AlignMiddle().Padding(2)
-                                                .Text(on ? $"✓{d}" : d).Bold().FontSize(7).FontColor(fg);
-                                        }
-                                    });
-                                }
-                            });
-                            // Mantengo el sello PAGADA / PENDIENTE a la derecha porque informa
-                            // visualmente el estado de cobro del comprobante, complementario al
-                            // domicilio (no conflictivo).
-                            if (comp.IsPaid)
-                            {
-                                r.AutoItem().AlignMiddle().Background(Colors.Green.Lighten4).Border(0.5f).BorderColor(Colors.Green.Lighten1)
-                                    .Padding(4).Text("✓ PAGADA").Bold().FontSize(8).FontColor(Colors.Green.Darken3);
-                            }
-                            else
-                            {
-                                r.AutoItem().AlignMiddle().Background(Colors.Yellow.Lighten4).Border(0.5f).BorderColor(Colors.Yellow.Darken1)
-                                    .Padding(4).Text("⧗ PENDIENTE").Bold().FontSize(8).FontColor(Colors.Orange.Darken3);
-                            }
-                        });
-                    }
+                    // 2026-06-16: el bloque DOMICILIO DE ENTREGA se movió al header (mitad derecha,
+                    // debajo de "Fecha de Emisión"). Acá solo queda el concepto.
 
                     col.Item().PaddingTop(4).Text($"Concepto: {NombreConcepto(comp.Concepto)}").FontSize(8);
 
@@ -432,21 +340,12 @@ public class ArcaInvoicePdfService
                         });
 
                         // Derecha — CAE
+                        // 2026-06-16: el QR ENTREGA se movió al header (mitad derecha, junto al bloque de entrega).
                         row.ConstantItem(120).Column(c =>
                         {
                             c.Item().AlignRight().Text($"CAE Nº: {comp.Cae}").FontSize(9).SemiBold();
                             c.Item().AlignRight().Text($"Fecha Vto. CAE: {FormatFecha(comp.CaeVto ?? "")}").FontSize(9);
                         });
-
-                        // 2026-06-12: QR de entrega del repartidor (igual que en cotizaciones).
-                        if (comp.QrRepartidorBytes is not null)
-                        {
-                            row.ConstantItem(80).PaddingLeft(8).Column(c =>
-                            {
-                                c.Item().AlignCenter().Width(62).Image(comp.QrRepartidorBytes);
-                                c.Item().AlignCenter().Text("QR ENTREGA").FontSize(6).FontColor(Colors.Grey.Darken1);
-                            });
-                        }
                     });
                 });
             });
@@ -509,6 +408,107 @@ public class ArcaInvoicePdfService
         51 or 52 or 53 => "M",
         _ => "?",
     };
+
+    /// <summary>2026-06-16: bloque compacto "DOMICILIO DE ENTREGA + Repartidor + Días + Pendiente + Comentarios + QR"
+    /// que vive en el header (mitad derecha, debajo de "Fecha de Emisión"). Reemplaza al bloque grande de abajo.</summary>
+    private static void RenderBloqueEntregaHeader(QuestPDF.Fluent.ColumnDescriptor col, PdfComprobante comp, PdfReceptor receptor)
+    {
+        var domicilio = !string.IsNullOrWhiteSpace(comp.DomicilioEntrega)
+            ? comp.DomicilioEntrega
+            : receptor.Domicilio;
+        var tieneEntrega = !string.IsNullOrWhiteSpace(domicilio);
+        var tieneQr = comp.QrRepartidorBytes is not null;
+        if (!tieneEntrega && !tieneQr) return;
+
+        var diasActivos = (comp.DiasVisita ?? "")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => s.Trim().ToUpperInvariant())
+            .ToHashSet();
+        var diasDelComp = new List<string> { "LUN", "MAR", "MIE", "JUE", "VIE", "SAB" };
+        if (diasActivos.Contains("DOM")) diasDelComp.Add("DOM");
+
+        col.Item().PaddingTop(6).Background(Colors.Grey.Lighten4).Border(0.5f).BorderColor(Colors.Grey.Lighten1).Padding(5).Row(r =>
+        {
+            // Izquierda: domicilio + repartidor + días + estado + comentarios
+            r.RelativeItem().Column(cc =>
+            {
+                cc.Item().Text("DOMICILIO DE ENTREGA").FontSize(6).Bold().FontColor(Colors.Grey.Darken2).LetterSpacing(0.05f);
+                if (tieneEntrega) cc.Item().Text(domicilio!).FontSize(9).Bold();
+
+                // Línea horizontal: Repartidor + Días + estado
+                cc.Item().PaddingTop(3).Row(lineRow =>
+                {
+                    if (!string.IsNullOrWhiteSpace(comp.EntregaPor))
+                    {
+                        lineRow.AutoItem().AlignMiddle().PaddingRight(6).Text(t =>
+                        {
+                            t.Span("Repartidor: ").FontSize(7).FontColor(Colors.Grey.Darken1);
+                            t.Span(comp.EntregaPor!).Bold().FontSize(8).FontColor(Colors.Grey.Darken4);
+                        });
+                    }
+
+                    if (comp.Retira)
+                    {
+                        lineRow.AutoItem().AlignMiddle().Text("🚗 RETIRA").Bold().FontSize(7).FontColor(Colors.Green.Darken3);
+                    }
+                    else if (comp.EnRadar)
+                    {
+                        lineRow.AutoItem().AlignMiddle().Text("🛰 EN RADAR").Bold().FontSize(7).FontColor(Colors.Blue.Darken3);
+                    }
+                    else if (diasActivos.Count > 0)
+                    {
+                        lineRow.AutoItem().AlignMiddle().PaddingRight(3).Text("Días:").FontSize(6).FontColor(Colors.Grey.Darken1);
+                        foreach (var d in diasDelComp)
+                        {
+                            var on = diasActivos.Contains(d);
+                            var bg = on ? Colors.Blue.Lighten5 : Colors.White;
+                            var fg = on ? Colors.Blue.Darken3 : Colors.Grey.Darken1;
+                            var bd = on ? Colors.Blue.Darken2 : Colors.Grey.Lighten1;
+                            var bw = on ? 1f : 0.5f;
+                            lineRow.ConstantItem(13).PaddingHorizontal(0.5f).Border(bw).BorderColor(bd)
+                                .Background(bg).AlignCenter().AlignMiddle()
+                                .Text(d.Substring(0, 1)).Bold().FontSize(6).FontColor(fg);
+                        }
+                    }
+
+                    // Sello PAGADA/PENDIENTE compacto al final de la línea
+                    if (comp.IsPaid)
+                    {
+                        lineRow.AutoItem().PaddingLeft(6).AlignMiddle().Background(Colors.Green.Lighten4)
+                            .Border(0.5f).BorderColor(Colors.Green.Lighten1).Padding(2)
+                            .Text("✓ PAGADA").Bold().FontSize(6).FontColor(Colors.Green.Darken3);
+                    }
+                    else
+                    {
+                        lineRow.AutoItem().PaddingLeft(6).AlignMiddle().Background(Colors.Yellow.Lighten4)
+                            .Border(0.5f).BorderColor(Colors.Yellow.Darken1).Padding(2)
+                            .Text("⧗ PENDIENTE").Bold().FontSize(6).FontColor(Colors.Orange.Darken3);
+                    }
+                });
+
+                // Comentarios (Observaciones de la venta) — debajo, separados por línea punteada
+                if (!string.IsNullOrWhiteSpace(comp.Observaciones))
+                {
+                    cc.Item().PaddingTop(4).BorderTop(0.5f).BorderColor(Colors.Grey.Lighten1).PaddingTop(3)
+                        .Text(t =>
+                        {
+                            t.Span("Comentarios: ").FontSize(6).Bold().FontColor(Colors.Grey.Darken2).LetterSpacing(0.05f);
+                            t.Span(comp.Observaciones!).FontSize(7).FontColor(Colors.Grey.Darken3);
+                        });
+                }
+            });
+
+            // Derecha: QR ENTREGA
+            if (tieneQr)
+            {
+                r.ConstantItem(75).PaddingLeft(6).Column(qc =>
+                {
+                    qc.Item().AlignCenter().Width(65).Image(comp.QrRepartidorBytes!);
+                    qc.Item().AlignCenter().Text("QR ENTREGA").FontSize(6).FontColor(Colors.Grey.Darken1);
+                });
+            }
+        });
+    }
 
     private static string FormatCuit(string cuit)
     {
