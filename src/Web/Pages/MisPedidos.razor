@@ -267,7 +267,10 @@
 
         @* ENTREGADAS — 2026-06-11: el resumen + filtros + arqueo SIEMPRE se ven.
            Solo la LISTA de cards se colapsa para no ocupar pantalla. *@
-        <div class="mp-section-title">✅ Entregadas <span class="badge">@pedidos.Count(p => p.YaEntregada)</span></div>
+        @* 2026-06-16: la badge ahora respeta el filtro de fecha (hoy/ayer/semana/todas).
+           Antes contaba TODAS las entregadas históricas y daba la impresión de que había entregas
+           "de hoy" cuando en realidad eran de días pasados. *@
+        <div class="mp-section-title">✅ Entregadas <span class="badge">@EntregadasFiltradas().Count</span></div>
 
         @* Chips de filtro de fecha — siempre visibles *@
         <div class="mp-filtros">
