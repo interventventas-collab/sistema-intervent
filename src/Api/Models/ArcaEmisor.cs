@@ -41,6 +41,16 @@ public class ArcaEmisor
     [MaxLength(500)]
     public string? LogoPath { get; set; }
 
+    // 2026-06-16: contacto + datos bancarios (franja del PDF de factura).
+    [MaxLength(50)] public string? Telefono { get; set; }
+    [MaxLength(50)] public string? Telefono2 { get; set; }
+    [MaxLength(200)] public string? Email { get; set; }
+    [MaxLength(200)] public string? Web { get; set; }
+    [MaxLength(200)] public string? Web2 { get; set; }
+    [MaxLength(100)] public string? BancoNombre { get; set; }
+    [MaxLength(40)] public string? BancoCbu { get; set; }
+    [MaxLength(40)] public string? BancoAlias { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

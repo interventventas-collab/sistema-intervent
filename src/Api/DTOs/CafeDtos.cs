@@ -300,7 +300,9 @@ public record CafeSettingDto(
     string? NegocioIngresosBrutos, DateTime? NegocioInicioActividad,
     string? NegocioLocalidad, string? NegocioCp,
     DateTime? UpdatedAt,
-    string? ListaPreciosHeaderImageUrl = null);
+    string? ListaPreciosHeaderImageUrl = null,
+    string? NegocioTelefono2 = null,
+    string? NegocioWeb2 = null);
 
 public class UpdateCafeSettingRequest
 {
@@ -325,6 +327,8 @@ public class UpdateCafeSettingRequest
     public string? NegocioLocalidad { get; set; }
     public string? NegocioCp { get; set; }
     public string? ListaPreciosHeaderImageUrl { get; set; }
+    public string? NegocioTelefono2 { get; set; }
+    public string? NegocioWeb2 { get; set; }
 }
 
 // ===== Ventas =====

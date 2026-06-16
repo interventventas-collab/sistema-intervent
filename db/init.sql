@@ -4737,3 +4737,39 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='FreeShipping' AND object_id=OBJECT_ID('MeliItem_SyncConfig'))
     ALTER TABLE MeliItem_SyncConfig ADD FreeShipping BIT NULL;
 GO
+
+-- 2026-06-16: contacto + datos bancarios en ArcaEmisores (van en franja gris y pie de los PDFs de factura).
+-- Telefono/Telefono2 = WhatsApp con logo. Email = centro. Web/Web2 = pie del PDF.
+-- BancoNombre/BancoCbu/BancoAlias = franja de transferencia (SOLO en facturas con CAE).
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='Telefono' AND object_id=OBJECT_ID('ArcaEmisores'))
+    ALTER TABLE ArcaEmisores ADD Telefono NVARCHAR(50) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='Telefono2' AND object_id=OBJECT_ID('ArcaEmisores'))
+    ALTER TABLE ArcaEmisores ADD Telefono2 NVARCHAR(50) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='Email' AND object_id=OBJECT_ID('ArcaEmisores'))
+    ALTER TABLE ArcaEmisores ADD Email NVARCHAR(200) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='Web' AND object_id=OBJECT_ID('ArcaEmisores'))
+    ALTER TABLE ArcaEmisores ADD Web NVARCHAR(200) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='Web2' AND object_id=OBJECT_ID('ArcaEmisores'))
+    ALTER TABLE ArcaEmisores ADD Web2 NVARCHAR(200) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='BancoNombre' AND object_id=OBJECT_ID('ArcaEmisores'))
+    ALTER TABLE ArcaEmisores ADD BancoNombre NVARCHAR(100) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='BancoCbu' AND object_id=OBJECT_ID('ArcaEmisores'))
+    ALTER TABLE ArcaEmisores ADD BancoCbu NVARCHAR(40) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='BancoAlias' AND object_id=OBJECT_ID('ArcaEmisores'))
+    ALTER TABLE ArcaEmisores ADD BancoAlias NVARCHAR(40) NULL;
+GO
+
+-- 2026-06-16: telefono y web extra para Cafe_Settings (cotizaciones tipo X usan la misma franja).
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='NegocioTelefono2' AND object_id=OBJECT_ID('Cafe_Settings'))
+    ALTER TABLE Cafe_Settings ADD NegocioTelefono2 NVARCHAR(50) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='NegocioWeb2' AND object_id=OBJECT_ID('Cafe_Settings'))
+    ALTER TABLE Cafe_Settings ADD NegocioWeb2 NVARCHAR(200) NULL;
+GO

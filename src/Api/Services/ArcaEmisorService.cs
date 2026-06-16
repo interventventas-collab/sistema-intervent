@@ -30,6 +30,8 @@ public class ArcaEmisorService
     private static ArcaEmisorDto Map(ArcaEmisor e) => new(
         e.Id, e.Cuit, e.RazonSocial, e.CondicionIva, e.Domicilio,
         e.IIBBTipo, e.IIBBNumero, e.InicioActividades, e.LogoPath,
+        e.Telefono, e.Telefono2, e.Email, e.Web, e.Web2,
+        e.BancoNombre, e.BancoCbu, e.BancoAlias,
         e.CreatedAt, e.UpdatedAt
     );
 
@@ -83,6 +85,15 @@ public class ArcaEmisorService
         entity.IIBBTipo = string.IsNullOrWhiteSpace(req.IIBBTipo) ? null : req.IIBBTipo.Trim();
         entity.IIBBNumero = string.IsNullOrWhiteSpace(req.IIBBNumero) ? null : req.IIBBNumero.Trim();
         entity.InicioActividades = req.InicioActividades;
+
+        entity.Telefono = string.IsNullOrWhiteSpace(req.Telefono) ? null : req.Telefono.Trim();
+        entity.Telefono2 = string.IsNullOrWhiteSpace(req.Telefono2) ? null : req.Telefono2.Trim();
+        entity.Email = string.IsNullOrWhiteSpace(req.Email) ? null : req.Email.Trim();
+        entity.Web = string.IsNullOrWhiteSpace(req.Web) ? null : req.Web.Trim();
+        entity.Web2 = string.IsNullOrWhiteSpace(req.Web2) ? null : req.Web2.Trim();
+        entity.BancoNombre = string.IsNullOrWhiteSpace(req.BancoNombre) ? null : req.BancoNombre.Trim();
+        entity.BancoCbu = string.IsNullOrWhiteSpace(req.BancoCbu) ? null : req.BancoCbu.Trim();
+        entity.BancoAlias = string.IsNullOrWhiteSpace(req.BancoAlias) ? null : req.BancoAlias.Trim();
 
         await _db.SaveChangesAsync();
         return (true, null, Map(entity));

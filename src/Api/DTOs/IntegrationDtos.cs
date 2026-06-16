@@ -115,6 +115,14 @@ public record ArcaEmisorDto(
     string? IIBBNumero,
     DateTime? InicioActividades,
     string? LogoPath,
+    string? Telefono,
+    string? Telefono2,
+    string? Email,
+    string? Web,
+    string? Web2,
+    string? BancoNombre,
+    string? BancoCbu,
+    string? BancoAlias,
     DateTime CreatedAt,
     DateTime? UpdatedAt
 );
@@ -134,6 +142,14 @@ public class UpsertArcaEmisorRequest
     [MaxLength(30)]
     public string? IIBBNumero { get; set; }
     public DateTime? InicioActividades { get; set; }
+    [MaxLength(50)] public string? Telefono { get; set; }
+    [MaxLength(50)] public string? Telefono2 { get; set; }
+    [MaxLength(200)] public string? Email { get; set; }
+    [MaxLength(200)] public string? Web { get; set; }
+    [MaxLength(200)] public string? Web2 { get; set; }
+    [MaxLength(100)] public string? BancoNombre { get; set; }
+    [MaxLength(40)] public string? BancoCbu { get; set; }
+    [MaxLength(40)] public string? BancoAlias { get; set; }
 }
 
 // ===== Test de certificado (WSAA + WSFEv1) =====

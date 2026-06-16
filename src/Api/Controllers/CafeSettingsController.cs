@@ -27,7 +27,9 @@ public class CafeSettingsController : ControllerBase
         s.NegocioIngresosBrutos, s.NegocioInicioActividad,
         s.NegocioLocalidad, s.NegocioCp,
         s.UpdatedAt,
-        s.ListaPreciosHeaderImageUrl);
+        s.ListaPreciosHeaderImageUrl,
+        s.NegocioTelefono2,
+        s.NegocioWeb2);
 
     [HttpGet]
     public async Task<IActionResult> Get()
@@ -65,6 +67,8 @@ public class CafeSettingsController : ControllerBase
         if (req.NegocioLocalidad is not null) s.NegocioLocalidad = Norm(req.NegocioLocalidad);
         if (req.NegocioCp is not null) s.NegocioCp = Norm(req.NegocioCp);
         if (req.ListaPreciosHeaderImageUrl is not null) s.ListaPreciosHeaderImageUrl = Norm(req.ListaPreciosHeaderImageUrl);
+        if (req.NegocioTelefono2 is not null) s.NegocioTelefono2 = Norm(req.NegocioTelefono2);
+        if (req.NegocioWeb2 is not null) s.NegocioWeb2 = Norm(req.NegocioWeb2);
         s.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return Ok(Map(s));

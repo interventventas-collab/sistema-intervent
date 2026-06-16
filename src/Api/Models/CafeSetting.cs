@@ -74,6 +74,10 @@ public class CafeSetting
     [MaxLength(200)]
     public string? NegocioWeb { get; set; }
 
+    // 2026-06-16: segundo telefono y segunda web para la franja de contacto + footer del PDF.
+    [MaxLength(50)] public string? NegocioTelefono2 { get; set; }
+    [MaxLength(200)] public string? NegocioWeb2 { get; set; }
+
     /// <summary>URL del logo para mostrar en listas de precios y comprobantes. Puede ser ruta interna
     /// (ej. /api/files/download?path=branding/logo.png) o un link externo.</summary>
     [MaxLength(500)]
