@@ -71,6 +71,26 @@ public class CafeVentasController : ControllerBase
         _stockLogger = stockLogger;
     }
 
+    /// <summary>2026-06-16: completa el cfg con datos de la ficha del Emisor ARCA (un solo lugar de carga).
+    /// Si /integraciones tiene cargado Telefono/Telefono2/Email/Web/Web2 y el cfg no, los completa con la ficha.
+    /// Asi alcanza con cargar los datos UNA SOLA VEZ (en la ficha Emisor) y aplican tanto a facturas como a
+    /// cotizaciones tipo X. Si el cfg ya tiene un valor cargado, prevalece.</summary>
+    private async Task HydrateCfgFromEmisorAsync(CafeSetting? cfg)
+    {
+        if (cfg is null || string.IsNullOrWhiteSpace(cfg.NegocioCuit)) return;
+        try
+        {
+            var ficha = await _emisorService.GetEntityByCuitAsync(cfg.NegocioCuit);
+            if (ficha is null) return;
+            if (string.IsNullOrWhiteSpace(cfg.NegocioTelefono)) cfg.NegocioTelefono = ficha.Telefono;
+            if (string.IsNullOrWhiteSpace(cfg.NegocioTelefono2)) cfg.NegocioTelefono2 = ficha.Telefono2;
+            if (string.IsNullOrWhiteSpace(cfg.NegocioEmail)) cfg.NegocioEmail = ficha.Email;
+            if (string.IsNullOrWhiteSpace(cfg.NegocioWeb)) cfg.NegocioWeb = ficha.Web;
+            if (string.IsNullOrWhiteSpace(cfg.NegocioWeb2)) cfg.NegocioWeb2 = ficha.Web2;
+        }
+        catch { /* si falla la lectura, dejamos cfg como está */ }
+    }
+
     /// <summary>Dispara push de stock a MeLi en background (fire-and-forget). No bloquea el response.
     /// Si MeLi falla, queda marcado StockChangedAt y el job de respaldo lo recupera en max 15 min.</summary>
     private void FireAndForgetPushMeli(List<int> cafeProductoIds)
@@ -400,6 +420,7 @@ public class CafeVentasController : ControllerBase
         var combosMap = comboIds.Count > 0
             ? await _db.Set<CafeCombo>().Where(c => comboIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => (c.Nombre, c.Sku))
             : null;
+        await HydrateCfgFromEmisorAsync(cfg);
         var bytes = _pdfService.GenerarPdfBytes(v, cfg, qr, combosMap);
         return File(bytes, "application/pdf", BuildPdfFilename(v));
     }
@@ -504,6 +525,7 @@ public class CafeVentasController : ControllerBase
         var combosMap = comboIds.Count > 0
             ? await _db.Set<CafeCombo>().Where(c => comboIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => (c.Nombre, c.Sku))
             : null;
+        await HydrateCfgFromEmisorAsync(cfg);
         return _pdfService.GenerarPdfBytes(v, cfg, qr, combosMap);
     }
 
@@ -569,6 +591,7 @@ public class CafeVentasController : ControllerBase
                 ? await _db.Set<CafeCombo>().Where(c => comboIdsPub.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => (c.Nombre, c.Sku))
                 : null;
         }
+        if (!(esFacturaArca && autorizada)) await HydrateCfgFromEmisorAsync(cfg);
         byte[] pdfBytes = (esFacturaArca && autorizada) ? BuildArcaPdf(v, cfg!) : _pdfService.GenerarPdfBytes(v, cfg, qr, combosMapPub);
         return File(pdfBytes, "application/pdf", BuildPdfFilename(v));
     }
@@ -651,6 +674,7 @@ public class CafeVentasController : ControllerBase
             var combosMapM = comboIdsM.Count > 0
                 ? await _db.Set<CafeCombo>().Where(c => comboIdsM.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => (c.Nombre, c.Sku))
                 : null;
+            await HydrateCfgFromEmisorAsync(cfg);
             pdfBytes = _pdfService.GenerarPdfBytes(v, cfg, qr, combosMapM);
         }
 
@@ -728,6 +752,7 @@ public class CafeVentasController : ControllerBase
             var combosMapW = comboIdsW.Count > 0
                 ? await _db.Set<CafeCombo>().Where(c => comboIdsW.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => (c.Nombre, c.Sku))
                 : null;
+            await HydrateCfgFromEmisorAsync(cfg);
             pdfBytes = _pdfService.GenerarPdfBytes(v, cfg, qr, combosMapW);
         }
 
@@ -1194,6 +1219,7 @@ public class CafeVentasController : ControllerBase
         var combosMapPrev = comboIdsPrev.Count > 0
             ? await _db.Set<CafeCombo>().Where(c => comboIdsPrev.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => (c.Nombre, c.Sku))
             : null;
+        await HydrateCfgFromEmisorAsync(cfg);
         var bytes = _pdfService.GenerarPdfBytes(ventaPreview, cfg, null, combosMapPrev);
         return File(bytes, "application/pdf", "preview.pdf");
     }
