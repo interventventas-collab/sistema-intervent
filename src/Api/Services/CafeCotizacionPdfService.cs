@@ -221,10 +221,64 @@ public class CafeCotizacionPdfService
                             });
                         });
 
-                        // 2026-06-16 v4: DERECHA — bloque DOMICILIO DE ENTREGA + chips + QR grande (sola columna 1).
-                        row.RelativeItem(1).PaddingLeft(8).Column(c =>
+                        // 2026-06-16 v6: DERECHA dividida en 2 sub-columnas → info DOMICILIO (texto + chips)
+                        // a la izquierda + QR grande a la derecha. Antes estaban apilados verticalmente.
+                        row.RelativeItem(1).PaddingLeft(8).Row(rqr =>
                         {
-                            RenderBloqueEntregaCotiz(c, v, diasActivos, diasDelComp, qrRepartidor);
+                            var domicilio = !string.IsNullOrWhiteSpace(v.ClienteDomicilioEntregaSnapshot)
+                                ? v.ClienteDomicilioEntregaSnapshot
+                                : v.ClienteDireccionSnapshot;
+                            var tieneEntrega = !string.IsNullOrWhiteSpace(domicilio);
+                            var tieneQr = qrRepartidor is not null;
+
+                            // Sub-columna izquierda: info DOMICILIO + chips
+                            rqr.RelativeItem(1).PaddingRight(4).Element(eInfo =>
+                            {
+                                if (!tieneEntrega) { eInfo.Container(); return; }
+                                eInfo.Background(Colors.Grey.Lighten4).Border(0.5f).BorderColor(Colors.Grey.Lighten1)
+                                    .Padding(4).Column(cc =>
+                                {
+                                    cc.Item().Text("DOMICILIO DE ENTREGA").FontSize(6).Bold().FontColor(Colors.Grey.Darken2).LetterSpacing(0.05f);
+                                    cc.Item().PaddingTop(2).Text(domicilio!).FontSize(8).Bold();
+                                    cc.Item().PaddingTop(3).Column(chips =>
+                                    {
+                                        if (v.Retira)
+                                        {
+                                            chips.Item().Background(Colors.Green.Lighten4)
+                                                .Border(0.5f).BorderColor(Colors.Green.Lighten1).Padding(2).AlignCenter()
+                                                .Text("RETIRA").Bold().FontSize(6).FontColor(Colors.Green.Darken3);
+                                        }
+                                        else if (v.EnRadar)
+                                        {
+                                            chips.Item().Background(Colors.Blue.Lighten4)
+                                                .Border(0.5f).BorderColor(Colors.Blue.Lighten1).Padding(2).AlignCenter()
+                                                .Text("EN RADAR").Bold().FontSize(6).FontColor(Colors.Blue.Darken3);
+                                        }
+                                        if (v.IsPaid)
+                                        {
+                                            chips.Item().PaddingTop(2).Background(Colors.Green.Lighten4)
+                                                .Border(0.5f).BorderColor(Colors.Green.Lighten1).Padding(2).AlignCenter()
+                                                .Text("PAGADA").Bold().FontSize(6).FontColor(Colors.Green.Darken3);
+                                        }
+                                        else
+                                        {
+                                            chips.Item().PaddingTop(2).Background(Colors.Yellow.Lighten4)
+                                                .Border(0.5f).BorderColor(Colors.Yellow.Darken1).Padding(2).AlignCenter()
+                                                .Text("PENDIENTE").Bold().FontSize(6).FontColor(Colors.Orange.Darken3);
+                                        }
+                                    });
+                                });
+                            });
+
+                            // Sub-columna derecha: QR grande + caption
+                            if (tieneQr)
+                            {
+                                rqr.ConstantItem(110).Column(cQr =>
+                                {
+                                    cQr.Item().Image(qrRepartidor!);
+                                    cQr.Item().AlignCenter().PaddingTop(2).Text("QR ENTREGA").FontSize(8).Bold().FontColor(Colors.Grey.Darken3);
+                                });
+                            }
                         });
                     });
 
@@ -300,8 +354,18 @@ public class CafeCotizacionPdfService
                         }
                     });
 
-                    // 2026-06-16 v5: totales pegados a la tabla (antes estaban en el footer → quedaba un hueco gigante en el medio cuando había pocos items).
-                    col.Item().PaddingTop(6).Row(row =>
+                    // 2026-06-16 v6: totales VUELVEN al footer (pedido del usuario) — los queremos
+                    // siempre al pie de la página, no flotando despues de la tabla.
+                });
+
+                // ───── FOOTER (fijo al pie de la página) ─────
+                // 2026-06-16 v6: totales + nota + observaciones VUELVEN al footer para que queden
+                // siempre al pie de la pagina (pedido del usuario). El espacio vacio en el medio
+                // cuando hay pocos items es normal — lo que estaba mal antes era el cliente duplicado.
+                page.Footer().Column(fc =>
+                {
+                    // ─── Totales (alineados a la derecha via Row con filler) ───
+                    fc.Item().PaddingTop(4).Row(row =>
                     {
                         row.RelativeItem();
                         row.ConstantItem(280).Border(1).BorderColor(Colors.Grey.Lighten1).Padding(8).Column(c =>
@@ -372,7 +436,7 @@ public class CafeCotizacionPdfService
 
                     if (!string.IsNullOrEmpty(v.ClienteComentariosComprobante))
                     {
-                        col.Item().PaddingTop(5).BorderLeft(3).BorderColor(Colors.Orange.Darken1)
+                        fc.Item().PaddingTop(5).BorderLeft(3).BorderColor(Colors.Orange.Darken1)
                             .Background(Colors.Orange.Lighten4).Padding(5).Text(t =>
                             {
                                 t.Span("Nota: ").SemiBold();
@@ -382,7 +446,7 @@ public class CafeCotizacionPdfService
 
                     if (!string.IsNullOrEmpty(v.Observaciones))
                     {
-                        col.Item().PaddingTop(5).Border(1).BorderColor(Colors.Grey.Lighten1).Padding(5).Text(t =>
+                        fc.Item().PaddingTop(5).Border(1).BorderColor(Colors.Grey.Lighten1).Padding(5).Text(t =>
                         {
                             t.Span("Observaciones: ").SemiBold();
                             t.Span(v.Observaciones!);
@@ -391,20 +455,14 @@ public class CafeCotizacionPdfService
 
                     if (esProforma)
                     {
-                        col.Item().PaddingTop(4).Background(Colors.Yellow.Lighten4).Border(1).BorderColor(Colors.Yellow.Darken1)
+                        fc.Item().PaddingTop(4).Background(Colors.Yellow.Lighten4).Border(1).BorderColor(Colors.Yellow.Darken1)
                             .Padding(5).Text(t =>
                             {
                                 t.Span("⚠ Proforma — preview de cómo quedaría con IVA cuando emitas factura por ARCA. ").Bold().FontColor("#92400e").FontSize(8);
                                 t.Span("Para esta vista se aplica 21% al neto. Cuando se emita la factura real, los productos con IVA 10,5% (alimentos) se discriminarán por separado.").FontColor("#92400e").FontSize(8);
                             });
                     }
-                });
 
-                // ───── FOOTER (fijo al pie de la página) ─────
-                // 2026-06-16 v5: footer reducido a "Gracias" + webs. Totales/Nota/Observaciones se
-                // movieron al Content para que queden pegados a la tabla y no haya hueco en el medio.
-                page.Footer().Column(fc =>
-                {
                     // Línea final con "Gracias por tu compra"
                     fc.Item().PaddingTop(8).BorderTop(1).BorderColor(Colors.Grey.Lighten2).PaddingTop(4).AlignCenter().Text(t =>
                     {
@@ -423,60 +481,6 @@ public class CafeCotizacionPdfService
         }).GeneratePdf();
 
         return pdf;
-    }
-
-    /// <summary>2026-06-16 v4: bloque DOMICILIO DE ENTREGA + estado + QR — TERCERA columna del header.
-    /// QR queda en 120px (no 140) porque la columna es 1/3 de la página (no 1/2). Layout 3 col: logo | tipo+N° | entrega+QR.</summary>
-    private static void RenderBloqueEntregaCotiz(QuestPDF.Fluent.ColumnDescriptor col, CafeVenta v,
-        HashSet<string> diasActivos, List<string> diasDelComp, byte[]? qrRepartidor)
-    {
-        var domicilio = !string.IsNullOrWhiteSpace(v.ClienteDomicilioEntregaSnapshot)
-            ? v.ClienteDomicilioEntregaSnapshot
-            : v.ClienteDireccionSnapshot;
-        var tieneEntrega = !string.IsNullOrWhiteSpace(domicilio);
-        var tieneQr = qrRepartidor is not null;
-        if (!tieneEntrega && !tieneQr) return;
-
-        col.Item().PaddingTop(0).Background(Colors.Grey.Lighten4).Border(0.5f).BorderColor(Colors.Grey.Lighten1).Padding(5).Column(cc =>
-        {
-            cc.Item().Text("DOMICILIO DE ENTREGA").FontSize(6).Bold().FontColor(Colors.Grey.Darken2).LetterSpacing(0.05f);
-            if (tieneEntrega) cc.Item().Text(domicilio!).FontSize(8).Bold();
-
-            cc.Item().PaddingTop(3).Row(lineRow =>
-            {
-                if (v.Retira)
-                {
-                    lineRow.AutoItem().AlignMiddle().PaddingRight(4).Background(Colors.Green.Lighten4)
-                        .Border(0.5f).BorderColor(Colors.Green.Lighten1).Padding(2)
-                        .Text("RETIRA").Bold().FontSize(6).FontColor(Colors.Green.Darken3);
-                }
-                else if (v.EnRadar)
-                {
-                    lineRow.AutoItem().AlignMiddle().PaddingRight(4).Background(Colors.Blue.Lighten4)
-                        .Border(0.5f).BorderColor(Colors.Blue.Lighten1).Padding(2)
-                        .Text("EN RADAR").Bold().FontSize(6).FontColor(Colors.Blue.Darken3);
-                }
-
-                if (v.IsPaid)
-                {
-                    lineRow.AutoItem().AlignMiddle().Background(Colors.Green.Lighten4)
-                        .Border(0.5f).BorderColor(Colors.Green.Lighten1).Padding(2)
-                        .Text("PAGADA").Bold().FontSize(6).FontColor(Colors.Green.Darken3);
-                }
-                else
-                {
-                    lineRow.AutoItem().AlignMiddle().Background(Colors.Yellow.Lighten4)
-                        .Border(0.5f).BorderColor(Colors.Yellow.Darken1).Padding(2)
-                        .Text("PENDIENTE").Bold().FontSize(6).FontColor(Colors.Orange.Darken3);
-                }
-            });
-
-            if (tieneQr)
-            {
-                cc.Item().PaddingTop(4).AlignCenter().Width(120).Image(qrRepartidor!);
-                cc.Item().AlignCenter().PaddingTop(2).Text("QR ENTREGA").FontSize(8).Bold().FontColor(Colors.Grey.Darken3);
-            }
-        });
     }
 
     /// <summary>2026-06-16: franja gris ancho-completo con Tel. · email · Tel. Texto plano (sin emojis).</summary>
