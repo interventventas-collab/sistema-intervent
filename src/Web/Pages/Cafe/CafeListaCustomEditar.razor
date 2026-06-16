@@ -1,0 +1,308 @@
+@page "/cafe/listas-precios-custom/{Id:int}/editar"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+<style>
+    .ed-grid { display: grid; grid-template-columns: 320px 1fr; gap: 1rem; align-items: flex-start; }
+    @@media (max-width: 900px) { .ed-grid { grid-template-columns: 1fr; } }
+    .ed-panel { background: white; border: 1px solid #e5e7eb; border-radius: 10px; padding: 0.7rem; }
+    .ed-tabs { display: flex; gap: 0.25rem; margin-bottom: 0.5rem; }
+    .ed-tab { flex: 1; padding: 0.35rem 0.6rem; background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 6px; cursor: pointer; font-size: 0.78rem; text-align: center; font-weight: 600; color: #4b5563; }
+    .ed-tab.active { background: #1d4ed8; color: white; border-color: #1d4ed8; }
+    .ed-disp-item { padding: 0.4rem 0.5rem; border-bottom: 1px solid #f3f4f6; cursor: pointer; font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center; }
+    .ed-disp-item:hover { background: #eff6ff; }
+    .ed-disp-item.no-active { opacity: 0.45; cursor: not-allowed; }
+    .ed-disp-list { max-height: 60vh; overflow-y: auto; border: 1px solid #f3f4f6; border-radius: 6px; }
+    .sec-card { background: #fafafa; border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 0.7rem; }
+    .sec-head { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.7rem; background: #1f2937; color: white; border-radius: 8px 8px 0 0; font-weight: 700; }
+    .sec-head.active { background: #1d4ed8; }
+    .sec-body { padding: 0.5rem 0.7rem; }
+    .sec-empty { padding: 1rem; text-align: center; color: #9ca3af; font-style: italic; font-size: 0.85rem; }
+    .it-row { display: flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.4rem; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem; }
+    .it-row:last-child { border-bottom: none; }
+    .it-name { flex: 1; min-width: 0; }
+    .it-price { font-weight: 700; color: #15803d; min-width: 80px; text-align: right; }
+    .it-actions { display: flex; gap: 0.2rem; }
+    .it-btn { background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 4px; padding: 0.15rem 0.4rem; cursor: pointer; font-size: 0.75rem; }
+    .it-btn:hover { background: #e5e7eb; }
+    .it-btn.novedad-on { background: #fef3c7; border-color: #d97706; color: #92400e; }
+    .novedad-chip { background: #dc2626; color: white; font-size: 0.65rem; padding: 0.1rem 0.35rem; border-radius: 3px; font-weight: 700; margin-left: 0.3rem; }
+    .sec-active-banner { background: #dbeafe; border-radius: 6px; padding: 0.4rem 0.6rem; font-size: 0.78rem; color: #1e3a8a; margin-bottom: 0.5rem; }
+</style>
+
+<div style="padding: 1rem;">
+    @if (cargando)
+    {
+        <p>Cargando...</p>
+    }
+    else if (lista is null)
+    {
+        <p>Lista no encontrada. <a href="/cafe/listas-precios-custom">Volver</a></p>
+    }
+    else
+    {
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <div>
+                <button class="btn btn-secondary btn-sm" @onclick="Volver">← Volver</button>
+                <h2 style="display: inline-block; margin: 0 0 0 1rem;">📋 @lista.Nombre</h2>
+                <span style="color: #6b7280; margin-left: 0.7rem;">@(lista.ClienteNombre ?? "Lista general") · @(lista.TipoCliente ?? "Auto")</span>
+            </div>
+            <div style="font-size: 0.85rem; color: #4b5563;">
+                @secciones.Count sección@(secciones.Count == 1 ? "" : "es") · @TotalItems item@(TotalItems == 1 ? "" : "s")
+            </div>
+        </div>
+
+        <div class="ed-grid">
+            @* ═══════ PANEL IZQUIERDA: Items disponibles ═══════ *@
+            <div class="ed-panel">
+                <h4 style="margin: 0 0 0.5rem;">🔎 Agregar items</h4>
+                @if (seccionActivaId is null)
+                {
+                    <div style="background: #fef3c7; padding: 0.5rem; border-radius: 6px; font-size: 0.78rem; color: #92400e;">
+                        ⚠ Primero creá o seleccioná una sección a la derecha para empezar a agregar items.
+                    </div>
+                }
+                else
+                {
+                    <div class="sec-active-banner">
+                        Agregando a: <b>@(secciones.FirstOrDefault(s => s.Id == seccionActivaId)?.Titulo ?? "?")</b>
+                    </div>
+                }
+                <div class="ed-tabs">
+                    <div class="ed-tab @(tipoActivo == "PRODUCTO" ? "active" : "")" @onclick="@(() => SetTipo("PRODUCTO"))">Productos</div>
+                    <div class="ed-tab @(tipoActivo == "COMBO" ? "active" : "")" @onclick="@(() => SetTipo("COMBO"))">Combos</div>
+                    <div class="ed-tab @(tipoActivo == "PACK" ? "active" : "")" @onclick="@(() => SetTipo("PACK"))">Packs</div>
+                </div>
+                <input class="form-input" placeholder="Buscar..." @bind="searchQ" @bind:event="oninput" @bind:after="BuscarDisponibles" style="margin-bottom: 0.5rem;" />
+                <div class="ed-disp-list">
+                    @if (disponibles is null)
+                    {
+                        <div style="padding: 1rem; text-align: center; color: #9ca3af;">Cargando...</div>
+                    }
+                    else if (disponibles.Count == 0)
+                    {
+                        <div style="padding: 1rem; text-align: center; color: #9ca3af;">Sin resultados</div>
+                    }
+                    else
+                    {
+                        @foreach (var d in disponibles)
+                        {
+                            var deshabilitado = seccionActivaId is null;
+                            <div class="ed-disp-item @(deshabilitado ? "no-active" : "")" @onclick="@(() => Agregar(d))">
+                                <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 0.5rem;">
+                                    @if (!string.IsNullOrEmpty(d.Sku))
+                                    {
+                                        <span style="color: #1e40af; font-family: monospace; margin-right: 0.3rem; font-weight: 600;">@d.Sku</span>
+                                    }
+                                    @d.Nombre
+                                    @if (!string.IsNullOrEmpty(d.Detalle))
+                                    {
+                                        <span style="color: #6b7280; font-size: 0.75rem; margin-left: 0.3rem;">· @d.Detalle</span>
+                                    }
+                                </div>
+                                <span style="color: #15803d; font-weight: 700; white-space: nowrap;">$@((tipoActivo == "PRODUCTO" || tipoActivo == "PACK") && (lista.TipoCliente == "BAR" ? d.PrecioBar : d.PrecioOtro) is not null ? (lista.TipoCliente == "BAR" ? d.PrecioBar : d.PrecioOtro)?.ToString("N0") : (d.PrecioOtro ?? d.PrecioBar ?? 0).ToString("N0"))</span>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+
+            @* ═══════ PANEL DERECHA: Secciones + items de la lista ═══════ *@
+            <div>
+                <button class="btn btn-primary" @onclick="NuevaSeccion" style="margin-bottom: 0.7rem;">+ Nueva sección</button>
+
+                @if (secciones.Count == 0)
+                {
+                    <div class="ed-panel" style="text-align: center; padding: 2rem; color: #9ca3af;">
+                        Todavía no tenés secciones. Tocá "+ Nueva sección" arriba para empezar.
+                    </div>
+                }
+                else
+                {
+                    @for (int i = 0; i < secciones.Count; i++)
+                    {
+                        var sec = secciones[i];
+                        var idx = i;
+                        <div class="sec-card">
+                            <div class="sec-head @(seccionActivaId == sec.Id ? "active" : "")" @onclick="@(() => seccionActivaId = sec.Id)" style="cursor: pointer;">
+                                <span>@sec.Titulo @(sec.Items.Count > 0 ? $"({sec.Items.Count})" : "")</span>
+                                <div style="display: flex; gap: 0.25rem;">
+                                    <button class="it-btn" title="Subir" @onclick:stopPropagation="true" @onclick="@(() => MoverSeccion(sec.Id, "arriba"))" disabled="@(idx == 0)">↑</button>
+                                    <button class="it-btn" title="Bajar" @onclick:stopPropagation="true" @onclick="@(() => MoverSeccion(sec.Id, "abajo"))" disabled="@(idx == secciones.Count - 1)">↓</button>
+                                    <button class="it-btn" title="Renombrar" @onclick:stopPropagation="true" @onclick="@(() => Renombrar(sec))">✏</button>
+                                    <button class="it-btn" title="Borrar" @onclick:stopPropagation="true" @onclick="@(() => BorrarSeccion(sec))">🗑</button>
+                                </div>
+                            </div>
+                            <div class="sec-body">
+                                @if (sec.Items.Count == 0)
+                                {
+                                    <div class="sec-empty">Vacía — clickeá un producto/combo/pack de la izquierda para agregarlo acá</div>
+                                }
+                                else
+                                {
+                                    @for (int j = 0; j < sec.Items.Count; j++)
+                                    {
+                                        var it = sec.Items[j];
+                                        var jidx = j;
+                                        <div class="it-row">
+                                            <div class="it-name">
+                                                @if (!string.IsNullOrEmpty(it.Sku))
+                                                {
+                                                    <span style="color: #1e40af; font-family: monospace; font-weight: 600; margin-right: 0.3rem;">@it.Sku</span>
+                                                }
+                                                @(it.Nombre ?? $"#{it.RefId}")
+                                                @if (!string.IsNullOrEmpty(it.Detalle))
+                                                {
+                                                    <span style="color: #6b7280; font-size: 0.75rem; margin-left: 0.3rem;">· @it.Detalle</span>
+                                                }
+                                                @if (it.EsNovedad)
+                                                {
+                                                    <span class="novedad-chip">NOVEDAD</span>
+                                                }
+                                            </div>
+                                            <div class="it-price">$@(it.Precio?.ToString("N0") ?? "—")</div>
+                                            <div class="it-actions">
+                                                <button class="it-btn" title="Subir" @onclick="@(() => MoverItem(it.Id, "arriba"))" disabled="@(jidx == 0)">↑</button>
+                                                <button class="it-btn" title="Bajar" @onclick="@(() => MoverItem(it.Id, "abajo"))" disabled="@(jidx == sec.Items.Count - 1)">↓</button>
+                                                <button class="it-btn @(it.EsNovedad ? "novedad-on" : "")" title="Marcar NOVEDAD" @onclick="@(() => ToggleNovedad(it.Id))">⭐</button>
+                                                <button class="it-btn" title="Borrar" @onclick="@(() => BorrarItem(it.Id))">🗑</button>
+                                            </div>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private bool cargando = true;
+    private ListaCustomDto? lista;
+    private List<SeccionCustomDto> secciones = new();
+    private int? seccionActivaId;
+    private string tipoActivo = "PRODUCTO";
+    private string searchQ = "";
+    private List<ItemDisponibleDto>? disponibles;
+    private int TotalItems => secciones.Sum(s => s.Items.Count);
+    private CancellationTokenSource? buscarCts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Recargar();
+        await BuscarDisponibles();
+    }
+
+    private async Task Recargar()
+    {
+        cargando = true;
+        try
+        {
+            var resp = await Api.GetContenidoListaCustomAsync(Id);
+            if (resp is null) { lista = null; return; }
+            lista = resp.Lista;
+            secciones = resp.Secciones ?? new();
+            if (seccionActivaId is null && secciones.Count > 0) seccionActivaId = secciones[0].Id;
+        }
+        finally { cargando = false; }
+    }
+
+    private async Task SetTipo(string tipo)
+    {
+        tipoActivo = tipo;
+        await BuscarDisponibles();
+    }
+
+    private async Task BuscarDisponibles()
+    {
+        // Debounce simple
+        buscarCts?.Cancel();
+        buscarCts = new CancellationTokenSource();
+        var token = buscarCts.Token;
+        try
+        {
+            await Task.Delay(200, token);
+            if (token.IsCancellationRequested) return;
+            disponibles = await Api.GetItemsDisponiblesAsync(tipoActivo, searchQ);
+        }
+        catch (TaskCanceledException) { }
+    }
+
+    private async Task NuevaSeccion()
+    {
+        var titulo = await JS.InvokeAsync<string?>("prompt", "Título de la sección (ej: VASOS POLIPAPEL):", "");
+        if (string.IsNullOrWhiteSpace(titulo)) return;
+        var nuevoId = await Api.CrearSeccionAsync(Id, titulo.Trim());
+        if (nuevoId is null) { ToastService.Error("No se pudo crear"); return; }
+        seccionActivaId = nuevoId;
+        await Recargar();
+        ToastService.Success("Sección creada");
+    }
+
+    private async Task Renombrar(SeccionCustomDto sec)
+    {
+        var nuevo = await JS.InvokeAsync<string?>("prompt", "Nuevo título:", sec.Titulo);
+        if (string.IsNullOrWhiteSpace(nuevo) || nuevo == sec.Titulo) return;
+        var ok = await Api.RenombrarSeccionAsync(sec.Id, nuevo.Trim());
+        if (!ok) { ToastService.Error("Error renombrando"); return; }
+        await Recargar();
+    }
+
+    private async Task BorrarSeccion(SeccionCustomDto sec)
+    {
+        var msg = sec.Items.Count > 0
+            ? $"¿Borrar la sección \"{sec.Titulo}\" con sus {sec.Items.Count} item(s)?"
+            : $"¿Borrar la sección vacía \"{sec.Titulo}\"?";
+        var ok = await JS.InvokeAsync<bool>("confirm", msg);
+        if (!ok) return;
+        var done = await Api.BorrarSeccionAsync(sec.Id);
+        if (!done) { ToastService.Error("Error al borrar"); return; }
+        if (seccionActivaId == sec.Id) seccionActivaId = null;
+        await Recargar();
+        ToastService.Success("Sección borrada");
+    }
+
+    private async Task MoverSeccion(int seccionId, string direccion)
+    {
+        await Api.MoverSeccionAsync(seccionId, direccion);
+        await Recargar();
+    }
+
+    private async Task Agregar(ItemDisponibleDto d)
+    {
+        if (seccionActivaId is null) { ToastService.Info("Primero seleccioná una sección"); return; }
+        var ok = await Api.AgregarItemAsync(seccionActivaId.Value, d.Tipo, d.Id);
+        if (ok is null) { ToastService.Error("No se pudo agregar"); return; }
+        await Recargar();
+    }
+
+    private async Task BorrarItem(int itemId)
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm", "¿Sacar este item de la sección?");
+        if (!ok) return;
+        await Api.BorrarItemListaCustomAsync(itemId);
+        await Recargar();
+    }
+
+    private async Task ToggleNovedad(int itemId)
+    {
+        await Api.ToggleNovedadAsync(itemId);
+        await Recargar();
+    }
+
+    private async Task MoverItem(int itemId, string direccion)
+    {
+        await Api.MoverItemListaCustomAsync(itemId, direccion);
+        await Recargar();
+    }
+
+    private void Volver() => Nav.NavigateTo("/cafe/listas-precios-custom");
+}

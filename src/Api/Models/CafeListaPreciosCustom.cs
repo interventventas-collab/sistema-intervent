@@ -78,5 +78,8 @@ public class CafeListaPreciosCustomItem
     [MaxLength(500)]
     public string? Notas { get; set; }
 
+    /// <summary>2026-06-16: marca NOVEDAD — chip rojo en el PDF tipo TAKE AWAY.</summary>
+    public bool EsNovedad { get; set; } = false;
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

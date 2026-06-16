@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.AspNetCore.Components;
 using Web.Models;
 
@@ -1416,6 +1417,46 @@ public class ApiClient
 
     public async Task<CrearListaCustomResponse?> DuplicarListaCustomAsync(int id)
         => await PostAsync<CrearListaCustomResponse>($"/api/cafe/listas-custom/{id}/duplicar", new { });
+
+    // --- Fase 2: secciones + items + items disponibles ---
+    public async Task<ContenidoListaCustomDto?> GetContenidoListaCustomAsync(int listaId)
+        => await GetAsync<ContenidoListaCustomDto>($"/api/cafe/listas-custom/{listaId}/contenido");
+
+    public async Task<List<ItemDisponibleDto>?> GetItemsDisponiblesAsync(string tipo, string? q = null)
+        => await GetAsync<List<ItemDisponibleDto>>($"/api/cafe/listas-custom/items-disponibles?tipo={Uri.EscapeDataString(tipo)}&q={Uri.EscapeDataString(q ?? "")}");
+
+    public async Task<int?> CrearSeccionAsync(int listaId, string titulo)
+    {
+        var r = await PostAsync<JsonElement>($"/api/cafe/listas-custom/{listaId}/secciones", new { titulo });
+        if (r.ValueKind == JsonValueKind.Object && r.TryGetProperty("id", out var idEl)) return idEl.GetInt32();
+        return null;
+    }
+
+    public async Task<bool> RenombrarSeccionAsync(int seccionId, string titulo)
+        => (await PutAsync<object>($"/api/cafe/listas-custom/secciones/{seccionId}", new { titulo })) is not null;
+
+    public async Task<bool> BorrarSeccionAsync(int seccionId)
+        => await DeleteAsync($"/api/cafe/listas-custom/secciones/{seccionId}");
+
+    public async Task<bool> MoverSeccionAsync(int seccionId, string direccion)
+        => (await PostAsync<object>($"/api/cafe/listas-custom/secciones/{seccionId}/mover?direccion={direccion}", new { })) is not null;
+
+    public async Task<int?> AgregarItemAsync(int seccionId, string tipo, int refId, bool esNovedad = false, string? notas = null)
+    {
+        var r = await PostAsync<JsonElement>($"/api/cafe/listas-custom/secciones/{seccionId}/items",
+            new { tipoItem = tipo, refId, esNovedad, notas });
+        if (r.ValueKind == JsonValueKind.Object && r.TryGetProperty("id", out var idEl)) return idEl.GetInt32();
+        return null;
+    }
+
+    public async Task<bool> BorrarItemListaCustomAsync(int itemId)
+        => await DeleteAsync($"/api/cafe/listas-custom/items/{itemId}");
+
+    public async Task<bool> ToggleNovedadAsync(int itemId)
+        => (await PutAsync<object>($"/api/cafe/listas-custom/items/{itemId}/novedad", new { })) is not null;
+
+    public async Task<bool> MoverItemListaCustomAsync(int itemId, string direccion)
+        => (await PostAsync<object>($"/api/cafe/listas-custom/items/{itemId}/mover?direccion={direccion}", new { })) is not null;
 
     public async Task<CafeConsultaResultDto?> ConsultarCafeAsync(string query)
         => await PostAsync<CafeConsultaResultDto>("/api/cafe/consultas", new CafeConsultaRequest { Query = query });

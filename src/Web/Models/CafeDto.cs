@@ -1548,3 +1548,43 @@ public class CrearListaCustomResponse
 {
     public int Id { get; set; }
 }
+
+// Fase 2: contenido completo de la lista (secciones + items resueltos con datos)
+public class ContenidoListaCustomDto
+{
+    public ListaCustomDto Lista { get; set; } = new();
+    public List<SeccionCustomDto> Secciones { get; set; } = new();
+}
+
+public class SeccionCustomDto
+{
+    public int Id { get; set; }
+    public string Titulo { get; set; } = "";
+    public int Orden { get; set; }
+    public List<ItemCustomDto> Items { get; set; } = new();
+}
+
+public class ItemCustomDto
+{
+    public int Id { get; set; }
+    public string TipoItem { get; set; } = "";
+    public int RefId { get; set; }
+    public int Orden { get; set; }
+    public string? Notas { get; set; }
+    public bool EsNovedad { get; set; }
+    public string? Nombre { get; set; }
+    public string? Sku { get; set; }
+    public decimal? Precio { get; set; }
+    public string? Detalle { get; set; }
+}
+
+public class ItemDisponibleDto
+{
+    public string Tipo { get; set; } = "";
+    public int Id { get; set; }
+    public string Nombre { get; set; } = "";
+    public string? Sku { get; set; }
+    public decimal? PrecioBar { get; set; }
+    public decimal? PrecioOtro { get; set; }
+    public string? Detalle { get; set; }
+}

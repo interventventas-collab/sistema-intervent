@@ -3,6 +3,7 @@
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject IJSRuntime JS
+@inject NavigationManager Nav
 
 <style>
     .lc-card { background: white; border: 1px solid #e5e7eb; border-radius: 10px; padding: 0.9rem 1rem; margin-bottom: 0.7rem; transition: all 0.15s; }
@@ -83,8 +84,11 @@
                             </div>
                         </div>
                         <div style="display: flex; gap: 0.3rem; flex-wrap: wrap;">
+                            <button class="btn btn-primary btn-sm" style="font-size: 0.78rem;" @onclick="() => EditarItems(l)">
+                                ✏ Editar items
+                            </button>
                             <button class="btn btn-secondary btn-sm" style="font-size: 0.78rem;" @onclick="() => OpenEditarModal(l)">
-                                ✏ Editar datos
+                                📝 Datos
                             </button>
                             <button class="btn btn-secondary btn-sm" style="font-size: 0.78rem;" @onclick="() => Duplicar(l)" disabled="@duplicando">
                                 📋 Duplicar
@@ -93,11 +97,6 @@
                                 @SvgIcons.AlertCircle
                             </button>
                         </div>
-                    </div>
-                    <div style="margin-top: 0.6rem; padding-top: 0.6rem; border-top: 1px solid #f3f4f6;">
-                        <span style="font-size: 0.78rem; color: #6b7280; font-style: italic;">
-                            📝 Fase 2 (próximamente): vas a poder agregar productos, combos y packs + organizar las secciones de esta lista.
-                        </span>
                     </div>
                 </div>
             }
@@ -323,6 +322,8 @@
             saving = false;
         }
     }
+
+    private void EditarItems(ListaCustomDto l) => Nav.NavigateTo($"/cafe/listas-precios-custom/{l.Id}/editar");
 
     private async Task Duplicar(ListaCustomDto l)
     {

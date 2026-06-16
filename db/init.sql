@@ -4705,6 +4705,11 @@ BEGIN
 END
 GO
 
+-- 2026-06-16: Fase 2 — flag NOVEDAD por item de la lista (chip rojo "NOVEDAD" en el PDF tipo TAKE AWAY)
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='EsNovedad' AND object_id=OBJECT_ID('Cafe_ListasPreciosCustomItem'))
+    ALTER TABLE Cafe_ListasPreciosCustomItem ADD EsNovedad BIT NOT NULL CONSTRAINT DF_CafeListasPreciosCustomItem_EsNovedad DEFAULT 0;
+GO
+
 -- 2026-06-10: Flag "este producto NO tiene precio diferenciado para BAR" —
 -- cuando es true, el motor de precios usa PrecioOtro a TODOS los clientes
 -- (BAR y OTRO). Util para productos cuyo OEM define un unico precio sin
