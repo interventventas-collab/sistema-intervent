@@ -103,6 +103,10 @@ public class ArcaInvoicePdfService
                             .AlignCenter().Text("AMBIENTE HOMOLOGACION - SIN VALOR FISCAL").FontSize(9).Bold();
                     }
 
+                    // 2026-06-16: franja gris a lo ancho con dos tel WhatsApp + email centrado.
+                    // B/N friendly (sin colores fuertes). Solo se muestra si hay datos.
+                    RenderFranjaContacto(col, emisor.Telefono, emisor.Telefono2, emisor.Email);
+
                     // Receptor
                     col.Item().PaddingTop(8).BorderTop(0.5f).PaddingTop(6).Column(c =>
                     {
@@ -324,6 +328,40 @@ public class ArcaInvoicePdfService
 
                     col.Item().PaddingTop(4).Text($"Concepto: {NombreConcepto(comp.Concepto)}").FontSize(8);
 
+                    // 2026-06-16: franja de DATOS BANCARIOS — SOLO en facturas con CAE.
+                    // El cliente la usa para hacer la transferencia. En cotizaciones tipo X no aparece.
+                    if (!string.IsNullOrWhiteSpace(comp.Cae) &&
+                        (!string.IsNullOrWhiteSpace(emisor.BancoNombre) ||
+                         !string.IsNullOrWhiteSpace(emisor.BancoCbu) ||
+                         !string.IsNullOrWhiteSpace(emisor.BancoAlias)))
+                    {
+                        col.Item().PaddingTop(6).Border(0.8f).BorderColor(Colors.Grey.Darken1)
+                            .Background(Colors.Grey.Lighten4).Padding(5).Column(bc =>
+                        {
+                            bc.Item().AlignCenter().Text("DATOS PARA TRANSFERENCIA")
+                                .FontSize(7).Bold().LetterSpacing(0.06f).FontColor(Colors.Grey.Darken3);
+                            bc.Item().PaddingTop(2).Row(br =>
+                            {
+                                br.RelativeItem(1).AlignCenter().Column(c =>
+                                {
+                                    c.Item().AlignCenter().Text("Banco").FontSize(6).FontColor(Colors.Grey.Darken1);
+                                    c.Item().AlignCenter().Text(emisor.BancoNombre ?? "—").FontSize(10).Bold();
+                                });
+                                br.RelativeItem(2).BorderLeft(0.4f).BorderRight(0.4f).BorderColor(Colors.Grey.Lighten1)
+                                    .AlignCenter().Column(c =>
+                                {
+                                    c.Item().AlignCenter().Text("CBU").FontSize(6).FontColor(Colors.Grey.Darken1);
+                                    c.Item().AlignCenter().Text(emisor.BancoCbu ?? "—").FontSize(10).Bold().FontFamily("Courier");
+                                });
+                                br.RelativeItem(1).AlignCenter().Column(c =>
+                                {
+                                    c.Item().AlignCenter().Text("Alias").FontSize(6).FontColor(Colors.Grey.Darken1);
+                                    c.Item().AlignCenter().Text(emisor.BancoAlias ?? "—").FontSize(10).Bold();
+                                });
+                            });
+                        });
+                    }
+
                     col.Item().PaddingTop(4).LineHorizontal(0.5f);
 
                     col.Item().PaddingTop(4).Row(row =>
@@ -348,6 +386,9 @@ public class ArcaInvoicePdfService
                             c.Item().AlignRight().Text($"Fecha Vto. CAE: {FormatFecha(comp.CaeVto ?? "")}").FontSize(9);
                         });
                     });
+
+                    // 2026-06-16: dos sitios web al pie del comprobante, ancho completo.
+                    RenderFooterWebs(col, emisor.Web, emisor.Web2);
                 });
             });
         }).GeneratePdf();
@@ -409,6 +450,71 @@ public class ArcaInvoicePdfService
         51 or 52 or 53 => "M",
         _ => "?",
     };
+
+    /// <summary>2026-06-16: franja gris ancho-completo con tel · email · tel.
+    /// Los logos de WhatsApp van en negro (los PDFs se imprimen en B/N). Si no hay ningún dato, no se muestra.</summary>
+    private static void RenderFranjaContacto(QuestPDF.Fluent.ColumnDescriptor col, string? tel1, string? tel2, string? email)
+    {
+        if (string.IsNullOrWhiteSpace(tel1) && string.IsNullOrWhiteSpace(tel2) && string.IsNullOrWhiteSpace(email)) return;
+
+        col.Item().PaddingTop(8).Background(Colors.Grey.Lighten3)
+            .BorderTop(0.5f).BorderBottom(0.5f).BorderColor(Colors.Grey.Medium)
+            .PaddingVertical(4).PaddingHorizontal(8).Row(row =>
+        {
+            // Izquierda: tel1 con icono whatsapp en negro
+            row.RelativeItem().Text(t =>
+            {
+                if (!string.IsNullOrWhiteSpace(tel1))
+                {
+                    t.Span("✆ ").FontSize(10);
+                    t.Span(tel1).FontSize(11).Bold();
+                }
+            });
+            // Centro: email
+            row.RelativeItem().AlignCenter().Text(t =>
+            {
+                if (!string.IsNullOrWhiteSpace(email))
+                {
+                    t.Span("✉ ").FontSize(9);
+                    t.Span(email).FontSize(9);
+                }
+            });
+            // Derecha: tel2 con icono whatsapp en negro
+            row.RelativeItem().AlignRight().Text(t =>
+            {
+                if (!string.IsNullOrWhiteSpace(tel2))
+                {
+                    t.Span("✆ ").FontSize(10);
+                    t.Span(tel2).FontSize(11).Bold();
+                }
+            });
+        });
+    }
+
+    /// <summary>2026-06-16: dos sitios web al pie del comprobante (izq / der). Si no hay datos no se muestra.</summary>
+    private static void RenderFooterWebs(QuestPDF.Fluent.ColumnDescriptor col, string? web1, string? web2)
+    {
+        if (string.IsNullOrWhiteSpace(web1) && string.IsNullOrWhiteSpace(web2)) return;
+        col.Item().PaddingTop(4).BorderTop(0.5f).BorderColor(Colors.Grey.Lighten1).PaddingTop(3).Row(row =>
+        {
+            row.RelativeItem().Text(t =>
+            {
+                if (!string.IsNullOrWhiteSpace(web1))
+                {
+                    t.Span("⌂ ").FontSize(9);
+                    t.Span(web1).FontSize(10).Bold();
+                }
+            });
+            row.RelativeItem().AlignRight().Text(t =>
+            {
+                if (!string.IsNullOrWhiteSpace(web2))
+                {
+                    t.Span("⌂ ").FontSize(9);
+                    t.Span(web2).FontSize(10).Bold();
+                }
+            });
+        });
+    }
 
     /// <summary>2026-06-16: bloque compacto "DOMICILIO DE ENTREGA + Repartidor + Días + Pendiente + Comentarios + QR"
     /// que vive en el header (mitad derecha, debajo de "Fecha de Emisión"). Reemplaza al bloque grande de abajo.</summary>
@@ -588,6 +694,16 @@ public class PdfEmisor
     public DateTime? InicioActividades { get; set; }
     /// <summary>Bytes del logo (PNG/JPG/WEBP). Null si no hay logo.</summary>
     public byte[]? LogoBytes { get; set; }
+
+    // 2026-06-16: contacto + datos bancarios (franja del PDF de factura).
+    public string? Telefono { get; set; }
+    public string? Telefono2 { get; set; }
+    public string? Email { get; set; }
+    public string? Web { get; set; }
+    public string? Web2 { get; set; }
+    public string? BancoNombre { get; set; }
+    public string? BancoCbu { get; set; }
+    public string? BancoAlias { get; set; }
 }
 
 public class PdfReceptor

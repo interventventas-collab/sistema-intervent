@@ -57,6 +57,14 @@ public class ArcaWebserviceController : ControllerBase
             IIBBNumero = ficha?.IIBBNumero,
             InicioActividades = ficha?.InicioActividades,
             LogoBytes = _emisorService.TryGetLogoBytes(ficha?.LogoPath),
+            Telefono = ficha?.Telefono,
+            Telefono2 = ficha?.Telefono2,
+            Email = ficha?.Email,
+            Web = ficha?.Web,
+            Web2 = ficha?.Web2,
+            BancoNombre = ficha?.BancoNombre,
+            BancoCbu = ficha?.BancoCbu,
+            BancoAlias = ficha?.BancoAlias,
         };
     }
 

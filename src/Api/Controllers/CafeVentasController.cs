@@ -760,6 +760,15 @@ public class CafeVentasController : ControllerBase
             IIBBNumero = ficha?.IIBBNumero ?? cfg?.NegocioIngresosBrutos,
             InicioActividades = ficha?.InicioActividades ?? cfg?.NegocioInicioActividad,
             LogoBytes = _emisorService.TryGetLogoBytes(ficha?.LogoPath),
+            // 2026-06-16: contacto + datos bancarios. Fallback al Cafe_Settings si la ficha no los tiene.
+            Telefono = ficha?.Telefono ?? cfg?.NegocioTelefono,
+            Telefono2 = ficha?.Telefono2 ?? cfg?.NegocioTelefono2,
+            Email = ficha?.Email ?? cfg?.NegocioEmail,
+            Web = ficha?.Web ?? cfg?.NegocioWeb,
+            Web2 = ficha?.Web2 ?? cfg?.NegocioWeb2,
+            BancoNombre = ficha?.BancoNombre,
+            BancoCbu = ficha?.BancoCbu,
+            BancoAlias = ficha?.BancoAlias,
         };
 
         var letra = ArcaInvoicePdfService.LetraDelTipo(v.ArcaCbteTipoNum ?? 0);

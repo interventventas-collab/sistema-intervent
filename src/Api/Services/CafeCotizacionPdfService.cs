@@ -193,6 +193,10 @@ public class CafeCotizacionPdfService
                         });
                     });
 
+                    // 2026-06-16: franja gris a lo ancho con dos tel WhatsApp + email centrado.
+                    // B/N friendly (sin colores fuertes). Si no hay datos, no se muestra.
+                    RenderFranjaContacto(col, cfg.NegocioTelefono, cfg.NegocioTelefono2, cfg.NegocioEmail);
+
                     // ─── Cliente (receptor) ───
                     col.Item().BorderLeft(1).BorderRight(1).BorderBottom(1).BorderColor(Colors.Grey.Lighten1).Padding(6).Row(row =>
                     {
@@ -482,11 +486,74 @@ public class CafeCotizacionPdfService
                             t.Span("Contactanos por WhatsApp").FontSize(8).FontColor("#25D366").Bold();
                         }
                     });
+
+                    // 2026-06-16: dos sitios web al pie del comprobante (izq / der). Si no hay datos no se muestra.
+                    RenderFooterWebs(fc, cfg.NegocioWeb, cfg.NegocioWeb2);
                 });
             });
         }).GeneratePdf();
 
         return pdf;
+    }
+
+    /// <summary>2026-06-16: franja gris ancho-completo con tel · email · tel. Iconos en negro (B/N friendly).</summary>
+    private static void RenderFranjaContacto(QuestPDF.Fluent.ColumnDescriptor col, string? tel1, string? tel2, string? email)
+    {
+        if (string.IsNullOrWhiteSpace(tel1) && string.IsNullOrWhiteSpace(tel2) && string.IsNullOrWhiteSpace(email)) return;
+        col.Item().PaddingTop(4).Background(Colors.Grey.Lighten3)
+            .BorderTop(0.5f).BorderBottom(0.5f).BorderColor(Colors.Grey.Medium)
+            .PaddingVertical(4).PaddingHorizontal(8).Row(row =>
+        {
+            row.RelativeItem().Text(t =>
+            {
+                if (!string.IsNullOrWhiteSpace(tel1))
+                {
+                    t.Span("✆ ").FontSize(10);
+                    t.Span(tel1).FontSize(11).Bold();
+                }
+            });
+            row.RelativeItem().AlignCenter().Text(t =>
+            {
+                if (!string.IsNullOrWhiteSpace(email))
+                {
+                    t.Span("✉ ").FontSize(9);
+                    t.Span(email).FontSize(9);
+                }
+            });
+            row.RelativeItem().AlignRight().Text(t =>
+            {
+                if (!string.IsNullOrWhiteSpace(tel2))
+                {
+                    t.Span("✆ ").FontSize(10);
+                    t.Span(tel2).FontSize(11).Bold();
+                }
+            });
+        });
+    }
+
+    /// <summary>2026-06-16: dos sitios web al pie del comprobante (izq/der). Si no hay datos no se muestra.</summary>
+    private static void RenderFooterWebs(QuestPDF.Fluent.ColumnDescriptor col, string? web1, string? web2)
+    {
+        if (string.IsNullOrWhiteSpace(web1) && string.IsNullOrWhiteSpace(web2)) return;
+        col.Item().PaddingTop(4).Row(row =>
+        {
+            row.RelativeItem().Text(t =>
+            {
+                if (!string.IsNullOrWhiteSpace(web1))
+                {
+                    t.Span("⌂ ").FontSize(9);
+                    t.Span(web1).FontSize(10).Bold();
+                }
+            });
+            row.RelativeItem().AlignRight().Text(t =>
+            {
+                if (!string.IsNullOrWhiteSpace(web2))
+                {
+                    t.Span("⌂ ").FontSize(9);
+                    t.Span(web2).FontSize(10).Bold();
+                }
+            });
+        });
     }
 
     private byte[]? TryLoadLogoBytes(string? logoUrl)
