@@ -1,5 +1,6 @@
 @page "/cafe/listas-precios-custom/{Id:int}/editar"
 @attribute [Authorize]
+@implements IDisposable
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject IJSRuntime JS
@@ -31,8 +32,12 @@
     .sec-activa-bar { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.7rem; background: #dbeafe; color: #1e3a8a; font-weight: 700; font-size: 0.85rem; border-bottom: 1px solid #93c5fd; }
     .sec-body { padding: 0.5rem 0.7rem; }
     .sec-empty { padding: 1rem; text-align: center; color: #9ca3af; font-style: italic; font-size: 0.85rem; }
-    .it-row { display: flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.4rem; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem; }
+    .it-row { display: flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.4rem; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem; cursor: grab; user-select: none; }
+    .it-row:active { cursor: grabbing; }
     .it-row:last-child { border-bottom: none; }
+    @* 2026-06-16: estilos del drag&drop (SortableJS) *@
+    .lc-drag-ghost { opacity: 0.4; background: #dbeafe; }
+    .lc-drag-chosen { background: #eff6ff; }
     .it-name { flex: 1; min-width: 0; }
     .it-price { font-weight: 700; color: #15803d; min-width: 80px; text-align: right; }
     .it-actions { display: flex; gap: 0.2rem; }
@@ -173,7 +178,7 @@
                                     <button class="sec-activar-btn" @onclick="@(() => seccionActivaId = sec.Id)">▶ AGREGAR AQUÍ</button>
                                 </div>
                             }
-                            <div class="sec-body">
+                            <div class="sec-body" id="@($"lc-sec-items-{sec.Id}")">
                                 @if (sec.Items.Count == 0)
                                 {
                                     <div class="sec-empty">Vacía — clickeá un producto/combo/pack de la izquierda para agregarlo acá</div>
@@ -184,7 +189,7 @@
                                     {
                                         var it = sec.Items[j];
                                         var jidx = j;
-                                        <div class="it-row">
+                                        <div class="it-row" data-item-id="@it.Id">
                                             <div class="it-name">
                                                 @if (!string.IsNullOrEmpty(it.Sku))
                                                 {
@@ -243,11 +248,37 @@
         .Select(i => $"{i.TipoItem}:{i.RefId}")
         .ToHashSet();
 
+    private DotNetObjectReference<CafeListaCustomEditar>? dotNetRef;
+
     protected override async Task OnInitializedAsync()
     {
+        dotNetRef = DotNetObjectReference.Create(this);
         await Recargar();
         await BuscarDisponibles();
     }
+
+    // 2026-06-16: re-inicializa el drag&drop de items en cada sección después de cada render.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (lista is null) return;
+        foreach (var sec in secciones)
+        {
+            if (sec.Items.Count > 0)
+            {
+                try { await JS.InvokeVoidAsync("lcInitSortable", $"lc-sec-items-{sec.Id}", sec.Id, dotNetRef); }
+                catch { }
+            }
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnItemsReordenados(int seccionId, int[] itemIds)
+    {
+        await Api.ReorderItemsAsync(seccionId, itemIds.ToList());
+        await Recargar();
+    }
+
+    public void Dispose() => dotNetRef?.Dispose();
 
     private async Task Recargar()
     {

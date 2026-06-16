@@ -1069,6 +1069,33 @@
                 return JSON.parse(raw);
             } catch (e) { return null; }
         };
+
+        // 2026-06-16: Sortable handler para la pantalla de edición de listas custom.
+        // El operador arrastra los items de una sección para reordenarlos sin clickear ↑↓ uno por uno.
+        window.lcInitSortable = function(containerId, seccionId, dotNetRef) {
+            var el = document.getElementById(containerId);
+            if (!el) return;
+            if (el._sortableInstance) {
+                try { el._sortableInstance.destroy(); } catch (e) {}
+            }
+            el._sortableInstance = Sortable.create(el, {
+                animation: 150,
+                ghostClass: 'lc-drag-ghost',
+                chosenClass: 'lc-drag-chosen',
+                forceFallback: true,
+                fallbackTolerance: 5,
+                touchStartThreshold: 5,
+                onEnd: function(evt) {
+                    var ids = [];
+                    el.querySelectorAll('[data-item-id]').forEach(function(row) {
+                        ids.push(parseInt(row.getAttribute('data-item-id'), 10));
+                    });
+                    if (dotNetRef) {
+                        dotNetRef.invokeMethodAsync('OnItemsReordenados', seccionId, ids);
+                    }
+                }
+            });
+        };
     </script>
     <style>
         .mp-drag-handle {

@@ -618,6 +618,25 @@ public class CafeListasCustomController : ControllerBase
         return Ok(new { esNovedad = item.EsNovedad });
     }
 
+    // ─── POST reordenar items de una seccion en bulk (drag&drop) ───
+    public class ReorderItemsRequest { public List<int> ItemIds { get; set; } = new(); }
+    [HttpPost("secciones/{seccionId:int}/reorder-items")]
+    public async Task<IActionResult> ReorderItems(int seccionId, [FromBody] ReorderItemsRequest req)
+    {
+        if (req?.ItemIds == null || req.ItemIds.Count == 0)
+            return BadRequest(new { error = "Lista vacia" });
+        var items = await _db.CafeListasPreciosCustomItems
+            .Where(i => i.SeccionId == seccionId && req.ItemIds.Contains(i.Id))
+            .ToListAsync();
+        var idToOrden = req.ItemIds.Select((id, idx) => new { id, idx }).ToDictionary(x => x.id, x => x.idx);
+        foreach (var it in items)
+        {
+            if (idToOrden.TryGetValue(it.Id, out var nuevoOrden)) it.Orden = nuevoOrden;
+        }
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, total = items.Count });
+    }
+
     // ─── POST mover item arriba/abajo dentro de su seccion ───
     [HttpPost("items/{itemId:int}/mover")]
     public async Task<IActionResult> MoverItem(int itemId, [FromQuery] string direccion)

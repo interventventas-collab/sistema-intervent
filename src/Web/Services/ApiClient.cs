@@ -1458,6 +1458,9 @@ public class ApiClient
     public async Task<bool> MoverItemListaCustomAsync(int itemId, string direccion)
         => (await PostAsync<object>($"/api/cafe/listas-custom/items/{itemId}/mover?direccion={direccion}", new { })) is not null;
 
+    public async Task<bool> ReorderItemsAsync(int seccionId, List<int> itemIds)
+        => (await PostAsync<object>($"/api/cafe/listas-custom/secciones/{seccionId}/reorder-items", new { itemIds })) is not null;
+
     public async Task<CafeConsultaResultDto?> ConsultarCafeAsync(string query)
         => await PostAsync<CafeConsultaResultDto>("/api/cafe/consultas", new CafeConsultaRequest { Query = query });
 
