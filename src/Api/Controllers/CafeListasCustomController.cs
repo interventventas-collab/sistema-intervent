@@ -404,12 +404,15 @@ public class CafeListasCustomController : ControllerBase
         return Ok(dto);
     }
 
-    // ─── GET items disponibles para agregar (con buscador) ───
+    // ─── GET items disponibles para agregar (con buscador + filtro marca) ───
     [HttpGet("items-disponibles")]
-    public async Task<IActionResult> GetItemsDisponibles([FromQuery] string tipo = "PRODUCTO", [FromQuery] string? q = null)
+    public async Task<IActionResult> GetItemsDisponibles([FromQuery] string tipo = "PRODUCTO", [FromQuery] string? q = null, [FromQuery] string? marca = null)
     {
         tipo = (tipo ?? "PRODUCTO").Trim().ToUpperInvariant();
         var search = (q ?? "").Trim().ToLowerInvariant();
+        var marcaFiltro = (marca ?? "").Trim();
+        // 2026-06-16 v2: cuando hay filtro de marca, sacamos el limite Take(100) para que "Agregar todos" traiga toda la marca.
+        int limite = string.IsNullOrEmpty(marcaFiltro) ? 100 : 5000;
         var result = new List<ItemDisponibleDto>();
 
         if (tipo == "PRODUCTO")
@@ -417,7 +420,9 @@ public class CafeListasCustomController : ControllerBase
             var qry = _db.CafeProductos.Include(p => p.MarcaNav).Where(p => p.IsActive);
             if (!string.IsNullOrEmpty(search))
                 qry = qry.Where(p => p.Nombre.ToLower().Contains(search) || (p.Sku != null && p.Sku.ToLower().Contains(search)) || (p.Marca != null && p.Marca.ToLower().Contains(search)));
-            result = await qry.OrderBy(p => p.Nombre).Take(100)
+            if (!string.IsNullOrEmpty(marcaFiltro))
+                qry = qry.Where(p => (p.Marca != null && p.Marca == marcaFiltro) || (p.MarcaNav != null && p.MarcaNav.Nombre == marcaFiltro));
+            result = await qry.OrderBy(p => p.Nombre).Take(limite)
                 .Select(p => new ItemDisponibleDto
                 {
                     Tipo = "PRODUCTO", Id = p.Id, Nombre = p.Nombre, Sku = p.Sku,
@@ -430,7 +435,9 @@ public class CafeListasCustomController : ControllerBase
             var qry = _db.CafeCombos.Where(c => c.IsActive);
             if (!string.IsNullOrEmpty(search))
                 qry = qry.Where(c => c.Nombre.ToLower().Contains(search) || (c.Sku != null && c.Sku.ToLower().Contains(search)) || (c.Marca != null && c.Marca.ToLower().Contains(search)));
-            result = await qry.OrderBy(c => c.Nombre).Take(100)
+            if (!string.IsNullOrEmpty(marcaFiltro))
+                qry = qry.Where(c => c.Marca == marcaFiltro);
+            result = await qry.OrderBy(c => c.Nombre).Take(limite)
                 .Select(c => new ItemDisponibleDto
                 {
                     Tipo = "COMBO", Id = c.Id, Nombre = c.Nombre, Sku = c.Sku,
@@ -449,7 +456,9 @@ public class CafeListasCustomController : ControllerBase
                     || (p.Producto != null && p.Producto.Sku != null && p.Producto.Sku.ToLower().Contains(search))
                     || (p.Producto != null && p.Producto.Marca != null && p.Producto.Marca.ToLower().Contains(search))
                 );
-            result = await qry.OrderBy(p => p.Producto!.Nombre).ThenBy(p => p.Cantidad).Take(100)
+            if (!string.IsNullOrEmpty(marcaFiltro))
+                qry = qry.Where(p => p.Producto != null && ((p.Producto.Marca == marcaFiltro) || (p.Producto.MarcaNav != null && p.Producto.MarcaNav.Nombre == marcaFiltro)));
+            result = await qry.OrderBy(p => p.Producto!.Nombre).ThenBy(p => p.Cantidad).Take(limite)
                 .Select(p => new ItemDisponibleDto
                 {
                     Tipo = "PACK", Id = p.Id,
@@ -582,6 +591,50 @@ public class CafeListasCustomController : ControllerBase
         if (lista != null) lista.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return Ok(new { id = item.Id });
+    }
+
+    // ─── POST bulk: agregar muchos items a una seccion en una sola llamada (skip duplicados) ───
+    public class BulkItemInput { public string TipoItem { get; set; } = ""; public int RefId { get; set; } }
+    public class BulkItemsRequest { public List<BulkItemInput> Items { get; set; } = new(); }
+    [HttpPost("secciones/{seccionId:int}/items-bulk")]
+    public async Task<IActionResult> AgregarItemsBulk(int seccionId, [FromBody] BulkItemsRequest req)
+    {
+        if (req?.Items == null || req.Items.Count == 0)
+            return BadRequest(new { error = "Lista vacia" });
+        var seccion = await _db.CafeListasPreciosCustomSecciones.FindAsync(seccionId);
+        if (seccion is null) return NotFound(new { error = "Sección no encontrada" });
+
+        // Items ya existentes en TODA la lista (no solo la seccion) para no duplicar.
+        var seccionesDeLista = await _db.CafeListasPreciosCustomSecciones
+            .Where(s => s.ListaId == seccion.ListaId).Select(s => s.Id).ToListAsync();
+        var existentes = await _db.CafeListasPreciosCustomItems
+            .Where(i => seccionesDeLista.Contains(i.SeccionId))
+            .Select(i => new { i.TipoItem, i.RefId })
+            .ToListAsync();
+        var existentesSet = existentes.Select(e => $"{e.TipoItem}:{e.RefId}").ToHashSet();
+
+        int maxOrden = await _db.CafeListasPreciosCustomItems
+            .Where(i => i.SeccionId == seccionId).Select(i => (int?)i.Orden).MaxAsync() ?? -1;
+
+        int agregados = 0, salteados = 0;
+        foreach (var inp in req.Items)
+        {
+            var tipo = (inp.TipoItem ?? "").Trim().ToUpperInvariant();
+            if (tipo != "PRODUCTO" && tipo != "COMBO" && tipo != "PACK") { salteados++; continue; }
+            if (inp.RefId <= 0) { salteados++; continue; }
+            if (existentesSet.Contains($"{tipo}:{inp.RefId}")) { salteados++; continue; }
+            _db.CafeListasPreciosCustomItems.Add(new CafeListaPreciosCustomItem
+            {
+                SeccionId = seccionId, TipoItem = tipo, RefId = inp.RefId,
+                Orden = ++maxOrden, CreatedAt = DateTime.UtcNow
+            });
+            existentesSet.Add($"{tipo}:{inp.RefId}");
+            agregados++;
+        }
+        var lista = await _db.CafeListasPreciosCustom.FindAsync(seccion.ListaId);
+        if (lista != null) lista.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { agregados, salteados });
     }
 
     // ─── DELETE item ───

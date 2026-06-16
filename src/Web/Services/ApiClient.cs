@@ -1422,8 +1422,19 @@ public class ApiClient
     public async Task<ContenidoListaCustomDto?> GetContenidoListaCustomAsync(int listaId)
         => await GetAsync<ContenidoListaCustomDto>($"/api/cafe/listas-custom/{listaId}/contenido");
 
-    public async Task<List<ItemDisponibleDto>?> GetItemsDisponiblesAsync(string tipo, string? q = null)
-        => await GetAsync<List<ItemDisponibleDto>>($"/api/cafe/listas-custom/items-disponibles?tipo={Uri.EscapeDataString(tipo)}&q={Uri.EscapeDataString(q ?? "")}");
+    public async Task<List<ItemDisponibleDto>?> GetItemsDisponiblesAsync(string tipo, string? q = null, string? marca = null)
+        => await GetAsync<List<ItemDisponibleDto>>($"/api/cafe/listas-custom/items-disponibles?tipo={Uri.EscapeDataString(tipo)}&q={Uri.EscapeDataString(q ?? "")}&marca={Uri.EscapeDataString(marca ?? "")}");
+
+    public record AgregarItemsBulkResult(int Agregados, int Salteados);
+    public async Task<AgregarItemsBulkResult?> AgregarItemsBulkAsync(int seccionId, List<(string Tipo, int RefId)> items)
+    {
+        var payload = new { items = items.Select(i => new { tipoItem = i.Tipo, refId = i.RefId }).ToList() };
+        var r = await PostAsync<JsonElement>($"/api/cafe/listas-custom/secciones/{seccionId}/items-bulk", payload);
+        if (r.ValueKind != JsonValueKind.Object) return null;
+        var agregados = r.TryGetProperty("agregados", out var a) ? a.GetInt32() : 0;
+        var salteados = r.TryGetProperty("salteados", out var s) ? s.GetInt32() : 0;
+        return new AgregarItemsBulkResult(agregados, salteados);
+    }
 
     public async Task<int?> CrearSeccionAsync(int listaId, string titulo)
     {

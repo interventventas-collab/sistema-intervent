@@ -7,8 +7,8 @@
 @inject NavigationManager Nav
 
 <style>
-    @* 2026-06-16 v2: panel izquierdo más ancho (320 → 450) para que el nombre completo se lea sin recorte. *@
-    .ed-grid { display: grid; grid-template-columns: 450px 1fr; gap: 1rem; align-items: flex-start; }
+    @* 2026-06-16 v3: panel izquierdo aún más ancho (450 → 600) para ver nombres largos sin recorte. *@
+    .ed-grid { display: grid; grid-template-columns: 600px 1fr; gap: 1rem; align-items: flex-start; }
     @@media (max-width: 900px) { .ed-grid { grid-template-columns: 1fr; } }
     .ed-panel { background: white; border: 1px solid #e5e7eb; border-radius: 10px; padding: 0.7rem; }
     .ed-tabs { display: flex; gap: 0.25rem; margin-bottom: 0.5rem; }
@@ -92,7 +92,31 @@
                     <div class="ed-tab @(tipoActivo == "COMBO" ? "active" : "")" @onclick="@(() => SetTipo("COMBO"))">Combos</div>
                     <div class="ed-tab @(tipoActivo == "PACK" ? "active" : "")" @onclick="@(() => SetTipo("PACK"))">Packs</div>
                 </div>
+                @* 2026-06-16: filtro por marca + botón "agregar todos" para sumar la marca completa de una sola pasada. *@
+                <div style="display: flex; gap: 0.4rem; margin-bottom: 0.5rem; align-items: center;">
+                    <select class="form-input" @bind="marcaFiltro" @bind:after="BuscarDisponibles" style="flex: 1; font-size: 0.85rem;">
+                        <option value="">📦 Todas las marcas</option>
+                        @if (marcasDisp is not null)
+                        {
+                            @foreach (var m in marcasDisp)
+                            {
+                                <option value="@m.Nombre">@m.Nombre</option>
+                            }
+                        }
+                    </select>
+                </div>
                 <input class="form-input" placeholder="Buscar..." @bind="searchQ" @bind:event="oninput" @bind:after="BuscarDisponibles" style="margin-bottom: 0.5rem;" />
+                @if (disponibles is not null && disponibles.Count > 0 && seccionActivaId is not null)
+                {
+                    var noAgregados = disponibles.Where(d => !ItemsYaAgregados.Contains($"{d.Tipo}:{d.Id}")).ToList();
+                    @if (noAgregados.Count > 0)
+                    {
+                        <button class="btn" style="width: 100%; background: #15803d; color: white; border: none; padding: 0.5rem; font-weight: 700; margin-bottom: 0.5rem; border-radius: 6px;"
+                                @onclick="AgregarTodosVisibles">
+                            ➕ AGREGAR LOS @noAgregados.Count @(noAgregados.Count == 1 ? "ITEM" : "ITEMS") A LA SECCIÓN
+                        </button>
+                    }
+                }
                 <div class="ed-disp-list">
                     @if (disponibles is null)
                     {
@@ -237,6 +261,8 @@
     private int? seccionActivaId;
     private string tipoActivo = "PRODUCTO";
     private string searchQ = "";
+    private string marcaFiltro = "";
+    private List<CafeMarcaDto>? marcasDisp;
     private List<ItemDisponibleDto>? disponibles;
     private int TotalItems => secciones.Sum(s => s.Items.Count);
     private CancellationTokenSource? buscarCts;
@@ -253,6 +279,7 @@
     protected override async Task OnInitializedAsync()
     {
         dotNetRef = DotNetObjectReference.Create(this);
+        marcasDisp = await Api.GetCafeMarcasAsync(activos: true);
         await Recargar();
         await BuscarDisponibles();
     }
@@ -310,9 +337,29 @@
         {
             await Task.Delay(200, token);
             if (token.IsCancellationRequested) return;
-            disponibles = await Api.GetItemsDisponiblesAsync(tipoActivo, searchQ);
+            disponibles = await Api.GetItemsDisponiblesAsync(tipoActivo, searchQ, marcaFiltro);
         }
         catch (TaskCanceledException) { }
+    }
+
+    private async Task AgregarTodosVisibles()
+    {
+        if (seccionActivaId is null || disponibles is null) return;
+        var yaAgregados = ItemsYaAgregados;
+        var aAgregar = disponibles
+            .Where(d => !yaAgregados.Contains($"{d.Tipo}:{d.Id}"))
+            .Select(d => (Tipo: d.Tipo, RefId: d.Id))
+            .ToList();
+        if (aAgregar.Count == 0) { ToastService.Info("Todos ya están agregados"); return; }
+        if (aAgregar.Count > 50)
+        {
+            var ok = await JS.InvokeAsync<bool>("confirm", $"¿Agregar {aAgregar.Count} items a la sección? Es bastante.");
+            if (!ok) return;
+        }
+        var r = await Api.AgregarItemsBulkAsync(seccionActivaId.Value, aAgregar);
+        if (r is null) { ToastService.Error("No se pudo agregar"); return; }
+        ToastService.Success($"Agregados {r.Agregados}" + (r.Salteados > 0 ? $" (saltados {r.Salteados} duplicados)" : ""));
+        await Recargar();
     }
 
     private async Task NuevaSeccion()
