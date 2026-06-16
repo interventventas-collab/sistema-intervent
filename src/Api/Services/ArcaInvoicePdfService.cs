@@ -451,8 +451,8 @@ public class ArcaInvoicePdfService
         _ => "?",
     };
 
-    /// <summary>2026-06-16: franja gris ancho-completo con tel · email · tel.
-    /// Los logos de WhatsApp van en negro (los PDFs se imprimen en B/N). Si no hay ningún dato, no se muestra.</summary>
+    /// <summary>2026-06-16: franja gris ancho-completo con Tel. · email · Tel. Texto plano,
+    /// sin emojis (las fuentes default de QuestPDF no soportan ✆ ni ✉ — quedan cuadraditos).</summary>
     private static void RenderFranjaContacto(QuestPDF.Fluent.ColumnDescriptor col, string? tel1, string? tel2, string? email)
     {
         if (string.IsNullOrWhiteSpace(tel1) && string.IsNullOrWhiteSpace(tel2) && string.IsNullOrWhiteSpace(email)) return;
@@ -461,30 +461,23 @@ public class ArcaInvoicePdfService
             .BorderTop(0.5f).BorderBottom(0.5f).BorderColor(Colors.Grey.Medium)
             .PaddingVertical(4).PaddingHorizontal(8).Row(row =>
         {
-            // Izquierda: tel1 con icono whatsapp en negro
             row.RelativeItem().Text(t =>
             {
                 if (!string.IsNullOrWhiteSpace(tel1))
                 {
-                    t.Span("✆ ").FontSize(10);
+                    t.Span("Tel. ").FontSize(9).FontColor(Colors.Grey.Darken1);
                     t.Span(tel1).FontSize(11).Bold();
                 }
             });
-            // Centro: email
             row.RelativeItem().AlignCenter().Text(t =>
             {
-                if (!string.IsNullOrWhiteSpace(email))
-                {
-                    t.Span("✉ ").FontSize(9);
-                    t.Span(email).FontSize(9);
-                }
+                if (!string.IsNullOrWhiteSpace(email)) t.Span(email).FontSize(10);
             });
-            // Derecha: tel2 con icono whatsapp en negro
             row.RelativeItem().AlignRight().Text(t =>
             {
                 if (!string.IsNullOrWhiteSpace(tel2))
                 {
-                    t.Span("✆ ").FontSize(10);
+                    t.Span("Tel. ").FontSize(9).FontColor(Colors.Grey.Darken1);
                     t.Span(tel2).FontSize(11).Bold();
                 }
             });
@@ -499,19 +492,11 @@ public class ArcaInvoicePdfService
         {
             row.RelativeItem().Text(t =>
             {
-                if (!string.IsNullOrWhiteSpace(web1))
-                {
-                    t.Span("⌂ ").FontSize(9);
-                    t.Span(web1).FontSize(10).Bold();
-                }
+                if (!string.IsNullOrWhiteSpace(web1)) t.Span(web1).FontSize(10).Bold();
             });
             row.RelativeItem().AlignRight().Text(t =>
             {
-                if (!string.IsNullOrWhiteSpace(web2))
-                {
-                    t.Span("⌂ ").FontSize(9);
-                    t.Span(web2).FontSize(10).Bold();
-                }
+                if (!string.IsNullOrWhiteSpace(web2)) t.Span(web2).FontSize(10).Bold();
             });
         });
     }

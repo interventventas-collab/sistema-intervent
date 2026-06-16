@@ -90,8 +90,8 @@ public class CafeCotizacionPdfService
                     if (esProforma || v.TipoComprobante == "X")
                     {
                         var bannerText = esProforma
-                            ? "📋 DOCUMENTO SIN VALOR FISCAL — PROFORMA NO APTA PARA ARCA"
-                            : "📋 DOCUMENTO INTERNO — NO VÁLIDO COMO FACTURA";
+                            ? "DOCUMENTO SIN VALOR FISCAL — PROFORMA NO APTA PARA ARCA"
+                            : "DOCUMENTO INTERNO — NO VÁLIDO COMO FACTURA";
                         col.Item().PaddingBottom(4).Background(Colors.Orange.Lighten4)
                             .Border(1).BorderColor(Colors.Orange.Medium)
                             .Padding(5).AlignCenter()
@@ -173,23 +173,10 @@ public class CafeCotizacionPdfService
                             if (v.TipoComprobante == "X")
                                 c.Item().PaddingTop(2).AlignRight().Text("Documento no válido como factura")
                                     .FontSize(7).Italic().FontColor(Colors.Grey.Darken1);
-                            if (v.IsPaid && v.Estado != "anulado")
-                            {
-                                c.Item().PaddingTop(3).AlignRight().Row(rr =>
-                                {
-                                    rr.AutoItem().Background(Colors.Red.Lighten4).Border(1).BorderColor(Colors.Red.Medium)
-                                        .Padding(3).Text("PAGADO").FontSize(11).Bold().FontColor(Colors.Red.Darken2);
-                                });
-                            }
-                            // QR para que el repartidor escanee y cargue la cobranza desde su celu
-                            if (qrRepartidor != null)
-                            {
-                                c.Item().PaddingTop(4).AlignRight().Column(qc =>
-                                {
-                                    qc.Item().Width(70).Height(70).Image(qrRepartidor).FitArea();
-                                    qc.Item().AlignCenter().Text("📲 repartidor").FontSize(6).FontColor(Colors.Grey.Darken1);
-                                });
-                            }
+                            // 2026-06-16: bloque DOMICILIO DE ENTREGA + Repartidor + chips + QR ENTREGA — al lado del cuadro X.
+                            // Mismo lugar que en la factura ARCA para que el repartidor SIEMPRE encuentre el QR y los datos en
+                            // la misma posición, en cualquier comprobante. Reemplaza el QR suelto + bloques duplicados del footer.
+                            RenderBloqueEntregaHeaderCotiz(c, v, diasActivos, diasDelComp, qrRepartidor);
                         });
                     });
 
@@ -404,32 +391,16 @@ public class CafeCotizacionPdfService
                         });
                     });
 
-                    if (!string.IsNullOrWhiteSpace(v.ClienteDomicilioEntregaSnapshot))
-                    {
-                        fc.Item().PaddingTop(5).Border(1).BorderColor(Colors.Grey.Lighten1)
-                            .Background(Colors.Grey.Lighten4).Padding(5).Text(t =>
-                            {
-                                t.Span("🚚 Entrega en: ").SemiBold();
-                                t.Span(v.ClienteDomicilioEntregaSnapshot!);
-                            });
-                    }
-
-                    if (!string.IsNullOrWhiteSpace(v.EntregaPor))
-                    {
-                        fc.Item().PaddingTop(5).Border(1).BorderColor(Colors.Grey.Lighten1)
-                            .Background(Colors.Grey.Lighten4).Padding(5).Text(t =>
-                            {
-                                t.Span("🚚 Repartidor: ").SemiBold();
-                                t.Span(v.EntregaPor!);
-                            });
-                    }
-
+                    // 2026-06-16: los bloques "Entrega en", "Repartidor" y "Días de visita / reparto"
+                    // ya están arriba en el bloque DOMICILIO DE ENTREGA del header — los saco de acá
+                    // para no duplicar. El repartidor SIEMPRE busca esa info en el mismo lugar
+                    // (al lado del cuadro X / A), igual en facturas y cotizaciones.
                     if (!string.IsNullOrEmpty(v.ClienteComentariosComprobante))
                     {
                         fc.Item().PaddingTop(5).BorderLeft(3).BorderColor(Colors.Orange.Darken1)
                             .Background(Colors.Orange.Lighten4).Padding(5).Text(t =>
                             {
-                                t.Span("📝 ").SemiBold();
+                                t.Span("Nota: ").SemiBold();
                                 t.Span(v.ClienteComentariosComprobante!).FontColor("#78350f");
                             });
                     }
@@ -442,39 +413,6 @@ public class CafeCotizacionPdfService
                             t.Span(v.Observaciones!);
                         });
                     }
-
-                    // Días de visita / reparto — con ✓ check + EN RADAR muestra "a coordinar"
-                    fc.Item().PaddingTop(5).Border(1).BorderColor(Colors.Grey.Lighten1).Padding(5).Row(row =>
-                    {
-                        row.AutoItem().AlignMiddle().PaddingRight(6).Text("Días de visita / reparto:")
-                            .FontSize(8).FontColor(Colors.Grey.Darken1);
-                        if (v.Retira)
-                        {
-                            // 2026-06-01: el cliente retira la mercaderia en el local.
-                            row.AutoItem().AlignMiddle().Padding(3)
-                                .Text("🚗 RETIRA EN LOCAL").Bold().FontSize(10).FontColor(Colors.Green.Darken3);
-                        }
-                        else if (v.EnRadar)
-                        {
-                            // 2026-06-01: por pedido del usuario, ahora el cliente ve literal "🛰 EN RADAR".
-                            row.AutoItem().AlignMiddle().Padding(3)
-                                .Text("🛰 EN RADAR").Bold().FontSize(10).FontColor(Colors.Blue.Darken3);
-                        }
-                        else
-                        {
-                            foreach (var d in diasDelComp)
-                            {
-                                var on = diasActivos.Contains(d);
-                                var bg = on ? Colors.Blue.Lighten5 : Colors.White;
-                                var fg = on ? Colors.Blue.Darken3 : Colors.Grey.Darken2;
-                                var bd = on ? Colors.Blue.Darken2 : Colors.Grey.Lighten1;
-                                var bw = on ? 1.5f : 1f;
-                                row.ConstantItem(40).PaddingHorizontal(2).Border(bw).BorderColor(bd)
-                                    .Background(bg).AlignCenter().AlignMiddle().Padding(2)
-                                    .Text(on ? $"✓{d}" : d).Bold().FontSize(8).FontColor(fg);
-                            }
-                        }
-                    });
 
                     // Línea final con "Gracias por tu compra"
                     fc.Item().PaddingTop(8).BorderTop(1).BorderColor(Colors.Grey.Lighten2).PaddingTop(4).AlignCenter().Text(t =>
@@ -496,7 +434,98 @@ public class CafeCotizacionPdfService
         return pdf;
     }
 
-    /// <summary>2026-06-16: franja gris ancho-completo con tel · email · tel. Iconos en negro (B/N friendly).</summary>
+    /// <summary>2026-06-16: bloque DOMICILIO DE ENTREGA + Repartidor + chips RETIRA/EN RADAR + Pendiente/Pagada + QR ENTREGA.
+    /// Va al lado del cuadro X (mitad derecha del header) — MISMO LUGAR que en facturas ARCA para que los repartidores
+    /// no se mareen. Reemplaza al QR suelto y a los bloques duplicados del footer (Entrega en/Repartidor/Días).</summary>
+    private static void RenderBloqueEntregaHeaderCotiz(QuestPDF.Fluent.ColumnDescriptor col, CafeVenta v,
+        HashSet<string> diasActivos, List<string> diasDelComp, byte[]? qrRepartidor)
+    {
+        var domicilio = !string.IsNullOrWhiteSpace(v.ClienteDomicilioEntregaSnapshot)
+            ? v.ClienteDomicilioEntregaSnapshot
+            : v.ClienteDireccionSnapshot;
+        var tieneEntrega = !string.IsNullOrWhiteSpace(domicilio);
+        var tieneQr = qrRepartidor is not null;
+        if (!tieneEntrega && !tieneQr) return;
+
+        col.Item().PaddingTop(6).Background(Colors.Grey.Lighten4).Border(0.5f).BorderColor(Colors.Grey.Lighten1).Padding(5).Row(r =>
+        {
+            r.RelativeItem().Column(cc =>
+            {
+                cc.Item().Text("DOMICILIO DE ENTREGA").FontSize(6).Bold().FontColor(Colors.Grey.Darken2).LetterSpacing(0.05f);
+                if (tieneEntrega) cc.Item().Text(domicilio!).FontSize(9).Bold();
+
+                cc.Item().PaddingTop(3).Row(lineRow =>
+                {
+                    if (!string.IsNullOrWhiteSpace(v.EntregaPor))
+                    {
+                        lineRow.AutoItem().AlignMiddle().PaddingRight(6).Text(t =>
+                        {
+                            t.Span("Repartidor: ").FontSize(7).FontColor(Colors.Grey.Darken1);
+                            t.Span(v.EntregaPor!).Bold().FontSize(8).FontColor(Colors.Grey.Darken4);
+                        });
+                    }
+
+                    if (v.Retira)
+                    {
+                        lineRow.AutoItem().AlignMiddle().PaddingRight(4).Text("RETIRA").Bold().FontSize(7).FontColor(Colors.Green.Darken3);
+                    }
+                    else if (v.EnRadar)
+                    {
+                        lineRow.AutoItem().AlignMiddle().PaddingRight(4).Text("EN RADAR").Bold().FontSize(7).FontColor(Colors.Blue.Darken3);
+                    }
+                    else if (diasActivos.Count > 0)
+                    {
+                        lineRow.AutoItem().AlignMiddle().PaddingRight(3).Text("Días:").FontSize(6).FontColor(Colors.Grey.Darken1);
+                        foreach (var d in diasDelComp)
+                        {
+                            var on = diasActivos.Contains(d);
+                            var bg = on ? Colors.Blue.Lighten5 : Colors.White;
+                            var fg = on ? Colors.Blue.Darken3 : Colors.Grey.Darken1;
+                            var bd = on ? Colors.Blue.Darken2 : Colors.Grey.Lighten1;
+                            var bw = on ? 1f : 0.5f;
+                            lineRow.ConstantItem(13).PaddingHorizontal(0.5f).Border(bw).BorderColor(bd)
+                                .Background(bg).AlignCenter().AlignMiddle()
+                                .Text(d.Substring(0, 1)).Bold().FontSize(6).FontColor(fg);
+                        }
+                    }
+
+                    if (v.IsPaid)
+                    {
+                        lineRow.AutoItem().PaddingLeft(6).AlignMiddle().Background(Colors.Green.Lighten4)
+                            .Border(0.5f).BorderColor(Colors.Green.Lighten1).Padding(2)
+                            .Text("PAGADA").Bold().FontSize(6).FontColor(Colors.Green.Darken3);
+                    }
+                    else
+                    {
+                        lineRow.AutoItem().PaddingLeft(6).AlignMiddle().Background(Colors.Yellow.Lighten4)
+                            .Border(0.5f).BorderColor(Colors.Yellow.Darken1).Padding(2)
+                            .Text("PENDIENTE").Bold().FontSize(6).FontColor(Colors.Orange.Darken3);
+                    }
+                });
+
+                if (!string.IsNullOrWhiteSpace(v.Observaciones))
+                {
+                    cc.Item().PaddingTop(4).BorderTop(0.5f).BorderColor(Colors.Grey.Lighten1).PaddingTop(3)
+                        .Text(t =>
+                        {
+                            t.Span("Comentarios: ").FontSize(6).Bold().FontColor(Colors.Grey.Darken2).LetterSpacing(0.05f);
+                            t.Span(v.Observaciones!).FontSize(7).FontColor(Colors.Grey.Darken3);
+                        });
+                }
+            });
+
+            if (tieneQr)
+            {
+                r.ConstantItem(75).PaddingLeft(6).Column(qc =>
+                {
+                    qc.Item().AlignCenter().Width(65).Image(qrRepartidor!);
+                    qc.Item().AlignCenter().Text("QR ENTREGA").FontSize(6).FontColor(Colors.Grey.Darken1);
+                });
+            }
+        });
+    }
+
+    /// <summary>2026-06-16: franja gris ancho-completo con Tel. · email · Tel. Texto plano (sin emojis).</summary>
     private static void RenderFranjaContacto(QuestPDF.Fluent.ColumnDescriptor col, string? tel1, string? tel2, string? email)
     {
         if (string.IsNullOrWhiteSpace(tel1) && string.IsNullOrWhiteSpace(tel2) && string.IsNullOrWhiteSpace(email)) return;
@@ -508,23 +537,19 @@ public class CafeCotizacionPdfService
             {
                 if (!string.IsNullOrWhiteSpace(tel1))
                 {
-                    t.Span("✆ ").FontSize(10);
+                    t.Span("Tel. ").FontSize(9).FontColor(Colors.Grey.Darken1);
                     t.Span(tel1).FontSize(11).Bold();
                 }
             });
             row.RelativeItem().AlignCenter().Text(t =>
             {
-                if (!string.IsNullOrWhiteSpace(email))
-                {
-                    t.Span("✉ ").FontSize(9);
-                    t.Span(email).FontSize(9);
-                }
+                if (!string.IsNullOrWhiteSpace(email)) t.Span(email).FontSize(10);
             });
             row.RelativeItem().AlignRight().Text(t =>
             {
                 if (!string.IsNullOrWhiteSpace(tel2))
                 {
-                    t.Span("✆ ").FontSize(10);
+                    t.Span("Tel. ").FontSize(9).FontColor(Colors.Grey.Darken1);
                     t.Span(tel2).FontSize(11).Bold();
                 }
             });
@@ -539,19 +564,11 @@ public class CafeCotizacionPdfService
         {
             row.RelativeItem().Text(t =>
             {
-                if (!string.IsNullOrWhiteSpace(web1))
-                {
-                    t.Span("⌂ ").FontSize(9);
-                    t.Span(web1).FontSize(10).Bold();
-                }
+                if (!string.IsNullOrWhiteSpace(web1)) t.Span(web1).FontSize(10).Bold();
             });
             row.RelativeItem().AlignRight().Text(t =>
             {
-                if (!string.IsNullOrWhiteSpace(web2))
-                {
-                    t.Span("⌂ ").FontSize(9);
-                    t.Span(web2).FontSize(10).Bold();
-                }
+                if (!string.IsNullOrWhiteSpace(web2)) t.Span(web2).FontSize(10).Bold();
             });
         });
     }
