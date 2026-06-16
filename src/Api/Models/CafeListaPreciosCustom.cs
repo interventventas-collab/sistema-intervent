@@ -32,6 +32,12 @@ public class CafeListaPreciosCustom
     [MaxLength(50)]
     public string? NumeroLista { get; set; }
 
+    /// <summary>2026-06-16: URL/path relativo del SVG/PNG que se usa como fondo del PDF.
+    /// Si esta seteado, el PDF lo renderea con baja opacidad atrás del contenido.
+    /// Ejemplo: "Listas Custom/take-away-bg.svg"</summary>
+    [MaxLength(500)]
+    public string? BackgroundUrl { get; set; }
+
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

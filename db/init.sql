@@ -4710,6 +4710,11 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='EsNovedad' AND object_id=OB
     ALTER TABLE Cafe_ListasPreciosCustomItem ADD EsNovedad BIT NOT NULL CONSTRAINT DF_CafeListasPreciosCustomItem_EsNovedad DEFAULT 0;
 GO
 
+-- 2026-06-16: Fase 3 — fondo (SVG/PNG) opcional para el PDF estilo TAKE AWAY
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='BackgroundUrl' AND object_id=OBJECT_ID('Cafe_ListasPreciosCustom'))
+    ALTER TABLE Cafe_ListasPreciosCustom ADD BackgroundUrl NVARCHAR(500) NULL;
+GO
+
 -- 2026-06-10: Flag "este producto NO tiene precio diferenciado para BAR" —
 -- cuando es true, el motor de precios usa PrecioOtro a TODOS los clientes
 -- (BAR y OTRO). Util para productos cuyo OEM define un unico precio sin

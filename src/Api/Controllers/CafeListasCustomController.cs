@@ -703,7 +703,7 @@ public class CafeListasCustomController : ControllerBase
 
         var input = new CafeListaCustomPdfService.PdfInput(
             negocio,
-            new CafeListaCustomPdfService.ListaInfo(lista.Nombre, lista.NumeroLista, lista.Observaciones, lista.TipoCliente, lista.ClienteNav?.Nombre),
+            new CafeListaCustomPdfService.ListaInfo(lista.Nombre, lista.NumeroLista, lista.Observaciones, lista.TipoCliente, lista.ClienteNav?.Nombre, lista.BackgroundUrl),
             seccionesPdf
         );
 
