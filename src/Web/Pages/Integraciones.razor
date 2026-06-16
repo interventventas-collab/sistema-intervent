@@ -1305,6 +1305,53 @@
                         </div>
                     </div>
 
+                    <!-- 2026-06-16: contacto + datos bancarios para los PDFs -->
+                    <div style="margin-top: 1.2rem; padding-top: 0.8rem; border-top: 1px dashed #d1d5db;">
+                        <div style="font-weight: 600; color: #374151; margin-bottom: 0.5rem;">📞 Contacto (franja en los PDFs)</div>
+                        <div class="form-row">
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label">Teléfono 1 (WhatsApp)</label>
+                                <input class="form-input" @bind="arcaEmisorForm.Telefono" maxlength="50" placeholder="Ej: 15-5846-4160" />
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label">Teléfono 2 (WhatsApp)</label>
+                                <input class="form-input" @bind="arcaEmisorForm.Telefono2" maxlength="50" placeholder="Ej: 15-2252-5458" />
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Email</label>
+                            <input class="form-input" @bind="arcaEmisorForm.Email" maxlength="200" placeholder="Ej: ventas@empresa.com.ar" />
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label">Sitio web 1 (pie izquierdo)</label>
+                                <input class="form-input" @bind="arcaEmisorForm.Web" maxlength="200" placeholder="Ej: www.frikaf.com.ar" />
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label">Sitio web 2 (pie derecho)</label>
+                                <input class="form-input" @bind="arcaEmisorForm.Web2" maxlength="200" placeholder="Ej: www.intervent.com.ar" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 1rem; padding-top: 0.8rem; border-top: 1px dashed #d1d5db;">
+                        <div style="font-weight: 600; color: #374151; margin-bottom: 0.5rem;">🏦 Datos bancarios (solo en facturas con CAE)</div>
+                        <div class="form-row">
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label">Banco</label>
+                                <input class="form-input" @bind="arcaEmisorForm.BancoNombre" maxlength="100" placeholder="Ej: GALICIA" />
+                            </div>
+                            <div class="form-group" style="flex: 2;">
+                                <label class="form-label">CBU</label>
+                                <input class="form-input" @bind="arcaEmisorForm.BancoCbu" maxlength="40" placeholder="Ej: 0070350320000004290126" />
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label">Alias</label>
+                                <input class="form-input" @bind="arcaEmisorForm.BancoAlias" maxlength="40" placeholder="Ej: Tiendafrikaf.galicia" />
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="form-group">
                         <label class="form-label">Logo (opcional)</label>
                         @if (!string.IsNullOrEmpty(arcaEmisorActual?.LogoPath))
@@ -5263,6 +5310,14 @@
                 IIBBTipo = arcaEmisorActual.IIBBTipo,
                 IIBBNumero = arcaEmisorActual.IIBBNumero,
                 InicioActividades = arcaEmisorActual.InicioActividades,
+                Telefono = arcaEmisorActual.Telefono,
+                Telefono2 = arcaEmisorActual.Telefono2,
+                Email = arcaEmisorActual.Email,
+                Web = arcaEmisorActual.Web,
+                Web2 = arcaEmisorActual.Web2,
+                BancoNombre = arcaEmisorActual.BancoNombre,
+                BancoCbu = arcaEmisorActual.BancoCbu,
+                BancoAlias = arcaEmisorActual.BancoAlias,
             };
             arcaEmisorFormInicioAct = arcaEmisorActual.InicioActividades;
         }
