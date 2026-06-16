@@ -562,8 +562,11 @@
         savingManual = true;
         try
         {
+            // 2026-06-16: mandamos la fecha como string "yyyy-MM-dd" sin zona horaria. Si la mandamos como
+            // DateTime, Blazor le agrega el offset del navegador y el server le restaba un dia al parsearla
+            // (ej: hoy 16 quedaba guardado como 15). El server espera el string crudo.
             var resp = await Http.PostAsJsonAsync("api/horas-extras/admin/registros/manual",
-                new { EmpleadoId = cargandoManualPara.Id, Fecha = manualFecha, Cantidad = manualCantidad, Observaciones = manualObservacion });
+                new { EmpleadoId = cargandoManualPara.Id, Fecha = manualFecha.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture), Cantidad = manualCantidad, Observaciones = manualObservacion });
             if (resp.IsSuccessStatusCode)
             {
                 ToastService.Success($"Cargadas {manualCantidad:0.#}h para {cargandoManualPara.Nombre}");

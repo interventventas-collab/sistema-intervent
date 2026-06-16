@@ -744,7 +744,10 @@ public class HorasExtrasController : ControllerBase
     public class CargarManualRequest
     {
         public int EmpleadoId { get; set; }
-        public DateTime Fecha { get; set; }
+        // 2026-06-16: Fecha como string "yyyy-MM-dd" para evitar problemas de zona horaria.
+        // Antes era DateTime y el server interpretaba el offset (-03:00) restando un dia.
+        // Aceptamos tambien ISO 8601 con TZ por compatibilidad con clientes viejos cacheados.
+        public string Fecha { get; set; } = "";
         public decimal Cantidad { get; set; }
         public string? Observaciones { get; set; }
     }
@@ -757,11 +760,17 @@ public class HorasExtrasController : ControllerBase
     {
         if (req.EmpleadoId <= 0) return BadRequest(new { error = "Empleado obligatorio" });
         if (req.Cantidad < 0 || req.Cantidad > 999) return BadRequest(new { error = "Cantidad inválida (0–999)" });
+        if (string.IsNullOrWhiteSpace(req.Fecha)) return BadRequest(new { error = "Fecha obligatoria" });
 
         var emp = await _db.HorasExtrasEmpleados.FindAsync(req.EmpleadoId);
         if (emp is null) return NotFound(new { error = "Empleado no existe" });
 
-        var fecha = req.Fecha.Date;
+        // Tomamos solo los primeros 10 chars (yyyy-MM-dd). Si vino con TZ tipo "2026-06-16T00:00:00-03:00",
+        // descartamos la parte de hora+offset y NO convertimos zona horaria — la fecha es la que eligio
+        // el admin en el picker, sin importar en que zona horaria este.
+        var fechaIso = req.Fecha.Length >= 10 ? req.Fecha.Substring(0, 10) : req.Fecha;
+        if (!DateTime.TryParseExact(fechaIso, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var fecha))
+            return BadRequest(new { error = "Formato de fecha inválido (esperado: yyyy-MM-dd)" });
         var existente = await _db.HorasExtrasRegistros.FirstOrDefaultAsync(r => r.EmpleadoId == emp.Id && r.Fecha == fecha);
         if (existente is null)
         {
