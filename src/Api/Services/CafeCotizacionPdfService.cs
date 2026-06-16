@@ -159,31 +159,34 @@ public class CafeCotizacionPdfService
                             }
                         });
 
+                        // 2026-06-16 v4: layout 3 columnas — CENTRO con cuadro X + numeración + fecha.
                         row.RelativeItem(1).PaddingLeft(8).Column(c =>
                         {
-                            c.Item().AlignRight().Row(r =>
+                            c.Item().Row(r =>
                             {
                                 r.AutoItem().Border(1.5f).BorderColor(Colors.Grey.Medium).Padding(3)
                                     .AlignCenter().AlignMiddle().Text(tipoLetra).FontSize(16).Bold();
                                 r.AutoItem().PaddingLeft(6).AlignMiddle()
                                     .Text(tipoNombre).FontSize(11).Bold().FontColor(Colors.Blue.Darken2);
                             });
-                            c.Item().PaddingTop(2).AlignRight().Text($"N° {v.Numero}").FontSize(10).Bold().FontFamily("Courier");
-                            c.Item().AlignRight().Text($"Fecha: {v.Fecha:dd/MM/yyyy}").FontSize(9);
+                            c.Item().PaddingTop(2).Text($"N° {v.Numero}").FontSize(10).Bold().FontFamily("Courier");
+                            c.Item().Text($"Fecha: {v.Fecha:dd/MM/yyyy}").FontSize(9);
                             if (v.TipoComprobante == "X")
-                                c.Item().PaddingTop(2).AlignRight().Text("Documento no válido como factura")
+                                c.Item().PaddingTop(2).Text("Documento no válido como factura")
                                     .FontSize(7).Italic().FontColor(Colors.Grey.Darken1);
                             if (v.IsPaid && v.Estado != "anulado")
                             {
-                                c.Item().PaddingTop(3).AlignRight().Row(rr =>
+                                c.Item().PaddingTop(3).Row(rr =>
                                 {
                                     rr.AutoItem().Background(Colors.Red.Lighten4).Border(1).BorderColor(Colors.Red.Medium)
                                         .Padding(3).Text("PAGADO").FontSize(11).Bold().FontColor(Colors.Red.Darken2);
                                 });
                             }
-                            // 2026-06-16 v3: bloque DOMICILIO DE ENTREGA + Repartidor + chips + QR — DENTRO del column derecho.
-                            // Mismo lugar que en factura A (al lado del cuadro X, debajo de Fecha).
-                            // Funciona ahora porque la columna derecha es más ancha (relativeItem 1:1 en vez de 2:1).
+                        });
+
+                        // 2026-06-16 v4: DERECHA — bloque DOMICILIO DE ENTREGA + chips + QR grande (sola columna 1).
+                        row.RelativeItem(1).PaddingLeft(8).Column(c =>
+                        {
                             RenderBloqueEntregaCotiz(c, v, diasActivos, diasDelComp, qrRepartidor);
                         });
                     });
@@ -441,10 +444,8 @@ public class CafeCotizacionPdfService
         return pdf;
     }
 
-    /// <summary>2026-06-16 v3: bloque DOMICILIO DE ENTREGA + estado + QR — DENTRO del column derecho del header.
-    /// Mismo lugar visual que en factura A (al lado del cuadro X, debajo de "Fecha"). Versión compacta para
-    /// caber en la mitad derecha sin romper layout. Sin chips de día (que iban en footer ANTES) — los chips
-    /// quedan visibles solo en facturas que tienen más espacio.</summary>
+    /// <summary>2026-06-16 v4: bloque DOMICILIO DE ENTREGA + estado + QR — TERCERA columna del header.
+    /// QR queda en 120px (no 140) porque la columna es 1/3 de la página (no 1/2). Layout 3 col: logo | tipo+N° | entrega+QR.</summary>
     private static void RenderBloqueEntregaCotiz(QuestPDF.Fluent.ColumnDescriptor col, CafeVenta v,
         HashSet<string> diasActivos, List<string> diasDelComp, byte[]? qrRepartidor)
     {
@@ -455,50 +456,44 @@ public class CafeCotizacionPdfService
         var tieneQr = qrRepartidor is not null;
         if (!tieneEntrega && !tieneQr) return;
 
-        col.Item().PaddingTop(6).Background(Colors.Grey.Lighten4).Border(0.5f).BorderColor(Colors.Grey.Lighten1).Padding(5).Row(r =>
+        col.Item().PaddingTop(0).Background(Colors.Grey.Lighten4).Border(0.5f).BorderColor(Colors.Grey.Lighten1).Padding(5).Column(cc =>
         {
-            r.RelativeItem().Column(cc =>
+            cc.Item().Text("DOMICILIO DE ENTREGA").FontSize(6).Bold().FontColor(Colors.Grey.Darken2).LetterSpacing(0.05f);
+            if (tieneEntrega) cc.Item().Text(domicilio!).FontSize(8).Bold();
+
+            cc.Item().PaddingTop(3).Row(lineRow =>
             {
-                cc.Item().Text("DOMICILIO DE ENTREGA").FontSize(6).Bold().FontColor(Colors.Grey.Darken2).LetterSpacing(0.05f);
-                if (tieneEntrega) cc.Item().Text(domicilio!).FontSize(8).Bold();
-
-                cc.Item().PaddingTop(3).Row(lineRow =>
+                if (v.Retira)
                 {
-                    if (v.Retira)
-                    {
-                        lineRow.AutoItem().AlignMiddle().PaddingRight(4).Background(Colors.Green.Lighten4)
-                            .Border(0.5f).BorderColor(Colors.Green.Lighten1).Padding(2)
-                            .Text("RETIRA").Bold().FontSize(6).FontColor(Colors.Green.Darken3);
-                    }
-                    else if (v.EnRadar)
-                    {
-                        lineRow.AutoItem().AlignMiddle().PaddingRight(4).Background(Colors.Blue.Lighten4)
-                            .Border(0.5f).BorderColor(Colors.Blue.Lighten1).Padding(2)
-                            .Text("EN RADAR").Bold().FontSize(6).FontColor(Colors.Blue.Darken3);
-                    }
+                    lineRow.AutoItem().AlignMiddle().PaddingRight(4).Background(Colors.Green.Lighten4)
+                        .Border(0.5f).BorderColor(Colors.Green.Lighten1).Padding(2)
+                        .Text("RETIRA").Bold().FontSize(6).FontColor(Colors.Green.Darken3);
+                }
+                else if (v.EnRadar)
+                {
+                    lineRow.AutoItem().AlignMiddle().PaddingRight(4).Background(Colors.Blue.Lighten4)
+                        .Border(0.5f).BorderColor(Colors.Blue.Lighten1).Padding(2)
+                        .Text("EN RADAR").Bold().FontSize(6).FontColor(Colors.Blue.Darken3);
+                }
 
-                    if (v.IsPaid)
-                    {
-                        lineRow.AutoItem().AlignMiddle().Background(Colors.Green.Lighten4)
-                            .Border(0.5f).BorderColor(Colors.Green.Lighten1).Padding(2)
-                            .Text("PAGADA").Bold().FontSize(6).FontColor(Colors.Green.Darken3);
-                    }
-                    else
-                    {
-                        lineRow.AutoItem().AlignMiddle().Background(Colors.Yellow.Lighten4)
-                            .Border(0.5f).BorderColor(Colors.Yellow.Darken1).Padding(2)
-                            .Text("PENDIENTE").Bold().FontSize(6).FontColor(Colors.Orange.Darken3);
-                    }
-                });
+                if (v.IsPaid)
+                {
+                    lineRow.AutoItem().AlignMiddle().Background(Colors.Green.Lighten4)
+                        .Border(0.5f).BorderColor(Colors.Green.Lighten1).Padding(2)
+                        .Text("PAGADA").Bold().FontSize(6).FontColor(Colors.Green.Darken3);
+                }
+                else
+                {
+                    lineRow.AutoItem().AlignMiddle().Background(Colors.Yellow.Lighten4)
+                        .Border(0.5f).BorderColor(Colors.Yellow.Darken1).Padding(2)
+                        .Text("PENDIENTE").Bold().FontSize(6).FontColor(Colors.Orange.Darken3);
+                }
             });
 
             if (tieneQr)
             {
-                r.ConstantItem(150).PaddingLeft(6).Column(qc =>
-                {
-                    qc.Item().AlignCenter().Width(140).Image(qrRepartidor!);
-                    qc.Item().AlignCenter().PaddingTop(2).Text("QR ENTREGA").FontSize(8).Bold().FontColor(Colors.Grey.Darken3);
-                });
+                cc.Item().PaddingTop(4).AlignCenter().Width(120).Image(qrRepartidor!);
+                cc.Item().AlignCenter().PaddingTop(2).Text("QR ENTREGA").FontSize(8).Bold().FontColor(Colors.Grey.Darken3);
             }
         });
     }
