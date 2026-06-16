@@ -427,7 +427,8 @@ public class ArcaInvoicePdfService
         var diasDelComp = new List<string> { "LUN", "MAR", "MIE", "JUE", "VIE", "SAB" };
         if (diasActivos.Contains("DOM")) diasDelComp.Add("DOM");
 
-        col.Item().PaddingTop(6).Background(Colors.Grey.Lighten4).Border(0.5f).BorderColor(Colors.Grey.Lighten1).Padding(5).Row(r =>
+        // 2026-06-16: PaddingLeft(10) para que el cuadro gris NO se monte sobre el borde del cuadro "A · COD.01".
+        col.Item().PaddingTop(6).PaddingLeft(10).Background(Colors.Grey.Lighten4).Border(0.5f).BorderColor(Colors.Grey.Lighten1).Padding(5).Row(r =>
         {
             // Izquierda: domicilio + repartidor + días + estado + comentarios
             r.RelativeItem().Column(cc =>
