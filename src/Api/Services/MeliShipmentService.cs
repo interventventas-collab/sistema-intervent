@@ -251,9 +251,8 @@ public class MeliShipmentService
         {
             try
             {
-                var link = BuildMapsLink(sh);
-                if (string.IsNullOrEmpty(link)) continue;
-                var noteText = $"Mapa de entrega: {link}";
+                var noteText = BuildMapsNote(sh);
+                if (string.IsNullOrEmpty(noteText)) continue;
                 var body = JsonSerializer.Serialize(new { note = noteText });
                 using var content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
                 var resp = await http.PostAsync($"https://api.mercadolibre.com/orders/{sh.MeliOrderId}/notes", content);
@@ -275,22 +274,27 @@ public class MeliShipmentService
         await _db.SaveChangesAsync();
     }
 
-    /// <summary>Arma el link de Google Maps prefiriendo lat/lng (mas preciso). Si no hay, usa address_line + city.</summary>
-    private static string? BuildMapsLink(MeliShipment sh)
+    /// <summary>2026-06-16 v2: arma el TEXTO de la nota — prefiere lat/lng (el repartidor copia,
+    /// pega en el buscador de Google Maps y va al pin exacto). Si no hay coords, manda la
+    /// direccion como texto (address_line + city). NO mandamos la URL completa porque al pegarla en
+    /// el buscador de Maps, Maps la trata como query literal y falla. Coords es directo.</summary>
+    private static string? BuildMapsNote(MeliShipment sh)
     {
         if (sh.Latitude.HasValue && sh.Longitude.HasValue
             && sh.Latitude.Value != 0m && sh.Longitude.Value != 0m)
         {
             var lat = sh.Latitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
             var lng = sh.Longitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            return $"https://www.google.com/maps/search/?api=1&query={lat},{lng}";
+            return $"Maps: {lat},{lng}";
         }
 
         var addr = sh.AddressLine;
         if (string.IsNullOrWhiteSpace(addr)) return null;
         var query = addr;
         if (!string.IsNullOrWhiteSpace(sh.City)) query += " " + sh.City;
-        return "https://www.google.com/maps/search/?api=1&query=" + Uri.EscapeDataString(query);
+        // El campo nota de MeLi tiene 120 chars. Recortamos para asegurar que entre con el "Maps: " prefijo.
+        if (query.Length > 110) query = query.Substring(0, 110);
+        return $"Maps: {query}";
     }
 
     private async Task UpsertShipmentAsync(int accountId, long orderId, decimal? orderTotal, string? itemsSummary, string? buyerNickname, JsonElement sh)
