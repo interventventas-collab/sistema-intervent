@@ -1574,6 +1574,7 @@ public class ItemCustomDto
     public bool EsNovedad { get; set; }
     public string? Nombre { get; set; }
     public string? Sku { get; set; }
+    public string? Marca { get; set; }
     public decimal? Precio { get; set; }
     public string? Detalle { get; set; }
 }
@@ -1584,6 +1585,7 @@ public class ItemDisponibleDto
     public int Id { get; set; }
     public string Nombre { get; set; } = "";
     public string? Sku { get; set; }
+    public string? Marca { get; set; }
     public decimal? PrecioBar { get; set; }
     public decimal? PrecioOtro { get; set; }
     public string? Detalle { get; set; }

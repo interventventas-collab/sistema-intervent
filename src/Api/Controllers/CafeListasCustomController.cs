@@ -289,6 +289,7 @@ public class CafeListasCustomController : ControllerBase
         // Datos del item resuelto (no se almacenan, se calculan en el GET)
         public string? Nombre { get; set; }
         public string? Sku { get; set; }
+        public string? Marca { get; set; }    // 2026-06-16: marca para mostrar
         public decimal? Precio { get; set; }
         public string? Detalle { get; set; }  // ej "Pack x 100" o "Combo 3 items"
     }
@@ -305,6 +306,7 @@ public class CafeListasCustomController : ControllerBase
         public int Id { get; set; }
         public string Nombre { get; set; } = "";
         public string? Sku { get; set; }
+        public string? Marca { get; set; }   // 2026-06-16
         public decimal? PrecioBar { get; set; }
         public decimal? PrecioOtro { get; set; }
         public string? Detalle { get; set; }
@@ -331,12 +333,13 @@ public class CafeListasCustomController : ControllerBase
         var packIds = secciones.SelectMany(s => s.Items).Where(i => i.TipoItem == "PACK").Select(i => i.RefId).Distinct().ToList();
 
         var productos = await _db.CafeProductos.Where(p => productoIds.Contains(p.Id))
-            .Select(p => new { p.Id, p.Nombre, p.Sku, p.PrecioBar, p.PrecioOtro }).ToListAsync();
+            .Include(p => p.MarcaNav)
+            .Select(p => new { p.Id, p.Nombre, p.Sku, p.PrecioBar, p.PrecioOtro, Marca = p.Marca ?? (p.MarcaNav != null ? p.MarcaNav.Nombre : null) }).ToListAsync();
         var combos = await _db.CafeCombos.Where(c => comboIds.Contains(c.Id))
-            .Select(c => new { c.Id, c.Nombre, c.Sku, Precio = (decimal?)c.PrecioReferencia }).ToListAsync();
+            .Select(c => new { c.Id, c.Nombre, c.Sku, c.Marca, Precio = (decimal?)c.PrecioReferencia }).ToListAsync();
         var packs = await _db.CafeProductoPacks.Where(p => packIds.Contains(p.Id))
-            .Include(p => p.Producto)
-            .Select(p => new { p.Id, p.Nombre, p.Cantidad, p.PrecioOverride, ProdNombre = p.Producto!.Nombre, p.Producto.PrecioBar, p.Producto.PrecioOtro, p.Producto.Sku }).ToListAsync();
+            .Include(p => p.Producto).ThenInclude(p => p!.MarcaNav)
+            .Select(p => new { p.Id, p.Nombre, p.Cantidad, p.PrecioOverride, ProdNombre = p.Producto!.Nombre, p.Producto.PrecioBar, p.Producto.PrecioOtro, p.Producto.Sku, Marca = p.Producto.Marca ?? (p.Producto.MarcaNav != null ? p.Producto.MarcaNav.Nombre : null) }).ToListAsync();
 
         var esBar = string.Equals(lista.TipoCliente, "BAR", StringComparison.OrdinalIgnoreCase);
 
@@ -349,29 +352,28 @@ public class CafeListasCustomController : ControllerBase
             {
                 string? nombre = null;
                 string? sku = null;
+                string? marca = null;
                 decimal? precio = null;
                 string? detalle = null;
 
                 if (i.TipoItem == "PRODUCTO")
                 {
                     var p = productos.FirstOrDefault(x => x.Id == i.RefId);
-                    if (p != null) { nombre = p.Nombre; sku = p.Sku; precio = esBar ? (p.PrecioBar ?? p.PrecioOtro) : (p.PrecioOtro ?? p.PrecioBar); }
+                    if (p != null) { nombre = p.Nombre; sku = p.Sku; marca = p.Marca; precio = esBar ? (p.PrecioBar ?? p.PrecioOtro) : (p.PrecioOtro ?? p.PrecioBar); }
                 }
                 else if (i.TipoItem == "COMBO")
                 {
                     var c = combos.FirstOrDefault(x => x.Id == i.RefId);
-                    if (c != null) { nombre = c.Nombre; sku = c.Sku; precio = c.Precio; detalle = "Combo"; }
+                    if (c != null) { nombre = c.Nombre; sku = c.Sku; marca = c.Marca; precio = c.Precio; detalle = "Combo"; }
                 }
                 else if (i.TipoItem == "PACK")
                 {
                     var p = packs.FirstOrDefault(x => x.Id == i.RefId);
                     if (p != null)
                     {
-                        // 2026-06-16: usamos el nombre del PRODUCTO base como nombre principal,
-                        // y la cantidad como detalle ("Pack x 100"). El Nombre propio del pack era generico
-                        // y se perdia la info del producto en la lista.
                         nombre = p.ProdNombre;
                         sku = p.Sku;
+                        marca = p.Marca;
                         var precioBase = esBar ? (p.PrecioBar ?? p.PrecioOtro) : (p.PrecioOtro ?? p.PrecioBar);
                         precio = p.PrecioOverride ?? (precioBase * p.Cantidad);
                         detalle = $"Pack x {p.Cantidad}";
@@ -381,7 +383,7 @@ public class CafeListasCustomController : ControllerBase
                 {
                     Id = i.Id, TipoItem = i.TipoItem, RefId = i.RefId, Orden = i.Orden,
                     Notas = i.Notas, EsNovedad = i.EsNovedad,
-                    Nombre = nombre, Sku = sku, Precio = precio, Detalle = detalle
+                    Nombre = nombre, Sku = sku, Marca = marca, Precio = precio, Detalle = detalle
                 };
             }).ToList()
         }).ToList();
@@ -412,13 +414,14 @@ public class CafeListasCustomController : ControllerBase
 
         if (tipo == "PRODUCTO")
         {
-            var qry = _db.CafeProductos.Where(p => p.IsActive);
+            var qry = _db.CafeProductos.Include(p => p.MarcaNav).Where(p => p.IsActive);
             if (!string.IsNullOrEmpty(search))
-                qry = qry.Where(p => p.Nombre.ToLower().Contains(search) || (p.Sku != null && p.Sku.ToLower().Contains(search)));
+                qry = qry.Where(p => p.Nombre.ToLower().Contains(search) || (p.Sku != null && p.Sku.ToLower().Contains(search)) || (p.Marca != null && p.Marca.ToLower().Contains(search)));
             result = await qry.OrderBy(p => p.Nombre).Take(100)
                 .Select(p => new ItemDisponibleDto
                 {
                     Tipo = "PRODUCTO", Id = p.Id, Nombre = p.Nombre, Sku = p.Sku,
+                    Marca = p.Marca ?? (p.MarcaNav != null ? p.MarcaNav.Nombre : null),
                     PrecioBar = p.PrecioBar, PrecioOtro = p.PrecioOtro
                 }).ToListAsync();
         }
@@ -426,31 +429,33 @@ public class CafeListasCustomController : ControllerBase
         {
             var qry = _db.CafeCombos.Where(c => c.IsActive);
             if (!string.IsNullOrEmpty(search))
-                qry = qry.Where(c => c.Nombre.ToLower().Contains(search) || (c.Sku != null && c.Sku.ToLower().Contains(search)));
+                qry = qry.Where(c => c.Nombre.ToLower().Contains(search) || (c.Sku != null && c.Sku.ToLower().Contains(search)) || (c.Marca != null && c.Marca.ToLower().Contains(search)));
             result = await qry.OrderBy(c => c.Nombre).Take(100)
                 .Select(c => new ItemDisponibleDto
                 {
                     Tipo = "COMBO", Id = c.Id, Nombre = c.Nombre, Sku = c.Sku,
+                    Marca = c.Marca,
                     PrecioBar = c.PrecioReferencia, PrecioOtro = c.PrecioReferencia,
                     Detalle = "Combo"
                 }).ToListAsync();
         }
         else if (tipo == "PACK")
         {
-            var qry = _db.CafeProductoPacks.Include(p => p.Producto).Where(p => p.IsActive);
+            var qry = _db.CafeProductoPacks.Include(p => p.Producto).ThenInclude(p => p!.MarcaNav).Where(p => p.IsActive);
             if (!string.IsNullOrEmpty(search))
                 qry = qry.Where(p =>
                     (p.Nombre.ToLower().Contains(search))
                     || (p.Producto != null && p.Producto.Nombre.ToLower().Contains(search))
                     || (p.Producto != null && p.Producto.Sku != null && p.Producto.Sku.ToLower().Contains(search))
+                    || (p.Producto != null && p.Producto.Marca != null && p.Producto.Marca.ToLower().Contains(search))
                 );
             result = await qry.OrderBy(p => p.Producto!.Nombre).ThenBy(p => p.Cantidad).Take(100)
                 .Select(p => new ItemDisponibleDto
                 {
                     Tipo = "PACK", Id = p.Id,
-                    // 2026-06-16: usamos siempre el nombre del producto base + "Pack x N" como detalle.
                     Nombre = p.Producto!.Nombre,
                     Sku = p.Producto.Sku,
+                    Marca = p.Producto.Marca ?? (p.Producto.MarcaNav != null ? p.Producto.MarcaNav.Nombre : null),
                     PrecioBar = p.PrecioOverride ?? (p.Producto.PrecioBar.HasValue ? p.Producto.PrecioBar.Value * p.Cantidad : (decimal?)null),
                     PrecioOtro = p.PrecioOverride ?? (p.Producto.PrecioOtro.HasValue ? p.Producto.PrecioOtro.Value * p.Cantidad : (decimal?)null),
                     Detalle = $"Pack x {p.Cantidad}"
@@ -654,13 +659,13 @@ public class CafeListasCustomController : ControllerBase
         var comboIds = secciones.SelectMany(s => s.Items).Where(i => i.TipoItem == "COMBO").Select(i => i.RefId).Distinct().ToList();
         var packIds = secciones.SelectMany(s => s.Items).Where(i => i.TipoItem == "PACK").Select(i => i.RefId).Distinct().ToList();
 
-        var productos = await _db.CafeProductos.Where(p => productoIds.Contains(p.Id))
-            .Select(p => new { p.Id, p.Nombre, p.Sku, p.PrecioBar, p.PrecioOtro }).ToListAsync();
+        var productos = await _db.CafeProductos.Include(p => p.MarcaNav).Where(p => productoIds.Contains(p.Id))
+            .Select(p => new { p.Id, p.Nombre, p.Sku, p.PrecioBar, p.PrecioOtro, Marca = p.Marca ?? (p.MarcaNav != null ? p.MarcaNav.Nombre : null) }).ToListAsync();
         var combos = await _db.CafeCombos.Where(c => comboIds.Contains(c.Id))
-            .Select(c => new { c.Id, c.Nombre, c.Sku, Precio = (decimal?)c.PrecioReferencia }).ToListAsync();
-        var packs = await _db.CafeProductoPacks.Include(p => p.Producto)
+            .Select(c => new { c.Id, c.Nombre, c.Sku, c.Marca, Precio = (decimal?)c.PrecioReferencia }).ToListAsync();
+        var packs = await _db.CafeProductoPacks.Include(p => p.Producto).ThenInclude(p => p!.MarcaNav)
             .Where(p => packIds.Contains(p.Id))
-            .Select(p => new { p.Id, p.Nombre, p.Cantidad, p.PrecioOverride, ProdNombre = p.Producto!.Nombre, p.Producto.PrecioBar, p.Producto.PrecioOtro, p.Producto.Sku }).ToListAsync();
+            .Select(p => new { p.Id, p.Nombre, p.Cantidad, p.PrecioOverride, ProdNombre = p.Producto!.Nombre, p.Producto.PrecioBar, p.Producto.PrecioOtro, p.Producto.Sku, Marca = p.Producto.Marca ?? (p.Producto.MarcaNav != null ? p.Producto.MarcaNav.Nombre : null) }).ToListAsync();
 
         var esBar = string.Equals(lista.TipoCliente, "BAR", StringComparison.OrdinalIgnoreCase);
 
@@ -668,16 +673,16 @@ public class CafeListasCustomController : ControllerBase
             s.Titulo,
             s.Items.OrderBy(i => i.Orden).ThenBy(i => i.Id).Select(i =>
             {
-                string? sku = null; string? nombre = $"#{i.RefId}"; decimal? precio = null; string? detalle = null;
+                string? sku = null; string? nombre = $"#{i.RefId}"; string? marca = null; decimal? precio = null; string? detalle = null;
                 if (i.TipoItem == "PRODUCTO")
                 {
                     var p = productos.FirstOrDefault(x => x.Id == i.RefId);
-                    if (p != null) { sku = p.Sku; nombre = p.Nombre; precio = esBar ? (p.PrecioBar ?? p.PrecioOtro) : (p.PrecioOtro ?? p.PrecioBar); }
+                    if (p != null) { sku = p.Sku; nombre = p.Nombre; marca = p.Marca; precio = esBar ? (p.PrecioBar ?? p.PrecioOtro) : (p.PrecioOtro ?? p.PrecioBar); }
                 }
                 else if (i.TipoItem == "COMBO")
                 {
                     var c = combos.FirstOrDefault(x => x.Id == i.RefId);
-                    if (c != null) { sku = c.Sku; nombre = c.Nombre; precio = c.Precio; detalle = "Combo"; }
+                    if (c != null) { sku = c.Sku; nombre = c.Nombre; marca = c.Marca; precio = c.Precio; detalle = "Combo"; }
                 }
                 else if (i.TipoItem == "PACK")
                 {
@@ -685,13 +690,14 @@ public class CafeListasCustomController : ControllerBase
                     if (p != null)
                     {
                         sku = p.Sku;
-                        nombre = p.ProdNombre;   // 2026-06-16: usar nombre del producto base
+                        nombre = p.ProdNombre;
+                        marca = p.Marca;
                         var precioBase = esBar ? (p.PrecioBar ?? p.PrecioOtro) : (p.PrecioOtro ?? p.PrecioBar);
                         precio = p.PrecioOverride ?? (precioBase * p.Cantidad);
                         detalle = $"Pack x {p.Cantidad}";
                     }
                 }
-                return new CafeListaCustomPdfService.ItemInfo(sku, nombre ?? "", detalle, precio, i.EsNovedad);
+                return new CafeListaCustomPdfService.ItemInfo(sku, nombre ?? "", marca, detalle, precio, i.EsNovedad);
             }).ToList()
         )).ToList();
 

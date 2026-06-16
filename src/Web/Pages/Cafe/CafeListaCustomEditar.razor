@@ -103,6 +103,10 @@
                                     {
                                         <span style="color: #1e40af; font-family: monospace; margin-right: 0.3rem; font-weight: 600;">@d.Sku</span>
                                     }
+                                    @if (!string.IsNullOrEmpty(d.Marca))
+                                    {
+                                        <span style="background: #f3f4f6; color: #4b5563; font-size: 0.65rem; padding: 0.05rem 0.3rem; border-radius: 3px; margin-right: 0.3rem; font-weight: 700; letter-spacing: 0.5px;">@d.Marca.ToUpperInvariant()</span>
+                                    }
                                     @d.Nombre
                                     @if (!string.IsNullOrEmpty(d.Detalle))
                                     {
@@ -173,6 +177,10 @@
                                                 @if (!string.IsNullOrEmpty(it.Sku))
                                                 {
                                                     <span style="color: #1e40af; font-family: monospace; font-weight: 600; margin-right: 0.3rem;">@it.Sku</span>
+                                                }
+                                                @if (!string.IsNullOrEmpty(it.Marca))
+                                                {
+                                                    <span style="background: #f3f4f6; color: #4b5563; font-size: 0.65rem; padding: 0.05rem 0.3rem; border-radius: 3px; margin-right: 0.3rem; font-weight: 700; letter-spacing: 0.5px;">@it.Marca.ToUpperInvariant()</span>
                                                 }
                                                 @(it.Nombre ?? $"#{it.RefId}")
                                                 @if (!string.IsNullOrEmpty(it.Detalle))

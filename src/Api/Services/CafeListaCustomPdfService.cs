@@ -31,7 +31,7 @@ public class CafeListaCustomPdfService
     public record PdfInput(CafeSetting Negocio, ListaInfo Lista, List<SeccionInfo> Secciones);
     public record ListaInfo(string Nombre, string? NumeroLista, string? Observaciones, string? TipoCliente, string? ClienteNombre);
     public record SeccionInfo(string Titulo, List<ItemInfo> Items);
-    public record ItemInfo(string? Sku, string Nombre, string? Detalle, decimal? Precio, bool EsNovedad);
+    public record ItemInfo(string? Sku, string Nombre, string? Marca, string? Detalle, decimal? Precio, bool EsNovedad);
 
     public byte[] GenerarPdf(PdfInput inp)
     {
@@ -131,6 +131,9 @@ public class CafeListaCustomPdfService
                                 tbl.Cell().BorderBottom(0.3f).BorderColor(Colors.Grey.Lighten2).Padding(3)
                                     .Text(t =>
                                     {
+                                        // 2026-06-16: marca como prefijo gris antes del nombre
+                                        if (!string.IsNullOrWhiteSpace(it.Marca))
+                                            t.Span(it.Marca!.ToUpperInvariant() + " · ").FontSize(8).Bold().FontColor(Colors.Grey.Darken2);
                                         t.Span(it.Nombre).FontSize(10).SemiBold();
                                         if (!string.IsNullOrEmpty(it.Detalle))
                                             t.Span($"  · {it.Detalle}").FontSize(8).FontColor(Colors.Grey.Darken1);
