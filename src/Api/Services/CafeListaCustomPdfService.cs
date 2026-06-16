@@ -138,18 +138,26 @@ public class CafeListaCustomPdfService
                             });
                             foreach (var it in sec.Items)
                             {
+                                // 2026-06-16 v2: SKU chico (FontSize 6) — antes era 8 y robaba protagonismo.
                                 tbl.Cell().BorderBottom(0.3f).BorderColor(Colors.Grey.Lighten2).Padding(3)
-                                    .AlignLeft().Text(it.Sku ?? "").FontSize(8).Italic().FontColor(Colors.Grey.Darken2);
-                                tbl.Cell().BorderBottom(0.3f).BorderColor(Colors.Grey.Lighten2).Padding(3)
-                                    .Text(t =>
+                                    .AlignLeft().AlignMiddle().Text(it.Sku ?? "").FontSize(6).Italic().FontColor(Colors.Grey.Darken2);
+                                // 2026-06-16 v2: nombre primero + marca a la DERECHA como chip pequeño (antes era prefijo).
+                                tbl.Cell().BorderBottom(0.3f).BorderColor(Colors.Grey.Lighten2).Padding(3).Row(r =>
+                                {
+                                    r.RelativeItem().AlignMiddle().Text(t =>
                                     {
-                                        // 2026-06-16: marca como prefijo gris antes del nombre
-                                        if (!string.IsNullOrWhiteSpace(it.Marca))
-                                            t.Span(it.Marca!.ToUpperInvariant() + " · ").FontSize(8).Bold().FontColor(Colors.Grey.Darken2);
                                         t.Span(it.Nombre).FontSize(10).SemiBold();
                                         if (!string.IsNullOrEmpty(it.Detalle))
                                             t.Span($"  · {it.Detalle}").FontSize(8).FontColor(Colors.Grey.Darken1);
                                     });
+                                    if (!string.IsNullOrWhiteSpace(it.Marca))
+                                    {
+                                        r.AutoItem().PaddingLeft(6).AlignMiddle().Element(e =>
+                                            e.Background(Colors.Grey.Lighten3).Border(0.3f).BorderColor(Colors.Grey.Lighten1)
+                                                .PaddingHorizontal(4).PaddingVertical(1)
+                                                .Text(it.Marca!.ToUpperInvariant()).FontSize(6).Bold().FontColor(Colors.Grey.Darken3));
+                                    }
+                                });
                                 tbl.Cell().BorderBottom(0.3f).BorderColor(Colors.Grey.Lighten2).Padding(3).AlignCenter()
                                     .Element(e =>
                                     {
