@@ -69,7 +69,7 @@ public class CafeClientesController : ControllerBase
         // (ArcaImpTotal), no el neto (Total) — sino la cuenta corriente queda corta el IVA.
         var ventas = await _db.CafeVentas
             .Where(v => v.ClienteId == id && v.Estado != "anulado")
-            .Select(v => new { v.Id, v.Fecha, v.Numero, v.Total, v.ArcaImpTotal })
+            .Select(v => new { v.Id, v.Fecha, v.Numero, v.Total, v.ArcaImpTotal, v.TipoComprobante })
             .ToListAsync();
         // Cobranzas vigentes y sus retenciones
         var cobranzas = await _db.CafeCobranzas
@@ -82,8 +82,14 @@ public class CafeClientesController : ControllerBase
         var movs = new List<(DateTime fecha, string tipo, string num, decimal debe, decimal haber, string? det)>();
         foreach (var v in ventas)
         {
-            var debe = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
-            movs.Add((v.Fecha, "Venta", v.Numero ?? $"#{v.Id}", debe, 0m, null));
+            var monto = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
+            // 2026-06-16: las Notas de Credito (NCA/NCB/NCC) son DEVOLUCION al cliente — van al HABER, no al DEBE.
+            // Antes sumaban como deuda y el saldo del cliente quedaba inflado (la NC no descontaba lo que la FA habia agregado).
+            var esNC = v.TipoComprobante is not null && v.TipoComprobante.StartsWith("NC", StringComparison.OrdinalIgnoreCase);
+            if (esNC)
+                movs.Add((v.Fecha, "Nota Crédito", v.Numero ?? $"#{v.Id}", 0m, monto, null));
+            else
+                movs.Add((v.Fecha, "Venta", v.Numero ?? $"#{v.Id}", monto, 0m, null));
         }
         foreach (var c in cobranzas)
             movs.Add((c.Fecha, "Cobranza", c.Numero, 0m, c.Total + c.Retenciones,

@@ -349,7 +349,7 @@
                                 <span style="font-weight:600; color:#1f2937;">$@TotalImputado.ToString("N2")</span>
                             </div>
                             <hr style="margin:0.2rem 0; border:none; border-top:1px solid #d1d5db;" />
-                            @if (!hayMedios)
+                            @if (!hayMedios && Math.Abs(TotalImputado) > 0.01m)
                             {
                                 <div style="text-align:center; padding:0.4rem; background:#fef3c7; border-radius:5px; color:#78350f; font-size:0.85rem; font-weight:600;">
                                     ⚠ Cargá una forma de cobro abajo para ver cuánto te queda por imputar
@@ -536,7 +536,7 @@
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" @onclick="CloseNueva" disabled="@guardando">Cancelar</button>
-                <button class="btn btn-primary" @onclick="GuardarCobranza" disabled="@(!CuadraTotal || TotalImputado <= 0 || guardando)">
+                <button class="btn btn-primary" @onclick="GuardarCobranza" disabled="@(!CuadraTotal || !HayItemsImputados || guardando)">
                     @(guardando ? "..." : "Guardar cobranza")
                 </button>
             </div>
@@ -735,6 +735,10 @@
     private decimal TotalImputado => imputaciones.Where(kv => kv.Value.Seleccionado).Sum(kv => kv.Value.Importe) + (aCuentaActivo ? aCuentaImporte : 0);
     private decimal TotalMedios => formMedios.Sum(m => m.Importe);
     private bool CuadraTotal => Math.Abs(TotalImputado - (TotalMedios + formRetenciones)) < 0.01m;
+    // 2026-06-16: hay algo seleccionado para imputar (FA, NC, o A cuenta) — habilita Guardar
+    // incluso cuando el sum da 0 (compensacion FA+NC).
+    private bool HayItemsImputados => imputaciones.Any(kv => kv.Value.Seleccionado && Math.Abs(kv.Value.Importe) > 0.01m)
+                                       || (aCuentaActivo && Math.Abs(aCuentaImporte) > 0.01m);
 
     protected override async Task OnInitializedAsync()
     {
@@ -1069,7 +1073,9 @@
     private async Task GuardarCobranza()
     {
         if (selClienteId <= 0) { ToastService.Error("Elegí un cliente"); return; }
-        if (TotalImputado <= 0) { ToastService.Error("Imputá algo a un comprobante o A cuenta"); return; }
+        // 2026-06-16: en vez de exigir TotalImputado > 0, exigimos que haya AL MENOS UN item imputado.
+        // Asi se puede guardar una compensacion FA+NC con TotalImputado=0.
+        if (!HayItemsImputados) { ToastService.Error("Imputá algo a un comprobante o A cuenta"); return; }
         if (!CuadraTotal) { ToastService.Error("No cuadra: medios + retenciones ≠ imputado"); return; }
         var medioSinCaja = formMedios.Any(m => m.CajaId == 0);
         var medioSinImporte = formMedios.Any(m => m.CajaId > 0 && m.Importe <= 0);

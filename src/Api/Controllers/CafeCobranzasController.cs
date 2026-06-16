@@ -60,7 +60,9 @@ public class CafeCobranzasController : ControllerBase
         int VentaId, string Numero, DateTime Fecha, decimal Total, decimal Pagado, decimal Saldo,
         // Cuando se agrupan comprobantes de varias sucursales con mismo CUIT, indicamos
         // de que cliente proviene cada uno para que el operador no se confunda.
-        int? ClienteId = null, string? ClienteNombre = null);
+        int? ClienteId = null, string? ClienteNombre = null,
+        // 2026-06-16: tipo del comprobante (FA/FB/FC/NCA/NCB/NCC/X) — para el front render NCs en otro color y signo.
+        string? TipoComprobante = null);
 
     public record SucursalMismoCuitDto(int Id, string Nombre, string? Cuit);
 
@@ -132,10 +134,11 @@ public class CafeCobranzasController : ControllerBase
         }
 
         // Ventas del cliente (o los multiples con mismo CUIT). Traemos los campos para calcular
-        // MontoCobrable (Total + ArcaImpTotal).
+        // MontoCobrable (Total + ArcaImpTotal). Tambien traemos TipoComprobante para detectar NCs
+        // (Notas de Credito) que van con signo negativo — el operador las imputa junto con la FA para compensar.
         var ventas = await _db.CafeVentas
             .Where(v => v.ClienteId != null && clienteIds.Contains(v.ClienteId!.Value) && v.Estado != "anulado")
-            .Select(v => new { v.Id, v.Numero, v.Fecha, v.Total, v.ArcaImpTotal, v.ClienteId })
+            .Select(v => new { v.Id, v.Numero, v.Fecha, v.Total, v.ArcaImpTotal, v.ClienteId, v.TipoComprobante })
             .ToListAsync();
 
         if (ventas.Count == 0) return Ok(new List<ComprobantePendienteDto>());
@@ -156,16 +159,20 @@ public class CafeCobranzasController : ControllerBase
             .Select(v =>
             {
                 // Monto real cobrable: ArcaImpTotal si la venta tiene CAE de ARCA, sino Total.
-                var totalCobrar = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m)
+                var monto = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m)
                     ? v.ArcaImpTotal.Value : v.Total;
+                // 2026-06-16: Las Notas de Credito van con signo NEGATIVO. Asi cuando el operador
+                // tildea FA + NC en el mismo recibo, el total imputado da 0 y se compensan.
+                var esNC = v.TipoComprobante is not null && v.TipoComprobante.StartsWith("NC", StringComparison.OrdinalIgnoreCase);
+                var totalCobrar = esNC ? -monto : monto;
                 var pagado = dict.TryGetValue(v.Id, out var p) ? p : 0m;
-                // Solo enviamos nombre de cliente cuando se agruparon varios CUIT (sino es ruido).
                 var clienteNom = incluirMismoCuit && v.ClienteId.HasValue && clienteNombres.TryGetValue(v.ClienteId.Value, out var nm) ? nm : null;
                 return new ComprobantePendienteDto(
                     v.Id, v.Numero ?? $"#{v.Id}", v.Fecha, totalCobrar, pagado, totalCobrar - pagado,
-                    v.ClienteId, clienteNom);
+                    v.ClienteId, clienteNom, v.TipoComprobante);
             })
-            .Where(x => x.Saldo > 0.01m)  // solo pendientes
+            // 2026-06-16: |Saldo| > 0.01 — antes filtraba solo positivos y se perdian las NC con saldo negativo (a compensar).
+            .Where(x => Math.Abs(x.Saldo) > 0.01m)
             .OrderBy(x => x.Fecha)
             .ToList();
 
@@ -295,12 +302,15 @@ public class CafeCobranzasController : ControllerBase
         }
         if (req.Comprobantes == null || req.Comprobantes.Count == 0)
             return BadRequest(new { error = "Hay que cobrar al menos un comprobante (o agregar como 'a cuenta')" });
-        if (req.Medios == null || req.Medios.Count == 0)
-            return BadRequest(new { error = "Hay que especificar al menos una forma de cobro" });
 
         var sumComprobantes = req.Comprobantes.Sum(c => c.Importe);
-        var sumMedios = req.Medios.Sum(m => m.Importe);
+        var sumMedios = (req.Medios ?? new()).Sum(m => m.Importe);
         var retenciones = Math.Max(0m, req.Retenciones);
+
+        // 2026-06-16: si la suma de comprobantes da 0 (caso tipico: FA + NC que se compensan),
+        // permitimos guardar sin forma de cobro porque no entra plata a caja, solo se imputan los comprobantes entre si.
+        if (Math.Abs(sumComprobantes) > 0.01m && (req.Medios == null || req.Medios.Count == 0))
+            return BadRequest(new { error = "Hay que especificar al menos una forma de cobro" });
 
         // Regla: la suma de los medios + retenciones tiene que igualar el total imputado en comprobantes
         if (Math.Abs(sumComprobantes - (sumMedios + retenciones)) > 0.01m)
