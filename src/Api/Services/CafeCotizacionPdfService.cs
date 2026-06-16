@@ -85,17 +85,14 @@ public class CafeCotizacionPdfService
                             .Padding(6).AlignCenter().Text("⚠ COMPROBANTE ANULADO").FontSize(11).Bold().FontColor(Colors.Red.Darken3);
                     }
 
-                    // Banner claro de "DOCUMENTO SIN VALOR FISCAL" para Proforma (y para tipo X).
-                    // Es lo primero que ve el cliente — ningún malentendido posible.
-                    if (esProforma || v.TipoComprobante == "X")
+                    // 2026-06-16: el banner naranja arriba se sacó por pedido del usuario para cotizaciones tipo X.
+                    // Solo queda para Proforma (sigue siendo útil para evitar que se confunda con factura).
+                    if (esProforma)
                     {
-                        var bannerText = esProforma
-                            ? "DOCUMENTO SIN VALOR FISCAL — PROFORMA NO APTA PARA ARCA"
-                            : "DOCUMENTO INTERNO — NO VÁLIDO COMO FACTURA";
                         col.Item().PaddingBottom(4).Background(Colors.Orange.Lighten4)
                             .Border(1).BorderColor(Colors.Orange.Medium)
                             .Padding(5).AlignCenter()
-                            .Text(bannerText).FontSize(9).Bold().FontColor(Colors.Orange.Darken3);
+                            .Text("DOCUMENTO SIN VALOR FISCAL — PROFORMA NO APTA PARA ARCA").FontSize(9).Bold().FontColor(Colors.Orange.Darken3);
                     }
 
                     // ─── Bloque emisor + tipo de comprobante ───
