@@ -69,6 +69,56 @@ public class ArcaInvoicePdfService
                             {
                                 c.Item().Text($"Inicio de actividades: {emisor.InicioActividades.Value:dd/MM/yyyy}").FontSize(8);
                             }
+
+                            // 2026-06-16 v3: bloque Receptor pegado debajo del emisor (antes era una fila aparte
+                            // entre la franja de contacto y la tabla → ocupaba espacio para productos).
+                            c.Item().PaddingTop(8).BorderTop(0.5f).BorderColor(Colors.Grey.Lighten1).PaddingTop(4).Column(cr =>
+                            {
+                                cr.Item().Text(t =>
+                                {
+                                    t.Span("Receptor: ").SemiBold().FontSize(9);
+                                    t.Span(receptor.Nombre ?? "—").FontSize(9);
+                                    if (!string.IsNullOrWhiteSpace(comp.TipoClienteTag))
+                                    {
+                                        var tag = comp.TipoClienteTag!.Trim().ToUpperInvariant();
+                                        var tagLabel = tag == "BAR" ? " · BAR" : (tag == "OTRO" ? "" : $" · {tag}");
+                                        if (!string.IsNullOrEmpty(tagLabel))
+                                            t.Span(tagLabel).FontSize(8).FontColor(Colors.Grey.Darken1);
+                                    }
+                                    t.Span("   ·   ").FontSize(9).FontColor(Colors.Grey.Darken1);
+                                    t.Span($"{NombreDocTipo(receptor.DocTipo)}: ").SemiBold().FontSize(9);
+                                    t.Span(receptor.DocTipo == 80 ? FormatCuit(receptor.DocNro) : (receptor.DocNro ?? "—")).FontSize(9);
+                                });
+                                if (!string.IsNullOrEmpty(receptor.Domicilio))
+                                    cr.Item().Text($"Domicilio: {receptor.Domicilio}").FontSize(9);
+                                cr.Item().Text(t =>
+                                {
+                                    t.Span("Condición IVA: ").SemiBold().FontSize(9);
+                                    t.Span(NombreCondicionIva(receptor.CondicionIvaId)).FontSize(9);
+                                });
+                                if (!string.IsNullOrWhiteSpace(receptor.CondicionVenta))
+                                {
+                                    cr.Item().Text(t =>
+                                    {
+                                        t.Span("Forma de pago: ").SemiBold().FontSize(9);
+                                        t.Span(receptor.CondicionVenta!).FontSize(9);
+                                    });
+                                }
+                                if (!string.IsNullOrWhiteSpace(comp.ComentariosCliente))
+                                {
+                                    cr.Item().PaddingTop(3).BorderLeft(2).BorderColor(Colors.Orange.Darken1)
+                                        .Background(Colors.Orange.Lighten5).Padding(3)
+                                        .Text(comp.ComentariosCliente!).FontSize(8).Italic().FontColor(Colors.Grey.Darken2);
+                                }
+                                if (!string.IsNullOrWhiteSpace(comp.Observaciones))
+                                {
+                                    cr.Item().PaddingTop(2).Text(t =>
+                                    {
+                                        t.Span("Observaciones: ").SemiBold().FontSize(8);
+                                        t.Span(comp.Observaciones!).FontSize(8);
+                                    });
+                                }
+                            });
                         });
 
                         // ─── DERECHA: cuadro A + tipo + numeración + bloque entrega + QR grande ───
@@ -114,64 +164,8 @@ public class ArcaInvoicePdfService
                     // B/N friendly (sin colores fuertes). Solo se muestra si hay datos.
                     RenderFranjaContacto(col, emisor.Telefono, emisor.Telefono2, emisor.Email);
 
-                    // Receptor
-                    col.Item().PaddingTop(8).BorderTop(0.5f).PaddingTop(6).Column(c =>
-                    {
-                        c.Item().Row(r =>
-                        {
-                            r.RelativeItem().Text(t =>
-                            {
-                                t.Span("Receptor: ").SemiBold();
-                                t.Span(receptor.Nombre ?? "—");
-                                if (!string.IsNullOrWhiteSpace(comp.TipoClienteTag))
-                                {
-                                    var tag = comp.TipoClienteTag!.Trim().ToUpperInvariant();
-                                    var tagLabel = tag == "BAR" ? " · BAR" : (tag == "OTRO" ? "" : $" · {tag}");
-                                    if (!string.IsNullOrEmpty(tagLabel))
-                                        t.Span(tagLabel).FontSize(8).FontColor(Colors.Grey.Darken1);
-                                }
-                            });
-                            r.RelativeItem().AlignRight().Text(t =>
-                            {
-                                t.Span($"{NombreDocTipo(receptor.DocTipo)}: ").SemiBold();
-                                // CUIT con guiones; otros docs van crudos
-                                t.Span(receptor.DocTipo == 80 ? FormatCuit(receptor.DocNro) : (receptor.DocNro ?? "—"));
-                            });
-                        });
-                        if (!string.IsNullOrEmpty(receptor.Domicilio))
-                            c.Item().Text($"Domicilio: {receptor.Domicilio}").FontSize(9);
-                        c.Item().Text(t =>
-                        {
-                            t.Span("Condición IVA: ").SemiBold();
-                            t.Span(NombreCondicionIva(receptor.CondicionIvaId));
-                        });
-                        if (!string.IsNullOrWhiteSpace(receptor.CondicionVenta))
-                        {
-                            c.Item().Text(t =>
-                            {
-                                t.Span("Forma de pago: ").SemiBold();
-                                t.Span(receptor.CondicionVenta!);
-                            });
-                        }
-                        // Días de visita ya NO se muestra acá — vive abajo en el bloque
-                        // DOMICILIO DE ENTREGA junto con los pills LUN-DOM (más prolijo y único lugar).
-                        // Comentarios del cliente para el comprobante (notas del cliente que aparecen en TODOS sus comprobantes)
-                        if (!string.IsNullOrWhiteSpace(comp.ComentariosCliente))
-                        {
-                            c.Item().PaddingTop(3).BorderLeft(2).BorderColor(Colors.Orange.Darken1)
-                                .Background(Colors.Orange.Lighten5).Padding(3)
-                                .Text(comp.ComentariosCliente!).FontSize(8).Italic().FontColor(Colors.Grey.Darken2);
-                        }
-                        // Observaciones de esta venta (notas internas que el operador puso en la venta)
-                        if (!string.IsNullOrWhiteSpace(comp.Observaciones))
-                        {
-                            c.Item().PaddingTop(2).Text(t =>
-                            {
-                                t.Span("Observaciones: ").SemiBold().FontSize(8);
-                                t.Span(comp.Observaciones!).FontSize(8);
-                            });
-                        }
-                    });
+                    // 2026-06-16 v3: el bloque Receptor se movio arriba al header (debajo del emisor)
+                    // para que la tabla de productos arranque mas arriba y aproveche el espacio.
                 });
 
                 // ───── CONTENIDO (items) ─────
