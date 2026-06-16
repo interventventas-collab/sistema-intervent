@@ -309,6 +309,13 @@
                                             <td><input type="checkbox" @bind="imputaciones[p.VentaId].Seleccionado" @bind:after="RecalcularTotal" /></td>
                                             <td>
                                                 <b>@p.Numero</b>
+                                                @* 2026-06-16: si la venta tiene CAE de ARCA, mostramos el numero oficial abajo. *@
+                                                @if (p.ArcaCbteNro.HasValue)
+                                                {
+                                                    <div style="font-family:monospace; font-size:0.7rem; color:#1e40af; font-weight:600;" title="Número oficial ARCA">
+                                                        📜 @($"{(p.ArcaPtoVta ?? 0):00000}-{p.ArcaCbteNro.Value:00000000}")
+                                                    </div>
+                                                }
                                                 @if (incluirSucursales && !string.IsNullOrEmpty(p.ClienteNombre))
                                                 {
                                                     <div style="font-size:0.7rem; color:#6b7280;">@p.ClienteNombre</div>

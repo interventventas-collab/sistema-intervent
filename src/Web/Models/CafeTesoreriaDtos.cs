@@ -167,6 +167,11 @@ public class ComprobantePendienteDto
     /// para mostrar de que sucursal viene cada comprobante.</summary>
     public int? ClienteId { get; set; }
     public string? ClienteNombre { get; set; }
+    /// <summary>2026-06-16: tipo del comprobante (FA/FB/FC/NCA/NCB/NCC/X). Usado para detectar NCs.</summary>
+    public string? TipoComprobante { get; set; }
+    /// <summary>2026-06-16: numero oficial ARCA (PtoVta + CbteNro). Si set, mostramos abajo del numero interno.</summary>
+    public int? ArcaPtoVta { get; set; }
+    public int? ArcaCbteNro { get; set; }
 }
 
 public class SucursalMismoCuitDto

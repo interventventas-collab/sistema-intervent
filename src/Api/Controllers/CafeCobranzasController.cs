@@ -62,7 +62,9 @@ public class CafeCobranzasController : ControllerBase
         // de que cliente proviene cada uno para que el operador no se confunda.
         int? ClienteId = null, string? ClienteNombre = null,
         // 2026-06-16: tipo del comprobante (FA/FB/FC/NCA/NCB/NCC/X) — para el front render NCs en otro color y signo.
-        string? TipoComprobante = null);
+        string? TipoComprobante = null,
+        // 2026-06-16: numero oficial ARCA (PtoVta + CbteNro). Si esta seteado, el front lo muestra abajo del numero interno.
+        int? ArcaPtoVta = null, int? ArcaCbteNro = null);
 
     public record SucursalMismoCuitDto(int Id, string Nombre, string? Cuit);
 
@@ -138,7 +140,7 @@ public class CafeCobranzasController : ControllerBase
         // (Notas de Credito) que van con signo negativo — el operador las imputa junto con la FA para compensar.
         var ventas = await _db.CafeVentas
             .Where(v => v.ClienteId != null && clienteIds.Contains(v.ClienteId!.Value) && v.Estado != "anulado")
-            .Select(v => new { v.Id, v.Numero, v.Fecha, v.Total, v.ArcaImpTotal, v.ClienteId, v.TipoComprobante })
+            .Select(v => new { v.Id, v.Numero, v.Fecha, v.Total, v.ArcaImpTotal, v.ClienteId, v.TipoComprobante, v.ArcaPtoVta, v.ArcaCbteNro })
             .ToListAsync();
 
         if (ventas.Count == 0) return Ok(new List<ComprobantePendienteDto>());
@@ -169,7 +171,7 @@ public class CafeCobranzasController : ControllerBase
                 var clienteNom = incluirMismoCuit && v.ClienteId.HasValue && clienteNombres.TryGetValue(v.ClienteId.Value, out var nm) ? nm : null;
                 return new ComprobantePendienteDto(
                     v.Id, v.Numero ?? $"#{v.Id}", v.Fecha, totalCobrar, pagado, totalCobrar - pagado,
-                    v.ClienteId, clienteNom, v.TipoComprobante);
+                    v.ClienteId, clienteNom, v.TipoComprobante, v.ArcaPtoVta, v.ArcaCbteNro);
             })
             // 2026-06-16: |Saldo| > 0.01 — antes filtraba solo positivos y se perdian las NC con saldo negativo (a compensar).
             .Where(x => Math.Abs(x.Saldo) > 0.01m)

@@ -138,6 +138,12 @@ public class ArcaInvoicePdfService
                                     cc.Item().AlignRight().Text($"Punto de Venta: {comp.PtoVta:00000}").FontSize(9);
                                     cc.Item().AlignRight().Text($"Comp. Nro: {comp.CbteNro:00000000}").FontSize(9);
                                     cc.Item().AlignRight().Text($"Fecha de Emisión: {FormatFecha(comp.Fecha)}").FontSize(9);
+                                    // 2026-06-16: ref. interna del sistema (CAFE-2026-XXXX) para correlacionar con el correlativo interno.
+                                    if (!string.IsNullOrWhiteSpace(comp.NumeroInterno))
+                                    {
+                                        cc.Item().PaddingTop(1).AlignRight()
+                                            .Text($"Ref. interna: {comp.NumeroInterno}").FontSize(7).Italic().FontColor(Colors.Grey.Darken1);
+                                    }
                                 });
                             });
 
@@ -677,6 +683,9 @@ public class PdfComprobante
     public string CbteTipoNombre { get; set; } = "";
     public int PtoVta { get; set; }
     public int CbteNro { get; set; }
+    /// <summary>2026-06-16: numero interno del sistema (CAFE-2026-XXXX). Se muestra abajo del numero
+    /// oficial ARCA como "Ref. interna" para que el operador pueda correlacionar ambos.</summary>
+    public string? NumeroInterno { get; set; }
     public string Fecha { get; set; } = ""; // yyyymmdd
     public int Concepto { get; set; } = 1;
     public List<PdfItem> Items { get; set; } = new();

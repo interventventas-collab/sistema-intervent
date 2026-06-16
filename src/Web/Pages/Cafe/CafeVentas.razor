@@ -292,6 +292,13 @@
                                         📌
                                     </span>
                                     @v.Numero
+                                    @* 2026-06-16: si la venta tiene CAE de ARCA, mostrar abajo el numero oficial (PtoVta-CbteNro). *@
+                                    @if (v.ArcaCbteNro.HasValue)
+                                    {
+                                        <div style="font-family:monospace; font-size:0.72rem; color:#1e40af; margin-top:0.15rem; font-weight:600;" title="Número oficial asignado por ARCA">
+                                            📜 @($"{(v.ArcaPtoVta ?? 0):00000}-{v.ArcaCbteNro.Value:00000000}")
+                                        </div>
+                                    }
                                     @* 2026-06-05: chip con inicial del operador que cargo la venta *@
                                     @if (!string.IsNullOrWhiteSpace(v.CreadoPorOperador))
                                     {

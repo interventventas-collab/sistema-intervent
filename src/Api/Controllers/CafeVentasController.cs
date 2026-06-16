@@ -831,6 +831,7 @@ public class CafeVentasController : ControllerBase
             CbteTipoNombre = ArcaWsService.NombreCbte(v.ArcaCbteTipoNum ?? 0),
             PtoVta = v.ArcaPtoVta ?? 0,
             CbteNro = v.ArcaCbteNro ?? 0,
+            NumeroInterno = v.Numero,    // 2026-06-16: ref interna debajo del numero ARCA
             Fecha = v.Fecha.ToString("yyyyMMdd"),
             Concepto = 1,
             ImpNeto = neto,
