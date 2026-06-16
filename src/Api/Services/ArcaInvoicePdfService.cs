@@ -78,7 +78,8 @@ public class ArcaInvoicePdfService
                         // Derecha — tipo + numeración + fecha + sello PAGADO + bloque entrega + QR.
                         // 2026-06-16: el bloque DOMICILIO DE ENTREGA + QR ahora vive ACÁ (mitad derecha del header)
                         // en lugar de abajo, para ganar espacio para items y agrupar la info de despacho.
-                        row.RelativeItem().Column(c =>
+                        // PaddingLeft(10) en la columna derecha para que el bloque gris NO toque el cuadro "A · COD.01".
+                        row.RelativeItem().PaddingLeft(10).Column(c =>
                         {
                             c.Item().AlignRight().Text(nombreTipo).FontSize(13).Bold();
                             c.Item().AlignRight().Text($"Punto de Venta: {comp.PtoVta:00000}   Comp. Nro: {comp.CbteNro:00000000}").FontSize(9);
@@ -427,8 +428,7 @@ public class ArcaInvoicePdfService
         var diasDelComp = new List<string> { "LUN", "MAR", "MIE", "JUE", "VIE", "SAB" };
         if (diasActivos.Contains("DOM")) diasDelComp.Add("DOM");
 
-        // 2026-06-16: PaddingLeft(10) para que el cuadro gris NO se monte sobre el borde del cuadro "A · COD.01".
-        col.Item().PaddingTop(6).PaddingLeft(10).Background(Colors.Grey.Lighten4).Border(0.5f).BorderColor(Colors.Grey.Lighten1).Padding(5).Row(r =>
+        col.Item().PaddingTop(6).Background(Colors.Grey.Lighten4).Border(0.5f).BorderColor(Colors.Grey.Lighten1).Padding(5).Row(r =>
         {
             // Izquierda: domicilio + repartidor + días + estado + comentarios
             r.RelativeItem().Column(cc =>
