@@ -182,6 +182,43 @@ public class CafeCotizacionPdfService
                                         .Padding(3).Text("PAGADO").FontSize(11).Bold().FontColor(Colors.Red.Darken2);
                                 });
                             }
+
+                            // 2026-06-16 v5: cliente metido dentro del header (antes era una fila aparte que duplicaba info y dejaba mucho espacio en blanco).
+                            c.Item().PaddingTop(6).Column(cc =>
+                            {
+                                var razonCli2 = v.ClienteRazonSocialSnapshot;
+                                var nombreCli2 = v.ClienteNombreSnapshot ?? "Consumidor final";
+                                var esBar2 = string.Equals(v.ClienteTipoSnapshot, "BAR", StringComparison.OrdinalIgnoreCase);
+                                var tagBg2 = esBar2 ? Colors.Blue.Lighten4 : Colors.Green.Lighten4;
+                                var tagFg2 = esBar2 ? Colors.Blue.Darken3 : Colors.Green.Darken3;
+                                var tagText2 = esBar2 ? "🍺 BAR" : "🏢 Comercial";
+
+                                cc.Item().Row(rr =>
+                                {
+                                    rr.RelativeItem().Text(t =>
+                                    {
+                                        var name = !string.IsNullOrWhiteSpace(razonCli2) ? razonCli2! : nombreCli2;
+                                        t.Span(name).FontSize(11).Bold();
+                                    });
+                                    rr.AutoItem().AlignMiddle().Background(tagBg2).Padding(2)
+                                        .Text(tagText2).FontSize(7).Bold().FontColor(tagFg2);
+                                });
+                                if (!string.IsNullOrWhiteSpace(razonCli2))
+                                    cc.Item().Text(nombreCli2).FontSize(8).Italic().FontColor(Colors.Grey.Darken1);
+                                if (!string.IsNullOrWhiteSpace(v.ClienteCuitSnapshot))
+                                    cc.Item().Text($"CUIT/DNI: {v.ClienteCuitSnapshot}").FontSize(8).FontColor(Colors.Grey.Darken2);
+                                if (!string.IsNullOrWhiteSpace(v.ClienteDireccionSnapshot))
+                                    cc.Item().Text(v.ClienteDireccionSnapshot!).FontSize(8).FontColor(Colors.Grey.Darken2);
+                                var locCli2 = string.Join(" - ",
+                                    new[] { v.ClienteLocalidadSnapshot, v.ClienteCiudadSnapshot, v.ClienteCpSnapshot }
+                                        .Where(x => !string.IsNullOrWhiteSpace(x)));
+                                if (!string.IsNullOrEmpty(locCli2))
+                                    cc.Item().Text(locCli2).FontSize(8).FontColor(Colors.Grey.Darken2);
+                                if (!string.IsNullOrWhiteSpace(v.ClienteTelefonoSnapshot))
+                                    cc.Item().Text($"Tel: {v.ClienteTelefonoSnapshot}").FontSize(8);
+                                if (v.TipoComprobante != "X")
+                                    cc.Item().PaddingTop(2).Text($"Cond. IVA: {CondicionIvaLabel(v.CondicionIva)}").FontSize(8);
+                            });
                         });
 
                         // 2026-06-16 v4: DERECHA — bloque DOMICILIO DE ENTREGA + chips + QR grande (sola columna 1).
@@ -194,54 +231,6 @@ public class CafeCotizacionPdfService
                     // 2026-06-16: franja gris a lo ancho con dos tel WhatsApp + email centrado.
                     // B/N friendly (sin colores fuertes). Si no hay datos, no se muestra.
                     RenderFranjaContacto(col, cfg.NegocioTelefono, cfg.NegocioTelefono2, cfg.NegocioEmail);
-
-                    // ─── Cliente (receptor) ───
-                    col.Item().BorderLeft(1).BorderRight(1).BorderBottom(1).BorderColor(Colors.Grey.Lighten1).Padding(6).Row(row =>
-                    {
-                        row.RelativeItem(2).Column(c =>
-                        {
-                            var razonCli = v.ClienteRazonSocialSnapshot;
-                            var nombreCli = v.ClienteNombreSnapshot ?? "Consumidor final";
-                            if (!string.IsNullOrWhiteSpace(razonCli))
-                            {
-                                c.Item().Text(razonCli).FontSize(10).Bold();
-                                c.Item().Text(nombreCli).FontSize(8).Italic().FontColor(Colors.Grey.Darken1);
-                            }
-                            else
-                            {
-                                c.Item().Text(nombreCli).FontSize(10).Bold();
-                            }
-                            var lineas = new List<string>();
-                            if (!string.IsNullOrWhiteSpace(v.ClienteCuitSnapshot)) lineas.Add("CUIT/DNI: " + v.ClienteCuitSnapshot);
-                            if (!string.IsNullOrWhiteSpace(v.ClienteDireccionSnapshot)) lineas.Add(v.ClienteDireccionSnapshot!);
-                            var locCli = string.Join(" - ",
-                                new[] { v.ClienteLocalidadSnapshot, v.ClienteCiudadSnapshot, v.ClienteCpSnapshot }
-                                    .Where(x => !string.IsNullOrWhiteSpace(x)));
-                            if (!string.IsNullOrEmpty(locCli)) lineas.Add(locCli);
-                            foreach (var l in lineas) c.Item().Text(l).FontSize(8).FontColor(Colors.Grey.Darken2);
-                            if (!string.IsNullOrWhiteSpace(v.ClienteTelefonoSnapshot))
-                                c.Item().Text($"Tel: {v.ClienteTelefonoSnapshot}").FontSize(8);
-                        });
-
-                        row.RelativeItem().Column(c =>
-                        {
-                            var esBar = string.Equals(v.ClienteTipoSnapshot, "BAR", StringComparison.OrdinalIgnoreCase);
-                            var tagBg = esBar ? Colors.Blue.Lighten4 : Colors.Green.Lighten4;
-                            var tagFg = esBar ? Colors.Blue.Darken3 : Colors.Green.Darken3;
-                            var tagText = esBar ? "🍺 BAR" : "🏢 Comercial";
-                            c.Item().AlignRight().Row(rr =>
-                            {
-                                rr.AutoItem().Background(tagBg).Padding(3).Text(tagText)
-                                    .FontSize(8).Bold().FontColor(tagFg);
-                            });
-                            // Cond. IVA del cliente: solo en comprobantes oficiales ARCA (no en cotizaciones tipo "X").
-                            if (v.TipoComprobante != "X")
-                            {
-                                c.Item().PaddingTop(2).AlignRight()
-                                    .Text($"Cond. IVA: {CondicionIvaLabel(v.CondicionIva)}").FontSize(8);
-                            }
-                        });
-                    });
                 });
 
                 // ───── CONTENIDO ─────
@@ -311,28 +300,8 @@ public class CafeCotizacionPdfService
                         }
                     });
 
-                    // Totales movidos al Footer (decision 2026-05-20) para que queden pegados
-                    // al pie de la pagina en vez de "flotando" justo despues de la tabla cuando
-                    // hay pocos items. Ver page.Footer() mas abajo.
-
-                    if (esProforma)
-                    {
-                        col.Item().PaddingTop(4).Background(Colors.Yellow.Lighten4).Border(1).BorderColor(Colors.Yellow.Darken1)
-                            .Padding(5).Text(t =>
-                            {
-                                t.Span("⚠ Proforma — preview de cómo quedaría con IVA cuando emitas factura por ARCA. ").Bold().FontColor("#92400e").FontSize(8);
-                                t.Span("Para esta vista se aplica 21% al neto. Cuando se emita la factura real, los productos con IVA 10,5% (alimentos) se discriminarán por separado.").FontColor("#92400e").FontSize(8);
-                            });
-                    }
-                });
-
-                // ───── FOOTER (fijo al pie de la página) ─────
-                // Totales + Entrega / Observaciones / Días de visita van ACÁ para que queden
-                // siempre pegados al pie en lugar de "flotando" justo despues de la tabla.
-                page.Footer().Column(fc =>
-                {
-                    // ─── Totales (alineados a la derecha via Row con filler) ───
-                    fc.Item().PaddingTop(4).Row(row =>
+                    // 2026-06-16 v5: totales pegados a la tabla (antes estaban en el footer → quedaba un hueco gigante en el medio cuando había pocos items).
+                    col.Item().PaddingTop(6).Row(row =>
                     {
                         row.RelativeItem();
                         row.ConstantItem(280).Border(1).BorderColor(Colors.Grey.Lighten1).Padding(8).Column(c =>
@@ -379,7 +348,6 @@ public class CafeCotizacionPdfService
                                 });
                             }
                             c.Item().PaddingTop(4).LineHorizontal(0.5f).LineColor(Colors.Grey.Lighten1);
-                            // Forma de pago destacada
                             c.Item().PaddingTop(3).Background(Colors.Grey.Lighten4).Border(0.5f).BorderColor(Colors.Grey.Lighten1)
                                 .Padding(6).Row(r =>
                             {
@@ -402,12 +370,9 @@ public class CafeCotizacionPdfService
                         });
                     });
 
-                    // 2026-06-16 v2: los bloques "Entrega en", "Repartidor" y "Días de visita / reparto"
-                    // ya están arriba en el bloque DOMICILIO DE ENTREGA debajo del header (full-width).
-                    // El repartidor SIEMPRE busca esa info en el mismo lugar.
                     if (!string.IsNullOrEmpty(v.ClienteComentariosComprobante))
                     {
-                        fc.Item().PaddingTop(5).BorderLeft(3).BorderColor(Colors.Orange.Darken1)
+                        col.Item().PaddingTop(5).BorderLeft(3).BorderColor(Colors.Orange.Darken1)
                             .Background(Colors.Orange.Lighten4).Padding(5).Text(t =>
                             {
                                 t.Span("Nota: ").SemiBold();
@@ -417,13 +382,29 @@ public class CafeCotizacionPdfService
 
                     if (!string.IsNullOrEmpty(v.Observaciones))
                     {
-                        fc.Item().PaddingTop(5).Border(1).BorderColor(Colors.Grey.Lighten1).Padding(5).Text(t =>
+                        col.Item().PaddingTop(5).Border(1).BorderColor(Colors.Grey.Lighten1).Padding(5).Text(t =>
                         {
                             t.Span("Observaciones: ").SemiBold();
                             t.Span(v.Observaciones!);
                         });
                     }
 
+                    if (esProforma)
+                    {
+                        col.Item().PaddingTop(4).Background(Colors.Yellow.Lighten4).Border(1).BorderColor(Colors.Yellow.Darken1)
+                            .Padding(5).Text(t =>
+                            {
+                                t.Span("⚠ Proforma — preview de cómo quedaría con IVA cuando emitas factura por ARCA. ").Bold().FontColor("#92400e").FontSize(8);
+                                t.Span("Para esta vista se aplica 21% al neto. Cuando se emita la factura real, los productos con IVA 10,5% (alimentos) se discriminarán por separado.").FontColor("#92400e").FontSize(8);
+                            });
+                    }
+                });
+
+                // ───── FOOTER (fijo al pie de la página) ─────
+                // 2026-06-16 v5: footer reducido a "Gracias" + webs. Totales/Nota/Observaciones se
+                // movieron al Content para que queden pegados a la tabla y no haya hueco en el medio.
+                page.Footer().Column(fc =>
+                {
                     // Línea final con "Gracias por tu compra"
                     fc.Item().PaddingTop(8).BorderTop(1).BorderColor(Colors.Grey.Lighten2).PaddingTop(4).AlignCenter().Text(t =>
                     {
