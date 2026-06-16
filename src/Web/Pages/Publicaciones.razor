@@ -85,6 +85,15 @@
                     <button class="view-mode-btn @(viewMode == "family" ? "active" : "")" @onclick='() => viewMode = "family"'>Por Familia</button>
                     <button class="view-mode-btn @(viewMode == "product" ? "active" : "")" @onclick='() => viewMode = "product"'>Por Producto</button>
                     <button class="view-mode-btn @(viewMode == "sincro" ? "active" : "")" @onclick='() => viewMode = "sincro"'>💰 Sincro precio + stock</button>
+                    @* 2026-06-16: toggle de status (Activas / Pausadas / Todas) — antes solo cargaba active y no se podian ver paused *@
+                    <div style="display:inline-flex; gap:0.15rem; margin-left:0.5rem; padding:0.15rem; background:#f3f4f6; border-radius:6px;">
+                        <button class="view-mode-btn @(statusFilter == "active" ? "active" : "")" style="background:@(statusFilter == "active" ? "#16a34a" : "transparent"); color:@(statusFilter == "active" ? "white" : "#374151");"
+                                @onclick='@(() => CambiarStatus("active"))'>✅ Activas</button>
+                        <button class="view-mode-btn @(statusFilter == "paused" ? "active" : "")" style="background:@(statusFilter == "paused" ? "#f59e0b" : "transparent"); color:@(statusFilter == "paused" ? "white" : "#374151");"
+                                @onclick='@(() => CambiarStatus("paused"))'>⏸ Pausadas</button>
+                        <button class="view-mode-btn @(statusFilter == null ? "active" : "")" style="background:@(statusFilter == null ? "#1d4ed8" : "transparent"); color:@(statusFilter == null ? "white" : "#374151");"
+                                @onclick='@(() => CambiarStatus(null))'>📋 Todas</button>
+                    </div>
                     @if (viewMode == "flat")
                     {
                         <label title="ON: agrupa familias (FamilyId con varios MLAs) en 1 sola fila — vista catálogo de MeLi. OFF: cada MLA es 1 fila — coincide con el conteo de publicaciones de MeLi web."
@@ -3099,6 +3108,15 @@
     private bool filterStockPushOk = false;            // 🟢 pusheado reciente (<=7 dias)
     private bool filterStockPushViejo = false;         // 🟡 pusheado viejo (>7 dias)
     private bool filterUrgente = false;                // 🚨 stock=0 OR status=paused (urgente reponer)
+    private string? statusFilter = "active";           // 2026-06-16: toggle Activas/Pausadas/Todas. null = todas.
+
+    private async Task CambiarStatus(string? nuevoStatus)
+    {
+        if (statusFilter == nuevoStatus) return;
+        statusFilter = nuevoStatus;
+        InvalidateFilterCache();
+        await LoadItems();
+    }
     // 2026-06-01: filtros de margen (peor primero, para arreglarlas)
     private bool filterMargenPerdida = false;          // 🔴 margen ≤ 0% (pérdida)
     private bool filterMargenBajo = false;             // 🟠 margen 0-15% (bajo)
@@ -3363,7 +3381,8 @@
         {
             // 2026-06-11: pasar status=active por default para reducir 9494 → 3710 filas (60% menos)
             // El toggle "incluir cerradas" sigue funcionando desde el frontend filtrando lo ya traído
-            var response = await Api.GetMeliItemsAsync(status: "active");
+            // 2026-06-16: respetamos el statusFilter que elige el operador (active / paused / null=todas)
+            var response = await Api.GetMeliItemsAsync(status: statusFilter);
             if (response is not null)
             {
                 items = response.Items;
