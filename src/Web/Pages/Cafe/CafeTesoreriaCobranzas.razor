@@ -1085,9 +1085,11 @@
 
         var comps = new List<ApiClient.CrearComprobanteItemRequest>();
         foreach (var kv in imputaciones)
-            if (kv.Value.Seleccionado && kv.Value.Importe > 0)
+            // 2026-06-16: Math.Abs en vez de > 0 porque las Notas de Credito van con importe NEGATIVO.
+            // Antes filtraba los negativos y el server recibia solo la FA, perdiendo la NC y rompiendo la compensacion.
+            if (kv.Value.Seleccionado && Math.Abs(kv.Value.Importe) > 0.01m)
                 comps.Add(new ApiClient.CrearComprobanteItemRequest(kv.Key, kv.Value.Importe));
-        if (aCuentaActivo && aCuentaImporte > 0)
+        if (aCuentaActivo && Math.Abs(aCuentaImporte) > 0.01m)
             comps.Add(new ApiClient.CrearComprobanteItemRequest(null, aCuentaImporte));
 
         var medios = formMedios.Select(m => new ApiClient.CrearMedioItemRequest(
