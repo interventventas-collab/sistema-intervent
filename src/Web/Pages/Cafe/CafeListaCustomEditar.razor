@@ -6,7 +6,8 @@
 @inject NavigationManager Nav
 
 <style>
-    .ed-grid { display: grid; grid-template-columns: 320px 1fr; gap: 1rem; align-items: flex-start; }
+    @* 2026-06-16 v2: panel izquierdo más ancho (320 → 450) para que el nombre completo se lea sin recorte. *@
+    .ed-grid { display: grid; grid-template-columns: 450px 1fr; gap: 1rem; align-items: flex-start; }
     @@media (max-width: 900px) { .ed-grid { grid-template-columns: 1fr; } }
     .ed-panel { background: white; border: 1px solid #e5e7eb; border-radius: 10px; padding: 0.7rem; }
     .ed-tabs { display: flex; gap: 0.25rem; margin-bottom: 0.5rem; }
@@ -15,6 +16,10 @@
     .ed-disp-item { padding: 0.4rem 0.5rem; border-bottom: 1px solid #f3f4f6; cursor: pointer; font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center; }
     .ed-disp-item:hover { background: #eff6ff; }
     .ed-disp-item.no-active { opacity: 0.45; cursor: not-allowed; }
+    @* 2026-06-16 v2: item ya agregado se ve con check verde y semi-deshabilitado para evitar duplicados. *@
+    .ed-disp-item.ya-agregado { background: #f0fdf4; opacity: 0.7; cursor: not-allowed; }
+    .ed-disp-item.ya-agregado:hover { background: #f0fdf4; }
+    .ed-disp-check { color: #16a34a; font-weight: 700; margin-right: 0.4rem; font-size: 0.95rem; }
     .ed-disp-list { max-height: 60vh; overflow-y: auto; border: 1px solid #f3f4f6; border-radius: 6px; }
     .sec-card { background: #fafafa; border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 0.7rem; }
     .sec-card.active { border: 2px solid #1d4ed8; box-shadow: 0 0 0 3px rgba(29,78,216,0.15); }
@@ -94,17 +99,22 @@
                     }
                     else
                     {
+                        @* 2026-06-16 v2: Set de "Tipo:RefId" de los items ya cargados, para tildar y prevenir duplicados. *@
+                        var yaAgregados = ItemsYaAgregados;
                         @foreach (var d in disponibles)
                         {
                             var deshabilitado = seccionActivaId is null;
-                            <div class="ed-disp-item @(deshabilitado ? "no-active" : "")" @onclick="@(() => Agregar(d))">
+                            var yaEsta = yaAgregados.Contains($"{d.Tipo}:{d.Id}");
+                            <div class="ed-disp-item @(deshabilitado ? "no-active" : "") @(yaEsta ? "ya-agregado" : "")" @onclick="@(() => Agregar(d))">
                                 <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 0.5rem;">
+                                    @if (yaEsta)
+                                    {
+                                        <span class="ed-disp-check" title="Ya está agregado">✅</span>
+                                    }
                                     @if (!string.IsNullOrEmpty(d.Sku))
                                     {
                                         <span style="color: #1e40af; font-family: monospace; margin-right: 0.3rem; font-weight: 600;">@d.Sku</span>
                                     }
-                                    @* 2026-06-16: Detalle ("Pack x N", "Combo") como chip naranja BIEN VISIBLE al lado del SKU,
-                                       para distinguir packs del mismo producto sin que el nombre largo lo recorte. *@
                                     @if (!string.IsNullOrEmpty(d.Detalle))
                                     {
                                         <span style="background: #fed7aa; color: #9a3412; font-size: 0.7rem; padding: 0.1rem 0.4rem; border-radius: 3px; margin-right: 0.35rem; font-weight: 700;">@d.Detalle</span>
@@ -226,6 +236,13 @@
     private int TotalItems => secciones.Sum(s => s.Items.Count);
     private CancellationTokenSource? buscarCts;
 
+    // 2026-06-16 v2: Set de "Tipo:RefId" de los items ya cargados en cualquier sección de la lista.
+    // Sirve para mostrar tilde verde en el panel izquierdo y bloquear duplicados.
+    private HashSet<string> ItemsYaAgregados => secciones
+        .SelectMany(s => s.Items)
+        .Select(i => $"{i.TipoItem}:{i.RefId}")
+        .ToHashSet();
+
     protected override async Task OnInitializedAsync()
     {
         await Recargar();
@@ -310,6 +327,12 @@
     private async Task Agregar(ItemDisponibleDto d)
     {
         if (seccionActivaId is null) { ToastService.Info("Primero seleccioná una sección"); return; }
+        // 2026-06-16 v2: prevenir duplicados — si el (Tipo+RefId) ya está en cualquier sección, no se agrega.
+        if (ItemsYaAgregados.Contains($"{d.Tipo}:{d.Id}"))
+        {
+            ToastService.Info($"{d.Nombre} ya está agregado a la lista");
+            return;
+        }
         var ok = await Api.AgregarItemAsync(seccionActivaId.Value, d.Tipo, d.Id);
         if (ok is null) { ToastService.Error("No se pudo agregar"); return; }
         await Recargar();
