@@ -3753,6 +3753,23 @@ public class ApiClient
         var r = await PostAsync<object>($"/api/cafe/cobranzas/{id}/anular", new { });
         return r is not null;
     }
+
+    /// <summary>Re-imputa una cobranza VIGENTE: reemplaza la lista de comprobantes (VentaId + Importe)
+    /// manteniendo el mismo total. NO toca medios de cobro ni cheques. Devuelve (ok, error).</summary>
+    public async Task<(bool ok, string? error)> EditarImputacionesCafeCobranzaAsync(int id, List<CrearComprobanteItemRequest> comprobantes)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PutAsJsonAsync($"/api/cafe/cobranzas/{id}/imputaciones", new { comprobantes });
+        if (resp.IsSuccessStatusCode) return (true, null);
+        var body = await resp.Content.ReadAsStringAsync();
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("error", out var e)) return (false, e.GetString());
+        }
+        catch { }
+        return (false, "Error al editar imputaciones");
+    }
     /// <summary>Eliminacion fisica de una cobranza ANULADA. Requiere la clave del usuario.
     /// Devuelve null en caso de error (clave incorrecta o cobranza no anulada).</summary>
     public async Task<(bool ok, string? error)> EliminarCafeCobranzaAsync(int id, string password)

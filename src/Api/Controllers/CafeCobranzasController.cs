@@ -510,4 +510,77 @@ public class CafeCobranzasController : ControllerBase
         await _audit.LogAsync("CafeCobranza", id.ToString(), "ANULAR", $"Cobranza {c.Numero} anulada");
         return Ok(new { ok = true });
     }
+
+    public record EditarImputacionesRequest(List<CrearComprobanteItem> Comprobantes);
+
+    /// <summary>
+    /// Re-imputa una cobranza VIGENTE: borra todas las filas de Cafe_CobranzasComprobantes
+    /// y las re-crea con los nuevos importes. NO toca medios de cobro, cheques, cliente ni total.
+    /// La suma de los nuevos importes debe igualar c.Total + c.Retenciones (lo mismo que valida el Crear).
+    /// Sincroniza IsPaid de las ventas afectadas (las viejas y las nuevas).
+    /// Caso de uso: corregir una imputacion mal hecha (ej. monto que quedo "a cuenta" cuando debio
+    /// ir a una factura, o viceversa) sin tener que anular y rehacer todo.
+    /// </summary>
+    [HttpPut("{id:int}/imputaciones")]
+    public async Task<IActionResult> EditarImputaciones(int id, [FromBody] EditarImputacionesRequest req)
+    {
+        var c = await _db.CafeCobranzas
+            .Include(x => x.Comprobantes)
+            .FirstOrDefaultAsync(x => x.Id == id);
+        if (c is null) return NotFound();
+        if (c.Estado != "VIGENTE")
+            return BadRequest(new { error = "Solo se pueden editar cobranzas VIGENTES" });
+        if (req.Comprobantes == null || req.Comprobantes.Count == 0)
+            return BadRequest(new { error = "Tiene que haber al menos una imputacion" });
+
+        var sumNuevo = req.Comprobantes.Sum(x => x.Importe);
+        var esperado = c.Total + c.Retenciones;
+        if (Math.Abs(sumNuevo - esperado) > 0.01m)
+            return BadRequest(new { error = $"No cuadra: imputado ${sumNuevo:N2} vs total+retenciones ${esperado:N2}" });
+
+        // Validar ventas referenciadas: existan y pertenezcan al cliente de la cobranza (o a sucursales con mismo CUIT).
+        var ventaIdsNuevas = req.Comprobantes.Where(x => x.VentaId.HasValue).Select(x => x.VentaId!.Value).Distinct().ToList();
+        if (ventaIdsNuevas.Count > 0)
+        {
+            var ventas = await _db.CafeVentas.Where(v => ventaIdsNuevas.Contains(v.Id))
+                .Select(v => new { v.Id, v.ClienteId }).ToListAsync();
+            if (ventas.Count != ventaIdsNuevas.Count)
+                return BadRequest(new { error = "Alguna venta referenciada no existe" });
+            if (c.ClienteId.HasValue)
+            {
+                var cuitBase = await _db.CafeClientes.Where(cl => cl.Id == c.ClienteId.Value)
+                    .Select(cl => cl.Cuit).FirstOrDefaultAsync();
+                List<int> clientesValidos = new() { c.ClienteId.Value };
+                if (!string.IsNullOrWhiteSpace(cuitBase))
+                    clientesValidos = await _db.CafeClientes
+                        .Where(cl => cl.Cuit == cuitBase).Select(cl => cl.Id).ToListAsync();
+                var noPertenece = ventas.FirstOrDefault(v => !v.ClienteId.HasValue || !clientesValidos.Contains(v.ClienteId.Value));
+                if (noPertenece is not null)
+                    return BadRequest(new { error = $"La venta #{noPertenece.Id} no pertenece a este cliente" });
+            }
+        }
+
+        // Ventas afectadas: las que tenia antes + las nuevas (para resincronizar IsPaid en ambas)
+        var ventaIdsViejas = c.Comprobantes.Where(cc => cc.VentaId.HasValue).Select(cc => cc.VentaId!.Value).Distinct().ToList();
+        var todasLasVentas = ventaIdsViejas.Concat(ventaIdsNuevas).Distinct().ToList();
+
+        _db.CafeCobranzasComprobantes.RemoveRange(c.Comprobantes);
+        foreach (var comp in req.Comprobantes)
+        {
+            _db.CafeCobranzasComprobantes.Add(new CafeCobranzaComprobante
+            {
+                CobranzaId = c.Id,
+                VentaId = comp.VentaId,
+                Importe = comp.Importe
+            });
+        }
+        c.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        await SincronizarIsPaidAsync(todasLasVentas);
+
+        await _audit.LogAsync("CafeCobranza", id.ToString(), "EDIT_IMPUTACIONES",
+            $"Cobranza {c.Numero}: re-imputada en {req.Comprobantes.Count} items, suma ${sumNuevo:N2}");
+        return Ok(new { ok = true });
+    }
 }
