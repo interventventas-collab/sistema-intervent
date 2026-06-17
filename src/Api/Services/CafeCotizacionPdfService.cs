@@ -99,13 +99,15 @@ public class CafeCotizacionPdfService
                     // 2026-06-16 v3: proporciones izq/der 1:1 (antes era 2:1) para que el bloque
                     // DOMICILIO DE ENTREGA + QR entre arriba a la derecha al lado del cuadro X
                     // sin romper layout — MISMO LUGAR que en factura A.
+                    // 2026-06-17 v7: proporciones 0.9 / 0.85 / 1.25 → la derecha gana ancho para que
+                    // la dirección de entrega entre cómoda sin cortarse y sin achicar el QR.
                     col.Item().Border(1).BorderColor(Colors.Grey.Lighten1).Padding(8).Row(row =>
                     {
                         // 2026-06-16: en cotizaciones tipo "X" mostramos SOLO el logo (sin datos fiscales del emisor)
                         // — el comprobante no es válido como factura, no necesita la info fiscal.
                         // En tipos oficiales ARCA seguimos mostrando todo (logo + razón social + CUIT + IIBB + contacto).
                         var esTipoX = v.TipoComprobante == "X";
-                        row.RelativeItem(1).Row(r =>
+                        row.RelativeItem(0.9f).Row(r =>
                         {
                             if (logoBytes is not null)
                             {
@@ -160,7 +162,8 @@ public class CafeCotizacionPdfService
                         });
 
                         // 2026-06-16 v4: layout 3 columnas — CENTRO con cuadro X + numeración + fecha.
-                        row.RelativeItem(1).PaddingLeft(8).Column(c =>
+                        // 2026-06-17 v7: peso 0.85 (le cede ancho a la columna derecha de DOMICILIO).
+                        row.RelativeItem(0.85f).PaddingLeft(8).Column(c =>
                         {
                             c.Item().Row(r =>
                             {
@@ -223,7 +226,9 @@ public class CafeCotizacionPdfService
 
                         // 2026-06-16 v6: DERECHA dividida en 2 sub-columnas → info DOMICILIO (texto + chips)
                         // a la izquierda + QR grande a la derecha. Antes estaban apilados verticalmente.
-                        row.RelativeItem(1).PaddingLeft(8).Row(rqr =>
+                        // 2026-06-17 v7: peso 1.25 → la dirección "Sergio Garay 1367 a Luis Guillon" entra
+                        // en 2 lineas sin cortarse, manteniendo el QR a tamaño grande.
+                        row.RelativeItem(1.25f).PaddingLeft(8).Row(rqr =>
                         {
                             var domicilio = !string.IsNullOrWhiteSpace(v.ClienteDomicilioEntregaSnapshot)
                                 ? v.ClienteDomicilioEntregaSnapshot
@@ -238,33 +243,34 @@ public class CafeCotizacionPdfService
                                 eInfo.Background(Colors.Grey.Lighten4).Border(0.5f).BorderColor(Colors.Grey.Lighten1)
                                     .Padding(4).Column(cc =>
                                 {
-                                    cc.Item().Text("DOMICILIO DE ENTREGA").FontSize(6).Bold().FontColor(Colors.Grey.Darken2).LetterSpacing(0.05f);
-                                    cc.Item().PaddingTop(2).Text(domicilio!).FontSize(8).Bold();
-                                    cc.Item().PaddingTop(3).Column(chips =>
+                                    // 2026-06-17 v7: fuentes más grandes — la dirección estaba ilegible.
+                                    cc.Item().Text("DOMICILIO DE ENTREGA").FontSize(8).Bold().FontColor(Colors.Grey.Darken2).LetterSpacing(0.05f);
+                                    cc.Item().PaddingTop(3).Text(domicilio!).FontSize(11).Bold();
+                                    cc.Item().PaddingTop(4).Column(chips =>
                                     {
                                         if (v.Retira)
                                         {
                                             chips.Item().Background(Colors.Green.Lighten4)
-                                                .Border(0.5f).BorderColor(Colors.Green.Lighten1).Padding(2).AlignCenter()
-                                                .Text("RETIRA").Bold().FontSize(6).FontColor(Colors.Green.Darken3);
+                                                .Border(0.5f).BorderColor(Colors.Green.Lighten1).Padding(3).AlignCenter()
+                                                .Text("RETIRA").Bold().FontSize(8).FontColor(Colors.Green.Darken3);
                                         }
                                         else if (v.EnRadar)
                                         {
                                             chips.Item().Background(Colors.Blue.Lighten4)
-                                                .Border(0.5f).BorderColor(Colors.Blue.Lighten1).Padding(2).AlignCenter()
-                                                .Text("EN RADAR").Bold().FontSize(6).FontColor(Colors.Blue.Darken3);
+                                                .Border(0.5f).BorderColor(Colors.Blue.Lighten1).Padding(3).AlignCenter()
+                                                .Text("EN RADAR").Bold().FontSize(8).FontColor(Colors.Blue.Darken3);
                                         }
                                         if (v.IsPaid)
                                         {
                                             chips.Item().PaddingTop(2).Background(Colors.Green.Lighten4)
-                                                .Border(0.5f).BorderColor(Colors.Green.Lighten1).Padding(2).AlignCenter()
-                                                .Text("PAGADA").Bold().FontSize(6).FontColor(Colors.Green.Darken3);
+                                                .Border(0.5f).BorderColor(Colors.Green.Lighten1).Padding(3).AlignCenter()
+                                                .Text("PAGADA").Bold().FontSize(8).FontColor(Colors.Green.Darken3);
                                         }
                                         else
                                         {
                                             chips.Item().PaddingTop(2).Background(Colors.Yellow.Lighten4)
-                                                .Border(0.5f).BorderColor(Colors.Yellow.Darken1).Padding(2).AlignCenter()
-                                                .Text("PENDIENTE").Bold().FontSize(6).FontColor(Colors.Orange.Darken3);
+                                                .Border(0.5f).BorderColor(Colors.Yellow.Darken1).Padding(3).AlignCenter()
+                                                .Text("PENDIENTE").Bold().FontSize(8).FontColor(Colors.Orange.Darken3);
                                         }
                                     });
                                 });

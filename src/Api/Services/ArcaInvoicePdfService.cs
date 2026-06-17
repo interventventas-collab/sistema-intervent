@@ -531,35 +531,36 @@ public class ArcaInvoicePdfService
             // Izquierda: domicilio + chips compactos (sin emojis ni chips de día — no entran con QR grande)
             r.RelativeItem().Column(cc =>
             {
-                cc.Item().Text("DOMICILIO DE ENTREGA").FontSize(6).Bold().FontColor(Colors.Grey.Darken2).LetterSpacing(0.05f);
-                if (tieneEntrega) cc.Item().Text(domicilio!).FontSize(8).Bold();
+                // 2026-06-17 v7: fuentes más grandes — la dirección estaba ilegible (8pt).
+                cc.Item().Text("DOMICILIO DE ENTREGA").FontSize(8).Bold().FontColor(Colors.Grey.Darken2).LetterSpacing(0.05f);
+                if (tieneEntrega) cc.Item().PaddingTop(3).Text(domicilio!).FontSize(11).Bold();
 
-                cc.Item().PaddingTop(3).Row(lineRow =>
+                cc.Item().PaddingTop(4).Row(lineRow =>
                 {
                     if (comp.Retira)
                     {
                         lineRow.AutoItem().AlignMiddle().PaddingRight(4).Background(Colors.Green.Lighten4)
-                            .Border(0.5f).BorderColor(Colors.Green.Lighten1).Padding(2)
-                            .Text("RETIRA").Bold().FontSize(6).FontColor(Colors.Green.Darken3);
+                            .Border(0.5f).BorderColor(Colors.Green.Lighten1).Padding(3)
+                            .Text("RETIRA").Bold().FontSize(8).FontColor(Colors.Green.Darken3);
                     }
                     else if (comp.EnRadar)
                     {
                         lineRow.AutoItem().AlignMiddle().PaddingRight(4).Background(Colors.Blue.Lighten4)
-                            .Border(0.5f).BorderColor(Colors.Blue.Lighten1).Padding(2)
-                            .Text("EN RADAR").Bold().FontSize(6).FontColor(Colors.Blue.Darken3);
+                            .Border(0.5f).BorderColor(Colors.Blue.Lighten1).Padding(3)
+                            .Text("EN RADAR").Bold().FontSize(8).FontColor(Colors.Blue.Darken3);
                     }
 
                     if (comp.IsPaid)
                     {
                         lineRow.AutoItem().AlignMiddle().Background(Colors.Green.Lighten4)
-                            .Border(0.5f).BorderColor(Colors.Green.Lighten1).Padding(2)
-                            .Text("PAGADA").Bold().FontSize(6).FontColor(Colors.Green.Darken3);
+                            .Border(0.5f).BorderColor(Colors.Green.Lighten1).Padding(3)
+                            .Text("PAGADA").Bold().FontSize(8).FontColor(Colors.Green.Darken3);
                     }
                     else
                     {
                         lineRow.AutoItem().AlignMiddle().Background(Colors.Yellow.Lighten4)
-                            .Border(0.5f).BorderColor(Colors.Yellow.Darken1).Padding(2)
-                            .Text("PENDIENTE").Bold().FontSize(6).FontColor(Colors.Orange.Darken3);
+                            .Border(0.5f).BorderColor(Colors.Yellow.Darken1).Padding(3)
+                            .Text("PENDIENTE").Bold().FontSize(8).FontColor(Colors.Orange.Darken3);
                     }
                 });
             });
