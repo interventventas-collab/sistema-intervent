@@ -1985,10 +1985,13 @@
                 </div> @* fin panel sticky derecho *@
                 </div> @* fin wrapper flex split *@
 
-            <div class="modal-footer">
+            @* 2026-06-17 v5: footer con botones centrados horizontalmente — asi el panel sticky derecho
+               (Mas comprados) nunca puede taparlos por mas larga que sea la lista del cliente.
+               El chip Auto-guardado va a la izquierda como elemento absoluto para no romper el centrado. *@
+            <div class="modal-footer" style="position: relative; justify-content: center; gap: 0.5rem;">
                 @if (!editingVentaId.HasValue && lastBorradorSavedAt.HasValue)
                 {
-                    <span style="font-size:0.75rem; color:#16a34a; margin-right:auto;">💾 Auto-guardado · @LastSavedAgo()</span>
+                    <span style="font-size:0.75rem; color:#16a34a; position: absolute; left: 1rem; top: 50%; transform: translateY(-50%);">💾 Auto-guardado · @LastSavedAgo()</span>
                 }
                 <button class="btn btn-secondary" @onclick="CloseForm" disabled="@saving">Cancelar</button>
                 <button class="btn btn-secondary" @onclick="PreviewPdf" disabled="@(saving || previewLoading || formItems.Count == 0 || cotizacion?.TodoOk != true)"
