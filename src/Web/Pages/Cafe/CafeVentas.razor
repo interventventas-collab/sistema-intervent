@@ -842,6 +842,11 @@
                                 <option value="V_PRIVADO">*V********</option>
                             </select>
                         </div>
+                        @* 2026-06-17: Fecha movida acá (antes estaba en el bloque Cliente y fecha). *@
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Fecha</label>
+                            <input class="form-input" type="date" @bind="formFecha" />
+                        </div>
                     </div>
                 </div>
 
@@ -1031,10 +1036,7 @@
                             </select>
                             <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">@(formClienteId > 0 ? "Tipo del cliente seleccionado" : "Tipo a aplicar a consumidor final")</p>
                         </div>
-                        <div class="form-group" style="flex: 1;">
-                            <label class="form-label">Fecha</label>
-                            <input class="form-input" type="date" @bind="formFecha" />
-                        </div>
+                        @* 2026-06-17: Fecha movida al bloque ① Datos generales (al lado de Cond. pago). *@
                     </div>
                     }
 
