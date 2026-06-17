@@ -281,8 +281,10 @@
                                             <td><strong>@comp.Numero</strong> <span style="color:#6b7280; font-size:0.78rem;">@comp.Fecha.ToString("dd/MM/yyyy")</span></td>
                                             <td style="text-align:right;">$@comp.Saldo.ToString("N2")</td>
                                             <td style="text-align:right;">
+                                                @* Bug 2026-06-17: en locale es-AR, value renderizaba "650980,00" y el browser type=number con lang=en
+                                                   se confundia y truncaba el monto al perder foco. Forzamos InvariantCulture (punto decimal) en el value. *@
                                                 <input class="form-input" type="number" step="0.01" min="0" style="text-align:right; padding:0.2rem 0.4rem; font-size:0.85rem;"
-                                                       value="@sel.Importe" disabled="@(!sel.Tildado)"
+                                                       value="@sel.Importe.ToString(System.Globalization.CultureInfo.InvariantCulture)" disabled="@(!sel.Tildado)"
                                                        @onchange="@(e => OnImporteComprobante(idx, e.Value?.ToString()))" />
                                             </td>
                                         </tr>
