@@ -107,8 +107,10 @@ public class CafeCotizacionPdfService
                         // — el comprobante no es válido como factura, no necesita la info fiscal.
                         // En tipos oficiales ARCA seguimos mostrando todo (logo + razón social + CUIT + IIBB + contacto).
                         var esTipoX = v.TipoComprobante == "X";
-                        row.RelativeItem(0.9f).Row(r =>
+                        row.RelativeItem(0.9f).Column(colLogo =>
                         {
+                            colLogo.Item().Row(r =>
+                            {
                             if (logoBytes is not null)
                             {
                                 if (esTipoX)
@@ -157,6 +159,26 @@ public class CafeCotizacionPdfService
                                         if (!string.IsNullOrEmpty(cfg.NegocioWeb)) parts.Add(cfg.NegocioWeb);
                                         c.Item().Text(string.Join(" · ", parts)).FontSize(8).FontColor(Colors.Grey.Darken1);
                                     }
+                                });
+                            }
+                            }); // cierro el colLogo.Item().Row
+
+                            // 2026-06-17 v8: bloque "PEDIDOS AL:" bajo el logo, alineado a la izquierda — reemplaza la
+                            // franja horizontal de tels+email que antes vivia entre el header y la tabla.
+                            var tieneTel = !string.IsNullOrWhiteSpace(cfg.NegocioTelefono);
+                            var tieneTel2 = !string.IsNullOrWhiteSpace(cfg.NegocioTelefono2);
+                            var tieneEmailCfg = !string.IsNullOrWhiteSpace(cfg.NegocioEmail);
+                            if (tieneTel || tieneTel2 || tieneEmailCfg)
+                            {
+                                colLogo.Item().PaddingTop(8).Background(Colors.Grey.Lighten4).BorderLeft(2).BorderColor(Colors.Grey.Darken1).Padding(6).Column(cp =>
+                                {
+                                    cp.Item().Text("PEDIDOS AL:").FontSize(7).Bold().FontColor(Colors.Grey.Darken3).LetterSpacing(0.05f);
+                                    if (tieneTel)
+                                        cp.Item().PaddingTop(2).Text($"Tel. {cfg.NegocioTelefono}").FontSize(10).Bold();
+                                    if (tieneTel2)
+                                        cp.Item().Text($"Tel. {cfg.NegocioTelefono2}").FontSize(10).Bold();
+                                    if (tieneEmailCfg)
+                                        cp.Item().PaddingTop(2).Text(cfg.NegocioEmail!).FontSize(8).FontColor(Colors.Grey.Darken2);
                                 });
                             }
                         });
@@ -288,9 +310,8 @@ public class CafeCotizacionPdfService
                         });
                     });
 
-                    // 2026-06-16: franja gris a lo ancho con dos tel WhatsApp + email centrado.
-                    // B/N friendly (sin colores fuertes). Si no hay datos, no se muestra.
-                    RenderFranjaContacto(col, cfg.NegocioTelefono, cfg.NegocioTelefono2, cfg.NegocioEmail);
+                    // 2026-06-17 v8: la franja horizontal de contacto se eliminó — los teléfonos y el email
+                    // ahora viven bajo el logo, dentro del bloque "PEDIDOS AL:".
                 });
 
                 // ───── CONTENIDO ─────

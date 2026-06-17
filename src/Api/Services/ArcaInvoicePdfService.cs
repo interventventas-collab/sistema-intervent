@@ -70,6 +70,25 @@ public class ArcaInvoicePdfService
                                 c.Item().Text($"Inicio de actividades: {emisor.InicioActividades.Value:dd/MM/yyyy}").FontSize(8);
                             }
 
+                            // 2026-06-17 v8: bloque "PEDIDOS AL:" bajo los datos fiscales — reemplaza la franja horizontal
+                            // de tels+email que antes vivia entre el header y la tabla.
+                            var tieneTelEm = !string.IsNullOrWhiteSpace(emisor.Telefono);
+                            var tieneTel2Em = !string.IsNullOrWhiteSpace(emisor.Telefono2);
+                            var tieneEmailEm = !string.IsNullOrWhiteSpace(emisor.Email);
+                            if (tieneTelEm || tieneTel2Em || tieneEmailEm)
+                            {
+                                c.Item().PaddingTop(6).Background(Colors.Grey.Lighten4).BorderLeft(2).BorderColor(Colors.Grey.Darken1).Padding(5).Column(cp =>
+                                {
+                                    cp.Item().Text("PEDIDOS AL:").FontSize(7).Bold().FontColor(Colors.Grey.Darken3).LetterSpacing(0.05f);
+                                    if (tieneTelEm)
+                                        cp.Item().PaddingTop(2).Text($"Tel. {emisor.Telefono}").FontSize(10).Bold();
+                                    if (tieneTel2Em)
+                                        cp.Item().Text($"Tel. {emisor.Telefono2}").FontSize(10).Bold();
+                                    if (tieneEmailEm)
+                                        cp.Item().PaddingTop(2).Text(emisor.Email!).FontSize(8).FontColor(Colors.Grey.Darken2);
+                                });
+                            }
+
                             // 2026-06-16 v3: bloque Receptor pegado debajo del emisor (antes era una fila aparte
                             // entre la franja de contacto y la tabla → ocupaba espacio para productos).
                             c.Item().PaddingTop(8).BorderTop(0.5f).BorderColor(Colors.Grey.Lighten1).PaddingTop(4).Column(cr =>
@@ -166,9 +185,8 @@ public class ArcaInvoicePdfService
                             .AlignCenter().Text("AMBIENTE HOMOLOGACION - SIN VALOR FISCAL").FontSize(9).Bold();
                     }
 
-                    // 2026-06-16: franja gris a lo ancho con dos tel WhatsApp + email centrado.
-                    // B/N friendly (sin colores fuertes). Solo se muestra si hay datos.
-                    RenderFranjaContacto(col, emisor.Telefono, emisor.Telefono2, emisor.Email);
+                    // 2026-06-17 v8: la franja horizontal de contacto se eliminó — los teléfonos y el email
+                    // ahora viven bajo los datos fiscales del emisor, dentro del bloque "PEDIDOS AL:".
 
                     // 2026-06-16 v3: el bloque Receptor se movio arriba al header (debajo del emisor)
                     // para que la tabla de productos arranque mas arriba y aproveche el espacio.
