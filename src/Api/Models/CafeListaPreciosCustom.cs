@@ -38,6 +38,15 @@ public class CafeListaPreciosCustom
     [MaxLength(500)]
     public string? BackgroundUrl { get; set; }
 
+    /// <summary>2026-06-17: color del cuadradito "LISTA / nro" arriba a la derecha del PDF.
+    /// Hex con #, ej "#000000" (negro), "#15803d" (verde), "#dc2626" (rojo). Null = negro.</summary>
+    [MaxLength(20)]
+    public string? BadgeColor { get; set; }
+
+    /// <summary>2026-06-17: si false, ni la pantalla de edicion ni el PDF muestran el chip de marca
+    /// al costado del nombre de cada item. Default true (mostrar).</summary>
+    public bool MostrarMarca { get; set; } = true;
+
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

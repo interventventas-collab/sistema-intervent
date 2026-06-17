@@ -4715,6 +4715,14 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='BackgroundUrl' AND object_i
     ALTER TABLE Cafe_ListasPreciosCustom ADD BackgroundUrl NVARCHAR(500) NULL;
 GO
 
+-- 2026-06-17: color del cuadradito "LISTA / nro" en el PDF + flag mostrar marca por lista
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='BadgeColor' AND object_id=OBJECT_ID('Cafe_ListasPreciosCustom'))
+    ALTER TABLE Cafe_ListasPreciosCustom ADD BadgeColor NVARCHAR(20) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='MostrarMarca' AND object_id=OBJECT_ID('Cafe_ListasPreciosCustom'))
+    ALTER TABLE Cafe_ListasPreciosCustom ADD MostrarMarca BIT NOT NULL CONSTRAINT DF_CafeListasPreciosCustom_MostrarMarca DEFAULT 1;
+GO
+
 -- 2026-06-10: Flag "este producto NO tiene precio diferenciado para BAR" —
 -- cuando es true, el motor de precios usa PrecioOtro a TODOS los clientes
 -- (BAR y OTRO). Util para productos cuyo OEM define un unico precio sin

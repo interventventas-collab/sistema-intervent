@@ -1529,6 +1529,9 @@ public class ListaCustomDto
     public string? TipoCliente { get; set; }
     public string? Observaciones { get; set; }
     public string? NumeroLista { get; set; }
+    public string? BackgroundUrl { get; set; }
+    public string? BadgeColor { get; set; }
+    public bool MostrarMarca { get; set; } = true;
     public int CantidadSecciones { get; set; }
     public int CantidadItems { get; set; }
     public DateTime CreatedAt { get; set; }
@@ -1542,6 +1545,8 @@ public class CrearListaCustomRequest
     public string? TipoCliente { get; set; }
     public string? Observaciones { get; set; }
     public string? NumeroLista { get; set; }
+    public string? BadgeColor { get; set; }
+    public bool MostrarMarca { get; set; } = true;
 }
 
 public class CrearListaCustomResponse

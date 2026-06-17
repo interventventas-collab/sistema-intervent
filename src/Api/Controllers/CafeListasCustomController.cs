@@ -38,6 +38,9 @@ public class CafeListasCustomController : ControllerBase
         public string? TipoCliente { get; set; }
         public string? Observaciones { get; set; }
         public string? NumeroLista { get; set; }
+        public string? BackgroundUrl { get; set; }
+        public string? BadgeColor { get; set; }
+        public bool MostrarMarca { get; set; } = true;
         public int CantidadSecciones { get; set; }
         public int CantidadItems { get; set; }
         public DateTime CreatedAt { get; set; }
@@ -51,6 +54,8 @@ public class CafeListasCustomController : ControllerBase
         public string? TipoCliente { get; set; }
         public string? Observaciones { get; set; }
         public string? NumeroLista { get; set; }
+        public string? BadgeColor { get; set; }
+        public bool MostrarMarca { get; set; } = true;
     }
 
     public class ActualizarListaRequest
@@ -60,6 +65,8 @@ public class CafeListasCustomController : ControllerBase
         public string? TipoCliente { get; set; }
         public string? Observaciones { get; set; }
         public string? NumeroLista { get; set; }
+        public string? BadgeColor { get; set; }
+        public bool MostrarMarca { get; set; } = true;
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -82,6 +89,9 @@ public class CafeListasCustomController : ControllerBase
                 TipoCliente = l.TipoCliente,
                 Observaciones = l.Observaciones,
                 NumeroLista = l.NumeroLista,
+                BackgroundUrl = l.BackgroundUrl,
+                BadgeColor = l.BadgeColor,
+                MostrarMarca = l.MostrarMarca,
                 CantidadSecciones = l.Secciones.Count,
                 CantidadItems = l.Secciones.SelectMany(s => s.Items).Count(),
                 CreatedAt = l.CreatedAt,
@@ -119,6 +129,9 @@ public class CafeListasCustomController : ControllerBase
             TipoCliente = lista.TipoCliente,
             Observaciones = lista.Observaciones,
             NumeroLista = lista.NumeroLista,
+            BackgroundUrl = lista.BackgroundUrl,
+            BadgeColor = lista.BadgeColor,
+            MostrarMarca = lista.MostrarMarca,
             CantidadSecciones = cantSec,
             CantidadItems = cantItems,
             CreatedAt = lista.CreatedAt,
@@ -153,6 +166,8 @@ public class CafeListasCustomController : ControllerBase
             TipoCliente = tipo,
             Observaciones = string.IsNullOrWhiteSpace(req.Observaciones) ? null : req.Observaciones.Trim(),
             NumeroLista = string.IsNullOrWhiteSpace(req.NumeroLista) ? null : req.NumeroLista.Trim(),
+            BadgeColor = string.IsNullOrWhiteSpace(req.BadgeColor) ? null : req.BadgeColor.Trim(),
+            MostrarMarca = req.MostrarMarca,
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
@@ -190,6 +205,8 @@ public class CafeListasCustomController : ControllerBase
         lista.TipoCliente = tipo;
         lista.Observaciones = string.IsNullOrWhiteSpace(req.Observaciones) ? null : req.Observaciones.Trim();
         lista.NumeroLista = string.IsNullOrWhiteSpace(req.NumeroLista) ? null : req.NumeroLista.Trim();
+        lista.BadgeColor = string.IsNullOrWhiteSpace(req.BadgeColor) ? null : req.BadgeColor.Trim();
+        lista.MostrarMarca = req.MostrarMarca;
         lista.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync();
@@ -423,7 +440,11 @@ public class CafeListasCustomController : ControllerBase
                 Id = lista.Id, Nombre = lista.Nombre, ClienteId = lista.ClienteId,
                 ClienteNombre = lista.ClienteNav?.Nombre, ClienteCodigo = lista.ClienteNav?.Codigo,
                 TipoCliente = lista.TipoCliente, Observaciones = lista.Observaciones,
-                NumeroLista = lista.NumeroLista, CantidadSecciones = secciones.Count,
+                NumeroLista = lista.NumeroLista,
+                BackgroundUrl = lista.BackgroundUrl,
+                BadgeColor = lista.BadgeColor,
+                MostrarMarca = lista.MostrarMarca,
+                CantidadSecciones = secciones.Count,
                 CantidadItems = secciones.Sum(s => s.Items.Count),
                 CreatedAt = lista.CreatedAt, UpdatedAt = lista.UpdatedAt
             },
@@ -835,7 +856,7 @@ public class CafeListasCustomController : ControllerBase
 
         var input = new CafeListaCustomPdfService.PdfInput(
             negocio,
-            new CafeListaCustomPdfService.ListaInfo(lista.Nombre, lista.NumeroLista, lista.Observaciones, lista.TipoCliente, lista.ClienteNav?.Nombre, lista.BackgroundUrl),
+            new CafeListaCustomPdfService.ListaInfo(lista.Nombre, lista.NumeroLista, lista.Observaciones, lista.TipoCliente, lista.ClienteNav?.Nombre, lista.BackgroundUrl, lista.BadgeColor, lista.MostrarMarca),
             seccionesPdf
         );
 

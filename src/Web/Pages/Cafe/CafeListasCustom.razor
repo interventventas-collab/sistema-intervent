@@ -10,6 +10,9 @@
     .lc-card:hover { border-color: #1d4ed8; box-shadow: 0 2px 6px rgba(29,78,216,0.08); }
     .lc-card-empty { background: #f9fafb; border: 2px dashed #d1d5db; border-radius: 10px; padding: 2.5rem 1rem; text-align: center; color: #6b7280; }
     .lc-empty-row:hover { background: #f0f9ff; }
+    .color-swatch { width: 32px; height: 32px; border: 2px solid #d1d5db; border-radius: 6px; cursor: pointer; padding: 0; transition: all 0.1s; }
+    .color-swatch:hover { transform: scale(1.1); }
+    .color-swatch.sel { border-color: #111827; border-width: 3px; box-shadow: 0 0 0 2px white inset; }
 </style>
 
 <div class="card">
@@ -193,6 +196,32 @@
                     <textarea class="form-input" rows="2" @bind="formObservaciones"
                               placeholder="Ej: Precios sujetos a disponibilidad..." disabled="@saving"></textarea>
                 </div>
+
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Color del cuadrado "LISTA"</label>
+                        <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                            @foreach (var (hex, label) in BadgeColors)
+                            {
+                                var hexLoc = hex;
+                                var sel = (formBadgeColor ?? "#000000").Equals(hexLoc, StringComparison.OrdinalIgnoreCase);
+                                <button type="button" class="color-swatch @(sel ? "sel" : "")"
+                                        style="@($"background: {hexLoc};")"
+                                        title="@label"
+                                        @onclick="@(() => formBadgeColor = hexLoc)" disabled="@saving"></button>
+                            }
+                        </div>
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.3rem 0 0;">Color de la cajita "LISTA / nro" arriba a la derecha del PDF.</p>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Marca de productos</label>
+                        <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer;">
+                            <input type="checkbox" @bind="formMostrarMarca" disabled="@saving" />
+                            <span>Mostrar marca al costado del nombre</span>
+                        </label>
+                        <p style="font-size: 0.7rem; color: #6b7280; margin: 0.3rem 0 0;">Si está apagado, el chip gris con la marca (ej. "ELEMENTAL · ...") no aparece ni en pantalla ni en el PDF.</p>
+                    </div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" @onclick="CloseModal" disabled="@saving">Cancelar</button>
@@ -219,6 +248,19 @@
     private string formTipo = "";
     private string formNumero = "";
     private string formObservaciones = "";
+    private string formBadgeColor = "#000000";
+    private bool formMostrarMarca = true;
+
+    private static readonly List<(string Hex, string Label)> BadgeColors = new()
+    {
+        ("#000000", "Negro"),
+        ("#15803d", "Verde"),
+        ("#1d4ed8", "Azul"),
+        ("#dc2626", "Rojo"),
+        ("#b45309", "Naranja"),
+        ("#7e22ce", "Violeta"),
+        ("#9ca3af", "Gris"),
+    };
 
     // Cliente search
     private string clienteSearch = "";
@@ -259,6 +301,8 @@
         formTipo = "";
         formNumero = "";
         formObservaciones = "";
+        formBadgeColor = "#000000";
+        formMostrarMarca = true;
         clienteSearch = "";
         clienteSearchOpen = false;
         showModal = true;
@@ -272,6 +316,8 @@
         formTipo = l.TipoCliente ?? "";
         formNumero = l.NumeroLista ?? "";
         formObservaciones = l.Observaciones ?? "";
+        formBadgeColor = string.IsNullOrWhiteSpace(l.BadgeColor) ? "#000000" : l.BadgeColor!;
+        formMostrarMarca = l.MostrarMarca;
         clienteSearch = "";
         clienteSearchOpen = false;
         showModal = true;
@@ -299,7 +345,9 @@
                 ClienteId = formClienteId,
                 TipoCliente = string.IsNullOrWhiteSpace(formTipo) ? null : formTipo,
                 NumeroLista = string.IsNullOrWhiteSpace(formNumero) ? null : formNumero.Trim(),
-                Observaciones = string.IsNullOrWhiteSpace(formObservaciones) ? null : formObservaciones.Trim()
+                Observaciones = string.IsNullOrWhiteSpace(formObservaciones) ? null : formObservaciones.Trim(),
+                BadgeColor = formBadgeColor,
+                MostrarMarca = formMostrarMarca
             };
             if (modalId.HasValue)
             {

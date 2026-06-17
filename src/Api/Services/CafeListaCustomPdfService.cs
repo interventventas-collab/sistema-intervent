@@ -29,7 +29,7 @@ public class CafeListaCustomPdfService
     }
 
     public record PdfInput(CafeSetting Negocio, ListaInfo Lista, List<SeccionInfo> Secciones);
-    public record ListaInfo(string Nombre, string? NumeroLista, string? Observaciones, string? TipoCliente, string? ClienteNombre, string? BackgroundUrl);
+    public record ListaInfo(string Nombre, string? NumeroLista, string? Observaciones, string? TipoCliente, string? ClienteNombre, string? BackgroundUrl, string? BadgeColor = null, bool MostrarMarca = true);
     public record SeccionInfo(string Titulo, List<ItemInfo> Items);
     /// <summary>2026-06-17: Precio1Kg/PrecioMedio/PrecioCuarto se completan SOLO para CAFE (3 columnas en el PDF).
     /// Para combos / packs / "otros", se usa Precio (precio unico) y los tres anteriores quedan null.</summary>
@@ -91,16 +91,23 @@ public class CafeListaCustomPdfService
                                 c.Item().AlignCenter().Text(inp.Negocio.NegocioEmail!.ToUpperInvariant()).FontSize(9).FontColor(Colors.Grey.Darken2);
                         });
 
-                        // Derecha: bloque opcional "PRECIOS SIN IVA / NumeroLista"
+                        // Derecha: cuadradito "LISTA / nro" + (opcional) nombre de cliente
+                        // 2026-06-17: ahora con color configurable desde la lista (default negro).
+                        var badgeColor = string.IsNullOrWhiteSpace(inp.Lista.BadgeColor) ? "#000000" : inp.Lista.BadgeColor!;
                         row.RelativeItem(1).AlignRight().AlignMiddle().Column(c =>
                         {
                             if (!string.IsNullOrWhiteSpace(inp.Lista.NumeroLista))
                             {
-                                c.Item().AlignRight().Text("PRECIOS SIN IVA").FontSize(8).Bold().FontColor(Colors.Grey.Darken2);
-                                c.Item().AlignRight().Text(inp.Lista.NumeroLista!).FontSize(11).Bold();
+                                c.Item().AlignRight().Width(85).Border(1).BorderColor(badgeColor).Column(cc =>
+                                {
+                                    cc.Item().Background(badgeColor).AlignCenter().Padding(4)
+                                        .Text("LISTA").FontSize(10).Bold().FontColor(Colors.White).LetterSpacing(0.08f);
+                                    cc.Item().AlignCenter().Padding(6)
+                                        .Text(inp.Lista.NumeroLista!).FontSize(18).Bold().FontColor(badgeColor);
+                                });
                             }
                             if (!string.IsNullOrWhiteSpace(inp.Lista.ClienteNombre))
-                                c.Item().PaddingTop(2).AlignRight().Text(inp.Lista.ClienteNombre!).FontSize(8).FontColor(Colors.Grey.Darken1);
+                                c.Item().PaddingTop(4).AlignRight().Text(inp.Lista.ClienteNombre!).FontSize(8).FontColor(Colors.Grey.Darken1);
                         });
                     });
 
@@ -168,7 +175,7 @@ public class CafeListaCustomPdfService
                                 tbl.Cell().BorderBottom(0.3f).BorderColor(Colors.Grey.Lighten2).Padding(3)
                                     .Text(t =>
                                     {
-                                        if (!string.IsNullOrWhiteSpace(it.Marca))
+                                        if (inp.Lista.MostrarMarca && !string.IsNullOrWhiteSpace(it.Marca))
                                             t.Span(it.Marca!.ToUpperInvariant() + " · ").FontSize(7).Bold().FontColor(Colors.Grey.Darken2);
                                         t.Span(it.Nombre).FontSize(10).SemiBold();
                                         if (!string.IsNullOrEmpty(it.Detalle))
