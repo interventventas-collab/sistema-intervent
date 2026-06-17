@@ -39,10 +39,9 @@ public class CafeListaCustomPdfService
         var headerImageBytes = TryLoadLogoBytes(inp.Negocio.ListaPreciosHeaderImageUrl);
         var nombreEmpresa = inp.Negocio.NegocioNombre ?? "Empresa";
 
-        // 2026-06-16 v3: intentamos primero PNG (mejor para mobile). Si falla la conversion,
-        // fallback al SVG embebido (vectorial, peor para algunos visores mobile pero funciona en escritorio).
-        var bgPng = TryRenderSvgToPng(inp.Lista.BackgroundUrl, 0.15f);
-        var bgSvg = bgPng is null ? TryLoadSvgFaded(inp.Lista.BackgroundUrl, 0.15f) : null;
+        // 2026-06-16 v4: el PNG con FitWidth/FitArea da QuestPDF DocumentLayoutException.
+        // Vuelvo SOLO al SVG vectorial (funciona en escritorio, algunos mobile no lo renderean bien — pendiente arreglar).
+        var bgSvg = TryLoadSvgFaded(inp.Lista.BackgroundUrl, 0.15f);
 
         return Document.Create(container =>
         {
@@ -52,12 +51,8 @@ public class CafeListaCustomPdfService
                 page.Margin(25);
                 page.DefaultTextStyle(t => t.FontSize(9));
 
-                // ═══════════ BACKGROUND (watermark doodle) ═══════════
-                if (bgPng is not null)
-                {
-                    page.Background().AlignCenter().AlignMiddle().Image(bgPng).FitWidth();
-                }
-                else if (!string.IsNullOrEmpty(bgSvg))
+                // ═══════════ BACKGROUND (watermark doodle, SVG vectorial) ═══════════
+                if (!string.IsNullOrEmpty(bgSvg))
                 {
                     page.Background().Svg(bgSvg);
                 }
