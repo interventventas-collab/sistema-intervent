@@ -1422,8 +1422,8 @@ public class ApiClient
     public async Task<ContenidoListaCustomDto?> GetContenidoListaCustomAsync(int listaId)
         => await GetAsync<ContenidoListaCustomDto>($"/api/cafe/listas-custom/{listaId}/contenido");
 
-    public async Task<List<ItemDisponibleDto>?> GetItemsDisponiblesAsync(string tipo, string? q = null, string? marca = null)
-        => await GetAsync<List<ItemDisponibleDto>>($"/api/cafe/listas-custom/items-disponibles?tipo={Uri.EscapeDataString(tipo)}&q={Uri.EscapeDataString(q ?? "")}&marca={Uri.EscapeDataString(marca ?? "")}");
+    public async Task<List<ItemDisponibleDto>?> GetItemsDisponiblesAsync(string tipo, string? q = null, string? marca = null, string? categoria = null)
+        => await GetAsync<List<ItemDisponibleDto>>($"/api/cafe/listas-custom/items-disponibles?tipo={Uri.EscapeDataString(tipo)}&q={Uri.EscapeDataString(q ?? "")}&marca={Uri.EscapeDataString(marca ?? "")}&categoria={Uri.EscapeDataString(categoria ?? "")}");
 
     public record AgregarItemsBulkResult(int Agregados, int Salteados);
     public async Task<AgregarItemsBulkResult?> AgregarItemsBulkAsync(int seccionId, List<(string Tipo, int RefId)> items)

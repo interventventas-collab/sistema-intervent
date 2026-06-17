@@ -92,7 +92,7 @@
                     <div class="ed-tab @(tipoActivo == "COMBO" ? "active" : "")" @onclick="@(() => SetTipo("COMBO"))">Combos</div>
                     <div class="ed-tab @(tipoActivo == "PACK" ? "active" : "")" @onclick="@(() => SetTipo("PACK"))">Packs</div>
                 </div>
-                @* 2026-06-16: filtro por marca + botón "agregar todos" para sumar la marca completa de una sola pasada. *@
+                @* 2026-06-16: filtros marca + categoria + botón "agregar todos" para sumar todo de una pasada. *@
                 <div style="display: flex; gap: 0.4rem; margin-bottom: 0.5rem; align-items: center;">
                     <select class="form-input" @bind="marcaFiltro" @bind:after="BuscarDisponibles" style="flex: 1; font-size: 0.85rem;">
                         <option value="">📦 Todas las marcas</option>
@@ -103,6 +103,11 @@
                                 <option value="@m.Nombre">@m.Nombre</option>
                             }
                         }
+                    </select>
+                    <select class="form-input" @bind="categoriaFiltro" @bind:after="BuscarDisponibles" style="flex: 0 0 130px; font-size: 0.85rem;">
+                        <option value="">Todas las categorías</option>
+                        <option value="CAFE">☕ Solo CAFÉ</option>
+                        <option value="OTROS">📦 Solo OTROS</option>
                     </select>
                 </div>
                 <input class="form-input" placeholder="Buscar..." @bind="searchQ" @bind:event="oninput" @bind:after="BuscarDisponibles" style="margin-bottom: 0.5rem;" />
@@ -262,6 +267,7 @@
     private string tipoActivo = "PRODUCTO";
     private string searchQ = "";
     private string marcaFiltro = "";
+    private string categoriaFiltro = "";
     private List<CafeMarcaDto>? marcasDisp;
     private List<ItemDisponibleDto>? disponibles;
     private int TotalItems => secciones.Sum(s => s.Items.Count);
@@ -337,7 +343,7 @@
         {
             await Task.Delay(200, token);
             if (token.IsCancellationRequested) return;
-            disponibles = await Api.GetItemsDisponiblesAsync(tipoActivo, searchQ, marcaFiltro);
+            disponibles = await Api.GetItemsDisponiblesAsync(tipoActivo, searchQ, marcaFiltro, categoriaFiltro);
         }
         catch (TaskCanceledException) { }
     }

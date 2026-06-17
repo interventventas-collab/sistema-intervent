@@ -404,15 +404,16 @@ public class CafeListasCustomController : ControllerBase
         return Ok(dto);
     }
 
-    // ─── GET items disponibles para agregar (con buscador + filtro marca) ───
+    // ─── GET items disponibles para agregar (con buscador + filtros marca/categoria) ───
     [HttpGet("items-disponibles")]
-    public async Task<IActionResult> GetItemsDisponibles([FromQuery] string tipo = "PRODUCTO", [FromQuery] string? q = null, [FromQuery] string? marca = null)
+    public async Task<IActionResult> GetItemsDisponibles([FromQuery] string tipo = "PRODUCTO", [FromQuery] string? q = null, [FromQuery] string? marca = null, [FromQuery] string? categoria = null)
     {
         tipo = (tipo ?? "PRODUCTO").Trim().ToUpperInvariant();
         var search = (q ?? "").Trim().ToLowerInvariant();
         var marcaFiltro = (marca ?? "").Trim();
-        // 2026-06-16 v2: cuando hay filtro de marca, sacamos el limite Take(100) para que "Agregar todos" traiga toda la marca.
-        int limite = string.IsNullOrEmpty(marcaFiltro) ? 100 : 5000;
+        var categoriaFiltro = (categoria ?? "").Trim().ToUpperInvariant();
+        // 2026-06-16 v2: cuando hay filtro de marca o categoria, sacamos el limite Take(100) para "Agregar todos" traiga todo.
+        int limite = (string.IsNullOrEmpty(marcaFiltro) && string.IsNullOrEmpty(categoriaFiltro)) ? 100 : 5000;
         var result = new List<ItemDisponibleDto>();
 
         if (tipo == "PRODUCTO")
@@ -422,7 +423,10 @@ public class CafeListasCustomController : ControllerBase
                 qry = qry.Where(p => p.Nombre.ToLower().Contains(search) || (p.Sku != null && p.Sku.ToLower().Contains(search)) || (p.Marca != null && p.Marca.ToLower().Contains(search)));
             if (!string.IsNullOrEmpty(marcaFiltro))
                 qry = qry.Where(p => (p.Marca != null && p.Marca == marcaFiltro) || (p.MarcaNav != null && p.MarcaNav.Nombre == marcaFiltro));
-            result = await qry.OrderBy(p => p.Nombre).Take(limite)
+            if (!string.IsNullOrEmpty(categoriaFiltro))
+                qry = qry.Where(p => p.Categoria == categoriaFiltro);
+            // 2026-06-16 v3: orden por SKU con length-first para que F1, F2 ... F10, F11 salga natural.
+            result = await qry.OrderBy(p => p.Sku!.Length).ThenBy(p => p.Sku).Take(limite)
                 .Select(p => new ItemDisponibleDto
                 {
                     Tipo = "PRODUCTO", Id = p.Id, Nombre = p.Nombre, Sku = p.Sku,
@@ -437,7 +441,9 @@ public class CafeListasCustomController : ControllerBase
                 qry = qry.Where(c => c.Nombre.ToLower().Contains(search) || (c.Sku != null && c.Sku.ToLower().Contains(search)) || (c.Marca != null && c.Marca.ToLower().Contains(search)));
             if (!string.IsNullOrEmpty(marcaFiltro))
                 qry = qry.Where(c => c.Marca == marcaFiltro);
-            result = await qry.OrderBy(c => c.Nombre).Take(limite)
+            if (!string.IsNullOrEmpty(categoriaFiltro))
+                qry = qry.Where(c => c.Categoria == categoriaFiltro);
+            result = await qry.OrderBy(c => c.Sku!.Length).ThenBy(c => c.Sku).Take(limite)
                 .Select(c => new ItemDisponibleDto
                 {
                     Tipo = "COMBO", Id = c.Id, Nombre = c.Nombre, Sku = c.Sku,
@@ -458,7 +464,9 @@ public class CafeListasCustomController : ControllerBase
                 );
             if (!string.IsNullOrEmpty(marcaFiltro))
                 qry = qry.Where(p => p.Producto != null && ((p.Producto.Marca == marcaFiltro) || (p.Producto.MarcaNav != null && p.Producto.MarcaNav.Nombre == marcaFiltro)));
-            result = await qry.OrderBy(p => p.Producto!.Nombre).ThenBy(p => p.Cantidad).Take(limite)
+            if (!string.IsNullOrEmpty(categoriaFiltro))
+                qry = qry.Where(p => p.Producto != null && p.Producto.Categoria == categoriaFiltro);
+            result = await qry.OrderBy(p => p.Producto!.Sku!.Length).ThenBy(p => p.Producto.Sku).ThenBy(p => p.Cantidad).Take(limite)
                 .Select(p => new ItemDisponibleDto
                 {
                     Tipo = "PACK", Id = p.Id,
