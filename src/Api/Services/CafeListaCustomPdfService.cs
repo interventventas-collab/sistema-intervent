@@ -39,9 +39,10 @@ public class CafeListaCustomPdfService
         var headerImageBytes = TryLoadLogoBytes(inp.Negocio.ListaPreciosHeaderImageUrl);
         var nombreEmpresa = inp.Negocio.NegocioNombre ?? "Empresa";
 
-        // 2026-06-16 v2: render el SVG a PNG bitmap. En vector algunos visores de PDF en mobile
-        // no renderean SVG embebido. Como PNG funciona en todos lados (Adobe, iOS, Android).
+        // 2026-06-16 v3: intentamos primero PNG (mejor para mobile). Si falla la conversion,
+        // fallback al SVG embebido (vectorial, peor para algunos visores mobile pero funciona en escritorio).
         var bgPng = TryRenderSvgToPng(inp.Lista.BackgroundUrl, 0.15f);
+        var bgSvg = bgPng is null ? TryLoadSvgFaded(inp.Lista.BackgroundUrl, 0.15f) : null;
 
         return Document.Create(container =>
         {
@@ -51,10 +52,14 @@ public class CafeListaCustomPdfService
                 page.Margin(25);
                 page.DefaultTextStyle(t => t.FontSize(9));
 
-                // ═══════════ BACKGROUND (watermark doodle, baja opacidad, como PNG) ═══════════
+                // ═══════════ BACKGROUND (watermark doodle) ═══════════
                 if (bgPng is not null)
                 {
-                    page.Background().Image(bgPng).FitArea();
+                    page.Background().AlignCenter().AlignMiddle().Image(bgPng).FitWidth();
+                }
+                else if (!string.IsNullOrEmpty(bgSvg))
+                {
+                    page.Background().Svg(bgSvg);
                 }
 
                 // ═══════════ HEADER ═══════════
@@ -187,6 +192,30 @@ public class CafeListaCustomPdfService
                 });
             });
         }).GeneratePdf();
+    }
+
+    /// <summary>2026-06-16 v3: fallback — carga SVG con opacity wrapping para Background().Svg() vectorial.</summary>
+    private string? TryLoadSvgFaded(string? bgUrl, float opacity)
+    {
+        if (string.IsNullOrWhiteSpace(bgUrl)) return null;
+        try
+        {
+            var rel = bgUrl;
+            var idx = bgUrl.IndexOf("path=", StringComparison.OrdinalIgnoreCase);
+            if (idx >= 0) rel = Uri.UnescapeDataString(bgUrl[(idx + 5)..].Split('&')[0]);
+            if (!rel.EndsWith(".svg", StringComparison.OrdinalIgnoreCase)) return null;
+            var abs = _files.ResolveSafe(rel);
+            if (!File.Exists(abs)) return null;
+            var svg = File.ReadAllText(abs);
+            var op = opacity.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+            var openTagEnd = svg.IndexOf('>');
+            var closeIdx = svg.LastIndexOf("</svg>", StringComparison.OrdinalIgnoreCase);
+            if (openTagEnd < 0 || closeIdx < 0) return svg;
+            var head = svg.Substring(0, openTagEnd + 1);
+            var inner = svg.Substring(openTagEnd + 1, closeIdx - (openTagEnd + 1));
+            return head + $"<g opacity=\"{op}\">" + inner + "</g></svg>";
+        }
+        catch { return null; }
     }
 
     /// <summary>2026-06-16 v2: convierte el SVG a PNG bitmap usando SkiaSharp. Es mas compatible
