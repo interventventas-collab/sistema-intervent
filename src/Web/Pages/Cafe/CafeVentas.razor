@@ -748,6 +748,10 @@
                 </div>
             </div>
             <div class="modal-body" style="overflow-y: auto;">
+                @* 2026-06-17: split — columna izq con todo el form + columna der sticky con "mas comprados".
+                   El panel derecho usa position:sticky para quedar fijo al scrollear el modal-body. *@
+                <div style="display: flex; gap: 0.8rem; align-items: flex-start;">
+                <div style="flex: 1; min-width: 0;">
                 @* Banner de borrador pendiente — aparece sólo si hay un auto-guardado de sesión previa *@
                 @if (borradorBannerVisible && pendingBorrador is not null && !editingVentaId.HasValue)
                 {
@@ -1052,69 +1056,7 @@
                         <strong>Productos a vender</strong>
                     </div>
 
-                    @* 2026-06-08: Productos más comprados — Opción C (top 3 visible + "Ver más") *@
-                    @if (formClienteId > 0 && topProductsForClient.Count > 0)
-                    {
-                        var visibles = topProductsExpanded ? topProductsForClient : topProductsForClient.Take(3).ToList();
-                        var ocultos = Math.Max(0, topProductsForClient.Count - 3);
-                        <div style="margin-bottom: 0.6rem; padding: 0.6rem 0.8rem; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 1px solid #f59e0b; border-radius: 8px;">
-                            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
-                                <span style="font-size: 1rem;">⭐</span>
-                                <strong style="font-size: 0.85rem; color: #78350f;">
-                                    Productos más comprados por @(clientes?.FirstOrDefault(c => c.Id == formClienteId)?.Nombre ?? "este cliente")
-                                </strong>
-                                <span style="font-size: 0.72rem; color: #92400e;">— tocá <strong>+</strong> para agregar · <strong>×</strong> para descartar</span>
-                                @if (topProductosDescartadosCount > 0)
-                                {
-                                    <button type="button"
-                                            style="margin-left:auto; background:transparent; border:1px solid #f59e0b; color:#78350f; padding:0.2rem 0.5rem; border-radius:4px; font-size:0.72rem; cursor:pointer;"
-                                            @onclick="RestaurarTopProductosDescartados"
-                                            title="Volver a ver los productos descartados (sin esperar a que el cliente los vuelva a comprar)">
-                                        🔄 Restaurar @topProductosDescartadosCount descartado@(topProductosDescartadosCount == 1 ? "" : "s")
-                                    </button>
-                                }
-                            </div>
-                            <div style="display:flex; flex-direction:column; gap:0.3rem;">
-                                @foreach (var t in visibles)
-                                {
-                                    var stockTxt = t.Categoria == "CAFE" ? FormatGramos(t.StockGramos) : $"{t.StockUnidades} u.";
-                                    var stockColor = (t.Categoria == "CAFE" ? t.StockGramos : t.StockUnidades) <= 0 ? "#dc2626" : "#15803d";
-                                    var prodId = t.ProductoId;
-                                    var fmt = t.Formato;
-                                    @* 2026-06-09: toda la fila clickeable para agregar el producto.
-                                       El boton X (descartar) detiene propagacion para no agregarlo por error. *@
-                                    <div style="display:flex; align-items:center; gap:0.5rem; background:white; border:1px solid #f59e0b; border-radius:6px; padding:0.35rem 0.5rem; font-size:0.82rem; cursor:pointer; transition:background 0.12s, transform 0.08s;"
-                                         onmouseover="this.style.background='#fef3c7'" onmouseout="this.style.background='white'"
-                                         @onclick="() => AddTopProduct(prodId, fmt)"
-                                         title="Click para agregar a la venta — Comprado @t.TimesOrdered ve@(t.TimesOrdered == 1 ? "z" : "ces") · Última: @t.LastPurchase.ToString("dd/MM/yyyy")">
-                                        <span style="background:#f59e0b; color:white; padding:0.1rem 0.4rem; border-radius:999px; font-size:0.7rem; font-weight:800; min-width:30px; text-align:center;">@t.TimesOrdered×</span>
-                                        <span style="font-family:monospace; color:#6b7280; font-size:0.72rem; min-width:60px;">@(string.IsNullOrEmpty(t.Sku) ? "—" : t.Sku)</span>
-                                        <strong style="flex:1; color:#78350f;">@t.Nombre <span style="font-weight:500; color:#92400e;">@FormatoLabel(t.Formato)</span></strong>
-                                        <span style="color:@stockColor; font-size:0.72rem; min-width:60px; text-align:right;">@stockTxt</span>
-                                        <span style="color:#6b7280; font-size:0.78rem; font-weight:600; min-width:75px; text-align:right;">$@FormatMoney(t.PrecioReferencia)</span>
-                                        <button type="button"
-                                                style="background:#16a34a; color:white; border:none; border-radius:4px; padding:0.25rem 0.5rem; font-weight:700; cursor:pointer; font-size:0.85rem;"
-                                                @onclick="() => AddTopProduct(prodId, fmt)"
-                                                @onclick:stopPropagation="true"
-                                                title="Agregar a la venta">+</button>
-                                        <button type="button"
-                                                style="background:transparent; color:#dc2626; border:1px solid #fca5a5; border-radius:4px; padding:0.25rem 0.45rem; font-weight:700; cursor:pointer; font-size:0.82rem;"
-                                                @onclick="() => DescartarTopProduct(prodId)"
-                                                @onclick:stopPropagation="true"
-                                                title="Descartar — no volverá a aparecer hasta que el cliente lo compre de nuevo">×</button>
-                                    </div>
-                                }
-                            </div>
-                            @if (ocultos > 0)
-                            {
-                                <button type="button"
-                                        style="margin-top:0.4rem; background:transparent; border:none; color:#78350f; font-weight:600; font-size:0.78rem; cursor:pointer; padding:0.2rem; width:100%; text-align:center;"
-                                        @onclick="@(() => topProductsExpanded = !topProductsExpanded)">
-                                    @(topProductsExpanded ? "⌃ Ver menos" : $"⌄ Ver otros {ocultos} más comprado{(ocultos == 1 ? "" : "s")}")
-                                </button>
-                            }
-                        </div>
-                    }
+                    @* 2026-06-17: la seccion "productos mas comprados" se movio al panel sticky de la derecha — ver final del modal-body *@
 
                     @* Selector Producto / Combo / Concepto libre *@
                     <div style="display: inline-flex; gap: 0; margin-bottom: 0.5rem; border: 1px solid #d1d5db; border-radius: 6px; overflow: hidden;">
@@ -2039,6 +1981,88 @@
                     </label>
                 </div>
             }
+                </div> @* fin columna izquierda (formulario) *@
+
+                @* 2026-06-17: Panel sticky derecho con productos mas comprados del cliente. *@
+                @if (MostrarPanelTopProductos)
+                {
+                    <div style="width: 320px; flex-shrink: 0; position: sticky; top: 0; align-self: flex-start; max-height: calc(94vh - 220px); overflow-y: auto; padding: 0.7rem; background: linear-gradient(180deg, #fef3c7 0%, #fde68a 100%); border: 1px solid #f59e0b; border-radius: 8px; display:flex; flex-direction:column; gap:0.5rem;">
+                        <div style="display: flex; align-items: center; gap: 0.4rem;">
+                            <span style="font-size: 1.1rem;">⭐</span>
+                            <strong style="font-size: 0.85rem; color: #78350f;">Más comprados</strong>
+                        </div>
+                        <div style="font-size: 0.72rem; color: #92400e;">
+                            por @(clientes?.FirstOrDefault(c => c.Id == formClienteId)?.Nombre ?? "este cliente") (@topProductsForClient.Count)
+                        </div>
+                        <div style="font-size: 0.7rem; color: #78350f; font-style: italic;">Tocá el producto para agregar 1 al carrito · Ajustá la cantidad abajo.</div>
+
+                        <input type="text" placeholder="🔍 Buscar..." @bind="topProductsSearch" @bind:event="oninput"
+                               style="width: 100%; padding: 0.3rem 0.5rem; font-size: 0.78rem; border: 1px solid #f59e0b; border-radius: 4px;" />
+
+                        @if (topProductosDescartadosCount > 0)
+                        {
+                            <button type="button"
+                                    style="background:transparent; border:1px solid #f59e0b; color:#78350f; padding:0.25rem 0.4rem; border-radius:4px; font-size:0.7rem; cursor:pointer;"
+                                    @onclick="RestaurarTopProductosDescartados"
+                                    title="Volver a ver los productos descartados">
+                                🔄 Restaurar @topProductosDescartadosCount descartado@(topProductosDescartadosCount == 1 ? "" : "s")
+                            </button>
+                        }
+
+                        @{
+                            var filtroTop = (topProductsSearch ?? "").Trim();
+                            var listaFiltrada = string.IsNullOrEmpty(filtroTop)
+                                ? topProductsForClient
+                                : topProductsForClient.Where(p =>
+                                    (p.Nombre ?? "").Contains(filtroTop, StringComparison.OrdinalIgnoreCase)
+                                    || (p.Sku ?? "").Contains(filtroTop, StringComparison.OrdinalIgnoreCase)
+                                    || (p.Marca ?? "").Contains(filtroTop, StringComparison.OrdinalIgnoreCase)).ToList();
+                        }
+
+                        @if (listaFiltrada.Count == 0)
+                        {
+                            <div style="font-size: 0.78rem; color: #92400e; text-align: center; padding: 0.6rem;">Sin resultados.</div>
+                        }
+
+                        <div style="display:flex; flex-direction:column; gap:0.3rem;">
+                            @foreach (var t in listaFiltrada)
+                            {
+                                var stockTxt = t.Categoria == "CAFE" ? FormatGramos(t.StockGramos) : $"{t.StockUnidades} u.";
+                                var stockColor = (t.Categoria == "CAFE" ? t.StockGramos : t.StockUnidades) <= 0 ? "#dc2626" : "#15803d";
+                                var prodId = t.ProductoId;
+                                var fmt = t.Formato;
+                                var enCarrito = ContarEnCarrito(prodId, fmt);
+                                var borderColor = enCarrito > 0 ? "#16a34a" : "#fcd34d";
+                                var bgColor = enCarrito > 0 ? "#f0fdf4" : "white";
+                                <div style="display:flex; flex-direction:column; gap:0.15rem; background:@bgColor; border:1.5px solid @borderColor; border-radius:6px; padding:0.4rem 0.5rem; font-size:0.78rem; cursor:pointer; transition:background 0.12s, transform 0.08s;"
+                                     @onclick="() => AddTopProduct(prodId, fmt)"
+                                     title="Tocá para agregar 1 al carrito — Comprado @t.TimesOrdered ve@(t.TimesOrdered == 1 ? "z" : "ces") · Última: @t.LastPurchase.ToString("dd/MM/yyyy")">
+                                    <div style="display:flex; align-items:center; gap:0.4rem;">
+                                        <span style="background:#f59e0b; color:white; padding:0.1rem 0.35rem; border-radius:999px; font-size:0.66rem; font-weight:800; min-width:26px; text-align:center;">@t.TimesOrdered×</span>
+                                        <strong style="flex:1; color:#78350f; line-height:1.15; word-break: break-word;">@t.Nombre</strong>
+                                        @if (enCarrito > 0)
+                                        {
+                                            <span style="background:#16a34a; color:white; padding:0.1rem 0.35rem; border-radius:999px; font-size:0.7rem; font-weight:800;" title="En el carrito">✓ @enCarrito</span>
+                                        }
+                                        <button type="button"
+                                                style="background:transparent; color:#dc2626; border:1px solid #fca5a5; border-radius:4px; padding:0.05rem 0.3rem; font-weight:700; cursor:pointer; font-size:0.72rem;"
+                                                @onclick="() => DescartarTopProduct(prodId)"
+                                                @onclick:stopPropagation="true"
+                                                title="Descartar — no volverá a aparecer hasta que el cliente lo compre de nuevo">×</button>
+                                    </div>
+                                    <div style="display:flex; gap:0.5rem; align-items:center; color:#92400e; font-size:0.7rem;">
+                                        <span style="font-family:monospace;">@(string.IsNullOrEmpty(t.Sku) ? "—" : t.Sku)</span>
+                                        <span style="font-weight:500;">@FormatoLabel(t.Formato)</span>
+                                        <span style="margin-left:auto; color:@stockColor;">@stockTxt</span>
+                                        <span style="color:#78350f; font-weight:600;">$@FormatMoney(t.PrecioReferencia)</span>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+                </div> @* fin wrapper flex split *@
+
             <div class="modal-footer">
                 @if (!editingVentaId.HasValue && lastBorradorSavedAt.HasValue)
                 {
@@ -2056,7 +2080,7 @@
                 </button>
             </div>
         </div>
-    </div>
+    </div> @* fin modal-overlay *@
 }
 
 @* ════════ Modal de confirmacion de emision (doble-check para FA/FB/FC) ════════ *@
@@ -3710,10 +3734,28 @@
 
     // Top productos comprados por el cliente actual del form
     private List<CafeTopProductoClienteDto> topProductsForClient = new();
-    // 2026-06-08: Opción C — mostrar top 3 + "Ver más"
+    // 2026-06-08: Opción C — mostrar top 3 + "Ver más" (legacy, ya no se usa con el panel sticky)
     private bool topProductsExpanded;
     // Cantidad de productos descartados de este cliente (para mostrar el botón "🔄 Restaurar N")
     private int topProductosDescartadosCount;
+    // 2026-06-17: buscador local del panel sticky derecho de "más comprados"
+    private string topProductsSearch = "";
+
+    // Muestra el panel sticky derecho solo si hay cliente con historial
+    private bool MostrarPanelTopProductos => formClienteId > 0 && topProductsForClient.Count > 0;
+
+    // Suma la cantidad de unidades ya cargadas en el carrito del producto+formato dado.
+    // Usado para mostrar "✓ N" en el panel cuando un producto ya esta en el carrito.
+    private int ContarEnCarrito(int productoId, string? formato)
+    {
+        int total = 0;
+        foreach (var it in formItems)
+        {
+            if (it.ProductoId == productoId && string.Equals(it.Formato, formato, StringComparison.OrdinalIgnoreCase))
+                total += it.Cantidad;
+        }
+        return total;
+    }
 
     // Estado del dropdown "+" en la columna Acciones. Solo una venta puede tener el menu abierto.
     private int? actionsMenuOpenForVentaId;
