@@ -717,9 +717,13 @@
 {
     @* IMPORTANTE: el modal-overlay NO cierra el form al clickear fuera.
        Antes tenía @onclick="CloseForm" y perdíamos cargas enteras al tocar accidentalmente fuera del card.
-       Para cerrar: el ✕ del header o el botón Cancelar. *@
-    <div class="modal-overlay">
-        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: min(1280px, 96vw); width: 96vw; max-height: 94vh; display: flex; flex-direction: column;">
+       Para cerrar: el ✕ del header o el botón Cancelar.
+       2026-06-17: 3 modos — MAXIMIZADO (default, full screen menos sidebar), NORMAL (ventana 1280px),
+       MINIMIZADO (chip flotante abajo a la derecha). *@
+    @if (formModalMode != "MINIMIZADO")
+    {
+    <div class="modal-overlay" style="@(formModalMode == "MAXIMIZADO" ? "left: var(--sidebar-width, 220px); background: rgba(0,0,0,0.25);" : "")">
+        <div class="modal-card" @onclick:stopPropagation="true" style="@(formModalMode == "MAXIMIZADO" ? "max-width: none; width: 100%; height: 100vh; max-height: 100vh; margin: 0; border-radius: 0; display: flex; flex-direction: column;" : "max-width: min(1280px, 96vw); width: 96vw; max-height: 94vh; display: flex; flex-direction: column;")">
             <div class="modal-header" style="background: @(editingVentaId.HasValue ? "#1d4ed8" : "whitesmoke"); color: @(editingVentaId.HasValue ? "white" : "inherit");">
                 <h3 style="margin: 0;">
                     @if (editingVentaId.HasValue)
@@ -744,6 +748,14 @@
                             💬 Traer pedido WhatsApp@(pedidoWhatsAppCount > 0 ? $" ({pedidoWhatsAppCount})" : "")
                         </button>
                     }
+                    @* 2026-06-17: controles de ventana — minimizar, maximizar/restaurar, cerrar *@
+                    <button class="btn-close" @onclick="MinimizarModal" title="Minimizar (queda como chip flotante)"
+                            style="@(editingVentaId.HasValue ? "color: white;" : "") font-size: 1.1rem;">─</button>
+                    <button class="btn-close" @onclick="ToggleMaximizarModal"
+                            title="@(formModalMode == "MAXIMIZADO" ? "Restaurar a ventana" : "Maximizar (pantalla completa)")"
+                            style="@(editingVentaId.HasValue ? "color: white;" : "") font-size: 0.95rem;">
+                        @(formModalMode == "MAXIMIZADO" ? "▢" : "□")
+                    </button>
                     <button class="btn-close" @onclick="CloseForm" style="@(editingVentaId.HasValue ? "color: white;" : "")">&times;</button>
                 </div>
             </div>
@@ -918,40 +930,41 @@
                                 var ciSel = clientes?.FirstOrDefault(x => x.Id == formClienteId);
                                 var dirSel = ciSel is null ? null : (!string.IsNullOrWhiteSpace(ciSel.DomicilioEntrega) ? ciSel.DomicilioEntrega : ciSel.Direccion);
                                 var locSel = ciSel is null ? null : string.Join(" · ", new[] { ciSel.Localidad, ciSel.Ciudad, ciSel.Cp }.Where(x => !string.IsNullOrWhiteSpace(x)));
+                                @* 2026-06-17: cliente seleccionado compactado en 1-2 lineas con padding y fonts mas chicos. *@
                                 <div style="display: flex; gap: 0.3rem; align-items: stretch;">
-                                    <div class="form-input" style="flex: 1; background: #ecfdf5; border-color: #10b981; display: flex; flex-direction: column; gap: 0.15rem; padding: 0.45rem 0.6rem; height: auto;">
-                                        <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
-                                            <span style="font-family: monospace; font-weight: 700; color: #1d4ed8; font-size: 0.95rem;">@(ciSel?.Codigo ?? "—")</span>
-                                            <strong style="font-size: 1rem;">@(ciSel?.Nombre ?? "?")</strong>
+                                    <div class="form-input" style="flex: 1; background: #ecfdf5; border-color: #10b981; display: flex; flex-direction: column; gap: 0.1rem; padding: 0.3rem 0.55rem; height: auto;">
+                                        <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; line-height: 1.15;">
+                                            <span style="font-family: monospace; font-weight: 700; color: #1d4ed8; font-size: 0.82rem;">@(ciSel?.Codigo ?? "—")</span>
+                                            <strong style="font-size: 0.88rem;">@(ciSel?.Nombre ?? "?")</strong>
                                             @if (ciSel is not null)
                                             {
-                                                <span style="font-size: 0.72rem; color: #6b7280;">· @ciSel.Tipo</span>
-                                                @if (!string.IsNullOrEmpty(ciSel.Cuit)) { <span style="font-size: 0.72rem; color: #6b7280;">· @ciSel.Cuit</span> }
-                                                @if (!string.IsNullOrEmpty(ciSel.Telefono)) { <span style="font-size: 0.72rem; color: #6b7280;">· 📞 @ciSel.Telefono</span> }
+                                                <span style="font-size: 0.7rem; color: #6b7280;">· @ciSel.Tipo</span>
+                                                @if (!string.IsNullOrEmpty(ciSel.Cuit)) { <span style="font-size: 0.7rem; color: #6b7280;">· @ciSel.Cuit</span> }
+                                                @if (!string.IsNullOrEmpty(ciSel.Telefono)) { <span style="font-size: 0.7rem; color: #6b7280;">· 📞 @ciSel.Telefono</span> }
                                             }
                                         </div>
                                         @if (!string.IsNullOrWhiteSpace(dirSel) || !string.IsNullOrWhiteSpace(locSel))
                                         {
-                                            <div style="font-size: 0.8rem; color: #6b7280; line-height: 1.2;">
+                                            <div style="font-size: 0.72rem; color: #6b7280; line-height: 1.15;">
                                                 @if (!string.IsNullOrWhiteSpace(dirSel)) { <span>📍 @dirSel</span> }
                                                 @if (!string.IsNullOrWhiteSpace(dirSel) && !string.IsNullOrWhiteSpace(locSel)) { <span> · </span> }
                                                 @if (!string.IsNullOrWhiteSpace(locSel)) { <span>@locSel</span> }
                                             </div>
                                         }
                                     </div>
-                                    <button class="btn btn-secondary" type="button" @onclick="ClearCliente" title="Quitar cliente">×</button>
+                                    <button class="btn btn-secondary" type="button" @onclick="ClearCliente" title="Quitar cliente" style="padding: 0 0.5rem; font-size: 0.85rem;">×</button>
                                 </div>
                                 @* 2026-06-02: Post-it amarillo SIEMPRE VISIBLE con las "Notas internas" del cliente.
                                    Solo aparece si el cliente tiene algo cargado en ese campo. NO sale en el PDF.
                                    Pedido del usuario: que se vea mientras carga la venta sin tener que tocar nada. *@
+                                @* 2026-06-17: notas internas compactas — max-height + scroll para que no ocupen toda la pantalla. *@
                                 @if (ciSel is not null && !string.IsNullOrWhiteSpace(ciSel.Notas))
                                 {
-                                    <div style="background: #fefce8; border: 2px dashed #facc15; border-radius: 6px; padding: 0.6rem 0.8rem;
-                                                margin-top: 0.5rem; font-size: 0.88rem; color: #713f12; line-height: 1.4;
-                                                white-space: pre-wrap; word-break: break-word; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                                        <div style="font-size: 0.72rem; color: #92400e; font-weight: 700; text-transform: uppercase; margin-bottom: 0.3rem; letter-spacing: 0.04em;">📌 Notas internas del cliente</div>
+                                    <div style="background: #fefce8; border: 1px dashed #facc15; border-radius: 6px; padding: 0.35rem 0.6rem;
+                                                margin-top: 0.4rem; font-size: 0.78rem; color: #713f12; line-height: 1.35;
+                                                white-space: pre-wrap; word-break: break-word; max-height: 80px; overflow-y: auto;">
+                                        <div style="font-size: 0.68rem; color: #92400e; font-weight: 700; text-transform: uppercase; margin-bottom: 0.15rem;">📌 Notas del cliente <span style="font-weight:400; opacity:0.7;">(solo vos las ves)</span></div>
                                         @ciSel.Notas
-                                        <div style="font-size: 0.66rem; color: #92400e; opacity: 0.7; margin-top: 0.4rem; font-style: italic;">Solo lo ves vos. No sale en el comprobante.</div>
                                     </div>
                                 }
                             }
@@ -2081,6 +2094,30 @@
             </div>
         </div>
     </div> @* fin modal-overlay *@
+    }
+
+    @* 2026-06-17: chip flotante cuando el modal esta MINIMIZADO. *@
+    @if (formModalMode == "MINIMIZADO")
+    {
+        <div @onclick="RestaurarModal"
+             style="position: fixed; bottom: 16px; right: 16px; z-index: 9000; background: #1d4ed8; color: white;
+                    border-radius: 999px; padding: 0.6rem 1rem; box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+                    cursor: pointer; display: flex; align-items: center; gap: 0.5rem; font-size: 0.88rem; font-weight: 600;"
+             title="Tocá para volver a la venta">
+            <span style="font-size: 1.1rem;">🧾</span>
+            <span>Venta en curso</span>
+            @if (formClienteId > 0)
+            {
+                var cliMin = clientes?.FirstOrDefault(c => c.Id == formClienteId);
+                <span style="opacity: 0.85; font-weight: 400;">· @(cliMin?.Nombre ?? "(s/cliente)")</span>
+            }
+            @if (formItems.Count > 0)
+            {
+                <span style="background: rgba(255,255,255,0.25); padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.78rem;">@formItems.Count items</span>
+            }
+            <span style="margin-left: 0.4rem; opacity: 0.7;">↗</span>
+        </div>
+    }
 }
 
 @* ════════ Modal de confirmacion de emision (doble-check para FA/FB/FC) ════════ *@
@@ -3740,6 +3777,19 @@
     private int topProductosDescartadosCount;
     // 2026-06-17: buscador local del panel sticky derecho de "más comprados"
     private string topProductsSearch = "";
+
+    // 2026-06-17: modo del modal de Nueva Venta — "MAXIMIZADO" (default) | "NORMAL" | "MINIMIZADO"
+    // MAXIMIZADO: ocupa toda la pantalla menos el sidebar.
+    // NORMAL: ventana centrada ~1280px (estilo modal clasico).
+    // MINIMIZADO: el modal se oculta y queda un chip flotante abajo a la derecha para retomar.
+    // El estado solo persiste mientras estes en la pantalla de Ventas — al cambiar de pagina se pierde
+    // (el form queda en el auto-guardado de borrador como hasta hoy).
+    private string formModalMode = "MAXIMIZADO";
+
+    private void MinimizarModal() => formModalMode = "MINIMIZADO";
+    private void RestaurarModal() => formModalMode = "MAXIMIZADO";
+    private void ToggleMaximizarModal()
+        => formModalMode = formModalMode == "MAXIMIZADO" ? "NORMAL" : "MAXIMIZADO";
 
     // Muestra el panel sticky derecho solo si hay cliente con historial
     private bool MostrarPanelTopProductos => formClienteId > 0 && topProductsForClient.Count > 0;
