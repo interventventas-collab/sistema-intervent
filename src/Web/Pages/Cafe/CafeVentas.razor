@@ -1268,7 +1268,12 @@
                     else
                     {
                     <div class="form-row" style="align-items: end;">
-                        <div class="form-group" style="flex: 2; position: relative;">
+                        @* 2026-06-17 v2: Cant. movido al inicio de la fila — orden Cant | Producto | Formato | Molienda | Envase. *@
+                        <div class="form-group" style="flex: 0 0 70px;">
+                            <label class="form-label" style="font-size: 0.75rem;">Cant.</label>
+                            <input id="nv-cantidad" class="form-input" type="number" min="1" @bind="addCantidad" @onkeydown="OnKeyDownCantidad" style="text-align: right;" />
+                        </div>
+                        <div class="form-group" style="flex: 1; position: relative; min-width: 0;">
                             <label class="form-label" style="font-size: 0.75rem;">Producto</label>
                             @if (addProductoId > 0)
                             {
@@ -1362,7 +1367,7 @@
                                 }
                             }
                         </div>
-                        <div class="form-group" style="flex: 0 0 170px;">
+                        <div class="form-group" style="flex: 0 0 130px;">
                             <label class="form-label" style="font-size: 0.75rem;">Formato</label>
                             <select id="nv-formato" class="form-input" value="@addFormato" @onchange="OnAddFormatoChanged" @onkeydown="OnKeyDownFormato">
                                 @if (AddProductoCategoria == "CAFE")
@@ -1385,21 +1390,10 @@
                                 }
                             </select>
                         </div>
-                        <div class="form-group" style="flex: 0 0 80px;">
-                            <label class="form-label" style="font-size: 0.75rem;">Cant.</label>
-                            <input id="nv-cantidad" class="form-input" type="number" min="1" @bind="addCantidad" @onkeydown="OnKeyDownCantidad" style="text-align: right;" />
-                        </div>
-                        <div class="form-group" style="flex: 0 0 110px;">
-                            <button class="btn btn-primary" type="button" @onclick="AddItem" style="width: 100%;">+ Agregar</button>
-                        </div>
-                    </div>
-                    @* Segunda fila: Molienda + Envase. Solo cafe. Replica los selectores
-                       que tiene cada item ya cargado — asi el operador puede elegir todo
-                       antes de apretar "+ Agregar" en vez de tener que editar la fila. *@
-                    @if (AddProductoCategoria == "CAFE")
-                    {
-                        <div class="form-row" style="align-items: end; margin-top: 0.4rem;">
-                            <div class="form-group" style="flex: 0 0 250px;">
+                        @* 2026-06-17 v2: Molienda + Envase pasaron a la MISMA fila (al lado de Formato). Solo café. *@
+                        @if (AddProductoCategoria == "CAFE")
+                        {
+                            <div class="form-group" style="flex: 0 0 200px;">
                                 <label class="form-label" style="font-size: 0.75rem;">Molienda</label>
                                 <select id="nv-molienda" class="form-input" @bind="addMolienda" @onkeydown="OnKeyDownMolienda" style="background:#fef3c7; border-color:#d97706; font-weight:600;">
                                     <option value="EN GRANOS">🫘 EN GRANOS</option>
@@ -1413,7 +1407,7 @@
                                     <option value="MINI EXPRESS">🔸 MINI EXPRESS</option>
                                 </select>
                             </div>
-                            <div class="form-group" style="flex: 0 0 220px;">
+                            <div class="form-group" style="flex: 0 0 180px;">
                                 <label class="form-label" style="font-size: 0.75rem;">Envase</label>
                                 <select id="nv-envase" class="form-input" @bind="addEnvase" @onkeydown="OnKeyDownEnvase" style="background:#f3f4f6; border-color:#9ca3af; font-weight:600;">
                                     <option value="NEGRO">⚫ Envase negro</option>
@@ -1421,8 +1415,30 @@
                                     <option value="DOY_PACK">📦 Doy pack</option>
                                 </select>
                             </div>
+                        }
+                    </div>
+                    @* 2026-06-17 v2: SEGUNDA FILA — botón Agregar (50%) + chip de precio en vivo (50%). *@
+                    <div class="form-row" style="align-items: end; margin-top: 0.4rem; gap: 0.5rem;">
+                        <div class="form-group" style="flex: 1;">
+                            <button class="btn btn-primary" type="button" @onclick="AddItem" style="width: 100%; padding: 0.55rem; font-size: 0.95rem; font-weight: 700;">+ Agregar</button>
                         </div>
-                    }
+                        <div class="form-group" style="flex: 1;">
+                            <div style="background: linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%); border: 1.5px solid #2563eb; border-radius: 4px; padding: 0.4rem 0.8rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; height: 100%; box-sizing: border-box;">
+                                <span style="color: #1e3a8a; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;">💰 Precio</span>
+                                @if (AddPrecioPreview > 0)
+                                {
+                                    <span style="font-size: 1.05rem; font-weight: 800; color: #065f46;">$ @FormatMoney(AddPrecioPreview)</span>
+                                    <span style="color: #6b7280; font-size: 0.7rem;">@(formClienteTipo == "BAR" ? "BAR" : "Comercial") · @AddPrecioPreviewLabel</span>
+                                }
+                                else
+                                {
+                                    <span style="color: #9ca3af; font-size: 0.85rem;">—</span>
+                                    <span style="color: #9ca3af; font-size: 0.7rem;">Elegí un producto</span>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                    @* Antes Cant. estaba en la fila 1 a la derecha. Ahora va al principio. *@
                     @if (AvisoBultoConviene is not null)
                     {
                         <div style="margin: 0.4rem 0 0; padding: 0.5rem 0.7rem; background: #fef3c7; border: 1px solid #d97706; border-radius: 6px; display: flex; gap: 0.5rem; align-items: center; font-size: 0.85rem; color: #92400e;">
@@ -3490,6 +3506,81 @@
                 .ToList();
         }
     }
+
+    /// <summary>2026-06-17: Preview del precio del item a agregar (antes de tocar + Agregar).
+    /// Calcula el precio unitario según producto + formato + tipo cliente, y lo multiplica por la cantidad.
+    /// Si no hay producto seleccionado o no hay precio, devuelve 0.</summary>
+    private decimal AddPrecioPreview
+    {
+        get
+        {
+            var p = productos?.FirstOrDefault(x => x.Id == addProductoId);
+            if (p is null) return 0m;
+            var esBar = ClienteTipoActual() == "BAR";
+            decimal precioUnit = 0m;
+
+            if (p.Categoria == "CAFE")
+            {
+                var precioKg = esBar ? (p.PrecioBar ?? p.PrecioOtro ?? p.Pvp1 ?? 0m)
+                                     : (p.PrecioOtro ?? p.PrecioBar ?? p.Pvp2 ?? 0m);
+                precioUnit = addFormato switch
+                {
+                    "1KG" => precioKg,
+                    "MEDIO" => Math.Round(precioKg / 2m, 2, MidpointRounding.AwayFromZero),
+                    "CUARTO" => Math.Round(precioKg / 4m, 2, MidpointRounding.AwayFromZero),
+                    _ => precioKg
+                };
+            }
+            else
+            {
+                if (addFormato == "BULTO")
+                {
+                    precioUnit = esBar ? (p.PrecioBulto ?? p.PrecioBultoOtro ?? 0m)
+                                       : (p.PrecioBultoOtro ?? p.PrecioBulto ?? 0m);
+                }
+                else if (addFormato?.StartsWith("PACK_") == true && p.Packs is not null)
+                {
+                    var packN = addFormato.Substring(5);
+                    if (int.TryParse(packN, out var n))
+                    {
+                        var pack = p.Packs.FirstOrDefault(x => x.IsActive && x.Cantidad == n);
+                        if (pack is not null)
+                        {
+                            // Si el pack tiene PrecioOverride, ese es el precio del pack completo. Si no, calculamos
+                            // como precio unitario × N.
+                            if (pack.PrecioOverride.HasValue && pack.PrecioOverride.Value > 0m)
+                                precioUnit = pack.PrecioOverride.Value;
+                            else
+                            {
+                                var precioBase = esBar ? (p.PrecioBar ?? p.PrecioOtro ?? 0m)
+                                                       : (p.PrecioOtro ?? p.PrecioBar ?? 0m);
+                                precioUnit = precioBase * n;
+                            }
+                        }
+                    }
+                }
+                else // UNIT
+                {
+                    precioUnit = p.PrecioEfectivoConIva
+                                 ?? (esBar ? (p.PrecioBar ?? p.PrecioOtro ?? 0m)
+                                           : (p.PrecioOtro ?? p.PrecioBar ?? 0m));
+                }
+            }
+            return precioUnit * addCantidad;
+        }
+    }
+
+    /// <summary>2026-06-17: Etiqueta del formato para el chip de precio en vivo.</summary>
+    private string AddPrecioPreviewLabel => addFormato switch
+    {
+        "1KG" => "1 kg",
+        "MEDIO" => "1/2 kg",
+        "CUARTO" => "1/4 kg",
+        "UNIT" => "Unidad",
+        "BULTO" => AddProductoBultoLabel,
+        var f when f?.StartsWith("PACK_") == true => $"Pack x {f.Substring(5)}",
+        _ => addFormato ?? ""
+    };
 
     /// <summary>Aviso suave para el operador: si carga Suelto con cantidad >= UxB y el producto
     /// tiene precio de bulto, le sugiere cambiar a Bulto y le muestra cuánto le ahorraría al cliente.
