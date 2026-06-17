@@ -797,10 +797,11 @@
 
                 @* 2026-06-17: ① y ② lado a lado cuando NO esta en Venta Rapida (que ocupa todo el ancho con sus campos extra).
                    En Venta Rapida se apilan como antes para que entren bien los campos manuales del cliente. *@
-                <div style="display: flex; gap: 1rem; flex-direction: @(modoVentaRapida ? "column" : "row"); align-items: flex-start;">
+                <div style="display: flex; gap: 1.5rem; flex-direction: @(modoVentaRapida ? "column" : "row"); align-items: flex-start;">
                 @* ── Datos generales ── *@
-                @* 2026-06-17: bloque compactado — sin caja, header chiquito, padding reducido. *@
-                <div style="padding: 0.3rem 0; margin-bottom: 0.4rem; flex: 1; min-width: 0;">
+                @* 2026-06-17: bloque compactado — sin caja, header chiquito, padding reducido.
+                   2026-06-17 v3: flex 0.9 para no robarle aire al bloque Cliente. *@
+                <div style="padding: 0.3rem 0; margin-bottom: 0.4rem; flex: 0.9; min-width: 0;">
                     <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem;">
                         <strong style="font-size: 0.78rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em;">Datos generales</strong>
                     </div>
@@ -1048,12 +1049,13 @@
                     @if (formClienteId > 0)
                     {
                         <div style="margin-top: 0.4rem; display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center;">
-                            <span style="display: inline-flex; align-items: center; padding: 0.25rem 0.6rem;
-                                         background: @(formClienteTipo == "BAR" ? "#dbeafe" : "#d1fae5");
-                                         border: 1px solid @(formClienteTipo == "BAR" ? "#3b82f6" : "#10b981");
+                            @* 2026-06-17 v3: chip mas sutil — fondo blanco con borde de color, no compite con "Debe" *@
+                            <span style="display: inline-flex; align-items: center; padding: 0.2rem 0.55rem;
+                                         background: white;
+                                         border: 1px solid @(formClienteTipo == "BAR" ? "#93c5fd" : "#a7f3d0");
                                          border-radius: 999px;
-                                         color: @(formClienteTipo == "BAR" ? "#1e3a8a" : "#065f46");
-                                         font-size: 0.78rem; font-weight: 700;"
+                                         color: @(formClienteTipo == "BAR" ? "#1e40af" : "#047857");
+                                         font-size: 0.72rem; font-weight: 600;"
                                   title="Tipo del cliente">
                                 @(formClienteTipo == "BAR" ? "🍺 BAR" : "🏢 Comercial")
                             </span>
@@ -1095,15 +1097,15 @@
                    No se muestra en modo Venta Rápida (en ese flujo el wrapper es column). *@
                 @if (!modoVentaRapida)
                 {
-                <div style="flex: 1.3; min-width: 0; display: flex; flex-direction: column; gap: 0.5rem;">
+                <div style="flex: 1.25; min-width: 0; display: flex; flex-direction: column; gap: 0.7rem;">
 
                     @* Entrega *@
-                    <div style="padding: 0.55rem 0.7rem; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; display: flex; flex-direction: column; gap: 0.45rem;">
-                        <strong style="font-size: 0.74rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em;">🚚 Entrega</strong>
+                    <div style="padding: 0.7rem 0.85rem; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; display: flex; flex-direction: column; gap: 0.55rem;">
+                        <strong style="font-size: 0.78rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em;">🚚 Entrega</strong>
 
                         <div>
-                            <label style="font-size: 0.68rem; color: #6b7280; font-weight: 600; text-transform: uppercase;">Días de visita / reparto</label>
-                            <div style="display: flex; gap: 0.2rem; flex-wrap: wrap; margin-top: 0.25rem;">
+                            <label style="font-size: 0.7rem; color: #6b7280; font-weight: 600; text-transform: uppercase;">Días de visita / reparto</label>
+                            <div style="display: flex; gap: 0.25rem; flex-wrap: wrap; margin-top: 0.3rem;">
                                 @foreach (var d in AllWeekDays)
                                 {
                                     var onH = formWeekDays.Contains(d);
@@ -1111,12 +1113,12 @@
                                     var fgH = onH ? "#1e3a8a" : "#374151";
                                     var bdH = onH ? "#1e40af" : "#d1d5db";
                                     <button type="button" @onclick="() => ToggleFormDay(d)"
-                                            style="padding: 0.2rem 0.4rem; border: 1px solid @bdH; background: @bgH; color: @fgH; border-radius: 4px; font-weight: 700; font-size: 0.68rem; cursor: pointer; min-width: 30px;">@(onH ? "✓" : "")@d</button>
+                                            style="padding: 0.3rem 0.5rem; border: 1px solid @bdH; background: @bgH; color: @fgH; border-radius: 5px; font-weight: 700; font-size: 0.72rem; cursor: pointer; min-width: 36px;">@(onH ? "✓" : "")@d</button>
                                 }
                             </div>
                         </div>
 
-                        <div style="display: flex; gap: 0.25rem; flex-wrap: wrap;">
+                        <div style="display: flex; gap: 0.35rem; flex-wrap: wrap;">
                             @{
                                 var radarBgH = formEnRadar ? "#1d4ed8" : "white";
                                 var radarFgH = formEnRadar ? "white" : "#374151";
@@ -1126,24 +1128,24 @@
                                 var trFgH = formPorTransporte ? "white" : "#374151";
                             }
                             <button type="button" @onclick="ToggleEnRadar" title="El cliente ve 'a coordinar'"
-                                    style="padding: 0.2rem 0.5rem; border: 1px solid #1e3a8a; background: @radarBgH; color: @radarFgH; border-radius: 4px; font-weight: 700; font-size: 0.68rem; cursor: pointer;">@(formEnRadar ? "✓ " : "")🛰 RADAR</button>
+                                    style="padding: 0.3rem 0.65rem; border: 1px solid #1e3a8a; background: @radarBgH; color: @radarFgH; border-radius: 5px; font-weight: 700; font-size: 0.72rem; cursor: pointer;">@(formEnRadar ? "✓ " : "")🛰 RADAR</button>
                             <button type="button" @onclick="ToggleRetira" title="Retira en local"
-                                    style="padding: 0.2rem 0.5rem; border: 1px solid #15803d; background: @retiraBgH; color: @retiraFgH; border-radius: 4px; font-weight: 700; font-size: 0.68rem; cursor: pointer;">@(formRetira ? "✓ " : "")🚗 RETIRA</button>
+                                    style="padding: 0.3rem 0.65rem; border: 1px solid #15803d; background: @retiraBgH; color: @retiraFgH; border-radius: 5px; font-weight: 700; font-size: 0.72rem; cursor: pointer;">@(formRetira ? "✓ " : "")🚗 RETIRA</button>
                             <button type="button" @onclick="ToggleTransporte" title="Por empresa de transporte"
-                                    style="padding: 0.2rem 0.5rem; border: 1px solid #c2410c; background: @trBgH; color: @trFgH; border-radius: 4px; font-weight: 700; font-size: 0.68rem; cursor: pointer;">@(formPorTransporte ? "✓ " : "")🚛 TRANSPORTE</button>
+                                    style="padding: 0.3rem 0.65rem; border: 1px solid #c2410c; background: @trBgH; color: @trFgH; border-radius: 5px; font-weight: 700; font-size: 0.72rem; cursor: pointer;">@(formPorTransporte ? "✓ " : "")🚛 TRANSPORTE</button>
                         </div>
 
                         @if (formPorTransporte)
                         {
-                            <div style="background:#fff7ed; border:1px solid #fdba74; border-radius:6px; padding:0.4rem; display: flex; gap: 0.3rem; flex-direction: column;">
-                                <input class="form-input" @bind="formTransporteEmpresa" placeholder="Empresa (Andreani, Cruz del Sur…)" style="font-size: 0.78rem; padding: 0.2rem 0.4rem;" />
-                                <input class="form-input" @bind="formTransporteDestino" placeholder="Destino (ciudad/sucursal)" style="font-size: 0.78rem; padding: 0.2rem 0.4rem;" />
+                            <div style="background:#fff7ed; border:1px solid #fdba74; border-radius:6px; padding:0.45rem; display: flex; gap: 0.35rem; flex-direction: column;">
+                                <input class="form-input" @bind="formTransporteEmpresa" placeholder="Empresa (Andreani, Cruz del Sur…)" style="font-size: 0.8rem; padding: 0.3rem 0.5rem;" />
+                                <input class="form-input" @bind="formTransporteDestino" placeholder="Destino (ciudad/sucursal)" style="font-size: 0.8rem; padding: 0.3rem 0.5rem;" />
                             </div>
                         }
 
                         <div>
-                            <label style="font-size: 0.68rem; color: #6b7280; font-weight: 600; text-transform: uppercase;">Entrega por</label>
-                            <select class="form-input" @bind="formEntregaPor" style="font-size: 0.8rem; padding: 0.2rem 0.4rem; margin-top: 0.2rem;">
+                            <label style="font-size: 0.7rem; color: #6b7280; font-weight: 600; text-transform: uppercase;">Entrega por</label>
+                            <select class="form-input" @bind="formEntregaPor" style="font-size: 0.85rem; padding: 0.3rem 0.5rem; margin-top: 0.25rem;">
                                 <option value="">— sin asignar —</option>
                                 @foreach (var nom in EntregaResponsables)
                                 {
@@ -1157,7 +1159,7 @@
                         {
                             var totalEditH = ventas?.FirstOrDefault(v => v.Id == editingVentaId.Value)?.Total ?? 0m;
                             var pagadoEditH = totalEditH - saldoEditH;
-                            <div style="padding: 0.4rem 0.55rem; border-radius:6px; background: @(saldoEditH <= 0.01m ? "#dcfce7" : pagadoEditH > 0.01m ? "#fef3c7" : "#fee2e2"); font-size: 0.78rem;">
+                            <div style="padding: 0.5rem 0.65rem; border-radius:6px; background: @(saldoEditH <= 0.01m ? "#dcfce7" : pagadoEditH > 0.01m ? "#fef3c7" : "#fee2e2"); font-size: 0.82rem;">
                                 @if (saldoEditH <= 0.01m) { <strong style="color:#166534;">✅ PAGADA</strong> }
                                 else if (pagadoEditH > 0.01m) { <strong style="color:#92400e;">⚠ Pagó $@FormatMoney(pagadoEditH), debe $@FormatMoney(saldoEditH)</strong> }
                                 else { <strong style="color:#991b1b;">⏳ Sin cobranzas · saldo $@FormatMoney(saldoEditH)</strong> }
@@ -1165,7 +1167,7 @@
                         }
                         else if (!editingVentaId.HasValue)
                         {
-                            <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-size: 0.8rem; padding: 0.3rem 0; border-top: 1px solid #e5e7eb;">
+                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.85rem; padding: 0.4rem 0; border-top: 1px solid #e5e7eb; margin-top: 0.2rem;">
                                 <input type="checkbox" @bind="formIsPaid" />
                                 <strong>💰 Cobrar al guardar</strong>
                             </label>
@@ -1173,15 +1175,15 @@
                     </div>
 
                     @* Comentario para armado *@
-                    <div style="padding: 0.55rem 0.7rem; background: #fefce8; border: 2px dashed #facc15; border-radius: 8px;">
-                        <div style="display: flex; align-items: center; gap: 0.3rem; margin-bottom: 0.3rem;">
-                            <span style="font-size: 0.95rem;">📌</span>
-                            <strong style="font-size: 0.74rem; color: #92400e; text-transform: uppercase; letter-spacing: 0.04em;">Comentario para armado</strong>
+                    <div style="padding: 0.7rem 0.85rem; background: #fefce8; border: 2px dashed #facc15; border-radius: 10px;">
+                        <div style="display: flex; align-items: center; gap: 0.35rem; margin-bottom: 0.4rem;">
+                            <span style="font-size: 1rem;">📌</span>
+                            <strong style="font-size: 0.78rem; color: #92400e; text-transform: uppercase; letter-spacing: 0.04em;">Comentario para armado</strong>
                         </div>
                         <textarea class="form-input" rows="2" @bind="formComentarioArmado"
                                   placeholder="Ej: SOBRES CORTESIA"
-                                  style="background: white; font-size: 0.8rem; resize: vertical; width: 100%; padding: 0.3rem 0.4rem;"></textarea>
-                        <div style="font-size: 0.62rem; color: #78716c; margin-top: 0.2rem; font-style: italic;">Solo lo ve quien arma el pedido. No sale al cliente.</div>
+                                  style="background: white; font-size: 0.85rem; resize: vertical; width: 100%; padding: 0.4rem 0.55rem; border-radius: 6px;"></textarea>
+                        <div style="font-size: 0.66rem; color: #78716c; margin-top: 0.3rem; font-style: italic;">Solo lo ve quien arma el pedido. No sale al cliente.</div>
                     </div>
                 </div>
                 }
