@@ -565,7 +565,21 @@ public class MeliShipmentService
             return (false, $"MeLi rechazo el cambio ({(int)resp.StatusCode}): {body[..Math.Min(body.Length, 400)]}");
         }
 
-        // Refrescar el shipment local consultando MeLi otra vez (para reflejar el nuevo status/substatus/fechas)
+        // 2026-06-17: MeLi acepto el cambio. Actualizamos AHORA mismo el ship local con el nuevo estado
+        // para que el listado de /meli/me1/entregas lo refleje al instante. Antes intentabamos refrescar
+        // leyendo MeLi de nuevo, pero por la eventual consistency de su API el GET podia devolver el estado
+        // VIEJO (1-2 segundos despues del POST) y se sobrescribia el cambio. Ahora el seteo es autoritativo.
+        ship.Status = status;
+        ship.Substatus = substatus;
+        ship.LastSyncedAt = DateTime.UtcNow;
+        if (status == "delivered") ship.DateDelivered ??= DateTime.UtcNow;
+        if (status == "shipped" && substatus is null) ship.DateShipped ??= DateTime.UtcNow;
+        if (!string.IsNullOrWhiteSpace(trackingNumber)) ship.TrackingNumber = trackingNumber;
+        await _db.SaveChangesAsync();
+
+        // Best-effort: refrescar desde MeLi para traer fechas/data adicional. Si MeLi ya tiene el nuevo
+        // estado, hacemos el upsert completo (que traera DateDelivered exacto, EstimatedDelivery, etc).
+        // Si MeLi todavia tiene el estado viejo (eventual consistency), NO sobrescribimos lo que ya seteamos.
         try
         {
             var sUrl = $"https://api.mercadolibre.com/shipments/{ship.MeliShipmentId}";
@@ -573,11 +587,15 @@ public class MeliShipmentService
             if (sResp.IsSuccessStatusCode)
             {
                 var doc = JsonDocument.Parse(await sResp.Content.ReadAsStringAsync()).RootElement;
-                await UpsertShipmentAsync(account.Id, ship.MeliOrderId ?? 0, ship.OrderTotal, ship.ItemsSummary, ship.BuyerNickname, doc);
-                await _db.SaveChangesAsync();
+                var meliStatus = doc.TryGetProperty("status", out var ms) ? ms.GetString() : null;
+                if (string.Equals(meliStatus, status, StringComparison.OrdinalIgnoreCase))
+                {
+                    await UpsertShipmentAsync(account.Id, ship.MeliOrderId ?? 0, ship.OrderTotal, ship.ItemsSummary, ship.BuyerNickname, doc);
+                    await _db.SaveChangesAsync();
+                }
             }
         }
-        catch { /* el cambio en MeLi ya quedo, no fallar por error de refresh */ }
+        catch { /* el cambio en MeLi ya quedo y el local ya esta actualizado, no fallar por error de refresh */ }
 
         return (true, null);
     }
