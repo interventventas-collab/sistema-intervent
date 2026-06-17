@@ -795,10 +795,10 @@
                 }
 
                 @* ── Datos generales ── *@
-                <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem; margin-bottom: 0.75rem;">
-                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
-                        <span style="background: #3b82f6; color: white; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.78rem;">1</span>
-                        <strong>Datos generales</strong>
+                @* 2026-06-17: bloque compactado — sin caja, header chiquito, padding reducido. *@
+                <div style="padding: 0.3rem 0; margin-bottom: 0.4rem;">
+                    <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem;">
+                        <strong style="font-size: 0.78rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em;">Datos generales</strong>
                     </div>
                     <div class="form-row">
                         <div class="form-group" style="flex: 2;">
@@ -842,10 +842,10 @@
                 </div>
 
                 @* ── Cliente y fecha ── *@
-                <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem; margin-bottom: 0.75rem;">
-                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
-                        <span style="background: #3b82f6; color: white; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.78rem;">2</span>
-                        <strong>Cliente y fecha</strong>
+                @* 2026-06-17: bloque compactado — sin caja, header chiquito. *@
+                <div style="padding: 0.3rem 0; margin-bottom: 0.4rem; border-top: 1px solid #f3f4f6;">
+                    <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem; flex-wrap: wrap;">
+                        <strong style="font-size: 0.78rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em;">Cliente y fecha</strong>
                         <div style="margin-left: auto; display: flex; gap: 0.3rem;">
                             @if (!modoVentaRapida)
                             {
@@ -1034,39 +1034,46 @@
                     </div>
                     }
 
-                    @* Saldo anterior — alerta si el cliente tiene comprobantes impagos *@
+                    @* 2026-06-17: Saldo anterior — chip colapsable. Click para expandir / colapsar. *@
                     @if (formClienteId > 0 && unpaidPrevSales.Count > 0)
                     {
-                        <div style="margin-top: 0.5rem; padding: 0.55rem 0.75rem; background: #fef3c7; border: 2px solid #d97706; border-radius: 8px; color: #78350f;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.4rem;">
-                                <strong style="font-size: 0.85rem;">⚠ Saldo anterior: $@FormatMoney(UnpaidPrevTotal)</strong>
-                                <span style="font-size: 0.78rem;">@unpaidPrevSales.Count comprobante@(unpaidPrevSales.Count == 1 ? "" : "s") impago@(unpaidPrevSales.Count == 1 ? "" : "s")</span>
+                        <div style="margin-top: 0.4rem;">
+                            <div @onclick="@(() => saldoAnteriorExpandido = !saldoAnteriorExpandido)"
+                                 style="display: inline-flex; align-items: center; gap: 0.4rem; cursor: pointer;
+                                        padding: 0.25rem 0.6rem; background: #fef3c7; border: 1px solid #d97706;
+                                        border-radius: 999px; color: #78350f; font-size: 0.78rem; user-select: none;">
+                                <span style="font-weight: 700;">⚠ Debe $@FormatMoney(UnpaidPrevTotal)</span>
+                                <span style="opacity: 0.85;">· @unpaidPrevSales.Count cbte@(unpaidPrevSales.Count == 1 ? "" : "s")</span>
+                                <span style="font-size: 0.7rem; margin-left: 0.2rem;">@(saldoAnteriorExpandido ? "▴" : "▾")</span>
                             </div>
-                            <div style="font-size: 0.78rem; margin-top: 0.4rem;">
-                                @foreach (var s in unpaidPrevSales)
-                                {
-                                    var sld = saldosPorVenta.TryGetValue(s.Id, out var sl) ? sl : s.Total;
-                                    var pag = s.Total - sld;
-                                    var tooltipText = s.Fecha.ToString("dd/MM/yyyy") + " · Total $" + FormatMoney(s.Total) + (pag > 0.01m ? " · Pagado $" + FormatMoney(pag) : "");
-                                    <span style="display: inline-block; margin-right: 0.45rem; margin-bottom: 0.25rem; padding: 0.1rem 0.4rem; background: white; border: 1px solid #d97706; border-radius: 4px; font-family: monospace;"
-                                          title="@tooltipText">
-                                        @s.Numero (debe $@FormatMoney(sld))
-                                    </span>
-                                }
-                            </div>
-                            <label style="display: flex; align-items: center; gap: 0.35rem; margin-top: 0.5rem; font-size: 0.78rem; cursor: pointer;">
-                                <input type="checkbox" @bind="includePrevBalanceInNotes" style="margin: 0;" />
-                                Incluir "Saldo anterior" en las observaciones del comprobante
-                            </label>
+                            @if (saldoAnteriorExpandido)
+                            {
+                                <div style="margin-top: 0.35rem; padding: 0.4rem 0.6rem; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 6px; color: #78350f; font-size: 0.78rem;">
+                                    @foreach (var s in unpaidPrevSales)
+                                    {
+                                        var sld = saldosPorVenta.TryGetValue(s.Id, out var sl) ? sl : s.Total;
+                                        var pag = s.Total - sld;
+                                        var tooltipText = s.Fecha.ToString("dd/MM/yyyy") + " · Total $" + FormatMoney(s.Total) + (pag > 0.01m ? " · Pagado $" + FormatMoney(pag) : "");
+                                        <span style="display: inline-block; margin-right: 0.4rem; margin-bottom: 0.2rem; padding: 0.1rem 0.4rem; background: white; border: 1px solid #d97706; border-radius: 4px; font-family: monospace;"
+                                              title="@tooltipText">
+                                            @s.Numero (debe $@FormatMoney(sld))
+                                        </span>
+                                    }
+                                    <label style="display: flex; align-items: center; gap: 0.35rem; margin-top: 0.35rem; cursor: pointer;">
+                                        <input type="checkbox" @bind="includePrevBalanceInNotes" style="margin: 0;" />
+                                        Incluir "Saldo anterior" en las observaciones del comprobante
+                                    </label>
+                                </div>
+                            }
                         </div>
                     }
                 </div>
 
                 @* ── Items ── *@
-                <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem; margin-bottom: 0.75rem;">
-                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
-                        <span style="background: #3b82f6; color: white; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.78rem;">3</span>
-                        <strong>Productos a vender</strong>
+                @* 2026-06-17: bloque compactado — sin caja, header chico. *@
+                <div style="padding: 0.3rem 0; margin-bottom: 0.4rem; border-top: 1px solid #f3f4f6;">
+                    <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem;">
+                        <strong style="font-size: 0.78rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em;">Productos a vender</strong>
                     </div>
 
                     @* 2026-06-17: la seccion "productos mas comprados" se movio al panel sticky de la derecha — ver final del modal-body *@
@@ -1695,10 +1702,10 @@
                 @* ── Totales ── *@
                 <div class="form-row" style="align-items: stretch;">
                     <div style="flex: 1.4;">
-                        <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem;">
-                            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
-                                <span style="background: #3b82f6; color: white; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.78rem;">4</span>
-                                <strong>Observaciones, días y pago</strong>
+                        @* 2026-06-17: bloque compactado — sin caja, header chico. *@
+                        <div style="padding: 0.3rem 0;">
+                            <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem;">
+                                <strong style="font-size: 0.78rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em;">Observaciones, días y pago</strong>
                             </div>
                             <textarea class="form-input" rows="2" @bind="formObservaciones" placeholder="Notas internas (opcional)"></textarea>
 
@@ -3777,6 +3784,9 @@
     private int topProductosDescartadosCount;
     // 2026-06-17: buscador local del panel sticky derecho de "más comprados"
     private string topProductsSearch = "";
+
+    // 2026-06-17: estado de los chips colapsables en la cabecera del form
+    private bool saldoAnteriorExpandido = false;
 
     // 2026-06-17: modo del modal de Nueva Venta — "MAXIMIZADO" (default) | "NORMAL" | "MINIMIZADO"
     // MAXIMIZADO: ocupa toda la pantalla menos el sidebar.
