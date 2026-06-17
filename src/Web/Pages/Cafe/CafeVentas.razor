@@ -1846,13 +1846,16 @@
             @* 2026-06-17: el bloque "Enviar al cliente al emitir" se movio al panel sticky derecho. *@
                 </div> @* fin columna izquierda (formulario) *@
 
-                @* 2026-06-17: Panel sticky derecho SIEMPRE visible — incluye Mas comprados (cuando hay historial)
-                   + Entrega + Comentario armado + Totales + Cobrar al guardar. *@
-                <div style="position: absolute; top: 0; right: 0; width: 340px; max-height: calc(94vh - 140px); overflow-y: auto; display:flex; flex-direction:column; gap:0.6rem;">
+                @* 2026-06-17 v4: Panel sticky derecho con TOTALES anclado al fondo.
+                   - top: 56px → libera aire para los botones — □ ✕ del modal arriba a la derecha.
+                   - altura fija calc(94vh - 200px) y display:flex column → permite que Totales quede pegado abajo.
+                   - Más comprados es el unico hijo con overflow-y:auto (la lista de productos scrollea ahí dentro).
+                   - Totales tiene flex:0 0 auto → SIEMPRE visible al fondo del panel, no entra en el scroll. *@
+                <div style="position: absolute; top: 56px; right: 0; width: 340px; height: calc(94vh - 200px); overflow: hidden; display:flex; flex-direction:column; gap:0.6rem;">
 
                 @if (MostrarPanelTopProductos)
                 {
-                    <div style="padding: 0.6rem; background: linear-gradient(180deg, #fef3c7 0%, #fde68a 100%); border: 1px solid #f59e0b; border-radius: 8px; display:flex; flex-direction:column; gap:0.5rem;">
+                    <div style="padding: 0.6rem; background: linear-gradient(180deg, #fef3c7 0%, #fde68a 100%); border: 1px solid #f59e0b; border-radius: 8px; display:flex; flex-direction:column; gap:0.5rem; flex: 1 1 auto; min-height: 0; overflow-y: auto;">
                         <div style="display: flex; align-items: center; gap: 0.4rem;">
                             <span style="font-size: 1.1rem;">⭐</span>
                             <strong style="font-size: 0.85rem; color: #78350f;">Más comprados</strong>
@@ -1932,9 +1935,10 @@
                    Acá en el panel sticky derecho solo quedan Más comprados + Totales. *@
 
                 @* ─── TOTALES ─── *@
+                @* 2026-06-17 v4: flex 0 0 auto → siempre visible al fondo del panel sticky, no entra al scroll de Más comprados. *@
                 @if (cotizacion is not null)
                 {
-                    <div style="padding: 0.55rem 0.7rem; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px;">
+                    <div style="padding: 0.6rem 0.8rem; background: white; border: 1px solid #d1d5db; border-radius: 10px; flex: 0 0 auto; box-shadow: 0 -2px 8px rgba(0,0,0,0.04);">
                         <div class="venta-totals-row" style="font-size: 0.85rem;">
                             <span>Subtotal:</span>
                             <strong>$@FormatMoney(cotizacion.Subtotal)</strong>
