@@ -1,5 +1,6 @@
 using Api.Data;
 using Api.Models;
+using ClosedXML.Excel;
 using Fido2NetLib;
 using Fido2NetLib.Objects;
 using Microsoft.AspNetCore.Authorization;
@@ -679,6 +680,124 @@ public class HorasExtrasController : ControllerBase
                 trab, esp, trab - esp, diasNom[(int)r.Fecha.DayOfWeek]);
         }).ToList();
         return Ok(result);
+    }
+
+    /// <summary>2026-06-17: descarga Excel con el mismo filtro de fechas + empleado.
+    /// Columnas: Fecha, Día, Empleado, Entrada, Salida, Trabajadas, Esperadas, Diferencia, Observación.
+    /// Al final una fila TOTALES con suma de trabajadas/esperadas/diferencia. Si hay empleado filtrado,
+    /// el archivo se nombra con su nombre + rango.</summary>
+    [HttpGet("admin/registros/excel")]
+    [Authorize]
+    public async Task<IActionResult> DescargarRegistrosExcel([FromQuery] DateTime? desde = null,
+        [FromQuery] DateTime? hasta = null, [FromQuery] int? empleadoId = null)
+    {
+        var hoy = FechaArgentinaHoy();
+        DateTime d, h;
+        if (empleadoId.HasValue && !desde.HasValue && !hasta.HasValue)
+        {
+            var empCiclo = await _db.HorasExtrasEmpleados.FindAsync(empleadoId.Value);
+            if (empCiclo is not null)
+            {
+                var ciclo = empCiclo.CicloActual(hoy);
+                d = ciclo.Desde;
+                h = ciclo.Hasta < hoy ? hoy : ciclo.Hasta;
+            }
+            else { d = hoy.AddDays(-30).Date; h = hoy.Date; }
+        }
+        else
+        {
+            d = (desde ?? hoy.AddDays(-30)).Date;
+            h = (hasta ?? hoy).Date;
+        }
+
+        var q = _db.HorasExtrasRegistros.Include(r => r.Empleado).AsQueryable();
+        q = q.Where(r => r.Fecha >= d && r.Fecha <= h);
+        if (empleadoId.HasValue) q = q.Where(r => r.EmpleadoId == empleadoId.Value);
+        var regs = await q.OrderBy(r => r.Fecha).ThenBy(r => r.Empleado!.Nombre).ToListAsync();
+
+        string[] diasNom = { "Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado" };
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("Registros");
+
+        // Encabezado del archivo
+        ws.Cell(1, 1).Value = "Registros de horas extras";
+        ws.Cell(1, 1).Style.Font.Bold = true;
+        ws.Cell(1, 1).Style.Font.FontSize = 13;
+        ws.Range(1, 1, 1, 9).Merge();
+        ws.Cell(2, 1).Value = $"Período: {d:dd/MM/yyyy} → {h:dd/MM/yyyy}";
+        ws.Range(2, 1, 2, 9).Merge();
+        if (empleadoId.HasValue)
+        {
+            var empName = regs.FirstOrDefault()?.Empleado?.Nombre
+                ?? (await _db.HorasExtrasEmpleados.FindAsync(empleadoId.Value))?.Nombre
+                ?? "?";
+            ws.Cell(3, 1).Value = $"Empleado: {empName}";
+            ws.Cell(3, 1).Style.Font.Bold = true;
+            ws.Range(3, 1, 3, 9).Merge();
+        }
+
+        int hdr = empleadoId.HasValue ? 5 : 4;
+        string[] columnas = { "Fecha", "Día", "Empleado", "Entrada", "Salida", "Trabajadas", "Esperadas", "Diferencia", "Observación" };
+        for (int i = 0; i < columnas.Length; i++)
+        {
+            var c = ws.Cell(hdr, i + 1);
+            c.Value = columnas[i];
+            c.Style.Font.Bold = true;
+            c.Style.Fill.BackgroundColor = XLColor.LightGray;
+            c.Style.Border.BottomBorder = XLBorderStyleValues.Thin;
+        }
+
+        decimal totalTrab = 0, totalEsp = 0, totalDif = 0;
+        int fila = hdr + 1;
+        foreach (var r in regs)
+        {
+            decimal trab = HorasTrabajadas(r);
+            decimal esp = r.Empleado is null ? 0m : r.Empleado.HorasParaDia(r.Fecha.DayOfWeek);
+            decimal dif = trab - esp;
+            totalTrab += trab; totalEsp += esp; totalDif += dif;
+
+            ws.Cell(fila, 1).Value = r.Fecha;
+            ws.Cell(fila, 1).Style.NumberFormat.Format = "dd/MM/yyyy";
+            ws.Cell(fila, 2).Value = diasNom[(int)r.Fecha.DayOfWeek];
+            ws.Cell(fila, 3).Value = r.Empleado?.Nombre ?? "?";
+            ws.Cell(fila, 4).Value = FormatHora(r.HoraEntrada) ?? "";
+            ws.Cell(fila, 5).Value = FormatHora(r.HoraSalida) ?? "";
+            ws.Cell(fila, 6).Value = trab;
+            ws.Cell(fila, 7).Value = esp;
+            ws.Cell(fila, 8).Value = dif;
+            ws.Cell(fila, 9).Value = r.Observaciones ?? "";
+            ws.Cell(fila, 6).Style.NumberFormat.Format = "0.##";
+            ws.Cell(fila, 7).Style.NumberFormat.Format = "0.##";
+            ws.Cell(fila, 8).Style.NumberFormat.Format = "0.##";
+            if (dif > 0.05m) ws.Cell(fila, 8).Style.Font.FontColor = XLColor.Green;
+            else if (dif < -0.05m) ws.Cell(fila, 8).Style.Font.FontColor = XLColor.Red;
+            fila++;
+        }
+
+        // Totales
+        ws.Cell(fila, 1).Value = "TOTALES";
+        ws.Range(fila, 1, fila, 5).Merge();
+        ws.Cell(fila, 1).Style.Font.Bold = true;
+        ws.Cell(fila, 6).Value = totalTrab;
+        ws.Cell(fila, 7).Value = totalEsp;
+        ws.Cell(fila, 8).Value = totalDif;
+        ws.Range(fila, 1, fila, 9).Style.Fill.BackgroundColor = XLColor.LightYellow;
+        ws.Range(fila, 1, fila, 9).Style.Font.Bold = true;
+        ws.Range(fila, 1, fila, 9).Style.Border.TopBorder = XLBorderStyleValues.Thin;
+        ws.Cell(fila, 6).Style.NumberFormat.Format = "0.##";
+        ws.Cell(fila, 7).Style.NumberFormat.Format = "0.##";
+        ws.Cell(fila, 8).Style.NumberFormat.Format = "0.##";
+
+        ws.Columns().AdjustToContents();
+
+        using var stream = new MemoryStream();
+        wb.SaveAs(stream);
+        var bytes = stream.ToArray();
+        var nombreEmp = empleadoId.HasValue
+            ? (regs.FirstOrDefault()?.Empleado?.Nombre ?? "empleado")
+            : "todos";
+        var filename = $"horas-{nombreEmp}-{d:yyyyMMdd}-{h:yyyyMMdd}.xlsx";
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename);
     }
 
     [HttpDelete("admin/registros/{id:int}")]

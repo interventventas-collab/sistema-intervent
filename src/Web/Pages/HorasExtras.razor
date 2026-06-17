@@ -266,6 +266,9 @@
                         }
                     }
                 </select>
+                <button class="btn btn-secondary" @onclick="DescargarExcel" disabled="@descargandoExcel">
+                    @(descargandoExcel ? "⏳ Generando..." : "📊 Excel")
+                </button>
                 <button class="btn btn-secondary" @onclick="RecargarTodo">🔄 Refrescar</button>
             </div>
         </div>
@@ -584,6 +587,41 @@
         if (qs.Count > 0) url += "?" + string.Join("&", qs);
         registros = await Http.GetFromJsonAsync<List<AdminRegistroDto>>(url);
         StateHasChanged();
+    }
+
+    private bool descargandoExcel;
+    // 2026-06-17: descargar Excel con los mismos filtros activos (período + empleado).
+    private async Task DescargarExcel()
+    {
+        if (descargandoExcel) return;
+        descargandoExcel = true;
+        try
+        {
+            var url = "api/horas-extras/admin/registros/excel";
+            var qs = new List<string>();
+            if (filtroDesde.HasValue) qs.Add($"desde={filtroDesde.Value:yyyy-MM-dd}");
+            if (filtroHasta.HasValue) qs.Add($"hasta={filtroHasta.Value:yyyy-MM-dd}");
+            if (_filtroEmpleadoId > 0) qs.Add($"empleadoId={_filtroEmpleadoId}");
+            if (qs.Count > 0) url += "?" + string.Join("&", qs);
+
+            var resp = await Http.GetAsync(url);
+            if (!resp.IsSuccessStatusCode)
+            {
+                ToastService.Error("No se pudo generar el Excel");
+                return;
+            }
+            var bytes = await resp.Content.ReadAsByteArrayAsync();
+            var fnHeader = resp.Content.Headers.ContentDisposition?.FileName?.Trim('"');
+            var filename = !string.IsNullOrEmpty(fnHeader)
+                ? fnHeader
+                : $"horas-extras-{DateTime.Now:yyyy-MM-dd-HHmm}.xlsx";
+            await JS.InvokeVoidAsync("downloadBytesAsFile", filename,
+                Convert.ToBase64String(bytes),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            ToastService.Success("Excel descargado");
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { descargandoExcel = false; }
     }
 
     private bool showFormEmp, savingEmp;
