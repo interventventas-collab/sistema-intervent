@@ -794,9 +794,12 @@
                     <div class="form-error">@formError</div>
                 }
 
+                @* 2026-06-17: ① y ② lado a lado cuando NO esta en Venta Rapida (que ocupa todo el ancho con sus campos extra).
+                   En Venta Rapida se apilan como antes para que entren bien los campos manuales del cliente. *@
+                <div style="display: flex; gap: 1rem; flex-direction: @(modoVentaRapida ? "column" : "row"); align-items: flex-start;">
                 @* ── Datos generales ── *@
                 @* 2026-06-17: bloque compactado — sin caja, header chiquito, padding reducido. *@
-                <div style="padding: 0.3rem 0; margin-bottom: 0.4rem;">
+                <div style="padding: 0.3rem 0; margin-bottom: 0.4rem; flex: 1; min-width: 0;">
                     <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem;">
                         <strong style="font-size: 0.78rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em;">Datos generales</strong>
                     </div>
@@ -842,8 +845,8 @@
                 </div>
 
                 @* ── Cliente y fecha ── *@
-                @* 2026-06-17: bloque compactado — sin caja, header chiquito. *@
-                <div style="padding: 0.3rem 0; margin-bottom: 0.4rem; border-top: 1px solid #f3f4f6;">
+                @* 2026-06-17: bloque compactado — sin caja, header chiquito. Lado a lado con ① cuando no es Venta Rapida. *@
+                <div style="padding: 0.3rem 0; margin-bottom: 0.4rem; flex: 1.5; min-width: 0; @(modoVentaRapida ? "border-top: 1px solid #f3f4f6;" : "")">
                     <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem; flex-wrap: wrap;">
                         <strong style="font-size: 0.78rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em;">Cliente y fecha</strong>
                         <div style="margin-left: auto; display: flex; gap: 0.3rem;">
@@ -1068,6 +1071,7 @@
                         </div>
                     }
                 </div>
+                </div> @* fin wrapper flex ① + ② *@
 
                 @* ── Items ── *@
                 @* 2026-06-17: bloque compactado — sin caja, header chico. *@
