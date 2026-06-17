@@ -109,9 +109,6 @@ public class CafeProductosController : ControllerBase
             q = q.Where(p => p.Categoria == c);
         }
         var list = await q.ToListAsync();
-        // 2026-06-17 DEBUG temporal: log de F1 para ver que valor de PrecioBar devuelve la API
-        var f1 = list.FirstOrDefault(p => p.Sku == "F1");
-        if (f1 != null) Console.WriteLine($"[DEBUG F1] PrecioBar={f1.PrecioBar}, Pvp1={f1.Pvp1}, UpdatedAt={f1.UpdatedAt}");
         // Orden natural por SKU (F1, F2, F3, ..., F10, F11) y luego por nombre.
         // Productos sin SKU caen al final, ordenados por nombre.
         list = list

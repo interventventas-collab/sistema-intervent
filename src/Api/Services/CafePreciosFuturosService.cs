@@ -42,8 +42,24 @@ public class CafePreciosFuturosService
         foreach (var p in afectados)
         {
             var cambios = new List<string>();
-            if (p.PrecioBarFuturo.HasValue) { cambios.Add($"Bar:{p.PrecioBar}→{p.PrecioBarFuturo}"); p.PrecioBar = p.PrecioBarFuturo; p.PrecioBarFuturo = null; }
-            if (p.PrecioOtroFuturo.HasValue) { cambios.Add($"Otro:{p.PrecioOtro}→{p.PrecioOtroFuturo}"); p.PrecioOtro = p.PrecioOtroFuturo; p.PrecioOtroFuturo = null; }
+            // 2026-06-17: para CAFE los precios live viven en Pvp1/Pvp2 (no PrecioBar/PrecioOtro).
+            // El form de futuros guarda en PrecioBarFuturo/PrecioOtroFuturo igual que en OTROS,
+            // asi que al migrar para CAFE volcamos a Pvp1/Pvp2 ademas de PrecioBar/PrecioOtro.
+            var esCafe = string.Equals(p.Categoria, "CAFE", StringComparison.OrdinalIgnoreCase);
+            if (p.PrecioBarFuturo.HasValue)
+            {
+                cambios.Add($"Bar:{p.PrecioBar}→{p.PrecioBarFuturo}");
+                p.PrecioBar = p.PrecioBarFuturo;
+                if (esCafe) { cambios.Add($"Pvp1:{p.Pvp1}→{p.PrecioBarFuturo}"); p.Pvp1 = p.PrecioBarFuturo; }
+                p.PrecioBarFuturo = null;
+            }
+            if (p.PrecioOtroFuturo.HasValue)
+            {
+                cambios.Add($"Otro:{p.PrecioOtro}→{p.PrecioOtroFuturo}");
+                p.PrecioOtro = p.PrecioOtroFuturo;
+                if (esCafe) { cambios.Add($"Pvp2:{p.Pvp2}→{p.PrecioOtroFuturo}"); p.Pvp2 = p.PrecioOtroFuturo; }
+                p.PrecioOtroFuturo = null;
+            }
             if (p.PrecioPorKgFuturo.HasValue) { cambios.Add($"Kg:{p.PrecioPorKg}→{p.PrecioPorKgFuturo}"); p.PrecioPorKg = p.PrecioPorKgFuturo; p.PrecioPorKgFuturo = null; }
             if (p.PrecioBultoFuturo.HasValue) { cambios.Add($"Bulto:{p.PrecioBulto}→{p.PrecioBultoFuturo}"); p.PrecioBulto = p.PrecioBultoFuturo; p.PrecioBultoFuturo = null; }
             if (p.PrecioBultoOtroFuturo.HasValue) { cambios.Add($"BultoOtro:{p.PrecioBultoOtro}→{p.PrecioBultoOtroFuturo}"); p.PrecioBultoOtro = p.PrecioBultoOtroFuturo; p.PrecioBultoOtroFuturo = null; }
