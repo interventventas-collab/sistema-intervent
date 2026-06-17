@@ -1703,234 +1703,13 @@
                     }
                 </div>
 
-                @* ── Totales ── *@
-                <div class="form-row" style="align-items: stretch;">
-                    <div style="flex: 1.4;">
-                        @* 2026-06-17: bloque compactado — sin caja, header chico. *@
-                        <div style="padding: 0.3rem 0;">
-                            <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem;">
-                                <strong style="font-size: 0.78rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em;">Observaciones, días y pago</strong>
-                            </div>
-                            <textarea class="form-input" rows="2" @bind="formObservaciones" placeholder="Notas internas (opcional)"></textarea>
-
-                            @* Dias de visita / reparto — con ✓ check y botón EN RADAR (interno) *@
-                            <div style="margin-top: 0.6rem;">
-                                <label style="font-size: 0.72rem; color: #6b7280; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;">Días de visita / reparto</label>
-                                <div style="display: flex; gap: 0.3rem; flex-wrap: wrap; margin-top: 0.3rem; align-items: center;">
-                                    @foreach (var d in AllWeekDays)
-                                    {
-                                        var on = formWeekDays.Contains(d);
-                                        var bg = on ? "#dbeafe" : "white";
-                                        var fg = on ? "#1e3a8a" : "#374151";
-                                        var bd = on ? "#1e40af" : "#d1d5db";
-                                        var bw = on ? "2px" : "1px";
-                                        <button type="button"
-                                                @onclick="() => ToggleFormDay(d)"
-                                                style="display: inline-flex; align-items: center; justify-content: center; padding: 0.25rem 0.5rem; border: @bw solid @bd; background: @bg; color: @fg; border-radius: 5px; font-weight: 700; font-size: 0.72rem; cursor: pointer; min-width: 42px; user-select: none;">
-                                            @(on ? "✓ " : "")@d
-                                        </button>
-                                    }
-                                    @{
-                                        var radarBg = formEnRadar ? "#1d4ed8" : "white";
-                                        var radarFg = formEnRadar ? "white" : "#374151";
-                                        var radarBd = formEnRadar ? "#1e3a8a" : "#d1d5db";
-                                    }
-                                    <button type="button"
-                                            @onclick="ToggleEnRadar"
-                                            title="Cuando estemos por la zona (uso interno — el cliente ve 'a coordinar' en el PDF)"
-                                            style="display: inline-flex; align-items: center; gap: 0.2rem; padding: 0.25rem 0.6rem; border: 2px solid @radarBd; background: @radarBg; color: @radarFg; border-radius: 5px; font-weight: 800; font-size: 0.72rem; cursor: pointer; user-select: none; margin-left: 0.4rem;">
-                                        @(formEnRadar ? "✓ " : "")🛰 EN RADAR
-                                    </button>
-                                    @* 2026-06-01: boton RETIRA — el cliente retira la mercaderia en el local *@
-                                    @{
-                                        var retiraBg = formRetira ? "#16a34a" : "white";
-                                        var retiraFg = formRetira ? "white" : "#374151";
-                                        var retiraBd = formRetira ? "#15803d" : "#d1d5db";
-                                    }
-                                    <button type="button"
-                                            @onclick="ToggleRetira"
-                                            title="El cliente retira la mercaderia en el local (no se reparte)"
-                                            style="display: inline-flex; align-items: center; gap: 0.2rem; padding: 0.25rem 0.6rem; border: 2px solid @retiraBd; background: @retiraBg; color: @retiraFg; border-radius: 5px; font-weight: 800; font-size: 0.72rem; cursor: pointer; user-select: none; margin-left: 0.4rem;">
-                                        @(formRetira ? "✓ " : "")🚗 RETIRA
-                                    </button>
-                                    @* 2026-06-05: boton TRANSPORTE — se despacha por empresa de transporte *@
-                                    @{
-                                        var trBg = formPorTransporte ? "#ea580c" : "white";
-                                        var trFg = formPorTransporte ? "white" : "#374151";
-                                        var trBd = formPorTransporte ? "#c2410c" : "#d1d5db";
-                                    }
-                                    <button type="button"
-                                            @onclick="ToggleTransporte"
-                                            title="La mercaderia se despacha por empresa de transporte (Andreani, Cruz del Sur, etc)"
-                                            style="display: inline-flex; align-items: center; gap: 0.2rem; padding: 0.25rem 0.6rem; border: 2px solid @trBd; background: @trBg; color: @trFg; border-radius: 5px; font-weight: 800; font-size: 0.72rem; cursor: pointer; user-select: none; margin-left: 0.4rem;">
-                                        @(formPorTransporte ? "✓ " : "")🚛 TRANSPORTE
-                                    </button>
-                                </div>
-                                @if (formEnRadar)
-                                {
-                                    <div style="font-size: 0.68rem; color: #1e3a8a; margin-top: 0.3rem;">🛰 El cliente verá <strong>"EN RADAR"</strong> en el comprobante.</div>
-                                }
-                                @if (formRetira)
-                                {
-                                    <div style="font-size: 0.68rem; color: #15803d; margin-top: 0.3rem;">🚗 El cliente <strong>retira en el local</strong> — el comprobante muestra "RETIRA EN LOCAL".</div>
-                                }
-                                @if (formPorTransporte)
-                                {
-                                    <div style="background:#fff7ed; border:1px solid #fdba74; border-radius:6px; padding:0.5rem; margin-top:0.4rem;">
-                                        <div style="font-size: 0.72rem; color: #c2410c; font-weight:700; margin-bottom:0.3rem;">🚛 Despacho por transporte</div>
-                                        <div class="form-row" style="margin:0;">
-                                            <div class="form-group" style="flex:1; margin:0;">
-                                                <label class="form-label" style="font-size:0.7rem;">Empresa de transporte</label>
-                                                <input class="form-input" @bind="formTransporteEmpresa" placeholder="Ej: Andreani / Cruz del Sur / Vía Cargo..." />
-                                            </div>
-                                            <div class="form-group" style="flex:1; margin:0;">
-                                                <label class="form-label" style="font-size:0.7rem;">Destino</label>
-                                                <input class="form-input" @bind="formTransporteDestino" placeholder="Ciudad / sucursal" />
-                                            </div>
-                                        </div>
-                                        <p style="font-size:0.65rem; color:#9a3412; margin:0.3rem 0 0;">
-                                            A futuro: el sistema va a generar un volante y remito especiales para pegar al paquete.
-                                        </p>
-                                    </div>
-                                }
-                            </div>
-
-                            @* Entrega: quien lleva la mercaderia. Opcional. Pedido del usuario 2026-05-20. *@
-                            <div style="margin-top: 0.6rem;">
-                                <label style="font-size: 0.72rem; color: #6b7280; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;">Entrega</label>
-                                <select class="form-input" @bind="formEntregaPor" style="margin-top: 0.3rem; font-size: 0.85rem;">
-                                    <option value="">— sin asignar —</option>
-                                    @foreach (var nom in EntregaResponsables)
-                                    {
-                                        <option value="@nom">@nom</option>
-                                    }
-                                    <option value="Logística tercerizada">📦 Logística tercerizada</option>
-                                </select>
-                            </div>
-
-                            @* Estado de pago: si la venta editada ya tiene cobranzas aplicadas, mostrar el saldo real
-                               (calculado) en vez del checkbox manual. El checkbox manual queda solo para ventas
-                               nuevas (cuando se crea pagada al toque, ej. ventas al contado sin pasar por cobranza). *@
-                            @if (editingVentaId.HasValue && saldosPorVenta.TryGetValue(editingVentaId.Value, out var saldoEdit))
-                            {
-                                var totalEdit = ventas?.FirstOrDefault(v => v.Id == editingVentaId.Value)?.Total ?? 0m;
-                                var pagadoEdit = totalEdit - saldoEdit;
-                                <div style="margin-top: 0.6rem; padding: 0.5rem 0.75rem; border-radius:6px; background: @(saldoEdit <= 0.01m ? "#dcfce7" : pagadoEdit > 0.01m ? "#fef3c7" : "#fee2e2");">
-                                    @if (saldoEdit <= 0.01m)
-                                    {
-                                        <strong style="color:#166534; font-size:0.85rem;">✅ PAGADA (cobranzas cubren el total)</strong>
-                                    }
-                                    else if (pagadoEdit > 0.01m)
-                                    {
-                                        <strong style="color:#92400e; font-size:0.85rem;">⚠ Parcial: pagó $@FormatMoney(pagadoEdit), debe $@FormatMoney(saldoEdit)</strong>
-                                    }
-                                    else
-                                    {
-                                        <strong style="color:#991b1b; font-size:0.85rem;">⏳ Sin cobranzas aplicadas — saldo $@FormatMoney(saldoEdit)</strong>
-                                    }
-                                    <div style="font-size:0.7rem; color:#6b7280; margin-top:0.2rem;">Estado calculado desde Tesorería → Cobranzas. Para cobrar, usa el botón 💰.</div>
-                                </div>
-                            }
-                            else
-                            {
-                                @* Solo para ventas nuevas: tildar = al guardar te lleva al modal de Cobranzas
-                                   para registrar el cobro real (en vez de marcar un flag manual). *@
-                                @if (!editingVentaId.HasValue)
-                                {
-                                    <label style="display: flex; align-items: center; gap: 0.4rem; margin-top: 0.6rem; cursor: pointer; font-size: 0.85rem;">
-                                        <input type="checkbox" @bind="formIsPaid" />
-                                        <strong>💰 Cobrar al guardar</strong>
-                                        <span style="font-size: 0.72rem; color: #6b7280;">(al emitir te abre la pantalla de Cobranzas con esta venta precargada)</span>
-                                    </label>
-                                }
-                            }
-                        </div>
+                @* 2026-06-17: solo queda Notas internas en la izq — el resto (Dias, Entrega, Comentario armado, Totales, Cobrar al guardar)
+                   se movio al panel sticky derecho. *@
+                <div style="padding: 0.3rem 0; margin-bottom: 0.4rem;">
+                    <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem;">
+                        <strong style="font-size: 0.78rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em;">Notas internas de la venta</strong>
                     </div>
-                    <div style="flex: 1;">
-                        @if (cotizacion is not null)
-                        {
-                            <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem;">
-                                <div class="venta-totals-row">
-                                    <span>Subtotal:</span>
-                                    <strong>$@FormatMoney(cotizacion.Subtotal)</strong>
-                                </div>
-                                <div class="venta-totals-row">
-                                    <span>Descuento ($):
-                                        <span style="font-size:0.7rem; color:#9ca3af; font-weight:400;">monto a restar</span>
-                                    </span>
-                                    <input class="form-input" type="number" step="0.01" @bind="formDescuento" @bind:after="Cotizar"
-                                           style="text-align: right; max-width: 130px; font-weight: 700;" />
-                                </div>
-                                @* Desglose de IVA en el form solo para FA / FB / Proforma. En X (cotizacion) y FC (monotributo) no aparece. *@
-                                @{
-                                    bool formMostrarIva = formTipoComprobante is "FA" or "FB" or "PRO";
-                                    decimal formIva = formMostrarIva
-                                        ? Math.Round(cotizacion.Total * 0.21m, 2, MidpointRounding.AwayFromZero)
-                                        : 0m;
-                                    decimal formTotalConIva = cotizacion.Total + formIva;
-                                }
-                                @if (formMostrarIva)
-                                {
-                                    <hr style="margin: 0.5rem 0; border: none; border-top: 1px dashed #d1d5db;" />
-                                    <div class="venta-totals-row" style="font-size: 0.85rem;">
-                                        <span>Neto sin IVA:</span>
-                                        <strong>$@FormatMoney(cotizacion.Total)</strong>
-                                    </div>
-                                    <div class="venta-totals-row" style="font-size: 0.85rem; color: #1d4ed8;">
-                                        <span>IVA 21%:</span>
-                                        <strong>$@FormatMoney(formIva)</strong>
-                                    </div>
-                                    <hr style="margin: 0.5rem 0; border: none; border-top: 2px solid #1f2937;" />
-                                    <div class="venta-totals-row" style="font-size: 1.2rem; font-weight: 800; color: #059669;">
-                                        <span>TOTAL c/IVA:</span>
-                                        <strong>$@FormatMoney(formTotalConIva)</strong>
-                                    </div>
-                                }
-                                else
-                                {
-                                    <hr style="margin: 0.5rem 0; border: none; border-top: 2px solid #1f2937;" />
-                                    <div class="venta-totals-row" style="font-size: 1.2rem; font-weight: 800; color: #059669;">
-                                        <span>TOTAL:</span>
-                                        <strong>$@FormatMoney(cotizacion.Total)</strong>
-                                    </div>
-                                }
-                                <hr style="margin: 0.5rem 0; border: none; border-top: 1px dashed #d1d5db;" />
-                                <div class="venta-totals-row" style="font-size: 0.8rem; color: #6b7280;">
-                                    <span>Costo total:</span>
-                                    <span>$@FormatMoney(cotizacion.CostoTotal)</span>
-                                </div>
-                                <div class="venta-totals-row" style="font-size: 0.95rem; font-weight: 700; color: @(cotizacion.Margen >= 0 ? "#15803d" : "#b91c1c");">
-                                    <span>Margen:</span>
-                                    <span>
-                                        $@FormatMoney(cotizacion.Margen)
-                                        @if (cotizacion.CostoTotal > 0)
-                                        {
-                                            var margenPctGlobal = Math.Round((cotizacion.Total / cotizacion.CostoTotal - 1m) * 100m, 1, MidpointRounding.AwayFromZero);
-                                            <span style="font-size: 0.78rem; font-weight: 500; margin-left: 0.4rem; opacity: 0.85;">(@margenPctGlobal%)</span>
-                                        }
-                                    </span>
-                                </div>
-                            </div>
-                        }
-                        @* 2026-06-02: COMENTARIO INTERNO PARA ARMADO (mitad izquierda del hueco libre).
-                           Mitad derecha queda vacia — reservada para futuro pedido del usuario. *@
-                        <div style="display: flex; gap: 0.6rem; margin-top: 0.75rem; align-items: stretch;">
-                            <div style="flex: 1; background: #fefce8; border: 2px dashed #facc15; border-radius: 8px; padding: 0.75rem;">
-                                <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.4rem;">
-                                    <span style="font-size: 1rem;">📌</span>
-                                    <strong style="font-size: 0.78rem; color: #92400e; text-transform: uppercase; letter-spacing: 0.04em;">Comentario interno para armado</strong>
-                                </div>
-                                <textarea class="form-input" rows="4" @bind="formComentarioArmado"
-                                          placeholder="EJEMPLO: SOBRES CORTESIA"
-                                          style="background: white; font-size: 0.85rem; resize: vertical; width: 100%;"></textarea>
-                                <div style="font-size: 0.68rem; color: #78716c; margin-top: 0.3rem; font-style: italic;">
-                                    Solo lo ve quien arma el pedido en <strong>"IMPRIMIR PEDIDOS DE OSMAR"</strong>. No sale en el comprobante al cliente.
-                                </div>
-                            </div>
-                            @* Mitad derecha reservada — futuro feature *@
-                            <div style="flex: 1;"></div>
-                        </div>
-                    </div>
+                    <textarea class="form-input" rows="2" @bind="formObservaciones" placeholder="Notas internas (opcional)"></textarea>
                 </div>
             </div>
             @* ═══════════════ Panel: Enviar al cliente al emitir ═══════════════
@@ -2007,10 +1786,13 @@
             }
                 </div> @* fin columna izquierda (formulario) *@
 
-                @* 2026-06-17: Panel sticky derecho con productos mas comprados del cliente. *@
+                @* 2026-06-17: Panel sticky derecho SIEMPRE visible — incluye Mas comprados (cuando hay historial)
+                   + Entrega + Comentario armado + Totales + Cobrar al guardar. *@
+                <div style="width: 360px; flex-shrink: 0; position: sticky; top: 0; align-self: flex-start; max-height: calc(94vh - 120px); overflow-y: auto; display:flex; flex-direction:column; gap:0.6rem;">
+
                 @if (MostrarPanelTopProductos)
                 {
-                    <div style="width: 320px; flex-shrink: 0; position: sticky; top: 0; align-self: flex-start; max-height: calc(94vh - 220px); overflow-y: auto; padding: 0.7rem; background: linear-gradient(180deg, #fef3c7 0%, #fde68a 100%); border: 1px solid #f59e0b; border-radius: 8px; display:flex; flex-direction:column; gap:0.5rem;">
+                    <div style="padding: 0.6rem; background: linear-gradient(180deg, #fef3c7 0%, #fde68a 100%); border: 1px solid #f59e0b; border-radius: 8px; display:flex; flex-direction:column; gap:0.5rem;">
                         <div style="display: flex; align-items: center; gap: 0.4rem;">
                             <span style="font-size: 1.1rem;">⭐</span>
                             <strong style="font-size: 0.85rem; color: #78350f;">Más comprados</strong>
@@ -2085,6 +1867,142 @@
                         </div>
                     </div>
                 }
+
+                @* ─── ENTREGA ─── *@
+                <div style="padding: 0.55rem 0.7rem; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; display: flex; flex-direction: column; gap: 0.45rem;">
+                    <strong style="font-size: 0.74rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em;">🚚 Entrega</strong>
+
+                    <div>
+                        <label style="font-size: 0.68rem; color: #6b7280; font-weight: 600; text-transform: uppercase;">Días de visita / reparto</label>
+                        <div style="display: flex; gap: 0.2rem; flex-wrap: wrap; margin-top: 0.25rem;">
+                            @foreach (var d in AllWeekDays)
+                            {
+                                var on = formWeekDays.Contains(d);
+                                var bg = on ? "#dbeafe" : "white";
+                                var fg = on ? "#1e3a8a" : "#374151";
+                                var bd = on ? "#1e40af" : "#d1d5db";
+                                <button type="button" @onclick="() => ToggleFormDay(d)"
+                                        style="padding: 0.2rem 0.4rem; border: 1px solid @bd; background: @bg; color: @fg; border-radius: 4px; font-weight: 700; font-size: 0.68rem; cursor: pointer; min-width: 30px;">@(on ? "✓" : "")@d</button>
+                            }
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 0.25rem; flex-wrap: wrap;">
+                        @{
+                            var radarBg2 = formEnRadar ? "#1d4ed8" : "white";
+                            var radarFg2 = formEnRadar ? "white" : "#374151";
+                            var retiraBg2 = formRetira ? "#16a34a" : "white";
+                            var retiraFg2 = formRetira ? "white" : "#374151";
+                            var trBg2 = formPorTransporte ? "#ea580c" : "white";
+                            var trFg2 = formPorTransporte ? "white" : "#374151";
+                        }
+                        <button type="button" @onclick="ToggleEnRadar" title="El cliente ve 'a coordinar'"
+                                style="padding: 0.2rem 0.5rem; border: 1px solid #1e3a8a; background: @radarBg2; color: @radarFg2; border-radius: 4px; font-weight: 700; font-size: 0.68rem; cursor: pointer;">@(formEnRadar ? "✓ " : "")🛰 RADAR</button>
+                        <button type="button" @onclick="ToggleRetira" title="Retira en local"
+                                style="padding: 0.2rem 0.5rem; border: 1px solid #15803d; background: @retiraBg2; color: @retiraFg2; border-radius: 4px; font-weight: 700; font-size: 0.68rem; cursor: pointer;">@(formRetira ? "✓ " : "")🚗 RETIRA</button>
+                        <button type="button" @onclick="ToggleTransporte" title="Por empresa de transporte"
+                                style="padding: 0.2rem 0.5rem; border: 1px solid #c2410c; background: @trBg2; color: @trFg2; border-radius: 4px; font-weight: 700; font-size: 0.68rem; cursor: pointer;">@(formPorTransporte ? "✓ " : "")🚛 TRANSPORTE</button>
+                    </div>
+
+                    @if (formPorTransporte)
+                    {
+                        <div style="background:#fff7ed; border:1px solid #fdba74; border-radius:6px; padding:0.4rem; display: flex; gap: 0.3rem; flex-direction: column;">
+                            <input class="form-input" @bind="formTransporteEmpresa" placeholder="Empresa (Andreani, Cruz del Sur…)" style="font-size: 0.78rem; padding: 0.2rem 0.4rem;" />
+                            <input class="form-input" @bind="formTransporteDestino" placeholder="Destino (ciudad/sucursal)" style="font-size: 0.78rem; padding: 0.2rem 0.4rem;" />
+                        </div>
+                    }
+
+                    <div>
+                        <label style="font-size: 0.68rem; color: #6b7280; font-weight: 600; text-transform: uppercase;">Entrega por</label>
+                        <select class="form-input" @bind="formEntregaPor" style="font-size: 0.8rem; padding: 0.2rem 0.4rem; margin-top: 0.2rem;">
+                            <option value="">— sin asignar —</option>
+                            @foreach (var nom in EntregaResponsables)
+                            {
+                                <option value="@nom">@nom</option>
+                            }
+                            <option value="Logística tercerizada">📦 Logística tercerizada</option>
+                        </select>
+                    </div>
+
+                    @if (editingVentaId.HasValue && saldosPorVenta.TryGetValue(editingVentaId.Value, out var saldoEdit2))
+                    {
+                        var totalEdit2 = ventas?.FirstOrDefault(v => v.Id == editingVentaId.Value)?.Total ?? 0m;
+                        var pagadoEdit2 = totalEdit2 - saldoEdit2;
+                        <div style="padding: 0.4rem 0.55rem; border-radius:6px; background: @(saldoEdit2 <= 0.01m ? "#dcfce7" : pagadoEdit2 > 0.01m ? "#fef3c7" : "#fee2e2"); font-size: 0.78rem;">
+                            @if (saldoEdit2 <= 0.01m) { <strong style="color:#166534;">✅ PAGADA</strong> }
+                            else if (pagadoEdit2 > 0.01m) { <strong style="color:#92400e;">⚠ Pagó $@FormatMoney(pagadoEdit2), debe $@FormatMoney(saldoEdit2)</strong> }
+                            else { <strong style="color:#991b1b;">⏳ Sin cobranzas · saldo $@FormatMoney(saldoEdit2)</strong> }
+                        </div>
+                    }
+                    else if (!editingVentaId.HasValue)
+                    {
+                        <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-size: 0.8rem; padding: 0.3rem 0; border-top: 1px solid #e5e7eb;">
+                            <input type="checkbox" @bind="formIsPaid" />
+                            <strong>💰 Cobrar al guardar</strong>
+                        </label>
+                    }
+                </div>
+
+                @* ─── COMENTARIO INTERNO PARA ARMADO ─── *@
+                <div style="padding: 0.55rem 0.7rem; background: #fefce8; border: 2px dashed #facc15; border-radius: 8px;">
+                    <div style="display: flex; align-items: center; gap: 0.3rem; margin-bottom: 0.3rem;">
+                        <span style="font-size: 0.95rem;">📌</span>
+                        <strong style="font-size: 0.74rem; color: #92400e; text-transform: uppercase; letter-spacing: 0.04em;">Comentario para armado</strong>
+                    </div>
+                    <textarea class="form-input" rows="2" @bind="formComentarioArmado"
+                              placeholder="Ej: SOBRES CORTESIA"
+                              style="background: white; font-size: 0.8rem; resize: vertical; width: 100%; padding: 0.3rem 0.4rem;"></textarea>
+                    <div style="font-size: 0.62rem; color: #78716c; margin-top: 0.2rem; font-style: italic;">Solo lo ve quien arma el pedido. No sale al cliente.</div>
+                </div>
+
+                @* ─── TOTALES ─── *@
+                @if (cotizacion is not null)
+                {
+                    <div style="padding: 0.55rem 0.7rem; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px;">
+                        <div class="venta-totals-row" style="font-size: 0.85rem;">
+                            <span>Subtotal:</span>
+                            <strong>$@FormatMoney(cotizacion.Subtotal)</strong>
+                        </div>
+                        <div class="venta-totals-row" style="font-size: 0.85rem;">
+                            <span>Descuento:</span>
+                            <input class="form-input" type="number" step="0.01" @bind="formDescuento" @bind:after="Cotizar"
+                                   style="text-align: right; max-width: 100px; font-weight: 700; padding: 0.15rem 0.3rem; font-size: 0.8rem;" />
+                        </div>
+                        @{
+                            bool formMostrarIva2 = formTipoComprobante is "FA" or "FB" or "PRO";
+                            decimal formIva2 = formMostrarIva2 ? Math.Round(cotizacion.Total * 0.21m, 2, MidpointRounding.AwayFromZero) : 0m;
+                            decimal formTotalConIva2 = cotizacion.Total + formIva2;
+                        }
+                        @if (formMostrarIva2)
+                        {
+                            <hr style="margin: 0.35rem 0; border: none; border-top: 1px dashed #d1d5db;" />
+                            <div class="venta-totals-row" style="font-size: 0.78rem;"><span>Neto:</span><strong>$@FormatMoney(cotizacion.Total)</strong></div>
+                            <div class="venta-totals-row" style="font-size: 0.78rem; color: #1d4ed8;"><span>IVA 21%:</span><strong>$@FormatMoney(formIva2)</strong></div>
+                            <hr style="margin: 0.35rem 0; border: none; border-top: 2px solid #1f2937;" />
+                            <div class="venta-totals-row" style="font-size: 1.05rem; font-weight: 800; color: #059669;"><span>TOTAL c/IVA:</span><strong>$@FormatMoney(formTotalConIva2)</strong></div>
+                        }
+                        else
+                        {
+                            <hr style="margin: 0.35rem 0; border: none; border-top: 2px solid #1f2937;" />
+                            <div class="venta-totals-row" style="font-size: 1.05rem; font-weight: 800; color: #059669;"><span>TOTAL:</span><strong>$@FormatMoney(cotizacion.Total)</strong></div>
+                        }
+                        <hr style="margin: 0.35rem 0; border: none; border-top: 1px dashed #d1d5db;" />
+                        <div class="venta-totals-row" style="font-size: 0.72rem; color: #6b7280;"><span>Costo:</span><span>$@FormatMoney(cotizacion.CostoTotal)</span></div>
+                        <div class="venta-totals-row" style="font-size: 0.85rem; font-weight: 700; color: @(cotizacion.Margen >= 0 ? "#15803d" : "#b91c1c");">
+                            <span>Margen:</span>
+                            <span>
+                                $@FormatMoney(cotizacion.Margen)
+                                @if (cotizacion.CostoTotal > 0)
+                                {
+                                    var margenPctGlobal2 = Math.Round((cotizacion.Total / cotizacion.CostoTotal - 1m) * 100m, 1, MidpointRounding.AwayFromZero);
+                                    <span style="font-size: 0.72rem; font-weight: 500; opacity: 0.85;">(@margenPctGlobal2%)</span>
+                                }
+                            </span>
+                        </div>
+                    </div>
+                }
+
+                </div> @* fin panel sticky derecho *@
                 </div> @* fin wrapper flex split *@
 
             <div class="modal-footer">
