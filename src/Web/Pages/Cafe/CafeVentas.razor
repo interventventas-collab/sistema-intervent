@@ -1391,36 +1391,8 @@
                             <button class="btn btn-primary" type="button" @onclick="AddItem" style="width: 100%;">+ Agregar</button>
                         </div>
                     </div>
-                    @* Segunda fila: Molienda + Envase. Solo cafe. Replica los selectores
-                       que tiene cada item ya cargado — asi el operador puede elegir todo
-                       antes de apretar "+ Agregar" en vez de tener que editar la fila. *@
-                    @if (AddProductoCategoria == "CAFE")
-                    {
-                        <div class="form-row" style="align-items: end; margin-top: 0.4rem;">
-                            <div class="form-group" style="flex: 1;">
-                                <label class="form-label" style="font-size: 0.75rem;">Molienda</label>
-                                <select id="nv-molienda" class="form-input" @bind="addMolienda" @onkeydown="OnKeyDownMolienda" style="background:#fef3c7; border-color:#d97706; font-weight:600;">
-                                    <option value="EN GRANOS">🫘 EN GRANOS</option>
-                                    <option value="MOLIDO FILTRO">☕ MOLIDO FILTRO</option>
-                                    <option value="MOLIDO EXPRESS">⚡ MOLIDO EXPRESS</option>
-                                    <option value="MOLIDO MOKA">☕ MOLIDO MOKA</option>
-                                    <option value="MOLIDO BODUM">☕ MOLIDO BODUM</option>
-                                    <option value="MOLIDO PRENSA FRANCESA">☕ MOLIDO PRENSA FRANCESA</option>
-                                    <option value="MOLIDO CAFETERA ITALIANA">☕ MOLIDO CAFETERA ITALIANA</option>
-                                    <option value="MOLIDO A LA TURCA">☕ MOLIDO A LA TURCA</option>
-                                    <option value="MINI EXPRESS">🔸 MINI EXPRESS</option>
-                                </select>
-                            </div>
-                            <div class="form-group" style="flex: 1;">
-                                <label class="form-label" style="font-size: 0.75rem;">Envase</label>
-                                <select id="nv-envase" class="form-input" @bind="addEnvase" @onkeydown="OnKeyDownEnvase" style="background:#f3f4f6; border-color:#9ca3af; font-weight:600;">
-                                    <option value="NEGRO">⚫ Envase negro</option>
-                                    <option value="PLATEADO">⚪ Envase plateado</option>
-                                    <option value="DOY_PACK">📦 Doy pack</option>
-                                </select>
-                            </div>
-                        </div>
-                    }
+                    @* 2026-06-17: Molienda + Envase se movieron al PANEL STICKY DERECHO (caja amarilla
+                       "Detalle del próximo ítem") para liberar espacio horizontal en el carrito. *@
                     @if (AvisoBultoConviene is not null)
                     {
                         <div style="margin: 0.4rem 0 0; padding: 0.5rem 0.7rem; background: #fef3c7; border: 1px solid #d97706; border-radius: 6px; display: flex; gap: 0.5rem; align-items: center; font-size: 0.85rem; color: #92400e;">
@@ -1716,9 +1688,42 @@
             @* 2026-06-17: el bloque "Enviar al cliente al emitir" se movio al panel sticky derecho. *@
                 </div> @* fin columna izquierda (formulario) *@
 
-                @* 2026-06-17: Panel sticky derecho SIEMPRE visible — incluye Mas comprados (cuando hay historial)
-                   + Entrega + Comentario armado + Totales + Cobrar al guardar. *@
+                @* 2026-06-17: Panel sticky derecho SIEMPRE visible — incluye Detalle proximo item (CAFE) +
+                   Mas comprados (cuando hay historial) + Entrega + Comentario armado + Totales + Cobrar al guardar. *@
                 <div style="position: sticky; top: 0; align-self: flex-start; max-height: calc(94vh - 120px); overflow-y: auto; display:flex; flex-direction:column; gap:0.6rem;">
+
+                @* 2026-06-17: Molienda + Envase del proximo item (antes estaba debajo del + Agregar).
+                   Solo aparece cuando vas a agregar un producto del tipo CAFE — para Combos/Servicios/Concepto libre no aplica. *@
+                @if (AddProductoCategoria == "CAFE")
+                {
+                    <div style="padding: 0.5rem 0.6rem; background:#fef3c7; border:1px solid #f59e0b; border-radius:8px;">
+                        <strong style="font-size: 0.74rem; color: #78350f; text-transform: uppercase; letter-spacing: 0.04em;">☕ Detalle del próximo ítem</strong>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; margin-top: 0.4rem;">
+                            <div>
+                                <label class="form-label" style="font-size: 0.7rem;">Molienda</label>
+                                <select id="nv-molienda" class="form-input" @bind="addMolienda" @onkeydown="OnKeyDownMolienda" style="background:white; border-color:#d97706; font-weight:600; font-size:0.78rem; padding:0.25rem 0.4rem;">
+                                    <option value="EN GRANOS">🫘 EN GRANOS</option>
+                                    <option value="MOLIDO FILTRO">☕ MOLIDO FILTRO</option>
+                                    <option value="MOLIDO EXPRESS">⚡ MOLIDO EXPRESS</option>
+                                    <option value="MOLIDO MOKA">☕ MOLIDO MOKA</option>
+                                    <option value="MOLIDO BODUM">☕ MOLIDO BODUM</option>
+                                    <option value="MOLIDO PRENSA FRANCESA">☕ MOLIDO PRENSA FRANCESA</option>
+                                    <option value="MOLIDO CAFETERA ITALIANA">☕ MOLIDO CAFETERA ITALIANA</option>
+                                    <option value="MOLIDO A LA TURCA">☕ MOLIDO A LA TURCA</option>
+                                    <option value="MINI EXPRESS">🔸 MINI EXPRESS</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="form-label" style="font-size: 0.7rem;">Envase</label>
+                                <select id="nv-envase" class="form-input" @bind="addEnvase" @onkeydown="OnKeyDownEnvase" style="background:white; border-color:#9ca3af; font-weight:600; font-size:0.78rem; padding:0.25rem 0.4rem;">
+                                    <option value="NEGRO">⚫ Envase negro</option>
+                                    <option value="PLATEADO">⚪ Envase plateado</option>
+                                    <option value="DOY_PACK">📦 Doy pack</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                }
 
                 @if (MostrarPanelTopProductos)
                 {
