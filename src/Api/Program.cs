@@ -148,6 +148,8 @@ builder.Services.AddHostedService<MeliFullStockSyncBackgroundService>();
 builder.Services.AddHostedService<MeliStockPushBackgroundService>();
 builder.Services.AddHostedService<MeliPricePushBackgroundService>();
 builder.Services.AddHostedService<ContabiliumNightlySnapshotService>();
+builder.Services.AddScoped<CafePreciosFuturosService>();
+builder.Services.AddHostedService<CafePreciosFuturosBackgroundService>();
 builder.Services.AddScoped<QrRepartidorService>();
 builder.Services.AddScoped<CafeReciboCobranzaPdfService>();
 builder.Services.AddScoped<MeliOrderService>();
