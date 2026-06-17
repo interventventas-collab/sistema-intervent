@@ -760,11 +760,11 @@
                 </div>
             </div>
             <div class="modal-body" style="overflow-y: auto;">
-                @* 2026-06-17: split — columna izq con todo el form + columna der sticky con "mas comprados".
-                   2026-06-17 v2: pasamos de flex a grid para garantizar que las 2 columnas queden lado a lado.
-                   Con flex el panel se "caia" abajo cuando el contenido de la izq tenia min-width grande. *@
-                <div style="display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 0.8rem; align-items: flex-start;">
-                <div style="min-width: 0;">
+                @* 2026-06-17 v3: el grid se rompia por un </div> huerfano dentro de la columna izq que cerraba
+                   prematuramente al wrapper. Como hace dificil identificar el div faltante, usamos position absolute
+                   para el panel derecho — la columna izq lleva padding-right para que no se solape. *@
+                <div style="position: relative;">
+                <div style="min-width: 0; padding-right: 360px;">
                 @* Banner de borrador pendiente — aparece sólo si hay un auto-guardado de sesión previa *@
                 @if (borradorBannerVisible && pendingBorrador is not null && !editingVentaId.HasValue)
                 {
@@ -1718,7 +1718,7 @@
 
                 @* 2026-06-17: Panel sticky derecho SIEMPRE visible — incluye Mas comprados (cuando hay historial)
                    + Entrega + Comentario armado + Totales + Cobrar al guardar. *@
-                <div style="position: sticky; top: 0; align-self: flex-start; max-height: calc(94vh - 120px); overflow-y: auto; display:flex; flex-direction:column; gap:0.6rem;">
+                <div style="position: absolute; top: 0; right: 0; width: 340px; max-height: calc(94vh - 140px); overflow-y: auto; display:flex; flex-direction:column; gap:0.6rem;">
 
                 @if (MostrarPanelTopProductos)
                 {
