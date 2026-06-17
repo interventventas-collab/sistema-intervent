@@ -31,7 +31,10 @@ public class CafeListaCustomPdfService
     public record PdfInput(CafeSetting Negocio, ListaInfo Lista, List<SeccionInfo> Secciones);
     public record ListaInfo(string Nombre, string? NumeroLista, string? Observaciones, string? TipoCliente, string? ClienteNombre, string? BackgroundUrl);
     public record SeccionInfo(string Titulo, List<ItemInfo> Items);
-    public record ItemInfo(string? Sku, string Nombre, string? Marca, string? Detalle, decimal? Precio, bool EsNovedad);
+    /// <summary>2026-06-17: Precio1Kg/PrecioMedio/PrecioCuarto se completan SOLO para CAFE (3 columnas en el PDF).
+    /// Para combos / packs / "otros", se usa Precio (precio unico) y los tres anteriores quedan null.</summary>
+    public record ItemInfo(string? Sku, string Nombre, string? Marca, string? Detalle, decimal? Precio, bool EsNovedad,
+        decimal? Precio1Kg = null, decimal? PrecioMedio = null, decimal? PrecioCuarto = null);
 
     public byte[] GenerarPdf(PdfInput inp)
     {
@@ -118,11 +121,25 @@ public class CafeListaCustomPdfService
                     }
                     foreach (var sec in inp.Secciones)
                     {
-                        // Banda de sección (negra con título a la izquierda y "PRECIO" a la derecha)
+                        // 2026-06-17: si la seccion tiene al menos un cafe (3 precios cargados),
+                        // mostramos 3 columnas (1 kg / ½ kg / ¼ kg). Sino, una sola columna PRECIO.
+                        bool tieneCafe = sec.Items.Any(i => i.Precio1Kg.HasValue || i.PrecioMedio.HasValue || i.PrecioCuarto.HasValue);
+
+                        // Banda de sección (negra con título a la izquierda y headers a la derecha)
                         col.Item().PaddingTop(4).Background(Colors.Black).Padding(4).Row(r =>
                         {
                             r.RelativeItem().Text(sec.Titulo.ToUpperInvariant()).FontSize(10).Bold().FontColor(Colors.White);
-                            r.AutoItem().Text("PRECIO").FontSize(10).Bold().FontColor(Colors.White);
+                            if (tieneCafe)
+                            {
+                                // 3 chips de header alineados con las columnas de precio
+                                r.ConstantItem(70).AlignCenter().Text("1 KG").FontSize(9).Bold().FontColor(Colors.White);
+                                r.ConstantItem(70).AlignCenter().Text("½ KG").FontSize(9).Bold().FontColor(Colors.White);
+                                r.ConstantItem(70).AlignCenter().Text("¼ KG").FontSize(9).Bold().FontColor(Colors.White);
+                            }
+                            else
+                            {
+                                r.ConstantItem(80).AlignRight().Text("PRECIO").FontSize(10).Bold().FontColor(Colors.White);
+                            }
                         });
 
                         // Tabla de items
@@ -130,17 +147,24 @@ public class CafeListaCustomPdfService
                         {
                             tbl.ColumnsDefinition(cd =>
                             {
-                                cd.ConstantColumn(80);   // SKU
+                                cd.ConstantColumn(60);   // SKU
                                 cd.RelativeColumn(5);    // Nombre
-                                cd.ConstantColumn(45);   // NOVEDAD
-                                cd.ConstantColumn(80);   // Precio
+                                cd.ConstantColumn(40);   // NOVEDAD
+                                if (tieneCafe)
+                                {
+                                    cd.ConstantColumn(70); // 1 kg
+                                    cd.ConstantColumn(70); // ½ kg
+                                    cd.ConstantColumn(70); // ¼ kg
+                                }
+                                else
+                                {
+                                    cd.ConstantColumn(80); // Precio único
+                                }
                             });
                             foreach (var it in sec.Items)
                             {
-                                // 2026-06-16 v2: SKU chico (FontSize 6) — antes era 8 y robaba protagonismo.
                                 tbl.Cell().BorderBottom(0.3f).BorderColor(Colors.Grey.Lighten2).Padding(3)
                                     .AlignLeft().AlignMiddle().Text(it.Sku ?? "").FontSize(6).Italic().FontColor(Colors.Grey.Darken2);
-                                // 2026-06-16 v4: marca como prefijo inline (volvi del chip porque rompia layout con nombres largos)
                                 tbl.Cell().BorderBottom(0.3f).BorderColor(Colors.Grey.Lighten2).Padding(3)
                                     .Text(t =>
                                     {
@@ -159,9 +183,41 @@ public class CafeListaCustomPdfService
                                         else
                                             e.Text("");
                                     });
-                                tbl.Cell().BorderBottom(0.3f).BorderColor(Colors.Grey.Lighten2).Padding(3)
-                                    .AlignRight().Text(it.Precio.HasValue ? "$" + it.Precio.Value.ToString("N0", Es) : "—")
-                                    .FontSize(11).Bold().Italic();
+
+                                if (tieneCafe)
+                                {
+                                    // CAFE → 3 precios. NO-CAFE en seccion mixta → precio unico centrado en 1 kg, "—" en ½ y ¼.
+                                    bool itemEsCafe = it.Precio1Kg.HasValue || it.PrecioMedio.HasValue || it.PrecioCuarto.HasValue;
+                                    if (itemEsCafe)
+                                    {
+                                        tbl.Cell().BorderBottom(0.3f).BorderColor(Colors.Grey.Lighten2).Padding(3)
+                                            .AlignRight().Text(it.Precio1Kg.HasValue ? "$" + it.Precio1Kg.Value.ToString("N0", Es) : "—")
+                                            .FontSize(11).Bold().Italic();
+                                        tbl.Cell().BorderBottom(0.3f).BorderColor(Colors.Grey.Lighten2).Padding(3)
+                                            .AlignRight().Text(it.PrecioMedio.HasValue ? "$" + it.PrecioMedio.Value.ToString("N0", Es) : "—")
+                                            .FontSize(11).Bold().Italic();
+                                        tbl.Cell().BorderBottom(0.3f).BorderColor(Colors.Grey.Lighten2).Padding(3)
+                                            .AlignRight().Text(it.PrecioCuarto.HasValue ? "$" + it.PrecioCuarto.Value.ToString("N0", Es) : "—")
+                                            .FontSize(11).Bold().Italic();
+                                    }
+                                    else
+                                    {
+                                        // precio unico en la columna 1 kg, las otras dos vacias.
+                                        tbl.Cell().BorderBottom(0.3f).BorderColor(Colors.Grey.Lighten2).Padding(3)
+                                            .AlignRight().Text(it.Precio.HasValue ? "$" + it.Precio.Value.ToString("N0", Es) : "—")
+                                            .FontSize(11).Bold().Italic();
+                                        tbl.Cell().BorderBottom(0.3f).BorderColor(Colors.Grey.Lighten2).Padding(3)
+                                            .AlignCenter().Text("—").FontSize(9).FontColor(Colors.Grey.Lighten1);
+                                        tbl.Cell().BorderBottom(0.3f).BorderColor(Colors.Grey.Lighten2).Padding(3)
+                                            .AlignCenter().Text("—").FontSize(9).FontColor(Colors.Grey.Lighten1);
+                                    }
+                                }
+                                else
+                                {
+                                    tbl.Cell().BorderBottom(0.3f).BorderColor(Colors.Grey.Lighten2).Padding(3)
+                                        .AlignRight().Text(it.Precio.HasValue ? "$" + it.Precio.Value.ToString("N0", Es) : "—")
+                                        .FontSize(11).Bold().Italic();
+                                }
                             }
                         });
                     }

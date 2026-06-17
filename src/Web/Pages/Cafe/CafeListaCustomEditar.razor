@@ -40,6 +40,9 @@
     .lc-drag-chosen { background: #eff6ff; }
     .it-name { flex: 1; min-width: 0; }
     .it-price { font-weight: 700; color: #15803d; min-width: 80px; text-align: right; }
+    .it-price-cafe { display: flex; flex-direction: column; gap: 0.05rem; font-size: 0.72rem; min-width: 105px; }
+    .it-price-cafe .lbl { color: #6b7280; font-weight: 500; margin-right: 0.25rem; }
+    .it-price-cafe div { display: flex; justify-content: space-between; align-items: baseline; }
     .it-actions { display: flex; gap: 0.2rem; }
     .it-btn { background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 4px; padding: 0.15rem 0.4rem; cursor: pointer; font-size: 0.75rem; }
     .it-btn:hover { background: #e5e7eb; }
@@ -238,7 +241,18 @@
                                                     <span class="novedad-chip">NOVEDAD</span>
                                                 }
                                             </div>
-                                            <div class="it-price">$@(it.Precio?.ToString("N0") ?? "—")</div>
+                                            @if (it.Precio1Kg.HasValue || it.PrecioMedio.HasValue || it.PrecioCuarto.HasValue)
+                                            {
+                                                <div class="it-price it-price-cafe" title="Precios 1 kg / ½ kg / ¼ kg">
+                                                    <div><span class="lbl">1 kg</span> $@(it.Precio1Kg?.ToString("N0") ?? "—")</div>
+                                                    <div><span class="lbl">½ kg</span> $@(it.PrecioMedio?.ToString("N0") ?? "—")</div>
+                                                    <div><span class="lbl">¼ kg</span> $@(it.PrecioCuarto?.ToString("N0") ?? "—")</div>
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                <div class="it-price">$@(it.Precio?.ToString("N0") ?? "—")</div>
+                                            }
                                             <div class="it-actions">
                                                 <button class="it-btn" title="Subir" @onclick="@(() => MoverItem(it.Id, "arriba"))" disabled="@(jidx == 0)">↑</button>
                                                 <button class="it-btn" title="Bajar" @onclick="@(() => MoverItem(it.Id, "abajo"))" disabled="@(jidx == sec.Items.Count - 1)">↓</button>

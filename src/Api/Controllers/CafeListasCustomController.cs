@@ -292,6 +292,10 @@ public class CafeListasCustomController : ControllerBase
         public string? Marca { get; set; }    // 2026-06-16: marca para mostrar
         public decimal? Precio { get; set; }
         public string? Detalle { get; set; }  // ej "Pack x 100" o "Combo 3 items"
+        // 2026-06-17: para CAFE — 3 precios (1 kg / ½ kg / ¼ kg) ya calculados.
+        public decimal? Precio1Kg { get; set; }
+        public decimal? PrecioMedio { get; set; }
+        public decimal? PrecioCuarto { get; set; }
     }
 
     public class ContenidoListaDto
@@ -332,16 +336,22 @@ public class CafeListasCustomController : ControllerBase
         var comboIds = secciones.SelectMany(s => s.Items).Where(i => i.TipoItem == "COMBO").Select(i => i.RefId).Distinct().ToList();
         var packIds = secciones.SelectMany(s => s.Items).Where(i => i.TipoItem == "PACK").Select(i => i.RefId).Distinct().ToList();
 
-        var productos = await _db.CafeProductos.Where(p => productoIds.Contains(p.Id))
+        // 2026-06-17: traemos productos enteros (Costo, OEM, Pvp1, packs) para poder calcular
+        // los 3 precios (1 kg / ½ / ¼) usando CafePricingService cuando es CAFE.
+        var productosEntidad = await _db.CafeProductos.Where(p => productoIds.Contains(p.Id))
             .Include(p => p.MarcaNav)
-            .Select(p => new { p.Id, p.Nombre, p.Sku, p.PrecioBar, p.PrecioOtro, Marca = p.Marca ?? (p.MarcaNav != null ? p.MarcaNav.Nombre : null) }).ToListAsync();
+            .Include(p => p.OemNav)
+            .Include(p => p.Packs)
+            .ToListAsync();
         var combos = await _db.CafeCombos.Where(c => comboIds.Contains(c.Id))
             .Select(c => new { c.Id, c.Nombre, c.Sku, c.Marca, Precio = (decimal?)c.PrecioReferencia }).ToListAsync();
         var packs = await _db.CafeProductoPacks.Where(p => packIds.Contains(p.Id))
             .Include(p => p.Producto).ThenInclude(p => p!.MarcaNav)
             .Select(p => new { p.Id, p.Nombre, p.Cantidad, p.PrecioOverride, ProdNombre = p.Producto!.Nombre, p.Producto.PrecioBar, p.Producto.PrecioOtro, p.Producto.Sku, Marca = p.Producto.Marca ?? (p.Producto.MarcaNav != null ? p.Producto.MarcaNav.Nombre : null) }).ToListAsync();
 
+        var negocio = await _db.CafeSettings.FirstOrDefaultAsync() ?? new CafeSetting();
         var esBar = string.Equals(lista.TipoCliente, "BAR", StringComparison.OrdinalIgnoreCase);
+        var tipoCli = esBar ? Services.CafePricingService.TIPO_BAR : Services.CafePricingService.TIPO_OTRO;
 
         var seccionesDto = secciones.Select(s => new SeccionDto
         {
@@ -355,11 +365,28 @@ public class CafeListasCustomController : ControllerBase
                 string? marca = null;
                 decimal? precio = null;
                 string? detalle = null;
+                decimal? p1Kg = null, pMedio = null, pCuarto = null;
 
                 if (i.TipoItem == "PRODUCTO")
                 {
-                    var p = productos.FirstOrDefault(x => x.Id == i.RefId);
-                    if (p != null) { nombre = p.Nombre; sku = p.Sku; marca = p.Marca; precio = esBar ? (p.PrecioBar ?? p.PrecioOtro) : (p.PrecioOtro ?? p.PrecioBar); }
+                    var p = productosEntidad.FirstOrDefault(x => x.Id == i.RefId);
+                    if (p != null)
+                    {
+                        nombre = p.Nombre;
+                        sku = p.Sku;
+                        marca = p.Marca ?? p.MarcaNav?.Nombre;
+                        if (string.Equals(p.Categoria, "CAFE", StringComparison.OrdinalIgnoreCase))
+                        {
+                            p1Kg = Services.CafePricingService.CalcularPrecioUnitario(p, Services.CafePricingService.FORMATO_1KG, tipoCli, negocio);
+                            pMedio = Services.CafePricingService.CalcularPrecioUnitario(p, Services.CafePricingService.FORMATO_MEDIO, tipoCli, negocio);
+                            pCuarto = Services.CafePricingService.CalcularPrecioUnitario(p, Services.CafePricingService.FORMATO_CUARTO, tipoCli, negocio);
+                            precio = p1Kg; // fallback para UI que aún no muestre las 3 columnas
+                        }
+                        else
+                        {
+                            precio = esBar ? (p.PrecioBar ?? p.PrecioOtro) : (p.PrecioOtro ?? p.PrecioBar);
+                        }
+                    }
                 }
                 else if (i.TipoItem == "COMBO")
                 {
@@ -383,7 +410,8 @@ public class CafeListasCustomController : ControllerBase
                 {
                     Id = i.Id, TipoItem = i.TipoItem, RefId = i.RefId, Orden = i.Orden,
                     Notas = i.Notas, EsNovedad = i.EsNovedad,
-                    Nombre = nombre, Sku = sku, Marca = marca, Precio = precio, Detalle = detalle
+                    Nombre = nombre, Sku = sku, Marca = marca, Precio = precio, Detalle = detalle,
+                    Precio1Kg = p1Kg, PrecioMedio = pMedio, PrecioCuarto = pCuarto
                 };
             }).ToList()
         }).ToList();
@@ -739,8 +767,14 @@ public class CafeListasCustomController : ControllerBase
         var comboIds = secciones.SelectMany(s => s.Items).Where(i => i.TipoItem == "COMBO").Select(i => i.RefId).Distinct().ToList();
         var packIds = secciones.SelectMany(s => s.Items).Where(i => i.TipoItem == "PACK").Select(i => i.RefId).Distinct().ToList();
 
-        var productos = await _db.CafeProductos.Include(p => p.MarcaNav).Where(p => productoIds.Contains(p.Id))
-            .Select(p => new { p.Id, p.Nombre, p.Sku, p.PrecioBar, p.PrecioOtro, Marca = p.Marca ?? (p.MarcaNav != null ? p.MarcaNav.Nombre : null) }).ToListAsync();
+        // 2026-06-17: para CAFE necesitamos el producto entero (Costo, OEM, Packs, Pvp1, etc.) +
+        // los settings, asi podemos calcular 1 kg / ½ kg / ¼ kg con CafePricingService.
+        var productosEntidad = await _db.CafeProductos
+            .Include(p => p.MarcaNav)
+            .Include(p => p.OemNav)
+            .Include(p => p.Packs)
+            .Where(p => productoIds.Contains(p.Id))
+            .ToListAsync();
         var combos = await _db.CafeCombos.Where(c => comboIds.Contains(c.Id))
             .Select(c => new { c.Id, c.Nombre, c.Sku, c.Marca, Precio = (decimal?)c.PrecioReferencia }).ToListAsync();
         var packs = await _db.CafeProductoPacks.Include(p => p.Producto).ThenInclude(p => p!.MarcaNav)
@@ -748,16 +782,34 @@ public class CafeListasCustomController : ControllerBase
             .Select(p => new { p.Id, p.Nombre, p.Cantidad, p.PrecioOverride, ProdNombre = p.Producto!.Nombre, p.Producto.PrecioBar, p.Producto.PrecioOtro, p.Producto.Sku, Marca = p.Producto.Marca ?? (p.Producto.MarcaNav != null ? p.Producto.MarcaNav.Nombre : null) }).ToListAsync();
 
         var esBar = string.Equals(lista.TipoCliente, "BAR", StringComparison.OrdinalIgnoreCase);
+        var tipoCli = esBar ? Services.CafePricingService.TIPO_BAR : Services.CafePricingService.TIPO_OTRO;
 
         var seccionesPdf = secciones.Select(s => new CafeListaCustomPdfService.SeccionInfo(
             s.Titulo,
             s.Items.OrderBy(i => i.Orden).ThenBy(i => i.Id).Select(i =>
             {
                 string? sku = null; string? nombre = $"#{i.RefId}"; string? marca = null; decimal? precio = null; string? detalle = null;
+                decimal? p1Kg = null, pMedio = null, pCuarto = null;
                 if (i.TipoItem == "PRODUCTO")
                 {
-                    var p = productos.FirstOrDefault(x => x.Id == i.RefId);
-                    if (p != null) { sku = p.Sku; nombre = p.Nombre; marca = p.Marca; precio = esBar ? (p.PrecioBar ?? p.PrecioOtro) : (p.PrecioOtro ?? p.PrecioBar); }
+                    var p = productosEntidad.FirstOrDefault(x => x.Id == i.RefId);
+                    if (p != null)
+                    {
+                        sku = p.Sku;
+                        nombre = p.Nombre;
+                        marca = p.Marca ?? p.MarcaNav?.Nombre;
+                        if (string.Equals(p.Categoria, "CAFE", StringComparison.OrdinalIgnoreCase))
+                        {
+                            // Para CAFE: calcular precio 1 kg / ½ kg / ¼ kg con CafePricingService.
+                            p1Kg = Services.CafePricingService.CalcularPrecioUnitario(p, Services.CafePricingService.FORMATO_1KG, tipoCli, negocio);
+                            pMedio = Services.CafePricingService.CalcularPrecioUnitario(p, Services.CafePricingService.FORMATO_MEDIO, tipoCli, negocio);
+                            pCuarto = Services.CafePricingService.CalcularPrecioUnitario(p, Services.CafePricingService.FORMATO_CUARTO, tipoCli, negocio);
+                        }
+                        else
+                        {
+                            precio = esBar ? (p.PrecioBar ?? p.PrecioOtro) : (p.PrecioOtro ?? p.PrecioBar);
+                        }
+                    }
                 }
                 else if (i.TipoItem == "COMBO")
                 {
@@ -777,7 +829,7 @@ public class CafeListasCustomController : ControllerBase
                         detalle = $"Pack x {p.Cantidad}";
                     }
                 }
-                return new CafeListaCustomPdfService.ItemInfo(sku, nombre ?? "", marca, detalle, precio, i.EsNovedad);
+                return new CafeListaCustomPdfService.ItemInfo(sku, nombre ?? "", marca, detalle, precio, i.EsNovedad, p1Kg, pMedio, pCuarto);
             }).ToList()
         )).ToList();
 

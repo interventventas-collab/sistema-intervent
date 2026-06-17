@@ -1577,6 +1577,9 @@ public class ItemCustomDto
     public string? Marca { get; set; }
     public decimal? Precio { get; set; }
     public string? Detalle { get; set; }
+    public decimal? Precio1Kg { get; set; }
+    public decimal? PrecioMedio { get; set; }
+    public decimal? PrecioCuarto { get; set; }
 }
 
 public class ItemDisponibleDto
