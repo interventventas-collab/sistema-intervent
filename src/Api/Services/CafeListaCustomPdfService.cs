@@ -39,8 +39,9 @@ public class CafeListaCustomPdfService
         var headerImageBytes = TryLoadLogoBytes(inp.Negocio.ListaPreciosHeaderImageUrl);
         var nombreEmpresa = inp.Negocio.NegocioNombre ?? "Empresa";
 
-        // 2026-06-16: si la lista tiene BackgroundUrl, cargamos el SVG/imagen para usar como fondo.
-        var bgSvg = TryLoadSvgText(inp.Lista.BackgroundUrl);
+        // 2026-06-16 v2: render el SVG a PNG bitmap. En vector algunos visores de PDF en mobile
+        // no renderean SVG embebido. Como PNG funciona en todos lados (Adobe, iOS, Android).
+        var bgPng = TryRenderSvgToPng(inp.Lista.BackgroundUrl, 0.15f);
 
         return Document.Create(container =>
         {
@@ -50,13 +51,10 @@ public class CafeListaCustomPdfService
                 page.Margin(25);
                 page.DefaultTextStyle(t => t.FontSize(9));
 
-                // ═══════════ BACKGROUND (watermark doodle, baja opacidad) ═══════════
-                if (!string.IsNullOrEmpty(bgSvg))
+                // ═══════════ BACKGROUND (watermark doodle, baja opacidad, como PNG) ═══════════
+                if (bgPng is not null)
                 {
-                    // Envolvemos el contenido del SVG en un <g opacity="0.15"> para que sea sutil
-                    // y no compita con el texto del PDF. QuestPDF renderea el SVG entero.
-                    var faded = WrapSvgWithOpacity(bgSvg, 0.15f);
-                    page.Background().Svg(faded);
+                    page.Background().Image(bgPng).FitArea();
                 }
 
                 // ═══════════ HEADER ═══════════
@@ -103,10 +101,11 @@ public class CafeListaCustomPdfService
                         });
                     });
 
-                    // Titulo grande de la lista (TAKE AWAY)
-                    headerCol.Item().PaddingTop(8).PaddingBottom(4).AlignCenter()
-                        .Text(inp.Lista.Nombre.ToUpperInvariant()).FontSize(32).Bold()
-                        .FontColor(Colors.Grey.Lighten1).LetterSpacing(3f);
+                    // 2026-06-16 v2: titulo mas chico (24, antes 32) + menos letterspacing (1, antes 3)
+                    // + color un poco mas oscuro (Lighten1 → Medium) para que se lea claro y ocupe menos espacio.
+                    headerCol.Item().PaddingTop(4).PaddingBottom(2).AlignCenter()
+                        .Text(inp.Lista.Nombre.ToUpperInvariant()).FontSize(24).Bold()
+                        .FontColor(Colors.Grey.Medium).LetterSpacing(1f);
                 });
 
                 // ═══════════ CONTENIDO ═══════════
@@ -190,38 +189,56 @@ public class CafeListaCustomPdfService
         }).GeneratePdf();
     }
 
-    /// <summary>2026-06-16: carga el contenido SVG (texto) desde la URL/path relativa del FileStorage.
-    /// Devuelve null si no hay path, el archivo no existe, o no es .svg.</summary>
-    private string? TryLoadSvgText(string? bgUrl)
+    /// <summary>2026-06-16 v2: convierte el SVG a PNG bitmap usando SkiaSharp. Es mas compatible
+    /// con visores de PDF en mobile (Adobe Reader iOS/Android, Google Drive, etc.) que el SVG embebido.
+    /// Aplica opacity al renderear (envolviendo el contenido en <g opacity="X">) antes de rasterizar.
+    /// Devuelve null si no hay path, el archivo no existe, o falla la conversion.</summary>
+    private byte[]? TryRenderSvgToPng(string? bgUrl, float opacity)
     {
         if (string.IsNullOrWhiteSpace(bgUrl)) return null;
         try
         {
-            // Si vino como "/api/files/download?path=..." extraemos solo el path.
             var rel = bgUrl;
             var idx = bgUrl.IndexOf("path=", StringComparison.OrdinalIgnoreCase);
             if (idx >= 0) rel = Uri.UnescapeDataString(bgUrl[(idx + 5)..].Split('&')[0]);
             if (!rel.EndsWith(".svg", StringComparison.OrdinalIgnoreCase)) return null;
             var abs = _files.ResolveSafe(rel);
             if (!File.Exists(abs)) return null;
-            return File.ReadAllText(abs);
+            var svgText = File.ReadAllText(abs);
+
+            // Envolvemos en <g opacity> para atenuar todo el dibujo de una.
+            var op = opacity.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+            var openTagEnd = svgText.IndexOf('>');
+            var closeIdx = svgText.LastIndexOf("</svg>", StringComparison.OrdinalIgnoreCase);
+            if (openTagEnd > 0 && closeIdx > openTagEnd)
+            {
+                var head = svgText.Substring(0, openTagEnd + 1);
+                var inner = svgText.Substring(openTagEnd + 1, closeIdx - (openTagEnd + 1));
+                svgText = head + $"<g opacity=\"{op}\">" + inner + "</g></svg>";
+            }
+
+            // Rasterizar con SkiaSharp.Svg. Tamaño A4 a 150dpi para buena resolución sin pesar mucho.
+            using var svg = new Svg.Skia.SKSvg();
+            svg.FromSvg(svgText);
+            if (svg.Picture is null) return null;
+
+            int width = 1240;   // A4 portrait a ~150dpi
+            int height = 1754;
+            using var bitmap = new SkiaSharp.SKBitmap(width, height);
+            using (var canvas = new SkiaSharp.SKCanvas(bitmap))
+            {
+                canvas.Clear(SkiaSharp.SKColors.White);
+                var pictureRect = svg.Picture.CullRect;
+                var scaleX = width / pictureRect.Width;
+                var scaleY = height / pictureRect.Height;
+                canvas.Scale(scaleX, scaleY);
+                canvas.DrawPicture(svg.Picture);
+            }
+            using var stream = new MemoryStream();
+            bitmap.Encode(stream, SkiaSharp.SKEncodedImageFormat.Png, 90);
+            return stream.ToArray();
         }
         catch { return null; }
-    }
-
-    /// <summary>Envuelve los hijos de un SVG en un <g opacity="X"> para atenuar todo el dibujo
-    /// sin tener que tocar cada elemento individual. Soporta SVGs simples.</summary>
-    private static string WrapSvgWithOpacity(string svg, float opacity)
-    {
-        var op = opacity.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
-        // Insertamos un <g opacity="X"> justo después del tag <svg ...> y cerramos antes de </svg>.
-        var openTagEnd = svg.IndexOf('>');
-        if (openTagEnd < 0) return svg;
-        var closeIdx = svg.LastIndexOf("</svg>", StringComparison.OrdinalIgnoreCase);
-        if (closeIdx < 0) return svg;
-        var head = svg.Substring(0, openTagEnd + 1);
-        var inner = svg.Substring(openTagEnd + 1, closeIdx - (openTagEnd + 1));
-        return head + $"<g opacity=\"{op}\">" + inner + "</g></svg>";
     }
 
     private byte[]? TryLoadLogoBytes(string? logoUrl)
