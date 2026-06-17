@@ -1267,13 +1267,16 @@
                     }
                     else
                     {
-                    <div class="form-row" style="align-items: end;">
+                    @* 2026-06-17 v3: grid CSS en lugar de form-row para garantizar una sola fila — las columnas son fijas
+                       (Cant 70 / Producto 1fr / Formato 130 / Molienda 200 / Envase 180). Cuando NO es café desaparecen
+                       las dos últimas y la grilla se ajusta sola. *@
+                    <div style="display: grid; grid-template-columns: 70px minmax(0, 1fr) 130px@(AddProductoCategoria == "CAFE" ? " 200px 180px" : ""); gap: 0.5rem; align-items: end;">
                         @* 2026-06-17 v2: Cant. movido al inicio de la fila — orden Cant | Producto | Formato | Molienda | Envase. *@
-                        <div class="form-group" style="flex: 0 0 70px;">
+                        <div class="form-group" style="margin:0;">
                             <label class="form-label" style="font-size: 0.75rem;">Cant.</label>
                             <input id="nv-cantidad" class="form-input" type="number" min="1" @bind="addCantidad" @onkeydown="OnKeyDownCantidad" style="text-align: right;" />
                         </div>
-                        <div class="form-group" style="flex: 1; position: relative; min-width: 0;">
+                        <div class="form-group" style="margin:0; position: relative; min-width: 0;">
                             <label class="form-label" style="font-size: 0.75rem;">Producto</label>
                             @if (addProductoId > 0)
                             {
@@ -1367,7 +1370,7 @@
                                 }
                             }
                         </div>
-                        <div class="form-group" style="flex: 0 0 130px;">
+                        <div class="form-group" style="margin:0;">
                             <label class="form-label" style="font-size: 0.75rem;">Formato</label>
                             <select id="nv-formato" class="form-input" value="@addFormato" @onchange="OnAddFormatoChanged" @onkeydown="OnKeyDownFormato">
                                 @if (AddProductoCategoria == "CAFE")
@@ -1393,7 +1396,7 @@
                         @* 2026-06-17 v2: Molienda + Envase pasaron a la MISMA fila (al lado de Formato). Solo café. *@
                         @if (AddProductoCategoria == "CAFE")
                         {
-                            <div class="form-group" style="flex: 0 0 200px;">
+                            <div class="form-group" style="margin:0;">
                                 <label class="form-label" style="font-size: 0.75rem;">Molienda</label>
                                 <select id="nv-molienda" class="form-input" @bind="addMolienda" @onkeydown="OnKeyDownMolienda" style="background:#fef3c7; border-color:#d97706; font-weight:600;">
                                     <option value="EN GRANOS">🫘 EN GRANOS</option>
@@ -1407,7 +1410,7 @@
                                     <option value="MINI EXPRESS">🔸 MINI EXPRESS</option>
                                 </select>
                             </div>
-                            <div class="form-group" style="flex: 0 0 180px;">
+                            <div class="form-group" style="margin:0;">
                                 <label class="form-label" style="font-size: 0.75rem;">Envase</label>
                                 <select id="nv-envase" class="form-input" @bind="addEnvase" @onkeydown="OnKeyDownEnvase" style="background:#f3f4f6; border-color:#9ca3af; font-weight:600;">
                                     <option value="NEGRO">⚫ Envase negro</option>
@@ -1417,25 +1420,21 @@
                             </div>
                         }
                     </div>
-                    @* 2026-06-17 v2: SEGUNDA FILA — botón Agregar (50%) + chip de precio en vivo (50%). *@
-                    <div class="form-row" style="align-items: end; margin-top: 0.4rem; gap: 0.5rem;">
-                        <div class="form-group" style="flex: 1;">
-                            <button class="btn btn-primary" type="button" @onclick="AddItem" style="width: 100%; padding: 0.55rem; font-size: 0.95rem; font-weight: 700;">+ Agregar</button>
-                        </div>
-                        <div class="form-group" style="flex: 1;">
-                            <div style="background: linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%); border: 1.5px solid #2563eb; border-radius: 4px; padding: 0.4rem 0.8rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; height: 100%; box-sizing: border-box;">
-                                <span style="color: #1e3a8a; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;">💰 Precio</span>
-                                @if (AddPrecioPreview > 0)
-                                {
-                                    <span style="font-size: 1.05rem; font-weight: 800; color: #065f46;">$ @FormatMoney(AddPrecioPreview)</span>
-                                    <span style="color: #6b7280; font-size: 0.7rem;">@(formClienteTipo == "BAR" ? "BAR" : "Comercial") · @AddPrecioPreviewLabel</span>
-                                }
-                                else
-                                {
-                                    <span style="color: #9ca3af; font-size: 0.85rem;">—</span>
-                                    <span style="color: #9ca3af; font-size: 0.7rem;">Elegí un producto</span>
-                                }
-                            </div>
+                    @* 2026-06-17 v3: SEGUNDA FILA — botón Agregar (50%) + chip de precio en vivo (50%). Grid CSS para garantizar 50/50. *@
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; align-items: stretch; margin-top: 0.5rem;">
+                        <button class="btn btn-primary" type="button" @onclick="AddItem" style="padding: 0.6rem; font-size: 0.95rem; font-weight: 700;">+ Agregar</button>
+                        <div style="background: linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%); border: 1.5px solid #2563eb; border-radius: 4px; padding: 0.4rem 0.8rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; box-sizing: border-box;">
+                            <span style="color: #1e3a8a; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;">💰 Precio</span>
+                            @if (AddPrecioPreview > 0)
+                            {
+                                <span style="font-size: 1.05rem; font-weight: 800; color: #065f46;">$ @FormatMoney(AddPrecioPreview)</span>
+                                <span style="color: #6b7280; font-size: 0.7rem;">@(formClienteTipo == "BAR" ? "BAR" : "Comercial") · @AddPrecioPreviewLabel</span>
+                            }
+                            else
+                            {
+                                <span style="color: #9ca3af; font-size: 0.85rem;">—</span>
+                                <span style="color: #9ca3af; font-size: 0.7rem;">Elegí un producto</span>
+                            }
                         </div>
                     </div>
                     @* Antes Cant. estaba en la fila 1 a la derecha. Ahora va al principio. *@
