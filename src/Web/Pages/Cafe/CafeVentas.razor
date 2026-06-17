@@ -1362,7 +1362,7 @@
                                 }
                             }
                         </div>
-                        <div class="form-group" style="flex: 1;">
+                        <div class="form-group" style="flex: 0 0 170px;">
                             <label class="form-label" style="font-size: 0.75rem;">Formato</label>
                             <select id="nv-formato" class="form-input" value="@addFormato" @onchange="OnAddFormatoChanged" @onkeydown="OnKeyDownFormato">
                                 @if (AddProductoCategoria == "CAFE")
@@ -1399,7 +1399,7 @@
                     @if (AddProductoCategoria == "CAFE")
                     {
                         <div class="form-row" style="align-items: end; margin-top: 0.4rem;">
-                            <div class="form-group" style="flex: 1;">
+                            <div class="form-group" style="flex: 0 0 250px;">
                                 <label class="form-label" style="font-size: 0.75rem;">Molienda</label>
                                 <select id="nv-molienda" class="form-input" @bind="addMolienda" @onkeydown="OnKeyDownMolienda" style="background:#fef3c7; border-color:#d97706; font-weight:600;">
                                     <option value="EN GRANOS">🫘 EN GRANOS</option>
@@ -1413,7 +1413,7 @@
                                     <option value="MINI EXPRESS">🔸 MINI EXPRESS</option>
                                 </select>
                             </div>
-                            <div class="form-group" style="flex: 1;">
+                            <div class="form-group" style="flex: 0 0 220px;">
                                 <label class="form-label" style="font-size: 0.75rem;">Envase</label>
                                 <select id="nv-envase" class="form-input" @bind="addEnvase" @onkeydown="OnKeyDownEnvase" style="background:#f3f4f6; border-color:#9ca3af; font-weight:600;">
                                     <option value="NEGRO">⚫ Envase negro</option>
