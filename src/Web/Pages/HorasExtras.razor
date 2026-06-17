@@ -252,7 +252,7 @@
     @* Registros recientes *@
     <div class="he-card">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem; flex-wrap:wrap; gap:0.5rem;">
-            <h3 style="margin: 0;">Registros recientes (últimos 30 días)</h3>
+            <h3 style="margin: 0;">Registros — @rangoLabel</h3>
             <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
                 @* 2026-06-03: filtro por empleado client-side. Muestra solo registros del empleado seleccionado. *@
                 <label style="font-size:0.85rem; color:#374151;">Empleado:</label>
@@ -269,6 +269,20 @@
                 <button class="btn btn-secondary" @onclick="RecargarTodo">🔄 Refrescar</button>
             </div>
         </div>
+
+        @* 2026-06-17: filtros por período — chips rápidos + rango personalizado *@
+        <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap; padding:0.5rem 0.6rem; background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; margin-bottom:0.6rem;">
+            <span style="font-size:0.75rem; color:#6b7280; font-weight:600;">PERIODO:</span>
+            <button class="@ChipClase("30d")" @onclick='() => SetPreset("30d")'>30 días</button>
+            <button class="@ChipClase("90d")" @onclick='() => SetPreset("90d")'>90 días</button>
+            <button class="@ChipClase("6m")" @onclick='() => SetPreset("6m")'>6 meses</button>
+            <button class="@ChipClase("ciclo")" @onclick='() => SetPreset("ciclo")' disabled="@(filtroEmpleadoId == 0)" title="@(filtroEmpleadoId == 0 ? "Elegí primero un empleado" : "")">Su ciclo</button>
+            <button class="@ChipClase("todo")" @onclick='() => SetPreset("todo")'>Todo</button>
+            <span style="margin-left:0.6rem; font-size:0.75rem; color:#6b7280;">o elegí:</span>
+            <input type="date" class="form-input" style="width:auto; font-size:0.8rem; padding:0.25rem 0.4rem;" @bind="filtroDesde" @bind:after='() => SetPreset("custom")' />
+            <span style="font-size:0.75rem; color:#6b7280;">→</span>
+            <input type="date" class="form-input" style="width:auto; font-size:0.8rem; padding:0.25rem 0.4rem;" @bind="filtroHasta" @bind:after='() => SetPreset("custom")' />
+        </div>
         @if (registros is null)
         {
             <p style="color:#6b7280;">Cargando...</p>
@@ -284,7 +298,7 @@
                 : registros;
             @if (registrosFiltrados.Count == 0)
             {
-                <p style="color:#6b7280;">No hay registros para este empleado en los últimos 30 días.</p>
+                <p style="color:#6b7280;">No hay registros para este empleado en este período (@rangoLabel).</p>
             }
             else
             {
@@ -516,7 +530,61 @@
     private List<AdminEmpleadoDto>? empleados;
     private List<AdminRegistroDto>? registros;
     // 2026-06-03: filtro client-side por empleado en la tabla de registros recientes. 0 = todos.
-    private int filtroEmpleadoId = 0;
+    private int _filtroEmpleadoId = 0;
+    private int filtroEmpleadoId
+    {
+        get => _filtroEmpleadoId;
+        set { _filtroEmpleadoId = value; _ = RecargarRegistros(); }
+    }
+    // 2026-06-17: filtro de período. Default 30 días para que la pantalla cargue rápido.
+    private string filtroPreset = "30d";   // 30d / 90d / 6m / ciclo / todo / custom
+    private DateTime? filtroDesde;
+    private DateTime? filtroHasta;
+    private string rangoLabel = "últimos 30 días";
+
+    private string ChipClase(string preset)
+        => filtroPreset == preset
+            ? "btn btn-primary btn-sm"
+            : "btn btn-secondary btn-sm";
+
+    private async Task SetPreset(string preset)
+    {
+        filtroPreset = preset;
+        var hoy = DateTime.Today;
+        switch (preset)
+        {
+            case "30d":
+                filtroDesde = hoy.AddDays(-30); filtroHasta = hoy;
+                rangoLabel = "últimos 30 días"; break;
+            case "90d":
+                filtroDesde = hoy.AddDays(-90); filtroHasta = hoy;
+                rangoLabel = "últimos 90 días"; break;
+            case "6m":
+                filtroDesde = hoy.AddMonths(-6); filtroHasta = hoy;
+                rangoLabel = "últimos 6 meses"; break;
+            case "ciclo":
+                filtroDesde = null; filtroHasta = null; // el backend usa el ciclo si solo viene empleadoId
+                rangoLabel = "ciclo actual del empleado"; break;
+            case "todo":
+                filtroDesde = new DateTime(2024, 1, 1); filtroHasta = hoy;
+                rangoLabel = "todo el historial"; break;
+            case "custom":
+                rangoLabel = $"{filtroDesde:dd/MM/yyyy} → {filtroHasta:dd/MM/yyyy}"; break;
+        }
+        await RecargarRegistros();
+    }
+
+    private async Task RecargarRegistros()
+    {
+        var url = "api/horas-extras/admin/registros";
+        var qs = new List<string>();
+        if (filtroDesde.HasValue) qs.Add($"desde={filtroDesde.Value:yyyy-MM-dd}");
+        if (filtroHasta.HasValue) qs.Add($"hasta={filtroHasta.Value:yyyy-MM-dd}");
+        if (_filtroEmpleadoId > 0) qs.Add($"empleadoId={_filtroEmpleadoId}");
+        if (qs.Count > 0) url += "?" + string.Join("&", qs);
+        registros = await Http.GetFromJsonAsync<List<AdminRegistroDto>>(url);
+        StateHasChanged();
+    }
 
     private bool showFormEmp, savingEmp;
     private int? editingId;
@@ -599,7 +667,7 @@
     private async Task RecargarTodo()
     {
         empleados = await Http.GetFromJsonAsync<List<AdminEmpleadoDto>>("api/horas-extras/admin/empleados");
-        registros = await Http.GetFromJsonAsync<List<AdminRegistroDto>>("api/horas-extras/admin/registros");
+        await RecargarRegistros();
     }
 
     private void ShowCreateEmpleado()

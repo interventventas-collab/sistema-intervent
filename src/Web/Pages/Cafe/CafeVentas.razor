@@ -1713,78 +1713,7 @@
                     <textarea class="form-input" rows="2" @bind="formObservaciones" placeholder="Notas internas (opcional)"></textarea>
                 </div>
             </div>
-            @* ═══════════════ Panel: Enviar al cliente al emitir ═══════════════
-               Solo en venta NUEVA (no en edicion). 3 canales paralelos: Email, WhatsApp Web (link
-               wa.me para que vos confirmes el envio) y WhatsApp Interno (con PDF adjunto desde
-               el container vinculado). Los destinatarios se auto-completan del cliente
-               seleccionado; si no tiene, el operador los tipea a mano. *@
-            @if (!editingVentaId.HasValue)
-            {
-                <div style="border-top: 1px solid #e5e7eb; padding: 0.8rem 1.2rem; background: #f9fafb;">
-                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
-                        <strong style="font-size: 0.88rem; color: #374151;">📤 Enviar al cliente al emitir</strong>
-                        <button type="button" class="btn btn-secondary" style="font-size: 0.72rem; padding: 0.25rem 0.6rem;"
-                                @onclick="MarcarTodosEnvios">
-                            @(envioEmail && envioWhatsappWeb && envioWhatsappInterno ? "Desmarcar todos" : "Marcar todos")
-                        </button>
-                    </div>
-                    <div style="display: flex; flex-direction: column; gap: 0.4rem;">
-                        <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem;">
-                            <input type="checkbox" @bind="envioEmail" />
-                            <span>📧 <strong>Por Mail</strong></span>
-                            <input type="email" class="form-input" placeholder="email@cliente.com"
-                                   style="flex: 1; font-size: 0.8rem; padding: 0.3rem 0.5rem; max-width: 280px;"
-                                   @bind="envioEmailTo" disabled="@(!envioEmail)" />
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem;">
-                            <input type="checkbox" @bind="envioWhatsappWeb" />
-                            <span>📱 <strong>WhatsApp Web</strong> <span style="font-size: 0.72rem; color: #6b7280;">(abre WhatsApp Web, vos confirmas envio)</span></span>
-                            <input type="tel" class="form-input" placeholder="11 1234 5678"
-                                   style="flex: 1; font-size: 0.8rem; padding: 0.3rem 0.5rem; max-width: 200px;"
-                                   @bind="envioWhatsappPhone" disabled="@(!envioWhatsappWeb)" />
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem;">
-                            <input type="checkbox" @bind="envioWhatsappInterno" />
-                            <span>🚀 <strong>WhatsApp Interno</strong> <span style="font-size: 0.72rem; color: #6b7280;">(envia automatico + adjunta PDF)</span></span>
-                            <input type="tel" class="form-input" placeholder="11 1234 5678"
-                                   style="flex: 1; font-size: 0.8rem; padding: 0.3rem 0.5rem; max-width: 200px;"
-                                   @bind="envioWhatsappPhone" disabled="@(!envioWhatsappInterno)" />
-                        </label>
-                        @* 2026-05-28: nuevo check para enviar al tablero "IMPRIMIR PEDIDOS DE OSMAR"
-                           (Drive). Default tildado porque la mayoria de las ventas van al armado. *@
-                        <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem;">
-                            <input type="checkbox" @bind="envioDrive" />
-                            <span>📁 <strong>Enviar a IMPRIMIR PEDIDOS DE OSMAR</strong>
-                                <span style="font-size: 0.72rem; color: #6b7280;">(sube el PDF a Drive y aparece en /cafe/preparacion para armar)</span>
-                            </span>
-                        </label>
-                    </div>
-                    @if (formClienteId == 0 && (envioEmail || envioWhatsappWeb || envioWhatsappInterno))
-                    {
-                        <div style="font-size: 0.72rem; color: #9a3412; margin-top: 0.4rem; background: #fef3c7; padding: 0.3rem 0.6rem; border-radius: 4px;">
-                            ⚠ No hay cliente seleccionado — completá los destinatarios a mano.
-                        </div>
-                    }
-                </div>
-            }
-            @* 2026-06-03: en modo EDIT solo mostramos el checkbox de Drive. Sin los otros canales
-               (mail/whatsapp) — esos no se re-envian al editar. Permite re-subir el PDF actualizado
-               a IMPRIMIR PEDIDOS DE OSMAR cuando se modifico un pedido ya cargado. *@
-            @if (editingVentaId.HasValue)
-            {
-                <div style="border-top: 1px solid #e5e7eb; padding: 0.8rem 1.2rem; background: #f0f9ff;">
-                    <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.88rem;">
-                        <input type="checkbox" @bind="envioDriveEdit" />
-                        <span>📁 <strong>@(editingVentaTieneDrive ? "Re-subir a IMPRIMIR PEDIDOS DE OSMAR" : "Enviar a IMPRIMIR PEDIDOS DE OSMAR")</strong>
-                            <span style="display:block; font-size: 0.72rem; color: #6b7280; margin-top:0.1rem;">
-                                @(editingVentaTieneDrive
-                                    ? "Sube el PDF actualizado a Drive y avisa al armador con un chip \"⚠ PEDIDO MODIFICADO\" en /cafe/preparacion."
-                                    : "Sube el PDF a Drive y aparece en /cafe/preparacion para armar.")
-                            </span>
-                        </span>
-                    </label>
-                </div>
-            }
+            @* 2026-06-17: el bloque "Enviar al cliente al emitir" se movio al panel sticky derecho. *@
                 </div> @* fin columna izquierda (formulario) *@
 
                 @* 2026-06-17: Panel sticky derecho SIEMPRE visible — incluye Mas comprados (cuando hay historial)
