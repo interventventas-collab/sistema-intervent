@@ -1,5 +1,6 @@
 using Api.Data;
 using Api.Models;
+using Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -18,7 +19,11 @@ namespace Api.Controllers;
 public class CafeRepartidorPublicController : ControllerBase
 {
     private readonly AppDbContext _db;
-    public CafeRepartidorPublicController(AppDbContext db) { _db = db; }
+    private readonly MeliShipmentService _me1Service;
+    public CafeRepartidorPublicController(AppDbContext db, MeliShipmentService me1Service)
+    {
+        _db = db; _me1Service = me1Service;
+    }
 
     public record RepartidorListItemDto(int Id, string Nombre);
     public record InfoVentaDto(int VentaId, string Numero, DateTime Fecha,
@@ -749,5 +754,77 @@ public class CafeRepartidorPublicController : ControllerBase
             await _db.SaveChangesAsync();
             return Ok(new { ok = true, reemplazado = false, mensaje = "✓ Ubicacion borrada. Avisale al admin para que la corrija." });
         }
+    }
+
+    // ============================================================
+    // 2026-06-17: ME1 (MercadoLibre) en /mis-pedidos del repartidor.
+    // El admin asigna desde /meli/me1/entregas, el repartidor las ve
+    // como cards amarillas y marca entregado desde el celu.
+    // ============================================================
+
+    public record MisPedidosMe1Dto(
+        int Id, long MeliShipmentId, long? MeliOrderId,
+        string? ReceiverName, string? BuyerNickname, string? ReceiverPhone,
+        string? AddressLine, string? Neighborhood, string? City, string? State, string? ZipCode,
+        decimal? OrderTotal, string? ItemsSummary, string? TrackingNumber,
+        string? Status, string? Substatus,
+        DateTime? DateShipped, DateTime? DateDelivered,
+        bool YaEntregada, DateTime? EntregadoAt
+    );
+
+    /// <summary>2026-06-17: lista las ME1 asignadas al repartidor (pendientes + las que el repartidor entrego).
+    /// Misma autenticacion que /mis-pedidos: PublicToken del repartidor + repartidor activo.</summary>
+    [HttpGet("mis-pedidos/{tokenRepartidor}/me1")]
+    public async Task<IActionResult> MisPedidosMe1(string tokenRepartidor, [FromQuery] int dias = 14)
+    {
+        var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null) return NotFound(new { error = "Enlace invalido o repartidor inactivo" });
+
+        var desde = DateTime.UtcNow.AddDays(-Math.Max(1, dias));
+
+        // Trae ME1 asignadas al repartidor (pendientes) + las que el repartidor marco entregadas
+        // dentro del rango (para que vea su historial reciente).
+        var list = await _db.MeliShipments
+            .Where(s => s.Mode == "me1" &&
+                ((s.RepartidorAsignadoId == r.Id && s.Status != "delivered" && s.Status != "not_delivered" && s.Status != "cancelled")
+                 || (s.EntregadoPorRepartidorId == r.Id && s.EntregadoPorRepartidorAt >= desde)))
+            .OrderByDescending(s => s.DateCreated ?? s.LastSyncedAt)
+            .ToListAsync();
+
+        return Ok(list.Select(s => new MisPedidosMe1Dto(
+            s.Id, s.MeliShipmentId, s.MeliOrderId,
+            s.ReceiverName, s.BuyerNickname, s.ReceiverPhone,
+            s.AddressLine, s.Neighborhood, s.City, s.State, s.ZipCode,
+            s.OrderTotal, s.ItemsSummary, s.TrackingNumber,
+            s.Status, s.Substatus,
+            s.DateShipped, s.DateDelivered,
+            s.EntregadoPorRepartidorId.HasValue, s.EntregadoPorRepartidorAt
+        )));
+    }
+
+    /// <summary>2026-06-17: marca un envio ME1 como entregado desde el celu del repartidor.
+    /// Llama a la API de MeLi (irreversible). Doble confirmacion se hace en el frontend.
+    /// Valida que el envio este asignado a este repartidor y que aun no este entregado.</summary>
+    [HttpPost("mis-pedidos/{tokenRepartidor}/me1/{shipmentId:int}/entregar")]
+    public async Task<IActionResult> EntregarMe1(string tokenRepartidor, int shipmentId)
+    {
+        var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null) return NotFound(new { error = "Enlace invalido o repartidor inactivo" });
+
+        var ship = await _db.MeliShipments.FirstOrDefaultAsync(s => s.Id == shipmentId);
+        if (ship is null) return NotFound(new { error = "Envio no encontrado" });
+        if (ship.RepartidorAsignadoId != r.Id) return Forbid();
+        if (ship.Status == "delivered") return BadRequest(new { error = "Este envio ya esta entregado en MeLi" });
+
+        var (ok, error) = await _me1Service.SetMe1StatusAsync(
+            shipmentId, "delivered", null, null, null,
+            $"Entregado por {r.Nombre} via app");
+        if (!ok) return BadRequest(new { error = error ?? "No se pudo marcar entregado en MeLi" });
+
+        ship.EntregadoPorRepartidorId = r.Id;
+        ship.EntregadoPorRepartidorAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        return Ok(new { ok = true });
     }
 }

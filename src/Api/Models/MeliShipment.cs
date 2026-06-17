@@ -63,4 +63,16 @@ public class MeliShipment
     /// <summary>2026-06-16: cuando posteamos el link de Google Maps como nota interna en la
     /// orden de MeLi (para el repartidor). Si esta seteado no volvemos a postear (evita duplicar).</summary>
     public DateTime? MapsNoteSentAt { get; set; }
+
+    /// <summary>2026-06-17: repartidor (Cafe_Repartidores.Id) al que el admin le asigna esta orden ME1
+    /// desde /me1/entregas. El repartidor ve sus ME1 pendientes en /mis-pedidos y las marca entregadas
+    /// con doble confirmacion (impacta en MeLi instantaneamente — no es reversible).</summary>
+    public int? RepartidorAsignadoId { get; set; }
+
+    /// <summary>2026-06-17: repartidor que efectivamente marco la entrega desde el celu. Puede ser distinto
+    /// del asignado si se reasignaron caminos.</summary>
+    public int? EntregadoPorRepartidorId { get; set; }
+
+    /// <summary>2026-06-17: cuando el repartidor toco "Entregue" desde /mis-pedidos.</summary>
+    public DateTime? EntregadoPorRepartidorAt { get; set; }
 }

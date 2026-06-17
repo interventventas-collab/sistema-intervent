@@ -4252,6 +4252,15 @@ public class ApiClient
     public async Task<MeliMe1SyncResultDto?> SyncMeliMe1ShipmentsAsync(int days = 30, int maxOrders = 300)
         => await PostAsync<MeliMe1SyncResultDto>("/api/meli/me1/sync", new { days, maxOrders });
 
+    /// <summary>2026-06-17: asigna (o desasigna con null) un repartidor a un envio ME1.</summary>
+    public async Task<bool> AsignarRepartidorMe1Async(int shipmentId, int? repartidorId)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/meli/me1/shipments/{shipmentId}/asignar-repartidor",
+            new { repartidorId });
+        return resp.IsSuccessStatusCode;
+    }
+
     /// <summary>2026-06-08: importa un envío puntual por número de ORDEN MeLi.
     /// Útil cuando el sync masivo no la trae por filtros.</summary>
     public async Task<(bool ok, string mensaje)> ImportMeliMe1ByOrderIdAsync(string orderId)

@@ -81,6 +81,32 @@
                                     {
                                         <div style="font-size: 0.78rem; color: #6b7280;">@s.AddressLine, @s.City</div>
                                     }
+                                    @* 2026-06-17: asignacion de repartidor — el repartidor vera la ME1 en su /mis-pedidos. *@
+                                    @{
+                                        var isFinalAsig = s.Status == "delivered" || s.Status == "not_delivered" || s.Status == "cancelled";
+                                    }
+                                    @if (!isFinalAsig)
+                                    {
+                                        <div style="margin-top: 0.4rem; display: flex; align-items: center; gap: 0.3rem;">
+                                            <span style="font-size: 0.72rem; color: #6b7280;">🚚</span>
+                                            <select class="form-input" style="padding: 0.2rem 0.35rem; font-size: 0.78rem; max-width: 180px;"
+                                                    value="@(s.RepartidorAsignadoId?.ToString() ?? "")"
+                                                    @onchange="@(e => OnRepartidorChange(s, e.Value?.ToString()))"
+                                                    disabled="@(busyAsig == s.Id)">
+                                                <option value="">— Asignar repartidor —</option>
+                                                @foreach (var r in repartidores)
+                                                {
+                                                    <option value="@r.Id">@r.Nombre</option>
+                                                }
+                                            </select>
+                                        </div>
+                                    }
+                                    else if (!string.IsNullOrEmpty(s.EntregadoPorRepartidorNombre))
+                                    {
+                                        <div style="margin-top: 0.4rem; font-size: 0.74rem; color: #15803d;">
+                                            ✅ Entregó @s.EntregadoPorRepartidorNombre
+                                        </div>
+                                    }
                                 </td>
                                 <td>
                                     <div style="font-size: 0.85rem;">@(s.ItemsSummary ?? "—")</div>
@@ -194,6 +220,11 @@
     private string filter = "pendientes";
     private int? busyRow;
 
+    // 2026-06-17: asignacion de repartidor a envios ME1.
+    private List<CafeRepartidorMiniDto> repartidores = new();
+    private int? busyAsig;
+    public record CafeRepartidorMiniDto(int Id, string Nombre);
+
     private class PendingChange
     {
         public MeliMe1ShipmentDto Ship { get; set; } = default!;
@@ -207,7 +238,41 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await LoadRepartidoresAsync();
         await LoadAsync();
+    }
+
+    private async Task LoadRepartidoresAsync()
+    {
+        try
+        {
+            var list = await Api.GetRepartidoresAsync();
+            repartidores = (list ?? new())
+                .Where(r => r.IsActive)
+                .Select(r => new CafeRepartidorMiniDto(r.Id, r.Nombre))
+                .ToList();
+        }
+        catch { /* silencioso — si falla, el dropdown queda vacio */ }
+    }
+
+    private async Task OnRepartidorChange(MeliMe1ShipmentDto s, string? value)
+    {
+        int? newRepId = int.TryParse(value, out var v) ? v : (int?)null;
+        if (newRepId == s.RepartidorAsignadoId) return;
+        busyAsig = s.Id;
+        try
+        {
+            var ok = await Api.AsignarRepartidorMe1Async(s.Id, newRepId);
+            if (ok)
+            {
+                s.RepartidorAsignadoId = newRepId;
+                s.RepartidorAsignadoNombre = newRepId.HasValue ? repartidores.FirstOrDefault(r => r.Id == newRepId.Value)?.Nombre : null;
+                ToastService.Success(newRepId.HasValue ? "✓ Repartidor asignado" : "✓ Asignación quitada");
+            }
+            else ToastService.Error("No se pudo asignar el repartidor");
+        }
+        catch (Exception ex) { ToastService.Error($"Error: {ex.Message}"); }
+        finally { busyAsig = null; }
     }
 
     private async Task LoadAsync()

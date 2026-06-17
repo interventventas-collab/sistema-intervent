@@ -204,6 +204,64 @@
             <div style="background:#fee2e2; color:#991b1b; padding:0.6rem 0.8rem; border-radius:8px; margin-bottom:0.8rem; font-size:0.88rem;">⚠ @scanError</div>
         }
 
+@* ─── ME1 (MercadoLibre) — 2026-06-17 ─── *@
+        var me1Pendientes = me1Pedidos.Where(m => !m.YaEntregada).ToList();
+        @if (me1Pendientes.Count > 0)
+        {
+            <div class="mp-section-title">📦 Pedidos MercadoLibre <span class="badge" style="background:#f59e0b;">@me1Pendientes.Count</span></div>
+            <div style="font-size:0.72rem; color:#92400e; margin:0 0 0.5rem; padding:0.35rem 0.55rem; background:#fef3c7; border-left:3px solid #f59e0b; border-radius:6px;">
+                ⚠ Al marcar entregado, MeLi recibe la confirmación al instante. NO se puede deshacer.
+            </div>
+            @foreach (var m in me1Pendientes)
+            {
+                var dir = string.IsNullOrWhiteSpace(m.AddressLine) ? "—" : m.AddressLine;
+                var loc = string.Join(" · ", new[] { m.Neighborhood, m.City, m.State, m.ZipCode }.Where(x => !string.IsNullOrWhiteSpace(x)));
+                <div class="mp-card pendiente" style="background:white; border:2px solid #f59e0b; border-left:6px solid #f59e0b; margin-bottom:0.7rem; padding:0.7rem;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
+                        <span style="background:#fef3c7; color:#92400e; font-size:0.72rem; font-weight:700; padding:0.15rem 0.5rem; border-radius:4px;">📦 MeLi</span>
+                        <span style="font-size:0.7rem; color:#6b7280;">Venta #@(m.MeliOrderId?.ToString() ?? "—")</span>
+                    </div>
+                    <div style="font-weight:700; font-size:1.02rem; color:#111827;">@(m.ReceiverName ?? m.BuyerNickname ?? "—")</div>
+                    @if (!string.IsNullOrWhiteSpace(m.BuyerNickname))
+                    {
+                        <div style="font-size:0.75rem; color:#1d4ed8; font-family:monospace;">👤 @m.BuyerNickname</div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(m.ReceiverPhone))
+                    {
+                        <div style="font-size:0.78rem; color:#374151; margin-top:0.15rem;">📞 <a href="tel:@m.ReceiverPhone" style="color:#1d4ed8; font-weight:600;">@m.ReceiverPhone</a></div>
+                    }
+                    <div style="margin-top:0.5rem; padding:0.5rem 0.6rem; background:#f9fafb; border-radius:6px; font-size:0.85rem;">
+                        <div style="font-size:0.68rem; color:#6b7280; font-weight:600; text-transform:uppercase; letter-spacing:0.03em;">Dirección</div>
+                        <div style="font-weight:600; color:#111827;">@dir</div>
+                        @if (!string.IsNullOrEmpty(loc))
+                        {
+                            <div style="font-size:0.78rem; color:#6b7280;">@loc</div>
+                        }
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(m.ItemsSummary))
+                    {
+                        <div style="margin-top:0.45rem; font-size:0.82rem; color:#374151;">
+                            <span style="font-weight:600;">Productos:</span> @m.ItemsSummary
+                        </div>
+                    }
+                    <div style="display:flex; gap:0.5rem; margin-top:0.35rem; font-size:0.72rem; color:#6b7280;">
+                        @if (!string.IsNullOrWhiteSpace(m.TrackingNumber))
+                        {
+                            <span><b>Tracking:</b> @m.TrackingNumber</span>
+                        }
+                        @if (m.OrderTotal.HasValue)
+                        {
+                            <span style="margin-left:auto; color:#111827; font-weight:700;">$@m.OrderTotal.Value.ToString("N0")</span>
+                        }
+                    </div>
+                    <button type="button" class="mp-card-btn mp-card-btn-entregar" style="margin-top:0.7rem; width:100%; padding:0.7rem; font-size:0.95rem;"
+                            @onclick="() => AbrirEntregarMe1(m)">
+                        ✅ Entregué este pedido
+                    </button>
+                </div>
+            }
+        }
+
         @* PENDIENTES — siempre completos, sin filtro de fecha (puede tener pendientes de varios días) *@
         var pendientes = pedidos.Where(p => !p.YaEntregada).ToList();
         <div id="mp-pendientes" class="mp-section-title">📦 Pendientes <span class="badge">@pendientes.Count</span></div>
@@ -504,6 +562,50 @@
     <div class="mp-toast @(toastError ? "error" : "")">@toastMsg</div>
 }
 
+@* 2026-06-17: modal de DOBLE CONFIRMACION para entregar ME1 — la accion impacta en MeLi al instante y NO es reversible. *@
+@if (me1ConfirmEntrega is not null)
+{
+    var m = me1ConfirmEntrega;
+    <div class="modal-overlay" @onclick="CerrarMe1Modal" style="background: rgba(0,0,0,0.55);">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 420px; border: 3px solid #dc2626;">
+            <div class="modal-header" style="background: #fef2f2; border-bottom: 1px solid #fecaca;">
+                <h4 style="margin: 0; color: #991b1b;">⚠ ¿Estás seguro?</h4>
+                <button class="btn-close" @onclick="CerrarMe1Modal" style="color: #991b1b;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.92rem; color: #374151; margin: 0 0 0.7rem; line-height: 1.5;">
+                    Al marcar entregado, <b>MercadoLibre recibe la confirmación al instante</b>.
+                </p>
+                <p style="font-size: 0.88rem; color: #991b1b; margin: 0 0 0.9rem; font-weight: 700; padding: 0.5rem 0.7rem; background: #fef2f2; border-radius: 6px; border-left: 4px solid #dc2626;">
+                    🚨 Esta acción NO se puede deshacer.
+                </p>
+                <div style="background: #f9fafb; padding: 0.7rem 0.85rem; border-radius: 8px; margin-bottom: 0.7rem;">
+                    <div style="font-size: 0.72rem; color: #6b7280; font-weight: 600; text-transform: uppercase;">Vas a marcar como entregado:</div>
+                    <div style="font-size: 1.02rem; font-weight: 700; color: #111827; margin-top: 0.25rem;">@(m.ReceiverName ?? m.BuyerNickname ?? "—")</div>
+                    @if (!string.IsNullOrWhiteSpace(m.AddressLine))
+                    {
+                        <div style="font-size: 0.85rem; color: #374151;">📍 @m.AddressLine</div>
+                    }
+                    @if (m.MeliOrderId.HasValue)
+                    {
+                        <div style="font-size: 0.72rem; color: #6b7280; margin-top: 0.3rem; font-family: monospace;">Venta MeLi #@m.MeliOrderId</div>
+                    }
+                </div>
+                @if (!string.IsNullOrEmpty(me1EntregaError))
+                {
+                    <div style="background: #fee2e2; color: #991b1b; padding: 0.5rem 0.7rem; border-radius: 6px; font-size: 0.85rem; margin-bottom: 0.5rem;">⚠ @me1EntregaError</div>
+                }
+            </div>
+            <div class="modal-footer" style="gap: 0.5rem;">
+                <button class="btn btn-secondary" @onclick="CerrarMe1Modal" disabled="@me1Entregando" style="flex: 1;">Cancelar</button>
+                <button class="btn btn-danger" @onclick="ConfirmarEntregarMe1" disabled="@me1Entregando" style="flex: 1.2; background: #16a34a; border-color: #15803d; color: white; font-weight: 700;">
+                    @(me1Entregando ? "Marcando..." : "✅ SÍ, entregué")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     [Parameter] public string Token { get; set; } = "";
 
@@ -524,11 +626,27 @@
     public record CobroDto(int VentaId, decimal Importe, string Estado, DateTime FechaCobro);
     public record MisPedidosResp(int RepartidorId, string Nombre, List<PedidoDto> Pedidos, List<CobroDto>? Cobros);
 
+    // 2026-06-17: ME1 (MercadoLibre) — pedidos asignados al repartidor por el admin desde /meli/me1/entregas.
+    public record Me1PedidoDto(
+        int Id, long MeliShipmentId, long? MeliOrderId,
+        string? ReceiverName, string? BuyerNickname, string? ReceiverPhone,
+        string? AddressLine, string? Neighborhood, string? City, string? State, string? ZipCode,
+        decimal? OrderTotal, string? ItemsSummary, string? TrackingNumber,
+        string? Status, string? Substatus,
+        DateTime? DateShipped, DateTime? DateDelivered,
+        bool YaEntregada, DateTime? EntregadoAt
+    );
+
     private bool loading = true, cargaError = false;
     private string nombre = "";
     private int repartidorId;
     private List<PedidoDto> pedidos = new();
     private List<CobroDto> cobros = new();
+    // 2026-06-17: ME1 (MercadoLibre)
+    private List<Me1PedidoDto> me1Pedidos = new();
+    private Me1PedidoDto? me1ConfirmEntrega; // setea cuando se abre el modal de doble confirmacion
+    private bool me1Entregando = false;
+    private string? me1EntregaError;
     // 2026-06-09: filtro de fecha para las entregas + arqueo
     private string filtroFecha = "hoy"; // hoy / ayer / semana / todos
 
@@ -607,6 +725,13 @@
             repartidorId = r.RepartidorId;
             pedidos = r.Pedidos ?? new();
             cobros = r.Cobros ?? new();
+            // 2026-06-17: ME1 (MercadoLibre) — pedidos asignados al repartidor.
+            try
+            {
+                var me1 = await Http.GetFromJsonAsync<List<Me1PedidoDto>>($"api/cafe/repartidor-public/mis-pedidos/{Token}/me1");
+                me1Pedidos = me1 ?? new();
+            }
+            catch { me1Pedidos = new(); }
             // 2026-06-11: reaplicar orden manual guardado en este celu (si lo hay)
             await AplicarOrdenGuardado();
             // Forzar re-init de Sortable porque cambio el contenido del DOM
@@ -1227,5 +1352,44 @@
             ubicEnProcesoIds.Remove(cid);
             StateHasChanged();
         }
+    }
+
+    // 2026-06-17: ME1 — abrir modal de doble confirmacion para marcar entregado.
+    private void AbrirEntregarMe1(Me1PedidoDto m)
+    {
+        me1ConfirmEntrega = m;
+        me1EntregaError = null;
+    }
+
+    private void CerrarMe1Modal()
+    {
+        if (me1Entregando) return;
+        me1ConfirmEntrega = null;
+        me1EntregaError = null;
+    }
+
+    private async Task ConfirmarEntregarMe1()
+    {
+        if (me1ConfirmEntrega is null) return;
+        me1Entregando = true; me1EntregaError = null; StateHasChanged();
+        try
+        {
+            var resp = await Http.PostAsync(
+                $"api/cafe/repartidor-public/mis-pedidos/{Token}/me1/{me1ConfirmEntrega.Id}/entregar",
+                content: null);
+            if (resp.IsSuccessStatusCode)
+            {
+                MostrarToast("✅ Marcado entregado en MeLi", false);
+                me1ConfirmEntrega = null;
+                await Recargar();
+            }
+            else
+            {
+                var body = await resp.Content.ReadAsStringAsync();
+                me1EntregaError = $"No se pudo marcar entregado. {body}";
+            }
+        }
+        catch (Exception ex) { me1EntregaError = $"Error: {ex.Message}"; }
+        finally { me1Entregando = false; StateHasChanged(); }
     }
 }

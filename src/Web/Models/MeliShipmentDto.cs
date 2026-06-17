@@ -92,6 +92,12 @@ public class MeliMe1ShipmentDto
     public DateTime? EstimatedDeliveryFinal { get; set; }
     public DateTime? EstimatedDeliveryLimit { get; set; }
     public DateTime? LastSyncedAt { get; set; }
+    // 2026-06-17: asignacion + registro de entrega por repartidor del sistema "Mis Pedidos".
+    public int? RepartidorAsignadoId { get; set; }
+    public string? RepartidorAsignadoNombre { get; set; }
+    public int? EntregadoPorRepartidorId { get; set; }
+    public string? EntregadoPorRepartidorNombre { get; set; }
+    public DateTime? EntregadoPorRepartidorAt { get; set; }
 }
 
 public class MeliMe1SyncResultDto

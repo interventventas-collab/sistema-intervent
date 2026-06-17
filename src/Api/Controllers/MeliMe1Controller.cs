@@ -66,6 +66,19 @@ public class MeliMe1Controller : ControllerBase
             .Take(take)
             .ToListAsync();
 
+        // 2026-06-17: traer nombres de repartidores asignados / que entregaron en un solo lookup.
+        var repartidorIds = list
+            .SelectMany(s => new[] { s.RepartidorAsignadoId, s.EntregadoPorRepartidorId })
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToList();
+        var repartidores = repartidorIds.Count == 0
+            ? new Dictionary<int, string>()
+            : await _db.CafeRepartidores
+                .Where(r => repartidorIds.Contains(r.Id))
+                .ToDictionaryAsync(r => r.Id, r => r.Nombre);
+
         return Ok(list.Select(s => new
         {
             id = s.Id,
@@ -92,7 +105,13 @@ public class MeliMe1Controller : ControllerBase
             dateDelivered = s.DateDelivered,
             estimatedDeliveryFinal = s.EstimatedDeliveryFinal,
             estimatedDeliveryLimit = s.EstimatedDeliveryLimit,
-            lastSyncedAt = s.LastSyncedAt
+            lastSyncedAt = s.LastSyncedAt,
+            // 2026-06-17: campos nuevos para asignacion y registro de entrega por repartidor.
+            repartidorAsignadoId = s.RepartidorAsignadoId,
+            repartidorAsignadoNombre = s.RepartidorAsignadoId.HasValue && repartidores.TryGetValue(s.RepartidorAsignadoId.Value, out var nA) ? nA : null,
+            entregadoPorRepartidorId = s.EntregadoPorRepartidorId,
+            entregadoPorRepartidorNombre = s.EntregadoPorRepartidorId.HasValue && repartidores.TryGetValue(s.EntregadoPorRepartidorId.Value, out var nE) ? nE : null,
+            entregadoPorRepartidorAt = s.EntregadoPorRepartidorAt
         }));
     }
 
@@ -178,6 +197,36 @@ public class MeliMe1Controller : ControllerBase
         await _audit.LogAsync("MeliShipment.ME1", ship.MeliShipmentId.ToString(), "set_status", changes);
 
         return Ok(new { ok = true });
+    }
+
+    // ============================================================
+    // 2026-06-17: ASIGNACION DE REPARTIDOR a envios ME1
+    // Para que el repartidor vea las ME1 que le tocan en su celu (/mis-pedidos).
+    // ============================================================
+
+    public record AsignarRepartidorRequest(int? RepartidorId);
+
+    /// <summary>Asigna (o desasigna con null) un repartidor a un envio ME1.</summary>
+    [HttpPost("shipments/{id:int}/asignar-repartidor")]
+    public async Task<IActionResult> AsignarRepartidor(int id, [FromBody] AsignarRepartidorRequest req)
+    {
+        var ship = await _db.MeliShipments.FirstOrDefaultAsync(s => s.Id == id);
+        if (ship is null) return NotFound(new { error = "Envio no encontrado" });
+
+        if (req.RepartidorId.HasValue)
+        {
+            var repExiste = await _db.CafeRepartidores.AnyAsync(r => r.Id == req.RepartidorId.Value && r.IsActive);
+            if (!repExiste) return BadRequest(new { error = "Repartidor no encontrado o inactivo" });
+        }
+
+        var prev = ship.RepartidorAsignadoId;
+        ship.RepartidorAsignadoId = req.RepartidorId;
+        await _db.SaveChangesAsync();
+
+        await _audit.LogAsync("MeliShipment.ME1", ship.MeliShipmentId.ToString(),
+            "asignar_repartidor", $"de '{prev?.ToString() ?? "null"}' a '{req.RepartidorId?.ToString() ?? "null"}'");
+
+        return Ok(new { ok = true, repartidorId = req.RepartidorId });
     }
 
     // ============================================================
