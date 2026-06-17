@@ -73,6 +73,10 @@
                             <tr style="@rowStyle">
                                 <td>
                                     <div style="font-weight: 600;">@(s.ReceiverName ?? s.BuyerNickname ?? "—")</div>
+                                    @if (!string.IsNullOrWhiteSpace(s.BuyerNickname))
+                                    {
+                                        <div style="font-size: 0.72rem; color: #1d4ed8; font-family: monospace;">👤 @s.BuyerNickname</div>
+                                    }
                                     @if (!string.IsNullOrWhiteSpace(s.AddressLine))
                                     {
                                         <div style="font-size: 0.78rem; color: #6b7280;">@s.AddressLine, @s.City</div>
@@ -80,7 +84,13 @@
                                 </td>
                                 <td>
                                     <div style="font-size: 0.85rem;">@(s.ItemsSummary ?? "—")</div>
-                                    <div style="font-size: 0.75rem; color: #9ca3af;">Envio #@s.MeliShipmentId</div>
+                                    <div style="font-size: 0.75rem; color: #9ca3af;">
+                                        @if (s.MeliOrderId.HasValue)
+                                        {
+                                            <span>Venta #@s.MeliOrderId · </span>
+                                        }
+                                        Envio #@s.MeliShipmentId
+                                    </div>
                                 </td>
                                 <td style="text-align: right; font-weight: 600;">
                                     @(s.OrderTotal.HasValue ? $"${s.OrderTotal.Value:N0}" : "—")
