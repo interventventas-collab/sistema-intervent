@@ -3198,7 +3198,9 @@ public class CafeVentasController : ControllerBase
                     // el header "📦 COMBO XYZ" arriba de los componentes en /cafe/preparacion
                     comboOrigenId = i.ComboOrigenId,
                     comboOrigenNombre = i.ComboOrigenId != null ? _db.Set<CafeCombo>().Where(c => c.Id == i.ComboOrigenId).Select(c => c.Nombre).FirstOrDefault() : null,
-                    comboOrigenSku = i.ComboOrigenId != null ? _db.Set<CafeCombo>().Where(c => c.Id == i.ComboOrigenId).Select(c => c.Sku).FirstOrDefault() : null
+                    comboOrigenSku = i.ComboOrigenId != null ? _db.Set<CafeCombo>().Where(c => c.Id == i.ComboOrigenId).Select(c => c.Sku).FirstOrDefault() : null,
+                    // 2026-06-17: unidades por bulto del producto — el armador necesita saber cuantas unidades trae cada bulto
+                    uxB = i.ProductoId != null ? _db.CafeProductos.Where(p => p.Id == i.ProductoId).Select(p => p.UxB).FirstOrDefault() : null
                 }).ToList()
             })
             .ToListAsync();
@@ -3328,7 +3330,9 @@ public class CafeVentasController : ControllerBase
                     // 2026-06-08: idem que en /preparacion — desglose visible para el armador
                     comboOrigenId = i.ComboOrigenId,
                     comboOrigenNombre = i.ComboOrigenId != null ? _db.Set<CafeCombo>().Where(c => c.Id == i.ComboOrigenId).Select(c => c.Nombre).FirstOrDefault() : null,
-                    comboOrigenSku = i.ComboOrigenId != null ? _db.Set<CafeCombo>().Where(c => c.Id == i.ComboOrigenId).Select(c => c.Sku).FirstOrDefault() : null
+                    comboOrigenSku = i.ComboOrigenId != null ? _db.Set<CafeCombo>().Where(c => c.Id == i.ComboOrigenId).Select(c => c.Sku).FirstOrDefault() : null,
+                    // 2026-06-17: UxB para que el chip "Bulto x N u." funcione tambien en la seccion "Ya armados"
+                    uxB = i.ProductoId != null ? _db.CafeProductos.Where(p => p.Id == i.ProductoId).Select(p => p.UxB).FirstOrDefault() : null
                 }).ToList()
             })
             .ToListAsync();

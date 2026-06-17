@@ -194,7 +194,9 @@
                                 }
                             </div>
                             <div class="prep-item-tags">
-                                <span class="prep-tag prep-tag-formato">@FormatoLabel(it.Formato)</span>
+                                @* 2026-06-17: si es BULTO o PACK, anexamos las unidades por bulto al chip
+                                   para que el armador sepa cuantas unidades trae cada bulto/pack al contar. *@
+                                <span class="prep-tag prep-tag-formato">@FormatoLabelExtendido(it.Formato, it.UxB)</span>
                                 @if (!string.IsNullOrEmpty(it.Molienda))
                                 {
                                     <span class="prep-tag prep-tag-molienda">@MoliendaIcon(it.Molienda) @it.Molienda</span>
@@ -308,6 +310,17 @@
         "BULTO" => "Bulto",
         _ => f
     };
+
+    // 2026-06-17: para BULTO y PACK anexamos las unidades que vienen en cada bulto
+    // (campo UxB del producto). El armador ve "Bulto x 1200 u." en vez de solo "Bulto".
+    private static string FormatoLabelExtendido(string f, int? uxB)
+    {
+        var baseLabel = FormatoLabel(f);
+        var fu = (f ?? "").ToUpperInvariant();
+        if ((fu == "BULTO" || fu == "PACK") && uxB.HasValue && uxB.Value > 0)
+            return $"{baseLabel} x {uxB.Value} u.";
+        return baseLabel;
+    }
 
     private static string MoliendaIcon(string m) => m switch
     {

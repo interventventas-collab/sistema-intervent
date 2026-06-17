@@ -535,6 +535,9 @@ public class CafePreparacionItemDto
     public int? ComboOrigenId { get; set; }
     public string? ComboOrigenNombre { get; set; }
     public string? ComboOrigenSku { get; set; }
+    /// <summary>2026-06-17: unidades por bulto del producto. Cuando el item es Formato="BULTO",
+    /// el armador necesita saber cuantas unidades vienen en cada bulto para contar bien al armar.</summary>
+    public int? UxB { get; set; }
 }
 
 public class CafeCambiarEstadoPreparacionRequest
