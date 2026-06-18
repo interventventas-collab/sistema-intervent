@@ -49,6 +49,18 @@ public class CafeCombo
     /// Internamente el comportamiento es el mismo que combo: se expande en sus items al agregar.</summary>
     public bool EsCompuesto { get; set; }
 
+    /// <summary>2026-06-18: OEM del compuesto. Cuando el fabricante (Colombraro, etc.) vende
+    /// el producto armado con su propio código y precio mayorista, lo cargamos acá. El sistema
+    /// usa OEM.PvpConIva × MultiplicadorOem como precio del compuesto, ignorando la suma de
+    /// componentes. Solo aplica si EsCompuesto=true. Null = no usa OEM, fallback a PrecioReferencia
+    /// o suma de componentes.</summary>
+    public int? OemId { get; set; }
+    [ForeignKey(nameof(OemId))]
+    public CafeOem? OemNav { get; set; }
+
+    [Column(TypeName = "decimal(10,4)")]
+    public decimal? MultiplicadorOem { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 

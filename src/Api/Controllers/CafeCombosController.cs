@@ -24,7 +24,7 @@ public class CafeCombosController : ControllerBase
     public async Task<IActionResult> GetAll([FromQuery] bool? activos = null)
     {
         var settings = await _db.CafeSettings.FindAsync(1) ?? new CafeSetting { Id = 1 };
-        var q = _db.CafeCombos.Include(c => c.Items).ThenInclude(i => i.ProductoNav).AsQueryable();
+        var q = _db.CafeCombos.Include(c => c.Items).ThenInclude(i => i.ProductoNav).Include(c => c.OemNav).AsQueryable();
         if (activos == true) q = q.Where(c => c.IsActive);
 
         var combos = await q.OrderBy(c => c.Nombre).ToListAsync();
@@ -35,7 +35,7 @@ public class CafeCombosController : ControllerBase
     public async Task<IActionResult> GetById(int id)
     {
         var settings = await _db.CafeSettings.FindAsync(1) ?? new CafeSetting { Id = 1 };
-        var c = await _db.CafeCombos.Include(x => x.Items).ThenInclude(i => i.ProductoNav)
+        var c = await _db.CafeCombos.Include(x => x.Items).ThenInclude(i => i.ProductoNav).Include(x => x.OemNav)
             .FirstOrDefaultAsync(x => x.Id == id);
         if (c is null) return NotFound(new { error = "Combo no encontrado" });
         return Ok(Map(c, settings));
@@ -54,7 +54,10 @@ public class CafeCombosController : ControllerBase
             Nombre = req.Nombre.Trim(),
             Descripcion = string.IsNullOrWhiteSpace(req.Descripcion) ? null : req.Descripcion.Trim(),
             IsActive = true,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            EsCompuesto = req.EsCompuesto ?? false,
+            OemId = req.OemId,
+            MultiplicadorOem = req.MultiplicadorOem
         };
 
         var validacion = await ValidarYAgregarItemsAsync(combo, req.Items);
@@ -83,6 +86,24 @@ public class CafeCombosController : ControllerBase
         if (req.Descripcion is not null)
             combo.Descripcion = string.IsNullOrWhiteSpace(req.Descripcion) ? null : req.Descripcion.Trim();
         if (req.IsActive.HasValue) combo.IsActive = req.IsActive.Value;
+        if (req.EsCompuesto.HasValue) combo.EsCompuesto = req.EsCompuesto.Value;
+        // 2026-06-18: OEM. ClearOem=true desvincula (vuelve a precio por componentes).
+        // Si OemId viene con valor, se setea. Si no se manda nada, queda como estaba.
+        if (req.ClearOem == true)
+        {
+            combo.OemId = null;
+            combo.MultiplicadorOem = null;
+        }
+        else if (req.OemId.HasValue)
+        {
+            combo.OemId = req.OemId.Value;
+            combo.MultiplicadorOem = req.MultiplicadorOem ?? 1m;
+        }
+        else if (req.MultiplicadorOem.HasValue && combo.OemId.HasValue)
+        {
+            // Permitir cambiar solo el multiplicador manteniendo el OEM
+            combo.MultiplicadorOem = req.MultiplicadorOem.Value;
+        }
 
         if (req.Items is not null)
         {
@@ -215,7 +236,7 @@ public class CafeCombosController : ControllerBase
 
     private async Task<CafeCombo> ReloadAsync(int id)
     {
-        return (await _db.CafeCombos.Include(c => c.Items).ThenInclude(i => i.ProductoNav)
+        return (await _db.CafeCombos.Include(c => c.Items).ThenInclude(i => i.ProductoNav).Include(c => c.OemNav)
             .FirstAsync(c => c.Id == id));
     }
 
@@ -270,6 +291,19 @@ public class CafeCombosController : ControllerBase
             precioOtro += CafePricingService.CalcularPrecioUnitario(prod, it.Formato, "OTRO", settings) * it.Cantidad;
         }
 
+        // 2026-06-18: si el compuesto tiene OEM cargado, usar el PVP del OEM × multiplicador
+        // en lugar de la suma de componentes. Logica espejo de CafeProductos.
+        if (c.EsCompuesto && c.OemNav is not null && (c.OemNav.PvpConIva ?? 0m) > 0m)
+        {
+            var mult = c.MultiplicadorOem ?? 1m;
+            if (mult <= 0m) mult = 1m;
+            var oemConIva = Math.Round((c.OemNav.PvpConIva ?? 0m) * mult, 2);
+            // OEM trae el PvpConIva. Mostramos el mismo precio para BAR y OTRO porque el OEM
+            // representa el precio mayorista unico del armado de fabrica.
+            precioBar = oemConIva;
+            precioOtro = oemConIva;
+        }
+
         return new CafeComboDto(
             c.Id, c.Nombre, c.Descripcion,
             c.IsActive, c.CreatedAt, c.UpdatedAt,
@@ -288,7 +322,12 @@ public class CafeCombosController : ControllerBase
                 x.SortOrder,
                 x.EsEnvasePlateado)).ToList(),
             Sku: c.Sku,
-            EsCompuesto: c.EsCompuesto
+            EsCompuesto: c.EsCompuesto,
+            OemId: c.OemId,
+            OemCodigo: c.OemNav?.Codigo,
+            OemPvpConIva: c.OemNav?.PvpConIva,
+            OemIvaPct: c.OemNav?.IvaPct,
+            MultiplicadorOem: c.MultiplicadorOem
         );
     }
 }

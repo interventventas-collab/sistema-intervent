@@ -886,6 +886,13 @@ public class CafeComboDto
     public List<CafeComboItemDto> Items { get; set; } = new();
     public string? Sku { get; set; }   // 2026-06-01: para que el buscador matchee por SKU
     public bool EsCompuesto { get; set; }  // 2026-06-01: si true, aparece en pestaña Producto del buscador
+    // 2026-06-18: OEM en compuestos. Cuando el compuesto tiene OEM cargado, el sistema usa
+    // PvpConIva del OEM × MultiplicadorOem como precio (ignorando suma de componentes).
+    public int? OemId { get; set; }
+    public string? OemCodigo { get; set; }
+    public decimal? OemPvpConIva { get; set; }
+    public decimal? OemIvaPct { get; set; }
+    public decimal? MultiplicadorOem { get; set; }
 }
 
 public class CafeComboItemRequest
@@ -903,6 +910,9 @@ public class CreateCafeComboRequest
     public string Nombre { get; set; } = "";
     public string? Descripcion { get; set; }
     public List<CafeComboItemRequest> Items { get; set; } = new();
+    public int? OemId { get; set; }
+    public decimal? MultiplicadorOem { get; set; }
+    public bool? EsCompuesto { get; set; }
 }
 
 public class UpdateCafeComboRequest
@@ -911,6 +921,10 @@ public class UpdateCafeComboRequest
     public string? Descripcion { get; set; }
     public bool? IsActive { get; set; }
     public List<CafeComboItemRequest>? Items { get; set; }
+    public int? OemId { get; set; }
+    public decimal? MultiplicadorOem { get; set; }
+    public bool? ClearOem { get; set; }
+    public bool? EsCompuesto { get; set; }
 }
 
 // ===== OEMs =====

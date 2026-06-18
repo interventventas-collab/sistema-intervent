@@ -226,6 +226,101 @@
                     <textarea class="form-input" rows="2" @bind="formDescripcion" placeholder="Texto opcional que se muestra debajo del nombre..."></textarea>
                 </div>
 
+                @* ── 2026-06-18: Es Compuesto + OEM ── *@
+                <div style="background: @(formEsCompuesto ? "#f5f3ff" : "#fffbeb"); border: 1px solid @(formEsCompuesto ? "#c4b5fd" : "#fde68a"); border-radius: 8px; padding: 0.6rem 0.75rem; margin-bottom: 0.75rem;">
+                    <label style="display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer; font-weight: 700;">
+                        <input type="checkbox" @bind="formEsCompuesto" />
+                        @if (formEsCompuesto)
+                        {
+                            <span style="color: #6d28d9;">🟣 Producto Compuesto</span>
+                            <span style="font-weight: 400; color: #6b7280; font-size: 0.78rem;">(tacho armado, cesto, etc — se ve en /cafe/productos)</span>
+                        }
+                        else
+                        {
+                            <span style="color: #92400e;">🟠 Combo MeLi</span>
+                            <span style="font-weight: 400; color: #6b7280; font-size: 0.78rem;">(pack importado de Contabilium para descuento de stock)</span>
+                        }
+                    </label>
+
+                    @if (formEsCompuesto)
+                    {
+                        <div style="margin-top: 0.6rem; border-top: 1px dashed #c4b5fd; padding-top: 0.6rem;">
+                            <label class="form-label" style="font-size: 0.78rem; color: #6d28d9; font-weight: 700; text-transform: uppercase;">📋 OEM del compuesto (opcional)</label>
+                            <p style="font-size: 0.7rem; color: #6b7280; margin: 0 0 0.4rem;">Si el fabricante vende este compuesto con su propio código y precio, vinculalo. El sistema cobra <strong>OEM PVP × multiplicador</strong> en vez de sumar los componentes.</p>
+                            <div class="form-row" style="align-items: end;">
+                                <div class="form-group" style="flex: 2; position: relative; margin-bottom: 0;">
+                                    @if (formOemId > 0)
+                                    {
+                                        var oSel = oems?.FirstOrDefault(x => x.Id == formOemId);
+                                        <div style="display: flex; gap: 0.3rem; align-items: center;">
+                                            <div class="form-input" style="flex: 1; background: #ecfdf5; border-color: #10b981; display: flex; align-items: center; gap: 0.5rem;">
+                                                <span style="background:#16a34a; color:white; padding:0.15rem 0.45rem; border-radius:6px; font-weight:800; font-family:monospace;">@(oSel?.Codigo ?? "?")</span>
+                                                <strong>@(oSel?.Descripcion ?? "—")</strong>
+                                                @if (oSel?.PvpConIva.HasValue == true)
+                                                {
+                                                    <span style="font-size: 0.72rem; color: #15803d;">· PVP c/IVA $@FormatMoney(oSel.PvpConIva.Value)</span>
+                                                }
+                                            </div>
+                                            <button class="btn btn-secondary" type="button" @onclick="ClearOemCompuesto" title="Desvincular OEM">×</button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <input class="form-input" @bind="oemSearch" @bind:event="oninput"
+                                               @onfocus="() => oemSearchOpen = true"
+                                               placeholder="🔍 Buscar OEM por código, descripción, marca, barcode..." />
+                                        @if (oemSearchOpen && !string.IsNullOrWhiteSpace(oemSearch))
+                                        {
+                                            var matches = OemsMatching(oemSearch).Take(20).ToList();
+                                            <div style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #d1d5db; border-radius: 6px; max-height: 280px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 14px rgba(0,0,0,0.12); margin-top: 0.2rem;">
+                                                @if (matches.Count == 0)
+                                                {
+                                                    <div style="padding: 0.6rem; color: #6b7280; font-size: 0.85rem;">Sin resultados.</div>
+                                                }
+                                                else
+                                                {
+                                                    @foreach (var o in matches)
+                                                    {
+                                                        var oId = o.Id;
+                                                        <div class="cli-pick-row" @onclick="() => SelectOemCompuesto(oId)"
+                                                             style="padding: 0.4rem 0.6rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem;">
+                                                            <span style="background:#16a34a; color:white; padding:0.1rem 0.4rem; border-radius:4px; font-weight:700; font-family:monospace; margin-right:0.4rem;">@o.Codigo</span>
+                                                            <strong>@(o.Descripcion ?? "")</strong>
+                                                            @if (!string.IsNullOrEmpty(o.Marca))
+                                                            {
+                                                                <span style="color:#6b7280; font-size:0.78rem;"> · @o.Marca</span>
+                                                            }
+                                                            @if (o.PvpConIva.HasValue)
+                                                            {
+                                                                <span style="color:#15803d; font-size:0.78rem;"> · PVP c/IVA $@FormatMoney(o.PvpConIva.Value)</span>
+                                                            }
+                                                        </div>
+                                                    }
+                                                }
+                                            </div>
+                                        }
+                                    }
+                                </div>
+                                <div class="form-group" style="flex: 0 0 130px; margin-bottom: 0;">
+                                    <label class="form-label" style="font-size: 0.72rem;">Multiplicador</label>
+                                    <input class="form-input" type="number" step="0.0001" min="0" @bind="formMultiplicadorOem"
+                                           style="text-align: right;" placeholder="1" />
+                                </div>
+                            </div>
+                            @if (formOemId > 0)
+                            {
+                                var oSel2 = oems?.FirstOrDefault(x => x.Id == formOemId);
+                                var multUsado = formMultiplicadorOem > 0 ? formMultiplicadorOem : 1m;
+                                var pvpFinal = (oSel2?.PvpConIva ?? 0m) * multUsado;
+                                <div style="margin-top: 0.5rem; padding: 0.4rem 0.6rem; background: white; border: 1px solid #ddd; border-radius: 6px; font-size: 0.85rem;">
+                                    Precio del compuesto: <strong style="color: #15803d;">$@FormatMoney(pvpFinal)</strong>
+                                    <span style="color: #6b7280; font-size: 0.75rem;">= OEM $@FormatMoney(oSel2?.PvpConIva ?? 0m) × @multUsado.ToString("0.####")</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+
                 @* ── Productos del combo ── *@
                 <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem; margin-bottom: 0.75rem;">
                     <div style="font-weight: 700; margin-bottom: 0.4rem;">Productos del combo</div>
@@ -510,6 +605,13 @@
     private string formDescripcion = "";
     private bool formIsActive = true;
     private List<CafeComboItemRequest> formItems = new();
+    // 2026-06-18: Es Compuesto + OEM (solo aplica a compuestos)
+    private bool formEsCompuesto;
+    private int formOemId;
+    private decimal formMultiplicadorOem = 1m;
+    private string oemSearch = "";
+    private bool oemSearchOpen;
+    private List<CafeOemDto>? oems;
 
     // Add item state
     private int addProductoId;
@@ -529,6 +631,7 @@
         {
             productos = (await Api.GetCafeProductosAsync())?.Where(p => p.IsActive).ToList() ?? new();
             settings = await Api.GetCafeSettingsAsync();
+            oems = await Api.GetCafeOemsAsync() ?? new();
         }
         catch { }
         await Load();
@@ -578,6 +681,10 @@
         editing = null;
         formNombre = ""; formDescripcion = ""; formIsActive = true;
         formItems = new();
+        // Si veniamos viendo el filtro "Compuesto", arrancamos con EsCompuesto=true para no obligar al usuario a tildarlo
+        formEsCompuesto = filtroTipo == "COMPUESTO";
+        formOemId = 0; formMultiplicadorOem = 1m;
+        oemSearch = ""; oemSearchOpen = false;
         addProductoId = 0; addFormato = "1KG"; addCantidad = 1;
         productoSearch = ""; productoSearchOpen = false;
         formError = null;
@@ -590,6 +697,10 @@
         formNombre = c.Nombre;
         formDescripcion = c.Descripcion ?? "";
         formIsActive = c.IsActive;
+        formEsCompuesto = c.EsCompuesto;
+        formOemId = c.OemId ?? 0;
+        formMultiplicadorOem = c.MultiplicadorOem ?? 1m;
+        oemSearch = ""; oemSearchOpen = false;
         formItems = c.Items.OrderBy(i => i.SortOrder).Select(i => new CafeComboItemRequest
         {
             ProductoId = i.ProductoId,
@@ -614,6 +725,11 @@
         formNombre = c.Nombre;
         formDescripcion = c.Descripcion ?? "";
         formIsActive = true;
+        // 2026-06-18: heredamos EsCompuesto + OEM del original para acelerar variantes de color (C1925NEG → C1925ROJ).
+        formEsCompuesto = c.EsCompuesto;
+        formOemId = c.OemId ?? 0;
+        formMultiplicadorOem = c.MultiplicadorOem ?? 1m;
+        oemSearch = ""; oemSearchOpen = false;
         // Items: copiamos la composicion para que el operador solo tenga que reemplazar el color
         formItems = c.Items.OrderBy(i => i.SortOrder).Select(i => new CafeComboItemRequest
         {
@@ -678,24 +794,38 @@
         formError = null; saving = true;
         try
         {
+            // 2026-06-18: si NO es compuesto, ignoramos OEM (solo aplica a compuestos)
+            int? oemIdToSend = formEsCompuesto && formOemId > 0 ? formOemId : null;
+            decimal? multToSend = formEsCompuesto && formOemId > 0
+                ? (formMultiplicadorOem > 0m ? formMultiplicadorOem : 1m)
+                : (decimal?)null;
             if (editing is null)
             {
                 await Api.CreateCafeComboAsync(new CreateCafeComboRequest
                 {
                     Nombre = formNombre,
                     Descripcion = formDescripcion,
-                    Items = formItems
+                    Items = formItems,
+                    EsCompuesto = formEsCompuesto,
+                    OemId = oemIdToSend,
+                    MultiplicadorOem = multToSend
                 });
                 ToastService.Success("Combo creado");
             }
             else
             {
+                // Si era compuesto+OEM y ahora se le sacó el OEM (o se destildó EsCompuesto), mandamos ClearOem=true
+                bool clearOem = (editing.OemId.HasValue && (!formEsCompuesto || formOemId == 0));
                 await Api.UpdateCafeComboAsync(editing.Id, new UpdateCafeComboRequest
                 {
                     Nombre = formNombre,
                     Descripcion = formDescripcion,
                     IsActive = formIsActive,
-                    Items = formItems
+                    Items = formItems,
+                    EsCompuesto = formEsCompuesto,
+                    OemId = oemIdToSend,
+                    MultiplicadorOem = multToSend,
+                    ClearOem = clearOem ? true : null
                 });
                 ToastService.Success("Combo actualizado");
             }
@@ -704,6 +834,30 @@
         }
         catch (Exception ex) { formError = ex.Message; }
         finally { saving = false; }
+    }
+
+    // 2026-06-18: helpers OEM para compuestos
+    private IEnumerable<CafeOemDto> OemsMatching(string s)
+    {
+        if (oems is null) return Enumerable.Empty<CafeOemDto>();
+        var t = s.Trim();
+        bool h(string? str) => str.MatchesSearch(t);
+        return oems.Where(o => h(o.Codigo) || h(o.Descripcion) || h(o.Marca) || h(o.Barcode));
+    }
+
+    private void SelectOemCompuesto(int id)
+    {
+        formOemId = id;
+        oemSearch = "";
+        oemSearchOpen = false;
+        if (formMultiplicadorOem <= 0m) formMultiplicadorOem = 1m;
+    }
+
+    private void ClearOemCompuesto()
+    {
+        formOemId = 0;
+        oemSearch = "";
+        formMultiplicadorOem = 1m;
     }
 
     private void ConfirmDelete(CafeComboDto c) { toDelete = c; }

@@ -4807,3 +4807,17 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='NegocioWeb2' AND object_id=OBJECT_ID('Cafe_Settings'))
     ALTER TABLE Cafe_Settings ADD NegocioWeb2 NVARCHAR(200) NULL;
 GO
+
+-- 2026-06-18: OEM en productos compuestos. Cuando el fabricante (Colombraro, etc.) vende el
+-- producto armado con su propio codigo y precio mayorista, lo cargamos en el OEM del combo.
+-- El sistema usa OEM.PvpConIva × MultiplicadorOem como precio del compuesto, ignorando la suma
+-- de componentes. Solo aplica si EsCompuesto=true. Null = no usa OEM.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='OemId' AND object_id=OBJECT_ID('Cafe_Combos'))
+    ALTER TABLE Cafe_Combos ADD OemId INT NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE Name='MultiplicadorOem' AND object_id=OBJECT_ID('Cafe_Combos'))
+    ALTER TABLE Cafe_Combos ADD MultiplicadorOem DECIMAL(10,4) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name='FK_CafeCombos_Oems')
+    ALTER TABLE Cafe_Combos ADD CONSTRAINT FK_CafeCombos_Oems FOREIGN KEY (OemId) REFERENCES Cafe_Oems(Id);
+GO
