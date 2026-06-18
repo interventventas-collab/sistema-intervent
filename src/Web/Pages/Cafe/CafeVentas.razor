@@ -962,6 +962,10 @@
                                             </div>
                                         }
                                     </div>
+                                    @* 2026-06-18: editar el cliente sin cerrar la venta — abre modal flotante con los campos esenciales. *@
+                                    <button class="btn btn-secondary" type="button" @onclick="() => AbrirEditarClienteModal(ciSel)"
+                                            title="Editar este cliente (sin cerrar la venta)"
+                                            style="padding: 0 0.55rem; font-size: 0.85rem; color: #1d4ed8;">✏️</button>
                                     <button class="btn btn-secondary" type="button" @onclick="ClearCliente" title="Quitar cliente" style="padding: 0 0.5rem; font-size: 0.85rem;">×</button>
                                 </div>
                                 @* 2026-06-02: Post-it amarillo SIEMPRE VISIBLE con las "Notas internas" del cliente.
@@ -990,7 +994,14 @@
                                     <div style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #d1d5db; border-radius: 6px; max-height: 420px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 14px rgba(0,0,0,0.12); margin-top: 0.2rem;">
                                         @if (matches.Count == 0)
                                         {
-                                            <div style="padding: 0.6rem; color: #6b7280; font-size: 0.85rem;">Sin resultados.</div>
+                                            @* 2026-06-18: si no hay resultados, ofrecer crear el cliente con lo tipeado como nombre. *@
+                                            <div style="padding: 0.7rem 0.9rem; background: #fef3c7; border-left: 3px solid #f59e0b; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap;">
+                                                <div style="font-size: 0.85rem; color: #78350f;">😕 Sin resultados para "<strong>@clienteSearch</strong>"</div>
+                                                <button class="btn btn-primary" type="button" style="background: #d97706; border-color: #b45309; font-size: 0.82rem; padding: 0.35rem 0.7rem; display: inline-flex; align-items: center; gap: 0.3rem;"
+                                                        @onclick="() => AbrirCrearClienteModal(clienteSearch)">
+                                                    ➕ Crear cliente nuevo
+                                                </button>
+                                            </div>
                                         }
                                         else
                                         {
@@ -2030,6 +2041,77 @@
             <span style="margin-left: 0.4rem; opacity: 0.7;">↗</span>
         </div>
     }
+}
+
+@* ════════ Modal Editar / Crear cliente (sin cerrar la venta) — 2026-06-18 ════════ *@
+@if (clienteModalAbierto)
+{
+    <div class="modal-overlay" style="z-index: 9300;" @onclick="CerrarClienteModal">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 540px;">
+            <div class="modal-header" style="background: #1d4ed8; color: white;">
+                <h4 style="margin: 0; color: white;">
+                    @if (clienteModalEsNuevo) { <span>👤 Crear cliente nuevo</span> }
+                    else { <span>✏️ Editar cliente · @clienteModalNombre</span> }
+                </h4>
+                <button class="btn-close" @onclick="CerrarClienteModal" style="color: white;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                    <div class="form-group" style="grid-column: span 2;">
+                        <label class="form-label">Nombre *</label>
+                        <input class="form-input" @bind="clienteModalNombre" placeholder="Nombre o razón social" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Tipo</label>
+                        <select class="form-input" @bind="clienteModalTipo">
+                            <option value="OTRO">🏢 Comercial</option>
+                            <option value="BAR">🍺 BAR</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Condición IVA</label>
+                        <select class="form-input" @bind="clienteModalCondIva">
+                            <option value="">— sin asignar —</option>
+                            <option value="CF">Consumidor final</option>
+                            <option value="RI">Responsable Inscripto</option>
+                            <option value="MO">Monotributo</option>
+                            <option value="EX">Exento</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Teléfono</label>
+                        <input class="form-input" @bind="clienteModalTelefono" placeholder="11 6644-1790" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">CUIT / DNI</label>
+                        <input class="form-input" @bind="clienteModalCuit" placeholder="20-12345678-9" />
+                    </div>
+                    <div class="form-group" style="grid-column: span 2;">
+                        <label class="form-label">Dirección</label>
+                        <input class="form-input" @bind="clienteModalDireccion" placeholder="Calle 123" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Localidad</label>
+                        <input class="form-input" @bind="clienteModalLocalidad" placeholder="Lanús" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Email</label>
+                        <input class="form-input" @bind="clienteModalEmail" placeholder="cliente@mail.com" />
+                    </div>
+                </div>
+                @if (!string.IsNullOrEmpty(clienteModalError))
+                {
+                    <div style="background: #fee2e2; color: #991b1b; padding: 0.5rem 0.7rem; border-radius: 6px; font-size: 0.85rem; margin-top: 0.7rem;">⚠ @clienteModalError</div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CerrarClienteModal" disabled="@clienteModalGuardando">Cancelar</button>
+                <button class="btn btn-primary" @onclick="GuardarClienteModal" disabled="@clienteModalGuardando">
+                    @(clienteModalGuardando ? "Guardando..." : (clienteModalEsNuevo ? "✓ Crear y usar en esta venta" : "✓ Guardar cambios"))
+                </button>
+            </div>
+        </div>
+    </div>
 }
 
 @* ════════ Modal de confirmacion de emision (doble-check para FA/FB/FC) ════════ *@
@@ -3298,6 +3380,129 @@
     // Form state
     private bool showForm, saving, previewLoading;
     private bool showConfirmEmision; // doble-check antes de emitir contra ARCA
+
+    // 2026-06-18: modal Editar/Crear cliente desde Nueva Venta (sin cerrar la venta).
+    private bool clienteModalAbierto = false;
+    private bool clienteModalEsNuevo = false;
+    private int? clienteModalEditId = null;
+    private string clienteModalNombre = "";
+    private string clienteModalTipo = "OTRO";
+    private string? clienteModalCondIva = "";
+    private string? clienteModalTelefono = "";
+    private string? clienteModalCuit = "";
+    private string? clienteModalDireccion = "";
+    private string? clienteModalLocalidad = "";
+    private string? clienteModalEmail = "";
+    private bool clienteModalGuardando = false;
+    private string? clienteModalError = null;
+
+    private void AbrirEditarClienteModal(CafeClienteDto? ci)
+    {
+        if (ci is null) return;
+        clienteModalEsNuevo = false;
+        clienteModalEditId = ci.Id;
+        clienteModalNombre = ci.Nombre ?? "";
+        clienteModalTipo = string.IsNullOrEmpty(ci.Tipo) ? "OTRO" : ci.Tipo;
+        clienteModalCondIva = ci.CondicionIvaDefault;
+        clienteModalTelefono = ci.Telefono;
+        clienteModalCuit = ci.Cuit;
+        clienteModalDireccion = ci.Direccion;
+        clienteModalLocalidad = ci.Localidad;
+        clienteModalEmail = ci.Email;
+        clienteModalError = null;
+        clienteModalAbierto = true;
+    }
+
+    private void AbrirCrearClienteModal(string nombreInicial)
+    {
+        clienteModalEsNuevo = true;
+        clienteModalEditId = null;
+        clienteModalNombre = (nombreInicial ?? "").Trim();
+        clienteModalTipo = "OTRO";
+        clienteModalCondIva = "CF";
+        clienteModalTelefono = "";
+        clienteModalCuit = "";
+        clienteModalDireccion = "";
+        clienteModalLocalidad = "";
+        clienteModalEmail = "";
+        clienteModalError = null;
+        clienteModalAbierto = true;
+    }
+
+    private void CerrarClienteModal()
+    {
+        if (clienteModalGuardando) return;
+        clienteModalAbierto = false;
+        clienteModalError = null;
+    }
+
+    private async Task GuardarClienteModal()
+    {
+        if (string.IsNullOrWhiteSpace(clienteModalNombre))
+        {
+            clienteModalError = "El nombre es obligatorio.";
+            return;
+        }
+        clienteModalGuardando = true; clienteModalError = null;
+        try
+        {
+            CafeClienteDto? guardado = null;
+            if (clienteModalEsNuevo)
+            {
+                guardado = await Api.CreateCafeClienteAsync(new CreateCafeClienteRequest
+                {
+                    Nombre = clienteModalNombre.Trim(),
+                    Tipo = clienteModalTipo,
+                    CondicionIvaDefault = clienteModalCondIva,
+                    Telefono = clienteModalTelefono,
+                    Cuit = clienteModalCuit,
+                    Direccion = clienteModalDireccion,
+                    Localidad = clienteModalLocalidad,
+                    Email = clienteModalEmail
+                });
+            }
+            else if (clienteModalEditId.HasValue)
+            {
+                guardado = await Api.UpdateCafeClienteAsync(clienteModalEditId.Value, new UpdateCafeClienteRequest
+                {
+                    Nombre = clienteModalNombre.Trim(),
+                    Tipo = clienteModalTipo,
+                    CondicionIvaDefault = clienteModalCondIva,
+                    Telefono = clienteModalTelefono,
+                    Cuit = clienteModalCuit,
+                    Direccion = clienteModalDireccion,
+                    Localidad = clienteModalLocalidad,
+                    Email = clienteModalEmail
+                });
+            }
+            if (guardado is null)
+            {
+                clienteModalError = "No se pudo guardar el cliente.";
+                return;
+            }
+            // Actualizar la lista local de clientes (reemplazar o agregar).
+            clientes ??= new();
+            var idx = clientes.FindIndex(c => c.Id == guardado.Id);
+            if (idx >= 0) clientes[idx] = guardado;
+            else clientes.Insert(0, guardado);
+
+            // Si fue creación O edición del cliente actual, seleccionarlo en la venta.
+            if (clienteModalEsNuevo || formClienteId == guardado.Id)
+            {
+                formClienteId = guardado.Id;
+                formClienteTipo = guardado.Tipo ?? "OTRO";
+                if (!string.IsNullOrWhiteSpace(guardado.CondicionIvaDefault))
+                    formCondicionIva = guardado.CondicionIvaDefault!;
+                clienteSearch = "";
+                clienteSearchOpen = false;
+                await Cotizar();
+            }
+            ToastService.Success(clienteModalEsNuevo ? "✓ Cliente creado" : "✓ Cliente actualizado");
+            clienteModalAbierto = false;
+        }
+        catch (Exception ex) { clienteModalError = "Error: " + ex.Message; }
+        finally { clienteModalGuardando = false; }
+    }
 
     // ═══ Pedido WhatsApp ═══
     private int pedidoWhatsAppCount;
