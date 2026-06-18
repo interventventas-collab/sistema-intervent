@@ -1,0 +1,165 @@
+@inject ApiClient Api
+@inject NavigationManager Navigation
+@implements IDisposable
+
+@* 2026-06-18 — Badge en topbar con hover dropdown:
+   - Click en cualquier parte → te lleva a /cafe/tesoreria/cheques-banco
+   - Hover (mouse encima) → despliega los proximos 5 cheques EMITIDOS por pagar
+   Refresca cada 5 min. *@
+
+<div class="cpb2-wrap"
+     @onmouseenter="OnHover"
+     @onmouseleave="OnLeave"
+     @onclick="@(() => Navigation.NavigateTo("/cafe/tesoreria/cheques-banco"))">
+    <div class="cpb2-badge" title="Próximos cheques a pagar — click para ver todos">
+        <span class="cpb2-icon">📄</span>
+        <span>Cheques</span>
+        @if (cheques.Count > 0)
+        {
+            <span class="cpb2-num">@cheques.Count</span>
+        }
+    </div>
+
+    @if (showDropdown && cheques.Count > 0)
+    {
+        <div class="cpb2-dropdown" @onclick:stopPropagation="true" @onclick="@(() => Navigation.NavigateTo("/cafe/tesoreria/cheques-banco"))">
+            <div class="cpb2-dd-header">
+                <span>🕒 Próximos a pagar</span>
+                <span class="cpb2-dd-count">@cheques.Count</span>
+            </div>
+            <div class="cpb2-dd-list">
+                @foreach (var c in cheques)
+                {
+                    var d = DiasHasta(c.FechaPago);
+                    var (bg, monthBg, monthFg) = ColorPorDias(d);
+                    <div class="cpb2-dd-row" style="background:@bg;">
+                        <div class="cpb2-dd-date" style="color:@monthFg;">
+                            <div class="cpb2-dd-mon">@MesAbreviado(c.FechaPago)</div>
+                            <div class="cpb2-dd-day">@(c.FechaPago?.Day.ToString("00") ?? "—")</div>
+                        </div>
+                        <div class="cpb2-dd-mid">
+                            <div class="cpb2-dd-name">@(string.IsNullOrWhiteSpace(c.ContraparteNombre) ? "(sin contraparte)" : c.ContraparteNombre!)</div>
+                            <div class="cpb2-dd-sub">@(c.Motivo ?? "") · Cheque #@c.Numero</div>
+                        </div>
+                        <div class="cpb2-dd-amount">$@c.Importe.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))</div>
+                    </div>
+                }
+            </div>
+            <div class="cpb2-dd-footer">
+                <span>Total: <strong>$@TotalFormatted</strong></span>
+                <span class="cpb2-dd-link">Ver todos →</span>
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .cpb2-wrap { position: relative; display: inline-block; }
+    .cpb2-badge {
+        display: inline-flex; align-items: center; gap: 0.3rem;
+        padding: 0.35rem 0.7rem;
+        background: #EEEDFE; color: #3C3489;
+        border: 1px solid #7F77DD;
+        border-radius: 999px;
+        font-weight: 700; font-size: 0.85rem;
+        cursor: pointer; margin: 0 0.3rem;
+        transition: transform 0.15s;
+    }
+    .cpb2-badge:hover { transform: scale(1.06); }
+    .cpb2-icon { font-size: 1rem; }
+    .cpb2-num {
+        background: #534AB7; color: white;
+        font-size: 0.72rem; padding: 1px 6px;
+        border-radius: 6px; margin-left: 2px; font-weight: 800;
+    }
+    .cpb2-dropdown {
+        position: absolute; top: calc(100% + 6px); right: 0;
+        background: white; border: 1px solid #d1d5db; border-radius: 10px;
+        box-shadow: 0 6px 24px rgba(0,0,0,0.12);
+        width: 420px; max-width: 92vw; z-index: 9500;
+        cursor: pointer; overflow: hidden;
+    }
+    .cpb2-dd-header {
+        padding: 10px 14px 8px;
+        border-bottom: 1px solid #f3f4f6;
+        display: flex; align-items: center; justify-content: space-between;
+        font-size: 0.83rem; font-weight: 700; color: #111827;
+    }
+    .cpb2-dd-count { font-size: 0.7rem; color: #6b7280; font-weight: 600; }
+    .cpb2-dd-list { padding: 6px 8px; display: flex; flex-direction: column; gap: 4px; }
+    .cpb2-dd-row {
+        display: flex; align-items: center; gap: 10px;
+        padding: 8px 8px; border-radius: 8px;
+    }
+    .cpb2-dd-date { width: 38px; text-align: center; line-height: 1.05; }
+    .cpb2-dd-mon { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; }
+    .cpb2-dd-day { font-size: 1.1rem; font-weight: 700; }
+    .cpb2-dd-mid { flex: 1; min-width: 0; }
+    .cpb2-dd-name {
+        font-size: 0.82rem; font-weight: 600; color: #111827;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .cpb2-dd-sub { font-size: 0.7rem; color: #6b7280; }
+    .cpb2-dd-amount { font-size: 0.82rem; font-weight: 700; color: #111827; white-space: nowrap; }
+    .cpb2-dd-footer {
+        padding: 8px 14px;
+        border-top: 1px solid #f3f4f6;
+        display: flex; align-items: center; justify-content: space-between;
+        font-size: 0.78rem; color: #6b7280;
+    }
+    .cpb2-dd-link { color: #185FA5; font-weight: 700; }
+</style>
+
+@code {
+    private List<ApiClient.ChequeProximoDto> cheques = new();
+    private bool showDropdown;
+    private System.Threading.Timer? timer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Refresh();
+        // Refresca cada 5 min en background
+        timer = new System.Threading.Timer(async _ => await InvokeAsync(Refresh), null, 300_000, 300_000);
+    }
+
+    private async Task Refresh()
+    {
+        try
+        {
+            cheques = await Api.GetChequesProximosPagarAsync(5);
+            StateHasChanged();
+        }
+        catch { /* no critico */ }
+    }
+
+    private void OnHover() { showDropdown = true; }
+    private void OnLeave() { showDropdown = false; }
+
+    private static int DiasHasta(DateTime? fecha)
+    {
+        if (!fecha.HasValue) return 999;
+        return (int)(fecha.Value.Date - DateTime.Today).TotalDays;
+    }
+
+    /// <summary>Devuelve (bgFila, bgDiaCajita, fgDiaCajita) segun urgencia.</summary>
+    private static (string bg, string monthBg, string fg) ColorPorDias(int d)
+    {
+        // Atrasado o ≤3 dias: rojo. ≤14 dias: naranja. Resto: gris claro.
+        if (d <= 3) return ("#FCEBEB", "#FCEBEB", "#791F1F");
+        if (d <= 14) return ("#FAEEDA", "#FAEEDA", "#633806");
+        return ("#f9fafb", "#f9fafb", "#374151");
+    }
+
+    private static string MesAbreviado(DateTime? f)
+    {
+        if (!f.HasValue) return "—";
+        var meses = new[] { "ENE","FEB","MAR","ABR","MAY","JUN","JUL","AGO","SEP","OCT","NOV","DIC" };
+        return meses[f.Value.Month - 1];
+    }
+
+    private string TotalFormatted
+        => cheques.Sum(c => c.Importe)
+            .ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+
+    public void Dispose() => timer?.Dispose();
+}

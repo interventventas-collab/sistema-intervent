@@ -61,6 +61,32 @@ public class CafeChequesBancoController : ControllerBase
         ));
     }
 
+    /// <summary>2026-06-18 — Próximos cheques EMITIDOS por pagar (los que firmamos contra proveedores
+    /// y aún no se cobraron). Para mostrar en el dropdown hover de la topbar. Excluye los ya pagados
+    /// y los rechazados. Ordena por FechaPago ascendente (los más urgentes primero) y limita a TOP N.</summary>
+    public record ChequeProximoDto(int Id, string Numero, DateTime? FechaPago, decimal Importe,
+        string? ContraparteNombre, string? Motivo, string Estado);
+
+    [HttpGet("proximos-pagar")]
+    public async Task<IActionResult> ProximosPagar([FromQuery] int take = 5)
+    {
+        take = Math.Clamp(take, 1, 50);
+        var hoy = DateTime.Today;
+        // EMITIDOS + estado Aceptado/Disponible (no Pagados ni Rechazados). FechaPago futura o
+        // ya vencida (importante: si quedo un cheque atrasado tambien aparece, como alerta).
+        var list = await _db.CafeChequesBanco
+            .Where(c => c.Tipo == "EMITIDO"
+                && (c.Estado == "Aceptado" || c.Estado == "Disponible")
+                && c.FechaPago.HasValue)
+            .OrderBy(c => c.FechaPago)
+            .ThenBy(c => c.Id)
+            .Take(take)
+            .Select(c => new ChequeProximoDto(c.Id, c.Numero, c.FechaPago, c.Importe,
+                c.ContraparteNombre, c.Motivo, c.Estado))
+            .ToListAsync();
+        return Ok(list);
+    }
+
     [HttpGet]
     public async Task<IActionResult> List([FromQuery] string? tipo = null, [FromQuery] string? estado = null,
         [FromQuery] string? q = null, [FromQuery] int take = 500)

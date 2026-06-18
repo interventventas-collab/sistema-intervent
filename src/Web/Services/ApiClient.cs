@@ -856,6 +856,12 @@ public class ApiClient
         return r?.Count ?? 0;
     }
     public record CountResultDto(int Count);
+
+    // 2026-06-18: dropdown hover de la topbar — próximos cheques EMITIDOS por pagar.
+    public record ChequeProximoDto(int Id, string Numero, DateTime? FechaPago, decimal Importe,
+        string? ContraparteNombre, string? Motivo, string Estado);
+    public async Task<List<ChequeProximoDto>> GetChequesProximosPagarAsync(int take = 5)
+        => await GetAsync<List<ChequeProximoDto>>($"/api/cafe/cheques-banco/proximos-pagar?take={take}") ?? new();
     public async Task<bool> AprobarCobranzaPendienteAsync(int id, AprobarCobranzaPendienteRequest req)
     {
         await SetAuthHeaderAsync();
