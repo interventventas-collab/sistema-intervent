@@ -1115,7 +1115,10 @@ public class CafeVentasController : ControllerBase
     {
         var settings = await _db.CafeSettings.FindAsync(1) ?? new CafeSetting { Id = 1 };
         var tipo = await ResolverTipoAsync(req.ClienteId, req.ClienteTipo);
-        return Ok(await CotizarInternoAsync(req.Items, tipo, req.Descuento, settings));
+        // 2026-06-18: si se está editando una venta, le pasamos su Id al cotizador para que
+        // sume al stock disponible las cantidades que esa misma venta ya tiene reservadas
+        // (evita falso "stock insuficiente" al editar/convertir-a-factura una cotización).
+        return Ok(await CotizarInternoAsync(req.Items, tipo, req.Descuento, settings, req.EditandoVentaId));
     }
 
     /// <summary>
@@ -2621,11 +2624,44 @@ public class CafeVentasController : ControllerBase
         return dict;
     }
 
-    private async Task<CafeCotizadoDto> CotizarInternoAsync(List<CafeCotizarItemRequest> items, string tipo, decimal descuento, CafeSetting settings)
+    private async Task<CafeCotizadoDto> CotizarInternoAsync(List<CafeCotizarItemRequest> items, string tipo, decimal descuento, CafeSetting settings, int? editandoVentaId = null)
     {
         var cotizadoItems = new List<CafeCotizadoItemDto>();
         decimal subtotal = 0m, costoTotal = 0m;
         bool todoOk = true;
+
+        // 2026-06-18: si se está editando una venta existente, traemos las cantidades que esa
+        // venta ya tiene reservadas (descontadas) para sumarlas al stock disponible y NO
+        // contar la propia venta como un conflicto. Sin esto, una cotización X que descontó
+        // stock y se quiere editar/convertir-a-factura tiraría "stock insuficiente" porque
+        // ese mismo stock ya está reservado por ella.
+        var reservaPropiaPorProd = new Dictionary<int, int>();
+        var reservaPropiaGramosPorProd = new Dictionary<int, decimal>();
+        if (editandoVentaId.HasValue)
+        {
+            var itemsPropios = await _db.CafeVentaItems.AsNoTracking()
+                .Where(vi => vi.VentaId == editandoVentaId.Value && vi.ProductoId != null)
+                .Include(vi => vi.ProductoNav)
+                .ToListAsync();
+            foreach (var vi in itemsPropios)
+            {
+                if (vi.ProductoId is null || vi.ProductoNav is null) continue;
+                var prodId = vi.ProductoId.Value;
+                var esCafePropio = vi.ProductoNav.Categoria == "CAFE";
+                if (esCafePropio)
+                {
+                    var gramos = CafePricingService.GramosPorUnidad(vi.Formato) * vi.Cantidad;
+                    reservaPropiaGramosPorProd.TryGetValue(prodId, out var accG);
+                    reservaPropiaGramosPorProd[prodId] = accG + gramos;
+                }
+                else
+                {
+                    var unidades = UnidadesRealesStock(vi.ProductoNav, vi.Formato, vi.Cantidad);
+                    reservaPropiaPorProd.TryGetValue(prodId, out var accU);
+                    reservaPropiaPorProd[prodId] = accU + unidades;
+                }
+            }
+        }
 
         // 2026-06-01 — Cargar info de productos "shell" (linkeados a MeLi via componentes).
         // Para esos productos, la validación de stock se hace contra el armable de componentes,
@@ -2815,6 +2851,10 @@ public class CafeVentasController : ControllerBase
             // Si es producto físico normal, usar StockUnidades directo.
             bool esShell = shellComps.ContainsKey(prod.Id);
             int stockUnidadesDisponibleEfectivo = prod.StockUnidades;
+            // 2026-06-18: si estamos editando una venta, sumar lo que ESA venta ya tenía reservado
+            // para no contar la propia venta como conflicto.
+            if (reservaPropiaPorProd.TryGetValue(prod.Id, out var reservaUnidades))
+                stockUnidadesDisponibleEfectivo += reservaUnidades;
             if (esShell)
             {
                 int armable = int.MaxValue;
@@ -2828,7 +2868,12 @@ public class CafeVentasController : ControllerBase
                 stockUnidadesDisponibleEfectivo = armable == int.MaxValue ? 0 : armable;
             }
 
-            var stockOk = esCafe ? gramosNecesarios <= prod.StockGramos + 0.001m : unidadesNecesarias <= stockUnidadesDisponibleEfectivo;
+            // 2026-06-18: stock café disponible efectivo, sumando lo reservado por la propia venta si se está editando.
+            decimal stockGramosDisponibleEfectivo = prod.StockGramos;
+            if (esCafe && reservaPropiaGramosPorProd.TryGetValue(prod.Id, out var reservaGramos))
+                stockGramosDisponibleEfectivo += reservaGramos;
+
+            var stockOk = esCafe ? gramosNecesarios <= stockGramosDisponibleEfectivo + 0.001m : unidadesNecesarias <= stockUnidadesDisponibleEfectivo;
             string? aviso = null;
             if (!stockOk)
             {
@@ -2836,10 +2881,10 @@ public class CafeVentasController : ControllerBase
                     : esFormatoPack ? $"{it.Cantidad} pack×{packUnidades}"
                     : $"{it.Cantidad}";
                 aviso = esCafe
-                    ? $"Stock insuficiente. Disponible: {prod.StockGramos:0} g, necesitás {gramosNecesarios:0} g."
+                    ? $"Stock insuficiente. Disponible: {stockGramosDisponibleEfectivo:0} g, necesitás {gramosNecesarios:0} g."
                     : esShell
                         ? $"Stock insuficiente. Disponible: {stockUnidadesDisponibleEfectivo} u. 🧩 armable, necesitás {unidadesNecesarias} u ({detalleCantidad})."
-                        : $"Stock insuficiente. Disponible: {prod.StockUnidades} u, necesitás {unidadesNecesarias} u ({detalleCantidad}).";
+                        : $"Stock insuficiente. Disponible: {stockUnidadesDisponibleEfectivo} u, necesitás {unidadesNecesarias} u ({detalleCantidad}).";
                 todoOk = false;
             }
 

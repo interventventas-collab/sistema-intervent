@@ -5384,7 +5384,11 @@
                 ClienteId = formClienteId > 0 ? formClienteId : null,
                 ClienteTipo = formClienteTipo,
                 Items = formItems,
-                Descuento = formDescuento
+                Descuento = formDescuento,
+                // 2026-06-18: al editar una venta, le decimos al backend que NO cuente su propio
+                // stock reservado como conflicto. Sin esto, una cotización X que ya descontó stock
+                // tiraba "stock insuficiente" al intentar editarla o convertirla a Factura.
+                EditandoVentaId = editingVentaId
             });
         }
         catch (Exception ex) { ToastService.Error("Error al cotizar: " + ex.Message); }

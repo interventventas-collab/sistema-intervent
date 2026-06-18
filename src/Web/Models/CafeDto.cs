@@ -585,6 +585,10 @@ public class CafeCotizarRequest
     public string? ClienteTipo { get; set; }
     public List<CafeCotizarItemRequest> Items { get; set; } = new();
     public decimal Descuento { get; set; }
+    // 2026-06-18: si se está EDITANDO una venta existente, pasamos su Id para que el
+    // cotizador NO cuente contra sí mismo el stock que esa venta ya tiene reservado.
+    // Si es null = venta nueva, comportamiento normal.
+    public int? EditandoVentaId { get; set; }
 }
 
 public class CafeCotizadoItemDto

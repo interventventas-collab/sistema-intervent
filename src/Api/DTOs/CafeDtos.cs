@@ -447,6 +447,9 @@ public class CafeCotizarRequest
     public string? ClienteTipo { get; set; }  // override si no hay clienteId
     public List<CafeCotizarItemRequest> Items { get; set; } = new();
     public decimal Descuento { get; set; }
+    // 2026-06-18: si se está editando una venta existente, mandar su Id para que el
+    // cotizador no cuente su propio stock reservado como conflicto.
+    public int? EditandoVentaId { get; set; }
 }
 
 public record CafeCotizadoItemDto(
