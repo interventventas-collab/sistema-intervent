@@ -1700,18 +1700,35 @@ public class CafeVentasController : ControllerBase
     /// Convierte una venta tipo X / PRO en una factura real (FA/FB/FC) emitida contra ARCA.
     /// Crea una NUEVA venta (con número nuevo), copia los items, descuenta stock,
     /// emite contra ARCA. La venta original (proforma) queda vinculada via FacturadaComoVentaId.
+    ///
+    /// 2026-06-18: tambien acepta ventas que YA estan como FA/FB/FC pero SIN CAE
+    /// (estado inconsistente, tipico de cuando un usuario edito una X y le puso "Factura A"
+    /// + "Guardar cambios" sin emitir realmente a ARCA). En ese caso la revertimos
+    /// internamente a X antes de seguir, asi queda como cotizacion marcada
+    /// "facturada como ..." y la nueva tiene CAE limpio.
     /// </summary>
     [HttpPost("{id:int}/convertir-a-factura")]
     public async Task<IActionResult> ConvertirAFactura(int id, [FromBody] ConvertirAFacturaRequest req)
     {
         var original = await _db.CafeVentas.Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == id);
         if (original is null) return NotFound(new { error = "Venta no encontrada" });
-        if (original.TipoComprobante is not ("X" or "PRO"))
-            return BadRequest(new { error = "Solo se pueden convertir cotizaciones (X) y proformas (PRO)." });
-        if (original.FacturadaComoVentaId.HasValue)
-            return BadRequest(new { error = "Esta proforma ya fue convertida a la factura #" + original.FacturadaComoVentaId });
         if (original.Estado == "anulado")
             return BadRequest(new { error = "No se puede facturar una venta anulada." });
+        if (original.FacturadaComoVentaId.HasValue)
+            return BadRequest(new { error = "Esta venta ya fue convertida a la factura #" + original.FacturadaComoVentaId });
+
+        var esXoPro = original.TipoComprobante is "X" or "PRO";
+        var esFacturaSinCae = original.TipoComprobante is "FA" or "FB" or "FC"
+                              && string.IsNullOrEmpty(original.ArcaCae);
+        if (!esXoPro && !esFacturaSinCae)
+            return BadRequest(new { error = "Solo se pueden convertir cotizaciones (X/PRO) o facturas sin CAE." });
+
+        // Caso "FA sin CAE" (atascado): la revertimos a X para que quede limpia como cotizacion facturada.
+        if (esFacturaSinCae)
+        {
+            original.TipoComprobante = "X";
+            original.UpdatedAt = DateTime.UtcNow;
+        }
 
         var tipoNuevo = (req.TipoFactura ?? "").Trim().ToUpperInvariant();
         if (tipoNuevo is not ("FA" or "FB" or "FC"))

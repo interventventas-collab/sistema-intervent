@@ -2010,11 +2010,26 @@
                         title="Ver cómo quedaría el PDF sin guardar la venta">
                     @(previewLoading ? "⏳ Generando..." : "👁 Previsualizar PDF")
                 </button>
-                <button class="btn btn-primary" @onclick="ConfirmarEmision" disabled="@(saving || formItems.Count == 0 || cotizacion?.TodoOk != true)">
-                    @(saving
-                        ? (editingVentaId.HasValue ? "Guardando..." : "Emitiendo...")
-                        : (editingVentaId.HasValue ? "💾 Guardar cambios" : $"Emitir {EmitirLabelForTipo(formTipoComprobante)}"))
-                </button>
+                @* 2026-06-18: si estamos editando y el tipo es FA/FB/FC sin CAE, el boton se transforma a violeta
+                   "Emitir Factura X con CAE" y dispara el flujo de conversion ARCA. Sino sigue el comportamiento normal. *@
+                @if (EditModoEmitirCae)
+                {
+                    <button class="btn" style="background: #7c3aed; color: white; border-color: #7c3aed;"
+                            @onclick="IniciarEmisionCAEDesdeEdicion"
+                            disabled="@(saving || convirtiendoLoading || formItems.Count == 0 || cotizacion?.TodoOk != true)">
+                        @(saving || convirtiendoLoading
+                            ? "Emitiendo..."
+                            : $"📈 Emitir Factura {(formTipoComprobante.Length >= 2 ? formTipoComprobante.Substring(1) : "")} con CAE")
+                    </button>
+                }
+                else
+                {
+                    <button class="btn btn-primary" @onclick="ConfirmarEmision" disabled="@(saving || formItems.Count == 0 || cotizacion?.TodoOk != true)">
+                        @(saving
+                            ? (editingVentaId.HasValue ? "Guardando..." : "Emitiendo...")
+                            : (editingVentaId.HasValue ? "💾 Guardar cambios" : $"Emitir {EmitirLabelForTipo(formTipoComprobante)}"))
+                    </button>
+                }
             </div>
         </div>
     </div> @* fin modal-overlay *@
@@ -3455,6 +3470,17 @@
     // 2026-06-03: checkbox para re-subir desde modo EDIT. Default depende de si ya estaba subida.
     private bool envioDriveEdit;
     private bool editingVentaTieneDrive;  // true si la venta editada ya tenia DriveSubidoAt
+    // 2026-06-18: para detectar "modo emitir CAE en edicion" — cuando una X se cambio a FA/FB/FC,
+    // o cuando una FA/FB/FC quedo sin CAE (estado inconsistente). En esos casos, el boton verde
+    // "Guardar cambios" se transforma en violeta "Emitir Factura X con CAE" y dispara conversion ARCA.
+    private string? editingVentaTipoOriginal;
+    private bool editingVentaTieneCae;
+    private bool EditModoEmitirCae
+        => editingVentaId.HasValue
+           && formTipoComprobante is "FA" or "FB" or "FC"
+           && !editingVentaTieneCae
+           && (editingVentaTipoOriginal is "X" or "PRO"
+               || editingVentaTipoOriginal == formTipoComprobante);
     // Destinatarios: se autocompletan desde el cliente si tiene email/telefono.
     // Si no tiene, el operador puede tipear el numero/mail a mano.
     private string envioEmailTo = "";
@@ -4694,7 +4720,7 @@
         }
     }
 
-    private void CloseForm() { showForm = false; formError = null; editingVentaId = null; editingVentaNumero = ""; duplicadoDeNumero = null; autoRetryArcaPostEdit = false; }
+    private void CloseForm() { showForm = false; formError = null; editingVentaId = null; editingVentaNumero = ""; duplicadoDeNumero = null; autoRetryArcaPostEdit = false; editingVentaTipoOriginal = null; editingVentaTieneCae = false; }
 
     /// <summary>Numero del comprobante origen cuando se está duplicando (para mostrar "Duplicado de X" en el modal).</summary>
     private string? duplicadoDeNumero;
@@ -4705,10 +4731,14 @@
     private string convertirCondIva = "RI";
     private bool convirtiendoLoading;
     private string? convertirError;
+    // 2026-06-18: cuando este flag esta en true, DoConvertirAFactura primero guarda
+    // los cambios del form de edicion (Update) antes de disparar la conversion ARCA.
+    private bool convirtiendoDesdeEdicion;
 
     private void OpenConvertirAFacturaModal(CafeVentaDto v)
     {
         convirtiendo = v;
+        convirtiendoDesdeEdicion = false;
         // Sugerimos FB por default (lo más común). El usuario puede elegir FA si el receptor es RI.
         convertirTipoFactura = "FB";
         // La condición IVA del receptor: si la venta original tiene una válida la usamos, sino RI default
@@ -4716,7 +4746,41 @@
         convertirError = null;
     }
 
-    private void CloseConvertirAFacturaModal() { convirtiendo = null; convertirError = null; }
+    private void CloseConvertirAFacturaModal()
+    {
+        convirtiendo = null;
+        convertirError = null;
+        convirtiendoDesdeEdicion = false;
+    }
+
+    /// <summary>
+    /// 2026-06-18: dispara la emision de CAE estando dentro del modal de edicion.
+    /// Pasos: (1) construye un CafeVentaDto minimo con los datos de la venta editada,
+    /// (2) precarga el modal violeta de doble confirmacion con el tipo+condIva del form,
+    /// (3) deja un flag activo para que DoConvertirAFactura haga primero el Update.
+    /// </summary>
+    private void IniciarEmisionCAEDesdeEdicion()
+    {
+        if (!editingVentaId.HasValue) return;
+        if (formItems.Count == 0) { formError = "Agregá al menos un producto"; return; }
+        if (cotizacion?.TodoOk != true) { formError = "Hay items con stock insuficiente o inválidos"; return; }
+        if (formTipoComprobante is not ("FA" or "FB" or "FC")) return;
+
+        // CafeVentaDto sintetico solo para alimentar el modal (Id+Numero+TipoComprobante+CondIva).
+        convirtiendo = new CafeVentaDto
+        {
+            Id = editingVentaId.Value,
+            Numero = editingVentaNumero ?? "",
+            TipoComprobante = editingVentaTipoOriginal ?? "X",
+            CondicionIva = formCondicionIva ?? "RI",
+        };
+        convirtiendoDesdeEdicion = true;
+        convertirTipoFactura = formTipoComprobante;
+        convertirCondIva = !string.IsNullOrWhiteSpace(formCondicionIva) && formCondicionIva != "CF"
+            ? formCondicionIva
+            : "RI";
+        convertirError = null;
+    }
 
     private async Task DoConvertirAFactura()
     {
@@ -4724,6 +4788,47 @@
         convirtiendoLoading = true; convertirError = null;
         try
         {
+            // 2026-06-18: si veniamos del flujo de edicion, primero guardamos los cambios pendientes
+            // en la venta editada (items, cliente, comentarios, etc) ANTES de disparar la conversion.
+            // Si la conversion despues falla, los cambios igual quedaron guardados — el usuario
+            // puede reintentar desde el listado.
+            if (convirtiendoDesdeEdicion && editingVentaId.HasValue)
+            {
+                var weekCsv = formWeekDays.Count > 0
+                    ? string.Join(",", AllWeekDays.Where(d => formWeekDays.Contains(d)))
+                    : null;
+                var notesToSave = formObservaciones ?? "";
+                // El UpdateCafeVentaAsync no rechaza tipo FA/FB/FC sin CAE — guarda tal cual. El backend
+                // de ConvertirAFactura ya sabe revertir a X internamente si la venta llega como FA sin CAE.
+                var upd = await Api.UpdateCafeVentaAsync(editingVentaId.Value, new UpdateCafeVentaRequest
+                {
+                    Fecha = DateTime.SpecifyKind(formFecha, DateTimeKind.Unspecified),
+                    ClienteId = formClienteId > 0 ? formClienteId : 0,
+                    ClienteTipoOverride = formClienteId > 0 ? null : formClienteTipo,
+                    Items = formItems,
+                    Descuento = formDescuento,
+                    Observaciones = notesToSave,
+                    WeekDays = weekCsv ?? "",
+                    EnRadar = formEnRadar,
+                    Retira = formRetira,
+                    PorTransporte = formPorTransporte,
+                    TransporteEmpresa = formPorTransporte ? formTransporteEmpresa : null,
+                    TransporteDestino = formPorTransporte ? formTransporteDestino : null,
+                    IsPaid = formIsPaid,
+                    // Importante: mandamos el tipo ORIGINAL (X/PRO) si lo era, asi el backend acepta el Update sin
+                    // dejarla en estado "FA sin CAE". Si ya estaba FA-sin-CAE de antes, mandamos FA igual — el backend
+                    // de ConvertirAFactura la revierte a X automaticamente despues.
+                    TipoComprobante = editingVentaTipoOriginal is "X" or "PRO"
+                        ? editingVentaTipoOriginal
+                        : formTipoComprobante,
+                    CondicionIva = formCondicionIva,
+                    CondicionPago = formCondicionPago,
+                    EntregaPor = formEntregaPor,
+                    ComentarioArmado = formComentarioArmado
+                });
+                if (upd is null) { convertirError = "No se pudieron guardar los cambios de la venta."; return; }
+            }
+
             var nuevaVenta = await Api.ConvertirCafeVentaAFacturaAsync(convirtiendo.Id, new ConvertirAFacturaRequest
             {
                 TipoFactura = convertirTipoFactura,
@@ -4738,7 +4843,17 @@
             else
                 ToastService.Success($"Venta {nuevaVenta.Numero} creada");
 
+            // Si veniamos de edicion, cerrar tambien el modal de edicion al exito.
+            if (convirtiendoDesdeEdicion)
+            {
+                showForm = false;
+                editingVentaId = null;
+                editingVentaNumero = "";
+                editingVentaTipoOriginal = null;
+                editingVentaTieneCae = false;
+            }
             convirtiendo = null;
+            convirtiendoDesdeEdicion = false;
             await Load();
         }
         catch (Exception ex)
@@ -6235,6 +6350,9 @@
         // o si el operador es OSMAR. Si la venta nunca se subio + el operador no es OSMAR, queda OFF.
         editingVentaTieneDrive = v.DriveSubidoAt.HasValue;
         envioDriveEdit = editingVentaTieneDrive || string.Equals(Operator.Current ?? "", "OSMAR", StringComparison.OrdinalIgnoreCase);
+        // 2026-06-18: capturar tipo+CAE originales para detectar el modo "Emitir CAE desde edicion".
+        editingVentaTipoOriginal = string.IsNullOrWhiteSpace(v.TipoComprobante) ? "X" : v.TipoComprobante;
+        editingVentaTieneCae = !string.IsNullOrEmpty(v.ArcaCae);
         showForm = true;
         // Refrescar saldo anterior + sugerencias del cliente y cotizar precios.
         RecomputeUnpaidPrevSales();
