@@ -30,6 +30,12 @@ public class ProcessSchedulerService : BackgroundService
         // Wait for the app to fully start
         await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
 
+        // 2026-06-18: limpiar procesos stuck en "Running" al arrancar — si la app crasheo o se reinicio
+        // mientras un job estaba corriendo, el LastRunStatus quedo en "Running" para siempre y el
+        // scheduler nunca lo volvia a disparar (deadlock). Bug detectado: 4 jobs (SyncMeliQuestions,
+        // SyncMeliOrders, SyncMeliItems, BackupDatabase) llevaban entre 10 y 37 dias parados.
+        await RecoverStuckProcesses(stoppingToken);
+
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -45,8 +51,52 @@ public class ProcessSchedulerService : BackgroundService
         }
     }
 
+    /// <summary>2026-06-18: marca como Failed cualquier proceso en "Running" cuyo LastRunAt sea
+    /// mas viejo que <paramref name="staleAfter"/>. Sirve para recuperar jobs que quedaron stuck
+    /// por crash de la app o de un job sin atrapar excepcion. Se llama una vez al arrancar y
+    /// despues periodicamente dentro del loop como red de seguridad.</summary>
+    private async Task RecoverStuckProcesses(CancellationToken ct)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            // Umbral conservador: 30 minutos. Ningun job legitimo de los configurados deberia
+            // llevar mas que eso (el mas lento es SyncMeliItems que tarda ~15 min).
+            var staleAfter = TimeSpan.FromMinutes(30);
+            var cutoff = DateTime.UtcNow - staleAfter;
+            var stuck = await db.ScheduledProcesses
+                .Where(p => p.LastRunStatus == "Running" && p.LastRunAt != null && p.LastRunAt < cutoff)
+                .ToListAsync(ct);
+            if (stuck.Count == 0) return;
+            foreach (var p in stuck)
+            {
+                _logger.LogWarning("Recovering stuck process {Code} (last run {LastRunAt:o})", p.Code, p.LastRunAt);
+                p.LastRunStatus = "Failed";
+                p.NextRunAt = DateTime.UtcNow; // disparar lo antes posible
+                p.UpdatedAt = DateTime.UtcNow;
+            }
+            await db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Error recovering stuck processes");
+        }
+    }
+
+    private int _runsSinceLastRecovery = 0;
+
     private async Task CheckAndRunDueProcesses(CancellationToken ct)
     {
+        // 2026-06-18: red de seguridad — cada N iteraciones del loop (~5 min), revisar si quedo
+        // algun proceso stuck por crash de un job sin reiniciar la app.
+        _runsSinceLastRecovery++;
+        if (_runsSinceLastRecovery >= 10)
+        {
+            _runsSinceLastRecovery = 0;
+            await RecoverStuckProcesses(ct);
+        }
+
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
