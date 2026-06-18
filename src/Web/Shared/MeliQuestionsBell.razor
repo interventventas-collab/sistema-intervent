@@ -47,6 +47,13 @@
                     <button class="btn btn-secondary" style="font-size: 0.85rem;" @onclick="RefreshNow" disabled="@refreshing">
                         @(refreshing ? "Buscando..." : "🔄 Refrescar")
                     </button>
+                    @* 2026-06-18: X para cerrar el modal (snooze 5 min, mismo comportamiento que el boton del footer). *@
+                    <button type="button" @onclick="CloseAndSnooze"
+                            title="Cerrar (recordar en 5 min)"
+                            aria-label="Cerrar"
+                            style="background: transparent; border: none; color: #6b7280; font-size: 1.6rem; line-height: 1; cursor: pointer; padding: 0 0.4rem; border-radius: 4px;">
+                        ×
+                    </button>
                 </div>
             </div>
 
