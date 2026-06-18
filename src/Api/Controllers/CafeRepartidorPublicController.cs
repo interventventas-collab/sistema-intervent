@@ -84,9 +84,15 @@ public class CafeRepartidorPublicController : ControllerBase
         var items = v.Items.Select(i => new ItemSimpleDto(
             i.Cantidad, i.ProductoNombreSnapshot, i.Formato, i.Molienda, i.EsDoyPack, i.EsEnvasePlateado)).ToList();
 
+        // 2026-06-18: para el repartidor lo que importa es DONDE entregar (DomicilioEntrega), no
+        // la direccion fiscal. Si esta vacio caemos a Direccion. Snapshot porque es lo que se
+        // guardo cuando se cargo la venta — consistente.
+        var dirParaRepartidor = string.IsNullOrWhiteSpace(v.ClienteDomicilioEntregaSnapshot)
+            ? v.ClienteDireccionSnapshot
+            : v.ClienteDomicilioEntregaSnapshot;
         return Ok(new InfoVentaDto(
             v.Id, v.Numero, v.Fecha,
-            v.ClienteNombreSnapshot, v.ClienteDireccionSnapshot, v.ClienteLocalidadSnapshot, v.ClienteCiudadSnapshot,
+            v.ClienteNombreSnapshot, dirParaRepartidor, v.ClienteLocalidadSnapshot, v.ClienteCiudadSnapshot,
             totalCobrable, saldo,
             v.EntregadoPorRepartidorId.HasValue, entregadoPor,
             items));
@@ -371,7 +377,18 @@ public class CafeRepartidorPublicController : ControllerBase
             .Select(x => new {
                 x.v.Id, x.v.Numero, x.v.Fecha,
                 ClienteNombre = x.v.ClienteNombreSnapshot,
-                ClienteDireccion = x.v.ClienteDireccionSnapshot,
+                // 2026-06-18: para el repartidor importa DONDE entregar. Prioridad:
+                //   1. DomicilioEntrega de la ficha actual del cliente (puede haber sido actualizado)
+                //   2. DomicilioEntregaSnapshot (capturado al cargar la venta)
+                //   3. Direccion de la ficha actual (fiscal)
+                //   4. DireccionSnapshot
+                ClienteDireccion = (x.c != null && x.c.DomicilioEntrega != null && x.c.DomicilioEntrega != "")
+                    ? x.c.DomicilioEntrega
+                    : ((x.v.ClienteDomicilioEntregaSnapshot != null && x.v.ClienteDomicilioEntregaSnapshot != "")
+                        ? x.v.ClienteDomicilioEntregaSnapshot
+                        : ((x.c != null && x.c.Direccion != null && x.c.Direccion != "")
+                            ? x.c.Direccion
+                            : x.v.ClienteDireccionSnapshot)),
                 ClienteLocalidad = x.v.ClienteLocalidadSnapshot,
                 Total = (x.v.ArcaImpTotal.HasValue && x.v.ArcaImpTotal.Value > 0m) ? x.v.ArcaImpTotal.Value : x.v.Total,
                 x.v.EntregadoAt,
@@ -485,9 +502,13 @@ public class CafeRepartidorPublicController : ControllerBase
 
         var totalCobrable = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
 
+        // 2026-06-18: mismo criterio que las otras cards — el repartidor necesita DomicilioEntrega prioritario.
+        var dirResumen = string.IsNullOrWhiteSpace(v.ClienteDomicilioEntregaSnapshot)
+            ? v.ClienteDireccionSnapshot
+            : v.ClienteDomicilioEntregaSnapshot;
         return Ok(new MisPedidosResumenDto(
             v.Id, v.Numero,
-            v.ClienteNombreSnapshot, v.ClienteDireccionSnapshot, v.ClienteLocalidadSnapshot,
+            v.ClienteNombreSnapshot, dirResumen, v.ClienteLocalidadSnapshot,
             totalCobrable,
             v.Observaciones,
             v.ComentarioEntrega,
