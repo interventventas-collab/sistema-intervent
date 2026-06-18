@@ -3475,10 +3475,12 @@
     // "Guardar cambios" se transforma en violeta "Emitir Factura X con CAE" y dispara conversion ARCA.
     private string? editingVentaTipoOriginal;
     private bool editingVentaTieneCae;
+    private string? editingVentaArcaEstado;  // 2026-06-18: si la venta ya intento emitir y quedo "pendiente", no usar mi flujo (existe Reintentar emision)
     private bool EditModoEmitirCae
         => editingVentaId.HasValue
            && formTipoComprobante is "FA" or "FB" or "FC"
            && !editingVentaTieneCae
+           && editingVentaArcaEstado != "pendiente"  // si ya intento emitir y rebotó ARCA, el camino correcto es Reintentar (no crear otra venta)
            && (editingVentaTipoOriginal is "X" or "PRO"
                || editingVentaTipoOriginal == formTipoComprobante);
     // Destinatarios: se autocompletan desde el cliente si tiene email/telefono.
@@ -4720,7 +4722,7 @@
         }
     }
 
-    private void CloseForm() { showForm = false; formError = null; editingVentaId = null; editingVentaNumero = ""; duplicadoDeNumero = null; autoRetryArcaPostEdit = false; editingVentaTipoOriginal = null; editingVentaTieneCae = false; }
+    private void CloseForm() { showForm = false; formError = null; editingVentaId = null; editingVentaNumero = ""; duplicadoDeNumero = null; autoRetryArcaPostEdit = false; editingVentaTipoOriginal = null; editingVentaTieneCae = false; editingVentaArcaEstado = null; }
 
     /// <summary>Numero del comprobante origen cuando se está duplicando (para mostrar "Duplicado de X" en el modal).</summary>
     private string? duplicadoDeNumero;
@@ -6353,6 +6355,7 @@
         // 2026-06-18: capturar tipo+CAE originales para detectar el modo "Emitir CAE desde edicion".
         editingVentaTipoOriginal = string.IsNullOrWhiteSpace(v.TipoComprobante) ? "X" : v.TipoComprobante;
         editingVentaTieneCae = !string.IsNullOrEmpty(v.ArcaCae);
+        editingVentaArcaEstado = v.ArcaEstado;
         showForm = true;
         // Refrescar saldo anterior + sugerencias del cliente y cotizar precios.
         RecomputeUnpaidPrevSales();
