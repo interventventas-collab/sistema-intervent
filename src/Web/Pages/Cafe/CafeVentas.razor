@@ -2208,6 +2208,49 @@
                     <button class="btn-close" @onclick="ClosePrint">&times;</button>
                 </div>
             </div>
+            @* 2026-06-18 — banners de estado ARCA + Anulado + Pagado: antes vivian dentro del HTML legacy
+               (display:none) y no se veian. Los movimos aca, entre el header y el PDF embed, asi el
+               operador ve "Factura PENDIENTE" con los botones de Reintentar cuando ARCA rebote, ve
+               el verde "Autorizada CAE" cuando esta OK, y ve el rojo "Anulada" si se anulo. *@
+            @if (printVenta.Estado == "anulado")
+            {
+                <div style="background: #fee2e2; border: 2px solid #b91c1c; color: #7f1d1d; padding: 0.6rem 0.9rem; margin: 0.5rem 0.9rem 0; border-radius: 6px; font-weight: 800;">
+                    ⚠ COMPROBANTE ANULADO
+                </div>
+            }
+            @if (printVenta.TipoComprobante is "FA" or "FB" or "FC")
+            {
+                @if (printVenta.ArcaEstado == "autorizado")
+                {
+                    <div style="background: #dcfce7; border: 1px solid #86efac; padding: 0.6rem 0.9rem; margin: 0.5rem 0.9rem 0; border-radius: 6px;">
+                        <strong style="color: #166534;">✅ Factura autorizada en ARCA</strong>
+                        <div style="font-size: 0.85rem; color: #166534; margin-top: 0.2rem;">
+                            <strong>CAE:</strong> <span style="font-family: monospace;">@printVenta.ArcaCae</span> ·
+                            <strong>Vto:</strong> @(printVenta.ArcaCaeVto?.ToString("dd/MM/yyyy") ?? "—") ·
+                            <strong>Nro ARCA:</strong> @($"{(printVenta.ArcaPtoVta ?? 0):00000}-{(printVenta.ArcaCbteNro ?? 0):00000000}")
+                        </div>
+                    </div>
+                }
+                else if (printVenta.ArcaEstado == "pendiente")
+                {
+                    <div style="background: #fed7aa; border: 2px solid #fb923c; padding: 0.7rem 0.9rem; margin: 0.5rem 0.9rem 0; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; gap: 0.8rem; flex-wrap: wrap;">
+                        <div style="flex: 1; min-width: 240px;">
+                            <strong style="color: #9a3412;">⚠ Factura PENDIENTE — no se autorizó en ARCA todavía</strong>
+                            <div style="font-size: 0.8rem; color: #7c2d12; margin-top: 0.2rem; white-space: pre-wrap;">@printVenta.ArcaError</div>
+                        </div>
+                        <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                            <button class="btn btn-secondary" style="font-size: 0.85rem; background: #ffffff; border: 1px solid #fb923c; color: #9a3412;"
+                                    @onclick="EditarYReintentar" disabled="@arcaRetrying">
+                                ✎ Editar y reintentar
+                            </button>
+                            <button class="btn btn-primary" style="font-size: 0.85rem; background: #ea580c; border: none;"
+                                    @onclick="RetryArca" disabled="@arcaRetrying">
+                                @(arcaRetrying ? "Reintentando..." : "🔄 Reintentar emisión")
+                            </button>
+                        </div>
+                    </div>
+                }
+            }
             <div class="modal-body" id="cafe-print" style="background: #525659; padding: 0; overflow: hidden; position: relative;">
                 @* PDF REAL embebido (decision 2026-05-20: lo que ves = lo que descargas).
                    Los hash params #navpanes=0 + #pagemode=none esconden el panel lateral
