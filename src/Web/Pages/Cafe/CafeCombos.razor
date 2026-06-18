@@ -20,7 +20,7 @@
         <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
             <input class="form-input" style="min-width: 240px; font-size: 0.85rem;"
                    @bind="filtroTexto" @bind:event="oninput"
-                   placeholder="🔍 Buscar combo por nombre..." />
+                   placeholder="🔍 Buscar por SKU o nombre..." />
             <select class="form-input" style="max-width: 180px; font-size: 0.85rem;" @bind="filtroTipo">
                 <option value="MELI">🟠 Solo Combos MeLi</option>
                 <option value="COMPUESTO">🟣 Solo Compuestos</option>
@@ -63,8 +63,8 @@
                         {
                             <tr>
                                 <td>
-                                    @* 2026-06-18: chip de tipo arriba del nombre *@
-                                    <div style="margin-bottom:0.2rem;">
+                                    @* 2026-06-18: chip de tipo + SKU arriba del nombre *@
+                                    <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.2rem;">
                                         @if (c.EsCompuesto)
                                         {
                                             <span style="display:inline-block; padding:0.1rem 0.45rem; background:#EEEDFE; color:#3C3489; border:1px solid #7F77DD; border-radius:999px; font-size:0.65rem; font-weight:800; letter-spacing:0.02em;" title="Producto compuesto — se arma con varias piezas (ej: tacho = cuerpo + tapa)">🟣 COMPUESTO</span>
@@ -72,6 +72,10 @@
                                         else
                                         {
                                             <span style="display:inline-block; padding:0.1rem 0.45rem; background:#FAEEDA; color:#633806; border:1px solid #BA7517; border-radius:999px; font-size:0.65rem; font-weight:800; letter-spacing:0.02em;" title="Combo MeLi — plomería para descuento de stock de publicaciones MercadoLibre">🟠 COMBO MELI</span>
+                                        }
+                                        @if (!string.IsNullOrEmpty(c.Sku))
+                                        {
+                                            <span style="font-family: monospace; font-weight: 700; color: #1d4ed8; font-size: 0.8rem;">@c.Sku</span>
                                         }
                                     </div>
                                     @if (modoEdicion)
@@ -380,7 +384,9 @@
             if (!string.IsNullOrWhiteSpace(filtroTexto))
             {
                 var t = filtroTexto.Trim();
-                q = q.Where(c => c.Nombre.MatchesSearch(t) || c.Descripcion.MatchesSearch(t));
+                // 2026-06-18: buscador busca tambien por SKU (antes solo nombre+descripcion). Sin esto
+                // si vos escribias "C926NEG" no aparecia nada — el SKU no era buscable.
+                q = q.Where(c => c.Nombre.MatchesSearch(t) || c.Descripcion.MatchesSearch(t) || c.Sku.MatchesSearch(t));
             }
             return q.ToList();
         }
